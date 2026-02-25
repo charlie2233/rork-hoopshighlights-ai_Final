@@ -4,12 +4,14 @@ import PhotosUI
 
 struct VideoPlayerView: View {
     @Bindable var viewModel: HighlightsViewModel
+    @Environment(SubscriptionManager.self) private var subscriptionManager
     @State private var player: AVPlayer?
     @State private var showingFilePicker = false
     @State private var selectedPhotoItem: PhotosPickerItem?
     @State private var showSourcePicker = false
     @State private var analysisStarted = false
     @State private var pulseAnimation = false
+    @State private var showingPaywall = false
 
     var body: some View {
         NavigationStack {
@@ -77,6 +79,9 @@ struct VideoPlayerView: View {
                 if loaded, let url = viewModel.videoURL {
                     player = AVPlayer(url: url)
                 }
+            }
+            .sheet(isPresented: $showingPaywall) {
+                PaywallView(subscriptionManager: subscriptionManager)
             }
         }
     }
@@ -243,9 +248,34 @@ struct VideoPlayerView: View {
             } else if !viewModel.clips.isEmpty {
                 analysisCompleteView
             } else {
+                if !subscriptionManager.isProUser {
+                    HStack(spacing: 8) {
+                        Image(systemName: "sparkles")
+                            .foregroundStyle(AppTheme.warningYellow)
+                        Text(subscriptionManager.freeUsesRemaining > 0
+                            ? "\(subscriptionManager.freeUsesRemaining) free analysis\(subscriptionManager.freeUsesRemaining == 1 ? "" : "es") remaining"
+                            : "Subscribe to analyze videos")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(subscriptionManager.freeUsesRemaining > 0 ? AppTheme.warningYellow : AppTheme.dangerRed)
+                        Spacer()
+                        if subscriptionManager.freeUsesRemaining == 0 {
+                            Button("Go Pro") { showingPaywall = true }
+                                .font(.caption.bold())
+                                .foregroundStyle(AppTheme.neonPurple)
+                        }
+                    }
+                    .padding(12)
+                    .rorkCard(cornerRadius: 12, fill: AnyShapeStyle(AppTheme.surfaceBg.opacity(0.65)), stroke: AppTheme.softBorder, glowOpacity: 0.03)
+                }
+
                 Button {
-                    analysisStarted = true
-                    Task { await viewModel.startAnalysis() }
+                    if subscriptionManager.canAnalyze {
+                        subscriptionManager.consumeFreeUse()
+                        analysisStarted = true
+                        Task { await viewModel.startAnalysis() }
+                    } else {
+                        showingPaywall = true
+                    }
                 } label: {
                     HStack(spacing: 12) {
                         Image(systemName: "brain.head.profile.fill")
@@ -265,6 +295,7 @@ struct VideoPlayerView: View {
                     .background(AppTheme.purpleGradient, in: .rect(cornerRadius: 16))
                 }
                 .sensoryFeedback(.impact(weight: .medium), trigger: analysisStarted)
+                .disabled(!subscriptionManager.canAnalyze && !subscriptionManager.isProUser)
 
                 estimatedTimeView
             }

@@ -3,7 +3,11 @@ import Foundation
 
 struct SettingsView: View {
     @Bindable var viewModel: HighlightsViewModel
+    @Bindable var authService: AuthService
+    @Bindable var subscriptionManager: SubscriptionManager
     @State private var showingResetAlert = false
+    @State private var showingSignOutAlert = false
+    @State private var showingPaywall = false
     @State private var showingAdvancedSettings = false
     @State private var feedbackType: FeedbackType = .suggestion
     @State private var contactEmail = ""
@@ -95,6 +99,8 @@ struct SettingsView: View {
 
                 ScrollView {
                     VStack(spacing: 24) {
+                        accountSection
+                        subscriptionSection
                         settingsSummaryCard
                         clipSettingsSection
                         advancedSettingsSection
@@ -102,6 +108,7 @@ struct SettingsView: View {
                         commonFAQSection
                         aboutSection
                         dangerZone
+                        signOutButton
                     }
                     .padding(.horizontal, 16)
                     .padding(.top, 8)
@@ -112,6 +119,15 @@ struct SettingsView: View {
             .navigationBarTitleDisplayMode(.large)
             .toolbarBackground(AppTheme.darkBg, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
+            .sheet(isPresented: $showingPaywall) {
+                PaywallView(subscriptionManager: subscriptionManager)
+            }
+            .alert("Sign Out?", isPresented: $showingSignOutAlert) {
+                Button("Sign Out", role: .destructive) { authService.signOut() }
+                Button("Cancel", role: .cancel) { }
+            } message: {
+                Text("You'll need to sign in again to use the app.")
+            }
             .alert("Reset Settings?", isPresented: $showingResetAlert) {
                 Button("Reset", role: .destructive) {
                     viewModel.settings = AnalysisSettings()
@@ -615,6 +631,156 @@ struct SettingsView: View {
         }
         .padding(16)
         .rorkCard(cornerRadius: 16, stroke: AppTheme.softBorder, glowOpacity: 0.05)
+    }
+
+    private var accountSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            RorkSectionHeader(
+                title: "Account",
+                icon: "person.crop.circle.fill",
+                subtitle: "Your sign-in details"
+            )
+
+            HStack(spacing: 14) {
+                ZStack {
+                    Circle()
+                        .fill(AppTheme.accentPurple.opacity(0.2))
+                        .frame(width: 48, height: 48)
+                    Image(systemName: authMethodIcon)
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(AppTheme.neonPurple)
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    if let name = authService.currentUser?.displayName, !name.isEmpty {
+                        Text(name)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.white)
+                    }
+                    if let email = authService.currentUser?.email {
+                        Text(email)
+                            .font(.caption)
+                            .foregroundStyle(AppTheme.subtleText)
+                    }
+                    Text("Signed in with \(authMethodLabel)")
+                        .font(.caption2)
+                        .foregroundStyle(AppTheme.subtleText)
+                }
+
+                Spacer()
+            }
+        }
+        .padding(16)
+        .rorkCard(cornerRadius: 18, stroke: AppTheme.softBorder, glowOpacity: 0.06)
+    }
+
+    private var authMethodIcon: String {
+        switch authService.currentUser?.authMethod {
+        case .apple: return "apple.logo"
+        case .google: return "g.circle.fill"
+        case .email: return "envelope.fill"
+        case .phone: return "phone.fill"
+        case nil: return "person.fill"
+        }
+    }
+
+    private var authMethodLabel: String {
+        switch authService.currentUser?.authMethod {
+        case .apple: return "Apple"
+        case .google: return "Google"
+        case .email: return "Email"
+        case .phone: return "Phone"
+        case nil: return "Unknown"
+        }
+    }
+
+    private var subscriptionSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            RorkSectionHeader(
+                title: "Subscription",
+                icon: "crown.fill",
+                subtitle: subscriptionManager.isProUser ? "You have unlimited access" : "Free tier"
+            )
+
+            if subscriptionManager.isProUser {
+                HStack(spacing: 12) {
+                    Image(systemName: "checkmark.seal.fill")
+                        .font(.title2)
+                        .foregroundStyle(AppTheme.successGreen)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Pro Member")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.white)
+                        Text("Unlimited AI analyses & exports")
+                            .font(.caption)
+                            .foregroundStyle(AppTheme.subtleText)
+                    }
+                    Spacer()
+                }
+            } else {
+                HStack(spacing: 10) {
+                    RorkMetricChip(
+                        icon: "sparkles",
+                        value: "\(subscriptionManager.freeUsesRemaining)",
+                        label: "Free Left",
+                        tint: subscriptionManager.freeUsesRemaining > 0 ? AppTheme.warningYellow : AppTheme.dangerRed
+                    )
+                    RorkMetricChip(
+                        icon: "crown.fill",
+                        value: "$9.99",
+                        label: "Per Month",
+                        tint: AppTheme.neonPurple
+                    )
+                }
+
+                Button {
+                    showingPaywall = true
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "crown.fill")
+                            .font(.subheadline)
+                        Text("Upgrade to Pro")
+                            .font(.subheadline.bold())
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption.bold())
+                    }
+                    .foregroundStyle(.white)
+                    .padding(14)
+                    .background(AppTheme.purpleGradient, in: .rect(cornerRadius: 14))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14)
+                            .stroke(AppTheme.neonPurple.opacity(0.3), lineWidth: 1)
+                    )
+                }
+            }
+        }
+        .padding(16)
+        .rorkCard(cornerRadius: 18, stroke: AppTheme.softBorder, glowOpacity: 0.06)
+    }
+
+    private var signOutButton: some View {
+        Button {
+            showingSignOutAlert = true
+        } label: {
+            HStack {
+                Image(systemName: "rectangle.portrait.and.arrow.right")
+                Text("Sign Out")
+                    .fontWeight(.semibold)
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption.bold())
+            }
+            .font(.subheadline)
+            .foregroundStyle(AppTheme.subtleText)
+            .frame(maxWidth: .infinity)
+            .padding(14)
+            .background(AppTheme.surfaceBg.opacity(0.5), in: .rect(cornerRadius: 12))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(AppTheme.softBorder, lineWidth: 1)
+            )
+        }
     }
 
     private func aiFeatureTag(_ text: String) -> some View {
