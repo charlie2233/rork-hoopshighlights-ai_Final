@@ -1,9 +1,92 @@
 import SwiftUI
+import Foundation
 
 struct SettingsView: View {
     @Bindable var viewModel: HighlightsViewModel
     @State private var showingResetAlert = false
     @State private var showingAdvancedSettings = false
+    @State private var feedbackType: FeedbackType = .suggestion
+    @State private var contactEmail = ""
+    @State private var feedbackMessage = ""
+    @State private var isSubmittingFeedback = false
+    @State private var feedbackBanner: FeedbackBanner?
+    @State private var expandedFAQIDs: Set<String> = []
+
+    private enum FeedbackType: String, CaseIterable, Identifiable {
+        case suggestion = "Suggestion"
+        case bug = "Bug Report"
+        case question = "Question"
+
+        var id: String { rawValue }
+
+        var icon: String {
+            switch self {
+            case .suggestion: return "sparkles"
+            case .bug: return "ladybug.fill"
+            case .question: return "questionmark.bubble.fill"
+            }
+        }
+    }
+
+    private struct FeedbackBanner: Identifiable {
+        let id = UUID()
+        let message: String
+        let icon: String
+        let tint: Color
+    }
+
+    private struct FormspreePayload: Encodable {
+        let category: String
+        let email: String?
+        let message: String
+        let source: String
+        let appVersion: String
+        let exportTheme: String
+        let exportQuality: String
+        let exportFormat: String
+    }
+
+    private struct FormspreeErrorEnvelope: Decodable {
+        struct FormspreeErrorItem: Decodable {
+            let message: String?
+        }
+
+        let errors: [FormspreeErrorItem]?
+    }
+
+    private struct FAQItem: Identifiable {
+        let id: String
+        let question: String
+        let answer: String
+        let icon: String
+    }
+
+    private static let commonFAQItems: [FAQItem] = [
+        FAQItem(
+            id: "no-clips",
+            question: "Why did the app find few or no clips?",
+            answer: "Lower the confidence threshold, increase clip duration range, and check the source video has clear motion and audible peaks. Low-light or static camera footage can reduce detection quality.",
+            icon: "film.badge.questionmark"
+        ),
+        FAQItem(
+            id: "weights",
+            question: "When should I change AI weights?",
+            answer: "Leave weights balanced for most games. Use Advanced Settings only if your footage is unusual, like very loud gyms (audio bias) or silent clips with strong movement (motion/pose bias).",
+            icon: "slider.horizontal.3"
+        ),
+        FAQItem(
+            id: "export-format",
+            question: "Should I export MP4 or MOV?",
+            answer: "MP4 is the best default for sharing and cross-platform compatibility. MOV is a good Apple-native option if you plan to edit or manage clips in Apple-focused workflows.",
+            icon: "doc.badge.gearshape"
+        ),
+        FAQItem(
+            id: "quick-share",
+            question: "How does Quick Share work on iPhone?",
+            answer: "After export completes, the Quick Share button opens the iOS share sheet for the latest exported file so you can send it to Messages, AirDrop, Files, or social apps immediately.",
+            icon: "square.and.arrow.up.fill"
+        )
+    ]
 
     var body: some View {
         NavigationStack {
@@ -15,6 +98,8 @@ struct SettingsView: View {
                         settingsSummaryCard
                         clipSettingsSection
                         advancedSettingsSection
+                        contactSuggestionsSection
+                        commonFAQSection
                         aboutSection
                         dangerZone
                     }
@@ -303,6 +388,235 @@ struct SettingsView: View {
         }
     }
 
+    private var contactSuggestionsSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            RorkSectionHeader(
+                title: "Contact & Suggestions",
+                icon: "paperplane.fill",
+                subtitle: "Send feedback directly from the app to the team"
+            )
+
+            if let feedbackBanner {
+                HStack(spacing: 10) {
+                    Image(systemName: feedbackBanner.icon)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(feedbackBanner.tint)
+                    Text(feedbackBanner.message)
+                        .font(.caption)
+                        .foregroundStyle(.white)
+                    Spacer()
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .rorkCard(
+                    cornerRadius: 12,
+                    fill: AnyShapeStyle(AppTheme.surfaceBg.opacity(0.55)),
+                    stroke: feedbackBanner.tint.opacity(0.22),
+                    glow: feedbackBanner.tint,
+                    glowOpacity: 0.05
+                )
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Type")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(AppTheme.subtleText)
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(FeedbackType.allCases) { type in
+                            Button {
+                                withAnimation(.snappy) { feedbackType = type }
+                            } label: {
+                                HStack(spacing: 8) {
+                                    Image(systemName: type.icon)
+                                        .font(.caption.weight(.semibold))
+                                    Text(type.rawValue)
+                                        .font(.caption.weight(.medium))
+                                }
+                                .foregroundStyle(feedbackType == type ? .white : AppTheme.subtleText)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(
+                                    feedbackType == type ? AppTheme.accentPurple : AppTheme.cardBg,
+                                    in: .capsule
+                                )
+                                .overlay(
+                                    Capsule()
+                                        .stroke(
+                                            feedbackType == type ? AppTheme.neonPurple : Color.clear,
+                                            lineWidth: 1.5
+                                        )
+                                )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+                .contentMargins(.horizontal, 0)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Email (optional)")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(AppTheme.subtleText)
+
+                TextField("you@example.com", text: $contactEmail)
+                    .textInputAutocapitalization(.never)
+                    .keyboardType(.emailAddress)
+                    .autocorrectionDisabled(true)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 12)
+                    .background(AppTheme.surfaceBg.opacity(0.55), in: .rect(cornerRadius: 12))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(AppTheme.softBorder, lineWidth: 1)
+                    )
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Message")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(AppTheme.subtleText)
+                    Spacer()
+                    Text("\(feedbackCharacterCount)/1200")
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(feedbackCharacterCount > 1200 ? AppTheme.dangerRed : AppTheme.subtleText)
+                }
+
+                ZStack(alignment: .topLeading) {
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(AppTheme.surfaceBg.opacity(0.55))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(AppTheme.softBorder, lineWidth: 1)
+                        )
+
+                    if feedbackMessage.isEmpty {
+                        Text("Tell us what to improve, report a bug, or ask a question...")
+                            .font(.subheadline)
+                            .foregroundStyle(AppTheme.subtleText)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 14)
+                            .allowsHitTesting(false)
+                    }
+
+                    TextEditor(text: $feedbackMessage)
+                        .scrollContentBackground(.hidden)
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 8)
+                        .frame(minHeight: 120)
+                        .background(Color.clear)
+                }
+                .frame(minHeight: 120)
+            }
+
+            HStack(spacing: 10) {
+                Button {
+                    feedbackMessage = ""
+                    feedbackBanner = nil
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "eraser.fill")
+                        Text("Clear")
+                    }
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(AppTheme.subtleText)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .background(AppTheme.surfaceBg.opacity(0.35), in: .capsule)
+                }
+                .buttonStyle(.plain)
+
+                Spacer()
+
+                Button {
+                    Task { await submitFeedback() }
+                } label: {
+                    HStack(spacing: 8) {
+                        if isSubmittingFeedback {
+                            ProgressView()
+                                .tint(.white)
+                                .controlSize(.small)
+                        } else {
+                            Image(systemName: "paperplane.fill")
+                        }
+                        Text(isSubmittingFeedback ? "Sending..." : "Send")
+                            .font(.subheadline.bold())
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 11)
+                    .background(AppTheme.purpleGradient, in: .capsule)
+                    .overlay(
+                        Capsule()
+                            .stroke(AppTheme.neonPurple.opacity(0.28), lineWidth: 1)
+                    )
+                }
+                .buttonStyle(.plain)
+                .disabled(isSubmittingFeedback || !canSubmitFeedback)
+                .opacity((isSubmittingFeedback || !canSubmitFeedback) ? 0.55 : 1.0)
+            }
+
+            Text("Submitted securely over HTTPS via Formspree. Avoid sending passwords or private account data.")
+                .font(.caption2)
+                .foregroundStyle(AppTheme.subtleText)
+        }
+        .padding(16)
+        .rorkCard(cornerRadius: 16, stroke: AppTheme.softBorder, glowOpacity: 0.06)
+    }
+
+    private var commonFAQSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            RorkSectionHeader(
+                title: "Common FAQ",
+                icon: "questionmark.circle.fill",
+                subtitle: "Quick answers for setup, exports, and detection tuning"
+            )
+
+            VStack(spacing: 10) {
+                ForEach(Self.commonFAQItems) { item in
+                    DisclosureGroup(isExpanded: faqBinding(for: item.id)) {
+                        Text(item.answer)
+                            .font(.caption)
+                            .foregroundStyle(AppTheme.subtleText)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.top, 4)
+                    } label: {
+                        HStack(spacing: 10) {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                    .fill(AppTheme.accentPurple.opacity(0.14))
+                                    .frame(width: 28, height: 28)
+                                Image(systemName: item.icon)
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(AppTheme.neonPurple)
+                            }
+                            Text(item.question)
+                                .font(.subheadline.weight(.medium))
+                                .foregroundStyle(.white)
+                            Spacer()
+                        }
+                    }
+                    .tint(AppTheme.neonPurple)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .rorkCard(
+                        cornerRadius: 12,
+                        fill: AnyShapeStyle(AppTheme.surfaceBg.opacity(0.50)),
+                        stroke: AppTheme.softBorder,
+                        glowOpacity: 0.03
+                    )
+                }
+            }
+        }
+        .padding(16)
+        .rorkCard(cornerRadius: 16, stroke: AppTheme.softBorder, glowOpacity: 0.05)
+    }
+
     private func aiFeatureTag(_ text: String) -> some View {
         Text(text)
             .font(.caption2)
@@ -374,5 +688,120 @@ struct SettingsView: View {
             Slider(value: value, in: 0...1.0, step: 0.05)
                 .tint(color)
         }
+    }
+
+    private var feedbackCharacterCount: Int {
+        feedbackMessage.trimmingCharacters(in: .whitespacesAndNewlines).count
+    }
+
+    private var canSubmitFeedback: Bool {
+        let trimmed = feedbackMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard (8...1200).contains(trimmed.count) else { return false }
+        return isEmailValidOrEmpty(contactEmail)
+    }
+
+    private func faqBinding(for id: String) -> Binding<Bool> {
+        Binding {
+            expandedFAQIDs.contains(id)
+        } set: { isExpanded in
+            if isExpanded {
+                expandedFAQIDs.insert(id)
+            } else {
+                expandedFAQIDs.remove(id)
+            }
+        }
+    }
+
+    @MainActor
+    private func submitFeedback() async {
+        guard canSubmitFeedback else {
+            feedbackBanner = FeedbackBanner(
+                message: "Please add a message (8-1200 chars) and check the email format if provided.",
+                icon: "exclamationmark.triangle.fill",
+                tint: AppTheme.dangerRed
+            )
+            return
+        }
+
+        guard let endpoint = URL(string: "https://formspree.io/f/xlgwzrdk") else {
+            feedbackBanner = FeedbackBanner(
+                message: "Feedback form is not configured correctly.",
+                icon: "xmark.octagon.fill",
+                tint: AppTheme.dangerRed
+            )
+            return
+        }
+
+        isSubmittingFeedback = true
+        feedbackBanner = nil
+        defer { isSubmittingFeedback = false }
+
+        let trimmedMessage = String(
+            feedbackMessage
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .prefix(1200)
+        )
+        let trimmedEmail = contactEmail.trimmingCharacters(in: .whitespacesAndNewlines)
+        let optionalEmail = trimmedEmail.isEmpty ? nil : trimmedEmail
+
+        let payload = FormspreePayload(
+            category: feedbackType.rawValue,
+            email: optionalEmail,
+            message: trimmedMessage,
+            source: "Hoops Highlights AI Settings",
+            appVersion: "v1.0",
+            exportTheme: viewModel.selectedTheme.rawValue,
+            exportQuality: viewModel.selectedQuality.rawValue,
+            exportFormat: viewModel.selectedFormat.rawValue
+        )
+
+        do {
+            var request = URLRequest(url: endpoint)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue("application/json", forHTTPHeaderField: "Accept")
+            request.httpBody = try JSONEncoder().encode(payload)
+
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse else {
+                throw URLError(.badServerResponse)
+            }
+
+            guard (200..<300).contains(http.statusCode) else {
+                let serverMessage = (try? JSONDecoder().decode(FormspreeErrorEnvelope.self, from: data))
+                    ?.errors?
+                    .compactMap(\.message)
+                    .first
+                feedbackBanner = FeedbackBanner(
+                    message: serverMessage ?? "Couldn’t send feedback right now. Please try again.",
+                    icon: "wifi.exclamationmark",
+                    tint: AppTheme.dangerRed
+                )
+                return
+            }
+
+            feedbackBanner = FeedbackBanner(
+                message: "Thanks. Your \(feedbackType.rawValue.lowercased()) was sent.",
+                icon: "checkmark.circle.fill",
+                tint: AppTheme.successGreen
+            )
+            feedbackMessage = ""
+        } catch {
+            feedbackBanner = FeedbackBanner(
+                message: "Network error while sending feedback. Check connection and try again.",
+                icon: "wifi.exclamationmark",
+                tint: AppTheme.dangerRed
+            )
+        }
+    }
+
+    private func isEmailValidOrEmpty(_ value: String) -> Bool {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return true }
+        guard trimmed.count <= 254 else { return false }
+        let parts = trimmed.split(separator: "@")
+        guard parts.count == 2 else { return false }
+        let domain = parts[1]
+        return !parts[0].isEmpty && domain.contains(".") && !domain.hasPrefix(".") && !domain.hasSuffix(".")
     }
 }
