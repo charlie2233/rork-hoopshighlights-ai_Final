@@ -768,10 +768,8 @@ struct SettingsView: View {
             }
 
             guard (200..<300).contains(http.statusCode) else {
-                let serverMessage = (try? JSONDecoder().decode(FormspreeErrorEnvelope.self, from: data))
-                    ?.errors?
-                    .compactMap(\.message)
-                    .first
+                let envelope = try? JSONDecoder().decode(FormspreeErrorEnvelope.self, from: data)
+                let serverMessage = envelope?.errors?.compactMap(\.message).first
                 feedbackBanner = FeedbackBanner(
                     message: serverMessage ?? "Couldn’t send feedback right now. Please try again.",
                     icon: "wifi.exclamationmark",
