@@ -19,27 +19,27 @@
 			containerPortal = 105FC5722E9EAD3100EA8BCF /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = 105FC5792E9EAD3100EA8BCF;
-			remoteInfo = HoopsHighlightsAI;
+			remoteInfo = HoopsClips;
 		};
 		105FC5942E9EAD3200EA8BCF /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 105FC5722E9EAD3100EA8BCF /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = 105FC5792E9EAD3100EA8BCF;
-			remoteInfo = HoopsHighlightsAI;
+			remoteInfo = HoopsClips;
 		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		105FC57A2E9EAD3100EA8BCF /* HoopsHighlightsAI.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HoopsHighlightsAI.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		105FC5892E9EAD3200EA8BCF /* HoopsHighlightsAITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HoopsHighlightsAITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		105FC5932E9EAD3200EA8BCF /* HoopsHighlightsAIUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HoopsHighlightsAIUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		105FC57A2E9EAD3100EA8BCF /* HoopsClips.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HoopsClips.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		105FC5892E9EAD3200EA8BCF /* HoopsClipsTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HoopsClipsTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		105FC5932E9EAD3200EA8BCF /* HoopsClipsUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HoopsClipsUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		105FC57C2E9EAD3100EA8BCF /* HoopsHighlightsAI */ = {
+		105FC57C2E9EAD3100EA8BCF /* HoopsClips */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = HoopsHighlightsAI;
+			path = HoopsClips;
 			sourceTree = "<group>";
 		};
 		105FC58C2E9EAD3200EA8BCF /* HoopsHighlightsAITests */ = {
@@ -86,7 +86,7 @@
 		105FC5712E9EAD3100EA8BCF = {
 			isa = PBXGroup;
 			children = (
-				105FC57C2E9EAD3100EA8BCF /* HoopsHighlightsAI */,
+				105FC57C2E9EAD3100EA8BCF /* HoopsClips */,
 				105FC58C2E9EAD3200EA8BCF /* HoopsHighlightsAITests */,
 				105FC5962E9EAD3200EA8BCF /* HoopsHighlightsAIUITests */,
 				105FC57B2E9EAD3100EA8BCF /* Products */,
@@ -96,9 +96,9 @@
 		105FC57B2E9EAD3100EA8BCF /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				105FC57A2E9EAD3100EA8BCF /* HoopsHighlightsAI.app */,
-				105FC5892E9EAD3200EA8BCF /* HoopsHighlightsAITests.xctest */,
-				105FC5932E9EAD3200EA8BCF /* HoopsHighlightsAIUITests.xctest */,
+				105FC57A2E9EAD3100EA8BCF /* HoopsClips.app */,
+				105FC5892E9EAD3200EA8BCF /* HoopsClipsTests.xctest */,
+				105FC5932E9EAD3200EA8BCF /* HoopsClipsUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -106,9 +106,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		105FC5792E9EAD3100EA8BCF /* HoopsHighlightsAI */ = {
+		105FC5792E9EAD3100EA8BCF /* HoopsClips */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 105FC59D2E9EAD3200EA8BCF /* Build configuration list for PBXNativeTarget "HoopsHighlightsAI" */;
+			buildConfigurationList = 105FC59D2E9EAD3200EA8BCF /* Build configuration list for PBXNativeTarget "HoopsClips" */;
 			buildPhases = (
 				105FC5762E9EAD3100EA8BCF /* Sources */,
 				105FC5772E9EAD3100EA8BCF /* Frameworks */,
@@ -119,22 +119,22 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				105FC57C2E9EAD3100EA8BCF /* HoopsHighlightsAI */,
+				105FC57C2E9EAD3100EA8BCF /* HoopsClips */,
 			);
-			name = HoopsHighlightsAI;
+			name = HoopsClips;
 			packageProductDependencies = (
 				XXDCC169DE7B2F3C1C8B10XX /* RevenueCat */,
 				XXEAC818FB99284308FEDEXX /* RevenueCatUI */,
 				XXB48B343CDA2FFA072770XX /* GoogleSignIn */,
 				XX1523791DAAC03A11009CXX /* GoogleSignInSwift */,
 			);
-			productName = HoopsHighlightsAI;
-			productReference = 105FC57A2E9EAD3100EA8BCF /* HoopsHighlightsAI.app */;
+			productName = HoopsClips;
+			productReference = 105FC57A2E9EAD3100EA8BCF /* HoopsClips.app */;
 			productType = "com.apple.product-type.application";
 		};
-		105FC5882E9EAD3200EA8BCF /* HoopsHighlightsAITests */ = {
+		105FC5882E9EAD3200EA8BCF /* HoopsClips */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 105FC5A02E9EAD3200EA8BCF /* Build configuration list for PBXNativeTarget "HoopsHighlightsAITests" */;
+			buildConfigurationList = 105FC5A02E9EAD3200EA8BCF /* Build configuration list for PBXNativeTarget "HoopsClips" */;
 			buildPhases = (
 				105FC5852E9EAD3200EA8BCF /* Sources */,
 				105FC5862E9EAD3200EA8BCF /* Frameworks */,
@@ -148,16 +148,16 @@
 			fileSystemSynchronizedGroups = (
 				105FC58C2E9EAD3200EA8BCF /* HoopsHighlightsAITests */,
 			);
-			name = HoopsHighlightsAITests;
+			name = HoopsClips;
 			packageProductDependencies = (
 			);
-			productName = HoopsHighlightsAITests;
-			productReference = 105FC5892E9EAD3200EA8BCF /* HoopsHighlightsAITests.xctest */;
+			productName = HoopsClips;
+			productReference = 105FC5892E9EAD3200EA8BCF /* HoopsClipsTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
-		105FC5922E9EAD3200EA8BCF /* HoopsHighlightsAIUITests */ = {
+		105FC5922E9EAD3200EA8BCF /* HoopsClips */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 105FC5A32E9EAD3200EA8BCF /* Build configuration list for PBXNativeTarget "HoopsHighlightsAIUITests" */;
+			buildConfigurationList = 105FC5A32E9EAD3200EA8BCF /* Build configuration list for PBXNativeTarget "HoopsClips" */;
 			buildPhases = (
 				105FC58F2E9EAD3200EA8BCF /* Sources */,
 				105FC5902E9EAD3200EA8BCF /* Frameworks */,
@@ -171,11 +171,11 @@
 			fileSystemSynchronizedGroups = (
 				105FC5962E9EAD3200EA8BCF /* HoopsHighlightsAIUITests */,
 			);
-			name = HoopsHighlightsAIUITests;
+			name = HoopsClips;
 			packageProductDependencies = (
 			);
-			productName = HoopsHighlightsAIUITests;
-			productReference = 105FC5932E9EAD3200EA8BCF /* HoopsHighlightsAIUITests.xctest */;
+			productName = HoopsClips;
+			productReference = 105FC5932E9EAD3200EA8BCF /* HoopsClipsUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
 /* End PBXNativeTarget section */
@@ -201,7 +201,7 @@
 					};
 				};
 			};
-			buildConfigurationList = 105FC5752E9EAD3100EA8BCF /* Build configuration list for PBXProject "HoopsHighlightsAI" */;
+			buildConfigurationList = 105FC5752E9EAD3100EA8BCF /* Build configuration list for PBXProject "HoopsClips" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -215,9 +215,9 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				105FC5792E9EAD3100EA8BCF /* HoopsHighlightsAI */,
-				105FC5882E9EAD3200EA8BCF /* HoopsHighlightsAITests */,
-				105FC5922E9EAD3200EA8BCF /* HoopsHighlightsAIUITests */,
+				105FC5792E9EAD3100EA8BCF /* HoopsClips */,
+				105FC5882E9EAD3200EA8BCF /* HoopsClips */,
+				105FC5922E9EAD3200EA8BCF /* HoopsClips */,
 			);
 			packageReferences = (
 				XX4AC81916604C4344ADC0XX /* XCRemoteSwiftPackageReference "purchases-ios-spm" */,
@@ -277,12 +277,12 @@
 /* Begin PBXTargetDependency section */
 		105FC58B2E9EAD3200EA8BCF /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = 105FC5792E9EAD3100EA8BCF /* HoopsHighlightsAI */;
+			target = 105FC5792E9EAD3100EA8BCF /* HoopsClips */;
 			targetProxy = 105FC58A2E9EAD3200EA8BCF /* PBXContainerItemProxy */;
 		};
 		105FC5952E9EAD3200EA8BCF /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = 105FC5792E9EAD3100EA8BCF /* HoopsHighlightsAI */;
+			target = 105FC5792E9EAD3100EA8BCF /* HoopsClips */;
 			targetProxy = 105FC5942E9EAD3200EA8BCF /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
@@ -566,7 +566,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		105FC5752E9EAD3100EA8BCF /* Build configuration list for PBXProject "HoopsHighlightsAI" */ = {
+		105FC5752E9EAD3100EA8BCF /* Build configuration list for PBXProject "HoopsClips" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				105FC59B2E9EAD3200EA8BCF /* Debug */,
@@ -575,7 +575,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		105FC59D2E9EAD3200EA8BCF /* Build configuration list for PBXNativeTarget "HoopsHighlightsAI" */ = {
+		105FC59D2E9EAD3200EA8BCF /* Build configuration list for PBXNativeTarget "HoopsClips" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				105FC59E2E9EAD3200EA8BCF /* Debug */,
@@ -584,7 +584,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		105FC5A02E9EAD3200EA8BCF /* Build configuration list for PBXNativeTarget "HoopsHighlightsAITests" */ = {
+		105FC5A02E9EAD3200EA8BCF /* Build configuration list for PBXNativeTarget "HoopsClips" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				105FC5A12E9EAD3200EA8BCF /* Debug */,
@@ -593,7 +593,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		105FC5A32E9EAD3200EA8BCF /* Build configuration list for PBXNativeTarget "HoopsHighlightsAIUITests" */ = {
+		105FC5A32E9EAD3200EA8BCF /* Build configuration list for PBXNativeTarget "HoopsClips" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				105FC5A42E9EAD3200EA8BCF /* Debug */,
