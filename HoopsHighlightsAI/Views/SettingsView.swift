@@ -101,7 +101,6 @@ struct SettingsView: View {
                     VStack(spacing: 24) {
                         accountSection
                         subscriptionSection
-                        settingsSummaryCard
                         clipSettingsSection
                         advancedSettingsSection
                         contactSuggestionsSection
@@ -168,11 +167,15 @@ struct SettingsView: View {
         let normalized = abs(weightsTotal - 1.0) < 0.05
 
         return VStack(alignment: .leading, spacing: 12) {
-            RorkSectionHeader(
-                title: "Detection Profile",
-                icon: "sparkles",
-                subtitle: "Current AI tuning snapshot used for new analysis runs"
-            )
+            HStack(spacing: 8) {
+                Image(systemName: "sparkles")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(AppTheme.neonPurple)
+                Text("Current Detection Profile")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white)
+                Spacer()
+            }
 
             HStack(spacing: 10) {
                 RorkMetricChip(
@@ -208,51 +211,42 @@ struct SettingsView: View {
     }
 
     private var clipSettingsSection: some View {
-        settingsCard(title: "Clip Detection", icon: "scissors") {
+        settingsCard(title: "Clip Duration", icon: "scissors") {
             VStack(spacing: 4) {
                 HStack {
-                    Text("Confidence Threshold")
+                    Text("Minimum")
                         .font(.subheadline)
                         .foregroundStyle(.white)
                     Spacer()
-                    Text("\(Int(viewModel.settings.confidenceThreshold * 100))%")
+                    Text(String(format: "%.1f sec", viewModel.settings.minClipDuration))
                         .font(.subheadline.monospacedDigit())
                         .foregroundStyle(AppTheme.neonPurple)
                 }
-                Slider(value: $viewModel.settings.confidenceThreshold, in: 0.1...0.9, step: 0.05)
+                Slider(value: $viewModel.settings.minClipDuration, in: 1.0...5.0, step: 0.5)
                     .tint(AppTheme.accentPurple)
-                Text("Lower = more clips (may include false positives)")
+                Text("Shortest clip the AI will keep")
                     .font(.caption2)
                     .foregroundStyle(AppTheme.subtleText)
             }
 
             Divider().overlay(AppTheme.accentPurple.opacity(0.2))
 
-            HStack {
-                Text("Min Clip Duration")
-                    .font(.subheadline)
-                    .foregroundStyle(.white)
-                Spacer()
-                Text(String(format: "%.1fs", viewModel.settings.minClipDuration))
-                    .font(.subheadline.monospacedDigit())
-                    .foregroundStyle(AppTheme.neonPurple)
+            VStack(spacing: 4) {
+                HStack {
+                    Text("Maximum")
+                        .font(.subheadline)
+                        .foregroundStyle(.white)
+                    Spacer()
+                    Text(String(format: "%.0f sec", viewModel.settings.maxClipDuration))
+                        .font(.subheadline.monospacedDigit())
+                        .foregroundStyle(AppTheme.neonPurple)
+                }
+                Slider(value: $viewModel.settings.maxClipDuration, in: 5.0...30.0, step: 1.0)
+                    .tint(AppTheme.accentPurple)
+                Text("Longest clip the AI will keep")
+                    .font(.caption2)
+                    .foregroundStyle(AppTheme.subtleText)
             }
-            Slider(value: $viewModel.settings.minClipDuration, in: 1.0...5.0, step: 0.5)
-                .tint(AppTheme.accentPurple)
-
-            Divider().overlay(AppTheme.accentPurple.opacity(0.2))
-
-            HStack {
-                Text("Max Clip Duration")
-                    .font(.subheadline)
-                    .foregroundStyle(.white)
-                Spacer()
-                Text(String(format: "%.0fs", viewModel.settings.maxClipDuration))
-                    .font(.subheadline.monospacedDigit())
-                    .foregroundStyle(AppTheme.neonPurple)
-            }
-            Slider(value: $viewModel.settings.maxClipDuration, in: 5.0...30.0, step: 1.0)
-                .tint(AppTheme.accentPurple)
         }
     }
 
@@ -266,9 +260,11 @@ struct SettingsView: View {
         return VStack(alignment: .leading, spacing: 12) {
             DisclosureGroup(isExpanded: $showingAdvancedSettings) {
                 VStack(spacing: 16) {
+                    advancedConfidenceSection
                     advancedDetectionBehavior
                     performanceSection
                     aiWeightsSection
+                    settingsSummaryCard
                 }
                 .padding(.top, 8)
             } label: {
@@ -276,11 +272,16 @@ struct SettingsView: View {
                     RorkSectionHeader(
                         title: "Advanced Settings",
                         icon: "gearshape.2.fill",
-                        subtitle: "Sampling, AI weights, and review fallback behavior"
+                        subtitle: "For fine-tuning — most users won't need to change these"
                     )
 
                     if !showingAdvancedSettings {
                         HStack(spacing: 10) {
+                            RorkMetricChip(
+                                icon: "scope",
+                                value: "\(Int(viewModel.settings.confidenceThreshold * 100))%",
+                                label: "Threshold"
+                            )
                             RorkMetricChip(
                                 icon: "gauge.with.dots.needle.67percent",
                                 value: "\(Int(viewModel.settings.framesSampledPerSecond)) fps",
@@ -301,6 +302,44 @@ struct SettingsView: View {
         .tint(AppTheme.neonPurple)
         .padding(16)
         .rorkCard(cornerRadius: 18, stroke: AppTheme.softBorder, glowOpacity: 0.06)
+    }
+
+    private var advancedConfidenceSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "scope")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(AppTheme.neonPurple)
+                Text("Confidence Threshold")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white)
+                Spacer()
+            }
+
+            VStack(spacing: 4) {
+                HStack {
+                    Text("Threshold")
+                        .font(.subheadline)
+                        .foregroundStyle(.white)
+                    Spacer()
+                    Text("\(Int(viewModel.settings.confidenceThreshold * 100))%")
+                        .font(.subheadline.monospacedDigit())
+                        .foregroundStyle(AppTheme.neonPurple)
+                }
+                Slider(value: $viewModel.settings.confidenceThreshold, in: 0.1...0.9, step: 0.05)
+                    .tint(AppTheme.accentPurple)
+                Text("Lower = more clips found (may include false positives)")
+                    .font(.caption2)
+                    .foregroundStyle(AppTheme.subtleText)
+            }
+        }
+        .padding(14)
+        .rorkCard(
+            cornerRadius: 14,
+            fill: AnyShapeStyle(AppTheme.surfaceBg.opacity(0.55)),
+            stroke: AppTheme.softBorder,
+            glowOpacity: 0.03
+        )
     }
 
     private var advancedDetectionBehavior: some View {
