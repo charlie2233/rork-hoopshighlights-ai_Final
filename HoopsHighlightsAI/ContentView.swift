@@ -7,12 +7,21 @@ struct ContentView: View {
     @State private var selectedTab = 0
     @State private var showingPaywall = false
 
+    private var needsVerification: Bool {
+        guard authService.isAuthenticated else { return false }
+        let hasPendingEmail = authService.pendingEmailVerification != nil
+        let hasPendingPhone = authService.pendingPhoneVerification != nil
+        return hasPendingEmail || hasPendingPhone
+    }
+
     var body: some View {
         Group {
-            if authService.isAuthenticated {
-                mainAppView
-            } else {
+            if !authService.isAuthenticated {
                 AuthView(authService: authService)
+            } else if needsVerification {
+                VerificationView(authService: authService)
+            } else {
+                mainAppView
             }
         }
         .task {

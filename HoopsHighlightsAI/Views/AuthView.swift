@@ -167,6 +167,25 @@ struct AuthView: View {
                 )
             }
 
+            Button {
+                authService.signInAnonymously()
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "person.fill.questionmark")
+                        .font(.title3)
+                    Text("Continue as Guest")
+                        .font(.body.weight(.semibold))
+                }
+                .foregroundStyle(AppTheme.subtleText)
+                .frame(maxWidth: .infinity)
+                .frame(height: 52)
+                .background(AppTheme.surfaceBg.opacity(0.4), in: .rect(cornerRadius: 14))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14)
+                        .stroke(AppTheme.softBorder, lineWidth: 1)
+                )
+            }
+
             Text("By signing in, you agree to our Terms of Service and Privacy Policy.")
                 .font(.caption2)
                 .foregroundStyle(AppTheme.subtleText)
@@ -239,6 +258,7 @@ struct AuthView: View {
 
             if !codeSent {
                 Button {
+                    authService.sendPhoneVerificationCode(to: phoneNumber)
                     withAnimation(.snappy) { codeSent = true }
                 } label: {
                     Text("Send Code")
@@ -251,6 +271,8 @@ struct AuthView: View {
                 .disabled(phoneNumber.isEmpty)
                 .opacity(phoneNumber.isEmpty ? 0.5 : 1)
             } else {
+                codeInfoBanner(destination: phoneNumber)
+
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Verification Code")
                         .font(.caption.weight(.semibold))
@@ -279,10 +301,40 @@ struct AuthView: View {
                     .background(AppTheme.purpleGradient, in: .rect(cornerRadius: 14))
                 }
                 .disabled(authService.isLoading)
+
+                Button {
+                    authService.sendPhoneVerificationCode(to: phoneNumber)
+                } label: {
+                    Text("Resend Code")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(AppTheme.neonPurple)
+                }
             }
 
             backButton
         }
+    }
+
+    private func codeInfoBanner(destination: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "info.circle.fill")
+                .foregroundStyle(AppTheme.neonPurple)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Verification code sent")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.white)
+                Text("Code: \(authService.phoneVerificationCode ?? "------")")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(AppTheme.neonPurple)
+                Text("Demo mode — in production, codes are sent via SMS/email")
+                    .font(.caption2)
+                    .foregroundStyle(AppTheme.subtleText)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AppTheme.accentPurple.opacity(0.1), in: .rect(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(AppTheme.accentPurple.opacity(0.25), lineWidth: 1))
     }
 
     private var backButton: some View {

@@ -719,6 +719,7 @@ struct SettingsView: View {
         case .google: return "g.circle.fill"
         case .email: return "envelope.fill"
         case .phone: return "phone.fill"
+        case .anonymous: return "person.fill.questionmark"
         case nil: return "person.fill"
         }
     }
@@ -729,6 +730,7 @@ struct SettingsView: View {
         case .google: return "Google"
         case .email: return "Email"
         case .phone: return "Phone"
+        case .anonymous: return "Guest"
         case nil: return "Unknown"
         }
     }
