@@ -1,0 +1,464 @@
+import Foundation
+import AVFoundation
+import Vision
+import Accelerate
+import CoreImage
+
+nonisolated final class FrameScore: Sendable {
+    let timestamp: Double
+    let poseScore: Double
+    let motionScore: Double
+    let sceneScore: Double
+
+    init(timestamp: Double, poseScore: Double, motionScore: Double, sceneScore: Double) {
+        self.timestamp = timestamp
+        self.poseScore = poseScore
+        self.motionScore = motionScore
+        self.sceneScore = sceneScore
+    }
+}
+
+@Observable
+@MainActor
+final class VideoAnalysisService {
+    var isAnalyzing = false
+    var progress: Double = 0.0
+    var statusMessage = ""
+    var clips: [Clip] = []
+
+    private var previousFrameBuffer: CVPixelBuffer?
+    private var settings = AnalysisSettings()
+
+    func analyze(url: URL, settings: AnalysisSettings) async {
+        self.settings = settings
+        isAnalyzing = true
+        progress = 0.0
+        clips = []
+        statusMessage = "Loading video..."
+
+        let asset = AVURLAsset(url: url)
+
+        guard let videoDuration = try? await asset.load(.duration) else {
+            statusMessage = "Failed to load video"
+            isAnalyzing = false
+            return
+        }
+
+        let durationSeconds = CMTimeGetSeconds(videoDuration)
+
+        statusMessage = "Extracting audio peaks..."
+        let audioPeaks = await extractAudioPeaks(from: asset, duration: durationSeconds)
+        progress = 0.15
+
+        statusMessage = "Analyzing video frames..."
+        let frameScores = await analyzeFrames(asset: asset, duration: durationSeconds)
+        progress = 0.75
+
+        statusMessage = "Detecting highlights..."
+        let rawClips = buildClips(
+            frameScores: frameScores,
+            audioPeaks: audioPeaks,
+            duration: durationSeconds
+        )
+        progress = 0.90
+
+        statusMessage = "Classifying actions..."
+        clips = classifyActions(clips: rawClips, frameScores: frameScores)
+        progress = 1.0
+
+        statusMessage = "Found \(clips.count) highlight\(clips.count == 1 ? "" : "s")"
+        isAnalyzing = false
+    }
+
+    private func extractAudioPeaks(from asset: AVURLAsset, duration: Double) async -> [Double] {
+        let sampleCount = Int(duration * 10)
+        var peaks = [Double](repeating: 0.0, count: max(sampleCount, 1))
+
+        guard let audioTrack = try? await asset.loadTracks(withMediaType: .audio).first else {
+            return peaks
+        }
+
+        do {
+            let reader = try AVAssetReader(asset: asset)
+            let outputSettings: [String: Any] = [
+                AVFormatIDKey: kAudioFormatLinearPCM,
+                AVLinearPCMBitDepthKey: 16,
+                AVLinearPCMIsFloatKey: false,
+                AVLinearPCMIsBigEndianKey: false,
+                AVLinearPCMIsNonInterleaved: false,
+                AVSampleRateKey: 44100,
+                AVNumberOfChannelsKey: 1
+            ]
+
+            let trackOutput = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: outputSettings)
+            reader.add(trackOutput)
+            reader.startReading()
+
+            var allSamples: [Int16] = []
+            while let sampleBuffer = trackOutput.copyNextSampleBuffer() {
+                guard let blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer) else { continue }
+                let length = CMBlockBufferGetDataLength(blockBuffer)
+                var data = Data(count: length)
+                data.withUnsafeMutableBytes { rawBuffer in
+                    guard let ptr = rawBuffer.baseAddress else { return }
+                    CMBlockBufferCopyDataBytes(blockBuffer, atOffset: 0, dataLength: length, destination: ptr)
+                }
+                let samples = data.withUnsafeBytes { rawBuffer in
+                    Array(rawBuffer.bindMemory(to: Int16.self))
+                }
+                allSamples.append(contentsOf: samples)
+            }
+
+            let samplesPerBucket = max(allSamples.count / sampleCount, 1)
+            for i in 0..<min(sampleCount, allSamples.count / max(samplesPerBucket, 1)) {
+                let start = i * samplesPerBucket
+                let end = min(start + samplesPerBucket, allSamples.count)
+                let slice = allSamples[start..<end]
+                let rms = sqrt(slice.reduce(0.0) { $0 + Double($1) * Double($1) } / Double(slice.count))
+                peaks[i] = rms / 32768.0
+            }
+        } catch {
+            // Audio extraction failed, return zeros
+        }
+
+        let maxPeak = peaks.max() ?? 1.0
+        if maxPeak > 0 {
+            peaks = peaks.map { $0 / maxPeak }
+        }
+
+        return peaks
+    }
+
+    private nonisolated func analyzeFrames(asset: AVURLAsset, duration: Double) async -> [FrameScore] {
+        let fps = 3.0
+        let totalFrames = Int(duration * fps)
+        var scores: [FrameScore] = []
+
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        generator.requestedTimeToleranceBefore = CMTime(seconds: 0.1, preferredTimescale: 600)
+        generator.requestedTimeToleranceAfter = CMTime(seconds: 0.1, preferredTimescale: 600)
+        generator.maximumSize = CGSize(width: 640, height: 360)
+
+        var previousImage: CGImage?
+
+        for i in 0..<totalFrames {
+            let time = Double(i) / fps
+            let cmTime = CMTime(seconds: time, preferredTimescale: 600)
+
+            do {
+                let (image, _) = try await generator.image(at: cmTime)
+
+                let poseScore = await analyzePose(image: image)
+                let motionScore = analyzeMotion(current: image, previous: previousImage)
+                let sceneScore = analyzeScene(image: image)
+
+                let frame = FrameScore(
+                    timestamp: time,
+                    poseScore: poseScore,
+                    motionScore: motionScore,
+                    sceneScore: sceneScore
+                )
+                scores.append(frame)
+                previousImage = image
+
+                if i % 10 == 0 {
+                    let progressValue = 0.15 + (Double(i) / Double(totalFrames)) * 0.60
+                    await MainActor.run { self.progress = progressValue }
+                }
+            } catch {
+                continue
+            }
+        }
+
+        return scores
+    }
+
+    private nonisolated func analyzePose(image: CGImage) async -> Double {
+        let request = VNDetectHumanBodyPoseRequest()
+        let handler = VNImageRequestHandler(cgImage: image, options: [:])
+
+        do {
+            try handler.perform([request])
+
+            guard let observations = request.results, !observations.isEmpty else {
+                return 0.0
+            }
+
+            var maxScore = 0.0
+
+            for observation in observations {
+                var score = 0.3
+
+                if let rightWrist = try? observation.recognizedPoint(.rightWrist),
+                   let rightShoulder = try? observation.recognizedPoint(.rightShoulder),
+                   rightWrist.confidence > 0.3 && rightShoulder.confidence > 0.3 {
+                    if rightWrist.location.y > rightShoulder.location.y {
+                        score += 0.3
+                    }
+                }
+
+                if let leftWrist = try? observation.recognizedPoint(.leftWrist),
+                   let leftShoulder = try? observation.recognizedPoint(.leftShoulder),
+                   leftWrist.confidence > 0.3 && leftShoulder.confidence > 0.3 {
+                    if leftWrist.location.y > leftShoulder.location.y {
+                        score += 0.2
+                    }
+                }
+
+                if let rightAnkle = try? observation.recognizedPoint(.rightAnkle),
+                   let rightHip = try? observation.recognizedPoint(.rightHip),
+                   rightAnkle.confidence > 0.3 && rightHip.confidence > 0.3 {
+                    let legExtension = abs(rightAnkle.location.y - rightHip.location.y)
+                    if legExtension > 0.4 {
+                        score += 0.2
+                    }
+                }
+
+                let jointConfidences = [
+                    try? observation.recognizedPoint(.nose),
+                    try? observation.recognizedPoint(.neck),
+                    try? observation.recognizedPoint(.rightShoulder),
+                    try? observation.recognizedPoint(.leftShoulder),
+                    try? observation.recognizedPoint(.rightElbow),
+                    try? observation.recognizedPoint(.leftElbow),
+                    try? observation.recognizedPoint(.rightWrist),
+                    try? observation.recognizedPoint(.leftWrist)
+                ].compactMap { $0?.confidence }
+
+                let avgConfidence = jointConfidences.isEmpty ? 0 : Double(jointConfidences.reduce(0, +)) / Double(jointConfidences.count)
+                score *= Double(avgConfidence)
+
+                maxScore = max(maxScore, score)
+            }
+
+            if observations.count >= 2 {
+                maxScore = min(maxScore * 1.2, 1.0)
+            }
+
+            return min(maxScore, 1.0)
+        } catch {
+            return 0.0
+        }
+    }
+
+    private nonisolated func analyzeMotion(current: CGImage, previous: CGImage?) -> Double {
+        guard let previous = previous else { return 0.0 }
+
+        let width = min(current.width, previous.width)
+        let height = min(current.height, previous.height)
+        guard width > 0 && height > 0 else { return 0.0 }
+
+        let colorSpace = CGColorSpaceCreateDeviceGray()
+        let bytesPerRow = width
+        let totalPixels = width * height
+
+        var currentPixels = [UInt8](repeating: 0, count: totalPixels)
+        var previousPixels = [UInt8](repeating: 0, count: totalPixels)
+
+        guard let currentCtx = CGContext(
+            data: &currentPixels, width: width, height: height,
+            bitsPerComponent: 8, bytesPerRow: bytesPerRow,
+            space: colorSpace, bitmapInfo: CGImageAlphaInfo.none.rawValue
+        ) else { return 0.0 }
+
+        guard let previousCtx = CGContext(
+            data: &previousPixels, width: width, height: height,
+            bitsPerComponent: 8, bytesPerRow: bytesPerRow,
+            space: colorSpace, bitmapInfo: CGImageAlphaInfo.none.rawValue
+        ) else { return 0.0 }
+
+        currentCtx.draw(current, in: CGRect(x: 0, y: 0, width: width, height: height))
+        previousCtx.draw(previous, in: CGRect(x: 0, y: 0, width: width, height: height))
+
+        var totalDiff: Double = 0
+        let sampleStep = max(totalPixels / 10000, 1)
+        var sampledCount = 0
+
+        for i in stride(from: 0, to: totalPixels, by: sampleStep) {
+            let diff = abs(Int(currentPixels[i]) - Int(previousPixels[i]))
+            totalDiff += Double(diff)
+            sampledCount += 1
+        }
+
+        let avgDiff = sampledCount > 0 ? totalDiff / Double(sampledCount) : 0
+        let normalized = min(avgDiff / 40.0, 1.0)
+        return normalized
+    }
+
+    private nonisolated func analyzeScene(image: CGImage) -> Double {
+        let width = image.width
+        let height = image.height
+        guard width > 0 && height > 0 else { return 0.0 }
+
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        let bytesPerPixel = 4
+        let bytesPerRow = width * bytesPerPixel
+        let totalPixels = width * height
+        var pixels = [UInt8](repeating: 0, count: totalPixels * bytesPerPixel)
+
+        guard let context = CGContext(
+            data: &pixels, width: width, height: height,
+            bitsPerComponent: 8, bytesPerRow: bytesPerRow,
+            space: colorSpace, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return 0.0 }
+
+        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+
+        var brightPixelCount = 0
+        let sampleStep = max(totalPixels / 5000, 1)
+        var sampledCount = 0
+
+        for i in stride(from: 0, to: totalPixels, by: sampleStep) {
+            let offset = i * bytesPerPixel
+            let r = Double(pixels[offset])
+            let g = Double(pixels[offset + 1])
+            let b = Double(pixels[offset + 2])
+            let brightness = (r + g + b) / (3.0 * 255.0)
+            if brightness > 0.7 {
+                brightPixelCount += 1
+            }
+            sampledCount += 1
+        }
+
+        let brightRatio = sampledCount > 0 ? Double(brightPixelCount) / Double(sampledCount) : 0
+        return min(brightRatio * 2.0, 1.0)
+    }
+
+    private func buildClips(frameScores: [FrameScore], audioPeaks: [Double], duration: Double) -> [Clip] {
+        guard !frameScores.isEmpty else { return [] }
+
+        var timelineScores: [(time: Double, score: Double)] = []
+
+        for frame in frameScores {
+            let audioIndex = min(Int(frame.timestamp * 10), audioPeaks.count - 1)
+            let audioScore = audioIndex >= 0 && audioIndex < audioPeaks.count ? audioPeaks[audioIndex] : 0
+
+            let combined = settings.audioWeight * audioScore
+                + settings.motionWeight * frame.motionScore
+                + settings.poseWeight * frame.poseScore
+                + settings.sceneWeight * frame.sceneScore
+
+            timelineScores.append((time: frame.timestamp, score: combined))
+        }
+
+        var smoothedScores = timelineScores
+        let windowSize = 3
+        for i in 0..<timelineScores.count {
+            let start = max(0, i - windowSize)
+            let end = min(timelineScores.count - 1, i + windowSize)
+            let windowSlice = timelineScores[start...end]
+            let avg = windowSlice.reduce(0.0) { $0 + $1.score } / Double(windowSlice.count)
+            smoothedScores[i] = (time: timelineScores[i].time, score: avg)
+        }
+
+        let threshold = settings.confidenceThreshold
+        var clipRanges: [(start: Double, end: Double, peakScore: Double)] = []
+        var inClip = false
+        var clipStart = 0.0
+        var clipPeak = 0.0
+
+        for entry in smoothedScores {
+            if entry.score >= threshold {
+                if !inClip {
+                    clipStart = entry.time
+                    clipPeak = entry.score
+                    inClip = true
+                } else {
+                    clipPeak = max(clipPeak, entry.score)
+                }
+            } else if inClip {
+                let start = max(0, clipStart - settings.clipPadding)
+                let end = min(duration, entry.time + settings.clipPadding)
+                let clipDuration = end - start
+                if clipDuration >= settings.minClipDuration {
+                    let clampedEnd = start + min(clipDuration, settings.maxClipDuration)
+                    clipRanges.append((start: start, end: clampedEnd, peakScore: clipPeak))
+                }
+                inClip = false
+            }
+        }
+
+        if inClip {
+            let start = max(0, clipStart - settings.clipPadding)
+            let end = min(duration, (smoothedScores.last?.time ?? clipStart) + settings.clipPadding)
+            if end - start >= settings.minClipDuration {
+                clipRanges.append((start: start, end: start + min(end - start, settings.maxClipDuration), peakScore: clipPeak))
+            }
+        }
+
+        var mergedRanges: [(start: Double, end: Double, peakScore: Double)] = []
+        for range in clipRanges.sorted(by: { $0.start < $1.start }) {
+            if let last = mergedRanges.last, range.start <= last.end + 1.0 {
+                let merged = (start: last.start, end: max(last.end, range.end), peakScore: max(last.peakScore, range.peakScore))
+                mergedRanges[mergedRanges.count - 1] = merged
+            } else {
+                mergedRanges.append(range)
+            }
+        }
+
+        return mergedRanges.map { range in
+            let audioIdx = min(Int(((range.start + range.end) / 2) * 10), audioPeaks.count - 1)
+            let audioVal = audioIdx >= 0 && audioIdx < audioPeaks.count ? audioPeaks[audioIdx] : 0
+
+            let framesInRange = frameScores.filter { $0.timestamp >= range.start && $0.timestamp <= range.end }
+            let avgMotion = framesInRange.isEmpty ? 0 : framesInRange.reduce(0.0) { $0 + $1.motionScore } / Double(framesInRange.count)
+            let avgPose = framesInRange.isEmpty ? 0 : framesInRange.reduce(0.0) { $0 + $1.poseScore } / Double(framesInRange.count)
+
+            let confidence = settings.preferKeepUncertain ? max(range.peakScore, 0.45) : range.peakScore
+
+            return Clip(
+                startTime: range.start,
+                endTime: range.end,
+                confidence: min(confidence, 1.0),
+                isKept: confidence >= 0.35,
+                audioScore: audioVal,
+                visualScore: avgPose,
+                motionScore: avgMotion,
+                combinedScore: range.peakScore
+            )
+        }
+    }
+
+    private func classifyActions(clips: [Clip], frameScores: [FrameScore]) -> [Clip] {
+        clips.map { clip in
+            var classified = clip
+
+            let framesInClip = frameScores.filter { $0.timestamp >= clip.startTime && $0.timestamp <= clip.endTime }
+            let maxMotion = framesInClip.map(\.motionScore).max() ?? 0
+            let maxPose = framesInClip.map(\.poseScore).max() ?? 0
+            let avgMotion = framesInClip.isEmpty ? 0 : framesInClip.reduce(0.0) { $0 + $1.motionScore } / Double(framesInClip.count)
+
+            if maxPose > 0.7 && maxMotion > 0.6 {
+                if clip.audioScore > 0.7 {
+                    classified.action = .dunk
+                } else {
+                    classified.action = .posterize
+                }
+            } else if maxPose > 0.5 && avgMotion > 0.5 {
+                if clip.duration < 4.0 {
+                    classified.action = .layup
+                } else {
+                    classified.action = .madeShot
+                }
+            } else if maxMotion > 0.7 {
+                classified.action = .fastBreak
+            } else if maxMotion > 0.5 && maxPose > 0.3 {
+                if clip.audioScore > 0.5 {
+                    classified.action = .threePointer
+                } else {
+                    classified.action = .steal
+                }
+            } else if maxPose > 0.4 {
+                classified.action = .block
+            } else if clip.audioScore > 0.6 {
+                classified.action = .madeShot
+            } else {
+                classified.action = .unknown
+            }
+
+            classified.label = classified.action.rawValue
+            return classified
+        }
+    }
+}

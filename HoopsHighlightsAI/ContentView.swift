@@ -1,61 +1,29 @@
-//
-//  ContentView.swift
-//  HoopsHighlightsAI
-//
-//  Created by Rork on February 25, 2026.
-//
-
 import SwiftUI
-import SwiftData
 
 struct ContentView: View {
-    @Environment(\.modelContext) private var modelContext
-    @Query private var items: [Item]
+    @State private var viewModel = HighlightsViewModel()
+    @State private var selectedTab = 0
 
     var body: some View {
-        NavigationSplitView {
-            List {
-                ForEach(items) { item in
-                    NavigationLink {
-                        Text("Item at \(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))")
-                    } label: {
-                        Text(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))
-                    }
+        ZStack {
+            AppTheme.darkBg.ignoresSafeArea()
+
+            TabView(selection: $selectedTab) {
+                Tab("Player", systemImage: "play.circle.fill", value: 0) {
+                    VideoPlayerView(viewModel: viewModel)
                 }
-                .onDelete(perform: deleteItems)
-            }
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    EditButton()
+                Tab("Review", systemImage: "film.stack.fill", value: 1) {
+                    ReviewView(viewModel: viewModel)
                 }
-                ToolbarItem {
-                    Button(action: addItem) {
-                        Label("Add Item", systemImage: "plus")
-                    }
+                Tab("Export", systemImage: "square.and.arrow.up.fill", value: 2) {
+                    ExportView(viewModel: viewModel)
+                }
+                Tab("Settings", systemImage: "gearshape.fill", value: 3) {
+                    SettingsView(viewModel: viewModel)
                 }
             }
-        } detail: {
-            Text("Select an item")
+            .tint(AppTheme.neonPurple)
         }
+        .preferredColorScheme(.dark)
     }
-
-    private func addItem() {
-        withAnimation {
-            let newItem = Item(timestamp: Date())
-            modelContext.insert(newItem)
-        }
-    }
-
-    private func deleteItems(offsets: IndexSet) {
-        withAnimation {
-            for index in offsets {
-                modelContext.delete(items[index])
-            }
-        }
-    }
-}
-
-#Preview {
-    ContentView()
-        .modelContainer(for: Item.self, inMemory: true)
 }
