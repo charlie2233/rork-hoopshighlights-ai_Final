@@ -41,6 +41,7 @@ struct ReviewView: View {
                     ScrollView {
                         VStack(spacing: 16) {
                             headerStats
+                            reviewProgressStrip
                             filterBar
                             clipsList
                         }
@@ -127,11 +128,51 @@ struct ReviewView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 12)
-        .background(AppTheme.cardBg, in: .rect(cornerRadius: 12))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(color.opacity(0.2), lineWidth: 1)
+        .rorkCard(
+            cornerRadius: 12,
+            fill: AnyShapeStyle(AppTheme.surfaceBg.opacity(0.75)),
+            stroke: color.opacity(0.22),
+            glow: color,
+            glowOpacity: 0.07
         )
+    }
+
+    private var reviewProgressStrip: some View {
+        let total = max(viewModel.clips.count, 1)
+        let progress = Double(viewModel.keptClips.count) / Double(total)
+
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Label("Review Progress", systemImage: "checklist")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white)
+                Spacer()
+                Text("\(viewModel.keptClips.count)/\(viewModel.clips.count) kept")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(AppTheme.subtleText)
+            }
+
+            ProgressView(value: progress)
+                .tint(AppTheme.neonPurple)
+                .scaleEffect(y: 1.8)
+
+            HStack(spacing: 8) {
+                RorkMetricChip(
+                    icon: sortByScore ? "chart.bar.fill" : "clock.fill",
+                    value: sortByScore ? "Score" : "Time",
+                    label: "Sort",
+                    tint: AppTheme.neonPurple
+                )
+                RorkMetricChip(
+                    icon: "line.3.horizontal.decrease.circle.fill",
+                    value: filterOption.rawValue,
+                    label: "Filter",
+                    tint: AppTheme.warningYellow
+                )
+            }
+        }
+        .padding(14)
+        .rorkCard(cornerRadius: 16, stroke: AppTheme.softBorder, glowOpacity: 0.06)
     }
 
     private var filterBar: some View {
@@ -153,6 +194,8 @@ struct ReviewView: View {
             }
             Spacer()
         }
+        .padding(10)
+        .rorkCard(cornerRadius: 14, fill: AnyShapeStyle(AppTheme.surfaceBg.opacity(0.45)), stroke: AppTheme.softBorder, glowOpacity: 0.03)
     }
 
     private var clipsList: some View {
@@ -254,10 +297,11 @@ struct ReviewView: View {
             .padding(.horizontal, 12)
             .padding(.bottom, 8)
         }
-        .background(AppTheme.cardBg, in: .rect(cornerRadius: 16))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(clip.isKept ? AppTheme.accentPurple.opacity(0.2) : Color.clear, lineWidth: 1)
+        .rorkCard(
+            cornerRadius: 16,
+            stroke: clip.isKept ? AppTheme.accentPurple.opacity(0.22) : AppTheme.softBorder,
+            glow: clip.isKept ? AppTheme.neonPurple : AppTheme.accentPurple,
+            glowOpacity: clip.isKept ? 0.09 : 0.04
         )
         .opacity(clip.isKept ? 1.0 : 0.6)
     }

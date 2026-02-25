@@ -11,6 +11,7 @@ struct SettingsView: View {
 
                 ScrollView {
                     VStack(spacing: 24) {
+                        settingsSummaryCard
                         aiWeightsSection
                         clipSettingsSection
                         performanceSection
@@ -56,6 +57,53 @@ struct SettingsView: View {
             }
             .padding(.top, 4)
         }
+    }
+
+    private var settingsSummaryCard: some View {
+        let weightsTotal = viewModel.settings.audioWeight
+            + viewModel.settings.motionWeight
+            + viewModel.settings.poseWeight
+            + viewModel.settings.sceneWeight
+        let normalized = abs(weightsTotal - 1.0) < 0.05
+
+        return VStack(alignment: .leading, spacing: 12) {
+            RorkSectionHeader(
+                title: "Detection Profile",
+                icon: "sparkles",
+                subtitle: "Current AI tuning snapshot used for new analysis runs"
+            )
+
+            HStack(spacing: 10) {
+                RorkMetricChip(
+                    icon: "scope",
+                    value: "\(Int(viewModel.settings.confidenceThreshold * 100))%",
+                    label: "Threshold"
+                )
+                RorkMetricChip(
+                    icon: "gauge.with.dots.needle.67percent",
+                    value: "\(Int(viewModel.settings.framesSampledPerSecond)) fps",
+                    label: "Sampling",
+                    tint: AppTheme.warningYellow
+                )
+            }
+
+            HStack(spacing: 10) {
+                RorkMetricChip(
+                    icon: normalized ? "checkmark.seal.fill" : "exclamationmark.triangle.fill",
+                    value: normalized ? "Balanced" : "Adjust",
+                    label: "Weights",
+                    tint: normalized ? AppTheme.successGreen : AppTheme.warningYellow
+                )
+                RorkMetricChip(
+                    icon: viewModel.settings.preferKeepUncertain ? "checkmark.circle.fill" : "xmark.circle.fill",
+                    value: viewModel.settings.preferKeepUncertain ? "On" : "Off",
+                    label: "Keep Uncertain",
+                    tint: viewModel.settings.preferKeepUncertain ? AppTheme.successGreen : AppTheme.dangerRed
+                )
+            }
+        }
+        .padding(16)
+        .rorkCard(cornerRadius: 18, stroke: AppTheme.softBorder, glowOpacity: 0.06)
     }
 
     private var clipSettingsSection: some View {
@@ -197,34 +245,45 @@ struct SettingsView: View {
         Button {
             showingResetAlert = true
         } label: {
-            HStack {
-                Image(systemName: "arrow.counterclockwise")
-                Text("Reset to Defaults")
+            VStack(spacing: 6) {
+                HStack {
+                    Image(systemName: "arrow.counterclockwise")
+                    Text("Reset to Defaults")
+                        .fontWeight(.semibold)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption.bold())
+                }
+                .font(.subheadline)
+                .foregroundStyle(AppTheme.dangerRed)
+
+                HStack {
+                    Text("Restore all AI tuning values to the original Rork MAX defaults.")
+                        .font(.caption2)
+                        .foregroundStyle(AppTheme.subtleText)
+                    Spacer()
+                }
             }
-            .font(.subheadline)
-            .foregroundStyle(AppTheme.dangerRed)
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
-            .background(AppTheme.dangerRed.opacity(0.1), in: .rect(cornerRadius: 12))
+            .padding(14)
+            .background(AppTheme.dangerRed.opacity(0.08), in: .rect(cornerRadius: 12))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(AppTheme.dangerRed.opacity(0.18), lineWidth: 1)
+            )
         }
     }
 
     private func settingsCard(title: String, icon: String, @ViewBuilder content: () -> some View) -> some View {
         VStack(alignment: .leading, spacing: 16) {
-            Label(title, systemImage: icon)
-                .font(.headline)
-                .foregroundStyle(.white)
+            RorkSectionHeader(title: title, icon: icon)
 
             VStack(spacing: 12) {
                 content()
             }
         }
         .padding(16)
-        .background(AppTheme.cardBg, in: .rect(cornerRadius: 16))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(AppTheme.accentPurple.opacity(0.15), lineWidth: 1)
-        )
+        .rorkCard(cornerRadius: 16, stroke: AppTheme.accentPurple.opacity(0.15), glowOpacity: 0.05)
     }
 
     private func weightSlider(label: String, value: Binding<Double>, color: Color) -> some View {

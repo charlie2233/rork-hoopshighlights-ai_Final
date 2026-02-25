@@ -7,6 +7,9 @@ struct ContentView: View {
     var body: some View {
         ZStack {
             AppTheme.darkBg.ignoresSafeArea()
+            AppTheme.meshBackground
+                .opacity(0.22)
+                .ignoresSafeArea()
 
             TabView(selection: $selectedTab) {
                 Tab("Player", systemImage: "play.circle.fill", value: 0) {
@@ -23,6 +26,9 @@ struct ContentView: View {
                 }
             }
             .tint(AppTheme.neonPurple)
+            .toolbarBackground(AppTheme.cardBg.opacity(0.95), for: .tabBar)
+            .toolbarBackground(.visible, for: .tabBar)
+            .toolbarColorScheme(.dark, for: .tabBar)
         }
         .preferredColorScheme(.dark)
     }

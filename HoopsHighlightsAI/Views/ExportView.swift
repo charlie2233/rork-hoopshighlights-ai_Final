@@ -64,14 +64,11 @@ struct ExportView: View {
 
     private var summaryCard: some View {
         VStack(spacing: 12) {
-            HStack {
-                Image(systemName: "film.stack.fill")
-                    .foregroundStyle(AppTheme.neonPurple)
-                Text("Highlight Reel")
-                    .font(.headline)
-                    .foregroundStyle(.white)
-                Spacer()
-            }
+            RorkSectionHeader(
+                title: "Highlight Reel",
+                icon: "film.stack.fill",
+                subtitle: "Export only uses clips marked Keep from Review"
+            )
 
             HStack(spacing: 20) {
                 VStack(spacing: 4) {
@@ -95,6 +92,20 @@ struct ExportView: View {
                 Spacer()
             }
 
+            HStack(spacing: 10) {
+                RorkMetricChip(
+                    icon: "paintbrush.fill",
+                    value: viewModel.selectedTheme.rawValue,
+                    label: "Theme"
+                )
+                RorkMetricChip(
+                    icon: "slider.horizontal.3",
+                    value: viewModel.selectedQuality.rawValue,
+                    label: "Quality",
+                    tint: AppTheme.warningYellow
+                )
+            }
+
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     ForEach(viewModel.keptClips) { clip in
@@ -114,18 +125,16 @@ struct ExportView: View {
             .contentMargins(.horizontal, 0)
         }
         .padding(16)
-        .background(AppTheme.cardBg, in: .rect(cornerRadius: 16))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(AppTheme.accentPurple.opacity(0.2), lineWidth: 1)
-        )
+        .rorkCard(cornerRadius: 16, stroke: AppTheme.accentPurple.opacity(0.2))
     }
 
     private var themeSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("Theme", systemImage: "paintbrush.fill")
-                .font(.headline)
-                .foregroundStyle(.white)
+            RorkSectionHeader(
+                title: "Theme",
+                icon: "paintbrush.fill",
+                subtitle: "Visual overlays and color treatment for the reel"
+            )
 
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 100), spacing: 10)], spacing: 10) {
                 ForEach(ExportTheme.allCases) { theme in
@@ -162,13 +171,17 @@ struct ExportView: View {
                 .foregroundStyle(AppTheme.subtleText)
                 .padding(.leading, 4)
         }
+        .padding(16)
+        .rorkCard(cornerRadius: 16, stroke: AppTheme.softBorder, glowOpacity: 0.05)
     }
 
     private var musicSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("Music", systemImage: "music.note")
-                .font(.headline)
-                .foregroundStyle(.white)
+            RorkSectionHeader(
+                title: "Music",
+                icon: "music.note",
+                subtitle: "Choose soundtrack mood for the final cut"
+            )
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 10) {
@@ -202,13 +215,17 @@ struct ExportView: View {
             }
             .contentMargins(.horizontal, 0)
         }
+        .padding(16)
+        .rorkCard(cornerRadius: 16, stroke: AppTheme.softBorder, glowOpacity: 0.05)
     }
 
     private var qualitySection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("Quality", systemImage: "slider.horizontal.3")
-                .font(.headline)
-                .foregroundStyle(.white)
+            RorkSectionHeader(
+                title: "Quality",
+                icon: "slider.horizontal.3",
+                subtitle: "Higher quality improves clarity but takes longer"
+            )
 
             HStack(spacing: 10) {
                 ForEach(ExportQuality.allCases) { quality in
@@ -241,6 +258,8 @@ struct ExportView: View {
                 }
             }
         }
+        .padding(16)
+        .rorkCard(cornerRadius: 16, stroke: AppTheme.softBorder, glowOpacity: 0.05)
     }
 
     private var exportButton: some View {
@@ -256,7 +275,7 @@ struct ExportView: View {
                         .foregroundStyle(AppTheme.subtleText)
                 }
                 .padding(16)
-                .background(AppTheme.cardBg, in: .rect(cornerRadius: 16))
+                .rorkCard(cornerRadius: 16, stroke: AppTheme.accentPurple.opacity(0.2))
             } else {
                 Button {
                     exportTrigger += 1
@@ -265,14 +284,26 @@ struct ExportView: View {
                     HStack(spacing: 12) {
                         Image(systemName: "square.and.arrow.up.fill")
                             .font(.title3)
-                        Text("Export Highlight Reel")
-                            .font(.headline)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Export Highlight Reel")
+                                .font(.headline)
+                            Text("\(viewModel.selectedTheme.rawValue) • \(viewModel.selectedQuality.rawValue) • \(viewModel.selectedMusic.rawValue)")
+                                .font(.caption)
+                                .opacity(0.72)
+                                .lineLimit(1)
+                        }
+                        Spacer()
+                        Image(systemName: "sparkles")
                     }
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 18)
                     .background(AppTheme.purpleGradient, in: .rect(cornerRadius: 16))
                 }
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(AppTheme.neonPurple.opacity(0.25), lineWidth: 1)
+                )
                 .sensoryFeedback(.impact(weight: .heavy), trigger: exportTrigger)
             }
         }

@@ -20,6 +20,7 @@ struct VideoPlayerView: View {
                     VStack(spacing: 24) {
                         if viewModel.isVideoLoaded {
                             videoSection
+                            projectOverviewCard
                             analysisSection
                         } else {
                             importSection
@@ -114,6 +115,7 @@ struct VideoPlayerView: View {
                     .foregroundStyle(AppTheme.subtleText)
                     .multilineTextAlignment(.center)
             }
+            .padding(.horizontal, 10)
 
             Button {
                 showSourcePicker = true
@@ -129,28 +131,53 @@ struct VideoPlayerView: View {
                 .padding(.vertical, 16)
                 .background(AppTheme.purpleGradient, in: .rect(cornerRadius: 16))
             }
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(AppTheme.neonPurple.opacity(0.25), lineWidth: 1)
+            )
 
-            HStack(spacing: 24) {
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                 featurePill(icon: "brain.head.profile.fill", text: "AI Detection")
                 featurePill(icon: "bolt.fill", text: "Fast Processing")
                 featurePill(icon: "film.stack.fill", text: "Auto Clips")
+                featurePill(icon: "sparkles.rectangle.stack.fill", text: "Rork MAX UI")
             }
         }
+        .padding(18)
+        .rorkCard(cornerRadius: 22, stroke: AppTheme.softBorder, glowOpacity: 0.18)
     }
 
     private func featurePill(icon: String, text: String) -> some View {
-        VStack(spacing: 8) {
-            Image(systemName: icon)
-                .font(.title3)
-                .foregroundStyle(AppTheme.neonPurple)
+        HStack(spacing: 10) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(AppTheme.accentPurple.opacity(0.14))
+                    .frame(width: 32, height: 32)
+                Image(systemName: icon)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(AppTheme.neonPurple)
+            }
+
             Text(text)
-                .font(.caption2)
-                .foregroundStyle(AppTheme.subtleText)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+
+            Spacer(minLength: 0)
         }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 10)
+        .rorkCard(cornerRadius: 14, fill: AnyShapeStyle(AppTheme.surfaceBg.opacity(0.7)), stroke: AppTheme.softBorder, glowOpacity: 0.04)
     }
 
     private var videoSection: some View {
         VStack(spacing: 16) {
+            RorkSectionHeader(
+                title: "Source Video",
+                icon: "video.fill",
+                subtitle: viewModel.isVideoLoaded ? "Loaded and ready for AI analysis" : nil
+            )
+
             if let player = player {
                 VideoPlayer(player: player)
                     .frame(height: 220)
@@ -167,26 +194,50 @@ struct VideoPlayerView: View {
                     .clipShape(.rect(cornerRadius: 16))
             }
 
-            HStack {
-                Label(formatDuration(viewModel.videoDuration), systemImage: "clock.fill")
-                    .font(.caption)
-                    .foregroundStyle(AppTheme.subtleText)
-
-                Spacer()
+            HStack(spacing: 10) {
+                RorkMetricChip(
+                    icon: "clock.fill",
+                    value: formatDuration(viewModel.videoDuration),
+                    label: "Duration",
+                    tint: AppTheme.warningYellow
+                )
 
                 if let url = viewModel.videoURL {
-                    Text(url.lastPathComponent)
-                        .font(.caption)
-                        .foregroundStyle(AppTheme.subtleText)
-                        .lineLimit(1)
+                    RorkMetricChip(
+                        icon: "doc.fill",
+                        value: url.pathExtension.uppercased().isEmpty ? "VIDEO" : url.pathExtension.uppercased(),
+                        label: "Format",
+                        tint: AppTheme.neonPurple
+                    )
                 }
             }
-            .padding(.horizontal, 4)
+
+            if let url = viewModel.videoURL {
+                HStack(spacing: 8) {
+                    Image(systemName: "folder.fill")
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.subtleText)
+                    Text(url.lastPathComponent)
+                        .font(.caption.monospaced())
+                        .foregroundStyle(AppTheme.subtleText)
+                        .lineLimit(1)
+                    Spacer()
+                }
+                .padding(.horizontal, 4)
+            }
         }
+        .padding(16)
+        .rorkCard(cornerRadius: 18, stroke: AppTheme.softBorder)
     }
 
     private var analysisSection: some View {
         VStack(spacing: 16) {
+            RorkSectionHeader(
+                title: "AI Analysis",
+                icon: "brain.head.profile.fill",
+                subtitle: "Detects key basketball moments and builds reviewable clips"
+            )
+
             if viewModel.analysisService.isAnalyzing {
                 analysisProgressView
             } else if !viewModel.clips.isEmpty {
@@ -218,6 +269,8 @@ struct VideoPlayerView: View {
                 estimatedTimeView
             }
         }
+        .padding(16)
+        .rorkCard(cornerRadius: 18, stroke: AppTheme.softBorder)
     }
 
     private var analysisProgressView: some View {
@@ -244,11 +297,7 @@ struct VideoPlayerView: View {
                 .foregroundStyle(AppTheme.subtleText)
         }
         .padding(16)
-        .background(AppTheme.cardBg, in: .rect(cornerRadius: 16))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(AppTheme.accentPurple.opacity(0.2), lineWidth: 1)
-        )
+        .rorkCard(cornerRadius: 16, stroke: AppTheme.accentPurple.opacity(0.2))
     }
 
     private var analysisCompleteView: some View {
@@ -269,11 +318,7 @@ struct VideoPlayerView: View {
             }
         }
         .padding(16)
-        .background(AppTheme.cardBg, in: .rect(cornerRadius: 16))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(AppTheme.successGreen.opacity(0.3), lineWidth: 1)
-        )
+        .rorkCard(cornerRadius: 16, stroke: AppTheme.successGreen.opacity(0.28), glow: AppTheme.successGreen, glowOpacity: 0.10)
     }
 
     private func statBadge(value: String, label: String, color: Color) -> some View {
@@ -296,8 +341,38 @@ struct VideoPlayerView: View {
             Text("Estimated: ~\(max(estimatedSeconds, 5))s")
                 .font(.caption)
                 .foregroundStyle(AppTheme.subtleText)
+            Spacer()
         }
-        .padding(.horizontal, 4)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .rorkCard(cornerRadius: 12, fill: AnyShapeStyle(AppTheme.surfaceBg.opacity(0.65)), stroke: AppTheme.softBorder, glowOpacity: 0.03)
+    }
+
+    private var projectOverviewCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            RorkSectionHeader(
+                title: "Project Snapshot",
+                icon: "sparkles",
+                subtitle: "Quick context before review and export"
+            )
+
+            HStack(spacing: 10) {
+                RorkMetricChip(
+                    icon: "film.stack.fill",
+                    value: "\(viewModel.clips.count)",
+                    label: "Detected",
+                    tint: AppTheme.neonPurple
+                )
+                RorkMetricChip(
+                    icon: "checkmark.circle.fill",
+                    value: "\(viewModel.keptClips.count)",
+                    label: "Kept",
+                    tint: AppTheme.successGreen
+                )
+            }
+        }
+        .padding(16)
+        .rorkCard(cornerRadius: 18, stroke: AppTheme.softBorder, glowOpacity: 0.08)
     }
 
     private func formatDuration(_ seconds: Double) -> String {

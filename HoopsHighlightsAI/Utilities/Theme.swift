@@ -12,9 +12,17 @@ enum AppTheme {
     static let successGreen = Color(red: 0.298, green: 0.851, blue: 0.392)
     static let dangerRed = Color(red: 0.957, green: 0.263, blue: 0.345)
     static let warningYellow = Color(red: 1.0, green: 0.804, blue: 0.0)
+    static let cardBorder = accentPurple.opacity(0.18)
+    static let softBorder = Color.white.opacity(0.06)
 
     static let purpleGradient = LinearGradient(
         colors: [accentPurple, deepPurple],
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+    )
+
+    static let cardGradient = LinearGradient(
+        colors: [surfaceBg.opacity(0.9), cardBg],
         startPoint: .topLeading,
         endPoint: .bottomTrailing
     )
@@ -38,4 +46,103 @@ enum AppTheme {
             Color(red: 0.05, green: 0.01, blue: 0.10)
         ]
     )
+}
+
+extension View {
+    func rorkCard(
+        cornerRadius: CGFloat = 16,
+        fill: AnyShapeStyle = AnyShapeStyle(AppTheme.cardGradient),
+        stroke: Color = AppTheme.cardBorder,
+        glow: Color = AppTheme.neonPurple,
+        glowOpacity: Double = 0.12
+    ) -> some View {
+        self
+            .background(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(fill)
+                    .shadow(color: glow.opacity(glowOpacity), radius: 18, x: 0, y: 10)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .stroke(stroke, lineWidth: 1)
+            )
+            .overlay(alignment: .topLeading) {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [Color.white.opacity(0.06), .clear],
+                            startPoint: .topLeading,
+                            endPoint: .center
+                        )
+                    )
+                    .blendMode(.screen)
+                    .allowsHitTesting(false)
+            }
+    }
+}
+
+struct RorkSectionHeader: View {
+    let title: String
+    let icon: String
+    var subtitle: String?
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(AppTheme.accentPurple.opacity(0.15))
+                    .frame(width: 34, height: 34)
+                Image(systemName: icon)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(AppTheme.neonPurple)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                if let subtitle {
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.subtleText)
+                }
+            }
+
+            Spacer(minLength: 0)
+        }
+    }
+}
+
+struct RorkMetricChip: View {
+    let icon: String
+    let value: String
+    let label: String
+    var tint: Color = AppTheme.neonPurple
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(tint)
+                .frame(width: 18)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(value)
+                    .font(.caption.bold().monospacedDigit())
+                    .foregroundStyle(.white)
+                Text(label)
+                    .font(.caption2)
+                    .foregroundStyle(AppTheme.subtleText)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(AppTheme.surfaceBg.opacity(0.75), in: Capsule())
+        .overlay(
+            Capsule()
+                .stroke(AppTheme.softBorder, lineWidth: 1)
+        )
+    }
 }
