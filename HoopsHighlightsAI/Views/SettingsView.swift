@@ -3,6 +3,7 @@ import SwiftUI
 struct SettingsView: View {
     @Bindable var viewModel: HighlightsViewModel
     @State private var showingResetAlert = false
+    @State private var showingAdvancedSettings = false
 
     var body: some View {
         NavigationStack {
@@ -12,9 +13,8 @@ struct SettingsView: View {
                 ScrollView {
                     VStack(spacing: 24) {
                         settingsSummaryCard
-                        aiWeightsSection
                         clipSettingsSection
-                        performanceSection
+                        advancedSettingsSection
                         aboutSection
                         dangerZone
                     }
@@ -152,20 +152,84 @@ struct SettingsView: View {
             }
             Slider(value: $viewModel.settings.maxClipDuration, in: 5.0...30.0, step: 1.0)
                 .tint(AppTheme.accentPurple)
+        }
+    }
 
-            Divider().overlay(AppTheme.accentPurple.opacity(0.2))
+    private var advancedSettingsSection: some View {
+        let weightsTotal = viewModel.settings.audioWeight
+            + viewModel.settings.motionWeight
+            + viewModel.settings.poseWeight
+            + viewModel.settings.sceneWeight
+        let weightsStatus = abs(weightsTotal - 1.0) < 0.05 ? "Balanced" : "Custom"
 
-            HStack {
-                Text("Clip Padding")
-                    .font(.subheadline)
+        return VStack(alignment: .leading, spacing: 12) {
+            DisclosureGroup(isExpanded: $showingAdvancedSettings) {
+                VStack(spacing: 16) {
+                    advancedDetectionBehavior
+                    performanceSection
+                    aiWeightsSection
+                }
+                .padding(.top, 8)
+            } label: {
+                VStack(alignment: .leading, spacing: 10) {
+                    RorkSectionHeader(
+                        title: "Advanced Settings",
+                        icon: "gearshape.2.fill",
+                        subtitle: "Sampling, AI weights, and review fallback behavior"
+                    )
+
+                    if !showingAdvancedSettings {
+                        HStack(spacing: 10) {
+                            RorkMetricChip(
+                                icon: "gauge.with.dots.needle.67percent",
+                                value: "\(Int(viewModel.settings.framesSampledPerSecond)) fps",
+                                label: "Sampling",
+                                tint: AppTheme.warningYellow
+                            )
+                            RorkMetricChip(
+                                icon: "brain.head.profile.fill",
+                                value: weightsStatus,
+                                label: "Weights",
+                                tint: weightsStatus == "Balanced" ? AppTheme.successGreen : AppTheme.neonPurple
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        .tint(AppTheme.neonPurple)
+        .padding(16)
+        .rorkCard(cornerRadius: 18, stroke: AppTheme.softBorder, glowOpacity: 0.06)
+    }
+
+    private var advancedDetectionBehavior: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "slider.horizontal.3")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(AppTheme.neonPurple)
+                Text("Detection Behavior")
+                    .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.white)
                 Spacer()
-                Text(String(format: "%.1fs", viewModel.settings.clipPadding))
-                    .font(.subheadline.monospacedDigit())
-                    .foregroundStyle(AppTheme.neonPurple)
             }
-            Slider(value: $viewModel.settings.clipPadding, in: 0.5...3.0, step: 0.5)
-                .tint(AppTheme.accentPurple)
+
+            VStack(spacing: 4) {
+                HStack {
+                    Text("Clip Padding")
+                        .font(.subheadline)
+                        .foregroundStyle(.white)
+                    Spacer()
+                    Text(String(format: "%.1fs", viewModel.settings.clipPadding))
+                        .font(.subheadline.monospacedDigit())
+                        .foregroundStyle(AppTheme.neonPurple)
+                }
+                Slider(value: $viewModel.settings.clipPadding, in: 0.5...3.0, step: 0.5)
+                    .tint(AppTheme.accentPurple)
+                Text("Adds extra lead-in / follow-through around detected moments")
+                    .font(.caption2)
+                    .foregroundStyle(AppTheme.subtleText)
+            }
 
             Divider().overlay(AppTheme.accentPurple.opacity(0.2))
 
@@ -181,6 +245,13 @@ struct SettingsView: View {
             }
             .tint(AppTheme.accentPurple)
         }
+        .padding(14)
+        .rorkCard(
+            cornerRadius: 14,
+            fill: AnyShapeStyle(AppTheme.surfaceBg.opacity(0.55)),
+            stroke: AppTheme.softBorder,
+            glowOpacity: 0.03
+        )
     }
 
     private var performanceSection: some View {
