@@ -4,7 +4,6 @@ struct ExportView: View {
     @Bindable var viewModel: HighlightsViewModel
     @State private var exportTrigger = 0
     @State private var saveTrigger = 0
-    @State private var showShareSheet = false
 
     var body: some View {
         NavigationStack {
@@ -20,6 +19,8 @@ struct ExportView: View {
                             themeSection
                             musicSection
                             qualitySection
+                            formatSection
+                            quickActionsSection
                             exportButton
                         }
                         .padding(.horizontal, 16)
@@ -103,6 +104,21 @@ struct ExportView: View {
                     value: viewModel.selectedQuality.rawValue,
                     label: "Quality",
                     tint: AppTheme.warningYellow
+                )
+            }
+
+            HStack(spacing: 10) {
+                RorkMetricChip(
+                    icon: viewModel.selectedFormat.icon,
+                    value: viewModel.selectedFormat.rawValue,
+                    label: "Format",
+                    tint: AppTheme.successGreen
+                )
+                RorkMetricChip(
+                    icon: "music.note",
+                    value: viewModel.selectedMusic == .none ? "No Music" : "Music",
+                    label: viewModel.selectedMusic == .none ? "Audio" : viewModel.selectedMusic.rawValue,
+                    tint: AppTheme.neonPurple
                 )
             }
 
@@ -262,6 +278,125 @@ struct ExportView: View {
         .rorkCard(cornerRadius: 16, stroke: AppTheme.softBorder, glowOpacity: 0.05)
     }
 
+    private var formatSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            RorkSectionHeader(
+                title: "Format",
+                icon: "doc.badge.gearshape",
+                subtitle: "Choose output container for compatibility or Apple workflows"
+            )
+
+            HStack(spacing: 10) {
+                ForEach(ExportFileFormat.allCases) { format in
+                    Button {
+                        withAnimation(.snappy) { viewModel.selectedFormat = format }
+                    } label: {
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack(spacing: 8) {
+                                Image(systemName: format.icon)
+                                    .font(.subheadline.weight(.semibold))
+                                Text(format.rawValue)
+                                    .font(.headline)
+                            }
+                            Text(format.description)
+                                .font(.caption2)
+                                .lineLimit(2)
+                                .multilineTextAlignment(.leading)
+                                .foregroundStyle(
+                                    viewModel.selectedFormat == format
+                                    ? Color.white.opacity(0.8)
+                                    : AppTheme.subtleText
+                                )
+                        }
+                        .foregroundStyle(viewModel.selectedFormat == format ? .white : AppTheme.subtleText)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 12)
+                        .background(
+                            viewModel.selectedFormat == format ? AppTheme.accentPurple : AppTheme.cardBg,
+                            in: .rect(cornerRadius: 12)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(
+                                    viewModel.selectedFormat == format ? AppTheme.neonPurple : Color.clear,
+                                    lineWidth: 2
+                                )
+                        )
+                    }
+                }
+            }
+        }
+        .padding(16)
+        .rorkCard(cornerRadius: 16, stroke: AppTheme.softBorder, glowOpacity: 0.05)
+    }
+
+    @ViewBuilder
+    private var quickActionsSection: some View {
+        if let exportedURL = viewModel.exportService.exportedURL, !viewModel.exportService.isExporting {
+            VStack(alignment: .leading, spacing: 12) {
+                RorkSectionHeader(
+                    title: "Quick Share",
+                    icon: "paperplane.fill",
+                    subtitle: "iOS share sheet for the latest export"
+                )
+
+                HStack(spacing: 10) {
+                    ShareLink(item: exportedURL) {
+                        HStack(spacing: 10) {
+                            Image(systemName: "square.and.arrow.up.fill")
+                                .font(.subheadline.weight(.semibold))
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Share Now")
+                                    .font(.subheadline.bold())
+                                Text(exportedURL.lastPathComponent)
+                                    .font(.caption2.monospaced())
+                                    .foregroundStyle(Color.white.opacity(0.72))
+                                    .lineLimit(1)
+                            }
+                            Spacer()
+                            Image(systemName: "bolt.fill")
+                                .font(.caption.bold())
+                        }
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 12)
+                        .background(AppTheme.purpleGradient, in: .rect(cornerRadius: 14))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14)
+                                .stroke(AppTheme.neonPurple.opacity(0.28), lineWidth: 1)
+                        )
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        saveTrigger += 1
+                        Task { await viewModel.saveToPhotos() }
+                    } label: {
+                        VStack(spacing: 4) {
+                            Image(systemName: "photo.badge.arrow.down.fill")
+                                .font(.subheadline.weight(.semibold))
+                            Text("Save")
+                                .font(.caption.bold())
+                        }
+                        .foregroundStyle(AppTheme.successGreen)
+                        .frame(width: 74)
+                        .padding(.vertical, 12)
+                        .background(AppTheme.successGreen.opacity(0.12), in: .rect(cornerRadius: 14))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14)
+                                .stroke(AppTheme.successGreen.opacity(0.22), lineWidth: 1)
+                        )
+                    }
+                    .sensoryFeedback(.impact(weight: .light), trigger: saveTrigger)
+                }
+            }
+            .padding(16)
+            .rorkCard(cornerRadius: 16, stroke: AppTheme.softBorder, glowOpacity: 0.06)
+        }
+    }
+
     private var exportButton: some View {
         VStack(spacing: 12) {
             if viewModel.exportService.isExporting {
@@ -287,7 +422,7 @@ struct ExportView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Export Highlight Reel")
                                 .font(.headline)
-                            Text("\(viewModel.selectedTheme.rawValue) • \(viewModel.selectedQuality.rawValue) • \(viewModel.selectedMusic.rawValue)")
+                            Text("\(viewModel.selectedTheme.rawValue) • \(viewModel.selectedQuality.rawValue) • \(viewModel.selectedFormat.rawValue)")
                                 .font(.caption)
                                 .opacity(0.72)
                                 .lineLimit(1)

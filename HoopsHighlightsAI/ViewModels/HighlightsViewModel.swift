@@ -17,6 +17,7 @@ final class HighlightsViewModel {
     var selectedTheme: ExportTheme = .cinematic
     var selectedMusic: MusicTrack = .none
     var selectedQuality: ExportQuality = .high
+    var selectedFormat: ExportFileFormat = .mp4
     var settings = AnalysisSettings()
 
     var clips: [Clip] { analysisService.clips }
@@ -85,7 +86,8 @@ final class HighlightsViewModel {
             sourceURL: url,
             clips: keptClips,
             theme: selectedTheme,
-            quality: selectedQuality
+            quality: selectedQuality,
+            format: selectedFormat
         )
         if exportService.exportedURL != nil {
             showingExportComplete = true

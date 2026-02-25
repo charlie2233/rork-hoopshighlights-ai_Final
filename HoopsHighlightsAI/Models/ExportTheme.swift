@@ -1,4 +1,5 @@
 import Foundation
+import AVFoundation
 
 nonisolated enum ExportTheme: String, CaseIterable, Codable, Sendable, Identifiable {
     case classic = "Classic"
@@ -69,6 +70,41 @@ nonisolated enum ExportQuality: String, CaseIterable, Codable, Sendable, Identif
         case .standard: return "Fast export, smaller file"
         case .high: return "Recommended quality"
         case .ultra: return "Maximum resolution"
+        }
+    }
+}
+
+nonisolated enum ExportFileFormat: String, CaseIterable, Codable, Sendable, Identifiable {
+    case mp4 = "MP4"
+    case mov = "MOV"
+
+    var id: String { rawValue }
+
+    var icon: String {
+        switch self {
+        case .mp4: return "play.rectangle.fill"
+        case .mov: return "film.fill"
+        }
+    }
+
+    var description: String {
+        switch self {
+        case .mp4: return "Best for sharing and compatibility"
+        case .mov: return "Apple-native export container"
+        }
+    }
+
+    var avFileType: AVFileType {
+        switch self {
+        case .mp4: return .mp4
+        case .mov: return .mov
+        }
+    }
+
+    var fileExtension: String {
+        switch self {
+        case .mp4: return "mp4"
+        case .mov: return "mov"
         }
     }
 }

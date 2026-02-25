@@ -14,7 +14,8 @@ final class VideoExportService {
         sourceURL: URL,
         clips: [Clip],
         theme: ExportTheme,
-        quality: ExportQuality
+        quality: ExportQuality,
+        format: ExportFileFormat
     ) async {
         isExporting = true
         exportProgress = 0.0
@@ -67,7 +68,7 @@ final class VideoExportService {
                 statusMessage = "Adding clip \(index + 1) of \(keptClips.count)..."
             }
 
-            statusMessage = "Rendering video..."
+            statusMessage = "Rendering \(theme.rawValue) export..."
 
             let presetName: String
             switch quality {
@@ -82,9 +83,29 @@ final class VideoExportService {
                 return
             }
 
-            let outputURL = URL.temporaryDirectory.appending(path: "HoopsHighlight_\(Int(Date().timeIntervalSince1970)).mp4")
+            let preferredType = format.avFileType
+            let outputType: AVFileType
+            if exportSession.supportedFileTypes.contains(preferredType) {
+                outputType = preferredType
+            } else if exportSession.supportedFileTypes.contains(.mp4) {
+                outputType = .mp4
+            } else if let first = exportSession.supportedFileTypes.first {
+                outputType = first
+            } else {
+                statusMessage = "No supported export file types"
+                isExporting = false
+                return
+            }
+
+            let fileExtension: String = switch outputType {
+            case .mov: "mov"
+            case .mp4: "mp4"
+            default: format.fileExtension
+            }
+
+            let outputURL = URL.temporaryDirectory.appending(path: "HoopsHighlight_\(Int(Date().timeIntervalSince1970)).\(fileExtension)")
             exportSession.outputURL = outputURL
-            exportSession.outputFileType = .mp4
+            exportSession.outputFileType = outputType
             exportSession.shouldOptimizeForNetworkUse = true
 
             let timer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
