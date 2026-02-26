@@ -6,6 +6,8 @@ import SwiftUI
 @Observable
 @MainActor
 final class HighlightsViewModel {
+    private let settingsDefaultsKey = "hoopsclips.analysisSettings.v1"
+
     var videoURL: URL?
     var videoDuration: Double = 0
     var videoThumbnail: CGImage?
@@ -19,7 +21,9 @@ final class HighlightsViewModel {
     var selectedQuality: ExportQuality = .high
     var selectedFormat: ExportFileFormat = .mp4
     var customAudioURL: URL?
-    var settings = AnalysisSettings()
+    var settings: AnalysisSettings {
+        didSet { persistSettings() }
+    }
 
     var clips: [Clip] { analysisService.clips }
 
@@ -30,20 +34,39 @@ final class HighlightsViewModel {
     var showingExportComplete = false
     var showingSaveSuccess = false
 
+    init() {
+        if let data = UserDefaults.standard.data(forKey: settingsDefaultsKey),
+           let decoded = try? JSONDecoder().decode(AnalysisSettings.self, from: data) {
+            settings = decoded
+        } else {
+            settings = AnalysisSettings()
+        }
+    }
+
     func loadVideo(url: URL) async {
         let accessing = url.startAccessingSecurityScopedResource()
         defer { if accessing { url.stopAccessingSecurityScopedResource() } }
 
-        let tempURL = URL.temporaryDirectory.appending(path: url.lastPathComponent)
-        try? FileManager.default.removeItem(at: tempURL)
-        do {
-            try FileManager.default.copyItem(at: url, to: tempURL)
-        } catch {
-            return
+        let sourceURL = url.standardizedFileURL
+        let tempURL = URL.temporaryDirectory.appending(path: sourceURL.lastPathComponent).standardizedFileURL
+        let workingURL: URL
+
+        if sourceURL == tempURL {
+            // Already in app temp location (for example PhotosPicker data import); no copy needed.
+            workingURL = sourceURL
+        } else {
+            try? FileManager.default.removeItem(at: tempURL)
+            do {
+                try FileManager.default.copyItem(at: sourceURL, to: tempURL)
+                workingURL = tempURL
+            } catch {
+                print("Failed to copy video: \(error.localizedDescription)")
+                return
+            }
         }
 
-        videoURL = tempURL
-        let asset = AVURLAsset(url: tempURL)
+        videoURL = workingURL
+        let asset = AVURLAsset(url: workingURL)
 
         if let duration = try? await asset.load(.duration) {
             videoDuration = CMTimeGetSeconds(duration)
@@ -148,5 +171,10 @@ final class HighlightsViewModel {
         analysisService.statusMessage = ""
         exportService.exportedURL = nil
         exportService.exportProgress = 0
+    }
+
+    private func persistSettings() {
+        guard let data = try? JSONEncoder().encode(settings) else { return }
+        UserDefaults.standard.set(data, forKey: settingsDefaultsKey)
     }
 }

@@ -65,13 +65,39 @@ final class VideoAnalysisService {
         progress = 0.75
 
         statusMessage = "Detecting highlights..."
-        let rawClips = buildClips(
+        var rawClips = buildClips(
             frameScores: frameScores,
             audioPeaks: audioPeaks,
             duration: durationSeconds
         )
+        
+        // Ultimate Fallback: If no clips found, lower thresholds significantly
+        if rawClips.isEmpty {
+            statusMessage = "Refining detection..."
+            // Try again with significantly lower threshold to catch *something*
+            // Creating a temporary settings object with lower threshold
+            var fallbackSettings = settings
+            fallbackSettings.confidenceThreshold = 0.25 // Much lower than default 0.4
+            
+            // Re-run detection logic (we need to extract this logic to be reusable or just inline it)
+            // Ideally we refactor buildClips to accept threshold override, but settings is a property
+            // We can temporarily swap settings? Or refactor buildClips.
+            // Let's refactor buildClips to take optional threshold override.
+            rawClips = buildClips(
+                frameScores: frameScores,
+                audioPeaks: audioPeaks,
+                duration: durationSeconds,
+                thresholdOverride: 0.25
+            )
+            
+            // If STILL empty, try purely audio-based detection if audio exists
+            if rawClips.isEmpty && audioPeaks.max() ?? 0 > 0.3 {
+                 rawClips = buildAudioOnlyClips(audioPeaks: audioPeaks, duration: durationSeconds)
+            }
+        }
+        
         progress = 0.90
-
+        
         statusMessage = "Classifying actions..."
         clips = classifyActions(clips: rawClips, frameScores: frameScores)
         progress = 1.0
@@ -389,7 +415,7 @@ final class VideoAnalysisService {
         return min(brightRatio * 2.0, 1.0)
     }
 
-    private func buildClips(frameScores: [FrameScore], audioPeaks: [Double], duration: Double) -> [Clip] {
+    private func buildClips(frameScores: [FrameScore], audioPeaks: [Double], duration: Double, thresholdOverride: Double? = nil) -> [Clip] {
         guard !frameScores.isEmpty else { return [] }
 
         var timelineScores: [(time: Double, score: Double)] = []
@@ -415,7 +441,7 @@ final class VideoAnalysisService {
             smoothedScores[i] = (time: timelineScores[i].time, score: avg)
         }
 
-        let threshold = settings.confidenceThreshold
+        let threshold = thresholdOverride ?? settings.confidenceThreshold
         var clipRanges: [(start: Double, end: Double, peakScore: Double)] = []
         var inClip = false
         var clipStart = 0.0
@@ -483,6 +509,38 @@ final class VideoAnalysisService {
         }
     }
 
+    private func buildAudioOnlyClips(audioPeaks: [Double], duration: Double) -> [Clip] {
+        var clipRanges: [(start: Double, end: Double, peakScore: Double)] = []
+        let threshold = 0.5 * (audioPeaks.max() ?? 1.0) // Fallback to 50% of max sound as requested
+        
+        for (index, peak) in audioPeaks.enumerated() {
+            if peak > threshold {
+                let time = Double(index) / 10.0 // Audio peaks are 10 per second
+                // Merge with previous if close
+                if let last = clipRanges.last, time - last.end < 2.0 {
+                    clipRanges[clipRanges.count - 1] = (start: last.start, end: time + 1.5, peakScore: max(last.peakScore, peak))
+                } else {
+                    clipRanges.append((start: max(0, time - 1.5), end: min(duration, time + 1.5), peakScore: peak))
+                }
+            }
+        }
+        
+        return clipRanges.map { range in
+            Clip(
+                startTime: range.start,
+                endTime: range.end,
+                confidence: 0.3, // Low confidence
+                isKept: true, // Auto-keep since it's a fallback
+                label: "Loud Moment",
+                audioScore: range.peakScore,
+                visualScore: 0.0,
+                motionScore: 0.0,
+                combinedScore: range.peakScore,
+                detectionMethod: .heuristic
+            )
+        }
+    }
+    
     func predictAction(from poseWindow: [PoseFrame]) async -> (label: String, confidence: Double)? {
         // Run prediction on MainActor because actionClassifier is actor-isolated or non-sendable usually
         // But here it is a class property of MainActor class.
@@ -558,29 +616,33 @@ final class VideoAnalysisService {
 
             // 2. Fallback Heuristics
             classified.detectionMethod = .heuristic
-            if maxPose > 0.7 && maxMotion > 0.6 {
-                if clip.audioScore > 0.7 {
+            
+            // Refined thresholds for better recall (especially for multi-angle/low-vis)
+            // Reduced motion/pose thresholds slightly to catch more action
+            if maxPose > 0.6 && maxMotion > 0.5 {
+                if clip.audioScore > 0.6 {
                     classified.action = .dunk
                 } else {
                     classified.action = .posterize
                 }
-            } else if maxPose > 0.5 && avgMotion > 0.5 {
+            } else if maxPose > 0.4 && avgMotion > 0.4 {
                 if clip.duration < 4.0 {
                     classified.action = .layup
                 } else {
                     classified.action = .madeShot
                 }
-            } else if maxMotion > 0.7 {
+            } else if maxMotion > 0.6 {
                 classified.action = .fastBreak
-            } else if maxMotion > 0.5 && maxPose > 0.3 {
-                if clip.audioScore > 0.5 {
+            } else if maxMotion > 0.45 && maxPose > 0.25 {
+                if clip.audioScore > 0.4 {
                     classified.action = .threePointer
                 } else {
                     classified.action = .steal
                 }
-            } else if maxPose > 0.4 {
+            } else if maxPose > 0.35 {
                 classified.action = .block
-            } else if clip.audioScore > 0.6 {
+            } else if clip.audioScore > 0.55 {
+                // High audio fallback
                 classified.action = .madeShot
             } else {
                 classified.action = .unknown

@@ -68,10 +68,11 @@ struct VideoPlayerView: View {
             }
             .onChange(of: selectedPhotoItem) { _, newValue in
                 guard let item = newValue else { return }
+                selectedPhotoItem = nil
                 Task {
                     if let data = try? await item.loadTransferable(type: Data.self) {
-                        let tempURL = URL.temporaryDirectory.appending(path: "imported_video.mp4")
-                        try? data.write(to: tempURL)
+                        let tempURL = URL.temporaryDirectory.appending(path: "imported_video_\(UUID().uuidString).mp4")
+                        try? data.write(to: tempURL, options: .atomic)
                         await viewModel.loadVideo(url: tempURL)
                     }
                 }
@@ -87,7 +88,13 @@ struct VideoPlayerView: View {
             .alert("No Highlights Found", isPresented: $showingNoClipsAlert) {
                 Button("OK", role: .cancel) { }
             } message: {
-                Text("AI couldn't detect any significant basketball actions in this video. Try a different video with clearer action.")
+                // Check if we actually found something in the fallback pass but filtered it out or if it was truly empty
+                // But since `clips` is bound to the view model, if it's empty here, it means even fallback failed or didn't produce KEPT clips?
+                // Wait, analysisService.clips contains ALL clips. 
+                // If clips is empty, then TRULY nothing was found.
+                // If clips is NOT empty but keptClips is empty, we show analysis complete but maybe empty list?
+                // The logic above checks `viewModel.clips.isEmpty`.
+                Text("AI couldn't detect any significant basketball actions, even with enhanced sensitivity. Try a different video.")
             }
         }
     }
@@ -321,7 +328,7 @@ struct VideoPlayerView: View {
                 Image(systemName: "brain.head.profile.fill")
                     .foregroundStyle(AppTheme.neonPurple)
                     .symbolEffect(.variableColor.iterative, isActive: true)
-                Text("Analyzing...")
+                Text(viewModel.analysisService.statusMessage == "Refining detection..." ? "Refining..." : "Analyzing...")
                     .font(.headline)
                     .foregroundStyle(.white)
                 Spacer()

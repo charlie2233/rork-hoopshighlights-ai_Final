@@ -17,6 +17,19 @@ DerivedData/
 *.xcuserstate
 *.xcuserdatad/
 xcuserdata/
+*.xcresult
+*.xccheckout
+*.moved-aside
+*.derivedData
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Resources - prevent huge files from being pushed
+HoopsClips/Resources/TrainingData/
+HoopsClips/Resources/TestVideos/
+HoopsClips/TestResources/
 
 # Swift Package Manager
 .build/
@@ -37,3 +50,9 @@ rork-eslint.config.js
 core
 node_modules
 .expo
+
+# IDE Specific
+.codex-build/
+.cursor/
+.idea/
+*.vscode/

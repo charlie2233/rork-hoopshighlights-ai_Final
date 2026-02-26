@@ -39,7 +39,7 @@
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		105FC57C2E9EAD3100EA8BCF /* HoopsClips */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = HoopsClips;
+			path = HoopsClips/HoopsClips;
 			sourceTree = "<group>";
 		};
 		105FC58C2E9EAD3200EA8BCF /* HoopsClipsTests */ = {
