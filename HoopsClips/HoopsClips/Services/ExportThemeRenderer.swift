@@ -443,13 +443,25 @@ internal enum ExportThemeRendererError: LocalizedError {
 
 internal final class ClipLabelOverlayCache: @unchecked Sendable {
     private let imagesByClipID: [UUID: CIImage]
+    private let watermarkImage: CIImage
+    private let endSlateImage: CIImage
 
-    init(imagesByClipID: [UUID: CIImage]) {
+    init(imagesByClipID: [UUID: CIImage], watermarkImage: CIImage, endSlateImage: CIImage) {
         self.imagesByClipID = imagesByClipID
+        self.watermarkImage = watermarkImage
+        self.endSlateImage = endSlateImage
     }
 
     func image(for clipID: UUID) -> CIImage? {
         imagesByClipID[clipID]
+    }
+
+    func watermark() -> CIImage {
+        watermarkImage
+    }
+
+    func endSlate() -> CIImage {
+        endSlateImage
     }
 }
 
@@ -585,7 +597,181 @@ internal final class ExportThemeRenderer {
                 scaleBucket: geometry.scaleBucket
             )
         }
-        return ClipLabelOverlayCache(imagesByClipID: imagesByClipID)
+        let watermark = try makeWatermarkImage(profile: profile, scaleBucket: geometry.scaleBucket)
+        let endSlate = try makeEndSlateImage(profile: profile, geometry: geometry, scaleBucket: geometry.scaleBucket)
+        return ClipLabelOverlayCache(
+            imagesByClipID: imagesByClipID,
+            watermarkImage: watermark,
+            endSlateImage: endSlate
+        )
+    }
+
+    @MainActor
+    private func makeWatermarkImage(profile: ExportThemeProfile, scaleBucket: Int) throws -> CIImage {
+        let base = profile.labelStyle
+        let watermarkStyle = ExportThemeProfile.LabelStyle(
+            backgroundColor: .init(base.backgroundColor.x, base.backgroundColor.y, base.backgroundColor.z, max(0.34, base.backgroundColor.w * 0.55)),
+            borderColor: .init(base.borderColor.x, base.borderColor.y, base.borderColor.z, max(0.18, base.borderColor.w)),
+            textColor: .init(base.textColor.x, base.textColor.y, base.textColor.z, 0.95),
+            shadowColor: base.shadowColor,
+            cornerRadius: max(8, base.cornerRadius - 2),
+            horizontalPadding: max(8, base.horizontalPadding - 2),
+            verticalPadding: max(5, base.verticalPadding - 1),
+            borderWidth: max(1, base.borderWidth),
+            displayDuration: base.displayDuration,
+            topPlacement: true,
+            margin: max(14, base.margin - 2),
+            fixedOpacityMultiplier: 1.0
+        )
+        return try makeClipLabelImage(text: "Hoops Clips", style: watermarkStyle, scaleBucket: max(720, scaleBucket - 360))
+    }
+
+    @MainActor
+    private func makeEndSlateImage(
+        profile: ExportThemeProfile,
+        geometry: ExportRenderGeometry,
+        scaleBucket: Int
+    ) throws -> CIImage {
+        let size = geometry.renderSize
+        let format = UIGraphicsImageRendererFormat.default()
+        format.opaque = false
+        let renderer = UIGraphicsImageRenderer(size: size, format: format)
+
+        let titleFontSize: CGFloat = switch scaleBucket {
+        case 720: 32
+        case 1080: 42
+        default: 54
+        }
+        let subtitleFontSize: CGFloat = switch scaleBucket {
+        case 720: 14
+        case 1080: 18
+        default: 22
+        }
+        let chipFontSize: CGFloat = switch scaleBucket {
+        case 720: 13
+        case 1080: 15
+        default: 18
+        }
+
+        let titleAttrs: [NSAttributedString.Key: Any] = [
+            .font: UIFont.systemFont(ofSize: titleFontSize, weight: .bold),
+            .foregroundColor: UIColor.white
+        ]
+        let subtitleAttrs: [NSAttributedString.Key: Any] = [
+            .font: UIFont.systemFont(ofSize: subtitleFontSize, weight: .medium),
+            .foregroundColor: UIColor.white.withAlphaComponent(0.78)
+        ]
+        let chipAttrs: [NSAttributedString.Key: Any] = [
+            .font: UIFont.systemFont(ofSize: chipFontSize, weight: .semibold),
+            .foregroundColor: UIColor.white.withAlphaComponent(0.95)
+        ]
+
+        let title = NSAttributedString(string: "Made with Hoops Clips", attributes: titleAttrs)
+        let subtitle = NSAttributedString(string: "AI highlight reel", attributes: subtitleAttrs)
+        let chip = NSAttributedString(string: "Rork MAX Export", attributes: chipAttrs)
+
+        let image = renderer.image { ctx in
+            let bounds = CGRect(origin: .zero, size: size)
+            let cg = ctx.cgContext
+
+            let darkBackground = UIBezierPath(roundedRect: bounds, cornerRadius: 0)
+            UIColor(white: 0.01, alpha: 0.58).setFill()
+            darkBackground.fill()
+
+            let accentTop = UIColor(
+                red: CGFloat(profile.labelStyle.borderColor.x),
+                green: CGFloat(profile.labelStyle.borderColor.y),
+                blue: CGFloat(profile.labelStyle.borderColor.z),
+                alpha: 0.22
+            )
+            let accentBottom = UIColor(
+                red: CGFloat(profile.labelStyle.textColor.x),
+                green: CGFloat(profile.labelStyle.textColor.y),
+                blue: CGFloat(profile.labelStyle.textColor.z),
+                alpha: 0.05
+            )
+
+            if let gradient = CGGradient(
+                colorsSpace: CGColorSpaceCreateDeviceRGB(),
+                colors: [accentTop.cgColor, accentBottom.cgColor] as CFArray,
+                locations: [0, 1]
+            ) {
+                cg.drawLinearGradient(
+                    gradient,
+                    start: CGPoint(x: bounds.midX, y: bounds.maxY),
+                    end: CGPoint(x: bounds.midX, y: bounds.minY),
+                    options: []
+                )
+            }
+
+            let glowWidth = min(bounds.width * 0.52, 420)
+            let glowHeight = min(bounds.height * 0.18, 140)
+            let glowRect = CGRect(
+                x: bounds.midX - glowWidth / 2,
+                y: bounds.midY - glowHeight / 2 - titleFontSize * 0.65,
+                width: glowWidth,
+                height: glowHeight
+            )
+            let glowPath = UIBezierPath(roundedRect: glowRect, cornerRadius: glowHeight / 2)
+            UIColor(
+                red: CGFloat(profile.labelStyle.borderColor.x),
+                green: CGFloat(profile.labelStyle.borderColor.y),
+                blue: CGFloat(profile.labelStyle.borderColor.z),
+                alpha: 0.14
+            ).setFill()
+            glowPath.fill()
+
+            let chipPaddingX: CGFloat = 14
+            let chipPaddingY: CGFloat = 8
+            let chipSize = chip.size()
+            let chipRect = CGRect(
+                x: bounds.midX - (chipSize.width + chipPaddingX * 2) / 2,
+                y: bounds.midY - titleFontSize - 42,
+                width: chipSize.width + chipPaddingX * 2,
+                height: chipSize.height + chipPaddingY * 2
+            )
+            let chipPath = UIBezierPath(roundedRect: chipRect, cornerRadius: chipRect.height / 2)
+            UIColor(
+                red: CGFloat(profile.labelStyle.backgroundColor.x),
+                green: CGFloat(profile.labelStyle.backgroundColor.y),
+                blue: CGFloat(profile.labelStyle.backgroundColor.z),
+                alpha: 0.70
+            ).setFill()
+            chipPath.fill()
+            UIColor(
+                red: CGFloat(profile.labelStyle.borderColor.x),
+                green: CGFloat(profile.labelStyle.borderColor.y),
+                blue: CGFloat(profile.labelStyle.borderColor.z),
+                alpha: 0.34
+            ).setStroke()
+            chipPath.lineWidth = 1.2
+            chipPath.stroke()
+
+            chip.draw(in: chipRect.insetBy(dx: chipPaddingX, dy: chipPaddingY))
+
+            let titleSize = title.size()
+            let titleRect = CGRect(
+                x: bounds.midX - titleSize.width / 2,
+                y: bounds.midY - titleSize.height / 2 - 6,
+                width: titleSize.width,
+                height: titleSize.height
+            )
+            title.draw(in: titleRect)
+
+            let subtitleSize = subtitle.size()
+            let subtitleRect = CGRect(
+                x: bounds.midX - subtitleSize.width / 2,
+                y: titleRect.maxY + 10,
+                width: subtitleSize.width,
+                height: subtitleSize.height
+            )
+            subtitle.draw(in: subtitleRect)
+        }
+
+        guard let cgImage = image.cgImage else {
+            throw ExportThemeRendererError.noVideoComposition
+        }
+        return CIImage(cgImage: cgImage)
     }
 
     private nonisolated static func renderThemedFrame(
@@ -604,6 +790,14 @@ internal final class ExportThemeRenderer {
         image = applyTintOverlayIfNeeded(to: image, extent: extent, profile: profile)
         image = applyEdgeGlowIfNeeded(to: image, extent: extent, profile: profile)
         image = applyLetterboxIfNeeded(to: image, extent: extent, profile: profile)
+        image = applyWatermarkIfNeeded(
+            to: image,
+            extent: extent,
+            profile: profile,
+            compositionTime: compositionTime,
+            totalDuration: segments.last?.outputEndTime ?? 0,
+            labelCache: labelCache
+        )
 
         if let frameContext = makeFrameContext(
             at: compositionTime,
@@ -618,6 +812,14 @@ internal final class ExportThemeRenderer {
                 labelCache: labelCache
             )
         }
+
+        image = applyEndSlateIfNeeded(
+            to: image,
+            extent: extent,
+            compositionTime: compositionTime,
+            totalDuration: segments.last?.outputEndTime ?? 0,
+            labelCache: labelCache
+        )
 
         return image.cropped(to: extent)
     }
@@ -816,6 +1018,68 @@ nonisolated private func applyLabelIfNeeded(
 
     let positioned = applyingAlpha(to: labelImage, alpha: alpha)
         .transformed(by: CGAffineTransform(translationX: originX, y: originY))
+    return positioned.composited(over: image)
+}
+
+nonisolated private func applyWatermarkIfNeeded(
+    to image: CIImage,
+    extent: CGRect,
+    profile: ExportThemeProfile,
+    compositionTime: Double,
+    totalDuration: Double,
+    labelCache: ClipLabelOverlayCache
+) -> CIImage {
+    let watermark = labelCache.watermark()
+    let watermarkExtent = watermark.extent
+    let barHeight = profile.letterboxStyle.map { extent.height * $0.barHeightRatio } ?? 0
+    let margin = max(12, profile.labelStyle.margin - 4)
+
+    let fadeIn = min(1, max(0, compositionTime / 0.35))
+    let endSlateStart = max(0, totalDuration - 1.45)
+    let fadeOut: Double
+    if totalDuration > 0, compositionTime >= endSlateStart {
+        let t = min(1, max(0, (compositionTime - endSlateStart) / 0.30))
+        fadeOut = 1 - t
+    } else {
+        fadeOut = 1
+    }
+    let baseAlpha: Double = profile.edgeGlowStyle == nil ? 0.22 : 0.28
+    let alpha = baseAlpha * fadeIn * fadeOut
+    guard alpha > 0.01 else { return image }
+
+    let originX = extent.maxX - watermarkExtent.width - margin
+    let originY = extent.maxY - barHeight - watermarkExtent.height - margin
+    let positioned = applyingAlpha(to: watermark, alpha: alpha)
+        .transformed(by: CGAffineTransform(translationX: originX, y: originY))
+    return positioned.composited(over: image)
+}
+
+nonisolated private func applyEndSlateIfNeeded(
+    to image: CIImage,
+    extent: CGRect,
+    compositionTime: Double,
+    totalDuration: Double,
+    labelCache: ClipLabelOverlayCache
+) -> CIImage {
+    guard totalDuration > 0 else { return image }
+
+    let window = min(1.45, max(0.6, totalDuration))
+    let start = max(0, totalDuration - window)
+    guard compositionTime >= start else { return image }
+
+    let local = compositionTime - start
+    let fadeIn = min(1, max(0, local / 0.30))
+    let maxAlpha = 0.95
+    let alpha = maxAlpha * fadeIn
+    guard alpha > 0.01 else { return image }
+
+    let overlay = labelCache.endSlate()
+    let overlayExtent = overlay.extent
+    let positioned = applyingAlpha(to: overlay, alpha: alpha)
+        .transformed(by: CGAffineTransform(
+            translationX: extent.minX - overlayExtent.minX,
+            y: extent.minY - overlayExtent.minY
+        ))
     return positioned.composited(over: image)
 }
 
