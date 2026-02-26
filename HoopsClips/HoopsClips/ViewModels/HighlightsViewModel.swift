@@ -92,12 +92,14 @@ final class HighlightsViewModel {
         }
     }
 
-    func exportHighlights() async {
+    func exportHighlights(isProUser: Bool) async {
         guard let url = videoURL else { return }
         await exportService.exportHighlights(
             sourceURL: url,
             clips: keptClips,
             theme: selectedTheme,
+            music: selectedMusic,
+            isProUser: isProUser,
             quality: selectedQuality,
             format: selectedFormat
         )

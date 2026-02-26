@@ -510,7 +510,7 @@ struct ExportView: View {
                         showingPaywall = true
                         return
                     }
-                    Task { await viewModel.exportHighlights() }
+                    Task { await viewModel.exportHighlights(isProUser: subscriptionManager.isProUser) }
                 } label: {
                     HStack(spacing: 12) {
                         Image(systemName: hasLockedSelections ? "lock.fill" : "square.and.arrow.up.fill")

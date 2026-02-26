@@ -14,9 +14,18 @@ final class VideoExportService {
         sourceURL: URL,
         clips: [Clip],
         theme: ExportTheme,
+        music: MusicTrack,
+        isProUser: Bool,
         quality: ExportQuality,
         format: ExportFileFormat
     ) async {
+        if let restrictionMessage = premiumRestrictionMessage(theme: theme, music: music, isProUser: isProUser) {
+            isExporting = false
+            exportProgress = 0.0
+            statusMessage = restrictionMessage
+            return
+        }
+
         isExporting = true
         exportProgress = 0.0
         statusMessage = "Preparing export..."
@@ -154,6 +163,28 @@ final class VideoExportService {
         }
 
         isExporting = false
+    }
+
+    private func premiumRestrictionMessage(
+        theme: ExportTheme,
+        music: MusicTrack,
+        isProUser: Bool
+    ) -> String? {
+        guard !isProUser else { return nil }
+
+        let themeLocked = theme.requiresPro
+        let musicLocked = music.requiresPro
+
+        switch (themeLocked, musicLocked) {
+        case (false, false):
+            return nil
+        case (true, true):
+            return "Pro required for selected theme and music"
+        case (true, false):
+            return "Pro required for \(theme.rawValue) theme"
+        case (false, true):
+            return "Pro required for \(music.rawValue) music"
+        }
     }
 
     func saveToPhotos(url: URL) async -> Bool {
