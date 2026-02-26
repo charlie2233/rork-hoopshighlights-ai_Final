@@ -61,7 +61,7 @@ final class VideoAnalysisService {
 
         statusMessage = "Analyzing video frames..."
         let samplingFPS = min(max(settings.framesSampledPerSecond, 0.5), 12.0)
-        let frameScores = await analyzeFrames(asset: asset, duration: durationSeconds, framesPerSecond: samplingFPS)
+        let frameScores = await analyzeFrames(asset: asset, duration: durationSeconds, framesPerSecond: samplingFPS, settings: settings)
         progress = 0.75
 
         statusMessage = "Detecting highlights..."
@@ -142,7 +142,8 @@ final class VideoAnalysisService {
     private nonisolated func analyzeFrames(
         asset: AVURLAsset,
         duration: Double,
-        framesPerSecond fps: Double
+        framesPerSecond fps: Double,
+        settings: AnalysisSettings
     ) async -> [FrameScore] {
         let totalFrames = max(Int(ceil(max(duration, 0) * fps)), 1)
         var scores: [FrameScore] = []

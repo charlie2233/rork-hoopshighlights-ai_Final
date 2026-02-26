@@ -69,6 +69,11 @@ final class HighlightsViewModel {
         analysisService.clips[index].isKept.toggle()
     }
 
+    func toggleSlowMotion(_ clip: Clip) {
+        guard let index = analysisService.clips.firstIndex(where: { $0.id == clip.id }) else { return }
+        analysisService.clips[index].isSlowMotionEnabled.toggle()
+    }
+
     func keepAllClips() {
         for i in analysisService.clips.indices {
             analysisService.clips[i].isKept = true

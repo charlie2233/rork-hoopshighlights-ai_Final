@@ -363,10 +363,8 @@ struct ReviewView: View {
 
                 if clip.action == .dunk {
                     Button {
-                        if let index = viewModel.clips.firstIndex(where: { $0.id == clip.id }) {
-                            withAnimation(.snappy) {
-                                viewModel.clips[index].isSlowMotionEnabled.toggle()
-                            }
+                        withAnimation(.snappy) {
+                            viewModel.toggleSlowMotion(clip)
                         }
                     } label: {
                         Image(systemName: clip.isSlowMotionEnabled ? "tortoise.fill" : "hare.fill")

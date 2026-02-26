@@ -150,14 +150,12 @@ final class VideoExportService {
             } else if let musicFilename = music.filename {
                 statusMessage = "Adding background music..."
                 
-                // Find music file - check root and subdirectory
+                // Find music file
                 var musicURL = Bundle.main.url(forResource: musicFilename, withExtension: nil)
                 if musicURL == nil {
-                    // Try Resources/Audio subdirectory if flattened with folder ref
                     musicURL = Bundle.main.url(forResource: musicFilename, withExtension: nil, subdirectory: "Resources/Audio")
                 }
                 if musicURL == nil {
-                    // Try splitting name/ext
                     let name = (musicFilename as NSString).deletingPathExtension
                     let ext = (musicFilename as NSString).pathExtension
                     musicURL = Bundle.main.url(forResource: name, withExtension: ext)
@@ -174,34 +172,31 @@ final class VideoExportService {
             
             if let url = effectiveMusicURL {
                 let musicAsset = AVURLAsset(url: url)
-                    if let musicTrackSource = try? await musicAsset.loadTracks(withMediaType: .audio).first {
-                        let musicDuration = try await musicAsset.load(.duration)
-                        let targetDuration = insertTime
-                        
-                        if let bgMusicTrack = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) {
-                            var currentMusicTime = CMTime.zero
-                            while currentMusicTime < targetDuration {
-                                let remainingTime = targetDuration - currentMusicTime
-                                let duration = min(remainingTime, musicDuration)
-                                let timeRange = CMTimeRange(start: .zero, duration: duration)
-                                
-                                try bgMusicTrack.insertTimeRange(timeRange, of: musicTrackSource, at: currentMusicTime)
-                                currentMusicTime = currentMusicTime + duration
-                            }
+                if let musicTrackSource = try? await musicAsset.loadTracks(withMediaType: .audio).first {
+                    let musicDuration = try await musicAsset.load(.duration)
+                    let targetDuration = insertTime
+                    
+                    if let bgMusicTrack = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) {
+                        var currentMusicTime = CMTime.zero
+                        while currentMusicTime < targetDuration {
+                            let remainingTime = targetDuration - currentMusicTime
+                            let duration = min(remainingTime, musicDuration)
+                            let timeRange = CMTimeRange(start: .zero, duration: duration)
                             
-                            let mix = AVMutableAudioMix()
-                            let musicInputParams = AVMutableAudioMixInputParameters(track: bgMusicTrack)
-                            musicInputParams.setVolume(0.3, at: .zero)
-                            
-                            let originalAudioInputParams = AVMutableAudioMixInputParameters(track: audioTrack)
-                            originalAudioInputParams.setVolume(1.0, at: .zero)
-                            
-                            mix.inputParameters = [musicInputParams, originalAudioInputParams]
-                            audioMix = mix
+                            try bgMusicTrack.insertTimeRange(timeRange, of: musicTrackSource, at: currentMusicTime)
+                            currentMusicTime = currentMusicTime + duration
                         }
+                        
+                        let mix = AVMutableAudioMix()
+                        let musicInputParams = AVMutableAudioMixInputParameters(track: bgMusicTrack)
+                        musicInputParams.setVolume(0.3, at: .zero)
+                        
+                        let originalAudioInputParams = AVMutableAudioMixInputParameters(track: audioTrack)
+                        originalAudioInputParams.setVolume(1.0, at: .zero)
+                        
+                        mix.inputParameters = [musicInputParams, originalAudioInputParams]
+                        audioMix = mix
                     }
-                } else {
-                    print("Music file not found: \(musicFilename)")
                 }
             }
 
