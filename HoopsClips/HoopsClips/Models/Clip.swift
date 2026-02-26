@@ -12,6 +12,9 @@ struct Clip: Identifiable, Codable, Sendable {
     var visualScore: Double
     var motionScore: Double
     var combinedScore: Double
+    var playbackSpeed: Double
+    var isSlowMotionEnabled: Bool
+    var detectionMethod: DetectionMethod
 
     var duration: Double { endTime - startTime }
 
@@ -36,7 +39,10 @@ struct Clip: Identifiable, Codable, Sendable {
         audioScore: Double = 0.0,
         visualScore: Double = 0.0,
         motionScore: Double = 0.0,
-        combinedScore: Double = 0.0
+        combinedScore: Double = 0.0,
+        playbackSpeed: Double = 1.0,
+        isSlowMotionEnabled: Bool = false,
+        detectionMethod: DetectionMethod = .heuristic
     ) {
         self.id = id
         self.startTime = startTime
@@ -49,6 +55,9 @@ struct Clip: Identifiable, Codable, Sendable {
         self.visualScore = visualScore
         self.motionScore = motionScore
         self.combinedScore = combinedScore
+        self.playbackSpeed = playbackSpeed
+        self.isSlowMotionEnabled = isSlowMotionEnabled
+        self.detectionMethod = detectionMethod
     }
 
     static func formatTime(_ time: Double) -> String {
@@ -63,4 +72,10 @@ nonisolated enum ConfidenceLevel: String, Codable, Sendable {
     case high = "High"
     case medium = "Medium"
     case low = "Low"
+}
+
+nonisolated enum DetectionMethod: String, Codable, Sendable {
+    case ml = "AI"
+    case heuristic = "Rule"
+    case manual = "Manual"
 }

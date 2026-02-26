@@ -18,6 +18,7 @@ final class HighlightsViewModel {
     var selectedMusic: MusicTrack = .none
     var selectedQuality: ExportQuality = .high
     var selectedFormat: ExportFileFormat = .mp4
+    var customAudioURL: URL?
     var settings = AnalysisSettings()
 
     var clips: [Clip] { analysisService.clips }
@@ -92,6 +93,21 @@ final class HighlightsViewModel {
         }
     }
 
+    func selectCustomAudio(url: URL) {
+        let accessing = url.startAccessingSecurityScopedResource()
+        defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+        
+        let tempURL = URL.temporaryDirectory.appending(path: "custom_audio_" + url.lastPathComponent)
+        try? FileManager.default.removeItem(at: tempURL)
+        do {
+            try FileManager.default.copyItem(at: url, to: tempURL)
+            customAudioURL = tempURL
+            selectedMusic = .custom
+        } catch {
+            print("Failed to copy audio: \(error)")
+        }
+    }
+
     func exportHighlights(isProUser: Bool) async {
         guard let url = videoURL else { return }
         await exportService.exportHighlights(
@@ -99,6 +115,7 @@ final class HighlightsViewModel {
             clips: keptClips,
             theme: selectedTheme,
             music: selectedMusic,
+            customMusicURL: customAudioURL,
             isProUser: isProUser,
             quality: selectedQuality,
             format: selectedFormat

@@ -11,4 +11,9 @@ struct AnalysisSettings: Codable, Sendable {
     var clipPadding: Double = 1.5
     var framesSampledPerSecond: Double = 3.0
     var preferKeepUncertain: Bool = true
+    
+    // ML Configuration
+    var mlWindowSize: Int = 60
+    var minMLPredictionCount: Int = 3
+    var scoreSmoothingWindow: Int = 3
 }

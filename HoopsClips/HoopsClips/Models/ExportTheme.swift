@@ -74,6 +74,17 @@ nonisolated enum MusicTrack: String, CaseIterable, Codable, Sendable, Identifiab
             return false
         }
     }
+
+    var filename: String? {
+        switch self {
+        case .none, .custom: return nil
+        case .energetic: return "energetic.mp3"
+        case .dramatic: return "dramatic.mp3"
+        case .lofi: return "lofi.mp3"
+        case .trap: return "trap.mp3"
+        case .orchestral: return "orchestral.mp3"
+        }
+    }
 }
 
 nonisolated enum ExportQuality: String, CaseIterable, Codable, Sendable, Identifiable {

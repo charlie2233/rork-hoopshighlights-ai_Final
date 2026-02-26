@@ -1,11 +1,25 @@
 import SwiftUI
 
 struct ExportView: View {
+    private enum QuickShareCategory {
+        case editor
+        case social
+    }
+
     @Environment(SubscriptionManager.self) private var subscriptionManager
     @Bindable var viewModel: HighlightsViewModel
     @State private var exportTrigger = 0
     @State private var saveTrigger = 0
+    @State private var shareTrigger = 0
     @State private var showingPaywall = false
+    @State private var showSystemShareSheet = false
+    @State private var musicPreviewManager = MusicPreviewManager()
+    @State private var editorShortcuts = EditorAppSupport.defaultShortcuts
+    @State private var socialShortcuts = SocialAppSupport.defaultShortcuts
+    @State private var shareURL: URL?
+    @State private var selectedShareTargetHint: String?
+    @State private var selectedShareCategory: QuickShareCategory?
+    @State private var showFileImporter = false
 
     var body: some View {
         NavigationStack {
@@ -38,14 +52,19 @@ struct ExportView: View {
             .sheet(isPresented: $showingPaywall) {
                 PaywallView(subscriptionManager: subscriptionManager)
             }
+            .sheet(isPresented: $showSystemShareSheet, onDismiss: clearShareSelection) {
+                if let shareURL {
+                    SystemShareSheet(
+                        items: [shareURL],
+                        subject: "Hoops Highlight Reel"
+                    )
+                } else {
+                    EmptyView()
+                }
+            }
             .alert("Export Complete!", isPresented: $viewModel.showingExportComplete) {
                 Button("Save to Photos") {
                     Task { await viewModel.saveToPhotos() }
-                }
-                if let url = viewModel.exportService.exportedURL {
-                    ShareLink(item: url) {
-                        Text("Share")
-                    }
                 }
                 Button("Done", role: .cancel) { }
             } message: {
@@ -55,6 +74,10 @@ struct ExportView: View {
                 Button("OK", role: .cancel) { }
             } message: {
                 Text("Highlight reel saved to your photo library.")
+            }
+            .onAppear {
+                refreshEditorShortcuts()
+                refreshSocialShortcuts()
             }
         }
     }
@@ -267,57 +290,94 @@ struct ExportView: View {
                 HStack(spacing: 10) {
                     ForEach(MusicTrack.allCases) { track in
                         let isLocked = isMusicLocked(track)
-                        Button {
-                            guard !isLocked else {
-                                showingPaywall = true
-                                return
-                            }
-                            withAnimation(.snappy) { viewModel.selectedMusic = track }
-                        } label: {
-                            HStack(spacing: 8) {
-                                if isLocked {
-                                    Image(systemName: "lock.fill")
-                                        .font(.caption.weight(.bold))
+                        let isSelected = viewModel.selectedMusic == track
+                        
+                        ZStack(alignment: .topTrailing) {
+                            Button {
+                                guard !isLocked else {
+                                    showingPaywall = true
+                                    return
                                 }
-                                Image(systemName: track.icon)
-                                    .font(.subheadline)
-                                Text(track.rawValue)
-                                    .font(.subheadline.weight(.medium))
-                                if isLocked {
-                                    Text("PRO")
-                                        .font(.caption2.bold())
-                                        .padding(.horizontal, 6)
-                                        .padding(.vertical, 3)
-                                        .background(AppTheme.warningYellow.opacity(0.12), in: Capsule())
+                                if track == .custom {
+                                    showFileImporter = true
+                                } else {
+                                    withAnimation(.snappy) { viewModel.selectedMusic = track }
                                 }
+                            } label: {
+                                HStack(spacing: 8) {
+                                    if isLocked {
+                                        Image(systemName: "lock.fill")
+                                            .font(.caption.weight(.bold))
+                                    }
+                                    Image(systemName: track.icon)
+                                        .font(.subheadline)
+                                    Text(track.rawValue)
+                                        .font(.subheadline.weight(.medium))
+                                    if isLocked {
+                                        Text("PRO")
+                                            .font(.caption2.bold())
+                                            .padding(.horizontal, 6)
+                                            .padding(.vertical, 3)
+                                            .background(AppTheme.warningYellow.opacity(0.12), in: Capsule())
+                                    }
+                                }
+                                .foregroundStyle(
+                                    isSelected
+                                    ? .white
+                                    : (isLocked ? AppTheme.warningYellow : AppTheme.subtleText)
+                                )
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 10)
+                                .background(
+                                    isSelected ? AppTheme.accentPurple : AppTheme.cardBg,
+                                    in: .capsule
+                                )
+                                .overlay(
+                                    Capsule()
+                                        .stroke(
+                                            isSelected ? AppTheme.neonPurple : Color.clear,
+                                            lineWidth: 2
+                                        )
+                                )
+                                .opacity(isLocked && !isSelected ? 0.9 : 1)
                             }
-                            .foregroundStyle(
-                                viewModel.selectedMusic == track
-                                ? .white
-                                : (isLocked ? AppTheme.warningYellow : AppTheme.subtleText)
-                            )
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 10)
-                            .background(
-                                viewModel.selectedMusic == track ? AppTheme.accentPurple : AppTheme.cardBg,
-                                in: .capsule
-                            )
-                            .overlay(
-                                Capsule()
-                                    .stroke(
-                                        viewModel.selectedMusic == track ? AppTheme.neonPurple : Color.clear,
-                                        lineWidth: 2
-                                    )
-                            )
-                            .opacity(isLocked && viewModel.selectedMusic != track ? 0.9 : 1)
+                            
+                            if track != .none && track != .custom && !isLocked {
+                                Button {
+                                    musicPreviewManager.togglePreview(for: track)
+                                } label: {
+                                    Image(systemName: musicPreviewManager.currentTrack == track && musicPreviewManager.isPlaying ? "stop.circle.fill" : "play.circle.fill")
+                                        .font(.title3)
+                                        .symbolRenderingMode(.hierarchical)
+                                        .foregroundStyle(isSelected ? .white : AppTheme.accentPurple)
+                                        .background(Circle().fill(AppTheme.cardBg))
+                                }
+                                .offset(x: 8, y: -8)
+                            }
                         }
                     }
                 }
+                .padding(.top, 8)
+                .padding(.trailing, 8)
             }
             .contentMargins(.horizontal, 0)
+            .fileImporter(
+                isPresented: $showFileImporter,
+                allowedContentTypes: [.audio],
+                allowsMultipleSelection: false
+            ) { result in
+                switch result {
+                case .success(let urls):
+                    if let url = urls.first {
+                        viewModel.selectCustomAudio(url: url)
+                    }
+                case .failure(let error):
+                    print("File selection failed: \(error.localizedDescription)")
+                }
+            }
 
             if !subscriptionManager.isProUser {
-                Text("Pro unlocks premium music packs. Music rendering export support is coming next.")
+                Text("Pro unlocks premium music packs.")
                     .font(.caption2)
                     .foregroundStyle(AppTheme.warningYellow)
                     .padding(.leading, 4)
@@ -434,12 +494,14 @@ struct ExportView: View {
                 )
 
                 HStack(spacing: 10) {
-                    ShareLink(item: exportedURL) {
+                    Button {
+                        presentShareSheet(for: exportedURL)
+                    } label: {
                         HStack(spacing: 10) {
                             Image(systemName: "square.and.arrow.up.fill")
                                 .font(.subheadline.weight(.semibold))
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("Share Now")
+                                Text("Open In / Share")
                                     .font(.subheadline.bold())
                                 Text(exportedURL.lastPathComponent)
                                     .font(.caption2.monospaced())
@@ -461,6 +523,7 @@ struct ExportView: View {
                         )
                     }
                     .buttonStyle(.plain)
+                    .sensoryFeedback(.impact(weight: .light), trigger: shareTrigger)
 
                     Button {
                         saveTrigger += 1
@@ -482,6 +545,132 @@ struct ExportView: View {
                         )
                     }
                     .sensoryFeedback(.impact(weight: .light), trigger: saveTrigger)
+                }
+
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "sparkles.rectangle.stack.fill")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(AppTheme.warningYellow)
+                        Text("Send to editor")
+                            .font(.caption.bold())
+                            .foregroundStyle(.white)
+                        Spacer()
+                    }
+
+                    HStack(spacing: 10) {
+                        ForEach(editorShortcuts) { shortcut in
+                            Button {
+                                presentShareSheet(
+                                    for: exportedURL,
+                                    preferredTarget: shortcut.displayName,
+                                    category: .editor
+                                )
+                            } label: {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: shortcut.iconSystemName)
+                                            .font(.caption.weight(.semibold))
+                                        Text(shortcut.displayName)
+                                            .font(.caption.bold())
+                                            .lineLimit(1)
+                                    }
+                                    .foregroundStyle(.white)
+
+                                    Text(shortcut.statusText)
+                                        .font(.caption2.weight(.medium))
+                                        .foregroundStyle(shortcut.isInstalled ? AppTheme.successGreen : AppTheme.subtleText)
+                                        .lineLimit(1)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 10)
+                                .background(
+                                    shortcut.isInstalled
+                                    ? AppTheme.successGreen.opacity(0.12)
+                                    : AppTheme.surfaceBg,
+                                    in: RoundedRectangle(cornerRadius: 12)
+                                )
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .stroke(
+                                            shortcut.isInstalled
+                                            ? AppTheme.successGreen.opacity(0.28)
+                                            : AppTheme.softBorder,
+                                            lineWidth: 1
+                                        )
+                                )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+
+                    Text(editorShareHelperText)
+                        .font(.caption2)
+                        .foregroundStyle(AppTheme.subtleText)
+                }
+
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "bubble.left.and.bubble.right.fill")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(AppTheme.neonPurple)
+                        Text("Quick post")
+                            .font(.caption.bold())
+                            .foregroundStyle(.white)
+                        Spacer()
+                    }
+
+                    HStack(spacing: 10) {
+                        ForEach(socialShortcuts) { shortcut in
+                            Button {
+                                presentShareSheet(
+                                    for: exportedURL,
+                                    preferredTarget: shortcut.displayName,
+                                    category: .social
+                                )
+                            } label: {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: shortcut.iconSystemName)
+                                            .font(.caption.weight(.semibold))
+                                        Text(shortcut.displayName)
+                                            .font(.caption.bold())
+                                            .lineLimit(1)
+                                    }
+                                    .foregroundStyle(.white)
+
+                                    Text(shortcut.statusText)
+                                        .font(.caption2.weight(.medium))
+                                        .foregroundStyle(shortcut.isInstalled ? AppTheme.successGreen : AppTheme.subtleText)
+                                        .lineLimit(1)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 10)
+                                .background(
+                                    shortcut.isInstalled
+                                    ? AppTheme.neonPurple.opacity(0.14)
+                                    : AppTheme.surfaceBg,
+                                    in: RoundedRectangle(cornerRadius: 12)
+                                )
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .stroke(
+                                            shortcut.isInstalled
+                                            ? AppTheme.neonPurple.opacity(0.28)
+                                            : AppTheme.softBorder,
+                                            lineWidth: 1
+                                        )
+                                )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+
+                    Text(socialShareHelperText)
+                        .font(.caption2)
+                        .foregroundStyle(AppTheme.subtleText)
                 }
             }
             .padding(16)
@@ -555,6 +744,20 @@ struct ExportView: View {
         )
     }
 
+    private var editorShareHelperText: String {
+        if selectedShareCategory == .editor, let selectedShareTargetHint {
+            return "Choose \(selectedShareTargetHint) in the share sheet to continue editing."
+        }
+        return "Pick Adobe, CapCut, or iMovie in the share sheet to continue editing."
+    }
+
+    private var socialShareHelperText: String {
+        if selectedShareCategory == .social, let selectedShareTargetHint {
+            return "Choose \(selectedShareTargetHint) in the share sheet to post."
+        }
+        return "Pick Instagram, TikTok, or YouTube in the share sheet to post."
+    }
+
     private func isThemeLocked(_ theme: ExportTheme) -> Bool {
         theme.requiresPro && !subscriptionManager.isProUser
     }
@@ -565,5 +768,32 @@ struct ExportView: View {
 
     private func selectionTitle(_ title: String, isLocked: Bool) -> String {
         isLocked ? "\(title) • Pro" : title
+    }
+
+    private func presentShareSheet(
+        for url: URL,
+        preferredTarget: String? = nil,
+        category: QuickShareCategory? = nil
+    ) {
+        guard !showSystemShareSheet else { return }
+        shareURL = url
+        selectedShareTargetHint = preferredTarget
+        selectedShareCategory = category
+        shareTrigger += 1
+        showSystemShareSheet = true
+    }
+
+    private func clearShareSelection() {
+        shareURL = nil
+        selectedShareTargetHint = nil
+        selectedShareCategory = nil
+    }
+
+    private func refreshEditorShortcuts() {
+        editorShortcuts = EditorAppSupport.resolvedShortcuts()
+    }
+
+    private func refreshSocialShortcuts() {
+        socialShortcuts = SocialAppSupport.resolvedShortcuts()
     }
 }

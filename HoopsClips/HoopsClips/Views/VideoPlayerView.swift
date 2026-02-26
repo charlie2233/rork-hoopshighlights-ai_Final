@@ -12,6 +12,7 @@ struct VideoPlayerView: View {
     @State private var analysisStarted = false
     @State private var pulseAnimation = false
     @State private var showingPaywall = false
+    @State private var showingNoClipsAlert = false
 
     var body: some View {
         NavigationStack {
@@ -82,6 +83,11 @@ struct VideoPlayerView: View {
             }
             .sheet(isPresented: $showingPaywall) {
                 PaywallView(subscriptionManager: subscriptionManager)
+            }
+            .alert("No Highlights Found", isPresented: $showingNoClipsAlert) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text("AI couldn't detect any significant basketball actions in this video. Try a different video with clearer action.")
             }
         }
     }
@@ -272,7 +278,12 @@ struct VideoPlayerView: View {
                     if subscriptionManager.canAnalyze {
                         subscriptionManager.consumeFreeUse()
                         analysisStarted = true
-                        Task { await viewModel.startAnalysis() }
+                        Task {
+                            await viewModel.startAnalysis()
+                            if viewModel.clips.isEmpty {
+                                showingNoClipsAlert = true
+                            }
+                        }
                     } else {
                         showingPaywall = true
                     }

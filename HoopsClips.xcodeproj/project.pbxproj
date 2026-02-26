@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		999999999999999999990002 /* Resources in Resources */ = {isa = PBXBuildFile; fileRef = 999999999999999999990001 /* Resources */; };
 		XX298127CFBB2CF3FA631BXX /* RevenueCat in Frameworks */ = {isa = PBXBuildFile; productRef = XXDCC169DE7B2F3C1C8B10XX /* RevenueCat */; };
 		XX6B55EF5BDBB06FA78746XX /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = XX1523791DAAC03A11009CXX /* GoogleSignInSwift */; };
 		XXC2732D520C02064817F5XX /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = XXB48B343CDA2FFA072770XX /* GoogleSignIn */; };
@@ -31,6 +32,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		999999999999999999990001 /* Resources */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Resources; path = HoopsClips/Resources; sourceTree = "<group>"; };
 		105FC57A2E9EAD3100EA8BCF /* HoopsClips.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HoopsClips.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		105FC5892E9EAD3200EA8BCF /* HoopsClipsTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HoopsClipsTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		105FC5932E9EAD3200EA8BCF /* HoopsClipsUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HoopsClipsUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -86,6 +88,7 @@
 		105FC5712E9EAD3100EA8BCF = {
 			isa = PBXGroup;
 			children = (
+				999999999999999999990001 /* Resources */,
 				105FC57C2E9EAD3100EA8BCF /* HoopsClips */,
 				105FC58C2E9EAD3200EA8BCF /* HoopsClipsTests */,
 				105FC5962E9EAD3200EA8BCF /* HoopsClipsUITests */,
@@ -231,6 +234,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				999999999999999999990002 /* Resources in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -421,6 +425,13 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_LSApplicationQueriesSchemes = (
+					capcut,
+					instagram,
+					imovie,
+					tiktok,
+					youtube,
+				);
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Save exported highlight reels to your photo library";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -458,6 +469,13 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_LSApplicationQueriesSchemes = (
+					capcut,
+					instagram,
+					imovie,
+					tiktok,
+					youtube,
+				);
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Save exported highlight reels to your photo library";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;

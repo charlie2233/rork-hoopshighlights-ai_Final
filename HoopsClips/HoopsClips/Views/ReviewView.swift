@@ -314,9 +314,18 @@ struct ReviewView: View {
                     }
 
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(clip.label)
-                            .font(.headline)
-                            .foregroundStyle(.white)
+                        HStack(spacing: 6) {
+                            Text(clip.label)
+                                .font(.headline)
+                                .foregroundStyle(.white)
+                            
+                            if clip.detectionMethod == .ml {
+                                Image(systemName: "sparkles")
+                                    .font(.caption2)
+                                    .foregroundStyle(AppTheme.neonPurple)
+                            }
+                        }
+                        
                         HStack(spacing: 8) {
                             Text("\(clip.formattedStartTime) — \(clip.formattedEndTime)")
                                 .font(.caption.monospacedDigit())
@@ -350,6 +359,25 @@ struct ReviewView: View {
                         .font(.caption)
                         .foregroundStyle(AppTheme.subtleText)
                         .padding(8)
+                }
+
+                if clip.action == .dunk {
+                    Button {
+                        if let index = viewModel.clips.firstIndex(where: { $0.id == clip.id }) {
+                            withAnimation(.snappy) {
+                                viewModel.clips[index].isSlowMotionEnabled.toggle()
+                            }
+                        }
+                    } label: {
+                        Image(systemName: clip.isSlowMotionEnabled ? "tortoise.fill" : "hare.fill")
+                            .font(.caption)
+                            .foregroundStyle(clip.isSlowMotionEnabled ? AppTheme.neonPurple : AppTheme.subtleText)
+                            .padding(8)
+                            .background(
+                                clip.isSlowMotionEnabled ? AppTheme.neonPurple.opacity(0.15) : Color.clear,
+                                in: .circle
+                            )
+                    }
                 }
 
                 Spacer()
@@ -483,6 +511,16 @@ struct ReviewView: View {
                                 Text(clip.label)
                                     .font(.title2.bold())
                                     .foregroundStyle(.white)
+                                
+                                if clip.detectionMethod == .ml {
+                                    Text("AI")
+                                        .font(.caption2.bold())
+                                        .foregroundStyle(.white)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(AppTheme.neonPurple, in: .capsule)
+                                }
+                                
                                 Spacer()
                                 confidenceBadge(level: clip.confidenceLevel, value: clip.confidence)
                             }
