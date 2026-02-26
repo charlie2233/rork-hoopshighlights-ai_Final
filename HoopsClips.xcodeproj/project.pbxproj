@@ -42,14 +42,14 @@
 			path = HoopsClips;
 			sourceTree = "<group>";
 		};
-		105FC58C2E9EAD3200EA8BCF /* HoopsHighlightsAITests */ = {
+		105FC58C2E9EAD3200EA8BCF /* HoopsClipsTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = HoopsHighlightsAITests;
+			path = HoopsClipsTests;
 			sourceTree = "<group>";
 		};
-		105FC5962E9EAD3200EA8BCF /* HoopsHighlightsAIUITests */ = {
+		105FC5962E9EAD3200EA8BCF /* HoopsClipsUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = HoopsHighlightsAIUITests;
+			path = HoopsClipsUITests;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -87,8 +87,8 @@
 			isa = PBXGroup;
 			children = (
 				105FC57C2E9EAD3100EA8BCF /* HoopsClips */,
-				105FC58C2E9EAD3200EA8BCF /* HoopsHighlightsAITests */,
-				105FC5962E9EAD3200EA8BCF /* HoopsHighlightsAIUITests */,
+				105FC58C2E9EAD3200EA8BCF /* HoopsClipsTests */,
+				105FC5962E9EAD3200EA8BCF /* HoopsClipsUITests */,
 				105FC57B2E9EAD3100EA8BCF /* Products */,
 			);
 			sourceTree = "<group>";
@@ -132,9 +132,9 @@
 			productReference = 105FC57A2E9EAD3100EA8BCF /* HoopsClips.app */;
 			productType = "com.apple.product-type.application";
 		};
-		105FC5882E9EAD3200EA8BCF /* HoopsClips */ = {
+		105FC5882E9EAD3200EA8BCF /* HoopsClipsTests */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 105FC5A02E9EAD3200EA8BCF /* Build configuration list for PBXNativeTarget "HoopsClips" */;
+			buildConfigurationList = 105FC5A02E9EAD3200EA8BCF /* Build configuration list for PBXNativeTarget "HoopsClipsTests" */;
 			buildPhases = (
 				105FC5852E9EAD3200EA8BCF /* Sources */,
 				105FC5862E9EAD3200EA8BCF /* Frameworks */,
@@ -146,18 +146,18 @@
 				105FC58B2E9EAD3200EA8BCF /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
-				105FC58C2E9EAD3200EA8BCF /* HoopsHighlightsAITests */,
+				105FC58C2E9EAD3200EA8BCF /* HoopsClipsTests */,
 			);
-			name = HoopsClips;
+			name = HoopsClipsTests;
 			packageProductDependencies = (
 			);
-			productName = HoopsClips;
+			productName = HoopsClipsTests;
 			productReference = 105FC5892E9EAD3200EA8BCF /* HoopsClipsTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
-		105FC5922E9EAD3200EA8BCF /* HoopsClips */ = {
+		105FC5922E9EAD3200EA8BCF /* HoopsClipsUITests */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 105FC5A32E9EAD3200EA8BCF /* Build configuration list for PBXNativeTarget "HoopsClips" */;
+			buildConfigurationList = 105FC5A32E9EAD3200EA8BCF /* Build configuration list for PBXNativeTarget "HoopsClipsUITests" */;
 			buildPhases = (
 				105FC58F2E9EAD3200EA8BCF /* Sources */,
 				105FC5902E9EAD3200EA8BCF /* Frameworks */,
@@ -169,12 +169,12 @@
 				105FC5952E9EAD3200EA8BCF /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
-				105FC5962E9EAD3200EA8BCF /* HoopsHighlightsAIUITests */,
+				105FC5962E9EAD3200EA8BCF /* HoopsClipsUITests */,
 			);
-			name = HoopsClips;
+			name = HoopsClipsUITests;
 			packageProductDependencies = (
 			);
-			productName = HoopsClips;
+			productName = HoopsClipsUITests;
 			productReference = 105FC5932E9EAD3200EA8BCF /* HoopsClipsUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
@@ -216,8 +216,8 @@
 			projectRoot = "";
 			targets = (
 				105FC5792E9EAD3100EA8BCF /* HoopsClips */,
-				105FC5882E9EAD3200EA8BCF /* HoopsClips */,
-				105FC5922E9EAD3200EA8BCF /* HoopsClips */,
+				105FC5882E9EAD3200EA8BCF /* HoopsClipsTests */,
+				105FC5922E9EAD3200EA8BCF /* HoopsClipsUITests */,
 			);
 			packageReferences = (
 				XX4AC81916604C4344ADC0XX /* XCRemoteSwiftPackageReference "purchases-ios-spm" */,
@@ -414,7 +414,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ENTITLEMENTS = HoopsHighlightsAI/HoopsHighlightsAI.entitlements;
+				CODE_SIGN_ENTITLEMENTS = HoopsClips/HoopsClips/HoopsClips.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
@@ -438,20 +438,20 @@
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
-					SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-					SWIFT_VERSION = 5.0;
-					SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = YES;
-					SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = YES;
-					TARGETED_DEVICE_FAMILY = "1,2";
-				};
-				name = Debug;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = YES;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
 		};
 		105FC59F2E9EAD3200EA8BCF /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ENTITLEMENTS = HoopsHighlightsAI/HoopsHighlightsAI.entitlements;
+				CODE_SIGN_ENTITLEMENTS = HoopsClips/HoopsClips/HoopsClips.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
@@ -475,13 +475,13 @@
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
-					SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-					SWIFT_VERSION = 5.0;
-					SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = YES;
-					SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = YES;
-					TARGETED_DEVICE_FAMILY = "1,2";
-				};
-				name = Release;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = YES;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
 		};
 		105FC5A12E9EAD3200EA8BCF /* Debug */ = {
 			isa = XCBuildConfiguration;
@@ -501,7 +501,7 @@
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/HoopsHighlightsAI.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/HoopsHighlightsAI";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/HoopsClips.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/HoopsClips";
 			};
 			name = Debug;
 		};
@@ -523,7 +523,7 @@
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/HoopsHighlightsAI.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/HoopsHighlightsAI";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/HoopsClips.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/HoopsClips";
 			};
 			name = Release;
 		};
@@ -543,7 +543,7 @@
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_TARGET_NAME = HoopsHighlightsAI;
+				TEST_TARGET_NAME = HoopsClips;
 			};
 			name = Debug;
 		};
@@ -563,7 +563,7 @@
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_TARGET_NAME = HoopsHighlightsAI;
+				TEST_TARGET_NAME = HoopsClips;
 			};
 			name = Release;
 		};
@@ -588,7 +588,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		105FC5A02E9EAD3200EA8BCF /* Build configuration list for PBXNativeTarget "HoopsClips" */ = {
+		105FC5A02E9EAD3200EA8BCF /* Build configuration list for PBXNativeTarget "HoopsClipsTests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				105FC5A12E9EAD3200EA8BCF /* Debug */,
@@ -597,7 +597,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		105FC5A32E9EAD3200EA8BCF /* Build configuration list for PBXNativeTarget "HoopsClips" */ = {
+		105FC5A32E9EAD3200EA8BCF /* Build configuration list for PBXNativeTarget "HoopsClipsUITests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				105FC5A42E9EAD3200EA8BCF /* Debug */,

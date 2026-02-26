@@ -2,7 +2,7 @@ import SwiftUI
 import RevenueCat
 
 @main
-struct HoopsHighlightsAIApp: App {
+struct HoopsClipsApp: App {
     init() {
         let apiKey: String
         #if DEBUG

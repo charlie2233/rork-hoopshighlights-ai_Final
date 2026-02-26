@@ -1,13 +1,13 @@
 //
-//  HoopsHighlightsAIUITestsLaunchTests.swift
-//  HoopsHighlightsAIUITests
+//  HoopsClipsUITestsLaunchTests.swift
+//  HoopsClipsUITests
 //
 //  Created by Rork on February 25, 2026.
 //
 
 import XCTest
 
-final class HoopsHighlightsAIUITestsLaunchTests: XCTestCase {
+final class HoopsClipsUITestsLaunchTests: XCTestCase {
 
     override class var runsForEachTargetApplicationUIConfiguration: Bool {
         true
