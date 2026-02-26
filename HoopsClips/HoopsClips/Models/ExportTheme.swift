@@ -32,6 +32,15 @@ nonisolated enum ExportTheme: String, CaseIterable, Codable, Sendable, Identifia
         case .minimal: return "square.split.1x2.fill"
         }
     }
+
+    var requiresPro: Bool {
+        switch self {
+        case .neon, .cinematic, .hype:
+            return true
+        case .classic, .vibrant, .minimal:
+            return false
+        }
+    }
 }
 
 nonisolated enum MusicTrack: String, CaseIterable, Codable, Sendable, Identifiable {
@@ -54,6 +63,15 @@ nonisolated enum MusicTrack: String, CaseIterable, Codable, Sendable, Identifiab
         case .trap: return "waveform"
         case .orchestral: return "music.quarternote.3"
         case .custom: return "doc.badge.plus"
+        }
+    }
+
+    var requiresPro: Bool {
+        switch self {
+        case .dramatic, .trap, .orchestral, .custom:
+            return true
+        case .none, .energetic, .lofi:
+            return false
         }
     }
 }

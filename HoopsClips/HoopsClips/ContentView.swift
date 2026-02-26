@@ -48,6 +48,7 @@ struct ContentView: View {
                 }
                 Tab("Export", systemImage: "square.and.arrow.up.fill", value: 2) {
                     ExportView(viewModel: viewModel)
+                        .environment(subscriptionManager)
                 }
                 Tab("Settings", systemImage: "gearshape.fill", value: 3) {
                     SettingsView(viewModel: viewModel, authService: authService, subscriptionManager: subscriptionManager)

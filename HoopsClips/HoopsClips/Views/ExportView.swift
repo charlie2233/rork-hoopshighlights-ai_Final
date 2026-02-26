@@ -1,9 +1,11 @@
 import SwiftUI
 
 struct ExportView: View {
+    @Environment(SubscriptionManager.self) private var subscriptionManager
     @Bindable var viewModel: HighlightsViewModel
     @State private var exportTrigger = 0
     @State private var saveTrigger = 0
+    @State private var showingPaywall = false
 
     var body: some View {
         NavigationStack {
@@ -33,6 +35,9 @@ struct ExportView: View {
             .navigationBarTitleDisplayMode(.large)
             .toolbarBackground(AppTheme.darkBg, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
+            .sheet(isPresented: $showingPaywall) {
+                PaywallView(subscriptionManager: subscriptionManager)
+            }
             .alert("Export Complete!", isPresented: $viewModel.showingExportComplete) {
                 Button("Save to Photos") {
                     Task { await viewModel.saveToPhotos() }
@@ -96,7 +101,7 @@ struct ExportView: View {
             HStack(spacing: 10) {
                 RorkMetricChip(
                     icon: "paintbrush.fill",
-                    value: viewModel.selectedTheme.rawValue,
+                    value: selectionTitle(viewModel.selectedTheme.rawValue, isLocked: isThemeLocked(viewModel.selectedTheme)),
                     label: "Theme"
                 )
                 RorkMetricChip(
@@ -116,9 +121,31 @@ struct ExportView: View {
                 )
                 RorkMetricChip(
                     icon: "music.note",
-                    value: viewModel.selectedMusic == .none ? "No Music" : "Music",
+                    value: selectionTitle(viewModel.selectedMusic == .none ? "No Music" : "Music", isLocked: isMusicLocked(viewModel.selectedMusic)),
                     label: viewModel.selectedMusic == .none ? "Audio" : viewModel.selectedMusic.rawValue,
                     tint: AppTheme.neonPurple
+                )
+            }
+
+            if hasLockedSelections {
+                HStack(spacing: 8) {
+                    Image(systemName: "lock.fill")
+                        .font(.caption.weight(.semibold))
+                    Text("Selected export options include Pro-only features.")
+                        .font(.caption.weight(.medium))
+                    Spacer()
+                    Button("Unlock Pro") {
+                        showingPaywall = true
+                    }
+                    .font(.caption.bold())
+                    .foregroundStyle(AppTheme.neonPurple)
+                }
+                .foregroundStyle(AppTheme.warningYellow)
+                .padding(10)
+                .background(AppTheme.warningYellow.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(AppTheme.warningYellow.opacity(0.18), lineWidth: 1)
                 )
             }
 
@@ -154,16 +181,37 @@ struct ExportView: View {
 
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 100), spacing: 10)], spacing: 10) {
                 ForEach(ExportTheme.allCases) { theme in
+                    let isLocked = isThemeLocked(theme)
                     Button {
+                        guard !isLocked else {
+                            showingPaywall = true
+                            return
+                        }
                         withAnimation(.snappy) { viewModel.selectedTheme = theme }
                     } label: {
                         VStack(spacing: 8) {
-                            Image(systemName: theme.icon)
-                                .font(.title2)
-                                .foregroundStyle(viewModel.selectedTheme == theme ? .white : AppTheme.subtleText)
+                            HStack(spacing: 4) {
+                                if isLocked {
+                                    Image(systemName: "lock.fill")
+                                        .font(.caption2.weight(.bold))
+                                }
+                                Image(systemName: theme.icon)
+                                    .font(.title2)
+                            }
+                            .foregroundStyle(viewModel.selectedTheme == theme ? .white : (isLocked ? AppTheme.warningYellow : AppTheme.subtleText))
+
                             Text(theme.rawValue)
                                 .font(.caption.weight(.medium))
-                                .foregroundStyle(viewModel.selectedTheme == theme ? .white : AppTheme.subtleText)
+                                .foregroundStyle(viewModel.selectedTheme == theme ? .white : (isLocked ? AppTheme.warningYellow : AppTheme.subtleText))
+
+                            if isLocked {
+                                Text("PRO")
+                                    .font(.caption2.bold())
+                                    .foregroundStyle(AppTheme.warningYellow)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 3)
+                                    .background(AppTheme.warningYellow.opacity(0.10), in: Capsule())
+                            }
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
@@ -178,6 +226,15 @@ struct ExportView: View {
                                     lineWidth: 2
                                 )
                         )
+                        .overlay(alignment: .topTrailing) {
+                            if isLocked {
+                                Image(systemName: "crown.fill")
+                                    .font(.caption2.bold())
+                                    .foregroundStyle(AppTheme.warningYellow)
+                                    .padding(6)
+                            }
+                        }
+                        .opacity(isLocked && viewModel.selectedTheme != theme ? 0.88 : 1)
                     }
                 }
             }
@@ -186,6 +243,13 @@ struct ExportView: View {
                 .font(.caption)
                 .foregroundStyle(AppTheme.subtleText)
                 .padding(.leading, 4)
+
+            if !subscriptionManager.isProUser {
+                Text("Pro unlocks Neon, Cinematic, and Hype export themes.")
+                    .font(.caption2)
+                    .foregroundStyle(AppTheme.warningYellow)
+                    .padding(.leading, 4)
+            }
         }
         .padding(16)
         .rorkCard(cornerRadius: 16, stroke: AppTheme.softBorder, glowOpacity: 0.05)
@@ -202,16 +266,36 @@ struct ExportView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 10) {
                     ForEach(MusicTrack.allCases) { track in
+                        let isLocked = isMusicLocked(track)
                         Button {
+                            guard !isLocked else {
+                                showingPaywall = true
+                                return
+                            }
                             withAnimation(.snappy) { viewModel.selectedMusic = track }
                         } label: {
                             HStack(spacing: 8) {
+                                if isLocked {
+                                    Image(systemName: "lock.fill")
+                                        .font(.caption.weight(.bold))
+                                }
                                 Image(systemName: track.icon)
                                     .font(.subheadline)
                                 Text(track.rawValue)
                                     .font(.subheadline.weight(.medium))
+                                if isLocked {
+                                    Text("PRO")
+                                        .font(.caption2.bold())
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 3)
+                                        .background(AppTheme.warningYellow.opacity(0.12), in: Capsule())
+                                }
                             }
-                            .foregroundStyle(viewModel.selectedMusic == track ? .white : AppTheme.subtleText)
+                            .foregroundStyle(
+                                viewModel.selectedMusic == track
+                                ? .white
+                                : (isLocked ? AppTheme.warningYellow : AppTheme.subtleText)
+                            )
                             .padding(.horizontal, 14)
                             .padding(.vertical, 10)
                             .background(
@@ -225,11 +309,19 @@ struct ExportView: View {
                                         lineWidth: 2
                                     )
                             )
+                            .opacity(isLocked && viewModel.selectedMusic != track ? 0.9 : 1)
                         }
                     }
                 }
             }
             .contentMargins(.horizontal, 0)
+
+            if !subscriptionManager.isProUser {
+                Text("Pro unlocks premium music packs. Music rendering export support is coming next.")
+                    .font(.caption2)
+                    .foregroundStyle(AppTheme.warningYellow)
+                    .padding(.leading, 4)
+            }
         }
         .padding(16)
         .rorkCard(cornerRadius: 16, stroke: AppTheme.softBorder, glowOpacity: 0.05)
@@ -414,13 +506,17 @@ struct ExportView: View {
             } else {
                 Button {
                     exportTrigger += 1
+                    if hasLockedSelections {
+                        showingPaywall = true
+                        return
+                    }
                     Task { await viewModel.exportHighlights() }
                 } label: {
                     HStack(spacing: 12) {
-                        Image(systemName: "square.and.arrow.up.fill")
+                        Image(systemName: hasLockedSelections ? "lock.fill" : "square.and.arrow.up.fill")
                             .font(.title3)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("Export Highlight Reel")
+                            Text(hasLockedSelections ? "Unlock Pro to Export" : "Export Highlight Reel")
                                 .font(.headline)
                             Text("\(viewModel.selectedTheme.rawValue) • \(viewModel.selectedQuality.rawValue) • \(viewModel.selectedFormat.rawValue)")
                                 .font(.caption)
@@ -433,7 +529,7 @@ struct ExportView: View {
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 18)
-                    .background(AppTheme.purpleGradient, in: .rect(cornerRadius: 16))
+                    .background(hasLockedSelections ? lockedExportGradient : AppTheme.purpleGradient, in: .rect(cornerRadius: 16))
                 }
                 .overlay(
                     RoundedRectangle(cornerRadius: 16)
@@ -442,5 +538,32 @@ struct ExportView: View {
                 .sensoryFeedback(.impact(weight: .heavy), trigger: exportTrigger)
             }
         }
+    }
+
+    private var hasLockedSelections: Bool {
+        isThemeLocked(viewModel.selectedTheme) || isMusicLocked(viewModel.selectedMusic)
+    }
+
+    private var lockedExportGradient: LinearGradient {
+        LinearGradient(
+            colors: [
+                AppTheme.warningYellow.opacity(0.95),
+                AppTheme.accentPurple.opacity(0.9)
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+
+    private func isThemeLocked(_ theme: ExportTheme) -> Bool {
+        theme.requiresPro && !subscriptionManager.isProUser
+    }
+
+    private func isMusicLocked(_ track: MusicTrack) -> Bool {
+        track.requiresPro && !subscriptionManager.isProUser
+    }
+
+    private func selectionTitle(_ title: String, isLocked: Bool) -> String {
+        isLocked ? "\(title) • Pro" : title
     }
 }
