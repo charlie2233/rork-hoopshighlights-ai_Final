@@ -19,6 +19,8 @@ final class VideoExportService {
         quality: ExportQuality,
         format: ExportFileFormat
     ) async {
+        exportedURL = nil
+
         if let restrictionMessage = premiumRestrictionMessage(theme: theme, music: music, isProUser: isProUser) {
             isExporting = false
             exportProgress = 0.0
@@ -29,7 +31,6 @@ final class VideoExportService {
         isExporting = true
         exportProgress = 0.0
         statusMessage = "Preparing export..."
-        exportedURL = nil
 
         let asset = AVURLAsset(url: sourceURL)
 
