@@ -42,6 +42,7 @@ struct ReviewView: View {
                         VStack(spacing: 16) {
                             headerStats
                             reviewProgressStrip
+                            quickActionsBar
                             filterBar
                             clipsList
                         }
@@ -173,6 +174,92 @@ struct ReviewView: View {
         }
         .padding(14)
         .rorkCard(cornerRadius: 16, stroke: AppTheme.softBorder, glowOpacity: 0.06)
+    }
+
+    private var highConfidencePendingCount: Int {
+        viewModel.clips.filter { $0.confidence >= 0.8 && !$0.isKept }.count
+    }
+
+    private var lowConfidenceKeptCount: Int {
+        viewModel.clips.filter { $0.confidence < 0.5 && $0.isKept }.count
+    }
+
+    private var quickActionsBar: some View {
+        HStack(spacing: 10) {
+            reviewQuickActionButton(
+                title: "Keep High",
+                subtitle: "\(highConfidencePendingCount) clips",
+                icon: "checkmark.seal.fill",
+                tint: AppTheme.successGreen,
+                isDisabled: highConfidencePendingCount == 0
+            ) {
+                withAnimation(.snappy) {
+                    viewModel.keepHighConfidenceClips()
+                }
+            }
+
+            reviewQuickActionButton(
+                title: "Discard Low",
+                subtitle: "\(lowConfidenceKeptCount) clips",
+                icon: "xmark.seal.fill",
+                tint: AppTheme.dangerRed,
+                isDisabled: lowConfidenceKeptCount == 0
+            ) {
+                withAnimation(.snappy) {
+                    viewModel.discardLowConfidenceClips()
+                }
+            }
+        }
+        .padding(10)
+        .rorkCard(
+            cornerRadius: 14,
+            fill: AnyShapeStyle(AppTheme.surfaceBg.opacity(0.55)),
+            stroke: AppTheme.softBorder,
+            glowOpacity: 0.04
+        )
+    }
+
+    private func reviewQuickActionButton(
+        title: String,
+        subtitle: String,
+        icon: String,
+        tint: Color,
+        isDisabled: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: icon)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(tint)
+                    .frame(width: 28, height: 28)
+                    .background(tint.opacity(0.12), in: .circle)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.white)
+                    Text(subtitle)
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(AppTheme.subtleText)
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 10)
+            .background(
+                AppTheme.cardBg.opacity(isDisabled ? 0.35 : 0.75),
+                in: .rect(cornerRadius: 12)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(tint.opacity(isDisabled ? 0.08 : 0.2), lineWidth: 1)
+            }
+            .opacity(isDisabled ? 0.55 : 1.0)
+        }
+        .buttonStyle(.plain)
+        .disabled(isDisabled)
     }
 
     private var filterBar: some View {

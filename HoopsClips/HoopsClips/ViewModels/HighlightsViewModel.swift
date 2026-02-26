@@ -80,6 +80,18 @@ final class HighlightsViewModel {
         }
     }
 
+    func keepHighConfidenceClips() {
+        for i in analysisService.clips.indices where analysisService.clips[i].confidence >= 0.8 {
+            analysisService.clips[i].isKept = true
+        }
+    }
+
+    func discardLowConfidenceClips() {
+        for i in analysisService.clips.indices where analysisService.clips[i].confidence < 0.5 {
+            analysisService.clips[i].isKept = false
+        }
+    }
+
     func exportHighlights() async {
         guard let url = videoURL else { return }
         await exportService.exportHighlights(

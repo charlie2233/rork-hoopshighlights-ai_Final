@@ -51,7 +51,8 @@ final class VideoAnalysisService {
         progress = 0.15
 
         statusMessage = "Analyzing video frames..."
-        let frameScores = await analyzeFrames(asset: asset, duration: durationSeconds)
+        let samplingFPS = min(max(settings.framesSampledPerSecond, 0.5), 12.0)
+        let frameScores = await analyzeFrames(asset: asset, duration: durationSeconds, framesPerSecond: samplingFPS)
         progress = 0.75
 
         statusMessage = "Detecting highlights..."
@@ -129,9 +130,12 @@ final class VideoAnalysisService {
         return peaks
     }
 
-    private nonisolated func analyzeFrames(asset: AVURLAsset, duration: Double) async -> [FrameScore] {
-        let fps = 3.0
-        let totalFrames = Int(duration * fps)
+    private nonisolated func analyzeFrames(
+        asset: AVURLAsset,
+        duration: Double,
+        framesPerSecond fps: Double
+    ) async -> [FrameScore] {
+        let totalFrames = max(Int(ceil(max(duration, 0) * fps)), 1)
         var scores: [FrameScore] = []
 
         let generator = AVAssetImageGenerator(asset: asset)
@@ -162,8 +166,8 @@ final class VideoAnalysisService {
                 scores.append(frame)
                 previousImage = image
 
-                if i % 10 == 0 {
-                    let progressValue = 0.15 + (Double(i) / Double(totalFrames)) * 0.60
+                if i % 10 == 0 || i == totalFrames - 1 {
+                    let progressValue = 0.15 + (Double(i + 1) / Double(totalFrames)) * 0.60
                     await MainActor.run { self.progress = progressValue }
                 }
             } catch {
