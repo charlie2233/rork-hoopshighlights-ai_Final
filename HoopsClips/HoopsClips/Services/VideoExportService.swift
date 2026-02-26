@@ -40,6 +40,8 @@ final class VideoExportService {
         }
 
         do {
+            let sourceDuration = try await asset.load(.duration)
+            let sourceDurationSeconds = CMTimeGetSeconds(sourceDuration)
             let sourceVideoTracks = try await asset.loadTracks(withMediaType: .video)
             let sourceAudioTracks = try await asset.loadTracks(withMediaType: .audio)
 
@@ -49,12 +51,19 @@ final class VideoExportService {
                 return
             }
 
-            var insertTime = CMTime.zero
+            let sourceTransform = try await sourceVideo.load(.preferredTransform)
+            videoTrack.preferredTransform = sourceTransform
 
-            for (index, clip) in keptClips.enumerated() {
-                let startCM = CMTime(seconds: clip.startTime, preferredTimescale: 600)
-                let endCM = CMTime(seconds: clip.endTime, preferredTimescale: 600)
-                let range = CMTimeRange(start: startCM, end: endCM)
+            let timelineSegments = buildTimelineSegments(from: keptClips, assetDuration: sourceDurationSeconds)
+            guard !timelineSegments.isEmpty else {
+                statusMessage = "No clips to export"
+                isExporting = false
+                return
+            }
+
+            var insertTime = CMTime.zero
+            for (index, segment) in timelineSegments.enumerated() {
+                let range = segment.sourceTimeRange()
 
                 try videoTrack.insertTimeRange(range, of: sourceVideo, at: insertTime)
 
@@ -62,13 +71,13 @@ final class VideoExportService {
                     try audioTrack.insertTimeRange(range, of: sourceAudio, at: insertTime)
                 }
 
-                insertTime = CMTimeAdd(insertTime, CMTimeSubtract(endCM, startCM))
+                insertTime = insertTime + range.duration
 
-                exportProgress = Double(index + 1) / Double(keptClips.count) * 0.5
-                statusMessage = "Adding clip \(index + 1) of \(keptClips.count)..."
+                exportProgress = Double(index + 1) / Double(timelineSegments.count) * 0.5
+                statusMessage = "Adding clip \(index + 1) of \(timelineSegments.count)..."
             }
 
-            statusMessage = "Rendering \(theme.rawValue) export..."
+            statusMessage = "Preparing theme overlays..."
 
             let presetName: String
             switch quality {
@@ -107,6 +116,22 @@ final class VideoExportService {
             exportSession.outputURL = outputURL
             exportSession.outputFileType = outputType
             exportSession.shouldOptimizeForNetworkUse = true
+
+            do {
+                let renderer = ExportThemeRenderer()
+                let themedComposition = try await renderer.makeThemedVideoComposition(
+                    asset: composition,
+                    sourceVideoTrack: sourceVideo,
+                    segments: timelineSegments,
+                    theme: theme,
+                    quality: quality
+                )
+                exportSession.videoComposition = themedComposition
+            } catch {
+                statusMessage = "Theme rendering unavailable, exporting without effects"
+            }
+
+            statusMessage = "Rendering \(theme.rawValue) export..."
 
             let timer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
                 Task { @MainActor in
