@@ -20,6 +20,7 @@ class LocalAdapterTests(unittest.IsolatedAsyncioTestCase):
             host_base_url="http://127.0.0.1:8080",
             cloud_run_base_url="http://127.0.0.1:8080",
             upload_root=self._temp_dir,
+            external_repo_root=self._temp_dir / "external",
             internal_process_secret=None,
             gcp_project_id=None,
             gcp_region="us-central1",
@@ -28,7 +29,13 @@ class LocalAdapterTests(unittest.IsolatedAsyncioTestCase):
             firestore_usage_collection="usageCounters",
             cloud_tasks_queue="analysis-jobs",
             enable_local_upload_emulation=True,
-            daily_quota=3,
+            detection_provider="hybrid",
+            post_ranking_provider="native",
+            hoopcut_repo_path=None,
+            hoopcut_python_bin=None,
+            autohighlight_repo_path=None,
+            autohighlight_python_bin=None,
+            daily_quota=5,
             rolling_quota_hours=24,
             default_poll_after_seconds=2,
             job_ttl_seconds=3600,
@@ -49,6 +56,8 @@ class LocalAdapterTests(unittest.IsolatedAsyncioTestCase):
         shutil.rmtree(self._temp_dir, ignore_errors=True)
 
     async def test_reserve_quota_tracks_rolling_window(self) -> None:
+        self.assertEqual(await self.store.reserve_quota("install-123456"), 4)
+        self.assertEqual(await self.store.reserve_quota("install-123456"), 3)
         self.assertEqual(await self.store.reserve_quota("install-123456"), 2)
         self.assertEqual(await self.store.reserve_quota("install-123456"), 1)
         self.assertEqual(await self.store.reserve_quota("install-123456"), 0)

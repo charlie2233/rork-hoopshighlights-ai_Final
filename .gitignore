@@ -56,3 +56,7 @@ node_modules
 .cursor/
 .idea/
 *.vscode/
+
+# Local backend integrations
+backend/.external/
+backend/.venvs/

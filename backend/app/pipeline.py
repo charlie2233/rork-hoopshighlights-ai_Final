@@ -14,6 +14,7 @@ from typing import List
 
 from .classifier import classify_window, maybe_relabel_with_gemini
 from .config import Settings
+from .external_providers import detect_with_optional_external_provider, rerank_with_optional_external_provider
 from .models import CandidateWindow, CloudAnalysisResult, CloudDiagnostics, PipelineError, StoredJob, clamp
 
 
@@ -29,28 +30,55 @@ def run_analysis(job: StoredJob, settings: Settings, source_path: Path) -> Cloud
     if duration_seconds > settings.max_duration_seconds:
         raise PipelineError("unsupported_duration", "Videos longer than 30 minutes are not supported in cloud analysis right now.")
 
-    shot_boundaries = _detect_shot_boundaries(source_path)
-    audio_profile = _extract_audio_profile(source_path, duration_seconds)
-    windows = _build_candidate_windows(
+    provider_tags: list[str] = []
+    clips, detection_provider = detect_with_optional_external_provider(
+        source_path=source_path,
         duration_seconds=duration_seconds,
-        audio_profile=audio_profile,
-        shot_boundaries=shot_boundaries,
         settings=settings,
     )
+    candidate_segments = len(clips)
 
-    if not windows:
-        windows = [_fallback_window(duration_seconds, audio_profile, settings)]
+    if detection_provider:
+        provider_tags.append(detection_provider)
+    else:
+        shot_boundaries = _detect_shot_boundaries(source_path)
+        audio_profile = _extract_audio_profile(source_path, duration_seconds)
+        windows = _build_candidate_windows(
+            duration_seconds=duration_seconds,
+            audio_profile=audio_profile,
+            shot_boundaries=shot_boundaries,
+            settings=settings,
+        )
 
-    clips = [classify_window(window) for window in windows[: settings.max_returned_clips]]
+        if not windows:
+            windows = [_fallback_window(duration_seconds, audio_profile, settings)]
+
+        candidate_segments = len(windows)
+        clips = [classify_window(window) for window in windows[: settings.max_returned_clips]]
+
+    clips, ranking_provider = rerank_with_optional_external_provider(
+        clips=clips,
+        source_path=source_path,
+        settings=settings,
+    )
+    if ranking_provider:
+        provider_tags.append(ranking_provider)
+
     clips, used_gemini = maybe_relabel_with_gemini(clips, settings.use_gemini_relabeling)
 
     elapsed_ms = int((perf_counter() - started_at) * 1000)
+    model_version = settings.backend_model_version
+    if provider_tags:
+        model_version = "{base}+{providers}".format(
+            base=model_version,
+            providers="+".join(provider_tags),
+        )
     diagnostics = CloudDiagnostics(
         processingMs=max(elapsed_ms, 1),
-        backendModelVersion=settings.backend_model_version,
+        backendModelVersion=model_version,
         usedVideoIntelligence=False,
         usedGeminiRelabeling=used_gemini,
-        candidateSegments=len(windows),
+        candidateSegments=candidate_segments,
         finalSegments=len(clips),
     )
 

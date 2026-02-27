@@ -34,6 +34,32 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8080
 ```
 
+## Optional external model integrations
+The backend can now call two repo-backed adapters without changing the iOS API contract:
+
+- `HoopCut_FH` for basketball shot detection / preprocessing
+- `autohighlight` for optional post-ranking of detected clips
+
+Those repos are not vendored into this repository. Keep them in ignored local directories and wire them in through environment variables:
+
+```bash
+cd /Users/hanfei/rork-hoopshighlights-ai_Final/backend
+./scripts/setup_external_backends.sh --with-venvs
+```
+
+That script clones:
+
+- `/Users/hanfei/rork-hoopshighlights-ai_Final/backend/.external/HoopCut_FH`
+- `/Users/hanfei/rork-hoopshighlights-ai_Final/backend/.external/autohighlight`
+
+Then you can selectively install dependencies into isolated virtualenvs:
+
+```bash
+./scripts/setup_external_backends.sh --install-hoopcut
+```
+
+`autohighlight` is optional and intentionally not auto-installed by default because its TensorFlow 1.x stack is legacy and may require a dedicated Python environment.
+
 ## Environment
 - `HOOPS_ENVIRONMENT`: `local`, `staging`, or `production` (default `local`)
 - `HOOPS_PUBLIC_BASE_URL`: base URL returned in local signed-upload URLs (default `http://127.0.0.1:8080`)
@@ -47,6 +73,13 @@ uvicorn app.main:app --reload --host 127.0.0.1 --port 8080
 - `HOOPS_FIRESTORE_USAGE_COLLECTION`: Firestore collection for usage counters (default `usageCounters`)
 - `HOOPS_CLOUD_TASKS_QUEUE`: Cloud Tasks queue name (default `analysis-jobs`)
 - `HOOPS_ENABLE_LOCAL_UPLOAD_EMULATION`: force-enable or disable the local upload emulator
+- `HOOPS_EXTERNAL_REPO_ROOT`: default root for ignored external repo clones (default `backend/.external`)
+- `HOOPS_DETECTION_PROVIDER`: `heuristic`, `hybrid`, or `hoopcut` (default `hybrid`)
+- `HOOPS_POST_RANKING_PROVIDER`: `native` or `autohighlight` (default `native`)
+- `HOOPS_HOOPCUT_REPO_PATH`: explicit HoopCut checkout path
+- `HOOPS_HOOPCUT_PYTHON`: Python executable for the HoopCut virtualenv
+- `HOOPS_AUTOHIGHLIGHT_REPO_PATH`: explicit autohighlight checkout path
+- `HOOPS_AUTOHIGHLIGHT_PYTHON`: Python executable for the autohighlight virtualenv
 - `HOOPS_DAILY_QUOTA`: per-install rolling quota (default `3`)
 - `HOOPS_MAX_DURATION_SECONDS`: max backend video duration (default `1800`)
 - `HOOPS_MAX_FILE_SIZE_BYTES`: max video size for v1 (default `524288000`)
@@ -55,6 +88,8 @@ uvicorn app.main:app --reload --host 127.0.0.1 --port 8080
 
 ## Processing semantics
 - The pipeline still normalizes clips the same way and preserves the current client schema.
+- `hybrid` detection will try the external HoopCut adapter first and fall back to the built-in heuristic pipeline if the repo or its dependencies are unavailable.
+- `autohighlight` post-ranking is optional and only runs when the repo path and dedicated Python runtime are configured.
 - Managed mode downloads the source object from GCS into ephemeral local disk before analysis.
 - Temporary local analysis files are deleted after each run.
 - Source objects are deleted after terminal job states (`succeeded`, `failed`, `expired`).
