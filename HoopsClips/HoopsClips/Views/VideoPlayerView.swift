@@ -88,7 +88,11 @@ struct VideoPlayerView: View {
             .alert("No Highlights Found", isPresented: $showingNoClipsAlert) {
                 Button("OK", role: .cancel) { }
             } message: {
-                Text("AI couldn't detect any visual highlights, even after refining. If the video has audio, we tried to extract loud moments.")
+                if viewModel.isCloudFallbackOffered {
+                    Text("Cloud analysis and local fallback both finished without finding enough confident highlights in this clip.")
+                } else {
+                    Text("AI couldn't detect enough confident highlights in this video.")
+                }
             }
         }
     }
@@ -255,17 +259,15 @@ struct VideoPlayerView: View {
             } else if !viewModel.clips.isEmpty {
                 analysisCompleteView
             } else {
-                if !subscriptionManager.isProUser {
+                if !subscriptionManager.isProUser || viewModel.cloudQuotaRemaining != nil {
                     HStack(spacing: 8) {
                         Image(systemName: "sparkles")
                             .foregroundStyle(AppTheme.warningYellow)
-                        Text(subscriptionManager.freeUsesRemaining > 0
-                            ? "\(subscriptionManager.freeUsesRemaining) free analysis\(subscriptionManager.freeUsesRemaining == 1 ? "" : "es") remaining"
-                            : "Subscribe to analyze videos")
+                        Text(analysisBannerText)
                             .font(.caption.weight(.medium))
-                            .foregroundStyle(subscriptionManager.freeUsesRemaining > 0 ? AppTheme.warningYellow : AppTheme.dangerRed)
+                            .foregroundStyle(AppTheme.warningYellow)
                         Spacer()
-                        if subscriptionManager.freeUsesRemaining == 0 {
+                        if subscriptionManager.freeUsesRemaining == 0 && subscriptionManager.isProUser == false {
                             Button("Go Pro") { showingPaywall = true }
                                 .font(.caption.bold())
                                 .foregroundStyle(AppTheme.neonPurple)
@@ -276,17 +278,12 @@ struct VideoPlayerView: View {
                 }
 
                 Button {
-                    if subscriptionManager.canAnalyze {
-                        subscriptionManager.consumeFreeUse()
-                        analysisStarted = true
-                        Task {
-                            await viewModel.startAnalysis()
-                            if viewModel.clips.isEmpty {
-                                showingNoClipsAlert = true
-                            }
+                    analysisStarted = true
+                    Task {
+                        await viewModel.startAnalysis()
+                        if viewModel.clips.isEmpty {
+                            showingNoClipsAlert = true
                         }
-                    } else {
-                        showingPaywall = true
                     }
                 } label: {
                     HStack(spacing: 12) {
@@ -295,7 +292,7 @@ struct VideoPlayerView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Analyze with AI")
                                 .font(.headline)
-                            Text("Detect dunks, layups, steals & more")
+                            Text("Cloud-first, slower, and much more accurate")
                                 .font(.caption)
                                 .opacity(0.7)
                         }
@@ -307,7 +304,6 @@ struct VideoPlayerView: View {
                     .background(AppTheme.purpleGradient, in: .rect(cornerRadius: 16))
                 }
                 .sensoryFeedback(.impact(weight: .medium), trigger: analysisStarted)
-                .disabled(!subscriptionManager.canAnalyze && !subscriptionManager.isProUser)
 
                 estimatedTimeView
             }
@@ -322,7 +318,7 @@ struct VideoPlayerView: View {
                 Image(systemName: "brain.head.profile.fill")
                     .foregroundStyle(AppTheme.neonPurple)
                     .symbolEffect(.variableColor.iterative, isActive: true)
-                Text(viewModel.analysisService.statusMessage == "Refining detection..." ? "Refining..." : "Analyzing...")
+                Text(analysisProgressTitle)
                     .font(.headline)
                     .foregroundStyle(.white)
                 Spacer()
@@ -380,8 +376,8 @@ struct VideoPlayerView: View {
         HStack(spacing: 8) {
             Image(systemName: "timer")
                 .foregroundStyle(AppTheme.subtleText)
-            let estimatedSeconds = Int(viewModel.videoDuration * 0.3)
-            Text("Estimated: ~\(max(estimatedSeconds, 5))s")
+            let estimatedSeconds = Int(max(viewModel.videoDuration * 0.42, 12))
+            Text("Estimated: ~\(estimatedSeconds)s cloud analysis")
                 .font(.caption)
                 .foregroundStyle(AppTheme.subtleText)
             Spacer()
@@ -422,5 +418,38 @@ struct VideoPlayerView: View {
         let mins = Int(seconds) / 60
         let secs = Int(seconds) % 60
         return String(format: "%d:%02d", mins, secs)
+    }
+
+    private var analysisBannerText: String {
+        if let remaining = viewModel.cloudQuotaRemaining {
+            if remaining > 0 {
+                return "Cloud AI quota remaining today: \(remaining)"
+            }
+            return "Cloud AI quota is exhausted today. Local fallback still runs when possible."
+        }
+        return "Cloud AI runs slower, but it targets much better highlight accuracy."
+    }
+
+    private var analysisProgressTitle: String {
+        let status = viewModel.analysisService.statusMessage.lowercased()
+        if status.contains("upload") {
+            return "Uploading..."
+        }
+        if status.contains("queued") {
+            return "Queued..."
+        }
+        if status.contains("cloud") {
+            return "Cloud Analyzing..."
+        }
+        if status.contains("local analysis") {
+            return "Fallback..."
+        }
+        if status.contains("finalizing") {
+            return "Finalizing..."
+        }
+        if status.contains("refining") {
+            return "Refining..."
+        }
+        return "Analyzing..."
     }
 }

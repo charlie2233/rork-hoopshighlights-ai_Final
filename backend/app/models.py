@@ -1,0 +1,191 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from datetime import datetime
+from enum import Enum
+from typing import Any, Optional
+
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class APIModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class JobStatus(str, Enum):
+    CREATED = "created"
+    QUEUED = "queued"
+    PROCESSING = "processing"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    EXPIRED = "expired"
+
+
+class CreateCloudAnalysisJobRequest(APIModel):
+    filename: str = Field(min_length=1, max_length=255)
+    contentType: str = Field(min_length=1, max_length=120)
+    fileSizeBytes: int = Field(gt=0)
+    durationSeconds: float = Field(gt=0.0)
+    installId: str = Field(min_length=8, max_length=128)
+    appVersion: str = Field(min_length=1, max_length=64)
+    analysisVersion: str = Field(min_length=1, max_length=64)
+
+
+class CreateCloudAnalysisJobResponse(APIModel):
+    jobId: str
+    uploadUrl: str
+    uploadMethod: str = "PUT"
+    uploadHeaders: dict[str, str]
+    expiresAt: datetime
+    pollAfterSeconds: int
+    quotaRemainingToday: int
+    analysisMode: str = "cloud"
+
+
+class StartCloudAnalysisJobRequest(APIModel):
+    installId: str = Field(min_length=8, max_length=128)
+
+
+class StartCloudAnalysisJobResponse(APIModel):
+    jobId: str
+    status: str
+
+
+class CloudClip(APIModel):
+    startTime: float
+    endTime: float
+    confidence: float
+    label: str
+    action: str
+    audioScore: float
+    visualScore: float
+    motionScore: float
+    combinedScore: float
+    detectionMethod: str = "cloud"
+    shouldAutoKeep: bool
+    shouldEnableSlowMotion: bool
+
+
+class CloudDiagnostics(APIModel):
+    processingMs: int
+    backendModelVersion: str
+    usedVideoIntelligence: bool
+    usedGeminiRelabeling: bool
+    candidateSegments: int
+    finalSegments: int
+
+
+class CloudAnalysisResult(APIModel):
+    clipCount: int
+    clips: list[CloudClip]
+    diagnostics: CloudDiagnostics
+
+
+class CloudAnalysisJobResponse(APIModel):
+    jobId: str
+    status: str
+    progress: float
+    stage: str
+    errorCode: Optional[str] = None
+    errorMessage: Optional[str] = None
+    analysisVersion: str
+    results: Optional[CloudAnalysisResult] = None
+
+
+class ErrorResponse(APIModel):
+    errorCode: str
+    errorMessage: str
+    quotaRemainingToday: Optional[int] = None
+
+
+@dataclass(frozen=True)
+class PreparedUpload:
+    object_key: str
+    upload_url: str
+    upload_headers: dict[str, str]
+
+
+@dataclass
+class CandidateWindow:
+    start_time: float
+    end_time: float
+    peak_time: float
+    audio_score: float
+    visual_score: float
+    motion_score: float
+    combined_score: float
+
+
+@dataclass
+class StoredJob:
+    job_id: str
+    install_id: str
+    filename: str
+    content_type: str
+    file_size_bytes: int
+    duration_seconds: float
+    app_version: str
+    analysis_version: str
+    created_at: datetime
+    expires_at: datetime
+    object_key: str
+    upload_headers: dict[str, str] = field(default_factory=dict)
+    status: JobStatus = JobStatus.CREATED
+    progress: float = 0.0
+    stage: str = "Preparing upload"
+    error_code: Optional[str] = None
+    error_message: Optional[str] = None
+    results: Optional[CloudAnalysisResult] = None
+    storage_path: Optional[str] = None
+    quota_remaining_today: int = 0
+
+    def to_job_response(self) -> CloudAnalysisJobResponse:
+        return CloudAnalysisJobResponse(
+            jobId=self.job_id,
+            status=self.status.value,
+            progress=round(self.progress, 4),
+            stage=self.stage,
+            errorCode=self.error_code,
+            errorMessage=self.error_message,
+            analysisVersion=self.analysis_version,
+            results=self.results,
+        )
+
+
+class APIError(Exception):
+    def __init__(
+        self,
+        status_code: int,
+        error_code: str,
+        error_message: str,
+        quota_remaining_today: Optional[int] = None,
+    ) -> None:
+        super().__init__(error_message)
+        self.status_code = status_code
+        self.error_code = error_code
+        self.error_message = error_message
+        self.quota_remaining_today = quota_remaining_today
+
+    def to_response(self) -> ErrorResponse:
+        return ErrorResponse(
+            errorCode=self.error_code,
+            errorMessage=self.error_message,
+            quotaRemainingToday=self.quota_remaining_today,
+        )
+
+
+class PipelineError(Exception):
+    def __init__(self, error_code: str, error_message: str) -> None:
+        super().__init__(error_message)
+        self.error_code = error_code
+        self.error_message = error_message
+
+
+def clamp(value: float, lower: float, upper: float) -> float:
+    return max(lower, min(upper, value))
+
+
+def now_utc() -> datetime:
+    from datetime import timezone
+
+    return datetime.now(tz=timezone.utc)

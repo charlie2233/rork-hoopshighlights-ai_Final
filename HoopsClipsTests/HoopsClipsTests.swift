@@ -169,4 +169,78 @@ struct HoopsClipsTests {
         #expect(winner == "Dunk")
     }
 
+    @Test func testCloudClipMappingPreservesCloudMetadata() {
+        let cloudClip = CloudClip(
+            startTime: 12.5,
+            endTime: 17.0,
+            confidence: 0.91,
+            label: "Dunk",
+            action: "Dunk",
+            audioScore: 0.8,
+            visualScore: 0.7,
+            motionScore: 0.9,
+            combinedScore: 0.86,
+            detectionMethod: "Cloud",
+            shouldAutoKeep: true,
+            shouldEnableSlowMotion: true
+        )
+
+        let mapped = cloudClip.makeClip()
+
+        #expect(mapped.action == .dunk)
+        #expect(mapped.detectionMethod == .cloud)
+        #expect(mapped.isKept)
+        #expect(mapped.isSlowMotionEnabled)
+        #expect(abs(mapped.duration - 4.5) < 0.001)
+    }
+
+    @Test func testCloudJobResponseDecodesNestedResults() throws {
+        let payload = """
+        {
+          "jobId": "job-123",
+          "status": "succeeded",
+          "progress": 1.0,
+          "stage": "Finalizing clips",
+          "errorCode": null,
+          "errorMessage": null,
+          "analysisVersion": "v1",
+          "results": {
+            "clipCount": 1,
+            "clips": [
+              {
+                "startTime": 1.2,
+                "endTime": 4.6,
+                "confidence": 0.88,
+                "label": "Three Pointer",
+                "action": "Three Pointer",
+                "audioScore": 0.7,
+                "visualScore": 0.6,
+                "motionScore": 0.65,
+                "combinedScore": 0.74,
+                "detectionMethod": "cloud",
+                "shouldAutoKeep": true,
+                "shouldEnableSlowMotion": false
+              }
+            ],
+            "diagnostics": {
+              "processingMs": 18250,
+              "backendModelVersion": "cloud-v1",
+              "usedVideoIntelligence": false,
+              "usedGeminiRelabeling": false,
+              "candidateSegments": 4,
+              "finalSegments": 1
+            }
+          }
+        }
+        """
+
+        let decoder = JSONDecoder()
+        let response = try decoder.decode(CloudAnalysisJobResponse.self, from: Data(payload.utf8))
+
+        #expect(response.status == "succeeded")
+        #expect(response.results?.clipCount == 1)
+        #expect(response.results?.clips.first?.label == "Three Pointer")
+        #expect(response.results?.diagnostics.backendModelVersion == "cloud-v1")
+    }
+
 }

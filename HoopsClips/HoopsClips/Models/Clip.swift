@@ -76,6 +76,7 @@ nonisolated enum ConfidenceLevel: String, Codable, Sendable {
 
 nonisolated enum DetectionMethod: String, Codable, Sendable {
     case ml = "AI"
+    case cloud = "Cloud"
     case heuristic = "Rule"
     case manual = "Manual"
 }

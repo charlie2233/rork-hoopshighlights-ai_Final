@@ -7,6 +7,7 @@ import SwiftUI
 @MainActor
 final class HighlightsViewModel {
     private let settingsDefaultsKey = "hoopsclips.analysisSettings.v1"
+    private let installIDDefaultsKey = "hoopsclips.installID.v1"
 
     var videoURL: URL?
     var videoDuration: Double = 0
@@ -14,6 +15,7 @@ final class HighlightsViewModel {
     var isVideoLoaded = false
 
     var analysisService = VideoAnalysisService()
+    var cloudAnalysisService = CloudAnalysisService()
     var exportService = VideoExportService()
 
     var selectedTheme: ExportTheme = .cinematic
@@ -21,6 +23,7 @@ final class HighlightsViewModel {
     var selectedQuality: ExportQuality = .high
     var selectedFormat: ExportFileFormat = .mp4
     var customAudioURL: URL?
+    let installID: String
     var settings: AnalysisSettings {
         didSet { persistSettings() }
     }
@@ -33,8 +36,23 @@ final class HighlightsViewModel {
     var showingVideoPicker = false
     var showingExportComplete = false
     var showingSaveSuccess = false
+    var analysisMode: AnalysisExecutionMode = .cloud
+    var cloudQuotaRemaining: Int?
+    var isCloudFallbackOffered = false
 
     init() {
+        let existingInstallID = UserDefaults.standard.string(forKey: installIDDefaultsKey)
+        let resolvedInstallID: String
+        if let existingInstallID, !existingInstallID.isEmpty {
+            resolvedInstallID = existingInstallID
+        } else {
+            resolvedInstallID = UUID().uuidString
+        }
+        installID = resolvedInstallID
+        if existingInstallID != resolvedInstallID {
+            UserDefaults.standard.set(resolvedInstallID, forKey: installIDDefaultsKey)
+        }
+
         if let data = UserDefaults.standard.data(forKey: settingsDefaultsKey),
            let decoded = try? JSONDecoder().decode(AnalysisSettings.self, from: data) {
             settings = decoded
@@ -84,7 +102,31 @@ final class HighlightsViewModel {
 
     func startAnalysis() async {
         guard let url = videoURL else { return }
-        await analysisService.analyze(url: url, settings: settings)
+        analysisMode = .cloud
+        isCloudFallbackOffered = false
+        analysisService.beginExternalAnalysis(status: "Preparing upload")
+
+        do {
+            let result = try await cloudAnalysisService.analyzeVideo(
+                url: url,
+                duration: videoDuration,
+                installID: installID
+            ) { [weak service = analysisService] progress, status in
+                service?.updateExternalAnalysis(progress: progress, status: status)
+            }
+            cloudQuotaRemaining = nil
+            analysisService.applyCloudAnalysis(result)
+        } catch let error as CloudAnalysisError {
+            switch error {
+            case .quotaExceeded(let remaining):
+                cloudQuotaRemaining = remaining
+            default:
+                break
+            }
+            await fallbackToLocalAnalysis(from: error)
+        } catch {
+            await fallbackToLocalAnalysis(from: CloudAnalysisError.network(error.localizedDescription))
+        }
     }
 
     func toggleClip(_ clip: Clip) {
@@ -176,5 +218,36 @@ final class HighlightsViewModel {
     private func persistSettings() {
         guard let data = try? JSONEncoder().encode(settings) else { return }
         UserDefaults.standard.set(data, forKey: settingsDefaultsKey)
+    }
+
+    private func fallbackToLocalAnalysis(from error: CloudAnalysisError) async {
+        let hardFailureCodes: Set<String> = ["unsupported_duration", "file_too_large"]
+        if case .notConfigured = error {
+            analysisMode = .localFallback
+            isCloudFallbackOffered = false
+            guard let url = videoURL else {
+                analysisService.finishExternalAnalysis(with: error.localizedDescription)
+                return
+            }
+            analysisService.updateExternalAnalysis(progress: 0.0, status: "Analyzing on device")
+            await analysisService.analyze(url: url, settings: settings)
+            return
+        }
+
+        if case .backend(let code, let message) = error, hardFailureCodes.contains(code) {
+            analysisMode = .cloud
+            analysisService.finishExternalAnalysis(with: message)
+            isCloudFallbackOffered = false
+            return
+        }
+
+        analysisMode = .localFallback
+        isCloudFallbackOffered = true
+        analysisService.updateExternalAnalysis(progress: 0.0, status: "Falling back to local analysis")
+        guard let url = videoURL else {
+            analysisService.finishExternalAnalysis(with: error.localizedDescription)
+            return
+        }
+        await analysisService.analyze(url: url, settings: settings)
     }
 }
