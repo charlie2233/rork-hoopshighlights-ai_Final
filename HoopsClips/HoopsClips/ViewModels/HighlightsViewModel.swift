@@ -9,8 +9,17 @@ import UIKit
 final class HighlightsViewModel {
     private let settingsDefaultsKey = "hoopsclips.analysisSettings.v1"
     private let installIDDefaultsKey = "hoopsclips.installID.v1"
+    private let maxProjectCount = 20
+    private let maxProjectEventCount = 50
     private var backgroundTaskID: UIBackgroundTaskIdentifier = .invalid
+    private let projectStore: ProjectHistoryStore
+    private var projectLibrary: PersistedProjectLibrary
+    private var suppressProjectPersistence = false
+    private var lastAnalysisStatusSummary: String?
+    private var lastAnalyzedAt: Date?
+    private var lastExportedAt: Date?
 
+    var currentProjectID: UUID?
     var videoURL: URL?
     var videoDuration: Double = 0
     var videoThumbnail: CGImage?
@@ -20,11 +29,21 @@ final class HighlightsViewModel {
     var cloudAnalysisService = CloudAnalysisService()
     var exportService = VideoExportService()
 
-    var selectedTheme: ExportTheme = .cinematic
-    var selectedMusic: MusicTrack = .none
-    var selectedQuality: ExportQuality = .high
-    var selectedFormat: ExportFileFormat = .mp4
-    var exportPostProcessing = ExportPostProcessingOptions()
+    var selectedTheme: ExportTheme = .cinematic {
+        didSet { persistCurrentProject() }
+    }
+    var selectedMusic: MusicTrack = .none {
+        didSet { persistCurrentProject() }
+    }
+    var selectedQuality: ExportQuality = .high {
+        didSet { persistCurrentProject() }
+    }
+    var selectedFormat: ExportFileFormat = .mp4 {
+        didSet { persistCurrentProject() }
+    }
+    var exportPostProcessing = ExportPostProcessingOptions() {
+        didSet { persistCurrentProject() }
+    }
     var customAudioURL: URL?
     let installID: String
     var settings: AnalysisSettings {
@@ -41,6 +60,24 @@ final class HighlightsViewModel {
     var analysisMode: AnalysisExecutionMode = .cloud
     var cloudQuotaRemaining: Int?
     var isCloudFallbackOffered = false
+
+    var historyProjects: [PersistedProjectRecord] {
+        projectLibrary.projects.sorted { lhs, rhs in
+            if lhs.lastOpenedAt != rhs.lastOpenedAt {
+                return lhs.lastOpenedAt > rhs.lastOpenedAt
+            }
+            return lhs.updatedAt > rhs.updatedAt
+        }
+    }
+
+    var currentProjectRecord: PersistedProjectRecord? {
+        guard let currentProjectID else { return nil }
+        return projectLibrary.projects.first(where: { $0.id == currentProjectID })
+    }
+
+    var pastProjectRecords: [PersistedProjectRecord] {
+        historyProjects.filter { $0.id != currentProjectID }
+    }
 
     init() {
         let existingInstallID = UserDefaults.standard.string(forKey: installIDDefaultsKey)
@@ -61,45 +98,30 @@ final class HighlightsViewModel {
         } else {
             settings = AnalysisSettings()
         }
+
+        let store = ProjectHistoryStore()
+        projectStore = store
+        projectLibrary = (try? store.loadLibrary()) ?? .empty
+        currentProjectID = projectLibrary.currentProjectID
+
+        repairBrokenProjectReferences()
+        restoreCurrentProjectIfAvailable()
     }
 
     func loadVideo(url: URL) async {
         let accessing = url.startAccessingSecurityScopedResource()
         defer { if accessing { url.stopAccessingSecurityScopedResource() } }
 
-        let sourceURL = url.standardizedFileURL
-        let tempURL = URL.temporaryDirectory.appending(path: sourceURL.lastPathComponent).standardizedFileURL
-        let workingURL: URL
+        persistCurrentProject()
 
-        if sourceURL == tempURL {
-            // Already in app temp location (for example PhotosPicker data import); no copy needed.
-            workingURL = sourceURL
-        } else {
-            try? FileManager.default.removeItem(at: tempURL)
-            do {
-                try FileManager.default.copyItem(at: sourceURL, to: tempURL)
-                workingURL = tempURL
-            } catch {
-                print("Failed to copy video: \(error.localizedDescription)")
-                return
-            }
+        do {
+            let project = try await projectStore.createProjectFromImportedVideo(sourceURL: url.standardizedFileURL)
+            insertProject(project, makeCurrent: true)
+            applyPersistedProject(project)
+            persistCurrentProject(reason: .imported, message: "Imported \(project.sourceFilename)")
+        } catch {
+            print("Failed to load video: \(error.localizedDescription)")
         }
-
-        videoURL = workingURL
-        let asset = AVURLAsset(url: workingURL)
-
-        if let duration = try? await asset.load(.duration) {
-            videoDuration = CMTimeGetSeconds(duration)
-        }
-
-        let generator = AVAssetImageGenerator(asset: asset)
-        generator.appliesPreferredTrackTransform = true
-        generator.maximumSize = CGSize(width: 400, height: 225)
-        if let (image, _) = try? await generator.image(at: .zero) {
-            videoThumbnail = image
-        }
-
-        isVideoLoaded = true
     }
 
     func startAnalysis() async {
@@ -128,6 +150,7 @@ final class HighlightsViewModel {
                 clipsCount: analysisService.clips.count,
                 usedFallback: false
             )
+            recordAnalysisCompleted()
         } catch let error as CloudAnalysisError {
             switch error {
             case .quotaExceeded(let remaining):
@@ -144,49 +167,56 @@ final class HighlightsViewModel {
     func toggleClip(_ clip: Clip) {
         guard let index = analysisService.clips.firstIndex(where: { $0.id == clip.id }) else { return }
         analysisService.clips[index].isKept.toggle()
+        persistCurrentProject()
     }
 
     func toggleSlowMotion(_ clip: Clip) {
         guard let index = analysisService.clips.firstIndex(where: { $0.id == clip.id }) else { return }
         analysisService.clips[index].isSlowMotionEnabled.toggle()
+        persistCurrentProject()
     }
 
     func keepAllClips() {
-        for i in analysisService.clips.indices {
-            analysisService.clips[i].isKept = true
+        for index in analysisService.clips.indices {
+            analysisService.clips[index].isKept = true
         }
+        persistCurrentProject()
     }
 
     func discardAllClips() {
-        for i in analysisService.clips.indices {
-            analysisService.clips[i].isKept = false
+        for index in analysisService.clips.indices {
+            analysisService.clips[index].isKept = false
         }
+        persistCurrentProject()
     }
 
     func keepHighConfidenceClips() {
-        for i in analysisService.clips.indices where analysisService.clips[i].confidence >= 0.8 {
-            analysisService.clips[i].isKept = true
+        for index in analysisService.clips.indices where analysisService.clips[index].confidence >= 0.8 {
+            analysisService.clips[index].isKept = true
         }
+        persistCurrentProject()
     }
 
     func discardLowConfidenceClips() {
-        for i in analysisService.clips.indices where analysisService.clips[i].confidence < 0.5 {
-            analysisService.clips[i].isKept = false
+        for index in analysisService.clips.indices where analysisService.clips[index].confidence < 0.5 {
+            analysisService.clips[index].isKept = false
         }
+        persistCurrentProject()
     }
 
     func selectCustomAudio(url: URL) {
         let accessing = url.startAccessingSecurityScopedResource()
         defer { if accessing { url.stopAccessingSecurityScopedResource() } }
-        
-        let tempURL = URL.temporaryDirectory.appending(path: "custom_audio_" + url.lastPathComponent)
-        try? FileManager.default.removeItem(at: tempURL)
+
+        guard let currentProjectID else { return }
+
         do {
-            try FileManager.default.copyItem(at: url, to: tempURL)
-            customAudioURL = tempURL
+            let project = try projectStore.attachCustomAudio(for: currentProjectID, from: url.standardizedFileURL)
+            refreshProjectLibrarySnapshot()
+            customAudioURL = projectStore.existingURL(for: project.customAudioRelativePath)
             selectedMusic = .custom
         } catch {
-            print("Failed to copy audio: \(error)")
+            print("Failed to save custom audio: \(error.localizedDescription)")
         }
     }
 
@@ -203,6 +233,26 @@ final class HighlightsViewModel {
             format: selectedFormat,
             postProcessing: exportPostProcessing
         )
+
+        guard let currentProjectID,
+              let tempExportURL = exportService.exportedURL else {
+            return
+        }
+
+        do {
+            let project = try projectStore.attachLatestExport(
+                for: currentProjectID,
+                from: tempExportURL,
+                preferredExtension: tempExportURL.pathExtension.isEmpty ? selectedFormat.fileExtension : tempExportURL.pathExtension
+            )
+            refreshProjectLibrarySnapshot()
+            exportService.exportedURL = projectStore.existingURL(for: project.latestExportRelativePath)
+            lastExportedAt = Date()
+            let exportName = project.latestExportFilename ?? "highlight reel"
+            persistCurrentProject(reason: .exportCompleted, message: "Exported \(exportName)")
+        } catch {
+            print("Failed to persist export: \(error.localizedDescription)")
+        }
     }
 
     func saveToPhotos() async {
@@ -210,23 +260,292 @@ final class HighlightsViewModel {
         let success = await exportService.saveToPhotos(url: url)
         if success {
             showingSaveSuccess = true
+            persistCurrentProject(reason: .saveToPhotos, message: "Saved the latest export to Photos")
         }
     }
 
     func resetProject() {
-        videoURL = nil
-        videoDuration = 0
-        videoThumbnail = nil
-        isVideoLoaded = false
-        analysisService.clips = []
-        analysisService.progress = 0
-        analysisService.statusMessage = ""
-        exportService.exportedURL = nil
-        exportService.exportProgress = 0
+        persistCurrentProject()
+        currentProjectID = nil
+        projectLibrary.currentProjectID = nil
+        saveProjectLibrary()
+        clearLiveProjectState()
+    }
+
+    func openProject(id: UUID) {
+        guard let project = projectLibrary.projects.first(where: { $0.id == id }),
+              projectSourceURL(for: project) != nil else {
+            return
+        }
+
+        applyPersistedProject(project)
+        persistCurrentProject(reason: .reopened, message: "Reopened \(project.displayTitle)")
+    }
+
+    func deleteProject(id: UUID) {
+        let wasCurrentProject = currentProjectID == id
+
+        do {
+            try projectStore.deleteProject(id: id)
+            refreshProjectLibrarySnapshot()
+        } catch {
+            print("Failed to delete project: \(error.localizedDescription)")
+            projectLibrary.projects.removeAll { $0.id == id }
+        }
+
+        if wasCurrentProject {
+            currentProjectID = nil
+            projectLibrary.currentProjectID = nil
+            clearLiveProjectState()
+            saveProjectLibrary()
+        }
+    }
+
+    func projectSourceURL(for project: PersistedProjectRecord) -> URL? {
+        projectStore.existingURL(for: project.sourceRelativePath)
+    }
+
+    func projectLatestExportURL(for project: PersistedProjectRecord) -> URL? {
+        projectStore.existingURL(for: project.latestExportRelativePath)
+    }
+
+    func projectThumbnailImage(for project: PersistedProjectRecord) -> UIImage? {
+        return projectStore.thumbnailImage(for: project)
+    }
+
+    func canOpenProject(_ project: PersistedProjectRecord) -> Bool {
+        projectSourceURL(for: project) != nil
     }
 
     private func applyDefaultRedundantClipSuppression() {
         analysisService.clips = defaultRedundantClipSuppressedClips(from: analysisService.clips)
+    }
+
+    private func recordAnalysisCompleted() {
+        lastAnalyzedAt = Date()
+        lastAnalysisStatusSummary = analysisService.statusMessage
+        let count = analysisService.clips.count
+        let message = "Analysis found \(count) highlight" + (count == 1 ? "" : "s")
+        persistCurrentProject(reason: .analysisCompleted, message: message)
+    }
+
+    private func recordAnalysisFailure(message: String) {
+        lastAnalysisStatusSummary = message
+        persistCurrentProject(reason: .analysisFailed, message: message)
+    }
+
+    private func persistCurrentProject(reason: ProjectEventKind? = nil, message: String? = nil) {
+        guard !suppressProjectPersistence,
+              let currentProjectID,
+              let projectIndex = projectLibrary.projects.firstIndex(where: { $0.id == currentProjectID }) else {
+            return
+        }
+
+        let now = Date()
+        var project = projectLibrary.projects[projectIndex]
+        project.updatedAt = now
+        project.lastOpenedAt = now
+        project.sourceDuration = videoDuration > 0 ? videoDuration : project.sourceDuration
+        project.totalClipCount = analysisService.clips.count
+        project.keptClipCount = keptClips.count
+        project.clips = analysisService.clips
+        project.selectedTheme = selectedTheme
+        project.selectedMusic = selectedMusic
+        project.selectedQuality = selectedQuality
+        project.selectedFormat = selectedFormat
+        project.exportPostProcessing = exportPostProcessing
+        project.analysisMode = analysisMode
+        project.analysisStatusSummary = lastAnalysisStatusSummary
+        project.lastAnalyzedAt = lastAnalyzedAt
+        project.lastExportedAt = lastExportedAt
+
+        if let customAudioRelativePath = projectStore.managedRelativePath(for: customAudioURL) {
+            project.customAudioRelativePath = customAudioRelativePath
+        }
+
+        if let latestExportRelativePath = projectStore.managedRelativePath(for: exportService.exportedURL) {
+            project.latestExportRelativePath = latestExportRelativePath
+            project.latestExportFilename = exportService.exportedURL?.lastPathComponent
+        }
+
+        if let reason, let message {
+            project.appendEvent(kind: reason, message: message, limit: maxProjectEventCount)
+        }
+
+        projectLibrary.projects[projectIndex] = project
+        projectLibrary.currentProjectID = currentProjectID
+        saveProjectLibrary()
+    }
+
+    private func restoreCurrentProjectIfAvailable() {
+        guard let currentProjectID = projectLibrary.currentProjectID,
+              let project = projectLibrary.projects.first(where: { $0.id == currentProjectID }),
+              projectSourceURL(for: project) != nil else {
+            self.currentProjectID = nil
+            projectLibrary.currentProjectID = nil
+            saveProjectLibrary()
+            return
+        }
+
+        applyPersistedProject(project)
+    }
+
+    private func applyPersistedProject(_ project: PersistedProjectRecord) {
+        suppressProjectPersistence = true
+        defer { suppressProjectPersistence = false }
+
+        currentProjectID = project.id
+        projectLibrary.currentProjectID = project.id
+        videoURL = projectStore.existingURL(for: project.sourceRelativePath)
+        videoDuration = project.sourceDuration
+        videoThumbnail = projectThumbnailImage(for: project)?.cgImage
+        isVideoLoaded = videoURL != nil
+
+        analysisService.isAnalyzing = false
+        analysisService.progress = 0
+        analysisService.clips = project.clips
+        analysisService.lastRunDiagnostics = nil
+        analysisService.statusMessage = project.analysisStatusSummary
+            ?? (project.clips.isEmpty ? "" : "Found \(project.clips.count) highlight\(project.clips.count == 1 ? "" : "s")")
+
+        exportService.isExporting = false
+        exportService.exportProgress = 0
+        exportService.exportedURL = projectStore.existingURL(for: project.latestExportRelativePath)
+        exportService.statusMessage = project.latestExportRelativePath == nil ? "" : "Export ready"
+
+        selectedTheme = project.selectedTheme
+        selectedMusic = project.selectedMusic
+        selectedQuality = project.selectedQuality
+        selectedFormat = project.selectedFormat
+        exportPostProcessing = project.exportPostProcessing
+        customAudioURL = projectStore.existingURL(for: project.customAudioRelativePath)
+
+        analysisMode = project.analysisMode ?? .cloud
+        lastAnalysisStatusSummary = project.analysisStatusSummary
+        lastAnalyzedAt = project.lastAnalyzedAt
+        lastExportedAt = project.lastExportedAt
+        showingSaveSuccess = false
+        cloudQuotaRemaining = nil
+        isCloudFallbackOffered = false
+    }
+
+    private func clearLiveProjectState() {
+        suppressProjectPersistence = true
+        defer { suppressProjectPersistence = false }
+
+        videoURL = nil
+        videoDuration = 0
+        videoThumbnail = nil
+        isVideoLoaded = false
+
+        analysisService.isAnalyzing = false
+        analysisService.progress = 0
+        analysisService.statusMessage = ""
+        analysisService.clips = []
+        analysisService.lastRunDiagnostics = nil
+
+        exportService.isExporting = false
+        exportService.exportedURL = nil
+        exportService.exportProgress = 0
+        exportService.statusMessage = ""
+
+        selectedTheme = .cinematic
+        selectedMusic = .none
+        selectedQuality = .high
+        selectedFormat = .mp4
+        exportPostProcessing = ExportPostProcessingOptions()
+        customAudioURL = nil
+
+        showingSaveSuccess = false
+        analysisMode = .cloud
+        cloudQuotaRemaining = nil
+        isCloudFallbackOffered = false
+        lastAnalysisStatusSummary = nil
+        lastAnalyzedAt = nil
+        lastExportedAt = nil
+    }
+
+    private func insertProject(_ project: PersistedProjectRecord, makeCurrent: Bool) {
+        projectLibrary.projects.removeAll { $0.id == project.id }
+        projectLibrary.projects.insert(project, at: 0)
+
+        if makeCurrent {
+            currentProjectID = project.id
+            projectLibrary.currentProjectID = project.id
+        }
+
+        trimHistoryIfNeeded()
+        saveProjectLibrary()
+    }
+
+    private func trimHistoryIfNeeded() {
+        while projectLibrary.projects.count > maxProjectCount {
+            guard let removable = projectLibrary.projects
+                .filter({ $0.id != currentProjectID })
+                .sorted(by: { $0.lastOpenedAt < $1.lastOpenedAt })
+                .first else {
+                break
+            }
+
+            projectLibrary.projects.removeAll { $0.id == removable.id }
+            try? projectStore.deleteProject(id: removable.id)
+        }
+    }
+
+    private func saveProjectLibrary() {
+        do {
+            try projectStore.saveLibrary(projectLibrary)
+        } catch {
+            print("Failed to save project history: \(error.localizedDescription)")
+        }
+    }
+
+    private func refreshProjectLibrarySnapshot() {
+        if let reloadedLibrary = try? projectStore.loadLibrary() {
+            projectLibrary = reloadedLibrary
+            if currentProjectID == nil {
+                currentProjectID = reloadedLibrary.currentProjectID
+            } else {
+                projectLibrary.currentProjectID = currentProjectID
+            }
+        }
+    }
+
+    private func repairBrokenProjectReferences() {
+        var changed = false
+
+        if projectLibrary.currentProjectID != nil,
+           projectLibrary.projects.contains(where: { $0.id == projectLibrary.currentProjectID }) == false {
+            projectLibrary.currentProjectID = nil
+            currentProjectID = nil
+            changed = true
+        }
+
+        for index in projectLibrary.projects.indices {
+            if let exportPath = projectLibrary.projects[index].latestExportRelativePath,
+               projectStore.existingURL(for: exportPath) == nil {
+                projectLibrary.projects[index].latestExportRelativePath = nil
+                projectLibrary.projects[index].latestExportFilename = nil
+                changed = true
+            }
+
+            if let customAudioPath = projectLibrary.projects[index].customAudioRelativePath,
+               projectStore.existingURL(for: customAudioPath) == nil {
+                projectLibrary.projects[index].customAudioRelativePath = nil
+                changed = true
+            }
+
+            if projectLibrary.currentProjectID == projectLibrary.projects[index].id,
+               projectStore.existingURL(for: projectLibrary.projects[index].sourceRelativePath) == nil {
+                projectLibrary.currentProjectID = nil
+                currentProjectID = nil
+                changed = true
+            }
+        }
+
+        if changed {
+            saveProjectLibrary()
+        }
     }
 
     private func persistSettings() {
@@ -256,6 +575,7 @@ final class HighlightsViewModel {
             isCloudFallbackOffered = false
             guard let url = videoURL else {
                 analysisService.finishExternalAnalysis(with: error.localizedDescription)
+                recordAnalysisFailure(message: error.localizedDescription)
                 return
             }
             analysisService.updateExternalAnalysis(progress: 0.0, status: "Analyzing on device")
@@ -265,6 +585,7 @@ final class HighlightsViewModel {
                 clipsCount: analysisService.clips.count,
                 usedFallback: false
             )
+            recordAnalysisCompleted()
             return
         }
 
@@ -272,6 +593,7 @@ final class HighlightsViewModel {
             analysisMode = .cloud
             analysisService.finishExternalAnalysis(with: message)
             isCloudFallbackOffered = false
+            recordAnalysisFailure(message: message)
             return
         }
 
@@ -280,6 +602,7 @@ final class HighlightsViewModel {
         analysisService.updateExternalAnalysis(progress: 0.0, status: "Falling back to local analysis")
         guard let url = videoURL else {
             analysisService.finishExternalAnalysis(with: error.localizedDescription)
+            recordAnalysisFailure(message: error.localizedDescription)
             return
         }
         await analysisService.analyze(url: url, settings: settings)
@@ -288,6 +611,7 @@ final class HighlightsViewModel {
             clipsCount: analysisService.clips.count,
             usedFallback: true
         )
+        recordAnalysisCompleted()
     }
 }
 

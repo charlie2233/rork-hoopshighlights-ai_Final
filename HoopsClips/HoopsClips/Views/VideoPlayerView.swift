@@ -78,10 +78,11 @@ struct VideoPlayerView: View {
                     }
                 }
             }
-            .onChange(of: viewModel.isVideoLoaded) { _, loaded in
-                if loaded, let url = viewModel.videoURL {
-                    player = AVPlayer(url: url)
-                }
+            .onAppear {
+                syncPlayer(with: viewModel.videoURL)
+            }
+            .onChange(of: viewModel.videoURL) { _, newValue in
+                syncPlayer(with: newValue)
             }
             .sheet(isPresented: $showingPaywall) {
                 PaywallView(subscriptionManager: subscriptionManager)
@@ -104,6 +105,22 @@ struct VideoPlayerView: View {
                 Text("Free tier can analyze videos up to \(formatDuration(AppConstants.nonProMaxAnalysisDuration)). This video is \(formatDuration(viewModel.videoDuration)).")
             }
         }
+    }
+
+    private func syncPlayer(with url: URL?) {
+        guard let url else {
+            player?.pause()
+            player = nil
+            return
+        }
+
+        if let currentURL = (player?.currentItem?.asset as? AVURLAsset)?.url,
+           currentURL == url {
+            return
+        }
+
+        player?.pause()
+        player = AVPlayer(url: url)
     }
 
     private var importSection: some View {
