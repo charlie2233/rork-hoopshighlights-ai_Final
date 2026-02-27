@@ -27,7 +27,7 @@ def run_analysis(job: StoredJob, settings: Settings) -> CloudAnalysisResult:
 
     duration_seconds = _probe_duration(source_path, fallback=job.duration_seconds)
     if duration_seconds > settings.max_duration_seconds:
-        raise PipelineError("unsupported_duration", "Videos longer than 10 minutes are not supported in cloud analysis v1.")
+        raise PipelineError("unsupported_duration", "Videos longer than 30 minutes are not supported in cloud analysis right now.")
 
     shot_boundaries = _detect_shot_boundaries(source_path)
     audio_profile = _extract_audio_profile(source_path, duration_seconds)

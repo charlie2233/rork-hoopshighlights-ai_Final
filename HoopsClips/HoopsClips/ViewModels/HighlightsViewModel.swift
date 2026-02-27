@@ -2,12 +2,14 @@ import Foundation
 import AVFoundation
 import PhotosUI
 import SwiftUI
+import UIKit
 
 @Observable
 @MainActor
 final class HighlightsViewModel {
     private let settingsDefaultsKey = "hoopsclips.analysisSettings.v1"
     private let installIDDefaultsKey = "hoopsclips.installID.v1"
+    private var backgroundTaskID: UIBackgroundTaskIdentifier = .invalid
 
     var videoURL: URL?
     var videoDuration: Double = 0
@@ -102,6 +104,10 @@ final class HighlightsViewModel {
 
     func startAnalysis() async {
         guard let url = videoURL else { return }
+        await AnalysisNotificationService.shared.prepareForAnalysis()
+        beginBackgroundAnalysisTask()
+        defer { endBackgroundAnalysisTask() }
+
         analysisMode = .cloud
         isCloudFallbackOffered = false
         analysisService.beginExternalAnalysis(status: "Preparing upload")
@@ -116,6 +122,10 @@ final class HighlightsViewModel {
             }
             cloudQuotaRemaining = nil
             analysisService.applyCloudAnalysis(result)
+            AnalysisNotificationService.shared.notifyAnalysisCompleted(
+                clipsCount: analysisService.clips.count,
+                usedFallback: false
+            )
         } catch let error as CloudAnalysisError {
             switch error {
             case .quotaExceeded(let remaining):
@@ -220,6 +230,21 @@ final class HighlightsViewModel {
         UserDefaults.standard.set(data, forKey: settingsDefaultsKey)
     }
 
+    private func beginBackgroundAnalysisTask() {
+        guard backgroundTaskID == .invalid else { return }
+        backgroundTaskID = UIApplication.shared.beginBackgroundTask(withName: "HoopsAnalysis") { [weak self] in
+            Task { @MainActor in
+                self?.endBackgroundAnalysisTask()
+            }
+        }
+    }
+
+    private func endBackgroundAnalysisTask() {
+        guard backgroundTaskID != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(backgroundTaskID)
+        backgroundTaskID = .invalid
+    }
+
     private func fallbackToLocalAnalysis(from error: CloudAnalysisError) async {
         let hardFailureCodes: Set<String> = ["unsupported_duration", "file_too_large"]
         if case .notConfigured = error {
@@ -231,6 +256,10 @@ final class HighlightsViewModel {
             }
             analysisService.updateExternalAnalysis(progress: 0.0, status: "Analyzing on device")
             await analysisService.analyze(url: url, settings: settings)
+            AnalysisNotificationService.shared.notifyAnalysisCompleted(
+                clipsCount: analysisService.clips.count,
+                usedFallback: false
+            )
             return
         }
 
@@ -249,5 +278,9 @@ final class HighlightsViewModel {
             return
         }
         await analysisService.analyze(url: url, settings: settings)
+        AnalysisNotificationService.shared.notifyAnalysisCompleted(
+            clipsCount: analysisService.clips.count,
+            usedFallback: true
+        )
     }
 }

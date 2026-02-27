@@ -66,7 +66,7 @@ async def _process_job(job_id: str) -> None:
 async def create_job(request: CreateCloudAnalysisJobRequest):
     try:
         if request.durationSeconds > settings.max_duration_seconds:
-            raise APIError(400, "unsupported_duration", "Videos longer than 10 minutes are not supported in cloud analysis v1.")
+            raise APIError(400, "unsupported_duration", "Videos longer than 30 minutes are not supported in cloud analysis right now.")
         if request.fileSizeBytes > settings.max_file_size_bytes:
             raise APIError(400, "file_too_large", "Videos larger than 500 MB are not supported in cloud analysis v1.")
 

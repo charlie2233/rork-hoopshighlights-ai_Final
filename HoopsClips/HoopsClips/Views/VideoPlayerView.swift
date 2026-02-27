@@ -13,6 +13,7 @@ struct VideoPlayerView: View {
     @State private var pulseAnimation = false
     @State private var showingPaywall = false
     @State private var showingNoClipsAlert = false
+    @State private var showingDurationLimitAlert = false
 
     var body: some View {
         NavigationStack {
@@ -93,6 +94,14 @@ struct VideoPlayerView: View {
                 } else {
                     Text("AI couldn't detect enough confident highlights in this video.")
                 }
+            }
+            .alert("Pro Required for Longer Videos", isPresented: $showingDurationLimitAlert) {
+                Button("Not Now", role: .cancel) { }
+                Button("Go Pro") {
+                    showingPaywall = true
+                }
+            } message: {
+                Text("Free tier can analyze videos up to \(formatDuration(AppConstants.nonProMaxAnalysisDuration)). This video is \(formatDuration(viewModel.videoDuration)).")
             }
         }
     }
@@ -278,6 +287,10 @@ struct VideoPlayerView: View {
                 }
 
                 Button {
+                    guard !requiresProForCurrentVideo else {
+                        showingDurationLimitAlert = true
+                        return
+                    }
                     analysisStarted = true
                     Task {
                         await viewModel.startAnalysis()
@@ -292,7 +305,7 @@ struct VideoPlayerView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Analyze with AI")
                                 .font(.headline)
-                            Text("Cloud-first, slower, and much more accurate")
+                            Text(analysisButtonSubtitle)
                                 .font(.caption)
                                 .opacity(0.7)
                         }
@@ -421,6 +434,9 @@ struct VideoPlayerView: View {
     }
 
     private var analysisBannerText: String {
+        if requiresProForCurrentVideo {
+            return "Free tier supports up to \(formatDuration(AppConstants.nonProMaxAnalysisDuration)). Upgrade to analyze longer games."
+        }
         if let remaining = viewModel.cloudQuotaRemaining {
             if remaining > 0 {
                 return "Cloud AI quota remaining today: \(remaining)"
@@ -451,5 +467,16 @@ struct VideoPlayerView: View {
             return "Refining..."
         }
         return "Analyzing..."
+    }
+
+    private var requiresProForCurrentVideo: Bool {
+        !subscriptionManager.isProUser && viewModel.videoDuration > AppConstants.nonProMaxAnalysisDuration
+    }
+
+    private var analysisButtonSubtitle: String {
+        if requiresProForCurrentVideo {
+            return "Upgrade to analyze videos longer than \(formatDuration(AppConstants.nonProMaxAnalysisDuration))"
+        }
+        return "Cloud-first, slower, and much more accurate"
     }
 }

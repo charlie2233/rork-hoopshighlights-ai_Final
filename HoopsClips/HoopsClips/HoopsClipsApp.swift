@@ -14,6 +14,9 @@ struct HoopsClipsApp: App {
         if !apiKey.isEmpty {
             Purchases.configure(withAPIKey: apiKey)
         }
+        Task { @MainActor in
+            AnalysisNotificationService.shared.configure()
+        }
     }
 
     var body: some Scene {
