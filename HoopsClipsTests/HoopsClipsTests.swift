@@ -243,4 +243,115 @@ struct HoopsClipsTests {
         #expect(response.results?.diagnostics.backendModelVersion == "cloud-v1")
     }
 
+    @Test func testAudioFallbackSplitsContinuousSignalIntoBoundedClips() async {
+        let service = await VideoAnalysisService()
+        let peaks = [Double](repeating: 1.0, count: 600)
+
+        let clips = await service.buildAudioOnlyClips(audioPeaks: peaks, duration: 60.0)
+
+        #expect(!clips.isEmpty)
+        #expect(clips.count > 1)
+        #expect(clips.allSatisfy { $0.duration <= AnalysisSettings().maxClipDuration + 0.001 })
+        #expect(clips.allSatisfy { $0.endTime <= 60.0 && $0.startTime >= 0.0 })
+    }
+
+    @Test func testAudioFallbackCentersSingleBurst() async {
+        let service = await VideoAnalysisService()
+        var peaks = [Double](repeating: 0.0, count: 300)
+        peaks[120] = 1.0
+        peaks[121] = 0.8
+
+        let clips = await service.buildAudioOnlyClips(audioPeaks: peaks, duration: 30.0)
+
+        #expect(clips.count == 1)
+        #expect(clips[0].duration <= AnalysisSettings().maxClipDuration + 0.001)
+        #expect(abs(clips[0].startTime - 9.0) < 1.0)
+        #expect(abs(clips[0].endTime - 15.0) < 1.0)
+    }
+
+    @Test func testAudioFallbackSeparatesSparseBursts() async {
+        let service = await VideoAnalysisService()
+        var peaks = [Double](repeating: 0.0, count: 600)
+        peaks[50] = 1.0
+        peaks[250] = 0.95
+        peaks[450] = 0.9
+
+        let clips = await service.buildAudioOnlyClips(audioPeaks: peaks, duration: 60.0)
+
+        #expect(clips.count == 3)
+        #expect(clips[0].startTime < clips[1].startTime)
+        #expect(clips[1].startTime < clips[2].startTime)
+        #expect(clips.allSatisfy { $0.duration <= AnalysisSettings().maxClipDuration + 0.001 })
+    }
+
+    @Test func testNormalizeOverlongHeuristicClipSplitsIt() async {
+        let service = await VideoAnalysisService()
+        let original = Clip(
+            startTime: 0.0,
+            endTime: 60.0,
+            confidence: 0.78,
+            isKept: true,
+            label: "Action",
+            audioScore: 0.8,
+            visualScore: 0.2,
+            motionScore: 0.3,
+            combinedScore: 0.7,
+            detectionMethod: .heuristic
+        )
+
+        let normalized = await service.normalizeDetectedClips([original], duration: 60.0)
+
+        #expect(!normalized.isEmpty)
+        #expect(normalized.count <= 3)
+        #expect(normalized.allSatisfy { $0.duration <= AnalysisSettings().maxClipDuration + 0.001 })
+        #expect(normalized.allSatisfy { $0.endTime - $0.startTime < 60.0 })
+    }
+
+    @Test func testNormalizeOverlongCloudClipSplitsIt() async {
+        let service = await VideoAnalysisService()
+        let original = Clip(
+            startTime: 2.0,
+            endTime: 58.0,
+            action: .dunk,
+            confidence: 0.91,
+            isKept: true,
+            label: "Dunk",
+            audioScore: 0.8,
+            visualScore: 0.7,
+            motionScore: 0.9,
+            combinedScore: 0.88,
+            detectionMethod: .cloud
+        )
+
+        let normalized = await service.normalizeDetectedClips([original], duration: 60.0)
+
+        #expect(!normalized.isEmpty)
+        #expect(normalized.allSatisfy { $0.detectionMethod == .cloud })
+        #expect(normalized.allSatisfy { $0.duration <= AnalysisSettings().maxClipDuration + 0.001 })
+    }
+
+    @Test func testNormalizeKeepsValidClipUntouched() async {
+        let service = await VideoAnalysisService()
+        let original = Clip(
+            startTime: 10.0,
+            endTime: 18.0,
+            action: .madeShot,
+            confidence: 0.72,
+            isKept: true,
+            label: "Made Shot",
+            audioScore: 0.4,
+            visualScore: 0.5,
+            motionScore: 0.5,
+            combinedScore: 0.6,
+            detectionMethod: .ml
+        )
+
+        let normalized = await service.normalizeDetectedClips([original], duration: 60.0)
+
+        #expect(normalized.count == 1)
+        #expect(abs(normalized[0].startTime - original.startTime) < 0.001)
+        #expect(abs(normalized[0].endTime - original.endTime) < 0.001)
+        #expect(normalized[0].detectionMethod == .ml)
+    }
+
 }

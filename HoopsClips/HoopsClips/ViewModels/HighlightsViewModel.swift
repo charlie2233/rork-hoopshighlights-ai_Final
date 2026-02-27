@@ -110,6 +110,7 @@ final class HighlightsViewModel {
 
         analysisMode = .cloud
         isCloudFallbackOffered = false
+        analysisService.updateSettings(settings)
         analysisService.beginExternalAnalysis(status: "Preparing upload")
 
         do {
@@ -121,7 +122,7 @@ final class HighlightsViewModel {
                 service?.updateExternalAnalysis(progress: progress, status: status)
             }
             cloudQuotaRemaining = nil
-            analysisService.applyCloudAnalysis(result)
+            analysisService.applyCloudAnalysis(result, duration: videoDuration)
             AnalysisNotificationService.shared.notifyAnalysisCompleted(
                 clipsCount: analysisService.clips.count,
                 usedFallback: false
