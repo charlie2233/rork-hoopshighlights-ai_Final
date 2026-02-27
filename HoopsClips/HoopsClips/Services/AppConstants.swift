@@ -5,7 +5,7 @@ enum AppConstants {
     static let revenueCatProdAPIKey = ""
     static let googleClientID = ""
     static let cloudAnalysisVersion = "v1"
-    static let cloudAnalysisDailyQuota = 3
+    static let cloudAnalysisDailyQuota = 5
     static let nonProMaxAnalysisDuration: Double = 15 * 60
     static let cloudAnalysisMaxDuration: Double = 30 * 60
 #if DEBUG

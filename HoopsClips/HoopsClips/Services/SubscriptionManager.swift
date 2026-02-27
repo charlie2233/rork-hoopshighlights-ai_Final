@@ -5,7 +5,7 @@ import RevenueCat
 @MainActor
 final class SubscriptionManager {
     var isProUser = false
-    var freeUsesRemaining: Int = 3
+    var freeUsesRemaining: Int = AppConstants.cloudAnalysisDailyQuota
     var isLoading = false
     var errorMessage: String?
 
@@ -13,7 +13,10 @@ final class SubscriptionManager {
     private let entitlementID = "pro"
 
     init() {
-        freeUsesRemaining = UserDefaults.standard.object(forKey: freeUsesKey) as? Int ?? 3
+        let storedUses = UserDefaults.standard.object(forKey: freeUsesKey) as? Int
+        let initialUses = max(storedUses ?? 0, AppConstants.cloudAnalysisDailyQuota)
+        freeUsesRemaining = initialUses
+        UserDefaults.standard.set(initialUses, forKey: freeUsesKey)
     }
 
     var canAnalyze: Bool {

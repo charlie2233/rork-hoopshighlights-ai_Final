@@ -14,22 +14,22 @@ internal struct ExportTimelineSegment: Sendable, Equatable {
     let clipConfidence: Double
     let clipAction: HighlightAction
 
-    var outputDuration: Double { outputEndTime - outputStartTime }
-    var sourceDuration: Double { sourceEndTime - sourceStartTime }
+    nonisolated var outputDuration: Double { outputEndTime - outputStartTime }
+    nonisolated var sourceDuration: Double { sourceEndTime - sourceStartTime }
 
-    var labelText: String {
+    nonisolated var labelText: String {
         let confidencePercent = Int((clipConfidence * 100).rounded())
         return "\(clipLabel) • \(confidencePercent)%"
     }
 
-    func contains(outputTime: Double) -> Bool {
+    nonisolated func contains(outputTime: Double) -> Bool {
         if outputTime == outputEndTime {
             return true
         }
         return outputTime >= outputStartTime && outputTime < outputEndTime
     }
 
-    func sourceTimeRange(timescale: CMTimeScale = 600) -> CMTimeRange {
+    nonisolated func sourceTimeRange(timescale: CMTimeScale = 600) -> CMTimeRange {
         CMTimeRange(
             start: CMTime(seconds: sourceStartTime, preferredTimescale: timescale),
             end: CMTime(seconds: sourceEndTime, preferredTimescale: timescale)
@@ -37,7 +37,7 @@ internal struct ExportTimelineSegment: Sendable, Equatable {
     }
 }
 
-internal func buildTimelineSegments(from clips: [Clip], assetDuration: Double) -> [ExportTimelineSegment] {
+nonisolated internal func buildTimelineSegments(from clips: [Clip], assetDuration: Double) -> [ExportTimelineSegment] {
     guard assetDuration > 0 else { return [] }
 
     var outputCursor = 0.0
@@ -73,7 +73,7 @@ internal struct ExportRenderGeometry: Sendable, Equatable {
     let scaleBucket: Int
 }
 
-internal func makeRenderGeometry(
+nonisolated internal func makeRenderGeometry(
     naturalSize: CGSize,
     preferredTransform: CGAffineTransform,
     quality: ExportQuality
@@ -113,7 +113,7 @@ internal func makeRenderGeometry(
     )
 }
 
-internal func labelVisibilityAlpha(at elapsed: Double, displayDuration: Double) -> Double {
+nonisolated internal func labelVisibilityAlpha(at elapsed: Double, displayDuration: Double) -> Double {
     guard displayDuration > 0, elapsed >= 0, elapsed <= displayDuration else { return 0 }
 
     let fadeIn = min(0.10, displayDuration * 0.45)
@@ -131,6 +131,39 @@ internal func labelVisibilityAlpha(at elapsed: Double, displayDuration: Double) 
     if fadeOut <= 0 { return 0 }
     let remaining = displayDuration - elapsed
     return min(max(remaining / fadeOut, 0), 1)
+}
+
+nonisolated internal func actionZoomScale(
+    at localClipTime: Double,
+    segmentDuration: Double,
+    action: HighlightAction,
+    options: ExportPostProcessingOptions
+) -> Double {
+    guard options.enableAutoZoom, segmentDuration > 0 else {
+        return 1.0
+    }
+
+    let activeDuration = min(1.2, max(0.6, segmentDuration * 0.35))
+    let midpoint = segmentDuration / 2.0
+    let windowStart = midpoint - activeDuration / 2.0
+    let windowEnd = midpoint + activeDuration / 2.0
+
+    guard localClipTime >= windowStart, localClipTime <= windowEnd else {
+        return 1.0
+    }
+
+    let progress = min(max((localClipTime - windowStart) / activeDuration, 0), 1)
+    let triangle = 1.0 - abs((progress * 2.0) - 1.0)
+    let eased = triangle * triangle * (3.0 - (2.0 * triangle))
+
+    let maxScale: Double = switch action {
+    case .dunk, .posterize, .block, .alleyOop:
+        1.16
+    default:
+        1.12
+    }
+
+    return 1.0 + (maxScale - 1.0) * eased
 }
 
 internal struct ThemeOverlayFrameContext: Sendable {
@@ -452,15 +485,15 @@ internal final class ClipLabelOverlayCache: @unchecked Sendable {
         self.endSlateImage = endSlateImage
     }
 
-    func image(for clipID: UUID) -> CIImage? {
+    nonisolated func image(for clipID: UUID) -> CIImage? {
         imagesByClipID[clipID]
     }
 
-    func watermark() -> CIImage {
+    nonisolated func watermark() -> CIImage {
         watermarkImage
     }
 
-    func endSlate() -> CIImage {
+    nonisolated func endSlate() -> CIImage {
         endSlateImage
     }
 }
@@ -472,7 +505,8 @@ internal final class ExportThemeRenderer {
         sourceVideoTrack: AVAssetTrack,
         segments: [ExportTimelineSegment],
         theme: ExportTheme,
-        quality: ExportQuality
+        quality: ExportQuality,
+        postProcessing: ExportPostProcessingOptions
     ) async throws -> AVMutableVideoComposition {
         let naturalSize = try await sourceVideoTrack.load(.naturalSize)
         let preferredTransform = try await sourceVideoTrack.load(.preferredTransform)
@@ -496,7 +530,8 @@ internal final class ExportThemeRenderer {
                             geometry: geometry,
                             profile: profile,
                             segments: segments,
-                            labelCache: labelCache
+                            labelCache: labelCache,
+                            postProcessing: postProcessing
                         )
                         request.finish(with: output, context: nil)
                     }
@@ -780,11 +815,18 @@ internal final class ExportThemeRenderer {
         geometry: ExportRenderGeometry,
         profile: ExportThemeProfile,
         segments: [ExportTimelineSegment],
-        labelCache: ClipLabelOverlayCache
+        labelCache: ClipLabelOverlayCache,
+        postProcessing: ExportPostProcessingOptions
     ) -> CIImage {
         let extent = sourceImage.extent
+        let frameContext = makeFrameContext(
+            at: compositionTime,
+            segments: segments,
+            imageExtent: extent
+        )
         var image = sourceImage.clampedToExtent()
 
+        image = applyActionZoomIfNeeded(to: image, context: frameContext, options: postProcessing)
         image = applyBaseColorTreatment(to: image, profile: profile)
         image = applyGradientOverlayIfNeeded(to: image, extent: extent, profile: profile)
         image = applyTintOverlayIfNeeded(to: image, extent: extent, profile: profile)
@@ -799,11 +841,7 @@ internal final class ExportThemeRenderer {
             labelCache: labelCache
         )
 
-        if let frameContext = makeFrameContext(
-            at: compositionTime,
-            segments: segments,
-            imageExtent: extent
-        ) {
+        if let frameContext {
             image = applyClipStartFlashIfNeeded(to: image, extent: extent, profile: profile, context: frameContext)
             image = applyLabelIfNeeded(
                 to: image,
@@ -823,6 +861,39 @@ internal final class ExportThemeRenderer {
 
         return image.cropped(to: extent)
     }
+}
+
+nonisolated private func applyActionZoomIfNeeded(
+    to image: CIImage,
+    context: ThemeOverlayFrameContext?,
+    options: ExportPostProcessingOptions
+) -> CIImage {
+    guard let context else {
+        return image
+    }
+
+    let scale = actionZoomScale(
+        at: context.localClipTime,
+        segmentDuration: context.segment.outputDuration,
+        action: context.segment.clipAction,
+        options: options
+    )
+    guard scale > 1.0 else {
+        return image
+    }
+
+    let extent = image.extent
+    let anchor = CGPoint(
+        x: extent.midX,
+        y: extent.minY + extent.height * 0.45
+    )
+    let transform = CGAffineTransform(translationX: -anchor.x, y: -anchor.y)
+        .concatenating(CGAffineTransform(scaleX: scale, y: scale))
+        .concatenating(CGAffineTransform(translationX: anchor.x, y: anchor.y))
+
+    return image
+        .transformed(by: transform)
+        .cropped(to: extent)
 }
 
 nonisolated private func makeFrameContext(

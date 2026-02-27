@@ -22,6 +22,7 @@ struct ExportView: View {
     @State private var exportPreviewPlayer: AVPlayer?
     @State private var expandedExportPreviewPlayer: AVPlayer?
     @State private var shareURL: URL?
+    @State private var lastAutoPresentedExportURL: URL?
     @State private var selectedShareTargetHint: String?
     @State private var selectedShareCategory: QuickShareCategory?
     @State private var showFileImporter = false
@@ -41,6 +42,7 @@ struct ExportView: View {
                             musicSection
                             qualitySection
                             formatSection
+                            postProcessingSection
                             quickActionsSection
                             exportButton
                         }
@@ -74,14 +76,6 @@ struct ExportView: View {
                     EmptyView()
                 }
             }
-            .alert("Export Complete!", isPresented: $viewModel.showingExportComplete) {
-                Button("Save to Photos") {
-                    Task { await viewModel.saveToPhotos() }
-                }
-                Button("Done", role: .cancel) { }
-            } message: {
-                Text("Your highlight reel is ready. \(viewModel.keptClips.count) clips compiled.")
-            }
             .alert("Saved!", isPresented: $viewModel.showingSaveSuccess) {
                 Button("OK", role: .cancel) { }
             } message: {
@@ -97,6 +91,15 @@ struct ExportView: View {
                 if showExportPreviewSheet {
                     configureExpandedExportPreviewPlayer(for: newValue)
                 }
+                guard let newValue,
+                      !viewModel.exportService.isExporting,
+                      isExportFileAvailable(newValue),
+                      newValue != lastAutoPresentedExportURL else {
+                    return
+                }
+                configureExpandedExportPreviewPlayer(for: newValue)
+                showExportPreviewSheet = true
+                lastAutoPresentedExportURL = newValue
             }
             .onDisappear {
                 pausePreviewPlayers()
@@ -505,6 +508,59 @@ struct ExportView: View {
         .rorkCard(cornerRadius: 16, stroke: AppTheme.softBorder, glowOpacity: 0.05)
     }
 
+    private var postProcessingSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            RorkSectionHeader(
+                title: "Post-Processing",
+                icon: "sparkles",
+                subtitle: "Automatic polish around each clip's key moment"
+            )
+
+            Toggle(
+                isOn: Binding(
+                    get: { viewModel.exportPostProcessing.enableAutoZoom },
+                    set: { viewModel.exportPostProcessing.enableAutoZoom = $0 }
+                )
+            ) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Auto Zoom-In")
+                        .font(.subheadline)
+                        .foregroundStyle(.white)
+                    Text("Adds a subtle punch-in around the action peak")
+                        .font(.caption2)
+                        .foregroundStyle(AppTheme.subtleText)
+                }
+            }
+            .tint(AppTheme.accentPurple)
+
+            Divider().overlay(AppTheme.accentPurple.opacity(0.2))
+
+            Toggle(
+                isOn: Binding(
+                    get: { viewModel.exportPostProcessing.enableSmartSlowMotion },
+                    set: { viewModel.exportPostProcessing.enableSmartSlowMotion = $0 }
+                )
+            ) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Smart Slow-Mo")
+                        .font(.subheadline)
+                        .foregroundStyle(.white)
+                    Text("Automatically slows big moments; manual slow-mo from Review still applies")
+                        .font(.caption2)
+                        .foregroundStyle(AppTheme.subtleText)
+                }
+            }
+            .tint(AppTheme.accentPurple)
+
+            Text("Effects are applied around the middle of each kept clip to emphasize the key moment.")
+                .font(.caption2)
+                .foregroundStyle(AppTheme.subtleText)
+                .padding(.leading, 4)
+        }
+        .padding(16)
+        .rorkCard(cornerRadius: 16, stroke: AppTheme.softBorder, glowOpacity: 0.05)
+    }
+
     @ViewBuilder
     private var quickActionsSection: some View {
         if let exportedURL = viewModel.exportService.exportedURL, !viewModel.exportService.isExporting {
@@ -512,9 +568,9 @@ struct ExportView: View {
 
             VStack(alignment: .leading, spacing: 12) {
                 RorkSectionHeader(
-                    title: "Quick Share",
+                    title: "Review & Share",
                     icon: "paperplane.fill",
-                    subtitle: "iOS share sheet for the latest export"
+                    subtitle: "Preview the latest export before saving or sharing"
                 )
 
                 if exportAvailable {
@@ -568,7 +624,7 @@ struct ExportView: View {
                             .padding(10)
                         }
 
-                        Text("Play the latest export here before you share it.")
+                        Text("Your latest export opens in review first. You can reopen it here anytime.")
                             .font(.caption2)
                             .foregroundStyle(AppTheme.subtleText)
                     }
@@ -959,23 +1015,49 @@ struct ExportView: View {
 
                 if !isExportFileAvailable(url) {
                     ContentUnavailableView {
-                        Label("Export Preview Unavailable", systemImage: "video.slash.fill")
+                        Label("Review Unavailable", systemImage: "video.slash.fill")
                     } description: {
                         Text("This exported file is no longer available. Re-export the reel to preview it again.")
                     }
                     .foregroundStyle(.white)
                     .padding(16)
                 } else if let expandedExportPreviewPlayer {
-                    VideoPlayer(player: expandedExportPreviewPlayer)
-                        .clipShape(.rect(cornerRadius: 16))
-                        .padding(16)
+                    VStack(alignment: .leading, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(url.lastPathComponent)
+                                .font(.caption.monospaced())
+                                .foregroundStyle(AppTheme.subtleText)
+                                .lineLimit(1)
+
+                            HStack(spacing: 8) {
+                                RorkMetricChip(
+                                    icon: "film.stack.fill",
+                                    value: "\(viewModel.keptClips.count)",
+                                    label: "Clips",
+                                    tint: AppTheme.neonPurple
+                                )
+                            }
+
+                            Text("Review your reel before saving or sharing.")
+                                .font(.caption)
+                                .foregroundStyle(AppTheme.subtleText)
+                        }
+
+                        VideoPlayer(player: expandedExportPreviewPlayer)
+                            .clipShape(.rect(cornerRadius: 16))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 16)
+                                    .stroke(AppTheme.accentPurple.opacity(0.28), lineWidth: 1)
+                            )
+                    }
+                    .padding(16)
                 } else {
                     ProgressView()
                         .tint(AppTheme.neonPurple)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
-            .navigationTitle("Export Preview")
+            .navigationTitle("Review Reel")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(AppTheme.darkBg, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)

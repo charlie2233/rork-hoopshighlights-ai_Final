@@ -74,7 +74,7 @@ struct PaywallView: View {
                 .font(.system(size: 32, weight: .bold))
                 .foregroundStyle(.white)
 
-            Text("Unlimited AI analysis with no restrictions.\nYou've used \(3 - subscriptionManager.freeUsesRemaining) of 3 free analyses.")
+            Text("Unlimited AI analysis with no restrictions.\nYou've used \(max(AppConstants.cloudAnalysisDailyQuota - subscriptionManager.freeUsesRemaining, 0)) of \(AppConstants.cloudAnalysisDailyQuota) free analyses.")
                 .font(.subheadline)
                 .foregroundStyle(AppTheme.subtleText)
                 .multilineTextAlignment(.center)
@@ -87,7 +87,7 @@ struct PaywallView: View {
             featureRow(icon: "infinity", title: "Unlimited Analyses", subtitle: "No caps on video processing")
             featureRow(icon: "bolt.fill", title: "Priority Processing", subtitle: "Faster AI detection pipeline")
             featureRow(icon: "film.stack.fill", title: "Unlimited Exports", subtitle: "Export all your highlights freely")
-            featureRow(icon: "sparkles", title: "Advanced AI Models", subtitle: "Best-in-class detection accuracy")
+            featureRow(icon: "sparkles", title: "Same AI Model", subtitle: "Free and Pro use the same highlight detection model")
         }
         .padding(16)
         .rorkCard(cornerRadius: 18, stroke: AppTheme.softBorder, glowOpacity: 0.06)

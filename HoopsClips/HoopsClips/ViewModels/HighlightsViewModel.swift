@@ -24,6 +24,7 @@ final class HighlightsViewModel {
     var selectedMusic: MusicTrack = .none
     var selectedQuality: ExportQuality = .high
     var selectedFormat: ExportFileFormat = .mp4
+    var exportPostProcessing = ExportPostProcessingOptions()
     var customAudioURL: URL?
     let installID: String
     var settings: AnalysisSettings {
@@ -36,7 +37,6 @@ final class HighlightsViewModel {
     var discardedClips: [Clip] { clips.filter { !$0.isKept } }
 
     var showingVideoPicker = false
-    var showingExportComplete = false
     var showingSaveSuccess = false
     var analysisMode: AnalysisExecutionMode = .cloud
     var cloudQuotaRemaining: Int?
@@ -123,6 +123,7 @@ final class HighlightsViewModel {
             }
             cloudQuotaRemaining = nil
             analysisService.applyCloudAnalysis(result, duration: videoDuration)
+            applyDefaultRedundantClipSuppression()
             AnalysisNotificationService.shared.notifyAnalysisCompleted(
                 clipsCount: analysisService.clips.count,
                 usedFallback: false
@@ -199,11 +200,9 @@ final class HighlightsViewModel {
             customMusicURL: customAudioURL,
             isProUser: isProUser,
             quality: selectedQuality,
-            format: selectedFormat
+            format: selectedFormat,
+            postProcessing: exportPostProcessing
         )
-        if exportService.exportedURL != nil {
-            showingExportComplete = true
-        }
     }
 
     func saveToPhotos() async {
@@ -224,6 +223,10 @@ final class HighlightsViewModel {
         analysisService.statusMessage = ""
         exportService.exportedURL = nil
         exportService.exportProgress = 0
+    }
+
+    private func applyDefaultRedundantClipSuppression() {
+        analysisService.clips = defaultRedundantClipSuppressedClips(from: analysisService.clips)
     }
 
     private func persistSettings() {
@@ -257,6 +260,7 @@ final class HighlightsViewModel {
             }
             analysisService.updateExternalAnalysis(progress: 0.0, status: "Analyzing on device")
             await analysisService.analyze(url: url, settings: settings)
+            applyDefaultRedundantClipSuppression()
             AnalysisNotificationService.shared.notifyAnalysisCompleted(
                 clipsCount: analysisService.clips.count,
                 usedFallback: false
@@ -279,9 +283,91 @@ final class HighlightsViewModel {
             return
         }
         await analysisService.analyze(url: url, settings: settings)
+        applyDefaultRedundantClipSuppression()
         AnalysisNotificationService.shared.notifyAnalysisCompleted(
             clipsCount: analysisService.clips.count,
             usedFallback: true
         )
     }
+}
+
+internal func defaultRedundantClipSuppressedClips(from clips: [Clip]) -> [Clip] {
+    let keptIndices = clips.indices
+        .filter { clips[$0].isKept }
+        .sorted { clips[$0].startTime < clips[$1].startTime }
+    guard keptIndices.count > 1 else { return clips }
+
+    var updated = clips
+    var visited: Set<Int> = []
+
+    for seedIndex in keptIndices {
+        guard !visited.contains(seedIndex) else { continue }
+        visited.insert(seedIndex)
+
+        var cluster = [seedIndex]
+        var frontier = [seedIndex]
+
+        while let currentIndex = frontier.popLast() {
+            for candidateIndex in keptIndices where !visited.contains(candidateIndex) {
+                if clipsShouldBeClusteredAsRedundant(clips[currentIndex], clips[candidateIndex]) {
+                    visited.insert(candidateIndex)
+                    frontier.append(candidateIndex)
+                    cluster.append(candidateIndex)
+                }
+            }
+        }
+
+        guard cluster.count > 1 else { continue }
+
+        var winningIndex = cluster[0]
+        for candidateIndex in cluster.dropFirst() {
+            if isPreferredRedundantClipCandidate(clips[candidateIndex], over: clips[winningIndex]) {
+                winningIndex = candidateIndex
+            }
+        }
+
+        for losingIndex in cluster where losingIndex != winningIndex {
+            updated[losingIndex].isKept = false
+        }
+    }
+
+    return updated
+}
+
+internal func clipsShouldBeClusteredAsRedundant(_ lhs: Clip, _ rhs: Clip) -> Bool {
+    if clipOverlapRatio(lhs, rhs) > 0.35 {
+        return true
+    }
+
+    guard lhs.action == rhs.action, lhs.action != .unknown else {
+        return false
+    }
+
+    return abs(lhs.startTime - rhs.startTime) <= 2.0
+}
+
+internal func clipOverlapRatio(_ lhs: Clip, _ rhs: Clip) -> Double {
+    let intersection = max(0.0, min(lhs.endTime, rhs.endTime) - max(lhs.startTime, rhs.startTime))
+    guard intersection > 0 else { return 0.0 }
+
+    let baseline = min(lhs.duration, rhs.duration)
+    guard baseline > 0 else { return 0.0 }
+
+    return intersection / baseline
+}
+
+internal func isPreferredRedundantClipCandidate(_ lhs: Clip, over rhs: Clip) -> Bool {
+    if lhs.combinedScore != rhs.combinedScore {
+        return lhs.combinedScore > rhs.combinedScore
+    }
+
+    if lhs.confidence != rhs.confidence {
+        return lhs.confidence > rhs.confidence
+    }
+
+    if lhs.duration != rhs.duration {
+        return lhs.duration < rhs.duration
+    }
+
+    return lhs.startTime < rhs.startTime
 }

@@ -86,8 +86,8 @@ struct SettingsView: View {
         ),
         FAQItem(
             id: "quick-share",
-            question: "How does Quick Share work on iPhone?",
-            answer: "After export completes, the Quick Share button opens the iOS share sheet for the latest exported file so you can send it to Messages, AirDrop, Files, or social apps immediately.",
+            question: "How does Review & Share work on iPhone?",
+            answer: "After export completes, the app opens an in-app review of the latest reel first. From the Review & Share section, you can replay it, save it to Photos, or open the iOS share sheet for Messages, AirDrop, Files, or social apps.",
             icon: "square.and.arrow.up.fill"
         )
     ]
