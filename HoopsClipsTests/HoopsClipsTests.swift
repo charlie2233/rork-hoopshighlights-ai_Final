@@ -47,6 +47,9 @@ struct HoopsClipsTests {
                 poseScore: 0.8,
                 motionScore: 0.7,
                 sceneScore: 0.5,
+                poseCoverage: 0.8,
+                brightness: 0.5,
+                audioBurst: 0.8,
                 observation: nil // No observation, so predictAction will return nil/fail
             )
             frames.append(frame)
@@ -88,9 +91,12 @@ struct HoopsClipsTests {
             let time = Double(i) * 0.1
             let frame = FrameScore(
                 timestamp: time,
-                poseScore: 0.6,
-                motionScore: 0.6, // avg will be 0.6
+                poseScore: 0.5,
+                motionScore: 0.45,
                 sceneScore: 0.5,
+                poseCoverage: 0.5,
+                brightness: 0.5,
+                audioBurst: 0.2,
                 observation: nil
             )
             longFrames.append(frame)
@@ -101,6 +107,66 @@ struct HoopsClipsTests {
         
         print("Classified Action Long: \(resultLong.action.rawValue)")
         #expect(resultLong.action == .madeShot)
+    }
+
+    @Test func testAdaptiveWeightsRebalance() {
+        let base = AnalysisWeights(audio: 0.15, motion: 0.35, pose: 0.35, scene: 0.15)
+        let tuned = AnalysisQualityTuning.adaptiveWeights(
+            base: base,
+            averagePoseCoverage: 0.20,
+            averageBrightness: 0.20
+        )
+
+        let sum = tuned.audio + tuned.motion + tuned.pose + tuned.scene
+        #expect(abs(sum - 1.0) < 0.0001)
+        #expect(tuned.pose < base.pose)
+        #expect(tuned.scene < base.scene)
+        #expect(tuned.motion > base.motion)
+    }
+
+    @Test func testHysteresisSegmentationAvoidsFragmentation() {
+        let points: [ScorePoint] = [
+            .init(time: 0.0, score: 0.20),
+            .init(time: 1.0, score: 0.62),
+            .init(time: 2.0, score: 0.54),
+            .init(time: 3.0, score: 0.51),
+            .init(time: 4.0, score: 0.18),
+            .init(time: 5.0, score: 0.64),
+            .init(time: 6.0, score: 0.55),
+            .init(time: 7.0, score: 0.12)
+        ]
+
+        let windows = AnalysisQualityTuning.segmentWithHysteresis(
+            points: points,
+            highThreshold: 0.60,
+            lowThreshold: 0.50,
+            minDuration: 1.5,
+            maxDuration: 10.0,
+            padding: 0.2,
+            durationLimit: 8.0,
+            mergeGap: 1.8
+        )
+
+        #expect(windows.count == 1)
+        #expect(windows[0].peakScore >= 0.62)
+    }
+
+    @Test func testWeightedWinningLabelPrefersStrongSignal() {
+        let votes: [PredictionVote] = [
+            .init(label: "Dunk", confidence: 0.91, recencyWeight: 1.2),
+            .init(label: "Dunk", confidence: 0.82, recencyWeight: 1.1),
+            .init(label: "Layup", confidence: 0.40, recencyWeight: 1.0),
+            .init(label: "Layup", confidence: 0.39, recencyWeight: 0.9),
+            .init(label: "Layup", confidence: 0.36, recencyWeight: 0.8)
+        ]
+
+        let winner = AnalysisQualityTuning.weightedWinningLabel(
+            votes: votes,
+            minCount: 2,
+            minMargin: 0.10
+        )
+
+        #expect(winner == "Dunk")
     }
 
 }

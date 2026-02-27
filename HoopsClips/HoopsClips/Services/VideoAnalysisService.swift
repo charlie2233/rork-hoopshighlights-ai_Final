@@ -10,18 +10,66 @@ nonisolated final class FrameScore: @unchecked Sendable {
     let poseScore: Double
     let motionScore: Double
     let sceneScore: Double
+    let poseCoverage: Double
+    let brightness: Double
+    let audioBurst: Double
     let observation: VNHumanBodyPoseObservation?
     let predictedAction: String?
     let actionConfidence: Double?
 
-    init(timestamp: Double, poseScore: Double, motionScore: Double, sceneScore: Double, observation: VNHumanBodyPoseObservation?, predictedAction: String? = nil, actionConfidence: Double? = nil) {
+    init(
+        timestamp: Double,
+        poseScore: Double,
+        motionScore: Double,
+        sceneScore: Double,
+        poseCoverage: Double,
+        brightness: Double,
+        audioBurst: Double,
+        observation: VNHumanBodyPoseObservation?,
+        predictedAction: String? = nil,
+        actionConfidence: Double? = nil
+    ) {
         self.timestamp = timestamp
         self.poseScore = poseScore
         self.motionScore = motionScore
         self.sceneScore = sceneScore
+        self.poseCoverage = poseCoverage
+        self.brightness = brightness
+        self.audioBurst = audioBurst
         self.observation = observation
         self.predictedAction = predictedAction
         self.actionConfidence = actionConfidence
+    }
+}
+
+struct AnalysisRunDiagnostics: Sendable {
+    var frameCount: Int
+    var effectiveWeights: AnalysisWeights
+    var highThreshold: Double
+    var lowThreshold: Double
+    var recallPasses: Int
+    var usedAudioFallback: Bool
+    var usedMotionFallback: Bool
+    var finalClipCount: Int
+
+    init(
+        frameCount: Int = 0,
+        effectiveWeights: AnalysisWeights = AnalysisWeights(audio: 0.25, motion: 0.25, pose: 0.25, scene: 0.25),
+        highThreshold: Double = 0.0,
+        lowThreshold: Double = 0.0,
+        recallPasses: Int = 0,
+        usedAudioFallback: Bool = false,
+        usedMotionFallback: Bool = false,
+        finalClipCount: Int = 0
+    ) {
+        self.frameCount = frameCount
+        self.effectiveWeights = effectiveWeights
+        self.highThreshold = highThreshold
+        self.lowThreshold = lowThreshold
+        self.recallPasses = recallPasses
+        self.usedAudioFallback = usedAudioFallback
+        self.usedMotionFallback = usedMotionFallback
+        self.finalClipCount = finalClipCount
     }
 }
 
@@ -32,6 +80,7 @@ final class VideoAnalysisService {
     var progress: Double = 0.0
     var statusMessage = ""
     var clips: [Clip] = []
+    var lastRunDiagnostics: AnalysisRunDiagnostics?
 
     private var previousFrameBuffer: CVPixelBuffer?
     private var settings = AnalysisSettings()
@@ -43,6 +92,7 @@ final class VideoAnalysisService {
         isAnalyzing = true
         progress = 0.0
         clips = []
+        lastRunDiagnostics = AnalysisRunDiagnostics()
         statusMessage = "Loading video..."
         
         let asset = AVURLAsset(url: url)
@@ -61,45 +111,60 @@ final class VideoAnalysisService {
 
         statusMessage = "Analyzing video frames..."
         let samplingFPS = min(max(settings.framesSampledPerSecond, 0.5), 12.0)
-        let frameScores = await analyzeFrames(asset: asset, duration: durationSeconds, framesPerSecond: samplingFPS, settings: settings)
+        let frameScores = await analyzeFrames(
+            asset: asset,
+            duration: durationSeconds,
+            framesPerSecond: samplingFPS,
+            settings: settings,
+            audioPeaks: audioPeaks
+        )
         progress = 0.75
+
+        statusMessage = "Adapting scoring..."
+        let effectiveWeights = computeAdaptiveWeights(frameScores: frameScores)
+        lastRunDiagnostics?.frameCount = frameScores.count
+        lastRunDiagnostics?.effectiveWeights = effectiveWeights
 
         statusMessage = "Detecting highlights..."
         var rawClips = buildClips(
             frameScores: frameScores,
             audioPeaks: audioPeaks,
-            duration: durationSeconds
+            duration: durationSeconds,
+            weights: effectiveWeights
         )
-        
-        // Ultimate Fallback: If no clips found, lower thresholds significantly
+
+        // Recall recovery pass: lower thresholds once more before hard fallbacks.
         if rawClips.isEmpty {
             statusMessage = "Refining detection..."
-            // Try again with significantly lower threshold to catch *something*
-            // Creating a temporary settings object with lower threshold
-            var fallbackSettings = settings
-            fallbackSettings.confidenceThreshold = 0.25 // Much lower than default 0.4
-            
-            // Re-run detection logic (we need to extract this logic to be reusable or just inline it)
-            // Ideally we refactor buildClips to accept threshold override, but settings is a property
-            // We can temporarily swap settings? Or refactor buildClips.
-            // Let's refactor buildClips to take optional threshold override.
             rawClips = buildClips(
                 frameScores: frameScores,
                 audioPeaks: audioPeaks,
                 duration: durationSeconds,
-                thresholdOverride: 0.25
+                weights: effectiveWeights,
+                thresholdOverride: max(0.22, settings.confidenceThreshold * 0.72)
             )
-            
-            // If STILL empty, try purely audio-based detection if audio exists
-            if rawClips.isEmpty && audioPeaks.max() ?? 0 > 0.3 {
-                 rawClips = buildAudioOnlyClips(audioPeaks: audioPeaks, duration: durationSeconds)
+            if rawClips.isEmpty {
+                statusMessage = "Applying fallback detection..."
+                if audioPeaks.max() ?? 0 > 0.25 {
+                    rawClips = buildAudioOnlyClips(audioPeaks: audioPeaks, duration: durationSeconds)
+                    if !rawClips.isEmpty {
+                        lastRunDiagnostics?.usedAudioFallback = true
+                    }
+                }
+                if rawClips.isEmpty {
+                    rawClips = buildMotionOnlyClips(frameScores: frameScores, duration: durationSeconds)
+                    if !rawClips.isEmpty {
+                        lastRunDiagnostics?.usedMotionFallback = true
+                    }
+                }
             }
         }
-        
+
         progress = 0.90
-        
+
         statusMessage = "Classifying actions..."
         clips = classifyActions(clips: rawClips, frameScores: frameScores)
+        lastRunDiagnostics?.finalClipCount = clips.count
         progress = 1.0
 
         statusMessage = "Found \(clips.count) highlight\(clips.count == 1 ? "" : "s")"
@@ -169,7 +234,8 @@ final class VideoAnalysisService {
         asset: AVURLAsset,
         duration: Double,
         framesPerSecond fps: Double,
-        settings: AnalysisSettings
+        settings: AnalysisSettings,
+        audioPeaks: [Double]
     ) async -> [FrameScore] {
         let totalFrames = max(Int(ceil(max(duration, 0) * fps)), 1)
         var scores: [FrameScore] = []
@@ -195,6 +261,9 @@ final class VideoAnalysisService {
                 let (poseScore, observation) = await analyzePose(image: image)
                 let motionScore = analyzeMotion(current: image, previous: previousImage)
                 let sceneScore = analyzeScene(image: image)
+                let poseCoverage = calculatePoseCoverage(observation)
+                let audioIndex = max(0, min(audioPeaks.count - 1, Int(time * 10.0)))
+                let audioBurst = AnalysisQualityTuning.localAverage(values: audioPeaks, center: audioIndex, radius: 2)
                 
                 // Update sliding window
                 let poseFrame = convertToPoseFrame(observation)
@@ -219,6 +288,9 @@ final class VideoAnalysisService {
                     poseScore: poseScore,
                     motionScore: motionScore,
                     sceneScore: sceneScore,
+                    poseCoverage: poseCoverage,
+                    brightness: sceneScore,
+                    audioBurst: audioBurst,
                     observation: observation,
                     predictedAction: predictedAction,
                     actionConfidence: actionConfidence
@@ -258,6 +330,18 @@ final class VideoAnalysisService {
             }
         }
         return PoseFrame(points: points)
+    }
+
+    private nonisolated func calculatePoseCoverage(_ observation: VNHumanBodyPoseObservation?) -> Double {
+        guard let obs = observation else { return 0.0 }
+        var detectedCount = 0
+        for joint in PoseInputBuilder.jointNames {
+            if let point = try? obs.recognizedPoint(joint), point.confidence > 0.15 {
+                detectedCount += 1
+            }
+        }
+        guard !PoseInputBuilder.jointNames.isEmpty else { return 0.0 }
+        return Double(detectedCount) / Double(PoseInputBuilder.jointNames.count)
     }
 
     private nonisolated func analyzePose(image: CGImage) async -> (Double, VNHumanBodyPoseObservation?) {
@@ -415,103 +499,155 @@ final class VideoAnalysisService {
         return min(brightRatio * 2.0, 1.0)
     }
 
-    private func buildClips(frameScores: [FrameScore], audioPeaks: [Double], duration: Double, thresholdOverride: Double? = nil) -> [Clip] {
+    private func computeAdaptiveWeights(frameScores: [FrameScore]) -> AnalysisWeights {
+        let base = AnalysisWeights(
+            audio: settings.audioWeight,
+            motion: settings.motionWeight,
+            pose: settings.poseWeight,
+            scene: settings.sceneWeight
+        )
+        guard !frameScores.isEmpty else { return AnalysisQualityTuning.normalized(base) }
+
+        let avgPoseCoverage = frameScores.reduce(0.0) { $0 + $1.poseCoverage } / Double(frameScores.count)
+        let avgBrightness = frameScores.reduce(0.0) { $0 + $1.brightness } / Double(frameScores.count)
+        return AnalysisQualityTuning.adaptiveWeights(
+            base: base,
+            averagePoseCoverage: avgPoseCoverage,
+            averageBrightness: avgBrightness
+        )
+    }
+
+    private func buildClips(
+        frameScores: [FrameScore],
+        audioPeaks: [Double],
+        duration: Double,
+        weights: AnalysisWeights,
+        thresholdOverride: Double? = nil
+    ) -> [Clip] {
         guard !frameScores.isEmpty else { return [] }
 
-        var timelineScores: [(time: Double, score: Double)] = []
+        var timeline: [ScorePoint] = []
+        timeline.reserveCapacity(frameScores.count)
 
         for frame in frameScores {
-            let audioIndex = min(Int(frame.timestamp * 10), audioPeaks.count - 1)
-            let audioScore = audioIndex >= 0 && audioIndex < audioPeaks.count ? audioPeaks[audioIndex] : 0
+            let audioIndex = max(0, min(audioPeaks.count - 1, Int(frame.timestamp * 10)))
+            let audioScore = audioPeaks.isEmpty ? 0.0 : audioPeaks[audioIndex]
+            let boostedAudio = 0.65 * audioScore + 0.35 * frame.audioBurst
 
-            let combined = settings.audioWeight * audioScore
-                + settings.motionWeight * frame.motionScore
-                + settings.poseWeight * frame.poseScore
-                + settings.sceneWeight * frame.sceneScore
-
-            timelineScores.append((time: frame.timestamp, score: combined))
+            let combined = weights.audio * boostedAudio
+                + weights.motion * frame.motionScore
+                + weights.pose * frame.poseScore
+                + weights.scene * frame.sceneScore
+            timeline.append(ScorePoint(time: frame.timestamp, score: min(max(combined, 0), 1)))
         }
 
-        var smoothedScores = timelineScores
-        for i in 0..<timelineScores.count {
-            let start = max(0, i - settings.scoreSmoothingWindow)
-            let end = min(timelineScores.count - 1, i + settings.scoreSmoothingWindow)
-            let windowSlice = timelineScores[start...end]
-            let avg = windowSlice.reduce(0.0) { $0 + $1.score } / Double(windowSlice.count)
-            smoothedScores[i] = (time: timelineScores[i].time, score: avg)
-        }
+        let smoothingRadius = max(2, settings.scoreSmoothingWindow + 1)
+        let smoothed = AnalysisQualityTuning.triangularSmooth(points: timeline, radius: smoothingRadius)
 
-        let threshold = thresholdOverride ?? settings.confidenceThreshold
-        var clipRanges: [(start: Double, end: Double, peakScore: Double)] = []
-        var inClip = false
-        var clipStart = 0.0
-        var clipPeak = 0.0
+        let baseThreshold = min(max(thresholdOverride ?? settings.confidenceThreshold, 0.12), 0.92)
+        var highThreshold = min(max(baseThreshold + 0.08, 0.18), 0.95)
+        var lowThreshold = min(max(baseThreshold - 0.08, 0.08), highThreshold - 0.03)
+        let minDuration = max(1.2, settings.minClipDuration * (settings.preferKeepUncertain ? 0.75 : 1.0))
+        let mergeGap = max(0.8, settings.clipPadding * 0.7)
 
-        for entry in smoothedScores {
-            if entry.score >= threshold {
-                if !inClip {
-                    clipStart = entry.time
-                    clipPeak = entry.score
-                    inClip = true
-                } else {
-                    clipPeak = max(clipPeak, entry.score)
-                }
-            } else if inClip {
-                let start = max(0, clipStart - settings.clipPadding)
-                let end = min(duration, entry.time + settings.clipPadding)
-                let clipDuration = end - start
-                if clipDuration >= settings.minClipDuration {
-                    let clampedEnd = start + min(clipDuration, settings.maxClipDuration)
-                    clipRanges.append((start: start, end: clampedEnd, peakScore: clipPeak))
-                }
-                inClip = false
-            }
-        }
+        var windows = AnalysisQualityTuning.segmentWithHysteresis(
+            points: smoothed,
+            highThreshold: highThreshold,
+            lowThreshold: lowThreshold,
+            minDuration: minDuration,
+            maxDuration: settings.maxClipDuration,
+            padding: settings.clipPadding,
+            durationLimit: duration,
+            mergeGap: mergeGap
+        )
 
-        if inClip {
-            let start = max(0, clipStart - settings.clipPadding)
-            let end = min(duration, (smoothedScores.last?.time ?? clipStart) + settings.clipPadding)
-            if end - start >= settings.minClipDuration {
-                clipRanges.append((start: start, end: start + min(end - start, settings.maxClipDuration), peakScore: clipPeak))
-            }
-        }
-
-        var mergedRanges: [(start: Double, end: Double, peakScore: Double)] = []
-        for range in clipRanges.sorted(by: { $0.start < $1.start }) {
-            if let last = mergedRanges.last, range.start <= last.end + 1.0 {
-                let merged = (start: last.start, end: max(last.end, range.end), peakScore: max(last.peakScore, range.peakScore))
-                mergedRanges[mergedRanges.count - 1] = merged
-            } else {
-                mergedRanges.append(range)
-            }
-        }
-
-        return mergedRanges.map { range in
-            let audioIdx = min(Int(((range.start + range.end) / 2) * 10), audioPeaks.count - 1)
-            let audioVal = audioIdx >= 0 && audioIdx < audioPeaks.count ? audioPeaks[audioIdx] : 0
-
-            let framesInRange = frameScores.filter { $0.timestamp >= range.start && $0.timestamp <= range.end }
-            let avgMotion = framesInRange.isEmpty ? 0 : framesInRange.reduce(0.0) { $0 + $1.motionScore } / Double(framesInRange.count)
-            let avgPose = framesInRange.isEmpty ? 0 : framesInRange.reduce(0.0) { $0 + $1.poseScore } / Double(framesInRange.count)
-
-            let confidence = settings.preferKeepUncertain ? max(range.peakScore, 0.45) : range.peakScore
-
-            return Clip(
-                startTime: range.start,
-                endTime: range.end,
-                confidence: min(confidence, 1.0),
-                isKept: confidence >= 0.35,
-                audioScore: audioVal,
-                visualScore: avgPose,
-                motionScore: avgMotion,
-                combinedScore: range.peakScore
+        let targetCount = recommendedMinimumClipCount(duration: duration)
+        var recallPasses = 0
+        while windows.count < targetCount && recallPasses < 2 {
+            recallPasses += 1
+            highThreshold = max(0.12, highThreshold * 0.92)
+            lowThreshold = max(0.06, min(highThreshold - 0.02, lowThreshold * 0.90))
+            windows = AnalysisQualityTuning.segmentWithHysteresis(
+                points: smoothed,
+                highThreshold: highThreshold,
+                lowThreshold: lowThreshold,
+                minDuration: minDuration * 0.9,
+                maxDuration: settings.maxClipDuration,
+                padding: settings.clipPadding,
+                durationLimit: duration,
+                mergeGap: mergeGap
             )
         }
+
+        lastRunDiagnostics?.highThreshold = highThreshold
+        lastRunDiagnostics?.lowThreshold = lowThreshold
+        lastRunDiagnostics?.recallPasses = recallPasses
+
+        let mappedClips = windows.map { window in
+            let midpoint = (window.start + window.end) / 2.0
+            let audioIndex = max(0, min(audioPeaks.count - 1, Int(midpoint * 10)))
+            let localAudio = audioPeaks.isEmpty ? 0.0 : AnalysisQualityTuning.localAverage(values: audioPeaks, center: audioIndex, radius: 2)
+
+            let framesInRange = frameScores.filter { $0.timestamp >= window.start && $0.timestamp <= window.end }
+            let avgMotion = framesInRange.isEmpty ? 0.0 : framesInRange.reduce(0.0) { $0 + $1.motionScore } / Double(framesInRange.count)
+            let avgPose = framesInRange.isEmpty ? 0.0 : framesInRange.reduce(0.0) { $0 + $1.poseScore } / Double(framesInRange.count)
+
+            let ranking = (window.peakScore * 0.45)
+                + (window.meanScore * 0.20)
+                + (avgMotion * 0.15)
+                + (avgPose * 0.10)
+                + (localAudio * 0.10)
+            let confidenceFloor = settings.preferKeepUncertain ? 0.50 : 0.38
+            let confidence = min(1.0, max(ranking, confidenceFloor))
+            let keepThreshold = settings.preferKeepUncertain ? 0.30 : 0.38
+
+            return Clip(
+                startTime: window.start,
+                endTime: window.end,
+                confidence: confidence,
+                isKept: confidence >= keepThreshold,
+                audioScore: localAudio,
+                visualScore: avgPose,
+                motionScore: avgMotion,
+                combinedScore: ranking
+            )
+        }
+
+        let maxClipCount = recommendedMaximumClipCount(duration: duration)
+        if mappedClips.count <= maxClipCount {
+            return mappedClips.sorted { $0.startTime < $1.startTime }
+        }
+
+        let topByScore = mappedClips
+            .sorted { lhs, rhs in
+                if lhs.combinedScore == rhs.combinedScore {
+                    return lhs.startTime < rhs.startTime
+                }
+                return lhs.combinedScore > rhs.combinedScore
+            }
+            .prefix(maxClipCount)
+
+        return topByScore.sorted { $0.startTime < $1.startTime }
+    }
+
+    private func recommendedMinimumClipCount(duration: Double) -> Int {
+        if duration < 45 { return 1 }
+        if duration < 120 { return 2 }
+        if duration < 240 { return 3 }
+        return 4
+    }
+
+    private func recommendedMaximumClipCount(duration: Double) -> Int {
+        if duration < 60 { return 6 }
+        if duration < 180 { return 12 }
+        return 16
     }
 
     private func buildAudioOnlyClips(audioPeaks: [Double], duration: Double) -> [Clip] {
         var clipRanges: [(start: Double, end: Double, peakScore: Double)] = []
-        let threshold = 0.5 * (audioPeaks.max() ?? 1.0) // Fallback to 50% of max sound as requested
+        // Use a much lower threshold for audio fallback - even 20% of max is better than nothing
+        let maxPeak = audioPeaks.max() ?? 1.0
+        let threshold = 0.3 * maxPeak
         
         for (index, peak) in audioPeaks.enumerated() {
             if peak > threshold {
@@ -525,17 +661,106 @@ final class VideoAnalysisService {
             }
         }
         
+        // If we still found nothing with 0.3 threshold, try even lower (0.15) just to generate SOMETHING
+        if clipRanges.isEmpty && maxPeak > 0.05 {
+             let lowThreshold = 0.15 * maxPeak
+             for (index, peak) in audioPeaks.enumerated() {
+                if peak > lowThreshold {
+                    let time = Double(index) / 10.0
+                    if let last = clipRanges.last, time - last.end < 2.0 {
+                        clipRanges[clipRanges.count - 1] = (start: last.start, end: time + 1.5, peakScore: max(last.peakScore, peak))
+                    } else {
+                        clipRanges.append((start: max(0, time - 1.5), end: min(duration, time + 1.5), peakScore: peak))
+                    }
+                }
+            }
+        }
+        
         return clipRanges.map { range in
             Clip(
                 startTime: range.start,
                 endTime: range.end,
-                confidence: 0.3, // Low confidence
+                confidence: 0.42,
                 isKept: true, // Auto-keep since it's a fallback
-                label: "Loud Moment",
+                label: "Action", // Generic label
                 audioScore: range.peakScore,
                 visualScore: 0.0,
                 motionScore: 0.0,
                 combinedScore: range.peakScore,
+                detectionMethod: .heuristic
+            )
+        }
+    }
+
+    private func buildMotionOnlyClips(frameScores: [FrameScore], duration: Double) -> [Clip] {
+        guard !frameScores.isEmpty else { return [] }
+
+        let peakMotion = frameScores.map(\.motionScore).max() ?? 0.0
+        guard peakMotion > 0.20 else { return [] }
+
+        let threshold = max(0.30, peakMotion * 0.62)
+        var windows: [SegmentedClipWindow] = []
+        var currentStart: Double?
+        var currentEnd: Double?
+        var currentPeak = 0.0
+        var currentSum = 0.0
+        var currentCount = 0
+
+        for frame in frameScores {
+            if frame.motionScore >= threshold {
+                if currentStart == nil {
+                    currentStart = frame.timestamp
+                    currentEnd = frame.timestamp
+                    currentPeak = frame.motionScore
+                    currentSum = frame.motionScore
+                    currentCount = 1
+                } else {
+                    currentEnd = frame.timestamp
+                    currentPeak = max(currentPeak, frame.motionScore)
+                    currentSum += frame.motionScore
+                    currentCount += 1
+                }
+            } else if let start = currentStart, let end = currentEnd {
+                if end - start >= max(1.2, settings.minClipDuration * 0.65) {
+                    windows.append(
+                        SegmentedClipWindow(
+                            start: max(0, start - settings.clipPadding),
+                            end: min(duration, min(start + settings.maxClipDuration, end + settings.clipPadding)),
+                            peakScore: currentPeak,
+                            meanScore: currentCount > 0 ? currentSum / Double(currentCount) : currentPeak
+                        )
+                    )
+                }
+                currentStart = nil
+                currentEnd = nil
+                currentPeak = 0.0
+                currentSum = 0.0
+                currentCount = 0
+            }
+        }
+
+        if let start = currentStart, let end = currentEnd, end - start >= max(1.2, settings.minClipDuration * 0.65) {
+            windows.append(
+                SegmentedClipWindow(
+                    start: max(0, start - settings.clipPadding),
+                    end: min(duration, min(start + settings.maxClipDuration, end + settings.clipPadding)),
+                    peakScore: currentPeak,
+                    meanScore: currentCount > 0 ? currentSum / Double(currentCount) : currentPeak
+                )
+            )
+        }
+
+        return windows.map { window in
+            Clip(
+                startTime: window.start,
+                endTime: window.end,
+                confidence: min(1.0, max(0.38, (window.peakScore * 0.5 + window.meanScore * 0.5))),
+                isKept: true,
+                label: "Action",
+                audioScore: 0.0,
+                visualScore: 0.0,
+                motionScore: window.peakScore,
+                combinedScore: window.meanScore,
                 detectionMethod: .heuristic
             )
         }
@@ -576,73 +801,72 @@ final class VideoAnalysisService {
             let maxMotion = framesInClip.map(\.motionScore).max() ?? 0
             let maxPose = framesInClip.map(\.poseScore).max() ?? 0
             let avgMotion = framesInClip.isEmpty ? 0 : framesInClip.reduce(0.0) { $0 + $1.motionScore } / Double(framesInClip.count)
+            let avgPose = framesInClip.isEmpty ? 0 : framesInClip.reduce(0.0) { $0 + $1.poseScore } / Double(framesInClip.count)
+            let avgAudioBurst = framesInClip.isEmpty ? clip.audioScore : framesInClip.reduce(0.0) { $0 + $1.audioBurst } / Double(framesInClip.count)
             
-            // 1. Try ML Prediction with Smoothing
-            var mlPredictionSuccess = false
-            
-            // Collect all predictions in this clip
-            let predictions = framesInClip.compactMap { $0.predictedAction }
-            
-            // Count frequencies
-            var counts: [String: Int] = [:]
-            for label in predictions {
-                counts[label, default: 0] += 1
-            }
-            
-            // Find most frequent
-            if let (bestLabel, count) = counts.max(by: { $0.value < $1.value }) {
-                // Heuristic: If we have enough frames and confidence
-                // Check if we have a reasonable number of predictions (e.g. > 10% of frames or > 5 frames)
-                if count >= settings.minMLPredictionCount {
-                     if let action = HighlightAction(rawValue: bestLabel) ?? HighlightAction.allCases.first(where: { $0.rawValue.localizedCaseInsensitiveCompare(bestLabel) == .orderedSame }) {
-                        if action != .unknown {
-                            classified.action = action
-                            classified.label = action.rawValue
-                            classified.detectionMethod = .ml
-                            mlPredictionSuccess = true
-                            
-                            // Auto-enable slow motion for dunks
-                            if action == .dunk {
-                                classified.isSlowMotionEnabled = true
-                            }
-                        }
-                     }
+            // 1. Try weighted ML voting first.
+            var votes: [PredictionVote] = []
+            let minConfidenceFloor = 0.35
+            for (index, frame) in framesInClip.enumerated() {
+                guard let label = frame.predictedAction,
+                      let confidence = frame.actionConfidence,
+                      confidence >= minConfidenceFloor else {
+                    continue
                 }
+                let recencyWeight = framesInClip.count <= 1 ? 1.0 : 0.75 + (Double(index) / Double(framesInClip.count - 1)) * 0.5
+                votes.append(
+                    PredictionVote(
+                        label: label,
+                        confidence: confidence,
+                        recencyWeight: recencyWeight
+                    )
+                )
             }
-            
-            if mlPredictionSuccess {
-                return classified
+
+            if let bestLabel = AnalysisQualityTuning.weightedWinningLabel(
+                votes: votes,
+                minCount: settings.minMLPredictionCount,
+                minMargin: 0.18
+            ) {
+                if let action = HighlightAction(rawValue: bestLabel)
+                    ?? HighlightAction.allCases.first(where: { $0.rawValue.localizedCaseInsensitiveCompare(bestLabel) == .orderedSame }),
+                   action != .unknown {
+                    classified.action = action
+                    classified.label = action.rawValue
+                    classified.detectionMethod = .ml
+                    if action == .dunk {
+                        classified.isSlowMotionEnabled = true
+                    }
+                    return classified
+                }
             }
 
             // 2. Fallback Heuristics
             classified.detectionMethod = .heuristic
             
-            // Refined thresholds for better recall (especially for multi-angle/low-vis)
-            // Reduced motion/pose thresholds slightly to catch more action
-            if maxPose > 0.6 && maxMotion > 0.5 {
-                if clip.audioScore > 0.6 {
+            if maxPose > 0.56 && maxMotion > 0.48 {
+                if max(clip.audioScore, avgAudioBurst) > 0.52 {
                     classified.action = .dunk
                 } else {
                     classified.action = .posterize
                 }
-            } else if maxPose > 0.4 && avgMotion > 0.4 {
-                if clip.duration < 4.0 {
+            } else if avgPose > 0.42 && avgMotion > 0.38 {
+                if clip.duration < 4.2 {
                     classified.action = .layup
                 } else {
                     classified.action = .madeShot
                 }
-            } else if maxMotion > 0.6 {
+            } else if maxMotion > 0.62 {
                 classified.action = .fastBreak
-            } else if maxMotion > 0.45 && maxPose > 0.25 {
-                if clip.audioScore > 0.4 {
+            } else if avgMotion > 0.44 && maxPose > 0.24 {
+                if max(clip.audioScore, avgAudioBurst) > 0.38 {
                     classified.action = .threePointer
                 } else {
                     classified.action = .steal
                 }
-            } else if maxPose > 0.35 {
+            } else if maxPose > 0.34 {
                 classified.action = .block
-            } else if clip.audioScore > 0.55 {
-                // High audio fallback
+            } else if max(clip.audioScore, avgAudioBurst) > 0.50 {
                 classified.action = .madeShot
             } else {
                 classified.action = .unknown

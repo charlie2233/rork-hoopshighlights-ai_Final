@@ -88,13 +88,7 @@ struct VideoPlayerView: View {
             .alert("No Highlights Found", isPresented: $showingNoClipsAlert) {
                 Button("OK", role: .cancel) { }
             } message: {
-                // Check if we actually found something in the fallback pass but filtered it out or if it was truly empty
-                // But since `clips` is bound to the view model, if it's empty here, it means even fallback failed or didn't produce KEPT clips?
-                // Wait, analysisService.clips contains ALL clips. 
-                // If clips is empty, then TRULY nothing was found.
-                // If clips is NOT empty but keptClips is empty, we show analysis complete but maybe empty list?
-                // The logic above checks `viewModel.clips.isEmpty`.
-                Text("AI couldn't detect any significant basketball actions, even with enhanced sensitivity. Try a different video.")
+                Text("AI couldn't detect any visual highlights, even after refining. If the video has audio, we tried to extract loud moments.")
             }
         }
     }

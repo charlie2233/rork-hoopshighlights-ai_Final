@@ -16,4 +16,7 @@ struct AnalysisSettings: Codable, Sendable {
     var mlWindowSize: Int = 60
     var minMLPredictionCount: Int = 3
     var scoreSmoothingWindow: Int = 3
+    
+    // Preprocessing Configuration
+    var enableSmartCropping: Bool = true
 }
