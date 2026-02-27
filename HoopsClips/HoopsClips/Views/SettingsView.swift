@@ -205,13 +205,23 @@ struct SettingsView: View {
                     tint: viewModel.settings.preferKeepUncertain ? AppTheme.successGreen : AppTheme.dangerRed
                 )
             }
+
+            HStack(spacing: 10) {
+                RorkMetricChip(
+                    icon: "clock.badge.checkmark.fill",
+                    value: formattedTargetDuration(viewModel.settings.targetHighlightDuration),
+                    label: "Target Reel",
+                    tint: AppTheme.warningYellow
+                )
+                Spacer()
+            }
         }
         .padding(16)
         .rorkCard(cornerRadius: 18, stroke: AppTheme.softBorder, glowOpacity: 0.06)
     }
 
     private var clipSettingsSection: some View {
-        settingsCard(title: "Clip Duration", icon: "scissors") {
+        settingsCard(title: "Clip & Reel Duration", icon: "scissors") {
             VStack(spacing: 4) {
                 HStack {
                     Text("Minimum")
@@ -244,6 +254,25 @@ struct SettingsView: View {
                 Slider(value: $viewModel.settings.maxClipDuration, in: 5.0...30.0, step: 1.0)
                     .tint(AppTheme.accentPurple)
                 Text("Longest clip the AI will keep")
+                    .font(.caption2)
+                    .foregroundStyle(AppTheme.subtleText)
+            }
+
+            Divider().overlay(AppTheme.accentPurple.opacity(0.2))
+
+            VStack(spacing: 4) {
+                HStack {
+                    Text("Target Highlight")
+                        .font(.subheadline)
+                        .foregroundStyle(.white)
+                    Spacer()
+                    Text(formattedTargetDuration(viewModel.settings.targetHighlightDuration))
+                        .font(.subheadline.monospacedDigit())
+                        .foregroundStyle(AppTheme.neonPurple)
+                }
+                Slider(value: $viewModel.settings.targetHighlightDuration, in: 15.0...180.0, step: 5.0)
+                    .tint(AppTheme.accentPurple)
+                Text("Caps the default auto-kept reel length after analysis. You can still keep more clips manually in Review.")
                     .font(.caption2)
                     .foregroundStyle(AppTheme.subtleText)
             }
@@ -1008,5 +1037,18 @@ struct SettingsView: View {
         guard parts.count == 2 else { return false }
         let domain = parts[1]
         return !parts[0].isEmpty && domain.contains(".") && !domain.hasPrefix(".") && !domain.hasSuffix(".")
+    }
+
+    private func formattedTargetDuration(_ duration: Double) -> String {
+        if duration < 60 {
+            return String(format: "%.0f sec", duration)
+        }
+
+        let minutes = Int(duration) / 60
+        let seconds = Int(duration) % 60
+        if seconds == 0 {
+            return "\(minutes) min"
+        }
+        return "\(minutes)m \(seconds)s"
     }
 }

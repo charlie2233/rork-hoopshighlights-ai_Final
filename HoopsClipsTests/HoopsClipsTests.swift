@@ -354,4 +354,75 @@ struct HoopsClipsTests {
         #expect(normalized[0].detectionMethod == .ml)
     }
 
+    @Test func testTargetHighlightDurationCapsDefaultAutoKeptClips() async {
+        let service = await VideoAnalysisService()
+        var settings = AnalysisSettings()
+        settings.targetHighlightDuration = 18.0
+        await service.updateSettings(settings)
+
+        let result = CloudAnalysisResult(
+            clipCount: 3,
+            clips: [
+                CloudClip(
+                    startTime: 0.0,
+                    endTime: 8.0,
+                    confidence: 0.92,
+                    label: "Dunk",
+                    action: "Dunk",
+                    audioScore: 0.9,
+                    visualScore: 0.7,
+                    motionScore: 0.8,
+                    combinedScore: 0.9,
+                    detectionMethod: "Cloud",
+                    shouldAutoKeep: true,
+                    shouldEnableSlowMotion: true
+                ),
+                CloudClip(
+                    startTime: 12.0,
+                    endTime: 20.0,
+                    confidence: 0.88,
+                    label: "Three Pointer",
+                    action: "Three Pointer",
+                    audioScore: 0.7,
+                    visualScore: 0.6,
+                    motionScore: 0.7,
+                    combinedScore: 0.8,
+                    detectionMethod: "Cloud",
+                    shouldAutoKeep: true,
+                    shouldEnableSlowMotion: false
+                ),
+                CloudClip(
+                    startTime: 24.0,
+                    endTime: 32.0,
+                    confidence: 0.84,
+                    label: "Made Shot",
+                    action: "Made Shot",
+                    audioScore: 0.6,
+                    visualScore: 0.6,
+                    motionScore: 0.6,
+                    combinedScore: 0.7,
+                    detectionMethod: "Cloud",
+                    shouldAutoKeep: true,
+                    shouldEnableSlowMotion: false
+                )
+            ],
+            diagnostics: CloudDiagnostics(
+                processingMs: 1200,
+                backendModelVersion: "test",
+                usedVideoIntelligence: false,
+                usedGeminiRelabeling: false,
+                candidateSegments: 3,
+                finalSegments: 3
+            )
+        )
+
+        await service.applyCloudAnalysis(result, duration: 60.0)
+        let clips = await service.clips
+        let kept = clips.filter(\.isKept)
+
+        #expect(clips.count == 3)
+        #expect(kept.count == 2)
+        #expect(kept.reduce(0.0) { $0 + $1.duration } <= settings.targetHighlightDuration + 0.001)
+    }
+
 }

@@ -105,7 +105,8 @@ final class VideoAnalysisService {
 
     func applyCloudAnalysis(_ result: CloudAnalysisResult, duration: Double) {
         let mappedClips = result.clips.map { $0.makeClip() }
-        clips = normalizeDetectedClips(mappedClips, duration: duration)
+        let normalizedClips = normalizeDetectedClips(mappedClips, duration: duration)
+        clips = applyTargetHighlightDurationPreference(to: normalizedClips)
         progress = 1.0
         statusMessage = "Found \(clips.count) highlight\(clips.count == 1 ? "" : "s")"
         isAnalyzing = false
@@ -193,7 +194,8 @@ final class VideoAnalysisService {
 
         statusMessage = "Classifying actions..."
         let classifiedClips = classifyActions(clips: rawClips, frameScores: frameScores)
-        clips = normalizeDetectedClips(classifiedClips, duration: durationSeconds)
+        let normalizedClips = normalizeDetectedClips(classifiedClips, duration: durationSeconds)
+        clips = applyTargetHighlightDurationPreference(to: normalizedClips)
         lastRunDiagnostics?.finalClipCount = clips.count
         progress = 1.0
 
@@ -730,6 +732,53 @@ final class VideoAnalysisService {
         }
 
         return deduplicated.sorted { $0.startTime < $1.startTime }
+    }
+
+    private func applyTargetHighlightDurationPreference(to detectedClips: [Clip]) -> [Clip] {
+        let targetDuration = max(settings.targetHighlightDuration, settings.minClipDuration)
+        guard targetDuration > 0 else { return detectedClips }
+
+        let initiallyKept = detectedClips.filter(\.isKept)
+        let currentKeptDuration = initiallyKept.reduce(0.0) { $0 + $1.duration }
+        guard currentKeptDuration > targetDuration, !initiallyKept.isEmpty else {
+            return detectedClips
+        }
+
+        let rankedKept = initiallyKept.sorted { lhs, rhs in
+            if lhs.combinedScore == rhs.combinedScore {
+                if lhs.confidence == rhs.confidence {
+                    if lhs.duration == rhs.duration {
+                        return lhs.startTime < rhs.startTime
+                    }
+                    return lhs.duration < rhs.duration
+                }
+                return lhs.confidence > rhs.confidence
+            }
+            return lhs.combinedScore > rhs.combinedScore
+        }
+
+        var selectedIDs = Set<UUID>()
+        var accumulatedDuration = 0.0
+
+        for clip in rankedKept {
+            if selectedIDs.isEmpty {
+                selectedIDs.insert(clip.id)
+                accumulatedDuration += clip.duration
+                continue
+            }
+
+            if accumulatedDuration + clip.duration <= targetDuration + 0.001 {
+                selectedIDs.insert(clip.id)
+                accumulatedDuration += clip.duration
+            }
+        }
+
+        return detectedClips.map { clip in
+            guard clip.isKept else { return clip }
+            var adjusted = clip
+            adjusted.isKept = selectedIDs.contains(clip.id)
+            return adjusted
+        }
     }
 
     private func buildBoundedAudioFallbackCandidates(
