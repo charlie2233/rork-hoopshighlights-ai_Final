@@ -3,7 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Optional
+from pathlib import Path
+from typing import Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -20,6 +21,10 @@ class JobStatus(str, Enum):
     FAILED = "failed"
     EXPIRED = "expired"
 
+    @property
+    def is_terminal(self) -> bool:
+        return self in {JobStatus.SUCCEEDED, JobStatus.FAILED, JobStatus.EXPIRED}
+
 
 class CreateCloudAnalysisJobRequest(APIModel):
     filename: str = Field(min_length=1, max_length=255)
@@ -35,7 +40,7 @@ class CreateCloudAnalysisJobResponse(APIModel):
     jobId: str
     uploadUrl: str
     uploadMethod: str = "PUT"
-    uploadHeaders: dict[str, str]
+    uploadHeaders: Dict[str, str]
     expiresAt: datetime
     pollAfterSeconds: int
     quotaRemainingToday: int
@@ -77,7 +82,7 @@ class CloudDiagnostics(APIModel):
 
 class CloudAnalysisResult(APIModel):
     clipCount: int
-    clips: list[CloudClip]
+    clips: List[CloudClip]
     diagnostics: CloudDiagnostics
 
 
@@ -102,7 +107,26 @@ class ErrorResponse(APIModel):
 class PreparedUpload:
     object_key: str
     upload_url: str
-    upload_headers: dict[str, str]
+    upload_headers: Dict[str, str]
+    expires_at: datetime
+
+
+@dataclass
+class MaterializedSource:
+    local_path: Path
+    cleanup_after_use: bool = False
+
+    def cleanup(self) -> None:
+        if not self.cleanup_after_use:
+            return
+        try:
+            if self.local_path.exists():
+                self.local_path.unlink()
+            parent = self.local_path.parent
+            if parent.exists() and not any(parent.iterdir()):
+                parent.rmdir()
+        except OSError:
+            pass
 
 
 @dataclass
@@ -129,7 +153,7 @@ class StoredJob:
     created_at: datetime
     expires_at: datetime
     object_key: str
-    upload_headers: dict[str, str] = field(default_factory=dict)
+    upload_headers: Dict[str, str] = field(default_factory=dict)
     status: JobStatus = JobStatus.CREATED
     progress: float = 0.0
     stage: str = "Preparing upload"

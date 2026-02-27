@@ -10,15 +10,15 @@ import shutil
 import subprocess
 import tempfile
 import wave
+from typing import List
 
 from .classifier import classify_window, maybe_relabel_with_gemini
 from .config import Settings
 from .models import CandidateWindow, CloudAnalysisResult, CloudDiagnostics, PipelineError, StoredJob, clamp
 
 
-def run_analysis(job: StoredJob, settings: Settings) -> CloudAnalysisResult:
+def run_analysis(job: StoredJob, settings: Settings, source_path: Path) -> CloudAnalysisResult:
     started_at = perf_counter()
-    source_path = Path(job.storage_path or "")
     if not source_path.exists():
         raise PipelineError("upload_missing", "The uploaded video could not be found.")
 
@@ -85,7 +85,7 @@ def _probe_duration(path: Path, fallback: float) -> float:
         return max(fallback, 1.0)
 
 
-def _detect_shot_boundaries(path: Path) -> list[float]:
+def _detect_shot_boundaries(path: Path) -> List[float]:
     # Google Video Intelligence is not invoked in the local scaffold. This hook
     # keeps the pipeline shape stable so the storage/store contract stays the same
     # when the Cloud Run service is later wired to GCP managed services.
@@ -93,7 +93,7 @@ def _detect_shot_boundaries(path: Path) -> list[float]:
     return []
 
 
-def _extract_audio_profile(path: Path, duration_seconds: float) -> list[float]:
+def _extract_audio_profile(path: Path, duration_seconds: float) -> List[float]:
     bucket_count = max(int(math.ceil(duration_seconds / 0.5)), 1)
     ffmpeg = shutil.which("ffmpeg")
     if ffmpeg is None:
@@ -131,7 +131,7 @@ def _extract_audio_profile(path: Path, duration_seconds: float) -> list[float]:
         return [0.0] * bucket_count
 
     samples_per_bucket = max(int(sample_rate * 0.5), 1)
-    peaks: list[float] = []
+    peaks: List[float] = []
     for index in range(bucket_count):
         start = index * samples_per_bucket
         end = min(start + samples_per_bucket, len(samples))
@@ -148,13 +148,13 @@ def _extract_audio_profile(path: Path, duration_seconds: float) -> list[float]:
 
 def _build_candidate_windows(
     duration_seconds: float,
-    audio_profile: list[float],
-    shot_boundaries: list[float],
+    audio_profile: List[float],
+    shot_boundaries: List[float],
     settings: Settings,
-) -> list[CandidateWindow]:
+) -> List[CandidateWindow]:
     window_span = min(max(4.5, settings.min_clip_duration_seconds + 1.5), settings.max_clip_duration_seconds)
     stride = 1.5
-    windows: list[CandidateWindow] = []
+    windows: List[CandidateWindow] = []
 
     time_cursor = 0.0
     while time_cursor < duration_seconds:
@@ -198,11 +198,11 @@ def _build_candidate_windows(
     return sorted(windows, key=lambda item: item.combined_score, reverse=True)[: min(3, len(windows))]
 
 
-def _segment_with_hysteresis(windows: list[CandidateWindow], settings: Settings) -> list[CandidateWindow]:
+def _segment_with_hysteresis(windows: List[CandidateWindow], settings: Settings) -> List[CandidateWindow]:
     high_threshold = 0.66
     low_threshold = 0.48
-    active: list[CandidateWindow] = []
-    merged: list[CandidateWindow] = []
+    active: List[CandidateWindow] = []
+    merged: List[CandidateWindow] = []
 
     for window in windows:
         if not active:
@@ -224,9 +224,11 @@ def _segment_with_hysteresis(windows: list[CandidateWindow], settings: Settings)
     return merged[: settings.max_returned_clips]
 
 
-def _collapse_windows(group: list[CandidateWindow], settings: Settings) -> CandidateWindow:
+def _collapse_windows(group: List[CandidateWindow], settings: Settings) -> CandidateWindow:
     start_time = max(group[0].start_time - settings.clip_padding_seconds, 0.0)
-    end_time = min(group[-1].end_time + settings.clip_padding_seconds, group[-1].end_time + settings.clip_padding_seconds)
+    padded_end = group[-1].end_time + settings.clip_padding_seconds
+    max_end = max(group[-1].end_time, group[0].start_time + settings.max_clip_duration_seconds)
+    end_time = min(padded_end, max_end)
     duration = end_time - start_time
 
     if duration < settings.min_clip_duration_seconds:
@@ -246,7 +248,7 @@ def _collapse_windows(group: list[CandidateWindow], settings: Settings) -> Candi
     )
 
 
-def _fallback_window(duration_seconds: float, audio_profile: list[float], settings: Settings) -> CandidateWindow:
+def _fallback_window(duration_seconds: float, audio_profile: List[float], settings: Settings) -> CandidateWindow:
     peak_index = max(range(len(audio_profile)), key=lambda index: audio_profile[index], default=0)
     center = min((peak_index * 0.5) + 1.0, max(duration_seconds - (settings.min_clip_duration_seconds / 2.0), 0.0))
     start_time = max(center - 1.6, 0.0)

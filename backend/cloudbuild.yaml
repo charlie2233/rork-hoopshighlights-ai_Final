@@ -1,28 +1,56 @@
+substitutions:
+  _SERVICE_NAME: hoops-ai-api
+  _REGION: us-central1
+  _ARTIFACT_REPO: hoops-ai
+  _ENVIRONMENT: production
+  _GCS_BUCKET: charlie-hoops-ai-analysis-temp
+  _JOBS_COLLECTION: analysisJobs
+  _USAGE_COLLECTION: usageCounters
+  _TASKS_QUEUE: analysis-jobs
+
 steps:
   - name: gcr.io/cloud-builders/docker
     args:
       - build
       - -t
-      - us-central1-docker.pkg.dev/$PROJECT_ID/hoops-ai/hoops-ai-api:$COMMIT_SHA
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/${_SERVICE_NAME}:$COMMIT_SHA
       - .
+
   - name: gcr.io/cloud-builders/docker
     args:
       - push
-      - us-central1-docker.pkg.dev/$PROJECT_ID/hoops-ai/hoops-ai-api:$COMMIT_SHA
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/${_SERVICE_NAME}:$COMMIT_SHA
+
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
     entrypoint: gcloud
     args:
       - run
       - deploy
-      - hoops-ai-api
+      - ${_SERVICE_NAME}
       - --image
-      - us-central1-docker.pkg.dev/$PROJECT_ID/hoops-ai/hoops-ai-api:$COMMIT_SHA
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/${_SERVICE_NAME}:$COMMIT_SHA
       - --region
-      - us-central1
+      - ${_REGION}
       - --platform
       - managed
       - --port
       - "8080"
       - --allow-unauthenticated
+      - --service-account
+      - hoops-ai-api@$PROJECT_ID.iam.gserviceaccount.com
+      - --set-env-vars
+      - >-
+        HOOPS_ENVIRONMENT=${_ENVIRONMENT},
+        HOOPS_GCP_PROJECT_ID=$PROJECT_ID,
+        HOOPS_GCP_REGION=${_REGION},
+        HOOPS_GCS_BUCKET=${_GCS_BUCKET},
+        HOOPS_FIRESTORE_JOBS_COLLECTION=${_JOBS_COLLECTION},
+        HOOPS_FIRESTORE_USAGE_COLLECTION=${_USAGE_COLLECTION},
+        HOOPS_CLOUD_TASKS_QUEUE=${_TASKS_QUEUE},
+        HOOPS_CLOUD_RUN_BASE_URL=https://hoops-ai-api-$PROJECT_ID.${_REGION}.run.app,
+        HOOPS_ENABLE_LOCAL_UPLOAD_EMULATION=false
+      - --set-secrets
+      - HOOPS_INTERNAL_PROCESS_SECRET=HOOPS_INTERNAL_PROCESS_SECRET:latest
+
 images:
-  - us-central1-docker.pkg.dev/$PROJECT_ID/hoops-ai/hoops-ai-api:$COMMIT_SHA
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPO}/${_SERVICE_NAME}:$COMMIT_SHA

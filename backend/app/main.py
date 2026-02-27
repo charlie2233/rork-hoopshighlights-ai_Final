@@ -1,29 +1,35 @@
 from __future__ import annotations
 
+from typing import Dict, Optional
+
 from fastapi import FastAPI
 
-from .api import router
-from .config import get_settings
+from .api import create_router
+from .config import Settings, get_settings
 
 
-settings = get_settings()
-app = FastAPI(title="Hoops AI API", version=settings.backend_model_version)
-app.include_router(router)
+def create_app(settings: Optional[Settings] = None) -> FastAPI:
+    resolved_settings = settings or get_settings()
+    app = FastAPI(title="Hoops AI API", version=resolved_settings.backend_model_version)
+    app.include_router(create_router(resolved_settings))
+
+    @app.get("/")
+    async def root() -> Dict[str, str]:
+        return {
+            "service": resolved_settings.service_name,
+            "status": "ok",
+            "analysisMode": "cloud",
+            "version": resolved_settings.backend_model_version,
+        }
+
+    @app.get("/healthz")
+    async def healthz() -> Dict[str, str]:
+        return {
+            "status": "ok",
+            "service": resolved_settings.service_name,
+        }
+
+    return app
 
 
-@app.get("/")
-async def root() -> dict[str, str]:
-    return {
-        "service": settings.service_name,
-        "status": "ok",
-        "analysisMode": "cloud",
-        "version": settings.backend_model_version,
-    }
-
-
-@app.get("/healthz")
-async def healthz() -> dict[str, str]:
-    return {
-        "status": "ok",
-        "service": settings.service_name,
-    }
+app = create_app()
