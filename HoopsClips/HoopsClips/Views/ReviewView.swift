@@ -5,6 +5,8 @@ struct ReviewView: View {
     @Bindable var viewModel: HighlightsViewModel
     @State private var selectedClip: Clip?
     @State private var clipPlayer: AVPlayer?
+    @State private var clipLoopObserverToken: NSObjectProtocol?
+    @State private var clipPlaybackRange: ClosedRange<Double>?
     @State private var filterOption: FilterOption = .all
     @State private var sortByScore = true
     @State private var expandedClipID: UUID?
@@ -77,7 +79,7 @@ struct ReviewView: View {
                     }
                 }
             }
-            .sheet(item: $selectedClip) { clip in
+            .sheet(item: $selectedClip, onDismiss: teardownClipPlayer) { clip in
                 clipDetailSheet(clip: clip)
             }
         }
@@ -481,6 +483,46 @@ struct ReviewView: View {
         }
     }
 
+    private func prepareClipPlayer(for clip: Clip) {
+        teardownClipPlayer()
+        clipPlaybackRange = clip.startTime...clip.endTime
+
+        guard let url = viewModel.videoURL else { return }
+
+        let playerItem = AVPlayerItem(url: url)
+        let clipEnd = CMTime(seconds: clip.endTime, preferredTimescale: 600)
+        let clipStart = CMTime(seconds: clip.startTime, preferredTimescale: 600)
+        playerItem.forwardPlaybackEndTime = clipEnd
+
+        let player = AVPlayer(playerItem: playerItem)
+        clipLoopObserverToken = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemDidPlayToEndTime,
+            object: playerItem,
+            queue: .main
+        ) { [weak player] _ in
+            guard let player else { return }
+            player.seek(to: clipStart, toleranceBefore: .zero, toleranceAfter: .zero) { _ in
+                player.play()
+            }
+        }
+
+        clipPlayer = player
+        player.seek(to: clipStart, toleranceBefore: .zero, toleranceAfter: .zero) { _ in
+            player.play()
+        }
+    }
+
+    private func teardownClipPlayer() {
+        clipPlayer?.pause()
+        clipPlayer = nil
+        clipPlaybackRange = nil
+
+        if let clipLoopObserverToken {
+            NotificationCenter.default.removeObserver(clipLoopObserverToken)
+            self.clipLoopObserverToken = nil
+        }
+    }
+
     private func clipDetailSheet(clip: Clip) -> some View {
         NavigationStack {
             ZStack {
@@ -488,17 +530,30 @@ struct ReviewView: View {
 
                 ScrollView {
                     VStack(spacing: 20) {
-                        if let url = viewModel.videoURL {
-                            let playerItem = AVPlayerItem(url: url)
-                            let detailPlayer = AVPlayer(playerItem: playerItem)
-
-                            VideoPlayer(player: detailPlayer)
+                        if let clipPlayer {
+                            VideoPlayer(player: clipPlayer)
                                 .frame(height: 220)
                                 .clipShape(.rect(cornerRadius: 16))
-                                .onAppear {
-                                    detailPlayer.seek(to: CMTime(seconds: clip.startTime, preferredTimescale: 600))
-                                    detailPlayer.play()
-                                }
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 16)
+                                        .stroke(AppTheme.accentPurple.opacity(0.3), lineWidth: 1)
+                                )
+                        } else {
+                            ContentUnavailableView {
+                                Label("Clip Preview Unavailable", systemImage: "video.slash.fill")
+                            } description: {
+                                Text("The source video is not available, so this clip can’t be previewed right now.")
+                            }
+                            .frame(height: 220)
+                            .foregroundStyle(.white)
+                            .background(AppTheme.cardBg, in: .rect(cornerRadius: 16))
+                        }
+
+                        if clipPlaybackRange != nil {
+                            Text("Looping selected clip")
+                                .font(.caption2.weight(.medium))
+                                .foregroundStyle(AppTheme.subtleText)
+                                .frame(maxWidth: .infinity, alignment: .leading)
                         }
 
                         VStack(spacing: 12) {
@@ -556,5 +611,11 @@ struct ReviewView: View {
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
         .presentationBackground(AppTheme.darkBg)
+        .onAppear {
+            prepareClipPlayer(for: clip)
+        }
+        .onDisappear {
+            teardownClipPlayer()
+        }
     }
 }

@@ -1,4 +1,5 @@
 import SwiftUI
+import AVKit
 import UniformTypeIdentifiers
 
 struct ExportView: View {
@@ -14,9 +15,12 @@ struct ExportView: View {
     @State private var shareTrigger = 0
     @State private var showingPaywall = false
     @State private var showSystemShareSheet = false
+    @State private var showExportPreviewSheet = false
     @State private var musicPreviewManager = MusicPreviewManager()
     @State private var editorShortcuts = EditorAppSupport.defaultShortcuts
     @State private var socialShortcuts = SocialAppSupport.defaultShortcuts
+    @State private var exportPreviewPlayer: AVPlayer?
+    @State private var expandedExportPreviewPlayer: AVPlayer?
     @State private var shareURL: URL?
     @State private var selectedShareTargetHint: String?
     @State private var selectedShareCategory: QuickShareCategory?
@@ -63,6 +67,13 @@ struct ExportView: View {
                     EmptyView()
                 }
             }
+            .sheet(isPresented: $showExportPreviewSheet) {
+                if let exportedURL = viewModel.exportService.exportedURL {
+                    exportPreviewSheet(url: exportedURL)
+                } else {
+                    EmptyView()
+                }
+            }
             .alert("Export Complete!", isPresented: $viewModel.showingExportComplete) {
                 Button("Save to Photos") {
                     Task { await viewModel.saveToPhotos() }
@@ -79,6 +90,16 @@ struct ExportView: View {
             .onAppear {
                 refreshEditorShortcuts()
                 refreshSocialShortcuts()
+                configureExportPreviewPlayer(for: viewModel.exportService.exportedURL)
+            }
+            .onChange(of: viewModel.exportService.exportedURL) { _, newValue in
+                configureExportPreviewPlayer(for: newValue)
+                if showExportPreviewSheet {
+                    configureExpandedExportPreviewPlayer(for: newValue)
+                }
+            }
+            .onDisappear {
+                pausePreviewPlayers()
             }
         }
     }
@@ -487,12 +508,87 @@ struct ExportView: View {
     @ViewBuilder
     private var quickActionsSection: some View {
         if let exportedURL = viewModel.exportService.exportedURL, !viewModel.exportService.isExporting {
+            let exportAvailable = isExportFileAvailable(exportedURL)
+
             VStack(alignment: .leading, spacing: 12) {
                 RorkSectionHeader(
                     title: "Quick Share",
                     icon: "paperplane.fill",
                     subtitle: "iOS share sheet for the latest export"
                 )
+
+                if exportAvailable {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Group {
+                            if let exportPreviewPlayer {
+                                VideoPlayer(player: exportPreviewPlayer)
+                            } else {
+                                ProgressView()
+                                    .tint(AppTheme.neonPurple)
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                    .background(AppTheme.surfaceBg)
+                            }
+                        }
+                        .frame(height: 220)
+                        .clipShape(.rect(cornerRadius: 16))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16)
+                                .stroke(AppTheme.accentPurple.opacity(0.28), lineWidth: 1)
+                        )
+                        .overlay(alignment: .topLeading) {
+                            Text(exportedURL.lastPathComponent)
+                                .font(.caption2.monospaced())
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(Color.black.opacity(0.45), in: .capsule)
+                                .padding(10)
+                                .allowsHitTesting(false)
+                        }
+                        .overlay(alignment: .bottomTrailing) {
+                            Button {
+                                showExportPreviewSheet = true
+                            } label: {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "arrow.up.left.and.arrow.down.right")
+                                        .font(.caption.weight(.bold))
+                                    Text("Expand Preview")
+                                        .font(.caption.bold())
+                                }
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 8)
+                                .background(AppTheme.surfaceBg.opacity(0.92), in: .capsule)
+                                .overlay(
+                                    Capsule()
+                                        .stroke(AppTheme.softBorder, lineWidth: 1)
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            .padding(10)
+                        }
+
+                        Text("Play the latest export here before you share it.")
+                            .font(.caption2)
+                            .foregroundStyle(AppTheme.subtleText)
+                    }
+                } else {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Label("Export preview unavailable", systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(AppTheme.warningYellow)
+                        Text("The latest export file is no longer available on this device. Re-export to preview or share it again.")
+                            .font(.caption2)
+                            .foregroundStyle(AppTheme.subtleText)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(12)
+                    .background(AppTheme.surfaceBg, in: RoundedRectangle(cornerRadius: 14))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14)
+                            .stroke(AppTheme.warningYellow.opacity(0.22), lineWidth: 1)
+                    )
+                }
 
                 HStack(spacing: 10) {
                     Button {
@@ -524,6 +620,8 @@ struct ExportView: View {
                         )
                     }
                     .buttonStyle(.plain)
+                    .disabled(!exportAvailable)
+                    .opacity(exportAvailable ? 1.0 : 0.5)
                     .sensoryFeedback(.impact(weight: .light), trigger: shareTrigger)
 
                     Button {
@@ -545,6 +643,9 @@ struct ExportView: View {
                                 .stroke(AppTheme.successGreen.opacity(0.22), lineWidth: 1)
                         )
                     }
+                    .buttonStyle(.plain)
+                    .disabled(!exportAvailable)
+                    .opacity(exportAvailable ? 1.0 : 0.5)
                     .sensoryFeedback(.impact(weight: .light), trigger: saveTrigger)
                 }
 
@@ -603,6 +704,8 @@ struct ExportView: View {
                                 )
                             }
                             .buttonStyle(.plain)
+                            .disabled(!exportAvailable)
+                            .opacity(exportAvailable ? 1.0 : 0.5)
                         }
                     }
 
@@ -666,6 +769,8 @@ struct ExportView: View {
                                 )
                             }
                             .buttonStyle(.plain)
+                            .disabled(!exportAvailable)
+                            .opacity(exportAvailable ? 1.0 : 0.5)
                         }
                     }
 
@@ -776,7 +881,7 @@ struct ExportView: View {
         preferredTarget: String? = nil,
         category: QuickShareCategory? = nil
     ) {
-        guard !showSystemShareSheet else { return }
+        guard isExportFileAvailable(url), !showSystemShareSheet else { return }
         shareURL = url
         selectedShareTargetHint = preferredTarget
         selectedShareCategory = category
@@ -796,5 +901,101 @@ struct ExportView: View {
 
     private func refreshSocialShortcuts() {
         socialShortcuts = SocialAppSupport.resolvedShortcuts()
+    }
+
+    private func isExportFileAvailable(_ url: URL) -> Bool {
+        FileManager.default.fileExists(atPath: url.path)
+    }
+
+    private func configureExportPreviewPlayer(for url: URL?) {
+        guard let url, isExportFileAvailable(url) else {
+            teardownExportPreviewPlayer()
+            return
+        }
+
+        if let currentURL = (exportPreviewPlayer?.currentItem?.asset as? AVURLAsset)?.url,
+           currentURL == url {
+            return
+        }
+
+        exportPreviewPlayer?.pause()
+        exportPreviewPlayer = AVPlayer(url: url)
+    }
+
+    private func configureExpandedExportPreviewPlayer(for url: URL?) {
+        guard let url, isExportFileAvailable(url) else {
+            teardownExpandedExportPreviewPlayer()
+            return
+        }
+
+        if let currentURL = (expandedExportPreviewPlayer?.currentItem?.asset as? AVURLAsset)?.url,
+           currentURL == url {
+            return
+        }
+
+        expandedExportPreviewPlayer?.pause()
+        expandedExportPreviewPlayer = AVPlayer(url: url)
+    }
+
+    private func teardownExportPreviewPlayer() {
+        exportPreviewPlayer?.pause()
+        exportPreviewPlayer = nil
+    }
+
+    private func teardownExpandedExportPreviewPlayer() {
+        expandedExportPreviewPlayer?.pause()
+        expandedExportPreviewPlayer = nil
+    }
+
+    private func pausePreviewPlayers() {
+        exportPreviewPlayer?.pause()
+        expandedExportPreviewPlayer?.pause()
+    }
+
+    private func exportPreviewSheet(url: URL) -> some View {
+        NavigationStack {
+            ZStack {
+                AppTheme.darkBg.ignoresSafeArea()
+
+                if !isExportFileAvailable(url) {
+                    ContentUnavailableView {
+                        Label("Export Preview Unavailable", systemImage: "video.slash.fill")
+                    } description: {
+                        Text("This exported file is no longer available. Re-export the reel to preview it again.")
+                    }
+                    .foregroundStyle(.white)
+                    .padding(16)
+                } else if let expandedExportPreviewPlayer {
+                    VideoPlayer(player: expandedExportPreviewPlayer)
+                        .clipShape(.rect(cornerRadius: 16))
+                        .padding(16)
+                } else {
+                    ProgressView()
+                        .tint(AppTheme.neonPurple)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
+            .navigationTitle("Export Preview")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(AppTheme.darkBg, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") {
+                        showExportPreviewSheet = false
+                    }
+                    .foregroundStyle(AppTheme.neonPurple)
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+        .presentationBackground(AppTheme.darkBg)
+        .onAppear {
+            configureExpandedExportPreviewPlayer(for: url)
+        }
+        .onDisappear {
+            teardownExpandedExportPreviewPlayer()
+        }
     }
 }
