@@ -65,6 +65,14 @@ struct SettingsView: View {
         let icon: String
     }
 
+    private struct SettingsPreviewStat: Identifiable {
+        let id = UUID()
+        let icon: String
+        let value: String
+        let label: String
+        let tint: Color
+    }
+
     private static let commonFAQItems: [FAQItem] = [
         FAQItem(
             id: "no-clips",
@@ -86,8 +94,8 @@ struct SettingsView: View {
         ),
         FAQItem(
             id: "quick-share",
-            question: "How does Quick Share work on iPhone?",
-            answer: "After export completes, the Quick Share button opens the iOS share sheet for the latest exported file so you can send it to Messages, AirDrop, Files, or social apps immediately.",
+            question: "How does Review & Share work on iPhone?",
+            answer: "After export completes, the app opens an in-app review of the latest reel first. From the Review & Share section, you can replay it, save it to Photos, or open the iOS share sheet for Messages, AirDrop, Files, or social apps.",
             icon: "square.and.arrow.up.fill"
         )
     ]
@@ -96,18 +104,18 @@ struct SettingsView: View {
         NavigationStack {
             ZStack {
                 AppTheme.darkBg.ignoresSafeArea()
+                AppTheme.meshBackground
+                    .opacity(0.14)
+                    .ignoresSafeArea()
 
                 ScrollView {
                     VStack(spacing: 24) {
-                        accountSection
-                        subscriptionSection
-                        clipSettingsSection
-                        advancedSettingsSection
-                        contactSuggestionsSection
-                        commonFAQSection
-                        aboutSection
-                        dangerZone
-                        signOutButton
+                        settingsHeroCard
+                        workflowHubLink
+                        membershipHubLink
+                        supportHubLink
+                        aboutHubLink
+                        settingsFootnote
                     }
                     .padding(.horizontal, 16)
                     .padding(.top, 8)
@@ -136,6 +144,400 @@ struct SettingsView: View {
                 Text("This will restore all AI settings to their defaults.")
             }
         }
+    }
+
+    private var settingsHeroCard: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top, spacing: 14) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(AppTheme.accentPurple.opacity(0.18))
+                        .frame(width: 62, height: 62)
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.title2.weight(.bold))
+                        .foregroundStyle(AppTheme.neonPurple)
+                }
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Control Room")
+                        .font(.title3.weight(.bold))
+                        .foregroundStyle(.white)
+
+                    Text("Manage your account, tune AI defaults, and jump into focused setup screens instead of one long settings list.")
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.subtleText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 0)
+            }
+
+            HStack(spacing: 10) {
+                RorkMetricChip(
+                    icon: "person.crop.circle.fill",
+                    value: authService.currentUser?.displayName ?? authMethodLabel,
+                    label: "Account",
+                    tint: AppTheme.neonPurple
+                )
+                RorkMetricChip(
+                    icon: subscriptionManager.isProUser ? "checkmark.seal.fill" : "sparkles",
+                    value: subscriptionManager.isProUser ? "Pro" : "\(subscriptionManager.freeUsesRemaining)",
+                    label: subscriptionManager.isProUser ? "Plan" : "Free Left",
+                    tint: subscriptionManager.isProUser ? AppTheme.successGreen : AppTheme.warningYellow
+                )
+            }
+
+            HStack(spacing: 10) {
+                RorkMetricChip(
+                    icon: "clock.badge.checkmark.fill",
+                    value: formattedTargetDuration(viewModel.settings.targetHighlightDuration),
+                    label: "Target Reel",
+                    tint: AppTheme.warningYellow
+                )
+                RorkMetricChip(
+                    icon: "square.stack.3d.up.fill",
+                    value: viewModel.selectedFormat.rawValue,
+                    label: "Export",
+                    tint: AppTheme.neonPurple
+                )
+            }
+        }
+        .padding(18)
+        .rorkCard(cornerRadius: 22, stroke: AppTheme.softBorder, glowOpacity: 0.08)
+    }
+
+    private var workflowHubLink: some View {
+        settingsHubLink(
+            title: "Workflow Defaults",
+            subtitle: "Clip duration, confidence, AI weighting, and reel-shaping rules.",
+            icon: "waveform.and.magnifyingglass",
+            accent: AppTheme.neonPurple,
+            stats: [
+                SettingsPreviewStat(
+                    icon: "scope",
+                    value: "\(Int(viewModel.settings.confidenceThreshold * 100))%",
+                    label: "Threshold",
+                    tint: AppTheme.neonPurple
+                ),
+                SettingsPreviewStat(
+                    icon: "clock.badge.checkmark.fill",
+                    value: formattedTargetDuration(viewModel.settings.targetHighlightDuration),
+                    label: "Target",
+                    tint: AppTheme.warningYellow
+                ),
+                SettingsPreviewStat(
+                    icon: "gauge.with.dots.needle.67percent",
+                    value: "\(Int(viewModel.settings.framesSampledPerSecond)) fps",
+                    label: "Sampling",
+                    tint: AppTheme.successGreen
+                )
+            ]
+        ) {
+            workflowSettingsPage
+        }
+    }
+
+    private var membershipHubLink: some View {
+        settingsHubLink(
+            title: "Membership & Account",
+            subtitle: "Identity, subscription status, upgrade controls, and sign out.",
+            icon: "person.crop.circle.badge.checkmark",
+            accent: AppTheme.successGreen,
+            stats: membershipPreviewStats
+        ) {
+            membershipSettingsPage
+        }
+    }
+
+    private var supportHubLink: some View {
+        settingsHubLink(
+            title: "Support Center",
+            subtitle: "Send feedback, report bugs, and browse quick answers.",
+            icon: "bubble.left.and.exclamationmark.bubble.right.fill",
+            accent: AppTheme.warningYellow,
+            stats: [
+                SettingsPreviewStat(
+                    icon: feedbackType.icon,
+                    value: feedbackType.rawValue,
+                    label: "Draft Type",
+                    tint: AppTheme.warningYellow
+                ),
+                SettingsPreviewStat(
+                    icon: "text.alignleft",
+                    value: "\(feedbackCharacterCount)",
+                    label: "Draft Chars",
+                    tint: feedbackCharacterCount >= 8 ? AppTheme.successGreen : AppTheme.subtleText
+                )
+            ]
+        ) {
+            supportSettingsPage
+        }
+    }
+
+    private var aboutHubLink: some View {
+        settingsHubLink(
+            title: "About & Privacy",
+            subtitle: "How the app works, what is saved on device, and reset controls.",
+            icon: "lock.doc.fill",
+            accent: AppTheme.neonPurple,
+            stats: [
+                SettingsPreviewStat(
+                    icon: "internaldrive.fill",
+                    value: "On Device",
+                    label: "History",
+                    tint: AppTheme.successGreen
+                ),
+                SettingsPreviewStat(
+                    icon: "brain.head.profile.fill",
+                    value: "Vision + Audio",
+                    label: "Engine",
+                    tint: AppTheme.neonPurple
+                )
+            ]
+        ) {
+            aboutSettingsPage
+        }
+    }
+
+    private var membershipPreviewStats: [SettingsPreviewStat] {
+        if subscriptionManager.isProUser {
+            return [
+                SettingsPreviewStat(
+                    icon: "checkmark.seal.fill",
+                    value: "Pro",
+                    label: "Plan",
+                    tint: AppTheme.successGreen
+                ),
+                SettingsPreviewStat(
+                    icon: "infinity",
+                    value: "Unlimited",
+                    label: "Analysis",
+                    tint: AppTheme.neonPurple
+                )
+            ]
+        }
+
+        return [
+            SettingsPreviewStat(
+                icon: "sparkles",
+                value: "\(subscriptionManager.freeUsesRemaining)",
+                label: "Free Left",
+                tint: subscriptionManager.freeUsesRemaining > 0 ? AppTheme.warningYellow : AppTheme.dangerRed
+            ),
+            SettingsPreviewStat(
+                icon: "crown.fill",
+                value: "$9.99",
+                label: "Monthly",
+                tint: AppTheme.neonPurple
+            )
+        ]
+    }
+
+    private var settingsFootnote: some View {
+        Text("Settings now use focused subpages so account, workflow, and support changes are easier to review before you commit them.")
+            .font(.caption2)
+            .foregroundStyle(AppTheme.subtleText)
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity)
+            .background(AppTheme.surfaceBg.opacity(0.30), in: RoundedRectangle(cornerRadius: 14))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14)
+                    .stroke(AppTheme.softBorder, lineWidth: 1)
+            )
+    }
+
+    private var workflowSettingsPage: some View {
+        settingsDetailPage(
+            title: "Workflow Defaults",
+            subtitle: "Tune clip selection and analysis behavior for your footage.",
+            icon: "waveform.and.magnifyingglass",
+            accent: AppTheme.neonPurple
+        ) {
+            clipSettingsSection
+            advancedSettingsSection
+            dangerZone
+        }
+    }
+
+    private var membershipSettingsPage: some View {
+        settingsDetailPage(
+            title: "Membership & Account",
+            subtitle: "See how you’re signed in and manage access.",
+            icon: "person.crop.circle.badge.checkmark",
+            accent: AppTheme.successGreen
+        ) {
+            accountSection
+            subscriptionSection
+            signOutButton
+        }
+    }
+
+    private var supportSettingsPage: some View {
+        settingsDetailPage(
+            title: "Support Center",
+            subtitle: "Feedback, bug reports, and setup help in one place.",
+            icon: "bubble.left.and.exclamationmark.bubble.right.fill",
+            accent: AppTheme.warningYellow
+        ) {
+            contactSuggestionsSection
+            commonFAQSection
+        }
+    }
+
+    private var aboutSettingsPage: some View {
+        settingsDetailPage(
+            title: "About & Privacy",
+            subtitle: "Core app details, storage behavior, and device-local history notes.",
+            icon: "lock.doc.fill",
+            accent: AppTheme.neonPurple
+        ) {
+            aboutSection
+            localLibrarySection
+        }
+    }
+
+    private var localLibrarySection: some View {
+        settingsCard(title: "On-Device Library", icon: "internaldrive.fill") {
+            Text("Imported videos, the latest export for each project, and the project event timeline stay in the app’s local storage on this device. Nothing here is synced to a server by this feature.")
+                .font(.caption)
+                .foregroundStyle(AppTheme.subtleText)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 10) {
+                aiFeatureTag("Source Video")
+                aiFeatureTag("Latest Export")
+                aiFeatureTag("Event Timeline")
+                aiFeatureTag("Restore on Launch")
+            }
+        }
+    }
+
+    private func settingsHubLink<Destination: View>(
+        title: String,
+        subtitle: String,
+        icon: String,
+        accent: Color,
+        stats: [SettingsPreviewStat],
+        @ViewBuilder destination: @escaping () -> Destination
+    ) -> some View {
+        NavigationLink(destination: destination()) {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(spacing: 12) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(accent.opacity(0.14))
+                            .frame(width: 42, height: 42)
+                        Image(systemName: icon)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(accent)
+                    }
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(title)
+                            .font(.headline)
+                            .foregroundStyle(.white)
+                        Text(subtitle)
+                            .font(.caption)
+                            .foregroundStyle(AppTheme.subtleText)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    Spacer(minLength: 0)
+
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(AppTheme.subtleText)
+                }
+
+                if !stats.isEmpty {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 10) {
+                            ForEach(stats) { stat in
+                                RorkMetricChip(
+                                    icon: stat.icon,
+                                    value: stat.value,
+                                    label: stat.label,
+                                    tint: stat.tint
+                                )
+                                .frame(minWidth: 120)
+                            }
+                        }
+                    }
+                    .contentMargins(.horizontal, 0)
+                }
+            }
+            .padding(16)
+            .rorkCard(cornerRadius: 18, stroke: accent.opacity(0.18), glow: accent, glowOpacity: 0.05)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func settingsDetailPage<Content: View>(
+        title: String,
+        subtitle: String,
+        icon: String,
+        accent: Color,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        ZStack {
+            AppTheme.darkBg.ignoresSafeArea()
+
+            ScrollView {
+                VStack(spacing: 20) {
+                    settingsDetailHero(
+                        title: title,
+                        subtitle: subtitle,
+                        icon: icon,
+                        accent: accent
+                    )
+
+                    content()
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+                .padding(.bottom, 100)
+            }
+        }
+        .navigationTitle(title)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(AppTheme.darkBg, for: .navigationBar)
+        .toolbarColorScheme(.dark, for: .navigationBar)
+    }
+
+    private func settingsDetailHero(
+        title: String,
+        subtitle: String,
+        icon: String,
+        accent: Color
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 14) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(accent.opacity(0.16))
+                        .frame(width: 54, height: 54)
+                    Image(systemName: icon)
+                        .font(.title3.weight(.bold))
+                        .foregroundStyle(accent)
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title)
+                        .font(.title3.weight(.bold))
+                        .foregroundStyle(.white)
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.subtleText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 0)
+            }
+        }
+        .padding(16)
+        .rorkCard(cornerRadius: 18, stroke: accent.opacity(0.16), glow: accent, glowOpacity: 0.04)
     }
 
     private var aiWeightsSection: some View {

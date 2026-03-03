@@ -425,4 +425,166 @@ struct HoopsClipsTests {
         #expect(kept.reduce(0.0) { $0 + $1.duration } <= settings.targetHighlightDuration + 0.001)
     }
 
+    @Test func testDefaultRedundantSuppressionPrefersHigherScoreWhenClipsOverlap() {
+        let weaker = Clip(
+            startTime: 10.8,
+            endTime: 14.8,
+            action: .dunk,
+            confidence: 0.84,
+            isKept: true,
+            label: "Dunk B",
+            combinedScore: 0.81
+        )
+        let stronger = Clip(
+            startTime: 10.0,
+            endTime: 14.0,
+            action: .dunk,
+            confidence: 0.92,
+            isKept: true,
+            label: "Dunk A",
+            combinedScore: 0.93
+        )
+
+        let result = defaultRedundantClipSuppressedClips(from: [weaker, stronger])
+
+        #expect(result.count == 2)
+        #expect(!result[0].isKept)
+        #expect(result[1].isKept)
+        #expect(result[0].id == weaker.id)
+        #expect(result[1].id == stronger.id)
+    }
+
+    @Test func testDefaultRedundantSuppressionClustersMatchingActionsNearInTime() {
+        let stronger = Clip(
+            startTime: 20.0,
+            endTime: 21.2,
+            action: .block,
+            confidence: 0.88,
+            isKept: true,
+            label: "Block A",
+            combinedScore: 0.86
+        )
+        let weaker = Clip(
+            startTime: 21.6,
+            endTime: 22.8,
+            action: .block,
+            confidence: 0.79,
+            isKept: true,
+            label: "Block B",
+            combinedScore: 0.74
+        )
+
+        let result = defaultRedundantClipSuppressedClips(from: [stronger, weaker])
+
+        #expect(result[0].isKept)
+        #expect(!result[1].isKept)
+    }
+
+    @Test func testDefaultRedundantSuppressionKeepsDifferentActionsWhenOnlyTimeIsClose() {
+        let dunk = Clip(
+            startTime: 30.0,
+            endTime: 31.2,
+            action: .dunk,
+            confidence: 0.9,
+            isKept: true,
+            label: "Dunk",
+            combinedScore: 0.9
+        )
+        let block = Clip(
+            startTime: 31.0,
+            endTime: 32.2,
+            action: .block,
+            confidence: 0.87,
+            isKept: true,
+            label: "Block",
+            combinedScore: 0.82
+        )
+
+        let result = defaultRedundantClipSuppressedClips(from: [dunk, block])
+
+        #expect(result[0].isKept)
+        #expect(result[1].isKept)
+    }
+
+    @Test func testSmartSlowMotionQualifiesHighConfidenceDunk() {
+        let clip = Clip(
+            startTime: 0.0,
+            endTime: 4.2,
+            action: .dunk,
+            confidence: 0.82,
+            isKept: true,
+            label: "Dunk"
+        )
+
+        #expect(shouldApplyExportSlowMotion(to: clip, options: ExportPostProcessingOptions()))
+    }
+
+    @Test func testSmartSlowMotionRejectsLowConfidenceDunk() {
+        let clip = Clip(
+            startTime: 0.0,
+            endTime: 4.2,
+            action: .dunk,
+            confidence: 0.71,
+            isKept: true,
+            label: "Dunk"
+        )
+
+        #expect(!shouldApplyExportSlowMotion(to: clip, options: ExportPostProcessingOptions()))
+    }
+
+    @Test func testManualSlowMotionStillAppliesWhenSmartSlowMotionIsDisabled() {
+        let clip = Clip(
+            startTime: 0.0,
+            endTime: 2.5,
+            action: .layup,
+            confidence: 0.2,
+            isKept: true,
+            label: "Layup",
+            isSlowMotionEnabled: true
+        )
+        let options = ExportPostProcessingOptions(enableAutoZoom: true, enableSmartSlowMotion: false)
+
+        #expect(shouldApplyExportSlowMotion(to: clip, options: options))
+    }
+
+    @Test func testActionZoomScaleReturnsIdentityOutsideActiveWindow() {
+        let scale = actionZoomScale(
+            at: 0.0,
+            segmentDuration: 4.0,
+            action: .dunk,
+            options: ExportPostProcessingOptions()
+        )
+
+        #expect(abs(scale - 1.0) < 0.0001)
+    }
+
+    @Test func testActionZoomScaleHitsMaxAtClipMidpoint() {
+        let scale = actionZoomScale(
+            at: 2.0,
+            segmentDuration: 4.0,
+            action: .dunk,
+            options: ExportPostProcessingOptions()
+        )
+
+        #expect(abs(scale - 1.16) < 0.0001)
+    }
+
+    @Test func testActionZoomScaleReturnsToIdentityAtWindowBoundaries() {
+        let startBoundaryScale = actionZoomScale(
+            at: 1.4,
+            segmentDuration: 4.0,
+            action: .dunk,
+            options: ExportPostProcessingOptions()
+        )
+        let endBoundaryScale = actionZoomScale(
+            at: 2.6,
+            segmentDuration: 4.0,
+            action: .dunk,
+            options: ExportPostProcessingOptions()
+        )
+
+        #expect(abs(startBoundaryScale - 1.0) < 0.0001)
+        #expect(abs(endBoundaryScale - 1.0) < 0.0001)
+    }
+
 }

@@ -18,7 +18,8 @@ final class VideoExportService {
         customMusicURL: URL? = nil,
         isProUser: Bool,
         quality: ExportQuality,
-        format: ExportFileFormat
+        format: ExportFileFormat,
+        postProcessing: ExportPostProcessingOptions
     ) async {
         exportedURL = nil
 
@@ -65,75 +66,66 @@ final class VideoExportService {
             let sourceTransform = try await sourceVideo.load(.preferredTransform)
             videoTrack.preferredTransform = sourceTransform
 
-            let timelineSegments = buildTimelineSegments(from: keptClips, assetDuration: sourceDurationSeconds)
+            let timelineSegments = makeExportTimelineSegments(
+                from: keptClips,
+                assetDuration: sourceDurationSeconds,
+                options: postProcessing
+            )
             guard !timelineSegments.isEmpty else {
                 statusMessage = "No clips to export"
                 isExporting = false
                 return
             }
 
+            let clipsByID = Dictionary(uniqueKeysWithValues: keptClips.map { ($0.id, $0) })
             var insertTime = CMTime.zero
             for (index, segment) in timelineSegments.enumerated() {
                 let range = segment.sourceTimeRange()
-                let clip = keptClips.first { $0.id == segment.clipID }
-                
-                // Normal speed insertion
-                if clip?.isSlowMotionEnabled == true {
-                    // Slow motion logic: Normal -> Slow -> Normal
-                    // Center of the clip is the "action peak"
+                guard let clip = clipsByID[segment.clipID] else { continue }
+
+                let useSegmentedSlowMotion = shouldApplySlowMotion(to: clip, options: postProcessing)
+                    && canApplySegmentedSlowMotion(sourceDuration: segment.sourceDuration)
+
+                if useSegmentedSlowMotion {
+                    // Center of the clip is the v1 action peak.
                     let totalDuration = range.duration
-                    let slowMoDuration = CMTime(seconds: 1.5, preferredTimescale: 600) // 1.5s of action slowed down
-                    
-                    if totalDuration > slowMoDuration {
-                        let midPoint = range.start + CMTime(seconds: totalDuration.seconds / 2.0, preferredTimescale: 600)
-                        let slowStart = midPoint - CMTime(seconds: slowMoDuration.seconds / 2.0, preferredTimescale: 600)
-                        let slowEnd = midPoint + CMTime(seconds: slowMoDuration.seconds / 2.0, preferredTimescale: 600)
-                        
-                        // 1. Pre-slowmo (Normal speed)
-                        let preRange = CMTimeRange(start: range.start, end: slowStart)
-                        try videoTrack.insertTimeRange(preRange, of: sourceVideo, at: insertTime)
-                        if let sourceAudio = sourceAudioTracks.first {
-                            try audioTrack.insertTimeRange(preRange, of: sourceAudio, at: insertTime)
-                        }
-                        insertTime = insertTime + preRange.duration
-                        
-                        // 2. Slow motion (0.5x speed -> 2x duration)
-                        let slowRange = CMTimeRange(start: slowStart, end: slowEnd)
-                        let slowDuration = CMTime(seconds: slowRange.duration.seconds * 2.0, preferredTimescale: 600)
-                        try videoTrack.insertTimeRange(slowRange, of: sourceVideo, at: insertTime)
-                        videoTrack.scaleTimeRange(CMTimeRange(start: insertTime, duration: slowRange.duration), toDuration: slowDuration)
-                        
-                        // Audio for slow motion (pitch preserved automatically by AVExportSession usually, or we accept deep voice)
-                        if let sourceAudio = sourceAudioTracks.first {
-                            try audioTrack.insertTimeRange(slowRange, of: sourceAudio, at: insertTime)
-                            audioTrack.scaleTimeRange(CMTimeRange(start: insertTime, duration: slowRange.duration), toDuration: slowDuration)
-                        }
-                        insertTime = insertTime + slowDuration
-                        
-                        // 3. Post-slowmo (Normal speed)
-                        let postRange = CMTimeRange(start: slowEnd, end: range.end)
-                        try videoTrack.insertTimeRange(postRange, of: sourceVideo, at: insertTime)
-                        if let sourceAudio = sourceAudioTracks.first {
-                            try audioTrack.insertTimeRange(postRange, of: sourceAudio, at: insertTime)
-                        }
-                        insertTime = insertTime + postRange.duration
-                        
-                    } else {
-                        // Clip too short for fancy slow-mo, just insert normally
-                        try videoTrack.insertTimeRange(range, of: sourceVideo, at: insertTime)
-                        if let sourceAudio = sourceAudioTracks.first {
-                            try audioTrack.insertTimeRange(range, of: sourceAudio, at: insertTime)
-                        }
-                        insertTime = insertTime + range.duration
+                    let slowMoDuration = CMTime(seconds: exportSlowMotionSourceWindowDuration, preferredTimescale: 600)
+                    let midPoint = range.start + CMTime(seconds: totalDuration.seconds / 2.0, preferredTimescale: 600)
+                    let slowStart = midPoint - CMTime(seconds: slowMoDuration.seconds / 2.0, preferredTimescale: 600)
+                    let slowEnd = midPoint + CMTime(seconds: slowMoDuration.seconds / 2.0, preferredTimescale: 600)
+
+                    let preRange = CMTimeRange(start: range.start, end: slowStart)
+                    try videoTrack.insertTimeRange(preRange, of: sourceVideo, at: insertTime)
+                    if let sourceAudio = sourceAudioTracks.first {
+                        try audioTrack.insertTimeRange(preRange, of: sourceAudio, at: insertTime)
                     }
+                    insertTime = insertTime + preRange.duration
+
+                    let slowRange = CMTimeRange(start: slowStart, end: slowEnd)
+                    let slowDuration = CMTime(
+                        seconds: slowRange.duration.seconds / exportSlowMotionPlaybackRate,
+                        preferredTimescale: 600
+                    )
+                    try videoTrack.insertTimeRange(slowRange, of: sourceVideo, at: insertTime)
+                    videoTrack.scaleTimeRange(CMTimeRange(start: insertTime, duration: slowRange.duration), toDuration: slowDuration)
+
+                    if let sourceAudio = sourceAudioTracks.first {
+                        try audioTrack.insertTimeRange(slowRange, of: sourceAudio, at: insertTime)
+                        audioTrack.scaleTimeRange(CMTimeRange(start: insertTime, duration: slowRange.duration), toDuration: slowDuration)
+                    }
+                    insertTime = insertTime + slowDuration
+
+                    let postRange = CMTimeRange(start: slowEnd, end: range.end)
+                    try videoTrack.insertTimeRange(postRange, of: sourceVideo, at: insertTime)
+                    if let sourceAudio = sourceAudioTracks.first {
+                        try audioTrack.insertTimeRange(postRange, of: sourceAudio, at: insertTime)
+                    }
+                    insertTime = insertTime + postRange.duration
                 } else {
-                    // Standard insertion
                     try videoTrack.insertTimeRange(range, of: sourceVideo, at: insertTime)
-                    
                     if let sourceAudio = sourceAudioTracks.first {
                         try audioTrack.insertTimeRange(range, of: sourceAudio, at: insertTime)
                     }
-                    
                     insertTime = insertTime + range.duration
                 }
 
@@ -235,7 +227,7 @@ final class VideoExportService {
             default: format.fileExtension
             }
 
-            let outputURL = URL.temporaryDirectory.appending(path: "HoopsHighlight_\(Int(Date().timeIntervalSince1970)).\(fileExtension)")
+            let outputURL = URL.temporaryDirectory.appending(path: "HoopsHighlight_\(UUID().uuidString).\(fileExtension)")
             exportSession.outputURL = outputURL
             exportSession.outputFileType = outputType
             exportSession.shouldOptimizeForNetworkUse = true
@@ -248,7 +240,8 @@ final class VideoExportService {
                     sourceVideoTrack: sourceVideo,
                     segments: timelineSegments,
                     theme: theme,
-                    quality: quality
+                    quality: quality,
+                    postProcessing: postProcessing
                 )
                 exportSession.videoComposition = themedComposition
             } catch {
@@ -267,6 +260,7 @@ final class VideoExportService {
             timer.invalidate()
 
             if exportSession.status == .completed {
+                isExporting = false
                 exportedURL = outputURL
                 exportProgress = 1.0
                 statusMessage = "Export complete!"
@@ -278,6 +272,45 @@ final class VideoExportService {
         }
 
         isExporting = false
+    }
+
+    private func makeExportTimelineSegments(
+        from clips: [Clip],
+        assetDuration: Double,
+        options: ExportPostProcessingOptions
+    ) -> [ExportTimelineSegment] {
+        let baseSegments = buildTimelineSegments(from: clips, assetDuration: assetDuration)
+        let clipsByID = Dictionary(uniqueKeysWithValues: clips.map { ($0.id, $0) })
+        var outputCursor = 0.0
+
+        return baseSegments.map { segment in
+            let adjustedDuration: Double
+            if let clip = clipsByID[segment.clipID] {
+                adjustedDuration = exportedClipOutputDuration(
+                    sourceDuration: segment.sourceDuration,
+                    shouldSlowMotion: shouldApplySlowMotion(to: clip, options: options)
+                )
+            } else {
+                adjustedDuration = segment.sourceDuration
+            }
+
+            let adjustedSegment = ExportTimelineSegment(
+                outputStartTime: outputCursor,
+                outputEndTime: outputCursor + adjustedDuration,
+                sourceStartTime: segment.sourceStartTime,
+                sourceEndTime: segment.sourceEndTime,
+                clipID: segment.clipID,
+                clipLabel: segment.clipLabel,
+                clipConfidence: segment.clipConfidence,
+                clipAction: segment.clipAction
+            )
+            outputCursor += adjustedDuration
+            return adjustedSegment
+        }
+    }
+
+    private func shouldApplySlowMotion(to clip: Clip, options: ExportPostProcessingOptions) -> Bool {
+        shouldApplyExportSlowMotion(to: clip, options: options)
     }
 
     private func premiumRestrictionMessage(
@@ -313,4 +346,40 @@ final class VideoExportService {
             return false
         }
     }
+}
+
+internal let exportSlowMotionSourceWindowDuration = 1.5
+internal let exportSlowMotionPlaybackRate = 0.5
+
+internal func shouldApplyExportSlowMotion(to clip: Clip, options: ExportPostProcessingOptions) -> Bool {
+    if clip.isSlowMotionEnabled {
+        return true
+    }
+
+    guard options.enableSmartSlowMotion else {
+        return false
+    }
+
+    guard clip.duration >= 3.5, clip.confidence >= 0.72 else {
+        return false
+    }
+
+    switch clip.action {
+    case .dunk, .posterize, .block, .alleyOop, .buzzerBeater:
+        return true
+    default:
+        return false
+    }
+}
+
+internal func canApplySegmentedSlowMotion(sourceDuration: Double) -> Bool {
+    sourceDuration > exportSlowMotionSourceWindowDuration
+}
+
+internal func exportedClipOutputDuration(sourceDuration: Double, shouldSlowMotion: Bool) -> Double {
+    guard shouldSlowMotion, canApplySegmentedSlowMotion(sourceDuration: sourceDuration) else {
+        return sourceDuration
+    }
+
+    return sourceDuration + (exportSlowMotionSourceWindowDuration / exportSlowMotionPlaybackRate) - exportSlowMotionSourceWindowDuration
 }

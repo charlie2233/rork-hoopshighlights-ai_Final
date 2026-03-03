@@ -50,7 +50,10 @@ struct ContentView: View {
                     ExportView(viewModel: viewModel)
                         .environment(subscriptionManager)
                 }
-                Tab("Settings", systemImage: "gearshape.fill", value: 3) {
+                Tab("History", systemImage: "clock.arrow.circlepath", value: 3) {
+                    HistoryView(viewModel: viewModel)
+                }
+                Tab("Settings", systemImage: "gearshape.fill", value: 4) {
                     SettingsView(viewModel: viewModel, authService: authService, subscriptionManager: subscriptionManager)
                 }
             }
