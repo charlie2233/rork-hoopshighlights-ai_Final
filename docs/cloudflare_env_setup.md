@@ -1,6 +1,9 @@
 # Cloudflare Environment Setup
 
 This doc maps the control-plane scaffold to the real Wrangler bindings and the secret names used by the happy-path script.
+It also records the staging environment layout so `wrangler deploy --env staging` uses the same bindings every time.
+
+For the exact staging deploy, smoke, rollback, and failure-mode commands, see [`docs/staging_smoke_runbook.md`](./staging_smoke_runbook.md).
 
 ## Worker Bindings
 
@@ -8,6 +11,8 @@ The Worker reads these values from `services/control-plane/wrangler.jsonc`:
 
 - `JOB_STATE` Durable Object namespace
 - `ANALYSIS_QUEUE` Queue producer
+- `ANALYSIS_DLQ` Queue producer for dead-letter messages
+- `hoopsclips-analysis-dlq` dead-letter queue target
 - `DB` D1 database
 - `R2_UPLOADS` upload bucket
 - `R2_RESULTS` result bucket
@@ -22,15 +27,23 @@ These land in `Env` and are read by the control-plane code:
 - `JOB_TTL_SECONDS`
 - `MAX_FILE_SIZE_BYTES`
 - `MAX_DURATION_SECONDS`
-- `ADMIN_API_TOKEN`
-- `CONTROL_PLANE_SHARED_SECRET`
+- `CONTROL_PLANE_BASE_URL`
 - `INFERENCE_BASE_URL`
-- `INFERENCE_SHARED_SECRET`
 - `R2_ACCOUNT_ID`
 - `R2_UPLOAD_BUCKET_NAME`
 - `R2_RESULT_BUCKET_NAME`
+
+Secrets are never stored in `vars`. Put them in Wrangler secrets instead.
+
+Secret names used by the control plane:
+
+- `ADMIN_API_TOKEN`
+- `CONTROL_PLANE_SHARED_SECRET`
+- `INFERENCE_SHARED_SECRET`
 - `R2_ACCESS_KEY_ID`
 - `R2_SECRET_ACCESS_KEY`
+
+Those names are the only secret identifiers to use in local and staging. Store values with `wrangler secret put`; do not put them in `vars`.
 
 ## Local Harness Mode
 
@@ -78,9 +91,11 @@ The non-secret runtime variables can stay in `wrangler.jsonc` for local dev, or 
 Use the same variable names in staging, but populate them from the staging environment:
 
 - `APP_ENV=staging`
-- `INFERENCE_BASE_URL` pointing at the staging inference service
+- `SCHEMA_VERSION=phase1b-live-staging-deploy`
+- `INFERENCE_BASE_URL` reserved for later external inference integration and left blank for the stub staging path
 - `R2_ACCOUNT_ID` for the staging Cloudflare account
-- `R2_UPLOAD_BUCKET_NAME` and `R2_RESULT_BUCKET_NAME` pointing at staging buckets
+- `R2_UPLOAD_BUCKET_NAME=hoopsclips-uploads-staging`
+- `R2_RESULT_BUCKET_NAME=hoopsclips-results-staging`
 
 Staging secrets:
 
@@ -92,6 +107,9 @@ wrangler secret put INFERENCE_SHARED_SECRET --env staging
 wrangler secret put R2_ACCESS_KEY_ID --env staging
 wrangler secret put R2_SECRET_ACCESS_KEY --env staging
 ```
+
+Staging bindings in `wrangler.jsonc` are explicit because queues, R2, and Durable Objects are not inherited into named environments.
+The staging queue consumer uses `dead_letter_queue = "hoopsclips-analysis-dlq"` and `max_retries = 3`.
 
 ## Notes
 
