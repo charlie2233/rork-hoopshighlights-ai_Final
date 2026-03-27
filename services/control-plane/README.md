@@ -29,9 +29,11 @@ Focused checks:
 ```bash
 npx tsx --test services/control-plane/test/control-plane-status-transitions.test.ts
 npx tsx --test services/control-plane/test/control-plane-failure-path.test.ts
+npx tsx --test services/control-plane/test/control-plane-duplicate-callback.test.ts
+npx tsx --test services/control-plane/test/control-plane-dlq.test.ts
 ```
 
-The phase-1a verification path now uses the staging route shape end to end:
+The phase-1b verification path now uses the staging route shape end to end:
 
 - `POST /uploads/presign`
 - direct upload to the signed R2 URL
@@ -68,7 +70,7 @@ For the exact local/staging variable mapping and Wrangler secret commands, see [
 
 ## Staging deploy
 
-1. Create or verify the Cloudflare resources with [`docs/cloudflare_staging_runbook.md`](../../docs/cloudflare_staging_runbook.md).
+1. Create or verify the Cloudflare resources with [`docs/staging_smoke_runbook.md`](../../docs/staging_smoke_runbook.md).
 2. Run `npx wrangler deploy --env staging` from `services/control-plane`.
 3. Use the printed staging Worker URL with `npx tsx scripts/control-plane-happy-path.ts --base-url https://<staging-worker-url> --shared-secret "$CONTROL_PLANE_SHARED_SECRET"`.
 

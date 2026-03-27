@@ -111,6 +111,19 @@ async function handleCallback(
     return jsonResponse(toCloudAnalysisJobResponse(job, requestId, responseSchemaVersion), { status: 200 }, requestId);
   }
 
+  if (isTerminalStatus(currentStatus) && normalizedStatus === currentStatus) {
+    console.info(
+      JSON.stringify({
+        requestId,
+        jobId,
+        traceId: payload.traceId ?? job.traceId,
+        event: "inference.callback.duplicate",
+        status: currentStatus
+      })
+    );
+    return jsonResponse(toCloudAnalysisJobResponse(job, requestId, responseSchemaVersion), { status: 200 }, requestId);
+  }
+
   if (payload.results && (!isTerminalStatus(currentStatus) || normalizedStatus === currentStatus || !job.results)) {
     await env.R2_RESULTS.put(job.resultObjectKey, JSON.stringify(payload.results), {
       httpMetadata: {

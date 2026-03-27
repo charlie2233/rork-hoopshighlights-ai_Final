@@ -140,13 +140,24 @@ export interface QueueJobMessage {
   kind: "process-job";
   jobId: string;
   requestId: string;
+  traceId: string;
   schemaVersion: string;
-  installId: string;
-  analysisVersion: string;
   sourceObjectKey: string;
   resultObjectKey: string;
-  callbackUrl: string;
-  uploadUrl?: string | null;
+  modelVersion?: string | null;
+}
+
+export interface DeadLetterQueueMessage {
+  kind: "dead-letter-job";
+  jobId: string;
+  requestId: string;
+  traceId: string;
+  schemaVersion: string;
+  sourceObjectKey: string;
+  resultObjectKey: string;
+  modelVersion?: string | null;
+  failureReason: string;
+  attempts?: number | null;
 }
 
 export interface InferenceCallbackPayload {

@@ -50,6 +50,19 @@ test("control plane happy path advances upload_pending -> uploaded -> queued -> 
   assert.equal(finalizeJson.status, "queued");
   assert.equal(harness.state.jobs.get(createJson.jobId)?.status, "queued");
   assert.equal(harness.state.queueMessages.length, 1);
+  assert.equal("callbackUrl" in harness.state.queueMessages[0], false);
+  assert.equal("installId" in harness.state.queueMessages[0], false);
+  assert.equal("analysisVersion" in harness.state.queueMessages[0], false);
+  assert.deepEqual(Object.keys(harness.state.queueMessages[0] ?? {}).sort(), [
+    "jobId",
+    "kind",
+    "modelVersion",
+    "requestId",
+    "resultObjectKey",
+    "schemaVersion",
+    "sourceObjectKey",
+    "traceId"
+  ]);
 
   const processedMessages = await harness.drainQueue();
   assert.equal(processedMessages, 1);

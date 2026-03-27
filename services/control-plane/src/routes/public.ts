@@ -364,13 +364,11 @@ async function handleFinalizeJob(
         kind: "process-job",
         jobId: uploadedJob.jobId,
         requestId,
+        traceId: uploadedJob.traceId,
         schemaVersion,
-        installId: uploadedJob.installId,
-        analysisVersion: uploadedJob.analysisVersion,
         sourceObjectKey: uploadedJob.sourceObjectKey,
         resultObjectKey: uploadedJob.resultObjectKey,
-        callbackUrl: new URL("/internal/inference/callback", url.origin).toString(),
-        uploadUrl: uploadedJob.uploadUrl
+        modelVersion: uploadedJob.modelVersion ?? null
       };
 
       const queuedJob = await updateJobState(

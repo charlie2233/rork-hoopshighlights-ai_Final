@@ -1,6 +1,6 @@
 import type { MessageBatch } from "@cloudflare/workers-types";
 import type { Env } from "../env";
-import type { QueueJobMessage } from "../types";
+import type { JobRecord, QueueJobMessage } from "../types";
 import { getJobSnapshot, updateJobState } from "../do/job-state-client";
 import { appendJobEvent } from "../db";
 import { buildStubInferenceCallbackPayload } from "../stub/inference";
@@ -11,49 +11,119 @@ export async function handleQueueBatch(batch: MessageBatch<QueueJobMessage>, env
       continue;
     }
 
-    const job = await getJobSnapshot(env, message.body.jobId);
-    if (
-      !job ||
-      job.status === "processing" ||
-      job.status === "completed" ||
-      job.status === "succeeded" ||
-      job.status === "failed" ||
-      job.status === "expired" ||
-      job.status === "cancelled"
-    ) {
-      continue;
-    }
+    let currentJob: JobRecord | null = null;
+    let callbackPayload: ReturnType<typeof buildStubInferenceCallbackPayload> | null = null;
 
-    const startedAt = new Date().toISOString();
-    await updateJobState(env, message.body.jobId, {
-      status: "processing",
-      stage: "Running stub inference",
-      progress: Math.max(job.progress, 0.35),
-      startedAt,
-      modelVersion: job.modelVersion ?? null
-    });
-    await appendJobEvent(env.DB, {
-      jobId: message.body.jobId,
-      requestId: message.body.requestId,
-      traceId: job.traceId,
-      eventType: "queue.dispatch",
-      message: "Queued job dispatched to stub inference.",
-      payload: message.body,
-      createdAt: startedAt
-    });
+    try {
+      currentJob = await getJobSnapshot(env, message.body.jobId);
+      if (
+        !currentJob ||
+        currentJob.status === "processing" ||
+        currentJob.status === "completed" ||
+        currentJob.status === "succeeded" ||
+        currentJob.status === "failed" ||
+        currentJob.status === "expired" ||
+        currentJob.status === "cancelled"
+      ) {
+        continue;
+      }
 
-    console.info(
-      JSON.stringify({
-        requestId: message.body.requestId,
+      const startedAt = new Date().toISOString();
+      await updateJobState(env, message.body.jobId, {
+        status: "processing",
+        stage: "Running stub inference",
+        progress: Math.max(currentJob.progress, 0.35),
+        startedAt,
+        modelVersion: currentJob.modelVersion ?? message.body.modelVersion ?? null
+      });
+      await appendJobEvent(env.DB, {
         jobId: message.body.jobId,
-        traceId: job.traceId,
-        event: "queue.dispatch",
-        status: "processing"
-      })
-    );
+        requestId: message.body.requestId,
+        traceId: message.body.traceId || currentJob.traceId,
+        eventType: "queue.dispatch",
+        message: "Queued job dispatched to stub inference.",
+        payload: message.body,
+        createdAt: startedAt
+      });
 
-    const callbackPayload = buildStubInferenceCallbackPayload(job, message.body);
-    await postCompletionCallback(env, message.body, callbackPayload, job.traceId);
+      console.info(
+        JSON.stringify({
+          requestId: message.body.requestId,
+          jobId: message.body.jobId,
+          traceId: message.body.traceId || currentJob.traceId,
+          event: "queue.dispatch",
+          status: "processing"
+        })
+      );
+
+      callbackPayload = buildStubInferenceCallbackPayload(currentJob, message.body);
+      await postCompletionCallback(env, message.body, callbackPayload, currentJob.traceId);
+    } catch (error) {
+      const failureReason = error instanceof Error ? error.message : "Queue dispatch failed.";
+      if (currentJob) {
+        const failedAt = new Date().toISOString();
+        await updateJobState(
+          env,
+          message.body.jobId,
+          {
+            status: "failed",
+            stage: "Queue dispatch failed",
+            progress: Math.max(currentJob.progress, 0.35),
+            failureReason,
+            modelVersion: currentJob.modelVersion ?? message.body.modelVersion ?? null,
+            updatedAt: failedAt
+          },
+          {
+            requestId: message.body.requestId,
+            traceId: message.body.traceId || currentJob.traceId,
+            eventType: "queue.dispatch.failed",
+            message: failureReason,
+            payload: message.body
+          }
+        );
+
+        await appendJobEvent(env.DB, {
+          jobId: message.body.jobId,
+          requestId: message.body.requestId,
+          traceId: message.body.traceId || currentJob.traceId,
+          eventType: "queue.dispatch.failed",
+          message: failureReason,
+          payload: message.body,
+          createdAt: failedAt
+        });
+
+        await sendDeadLetterRecord(env, {
+          kind: "dead-letter-job",
+          jobId: message.body.jobId,
+          requestId: message.body.requestId,
+          traceId: message.body.traceId || currentJob.traceId,
+          schemaVersion: message.body.schemaVersion,
+          sourceObjectKey: message.body.sourceObjectKey,
+          resultObjectKey: message.body.resultObjectKey,
+          modelVersion: callbackPayload?.modelVersion ?? currentJob.modelVersion ?? message.body.modelVersion ?? null,
+          failureReason,
+          attempts: null
+        }).catch((dlqError) => {
+          console.error(
+            JSON.stringify({
+              requestId: message.body.requestId,
+              jobId: message.body.jobId,
+              traceId: message.body.traceId || currentJob?.traceId,
+              event: "dead_letter.enqueue_failed",
+              message: dlqError instanceof Error ? dlqError.message : "Failed to enqueue dead-letter record."
+            })
+          );
+        });
+      }
+      console.error(
+        JSON.stringify({
+          requestId: message.body.requestId,
+          jobId: message.body.jobId,
+          event: "queue.dispatch.error",
+          message: failureReason
+        })
+      );
+    }
   }
   batch.ackAll();
 }
@@ -64,10 +134,10 @@ async function postCompletionCallback(
   callbackPayload: ReturnType<typeof buildStubInferenceCallbackPayload>,
   traceId: string
 ): Promise<void> {
-  const callbackUrl = message.callbackUrl;
-  if (!callbackUrl) {
-    throw new Error("Missing callback URL for stub inference dispatch.");
+  if (!env.CONTROL_PLANE_BASE_URL) {
+    throw new Error("Missing control plane base URL for stub inference dispatch.");
   }
+  const callbackUrl = new URL("/internal/inference/callback", env.CONTROL_PLANE_BASE_URL).toString();
 
   const response = await fetch(callbackUrl, {
     method: "POST",
@@ -115,6 +185,29 @@ async function postCompletionCallback(
       createdAt: new Date().toISOString()
     });
 
+    await sendDeadLetterRecord(env, {
+      kind: "dead-letter-job",
+      jobId: message.jobId,
+      requestId: message.requestId,
+      traceId,
+      schemaVersion: message.schemaVersion,
+      sourceObjectKey: message.sourceObjectKey,
+      resultObjectKey: message.resultObjectKey,
+      modelVersion: callbackPayload.modelVersion ?? message.modelVersion ?? null,
+      failureReason,
+      attempts: null
+    }).catch((dlqError) => {
+      console.error(
+        JSON.stringify({
+          requestId: message.requestId,
+          jobId: message.jobId,
+          traceId,
+          event: "dead_letter.enqueue_failed",
+          message: dlqError instanceof Error ? dlqError.message : "Failed to enqueue dead-letter record."
+        })
+      );
+    });
+
     console.error(
       JSON.stringify({
         requestId: message.requestId,
@@ -136,4 +229,22 @@ async function postCompletionCallback(
       status: "succeeded"
     })
   );
+}
+
+async function sendDeadLetterRecord(
+  env: Env,
+  payload: {
+    kind: "dead-letter-job";
+    jobId: string;
+    requestId: string;
+    traceId: string;
+    schemaVersion: string;
+    sourceObjectKey: string;
+    resultObjectKey: string;
+    modelVersion?: string | null;
+    failureReason: string;
+    attempts?: number | null;
+  }
+): Promise<void> {
+  await env.ANALYSIS_DLQ.send(payload);
 }

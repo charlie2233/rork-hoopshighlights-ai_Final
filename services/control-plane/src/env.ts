@@ -1,5 +1,5 @@
 import type { DurableObjectNamespace, D1Database, Queue } from "@cloudflare/workers-types";
-import type { QueueJobMessage } from "./types";
+import type { DeadLetterQueueMessage, QueueJobMessage } from "./types";
 
 export interface Env {
   APP_ENV: string;
@@ -9,6 +9,7 @@ export interface Env {
   JOB_TTL_SECONDS: string;
   MAX_FILE_SIZE_BYTES: string;
   MAX_DURATION_SECONDS: string;
+  CONTROL_PLANE_BASE_URL: string;
   ADMIN_API_TOKEN: string;
   CONTROL_PLANE_SHARED_SECRET: string;
   INFERENCE_BASE_URL: string;
@@ -21,6 +22,7 @@ export interface Env {
   DB: D1Database;
   JOB_STATE: DurableObjectNamespace;
   ANALYSIS_QUEUE: Queue<QueueJobMessage>;
+  ANALYSIS_DLQ: Queue<DeadLetterQueueMessage>;
   R2_UPLOADS: R2Bucket;
   R2_RESULTS: R2Bucket;
 }
