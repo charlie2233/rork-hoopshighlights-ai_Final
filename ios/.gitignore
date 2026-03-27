@@ -1,0 +1,62 @@
+# React Native / Expo artifacts (should not exist in Swift projects)
+node_modules/
+.expo/
+.bundle/
+android/
+ios/
+babel.config.js
+metro.config.js
+package.json
+package-lock.json
+tsconfig.json
+app.json
+
+# Xcode
+build/
+DerivedData/
+*.xcuserstate
+*.xcuserdatad/
+xcuserdata/
+*.xcresult
+*.xccheckout
+*.moved-aside
+*.derivedData
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Resources - prevent huge files from being pushed
+HoopsClips/Resources/TrainingData/
+HoopsClips/Resources/TestVideos/
+HoopsClips/TestResources/
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
+
+# macOS
+.DS_Store
+*.swp
+*~
+
+# Rork
+.rork/
+rork-eslint.config.js
+
+.rork
+.env
+core
+node_modules
+.expo
+
+# IDE Specific
+.codex-build/
+.cursor/
+.idea/
+*.vscode/
+
+# Local backend integrations
+backend/.external/
+backend/.venvs/
