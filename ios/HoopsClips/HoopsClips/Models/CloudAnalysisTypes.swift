@@ -16,6 +16,7 @@ nonisolated struct CreateCloudAnalysisJobRequest: Codable, Sendable {
 }
 
 nonisolated struct CreateCloudAnalysisJobResponse: Codable, Sendable {
+    let requestId: String
     let jobId: String
     let uploadUrl: String
     let uploadMethod: String
@@ -24,6 +25,8 @@ nonisolated struct CreateCloudAnalysisJobResponse: Codable, Sendable {
     let pollAfterSeconds: Int
     let quotaRemainingToday: Int
     let analysisMode: String
+    let modelVersion: String?
+    let failureReason: String?
 }
 
 nonisolated struct StartCloudAnalysisJobRequest: Codable, Sendable {
@@ -31,11 +34,15 @@ nonisolated struct StartCloudAnalysisJobRequest: Codable, Sendable {
 }
 
 nonisolated struct StartCloudAnalysisJobResponse: Codable, Sendable {
+    let requestId: String
     let jobId: String
     let status: String
+    let modelVersion: String?
+    let failureReason: String?
 }
 
 nonisolated struct CloudAnalysisJobResponse: Codable, Sendable {
+    let requestId: String
     let jobId: String
     let status: String
     let progress: Double
@@ -44,15 +51,21 @@ nonisolated struct CloudAnalysisJobResponse: Codable, Sendable {
     let errorMessage: String?
     let analysisVersion: String
     let results: CloudAnalysisResult?
+    let modelVersion: String?
+    let failureReason: String?
 }
 
 nonisolated struct CloudAnalysisResult: Codable, Sendable {
     let clipCount: Int
     let clips: [CloudClip]
     let diagnostics: CloudDiagnostics
+    let resultConfidence: Double?
+    let modelVersion: String?
+    let failureReason: String?
 }
 
 nonisolated struct CloudClip: Codable, Sendable {
+    let clipId: String?
     let startTime: Double
     let endTime: Double
     let confidence: Double
@@ -65,6 +78,11 @@ nonisolated struct CloudClip: Codable, Sendable {
     let detectionMethod: String
     let shouldAutoKeep: Bool
     let shouldEnableSlowMotion: Bool
+    let eventType: String?
+    let shotType: String?
+    let makeMiss: String?
+    let rankScore: Double?
+    let reviewStatus: String?
 
     func makeClip() -> Clip {
         let resolvedAction = HighlightAction(rawValue: action)
@@ -91,16 +109,21 @@ nonisolated struct CloudClip: Codable, Sendable {
 nonisolated struct CloudDiagnostics: Codable, Sendable {
     let processingMs: Int
     let backendModelVersion: String
+    let modelVersion: String?
     let usedVideoIntelligence: Bool
     let usedGeminiRelabeling: Bool
     let candidateSegments: Int
     let finalSegments: Int
+    let failureReason: String?
 }
 
 nonisolated struct CloudAnalysisAPIError: Codable, Sendable {
+    let requestId: String?
     let errorCode: String
     let errorMessage: String
     let quotaRemainingToday: Int?
+    let modelVersion: String?
+    let failureReason: String?
 }
 
 nonisolated enum CloudAnalysisJobState: String, Codable, Sendable {
@@ -110,6 +133,7 @@ nonisolated enum CloudAnalysisJobState: String, Codable, Sendable {
     case succeeded
     case failed
     case expired
+    case cancelled
 }
 
 nonisolated enum CloudAnalysisError: Error, LocalizedError, Sendable {

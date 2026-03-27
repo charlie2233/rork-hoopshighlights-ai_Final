@@ -5,6 +5,7 @@ from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Dict, List, Optional
+from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -20,10 +21,11 @@ class JobStatus(str, Enum):
     SUCCEEDED = "succeeded"
     FAILED = "failed"
     EXPIRED = "expired"
+    CANCELLED = "cancelled"
 
     @property
     def is_terminal(self) -> bool:
-        return self in {JobStatus.SUCCEEDED, JobStatus.FAILED, JobStatus.EXPIRED}
+        return self in {JobStatus.SUCCEEDED, JobStatus.FAILED, JobStatus.EXPIRED, JobStatus.CANCELLED}
 
 
 class CreateCloudAnalysisJobRequest(APIModel):
@@ -37,6 +39,7 @@ class CreateCloudAnalysisJobRequest(APIModel):
 
 
 class CreateCloudAnalysisJobResponse(APIModel):
+    requestId: str
     jobId: str
     uploadUrl: str
     uploadMethod: str = "PUT"
@@ -45,6 +48,8 @@ class CreateCloudAnalysisJobResponse(APIModel):
     pollAfterSeconds: int
     quotaRemainingToday: int
     analysisMode: str = "cloud"
+    modelVersion: Optional[str] = None
+    failureReason: Optional[str] = None
 
 
 class StartCloudAnalysisJobRequest(APIModel):
@@ -52,11 +57,15 @@ class StartCloudAnalysisJobRequest(APIModel):
 
 
 class StartCloudAnalysisJobResponse(APIModel):
+    requestId: str
     jobId: str
     status: str
+    modelVersion: Optional[str] = None
+    failureReason: Optional[str] = None
 
 
 class CloudClip(APIModel):
+    clipId: str = Field(default_factory=lambda: uuid4().hex)
     startTime: float
     endTime: float
     confidence: float
@@ -69,24 +78,35 @@ class CloudClip(APIModel):
     detectionMethod: str = "cloud"
     shouldAutoKeep: bool
     shouldEnableSlowMotion: bool
+    eventType: Optional[str] = None
+    shotType: Optional[str] = None
+    makeMiss: Optional[str] = None
+    rankScore: Optional[float] = None
+    reviewStatus: Optional[str] = None
 
 
 class CloudDiagnostics(APIModel):
     processingMs: int
     backendModelVersion: str
+    modelVersion: Optional[str] = None
     usedVideoIntelligence: bool
     usedGeminiRelabeling: bool
     candidateSegments: int
     finalSegments: int
+    failureReason: Optional[str] = None
 
 
 class CloudAnalysisResult(APIModel):
     clipCount: int
     clips: List[CloudClip]
     diagnostics: CloudDiagnostics
+    resultConfidence: float = 0.0
+    modelVersion: Optional[str] = None
+    failureReason: Optional[str] = None
 
 
 class CloudAnalysisJobResponse(APIModel):
+    requestId: str
     jobId: str
     status: str
     progress: float
@@ -95,12 +115,17 @@ class CloudAnalysisJobResponse(APIModel):
     errorMessage: Optional[str] = None
     analysisVersion: str
     results: Optional[CloudAnalysisResult] = None
+    modelVersion: Optional[str] = None
+    failureReason: Optional[str] = None
 
 
 class ErrorResponse(APIModel):
+    requestId: str
     errorCode: str
     errorMessage: str
     quotaRemainingToday: Optional[int] = None
+    modelVersion: Optional[str] = None
+    failureReason: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -159,12 +184,26 @@ class StoredJob:
     stage: str = "Preparing upload"
     error_code: Optional[str] = None
     error_message: Optional[str] = None
+    model_version: Optional[str] = None
+    failure_reason: Optional[str] = None
+    trace_id: Optional[str] = None
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
+    worker_version: Optional[str] = None
+    result_object_key: Optional[str] = None
+    attempt: int = 0
     results: Optional[CloudAnalysisResult] = None
     storage_path: Optional[str] = None
     quota_remaining_today: int = 0
 
-    def to_job_response(self) -> CloudAnalysisJobResponse:
+    def to_job_response(self, request_id: str) -> CloudAnalysisJobResponse:
+        resolved_model_version = self.model_version
+        resolved_failure_reason = self.failure_reason or self.error_code
+        if self.results is not None:
+            resolved_model_version = self.results.modelVersion or resolved_model_version
+            resolved_failure_reason = self.results.failureReason or resolved_failure_reason
         return CloudAnalysisJobResponse(
+            requestId=request_id,
             jobId=self.job_id,
             status=self.status.value,
             progress=round(self.progress, 4),
@@ -173,6 +212,8 @@ class StoredJob:
             errorMessage=self.error_message,
             analysisVersion=self.analysis_version,
             results=self.results,
+            modelVersion=resolved_model_version,
+            failureReason=resolved_failure_reason,
         )
 
 
@@ -192,9 +233,11 @@ class APIError(Exception):
 
     def to_response(self) -> ErrorResponse:
         return ErrorResponse(
+            requestId="",
             errorCode=self.error_code,
             errorMessage=self.error_message,
             quotaRemainingToday=self.quota_remaining_today,
+            failureReason=self.error_code,
         )
 
 

@@ -1,7 +1,9 @@
 import Foundation
 
 enum Config {
-    static let EXPO_PUBLIC_REVENUECAT_TEST_API_KEY = ""
-    static let EXPO_PUBLIC_REVENUECAT_IOS_API_KEY = ""
-    static let EXPO_PUBLIC_GOOGLE_CLIENT_ID = ""
+    static let environment = AppRuntimeConfig.shared.environmentName
+    static let revenueCatAPIKey = AppRuntimeConfig.shared.revenueCatAPIKey
+    static let googleClientID = AppRuntimeConfig.shared.googleClientID
+    static let cloudAnalysisBaseURL = AppRuntimeConfig.shared.cloudAnalysisBaseURL
+    static let sentryDSN = AppRuntimeConfig.shared.sentryDSN
 }

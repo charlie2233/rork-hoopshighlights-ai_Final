@@ -164,14 +164,20 @@ struct CloudAnalysisService {
                 }
                 return results
             case .failed:
+                let failureCode = job.failureReason ?? job.errorCode ?? "analysis_failed"
                 throw CloudAnalysisError.backend(
-                    code: job.errorCode ?? "analysis_failed",
+                    code: failureCode,
                     message: job.errorMessage ?? "Cloud analysis failed."
                 )
             case .expired:
                 throw CloudAnalysisError.backend(
                     code: "expired",
                     message: "Cloud analysis job expired before completion."
+                )
+            case .cancelled:
+                throw CloudAnalysisError.backend(
+                    code: job.failureReason ?? "cancelled",
+                    message: job.errorMessage ?? "Cloud analysis job was cancelled."
                 )
             case .created, .queued:
                 await progress(min(max(job.progress, 0.0), 0.55), job.stage.isEmpty ? "Queued on server" : job.stage)
@@ -202,8 +208,8 @@ struct CloudAnalysisService {
                 throw CloudAnalysisError.quotaExceeded(apiError?.quotaRemainingToday)
             }
             throw CloudAnalysisError.backend(
-                code: apiError?.errorCode ?? "http_\(http.statusCode)",
-                message: apiError?.errorMessage ?? "Cloud analysis request failed."
+                code: apiError?.failureReason ?? apiError?.errorCode ?? "http_\(http.statusCode)",
+                message: apiError?.errorMessage ?? apiError?.failureReason ?? "Cloud analysis request failed."
             )
         }
 

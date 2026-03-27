@@ -1,0 +1,4 @@
+#include "Base.xcconfig"
+
+HOOPS_APP_ENV = staging
+HOOPS_CLOUD_ANALYSIS_BASE_URL = https:/$()/api-staging.hoopsclips.example

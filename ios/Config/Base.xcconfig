@@ -1,0 +1,12 @@
+// Shared runtime config. Copy LocalSecrets.example.xcconfig to LocalSecrets.xcconfig
+// for machine-specific secrets and values.
+// Note: xcconfig treats `//` as a comment, so URLs must use `https:/$()/host`
+// or `http:/$()/host` instead of a literal `https://host`.
+#include? "LocalSecrets.xcconfig"
+
+HOOPS_APP_ENV = base
+HOOPS_DEVELOPMENT_TEAM =
+HOOPS_REVENUECAT_API_KEY =
+HOOPS_GOOGLE_CLIENT_ID =
+HOOPS_CLOUD_ANALYSIS_BASE_URL =
+HOOPS_SENTRY_DSN =
