@@ -3,6 +3,7 @@ import type { Env } from "../services/control-plane/src/env.ts";
 import type {
   CloudAnalysisResult,
   CloudClip,
+  DeadLetterQueueMessage,
   InferenceCallbackPayload,
   JobRecord,
   QueueJobMessage
@@ -13,6 +14,8 @@ export interface HarnessState {
   events: HarnessEvent[];
   uploads: Map<string, Uint8Array>;
   queueMessages: QueueJobMessage[];
+  deadLetterMessages: DeadLetterQueueMessage[];
+  callbackRequests: HarnessCallbackRequest[];
 }
 
 export interface HarnessEvent {
@@ -23,6 +26,12 @@ export interface HarnessEvent {
   message: string;
   payload: unknown;
   createdAt: string;
+}
+
+export interface HarnessCallbackRequest {
+  jobId: string;
+  requestId: string;
+  traceId: string;
 }
 
 export interface ControlPlaneHarness {
@@ -50,7 +59,9 @@ export function createControlPlaneHarness(overrides: Partial<Env> = {}): Control
     jobs: new Map(),
     events: [],
     uploads: new Map(),
-    queueMessages: []
+    queueMessages: [],
+    deadLetterMessages: [],
+    callbackRequests: []
   };
   const pending: Promise<unknown>[] = [];
 
@@ -61,6 +72,7 @@ export function createControlPlaneHarness(overrides: Partial<Env> = {}): Control
     JOB_TTL_SECONDS: "3600",
     MAX_FILE_SIZE_BYTES: "524288000",
     MAX_DURATION_SECONDS: "1800",
+    CONTROL_PLANE_BASE_URL: BASE_URL,
     ADMIN_API_TOKEN: ADMIN_TOKEN,
     CONTROL_PLANE_SHARED_SECRET: INTERNAL_SECRET,
     INFERENCE_BASE_URL: "http://inference.local",
@@ -73,6 +85,7 @@ export function createControlPlaneHarness(overrides: Partial<Env> = {}): Control
     DB: createMockDb(state),
     JOB_STATE: createMockJobStateNamespace(state),
     ANALYSIS_QUEUE: createMockQueue(state),
+    ANALYSIS_DLQ: createMockDeadLetterQueue(state),
     R2_UPLOADS: createMockBucket(state.uploads),
     R2_RESULTS: createMockBucket(new Map()),
     ...overrides
@@ -109,6 +122,14 @@ export function createControlPlaneHarness(overrides: Partial<Env> = {}): Control
         const url = new URL(request.url);
         if (url.origin === BASE_URL) {
           const requestId = request.headers.get("x-request-id")?.trim() || crypto.randomUUID();
+          const callbackMatch = url.pathname.match(/^\/internal\/inference\/callback(?:\/([^/]+))?$/);
+          if (callbackMatch) {
+            state.callbackRequests.push({
+              jobId: callbackMatch[1] ?? "unknown",
+              requestId,
+              traceId: request.headers.get("x-trace-id")?.trim() || ""
+            });
+          }
           const internalResponse = await routeInternalRequest(request, env, requestId);
           if (!internalResponse) {
             return new Response("Not found", { status: 404 });
@@ -327,6 +348,14 @@ function createMockQueue(state: HarnessState): Env["ANALYSIS_QUEUE"] {
       state.queueMessages.push(message);
     }
   } as Env["ANALYSIS_QUEUE"];
+}
+
+function createMockDeadLetterQueue(state: HarnessState): Env["ANALYSIS_DLQ"] {
+  return {
+    async send(message: DeadLetterQueueMessage): Promise<void> {
+      state.deadLetterMessages.push(message);
+    }
+  } as Env["ANALYSIS_DLQ"];
 }
 
 function createMockBucket(store: Map<string, Uint8Array>): R2Bucket {

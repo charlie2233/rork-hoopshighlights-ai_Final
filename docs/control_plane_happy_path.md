@@ -2,6 +2,8 @@
 
 This runbook is the quickest way for a fresh engineer to verify the HoopsClips control plane without touching the iOS client.
 
+For live staging deployment and rollback, use [`docs/staging_smoke_runbook.md`](./staging_smoke_runbook.md).
+
 ## Prerequisites
 
 - Node.js 20+
@@ -44,13 +46,7 @@ npx tsx scripts/control-plane-happy-path.ts --base-url http://127.0.0.1:8787
 
 ## Staging
 
-After the Worker, R2, D1, and Queue bindings are deployed to staging:
-
-```bash
-npx tsx scripts/control-plane-happy-path.ts --base-url https://<staging-control-plane-host>
-```
-
-Pass `--shared-secret` if staging uses a non-default internal callback secret.
+After the staging Worker is deployed, run the live smoke command from [`docs/staging_smoke_runbook.md`](./staging_smoke_runbook.md).
 
 ## Automated Checks
 
@@ -62,5 +58,6 @@ npx tsx --test services/control-plane/test/control-plane-failure-path.test.ts
 ## What to Expect
 
 - The happy-path script prints a JSON summary with the final job status, model version, clip count, and upload key.
+- The JSON summary now also includes `requestIds.presign`, `requestIds.finalize`, `requestIds.callback`, and `requestIds.poll`.
 - The success test should end in `completed`.
 - The failure test should end in `failed` and preserve the failure reason.

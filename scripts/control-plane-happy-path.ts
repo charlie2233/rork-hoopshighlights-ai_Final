@@ -13,6 +13,12 @@ interface FlowSummary {
   finalStatus: string;
   modelVersion: string | null;
   clipCount: number | null;
+  requestIds: {
+    presign: string;
+    finalize: string;
+    callback: string | null;
+    poll: string;
+  };
 }
 
 async function main(): Promise<void> {
@@ -50,6 +56,7 @@ async function runLocalHappyPath(args: ParsedArgs): Promise<FlowSummary> {
     jobId: string;
     sourceObjectKey: string;
     uploadUrl: string;
+    requestId: string;
   }>(createResponse);
 
   const uploadKey = createJson.sourceObjectKey;
@@ -66,13 +73,14 @@ async function runLocalHappyPath(args: ParsedArgs): Promise<FlowSummary> {
     },
     { "x-trace-id": args.traceId }
   );
-  const finalizeJson = await parseJsonResponse<{ status: string }>(finalizeResponse);
+  const finalizeJson = await parseJsonResponse<{ status: string; requestId: string }>(finalizeResponse);
   if (finalizeJson.status !== "queued") {
     throw new Error(`Expected queued status after finalize, received ${finalizeJson.status}.`);
   }
 
   const processedMessages = await harness.drainQueue();
   const finalJson = await pollLocalJob(harness, createJson.jobId, args);
+  const callbackRequestId = harness.state.callbackRequests.at(-1)?.requestId ?? null;
 
   return {
     mode: "local",
@@ -81,7 +89,13 @@ async function runLocalHappyPath(args: ParsedArgs): Promise<FlowSummary> {
     queueMessageCount: processedMessages,
     finalStatus: finalJson.status,
     modelVersion: finalJson.modelVersion ?? null,
-    clipCount: finalJson.results?.clipCount ?? null
+    clipCount: finalJson.results?.clipCount ?? null,
+    requestIds: {
+      presign: createJson.requestId,
+      finalize: finalizeJson.requestId ?? args.traceId,
+      callback: callbackRequestId ?? finalizeJson.requestId ?? args.traceId,
+      poll: finalJson.requestId ?? args.traceId
+    }
   };
 }
 
@@ -136,7 +150,13 @@ async function runHttpHappyPath(baseUrl: string, args: ParsedArgs): Promise<Flow
     uploadKey,
     finalStatus: finalResponse.status,
     modelVersion: finalResponse.modelVersion ?? null,
-    clipCount: finalResponse.results?.clipCount ?? null
+    clipCount: finalResponse.results?.clipCount ?? null,
+    requestIds: {
+      presign: createResponse.requestId ?? args.traceId,
+      finalize: finalizeResponse.requestId ?? args.traceId,
+      callback: finalizeResponse.requestId ?? args.traceId,
+      poll: finalResponse.requestId ?? args.traceId
+    }
   };
 }
 

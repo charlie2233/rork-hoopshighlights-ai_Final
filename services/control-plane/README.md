@@ -16,7 +16,6 @@ This package is the Cloudflare control plane scaffold for HoopsClips.
 
 The runnable happy path is documented in [`docs/control_plane_happy_path.md`](../../docs/control_plane_happy_path.md).
 The live staging deploy and smoke flow are documented in [`docs/staging_smoke_runbook.md`](../../docs/staging_smoke_runbook.md).
-The live Cloudflare staging runbook is documented in [`docs/cloudflare_staging_runbook.md`](../../docs/cloudflare_staging_runbook.md).
 
 Quick local check:
 
@@ -64,9 +63,6 @@ Required env/secret inputs:
 - `R2_ACCOUNT_ID`
 - `R2_ACCESS_KEY_ID`
 - `R2_SECRET_ACCESS_KEY`
-- `ADMIN_API_TOKEN`
-- `CONTROL_PLANE_SHARED_SECRET`
-- `INFERENCE_SHARED_SECRET`
 
 For the exact local/staging variable mapping and Wrangler secret commands, see [`docs/cloudflare_env_setup.md`](../../docs/cloudflare_env_setup.md).
 
