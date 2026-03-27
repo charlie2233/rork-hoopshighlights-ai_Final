@@ -3,6 +3,7 @@ import type { QueueJobMessage } from "./types";
 
 export interface Env {
   APP_ENV: string;
+  SCHEMA_VERSION: string;
   DEFAULT_POLL_AFTER_SECONDS: string;
   SIGNED_UPLOAD_TTL_SECONDS: string;
   JOB_TTL_SECONDS: string;
@@ -26,6 +27,7 @@ export interface Env {
 
 export interface RuntimeConfig {
   appEnv: string;
+  schemaVersion: string;
   defaultPollAfterSeconds: number;
   signedUploadTtlSeconds: number;
   jobTtlSeconds: number;
@@ -36,6 +38,7 @@ export interface RuntimeConfig {
 export function resolveRuntimeConfig(env: Env): RuntimeConfig {
   return {
     appEnv: env.APP_ENV || "local",
+    schemaVersion: env.SCHEMA_VERSION || "phase1a-staging-happy-path",
     defaultPollAfterSeconds: toPositiveInt(env.DEFAULT_POLL_AFTER_SECONDS, 2),
     signedUploadTtlSeconds: toPositiveInt(env.SIGNED_UPLOAD_TTL_SECONDS, 900),
     jobTtlSeconds: toPositiveInt(env.JOB_TTL_SECONDS, 3600),

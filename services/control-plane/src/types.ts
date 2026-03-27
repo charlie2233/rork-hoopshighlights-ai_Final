@@ -1,7 +1,19 @@
-export type JobStatus = "created" | "queued" | "processing" | "succeeded" | "failed" | "expired" | "cancelled";
+export type JobStatus =
+  | "created"
+  | "upload_pending"
+  | "uploaded"
+  | "queued"
+  | "processing"
+  | "completed"
+  | "failed"
+  | "cancelled"
+  | "succeeded"
+  | "expired";
 
 export interface ResponseEnvelope {
   requestId: string;
+  schemaVersion?: string | null;
+  confidence?: number | null;
   modelVersion?: string | null;
   failureReason?: string | null;
 }
@@ -25,6 +37,9 @@ export interface CreateCloudAnalysisJobResponse extends ResponseEnvelope {
   pollAfterSeconds: number;
   quotaRemainingToday: number;
   analysisMode: "cloud";
+  sourceObjectKey?: string | null;
+  resultObjectKey?: string | null;
+  status?: JobStatus;
 }
 
 export interface StartCloudAnalysisJobRequest {
@@ -34,6 +49,27 @@ export interface StartCloudAnalysisJobRequest {
 export interface StartCloudAnalysisJobResponse extends ResponseEnvelope {
   jobId: string;
   status: JobStatus;
+}
+
+export interface UploadPresignRequest extends CreateCloudAnalysisJobRequest {}
+
+export interface UploadPresignResponse extends ResponseEnvelope {
+  jobId: string;
+  sourceObjectKey: string;
+  resultObjectKey: string;
+  uploadUrl: string;
+  uploadMethod: "PUT";
+  uploadHeaders: Record<string, string>;
+  expiresAt: string;
+  status: JobStatus;
+  analysisMode: "cloud";
+}
+
+export interface CreateCloudJobRequest {
+  jobId: string;
+  installId: string;
+  sourceObjectKey?: string;
+  resultObjectKey?: string;
 }
 
 export interface CloudClip {
@@ -82,6 +118,15 @@ export interface CloudAnalysisJobResponse extends ResponseEnvelope {
   errorMessage?: string | null;
   analysisVersion: string;
   results?: CloudAnalysisResult | null;
+  sourceObjectKey?: string | null;
+  resultObjectKey?: string | null;
+  createdAt?: string | null;
+  uploadPendingAt?: string | null;
+  uploadedAt?: string | null;
+  queuedAt?: string | null;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+  cancelledAt?: string | null;
 }
 
 export interface ErrorResponse extends ResponseEnvelope {
@@ -94,21 +139,25 @@ export interface QueueJobMessage {
   kind: "process-job";
   jobId: string;
   requestId: string;
+  schemaVersion: string;
   installId: string;
   analysisVersion: string;
   sourceObjectKey: string;
   resultObjectKey: string;
   callbackUrl: string;
+  uploadUrl?: string | null;
 }
 
 export interface InferenceCallbackPayload {
   jobId: string;
-  status: "processing" | "succeeded" | "failed";
+  status: "processing" | "completed" | "failed" | "cancelled" | "succeeded";
   progress?: number;
   stage?: string;
   modelVersion?: string | null;
   failureReason?: string | null;
+  schemaVersion?: string | null;
   resultConfidence?: number | null;
+  confidence?: number | null;
   results?: CloudAnalysisResult | null;
   traceId?: string | null;
   requestId?: string | null;
@@ -116,6 +165,7 @@ export interface InferenceCallbackPayload {
 
 export interface JobRecord extends ResponseEnvelope {
   jobId: string;
+  schemaVersion: string;
   traceId: string;
   installId: string;
   filename: string;
@@ -128,6 +178,13 @@ export interface JobRecord extends ResponseEnvelope {
   status: JobStatus;
   stage: string;
   progress: number;
+  createdAt: string;
+  uploadPendingAt?: string | null;
+  uploadedAt?: string | null;
+  queuedAt?: string | null;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+  cancelledAt?: string | null;
   errorCode?: string | null;
   errorMessage?: string | null;
   sourceObjectKey: string;
@@ -136,10 +193,6 @@ export interface JobRecord extends ResponseEnvelope {
   uploadMethod: "PUT";
   uploadHeaders: Record<string, string>;
   expiresAt: string;
-  createdAt: string;
-  queuedAt?: string | null;
-  startedAt?: string | null;
-  finishedAt?: string | null;
   updatedAt: string;
   resultConfidence?: number | null;
   results?: CloudAnalysisResult | null;
@@ -147,8 +200,6 @@ export interface JobRecord extends ResponseEnvelope {
   reviewerNotes?: string | null;
   promotedToTrainingSet?: boolean;
   quotaRemainingToday?: number | null;
-  modelVersion?: string | null;
-  failureReason?: string | null;
 }
 
 export interface JobBootstrapInput {

@@ -14,21 +14,22 @@ export async function upsertJobIndex(db: D1Database, job: JobRecord): Promise<vo
   await db
     .prepare(
       `INSERT INTO jobs (
-        job_id, request_id, trace_id, install_id, filename, content_type, file_size_bytes,
+        job_id, schema_version, request_id, trace_id, install_id, filename, content_type, file_size_bytes,
         duration_seconds, app_version, analysis_version, analysis_mode, status, stage, progress,
         model_version, failure_reason, error_code, error_message, source_object_key,
         result_object_key, upload_url, upload_method, upload_headers_json, expires_at,
-        created_at, queued_at, started_at, finished_at, updated_at, result_confidence,
+        created_at, upload_pending_at, uploaded_at, queued_at, started_at, finished_at, cancelled_at, updated_at, result_confidence,
         results_json, review_state, reviewer_notes, promoted_to_training_set
       ) VALUES (
-        ?1, ?2, ?3, ?4, ?5, ?6, ?7,
-        ?8, ?9, ?10, ?11, ?12, ?13, ?14,
-        ?15, ?16, ?17, ?18, ?19,
-        ?20, ?21, ?22, ?23, ?24,
-        ?25, ?26, ?27, ?28, ?29, ?30,
-        ?31, ?32, ?33, ?34
+        ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8,
+        ?9, ?10, ?11, ?12, ?13, ?14, ?15,
+        ?16, ?17, ?18, ?19, ?20,
+        ?21, ?22, ?23, ?24, ?25,
+        ?26, ?27, ?28, ?29, ?30, ?31, ?32, ?33, ?34,
+        ?35, ?36, ?37, ?38
       )
       ON CONFLICT(job_id) DO UPDATE SET
+        schema_version=excluded.schema_version,
         request_id=excluded.request_id,
         trace_id=excluded.trace_id,
         install_id=excluded.install_id,
@@ -53,9 +54,12 @@ export async function upsertJobIndex(db: D1Database, job: JobRecord): Promise<vo
         upload_headers_json=excluded.upload_headers_json,
         expires_at=excluded.expires_at,
         created_at=excluded.created_at,
+        upload_pending_at=excluded.upload_pending_at,
+        uploaded_at=excluded.uploaded_at,
         queued_at=excluded.queued_at,
         started_at=excluded.started_at,
         finished_at=excluded.finished_at,
+        cancelled_at=excluded.cancelled_at,
         updated_at=excluded.updated_at,
         result_confidence=excluded.result_confidence,
         results_json=excluded.results_json,
@@ -65,6 +69,7 @@ export async function upsertJobIndex(db: D1Database, job: JobRecord): Promise<vo
     )
     .bind(
       job.jobId,
+      job.schemaVersion,
       job.requestId,
       job.traceId,
       job.installId,
@@ -89,11 +94,14 @@ export async function upsertJobIndex(db: D1Database, job: JobRecord): Promise<vo
       JSON.stringify(job.uploadHeaders),
       job.expiresAt,
       job.createdAt,
+      job.uploadPendingAt ?? null,
+      job.uploadedAt ?? null,
       job.queuedAt ?? null,
       job.startedAt ?? null,
       job.finishedAt ?? null,
+      job.cancelledAt ?? null,
       job.updatedAt,
-      job.resultConfidence ?? null,
+      job.confidence ?? job.resultConfidence ?? null,
       job.results ? JSON.stringify(job.results) : null,
       job.reviewState ?? "unreviewed",
       job.reviewerNotes ?? null,
@@ -322,6 +330,7 @@ function rowToJobRecord(row: JobRow): JobRecord {
 
   return {
     requestId: String(row.request_id),
+    schemaVersion: String(row.schema_version ?? "phase1a-staging-happy-path"),
     modelVersion: row.model_version == null ? null : String(row.model_version),
     failureReason: row.failure_reason == null ? null : String(row.failure_reason),
     jobId: String(row.job_id),
@@ -337,6 +346,13 @@ function rowToJobRecord(row: JobRow): JobRecord {
     status: String(row.status) as JobRecord["status"],
     stage: String(row.stage),
     progress: Number(row.progress ?? 0),
+    createdAt: String(row.created_at),
+    uploadPendingAt: row.upload_pending_at == null ? null : String(row.upload_pending_at),
+    uploadedAt: row.uploaded_at == null ? null : String(row.uploaded_at),
+    queuedAt: row.queued_at == null ? null : String(row.queued_at),
+    startedAt: row.started_at == null ? null : String(row.started_at),
+    finishedAt: row.finished_at == null ? null : String(row.finished_at),
+    cancelledAt: row.cancelled_at == null ? null : String(row.cancelled_at),
     errorCode: row.error_code == null ? null : String(row.error_code),
     errorMessage: row.error_message == null ? null : String(row.error_message),
     sourceObjectKey: String(row.source_object_key),
@@ -345,12 +361,9 @@ function rowToJobRecord(row: JobRow): JobRecord {
     uploadMethod: String(row.upload_method) as "PUT",
     uploadHeaders: uploadHeaders ?? {},
     expiresAt: String(row.expires_at),
-    createdAt: String(row.created_at),
-    queuedAt: row.queued_at == null ? null : String(row.queued_at),
-    startedAt: row.started_at == null ? null : String(row.started_at),
-    finishedAt: row.finished_at == null ? null : String(row.finished_at),
     updatedAt: String(row.updated_at),
     resultConfidence: row.result_confidence == null ? null : Number(row.result_confidence),
+    confidence: row.result_confidence == null ? null : Number(row.result_confidence),
     results: results ?? null,
     reviewState: row.review_state == null ? null : String(row.review_state),
     reviewerNotes: row.reviewer_notes == null ? null : String(row.reviewer_notes),

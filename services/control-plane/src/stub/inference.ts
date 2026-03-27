@@ -21,6 +21,7 @@ export function buildStubInferenceCallbackPayload(job: JobRecord, message: Queue
   };
 
   const result: CloudAnalysisResult = {
+    requestId: message.requestId,
     clipCount: clips.length,
     clips,
     diagnostics,
