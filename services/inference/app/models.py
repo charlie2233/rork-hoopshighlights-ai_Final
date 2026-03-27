@@ -1,0 +1,152 @@
+from __future__ import annotations
+
+from datetime import datetime
+from enum import Enum
+from typing import Any, Optional
+
+from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field
+
+
+class APIModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class InferenceStatus(str, Enum):
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+
+
+class InferenceJobRequest(APIModel):
+    jobId: str = Field(min_length=1, max_length=128)
+    sourceUrl: AnyHttpUrl
+    callbackUrl: AnyHttpUrl
+    callbackSecret: str = Field(min_length=8, max_length=256)
+    sourceObjectKey: Optional[str] = None
+    resultObjectKey: Optional[str] = None
+    installId: Optional[str] = None
+    appVersion: Optional[str] = None
+    analysisVersion: Optional[str] = None
+    requestedModel: Optional[str] = None
+    requestId: Optional[str] = None
+    traceId: Optional[str] = None
+    modelVersion: Optional[str] = None
+
+
+class CandidateWindow(APIModel):
+    candidateId: str
+    startTime: float = Field(ge=0.0)
+    endTime: float = Field(gt=0.0)
+    score: float = Field(ge=0.0, le=1.0)
+    source: str = "heuristic"
+    reason: Optional[str] = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class ActionPrediction(APIModel):
+    label: str
+    confidence: float = Field(ge=0.0, le=1.0)
+    modelVersion: str
+    detectionMethod: str = "model"
+    failureReason: Optional[str] = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class EventPrediction(APIModel):
+    eventType: str
+    shotType: str
+    makeMiss: str
+    confidence: float = Field(ge=0.0, le=1.0)
+    rankScore: float = Field(ge=0.0, le=1.0)
+    shouldAutoKeep: bool = True
+    shouldEnableSlowMotion: bool = False
+    reviewState: Optional[str] = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class RankedClip(APIModel):
+    clipId: str
+    startTime: float = Field(ge=0.0)
+    endTime: float = Field(gt=0.0)
+    confidence: float = Field(ge=0.0, le=1.0)
+    resultConfidence: float = Field(ge=0.0, le=1.0)
+    label: str
+    action: str
+    eventType: str
+    shotType: str
+    makeMiss: str
+    audioScore: float = Field(ge=0.0, le=1.0)
+    visualScore: float = Field(ge=0.0, le=1.0)
+    motionScore: float = Field(ge=0.0, le=1.0)
+    combinedScore: float = Field(ge=0.0, le=1.0)
+    rankScore: float = Field(ge=0.0, le=1.0)
+    detectionMethod: str = "model"
+    shouldAutoKeep: bool = True
+    shouldEnableSlowMotion: bool = False
+    reviewState: Optional[str] = None
+    reviewerNotes: Optional[str] = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class ArtifactDescriptor(APIModel):
+    kind: str
+    path: str
+    mediaType: str = "application/json"
+    sizeBytes: Optional[int] = None
+    sha256: Optional[str] = None
+
+
+class InferenceDiagnostics(APIModel):
+    featureExtractor: str
+    candidateProposer: str
+    actionRecognizer: str
+    comparisonRecognizer: Optional[str] = None
+    eventInferencer: str
+    reranker: str
+    frameCount: int = 0
+    durationSeconds: float = 0.0
+    fps: float = 0.0
+    usedFallback: bool = False
+    comparisonScore: Optional[float] = None
+
+
+class InferenceManifest(APIModel):
+    schemaVersion: str
+    jobId: str
+    requestId: str
+    modelVersion: str
+    resultConfidence: float = Field(ge=0.0, le=1.0)
+    failureReason: Optional[str] = None
+    generatedAt: datetime
+    clips: list[RankedClip] = Field(default_factory=list)
+    artifacts: list[ArtifactDescriptor] = Field(default_factory=list)
+    diagnostics: InferenceDiagnostics
+
+
+class InferenceJobResponse(APIModel):
+    jobId: str
+    status: str
+    requestId: str
+    modelVersion: Optional[str] = None
+    failureReason: Optional[str] = None
+    confidence: Optional[float] = None
+    resultConfidence: Optional[float] = None
+    result: Optional[InferenceManifest] = None
+    message: Optional[str] = None
+
+
+class CallbackPayload(APIModel):
+    jobId: str
+    status: InferenceStatus
+    requestId: str
+    modelVersion: str
+    failureReason: Optional[str] = None
+    confidence: Optional[float] = None
+    resultConfidence: Optional[float] = None
+    result: Optional[InferenceManifest] = None
+
+
+class CallbackAcknowledgement(APIModel):
+    jobId: str
+    accepted: bool
+    status: str
+    requestId: str
