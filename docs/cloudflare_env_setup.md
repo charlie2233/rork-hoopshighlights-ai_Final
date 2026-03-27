@@ -27,8 +27,6 @@ These land in `Env` and are read by the control-plane code:
 - `JOB_TTL_SECONDS`
 - `MAX_FILE_SIZE_BYTES`
 - `MAX_DURATION_SECONDS`
-- `CONTROL_PLANE_BASE_URL`
-- `INFERENCE_BASE_URL`
 - `R2_ACCOUNT_ID`
 - `R2_UPLOAD_BUCKET_NAME`
 - `R2_RESULT_BUCKET_NAME`
@@ -38,10 +36,13 @@ Secrets are never stored in `vars`. Put them in Wrangler secrets instead.
 Secret names used by the control plane:
 
 - `ADMIN_API_TOKEN`
+- `CONTROL_PLANE_BASE_URL`
 - `CONTROL_PLANE_SHARED_SECRET`
 - `INFERENCE_SHARED_SECRET`
 - `R2_ACCESS_KEY_ID`
 - `R2_SECRET_ACCESS_KEY`
+
+`INFERENCE_BASE_URL` stays reserved for the later dedicated inference service. Phase 1b does not need it set in staging because the queue consumer posts the stub callback back into the control plane.
 
 Those names are the only secret identifiers to use in local and staging. Store values with `wrangler secret put`; do not put them in `vars`.
 
@@ -78,6 +79,7 @@ For local dev secrets, set the same names as staging:
 ```bash
 cd services/control-plane
 wrangler secret put ADMIN_API_TOKEN
+printf '%s' 'http://127.0.0.1:8787' | wrangler secret put CONTROL_PLANE_BASE_URL
 wrangler secret put CONTROL_PLANE_SHARED_SECRET
 wrangler secret put INFERENCE_SHARED_SECRET
 wrangler secret put R2_ACCESS_KEY_ID
@@ -92,7 +94,6 @@ Use the same variable names in staging, but populate them from the staging envir
 
 - `APP_ENV=staging`
 - `SCHEMA_VERSION=phase1b-live-staging-deploy`
-- `INFERENCE_BASE_URL` reserved for later external inference integration and left blank for the stub staging path
 - `R2_ACCOUNT_ID` for the staging Cloudflare account
 - `R2_UPLOAD_BUCKET_NAME=hoopsclips-uploads-staging`
 - `R2_RESULT_BUCKET_NAME=hoopsclips-results-staging`
@@ -102,6 +103,7 @@ Staging secrets:
 ```bash
 cd services/control-plane
 wrangler secret put ADMIN_API_TOKEN --env staging
+printf '%s' 'https://<staging-worker-url>' | wrangler secret put CONTROL_PLANE_BASE_URL --env staging
 wrangler secret put CONTROL_PLANE_SHARED_SECRET --env staging
 wrangler secret put INFERENCE_SHARED_SECRET --env staging
 wrangler secret put R2_ACCESS_KEY_ID --env staging

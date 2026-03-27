@@ -59,12 +59,14 @@ The phase-1b verification path now uses the staging route shape end to end:
 Required env/secret inputs:
 
 - `ADMIN_API_TOKEN`
+- `CONTROL_PLANE_BASE_URL`
 - `CONTROL_PLANE_SHARED_SECRET`
-- `INFERENCE_BASE_URL`
 - `INFERENCE_SHARED_SECRET`
 - `R2_ACCOUNT_ID`
 - `R2_ACCESS_KEY_ID`
 - `R2_SECRET_ACCESS_KEY`
+
+`INFERENCE_BASE_URL` remains reserved for the later dedicated inference service and is not required for the phase-1b stub staging path.
 
 For the exact local/staging variable mapping and Wrangler secret commands, see [`docs/cloudflare_env_setup.md`](../../docs/cloudflare_env_setup.md).
 

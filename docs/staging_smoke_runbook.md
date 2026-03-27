@@ -27,12 +27,17 @@ The staging Worker needs these secret names, and they must be stored with `wrang
 
 ```bash
 cd services/control-plane
+npx wrangler deploy --env staging
+printf '%s' 'https://<printed-workers-dev-or-custom-domain-url>' | npx wrangler secret put CONTROL_PLANE_BASE_URL --env staging
 npx wrangler secret put ADMIN_API_TOKEN --env staging
 npx wrangler secret put CONTROL_PLANE_SHARED_SECRET --env staging
 npx wrangler secret put INFERENCE_SHARED_SECRET --env staging
 npx wrangler secret put R2_ACCESS_KEY_ID --env staging
 npx wrangler secret put R2_SECRET_ACCESS_KEY --env staging
+npx wrangler deploy --env staging
 ```
+
+`CONTROL_PLANE_BASE_URL` is the only service URL required in phase 1b. It must match the deployed staging Worker host so queue-driven stub inference can call back into `/internal/inference/callback`.
 
 ## Exact Deploy Commands
 
@@ -66,7 +71,7 @@ Live staging smoke:
 npx tsx scripts/control-plane-happy-path.ts --base-url https://api-staging.hoopsclips.example --trace-id staging-smoke-001
 ```
 
-For the iOS Staging build, run the app against the staging base URL from `ios/Config/Staging.xcconfig` and confirm it matches `CONTROL_PLANE_BASE_URL` in the staging Worker config, then upload the same sample video and confirm the returned clips render in the UI.
+For the iOS Staging build, run the app against the same staging base URL stored in the `CONTROL_PLANE_BASE_URL` secret, then upload the same sample video and confirm the returned clips render in the UI.
 
 The script now prints a summary with `requestIds.presign`, `requestIds.finalize`, `requestIds.callback`, and `requestIds.poll` so the trace can be matched against Worker logs.
 
