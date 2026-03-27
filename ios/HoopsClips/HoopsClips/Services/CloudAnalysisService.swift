@@ -1,10 +1,15 @@
 import Foundation
+import OSLog
 import UniformTypeIdentifiers
 
 struct CloudAnalysisService {
     private let session: URLSession
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
+    private let logger = Logger(
+        subsystem: Bundle.main.bundleIdentifier ?? "HoopsClips",
+        category: "cloud-analysis"
+    )
 
     init(session: URLSession = .shared) {
         self.session = session
@@ -22,12 +27,16 @@ struct CloudAnalysisService {
         analysisVersion: String = AppConstants.cloudAnalysisVersion,
         progress: @escaping @MainActor @Sendable (Double, String) -> Void
     ) async throws -> CloudAnalysisResult {
-        guard let baseURL = configuredBaseURL() else {
+        let requestId = makeRequestID()
+        guard let baseURL = configuredBaseURL(requestId: requestId) else {
             throw CloudAnalysisError.notConfigured
         }
 
         let fileInfo = try fileInfo(for: url)
-        let requestId = makeRequestID()
+
+        logger.info(
+            "Cloud analysis starting request_id=\(requestId, privacy: .public) environment=\(AppRuntimeConfig.shared.environmentName, privacy: .public) base_url=\(baseURL.absoluteString, privacy: .public)"
+        )
 
         await progress(0.02, "Preparing upload")
         if usesHappyPathFlow {
@@ -44,9 +53,15 @@ struct CloudAnalysisService {
                 ),
                 requestId: requestId
             )
+            logger.info(
+                "Cloud analysis presign received request_id=\(requestId, privacy: .public) job_id=\(presign.jobId, privacy: .public)"
+            )
 
             await progress(0.15, "Uploading video")
             try await uploadVideo(to: presign, from: url)
+            logger.info(
+                "Cloud analysis upload completed request_id=\(requestId, privacy: .public) job_id=\(presign.jobId, privacy: .public) object_key=\(presign.uploadObjectKey, privacy: .public)"
+            )
 
             await progress(0.28, "Creating job")
             let job = try await createHappyPathJob(
@@ -58,6 +73,9 @@ struct CloudAnalysisService {
                     resultObjectKey: presign.resultObjectKey
                 ),
                 requestId: requestId
+            )
+            logger.info(
+                "Cloud analysis job created request_id=\(requestId, privacy: .public) job_id=\(job.jobId, privacy: .public) status=\(job.status, privacy: .public)"
             )
 
             return try await pollJob(
@@ -98,13 +116,17 @@ struct CloudAnalysisService {
         )
     }
 
-    private func configuredBaseURL() -> URL? {
+    private func configuredBaseURL(requestId: String) -> URL? {
         guard !AppConstants.cloudAnalysisBaseURL.isEmpty,
               let url = URL(string: AppConstants.cloudAnalysisBaseURL) else {
+            logger.error("Cloud analysis base URL missing request_id=\(requestId, privacy: .public)")
             return nil
         }
 
         if usesHappyPathFlow, isLoopback(url) {
+            logger.error(
+                "Cloud analysis staging base URL cannot be loopback request_id=\(requestId, privacy: .public) base_url=\(url.absoluteString, privacy: .public)"
+            )
             return nil
         }
 
@@ -280,27 +302,48 @@ struct CloudAnalysisService {
             switch CloudAnalysisJobState(rawValue: job.status) {
             case .created, .uploadPending, .uploaded:
                 await progress(min(max(job.progress, 0.0), 0.35), job.stage.isEmpty ? "Uploading video" : job.stage)
+                logger.info(
+                    "Cloud analysis poll request_id=\(requestId, privacy: .public) job_id=\(jobID, privacy: .public) status=\(job.status, privacy: .public) progress=\(job.progress, privacy: .public)"
+                )
             case .queued:
                 await progress(min(max(job.progress, 0.0), 0.55), job.stage.isEmpty ? "Queued on server" : job.stage)
+                logger.info(
+                    "Cloud analysis poll request_id=\(requestId, privacy: .public) job_id=\(jobID, privacy: .public) status=\(job.status, privacy: .public) progress=\(job.progress, privacy: .public)"
+                )
             case .processing:
                 await progress(max(0.55, min(job.progress, 0.92)), job.stage.isEmpty ? "Analyzing in cloud" : job.stage)
+                logger.info(
+                    "Cloud analysis poll request_id=\(requestId, privacy: .public) job_id=\(jobID, privacy: .public) status=\(job.status, privacy: .public) progress=\(job.progress, privacy: .public)"
+                )
             case .completed, .succeeded:
                 await progress(0.96, "Finalizing clips")
                 guard let results = job.results else {
                     throw CloudAnalysisError.invalidResponse
                 }
+                logger.info(
+                    "Cloud analysis completed request_id=\(requestId, privacy: .public) job_id=\(jobID, privacy: .public) clip_count=\(results.clipCount, privacy: .public)"
+                )
                 return results
             case .failed:
+                logger.error(
+                    "Cloud analysis failed request_id=\(requestId, privacy: .public) job_id=\(jobID, privacy: .public) failure_reason=\(job.failureReason ?? job.errorCode ?? "analysis_failed", privacy: .public)"
+                )
                 throw CloudAnalysisError.backend(
                     code: job.failureReason ?? job.errorCode ?? "analysis_failed",
                     message: job.errorMessage ?? "Cloud analysis failed."
                 )
             case .expired:
+                logger.error(
+                    "Cloud analysis expired request_id=\(requestId, privacy: .public) job_id=\(jobID, privacy: .public)"
+                )
                 throw CloudAnalysisError.backend(
                     code: "expired",
                     message: "Cloud analysis job expired before completion."
                 )
             case .cancelled:
+                logger.error(
+                    "Cloud analysis cancelled request_id=\(requestId, privacy: .public) job_id=\(jobID, privacy: .public) failure_reason=\(job.failureReason ?? "cancelled", privacy: .public)"
+                )
                 throw CloudAnalysisError.backend(
                     code: job.failureReason ?? "cancelled",
                     message: job.errorMessage ?? "Cloud analysis job was cancelled."
