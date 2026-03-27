@@ -52,14 +52,9 @@ struct CloudAnalysisService {
             let job = try await createHappyPathJob(
                 baseURL: baseURL,
                 request: CloudCreateJobRequest(
-                    filename: url.lastPathComponent,
-                    contentType: fileInfo.contentType,
-                    fileSizeBytes: fileInfo.fileSizeBytes,
-                    durationSeconds: duration,
+                    jobId: presign.jobId,
                     installId: installID,
-                    appVersion: appVersion,
-                    analysisVersion: analysisVersion,
-                    uploadObjectKey: presign.uploadObjectKey,
+                    sourceObjectKey: presign.uploadObjectKey,
                     resultObjectKey: presign.resultObjectKey
                 ),
                 requestId: requestId

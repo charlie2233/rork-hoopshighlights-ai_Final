@@ -19,13 +19,12 @@ npx tsx scripts/control-plane-happy-path.ts
 
 That script performs:
 
-1. `POST /v1/analysis/jobs`
-2. R2 upload to the signed upload URL
-3. `POST /v1/analysis/jobs/{jobId}/start`
-4. queue dispatch capture
-5. `POST /v1/internal/inference/heartbeat/{jobId}`
-6. `POST /v1/internal/inference/callback/{jobId}`
-7. `GET /v1/analysis/jobs/{jobId}`
+1. `POST /uploads/presign`
+2. direct upload to the signed R2 URL
+3. `POST /jobs`
+4. queue dispatch into the stub inference consumer
+5. `POST /internal/inference/callback` from the stub worker
+6. `GET /jobs/{jobId}` polling until terminal
 
 ## Live Local Worker
 
@@ -63,5 +62,5 @@ npx tsx --test services/control-plane/test/control-plane-failure-path.test.ts
 ## What to Expect
 
 - The happy-path script prints a JSON summary with the final job status, model version, clip count, and upload key.
-- The success test should end in `succeeded`.
+- The success test should end in `completed`.
 - The failure test should end in `failed` and preserve the failure reason.

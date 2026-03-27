@@ -1,8 +1,5 @@
 import {
-  buildHeartbeatPayload,
-  buildSuccessCallbackPayload,
   createControlPlaneHarness,
-  invokeInternalRoute,
   invokePublicRoute,
   parseJsonResponse,
   uploadObject
@@ -37,7 +34,7 @@ async function runLocalHappyPath(args: ParsedArgs): Promise<FlowSummary> {
   const createResponse = await invokePublicRoute(
     harness,
     "POST",
-    "/v1/analysis/jobs",
+    "/uploads/presign",
     {
       filename: args.filename,
       contentType: args.contentType,
@@ -56,55 +53,40 @@ async function runLocalHappyPath(args: ParsedArgs): Promise<FlowSummary> {
   }>(createResponse);
 
   const uploadKey = createJson.sourceObjectKey;
-  await uploadObject(harness, uploadKey, new TextEncoder().encode("fake basketball clip"));
+  await uploadObject(harness, createJson.uploadUrl, new TextEncoder().encode("fake basketball clip"));
 
-  const startResponse = await invokePublicRoute(
+  const finalizeResponse = await invokePublicRoute(
     harness,
     "POST",
-    `/v1/analysis/jobs/${createJson.jobId}/start`,
-    { installId: args.installId },
+    "/jobs",
+    {
+      jobId: createJson.jobId,
+      installId: args.installId,
+      sourceObjectKey: createJson.sourceObjectKey
+    },
     { "x-trace-id": args.traceId }
   );
-  const startJson = await parseJsonResponse<{ status: string }>(startResponse);
+  const finalizeJson = await parseJsonResponse<{ status: string }>(finalizeResponse);
+  if (finalizeJson.status !== "queued") {
+    throw new Error(`Expected queued status after finalize, received ${finalizeJson.status}.`);
+  }
 
-  const heartbeatResponse = await invokeInternalRoute(
-    harness,
-    "POST",
-    `/v1/internal/inference/heartbeat/${createJson.jobId}`,
-    buildHeartbeatPayload(),
-    { "x-hoops-inference-secret": harness.env.INFERENCE_SHARED_SECRET }
-  );
-  await parseJsonResponse(heartbeatResponse);
-
-  const callbackResponse = await invokeInternalRoute(
-    harness,
-    "POST",
-    `/v1/internal/inference/callback/${createJson.jobId}`,
-    buildSuccessCallbackPayload({
-      jobId: createJson.jobId,
-      requestId: args.traceId,
-      modelVersion: args.modelVersion
-    }),
-    { "x-hoops-inference-secret": harness.env.INFERENCE_SHARED_SECRET }
-  );
-  const callbackJson = await parseJsonResponse<{ modelVersion: string | null; status: string }>(callbackResponse);
-
-  const finalResponse = await invokePublicRoute(harness, "GET", `/v1/analysis/jobs/${createJson.jobId}`);
-  const finalJson = await parseJsonResponse<{ status: string; results?: { clipCount: number | null } | null }>(finalResponse);
+  const processedMessages = await harness.drainQueue();
+  const finalJson = await pollLocalJob(harness, createJson.jobId, args);
 
   return {
     mode: "local",
     jobId: createJson.jobId,
     uploadKey,
-    queueMessageCount: harness.state.queueMessages.length,
+    queueMessageCount: processedMessages,
     finalStatus: finalJson.status,
-    modelVersion: callbackJson.modelVersion,
+    modelVersion: finalJson.modelVersion ?? null,
     clipCount: finalJson.results?.clipCount ?? null
   };
 }
 
 async function runHttpHappyPath(baseUrl: string, args: ParsedArgs): Promise<FlowSummary> {
-  const createResponse = await fetchJson(`${baseUrl}/v1/analysis/jobs`, {
+  const createResponse = await fetchJson(`${baseUrl}/uploads/presign`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -130,39 +112,72 @@ async function runHttpHappyPath(baseUrl: string, args: ParsedArgs): Promise<Flow
     body: new TextEncoder().encode("fake basketball clip")
   });
 
-  const startResponse = await fetchJson(`${baseUrl}/v1/analysis/jobs/${createResponse.jobId}/start`, {
+  const finalizeResponse = await fetchJson(`${baseUrl}/jobs`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
       "x-trace-id": args.traceId
     },
-    body: { installId: args.installId }
-  });
-
-  const callbackResponse = await fetchJson(`${baseUrl}/v1/internal/inference/callback/${createResponse.jobId}`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-hoops-inference-secret": args.sharedSecret ?? "inference-secret",
-      "x-trace-id": args.traceId
-    },
-    body: buildSuccessCallbackPayload({
+    body: {
       jobId: createResponse.jobId,
-      requestId: args.traceId,
-      modelVersion: args.modelVersion
-    })
+      installId: args.installId,
+      sourceObjectKey: createResponse.sourceObjectKey
+    }
   });
+  if (finalizeResponse.status !== "queued") {
+    throw new Error(`Expected queued status after finalize, received ${finalizeResponse.status}.`);
+  }
 
-  const finalResponse = await fetchJson(`${baseUrl}/v1/analysis/jobs/${createResponse.jobId}`);
+  const finalResponse = await pollHttpJob(`${baseUrl}/jobs/${createResponse.jobId}`, args);
 
   return {
     mode: "http",
     jobId: createResponse.jobId,
     uploadKey,
     finalStatus: finalResponse.status,
-    modelVersion: callbackResponse.modelVersion ?? null,
+    modelVersion: finalResponse.modelVersion ?? null,
     clipCount: finalResponse.results?.clipCount ?? null
   };
+}
+
+async function pollLocalJob(
+  harness: ReturnType<typeof createControlPlaneHarness>,
+  jobId: string,
+  args: ParsedArgs
+): Promise<any> {
+  const startedAt = Date.now();
+
+  while (true) {
+    const response = await invokePublicRoute(harness, "GET", `/jobs/${jobId}`, undefined, { "x-trace-id": args.traceId });
+    const payload = await parseJsonResponse<any>(response);
+    if (isTerminalStatus(payload.status)) {
+      return payload;
+    }
+    if (Date.now() - startedAt > args.pollTimeoutSeconds * 1000) {
+      throw new Error(`Timed out waiting for local terminal job status for ${jobId}.`);
+    }
+    await sleep(Math.max(args.pollIntervalSeconds, 0.2) * 1000);
+  }
+}
+
+async function pollHttpJob(url: string, args: ParsedArgs): Promise<any> {
+  const startedAt = Date.now();
+
+  while (true) {
+    const response = await fetchJson(url, {
+      headers: {
+        "x-trace-id": args.traceId
+      }
+    });
+    if (isTerminalStatus(response.status)) {
+      return response;
+    }
+    if (Date.now() - startedAt > args.pollTimeoutSeconds * 1000) {
+      throw new Error(`Timed out waiting for terminal job status for ${url}.`);
+    }
+    const pollDelaySeconds = Number(response.pollAfterSeconds ?? args.pollIntervalSeconds);
+    await sleep(Math.max(pollDelaySeconds, 0.2) * 1000);
+  }
 }
 
 async function fetchJson(url: string, init: RequestInit & { body?: unknown } = {}): Promise<any> {
@@ -193,6 +208,8 @@ interface ParsedArgs {
   analysisVersion: string;
   modelVersion: string;
   traceId: string;
+  pollIntervalSeconds: number;
+  pollTimeoutSeconds: number;
 }
 
 function parseArgs(argv: string[]): ParsedArgs {
@@ -228,8 +245,18 @@ function parseArgs(argv: string[]): ParsedArgs {
     appVersion: map.get("--app-version") ?? "1.0.0",
     analysisVersion: map.get("--analysis-version") ?? "phase1a",
     modelVersion: map.get("--model-version") ?? "video-mae-stub-v1",
-    traceId: map.get("--trace-id") ?? crypto.randomUUID()
+    traceId: map.get("--trace-id") ?? crypto.randomUUID(),
+    pollIntervalSeconds: Number.parseFloat(map.get("--poll-interval-seconds") ?? "1"),
+    pollTimeoutSeconds: Number.parseFloat(map.get("--poll-timeout-seconds") ?? "30")
   };
+}
+
+function isTerminalStatus(status: string): boolean {
+  return status === "completed" || status === "failed" || status === "cancelled";
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 main().catch((error) => {

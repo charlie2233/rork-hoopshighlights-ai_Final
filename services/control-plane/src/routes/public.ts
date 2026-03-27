@@ -173,6 +173,15 @@ async function handlePresign(
       pollAfterSeconds: resolveRuntimeConfig(env).defaultPollAfterSeconds,
       quotaRemainingToday: pendingJob.quotaRemainingToday ?? 5
     };
+    console.info(
+      JSON.stringify({
+        requestId,
+        jobId: pendingJob.jobId,
+        traceId,
+        event: "job.presign.created",
+        status: pendingJob.status
+      })
+    );
     return jsonResponse(response, { status: 201 }, requestId);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Invalid upload presign request.";
@@ -204,9 +213,14 @@ async function handleFinalizeJob(
 ): Promise<Response> {
   try {
     const body = await readJson<CreateCloudJobRequest | StartCloudAnalysisJobRequest>(request);
-    const jobId = pathJobId ?? ("jobId" in body ? body.jobId : undefined);
+    const requestedSourceObjectKey =
+      "sourceObjectKey" in body
+        ? body.sourceObjectKey
+        : "uploadObjectKey" in body
+          ? body.uploadObjectKey
+          : undefined;
+    const jobId = pathJobId ?? ("jobId" in body ? body.jobId : undefined) ?? deriveJobIdFromObjectKey(requestedSourceObjectKey);
     const installId = pathInstallId ?? ("installId" in body ? body.installId : undefined);
-    const requestedSourceObjectKey = "sourceObjectKey" in body ? body.sourceObjectKey : undefined;
     const requestedResultObjectKey = "resultObjectKey" in body ? body.resultObjectKey : undefined;
 
     if (!jobId || !installId) {
@@ -290,6 +304,15 @@ async function handleFinalizeJob(
     }
 
     if (isTerminal(job.status) || job.status === "queued" || job.status === "processing") {
+      console.info(
+        JSON.stringify({
+          requestId,
+          jobId: job.jobId,
+          traceId: job.traceId,
+          event: "job.finalize.idempotent",
+          status: job.status
+        })
+      );
       return jsonResponse(toCloudAnalysisJobResponse(job, requestId, schemaVersion), { status: 200 }, requestId);
     }
 
@@ -385,9 +408,28 @@ async function handleFinalizeJob(
           })
       );
 
+      console.info(
+        JSON.stringify({
+          requestId,
+          jobId: queuedJob.jobId,
+          traceId: queuedJob.traceId,
+          event: "job.queued",
+          status: queuedJob.status
+        })
+      );
+
       return jsonResponse(toCloudAnalysisJobResponse(queuedJob, requestId, schemaVersion), { status: 200 }, requestId);
     }
 
+    console.info(
+      JSON.stringify({
+        requestId,
+        jobId: uploadedJob.jobId,
+        traceId: uploadedJob.traceId,
+        event: "job.finalize.idempotent",
+        status: uploadedJob.status
+      })
+    );
     return jsonResponse(toCloudAnalysisJobResponse(uploadedJob, requestId, schemaVersion), { status: 200 }, requestId);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Invalid job request.";
@@ -426,6 +468,15 @@ async function handleGetJob(env: Env, requestId: string, jobId: string): Promise
   }
 
   const hydrated = await hydrateResultIfNeeded(env, job);
+  console.info(
+    JSON.stringify({
+      requestId,
+      jobId: hydrated.jobId,
+      traceId: hydrated.traceId,
+      event: "job.polled",
+      status: hydrated.status
+    })
+  );
   return jsonResponse(toCloudAnalysisJobResponse(hydrated, requestId, hydrated.schemaVersion), { status: 200 }, requestId);
 }
 
@@ -493,6 +544,14 @@ function matchJobPath(pathname: string): { jobId: string; kind: "get" | "delete"
 
 function isTerminal(status: JobStatus): boolean {
   return status === "completed" || status === "failed" || status === "cancelled" || status === "succeeded" || status === "expired";
+}
+
+function deriveJobIdFromObjectKey(objectKey?: string): string | undefined {
+  if (!objectKey) {
+    return undefined;
+  }
+  const match = objectKey.match(/^uploads\/([^/]+)\//);
+  return match?.[1];
 }
 
 async function hydrateResultIfNeeded(env: Env, job: JobRecord): Promise<JobRecord> {

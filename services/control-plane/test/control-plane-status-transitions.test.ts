@@ -3,22 +3,19 @@ import { test } from "node:test";
 import harness from "../../../scripts/control-plane-harness";
 
 const {
-  buildHeartbeatPayload,
-  buildSuccessCallbackPayload,
   createControlPlaneHarness,
-  invokeInternalRoute,
   invokePublicRoute,
   parseJsonResponse,
   uploadObject
 } = harness;
 
-test("control plane happy path advances created -> upload_pending -> processing -> completed", async () => {
+test("control plane happy path advances upload_pending -> uploaded -> queued -> processing -> completed", async () => {
   const harness = createControlPlaneHarness();
 
   const createResponse = await invokePublicRoute(
     harness,
     "POST",
-    "/v1/analysis/jobs",
+    "/uploads/presign",
     {
       filename: "sample-game.mp4",
       contentType: "video/mp4",
@@ -30,51 +27,36 @@ test("control plane happy path advances created -> upload_pending -> processing 
     },
     { "x-trace-id": "trace-happy-path" }
   );
-  const createJson = await parseJsonResponse<{ jobId: string; sourceObjectKey: string; uploadUrl: string }>(createResponse);
+  assert.equal(createResponse.status, 201);
+  const createJson = await parseJsonResponse<{ jobId: string; sourceObjectKey: string; uploadUrl: string; status: string }>(createResponse);
 
-  await uploadObject(harness, createJson.sourceObjectKey, new TextEncoder().encode("sample basketball clip"));
+  await uploadObject(harness, createJson.uploadUrl, new TextEncoder().encode("sample basketball clip"));
   assert.equal(createJson.sourceObjectKey.length > 0, true);
+  assert.equal(createJson.status, "upload_pending");
 
-  const startResponse = await invokePublicRoute(
+  const finalizeResponse = await invokePublicRoute(
     harness,
     "POST",
-    `/v1/analysis/jobs/${createJson.jobId}/start`,
-    { installId: "install-local-001" },
+    "/jobs",
+    {
+      jobId: createJson.jobId,
+      installId: "install-local-001",
+      sourceObjectKey: createJson.sourceObjectKey
+    },
     { "x-trace-id": "trace-happy-path" }
   );
-  await parseJsonResponse<{ status: string }>(startResponse);
-  assert.equal(harness.state.jobs.get(createJson.jobId)?.status, "upload_pending");
-  assert.equal(harness.state.queueMessages.length, 0);
+  assert.equal(finalizeResponse.status, 200);
+  const finalizeJson = await parseJsonResponse<{ status: string }>(finalizeResponse);
+  assert.equal(finalizeJson.status, "queued");
+  assert.equal(harness.state.jobs.get(createJson.jobId)?.status, "queued");
+  assert.equal(harness.state.queueMessages.length, 1);
 
-  const heartbeatResponse = await invokeInternalRoute(
-    harness,
-    "POST",
-    `/v1/internal/inference/heartbeat/${createJson.jobId}`,
-    buildHeartbeatPayload("Inference running", 0.61),
-    { "x-hoops-inference-secret": harness.env.INFERENCE_SHARED_SECRET }
-  );
-  const heartbeatJson = await parseJsonResponse<{ status: string; stage: string; progress: number }>(heartbeatResponse);
-  assert.equal(harness.state.jobs.get(createJson.jobId)?.status, "processing");
-  assert.equal(heartbeatJson.stage, "Inference running");
-  assert.equal(heartbeatJson.progress, 0.61);
-
-  const callbackResponse = await invokeInternalRoute(
-    harness,
-    "POST",
-    `/v1/internal/inference/callback/${createJson.jobId}`,
-    buildSuccessCallbackPayload({
-      jobId: createJson.jobId,
-      requestId: "trace-happy-path",
-      modelVersion: "video-mae-stub-v1"
-    }),
-    { "x-hoops-inference-secret": harness.env.INFERENCE_SHARED_SECRET }
-  );
-  const callbackJson = await parseJsonResponse<{ status: string; modelVersion: string | null; failureReason: string | null }>(callbackResponse);
+  const processedMessages = await harness.drainQueue();
+  assert.equal(processedMessages, 1);
   assert.equal(harness.state.jobs.get(createJson.jobId)?.status, "completed");
-  assert.equal(callbackJson.modelVersion, "video-mae-stub-v1");
-  assert.equal(callbackJson.failureReason, null);
 
-  const finalResponse = await invokePublicRoute(harness, "GET", `/v1/analysis/jobs/${createJson.jobId}`);
+  const finalResponse = await invokePublicRoute(harness, "GET", `/jobs/${createJson.jobId}`);
+  assert.equal(finalResponse.status, 200);
   const finalJson = await parseJsonResponse<{
     status: string;
     modelVersion: string | null;
@@ -83,8 +65,8 @@ test("control plane happy path advances created -> upload_pending -> processing 
   }>(finalResponse);
 
   assert.equal(finalJson.status, "completed");
-  assert.equal(finalJson.modelVersion, "video-mae-stub-v1");
+  assert.equal(finalJson.modelVersion, "stub-inference-v1+phase1a");
   assert.equal(finalJson.failureReason, null);
-  assert.equal(finalJson.results?.clipCount, 1);
-  assert.equal(finalJson.results?.resultConfidence, 0.91);
+  assert.equal(finalJson.results?.clipCount, 2);
+  assert.equal(typeof finalJson.results?.resultConfidence, "number");
 });

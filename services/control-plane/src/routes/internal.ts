@@ -90,13 +90,28 @@ async function handleCallback(
   }
 
   const normalizedStatus = normalizeCallbackStatus(payload.status);
+  const currentStatus = normalizeStoredStatus(job.status);
   const resultConfidence = payload.confidence ?? payload.resultConfidence ?? payload.results?.resultConfidence ?? job.resultConfidence ?? null;
   const failureReason = payload.failureReason ?? job.failureReason ?? null;
   const modelVersion = payload.modelVersion ?? job.modelVersion ?? null;
   const responseSchemaVersion = payload.schemaVersion ?? job.schemaVersion;
   const now = new Date().toISOString();
 
-  if (payload.results) {
+  if (isTerminalStatus(currentStatus) && normalizedStatus !== currentStatus) {
+    console.warn(
+      JSON.stringify({
+        requestId,
+        jobId,
+        traceId: payload.traceId ?? job.traceId,
+        event: "inference.callback.ignored",
+        currentStatus,
+        requestedStatus: normalizedStatus
+      })
+    );
+    return jsonResponse(toCloudAnalysisJobResponse(job, requestId, responseSchemaVersion), { status: 200 }, requestId);
+  }
+
+  if (payload.results && (!isTerminalStatus(currentStatus) || normalizedStatus === currentStatus || !job.results)) {
     await env.R2_RESULTS.put(job.resultObjectKey, JSON.stringify(payload.results), {
       httpMetadata: {
         contentType: "application/json; charset=utf-8"
@@ -140,6 +155,16 @@ async function handleCallback(
     payload,
     createdAt: now
   });
+
+  console.info(
+    JSON.stringify({
+      requestId,
+      jobId,
+      traceId: payload.traceId ?? job.traceId,
+      event: "inference.callback",
+      status: normalizedStatus
+    })
+  );
 
   return jsonResponse(toCloudAnalysisJobResponse(patched, requestId, responseSchemaVersion), { status: 200 }, requestId);
 }
@@ -208,6 +233,17 @@ async function handleHeartbeat(request: Request, env: Env, jobId: string, reques
     createdAt: startedAt
   });
 
+  console.info(
+    JSON.stringify({
+      requestId,
+      jobId,
+      traceId: job.traceId,
+      event: "inference.heartbeat",
+      status: "processing",
+      progress: updated.progress
+    })
+  );
+
   return jsonResponse(toCloudAnalysisJobResponse(updated, requestId, updated.schemaVersion), { status: 200 }, requestId);
 }
 
@@ -223,6 +259,20 @@ function normalizeCallbackStatus(status: InferenceCallbackPayload["status"]): Jo
     return "completed";
   }
   return status;
+}
+
+function normalizeStoredStatus(status: JobStatus): JobStatus {
+  if (status === "succeeded") {
+    return "completed";
+  }
+  if (status === "expired") {
+    return "cancelled";
+  }
+  return status;
+}
+
+function isTerminalStatus(status: JobStatus): boolean {
+  return status === "completed" || status === "failed" || status === "cancelled";
 }
 
 function buildCallbackPatch(
@@ -309,4 +359,3 @@ function toCloudAnalysisJobResponse(
     cancelledAt: job.cancelledAt ?? null
   };
 }
-

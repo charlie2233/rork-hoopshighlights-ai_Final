@@ -30,6 +30,15 @@ npx tsx --test services/control-plane/test/control-plane-status-transitions.test
 npx tsx --test services/control-plane/test/control-plane-failure-path.test.ts
 ```
 
+The phase-1a verification path now uses the staging route shape end to end:
+
+- `POST /uploads/presign`
+- direct upload to the signed R2 URL
+- `POST /jobs`
+- queue-driven stub inference
+- internal completion callback
+- `GET /jobs/:id`
+
 ## Runtime shape
 
 - `R2_UPLOADS` stores source uploads

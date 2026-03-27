@@ -66,9 +66,10 @@ export interface UploadPresignResponse extends ResponseEnvelope {
 }
 
 export interface CreateCloudJobRequest {
-  jobId: string;
+  jobId?: string;
   installId: string;
   sourceObjectKey?: string;
+  uploadObjectKey?: string;
   resultObjectKey?: string;
 }
 

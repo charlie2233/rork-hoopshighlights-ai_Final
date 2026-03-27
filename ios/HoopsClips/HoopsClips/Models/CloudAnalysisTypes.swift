@@ -17,6 +17,7 @@ nonisolated struct CloudUploadPresignRequest: Codable, Sendable {
 
 nonisolated struct CloudUploadPresignResponse: Codable, Sendable {
     let requestId: String
+    let jobId: String
     let uploadUrl: String
     let uploadMethod: String
     let uploadHeaders: [String: String]
@@ -26,17 +27,26 @@ nonisolated struct CloudUploadPresignResponse: Codable, Sendable {
     var schemaVersion: String? = nil
     var modelVersion: String? = nil
     var failureReason: String? = nil
+
+    enum CodingKeys: String, CodingKey {
+        case requestId
+        case jobId
+        case uploadUrl
+        case uploadMethod
+        case uploadHeaders
+        case uploadObjectKey = "sourceObjectKey"
+        case resultObjectKey
+        case expiresAt
+        case schemaVersion
+        case modelVersion
+        case failureReason
+    }
 }
 
 nonisolated struct CloudCreateJobRequest: Codable, Sendable {
-    let filename: String
-    let contentType: String
-    let fileSizeBytes: Int64
-    let durationSeconds: Double
+    let jobId: String
     let installId: String
-    let appVersion: String
-    let analysisVersion: String
-    let uploadObjectKey: String
+    let sourceObjectKey: String
     let resultObjectKey: String
 }
 

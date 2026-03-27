@@ -30,12 +30,14 @@ export interface ControlPlaneHarness {
   state: HarnessState;
   ctx: ExecutionContext;
   flush(): Promise<void>;
+  drainQueue(): Promise<number>;
   request(path: string, init?: RequestInit): Request;
 }
 
 interface RouteModules {
   routePublicRequest: typeof import("../services/control-plane/src/routes/public.ts").routePublicRequest;
   routeInternalRequest: typeof import("../services/control-plane/src/routes/internal.ts").routeInternalRequest;
+  handleQueueBatch: typeof import("../services/control-plane/src/queue/consumer.ts").handleQueueBatch;
 }
 
 const BASE_URL = "http://control-plane.local";
@@ -94,6 +96,60 @@ export function createControlPlaneHarness(overrides: Partial<Env> = {}): Control
         await Promise.allSettled(pending.splice(0, pending.length));
       }
     },
+    async drainQueue(): Promise<number> {
+      const { handleQueueBatch, routeInternalRequest } = await loadRoutes();
+      const queued = state.queueMessages.splice(0, state.queueMessages.length);
+      if (queued.length === 0) {
+        return 0;
+      }
+
+      const originalFetch = globalThis.fetch.bind(globalThis);
+      globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+        const request = input instanceof Request ? input : new Request(input, init);
+        const url = new URL(request.url);
+        if (url.origin === BASE_URL) {
+          const requestId = request.headers.get("x-request-id")?.trim() || crypto.randomUUID();
+          const internalResponse = await routeInternalRequest(request, env, requestId);
+          if (!internalResponse) {
+            return new Response("Not found", { status: 404 });
+          }
+          return internalResponse;
+        }
+        return originalFetch(input, init);
+      };
+
+      try {
+        await handleQueueBatch(
+          {
+            messages: queued.map((body, index) => ({
+              id: `${body.jobId}-${index}`,
+              timestamp: new Date(),
+              attempts: 1,
+              body,
+              ack() {
+                return;
+              },
+              retry() {
+                return;
+              }
+            })),
+            queue: "hoopsclips-analysis",
+            retryAll() {
+              return;
+            },
+            ackAll() {
+              return;
+            }
+          } as never,
+          env
+        );
+        await this.flush();
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+
+      return queued.length;
+    },
     request(path: string, init: RequestInit = {}): Request {
       return buildRequest(path, init);
     }
@@ -140,10 +196,12 @@ async function loadRoutes(): Promise<RouteModules> {
   if (!routeModulesPromise) {
     routeModulesPromise = Promise.all([
       import(new URL("../services/control-plane/src/routes/public.ts", import.meta.url).href),
-      import(new URL("../services/control-plane/src/routes/internal.ts", import.meta.url).href)
-    ]).then(([publicModule, internalModule]) => ({
+      import(new URL("../services/control-plane/src/routes/internal.ts", import.meta.url).href),
+      import(new URL("../services/control-plane/src/queue/consumer.ts", import.meta.url).href)
+    ]).then(([publicModule, internalModule, queueModule]) => ({
       routePublicRequest: publicModule.routePublicRequest,
-      routeInternalRequest: internalModule.routeInternalRequest
+      routeInternalRequest: internalModule.routeInternalRequest,
+      handleQueueBatch: queueModule.handleQueueBatch
     }));
   }
   return routeModulesPromise;
@@ -159,6 +217,9 @@ export function uploadObject(harness: ControlPlaneHarness, uploadUrl: string, bo
 }
 
 export function extractObjectKey(uploadUrl: string): string {
+  if (!uploadUrl.includes("://")) {
+    return uploadUrl.replace(/^\/+/, "");
+  }
   try {
     const url = new URL(uploadUrl);
     const segments = url.pathname.split("/").filter(Boolean);
@@ -464,6 +525,7 @@ export default {
   parseJsonResponse,
   uploadObject,
   extractObjectKey,
+  drainQueue: (harness: ControlPlaneHarness) => harness.drainQueue(),
   buildSuccessCallbackPayload,
   buildFailureCallbackPayload,
   buildHeartbeatPayload,

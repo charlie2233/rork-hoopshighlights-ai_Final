@@ -17,7 +17,7 @@ test("control plane failure path keeps the job failed and exposes failureReason"
   const createResponse = await invokePublicRoute(
     harness,
     "POST",
-    "/v1/analysis/jobs",
+    "/uploads/presign",
     {
       filename: "sample-game.mp4",
       contentType: "video/mp4",
@@ -30,21 +30,26 @@ test("control plane failure path keeps the job failed and exposes failureReason"
   );
   const createJson = await parseJsonResponse<{ jobId: string; sourceObjectKey: string; uploadUrl: string }>(createResponse);
 
-  await uploadObject(harness, createJson.sourceObjectKey, new TextEncoder().encode("sample basketball clip"));
+  await uploadObject(harness, createJson.uploadUrl, new TextEncoder().encode("sample basketball clip"));
 
   const startResponse = await invokePublicRoute(
     harness,
     "POST",
-    `/v1/analysis/jobs/${createJson.jobId}/start`,
-    { installId: "install-local-001" }
+    "/jobs",
+    {
+      jobId: createJson.jobId,
+      installId: "install-local-001",
+      sourceObjectKey: createJson.sourceObjectKey
+    }
   );
+  assert.equal(startResponse.status, 200);
   await parseJsonResponse<{ status: string }>(startResponse);
-  assert.equal(harness.state.jobs.get(createJson.jobId)?.status, "upload_pending");
+  assert.equal(harness.state.jobs.get(createJson.jobId)?.status, "queued");
 
   const callbackResponse = await invokeInternalRoute(
     harness,
     "POST",
-    `/v1/internal/inference/callback/${createJson.jobId}`,
+    "/internal/inference/callback",
     buildFailureCallbackPayload({
       jobId: createJson.jobId,
       requestId: "trace-failure-path",
@@ -57,7 +62,7 @@ test("control plane failure path keeps the job failed and exposes failureReason"
   assert.equal(harness.state.jobs.get(createJson.jobId)?.status, "failed");
   assert.equal(callbackJson.failureReason, "GPU worker timed out.");
 
-  const finalResponse = await invokePublicRoute(harness, "GET", `/v1/analysis/jobs/${createJson.jobId}`);
+  const finalResponse = await invokePublicRoute(harness, "GET", `/jobs/${createJson.jobId}`);
   const finalJson = await parseJsonResponse<{
     status: string;
     failureReason: string | null;

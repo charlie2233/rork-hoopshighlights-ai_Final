@@ -12,7 +12,15 @@ export async function handleQueueBatch(batch: MessageBatch<QueueJobMessage>, env
     }
 
     const job = await getJobSnapshot(env, message.body.jobId);
-    if (!job || job.status === "succeeded" || job.status === "failed" || job.status === "expired" || job.status === "cancelled") {
+    if (
+      !job ||
+      job.status === "processing" ||
+      job.status === "completed" ||
+      job.status === "succeeded" ||
+      job.status === "failed" ||
+      job.status === "expired" ||
+      job.status === "cancelled"
+    ) {
       continue;
     }
 
@@ -65,7 +73,7 @@ async function postCompletionCallback(
     method: "POST",
     headers: {
       "content-type": "application/json",
-      "x-hoops-inference-secret": env.CONTROL_PLANE_SHARED_SECRET,
+      "x-hoops-inference-secret": env.INFERENCE_SHARED_SECRET || env.CONTROL_PLANE_SHARED_SECRET,
       "x-request-id": message.requestId,
       "x-trace-id": traceId
     },
