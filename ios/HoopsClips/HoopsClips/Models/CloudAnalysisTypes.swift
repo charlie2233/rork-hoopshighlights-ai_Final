@@ -5,6 +5,50 @@ nonisolated enum AnalysisExecutionMode: String, Codable, Sendable {
     case localFallback
 }
 
+nonisolated struct CloudUploadPresignRequest: Codable, Sendable {
+    let filename: String
+    let contentType: String
+    let fileSizeBytes: Int64
+    let durationSeconds: Double
+    let installId: String
+    let appVersion: String
+    let analysisVersion: String
+}
+
+nonisolated struct CloudUploadPresignResponse: Codable, Sendable {
+    let requestId: String
+    let uploadUrl: String
+    let uploadMethod: String
+    let uploadHeaders: [String: String]
+    let uploadObjectKey: String
+    let resultObjectKey: String
+    let expiresAt: Date
+    var schemaVersion: String? = nil
+    var modelVersion: String? = nil
+    var failureReason: String? = nil
+}
+
+nonisolated struct CloudCreateJobRequest: Codable, Sendable {
+    let filename: String
+    let contentType: String
+    let fileSizeBytes: Int64
+    let durationSeconds: Double
+    let installId: String
+    let appVersion: String
+    let analysisVersion: String
+    let uploadObjectKey: String
+    let resultObjectKey: String
+}
+
+nonisolated struct CloudCreateJobResponse: Codable, Sendable {
+    let requestId: String
+    let jobId: String
+    let status: String
+    var pollAfterSeconds: Int? = nil
+    var modelVersion: String? = nil
+    var failureReason: String? = nil
+}
+
 nonisolated struct CreateCloudAnalysisJobRequest: Codable, Sendable {
     let filename: String
     let contentType: String
@@ -47,21 +91,27 @@ nonisolated struct CloudAnalysisJobResponse: Codable, Sendable {
     let status: String
     let progress: Double
     let stage: String
-    let errorCode: String?
-    let errorMessage: String?
+    var confidence: Double? = nil
+    var errorCode: String? = nil
+    var errorMessage: String? = nil
     let analysisVersion: String
-    let results: CloudAnalysisResult?
-    let modelVersion: String?
-    let failureReason: String?
+    var schemaVersion: String? = nil
+    var results: CloudAnalysisResult? = nil
+    var modelVersion: String? = nil
+    var failureReason: String? = nil
+    var pollAfterSeconds: Int? = nil
 }
 
 nonisolated struct CloudAnalysisResult: Codable, Sendable {
+    var requestId: String? = nil
     let clipCount: Int
     let clips: [CloudClip]
     let diagnostics: CloudDiagnostics
-    let resultConfidence: Double?
-    let modelVersion: String?
-    let failureReason: String?
+    var resultConfidence: Double? = nil
+    var confidence: Double? = nil
+    var schemaVersion: String? = nil
+    var modelVersion: String? = nil
+    var failureReason: String? = nil
 }
 
 nonisolated struct CloudClip: Codable, Sendable {
@@ -78,11 +128,11 @@ nonisolated struct CloudClip: Codable, Sendable {
     let detectionMethod: String
     let shouldAutoKeep: Bool
     let shouldEnableSlowMotion: Bool
-    let eventType: String?
-    let shotType: String?
-    let makeMiss: String?
-    let rankScore: Double?
-    let reviewStatus: String?
+    var eventType: String? = nil
+    var shotType: String? = nil
+    var makeMiss: String? = nil
+    var rankScore: Double? = nil
+    var reviewStatus: String? = nil
 
     func makeClip() -> Clip {
         let resolvedAction = HighlightAction(rawValue: action)
@@ -109,27 +159,30 @@ nonisolated struct CloudClip: Codable, Sendable {
 nonisolated struct CloudDiagnostics: Codable, Sendable {
     let processingMs: Int
     let backendModelVersion: String
-    let modelVersion: String?
+    var modelVersion: String? = nil
     let usedVideoIntelligence: Bool
     let usedGeminiRelabeling: Bool
     let candidateSegments: Int
     let finalSegments: Int
-    let failureReason: String?
+    var failureReason: String? = nil
 }
 
 nonisolated struct CloudAnalysisAPIError: Codable, Sendable {
-    let requestId: String?
+    var requestId: String? = nil
     let errorCode: String
     let errorMessage: String
-    let quotaRemainingToday: Int?
-    let modelVersion: String?
-    let failureReason: String?
+    var quotaRemainingToday: Int? = nil
+    var modelVersion: String? = nil
+    var failureReason: String? = nil
 }
 
 nonisolated enum CloudAnalysisJobState: String, Codable, Sendable {
     case created
+    case uploadPending = "upload_pending"
+    case uploaded
     case queued
     case processing
+    case completed
     case succeeded
     case failed
     case expired
