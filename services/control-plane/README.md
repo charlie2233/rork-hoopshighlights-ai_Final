@@ -12,6 +12,24 @@ This package is the Cloudflare control plane scaffold for HoopsClips.
 - Queue orchestration stub
 - R2 presign abstraction
 
+## Happy Path
+
+The runnable happy path is documented in [`docs/control_plane_happy_path.md`](../../docs/control_plane_happy_path.md).
+
+Quick local check:
+
+```bash
+npm --prefix services/control-plane install
+npx tsx scripts/control-plane-happy-path.ts
+```
+
+Focused checks:
+
+```bash
+npx tsx --test services/control-plane/test/control-plane-status-transitions.test.ts
+npx tsx --test services/control-plane/test/control-plane-failure-path.test.ts
+```
+
 ## Runtime shape
 
 - `R2_UPLOADS` stores source uploads
@@ -35,6 +53,8 @@ Required env/secret inputs:
 - `R2_ACCOUNT_ID`
 - `R2_ACCESS_KEY_ID`
 - `R2_SECRET_ACCESS_KEY`
+
+For the exact local/staging variable mapping and Wrangler secret commands, see [`docs/cloudflare_env_setup.md`](../../docs/cloudflare_env_setup.md).
 
 ## Migration notes
 
