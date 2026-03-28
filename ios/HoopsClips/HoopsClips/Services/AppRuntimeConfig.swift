@@ -24,10 +24,10 @@ struct AppRuntimeConfig {
         }
 
         var missing: [String] = []
-        if revenueCatAPIKey.isEmpty {
+        if normalizedEnvironment == "production", revenueCatAPIKey.isEmpty {
             missing.append("HOOPSRevenueCatAPIKey")
         }
-        if googleClientID.isEmpty {
+        if normalizedEnvironment == "production", googleClientID.isEmpty {
             missing.append("HOOPSGoogleClientID")
         }
         if cloudAnalysisBaseURL.isEmpty {
