@@ -127,6 +127,17 @@ struct PaywallView: View {
                 ProgressView()
                     .tint(AppTheme.neonPurple)
                     .frame(height: 60)
+            } else if !subscriptionManager.isBillingAvailable {
+                VStack(spacing: 8) {
+                    Image(systemName: "wrench.and.screwdriver.fill")
+                        .font(.title2)
+                        .foregroundStyle(AppTheme.warningYellow)
+                    Text("Subscriptions are unavailable in this staging build.")
+                        .font(.subheadline)
+                        .foregroundStyle(AppTheme.subtleText)
+                        .multilineTextAlignment(.center)
+                }
+                .frame(height: 80)
             } else if let package = offerings?.current?.availablePackages.first {
                 Button {
                     Task {
@@ -200,6 +211,11 @@ struct PaywallView: View {
 
     private func loadOfferings() async {
         isLoadingOfferings = true
+        guard subscriptionManager.isBillingAvailable else {
+            offerings = nil
+            isLoadingOfferings = false
+            return
+        }
         do {
             offerings = try await Purchases.shared.offerings()
         } catch {

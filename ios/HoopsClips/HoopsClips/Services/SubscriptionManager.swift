@@ -11,6 +11,7 @@ final class SubscriptionManager {
 
     private let freeUsesKey = "hoops_free_uses_remaining"
     private let entitlementID = "pro"
+    private let billingUnavailableMessage = "Subscriptions are unavailable in this build."
 
     init() {
         let storedUses = UserDefaults.standard.object(forKey: freeUsesKey) as? Int
@@ -19,11 +20,20 @@ final class SubscriptionManager {
         UserDefaults.standard.set(initialUses, forKey: freeUsesKey)
     }
 
+    var isBillingAvailable: Bool {
+        !AppRuntimeConfig.shared.revenueCatAPIKey.isEmpty
+    }
+
     var canAnalyze: Bool {
         isProUser || freeUsesRemaining > 0
     }
 
     func checkSubscriptionStatus() async {
+        guard isBillingAvailable else {
+            isProUser = false
+            return
+        }
+
         do {
             let customerInfo = try await Purchases.shared.customerInfo()
             isProUser = customerInfo.entitlements[entitlementID]?.isActive == true
@@ -39,6 +49,11 @@ final class SubscriptionManager {
     }
 
     func purchase(package: Package) async -> Bool {
+        guard isBillingAvailable else {
+            errorMessage = billingUnavailableMessage
+            return false
+        }
+
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
@@ -58,6 +73,11 @@ final class SubscriptionManager {
     }
 
     func restorePurchases() async {
+        guard isBillingAvailable else {
+            errorMessage = billingUnavailableMessage
+            return
+        }
+
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
