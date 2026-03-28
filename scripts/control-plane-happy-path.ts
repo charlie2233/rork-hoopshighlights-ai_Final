@@ -11,10 +11,22 @@ interface FlowSummary {
   mode: "local" | "http";
   jobId: string;
   uploadKey: string;
+  uploadTraceId: string | null;
+  inferenceAttemptId: string | null;
+  attemptCount: number | null;
+  acceptedAt: string | null;
+  processingStartedAt: string | null;
   queueMessageCount?: number;
   finalStatus: string;
   modelVersion: string | null;
   clipCount: number | null;
+  clips: Array<{
+    clipId: string;
+    finalLabel: string;
+    clipDurationSeconds: number | null;
+    wasMerged: boolean;
+    sourceEventCount: number | null;
+  }>;
   requestIds: {
     presign: string;
     finalize: string;
@@ -84,15 +96,22 @@ async function runLocalHappyPath(args: ParsedArgs, upload: UploadInput): Promise
   const processedMessages = await harness.drainQueue();
   const finalJson = await pollLocalJob(harness, createJson.jobId, args);
   const callbackRequestId = harness.state.callbackRequests.at(-1)?.requestId ?? null;
+  const summaryClips = summarizeClips(finalJson.results?.clips ?? []);
 
   return {
     mode: "local",
     jobId: createJson.jobId,
     uploadKey,
+    uploadTraceId: finalJson.uploadTraceId ?? null,
+    inferenceAttemptId: finalJson.inferenceAttemptId ?? null,
+    attemptCount: finalJson.attemptCount ?? null,
+    acceptedAt: finalJson.acceptedAt ?? null,
+    processingStartedAt: finalJson.processingStartedAt ?? null,
     queueMessageCount: processedMessages,
     finalStatus: finalJson.status,
     modelVersion: finalJson.modelVersion ?? null,
     clipCount: finalJson.results?.clipCount ?? null,
+    clips: summaryClips,
     requestIds: {
       presign: createJson.requestId,
       finalize: finalizeJson.requestId ?? args.traceId,
@@ -146,14 +165,21 @@ async function runHttpHappyPath(baseUrl: string, args: ParsedArgs, upload: Uploa
   }
 
   const finalResponse = await pollHttpJob(`${baseUrl}/jobs/${createResponse.jobId}`, args);
+  const summaryClips = summarizeClips(finalResponse.results?.clips ?? []);
 
   return {
     mode: "http",
     jobId: createResponse.jobId,
     uploadKey,
+    uploadTraceId: finalResponse.uploadTraceId ?? null,
+    inferenceAttemptId: finalResponse.inferenceAttemptId ?? null,
+    attemptCount: finalResponse.attemptCount ?? null,
+    acceptedAt: finalResponse.acceptedAt ?? null,
+    processingStartedAt: finalResponse.processingStartedAt ?? null,
     finalStatus: finalResponse.status,
     modelVersion: finalResponse.modelVersion ?? null,
     clipCount: finalResponse.results?.clipCount ?? null,
+    clips: summaryClips,
     requestIds: {
       presign: createResponse.requestId ?? args.traceId,
       finalize: finalizeResponse.requestId ?? args.traceId,
@@ -306,6 +332,16 @@ async function resolveUploadInput(args: ParsedArgs): Promise<UploadInput> {
 
 function isTerminalStatus(status: string): boolean {
   return status === "completed" || status === "failed" || status === "cancelled";
+}
+
+function summarizeClips(clips: Array<any>): FlowSummary["clips"] {
+  return clips.map((clip, index) => ({
+    clipId: String(clip.clipId ?? clip.id ?? `clip-${index + 1}`),
+    finalLabel: String(clip.label ?? clip.finalLabel ?? clip.action ?? "unknown"),
+    clipDurationSeconds: clip.clipDurationSeconds != null ? Number(clip.clipDurationSeconds) : null,
+    wasMerged: Boolean(clip.wasMerged ?? false),
+    sourceEventCount: clip.sourceEventCount != null ? Number(clip.sourceEventCount) : null
+  }));
 }
 
 function sleep(ms: number): Promise<void> {
