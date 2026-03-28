@@ -127,6 +127,9 @@ export interface CloudAnalysisJobResponse extends ResponseEnvelope {
   uploadPendingAt?: string | null;
   uploadedAt?: string | null;
   queuedAt?: string | null;
+  acceptedAt?: string | null;
+  processingStartedAt?: string | null;
+  attemptCount?: number | null;
   startedAt?: string | null;
   finishedAt?: string | null;
   cancelledAt?: string | null;
@@ -173,6 +176,7 @@ export interface InferenceCallbackPayload {
   schemaVersion?: string | null;
   resultConfidence?: number | null;
   confidence?: number | null;
+  attemptCount?: number | null;
   results?: CloudAnalysisResult | null;
   traceId?: string | null;
   requestId?: string | null;
@@ -186,6 +190,9 @@ export interface JobRecord extends ResponseEnvelope {
   traceId: string;
   uploadTraceId?: string | null;
   inferenceAttemptId?: string | null;
+  acceptedAt?: string | null;
+  processingStartedAt?: string | null;
+  attemptCount?: number | null;
   installId: string;
   filename: string;
   contentType: string;
@@ -251,6 +258,7 @@ export interface InferenceDispatchRequest {
   appVersion: string;
   analysisVersion: string;
   requestedModel?: string | null;
+  attemptCount?: number | null;
 }
 
 export interface AdminJobListItem {

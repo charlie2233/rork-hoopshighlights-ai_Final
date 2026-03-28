@@ -7,6 +7,8 @@ export interface Env {
   DEFAULT_POLL_AFTER_SECONDS: string;
   SIGNED_UPLOAD_TTL_SECONDS: string;
   JOB_TTL_SECONDS: string;
+  PROCESSING_TIMEOUT_SECONDS: string;
+  MAX_INFERENCE_ATTEMPTS: string;
   MAX_FILE_SIZE_BYTES: string;
   MAX_DURATION_SECONDS: string;
   CONTROL_PLANE_BASE_URL: string;
@@ -33,6 +35,8 @@ export interface RuntimeConfig {
   defaultPollAfterSeconds: number;
   signedUploadTtlSeconds: number;
   jobTtlSeconds: number;
+  processingTimeoutSeconds: number;
+  maxInferenceAttempts: number;
   maxFileSizeBytes: number;
   maxDurationSeconds: number;
 }
@@ -44,6 +48,8 @@ export function resolveRuntimeConfig(env: Env): RuntimeConfig {
     defaultPollAfterSeconds: toPositiveInt(env.DEFAULT_POLL_AFTER_SECONDS, 2),
     signedUploadTtlSeconds: toPositiveInt(env.SIGNED_UPLOAD_TTL_SECONDS, 900),
     jobTtlSeconds: toPositiveInt(env.JOB_TTL_SECONDS, 3600),
+    processingTimeoutSeconds: toPositiveInt(env.PROCESSING_TIMEOUT_SECONDS, 300),
+    maxInferenceAttempts: toPositiveInt(env.MAX_INFERENCE_ATTEMPTS, 3),
     maxFileSizeBytes: toPositiveInt(env.MAX_FILE_SIZE_BYTES, 500 * 1024 * 1024),
     maxDurationSeconds: toPositiveNumber(env.MAX_DURATION_SECONDS, 1800)
   };

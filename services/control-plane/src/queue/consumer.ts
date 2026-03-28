@@ -35,6 +35,7 @@ export async function handleQueueBatch(batch: MessageBatch<QueueJobMessage>, env
       const startedAt = new Date().toISOString();
       const modelVersion =
         currentJob.modelVersion ?? message.body.modelVersion ?? DEFAULT_INFERENCE_MODEL_VERSION;
+      const currentAttemptCount = Math.max(currentJob.attemptCount ?? 0, 0);
 
       const dispatchingJob = await updateJobState(
         env,
@@ -44,7 +45,8 @@ export async function handleQueueBatch(batch: MessageBatch<QueueJobMessage>, env
           progress: Math.max(currentJob.progress, 0.5),
           modelVersion,
           uploadTraceId: currentJob.uploadTraceId ?? message.body.uploadTraceId ?? null,
-          inferenceAttemptId
+          inferenceAttemptId,
+          attemptCount: currentAttemptCount
         },
         {
           requestId: message.body.requestId,
@@ -79,7 +81,12 @@ export async function handleQueueBatch(batch: MessageBatch<QueueJobMessage>, env
         createdAt: startedAt
       });
 
-      const dispatchRequest = await buildInferenceDispatchRequest(env, dispatchingJob, message.body, inferenceAttemptId);
+      const dispatchRequest = await buildInferenceDispatchRequest(
+        env,
+        dispatchingJob,
+        message.body,
+        inferenceAttemptId
+      );
       const response = await fetch(dispatchRequest.url, {
         method: "POST",
         headers: dispatchRequest.headers,
@@ -121,26 +128,34 @@ export async function handleQueueBatch(batch: MessageBatch<QueueJobMessage>, env
       );
 
       const postAcceptJob = await getJobSnapshot(env, message.body.jobId);
-      if (
-        postAcceptJob &&
-        postAcceptJob.status !== "completed" &&
-        postAcceptJob.status !== "failed" &&
-        postAcceptJob.status !== "cancelled" &&
-        postAcceptJob.status !== "succeeded" &&
-        postAcceptJob.status !== "expired"
-      ) {
+      if (postAcceptJob) {
+        const acceptedAttemptCount = Math.max(postAcceptJob.attemptCount ?? currentAttemptCount, 0) + 1;
+        const acceptancePatch: Partial<JobRecord> = {
+          acceptedAt: startedAt,
+          processingStartedAt: startedAt,
+          attemptCount: acceptedAttemptCount,
+          modelVersion,
+          uploadTraceId: dispatchingJob.uploadTraceId ?? message.body.uploadTraceId ?? null,
+          inferenceAttemptId
+        };
+
+        if (
+          postAcceptJob.status !== "completed" &&
+          postAcceptJob.status !== "failed" &&
+          postAcceptJob.status !== "cancelled" &&
+          postAcceptJob.status !== "succeeded" &&
+          postAcceptJob.status !== "expired"
+        ) {
+          acceptancePatch.status = "processing";
+          acceptancePatch.stage = "Running external inference service";
+          acceptancePatch.progress = Math.max(postAcceptJob.progress, 0.6);
+          acceptancePatch.startedAt = startedAt;
+        }
+
         await updateJobState(
           env,
           message.body.jobId,
-          {
-            status: "processing",
-            stage: "Running external inference service",
-            progress: Math.max(postAcceptJob.progress, 0.6),
-            startedAt,
-            modelVersion,
-            uploadTraceId: dispatchingJob.uploadTraceId ?? message.body.uploadTraceId ?? null,
-            inferenceAttemptId
-          },
+          acceptancePatch,
           {
             requestId: message.body.requestId,
             traceId: message.body.traceId || currentJob.traceId,

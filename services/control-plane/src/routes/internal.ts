@@ -95,7 +95,25 @@ async function handleCallback(
   const failureReason = payload.failureReason ?? job.failureReason ?? null;
   const modelVersion = payload.modelVersion ?? job.modelVersion ?? null;
   const responseSchemaVersion = payload.schemaVersion ?? job.schemaVersion;
+  const incomingAttemptId = payload.inferenceAttemptId ?? null;
+  const currentAttemptId = job.inferenceAttemptId ?? null;
   const now = new Date().toISOString();
+
+  if (currentAttemptId && incomingAttemptId && incomingAttemptId !== currentAttemptId) {
+    console.info(
+      JSON.stringify({
+        requestId,
+        jobId,
+        traceId: payload.traceId ?? job.traceId,
+        uploadTraceId: payload.uploadTraceId ?? job.uploadTraceId ?? null,
+        inferenceAttemptId: incomingAttemptId,
+        currentInferenceAttemptId: currentAttemptId,
+        event: "inference.callback.stale_attempt",
+        status: currentStatus
+      })
+    );
+    return jsonResponse(toCloudAnalysisJobResponse(job, requestId, responseSchemaVersion), { status: 200 }, requestId);
+  }
 
   if (isTerminalStatus(currentStatus) && normalizedStatus !== currentStatus) {
     console.warn(
@@ -230,7 +248,9 @@ async function handleHeartbeat(request: Request, env: Env, jobId: string, reques
       status: "processing",
       stage: payload.stage ?? job.stage,
       progress: typeof payload.progress === "number" ? payload.progress : job.progress,
+      acceptedAt: job.acceptedAt ?? startedAt,
       startedAt,
+      processingStartedAt: startedAt,
       updatedAt: startedAt
     },
     {
@@ -329,6 +349,10 @@ function buildCallbackPatch(
     failureReason,
     resultConfidence,
     confidence: resultConfidence,
+    attemptCount:
+      typeof payload.attemptCount === "number" && Number.isFinite(payload.attemptCount)
+        ? Math.max(0, Math.floor(payload.attemptCount))
+        : job.attemptCount ?? 0,
     results: payload.results ?? job.results ?? null,
     uploadTraceId: payload.uploadTraceId ?? job.uploadTraceId ?? null,
     inferenceAttemptId: payload.inferenceAttemptId ?? job.inferenceAttemptId ?? null,
@@ -337,6 +361,8 @@ function buildCallbackPatch(
 
   if (status === "processing") {
     patch.startedAt = job.startedAt ?? timestamp;
+    patch.acceptedAt = job.acceptedAt ?? timestamp;
+    patch.processingStartedAt = job.processingStartedAt ?? timestamp;
   }
   if (status === "completed") {
     patch.finishedAt = timestamp;
@@ -365,6 +391,9 @@ function toCloudAnalysisJobResponse(
     failureReason: job.failureReason ?? null,
     uploadTraceId: job.uploadTraceId ?? null,
     inferenceAttemptId: job.inferenceAttemptId ?? null,
+    acceptedAt: job.acceptedAt ?? null,
+    processingStartedAt: job.processingStartedAt ?? null,
+    attemptCount: job.attemptCount ?? 0,
     jobId: job.jobId,
     status: job.status,
     progress: job.progress,

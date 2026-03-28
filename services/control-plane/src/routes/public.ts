@@ -16,6 +16,7 @@ import { appendJobEvent } from "../db";
 import { createPresignedUploadTarget } from "../r2/presign";
 import { emptyResponse, jsonResponse, readJson } from "../utils/request-id";
 import { resolveRuntimeConfig } from "../env";
+import { recoverStaleProcessingJob } from "../recovery";
 
 export async function routePublicRequest(
   request: Request,
@@ -33,7 +34,7 @@ export async function routePublicRequest(
   }
 
   if (request.method === "POST" && route === "/jobs") {
-    return handleFinalizeJob(request, env, requestId, runtime.schemaVersion, url, ctx);
+    return handleFinalizeJob(request, env, ctx, requestId, runtime.schemaVersion, url);
   }
 
   const jobMatch = matchJobPath(route);
@@ -46,17 +47,17 @@ export async function routePublicRequest(
     return handleFinalizeJob(
       request,
       env,
+      ctx,
       requestId,
       runtime.schemaVersion,
       url,
-      ctx,
       jobMatch.jobId,
       body.installId
     );
   }
 
   if (request.method === "GET") {
-    return handleGetJob(env, requestId, jobMatch.jobId);
+    return handleGetJob(env, ctx, requestId, jobMatch.jobId);
   }
 
   if (request.method === "DELETE") {
@@ -96,6 +97,9 @@ async function handlePresign(
       failureReason: null,
       uploadTraceId,
       inferenceAttemptId: null,
+      acceptedAt: null,
+      processingStartedAt: null,
+      attemptCount: 0,
       jobId,
       traceId,
       installId: body.installId,
@@ -211,10 +215,10 @@ async function handlePresign(
 async function handleFinalizeJob(
   request: Request,
   env: Env,
+  ctx: ExecutionContext,
   requestId: string,
   schemaVersion: string,
   url: URL,
-  ctx: ExecutionContext,
   pathJobId?: string,
   pathInstallId?: string
 ): Promise<Response> {
@@ -277,6 +281,22 @@ async function handleFinalizeJob(
         { status: 403 },
         requestId
       );
+    }
+
+    const recoveredJob = await recoverStaleProcessingJob(env, ctx, job, requestId, "finalize");
+    if (recoveredJob.updatedAt !== job.updatedAt || recoveredJob.status !== job.status) {
+      console.info(
+        JSON.stringify({
+          requestId,
+          jobId: recoveredJob.jobId,
+          traceId: recoveredJob.traceId,
+          uploadTraceId: recoveredJob.uploadTraceId ?? null,
+          inferenceAttemptId: recoveredJob.inferenceAttemptId ?? null,
+          event: "job.timeout.recovered",
+          status: recoveredJob.status
+        })
+      );
+      return jsonResponse(toCloudAnalysisJobResponse(recoveredJob, requestId, schemaVersion), { status: 200 }, requestId);
     }
 
     if (requestedSourceObjectKey && requestedSourceObjectKey !== job.sourceObjectKey) {
@@ -458,7 +478,7 @@ async function handleFinalizeJob(
   }
 }
 
-async function handleGetJob(env: Env, requestId: string, jobId: string): Promise<Response> {
+async function handleGetJob(env: Env, ctx: ExecutionContext, requestId: string, jobId: string): Promise<Response> {
   const job = await getJobSnapshot(env, jobId);
   if (!job) {
     return jsonResponse(
@@ -476,7 +496,8 @@ async function handleGetJob(env: Env, requestId: string, jobId: string): Promise
     );
   }
 
-  const hydrated = await hydrateResultIfNeeded(env, job);
+  const recoveredJob = await recoverStaleProcessingJob(env, ctx, job, requestId, "poll");
+  const hydrated = await hydrateResultIfNeeded(env, recoveredJob);
   console.info(
     JSON.stringify({
       requestId,
@@ -616,6 +637,9 @@ function toCloudAnalysisJobResponse(
     failureReason: job.failureReason ?? null,
     uploadTraceId: job.uploadTraceId ?? null,
     inferenceAttemptId: job.inferenceAttemptId ?? null,
+    acceptedAt: job.acceptedAt ?? null,
+    processingStartedAt: job.processingStartedAt ?? null,
+    attemptCount: job.attemptCount ?? 0,
     jobId: job.jobId,
     status: job.status,
     progress: job.progress,

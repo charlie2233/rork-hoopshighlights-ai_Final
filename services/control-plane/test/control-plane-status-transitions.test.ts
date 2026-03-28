@@ -81,6 +81,9 @@ test("control plane happy path advances upload_pending -> uploaded -> queued -> 
   assert.equal(harness.state.inferenceDispatches[0]?.uploadTraceId, createJson.uploadTraceId);
   assert.equal(typeof harness.state.inferenceDispatches[0]?.inferenceAttemptId, "string");
   assert.equal(harness.state.jobs.get(createJson.jobId)?.status, "completed");
+  assert.equal(harness.state.jobs.get(createJson.jobId)?.attemptCount, 1);
+  assert.equal(typeof harness.state.jobs.get(createJson.jobId)?.acceptedAt, "string");
+  assert.equal(typeof harness.state.jobs.get(createJson.jobId)?.processingStartedAt, "string");
   assert.equal(typeof harness.state.jobs.get(createJson.jobId)?.uploadTraceId, "string");
   assert.equal(typeof harness.state.jobs.get(createJson.jobId)?.inferenceAttemptId, "string");
 
@@ -92,6 +95,9 @@ test("control plane happy path advances upload_pending -> uploaded -> queued -> 
     failureReason: string | null;
     uploadTraceId: string | null;
     inferenceAttemptId: string | null;
+    attemptCount: number | null;
+    acceptedAt: string | null;
+    processingStartedAt: string | null;
     results: { clipCount: number; resultConfidence: number } | null;
   }>(finalResponse);
 
@@ -100,6 +106,9 @@ test("control plane happy path advances upload_pending -> uploaded -> queued -> 
   assert.equal(finalJson.failureReason, null);
   assert.equal(typeof finalJson.uploadTraceId, "string");
   assert.equal(typeof finalJson.inferenceAttemptId, "string");
+  assert.equal(finalJson.attemptCount, 1);
+  assert.equal(typeof finalJson.acceptedAt, "string");
+  assert.equal(typeof finalJson.processingStartedAt, "string");
   assert.equal(finalJson.results?.clipCount, 1);
   assert.equal(typeof finalJson.results?.resultConfidence, "number");
 });

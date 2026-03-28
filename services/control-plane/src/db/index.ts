@@ -18,16 +18,17 @@ export async function upsertJobIndex(db: D1Database, job: JobRecord): Promise<vo
         duration_seconds, app_version, analysis_version, analysis_mode, status, stage, progress,
         model_version, failure_reason, error_code, error_message, source_object_key,
         result_object_key, upload_url, upload_method, upload_headers_json, expires_at,
-        created_at, upload_pending_at, uploaded_at, queued_at, started_at, finished_at, cancelled_at, updated_at, result_confidence,
+        created_at, upload_pending_at, uploaded_at, queued_at, accepted_at, processing_started_at, attempt_count,
+        started_at, finished_at, cancelled_at, updated_at, result_confidence,
         upload_trace_id, inference_attempt_id,
         results_json, review_state, reviewer_notes, promoted_to_training_set
       ) VALUES (
-        ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8,
+      ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8,
         ?9, ?10, ?11, ?12, ?13, ?14, ?15,
         ?16, ?17, ?18, ?19, ?20,
-        ?21, ?22, ?23, ?24, ?25,
-        ?26, ?27, ?28, ?29, ?30, ?31, ?32, ?33, ?34, ?35, ?36,
-        ?37, ?38, ?39, ?40
+        ?21, ?22, ?23, ?24, ?25, ?26, ?27,
+        ?28, ?29, ?30, ?31, ?32, ?33,
+        ?34, ?35, ?36, ?37, ?38, ?39, ?40, ?41, ?42, ?43
       )
       ON CONFLICT(job_id) DO UPDATE SET
         schema_version=excluded.schema_version,
@@ -58,6 +59,9 @@ export async function upsertJobIndex(db: D1Database, job: JobRecord): Promise<vo
         upload_pending_at=excluded.upload_pending_at,
         uploaded_at=excluded.uploaded_at,
         queued_at=excluded.queued_at,
+        accepted_at=excluded.accepted_at,
+        processing_started_at=excluded.processing_started_at,
+        attempt_count=excluded.attempt_count,
         started_at=excluded.started_at,
         finished_at=excluded.finished_at,
         cancelled_at=excluded.cancelled_at,
@@ -100,6 +104,9 @@ export async function upsertJobIndex(db: D1Database, job: JobRecord): Promise<vo
       job.uploadPendingAt ?? null,
       job.uploadedAt ?? null,
       job.queuedAt ?? null,
+      job.acceptedAt ?? null,
+      job.processingStartedAt ?? null,
+      job.attemptCount ?? 0,
       job.startedAt ?? null,
       job.finishedAt ?? null,
       job.cancelledAt ?? null,
@@ -342,6 +349,9 @@ function rowToJobRecord(row: JobRow): JobRecord {
     traceId: String(row.trace_id),
     uploadTraceId: row.upload_trace_id == null ? null : String(row.upload_trace_id),
     inferenceAttemptId: row.inference_attempt_id == null ? null : String(row.inference_attempt_id),
+    acceptedAt: row.accepted_at == null ? null : String(row.accepted_at),
+    processingStartedAt: row.processing_started_at == null ? null : String(row.processing_started_at),
+    attemptCount: Number(row.attempt_count ?? 0),
     installId: String(row.install_id),
     filename: String(row.filename),
     contentType: String(row.content_type),

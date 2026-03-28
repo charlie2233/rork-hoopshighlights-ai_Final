@@ -118,11 +118,16 @@ export class JobStateDO extends DurableObject<Env> {
       return job;
     }
 
-    if (!TERMINAL_STATUSES.has(currentStatus) && STATUS_ORDER[requestedStatus] < STATUS_ORDER[currentStatus]) {
+    if (
+      !TERMINAL_STATUSES.has(currentStatus) &&
+      STATUS_ORDER[requestedStatus] < STATUS_ORDER[currentStatus] &&
+      !isAllowedRetryRegression(currentStatus, requestedStatus, patch)
+    ) {
       return job;
     }
 
     const now = patch.updatedAt ?? new Date().toISOString();
+    const requestedAttemptCount = resolveAttemptCount(job.attemptCount ?? 0, patch.attemptCount, requestedStatus);
     const merged: JobRecord = {
       ...job,
       ...patch,
@@ -134,6 +139,9 @@ export class JobStateDO extends DurableObject<Env> {
       uploadPendingAt: resolveTimestamp(job.uploadPendingAt, patch.uploadPendingAt, requestedStatus === "upload_pending"),
       uploadedAt: resolveTimestamp(job.uploadedAt, patch.uploadedAt, requestedStatus === "uploaded"),
       queuedAt: resolveTimestamp(job.queuedAt, patch.queuedAt, requestedStatus === "queued"),
+      acceptedAt: resolveNullableTimestamp(job.acceptedAt, patch.acceptedAt, requestedStatus === "processing"),
+      processingStartedAt: resolveNullableTimestamp(job.processingStartedAt, patch.processingStartedAt, requestedStatus === "processing"),
+      attemptCount: requestedAttemptCount,
       startedAt: resolveTimestamp(job.startedAt, patch.startedAt, requestedStatus === "processing"),
       finishedAt: resolveTimestamp(job.finishedAt, patch.finishedAt, requestedStatus === "completed" || requestedStatus === "failed" || requestedStatus === "succeeded" || requestedStatus === "expired"),
       cancelledAt: resolveTimestamp(job.cancelledAt, patch.cancelledAt, requestedStatus === "cancelled" || requestedStatus === "expired"),
@@ -178,6 +186,9 @@ function resolveTimestamp(
   incoming: string | null | undefined,
   isTransition: boolean
 ): string | null {
+  if (incoming === null) {
+    return null;
+  }
   if (incoming) {
     return incoming;
   }
@@ -185,4 +196,48 @@ function resolveTimestamp(
     return current;
   }
   return isTransition ? new Date().toISOString() : null;
+}
+
+function resolveNullableTimestamp(
+  current: string | null | undefined,
+  incoming: string | null | undefined,
+  isTransition: boolean
+): string | null {
+  if (incoming === null) {
+    return null;
+  }
+  if (incoming) {
+    return incoming;
+  }
+  if (current) {
+    return current;
+  }
+  return isTransition ? new Date().toISOString() : null;
+}
+
+function resolveAttemptCount(
+  current: number,
+  incoming: number | null | undefined,
+  requestedStatus: JobRecord["status"]
+): number {
+  if (typeof incoming === "number" && Number.isFinite(incoming) && incoming >= 0) {
+    return Math.floor(incoming);
+  }
+  if (requestedStatus === "processing") {
+    return Math.max(current, 1);
+  }
+  return Math.max(current, 0);
+}
+
+function isAllowedRetryRegression(
+  currentStatus: JobRecord["status"],
+  requestedStatus: JobRecord["status"],
+  patch: Partial<JobRecord>
+): boolean {
+  return (
+    currentStatus === "processing" &&
+    requestedStatus === "queued" &&
+    typeof patch.stage === "string" &&
+    patch.stage.startsWith("Retrying stale inference")
+  );
 }

@@ -84,6 +84,8 @@ export function createControlPlaneHarness(overrides: Partial<Env> = {}): Control
     DEFAULT_POLL_AFTER_SECONDS: "2",
     SIGNED_UPLOAD_TTL_SECONDS: "900",
     JOB_TTL_SECONDS: "3600",
+    PROCESSING_TIMEOUT_SECONDS: "300",
+    MAX_INFERENCE_ATTEMPTS: "3",
     MAX_FILE_SIZE_BYTES: "524288000",
     MAX_DURATION_SECONDS: "1800",
     CONTROL_PLANE_BASE_URL: BASE_URL,
@@ -173,7 +175,8 @@ export function createControlPlaneHarness(overrides: Partial<Env> = {}): Control
             jobId: String(body.jobId ?? "unknown"),
             requestId,
             modelVersion: String(body.modelVersion ?? "external-videomae-v1"),
-            resultConfidence: 0.91
+            resultConfidence: 0.91,
+            attemptCount: typeof body.attemptCount === "number" ? body.attemptCount : undefined
           }) as InferenceCallbackPayload & { uploadTraceId?: string; inferenceAttemptId?: string };
           callbackPayload.uploadTraceId = uploadTraceId;
           callbackPayload.inferenceAttemptId = inferenceAttemptId;
@@ -345,6 +348,7 @@ export function buildSuccessCallbackPayload(params: {
   failureReason?: string | null;
   uploadTraceId?: string | null;
   inferenceAttemptId?: string | null;
+  attemptCount?: number | null;
 }): InferenceCallbackPayload {
   return {
     jobId: params.jobId,
@@ -355,6 +359,7 @@ export function buildSuccessCallbackPayload(params: {
     modelVersion: params.modelVersion,
     failureReason: params.failureReason ?? null,
     resultConfidence: params.resultConfidence ?? 0.91,
+    attemptCount: params.attemptCount ?? null,
     uploadTraceId: params.uploadTraceId ?? null,
     inferenceAttemptId: params.inferenceAttemptId ?? null,
     results: buildSampleResult(params.jobId, params.requestId, params.modelVersion, params.resultConfidence ?? 0.91)
@@ -368,6 +373,7 @@ export function buildFailureCallbackPayload(params: {
   modelVersion?: string | null;
   uploadTraceId?: string | null;
   inferenceAttemptId?: string | null;
+  attemptCount?: number | null;
 }): InferenceCallbackPayload {
   return {
     jobId: params.jobId,
@@ -377,6 +383,7 @@ export function buildFailureCallbackPayload(params: {
     progress: 0.77,
     modelVersion: params.modelVersion ?? "stub-inference-v1",
     failureReason: params.failureReason,
+    attemptCount: params.attemptCount ?? null,
     uploadTraceId: params.uploadTraceId ?? null,
     inferenceAttemptId: params.inferenceAttemptId ?? null,
     resultConfidence: 0,
