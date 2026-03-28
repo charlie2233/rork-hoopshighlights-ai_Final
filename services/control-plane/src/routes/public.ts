@@ -79,6 +79,7 @@ async function handlePresign(
 
     const jobId = crypto.randomUUID().replace(/-/g, "");
     const traceId = request.headers.get("x-trace-id")?.trim() || requestId;
+    const uploadTraceId = crypto.randomUUID().replace(/-/g, "");
     const upload = await createPresignedUploadTarget(env, {
       jobId,
       filename: body.filename,
@@ -93,6 +94,8 @@ async function handlePresign(
       confidence: null,
       modelVersion: null,
       failureReason: null,
+      uploadTraceId,
+      inferenceAttemptId: null,
       jobId,
       traceId,
       installId: body.installId,
@@ -150,7 +153,8 @@ async function handlePresign(
         payload: {
           uploadUrl: upload.uploadUrl,
           sourceObjectKey: upload.objectKey,
-          resultObjectKey: record.resultObjectKey
+          resultObjectKey: record.resultObjectKey,
+          uploadTraceId
         }
       }
     );
@@ -161,6 +165,8 @@ async function handlePresign(
       confidence: null,
       modelVersion: null,
       failureReason: null,
+      uploadTraceId,
+      inferenceAttemptId: null,
       jobId: pendingJob.jobId,
       sourceObjectKey: pendingJob.sourceObjectKey,
       resultObjectKey: pendingJob.resultObjectKey,
@@ -178,6 +184,7 @@ async function handlePresign(
         requestId,
         jobId: pendingJob.jobId,
         traceId,
+        uploadTraceId,
         event: "job.presign.created",
         status: pendingJob.status
       })
@@ -346,14 +353,15 @@ async function handleFinalizeJob(
             uploadedAt,
             updatedAt: uploadedAt
           },
-          {
-            requestId,
-            traceId: job.traceId,
-            eventType: "job.uploaded",
-            message: "Upload verified before queue dispatch.",
-            payload: {
+        {
+          requestId,
+          traceId: job.traceId,
+          eventType: "job.uploaded",
+          message: "Upload verified before queue dispatch.",
+          payload: {
               sourceObjectKey: job.sourceObjectKey,
-              resultObjectKey: job.resultObjectKey
+              resultObjectKey: job.resultObjectKey,
+              uploadTraceId: job.uploadTraceId ?? null
             }
           }
         );
@@ -364,6 +372,7 @@ async function handleFinalizeJob(
         kind: "process-job",
         jobId: uploadedJob.jobId,
         requestId,
+        uploadTraceId: uploadedJob.uploadTraceId ?? requestId,
         traceId: uploadedJob.traceId,
         schemaVersion,
         sourceObjectKey: uploadedJob.sourceObjectKey,
@@ -411,6 +420,7 @@ async function handleFinalizeJob(
           requestId,
           jobId: queuedJob.jobId,
           traceId: queuedJob.traceId,
+          uploadTraceId: queuedJob.uploadTraceId ?? null,
           event: "job.queued",
           status: queuedJob.status
         })
@@ -424,6 +434,7 @@ async function handleFinalizeJob(
         requestId,
         jobId: uploadedJob.jobId,
         traceId: uploadedJob.traceId,
+        uploadTraceId: uploadedJob.uploadTraceId ?? null,
         event: "job.finalize.idempotent",
         status: uploadedJob.status
       })
@@ -471,6 +482,8 @@ async function handleGetJob(env: Env, requestId: string, jobId: string): Promise
       requestId,
       jobId: hydrated.jobId,
       traceId: hydrated.traceId,
+      uploadTraceId: hydrated.uploadTraceId ?? null,
+      inferenceAttemptId: hydrated.inferenceAttemptId ?? null,
       event: "job.polled",
       status: hydrated.status
     })
@@ -601,6 +614,8 @@ function toCloudAnalysisJobResponse(
     confidence: job.confidence ?? job.resultConfidence ?? null,
     modelVersion: job.modelVersion ?? null,
     failureReason: job.failureReason ?? null,
+    uploadTraceId: job.uploadTraceId ?? null,
+    inferenceAttemptId: job.inferenceAttemptId ?? null,
     jobId: job.jobId,
     status: job.status,
     progress: job.progress,

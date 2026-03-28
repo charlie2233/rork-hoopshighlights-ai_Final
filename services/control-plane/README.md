@@ -9,7 +9,7 @@ This package is the Cloudflare control plane scaffold for HoopsClips.
 - Admin route stubs for the future review dashboard
 - Durable Object job state
 - D1 metadata index
-- Queue orchestration stub
+- Queue orchestration to the external inference service
 - R2 presign abstraction
 
 ## Happy Path
@@ -38,7 +38,7 @@ The phase-1b verification path now uses the staging route shape end to end:
 - `POST /uploads/presign`
 - direct upload to the signed R2 URL
 - `POST /jobs`
-- queue-driven stub inference
+- queue-driven external inference dispatch
 - internal completion callback
 - `GET /jobs/:id`
 
@@ -62,11 +62,10 @@ Required env/secret inputs:
 - `CONTROL_PLANE_BASE_URL`
 - `CONTROL_PLANE_SHARED_SECRET`
 - `INFERENCE_SHARED_SECRET`
+- `INFERENCE_BASE_URL`
 - `R2_ACCOUNT_ID`
 - `R2_ACCESS_KEY_ID`
 - `R2_SECRET_ACCESS_KEY`
-
-`INFERENCE_BASE_URL` remains reserved for the later dedicated inference service and is not required for the phase-1b stub staging path.
 
 For the exact local/staging variable mapping and Wrangler secret commands, see [`docs/cloudflare_env_setup.md`](../../docs/cloudflare_env_setup.md).
 
@@ -78,6 +77,6 @@ For the exact local/staging variable mapping and Wrangler secret commands, see [
 
 ## Migration notes
 
-- The current implementation is a scaffold, not the final production control plane.
+- The current implementation is a scaffold, but it now dispatches to a dedicated external inference service instead of running stub inference in the queue consumer.
 - The public job contract remains backwards compatible at the response-field level.
-- The next phase is replacing the scaffolded queue dispatch and result hydration with real R2/Durable Object/D1 backed production flows.
+- The next phase is deploying the production inference service and removing the last local/test-only dispatch shims.

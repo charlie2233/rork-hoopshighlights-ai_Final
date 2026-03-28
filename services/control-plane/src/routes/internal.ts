@@ -103,6 +103,8 @@ async function handleCallback(
         requestId,
         jobId,
         traceId: payload.traceId ?? job.traceId,
+        uploadTraceId: payload.uploadTraceId ?? job.uploadTraceId ?? null,
+        inferenceAttemptId: payload.inferenceAttemptId ?? job.inferenceAttemptId ?? null,
         event: "inference.callback.ignored",
         currentStatus,
         requestedStatus: normalizedStatus
@@ -117,6 +119,8 @@ async function handleCallback(
         requestId,
         jobId,
         traceId: payload.traceId ?? job.traceId,
+        uploadTraceId: payload.uploadTraceId ?? job.uploadTraceId ?? null,
+        inferenceAttemptId: payload.inferenceAttemptId ?? job.inferenceAttemptId ?? null,
         event: "inference.callback.duplicate",
         status: currentStatus
       })
@@ -174,6 +178,8 @@ async function handleCallback(
       requestId,
       jobId,
       traceId: payload.traceId ?? job.traceId,
+      uploadTraceId: payload.uploadTraceId ?? job.uploadTraceId ?? null,
+      inferenceAttemptId: payload.inferenceAttemptId ?? job.inferenceAttemptId ?? null,
       event: "inference.callback",
       status: normalizedStatus
     })
@@ -251,6 +257,8 @@ async function handleHeartbeat(request: Request, env: Env, jobId: string, reques
       requestId,
       jobId,
       traceId: job.traceId,
+      uploadTraceId: job.uploadTraceId ?? null,
+      inferenceAttemptId: job.inferenceAttemptId ?? null,
       event: "inference.heartbeat",
       status: "processing",
       progress: updated.progress
@@ -322,6 +330,8 @@ function buildCallbackPatch(
     resultConfidence,
     confidence: resultConfidence,
     results: payload.results ?? job.results ?? null,
+    uploadTraceId: payload.uploadTraceId ?? job.uploadTraceId ?? null,
+    inferenceAttemptId: payload.inferenceAttemptId ?? job.inferenceAttemptId ?? null,
     updatedAt: timestamp
   };
 
@@ -353,6 +363,8 @@ function toCloudAnalysisJobResponse(
     confidence: job.confidence ?? job.resultConfidence ?? null,
     modelVersion: job.modelVersion ?? null,
     failureReason: job.failureReason ?? null,
+    uploadTraceId: job.uploadTraceId ?? null,
+    inferenceAttemptId: job.inferenceAttemptId ?? null,
     jobId: job.jobId,
     status: job.status,
     progress: job.progress,

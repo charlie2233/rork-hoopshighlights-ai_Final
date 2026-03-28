@@ -16,6 +16,8 @@ export interface ResponseEnvelope {
   confidence?: number | null;
   modelVersion?: string | null;
   failureReason?: string | null;
+  uploadTraceId?: string | null;
+  inferenceAttemptId?: string | null;
 }
 
 export interface CreateCloudAnalysisJobRequest {
@@ -140,6 +142,7 @@ export interface QueueJobMessage {
   kind: "process-job";
   jobId: string;
   requestId: string;
+  uploadTraceId: string;
   traceId: string;
   schemaVersion: string;
   sourceObjectKey: string;
@@ -173,12 +176,16 @@ export interface InferenceCallbackPayload {
   results?: CloudAnalysisResult | null;
   traceId?: string | null;
   requestId?: string | null;
+  uploadTraceId?: string | null;
+  inferenceAttemptId?: string | null;
 }
 
 export interface JobRecord extends ResponseEnvelope {
   jobId: string;
   schemaVersion: string;
   traceId: string;
+  uploadTraceId?: string | null;
+  inferenceAttemptId?: string | null;
   installId: string;
   filename: string;
   contentType: string;
@@ -225,6 +232,25 @@ export interface JobMutationInput {
   eventType?: string;
   message?: string;
   payload?: unknown;
+}
+
+export interface InferenceDispatchRequest {
+  jobId: string;
+  requestId: string;
+  uploadTraceId: string;
+  inferenceAttemptId: string;
+  traceId: string;
+  sourceObjectKey: string;
+  sourceUrl: string;
+  resultObjectKey: string;
+  callbackUrl: string;
+  callbackSecret: string;
+  schemaVersion: string;
+  modelVersion: string;
+  installId: string;
+  appVersion: string;
+  analysisVersion: string;
+  requestedModel?: string | null;
 }
 
 export interface AdminJobListItem {

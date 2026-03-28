@@ -9,6 +9,12 @@ export interface PresignedUploadTarget {
   expiresAt: string;
 }
 
+export interface PresignedReadTarget {
+  objectKey: string;
+  sourceUrl: string;
+  expiresAt: string;
+}
+
 export function buildObjectKey(jobId: string, filename: string): string {
   const safeName = sanitizeFilename(filename);
   return `uploads/${jobId}/${safeName}`;
@@ -67,6 +73,51 @@ export async function createPresignedUploadTarget(
     uploadHeaders: {
       "content-type": params.contentType
     },
+    expiresAt: expiresAt.toISOString()
+  };
+}
+
+export async function createPresignedReadTarget(
+  env: Env,
+  params: {
+    objectKey: string;
+    expiresInSeconds: number;
+    bucketName?: string;
+  }
+): Promise<PresignedReadTarget> {
+  const bucketName = params.bucketName ?? env.R2_UPLOAD_BUCKET_NAME;
+  const expiresAt = new Date(Date.now() + params.expiresInSeconds * 1000);
+
+  if (!env.R2_ACCOUNT_ID || !env.R2_ACCESS_KEY_ID || !env.R2_SECRET_ACCESS_KEY) {
+    return {
+      objectKey: params.objectKey,
+      sourceUrl: `https://r2.local/${bucketName}/${params.objectKey}`,
+      expiresAt: expiresAt.toISOString()
+    };
+  }
+
+  const client = new AwsClient({
+    accessKeyId: env.R2_ACCESS_KEY_ID,
+    secretAccessKey: env.R2_SECRET_ACCESS_KEY
+  });
+
+  const url = new URL(
+    `https://${env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com/${bucketName}/${params.objectKey}`
+  );
+  const request = new Request(url.toString(), {
+    method: "GET"
+  });
+  const signed = await client.sign(request, {
+    aws: {
+      signQuery: true,
+      service: "s3",
+      region: "auto"
+    }
+  });
+
+  return {
+    objectKey: params.objectKey,
+    sourceUrl: signed.url,
     expiresAt: expiresAt.toISOString()
   };
 }

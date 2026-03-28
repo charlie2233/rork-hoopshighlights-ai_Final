@@ -16,6 +16,7 @@ export interface HarnessState {
   queueMessages: QueueJobMessage[];
   deadLetterMessages: DeadLetterQueueMessage[];
   callbackRequests: HarnessCallbackRequest[];
+  inferenceDispatches: HarnessInferenceDispatch[];
 }
 
 export interface HarnessEvent {
@@ -32,6 +33,17 @@ export interface HarnessCallbackRequest {
   jobId: string;
   requestId: string;
   traceId: string;
+}
+
+export interface HarnessInferenceDispatch {
+  jobId: string;
+  requestId: string;
+  uploadTraceId: string;
+  inferenceAttemptId: string;
+  traceId: string;
+  url: string;
+  headers: Record<string, string>;
+  body: Record<string, unknown>;
 }
 
 export interface ControlPlaneHarness {
@@ -61,7 +73,8 @@ export function createControlPlaneHarness(overrides: Partial<Env> = {}): Control
     uploads: new Map(),
     queueMessages: [],
     deadLetterMessages: [],
-    callbackRequests: []
+    callbackRequests: [],
+    inferenceDispatches: []
   };
   const pending: Promise<unknown>[] = [];
 
@@ -135,6 +148,75 @@ export function createControlPlaneHarness(overrides: Partial<Env> = {}): Control
             return new Response("Not found", { status: 404 });
           }
           return internalResponse;
+        }
+        if (url.origin === env.INFERENCE_BASE_URL) {
+          const body = (await request.json()) as Record<string, unknown>;
+          const requestId = String(body.requestId ?? request.headers.get("x-request-id") ?? crypto.randomUUID());
+          const uploadTraceId = String(body.uploadTraceId ?? request.headers.get("x-hoops-upload-trace-id") ?? "");
+          const inferenceAttemptId = String(body.inferenceAttemptId ?? request.headers.get("x-hoops-inference-attempt-id") ?? "");
+          const traceId = String(body.traceId ?? request.headers.get("x-trace-id") ?? "");
+
+          state.inferenceDispatches.push({
+            jobId: String(body.jobId ?? "unknown"),
+            requestId,
+            uploadTraceId,
+            inferenceAttemptId,
+            traceId,
+            url: url.toString(),
+            headers: Object.fromEntries(request.headers.entries()),
+            body
+          });
+
+          const callbackPayload = buildSuccessCallbackPayload({
+            jobId: String(body.jobId ?? "unknown"),
+            requestId,
+            modelVersion: String(body.modelVersion ?? "external-videomae-v1"),
+            resultConfidence: 0.91
+          }) as InferenceCallbackPayload & { uploadTraceId?: string; inferenceAttemptId?: string };
+          callbackPayload.uploadTraceId = uploadTraceId;
+          callbackPayload.inferenceAttemptId = inferenceAttemptId;
+
+          if (typeof body.callbackUrl === "string") {
+            const callbackOrigin = new URL(body.callbackUrl).origin;
+            if (callbackOrigin !== BASE_URL) {
+              return Response.json({ error: "callback_unreachable" }, { status: 502 });
+            }
+
+            const callbackRequest = new Request(body.callbackUrl, {
+              method: "POST",
+              headers: {
+                "content-type": "application/json",
+                "x-hoops-inference-secret": String(body.callbackSecret ?? ""),
+                "x-request-id": requestId,
+                "x-trace-id": traceId,
+                "x-hoops-upload-trace-id": uploadTraceId,
+                "x-hoops-inference-attempt-id": inferenceAttemptId
+              },
+              body: JSON.stringify(callbackPayload)
+            });
+            const callbackResponse = await routeInternalRequest(callbackRequest, env, requestId);
+            if (!callbackResponse || !callbackResponse.ok) {
+              return Response.json(
+                {
+                  error: "callback_failed",
+                  status: callbackResponse?.status ?? 500
+                },
+                { status: 502 }
+              );
+            }
+          }
+
+          return Response.json(
+            {
+              jobId: String(body.jobId ?? "unknown"),
+              requestId,
+              uploadTraceId,
+              inferenceAttemptId,
+              modelVersion: String(body.modelVersion ?? "external-videomae-v1"),
+              accepted: true
+            },
+            { status: 202 }
+          );
         }
         return originalFetch(input, init);
       };
@@ -259,6 +341,8 @@ export function buildSuccessCallbackPayload(params: {
   modelVersion: string;
   resultConfidence?: number;
   failureReason?: string | null;
+  uploadTraceId?: string | null;
+  inferenceAttemptId?: string | null;
 }): InferenceCallbackPayload {
   return {
     jobId: params.jobId,
@@ -269,6 +353,8 @@ export function buildSuccessCallbackPayload(params: {
     modelVersion: params.modelVersion,
     failureReason: params.failureReason ?? null,
     resultConfidence: params.resultConfidence ?? 0.91,
+    uploadTraceId: params.uploadTraceId ?? null,
+    inferenceAttemptId: params.inferenceAttemptId ?? null,
     results: buildSampleResult(params.jobId, params.requestId, params.modelVersion, params.resultConfidence ?? 0.91)
   };
 }
@@ -278,6 +364,8 @@ export function buildFailureCallbackPayload(params: {
   requestId: string;
   failureReason: string;
   modelVersion?: string | null;
+  uploadTraceId?: string | null;
+  inferenceAttemptId?: string | null;
 }): InferenceCallbackPayload {
   return {
     jobId: params.jobId,
@@ -287,6 +375,8 @@ export function buildFailureCallbackPayload(params: {
     progress: 0.77,
     modelVersion: params.modelVersion ?? "stub-inference-v1",
     failureReason: params.failureReason,
+    uploadTraceId: params.uploadTraceId ?? null,
+    inferenceAttemptId: params.inferenceAttemptId ?? null,
     resultConfidence: 0,
     results: null
   };

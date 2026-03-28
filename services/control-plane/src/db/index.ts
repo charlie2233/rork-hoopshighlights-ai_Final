@@ -19,14 +19,15 @@ export async function upsertJobIndex(db: D1Database, job: JobRecord): Promise<vo
         model_version, failure_reason, error_code, error_message, source_object_key,
         result_object_key, upload_url, upload_method, upload_headers_json, expires_at,
         created_at, upload_pending_at, uploaded_at, queued_at, started_at, finished_at, cancelled_at, updated_at, result_confidence,
+        upload_trace_id, inference_attempt_id,
         results_json, review_state, reviewer_notes, promoted_to_training_set
       ) VALUES (
         ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8,
         ?9, ?10, ?11, ?12, ?13, ?14, ?15,
         ?16, ?17, ?18, ?19, ?20,
         ?21, ?22, ?23, ?24, ?25,
-        ?26, ?27, ?28, ?29, ?30, ?31, ?32, ?33, ?34,
-        ?35, ?36, ?37, ?38
+        ?26, ?27, ?28, ?29, ?30, ?31, ?32, ?33, ?34, ?35, ?36,
+        ?37, ?38, ?39, ?40
       )
       ON CONFLICT(job_id) DO UPDATE SET
         schema_version=excluded.schema_version,
@@ -62,6 +63,8 @@ export async function upsertJobIndex(db: D1Database, job: JobRecord): Promise<vo
         cancelled_at=excluded.cancelled_at,
         updated_at=excluded.updated_at,
         result_confidence=excluded.result_confidence,
+        upload_trace_id=excluded.upload_trace_id,
+        inference_attempt_id=excluded.inference_attempt_id,
         results_json=excluded.results_json,
         review_state=excluded.review_state,
         reviewer_notes=excluded.reviewer_notes,
@@ -102,6 +105,8 @@ export async function upsertJobIndex(db: D1Database, job: JobRecord): Promise<vo
       job.cancelledAt ?? null,
       job.updatedAt,
       job.confidence ?? job.resultConfidence ?? null,
+      job.uploadTraceId ?? null,
+      job.inferenceAttemptId ?? null,
       job.results ? JSON.stringify(job.results) : null,
       job.reviewState ?? "unreviewed",
       job.reviewerNotes ?? null,
@@ -335,6 +340,8 @@ function rowToJobRecord(row: JobRow): JobRecord {
     failureReason: row.failure_reason == null ? null : String(row.failure_reason),
     jobId: String(row.job_id),
     traceId: String(row.trace_id),
+    uploadTraceId: row.upload_trace_id == null ? null : String(row.upload_trace_id),
+    inferenceAttemptId: row.inference_attempt_id == null ? null : String(row.inference_attempt_id),
     installId: String(row.install_id),
     filename: String(row.filename),
     contentType: String(row.content_type),

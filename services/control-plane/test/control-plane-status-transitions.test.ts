@@ -28,11 +28,18 @@ test("control plane happy path advances upload_pending -> uploaded -> queued -> 
     { "x-trace-id": "trace-happy-path" }
   );
   assert.equal(createResponse.status, 201);
-  const createJson = await parseJsonResponse<{ jobId: string; sourceObjectKey: string; uploadUrl: string; status: string }>(createResponse);
+  const createJson = await parseJsonResponse<{
+    jobId: string;
+    sourceObjectKey: string;
+    uploadUrl: string;
+    status: string;
+    uploadTraceId: string | null;
+  }>(createResponse);
 
   await uploadObject(harness, createJson.uploadUrl, new TextEncoder().encode("sample basketball clip"));
   assert.equal(createJson.sourceObjectKey.length > 0, true);
   assert.equal(createJson.status, "upload_pending");
+  assert.equal(typeof createJson.uploadTraceId, "string");
 
   const finalizeResponse = await invokePublicRoute(
     harness,
@@ -61,12 +68,20 @@ test("control plane happy path advances upload_pending -> uploaded -> queued -> 
     "resultObjectKey",
     "schemaVersion",
     "sourceObjectKey",
-    "traceId"
+    "traceId",
+    "uploadTraceId"
   ]);
 
   const processedMessages = await harness.drainQueue();
   assert.equal(processedMessages, 1);
+  assert.equal(harness.state.inferenceDispatches.length, 1);
+  assert.equal(harness.state.inferenceDispatches[0]?.jobId, createJson.jobId);
+  assert.equal(harness.state.inferenceDispatches[0]?.requestId.length > 0, true);
+  assert.equal(harness.state.inferenceDispatches[0]?.uploadTraceId, createJson.uploadTraceId);
+  assert.equal(typeof harness.state.inferenceDispatches[0]?.inferenceAttemptId, "string");
   assert.equal(harness.state.jobs.get(createJson.jobId)?.status, "completed");
+  assert.equal(typeof harness.state.jobs.get(createJson.jobId)?.uploadTraceId, "string");
+  assert.equal(typeof harness.state.jobs.get(createJson.jobId)?.inferenceAttemptId, "string");
 
   const finalResponse = await invokePublicRoute(harness, "GET", `/jobs/${createJson.jobId}`);
   assert.equal(finalResponse.status, 200);
@@ -74,12 +89,16 @@ test("control plane happy path advances upload_pending -> uploaded -> queued -> 
     status: string;
     modelVersion: string | null;
     failureReason: string | null;
+    uploadTraceId: string | null;
+    inferenceAttemptId: string | null;
     results: { clipCount: number; resultConfidence: number } | null;
   }>(finalResponse);
 
   assert.equal(finalJson.status, "completed");
-  assert.equal(finalJson.modelVersion, "stub-inference-v1+phase1a");
+  assert.match(finalJson.modelVersion ?? "", /^external:/);
   assert.equal(finalJson.failureReason, null);
-  assert.equal(finalJson.results?.clipCount, 2);
+  assert.equal(typeof finalJson.uploadTraceId, "string");
+  assert.equal(typeof finalJson.inferenceAttemptId, "string");
+  assert.equal(finalJson.results?.clipCount, 1);
   assert.equal(typeof finalJson.results?.resultConfidence, "number");
 });
