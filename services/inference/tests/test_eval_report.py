@@ -23,6 +23,22 @@ class EvalReportTests(unittest.TestCase):
         self.assertIn("jumper", report["perClass"])
         self.assertGreater(report["summary"]["accuracy"], 0.0)
         self.assertGreaterEqual(len(report["recommendedLabelingPriorities"]), 1)
+        self.assertIn("clipDurationStats", report["summary"])
+        self.assertEqual(report["summary"]["clipDurationStats"]["belowMinimumCount"], 0)
+        self.assertEqual(report["summary"]["clipDurationStats"]["belowMinimumPercentage"], 0.0)
+        self.assertEqual(report["summary"]["clipDurationStats"]["sourceShorterThanMinimumCount"], 0)
+        self.assertGreater(report["summary"]["clipDurationStats"]["medianSeconds"], 0.0)
+        self.assertGreaterEqual(report["summary"]["clipDurationStats"]["p90Seconds"], report["summary"]["clipDurationStats"]["medianSeconds"])
+        self.assertEqual(report["summary"]["clipDurationStats"]["mergedClipCount"], 2)
+        self.assertIn("perLabelDurationDistribution", report)
+        self.assertIn("fast break", report["perLabelDurationDistribution"])
+        self.assertGreater(report["perLabelDurationDistribution"]["fast break"]["medianSeconds"], 0.0)
+        self.assertEqual(report["perLabelDurationDistribution"]["fast break"]["mergedCount"], 1)
+        self.assertEqual(len(report["manualReviewChecklist"]), 3)
+        self.assertEqual(
+            [item["check"] for item in report["manualReviewChecklist"]],
+            ["contains setup", "contains finish", "feels watchable"],
+        )
 
     def test_markdown_and_json_round_trip(self) -> None:
         base = self.repo_root() / "services" / "inference" / "evals"

@@ -84,6 +84,13 @@ class RankedClip(APIModel):
     clipId: str
     startTime: float = Field(ge=0.0)
     endTime: float = Field(gt=0.0)
+    clipDurationSeconds: float = Field(ge=0.0)
+    eventCenterSeconds: float = Field(ge=0.0)
+    preRollSeconds: float = Field(ge=0.0)
+    postRollSeconds: float = Field(ge=0.0)
+    windowPolicyVersion: str
+    wasMerged: bool = False
+    sourceEventCount: int = Field(default=1, ge=1)
     confidence: float = Field(ge=0.0, le=1.0)
     resultConfidence: float = Field(ge=0.0, le=1.0)
     label: str

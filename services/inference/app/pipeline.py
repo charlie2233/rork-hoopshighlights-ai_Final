@@ -20,6 +20,7 @@ from .labels import aggregate_label_scores
 from .heuristics import ConfidenceReranker, HeuristicCandidateProposer, HeuristicEventInferencer
 from .interfaces import ArtifactWriter
 from .manifest import LocalArtifactWriter, build_manifest_dict
+from .windowing import WindowedClipDraft, window_and_merge_clips
 from .models import (
     ArtifactDescriptor,
     CallbackPayload,
@@ -68,7 +69,7 @@ class InferenceService:
                 features = await asyncio.to_thread(extract_video_features, preparation.prepared_path)
 
                 candidates = self.candidate_proposer.propose(features)
-                clips = []
+                clip_drafts: list[WindowedClipDraft] = []
                 comparison_scores: list[float] = []
 
                 for candidate in candidates[: self.settings.max_candidates]:
@@ -80,52 +81,64 @@ class InferenceService:
 
                     action = self._resolve_action(primary_action, comparison)
                     event = self.event_inferencer.infer(candidate, action, features)
-                    clip = RankedClip(
-                        clipId=uuid4().hex,
-                        startTime=candidate.startTime,
-                        endTime=candidate.endTime,
-                        confidence=min(max(action.confidence, 0.0), 1.0),
-                        resultConfidence=min(max(event.rankScore, 0.0), 1.0),
-                        label=action.label,
-                        action=action.label,
-                        canonicalLabel=action.canonicalLabel,
-                        eventType=event.eventType,
-                        shotType=event.shotType,
-                        makeMiss=event.makeMiss,
-                        audioScore=self._score_from_profile(features.audio_energy_profile, candidate.startTime, candidate.endTime),
-                        visualScore=self._score_from_profile(features.frame_energy_profile, candidate.startTime, candidate.endTime),
-                        motionScore=self._score_from_profile(features.frame_energy_profile, candidate.startTime, candidate.endTime),
-                        combinedScore=min(max(candidate.score, 0.0), 1.0),
-                        rankScore=event.rankScore,
-                        detectionMethod=action.detectionMethod,
-                        shouldAutoKeep=event.shouldAutoKeep,
-                        shouldEnableSlowMotion=event.shouldEnableSlowMotion,
-                        topLabels=action.topLabels,
-                        comparisonTopLabels=comparison.topLabels if comparison else [],
-                        metadata={
-                            "request_id": request_id,
-                            "upload_trace_id": upload_trace_id,
-                            "inference_attempt_id": inference_attempt_id,
-                            "analysis_version": request.analysisVersion,
-                            "install_id": request.installId,
-                            "source_object_key": request.sourceObjectKey,
-                            "comparison_model_version": comparison.modelVersion if comparison else None,
-                            "comparison_confidence": comparison.confidence if comparison else None,
-                            "comparison_label": comparison.label if comparison else None,
-                            "comparison_canonical_label": comparison.canonicalLabel if comparison else None,
-                            "candidate_reason": candidate.reason,
-                            "candidate_source": candidate.source,
-                            "action_failure_reason": action.failureReason,
-                            "action_metadata": action.metadata,
-                            "event_metadata": event.metadata,
-                            "source_object_key": request.sourceObjectKey,
-                            "prepared_with_ffmpeg": preparation.used_transcode,
-                            "ffmpeg_available": preparation.ffmpeg_available,
-                        },
+                    clip_drafts.append(
+                        WindowedClipDraft(
+                            clipId=uuid4().hex,
+                            sourceStartSeconds=candidate.startTime,
+                            sourceEndSeconds=candidate.endTime,
+                            label=action.label,
+                            action=action.label,
+                            canonicalLabel=action.canonicalLabel,
+                            eventType=event.eventType,
+                            shotType=event.shotType,
+                            makeMiss=event.makeMiss,
+                            confidence=min(max(action.confidence, 0.0), 1.0),
+                            resultConfidence=min(max(event.rankScore, 0.0), 1.0),
+                            audioScore=self._score_from_profile(
+                                features.audio_energy_profile, candidate.startTime, candidate.endTime
+                            ),
+                            visualScore=self._score_from_profile(
+                                features.frame_energy_profile, candidate.startTime, candidate.endTime
+                            ),
+                            motionScore=self._score_from_profile(
+                                features.frame_energy_profile, candidate.startTime, candidate.endTime
+                            ),
+                            combinedScore=min(max(candidate.score, 0.0), 1.0),
+                            rankScore=event.rankScore,
+                            detectionMethod=action.detectionMethod,
+                            shouldAutoKeep=event.shouldAutoKeep,
+                            shouldEnableSlowMotion=event.shouldEnableSlowMotion,
+                            topLabels=action.topLabels,
+                            comparisonTopLabels=comparison.topLabels if comparison else [],
+                            metadata={
+                                "request_id": request_id,
+                                "upload_trace_id": upload_trace_id,
+                                "inference_attempt_id": inference_attempt_id,
+                                "analysis_version": request.analysisVersion,
+                                "install_id": request.installId,
+                                "source_object_key": request.sourceObjectKey,
+                                "comparison_model_version": comparison.modelVersion if comparison else None,
+                                "comparison_confidence": comparison.confidence if comparison else None,
+                                "comparison_label": comparison.label if comparison else None,
+                                "comparison_canonical_label": comparison.canonicalLabel if comparison else None,
+                                "candidate_reason": candidate.reason,
+                                "candidate_source": candidate.source,
+                                "action_failure_reason": action.failureReason,
+                                "action_metadata": action.metadata,
+                                "event_metadata": event.metadata,
+                                "source_object_key": request.sourceObjectKey,
+                                "prepared_with_ffmpeg": preparation.used_transcode,
+                                "ffmpeg_available": preparation.ffmpeg_available,
+                            },
+                        )
                     )
-                    clips.append(clip)
 
-                ranked = self.reranker.rerank(clips)
+                ranked = self.reranker.rerank(
+                    window_and_merge_clips(
+                        clip_drafts,
+                        source_duration_seconds=features.duration_seconds,
+                    )
+                )
                 result_confidence = self._aggregate_confidence(ranked)
                 summary_text = "\n".join(
                     [
