@@ -46,7 +46,11 @@ npx tsx scripts/control-plane-happy-path.ts --base-url http://127.0.0.1:8787
 
 ## Staging
 
-After the staging Worker is deployed, run the live smoke command from [`docs/staging_smoke_runbook.md`](./staging_smoke_runbook.md).
+After the staging Worker is deployed, run the live smoke command from [`docs/staging_smoke_runbook.md`](./staging_smoke_runbook.md). The live path should use a real file-backed upload, for example:
+
+```bash
+npx tsx scripts/control-plane-happy-path.ts --base-url https://<staging-worker-url> --file /tmp/hoopsclips-staging-sample.mp4 --trace-id staging-smoke-001
+```
 
 ## Automated Checks
 

@@ -68,10 +68,14 @@ npx tsx scripts/control-plane-happy-path.ts
 Live staging smoke:
 
 ```bash
-npx tsx scripts/control-plane-happy-path.ts --base-url https://api-staging.hoopsclips.example --trace-id staging-smoke-001
+npx tsx scripts/control-plane-happy-path.ts --base-url https://<staging-worker-url> --file /tmp/hoopsclips-staging-sample.mp4 --trace-id staging-smoke-001
 ```
 
-For the iOS Staging build, run the app against the same staging base URL stored in the `CONTROL_PLANE_BASE_URL` secret, then upload the same sample video and confirm the returned clips render in the UI.
+For the iOS Staging build, run the app against the same staging base URL stored in the `CONTROL_PLANE_BASE_URL` secret, then upload the same sample video and confirm the returned clips render in the UI. The live smoke should use a real MP4 file, not the in-memory harness payload.
+
+In the current deployed staging environment, the Worker URL printed by `wrangler deploy --env staging` is:
+
+`https://hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev`
 
 The script now prints a summary with `requestIds.presign`, `requestIds.finalize`, `requestIds.callback`, and `requestIds.poll` so the trace can be matched against Worker logs.
 
@@ -80,10 +84,12 @@ The script now prints a summary with `requestIds.presign`, `requestIds.finalize`
 - Confirm the presign request returns `201` and includes `requestId`.
 - Confirm the upload lands in `R2_UPLOADS` under the returned source key.
 - Confirm `POST /jobs` returns `queued`.
+- Confirm the staging Worker URL in `CONTROL_PLANE_BASE_URL` is not localhost.
 - Confirm the queue dispatch appears in Worker logs with the same `requestId`.
 - Confirm the stub inference callback completes successfully.
 - Confirm `GET /jobs/:id` reaches `completed`.
 - Confirm the app renders the returned clips.
+- Confirm the live smoke command includes `--file` so the upload is backed by a real sample video.
 - Confirm the final JSON summary includes `modelVersion`, `confidence`, and `clipCount`.
 
 ## Rollback Checklist

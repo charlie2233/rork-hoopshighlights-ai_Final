@@ -74,7 +74,7 @@ For the exact local/staging variable mapping and Wrangler secret commands, see [
 
 1. Create or verify the Cloudflare resources with [`docs/staging_smoke_runbook.md`](../../docs/staging_smoke_runbook.md).
 2. Run `npx wrangler deploy --env staging` from `services/control-plane`.
-3. Use the printed staging Worker URL with `npx tsx scripts/control-plane-happy-path.ts --base-url https://<staging-worker-url> --shared-secret "$CONTROL_PLANE_SHARED_SECRET"`.
+3. Use the printed staging Worker URL with a real sample MP4 file, for example `npx tsx scripts/control-plane-happy-path.ts --base-url https://<staging-worker-url> --file /tmp/hoopsclips-staging-sample.mp4 --trace-id staging-smoke-001`.
 
 ## Migration notes
 
