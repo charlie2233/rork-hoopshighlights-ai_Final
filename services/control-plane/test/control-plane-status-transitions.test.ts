@@ -95,7 +95,7 @@ test("control plane happy path advances upload_pending -> uploaded -> queued -> 
   }>(finalResponse);
 
   assert.equal(finalJson.status, "completed");
-  assert.match(finalJson.modelVersion ?? "", /^external:/);
+  assert.equal(finalJson.modelVersion, "videomae:MCG-NJU/videomae-base-finetuned-kinetics");
   assert.equal(finalJson.failureReason, null);
   assert.equal(typeof finalJson.uploadTraceId, "string");
   assert.equal(typeof finalJson.inferenceAttemptId, "string");

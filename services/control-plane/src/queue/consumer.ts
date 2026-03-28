@@ -6,6 +6,8 @@ import { appendJobEvent } from "../db";
 import { createPresignedReadTarget } from "../r2/presign";
 import { resolveRuntimeConfig } from "../env";
 
+const DEFAULT_INFERENCE_MODEL_VERSION = "videomae:MCG-NJU/videomae-base-finetuned-kinetics";
+
 export async function handleQueueBatch(batch: MessageBatch<QueueJobMessage>, env: Env): Promise<void> {
   for (const message of batch.messages) {
     if (message.body.kind !== "process-job") {
@@ -31,7 +33,8 @@ export async function handleQueueBatch(batch: MessageBatch<QueueJobMessage>, env
 
       inferenceAttemptId = currentJob.inferenceAttemptId ?? crypto.randomUUID().replace(/-/g, "");
       const startedAt = new Date().toISOString();
-      const modelVersion = currentJob.modelVersion ?? message.body.modelVersion ?? `external:${resolveInferenceServiceName(env)}`;
+      const modelVersion =
+        currentJob.modelVersion ?? message.body.modelVersion ?? DEFAULT_INFERENCE_MODEL_VERSION;
 
       const processingJob = await updateJobState(
         env,
@@ -130,7 +133,7 @@ export async function handleQueueBatch(batch: MessageBatch<QueueJobMessage>, env
             stage: "External inference dispatch failed",
             progress: Math.max(currentJob.progress, 0.5),
             failureReason,
-            modelVersion: currentJob.modelVersion ?? message.body.modelVersion ?? null,
+            modelVersion: currentJob.modelVersion ?? message.body.modelVersion ?? DEFAULT_INFERENCE_MODEL_VERSION,
             updatedAt: failedAt
           },
           {
@@ -144,7 +147,8 @@ export async function handleQueueBatch(batch: MessageBatch<QueueJobMessage>, env
               traceId: message.body.traceId || currentJob.traceId,
               uploadTraceId: currentJob.uploadTraceId ?? message.body.uploadTraceId ?? null,
               inferenceAttemptId,
-              modelVersion: currentJob.modelVersion ?? message.body.modelVersion ?? null
+              modelVersion:
+                currentJob.modelVersion ?? message.body.modelVersion ?? DEFAULT_INFERENCE_MODEL_VERSION
             }
           }
         );
@@ -161,7 +165,8 @@ export async function handleQueueBatch(batch: MessageBatch<QueueJobMessage>, env
             traceId: message.body.traceId || currentJob.traceId,
             uploadTraceId: currentJob.uploadTraceId ?? message.body.uploadTraceId ?? null,
             inferenceAttemptId,
-            modelVersion: currentJob.modelVersion ?? message.body.modelVersion ?? null
+            modelVersion:
+              currentJob.modelVersion ?? message.body.modelVersion ?? DEFAULT_INFERENCE_MODEL_VERSION
           },
           createdAt: new Date().toISOString()
         });
@@ -174,7 +179,8 @@ export async function handleQueueBatch(batch: MessageBatch<QueueJobMessage>, env
           schemaVersion: message.body.schemaVersion,
           sourceObjectKey: message.body.sourceObjectKey,
           resultObjectKey: message.body.resultObjectKey,
-          modelVersion: currentJob.modelVersion ?? message.body.modelVersion ?? null,
+          modelVersion:
+            currentJob.modelVersion ?? message.body.modelVersion ?? DEFAULT_INFERENCE_MODEL_VERSION,
           failureReason,
           attempts: null
         }).catch((dlqError) => {
@@ -220,7 +226,7 @@ async function buildInferenceDispatchRequest(
     bucketName: env.R2_UPLOAD_BUCKET_NAME
   });
 
-  const modelVersion = job.modelVersion ?? message.modelVersion ?? `external:${resolveInferenceServiceName(env)}`;
+  const modelVersion = job.modelVersion ?? message.modelVersion ?? DEFAULT_INFERENCE_MODEL_VERSION;
   const body: InferenceDispatchRequest = {
     jobId: job.jobId,
     requestId: message.requestId,
@@ -237,7 +243,7 @@ async function buildInferenceDispatchRequest(
     installId: job.installId,
     appVersion: job.appVersion,
     analysisVersion: job.analysisVersion,
-    requestedModel: job.modelVersion ?? message.modelVersion ?? null
+    requestedModel: modelVersion.startsWith("xclip:") ? "xclip" : "videomae"
   };
 
   return {
@@ -270,12 +276,4 @@ async function sendDeadLetterRecord(
   }
 ): Promise<void> {
   await env.ANALYSIS_DLQ.send(payload);
-}
-
-function resolveInferenceServiceName(env: Env): string {
-  try {
-    return new URL(env.INFERENCE_BASE_URL).hostname || "service";
-  } catch {
-    return "service";
-  }
 }
