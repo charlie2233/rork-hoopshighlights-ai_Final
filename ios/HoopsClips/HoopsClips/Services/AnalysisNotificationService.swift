@@ -15,6 +15,7 @@ final class AnalysisNotificationService: NSObject {
     }
 
     func prepareForAnalysis() async {
+        guard !LaunchAutomation.isEnabled else { return }
         let center = UNUserNotificationCenter.current()
         let settings = await center.notificationSettings()
 
