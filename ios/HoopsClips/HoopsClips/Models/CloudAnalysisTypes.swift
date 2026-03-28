@@ -136,6 +136,20 @@ nonisolated struct CloudAnalysisResult: Codable, Sendable {
     var failureReason: String? = nil
 }
 
+nonisolated struct CloudLabelScore: Codable, Sendable {
+    let label: String
+    let confidence: Double
+    var rawLabel: String? = nil
+    var modelVersion: String? = nil
+}
+
+nonisolated struct CloudRawLabelScore: Codable, Sendable {
+    let rawLabel: String
+    let confidence: Double
+    var canonicalLabel: String? = nil
+    var modelVersion: String? = nil
+}
+
 nonisolated struct CloudClip: Codable, Sendable {
     let clipId: String?
     let startTime: Double
@@ -143,18 +157,30 @@ nonisolated struct CloudClip: Codable, Sendable {
     let confidence: Double
     let label: String
     let action: String
+    var canonicalLabel: String? = nil
+    var eventFamily: String? = nil
+    var eventSubtype: String? = nil
+    var shotSubtype: String? = nil
+    var outcome: String? = nil
     let audioScore: Double
     let visualScore: Double
     let motionScore: Double
     let combinedScore: Double
+    var confidenceBeforeMapping: Double? = nil
+    var confidenceAfterMapping: Double? = nil
     let detectionMethod: String
     let shouldAutoKeep: Bool
     let shouldEnableSlowMotion: Bool
+    var isUncertain: Bool? = nil
     var eventType: String? = nil
     var shotType: String? = nil
     var makeMiss: String? = nil
     var rankScore: Double? = nil
     var reviewStatus: String? = nil
+    var topLabels: [CloudLabelScore]? = nil
+    var comparisonTopLabels: [CloudLabelScore]? = nil
+    var rawTopLabels: [CloudRawLabelScore]? = nil
+    var comparisonRawTopLabels: [CloudRawLabelScore]? = nil
 
     func makeClip() -> Clip {
         let resolvedAction = HighlightAction(rawValue: action)

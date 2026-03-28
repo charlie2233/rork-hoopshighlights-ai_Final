@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any, Iterable, Sequence
 
 from .labels import aggregate_label_scores
-from .models import LabelScore, RankedClip
+from .models import LabelScore, RankedClip, RawLabelScore
 
 
 WINDOW_POLICY_VERSION = "basketball-windowing-v1"
@@ -41,11 +41,18 @@ class WindowedClipDraft:
     label: str
     action: str
     canonicalLabel: str | None = None
+    eventFamily: str | None = None
+    eventSubtype: str | None = None
+    shotSubtype: str | None = None
+    outcome: str | None = None
     eventType: str = "play"
     shotType: str = "unknown"
     makeMiss: str = "unknown"
     confidence: float = 0.0
     resultConfidence: float = 0.0
+    confidenceBeforeMapping: float | None = None
+    confidenceAfterMapping: float | None = None
+    isUncertain: bool = False
     audioScore: float = 0.0
     visualScore: float = 0.0
     motionScore: float = 0.0
@@ -56,6 +63,8 @@ class WindowedClipDraft:
     shouldEnableSlowMotion: bool = False
     topLabels: list[LabelScore] = field(default_factory=list)
     comparisonTopLabels: list[LabelScore] = field(default_factory=list)
+    rawTopLabels: list[RawLabelScore] = field(default_factory=list)
+    comparisonRawTopLabels: list[RawLabelScore] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -129,9 +138,16 @@ class BasketballClipWindower:
             label=draft.label,
             action=draft.action,
             canonicalLabel=draft.canonicalLabel,
+            eventFamily=draft.eventFamily,
+            eventSubtype=draft.eventSubtype,
+            shotSubtype=draft.shotSubtype,
+            outcome=draft.outcome,
             eventType=draft.eventType,
             shotType=draft.shotType,
             makeMiss=draft.makeMiss,
+            confidenceBeforeMapping=draft.confidenceBeforeMapping,
+            confidenceAfterMapping=draft.confidenceAfterMapping,
+            isUncertain=draft.isUncertain,
             audioScore=min(max(draft.audioScore, 0.0), 1.0),
             visualScore=min(max(draft.visualScore, 0.0), 1.0),
             motionScore=min(max(draft.motionScore, 0.0), 1.0),
@@ -142,6 +158,8 @@ class BasketballClipWindower:
             shouldEnableSlowMotion=draft.shouldEnableSlowMotion,
             topLabels=list(draft.topLabels),
             comparisonTopLabels=list(draft.comparisonTopLabels),
+            rawTopLabels=list(draft.rawTopLabels),
+            comparisonRawTopLabels=list(draft.comparisonRawTopLabels),
             metadata={
                 **dict(draft.metadata or {}),
                 "event_center_seconds": round(event_center, 3),
@@ -287,6 +305,8 @@ class BasketballClipWindower:
 
         top_labels = aggregate_label_scores(list(left.topLabels) + list(right.topLabels))
         comparison_top_labels = aggregate_label_scores(list(left.comparisonTopLabels) + list(right.comparisonTopLabels))
+        raw_top_labels = _dedupe_raw_scores(list(left.rawTopLabels) + list(right.rawTopLabels))
+        comparison_raw_top_labels = _dedupe_raw_scores(list(left.comparisonRawTopLabels) + list(right.comparisonRawTopLabels))
 
         return primary.model_copy(
             update={
@@ -299,6 +319,13 @@ class BasketballClipWindower:
                 "windowPolicyVersion": self.window_policy_version,
                 "wasMerged": True,
                 "sourceEventCount": source_event_count,
+                "eventFamily": primary.eventFamily,
+                "eventSubtype": primary.eventSubtype,
+                "shotSubtype": primary.shotSubtype,
+                "outcome": primary.outcome,
+                "confidenceBeforeMapping": max(left.confidenceBeforeMapping or 0.0, right.confidenceBeforeMapping or 0.0),
+                "confidenceAfterMapping": max(left.confidenceAfterMapping or 0.0, right.confidenceAfterMapping or 0.0),
+                "isUncertain": left.isUncertain or right.isUncertain,
                 "confidence": max(left.confidence, right.confidence),
                 "resultConfidence": max(left.resultConfidence, right.resultConfidence),
                 "rankScore": max(left.rankScore, right.rankScore),
@@ -310,6 +337,8 @@ class BasketballClipWindower:
                 "shouldEnableSlowMotion": left.shouldEnableSlowMotion or right.shouldEnableSlowMotion,
                 "topLabels": top_labels,
                 "comparisonTopLabels": comparison_top_labels,
+                "rawTopLabels": raw_top_labels,
+                "comparisonRawTopLabels": comparison_raw_top_labels,
                 "metadata": {
                     **dict(primary.metadata or {}),
                     "merged_event_labels": self._collect_labels((left, right)),
@@ -390,3 +419,13 @@ class BasketballClipWindower:
 
 def window_and_merge_clips(clips: Sequence[WindowedClipDraft], *, source_duration_seconds: float) -> list[RankedClip]:
     return BasketballClipWindower().apply(clips, source_duration_seconds)
+
+
+def _dedupe_raw_scores(scores: Sequence[RawLabelScore]) -> list[RawLabelScore]:
+    best_by_key: dict[tuple[str, str | None], RawLabelScore] = {}
+    for score in scores:
+        key = (score.rawLabel, score.modelVersion)
+        current = best_by_key.get(key)
+        if current is None or score.confidence > current.confidence:
+            best_by_key[key] = score
+    return sorted(best_by_key.values(), key=lambda item: item.confidence, reverse=True)

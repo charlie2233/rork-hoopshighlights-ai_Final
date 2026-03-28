@@ -75,25 +75,51 @@ export interface CreateCloudJobRequest {
   resultObjectKey?: string;
 }
 
+export interface CloudLabelScore {
+  label: string;
+  confidence: number;
+  rawLabel?: string | null;
+  modelVersion?: string | null;
+}
+
+export interface CloudRawLabelScore {
+  rawLabel: string;
+  confidence: number;
+  canonicalLabel?: string | null;
+  modelVersion?: string | null;
+}
+
 export interface CloudClip {
   startTime: number;
   endTime: number;
   confidence: number;
   label: string;
   action: string;
+  canonicalLabel?: string | null;
+  eventFamily?: string | null;
+  eventSubtype?: string | null;
+  shotSubtype?: string | null;
+  outcome?: "made" | "missed" | "blocked" | "uncertain" | null;
   audioScore: number;
   visualScore: number;
   motionScore: number;
   combinedScore: number;
+  confidenceBeforeMapping?: number | null;
+  confidenceAfterMapping?: number | null;
   detectionMethod: "cloud" | "ml" | "heuristic";
   shouldAutoKeep: boolean;
   shouldEnableSlowMotion: boolean;
+  isUncertain?: boolean | null;
   eventType?: string | null;
   shotType?: string | null;
   makeMiss?: "make" | "miss" | "unknown" | null;
   rankScore?: number | null;
   reviewState?: string | null;
   reviewerNotes?: string | null;
+  topLabels?: CloudLabelScore[] | null;
+  comparisonTopLabels?: CloudLabelScore[] | null;
+  rawTopLabels?: CloudRawLabelScore[] | null;
+  comparisonRawTopLabels?: CloudRawLabelScore[] | null;
 }
 
 export interface CloudDiagnostics {

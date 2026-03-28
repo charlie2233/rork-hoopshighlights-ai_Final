@@ -75,31 +75,31 @@ class HeuristicCandidateProposer(CandidateProposer):
 class HeuristicEventInferencer(EventInferencer):
     def infer(self, candidate: CandidateWindow, action: ActionPrediction, features: VideoFeatures) -> EventPrediction:
         label = (action.canonicalLabel or action.label).lower()
-        if "dunk" in label:
-            event_type, shot_type, make_miss = "finish_at_rim", "dunk", "made"
-        elif "layup" in label:
-            event_type, shot_type, make_miss = "finish_at_rim", "layup", "made"
-        elif "jumper" in label or "three" in label or "shot" in label:
-            event_type, shot_type, make_miss = "perimeter_shot", "jumper", "made"
-        elif "block" in label:
-            event_type, shot_type, make_miss = "defensive_play", "block", "n/a"
-        elif "steal" in label:
-            event_type, shot_type, make_miss = "defensive_play", "steal", "n/a"
-        elif "fast break" in label:
-            event_type, shot_type, make_miss = "transition_play", "fast_break", "made"
-        elif "miss" in label:
-            event_type, shot_type, make_miss = "scoring_play", "jumper", "miss"
-        else:
-            event_type, shot_type, make_miss = "scoring_play", "jumper", "made"
+        event_family = action.eventFamily or "other"
+        event_subtype = action.eventSubtype
+        shot_subtype = action.shotSubtype
+        outcome = action.outcome or "uncertain"
+        event_type = event_family
+        shot_type = shot_subtype or event_subtype or "unknown"
+        make_miss = "make" if outcome == "made" else "miss" if outcome == "missed" else "unknown"
 
-        rank_score = min(max((candidate.score * 0.45) + (action.confidence * 0.55), 0.0), 1.0)
+        confidence_before_mapping = min(max(action.confidenceBeforeMapping or action.confidence, 0.0), 1.0)
+        confidence_after_mapping = min(max(action.confidenceAfterMapping or action.confidence, 0.0), 1.0)
+        rank_score = min(max((candidate.score * 0.45) + (confidence_after_mapping * 0.55), 0.0), 1.0)
         should_enable_slow_motion = "dunk" in label
         return EventPrediction(
+            eventFamily=event_family,
+            eventSubtype=event_subtype,
+            shotSubtype=shot_subtype,
+            outcome=outcome,
             eventType=event_type,
             shotType=shot_type,
             makeMiss=make_miss,
-            confidence=min(max(action.confidence, 0.0), 1.0),
+            confidence=confidence_after_mapping,
+            confidenceBeforeMapping=confidence_before_mapping,
+            confidenceAfterMapping=confidence_after_mapping,
             rankScore=rank_score,
+            isUncertain=action.isUncertain or outcome == "uncertain",
             shouldAutoKeep=rank_score >= 0.55,
             shouldEnableSlowMotion=should_enable_slow_motion,
             metadata={
@@ -107,6 +107,10 @@ class HeuristicEventInferencer(EventInferencer):
                 "candidate_source": candidate.source,
                 "action_label": action.label,
                 "canonical_action_label": action.canonicalLabel or action.label,
+                "event_family": event_family,
+                "event_subtype": event_subtype,
+                "shot_subtype": shot_subtype,
+                "outcome": outcome,
             },
         )
 

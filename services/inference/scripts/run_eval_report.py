@@ -6,41 +6,65 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 from statistics import median
-from typing import Any
+from typing import Any, Iterable
 
 
 CANONICAL_LABELS = [
     "dunk",
     "layup",
     "jumper",
+    "three",
+    "putback",
     "block",
     "steal",
     "fast break",
     "miss",
 ]
 
+EVENT_FAMILIES = ["shot", "turnover", "defensive_event", "transition", "other"]
+SHOT_SUBTYPES = ["dunk", "layup", "jumper", "three", "putback", "unknown"]
+OUTCOMES = ["made", "missed", "blocked", "uncertain"]
+
 LABEL_SYNONYMS = {
-    "three pointer": "jumper",
-    "three-pointer": "jumper",
-    "3 pointer": "jumper",
-    "3-pointer": "jumper",
+    "three pointer": "three",
+    "three-pointer": "three",
+    "3 pointer": "three",
+    "3-pointer": "three",
     "midrange jumper": "jumper",
     "mid-range jumper": "jumper",
     "shot": "jumper",
-    "fastbreak": "fast break",
-    "fast-break": "fast break",
     "made shot": "jumper",
     "made": "jumper",
+    "fastbreak": "fast break",
+    "fast-break": "fast break",
+    "highlight": "miss",
 }
 
-LABEL_PRIORITY_ORDER = {
-    "jumper": 0,
-    "miss": 1,
-    "layup": 2,
-    "fast break": 3,
-    "steal": 4,
-    "block": 5,
-    "dunk": 6,
+EVENT_FAMILY_SYNONYMS = {
+    "defense": "defensive_event",
+    "defensive": "defensive_event",
+    "shot": "shot",
+    "turnover": "turnover",
+    "transition": "transition",
+    "other": "other",
+}
+
+SHOT_SUBTYPE_SYNONYMS = {
+    "fast_break": "unknown",
+    "fast break": "unknown",
+    "unknown": "unknown",
+}
+
+OUTCOME_SYNONYMS = {
+    "make": "made",
+    "made": "made",
+    "miss": "missed",
+    "missed": "missed",
+    "blocked": "blocked",
+    "block": "blocked",
+    "unknown": "uncertain",
+    "n/a": "uncertain",
+    "uncertain": "uncertain",
 }
 
 CLIP_MIN_DURATION_SECONDS = 3.5
@@ -50,6 +74,9 @@ CLIP_MIN_DURATION_SECONDS = 3.5
 class EvaluationRow:
     clip_id: str
     expected_label: str
+    expected_event_family: str
+    expected_shot_subtype: str
+    expected_outcome: str
     source_ref: str
     notes: str = ""
     split: str = "train"
@@ -62,6 +89,12 @@ class PredictionRow:
     label: str
     confidence: float
     top_k_labels: list[str]
+    event_family: str
+    shot_subtype: str
+    outcome: str
+    top_k_event_families: list[str]
+    top_k_shot_subtypes: list[str]
+    top_k_outcomes: list[str]
     clip_duration_seconds: float | None = None
     event_center_seconds: float | None = None
     pre_roll_seconds: float | None = None
@@ -106,6 +139,9 @@ def load_eval_rows(path: Path) -> list[EvaluationRow]:
             EvaluationRow(
                 clip_id=str(item["clipId"]),
                 expected_label=normalize_label(str(item["expectedLabel"])),
+                expected_event_family=normalize_event_family(item.get("expectedEventFamily") or item.get("expectedEventType")),
+                expected_shot_subtype=normalize_shot_subtype(item.get("expectedShotSubtype") or item.get("expectedShotType")),
+                expected_outcome=normalize_outcome(item.get("expectedOutcome") or item.get("expectedMakeMiss")),
                 source_ref=str(item.get("sourceRef", "")),
                 notes=str(item.get("notes", "")),
                 split=str(item.get("split", "train")),
@@ -120,12 +156,41 @@ def load_predictions(path: Path) -> dict[str, PredictionRow]:
     result: dict[str, PredictionRow] = {}
     for item in payload:
         clip_id = str(item["clipId"])
-        top_k = [normalize_label(str(label)) for label in item.get("topKLabels", [])]
+        label = normalize_label(str(item["label"]))
+        top_k_labels = unique_in_order(normalize_label(str(value)) for value in item.get("topKLabels", []))
+        event_family = normalize_event_family(item.get("eventFamily"))
+        shot_subtype = normalize_shot_subtype(item.get("shotSubtype"))
+        outcome = normalize_outcome(item.get("outcome"))
+        if not event_family or not shot_subtype or not outcome:
+            fallback_family, fallback_subtype, fallback_outcome = taxonomy_for_label(label)
+            event_family = event_family or fallback_family
+            shot_subtype = shot_subtype or fallback_subtype
+            outcome = outcome or fallback_outcome
+
+        if item.get("topKEventFamilies"):
+            top_k_event_families = unique_in_order(normalize_event_family(value) for value in item["topKEventFamilies"])
+        else:
+            top_k_event_families = unique_in_order(taxonomy_for_label(value)[0] for value in top_k_labels)
+        if item.get("topKShotSubtypes"):
+            top_k_shot_subtypes = unique_in_order(normalize_shot_subtype(value) for value in item["topKShotSubtypes"])
+        else:
+            top_k_shot_subtypes = unique_in_order(taxonomy_for_label(value)[1] for value in top_k_labels)
+        if item.get("topKOutcomes"):
+            top_k_outcomes = unique_in_order(normalize_outcome(value) for value in item["topKOutcomes"])
+        else:
+            top_k_outcomes = unique_in_order(taxonomy_for_label(value)[2] for value in top_k_labels)
+
         result[clip_id] = PredictionRow(
             clip_id=clip_id,
-            label=normalize_label(str(item["label"])),
+            label=label,
             confidence=float(item.get("confidence", 0.0)),
-            top_k_labels=top_k,
+            top_k_labels=top_k_labels,
+            event_family=event_family,
+            shot_subtype=shot_subtype,
+            outcome=outcome,
+            top_k_event_families=top_k_event_families,
+            top_k_shot_subtypes=top_k_shot_subtypes,
+            top_k_outcomes=top_k_outcomes,
             clip_duration_seconds=to_optional_float(item.get("clipDurationSeconds")),
             event_center_seconds=to_optional_float(item.get("eventCenterSeconds")),
             pre_roll_seconds=to_optional_float(item.get("preRollSeconds")),
@@ -138,168 +203,109 @@ def load_predictions(path: Path) -> dict[str, PredictionRow]:
 
 
 def build_report(eval_rows: list[EvaluationRow], predictions: dict[str, PredictionRow]) -> dict[str, Any]:
-    class_stats = {
-        label: {
-            "support": 0,
-            "correct": 0,
-            "predicted": 0,
-            "topKHit": 0,
-        }
-        for label in CANONICAL_LABELS
-    }
-    confusion = Counter()
-    failure_examples: list[dict[str, Any]] = []
-    unknown_prediction_labels: Counter[str] = Counter()
-    duration_samples: list[float] = []
-    duration_by_label: dict[str, list[float]] = defaultdict(list)
-    merged_by_label: Counter[str] = Counter()
-    below_minimum_count = 0
-    source_shorter_than_minimum_count = 0
-    merged_clip_count = 0
-
-    total = 0
-    correct = 0
-    top_k_hits = 0
-
-    for row in eval_rows:
-        prediction = predictions.get(row.clip_id)
-        total += 1
-        class_stats[row.expected_label]["support"] += 1
-
-        if prediction is None:
-            confusion[(row.expected_label, "missing")] += 1
-            failure_examples.append(
-                {
-                    "clipId": row.clip_id,
-                    "expectedLabel": row.expected_label,
-                    "predictedLabel": None,
-                    "confidence": 0.0,
-                    "reason": "missing_prediction",
-                    "sourceRef": row.source_ref,
-                }
-            )
-            continue
-
-        if prediction.clip_duration_seconds is not None:
-            duration_samples.append(prediction.clip_duration_seconds)
-            duration_by_label[prediction.label].append(prediction.clip_duration_seconds)
-            if prediction.clip_duration_seconds < CLIP_MIN_DURATION_SECONDS:
-                if row.source_duration_seconds is not None and row.source_duration_seconds < CLIP_MIN_DURATION_SECONDS:
-                    source_shorter_than_minimum_count += 1
-                else:
-                    below_minimum_count += 1
-        if prediction.was_merged:
-            merged_clip_count += 1
-            merged_by_label[prediction.label] += 1
-
-        class_stats.setdefault(
-            prediction.label,
-            {
-                "support": 0,
-                "correct": 0,
-                "predicted": 0,
-                "topKHit": 0,
-            },
-        )
-        class_stats[prediction.label]["predicted"] += 1
-        if prediction.label not in CANONICAL_LABELS:
-            unknown_prediction_labels[prediction.label] += 1
-        if prediction.label == row.expected_label:
-            correct += 1
-            class_stats[row.expected_label]["correct"] += 1
-        else:
-            confusion[(row.expected_label, prediction.label)] += 1
-            failure_examples.append(
-                {
-                    "clipId": row.clip_id,
-                    "expectedLabel": row.expected_label,
-                    "predictedLabel": prediction.label,
-                    "confidence": prediction.confidence,
-                    "reason": "label_mismatch",
-                    "sourceRef": row.source_ref,
-                }
-            )
-
-        if row.expected_label in prediction.top_k_labels:
-            top_k_hits += 1
-            class_stats[row.expected_label]["topKHit"] += 1
-
-    per_class: dict[str, dict[str, float | int]] = {}
-    for label in CANONICAL_LABELS:
-        stats = class_stats[label]
-        support = stats["support"]
-        correct_count = stats["correct"]
-        predicted_count = stats["predicted"]
-        top_k_hit_count = stats["topKHit"]
-        precision = (correct_count / predicted_count) if predicted_count else 0.0
-        recall = (correct_count / support) if support else 0.0
-        per_class[label] = {
-            "support": support,
-            "correct": correct_count,
-            "predicted": predicted_count,
-            "accuracy": recall,
-            "precision": round(precision, 4),
-            "recall": round(recall, 4),
-            "topKHitRate": round(top_k_hit_count / support if support else 0.0, 4),
-        }
-
-    confusion_rows = [
-        {
-            "expectedLabel": expected,
-            "predictedLabel": predicted,
-            "count": count,
-        }
-        for (expected, predicted), count in confusion.most_common()
-    ]
-
-    low_recall_labels = sorted(
-        [
-            (label, stats["recall"], stats["support"])
-            for label, stats in per_class.items()
-        ],
-        key=lambda item: (
-            item[1],
-            -item[2],
-            LABEL_PRIORITY_ORDER.get(item[0], len(LABEL_PRIORITY_ORDER)),
-            item[0],
-        ),
+    label_report = build_dimension_report(
+        name="label",
+        eval_rows=eval_rows,
+        predictions=predictions,
+        classes=CANONICAL_LABELS,
+        actual_getter=lambda row: row.expected_label,
+        predicted_getter=lambda prediction: prediction.label,
+        top_k_getter=lambda prediction: prediction.top_k_labels,
     )
-    labeling_priorities = []
-    for label, recall, support in low_recall_labels:
-        if support == 0:
-            continue
-        labeling_priorities.append(
-            {
-                "label": label,
-                "recall": recall,
-                "support": support,
-                "priorityReason": "low_recall" if recall < 0.85 else "monitor",
-            }
-        )
+    family_report = build_dimension_report(
+        name="eventFamily",
+        eval_rows=eval_rows,
+        predictions=predictions,
+        classes=EVENT_FAMILIES,
+        actual_getter=lambda row: row.expected_event_family,
+        predicted_getter=lambda prediction: prediction.event_family,
+        top_k_getter=lambda prediction: prediction.top_k_event_families,
+    )
+    subtype_report = build_dimension_report(
+        name="shotSubtype",
+        eval_rows=eval_rows,
+        predictions=predictions,
+        classes=SHOT_SUBTYPES,
+        actual_getter=lambda row: row.expected_shot_subtype,
+        predicted_getter=lambda prediction: prediction.shot_subtype,
+        top_k_getter=lambda prediction: prediction.top_k_shot_subtypes,
+    )
+    outcome_report = build_dimension_report(
+        name="outcome",
+        eval_rows=eval_rows,
+        predictions=predictions,
+        classes=OUTCOMES,
+        actual_getter=lambda row: row.expected_outcome,
+        predicted_getter=lambda prediction: prediction.outcome,
+        top_k_getter=lambda prediction: prediction.top_k_outcomes,
+    )
 
-    report = {
+    failure_examples = build_failure_examples(eval_rows, predictions)
+    duration_summary, per_label_distribution = build_duration_sections(eval_rows, predictions)
+    labeling_priorities = build_labeling_priorities(label_report["perClass"], label_report["confusions"])
+
+    return {
         "summary": {
-            "totalClips": total,
-            "accuracy": round(correct / total if total else 0.0, 4),
-            "topKHitRate": round(top_k_hits / total if total else 0.0, 4),
-            "missingPredictions": sum(1 for example in failure_examples if example["reason"] == "missing_prediction"),
-            "clipDurationStats": build_duration_summary(
-                duration_samples,
-                below_minimum_count=below_minimum_count,
-                source_shorter_than_minimum_count=source_shorter_than_minimum_count,
-                merged_clip_count=merged_clip_count,
-            ),
+            "totalClips": label_report["summary"]["total"],
+            "accuracy": label_report["summary"]["accuracy"],
+            "topKHitRate": label_report["summary"]["topKHitRate"],
+            "missingPredictions": label_report["summary"]["missingPredictions"],
+            "eventFamilyAccuracy": family_report["summary"]["accuracy"],
+            "eventFamilyTopKHitRate": family_report["summary"]["topKHitRate"],
+            "shotSubtypeAccuracy": subtype_report["summary"]["accuracy"],
+            "shotSubtypeTopKHitRate": subtype_report["summary"]["topKHitRate"],
+            "outcomeAccuracy": outcome_report["summary"]["accuracy"],
+            "outcomeTopKHitRate": outcome_report["summary"]["topKHitRate"],
+            "clipDurationStats": duration_summary,
         },
-        "perClass": per_class,
-        "perLabelDurationDistribution": {
-            label: build_duration_distribution(values, merged_by_label.get(label, 0))
-            for label, values in sorted(duration_by_label.items(), key=lambda item: item[0])
+        "perClass": label_report["perClass"],
+        "taxonomyMetrics": {
+            "eventFamily": {
+                "summary": {
+                    "totalClips": family_report["summary"]["total"],
+                    "top1Accuracy": family_report["summary"]["accuracy"],
+                    "topKHitRate": family_report["summary"]["topKHitRate"],
+                    "missingPredictions": family_report["summary"]["missingPredictions"],
+                },
+                "perClass": family_report["perClass"],
+                "confusionMatrix": family_report["confusions"],
+            },
+            "shotSubtype": {
+                "summary": {
+                    "totalClips": subtype_report["summary"]["total"],
+                    "top1Accuracy": subtype_report["summary"]["accuracy"],
+                    "topKHitRate": subtype_report["summary"]["topKHitRate"],
+                    "missingPredictions": subtype_report["summary"]["missingPredictions"],
+                },
+                "perClass": subtype_report["perClass"],
+                "confusionMatrix": subtype_report["confusions"],
+            },
+            "outcome": {
+                "summary": {
+                    "totalClips": outcome_report["summary"]["total"],
+                    "top1Accuracy": outcome_report["summary"]["accuracy"],
+                    "topKHitRate": outcome_report["summary"]["topKHitRate"],
+                    "missingPredictions": outcome_report["summary"]["missingPredictions"],
+                },
+                "perClass": outcome_report["perClass"],
+                "confusionMatrix": outcome_report["confusions"],
+            },
         },
-        "confusions": confusion_rows,
-        "failureExamples": sorted(
-            failure_examples,
-            key=lambda item: (item["confidence"], item["clipId"]),
-        )[:8],
+        "eventFamilyMetrics": family_report["perClass"],
+        "shotSubtypeMetrics": subtype_report["perClass"],
+        "outcomeMetrics": outcome_report["perClass"],
+        "perLabelDurationDistribution": per_label_distribution,
+        "confusionMatrices": {
+            "displayLabel": label_report["confusions"],
+            "eventFamily": family_report["confusions"],
+            "shotSubtype": subtype_report["confusions"],
+            "outcome": outcome_report["confusions"],
+        },
+        "confusions": label_report["confusions"],
+        "eventFamilyConfusions": family_report["confusions"],
+        "shotSubtypeConfusions": subtype_report["confusions"],
+        "outcomeConfusions": outcome_report["confusions"],
+        "failureExamples": failure_examples[:8],
         "recommendedLabelingPriorities": labeling_priorities[:4],
         "manualReviewChecklist": [
             {
@@ -318,9 +324,179 @@ def build_report(eval_rows: list[EvaluationRow], predictions: dict[str, Predicti
                 "recommendedAnswer": "yes",
             },
         ],
-        "unknownPredictionLabels": dict(unknown_prediction_labels.most_common()),
     }
-    return report
+
+
+def build_dimension_report(
+    *,
+    name: str,
+    eval_rows: list[EvaluationRow],
+    predictions: dict[str, PredictionRow],
+    classes: list[str],
+    actual_getter,
+    predicted_getter,
+    top_k_getter,
+) -> dict[str, Any]:
+    stats = {
+        value: {"support": 0, "correct": 0, "predicted": 0, "topKHit": 0}
+        for value in classes
+    }
+    confusion = Counter()
+    total = 0
+    correct = 0
+    top_k_hits = 0
+    missing_predictions = 0
+
+    for row in eval_rows:
+        prediction = predictions.get(row.clip_id)
+        actual = actual_getter(row)
+        total += 1
+        stats.setdefault(actual, {"support": 0, "correct": 0, "predicted": 0, "topKHit": 0})
+        stats[actual]["support"] += 1
+
+        if prediction is None:
+            confusion[(actual, "missing")] += 1
+            missing_predictions += 1
+            continue
+
+        predicted = predicted_getter(prediction)
+        stats.setdefault(predicted, {"support": 0, "correct": 0, "predicted": 0, "topKHit": 0})
+        stats[predicted]["predicted"] += 1
+        if predicted == actual:
+            correct += 1
+            stats[actual]["correct"] += 1
+        else:
+            confusion[(actual, predicted)] += 1
+
+        top_k_values = top_k_getter(prediction)
+        if actual in top_k_values:
+            top_k_hits += 1
+            stats[actual]["topKHit"] += 1
+
+    per_class = {
+        value: {
+            "support": metrics["support"],
+            "correct": metrics["correct"],
+            "predicted": metrics["predicted"],
+            "accuracy": round(metrics["correct"] / metrics["support"], 4) if metrics["support"] else 0.0,
+            "precision": round(metrics["correct"] / metrics["predicted"], 4) if metrics["predicted"] else 0.0,
+            "recall": round(metrics["correct"] / metrics["support"], 4) if metrics["support"] else 0.0,
+            "topKHitRate": round(metrics["topKHit"] / metrics["support"], 4) if metrics["support"] else 0.0,
+        }
+        for value, metrics in stats.items()
+    }
+
+    return {
+        "name": name,
+        "summary": {
+            "total": total,
+            "accuracy": round(correct / total, 4) if total else 0.0,
+            "topKHitRate": round(top_k_hits / total, 4) if total else 0.0,
+            "missingPredictions": missing_predictions,
+        },
+        "perClass": per_class,
+        "confusions": [
+            {"expectedLabel": expected, "predictedLabel": predicted, "count": count}
+            for (expected, predicted), count in confusion.most_common()
+        ],
+    }
+
+
+def build_failure_examples(eval_rows: list[EvaluationRow], predictions: dict[str, PredictionRow]) -> list[dict[str, Any]]:
+    examples: list[dict[str, Any]] = []
+    for row in eval_rows:
+        prediction = predictions.get(row.clip_id)
+        if prediction is None:
+            examples.append(
+                {
+                    "clipId": row.clip_id,
+                    "expectedLabel": row.expected_label,
+                    "predictedLabel": None,
+                    "confidence": 0.0,
+                    "reason": "missing_prediction",
+                    "sourceRef": row.source_ref,
+                }
+            )
+            continue
+        if prediction.label != row.expected_label:
+            examples.append(
+                {
+                    "clipId": row.clip_id,
+                    "expectedLabel": row.expected_label,
+                    "predictedLabel": prediction.label,
+                    "confidence": prediction.confidence,
+                    "reason": "label_mismatch",
+                    "sourceRef": row.source_ref,
+                }
+            )
+    return sorted(examples, key=lambda item: (item["confidence"], item["clipId"]))
+
+
+def build_duration_sections(
+    eval_rows: list[EvaluationRow], predictions: dict[str, PredictionRow]
+) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
+    duration_samples: list[float] = []
+    duration_by_label: dict[str, list[float]] = defaultdict(list)
+    merged_by_label: Counter[str] = Counter()
+    below_minimum_count = 0
+    source_shorter_than_minimum_count = 0
+    merged_clip_count = 0
+
+    by_id = {row.clip_id: row for row in eval_rows}
+    for clip_id, prediction in predictions.items():
+        row = by_id.get(clip_id)
+        if prediction.clip_duration_seconds is None:
+            continue
+        duration = prediction.clip_duration_seconds
+        duration_samples.append(duration)
+        duration_by_label[prediction.label].append(duration)
+        if prediction.was_merged:
+            merged_clip_count += 1
+            merged_by_label[prediction.label] += 1
+        if duration < CLIP_MIN_DURATION_SECONDS:
+            source_duration = row.source_duration_seconds if row else None
+            if source_duration is not None and source_duration < CLIP_MIN_DURATION_SECONDS:
+                source_shorter_than_minimum_count += 1
+            else:
+                below_minimum_count += 1
+
+    summary = build_duration_summary(
+        duration_samples,
+        below_minimum_count=below_minimum_count,
+        source_shorter_than_minimum_count=source_shorter_than_minimum_count,
+        merged_clip_count=merged_clip_count,
+    )
+    distributions = {
+        label: build_duration_distribution(values, merged_by_label.get(label, 0))
+        for label, values in sorted(duration_by_label.items(), key=lambda item: item[0])
+    }
+    return summary, distributions
+
+
+def build_labeling_priorities(per_class: dict[str, dict[str, Any]], confusions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    dominant_confusions: dict[str, str] = {}
+    for item in confusions:
+        expected = item["expectedLabel"]
+        predicted = item["predictedLabel"]
+        if expected == predicted or expected in dominant_confusions:
+            continue
+        dominant_confusions[expected] = predicted
+
+    priorities = []
+    for label, stats in per_class.items():
+        support = int(stats["support"])
+        if support == 0:
+            continue
+        priorities.append(
+            {
+                "label": label,
+                "recall": stats["recall"],
+                "support": support,
+                "priorityReason": "low_recall" if stats["recall"] < 0.85 else "monitor",
+                "dominantConfusion": dominant_confusions.get(label),
+            }
+        )
+    return sorted(priorities, key=lambda item: (item["recall"], -item["support"], item["label"]))
 
 
 def render_markdown(report: dict[str, Any]) -> str:
@@ -329,8 +505,11 @@ def render_markdown(report: dict[str, Any]) -> str:
     lines.append("# Basketball Eval Report")
     lines.append("")
     lines.append(f"- Clips: {summary['totalClips']}")
-    lines.append(f"- Accuracy: {summary['accuracy']:.4f}")
-    lines.append(f"- Top-k hit rate: {summary['topKHitRate']:.4f}")
+    lines.append(f"- Label accuracy: {summary['accuracy']:.4f}")
+    lines.append(f"- Label top-k hit rate: {summary['topKHitRate']:.4f}")
+    lines.append(f"- Event family accuracy: {summary['eventFamilyAccuracy']:.4f}")
+    lines.append(f"- Shot subtype accuracy: {summary['shotSubtypeAccuracy']:.4f}")
+    lines.append(f"- Outcome accuracy: {summary['outcomeAccuracy']:.4f}")
     lines.append(f"- Missing predictions: {summary['missingPredictions']}")
     clip_stats = summary.get("clipDurationStats", {})
     if clip_stats:
@@ -345,125 +524,157 @@ def render_markdown(report: dict[str, Any]) -> str:
     lines.append("## Per Class")
     for label, stats in report["perClass"].items():
         lines.append(
-            f"- {label}: support={stats['support']}, accuracy={stats['accuracy']:.4f}, precision={stats['precision']:.4f}, recall={stats['recall']:.4f}"
+            f"- {label}: support={stats['support']}, accuracy={stats['accuracy']:.4f}, precision={stats['precision']:.4f}, recall={stats['recall']:.4f}, top-k={stats['topKHitRate']:.4f}"
         )
-    if report.get("perLabelDurationDistribution"):
-        lines.append("")
-        lines.append("## Per Label Duration Distribution")
-        for label, stats in report["perLabelDurationDistribution"].items():
-            lines.append(
-                f"- {label}: count={stats['count']}, median={stats['medianSeconds']:.2f}s, p90={stats['p90Seconds']:.2f}s, merged={stats['mergedCount']}"
-            )
     lines.append("")
-    lines.append("## Failure Examples")
-    for example in report["failureExamples"]:
+    lines.append("## Event Family")
+    for label, stats in report["eventFamilyMetrics"].items():
         lines.append(
-            f"- {example['clipId']}: expected {example['expectedLabel']}, got {example['predictedLabel'] or 'missing'} ({example['reason']})"
+            f"- {label}: support={stats['support']}, accuracy={stats['accuracy']:.4f}, top-k={stats['topKHitRate']:.4f}"
         )
-    if report.get("manualReviewChecklist"):
-        lines.append("")
-        lines.append("## Manual Review Checklist")
-        for item in report["manualReviewChecklist"]:
-            lines.append(f"- {item['check']}: {item['question']} ({item['recommendedAnswer']})")
     lines.append("")
-    lines.append("## Recommended Labeling Priorities")
-    for item in report["recommendedLabelingPriorities"]:
-        lines.append(f"- {item['label']} (recall {item['recall']:.4f}, support {item['support']})")
-    if report.get("unknownPredictionLabels"):
-        lines.append("")
-        lines.append("## Unknown Prediction Labels")
-        for label, count in report["unknownPredictionLabels"].items():
-            lines.append(f"- {label}: {count}")
+    lines.append("## Shot Subtype")
+    for label, stats in report["shotSubtypeMetrics"].items():
+        lines.append(
+            f"- {label}: support={stats['support']}, accuracy={stats['accuracy']:.4f}, top-k={stats['topKHitRate']:.4f}"
+        )
+    lines.append("")
+    lines.append("## Outcome")
+    for label, stats in report["outcomeMetrics"].items():
+        lines.append(
+            f"- {label}: support={stats['support']}, accuracy={stats['accuracy']:.4f}, top-k={stats['topKHitRate']:.4f}"
+        )
     return "\n".join(lines) + "\n"
 
 
 def build_duration_summary(
-    durations: list[float],
+    values: Iterable[float],
     *,
     below_minimum_count: int,
     source_shorter_than_minimum_count: int,
     merged_clip_count: int,
-) -> dict[str, float | int]:
-    if not durations:
+) -> dict[str, Any]:
+    samples = sorted(float(value) for value in values)
+    count = len(samples)
+    if count == 0:
         return {
-            "clipCount": 0,
-            "belowMinimumCount": 0,
+            "count": 0,
+            "belowMinimumCount": below_minimum_count,
             "belowMinimumPercentage": 0.0,
+            "sourceShorterThanMinimumCount": source_shorter_than_minimum_count,
             "medianSeconds": 0.0,
             "p90Seconds": 0.0,
             "mergedClipCount": merged_clip_count,
-            "sourceShorterThanMinimumCount": source_shorter_than_minimum_count,
         }
-
+    p90_index = max(int(round((count - 1) * 0.9)), 0)
     return {
-        "clipCount": len(durations),
+        "count": count,
         "belowMinimumCount": below_minimum_count,
-        "belowMinimumPercentage": round(below_minimum_count / len(durations), 4),
-        "medianSeconds": round(float(median(durations)), 4),
-        "p90Seconds": round(percentile(durations, 0.9), 4),
-        "mergedClipCount": merged_clip_count,
+        "belowMinimumPercentage": round(below_minimum_count / count, 4),
         "sourceShorterThanMinimumCount": source_shorter_than_minimum_count,
+        "medianSeconds": round(median(samples), 4),
+        "p90Seconds": round(samples[p90_index], 4),
+        "mergedClipCount": merged_clip_count,
     }
 
 
-def build_duration_distribution(durations: list[float], merged_count: int) -> dict[str, float | int]:
-    if not durations:
+def build_duration_distribution(values: Iterable[float], merged_count: int) -> dict[str, Any]:
+    samples = sorted(float(value) for value in values)
+    count = len(samples)
+    if count == 0:
         return {
             "count": 0,
-            "minSeconds": 0.0,
             "medianSeconds": 0.0,
             "p90Seconds": 0.0,
             "mergedCount": merged_count,
         }
-
+    p90_index = max(int(round((count - 1) * 0.9)), 0)
     return {
-        "count": len(durations),
-        "minSeconds": round(min(durations), 4),
-        "medianSeconds": round(float(median(durations)), 4),
-        "p90Seconds": round(percentile(durations, 0.9), 4),
+        "count": count,
+        "medianSeconds": round(median(samples), 4),
+        "p90Seconds": round(samples[p90_index], 4),
         "mergedCount": merged_count,
     }
 
 
-def percentile(values: list[float], fraction: float) -> float:
-    if not values:
-        return 0.0
-    if len(values) == 1:
-        return float(values[0])
+def taxonomy_for_label(label: str) -> tuple[str, str, str]:
+    normalized = normalize_label(label)
+    if normalized == "dunk":
+        return "shot", "dunk", "made"
+    if normalized == "layup":
+        return "shot", "layup", "made"
+    if normalized == "three":
+        return "shot", "three", "made"
+    if normalized == "putback":
+        return "shot", "putback", "made"
+    if normalized == "jumper":
+        return "shot", "jumper", "made"
+    if normalized == "miss":
+        return "shot", "jumper", "missed"
+    if normalized == "block":
+        return "defensive_event", "unknown", "blocked"
+    if normalized == "steal":
+        return "turnover", "unknown", "uncertain"
+    if normalized == "fast break":
+        return "transition", "unknown", "uncertain"
+    return "other", "unknown", "uncertain"
 
-    ordered = sorted(values)
-    index = (len(ordered) - 1) * fraction
-    lower_index = int(index)
-    upper_index = min(lower_index + 1, len(ordered) - 1)
-    if lower_index == upper_index:
-        return float(ordered[lower_index])
-    lower_value = ordered[lower_index]
-    upper_value = ordered[upper_index]
-    weight = index - lower_index
-    return float(lower_value + (upper_value - lower_value) * weight)
+
+def normalize_label(value: str) -> str:
+    normalized = str(value).strip().lower().replace("_", " ").replace("-", " ")
+    return LABEL_SYNONYMS.get(normalized, normalized)
+
+
+def normalize_event_family(value: Any) -> str:
+    normalized = str(value or "other").strip().lower().replace("-", "_").replace(" ", "_")
+    if normalized in {"defense", "defensive", "defensive_play", "defensive_event"}:
+        return "defensive_event"
+    if normalized in {"shot", "shots"}:
+        return "shot"
+    if normalized in {"turnover", "steal"}:
+        return "turnover"
+    if normalized in {"transition", "fast_break"}:
+        return "transition"
+    if normalized in {"other", "unknown"}:
+        return "other"
+    synonym = EVENT_FAMILY_SYNONYMS.get(normalized.replace("_", " "))
+    if synonym:
+        return synonym
+    return normalized
+
+
+def normalize_shot_subtype(value: Any) -> str:
+    normalized = str(value or "unknown").strip().lower().replace("-", "_").replace(" ", "_")
+    if normalized in {"none", "null"}:
+        return "unknown"
+    synonym = SHOT_SUBTYPE_SYNONYMS.get(normalized.replace("_", " "))
+    if synonym:
+        return synonym
+    return normalized
+
+
+def normalize_outcome(value: Any) -> str:
+    normalized = str(value or "uncertain").strip().lower().replace("-", " ")
+    return OUTCOME_SYNONYMS.get(normalized, normalized if normalized in OUTCOMES else "uncertain")
 
 
 def to_optional_float(value: Any) -> float | None:
-    if value is None or value == "":
-        return None
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
+    return float(value) if isinstance(value, (int, float)) else None
 
 
 def to_optional_int(value: Any) -> int | None:
-    if value is None or value == "":
-        return None
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return None
+    return int(value) if isinstance(value, int) else None
 
 
-def normalize_label(label: str) -> str:
-    normalized = " ".join(label.strip().lower().replace("_", " ").replace("-", " ").split())
-    return LABEL_SYNONYMS.get(normalized, normalized)
+def unique_in_order(values: Iterable[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        if value in seen or not value:
+            continue
+        seen.add(value)
+        result.append(value)
+    return result
 
 
 if __name__ == "__main__":

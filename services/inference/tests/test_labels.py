@@ -6,18 +6,22 @@ from services.inference.app.labels import (
     CanonicalLabelScore,
     CANONICAL_ACTION_LABELS,
     aggregate_label_scores,
+    aggregate_raw_label_scores,
     build_xclip_prompts,
     canonical_to_display_label,
+    derive_basketball_taxonomy,
     normalize_action_label,
 )
+from services.inference.app.models import RawLabelScore
 
 
 class LabelNormalizationTests(unittest.TestCase):
     def test_normalizes_common_video_model_labels(self) -> None:
         self.assertEqual(normalize_action_label("BasketballDunk"), "dunk")
-        self.assertEqual(normalize_action_label("three pointer"), "jumper")
+        self.assertEqual(normalize_action_label("three pointer"), "three")
         self.assertEqual(normalize_action_label("fast-break transition"), "fast break")
-        self.assertEqual(canonical_to_display_label("jumper"), "Made Shot")
+        self.assertEqual(normalize_action_label("crowd reaction"), "uncertain")
+        self.assertEqual(canonical_to_display_label("three"), "Three Pointer")
 
     def test_aggregate_label_scores_keeps_best_score_per_canonical_label(self) -> None:
         aggregated = aggregate_label_scores(
@@ -35,6 +39,52 @@ class LabelNormalizationTests(unittest.TestCase):
         prompts = build_xclip_prompts()
         self.assertEqual(len(prompts), len(CANONICAL_ACTION_LABELS))
         self.assertIn("a basketball dunk", prompts[0])
+
+    def test_aggregate_raw_label_scores_keeps_best_score_per_raw_label(self) -> None:
+        aggregated = aggregate_raw_label_scores(
+            [
+                RawLabelScore(rawLabel="jump shot", canonicalLabel="jumper", confidence=0.61, modelVersion="videomae:test"),
+                RawLabelScore(rawLabel="jump shot", canonicalLabel="jumper", confidence=0.83, modelVersion="videomae:test"),
+                RawLabelScore(rawLabel="a basketball layup", canonicalLabel="layup", confidence=0.52, modelVersion="xclip:test"),
+            ]
+        )
+
+        self.assertEqual(len(aggregated), 2)
+        self.assertEqual(aggregated[0].rawLabel, "jump shot")
+        self.assertAlmostEqual(aggregated[0].confidence, 0.83)
+
+    def test_derive_taxonomy_abstains_on_low_confidence_jumpers(self) -> None:
+        taxonomy = derive_basketball_taxonomy(
+            "jumper",
+            0.51,
+            [
+                CanonicalLabelScore(label="jumper", confidence=0.51),
+                CanonicalLabelScore(label="miss", confidence=0.46),
+            ],
+        )
+
+        self.assertEqual(taxonomy.event_family, "shot")
+        self.assertEqual(taxonomy.shot_subtype, "jumper")
+        self.assertEqual(taxonomy.outcome, "uncertain")
+        self.assertEqual(taxonomy.display_label, "Highlight")
+        self.assertTrue(taxonomy.is_uncertain)
+
+    def test_derive_taxonomy_keeps_defensive_event_diversity(self) -> None:
+        taxonomy = derive_basketball_taxonomy("block", 0.84)
+
+        self.assertEqual(taxonomy.event_family, "defensive_event")
+        self.assertEqual(taxonomy.event_subtype, "block")
+        self.assertEqual(taxonomy.outcome, "blocked")
+        self.assertEqual(taxonomy.display_label, "Block")
+
+    def test_derive_taxonomy_distinguishes_three_and_putback(self) -> None:
+        three_taxonomy = derive_basketball_taxonomy("three", 0.81)
+        putback_taxonomy = derive_basketball_taxonomy("putback", 0.78)
+
+        self.assertEqual(three_taxonomy.shot_subtype, "three")
+        self.assertEqual(three_taxonomy.display_label, "Three Pointer")
+        self.assertEqual(putback_taxonomy.shot_subtype, "putback")
+        self.assertEqual(putback_taxonomy.display_label, "Made Shot")
 
 
 if __name__ == "__main__":

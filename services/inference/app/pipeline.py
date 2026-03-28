@@ -88,11 +88,18 @@ class InferenceService:
                             label=action.label,
                             action=action.label,
                             canonicalLabel=action.canonicalLabel,
+                            eventFamily=event.eventFamily,
+                            eventSubtype=event.eventSubtype,
+                            shotSubtype=event.shotSubtype,
+                            outcome=event.outcome,
                             eventType=event.eventType,
                             shotType=event.shotType,
                             makeMiss=event.makeMiss,
                             confidence=min(max(action.confidence, 0.0), 1.0),
                             resultConfidence=min(max(event.rankScore, 0.0), 1.0),
+                            confidenceBeforeMapping=event.confidenceBeforeMapping,
+                            confidenceAfterMapping=event.confidenceAfterMapping,
+                            isUncertain=event.isUncertain,
                             audioScore=self._score_from_profile(
                                 features.audio_energy_profile, candidate.startTime, candidate.endTime
                             ),
@@ -109,6 +116,8 @@ class InferenceService:
                             shouldEnableSlowMotion=event.shouldEnableSlowMotion,
                             topLabels=action.topLabels,
                             comparisonTopLabels=comparison.topLabels if comparison else [],
+                            rawTopLabels=primary_action.rawTopLabels,
+                            comparisonRawTopLabels=comparison.rawTopLabels if comparison else [],
                             metadata={
                                 "request_id": request_id,
                                 "upload_trace_id": upload_trace_id,
@@ -120,6 +129,10 @@ class InferenceService:
                                 "comparison_confidence": comparison.confidence if comparison else None,
                                 "comparison_label": comparison.label if comparison else None,
                                 "comparison_canonical_label": comparison.canonicalLabel if comparison else None,
+                                "comparison_event_family": comparison.eventFamily if comparison else None,
+                                "comparison_event_subtype": comparison.eventSubtype if comparison else None,
+                                "comparison_shot_subtype": comparison.shotSubtype if comparison else None,
+                                "comparison_outcome": comparison.outcome if comparison else None,
                                 "candidate_reason": candidate.reason,
                                 "candidate_source": candidate.source,
                                 "action_failure_reason": action.failureReason,
@@ -345,17 +358,31 @@ class InferenceService:
             **dict(getattr(primary_action, "metadata", {}) or {}),
             "primary_label": getattr(primary_action, "label", None),
             "primary_canonical_label": getattr(primary_action, "canonicalLabel", None),
+            "primary_event_family": getattr(primary_action, "eventFamily", None),
+            "primary_event_subtype": getattr(primary_action, "eventSubtype", None),
+            "primary_shot_subtype": getattr(primary_action, "shotSubtype", None),
+            "primary_outcome": getattr(primary_action, "outcome", None),
             "primary_model_version": getattr(primary_action, "modelVersion", None),
             "primary_failure_reason": getattr(primary_action, "failureReason", None),
             "comparison_label": getattr(comparison_action, "label", None),
             "comparison_canonical_label": getattr(comparison_action, "canonicalLabel", None),
+            "comparison_event_family": getattr(comparison_action, "eventFamily", None),
+            "comparison_event_subtype": getattr(comparison_action, "eventSubtype", None),
+            "comparison_shot_subtype": getattr(comparison_action, "shotSubtype", None),
+            "comparison_outcome": getattr(comparison_action, "outcome", None),
             "comparison_model_version": getattr(comparison_action, "modelVersion", None),
             "comparison_failure_reason": getattr(comparison_action, "failureReason", None),
             "resolved_by": chosen_source,
         }
 
         if hasattr(chosen, "model_copy"):
-            return chosen.model_copy(update={"topLabels": merged_top_labels, "metadata": metadata})
+            return chosen.model_copy(
+                update={
+                    "topLabels": merged_top_labels,
+                    "comparisonRawTopLabels": list(getattr(comparison_action, "rawTopLabels", [])),
+                    "metadata": metadata,
+                }
+            )
         return chosen
 
     def _build_callback_results(self, manifest: InferenceManifest) -> dict[str, object]:
@@ -371,8 +398,15 @@ class InferenceService:
                 "wasMerged": clip.wasMerged,
                 "sourceEventCount": clip.sourceEventCount,
                 "confidence": clip.confidence,
+                "confidenceBeforeMapping": clip.confidenceBeforeMapping,
+                "confidenceAfterMapping": clip.confidenceAfterMapping,
                 "label": clip.label,
                 "action": clip.action,
+                "canonicalLabel": clip.canonicalLabel,
+                "eventFamily": clip.eventFamily,
+                "eventSubtype": clip.eventSubtype,
+                "shotSubtype": clip.shotSubtype,
+                "outcome": clip.outcome,
                 "audioScore": clip.audioScore,
                 "visualScore": clip.visualScore,
                 "motionScore": clip.motionScore,
@@ -380,12 +414,17 @@ class InferenceService:
                 "detectionMethod": "cloud" if clip.detectionMethod == "model" else clip.detectionMethod,
                 "shouldAutoKeep": clip.shouldAutoKeep,
                 "shouldEnableSlowMotion": clip.shouldEnableSlowMotion,
+                "isUncertain": clip.isUncertain,
                 "eventType": clip.eventType,
                 "shotType": clip.shotType,
                 "makeMiss": clip.makeMiss,
                 "rankScore": clip.rankScore,
                 "reviewState": clip.reviewState,
                 "reviewerNotes": clip.reviewerNotes,
+                "topLabels": [item.model_dump(mode="json") for item in clip.topLabels],
+                "comparisonTopLabels": [item.model_dump(mode="json") for item in clip.comparisonTopLabels],
+                "rawTopLabels": [item.model_dump(mode="json") for item in clip.rawTopLabels],
+                "comparisonRawTopLabels": [item.model_dump(mode="json") for item in clip.comparisonRawTopLabels],
             }
             for clip in manifest.clips
         ]

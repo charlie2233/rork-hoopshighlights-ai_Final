@@ -440,19 +440,31 @@ function normalizeManifestClip(value: InferenceManifestClipLike): CloudClip {
     confidence,
     label,
     action,
+    canonicalLabel: coerceString(value.canonicalLabel) ?? null,
+    eventFamily: coerceString(value.eventFamily) ?? null,
+    eventSubtype: coerceString(value.eventSubtype) ?? null,
+    shotSubtype: coerceString(value.shotSubtype) ?? null,
+    outcome: normalizeOutcome(value.outcome),
     audioScore: clamp01(coerceNumber(value.audioScore) ?? 0),
     visualScore: clamp01(coerceNumber(value.visualScore) ?? 0),
     motionScore: clamp01(coerceNumber(value.motionScore) ?? 0),
     combinedScore: clamp01(coerceNumber(value.combinedScore) ?? confidence),
+    confidenceBeforeMapping: coerceNumber(value.confidenceBeforeMapping) ?? null,
+    confidenceAfterMapping: coerceNumber(value.confidenceAfterMapping) ?? null,
     detectionMethod: coerceString(value.detectionMethod) === "heuristic" ? "heuristic" : "cloud",
     shouldAutoKeep: coerceBoolean(value.shouldAutoKeep) ?? confidence >= 0.7,
     shouldEnableSlowMotion: coerceBoolean(value.shouldEnableSlowMotion) ?? false,
+    isUncertain: coerceBoolean(value.isUncertain) ?? null,
     eventType: coerceString(value.eventType) ?? null,
     shotType: coerceString(value.shotType) ?? null,
     makeMiss: normalizeMakeMiss(value.makeMiss),
     rankScore: coerceNumber(value.rankScore) ?? null,
     reviewState: coerceString(value.reviewState) ?? null,
-    reviewerNotes: coerceString(value.reviewerNotes) ?? null
+    reviewerNotes: coerceString(value.reviewerNotes) ?? null,
+    topLabels: normalizeLabelScores(value.topLabels),
+    comparisonTopLabels: normalizeLabelScores(value.comparisonTopLabels),
+    rawTopLabels: normalizeRawLabelScores(value.rawTopLabels),
+    comparisonRawTopLabels: normalizeRawLabelScores(value.comparisonRawTopLabels)
   };
 }
 
@@ -474,19 +486,31 @@ type InferenceManifestClipLike = {
   resultConfidence?: unknown;
   label?: unknown;
   action?: unknown;
+  canonicalLabel?: unknown;
+  eventFamily?: unknown;
+  eventSubtype?: unknown;
+  shotSubtype?: unknown;
+  outcome?: unknown;
   audioScore?: unknown;
   visualScore?: unknown;
   motionScore?: unknown;
   combinedScore?: unknown;
+  confidenceBeforeMapping?: unknown;
+  confidenceAfterMapping?: unknown;
   detectionMethod?: unknown;
   shouldAutoKeep?: unknown;
   shouldEnableSlowMotion?: unknown;
+  isUncertain?: unknown;
   eventType?: unknown;
   shotType?: unknown;
   makeMiss?: unknown;
   rankScore?: unknown;
   reviewState?: unknown;
   reviewerNotes?: unknown;
+  topLabels?: unknown;
+  comparisonTopLabels?: unknown;
+  rawTopLabels?: unknown;
+  comparisonRawTopLabels?: unknown;
 };
 
 function isInferenceManifest(value: unknown): value is InferenceManifestLike {
@@ -497,7 +521,62 @@ function normalizeMakeMiss(value: unknown): "make" | "miss" | "unknown" | null {
   if (value === "make" || value === "miss" || value === "unknown") {
     return value;
   }
+  if (value === "made") {
+    return "make";
+  }
+  if (value === "missed") {
+    return "miss";
+  }
   return null;
+}
+
+function normalizeOutcome(value: unknown): "made" | "missed" | "blocked" | "uncertain" | null {
+  if (value === "made" || value === "missed" || value === "blocked" || value === "uncertain") {
+    return value;
+  }
+  return null;
+}
+
+function normalizeLabelScores(value: unknown): CloudClip["topLabels"] {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+  const scores: NonNullable<CloudClip["topLabels"]> = [];
+  for (const entry of value) {
+    if (entry === null || typeof entry !== "object") {
+      continue;
+    }
+    scores.push({
+      label: coerceString((entry as { label?: unknown }).label) ?? "unknown",
+      confidence: clamp01(coerceNumber((entry as { confidence?: unknown }).confidence) ?? 0),
+      rawLabel: coerceString((entry as { rawLabel?: unknown }).rawLabel) ?? null,
+      modelVersion: coerceString((entry as { modelVersion?: unknown }).modelVersion) ?? null
+    });
+  }
+  return scores;
+}
+
+function normalizeRawLabelScores(value: unknown): CloudClip["rawTopLabels"] {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+  const scores: NonNullable<CloudClip["rawTopLabels"]> = [];
+  for (const entry of value) {
+    if (entry === null || typeof entry !== "object") {
+      continue;
+    }
+    const rawLabel = coerceString((entry as { rawLabel?: unknown }).rawLabel);
+    if (!rawLabel) {
+      continue;
+    }
+    scores.push({
+      rawLabel,
+      confidence: clamp01(coerceNumber((entry as { confidence?: unknown }).confidence) ?? 0),
+      canonicalLabel: coerceString((entry as { canonicalLabel?: unknown }).canonicalLabel) ?? null,
+      modelVersion: coerceString((entry as { modelVersion?: unknown }).modelVersion) ?? null
+    });
+  }
+  return scores;
 }
 
 function coerceString(value: unknown): string | null {

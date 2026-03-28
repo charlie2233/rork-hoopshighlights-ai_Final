@@ -10,9 +10,9 @@ from ..labels import (
     aggregate_label_scores,
     build_xclip_prompts,
     canonical_label_for_prompt,
-    canonical_to_display_label,
+    derive_basketball_taxonomy,
 )
-from ..models import ActionPrediction, CandidateWindow, LabelScore
+from ..models import ActionPrediction, CandidateWindow, LabelScore, RawLabelScore
 
 
 @dataclass
@@ -40,22 +40,31 @@ class XClipActionRecognizer:
                 outputs = model(**inputs)
                 probabilities = torch.softmax(outputs.logits_per_video[0], dim=-1)
 
-            ranked = _build_ranked_labels(probabilities, prompts, model_version, self.top_k)
+            raw_ranked, ranked = _build_ranked_labels(probabilities, prompts, model_version, self.top_k)
             if not ranked:
                 raise RuntimeError("empty_predictions")
 
             best = ranked[0]
+            taxonomy = derive_basketball_taxonomy(best.label, best.confidence, ranked)
             return ActionPrediction(
-                label=canonical_to_display_label(best.label),
-                canonicalLabel=best.label,
-                confidence=min(max(best.confidence, 0.0), 1.0),
+                label=taxonomy.display_label,
+                canonicalLabel=taxonomy.canonical_label,
+                confidence=taxonomy.confidence_after_mapping,
                 modelVersion=model_version,
                 detectionMethod="xclip",
                 topLabels=ranked,
+                rawTopLabels=raw_ranked,
+                eventFamily=taxonomy.event_family,
+                eventSubtype=taxonomy.event_subtype,
+                shotSubtype=taxonomy.shot_subtype,
+                outcome=taxonomy.outcome,
+                confidenceBeforeMapping=taxonomy.confidence_before_mapping,
+                confidenceAfterMapping=taxonomy.confidence_after_mapping,
+                isUncertain=taxonomy.is_uncertain,
                 metadata={
                     "candidate_id": candidate.candidateId,
                     "frame_count": len(frames),
-                    "raw_prediction_prompts": [item.rawLabel for item in ranked if item.rawLabel],
+                    "raw_prediction_prompts": [item.rawLabel for item in raw_ranked if item.rawLabel],
                     "source_model": self.model_name,
                 },
             )
@@ -63,24 +72,48 @@ class XClipActionRecognizer:
             return self._fallback(candidate, model_version, f"inference_failed:{exc.__class__.__name__}")
 
     def _fallback(self, candidate: CandidateWindow, model_version: str, failure_reason: str) -> ActionPrediction:
-        canonical_label = "fast break" if candidate.score < 0.5 else "jumper"
-        confidence = 0.28 if canonical_label == "fast break" else 0.31
+        if candidate.score >= 0.72:
+            canonical_label = "three"
+            confidence = 0.37
+        elif candidate.score >= 0.48:
+            canonical_label = "fast break"
+            confidence = 0.33
+        else:
+            canonical_label = "uncertain"
+            confidence = 0.22
+        taxonomy = derive_basketball_taxonomy(canonical_label, confidence)
         top_labels = [
             LabelScore(
-                label=canonical_label,
+                label=taxonomy.canonical_label,
                 confidence=confidence,
                 rawLabel=canonical_label,
                 modelVersion=model_version,
             )
         ]
+        raw_top_labels = [
+            RawLabelScore(
+                rawLabel=canonical_label,
+                canonicalLabel=taxonomy.canonical_label,
+                confidence=confidence,
+                modelVersion=model_version,
+            )
+        ]
         return ActionPrediction(
-            label=canonical_to_display_label(canonical_label),
-            canonicalLabel=canonical_label,
-            confidence=confidence,
+            label=taxonomy.display_label,
+            canonicalLabel=taxonomy.canonical_label,
+            confidence=taxonomy.confidence_after_mapping,
             modelVersion=model_version,
             detectionMethod="heuristic_fallback",
             failureReason=failure_reason,
             topLabels=top_labels,
+            rawTopLabels=raw_top_labels,
+            eventFamily=taxonomy.event_family,
+            eventSubtype=taxonomy.event_subtype,
+            shotSubtype=taxonomy.shot_subtype,
+            outcome=taxonomy.outcome,
+            confidenceBeforeMapping=taxonomy.confidence_before_mapping,
+            confidenceAfterMapping=taxonomy.confidence_after_mapping,
+            isUncertain=taxonomy.is_uncertain,
             metadata={"candidate_id": candidate.candidateId},
         )
 
@@ -119,16 +152,25 @@ def _build_ranked_labels(
     prompts: list[str],
     model_version: str,
     top_k: int,
-) -> list[LabelScore]:
+) -> tuple[list[RawLabelScore], list[LabelScore]]:
     import torch
 
     top_k = min(max(top_k, 1), int(probabilities.shape[-1]))
     values, indices = torch.topk(probabilities, k=top_k)
 
+    raw_ranked: list[RawLabelScore] = []
     ranked: list[LabelScore] = []
     for raw_score, index in zip(values.tolist(), indices.tolist(), strict=False):
         prompt = str(prompts[int(index)])
         canonical_label = canonical_label_for_prompt(prompt)
+        raw_ranked.append(
+            RawLabelScore(
+                rawLabel=prompt,
+                canonicalLabel=canonical_label,
+                confidence=min(max(float(raw_score), 0.0), 1.0),
+                modelVersion=model_version,
+            )
+        )
         ranked.append(
             LabelScore(
                 label=canonical_label,
@@ -138,4 +180,4 @@ def _build_ranked_labels(
             )
         )
 
-    return aggregate_label_scores(ranked)
+    return raw_ranked, aggregate_label_scores(ranked)

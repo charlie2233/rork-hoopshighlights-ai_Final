@@ -9,7 +9,14 @@ from services.inference.app.callback import CallbackClient
 from services.inference.app.config import InferenceSettings
 from datetime import datetime, timezone
 
-from services.inference.app.models import InferenceDiagnostics, InferenceJobRequest, InferenceManifest, RankedClip
+from services.inference.app.models import (
+    InferenceDiagnostics,
+    InferenceJobRequest,
+    InferenceManifest,
+    LabelScore,
+    RankedClip,
+    RawLabelScore,
+)
 from services.inference.app.pipeline import InferenceService, _resolve_trace_fields
 
 
@@ -139,15 +146,26 @@ class PipelineCallbackResultsTests(unittest.TestCase):
                     label="Made Shot",
                     action="Made Shot",
                     canonicalLabel="jumper",
+                    eventFamily="shot",
+                    eventSubtype=None,
+                    shotSubtype="jumper",
+                    outcome="made",
                     eventType="perimeter_shot",
                     shotType="jumper",
                     makeMiss="made",
+                    confidenceBeforeMapping=0.91,
+                    confidenceAfterMapping=0.83,
+                    isUncertain=False,
                     audioScore=0.2,
                     visualScore=0.4,
                     motionScore=0.5,
                     combinedScore=0.6,
                     rankScore=0.83,
                     detectionMethod="model",
+                    topLabels=[LabelScore(label="jumper", confidence=0.83, rawLabel="jump shot", modelVersion="videomae:test")],
+                    comparisonTopLabels=[LabelScore(label="miss", confidence=0.41, rawLabel="missed shot", modelVersion="xclip:test")],
+                    rawTopLabels=[RawLabelScore(rawLabel="jump shot", canonicalLabel="jumper", confidence=0.91, modelVersion="videomae:test")],
+                    comparisonRawTopLabels=[RawLabelScore(rawLabel="a missed basketball shot", canonicalLabel="miss", confidence=0.41, modelVersion="xclip:test")],
                 )
             ],
             artifacts=[],
@@ -170,6 +188,13 @@ class PipelineCallbackResultsTests(unittest.TestCase):
         self.assertEqual(clip["windowPolicyVersion"], "basketball-v1")
         self.assertTrue(clip["wasMerged"])
         self.assertEqual(clip["sourceEventCount"], 2)
+        self.assertEqual(clip["eventFamily"], "shot")
+        self.assertEqual(clip["shotSubtype"], "jumper")
+        self.assertEqual(clip["outcome"], "made")
+        self.assertEqual(clip["confidenceBeforeMapping"], 0.91)
+        self.assertEqual(clip["confidenceAfterMapping"], 0.83)
+        self.assertEqual(clip["rawTopLabels"][0]["rawLabel"], "jump shot")
+        self.assertEqual(clip["comparisonRawTopLabels"][0]["canonicalLabel"], "miss")
 
 
 if __name__ == "__main__":

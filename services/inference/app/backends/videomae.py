@@ -6,8 +6,8 @@ from typing import Any
 
 from ..features import sample_video_frames
 from ..interfaces import VideoFeatures
-from ..labels import aggregate_label_scores, canonical_to_display_label, normalize_action_label
-from ..models import ActionPrediction, CandidateWindow, LabelScore
+from ..labels import aggregate_label_scores, derive_basketball_taxonomy, normalize_action_label
+from ..models import ActionPrediction, CandidateWindow, LabelScore, RawLabelScore
 
 
 @dataclass
@@ -36,22 +36,31 @@ class VideoMAEActionRecognizer:
                 outputs = model(**inputs)
                 probabilities = torch.softmax(outputs.logits[0], dim=-1)
 
-            ranked = _build_ranked_labels(probabilities, model.config.id2label, model_version, self.top_k)
+            raw_ranked, ranked = _build_ranked_labels(probabilities, model.config.id2label, model_version, self.top_k)
             if not ranked:
                 raise RuntimeError("empty_predictions")
 
             best = ranked[0]
+            taxonomy = derive_basketball_taxonomy(best.label, best.confidence, ranked)
             return ActionPrediction(
-                label=canonical_to_display_label(best.label),
-                canonicalLabel=best.label,
-                confidence=min(max(best.confidence, 0.0), 1.0),
+                label=taxonomy.display_label,
+                canonicalLabel=taxonomy.canonical_label,
+                confidence=taxonomy.confidence_after_mapping,
                 modelVersion=model_version,
                 detectionMethod="videomae",
                 topLabels=ranked,
+                rawTopLabels=raw_ranked,
+                eventFamily=taxonomy.event_family,
+                eventSubtype=taxonomy.event_subtype,
+                shotSubtype=taxonomy.shot_subtype,
+                outcome=taxonomy.outcome,
+                confidenceBeforeMapping=taxonomy.confidence_before_mapping,
+                confidenceAfterMapping=taxonomy.confidence_after_mapping,
+                isUncertain=taxonomy.is_uncertain,
                 metadata={
                     "candidate_id": candidate.candidateId,
                     "frame_count": len(frames),
-                    "raw_prediction_labels": [item.raw_label for item in ranked if item.raw_label],
+                    "raw_prediction_labels": [item.rawLabel for item in raw_ranked if item.rawLabel],
                     "source_model": self.model_name,
                 },
             )
@@ -59,24 +68,51 @@ class VideoMAEActionRecognizer:
             return self._fallback(candidate, model_version, f"inference_failed:{exc.__class__.__name__}")
 
     def _fallback(self, candidate: CandidateWindow, model_version: str, failure_reason: str) -> ActionPrediction:
-        canonical_label = "dunk" if candidate.score >= 0.65 else "jumper"
-        confidence = 0.48 if canonical_label == "dunk" else 0.35
+        if candidate.score >= 0.8:
+            canonical_label = "dunk"
+            confidence = 0.52
+        elif candidate.score >= 0.66:
+            canonical_label = "layup"
+            confidence = 0.44
+        elif candidate.score >= 0.52:
+            canonical_label = "fast break"
+            confidence = 0.39
+        else:
+            canonical_label = "uncertain"
+            confidence = 0.24
+        taxonomy = derive_basketball_taxonomy(canonical_label, confidence)
         top_labels = [
             LabelScore(
-                label=canonical_label,
+                label=taxonomy.canonical_label,
                 confidence=confidence,
                 rawLabel=canonical_label,
                 modelVersion=model_version,
             )
         ]
+        raw_top_labels = [
+            RawLabelScore(
+                rawLabel=canonical_label,
+                canonicalLabel=taxonomy.canonical_label,
+                confidence=confidence,
+                modelVersion=model_version,
+            )
+        ]
         return ActionPrediction(
-            label=canonical_to_display_label(canonical_label),
-            canonicalLabel=canonical_label,
-            confidence=confidence,
+            label=taxonomy.display_label,
+            canonicalLabel=taxonomy.canonical_label,
+            confidence=taxonomy.confidence_after_mapping,
             modelVersion=model_version,
             detectionMethod="heuristic_fallback",
             failureReason=failure_reason,
             topLabels=top_labels,
+            rawTopLabels=raw_top_labels,
+            eventFamily=taxonomy.event_family,
+            eventSubtype=taxonomy.event_subtype,
+            shotSubtype=taxonomy.shot_subtype,
+            outcome=taxonomy.outcome,
+            confidenceBeforeMapping=taxonomy.confidence_before_mapping,
+            confidenceAfterMapping=taxonomy.confidence_after_mapping,
+            isUncertain=taxonomy.is_uncertain,
             metadata={"candidate_id": candidate.candidateId},
         )
 
@@ -114,16 +150,25 @@ def _build_ranked_labels(
     id2label: dict[int, str],
     model_version: str,
     top_k: int,
-) -> list[LabelScore]:
+) -> tuple[list[RawLabelScore], list[LabelScore]]:
     import torch
 
     top_k = min(max(top_k, 1), int(probabilities.shape[-1]))
     values, indices = torch.topk(probabilities, k=top_k)
 
+    raw_ranked: list[RawLabelScore] = []
     ranked: list[LabelScore] = []
     for raw_score, index in zip(values.tolist(), indices.tolist(), strict=False):
         raw_label = str(id2label.get(int(index), f"class-{index}"))
         canonical_label = normalize_action_label(raw_label)
+        raw_ranked.append(
+            RawLabelScore(
+                rawLabel=raw_label,
+                canonicalLabel=canonical_label,
+                confidence=min(max(float(raw_score), 0.0), 1.0),
+                modelVersion=model_version,
+            )
+        )
         ranked.append(
             LabelScore(
                 label=canonical_label,
@@ -133,4 +178,4 @@ def _build_ranked_labels(
             )
         )
 
-    return aggregate_label_scores(ranked)
+    return raw_ranked, aggregate_label_scores(ranked)
