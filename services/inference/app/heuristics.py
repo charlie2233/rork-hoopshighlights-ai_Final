@@ -7,7 +7,7 @@ from .interfaces import CandidateProposer, EventInferencer, Reranker, VideoFeatu
 from .models import ActionPrediction, CandidateWindow, EventPrediction, RankedClip
 
 
-@dataclass(slots=True)
+@dataclass
 class HeuristicCandidateProposer(CandidateProposer):
     window_seconds: float = 4.5
     stride_seconds: float = 1.5
@@ -71,23 +71,29 @@ class HeuristicCandidateProposer(CandidateProposer):
         return windows[:8]
 
 
-@dataclass(slots=True)
+@dataclass
 class HeuristicEventInferencer(EventInferencer):
     def infer(self, candidate: CandidateWindow, action: ActionPrediction, features: VideoFeatures) -> EventPrediction:
-        label = action.label.lower()
-        if "dunk" in label or "posterize" in label:
+        label = (action.canonicalLabel or action.label).lower()
+        if "dunk" in label:
             event_type, shot_type, make_miss = "finish_at_rim", "dunk", "made"
-        elif "three" in label or "3" in label:
-            event_type, shot_type, make_miss = "perimeter_shot", "three_pointer", "made"
+        elif "layup" in label:
+            event_type, shot_type, make_miss = "finish_at_rim", "layup", "made"
+        elif "jumper" in label or "three" in label or "shot" in label:
+            event_type, shot_type, make_miss = "perimeter_shot", "jumper", "made"
         elif "block" in label:
             event_type, shot_type, make_miss = "defensive_play", "block", "n/a"
         elif "steal" in label:
             event_type, shot_type, make_miss = "defensive_play", "steal", "n/a"
+        elif "fast break" in label:
+            event_type, shot_type, make_miss = "transition_play", "fast_break", "made"
+        elif "miss" in label:
+            event_type, shot_type, make_miss = "scoring_play", "jumper", "miss"
         else:
-            event_type, shot_type, make_miss = "scoring_play", "layup_or_jump_shot", "made"
+            event_type, shot_type, make_miss = "scoring_play", "jumper", "made"
 
         rank_score = min(max((candidate.score * 0.45) + (action.confidence * 0.55), 0.0), 1.0)
-        should_enable_slow_motion = label in {"dunk", "posterize"}
+        should_enable_slow_motion = "dunk" in label
         return EventPrediction(
             eventType=event_type,
             shotType=shot_type,
@@ -100,11 +106,12 @@ class HeuristicEventInferencer(EventInferencer):
                 "source_duration": features.duration_seconds,
                 "candidate_source": candidate.source,
                 "action_label": action.label,
+                "canonical_action_label": action.canonicalLabel or action.label,
             },
         )
 
 
-@dataclass(slots=True)
+@dataclass
 class ConfidenceReranker(Reranker):
     def rerank(self, clips: list[RankedClip]) -> list[RankedClip]:
         ranked = sorted(clips, key=lambda item: (item.rankScore, item.confidence), reverse=True)

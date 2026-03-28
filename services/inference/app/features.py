@@ -4,6 +4,8 @@ import math
 import subprocess
 from pathlib import Path
 
+from PIL import Image
+
 from .interfaces import VideoFeatures
 
 
@@ -75,6 +77,35 @@ def extract_video_features(source_path: Path, *, sample_limit: int = 48) -> Vide
     )
 
 
+def sample_video_frames(source_path: Path, *, frame_count: int = 16) -> list[Image.Image]:
+    try:
+        import cv2  # type: ignore
+    except Exception:
+        return []
+
+    capture = cv2.VideoCapture(str(source_path))
+    if not capture.isOpened():
+        return []
+
+    try:
+        total_frames = int(capture.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+        if total_frames <= 0:
+            total_frames = max(frame_count, 1)
+
+        indices = _sample_indices(total_frames, frame_count)
+        frames: list[Image.Image] = []
+        for index in indices:
+            capture.set(cv2.CAP_PROP_POS_FRAMES, int(index))
+            ok, frame = capture.read()
+            if not ok:
+                continue
+            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            frames.append(Image.fromarray(rgb))
+        return frames
+    finally:
+        capture.release()
+
+
 def _probe_media(source_path: Path) -> dict[str, float]:
     command = [
         "ffprobe",
@@ -133,3 +164,14 @@ def _coerce_float(value: object, default: float) -> float:
         return float(value)
     except (TypeError, ValueError):
         return default
+
+
+def _sample_indices(total_frames: int, frame_count: int) -> list[int]:
+    if frame_count <= 1:
+        return [0]
+    if total_frames <= frame_count:
+        return list(range(max(total_frames, 1)))
+    step = max(total_frames // frame_count, 1)
+    indices = [min(index * step, total_frames - 1) for index in range(frame_count)]
+    indices[-1] = total_frames - 1
+    return indices

@@ -8,6 +8,7 @@ Standalone Python inference service for the production cloud path.
 - Runs FFmpeg-backed source preparation before feature extraction.
 - Proposes candidate segments.
 - Runs action recognition with a VideoMAE baseline and an X-CLIP comparison path.
+- Emits canonical basketball labels with per-clip top-k scores, while preserving the current app-facing clip labels for compatibility.
 - Infers event metadata and reranks clips.
 - Writes a normalized result manifest and calls back to the Cloudflare control plane.
 
@@ -39,12 +40,14 @@ Optional compatibility fields:
 - `appVersion`
 - `analysisVersion`
 - `requestedModel`
+- `uploadTraceId`
+- `inferenceAttemptId`
 - `traceId`
 
 ## Local run
 ```bash
 cd /Users/hanfei/rork-hoopshighlights-ai_Final/services/inference
-uv venv .venv
+python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
@@ -103,6 +106,7 @@ Service and model config:
 - If R2 is configured, the service downloads the source video using the bucket-scoped R2 credentials.
 - The pipeline attempts a small FFmpeg normalization pass before feature extraction; if that fails, it falls back to the downloaded source file.
 - The callback payload mirrors the current control-plane schema, including `requestId`, `modelVersion`, `schemaVersion`, `confidence`, `resultConfidence`, `failureReason`, and `results`.
+- The callback/result payload also carries `uploadTraceId` and `inferenceAttemptId` so staging traces can be correlated end to end.
 - The result manifest remains the canonical artifact written by the service.
 
 ## Portable deployment
@@ -111,3 +115,9 @@ The Docker image is portable enough to run on a VM, container service, or Huggin
 - `ffprobe`
 - Python 3.11+
 - the `HOOPS_INFERENCE_*` environment variables above
+
+## Runtime constraints
+- VideoMAE and X-CLIP weights are loaded lazily from Hugging Face on first request; cold starts will be slower than steady-state requests.
+- The service defaults to CPU if no CUDA device is available, but the first production deployment should use a GPU-backed container for acceptable latency.
+- The current baseline keeps candidate proposal heuristic-driven; the learned models only classify and relabel candidate windows.
+- The canonical label vocabulary is intentionally small: `dunk`, `layup`, `jumper`, `block`, `steal`, `fast break`, and `miss`.

@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Optional
 
-from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field
+from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, model_validator
 
 
 class APIModel(BaseModel):
@@ -18,18 +18,26 @@ class InferenceStatus(str, Enum):
 
 class InferenceJobRequest(APIModel):
     jobId: str = Field(min_length=1, max_length=128)
-    sourceUrl: AnyHttpUrl
-    callbackUrl: AnyHttpUrl
-    callbackSecret: str = Field(min_length=8, max_length=256)
+    requestId: Optional[str] = None
+    uploadTraceId: Optional[str] = None
+    inferenceAttemptId: Optional[str] = None
     sourceObjectKey: Optional[str] = None
+    sourceUrl: Optional[AnyHttpUrl] = None
+    callbackUrl: AnyHttpUrl
+    modelVersion: Optional[str] = None
+    callbackSecret: Optional[str] = Field(default=None, min_length=8, max_length=256)
     resultObjectKey: Optional[str] = None
     installId: Optional[str] = None
     appVersion: Optional[str] = None
     analysisVersion: Optional[str] = None
     requestedModel: Optional[str] = None
-    requestId: Optional[str] = None
     traceId: Optional[str] = None
-    modelVersion: Optional[str] = None
+
+    @model_validator(mode="after")
+    def validate_source(self) -> "InferenceJobRequest":
+        if not self.sourceObjectKey and not self.sourceUrl:
+            raise ValueError("sourceObjectKey or sourceUrl is required")
+        return self
 
 
 class CandidateWindow(APIModel):
@@ -42,12 +50,21 @@ class CandidateWindow(APIModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class LabelScore(APIModel):
+    label: str
+    confidence: float = Field(ge=0.0, le=1.0)
+    rawLabel: Optional[str] = None
+    modelVersion: Optional[str] = None
+
+
 class ActionPrediction(APIModel):
     label: str
+    canonicalLabel: Optional[str] = None
     confidence: float = Field(ge=0.0, le=1.0)
     modelVersion: str
     detectionMethod: str = "model"
     failureReason: Optional[str] = None
+    topLabels: list[LabelScore] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -71,6 +88,7 @@ class RankedClip(APIModel):
     resultConfidence: float = Field(ge=0.0, le=1.0)
     label: str
     action: str
+    canonicalLabel: Optional[str] = None
     eventType: str
     shotType: str
     makeMiss: str
@@ -84,6 +102,8 @@ class RankedClip(APIModel):
     shouldEnableSlowMotion: bool = False
     reviewState: Optional[str] = None
     reviewerNotes: Optional[str] = None
+    topLabels: list[LabelScore] = Field(default_factory=list)
+    comparisonTopLabels: list[LabelScore] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -113,6 +133,8 @@ class InferenceManifest(APIModel):
     schemaVersion: str
     jobId: str
     requestId: str
+    uploadTraceId: Optional[str] = None
+    inferenceAttemptId: Optional[str] = None
     modelVersion: str
     resultConfidence: float = Field(ge=0.0, le=1.0)
     failureReason: Optional[str] = None
@@ -126,6 +148,8 @@ class InferenceJobResponse(APIModel):
     jobId: str
     status: str
     requestId: str
+    uploadTraceId: Optional[str] = None
+    inferenceAttemptId: Optional[str] = None
     modelVersion: Optional[str] = None
     failureReason: Optional[str] = None
     confidence: Optional[float] = None
@@ -138,11 +162,15 @@ class CallbackPayload(APIModel):
     jobId: str
     status: InferenceStatus
     requestId: str
+    uploadTraceId: Optional[str] = None
+    inferenceAttemptId: Optional[str] = None
     modelVersion: str
+    schemaVersion: Optional[str] = None
     failureReason: Optional[str] = None
     confidence: Optional[float] = None
     resultConfidence: Optional[float] = None
     result: Optional[InferenceManifest] = None
+    traceId: Optional[str] = None
 
 
 class CallbackAcknowledgement(APIModel):
