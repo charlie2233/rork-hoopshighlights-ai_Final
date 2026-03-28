@@ -294,9 +294,10 @@ class InferenceService:
 
     async def _resolve_source(self, request: InferenceJobRequest, destination: Path) -> Path:
         if request.sourceObjectKey:
-            if not self.r2_downloader:
+            if self.r2_downloader:
+                return await asyncio.to_thread(self.r2_downloader.download, request.sourceObjectKey, destination)
+            if not request.sourceUrl:
                 raise RuntimeError("R2 sourceObjectKey was provided but R2 is not configured.")
-            return await asyncio.to_thread(self.r2_downloader.download, request.sourceObjectKey, destination)
 
         if not request.sourceUrl:
             raise RuntimeError("Source video is unavailable.")
