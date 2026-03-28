@@ -363,6 +363,13 @@ class InferenceService:
             {
                 "startTime": clip.startTime,
                 "endTime": clip.endTime,
+                "clipDurationSeconds": clip.clipDurationSeconds,
+                "eventCenterSeconds": clip.eventCenterSeconds,
+                "preRollSeconds": clip.preRollSeconds,
+                "postRollSeconds": clip.postRollSeconds,
+                "windowPolicyVersion": clip.windowPolicyVersion,
+                "wasMerged": clip.wasMerged,
+                "sourceEventCount": clip.sourceEventCount,
                 "confidence": clip.confidence,
                 "label": clip.label,
                 "action": clip.action,

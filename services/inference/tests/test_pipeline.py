@@ -7,7 +7,9 @@ from unittest.mock import AsyncMock, Mock
 
 from services.inference.app.callback import CallbackClient
 from services.inference.app.config import InferenceSettings
-from services.inference.app.models import InferenceJobRequest
+from datetime import datetime, timezone
+
+from services.inference.app.models import InferenceDiagnostics, InferenceJobRequest, InferenceManifest, RankedClip
 from services.inference.app.pipeline import InferenceService, _resolve_trace_fields
 
 
@@ -93,6 +95,81 @@ class PipelineTraceResolutionTests(unittest.TestCase):
             callbackUrl="https://example.com/internal/inference/callback",
         )
         self.assertEqual(_resolve_trace_fields(request_without_trace, "request-789"), ("request-789", "request-789"))
+
+
+class PipelineCallbackResultsTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.service = InferenceService(
+            settings=InferenceSettings(),
+            candidate_proposer=Mock(),
+            primary_recognizer=Mock(),
+            comparison_recognizer=None,
+            event_inferencer=Mock(),
+            reranker=Mock(),
+            artifact_writer=Mock(),
+            callback_client=CallbackClient(timeout_seconds=1.0),
+            r2_downloader=None,
+        )
+
+    def test_build_callback_results_preserves_windowing_metadata(self) -> None:
+        manifest = InferenceManifest(
+            schemaVersion="2026-03-27",
+            jobId="job_123",
+            requestId="request-123",
+            uploadTraceId="upload-123",
+            inferenceAttemptId="attempt-123",
+            modelVersion="videomae:test",
+            resultConfidence=0.83,
+            failureReason=None,
+            generatedAt=datetime.now(timezone.utc),
+            clips=[
+                RankedClip(
+                    clipId="clip-1",
+                    startTime=1.0,
+                    endTime=6.2,
+                    clipDurationSeconds=5.2,
+                    eventCenterSeconds=3.7,
+                    preRollSeconds=2.2,
+                    postRollSeconds=3.0,
+                    windowPolicyVersion="basketball-v1",
+                    wasMerged=True,
+                    sourceEventCount=2,
+                    confidence=0.83,
+                    resultConfidence=0.83,
+                    label="Made Shot",
+                    action="Made Shot",
+                    canonicalLabel="jumper",
+                    eventType="perimeter_shot",
+                    shotType="jumper",
+                    makeMiss="made",
+                    audioScore=0.2,
+                    visualScore=0.4,
+                    motionScore=0.5,
+                    combinedScore=0.6,
+                    rankScore=0.83,
+                    detectionMethod="model",
+                )
+            ],
+            artifacts=[],
+            diagnostics=InferenceDiagnostics(
+                featureExtractor="ffprobe+opencv",
+                candidateProposer="heuristic-assisted",
+                actionRecognizer="videomae:test",
+                eventInferencer="heuristic-event-inferencer",
+                reranker="confidence-reranker",
+            ),
+        )
+
+        callback_results = self.service._build_callback_results(manifest)
+        clip = callback_results["clips"][0]
+
+        self.assertEqual(clip["clipDurationSeconds"], 5.2)
+        self.assertEqual(clip["eventCenterSeconds"], 3.7)
+        self.assertEqual(clip["preRollSeconds"], 2.2)
+        self.assertEqual(clip["postRollSeconds"], 3.0)
+        self.assertEqual(clip["windowPolicyVersion"], "basketball-v1")
+        self.assertTrue(clip["wasMerged"])
+        self.assertEqual(clip["sourceEventCount"], 2)
 
 
 if __name__ == "__main__":
