@@ -196,6 +196,7 @@ class InferenceService:
                 )
 
                 manifest_path = self.artifact_writer.write_manifest(build_manifest_dict(manifest), request.jobId)
+                callback_results = self._build_callback_results(manifest)
                 callback_payload = CallbackPayload(
                     jobId=request.jobId,
                     status=InferenceStatus.SUCCEEDED,
@@ -207,6 +208,7 @@ class InferenceService:
                     confidence=result_confidence,
                     resultConfidence=result_confidence,
                     result=manifest,
+                    results=callback_results,
                     traceId=trace_id,
                 )
                 await self.callback_client.send(str(request.callbackUrl), callback_payload, callback_secret, request_id=request_id)
@@ -261,6 +263,7 @@ class InferenceService:
                 ),
             )
             try:
+                callback_results = self._build_callback_results(manifest)
                 callback_payload = CallbackPayload(
                     jobId=request.jobId,
                     status=InferenceStatus.FAILED,
@@ -273,6 +276,7 @@ class InferenceService:
                     confidence=0.0,
                     resultConfidence=0.0,
                     result=manifest,
+                    results=callback_results,
                     traceId=trace_id,
                 )
                 await self.callback_client.send(str(request.callbackUrl), callback_payload, callback_secret, request_id=request_id)
@@ -354,6 +358,48 @@ class InferenceService:
         if hasattr(chosen, "model_copy"):
             return chosen.model_copy(update={"topLabels": merged_top_labels, "metadata": metadata})
         return chosen
+
+    def _build_callback_results(self, manifest: InferenceManifest) -> dict[str, object]:
+        clips = [
+            {
+                "startTime": clip.startTime,
+                "endTime": clip.endTime,
+                "confidence": clip.confidence,
+                "label": clip.label,
+                "action": clip.action,
+                "audioScore": clip.audioScore,
+                "visualScore": clip.visualScore,
+                "motionScore": clip.motionScore,
+                "combinedScore": clip.combinedScore,
+                "detectionMethod": "cloud" if clip.detectionMethod == "model" else clip.detectionMethod,
+                "shouldAutoKeep": clip.shouldAutoKeep,
+                "shouldEnableSlowMotion": clip.shouldEnableSlowMotion,
+                "eventType": clip.eventType,
+                "shotType": clip.shotType,
+                "makeMiss": clip.makeMiss,
+                "rankScore": clip.rankScore,
+                "reviewState": clip.reviewState,
+                "reviewerNotes": clip.reviewerNotes,
+            }
+            for clip in manifest.clips
+        ]
+        return {
+            "requestId": manifest.requestId,
+            "confidence": manifest.resultConfidence,
+            "modelVersion": manifest.modelVersion,
+            "failureReason": manifest.failureReason,
+            "clipCount": len(clips),
+            "clips": clips,
+            "diagnostics": {
+                "processingMs": 0,
+                "backendModelVersion": manifest.modelVersion,
+                "usedVideoIntelligence": False,
+                "usedGeminiRelabeling": False,
+                "candidateSegments": len(clips),
+                "finalSegments": len(clips),
+            },
+            "resultConfidence": manifest.resultConfidence,
+        }
 
 
 def build_service(settings: InferenceSettings) -> InferenceService:

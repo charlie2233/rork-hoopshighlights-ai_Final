@@ -178,6 +178,7 @@ class CallbackPayload(APIModel):
     confidence: Optional[float] = None
     resultConfidence: Optional[float] = None
     result: Optional[InferenceManifest] = None
+    results: Optional[dict[str, Any]] = None
     traceId: Optional[str] = None
 
 
