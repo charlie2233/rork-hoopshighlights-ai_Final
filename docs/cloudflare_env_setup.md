@@ -38,11 +38,12 @@ Secret names used by the control plane:
 - `ADMIN_API_TOKEN`
 - `CONTROL_PLANE_BASE_URL`
 - `CONTROL_PLANE_SHARED_SECRET`
+- `INFERENCE_BASE_URL`
 - `INFERENCE_SHARED_SECRET`
 - `R2_ACCESS_KEY_ID`
 - `R2_SECRET_ACCESS_KEY`
 
-`INFERENCE_BASE_URL` stays reserved for the later dedicated inference service. Phase 1b does not need it set in staging because the queue consumer posts the stub callback back into the control plane.
+`INFERENCE_BASE_URL` must point at the deployed external inference service for phase 2b staging cutover. It is stored as a secret so the staging Worker never depends on a localhost or hard-coded service URL.
 
 Those names are the only secret identifiers to use in local and staging. Store values with `wrangler secret put`; do not put them in `vars`.
 
@@ -81,6 +82,7 @@ cd services/control-plane
 wrangler secret put ADMIN_API_TOKEN
 printf '%s' 'http://127.0.0.1:8787' | wrangler secret put CONTROL_PLANE_BASE_URL
 wrangler secret put CONTROL_PLANE_SHARED_SECRET
+wrangler secret put INFERENCE_BASE_URL
 wrangler secret put INFERENCE_SHARED_SECRET
 wrangler secret put R2_ACCESS_KEY_ID
 wrangler secret put R2_SECRET_ACCESS_KEY
@@ -104,6 +106,7 @@ Staging secrets:
 cd services/control-plane
 wrangler secret put ADMIN_API_TOKEN --env staging
 printf '%s' 'https://<staging-worker-url>' | wrangler secret put CONTROL_PLANE_BASE_URL --env staging
+printf '%s' 'https://<staging-inference-service-url>' | wrangler secret put INFERENCE_BASE_URL --env staging
 wrangler secret put CONTROL_PLANE_SHARED_SECRET --env staging
 wrangler secret put INFERENCE_SHARED_SECRET --env staging
 wrangler secret put R2_ACCESS_KEY_ID --env staging

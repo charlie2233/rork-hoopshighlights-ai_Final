@@ -1,6 +1,6 @@
 # Staging Smoke Runbook
 
-This runbook covers the live Cloudflare staging path for phase 1b: resource setup, deploy, iOS smoke, rollback, and the known failure modes for the happy-path flow.
+This runbook covers the live Cloudflare staging path for phase 2b: resource setup, deploy, iOS smoke, rollback, and the known failure modes for the happy-path flow.
 
 ## Preconditions
 
@@ -27,17 +27,19 @@ The staging Worker needs these secret names, and they must be stored with `wrang
 
 ```bash
 cd services/control-plane
-npx wrangler deploy --env staging
-printf '%s' 'https://<printed-workers-dev-or-custom-domain-url>' | npx wrangler secret put CONTROL_PLANE_BASE_URL --env staging
+printf '%s' 'https://<staging-inference-service-url>' | npx wrangler secret put INFERENCE_BASE_URL --env staging
 npx wrangler secret put ADMIN_API_TOKEN --env staging
 npx wrangler secret put CONTROL_PLANE_SHARED_SECRET --env staging
 npx wrangler secret put INFERENCE_SHARED_SECRET --env staging
 npx wrangler secret put R2_ACCESS_KEY_ID --env staging
 npx wrangler secret put R2_SECRET_ACCESS_KEY --env staging
 npx wrangler deploy --env staging
+printf '%s' 'https://<printed-workers-dev-or-custom-domain-url>' | npx wrangler secret put CONTROL_PLANE_BASE_URL --env staging
+npx wrangler deploy --env staging
 ```
 
-`CONTROL_PLANE_BASE_URL` is the only service URL required in phase 1b. It must match the deployed staging Worker host so queue-driven stub inference can call back into `/internal/inference/callback`.
+`CONTROL_PLANE_BASE_URL` must match the deployed staging Worker host so the external inference service can call back into `/internal/inference/callback`.
+`INFERENCE_BASE_URL` must point at the deployed staging inference service.
 
 ## Exact Deploy Commands
 
@@ -86,7 +88,7 @@ The script now prints a summary with `requestIds.presign`, `requestIds.finalize`
 - Confirm `POST /jobs` returns `queued`.
 - Confirm the staging Worker URL in `CONTROL_PLANE_BASE_URL` is not localhost.
 - Confirm the queue dispatch appears in Worker logs with the same `requestId`.
-- Confirm the stub inference callback completes successfully.
+- Confirm the real external inference callback completes successfully.
 - Confirm `GET /jobs/:id` reaches `completed`.
 - Confirm the app renders the returned clips.
 - Confirm the live smoke command includes `--file` so the upload is backed by a real sample video.
@@ -120,6 +122,7 @@ npx wrangler deploy --env staging
 - Expired presigned URL: the upload fails before `POST /jobs`; issue a fresh presign and retry the upload.
 - Missing staging secret: callback auth fails with `403`; verify all `wrangler secret put --env staging` entries exist.
 - Invalid job state regression: `created -> upload_pending -> uploaded -> queued -> processing -> completed | failed | cancelled` is enforced, and backward transitions are ignored.
+- Real inference service unavailable: the queue consumer fails before `processing` is marked; verify `INFERENCE_BASE_URL` points to the deployed service and that the service accepts `POST /v1/analyze`.
 
 ## Repeatability Notes
 

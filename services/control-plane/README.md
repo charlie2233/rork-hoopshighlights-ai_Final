@@ -61,8 +61,8 @@ Required env/secret inputs:
 - `ADMIN_API_TOKEN`
 - `CONTROL_PLANE_BASE_URL`
 - `CONTROL_PLANE_SHARED_SECRET`
-- `INFERENCE_SHARED_SECRET`
 - `INFERENCE_BASE_URL`
+- `INFERENCE_SHARED_SECRET`
 - `R2_ACCOUNT_ID`
 - `R2_ACCESS_KEY_ID`
 - `R2_SECRET_ACCESS_KEY`
@@ -77,6 +77,6 @@ For the exact local/staging variable mapping and Wrangler secret commands, see [
 
 ## Migration notes
 
-- The current implementation is a scaffold, but it now dispatches to a dedicated external inference service instead of running stub inference in the queue consumer.
+- The current implementation dispatches to a dedicated external inference service instead of running stub inference in the queue consumer.
 - The public job contract remains backwards compatible at the response-field level.
 - The next phase is deploying the production inference service and removing the last local/test-only dispatch shims.
