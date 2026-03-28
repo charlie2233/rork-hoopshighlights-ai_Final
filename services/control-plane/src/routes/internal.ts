@@ -356,10 +356,7 @@ function buildCallbackPatch(
     failureReason,
     resultConfidence,
     confidence: resultConfidence,
-    attemptCount:
-      typeof payload.attemptCount === "number" && Number.isFinite(payload.attemptCount)
-        ? Math.max(0, Math.floor(payload.attemptCount))
-        : job.attemptCount ?? 0,
+    attemptCount: resolveAttemptCount(job.attemptCount ?? 0, payload.attemptCount),
     results: normalizedResult ?? job.results ?? null,
     uploadTraceId: payload.uploadTraceId ?? job.uploadTraceId ?? null,
     inferenceAttemptId: payload.inferenceAttemptId ?? job.inferenceAttemptId ?? null,
@@ -383,6 +380,14 @@ function buildCallbackPatch(
   }
 
   return patch;
+}
+
+function resolveAttemptCount(current: number, incoming: number | null | undefined): number {
+  const normalizedCurrent = Math.max(0, Math.floor(current));
+  if (typeof incoming === "number" && Number.isFinite(incoming)) {
+    return Math.max(normalizedCurrent, Math.max(0, Math.floor(incoming)));
+  }
+  return normalizedCurrent;
 }
 
 function normalizeCallbackResult(payload: InferenceCallbackPayload, requestId: string): CloudAnalysisResult | null {
