@@ -171,26 +171,26 @@ async function handlePresign(
       failureReason: null,
       uploadTraceId,
       inferenceAttemptId: null,
-      jobId: pendingJob.jobId,
-      sourceObjectKey: pendingJob.sourceObjectKey,
-      resultObjectKey: pendingJob.resultObjectKey,
-      uploadUrl: pendingJob.uploadUrl,
-      uploadMethod: pendingJob.uploadMethod,
-      uploadHeaders: pendingJob.uploadHeaders,
-      expiresAt: pendingJob.expiresAt,
-      status: pendingJob.status,
+      jobId,
+      sourceObjectKey: upload.objectKey,
+      resultObjectKey: record.resultObjectKey,
+      uploadUrl: upload.uploadUrl,
+      uploadMethod: upload.uploadMethod,
+      uploadHeaders: upload.uploadHeaders,
+      expiresAt: upload.expiresAt,
+      status: "upload_pending",
       analysisMode: "cloud",
       pollAfterSeconds: resolveRuntimeConfig(env).defaultPollAfterSeconds,
-      quotaRemainingToday: pendingJob.quotaRemainingToday ?? 5
+      quotaRemainingToday: pendingJob.quotaRemainingToday ?? record.quotaRemainingToday ?? 5
     };
     console.info(
       JSON.stringify({
         requestId,
-        jobId: pendingJob.jobId,
+        jobId,
         traceId,
         uploadTraceId,
         event: "job.presign.created",
-        status: pendingJob.status
+        status: "upload_pending"
       })
     );
     return jsonResponse(response, { status: 201 }, requestId);
