@@ -7,8 +7,9 @@ Measure whether the learned cloud pipeline improves on the current heuristic-hea
 ## Benchmark Set
 
 - Build a fixed sample set of basketball clips with clip-level labels.
-- Include made shots, misses, dunks, layups, fast breaks, steals, blocks, and ambiguous non-highlight segments.
+- Include `dunk`, `layup`, `jumper`, `block`, `steal`, `fast break`, `miss`, and ambiguous non-highlight segments.
 - Keep a held-out slice for regression checks.
+- Start with a small scaffold in [`services/inference/evals/basketball_eval_set.json`](/Users/hanfei/rork-hoopshighlights-ai_Final/services/inference/evals/basketball_eval_set.json).
 
 ## Metrics
 
@@ -28,10 +29,17 @@ Measure whether the learned cloud pipeline improves on the current heuristic-hea
 - Compare VideoMAE and X-CLIP behind the same recognizer interface.
 - Store per-run manifests and summary metrics.
 - Promote reviewer corrections from the dashboard into the training set.
+- Generate the report with [`services/inference/scripts/run_eval_report.py`](/Users/hanfei/rork-hoopshighlights-ai_Final/services/inference/scripts/run_eval_report.py).
 
 ## Output
 
-- A short benchmark report
-- A regression table
+- A short benchmark report in Markdown and JSON
+- A regression table with per-class precision, recall, and top-k hit rate
 - A list of sample clips that should be reviewed or relabeled
 
+## Recommended Labeling Priorities
+
+- `jumper` and `miss` first, because they tend to collapse into one another when shot release is visible but ball flight is not.
+- `layup` next, because it is the most common overlap with `jumper` and `dunk` in short clips.
+- `fast break` after that, because transition plays often look like generic scoring clips without enough context.
+- `steal` and `block` last, because they are defensive classes the model usually separates better once motion is obvious.
