@@ -46,6 +46,9 @@ class ApiContractTests(unittest.TestCase):
             ready = client.get("/readyz")
             self.assertEqual(ready.status_code, 200)
             self.assertEqual(ready.json()["status"], "ready")
+            self.assertEqual(ready.json()["callback"], "configured")
+            self.assertEqual(ready.json()["ingress"], "configured")
+            self.assertEqual(ready.json()["r2"], "configured")
 
     def test_analyze_endpoint_accepts_source_object_key(self) -> None:
         with patch("services.inference.app.api.build_service", return_value=FakeService()):

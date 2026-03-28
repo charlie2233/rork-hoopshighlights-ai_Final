@@ -39,6 +39,8 @@ def create_app(settings: InferenceSettings | None = None) -> FastAPI:
             "service": resolved_settings.service_name,
             "ffmpeg": "available" if _which("ffmpeg") else "missing",
             "ffprobe": "available" if _which("ffprobe") else "missing",
+            "callback": "configured" if resolved_settings.callback_secret.strip() else "unconfigured",
+            "ingress": "configured" if resolved_settings.ingress_secret.strip() else "unconfigured",
             "r2": "configured" if resolved_settings.has_r2_configuration() else "unconfigured",
         }
 

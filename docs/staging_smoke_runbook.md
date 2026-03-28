@@ -41,6 +41,14 @@ npx wrangler deploy --env staging
 `CONTROL_PLANE_BASE_URL` must match the deployed staging Worker host so the external inference service can call back into `/internal/inference/callback`.
 `INFERENCE_BASE_URL` must point at the deployed staging inference service.
 
+Before starting a live smoke, verify the inference service readiness endpoint reports all of the following as configured:
+
+- `callback`
+- `ingress`
+- `r2`
+
+If you are validating the callback path locally instead of using a deployed service, expose the inference service with a tunnel and use that public URL for `INFERENCE_BASE_URL`.
+
 ## Exact Deploy Commands
 
 Deploy the staging Worker from the control-plane package:

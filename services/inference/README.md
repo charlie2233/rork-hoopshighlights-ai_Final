@@ -68,6 +68,7 @@ The repository now includes a Cloud Build recipe for a Cloud Run staging deploy.
 
 Required secret names:
 - `HOOPS_INFERENCE_CALLBACK_SECRET`
+- `HOOPS_INFERENCE_INGRESS_SECRET`
 - `HOOPS_INFERENCE_R2_ACCESS_KEY_ID`
 - `HOOPS_INFERENCE_R2_SECRET_ACCESS_KEY`
 
@@ -90,6 +91,18 @@ gcloud builds submit \
 ```
 
 After deploy, capture the Cloud Run URL and hand it to the control plane as `INFERENCE_BASE_URL` in the staging environment.
+
+## Local tunnel path
+If you need to validate the callback path before a cloud deploy is available, expose the local service with a tunnel and point the control plane at the tunnel URL:
+
+```bash
+cd /Users/hanfei/rork-hoopshighlights-ai_Final/services/inference
+uvicorn app.main:app --host 127.0.0.1 --port 8080
+# in another terminal
+cloudflared tunnel --url http://127.0.0.1:8080
+```
+
+Then set `INFERENCE_BASE_URL` to the tunnel URL in the staging control-plane environment and confirm `/readyz` reports `callback`, `ingress`, and `r2` as `configured` before starting a live job.
 
 ## Endpoints
 - `GET /healthz`
