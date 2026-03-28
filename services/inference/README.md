@@ -63,6 +63,34 @@ docker run --rm -p 8080:8080 \
   hoops-inference
 ```
 
+## Staging deploy
+The repository now includes a Cloud Build recipe for a Cloud Run staging deploy. It keeps the service portable while making the staging cutover reproducible.
+
+Required secret names:
+- `HOOPS_INFERENCE_CALLBACK_SECRET`
+- `HOOPS_INFERENCE_R2_ACCESS_KEY_ID`
+- `HOOPS_INFERENCE_R2_SECRET_ACCESS_KEY`
+
+Required non-secret staging values:
+- `HOOPS_INFERENCE_SERVICE_NAME=hoopsclips-inference-staging`
+- `HOOPS_INFERENCE_ENVIRONMENT=staging`
+- `HOOPS_INFERENCE_VERSION=phase2b-live-inference-cutover`
+- `HOOPS_INFERENCE_R2_BUCKET_NAME=hoopsclips-uploads-staging`
+- `HOOPS_INFERENCE_R2_ENDPOINT_URL=https://78fb4442e6e37b2c46d7e539c6e79172.r2.cloudflarestorage.com`
+- `HOOPS_INFERENCE_R2_REGION_NAME=auto`
+
+Example deploy command:
+
+```bash
+cd /Users/hanfei/rork-hoopshighlights-ai_Final/services/inference
+gcloud builds submit \
+  --config cloudbuild.yaml \
+  --substitutions=_SERVICE_NAME=hoopsclips-inference-staging,_REGION=us-central1,_ARTIFACT_REPO=hoopsclips,_ENVIRONMENT=staging,_VERSION=phase2b-live-inference-cutover,_R2_BUCKET_NAME=hoopsclips-uploads-staging,_R2_ENDPOINT_URL=https://78fb4442e6e37b2c46d7e539c6e79172.r2.cloudflarestorage.com,_R2_REGION_NAME=auto \
+  .
+```
+
+After deploy, capture the Cloud Run URL and hand it to the control plane as `INFERENCE_BASE_URL` in the staging environment.
+
 ## Endpoints
 - `GET /healthz`
 - `GET /readyz`
