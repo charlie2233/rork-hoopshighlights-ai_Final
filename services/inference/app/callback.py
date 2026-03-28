@@ -19,6 +19,7 @@ class CallbackClient:
         headers = {
             "content-type": "application/json",
             "x-hoops-callback-secret": secret,
+            "x-hoops-inference-secret": secret,
             "x-hoops-request-id": request_id or payload.requestId,
             "user-agent": self.user_agent,
         }
