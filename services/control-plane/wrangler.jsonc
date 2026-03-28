@@ -73,6 +73,16 @@
     "R2_UPLOAD_BUCKET_NAME": "hoopsclips-uploads",
     "R2_RESULT_BUCKET_NAME": "hoopsclips-results"
   },
+  "secrets": {
+    "required": [
+      "ADMIN_API_TOKEN",
+      "CONTROL_PLANE_BASE_URL",
+      "CONTROL_PLANE_SHARED_SECRET",
+      "INFERENCE_SHARED_SECRET",
+      "R2_ACCESS_KEY_ID",
+      "R2_SECRET_ACCESS_KEY"
+    ]
+  },
   "env": {
     "staging": {
       "name": "hoopsclips-control-plane-staging",
@@ -87,6 +97,16 @@
         "R2_ACCOUNT_ID": "78fb4442e6e37b2c46d7e539c6e79172",
         "R2_UPLOAD_BUCKET_NAME": "hoopsclips-uploads-staging",
         "R2_RESULT_BUCKET_NAME": "hoopsclips-results-staging"
+      },
+      "secrets": {
+        "required": [
+          "ADMIN_API_TOKEN",
+          "CONTROL_PLANE_BASE_URL",
+          "CONTROL_PLANE_SHARED_SECRET",
+          "INFERENCE_SHARED_SECRET",
+          "R2_ACCESS_KEY_ID",
+          "R2_SECRET_ACCESS_KEY"
+        ]
       },
       "durable_objects": {
         "bindings": [
