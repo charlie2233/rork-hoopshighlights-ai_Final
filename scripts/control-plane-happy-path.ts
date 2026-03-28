@@ -1,3 +1,5 @@
+import { readFile, stat } from "node:fs/promises";
+import path from "node:path";
 import {
   createControlPlaneHarness,
   invokePublicRoute,
@@ -25,12 +27,13 @@ async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   const baseUrl = args.baseUrl ?? process.env.CONTROL_PLANE_BASE_URL ?? "";
   const mode = baseUrl ? "http" : "local";
+  const upload = await resolveUploadInput(args);
 
-  const summary = mode === "http" ? await runHttpHappyPath(baseUrl, args) : await runLocalHappyPath(args);
+  const summary = mode === "http" ? await runHttpHappyPath(baseUrl, args, upload) : await runLocalHappyPath(args, upload);
   console.log(JSON.stringify(summary, null, 2));
 }
 
-async function runLocalHappyPath(args: ParsedArgs): Promise<FlowSummary> {
+async function runLocalHappyPath(args: ParsedArgs, upload: UploadInput): Promise<FlowSummary> {
   const harness = createControlPlaneHarness({
     APP_ENV: "local",
     CONTROL_PLANE_SHARED_SECRET: args.sharedSecret ?? "local-control-plane-secret",
@@ -42,9 +45,9 @@ async function runLocalHappyPath(args: ParsedArgs): Promise<FlowSummary> {
     "POST",
     "/uploads/presign",
     {
-      filename: args.filename,
-      contentType: args.contentType,
-      fileSizeBytes: args.fileSizeBytes,
+      filename: upload.filename,
+      contentType: upload.contentType,
+      fileSizeBytes: upload.fileSizeBytes,
       durationSeconds: args.durationSeconds,
       installId: args.installId,
       appVersion: args.appVersion,
@@ -60,7 +63,7 @@ async function runLocalHappyPath(args: ParsedArgs): Promise<FlowSummary> {
   }>(createResponse);
 
   const uploadKey = createJson.sourceObjectKey;
-  await uploadObject(harness, createJson.uploadUrl, new TextEncoder().encode("fake basketball clip"));
+  await uploadObject(harness, createJson.uploadUrl, upload.body);
 
   const finalizeResponse = await invokePublicRoute(
     harness,
@@ -99,7 +102,7 @@ async function runLocalHappyPath(args: ParsedArgs): Promise<FlowSummary> {
   };
 }
 
-async function runHttpHappyPath(baseUrl: string, args: ParsedArgs): Promise<FlowSummary> {
+async function runHttpHappyPath(baseUrl: string, args: ParsedArgs, upload: UploadInput): Promise<FlowSummary> {
   const createResponse = await fetchJson(`${baseUrl}/uploads/presign`, {
     method: "POST",
     headers: {
@@ -107,9 +110,9 @@ async function runHttpHappyPath(baseUrl: string, args: ParsedArgs): Promise<Flow
       "x-trace-id": args.traceId
     },
     body: {
-      filename: args.filename,
-      contentType: args.contentType,
-      fileSizeBytes: args.fileSizeBytes,
+      filename: upload.filename,
+      contentType: upload.contentType,
+      fileSizeBytes: upload.fileSizeBytes,
       durationSeconds: args.durationSeconds,
       installId: args.installId,
       appVersion: args.appVersion,
@@ -121,9 +124,9 @@ async function runHttpHappyPath(baseUrl: string, args: ParsedArgs): Promise<Flow
   await fetch(createResponse.uploadUrl, {
     method: "PUT",
     headers: {
-      "content-type": args.contentType
+      "content-type": upload.contentType
     },
-    body: new TextEncoder().encode("fake basketball clip")
+    body: upload.body
   });
 
   const finalizeResponse = await fetchJson(`${baseUrl}/jobs`, {
@@ -219,6 +222,7 @@ interface ParsedArgs {
   baseUrl?: string;
   sharedSecret?: string;
   adminToken?: string;
+  filePath?: string;
   installId: string;
   filename: string;
   contentType: string;
@@ -257,6 +261,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     baseUrl: map.get("--base-url"),
     sharedSecret: map.get("--shared-secret"),
     adminToken: map.get("--admin-token"),
+    filePath: map.get("--file"),
     installId: map.get("--install-id") ?? "install-local-001",
     filename: map.get("--filename") ?? "sample-game.mp4",
     contentType: map.get("--content-type") ?? "video/mp4",
@@ -268,6 +273,34 @@ function parseArgs(argv: string[]): ParsedArgs {
     traceId: map.get("--trace-id") ?? crypto.randomUUID(),
     pollIntervalSeconds: Number.parseFloat(map.get("--poll-interval-seconds") ?? "1"),
     pollTimeoutSeconds: Number.parseFloat(map.get("--poll-timeout-seconds") ?? "30")
+  };
+}
+
+interface UploadInput {
+  filename: string;
+  contentType: string;
+  fileSizeBytes: number;
+  body: Uint8Array;
+}
+
+async function resolveUploadInput(args: ParsedArgs): Promise<UploadInput> {
+  if (!args.filePath) {
+    return {
+      filename: args.filename,
+      contentType: args.contentType,
+      fileSizeBytes: args.fileSizeBytes,
+      body: new TextEncoder().encode("fake basketball clip")
+    };
+  }
+
+  const resolvedPath = path.resolve(args.filePath);
+  const [body, stats] = await Promise.all([readFile(resolvedPath), stat(resolvedPath)]);
+
+  return {
+    filename: path.basename(resolvedPath),
+    contentType: args.contentType,
+    fileSizeBytes: Number(stats.size),
+    body
   };
 }
 
