@@ -8,7 +8,7 @@ const LABELS = ["Made Shot", "Fast Break", "Dunk", "Layup", "Steal", "Block", "T
 export function buildStubInferenceCallbackPayload(job: JobRecord, message: QueueJobMessage): InferenceCallbackPayload {
   const seed = hashString([job.jobId, message.requestId, job.installId, job.analysisVersion].join("|"));
   const rng = createSeededRng(seed);
-  const clipCount = job.durationSeconds >= 240 ? 3 : 2;
+  const clipCount = inferredClipCount(job.durationSeconds);
   const clips = buildStubClips(job, rng, clipCount);
   const resultConfidence = roundToFour(clips.reduce((sum, clip) => sum + clip.confidence, 0) / clips.length);
   const diagnostics = {
@@ -40,8 +40,9 @@ export function buildStubInferenceCallbackPayload(job: JobRecord, message: Queue
 }
 
 function buildStubClips(job: JobRecord, rng: SeededRng, clipCount: number): CloudClip[] {
-  const duration = Math.max(job.durationSeconds, 30);
-  const span = Math.max(4, Math.min(12, duration * 0.18));
+  const duration = Math.max(job.durationSeconds, 1.5);
+  const maxSpan = Math.max(0.9, duration - 0.2);
+  const span = clamp(duration * 0.28, 0.9, Math.max(0.9, Math.min(5.4, maxSpan)));
   const step = duration / (clipCount + 1);
   const clips: CloudClip[] = [];
 
@@ -49,7 +50,8 @@ function buildStubClips(job: JobRecord, rng: SeededRng, clipCount: number): Clou
     const startBase = Math.max(0, step * (index + 0.55));
     const jitter = (rng() - 0.5) * Math.min(2.5, duration * 0.05);
     const startTime = clamp(startBase + jitter, 0, Math.max(0, duration - span));
-    const endTime = clamp(startTime + span, startTime + 1, duration);
+    const minimumEndTime = Math.min(duration, startTime + Math.min(0.9, Math.max(0.35, duration * 0.18)));
+    const endTime = clamp(startTime + span, minimumEndTime, duration);
     const label = LABELS[Math.floor(rng() * LABELS.length) % LABELS.length]!;
     const confidence = roundToFour(0.78 + rng() * 0.17);
     const motionScore = roundToFour(0.6 + rng() * 0.3);
@@ -82,6 +84,16 @@ function buildStubClips(job: JobRecord, rng: SeededRng, clipCount: number): Clou
   }
 
   return clips;
+}
+
+function inferredClipCount(durationSeconds: number): number {
+  if (durationSeconds >= 240) {
+    return 3;
+  }
+  if (durationSeconds < 12) {
+    return 1;
+  }
+  return 2;
 }
 
 function inferEventType(label: string): string {
