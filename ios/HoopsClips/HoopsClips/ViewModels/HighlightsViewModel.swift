@@ -60,6 +60,13 @@ final class HighlightsViewModel {
     var analysisMode: AnalysisExecutionMode = .cloud
     var cloudQuotaRemaining: Int?
     var isCloudFallbackOffered = false
+    var cloudAnalysisTrace: CloudAnalysisTraceSnapshot?
+
+    var isStagingEnvironment: Bool {
+        Config.environment
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() == "staging"
+    }
 
     var historyProjects: [PersistedProjectRecord] {
         projectLibrary.projects.sorted { lhs, rhs in
@@ -118,6 +125,7 @@ final class HighlightsViewModel {
             let project = try await projectStore.createProjectFromImportedVideo(sourceURL: url.standardizedFileURL)
             insertProject(project, makeCurrent: true)
             applyPersistedProject(project)
+            cloudAnalysisTrace = nil
             persistCurrentProject(reason: .imported, message: "Imported \(project.sourceFilename)")
         } catch {
             print("Failed to load video: \(error.localizedDescription)")
@@ -132,6 +140,7 @@ final class HighlightsViewModel {
 
         analysisMode = .cloud
         isCloudFallbackOffered = false
+        cloudAnalysisTrace = nil
         analysisService.updateSettings(settings)
         analysisService.beginExternalAnalysis(status: "Preparing upload")
 
@@ -139,7 +148,10 @@ final class HighlightsViewModel {
             let result = try await cloudAnalysisService.analyzeVideo(
                 url: url,
                 duration: videoDuration,
-                installID: installID
+                installID: installID,
+                traceUpdate: { [weak self] trace in
+                    self?.cloudAnalysisTrace = trace
+                }
             ) { [weak service = analysisService] progress, status in
                 service?.updateExternalAnalysis(progress: progress, status: status)
             }
@@ -427,6 +439,7 @@ final class HighlightsViewModel {
         showingSaveSuccess = false
         cloudQuotaRemaining = nil
         isCloudFallbackOffered = false
+        cloudAnalysisTrace = nil
     }
 
     private func clearLiveProjectState() {
@@ -460,6 +473,7 @@ final class HighlightsViewModel {
         analysisMode = .cloud
         cloudQuotaRemaining = nil
         isCloudFallbackOffered = false
+        cloudAnalysisTrace = nil
         lastAnalysisStatusSummary = nil
         lastAnalyzedAt = nil
         lastExportedAt = nil

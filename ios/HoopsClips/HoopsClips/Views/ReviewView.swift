@@ -42,6 +42,7 @@ struct ReviewView: View {
                 } else {
                     ScrollView {
                         VStack(spacing: 16) {
+                            stagingTraceCard
                             headerStats
                             reviewProgressStrip
                             quickActionsBar
@@ -82,6 +83,55 @@ struct ReviewView: View {
             .sheet(item: $selectedClip, onDismiss: teardownClipPlayer) { clip in
                 clipDetailSheet(clip: clip)
             }
+        }
+    }
+
+    @ViewBuilder
+    private var stagingTraceCard: some View {
+        if viewModel.isStagingEnvironment, let trace = viewModel.cloudAnalysisTrace {
+            VStack(alignment: .leading, spacing: 12) {
+                RorkSectionHeader(
+                    title: "Staging Debug Trace",
+                    icon: "waveform.path.ecg",
+                    subtitle: "Internal only"
+                )
+
+                VStack(spacing: 10) {
+                    traceRow(label: "requestId", value: trace.requestId)
+                    traceRow(label: "uploadTraceId", value: trace.uploadTraceId ?? "pending")
+                    traceRow(label: "inferenceAttemptId", value: trace.inferenceAttemptId ?? "pending")
+                    traceRow(label: "modelVersion", value: trace.modelVersion ?? "pending")
+                    traceRow(
+                        label: "failureReason",
+                        value: trace.failureReason ?? "none",
+                        tint: trace.failureReason == nil ? AppTheme.subtleText : AppTheme.dangerRed
+                    )
+                }
+            }
+            .padding(14)
+            .rorkCard(
+                cornerRadius: 16,
+                fill: AnyShapeStyle(AppTheme.surfaceBg.opacity(0.65)),
+                stroke: AppTheme.neonPurple.opacity(0.22),
+                glow: AppTheme.neonPurple,
+                glowOpacity: 0.06
+            )
+        }
+    }
+
+    private func traceRow(label: String, value: String, tint: Color = .white) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            Text(label)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(AppTheme.subtleText)
+                .frame(width: 132, alignment: .leading)
+
+            Text(value)
+                .font(.system(.caption, design: .monospaced))
+                .foregroundStyle(tint)
+                .textSelection(.enabled)
+
+            Spacer(minLength: 0)
         }
     }
 

@@ -26,6 +26,7 @@ nonisolated struct CloudUploadPresignResponse: Codable, Sendable {
     let expiresAt: Date
     var schemaVersion: String? = nil
     var modelVersion: String? = nil
+    var uploadTraceId: String? = nil
     var failureReason: String? = nil
 
     enum CodingKeys: String, CodingKey {
@@ -39,6 +40,7 @@ nonisolated struct CloudUploadPresignResponse: Codable, Sendable {
         case expiresAt
         case schemaVersion
         case modelVersion
+        case uploadTraceId
         case failureReason
     }
 }
@@ -55,6 +57,8 @@ nonisolated struct CloudCreateJobResponse: Codable, Sendable {
     let jobId: String
     let status: String
     var pollAfterSeconds: Int? = nil
+    var uploadTraceId: String? = nil
+    var inferenceAttemptId: String? = nil
     var modelVersion: String? = nil
     var failureReason: String? = nil
 }
@@ -79,6 +83,8 @@ nonisolated struct CreateCloudAnalysisJobResponse: Codable, Sendable {
     let pollAfterSeconds: Int
     let quotaRemainingToday: Int
     let analysisMode: String
+    var uploadTraceId: String? = nil
+    var inferenceAttemptId: String? = nil
     let modelVersion: String?
     let failureReason: String?
 }
@@ -91,6 +97,8 @@ nonisolated struct StartCloudAnalysisJobResponse: Codable, Sendable {
     let requestId: String
     let jobId: String
     let status: String
+    var uploadTraceId: String? = nil
+    var inferenceAttemptId: String? = nil
     let modelVersion: String?
     let failureReason: String?
 }
@@ -106,6 +114,8 @@ nonisolated struct CloudAnalysisJobResponse: Codable, Sendable {
     var errorMessage: String? = nil
     let analysisVersion: String
     var schemaVersion: String? = nil
+    var uploadTraceId: String? = nil
+    var inferenceAttemptId: String? = nil
     var results: CloudAnalysisResult? = nil
     var modelVersion: String? = nil
     var failureReason: String? = nil
@@ -114,6 +124,8 @@ nonisolated struct CloudAnalysisJobResponse: Codable, Sendable {
 
 nonisolated struct CloudAnalysisResult: Codable, Sendable {
     var requestId: String? = nil
+    var uploadTraceId: String? = nil
+    var inferenceAttemptId: String? = nil
     let clipCount: Int
     let clips: [CloudClip]
     let diagnostics: CloudDiagnostics
@@ -175,6 +187,14 @@ nonisolated struct CloudDiagnostics: Codable, Sendable {
     let candidateSegments: Int
     let finalSegments: Int
     var failureReason: String? = nil
+}
+
+nonisolated struct CloudAnalysisTraceSnapshot: Codable, Sendable, Equatable {
+    var requestId: String
+    var uploadTraceId: String?
+    var inferenceAttemptId: String?
+    var modelVersion: String?
+    var failureReason: String?
 }
 
 nonisolated struct CloudAnalysisAPIError: Codable, Sendable {

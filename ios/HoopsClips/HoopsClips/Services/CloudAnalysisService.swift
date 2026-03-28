@@ -25,14 +25,24 @@ struct CloudAnalysisService {
         installID: String,
         appVersion: String = "v1.0",
         analysisVersion: String = AppConstants.cloudAnalysisVersion,
+        traceUpdate: (@MainActor @Sendable (CloudAnalysisTraceSnapshot) -> Void)? = nil,
         progress: @escaping @MainActor @Sendable (Double, String) -> Void
     ) async throws -> CloudAnalysisResult {
         let requestId = makeRequestID()
+        let uploadTraceId = makeRequestID()
         guard let baseURL = configuredBaseURL(requestId: requestId) else {
             throw CloudAnalysisError.notConfigured
         }
 
         let fileInfo = try fileInfo(for: url)
+        var trace = CloudAnalysisTraceSnapshot(
+            requestId: requestId,
+            uploadTraceId: uploadTraceId,
+            inferenceAttemptId: nil,
+            modelVersion: nil,
+            failureReason: nil
+        )
+        traceUpdate?(trace)
 
         logger.info(
             "Cloud analysis starting request_id=\(requestId, privacy: .public) environment=\(AppRuntimeConfig.shared.environmentName, privacy: .public) base_url=\(baseURL.absoluteString, privacy: .public)"
@@ -51,8 +61,13 @@ struct CloudAnalysisService {
                     appVersion: appVersion,
                     analysisVersion: analysisVersion
                 ),
-                requestId: requestId
+                requestId: requestId,
+                uploadTraceId: uploadTraceId
             )
+            trace.uploadTraceId = presign.uploadTraceId ?? trace.uploadTraceId
+            trace.modelVersion = presign.modelVersion ?? trace.modelVersion
+            trace.failureReason = presign.failureReason ?? trace.failureReason
+            traceUpdate?(trace)
             logger.info(
                 "Cloud analysis presign received request_id=\(requestId, privacy: .public) job_id=\(presign.jobId, privacy: .public)"
             )
@@ -72,8 +87,14 @@ struct CloudAnalysisService {
                     sourceObjectKey: presign.uploadObjectKey,
                     resultObjectKey: presign.resultObjectKey
                 ),
-                requestId: requestId
+                requestId: requestId,
+                uploadTraceId: uploadTraceId
             )
+            trace.uploadTraceId = job.uploadTraceId ?? trace.uploadTraceId
+            trace.inferenceAttemptId = job.inferenceAttemptId ?? trace.inferenceAttemptId
+            trace.modelVersion = job.modelVersion ?? trace.modelVersion
+            trace.failureReason = job.failureReason ?? trace.failureReason
+            traceUpdate?(trace)
             logger.info(
                 "Cloud analysis job created request_id=\(requestId, privacy: .public) job_id=\(job.jobId, privacy: .public) status=\(job.status, privacy: .public)"
             )
@@ -83,7 +104,10 @@ struct CloudAnalysisService {
                 jobID: job.jobId,
                 initialPollAfterSeconds: job.pollAfterSeconds ?? 2,
                 progress: progress,
-                requestId: requestId
+                requestId: requestId,
+                uploadTraceId: uploadTraceId,
+                traceState: trace,
+                traceUpdate: traceUpdate
             )
         }
 
@@ -98,21 +122,41 @@ struct CloudAnalysisService {
                 appVersion: appVersion,
                 analysisVersion: analysisVersion
             ),
-            requestId: requestId
+            requestId: requestId,
+            uploadTraceId: uploadTraceId
         )
+        trace.uploadTraceId = job.uploadTraceId ?? trace.uploadTraceId
+        trace.inferenceAttemptId = job.inferenceAttemptId ?? trace.inferenceAttemptId
+        trace.modelVersion = job.modelVersion ?? trace.modelVersion
+        trace.failureReason = job.failureReason ?? trace.failureReason
+        traceUpdate?(trace)
 
         await progress(0.15, "Uploading video")
         try await uploadLegacyVideo(to: job, from: url)
 
         await progress(0.28, "Queued on server")
-        _ = try await startLegacyJob(baseURL: baseURL, jobID: job.jobId, installID: installID, requestId: requestId)
+        let started = try await startLegacyJob(
+            baseURL: baseURL,
+            jobID: job.jobId,
+            installID: installID,
+            requestId: requestId,
+            uploadTraceId: uploadTraceId
+        )
+        trace.uploadTraceId = started.uploadTraceId ?? trace.uploadTraceId
+        trace.inferenceAttemptId = started.inferenceAttemptId ?? trace.inferenceAttemptId
+        trace.modelVersion = started.modelVersion ?? trace.modelVersion
+        trace.failureReason = started.failureReason ?? trace.failureReason
+        traceUpdate?(trace)
 
         return try await pollJob(
             baseURL: baseURL,
             jobID: job.jobId,
             initialPollAfterSeconds: job.pollAfterSeconds,
             progress: progress,
-            requestId: requestId
+            requestId: requestId,
+            uploadTraceId: uploadTraceId,
+            traceState: trace,
+            traceUpdate: traceUpdate
         )
     }
 
@@ -166,12 +210,14 @@ struct CloudAnalysisService {
     private func requestPresignedUpload(
         baseURL: URL,
         request body: CloudUploadPresignRequest,
-        requestId: String
+        requestId: String,
+        uploadTraceId: String
     ) async throws -> CloudUploadPresignResponse {
         var request = URLRequest(url: baseURL.appending(path: "uploads/presign"))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(requestId, forHTTPHeaderField: "X-Request-ID")
+        request.setValue(uploadTraceId, forHTTPHeaderField: "X-Upload-Trace-ID")
         request.httpBody = try encoder.encode(body)
 
         let (data, response) = try await session.data(for: request)
@@ -185,12 +231,14 @@ struct CloudAnalysisService {
     private func createHappyPathJob(
         baseURL: URL,
         request body: CloudCreateJobRequest,
-        requestId: String
+        requestId: String,
+        uploadTraceId: String
     ) async throws -> CloudCreateJobResponse {
         var request = URLRequest(url: baseURL.appending(path: "jobs"))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(requestId, forHTTPHeaderField: "X-Request-ID")
+        request.setValue(uploadTraceId, forHTTPHeaderField: "X-Upload-Trace-ID")
         request.httpBody = try encoder.encode(body)
 
         let (data, response) = try await session.data(for: request)
@@ -221,12 +269,14 @@ struct CloudAnalysisService {
     private func createLegacyJob(
         baseURL: URL,
         request body: CreateCloudAnalysisJobRequest,
-        requestId: String
+        requestId: String,
+        uploadTraceId: String
     ) async throws -> CreateCloudAnalysisJobResponse {
         var request = URLRequest(url: baseURL.appending(path: "v1/analysis/jobs"))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(requestId, forHTTPHeaderField: "X-Request-ID")
+        request.setValue(uploadTraceId, forHTTPHeaderField: "X-Upload-Trace-ID")
         request.httpBody = try encoder.encode(body)
 
         let (data, response) = try await session.data(for: request)
@@ -258,12 +308,14 @@ struct CloudAnalysisService {
         baseURL: URL,
         jobID: String,
         installID: String,
-        requestId: String
+        requestId: String,
+        uploadTraceId: String
     ) async throws -> StartCloudAnalysisJobResponse {
         var request = URLRequest(url: baseURL.appending(path: "v1/analysis/jobs/\(jobID)/start"))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(requestId, forHTTPHeaderField: "X-Request-ID")
+        request.setValue(uploadTraceId, forHTTPHeaderField: "X-Upload-Trace-ID")
         request.httpBody = try encoder.encode(StartCloudAnalysisJobRequest(installId: installID))
 
         let (data, response) = try await session.data(for: request)
@@ -279,11 +331,15 @@ struct CloudAnalysisService {
         jobID: String,
         initialPollAfterSeconds: Int,
         progress: @escaping @MainActor @Sendable (Double, String) -> Void,
-        requestId: String
+        requestId: String,
+        uploadTraceId: String,
+        traceState: CloudAnalysisTraceSnapshot,
+        traceUpdate: (@MainActor @Sendable (CloudAnalysisTraceSnapshot) -> Void)?
     ) async throws -> CloudAnalysisResult {
         let timeoutNanos: UInt64 = 180 * 1_000_000_000
         let deadline = DispatchTime.now().uptimeNanoseconds + timeoutNanos
         var pollDelay = max(1, initialPollAfterSeconds)
+        var trace = traceState
 
         while DispatchTime.now().uptimeNanoseconds < deadline {
             try await Task.sleep(nanoseconds: UInt64(pollDelay) * 1_000_000_000)
@@ -291,6 +347,7 @@ struct CloudAnalysisService {
             let path = usesHappyPathFlow ? "jobs/\(jobID)" : "v1/analysis/jobs/\(jobID)"
             var request = URLRequest(url: baseURL.appending(path: path))
             request.setValue(requestId, forHTTPHeaderField: "X-Request-ID")
+            request.setValue(uploadTraceId, forHTTPHeaderField: "X-Upload-Trace-ID")
 
             let (data, response) = try await session.data(for: request)
             let job: CloudAnalysisJobResponse = try decodeResponse(
@@ -298,6 +355,11 @@ struct CloudAnalysisService {
                 response: response,
                 successType: CloudAnalysisJobResponse.self
             )
+            trace.uploadTraceId = job.uploadTraceId ?? trace.uploadTraceId
+            trace.inferenceAttemptId = job.inferenceAttemptId ?? trace.inferenceAttemptId
+            trace.modelVersion = job.modelVersion ?? trace.modelVersion
+            trace.failureReason = job.failureReason ?? trace.failureReason
+            traceUpdate?(trace)
 
             switch CloudAnalysisJobState(rawValue: job.status) {
             case .created, .uploadPending, .uploaded:
@@ -320,11 +382,18 @@ struct CloudAnalysisService {
                 guard let results = job.results else {
                     throw CloudAnalysisError.invalidResponse
                 }
+                trace.uploadTraceId = results.uploadTraceId ?? trace.uploadTraceId
+                trace.inferenceAttemptId = results.inferenceAttemptId ?? trace.inferenceAttemptId
+                trace.modelVersion = results.modelVersion ?? trace.modelVersion
+                trace.failureReason = results.failureReason ?? trace.failureReason
+                traceUpdate?(trace)
                 logger.info(
                     "Cloud analysis completed request_id=\(requestId, privacy: .public) job_id=\(jobID, privacy: .public) clip_count=\(results.clipCount, privacy: .public)"
                 )
                 return results
             case .failed:
+                trace.failureReason = job.failureReason ?? job.errorCode ?? "analysis_failed"
+                traceUpdate?(trace)
                 logger.error(
                     "Cloud analysis failed request_id=\(requestId, privacy: .public) job_id=\(jobID, privacy: .public) failure_reason=\(job.failureReason ?? job.errorCode ?? "analysis_failed", privacy: .public)"
                 )
@@ -333,6 +402,8 @@ struct CloudAnalysisService {
                     message: job.errorMessage ?? "Cloud analysis failed."
                 )
             case .expired:
+                trace.failureReason = "expired"
+                traceUpdate?(trace)
                 logger.error(
                     "Cloud analysis expired request_id=\(requestId, privacy: .public) job_id=\(jobID, privacy: .public)"
                 )
@@ -341,6 +412,8 @@ struct CloudAnalysisService {
                     message: "Cloud analysis job expired before completion."
                 )
             case .cancelled:
+                trace.failureReason = job.failureReason ?? "cancelled"
+                traceUpdate?(trace)
                 logger.error(
                     "Cloud analysis cancelled request_id=\(requestId, privacy: .public) job_id=\(jobID, privacy: .public) failure_reason=\(job.failureReason ?? "cancelled", privacy: .public)"
                 )
