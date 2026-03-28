@@ -77,6 +77,7 @@ test("control plane happy path advances upload_pending -> uploaded -> queued -> 
   assert.equal(harness.state.inferenceDispatches.length, 1);
   assert.equal(harness.state.inferenceDispatches[0]?.jobId, createJson.jobId);
   assert.equal(harness.state.inferenceDispatches[0]?.requestId.length > 0, true);
+  assert.equal(harness.state.inferenceDispatches[0]?.jobStatus, "queued");
   assert.equal(harness.state.inferenceDispatches[0]?.uploadTraceId, createJson.uploadTraceId);
   assert.equal(typeof harness.state.inferenceDispatches[0]?.inferenceAttemptId, "string");
   assert.equal(harness.state.jobs.get(createJson.jobId)?.status, "completed");

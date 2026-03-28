@@ -41,6 +41,7 @@ export interface HarnessInferenceDispatch {
   uploadTraceId: string;
   inferenceAttemptId: string;
   traceId: string;
+  jobStatus: string | undefined;
   url: string;
   headers: Record<string, string>;
   body: Record<string, unknown>;
@@ -162,6 +163,7 @@ export function createControlPlaneHarness(overrides: Partial<Env> = {}): Control
             uploadTraceId,
             inferenceAttemptId,
             traceId,
+            jobStatus: state.jobs.get(String(body.jobId ?? "unknown"))?.status,
             url: url.toString(),
             headers: Object.fromEntries(request.headers.entries()),
             body

@@ -36,6 +36,7 @@ test("queue callback failures write a dead-letter record and fail the job", asyn
 
   const drained = await harness.drainQueue();
   assert.equal(drained, 1);
+  assert.equal(harness.state.inferenceDispatches[0]?.jobStatus, "queued");
   assert.equal(harness.state.jobs.get(createJson.jobId)?.status, "failed");
   assert.equal(typeof harness.state.jobs.get(createJson.jobId)?.failureReason, "string");
   assert.equal(harness.state.deadLetterMessages.length, 1);

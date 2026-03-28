@@ -36,14 +36,12 @@ export async function handleQueueBatch(batch: MessageBatch<QueueJobMessage>, env
       const modelVersion =
         currentJob.modelVersion ?? message.body.modelVersion ?? DEFAULT_INFERENCE_MODEL_VERSION;
 
-      const processingJob = await updateJobState(
+      const dispatchingJob = await updateJobState(
         env,
         message.body.jobId,
         {
-          status: "processing",
           stage: "Dispatching job to external inference service",
           progress: Math.max(currentJob.progress, 0.5),
-          startedAt,
           modelVersion,
           uploadTraceId: currentJob.uploadTraceId ?? message.body.uploadTraceId ?? null,
           inferenceAttemptId
@@ -52,7 +50,7 @@ export async function handleQueueBatch(batch: MessageBatch<QueueJobMessage>, env
           requestId: message.body.requestId,
           traceId: message.body.traceId || currentJob.traceId,
           eventType: "queue.dispatch",
-          message: "Job marked processing before external inference dispatch.",
+          message: "Job queued for external inference dispatch.",
           payload: {
             jobId: message.body.jobId,
             requestId: message.body.requestId,
@@ -69,19 +67,19 @@ export async function handleQueueBatch(batch: MessageBatch<QueueJobMessage>, env
         requestId: message.body.requestId,
         traceId: message.body.traceId || currentJob.traceId,
         eventType: "queue.dispatch",
-        message: "Job dispatched to external inference service.",
+        message: "Job queued for external inference dispatch.",
         payload: {
           jobId: message.body.jobId,
           requestId: message.body.requestId,
           traceId: message.body.traceId || currentJob.traceId,
-          uploadTraceId: processingJob.uploadTraceId ?? message.body.uploadTraceId ?? null,
+          uploadTraceId: dispatchingJob.uploadTraceId ?? message.body.uploadTraceId ?? null,
           inferenceAttemptId,
           modelVersion
         },
         createdAt: startedAt
       });
 
-      const dispatchRequest = await buildInferenceDispatchRequest(env, processingJob, message.body, inferenceAttemptId);
+      const dispatchRequest = await buildInferenceDispatchRequest(env, dispatchingJob, message.body, inferenceAttemptId);
       const response = await fetch(dispatchRequest.url, {
         method: "POST",
         headers: dispatchRequest.headers,
@@ -103,7 +101,7 @@ export async function handleQueueBatch(batch: MessageBatch<QueueJobMessage>, env
           status: response.status,
           jobId: message.body.jobId,
           requestId: message.body.requestId,
-          uploadTraceId: processingJob.uploadTraceId ?? message.body.uploadTraceId ?? null,
+          uploadTraceId: dispatchingJob.uploadTraceId ?? message.body.uploadTraceId ?? null,
           inferenceAttemptId,
           modelVersion
         },
@@ -115,12 +113,50 @@ export async function handleQueueBatch(batch: MessageBatch<QueueJobMessage>, env
           requestId: message.body.requestId,
           jobId: message.body.jobId,
           traceId: message.body.traceId || currentJob.traceId,
-          uploadTraceId: processingJob.uploadTraceId ?? message.body.uploadTraceId ?? null,
+          uploadTraceId: dispatchingJob.uploadTraceId ?? message.body.uploadTraceId ?? null,
           inferenceAttemptId,
           event: "queue.dispatch.accepted",
           status: response.status
         })
       );
+
+      const postAcceptJob = await getJobSnapshot(env, message.body.jobId);
+      if (
+        postAcceptJob &&
+        postAcceptJob.status !== "completed" &&
+        postAcceptJob.status !== "failed" &&
+        postAcceptJob.status !== "cancelled" &&
+        postAcceptJob.status !== "succeeded" &&
+        postAcceptJob.status !== "expired"
+      ) {
+        await updateJobState(
+          env,
+          message.body.jobId,
+          {
+            status: "processing",
+            stage: "Running external inference service",
+            progress: Math.max(postAcceptJob.progress, 0.6),
+            startedAt,
+            modelVersion,
+            uploadTraceId: dispatchingJob.uploadTraceId ?? message.body.uploadTraceId ?? null,
+            inferenceAttemptId
+          },
+          {
+            requestId: message.body.requestId,
+            traceId: message.body.traceId || currentJob.traceId,
+            eventType: "queue.dispatch.accepted",
+            message: "External inference service accepted job.",
+            payload: {
+              status: response.status,
+              jobId: message.body.jobId,
+              requestId: message.body.requestId,
+              uploadTraceId: dispatchingJob.uploadTraceId ?? message.body.uploadTraceId ?? null,
+              inferenceAttemptId,
+              modelVersion
+            }
+          }
+        );
+      }
     } catch (error) {
       const failureReason = error instanceof Error ? error.message : "Queue dispatch failed.";
       if (currentJob) {
@@ -153,6 +189,7 @@ export async function handleQueueBatch(batch: MessageBatch<QueueJobMessage>, env
           }
         );
 
+        // Dispatch failure occurs before the external service accepts the job.
         await appendJobEvent(env.DB, {
           jobId: message.body.jobId,
           requestId: message.body.requestId,
