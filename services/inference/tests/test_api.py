@@ -26,7 +26,14 @@ class FakeService:
 
 class ApiContractTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.settings = InferenceSettings(callback_secret="secret", r2_bucket_name="bucket", r2_endpoint_url="https://example.com", r2_access_key_id="key", r2_secret_access_key="secret")
+        self.settings = InferenceSettings(
+            callback_secret="secret",
+            ingress_secret="ingress-secret",
+            r2_bucket_name="bucket",
+            r2_endpoint_url="https://example.com",
+            r2_access_key_id="key",
+            r2_secret_access_key="secret",
+        )
 
     def test_version_and_ready_endpoints(self) -> None:
         with patch("services.inference.app.api.build_service", return_value=FakeService()):
@@ -46,6 +53,7 @@ class ApiContractTests(unittest.TestCase):
 
             response = client.post(
                 "/v1/analyze",
+                headers={"x-hoops-inference-secret": "ingress-secret"},
                 json={
                     "jobId": "job_123",
                     "requestId": "req_123",
@@ -66,6 +74,7 @@ class ApiContractTests(unittest.TestCase):
 
             response = client.post(
                 "/v1/analyze",
+                headers={"x-hoops-inference-secret": "ingress-secret"},
                 json={
                     "jobId": "job_123",
                     "requestId": "req_123",
@@ -74,6 +83,21 @@ class ApiContractTests(unittest.TestCase):
                 },
             )
             self.assertEqual(response.status_code, 422)
+
+    def test_analyze_endpoint_rejects_missing_ingress_secret(self) -> None:
+        with patch("services.inference.app.api.build_service", return_value=FakeService()):
+            client = TestClient(create_app(self.settings))
+
+            response = client.post(
+                "/v1/analyze",
+                json={
+                    "jobId": "job_123",
+                    "requestId": "req_123",
+                    "sourceUrl": "https://example.com/source.mp4",
+                    "callbackUrl": "https://example.com/callback",
+                },
+            )
+            self.assertEqual(response.status_code, 401)
 
 
 if __name__ == "__main__":

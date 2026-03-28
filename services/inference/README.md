@@ -109,6 +109,7 @@ Required for the R2 happy path:
 
 Callback authentication:
 - `HOOPS_INFERENCE_CALLBACK_SECRET`
+- `HOOPS_INFERENCE_INGRESS_SECRET`
 
 Service and model config:
 - `HOOPS_INFERENCE_SERVICE_NAME`

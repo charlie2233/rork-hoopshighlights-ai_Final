@@ -24,6 +24,7 @@ class InferenceSettings(BaseSettings):
     model_name_xclip: str = "microsoft/xclip-base-patch32"
 
     callback_secret: str = ""
+    ingress_secret: str = ""
     r2_bucket_name: str = ""
     r2_endpoint_url: str = ""
     r2_access_key_id: str = ""

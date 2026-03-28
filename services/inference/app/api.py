@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Optional
 
-from fastapi import APIRouter, FastAPI
+from fastapi import APIRouter, FastAPI, Header, HTTPException, status
 
 from .config import InferenceSettings, get_settings
 from .models import InferenceJobRequest, InferenceJobResponse
@@ -19,6 +19,13 @@ def create_app(settings: InferenceSettings | None = None) -> FastAPI:
     )
     router = APIRouter()
     service = build_service(resolved_settings)
+
+    def require_ingress_secret(provided_secret: Optional[str]) -> None:
+        expected_secret = resolved_settings.ingress_secret.strip()
+        if not expected_secret:
+            return
+        if provided_secret != expected_secret:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid inference secret")
 
     @router.get("/healthz")
     async def healthz() -> dict[str, str]:
@@ -48,11 +55,19 @@ def create_app(settings: InferenceSettings | None = None) -> FastAPI:
         }
 
     @router.post("/v1/analyze", response_model=InferenceJobResponse)
-    async def analyze(request: InferenceJobRequest) -> InferenceJobResponse:
+    async def analyze(
+        request: InferenceJobRequest,
+        x_hoops_inference_secret: Optional[str] = Header(default=None),
+    ) -> InferenceJobResponse:
+        require_ingress_secret(x_hoops_inference_secret)
         return await service.run(request)
 
     @router.post("/v1/inference/run", response_model=InferenceJobResponse)
-    async def run_inference(request: InferenceJobRequest) -> InferenceJobResponse:
+    async def run_inference(
+        request: InferenceJobRequest,
+        x_hoops_inference_secret: Optional[str] = Header(default=None),
+    ) -> InferenceJobResponse:
+        require_ingress_secret(x_hoops_inference_secret)
         return await service.run(request)
 
     app.include_router(router)
