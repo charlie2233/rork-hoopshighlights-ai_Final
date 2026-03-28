@@ -19,6 +19,7 @@ class InferenceStatus(str, Enum):
 class InferenceJobRequest(APIModel):
     jobId: str = Field(min_length=1, max_length=128)
     requestId: Optional[str] = None
+    schemaVersion: Optional[str] = None
     uploadTraceId: Optional[str] = None
     inferenceAttemptId: Optional[str] = None
     sourceObjectKey: Optional[str] = None
