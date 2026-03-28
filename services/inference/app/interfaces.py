@@ -8,7 +8,7 @@ from typing import Any, Sequence
 from .models import ActionPrediction, CandidateWindow, EventPrediction, RankedClip
 
 
-@dataclass(slots=True)
+@dataclass
 class VideoFeatures:
     source_path: Path
     duration_seconds: float

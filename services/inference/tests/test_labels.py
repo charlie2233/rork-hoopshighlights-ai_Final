@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from app.labels import (
+from services.inference.app.labels import (
     CanonicalLabelScore,
     CANONICAL_ACTION_LABELS,
     aggregate_label_scores,
