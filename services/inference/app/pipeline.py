@@ -48,10 +48,9 @@ class InferenceService:
 
     async def run(self, request: InferenceJobRequest) -> InferenceJobResponse:
         request_id = request.requestId or uuid4().hex
-        upload_trace_id = request.traceId or request.uploadTraceId or request_id
+        trace_id, upload_trace_id = _resolve_trace_fields(request, request_id)
         inference_attempt_id = request.inferenceAttemptId or uuid4().hex
         model_version = request.modelVersion or self._requested_model_version(request)
-        trace_id = upload_trace_id
         callback_secret = request.callbackSecret or self.settings.callback_secret
         try:
             with tempfile.TemporaryDirectory(prefix="hoops-inference-", dir=str(self.settings.ensure_temp_dir())) as temp_dir_str:
@@ -429,3 +428,9 @@ def build_service(settings: InferenceSettings) -> InferenceService:
         callback_client=CallbackClient(timeout_seconds=settings.callback_timeout_seconds),
         r2_downloader=r2_downloader,
     )
+
+
+def _resolve_trace_fields(request: InferenceJobRequest, request_id: str) -> tuple[str, str]:
+    trace_id = request.traceId or request_id
+    upload_trace_id = request.uploadTraceId or trace_id
+    return trace_id, upload_trace_id

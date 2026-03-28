@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, Mock
 from services.inference.app.callback import CallbackClient
 from services.inference.app.config import InferenceSettings
 from services.inference.app.models import InferenceJobRequest
-from services.inference.app.pipeline import InferenceService
+from services.inference.app.pipeline import InferenceService, _resolve_trace_fields
 
 
 class PipelineSourceResolutionTests(unittest.IsolatedAsyncioTestCase):
@@ -61,6 +61,38 @@ class PipelineSourceResolutionTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(resolved, destination)
             downloader.download.assert_called_once_with("uploads/job_123/source.mp4", destination)
             self.service._download_source.assert_not_awaited()
+
+
+class PipelineTraceResolutionTests(unittest.TestCase):
+    def test_resolve_trace_fields_prefers_distinct_upload_trace_id(self) -> None:
+        request = InferenceJobRequest(
+            jobId="job_123",
+            traceId="trace-123",
+            uploadTraceId="upload-456",
+            sourceUrl="https://example.com/source.mp4",
+            callbackUrl="https://example.com/internal/inference/callback",
+        )
+
+        trace_id, upload_trace_id = _resolve_trace_fields(request, "request-789")
+
+        self.assertEqual(trace_id, "trace-123")
+        self.assertEqual(upload_trace_id, "upload-456")
+
+    def test_resolve_trace_fields_falls_back_to_trace_id_then_request_id(self) -> None:
+        request_with_trace = InferenceJobRequest(
+            jobId="job_123",
+            traceId="trace-123",
+            sourceUrl="https://example.com/source.mp4",
+            callbackUrl="https://example.com/internal/inference/callback",
+        )
+        self.assertEqual(_resolve_trace_fields(request_with_trace, "request-789"), ("trace-123", "trace-123"))
+
+        request_without_trace = InferenceJobRequest(
+            jobId="job_123",
+            sourceUrl="https://example.com/source.mp4",
+            callbackUrl="https://example.com/internal/inference/callback",
+        )
+        self.assertEqual(_resolve_trace_fields(request_without_trace, "request-789"), ("request-789", "request-789"))
 
 
 if __name__ == "__main__":
