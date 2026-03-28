@@ -63,6 +63,7 @@ export async function handleQueueBatch(batch: MessageBatch<QueueJobMessage>, env
           }
         }
       );
+      const dispatchingSnapshot = (await getJobSnapshot(env, message.body.jobId)) ?? dispatchingJob;
 
       await appendJobEvent(env.DB, {
         jobId: message.body.jobId,
@@ -74,7 +75,7 @@ export async function handleQueueBatch(batch: MessageBatch<QueueJobMessage>, env
           jobId: message.body.jobId,
           requestId: message.body.requestId,
           traceId: message.body.traceId || currentJob.traceId,
-          uploadTraceId: dispatchingJob.uploadTraceId ?? message.body.uploadTraceId ?? null,
+          uploadTraceId: dispatchingSnapshot.uploadTraceId ?? message.body.uploadTraceId ?? null,
           inferenceAttemptId,
           modelVersion
         },
@@ -83,7 +84,7 @@ export async function handleQueueBatch(batch: MessageBatch<QueueJobMessage>, env
 
       const dispatchRequest = await buildInferenceDispatchRequest(
         env,
-        dispatchingJob,
+        dispatchingSnapshot,
         message.body,
         inferenceAttemptId
       );
@@ -108,7 +109,7 @@ export async function handleQueueBatch(batch: MessageBatch<QueueJobMessage>, env
           status: response.status,
           jobId: message.body.jobId,
           requestId: message.body.requestId,
-          uploadTraceId: dispatchingJob.uploadTraceId ?? message.body.uploadTraceId ?? null,
+          uploadTraceId: dispatchingSnapshot.uploadTraceId ?? message.body.uploadTraceId ?? null,
           inferenceAttemptId,
           modelVersion
         },
@@ -120,7 +121,7 @@ export async function handleQueueBatch(batch: MessageBatch<QueueJobMessage>, env
           requestId: message.body.requestId,
           jobId: message.body.jobId,
           traceId: message.body.traceId || currentJob.traceId,
-          uploadTraceId: dispatchingJob.uploadTraceId ?? message.body.uploadTraceId ?? null,
+          uploadTraceId: dispatchingSnapshot.uploadTraceId ?? message.body.uploadTraceId ?? null,
           inferenceAttemptId,
           event: "queue.dispatch.accepted",
           status: response.status
@@ -135,7 +136,7 @@ export async function handleQueueBatch(batch: MessageBatch<QueueJobMessage>, env
           processingStartedAt: startedAt,
           attemptCount: acceptedAttemptCount,
           modelVersion,
-          uploadTraceId: dispatchingJob.uploadTraceId ?? message.body.uploadTraceId ?? null,
+          uploadTraceId: dispatchingSnapshot.uploadTraceId ?? message.body.uploadTraceId ?? null,
           inferenceAttemptId
         };
 
@@ -165,7 +166,7 @@ export async function handleQueueBatch(batch: MessageBatch<QueueJobMessage>, env
               status: response.status,
               jobId: message.body.jobId,
               requestId: message.body.requestId,
-              uploadTraceId: dispatchingJob.uploadTraceId ?? message.body.uploadTraceId ?? null,
+              uploadTraceId: dispatchingSnapshot.uploadTraceId ?? message.body.uploadTraceId ?? null,
               inferenceAttemptId,
               modelVersion
             }
