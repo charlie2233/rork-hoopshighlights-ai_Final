@@ -361,7 +361,8 @@ async function handleFinalizeJob(
     }
 
     const uploadedAt = job.uploadedAt ?? new Date().toISOString();
-    const uploadedJob = job.status === "uploaded"
+    const uploadedJob =
+      job.status === "uploaded"
       ? job
       : await updateJobState(
           env,
@@ -385,48 +386,50 @@ async function handleFinalizeJob(
             }
           }
         );
+    const uploadedSnapshot = (await getJobSnapshot(env, job.jobId)) ?? uploadedJob;
 
-    if (uploadedJob.queuedAt == null) {
+    if (uploadedSnapshot.queuedAt == null) {
       const queuedAt = new Date().toISOString();
       const queueMessage: QueueJobMessage = {
         kind: "process-job",
-        jobId: uploadedJob.jobId,
+        jobId: uploadedSnapshot.jobId,
         requestId,
-        uploadTraceId: uploadedJob.uploadTraceId ?? requestId,
-        traceId: uploadedJob.traceId,
+        uploadTraceId: uploadedSnapshot.uploadTraceId ?? requestId,
+        traceId: uploadedSnapshot.traceId,
         schemaVersion,
-        sourceObjectKey: uploadedJob.sourceObjectKey,
-        resultObjectKey: uploadedJob.resultObjectKey,
-        modelVersion: uploadedJob.modelVersion ?? null
+        sourceObjectKey: uploadedSnapshot.sourceObjectKey,
+        resultObjectKey: uploadedSnapshot.resultObjectKey,
+        modelVersion: uploadedSnapshot.modelVersion ?? null
       };
 
       const queuedJob = await updateJobState(
         env,
-        uploadedJob.jobId,
+        uploadedSnapshot.jobId,
         {
           status: "queued",
           stage: "Queued for inference",
-          progress: Math.max(uploadedJob.progress, 0.45),
+          progress: Math.max(uploadedSnapshot.progress, 0.45),
           queuedAt,
           updatedAt: queuedAt
         },
         {
           requestId,
-          traceId: uploadedJob.traceId,
+          traceId: uploadedSnapshot.traceId,
           eventType: "job.queued",
           message: "Job queued for inference dispatch.",
           payload: queueMessage
         }
       );
+      const queuedSnapshot = (await getJobSnapshot(env, uploadedSnapshot.jobId)) ?? queuedJob;
 
       ctx.waitUntil(
         env.ANALYSIS_QUEUE
           .send(queueMessage)
           .catch(async (error) => {
             await appendJobEvent(env.DB, {
-              jobId: queuedJob.jobId,
+              jobId: queuedSnapshot.jobId,
               requestId,
-              traceId: queuedJob.traceId,
+              traceId: queuedSnapshot.traceId,
               eventType: "job.queue_dispatch_failed",
               message: error instanceof Error ? error.message : "Queue dispatch failed.",
               payload: queueMessage,
@@ -438,28 +441,28 @@ async function handleFinalizeJob(
       console.info(
         JSON.stringify({
           requestId,
-          jobId: queuedJob.jobId,
-          traceId: queuedJob.traceId,
-          uploadTraceId: queuedJob.uploadTraceId ?? null,
+          jobId: queuedSnapshot.jobId,
+          traceId: queuedSnapshot.traceId,
+          uploadTraceId: queuedSnapshot.uploadTraceId ?? null,
           event: "job.queued",
-          status: queuedJob.status
+          status: queuedSnapshot.status
         })
       );
 
-      return jsonResponse(toCloudAnalysisJobResponse(queuedJob, requestId, schemaVersion), { status: 200 }, requestId);
+      return jsonResponse(toCloudAnalysisJobResponse(queuedSnapshot, requestId, schemaVersion), { status: 200 }, requestId);
     }
 
     console.info(
       JSON.stringify({
         requestId,
-        jobId: uploadedJob.jobId,
-        traceId: uploadedJob.traceId,
-        uploadTraceId: uploadedJob.uploadTraceId ?? null,
+        jobId: uploadedSnapshot.jobId,
+        traceId: uploadedSnapshot.traceId,
+        uploadTraceId: uploadedSnapshot.uploadTraceId ?? null,
         event: "job.finalize.idempotent",
-        status: uploadedJob.status
+        status: uploadedSnapshot.status
       })
     );
-    return jsonResponse(toCloudAnalysisJobResponse(uploadedJob, requestId, schemaVersion), { status: 200 }, requestId);
+    return jsonResponse(toCloudAnalysisJobResponse(uploadedSnapshot, requestId, schemaVersion), { status: 200 }, requestId);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Invalid job request.";
     return jsonResponse(
