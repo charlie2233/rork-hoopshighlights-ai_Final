@@ -15,8 +15,10 @@ struct HoopsClipsApp: App {
         if !apiKey.isEmpty {
             Purchases.configure(withAPIKey: apiKey)
         }
-        Task { @MainActor in
-            AnalysisNotificationService.shared.configure()
+        if !LaunchAutomation.isEnabled {
+            Task { @MainActor in
+                AnalysisNotificationService.shared.configure()
+            }
         }
     }
 

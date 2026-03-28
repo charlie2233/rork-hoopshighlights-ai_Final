@@ -25,8 +25,16 @@ struct ContentView: View {
             }
         }
         .task {
+            if LaunchAutomation.shouldSignInAnonymously, !authService.isAuthenticated {
+                authService.signInAnonymously()
+            }
             if authService.isAuthenticated {
                 await subscriptionManager.checkSubscriptionStatus()
+            }
+        }
+        .onChange(of: viewModel.clips.count) { _, newValue in
+            if LaunchAutomation.isEnabled, newValue > 0 {
+                selectedTab = 1
             }
         }
     }

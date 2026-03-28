@@ -10,6 +10,7 @@ struct VideoPlayerView: View {
     @State private var selectedPhotoItem: PhotosPickerItem?
     @State private var showSourcePicker = false
     @State private var analysisStarted = false
+    @State private var automationDidRun = false
     @State private var pulseAnimation = false
     @State private var showingPaywall = false
     @State private var showingNoClipsAlert = false
@@ -84,6 +85,9 @@ struct VideoPlayerView: View {
             .onChange(of: viewModel.videoURL) { _, newValue in
                 syncPlayer(with: newValue)
             }
+            .task {
+                await runLaunchAutomationIfNeeded()
+            }
             .sheet(isPresented: $showingPaywall) {
                 PaywallView(subscriptionManager: subscriptionManager)
             }
@@ -121,6 +125,25 @@ struct VideoPlayerView: View {
 
         player?.pause()
         player = AVPlayer(url: url)
+    }
+
+    @MainActor
+    private func runLaunchAutomationIfNeeded() async {
+        guard LaunchAutomation.isEnabled, !automationDidRun else { return }
+        automationDidRun = true
+
+        if !viewModel.isVideoLoaded, let automationURL = LaunchAutomation.sampleVideoURL {
+            await viewModel.loadVideo(url: automationURL)
+        }
+
+        guard LaunchAutomation.shouldAutoAnalyze,
+              viewModel.isVideoLoaded,
+              !analysisStarted else {
+            return
+        }
+
+        analysisStarted = true
+        await viewModel.startAnalysis()
     }
 
     private var importSection: some View {
