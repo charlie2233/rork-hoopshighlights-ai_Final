@@ -22,6 +22,11 @@ Measure whether the learned cloud pipeline improves on the current heuristic-hea
 - Upload failure rate
 - Callback failure rate
 - Result schema validation failures
+- Percentage of clips below the 3.5s minimum
+- Median clip duration
+- p90 clip duration
+- Merged clip count
+- Per-label duration distribution
 
 ## Process
 
@@ -35,6 +40,8 @@ Measure whether the learned cloud pipeline improves on the current heuristic-hea
 
 - A short benchmark report in Markdown and JSON
 - A regression table with per-class precision, recall, and top-k hit rate
+- A clip-quality section with duration policy compliance and merge stats
+- A manual review checklist for `contains setup`, `contains finish`, and `feels watchable`
 - A list of sample clips that should be reviewed or relabeled
 
 ## Recommended Labeling Priorities
