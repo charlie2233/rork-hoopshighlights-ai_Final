@@ -35,6 +35,7 @@ Measure whether the learned cloud pipeline improves on the current heuristic-hea
 - Store per-run manifests and summary metrics.
 - Promote reviewer corrections from the dashboard into the training set.
 - Generate the report with [`services/inference/scripts/run_eval_report.py`](/Users/hanfei/rork-hoopshighlights-ai_Final/services/inference/scripts/run_eval_report.py).
+- For live staging watchability reviews, follow [`docs/live_watchability_review.md`](/Users/hanfei/rork-hoopshighlights-ai_Final/docs/live_watchability_review.md).
 
 ## Output
 
