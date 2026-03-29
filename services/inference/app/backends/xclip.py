@@ -30,7 +30,12 @@ class XClipActionRecognizer:
         model_version = f"xclip:{self.model_name}"
         try:
             processor, model, runtime_device = _load_backend(self.model_name, self.device)
-            frames = sample_video_frames(features.source_path, frame_count=self.frame_count)
+            frames = sample_video_frames(
+                features.source_path,
+                frame_count=self.frame_count,
+                start_seconds=candidate.startTime,
+                end_seconds=candidate.endTime,
+            )
             if not frames:
                 raise RuntimeError("no_frames_sampled")
 

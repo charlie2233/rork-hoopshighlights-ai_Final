@@ -8,6 +8,7 @@ Standalone Python inference service for the production cloud path.
 - Runs FFmpeg-backed source preparation before feature extraction.
 - Proposes candidate segments.
 - Runs action recognition with a VideoMAE baseline and an X-CLIP comparison path.
+- Derives structured basketball signals from ball / rim / player perception before final label mapping.
 - Emits canonical basketball labels with per-clip top-k scores, while preserving the current app-facing clip labels for compatibility.
 - Infers event metadata and reranks clips.
 - Writes a normalized result manifest and calls back to the Cloudflare control plane.
@@ -43,6 +44,13 @@ Optional compatibility fields:
 - `uploadTraceId`
 - `inferenceAttemptId`
 - `traceId`
+
+## Structured basketball signals
+- The live path keeps the public callback contract stable.
+- Internally, each candidate window now generates lightweight perception outputs for `basketball`, `rim`, and `player` tracks.
+- The live decision stack resolves `eventFamily -> outcome -> shotSubtype` before deriving the flat display label.
+- VideoMAE and X-CLIP stay in the loop as auxiliary signals; they are no longer the only source of basketball semantics.
+- A Qwen-based teacher labeler exists for offline audits and pseudo-label generation, but it is disabled in the live path by default.
 
 ## Local run
 ```bash
@@ -131,6 +139,7 @@ Service and model config:
 - `HOOPS_INFERENCE_DEFAULT_MODEL`
 - `HOOPS_INFERENCE_MODEL_NAME_VIDEOMAE`
 - `HOOPS_INFERENCE_MODEL_NAME_XCLIP`
+- `HOOPS_INFERENCE_TEACHER_MODEL_NAME`
 - `HOOPS_INFERENCE_TEMP_DIR`
 - `HOOPS_INFERENCE_CALLBACK_TIMEOUT_SECONDS`
 - `HOOPS_INFERENCE_HTTP_TIMEOUT_SECONDS`
@@ -142,6 +151,10 @@ Service and model config:
 - `HOOPS_INFERENCE_FFMPEG_VIDEO_PRESET`
 - `HOOPS_INFERENCE_FFMPEG_VIDEO_CRF`
 - `HOOPS_INFERENCE_FFMPEG_MAX_WIDTH`
+- `HOOPS_INFERENCE_PERCEPTION_SAMPLE_FRAMES`
+- `HOOPS_INFERENCE_PERCEPTION_OVERLAY_FRAME_LIMIT`
+- `HOOPS_INFERENCE_TEACHER_LABELING_ENABLED`
+- `HOOPS_INFERENCE_TEACHER_FRAME_COUNT`
 
 ## Implementation notes
 - The service accepts `sourceObjectKey` as the primary production input and falls back to `sourceUrl` for compatibility.
@@ -150,6 +163,7 @@ Service and model config:
 - The callback payload mirrors the current control-plane schema, including `requestId`, `modelVersion`, `schemaVersion`, `confidence`, `resultConfidence`, `failureReason`, and `results`.
 - The callback/result payload also carries `uploadTraceId` and `inferenceAttemptId` so staging traces can be correlated end to end.
 - The result manifest remains the canonical artifact written by the service.
+- Perception overlays are exported as image artifacts for a few sampled frames when OpenCV is available.
 
 ## Portable deployment
 The Docker image is portable enough to run on a VM, container service, or Hugging Face-hosted container runtime as long as the following are present:

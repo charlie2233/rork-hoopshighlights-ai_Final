@@ -22,6 +22,7 @@ class InferenceSettings(BaseSettings):
     comparison_model: str = "xclip"
     model_name_videomae: str = "MCG-NJU/videomae-base-finetuned-kinetics"
     model_name_xclip: str = "microsoft/xclip-base-patch32"
+    teacher_model_name: str = "Qwen/Qwen2.5-VL-7B-Instruct"
 
     callback_secret: str = ""
     ingress_secret: str = ""
@@ -42,6 +43,10 @@ class InferenceSettings(BaseSettings):
     ffmpeg_video_crf: int = 28
     ffmpeg_max_width: int = 1280
     ffmpeg_enable_transcode: bool = True
+    perception_sample_frames: int = 12
+    perception_overlay_frame_limit: int = 3
+    teacher_labeling_enabled: bool = False
+    teacher_frame_count: int = 4
 
     def ensure_temp_dir(self) -> Path:
         self.temp_dir.mkdir(parents=True, exist_ok=True)

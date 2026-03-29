@@ -19,6 +19,30 @@ class VideoFeatures:
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
+class Detector(ABC):
+    @abstractmethod
+    def detect(self, source_path: Path, candidate: CandidateWindow) -> dict[str, Any]:
+        raise NotImplementedError
+
+
+class Tracker(ABC):
+    @abstractmethod
+    def track(self, detections: dict[str, Any]) -> dict[str, Any]:
+        raise NotImplementedError
+
+
+class Perceptor(ABC):
+    @abstractmethod
+    def analyze(self, source_path: Path, candidate: CandidateWindow) -> dict[str, Any]:
+        raise NotImplementedError
+
+
+class TeacherLabeler(ABC):
+    @abstractmethod
+    def suggest(self, source_path: Path, candidate: CandidateWindow, context: dict[str, Any]) -> dict[str, Any]:
+        raise NotImplementedError
+
+
 class CandidateProposer(ABC):
     @abstractmethod
     def propose(self, features: VideoFeatures) -> list[CandidateWindow]:

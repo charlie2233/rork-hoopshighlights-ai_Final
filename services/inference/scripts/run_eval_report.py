@@ -21,7 +21,7 @@ CANONICAL_LABELS = [
     "miss",
 ]
 
-EVENT_FAMILIES = ["shot", "turnover", "defensive_event", "transition", "other"]
+EVENT_FAMILIES = ["shot_attempt", "turnover", "defensive_event", "transition", "other"]
 SHOT_SUBTYPES = ["dunk", "layup", "jumper", "three", "putback", "unknown"]
 OUTCOMES = ["made", "missed", "blocked", "uncertain"]
 
@@ -43,7 +43,8 @@ LABEL_SYNONYMS = {
 EVENT_FAMILY_SYNONYMS = {
     "defense": "defensive_event",
     "defensive": "defensive_event",
-    "shot": "shot",
+    "shot": "shot_attempt",
+    "shot attempt": "shot_attempt",
     "turnover": "turnover",
     "transition": "transition",
     "other": "other",
@@ -81,6 +82,7 @@ class EvaluationRow:
     notes: str = ""
     split: str = "train"
     source_duration_seconds: float | None = None
+    signal_audit_focus: str = ""
 
 
 @dataclass
@@ -102,6 +104,7 @@ class PredictionRow:
     window_policy_version: str | None = None
     was_merged: bool = False
     source_event_count: int | None = None
+    is_uncertain: bool = False
 
 
 def main() -> int:
@@ -146,6 +149,7 @@ def load_eval_rows(path: Path) -> list[EvaluationRow]:
                 notes=str(item.get("notes", "")),
                 split=str(item.get("split", "train")),
                 source_duration_seconds=to_optional_float(item.get("sourceDurationSeconds")),
+                signal_audit_focus=str(item.get("signalAuditFocus", "")),
             )
         )
     return rows
@@ -198,6 +202,7 @@ def load_predictions(path: Path) -> dict[str, PredictionRow]:
             window_policy_version=str(item.get("windowPolicyVersion")) if item.get("windowPolicyVersion") else None,
             was_merged=bool(item.get("wasMerged", False)),
             source_event_count=to_optional_int(item.get("sourceEventCount")),
+            is_uncertain=bool(item.get("isUncertain", False)),
         )
     return result
 
@@ -243,6 +248,14 @@ def build_report(eval_rows: list[EvaluationRow], predictions: dict[str, Predicti
     failure_examples = build_failure_examples(eval_rows, predictions)
     duration_summary, per_label_distribution = build_duration_sections(eval_rows, predictions)
     labeling_priorities = build_labeling_priorities(label_report["perClass"], label_report["confusions"])
+    uncertainty_rate = round(
+        (
+            sum(1 for prediction in predictions.values() if prediction.is_uncertain or prediction.outcome == "uncertain")
+            / max(len(predictions), 1)
+        ),
+        4,
+    )
+    signal_audit = build_signal_audit(eval_rows, predictions)
 
     return {
         "summary": {
@@ -257,6 +270,7 @@ def build_report(eval_rows: list[EvaluationRow], predictions: dict[str, Predicti
             "outcomeAccuracy": outcome_report["summary"]["accuracy"],
             "outcomeTopKHitRate": outcome_report["summary"]["topKHitRate"],
             "clipDurationStats": duration_summary,
+            "uncertaintyRate": uncertainty_rate,
         },
         "perClass": label_report["perClass"],
         "taxonomyMetrics": {
@@ -306,6 +320,7 @@ def build_report(eval_rows: list[EvaluationRow], predictions: dict[str, Predicti
         "shotSubtypeConfusions": subtype_report["confusions"],
         "outcomeConfusions": outcome_report["confusions"],
         "failureExamples": failure_examples[:8],
+        "signalAudit": signal_audit,
         "recommendedLabelingPriorities": labeling_priorities[:4],
         "manualReviewChecklist": [
             {
@@ -432,6 +447,29 @@ def build_failure_examples(eval_rows: list[EvaluationRow], predictions: dict[str
     return sorted(examples, key=lambda item: (item["confidence"], item["clipId"]))
 
 
+def build_signal_audit(eval_rows: list[EvaluationRow], predictions: dict[str, PredictionRow]) -> list[dict[str, Any]]:
+    audits: list[dict[str, Any]] = []
+    for row in eval_rows:
+        if not row.signal_audit_focus:
+            continue
+        prediction = predictions.get(row.clip_id)
+        audits.append(
+            {
+                "clipId": row.clip_id,
+                "sourceRef": row.source_ref,
+                "expectedLabel": row.expected_label,
+                "predictedLabel": prediction.label if prediction else None,
+                "eventFamily": prediction.event_family if prediction else None,
+                "shotSubtype": prediction.shot_subtype if prediction else None,
+                "outcome": prediction.outcome if prediction else None,
+                "isUncertain": prediction.is_uncertain if prediction else None,
+                "signalAuditFocus": row.signal_audit_focus,
+                "notes": row.notes,
+            }
+        )
+    return audits
+
+
 def build_duration_sections(
     eval_rows: list[EvaluationRow], predictions: dict[str, PredictionRow]
 ) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
@@ -510,6 +548,7 @@ def render_markdown(report: dict[str, Any]) -> str:
     lines.append(f"- Event family accuracy: {summary['eventFamilyAccuracy']:.4f}")
     lines.append(f"- Shot subtype accuracy: {summary['shotSubtypeAccuracy']:.4f}")
     lines.append(f"- Outcome accuracy: {summary['outcomeAccuracy']:.4f}")
+    lines.append(f"- Uncertainty rate: {summary.get('uncertaintyRate', 0.0):.4f}")
     lines.append(f"- Missing predictions: {summary['missingPredictions']}")
     clip_stats = summary.get("clipDurationStats", {})
     if clip_stats:
@@ -600,17 +639,17 @@ def build_duration_distribution(values: Iterable[float], merged_count: int) -> d
 def taxonomy_for_label(label: str) -> tuple[str, str, str]:
     normalized = normalize_label(label)
     if normalized == "dunk":
-        return "shot", "dunk", "made"
+        return "shot_attempt", "dunk", "made"
     if normalized == "layup":
-        return "shot", "layup", "made"
+        return "shot_attempt", "layup", "made"
     if normalized == "three":
-        return "shot", "three", "made"
+        return "shot_attempt", "three", "made"
     if normalized == "putback":
-        return "shot", "putback", "made"
+        return "shot_attempt", "putback", "made"
     if normalized == "jumper":
-        return "shot", "jumper", "made"
+        return "shot_attempt", "jumper", "made"
     if normalized == "miss":
-        return "shot", "jumper", "missed"
+        return "shot_attempt", "jumper", "missed"
     if normalized == "block":
         return "defensive_event", "unknown", "blocked"
     if normalized == "steal":
@@ -629,8 +668,8 @@ def normalize_event_family(value: Any) -> str:
     normalized = str(value or "other").strip().lower().replace("-", "_").replace(" ", "_")
     if normalized in {"defense", "defensive", "defensive_play", "defensive_event"}:
         return "defensive_event"
-    if normalized in {"shot", "shots"}:
-        return "shot"
+    if normalized in {"shot", "shots", "shot_attempt"}:
+        return "shot_attempt"
     if normalized in {"turnover", "steal"}:
         return "turnover"
     if normalized in {"transition", "fast_break"}:

@@ -18,8 +18,11 @@ from .ffmpeg_tools import prepare_media_source
 from .features import extract_video_features
 from .labels import blend_label_scores, blend_raw_label_scores, derive_basketball_taxonomy
 from .heuristics import ConfidenceReranker, HeuristicCandidateProposer, HeuristicEventInferencer
-from .interfaces import ArtifactWriter
+from .interfaces import ArtifactWriter, Perceptor, TeacherLabeler
 from .manifest import LocalArtifactWriter, build_manifest_dict
+from .perception import HeuristicBasketballPerceptor
+from .structured_signals import derive_structured_decision, derive_structured_signals
+from .teacher import QwenTeacherLabeler
 from .windowing import WindowedClipDraft, window_and_merge_clips
 from .models import (
     ArtifactDescriptor,
@@ -45,6 +48,8 @@ class InferenceService:
     artifact_writer: ArtifactWriter
     callback_client: CallbackClient
     r2_downloader: Optional[R2Downloader] = None
+    perceptor: Optional[Perceptor] = None
+    teacher_labeler: Optional[TeacherLabeler] = None
 
     async def run(self, request: InferenceJobRequest) -> InferenceJobResponse:
         request_id = request.requestId or uuid4().hex
@@ -71,6 +76,7 @@ class InferenceService:
                 clip_drafts: list[WindowedClipDraft] = []
                 comparison_scores: list[float] = []
                 candidate_actions: list[tuple[object, object, object | None]] = []
+                artifact_descriptors: list[ArtifactDescriptor] = []
 
                 for candidate in candidates:
                     primary_action = self.primary_recognizer.recognize(candidate, features)
@@ -85,6 +91,35 @@ class InferenceService:
 
                 for candidate, primary_action, comparison in candidate_actions:
                     action = self._resolve_action(primary_action, comparison)
+                    perception = self._analyze_perception(preparation.prepared_path, candidate)
+                    overlay_artifacts = self._persist_perception_overlays(
+                        request.jobId,
+                        candidate.candidateId,
+                        perception,
+                    )
+                    artifact_descriptors.extend(overlay_artifacts)
+                    structured_signals = derive_structured_signals(
+                        candidate_metadata={"perception": perception},
+                        action=action,
+                    )
+                    structured_decision = derive_structured_decision(
+                        signals=structured_signals,
+                        action=action,
+                    )
+                    teacher_suggestion = self._derive_teacher_suggestion(
+                        source_path=preparation.prepared_path,
+                        candidate=candidate,
+                        action=action,
+                        perception=perception,
+                        structured_signals=structured_signals.as_metadata(),
+                    )
+                    action = self._apply_structured_decision(
+                        action=action,
+                        decision=structured_decision,
+                        structured_signals=structured_signals.as_metadata(),
+                        perception=perception,
+                        teacher_suggestion=teacher_suggestion,
+                    )
                     event = self.event_inferencer.infer(candidate, action, features)
                     clip_drafts.append(
                         WindowedClipDraft(
@@ -152,6 +187,9 @@ class InferenceService:
                                 "action_failure_reason": action.failureReason,
                                 "action_metadata": action.metadata,
                                 "event_metadata": event.metadata,
+                                "perception_summary": _summarize_perception(perception),
+                                "structured_signals": structured_signals.as_metadata(),
+                                "teacher_suggestion": teacher_suggestion,
                                 "source_object_key": request.sourceObjectKey,
                                 "prepared_with_ffmpeg": preparation.used_transcode,
                                 "ffmpeg_available": preparation.ffmpeg_available,
@@ -193,7 +231,7 @@ class InferenceService:
                         path=f"{request.jobId}/result-manifest.json",
                         mediaType="application/json",
                     ),
-                ]
+                ] + artifact_descriptors
                 manifest = InferenceManifest(
                     schemaVersion=self.settings.result_schema_version,
                     jobId=request.jobId,
@@ -211,7 +249,7 @@ class InferenceService:
                         candidateProposer="heuristic-assisted",
                         actionRecognizer=f"videomae:{self.primary_recognizer.model_name}",
                         comparisonRecognizer=f"xclip:{self.comparison_recognizer.model_name}" if self.comparison_recognizer else None,
-                        eventInferencer="heuristic-event-inferencer",
+                        eventInferencer="structured-basketball-signals",
                         reranker="confidence-reranker",
                         frameCount=features.frame_count,
                         durationSeconds=features.duration_seconds,
@@ -355,6 +393,132 @@ class InferenceService:
             return 0.0
         window_mean = sum(profile) / len(profile)
         return min(max(window_mean, 0.0), 1.0)
+
+    def _analyze_perception(self, source_path: Path, candidate) -> dict[str, object]:
+        if self.perceptor is None:
+            return {}
+        try:
+            return dict(self.perceptor.analyze(source_path, candidate))
+        except Exception as exc:
+            return {"failureReason": f"perception_failed:{exc.__class__.__name__}"}
+
+    def _persist_perception_overlays(
+        self,
+        job_id: str,
+        candidate_id: str,
+        perception: dict[str, object],
+    ) -> list[ArtifactDescriptor]:
+        overlay_paths = perception.get("overlayPaths")
+        if not isinstance(overlay_paths, list):
+            return []
+
+        artifacts: list[ArtifactDescriptor] = []
+        persisted_paths: list[str] = []
+        for index, overlay_path in enumerate(overlay_paths):
+            if not isinstance(overlay_path, str) or not overlay_path:
+                continue
+            source = Path(overlay_path)
+            if not source.exists():
+                continue
+            artifact_name = f"{candidate_id}-overlay-{index + 1}.jpg"
+            persisted = self.artifact_writer.write_artifact(
+                job_id,
+                artifact_name,
+                source.read_bytes(),
+                "image/jpeg",
+            )
+            persisted_paths.append(str(persisted))
+            artifacts.append(
+                ArtifactDescriptor(
+                    kind="perception_overlay",
+                    path=str(persisted),
+                    mediaType="image/jpeg",
+                    sizeBytes=persisted.stat().st_size,
+                )
+            )
+        if persisted_paths:
+            perception["overlayPaths"] = persisted_paths
+        return artifacts
+
+    def _derive_teacher_suggestion(
+        self,
+        *,
+        source_path: Path,
+        candidate,
+        action,
+        perception: dict[str, object],
+        structured_signals: dict[str, object],
+    ) -> dict[str, object] | None:
+        if self.teacher_labeler is None or not self.settings.teacher_labeling_enabled:
+            return None
+        try:
+            return dict(
+                self.teacher_labeler.suggest(
+                    source_path,
+                    candidate,
+                    {
+                        "structuredSignals": structured_signals,
+                        "actionSummary": {
+                            "label": getattr(action, "label", None),
+                            "canonicalLabel": getattr(action, "canonicalLabel", None),
+                            "eventFamily": getattr(action, "eventFamily", None),
+                            "shotSubtype": getattr(action, "shotSubtype", None),
+                            "outcome": getattr(action, "outcome", None),
+                            "topLabels": [
+                                item.model_dump(mode="json")
+                                for item in list(getattr(action, "topLabels", []))[:3]
+                            ],
+                            "rawTopLabels": [
+                                item.model_dump(mode="json")
+                                for item in list(getattr(action, "rawTopLabels", []))[:3]
+                            ],
+                        },
+                        "perceptionSummary": _summarize_perception(perception),
+                    },
+                )
+            )
+        except Exception as exc:
+            return {"status": "unavailable", "failureReason": f"teacher_failed:{exc.__class__.__name__}"}
+
+    def _apply_structured_decision(
+        self,
+        *,
+        action,
+        decision,
+        structured_signals: dict[str, object],
+        perception: dict[str, object],
+        teacher_suggestion: dict[str, object] | None,
+    ):
+        metadata = {
+            **dict(getattr(action, "metadata", {}) or {}),
+            "resolved_by": "structured_basketball_signals",
+            "structuredSignals": structured_signals,
+            "perceptionSummary": _summarize_perception(perception),
+            "teacherSuggestion": teacher_suggestion,
+        }
+        if hasattr(action, "model_copy"):
+            return action.model_copy(
+                update={
+                    "label": decision.displayLabel,
+                    "canonicalLabel": decision.canonicalLabel,
+                    "confidence": decision.confidenceAfterMapping,
+                    "eventFamily": decision.eventFamily,
+                    "eventSubtype": decision.eventSubtype,
+                    "shotSubtype": decision.shotSubtype,
+                    "outcome": decision.outcome,
+                    "confidenceBeforeMapping": decision.confidenceBeforeMapping,
+                    "confidenceAfterMapping": decision.confidenceAfterMapping,
+                    "eventFamilyConfidenceBeforeMapping": decision.eventFamilyConfidenceBeforeMapping,
+                    "eventFamilyConfidenceAfterMapping": decision.eventFamilyConfidenceAfterMapping,
+                    "shotSubtypeConfidenceBeforeMapping": decision.shotSubtypeConfidenceBeforeMapping,
+                    "shotSubtypeConfidenceAfterMapping": decision.shotSubtypeConfidenceAfterMapping,
+                    "outcomeConfidenceBeforeMapping": decision.outcomeConfidenceBeforeMapping,
+                    "outcomeConfidenceAfterMapping": decision.outcomeConfidenceAfterMapping,
+                    "isUncertain": decision.isUncertain,
+                    "metadata": metadata,
+                }
+            )
+        return action
 
     def _resolve_action(self, primary_action, comparison_action):
         if comparison_action is None:
@@ -608,6 +772,12 @@ def build_service(settings: InferenceSettings) -> InferenceService:
     comparison = None
     if settings.comparison_model.lower() == "xclip":
         comparison = XClipActionRecognizer(model_name=settings.model_name_xclip)
+    teacher_labeler = None
+    if settings.teacher_labeling_enabled:
+        teacher_labeler = QwenTeacherLabeler(
+            model_name=settings.teacher_model_name,
+            frame_count=settings.teacher_frame_count,
+        )
     r2_downloader = None
     if settings.has_r2_configuration():
         r2_downloader = R2Downloader(
@@ -630,6 +800,11 @@ def build_service(settings: InferenceSettings) -> InferenceService:
         artifact_writer=LocalArtifactWriter(settings.ensure_temp_dir()),
         callback_client=CallbackClient(timeout_seconds=settings.callback_timeout_seconds),
         r2_downloader=r2_downloader,
+        perceptor=HeuristicBasketballPerceptor(
+            sample_frames=settings.perception_sample_frames,
+            overlay_frame_limit=settings.perception_overlay_frame_limit,
+        ),
+        teacher_labeler=teacher_labeler,
     )
 
 
@@ -637,3 +812,19 @@ def _resolve_trace_fields(request: InferenceJobRequest, request_id: str) -> tupl
     trace_id = request.traceId or request_id
     upload_trace_id = request.uploadTraceId or trace_id
     return trace_id, upload_trace_id
+
+
+def _summarize_perception(perception: dict[str, object]) -> dict[str, object]:
+    detection_counts = perception.get("detectionCounts")
+    track_counts = perception.get("trackCounts")
+    return {
+        "sampledFrameCount": perception.get("sampledFrameCount"),
+        "frameWidth": perception.get("frameWidth"),
+        "frameHeight": perception.get("frameHeight"),
+        "detectionCounts": detection_counts if isinstance(detection_counts, dict) else {},
+        "trackCounts": track_counts if isinstance(track_counts, dict) else {},
+        "primaryBallTrackId": perception.get("primaryBallTrackId"),
+        "primaryRimTrackId": perception.get("primaryRimTrackId"),
+        "overlayPaths": perception.get("overlayPaths") if isinstance(perception.get("overlayPaths"), list) else [],
+        "failureReason": perception.get("failureReason"),
+    }

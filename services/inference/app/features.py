@@ -77,7 +77,13 @@ def extract_video_features(source_path: Path, *, sample_limit: int = 48) -> Vide
     )
 
 
-def sample_video_frames(source_path: Path, *, frame_count: int = 16) -> list[Image.Image]:
+def sample_video_frames(
+    source_path: Path,
+    *,
+    frame_count: int = 16,
+    start_seconds: float | None = None,
+    end_seconds: float | None = None,
+) -> list[Image.Image]:
     try:
         import cv2  # type: ignore
     except Exception:
@@ -88,11 +94,20 @@ def sample_video_frames(source_path: Path, *, frame_count: int = 16) -> list[Ima
         return []
 
     try:
+        fps = float(capture.get(cv2.CAP_PROP_FPS) or 0.0)
         total_frames = int(capture.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
         if total_frames <= 0:
             total_frames = max(frame_count, 1)
 
-        indices = _sample_indices(total_frames, frame_count)
+        start_frame = 0
+        end_frame = max(total_frames - 1, 0)
+        if fps > 0:
+            if start_seconds is not None:
+                start_frame = max(min(int(start_seconds * fps), end_frame), 0)
+            if end_seconds is not None:
+                end_frame = max(min(int(end_seconds * fps), total_frames - 1), start_frame)
+
+        indices = _sample_indices(start_frame, end_frame, frame_count)
         frames: list[Image.Image] = []
         for index in indices:
             capture.set(cv2.CAP_PROP_POS_FRAMES, int(index))
@@ -166,12 +181,17 @@ def _coerce_float(value: object, default: float) -> float:
         return default
 
 
-def _sample_indices(total_frames: int, frame_count: int) -> list[int]:
+def _sample_indices(start_frame: int, end_frame: int, frame_count: int) -> list[int]:
     if frame_count <= 1:
-        return [0]
+        return [max(start_frame, 0)]
+
+    start_frame = max(start_frame, 0)
+    end_frame = max(end_frame, start_frame)
+    total_frames = (end_frame - start_frame) + 1
     if total_frames <= frame_count:
-        return list(range(max(total_frames, 1)))
+        return list(range(start_frame, end_frame + 1))
+
     step = max(total_frames // frame_count, 1)
-    indices = [min(index * step, total_frames - 1) for index in range(frame_count)]
-    indices[-1] = total_frames - 1
+    indices = [min(start_frame + (index * step), end_frame) for index in range(frame_count)]
+    indices[-1] = end_frame
     return indices
