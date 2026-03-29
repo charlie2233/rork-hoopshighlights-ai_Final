@@ -106,10 +106,17 @@ export interface CloudClip {
   combinedScore: number;
   confidenceBeforeMapping?: number | null;
   confidenceAfterMapping?: number | null;
+  eventFamilyConfidenceBeforeMapping?: number | null;
+  eventFamilyConfidenceAfterMapping?: number | null;
+  shotSubtypeConfidenceBeforeMapping?: number | null;
+  shotSubtypeConfidenceAfterMapping?: number | null;
+  outcomeConfidenceBeforeMapping?: number | null;
+  outcomeConfidenceAfterMapping?: number | null;
   detectionMethod: "cloud" | "ml" | "heuristic";
   shouldAutoKeep: boolean;
   shouldEnableSlowMotion: boolean;
   isUncertain?: boolean | null;
+  promptSetVersion?: string | null;
   eventType?: string | null;
   shotType?: string | null;
   makeMiss?: "make" | "miss" | "unknown" | null;

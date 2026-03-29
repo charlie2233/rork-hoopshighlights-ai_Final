@@ -7,10 +7,12 @@ from typing import Any
 from ..features import sample_video_frames
 from ..interfaces import VideoFeatures
 from ..labels import (
-    aggregate_label_scores,
     build_xclip_prompts,
     canonical_label_for_prompt,
     derive_basketball_taxonomy,
+    sum_label_scores,
+    xclip_prompt_set_hash,
+    xclip_prompt_set_version,
 )
 from ..models import ActionPrediction, CandidateWindow, LabelScore, RawLabelScore
 
@@ -23,6 +25,8 @@ class XClipActionRecognizer:
     frame_count: int = 8
 
     def recognize(self, candidate: CandidateWindow, features: VideoFeatures) -> ActionPrediction:
+        import torch
+
         model_version = f"xclip:{self.model_name}"
         try:
             processor, model, runtime_device = _load_backend(self.model_name, self.device)
@@ -31,7 +35,8 @@ class XClipActionRecognizer:
                 raise RuntimeError("no_frames_sampled")
 
             prompts = build_xclip_prompts()
-            inputs = processor(text=prompts, videos=frames, return_tensors="pt", padding=True)
+            prompt_set_version = xclip_prompt_set_version()
+            inputs = processor(text=prompts, images=frames, return_tensors="pt", padding=True)
             inputs = _move_inputs(inputs, runtime_device)
             model = model.to(runtime_device)
             model.eval()
@@ -45,12 +50,19 @@ class XClipActionRecognizer:
                 raise RuntimeError("empty_predictions")
 
             best = ranked[0]
-            taxonomy = derive_basketball_taxonomy(best.label, best.confidence, ranked)
+            taxonomy = derive_basketball_taxonomy(
+                best.label,
+                best.confidence,
+                ranked,
+                raw_top_labels=raw_ranked,
+                prompt_set_version=prompt_set_version,
+            )
             return ActionPrediction(
                 label=taxonomy.display_label,
                 canonicalLabel=taxonomy.canonical_label,
                 confidence=taxonomy.confidence_after_mapping,
                 modelVersion=model_version,
+                promptSetVersion=prompt_set_version,
                 detectionMethod="xclip",
                 topLabels=ranked,
                 rawTopLabels=raw_ranked,
@@ -60,12 +72,20 @@ class XClipActionRecognizer:
                 outcome=taxonomy.outcome,
                 confidenceBeforeMapping=taxonomy.confidence_before_mapping,
                 confidenceAfterMapping=taxonomy.confidence_after_mapping,
+                eventFamilyConfidenceBeforeMapping=taxonomy.event_family_confidence_before_mapping,
+                eventFamilyConfidenceAfterMapping=taxonomy.event_family_confidence_after_mapping,
+                shotSubtypeConfidenceBeforeMapping=taxonomy.shot_subtype_confidence_before_mapping,
+                shotSubtypeConfidenceAfterMapping=taxonomy.shot_subtype_confidence_after_mapping,
+                outcomeConfidenceBeforeMapping=taxonomy.outcome_confidence_before_mapping,
+                outcomeConfidenceAfterMapping=taxonomy.outcome_confidence_after_mapping,
                 isUncertain=taxonomy.is_uncertain,
                 metadata={
                     "candidate_id": candidate.candidateId,
                     "frame_count": len(frames),
                     "raw_prediction_prompts": [item.rawLabel for item in raw_ranked if item.rawLabel],
                     "source_model": self.model_name,
+                    "prompt_set_version": prompt_set_version,
+                    "prompt_set_hash": xclip_prompt_set_hash(),
                 },
             )
         except Exception as exc:
@@ -81,7 +101,12 @@ class XClipActionRecognizer:
         else:
             canonical_label = "uncertain"
             confidence = 0.22
-        taxonomy = derive_basketball_taxonomy(canonical_label, confidence)
+        prompt_set_version = xclip_prompt_set_version()
+        taxonomy = derive_basketball_taxonomy(
+            canonical_label,
+            confidence,
+            prompt_set_version=prompt_set_version,
+        )
         top_labels = [
             LabelScore(
                 label=taxonomy.canonical_label,
@@ -103,6 +128,7 @@ class XClipActionRecognizer:
             canonicalLabel=taxonomy.canonical_label,
             confidence=taxonomy.confidence_after_mapping,
             modelVersion=model_version,
+            promptSetVersion=prompt_set_version,
             detectionMethod="heuristic_fallback",
             failureReason=failure_reason,
             topLabels=top_labels,
@@ -113,8 +139,18 @@ class XClipActionRecognizer:
             outcome=taxonomy.outcome,
             confidenceBeforeMapping=taxonomy.confidence_before_mapping,
             confidenceAfterMapping=taxonomy.confidence_after_mapping,
+            eventFamilyConfidenceBeforeMapping=taxonomy.event_family_confidence_before_mapping,
+            eventFamilyConfidenceAfterMapping=taxonomy.event_family_confidence_after_mapping,
+            shotSubtypeConfidenceBeforeMapping=taxonomy.shot_subtype_confidence_before_mapping,
+            shotSubtypeConfidenceAfterMapping=taxonomy.shot_subtype_confidence_after_mapping,
+            outcomeConfidenceBeforeMapping=taxonomy.outcome_confidence_before_mapping,
+            outcomeConfidenceAfterMapping=taxonomy.outcome_confidence_after_mapping,
             isUncertain=taxonomy.is_uncertain,
-            metadata={"candidate_id": candidate.candidateId},
+            metadata={
+                "candidate_id": candidate.candidateId,
+                "prompt_set_version": prompt_set_version,
+                "prompt_set_hash": xclip_prompt_set_hash(),
+            },
         )
 
 
@@ -180,4 +216,4 @@ def _build_ranked_labels(
             )
         )
 
-    return raw_ranked, aggregate_label_scores(ranked)
+    return raw_ranked, sum_label_scores(ranked)

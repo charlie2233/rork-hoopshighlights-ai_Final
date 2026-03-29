@@ -6,7 +6,7 @@ from typing import Any
 
 from ..features import sample_video_frames
 from ..interfaces import VideoFeatures
-from ..labels import aggregate_label_scores, derive_basketball_taxonomy, normalize_action_label
+from ..labels import derive_basketball_taxonomy, normalize_action_label, sum_label_scores
 from ..models import ActionPrediction, CandidateWindow, LabelScore, RawLabelScore
 
 
@@ -27,7 +27,7 @@ class VideoMAEActionRecognizer:
             if not frames:
                 raise RuntimeError("no_frames_sampled")
 
-            inputs = processor(videos=frames, return_tensors="pt")
+            inputs = processor(images=frames, return_tensors="pt")
             inputs = _move_inputs(inputs, runtime_device)
             model = model.to(runtime_device)
             model.eval()
@@ -47,6 +47,7 @@ class VideoMAEActionRecognizer:
                 canonicalLabel=taxonomy.canonical_label,
                 confidence=taxonomy.confidence_after_mapping,
                 modelVersion=model_version,
+                promptSetVersion=None,
                 detectionMethod="videomae",
                 topLabels=ranked,
                 rawTopLabels=raw_ranked,
@@ -56,6 +57,12 @@ class VideoMAEActionRecognizer:
                 outcome=taxonomy.outcome,
                 confidenceBeforeMapping=taxonomy.confidence_before_mapping,
                 confidenceAfterMapping=taxonomy.confidence_after_mapping,
+                eventFamilyConfidenceBeforeMapping=taxonomy.event_family_confidence_before_mapping,
+                eventFamilyConfidenceAfterMapping=taxonomy.event_family_confidence_after_mapping,
+                shotSubtypeConfidenceBeforeMapping=taxonomy.shot_subtype_confidence_before_mapping,
+                shotSubtypeConfidenceAfterMapping=taxonomy.shot_subtype_confidence_after_mapping,
+                outcomeConfidenceBeforeMapping=taxonomy.outcome_confidence_before_mapping,
+                outcomeConfidenceAfterMapping=taxonomy.outcome_confidence_after_mapping,
                 isUncertain=taxonomy.is_uncertain,
                 metadata={
                     "candidate_id": candidate.candidateId,
@@ -102,6 +109,7 @@ class VideoMAEActionRecognizer:
             canonicalLabel=taxonomy.canonical_label,
             confidence=taxonomy.confidence_after_mapping,
             modelVersion=model_version,
+            promptSetVersion=None,
             detectionMethod="heuristic_fallback",
             failureReason=failure_reason,
             topLabels=top_labels,
@@ -112,6 +120,12 @@ class VideoMAEActionRecognizer:
             outcome=taxonomy.outcome,
             confidenceBeforeMapping=taxonomy.confidence_before_mapping,
             confidenceAfterMapping=taxonomy.confidence_after_mapping,
+            eventFamilyConfidenceBeforeMapping=taxonomy.event_family_confidence_before_mapping,
+            eventFamilyConfidenceAfterMapping=taxonomy.event_family_confidence_after_mapping,
+            shotSubtypeConfidenceBeforeMapping=taxonomy.shot_subtype_confidence_before_mapping,
+            shotSubtypeConfidenceAfterMapping=taxonomy.shot_subtype_confidence_after_mapping,
+            outcomeConfidenceBeforeMapping=taxonomy.outcome_confidence_before_mapping,
+            outcomeConfidenceAfterMapping=taxonomy.outcome_confidence_after_mapping,
             isUncertain=taxonomy.is_uncertain,
             metadata={"candidate_id": candidate.candidateId},
         )
@@ -178,4 +192,4 @@ def _build_ranked_labels(
             )
         )
 
-    return raw_ranked, aggregate_label_scores(ranked)
+    return raw_ranked, sum_label_scores(ranked)

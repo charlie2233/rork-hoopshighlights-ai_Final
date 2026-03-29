@@ -52,7 +52,14 @@ class WindowedClipDraft:
     resultConfidence: float = 0.0
     confidenceBeforeMapping: float | None = None
     confidenceAfterMapping: float | None = None
+    eventFamilyConfidenceBeforeMapping: float | None = None
+    eventFamilyConfidenceAfterMapping: float | None = None
+    shotSubtypeConfidenceBeforeMapping: float | None = None
+    shotSubtypeConfidenceAfterMapping: float | None = None
+    outcomeConfidenceBeforeMapping: float | None = None
+    outcomeConfidenceAfterMapping: float | None = None
     isUncertain: bool = False
+    promptSetVersion: str | None = None
     audioScore: float = 0.0
     visualScore: float = 0.0
     motionScore: float = 0.0
@@ -147,7 +154,14 @@ class BasketballClipWindower:
             makeMiss=draft.makeMiss,
             confidenceBeforeMapping=draft.confidenceBeforeMapping,
             confidenceAfterMapping=draft.confidenceAfterMapping,
+            eventFamilyConfidenceBeforeMapping=draft.eventFamilyConfidenceBeforeMapping,
+            eventFamilyConfidenceAfterMapping=draft.eventFamilyConfidenceAfterMapping,
+            shotSubtypeConfidenceBeforeMapping=draft.shotSubtypeConfidenceBeforeMapping,
+            shotSubtypeConfidenceAfterMapping=draft.shotSubtypeConfidenceAfterMapping,
+            outcomeConfidenceBeforeMapping=draft.outcomeConfidenceBeforeMapping,
+            outcomeConfidenceAfterMapping=draft.outcomeConfidenceAfterMapping,
             isUncertain=draft.isUncertain,
+            promptSetVersion=draft.promptSetVersion,
             audioScore=min(max(draft.audioScore, 0.0), 1.0),
             visualScore=min(max(draft.visualScore, 0.0), 1.0),
             motionScore=min(max(draft.motionScore, 0.0), 1.0),
@@ -325,7 +339,14 @@ class BasketballClipWindower:
                 "outcome": primary.outcome,
                 "confidenceBeforeMapping": max(left.confidenceBeforeMapping or 0.0, right.confidenceBeforeMapping or 0.0),
                 "confidenceAfterMapping": max(left.confidenceAfterMapping or 0.0, right.confidenceAfterMapping or 0.0),
+                "eventFamilyConfidenceBeforeMapping": max(left.eventFamilyConfidenceBeforeMapping or 0.0, right.eventFamilyConfidenceBeforeMapping or 0.0),
+                "eventFamilyConfidenceAfterMapping": max(left.eventFamilyConfidenceAfterMapping or 0.0, right.eventFamilyConfidenceAfterMapping or 0.0),
+                "shotSubtypeConfidenceBeforeMapping": max(left.shotSubtypeConfidenceBeforeMapping or 0.0, right.shotSubtypeConfidenceBeforeMapping or 0.0),
+                "shotSubtypeConfidenceAfterMapping": max(left.shotSubtypeConfidenceAfterMapping or 0.0, right.shotSubtypeConfidenceAfterMapping or 0.0),
+                "outcomeConfidenceBeforeMapping": max(left.outcomeConfidenceBeforeMapping or 0.0, right.outcomeConfidenceBeforeMapping or 0.0),
+                "outcomeConfidenceAfterMapping": max(left.outcomeConfidenceAfterMapping or 0.0, right.outcomeConfidenceAfterMapping or 0.0),
                 "isUncertain": left.isUncertain or right.isUncertain,
+                "promptSetVersion": primary.promptSetVersion or left.promptSetVersion or right.promptSetVersion,
                 "confidence": max(left.confidence, right.confidence),
                 "resultConfidence": max(left.resultConfidence, right.resultConfidence),
                 "rankScore": max(left.rankScore, right.rankScore),

@@ -70,6 +70,7 @@ class ActionPrediction(APIModel):
     canonicalLabel: Optional[str] = None
     confidence: float = Field(ge=0.0, le=1.0)
     modelVersion: str
+    promptSetVersion: Optional[str] = None
     detectionMethod: str = "model"
     failureReason: Optional[str] = None
     topLabels: list[LabelScore] = Field(default_factory=list)
@@ -80,6 +81,12 @@ class ActionPrediction(APIModel):
     outcome: Optional[str] = None
     confidenceBeforeMapping: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     confidenceAfterMapping: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    eventFamilyConfidenceBeforeMapping: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    eventFamilyConfidenceAfterMapping: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    shotSubtypeConfidenceBeforeMapping: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    shotSubtypeConfidenceAfterMapping: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    outcomeConfidenceBeforeMapping: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    outcomeConfidenceAfterMapping: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     isUncertain: bool = False
     metadata: dict[str, Any] = Field(default_factory=dict)
 
@@ -128,7 +135,14 @@ class RankedClip(APIModel):
     makeMiss: str
     confidenceBeforeMapping: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     confidenceAfterMapping: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    eventFamilyConfidenceBeforeMapping: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    eventFamilyConfidenceAfterMapping: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    shotSubtypeConfidenceBeforeMapping: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    shotSubtypeConfidenceAfterMapping: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    outcomeConfidenceBeforeMapping: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    outcomeConfidenceAfterMapping: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     isUncertain: bool = False
+    promptSetVersion: Optional[str] = None
     audioScore: float = Field(ge=0.0, le=1.0)
     visualScore: float = Field(ge=0.0, le=1.0)
     motionScore: float = Field(ge=0.0, le=1.0)

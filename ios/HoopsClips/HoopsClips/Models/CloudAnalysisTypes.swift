@@ -168,10 +168,17 @@ nonisolated struct CloudClip: Codable, Sendable {
     let combinedScore: Double
     var confidenceBeforeMapping: Double? = nil
     var confidenceAfterMapping: Double? = nil
+    var eventFamilyConfidenceBeforeMapping: Double? = nil
+    var eventFamilyConfidenceAfterMapping: Double? = nil
+    var shotSubtypeConfidenceBeforeMapping: Double? = nil
+    var shotSubtypeConfidenceAfterMapping: Double? = nil
+    var outcomeConfidenceBeforeMapping: Double? = nil
+    var outcomeConfidenceAfterMapping: Double? = nil
     let detectionMethod: String
     let shouldAutoKeep: Bool
     let shouldEnableSlowMotion: Bool
     var isUncertain: Bool? = nil
+    var promptSetVersion: String? = nil
     var eventType: String? = nil
     var shotType: String? = nil
     var makeMiss: String? = nil

@@ -451,10 +451,17 @@ function normalizeManifestClip(value: InferenceManifestClipLike): CloudClip {
     combinedScore: clamp01(coerceNumber(value.combinedScore) ?? confidence),
     confidenceBeforeMapping: coerceNumber(value.confidenceBeforeMapping) ?? null,
     confidenceAfterMapping: coerceNumber(value.confidenceAfterMapping) ?? null,
+    eventFamilyConfidenceBeforeMapping: coerceNumber(value.eventFamilyConfidenceBeforeMapping) ?? null,
+    eventFamilyConfidenceAfterMapping: coerceNumber(value.eventFamilyConfidenceAfterMapping) ?? null,
+    shotSubtypeConfidenceBeforeMapping: coerceNumber(value.shotSubtypeConfidenceBeforeMapping) ?? null,
+    shotSubtypeConfidenceAfterMapping: coerceNumber(value.shotSubtypeConfidenceAfterMapping) ?? null,
+    outcomeConfidenceBeforeMapping: coerceNumber(value.outcomeConfidenceBeforeMapping) ?? null,
+    outcomeConfidenceAfterMapping: coerceNumber(value.outcomeConfidenceAfterMapping) ?? null,
     detectionMethod: coerceString(value.detectionMethod) === "heuristic" ? "heuristic" : "cloud",
     shouldAutoKeep: coerceBoolean(value.shouldAutoKeep) ?? confidence >= 0.7,
     shouldEnableSlowMotion: coerceBoolean(value.shouldEnableSlowMotion) ?? false,
     isUncertain: coerceBoolean(value.isUncertain) ?? null,
+    promptSetVersion: coerceString(value.promptSetVersion) ?? null,
     eventType: coerceString(value.eventType) ?? null,
     shotType: coerceString(value.shotType) ?? null,
     makeMiss: normalizeMakeMiss(value.makeMiss),
@@ -497,10 +504,17 @@ type InferenceManifestClipLike = {
   combinedScore?: unknown;
   confidenceBeforeMapping?: unknown;
   confidenceAfterMapping?: unknown;
+  eventFamilyConfidenceBeforeMapping?: unknown;
+  eventFamilyConfidenceAfterMapping?: unknown;
+  shotSubtypeConfidenceBeforeMapping?: unknown;
+  shotSubtypeConfidenceAfterMapping?: unknown;
+  outcomeConfidenceBeforeMapping?: unknown;
+  outcomeConfidenceAfterMapping?: unknown;
   detectionMethod?: unknown;
   shouldAutoKeep?: unknown;
   shouldEnableSlowMotion?: unknown;
   isUncertain?: unknown;
+  promptSetVersion?: unknown;
   eventType?: unknown;
   shotType?: unknown;
   makeMiss?: unknown;

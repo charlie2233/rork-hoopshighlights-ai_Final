@@ -16,7 +16,7 @@ from .callback import CallbackClient
 from .config import InferenceSettings
 from .ffmpeg_tools import prepare_media_source
 from .features import extract_video_features
-from .labels import aggregate_label_scores
+from .labels import blend_label_scores, blend_raw_label_scores, derive_basketball_taxonomy
 from .heuristics import ConfidenceReranker, HeuristicCandidateProposer, HeuristicEventInferencer
 from .interfaces import ArtifactWriter
 from .manifest import LocalArtifactWriter, build_manifest_dict
@@ -67,17 +67,23 @@ class InferenceService:
                 )
                 features = await asyncio.to_thread(extract_video_features, preparation.prepared_path)
 
-                candidates = self.candidate_proposer.propose(features)
+                candidates = self.candidate_proposer.propose(features)[: self.settings.max_candidates]
                 clip_drafts: list[WindowedClipDraft] = []
                 comparison_scores: list[float] = []
+                candidate_actions: list[tuple[object, object, object | None]] = []
 
-                for candidate in candidates[: self.settings.max_candidates]:
+                for candidate in candidates:
                     primary_action = self.primary_recognizer.recognize(candidate, features)
                     comparison = None
                     if self.comparison_recognizer is not None:
                         comparison = self.comparison_recognizer.recognize(candidate, features)
                         comparison_scores.append(comparison.confidence)
 
+                    candidate_actions.append((candidate, primary_action, comparison))
+
+                candidate_actions = self._apply_temporal_aggregation(candidate_actions)
+
+                for candidate, primary_action, comparison in candidate_actions:
                     action = self._resolve_action(primary_action, comparison)
                     event = self.event_inferencer.infer(candidate, action, features)
                     clip_drafts.append(
@@ -99,7 +105,14 @@ class InferenceService:
                             resultConfidence=min(max(event.rankScore, 0.0), 1.0),
                             confidenceBeforeMapping=event.confidenceBeforeMapping,
                             confidenceAfterMapping=event.confidenceAfterMapping,
+                            eventFamilyConfidenceBeforeMapping=getattr(action, "eventFamilyConfidenceBeforeMapping", None),
+                            eventFamilyConfidenceAfterMapping=getattr(action, "eventFamilyConfidenceAfterMapping", None),
+                            shotSubtypeConfidenceBeforeMapping=getattr(action, "shotSubtypeConfidenceBeforeMapping", None),
+                            shotSubtypeConfidenceAfterMapping=getattr(action, "shotSubtypeConfidenceAfterMapping", None),
+                            outcomeConfidenceBeforeMapping=getattr(action, "outcomeConfidenceBeforeMapping", None),
+                            outcomeConfidenceAfterMapping=getattr(action, "outcomeConfidenceAfterMapping", None),
                             isUncertain=event.isUncertain,
+                            promptSetVersion=getattr(action, "promptSetVersion", None),
                             audioScore=self._score_from_profile(
                                 features.audio_energy_profile, candidate.startTime, candidate.endTime
                             ),
@@ -133,6 +146,7 @@ class InferenceService:
                                 "comparison_event_subtype": comparison.eventSubtype if comparison else None,
                                 "comparison_shot_subtype": comparison.shotSubtype if comparison else None,
                                 "comparison_outcome": comparison.outcome if comparison else None,
+                                "prompt_set_version": getattr(action, "promptSetVersion", None),
                                 "candidate_reason": candidate.reason,
                                 "candidate_source": candidate.source,
                                 "action_failure_reason": action.failureReason,
@@ -346,13 +360,27 @@ class InferenceService:
         if comparison_action is None:
             return primary_action
 
-        primary_confidence = float(getattr(primary_action, "confidence", 0.0))
-        comparison_confidence = float(getattr(comparison_action, "confidence", 0.0))
-        chosen = comparison_action if comparison_confidence > primary_confidence + 0.08 else primary_action
-        chosen_source = "xclip" if chosen is comparison_action else "videomae"
-
-        merged_top_labels = aggregate_label_scores(
-            list(getattr(primary_action, "topLabels", [])) + list(getattr(comparison_action, "topLabels", []))
+        merged_top_labels = blend_label_scores(
+            (
+                (1.0, list(getattr(primary_action, "topLabels", []))),
+                (1.15, list(getattr(comparison_action, "topLabels", []))),
+            )
+        )
+        merged_raw_top_labels = blend_raw_label_scores(
+            (
+                (1.0, list(getattr(primary_action, "rawTopLabels", []))),
+                (1.15, list(getattr(comparison_action, "rawTopLabels", []))),
+            )
+        )
+        best = merged_top_labels[0] if merged_top_labels else getattr(primary_action, "topLabels", [None])[0]
+        if best is None:
+            return primary_action
+        taxonomy = derive_basketball_taxonomy(
+            best.label,
+            best.confidence,
+            merged_top_labels,
+            raw_top_labels=merged_raw_top_labels,
+            prompt_set_version=getattr(comparison_action, "promptSetVersion", None),
         )
         metadata = {
             **dict(getattr(primary_action, "metadata", {}) or {}),
@@ -371,19 +399,141 @@ class InferenceService:
             "comparison_shot_subtype": getattr(comparison_action, "shotSubtype", None),
             "comparison_outcome": getattr(comparison_action, "outcome", None),
             "comparison_model_version": getattr(comparison_action, "modelVersion", None),
+            "comparison_prompt_set_version": getattr(comparison_action, "promptSetVersion", None),
             "comparison_failure_reason": getattr(comparison_action, "failureReason", None),
-            "resolved_by": chosen_source,
+            "resolved_by": "hierarchical_combination",
         }
 
-        if hasattr(chosen, "model_copy"):
-            return chosen.model_copy(
+        if hasattr(primary_action, "model_copy"):
+            return primary_action.model_copy(
                 update={
+                    "label": taxonomy.display_label,
+                    "canonicalLabel": taxonomy.canonical_label,
+                    "confidence": taxonomy.confidence_after_mapping,
                     "topLabels": merged_top_labels,
-                    "comparisonRawTopLabels": list(getattr(comparison_action, "rawTopLabels", [])),
+                    "rawTopLabels": merged_raw_top_labels,
+                    "promptSetVersion": getattr(comparison_action, "promptSetVersion", None),
+                    "eventFamily": taxonomy.event_family,
+                    "eventSubtype": taxonomy.event_subtype,
+                    "shotSubtype": taxonomy.shot_subtype,
+                    "outcome": taxonomy.outcome,
+                    "confidenceBeforeMapping": taxonomy.confidence_before_mapping,
+                    "confidenceAfterMapping": taxonomy.confidence_after_mapping,
+                    "eventFamilyConfidenceBeforeMapping": taxonomy.event_family_confidence_before_mapping,
+                    "eventFamilyConfidenceAfterMapping": taxonomy.event_family_confidence_after_mapping,
+                    "shotSubtypeConfidenceBeforeMapping": taxonomy.shot_subtype_confidence_before_mapping,
+                    "shotSubtypeConfidenceAfterMapping": taxonomy.shot_subtype_confidence_after_mapping,
+                    "outcomeConfidenceBeforeMapping": taxonomy.outcome_confidence_before_mapping,
+                    "outcomeConfidenceAfterMapping": taxonomy.outcome_confidence_after_mapping,
+                    "isUncertain": taxonomy.is_uncertain,
                     "metadata": metadata,
                 }
             )
-        return chosen
+        return primary_action
+
+    def _apply_temporal_aggregation(self, candidate_actions):
+        if not candidate_actions:
+            return candidate_actions
+
+        aggregated: list[tuple[object, object, object | None]] = []
+        for index, (candidate, primary_action, comparison_action) in enumerate(candidate_actions):
+            aggregated_primary = self._aggregate_action_over_neighbors(index, candidate_actions, primary_action, slot=1)
+            aggregated_comparison = None
+            if comparison_action is not None:
+                aggregated_comparison = self._aggregate_action_over_neighbors(index, candidate_actions, comparison_action, slot=2)
+            aggregated.append((candidate, aggregated_primary, aggregated_comparison))
+        return aggregated
+
+    def _aggregate_action_over_neighbors(self, index, candidate_actions, action, *, slot: int):
+        weighted_top_labels = []
+        weighted_raw_top_labels = []
+        member_candidate_ids: list[str] = []
+        total_weight = 0.0
+        current_candidate = candidate_actions[index][0]
+
+        for other_index, candidate_action in enumerate(candidate_actions):
+            other_candidate = candidate_action[0]
+            other_action = candidate_action[slot]
+            if other_action is None:
+                continue
+            weight = self._temporal_weight(current_candidate, other_candidate, is_self=index == other_index)
+            if weight <= 0:
+                continue
+            total_weight += weight
+            member_candidate_ids.append(other_candidate.candidateId)
+            weighted_top_labels.append((weight, list(getattr(other_action, "topLabels", []))))
+            weighted_raw_top_labels.append((weight, list(getattr(other_action, "rawTopLabels", []))))
+
+        blended_top_labels = blend_label_scores(weighted_top_labels) or list(getattr(action, "topLabels", []))
+        blended_raw_top_labels = blend_raw_label_scores(weighted_raw_top_labels) or list(getattr(action, "rawTopLabels", []))
+        best = blended_top_labels[0] if blended_top_labels else None
+        if best is None or not hasattr(action, "model_copy"):
+            return action
+
+        taxonomy = derive_basketball_taxonomy(
+            best.label,
+            best.confidence,
+            blended_top_labels,
+            raw_top_labels=blended_raw_top_labels,
+            prompt_set_version=getattr(action, "promptSetVersion", None),
+        )
+        metadata = {
+            **dict(getattr(action, "metadata", {}) or {}),
+            "temporal_aggregation": {
+                "member_candidate_ids": member_candidate_ids,
+                "member_count": len(member_candidate_ids),
+                "total_weight": round(total_weight, 4),
+            },
+        }
+        return action.model_copy(
+            update={
+                "label": taxonomy.display_label,
+                "canonicalLabel": taxonomy.canonical_label,
+                "confidence": taxonomy.confidence_after_mapping,
+                "topLabels": blended_top_labels,
+                "rawTopLabels": blended_raw_top_labels,
+                "eventFamily": taxonomy.event_family,
+                "eventSubtype": taxonomy.event_subtype,
+                "shotSubtype": taxonomy.shot_subtype,
+                "outcome": taxonomy.outcome,
+                "confidenceBeforeMapping": taxonomy.confidence_before_mapping,
+                "confidenceAfterMapping": taxonomy.confidence_after_mapping,
+                "eventFamilyConfidenceBeforeMapping": taxonomy.event_family_confidence_before_mapping,
+                "eventFamilyConfidenceAfterMapping": taxonomy.event_family_confidence_after_mapping,
+                "shotSubtypeConfidenceBeforeMapping": taxonomy.shot_subtype_confidence_before_mapping,
+                "shotSubtypeConfidenceAfterMapping": taxonomy.shot_subtype_confidence_after_mapping,
+                "outcomeConfidenceBeforeMapping": taxonomy.outcome_confidence_before_mapping,
+                "outcomeConfidenceAfterMapping": taxonomy.outcome_confidence_after_mapping,
+                "isUncertain": taxonomy.is_uncertain,
+                "metadata": metadata,
+            }
+        )
+
+    def _temporal_weight(self, current_candidate, other_candidate, *, is_self: bool) -> float:
+        if is_self:
+            return 1.0
+
+        current_duration = max(current_candidate.endTime - current_candidate.startTime, 0.001)
+        other_duration = max(other_candidate.endTime - other_candidate.startTime, 0.001)
+        overlap = max(
+            0.0,
+            min(current_candidate.endTime, other_candidate.endTime)
+            - max(current_candidate.startTime, other_candidate.startTime),
+        )
+        if overlap > 0:
+            overlap_ratio = overlap / max(current_duration, other_duration)
+            base_weight = 0.55 + (0.25 * min(max(overlap_ratio, 0.0), 1.0))
+        else:
+            gap = max(
+                other_candidate.startTime - current_candidate.endTime,
+                current_candidate.startTime - other_candidate.endTime,
+                0.0,
+            )
+            if gap > max(self.settings.heuristic_stride_seconds * 1.5, 2.25):
+                return 0.0
+            base_weight = max(0.0, 0.5 - (0.15 * gap))
+
+        return round(base_weight * (0.7 + (0.3 * min(max(other_candidate.score, 0.0), 1.0))), 4)
 
     def _build_callback_results(self, manifest: InferenceManifest) -> dict[str, object]:
         clips = [
@@ -400,6 +550,12 @@ class InferenceService:
                 "confidence": clip.confidence,
                 "confidenceBeforeMapping": clip.confidenceBeforeMapping,
                 "confidenceAfterMapping": clip.confidenceAfterMapping,
+                "eventFamilyConfidenceBeforeMapping": clip.eventFamilyConfidenceBeforeMapping,
+                "eventFamilyConfidenceAfterMapping": clip.eventFamilyConfidenceAfterMapping,
+                "shotSubtypeConfidenceBeforeMapping": clip.shotSubtypeConfidenceBeforeMapping,
+                "shotSubtypeConfidenceAfterMapping": clip.shotSubtypeConfidenceAfterMapping,
+                "outcomeConfidenceBeforeMapping": clip.outcomeConfidenceBeforeMapping,
+                "outcomeConfidenceAfterMapping": clip.outcomeConfidenceAfterMapping,
                 "label": clip.label,
                 "action": clip.action,
                 "canonicalLabel": clip.canonicalLabel,
@@ -415,6 +571,7 @@ class InferenceService:
                 "shouldAutoKeep": clip.shouldAutoKeep,
                 "shouldEnableSlowMotion": clip.shouldEnableSlowMotion,
                 "isUncertain": clip.isUncertain,
+                "promptSetVersion": clip.promptSetVersion,
                 "eventType": clip.eventType,
                 "shotType": clip.shotType,
                 "makeMiss": clip.makeMiss,

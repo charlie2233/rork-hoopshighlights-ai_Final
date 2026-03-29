@@ -11,6 +11,7 @@ from services.inference.app.labels import (
     canonical_to_display_label,
     derive_basketball_taxonomy,
     normalize_action_label,
+    xclip_prompt_set_version,
 )
 from services.inference.app.models import RawLabelScore
 
@@ -37,8 +38,10 @@ class LabelNormalizationTests(unittest.TestCase):
 
     def test_xclip_prompt_order_matches_canonical_labels(self) -> None:
         prompts = build_xclip_prompts()
-        self.assertEqual(len(prompts), len(CANONICAL_ACTION_LABELS))
-        self.assertIn("a basketball dunk", prompts[0])
+        self.assertGreater(len(prompts), len(CANONICAL_ACTION_LABELS))
+        self.assertIn("a powerful basketball dunk at the rim", prompts)
+        self.assertIn("a generic basketball hype clip without a clear shot or defensive play", prompts)
+        self.assertEqual(xclip_prompt_set_version(), "xclip-bball-v2")
 
     def test_aggregate_raw_label_scores_keeps_best_score_per_raw_label(self) -> None:
         aggregated = aggregate_raw_label_scores(
@@ -85,6 +88,23 @@ class LabelNormalizationTests(unittest.TestCase):
         self.assertEqual(three_taxonomy.display_label, "Three Pointer")
         self.assertEqual(putback_taxonomy.shot_subtype, "putback")
         self.assertEqual(putback_taxonomy.display_label, "Made Shot")
+
+    def test_derive_taxonomy_prefers_shot_family_with_uncertain_outcome(self) -> None:
+        taxonomy = derive_basketball_taxonomy(
+            "three",
+            0.42,
+            [
+                CanonicalLabelScore(label="three", confidence=0.42),
+                CanonicalLabelScore(label="miss", confidence=0.33),
+                CanonicalLabelScore(label="fast break", confidence=0.12),
+            ],
+            prompt_set_version="xclip-bball-v2",
+        )
+
+        self.assertEqual(taxonomy.event_family, "shot")
+        self.assertEqual(taxonomy.shot_subtype, "three")
+        self.assertIn(taxonomy.display_label, {"Three Pointer", "Highlight"})
+        self.assertEqual(taxonomy.prompt_set_version, "xclip-bball-v2")
 
 
 if __name__ == "__main__":
