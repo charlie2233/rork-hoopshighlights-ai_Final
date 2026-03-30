@@ -1,0 +1,547 @@
+from __future__ import annotations
+
+import argparse
+import json
+from collections import Counter, defaultdict
+from dataclasses import dataclass, asdict
+from pathlib import Path
+from statistics import median
+from typing import Any, Iterable
+
+from services.inference.app.labels import canonical_to_display_label
+
+EVENT_FAMILIES = ["shot_attempt", "turnover", "defensive_event", "transition", "other"]
+OUTCOMES = ["made", "missed", "blocked", "uncertain"]
+
+
+@dataclass
+class ShadowClipRecord:
+    jobId: str | None
+    clipId: str
+    requestId: str | None
+    uploadTraceId: str | None
+    inferenceAttemptId: str | None
+    modelVersion: str | None
+    flatLabel: str
+    eventFamily: str
+    shotSubtype: str | None
+    outcome: str
+    confidence: float
+    confidenceBeforeMapping: float | None
+    confidenceAfterMapping: float | None
+    resultConfidence: float | None
+    clipDurationSeconds: float | None
+    wasMerged: bool
+    sourceEventCount: int | None
+    isUncertain: bool
+    rawVideoMAETopK: list[dict[str, Any]]
+    rawXCLIPSuggestions: list[dict[str, Any]]
+    expectedLabel: str | None = None
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    records = load_batch_records(args.batch_results)
+    report = build_shadow_report(records)
+
+    args.output_dir.mkdir(parents=True, exist_ok=True)
+    json_path = args.output_dir / "shadow_eval_report.json"
+    md_path = args.output_dir / "shadow_eval_report.md"
+    json_path.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
+    md_path.write_text(render_markdown(report), encoding="utf-8")
+
+    print(md_path)
+    print(json_path)
+    return 0
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Generate a shadow-eval report for staging or local runtime batches.")
+    parser.add_argument(
+        "--batch-results",
+        type=Path,
+        nargs="+",
+        required=True,
+        help="One or more JSON files containing job result payloads or clip-level result arrays.",
+    )
+    parser.add_argument("--output-dir", type=Path, required=True)
+    return parser.parse_args(argv)
+
+
+def load_batch_records(paths: Iterable[Path]) -> list[ShadowClipRecord]:
+    records: list[ShadowClipRecord] = []
+    for path in paths:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        top_level_items = _extract_top_level_items(payload)
+        for top_level in top_level_items:
+            records.extend(_normalize_batch_item(top_level))
+    return records
+
+
+def build_shadow_report(records: list[ShadowClipRecord]) -> dict[str, Any]:
+    flat_label_distribution = distribution(record.flatLabel for record in records)
+    event_family_distribution = distribution(record.eventFamily for record in records)
+    shot_subtype_distribution = distribution(record.shotSubtype for record in records)
+    outcome_distribution = distribution(record.outcome for record in records)
+    uncertainty_rate = round(sum(1 for record in records if record.isUncertain) / max(len(records), 1), 4)
+    duration_summary = build_duration_summary(record.clipDurationSeconds for record in records)
+    label_spread = build_label_spread(records, flat_label_distribution)
+    miss_vs_made_confusion = build_miss_vs_made_confusion(records)
+    trace_summary = build_trace_summary(records)
+    collapse_examples = build_collapse_examples(records)
+
+    return {
+        "summary": {
+            "jobCount": len(trace_summary["jobIds"]),
+            "clipCount": len(records),
+            "requestIds": trace_summary["requestIds"],
+            "uploadTraceIds": trace_summary["uploadTraceIds"],
+            "inferenceAttemptIds": trace_summary["inferenceAttemptIds"],
+            "modelVersions": trace_summary["modelVersions"],
+            "flatLabelDistribution": flat_label_distribution,
+            "eventFamilyDistribution": event_family_distribution,
+            "shotSubtypeDistribution": shot_subtype_distribution,
+            "outcomeDistribution": outcome_distribution,
+            "uncertaintyRate": uncertainty_rate,
+            "missVsMadeConfusion": miss_vs_made_confusion,
+            "durationSummary": duration_summary,
+            "mixedBatchLabelSpread": label_spread,
+        },
+        "clips": [asdict(record) for record in records],
+        "collapseExamples": collapse_examples,
+        "labelSpreadWarnings": build_spread_warnings(label_spread, uncertainty_rate),
+    }
+
+
+def render_markdown(report: dict[str, Any]) -> str:
+    summary = report["summary"]
+    lines = ["# Shadow Eval Report", ""]
+    lines.append(f"- Jobs: `{summary['jobCount']}`")
+    lines.append(f"- Clips: `{summary['clipCount']}`")
+    lines.append(f"- Uncertainty rate: `{summary['uncertaintyRate']:.4f}`")
+    lines.append(f"- Mixed-batch unique labels: `{summary['mixedBatchLabelSpread']['uniqueLabelCount']}`")
+    lines.append(
+        f"- Dominant flat label: `{summary['mixedBatchLabelSpread']['dominantLabel']}` "
+        f"({summary['mixedBatchLabelSpread']['dominantLabelShare']:.2%})"
+    )
+    lines.append(
+        f"- Duration median: `{summary['durationSummary']['medianSeconds']:.2f}s`, "
+        f"p90: `{summary['durationSummary']['p90Seconds']:.2f}s`"
+    )
+    lines.append("")
+    lines.append("## Distributions")
+    lines.append(f"- Flat labels: `{json.dumps(summary['flatLabelDistribution'], sort_keys=True)}`")
+    lines.append(f"- Event families: `{json.dumps(summary['eventFamilyDistribution'], sort_keys=True)}`")
+    lines.append(f"- Shot subtypes: `{json.dumps(summary['shotSubtypeDistribution'], sort_keys=True)}`")
+    lines.append(f"- Outcomes: `{json.dumps(summary['outcomeDistribution'], sort_keys=True)}`")
+    lines.append(f"- Miss-vs-made confusion: `{json.dumps(summary['missVsMadeConfusion'], sort_keys=True)}`")
+    lines.append("")
+    lines.append("## Mixed Batch Spread")
+    lines.append(f"- Spread score: `{summary['mixedBatchLabelSpread']['spreadScore']:.4f}`")
+    lines.append(f"- Top labels: `{json.dumps(summary['mixedBatchLabelSpread']['topLabels'], sort_keys=True)}`")
+    lines.append("")
+    lines.append("## Clip Table")
+    lines.append(
+        "| clipId | jobId | requestId | uploadTraceId | inferenceAttemptId | modelVersion | flatLabel | eventFamily | shotSubtype | outcome | confidenceBeforeMapping | confidenceAfterMapping | confidence | durationSeconds | merged | sourceEventCount | uncertain | rawVideoMAETop1 | rawXCLIPTop1 |"
+    )
+    lines.append(
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"
+    )
+    for clip in report["clips"]:
+        lines.append(
+            "| "
+            + " | ".join(
+                [
+                    escape_md_cell(clip.get("clipId")),
+                    escape_md_cell(clip.get("jobId")),
+                    escape_md_cell(clip.get("requestId")),
+                    escape_md_cell(clip.get("uploadTraceId")),
+                    escape_md_cell(clip.get("inferenceAttemptId")),
+                    escape_md_cell(clip.get("modelVersion")),
+                    escape_md_cell(clip.get("flatLabel")),
+                    escape_md_cell(clip.get("eventFamily")),
+                    escape_md_cell(clip.get("shotSubtype")),
+                    escape_md_cell(clip.get("outcome")),
+                    escape_md_cell(clip.get("confidenceBeforeMapping")),
+                    escape_md_cell(clip.get("confidenceAfterMapping")),
+                    escape_md_cell(clip.get("confidence")),
+                    escape_md_cell(clip.get("clipDurationSeconds")),
+                    escape_md_cell(clip.get("wasMerged")),
+                    escape_md_cell(clip.get("sourceEventCount")),
+                    escape_md_cell(clip.get("isUncertain")),
+                    escape_md_cell(first_label(clip.get("rawVideoMAETopK", []))),
+                    escape_md_cell(first_label(clip.get("rawXCLIPSuggestions", []))),
+                ]
+            )
+            + " |"
+        )
+    if report["collapseExamples"]:
+        lines.append("")
+        lines.append("## Collapse Examples")
+        for item in report["collapseExamples"][:8]:
+            lines.append(
+                f"- `{item['clipId']}`: raw diversity `{item['rawDiversity']}` -> final `{item['flatLabel']}`"
+            )
+    if report["labelSpreadWarnings"]:
+        lines.append("")
+        lines.append("## Warnings")
+        for warning in report["labelSpreadWarnings"]:
+            lines.append(f"- {warning}")
+    return "\n".join(lines) + "\n"
+
+
+def _extract_top_level_items(payload: Any) -> list[dict[str, Any]]:
+    if isinstance(payload, list):
+        return [item for item in payload if isinstance(item, dict)]
+    if isinstance(payload, dict):
+        if isinstance(payload.get("clips"), list):
+            return [payload]
+        if isinstance(payload.get("result"), dict) and isinstance(payload["result"].get("clips"), list):
+            merged = dict(payload)
+            merged["clips"] = payload["result"]["clips"]
+            return [merged]
+        if isinstance(payload.get("results"), dict) and isinstance(payload["results"].get("clips"), list):
+            merged = dict(payload)
+            merged["clips"] = payload["results"]["clips"]
+            return [merged]
+        return [payload]
+    raise ValueError("Batch results must be a JSON object or array.")
+
+
+def _normalize_batch_item(item: dict[str, Any]) -> list[ShadowClipRecord]:
+    top_job_id = _first_non_empty(item.get("jobId"), item.get("id"))
+    top_request_id = _first_non_empty(item.get("requestId"), item.get("traceId"))
+    top_upload_trace_id = _first_non_empty(item.get("uploadTraceId"), item.get("traceId"))
+    top_attempt_id = _first_non_empty(item.get("inferenceAttemptId"), item.get("attemptId"))
+    top_model_version = _first_non_empty(item.get("modelVersion"), item.get("version"))
+    clips = item.get("clips")
+    if not isinstance(clips, list) or not clips:
+        clips = [item]
+    records: list[ShadowClipRecord] = []
+    for clip in clips:
+        if not isinstance(clip, dict):
+            continue
+        records.append(
+            ShadowClipRecord(
+                jobId=_first_non_empty(clip.get("jobId"), top_job_id),
+                clipId=str(clip.get("clipId") or clip.get("id") or "unknown"),
+                requestId=_first_non_empty(clip.get("requestId"), top_request_id),
+                uploadTraceId=_first_non_empty(clip.get("uploadTraceId"), top_upload_trace_id),
+                inferenceAttemptId=_first_non_empty(clip.get("inferenceAttemptId"), top_attempt_id),
+                modelVersion=_first_non_empty(clip.get("modelVersion"), top_model_version),
+                flatLabel=_normalize_flat_label(clip),
+                eventFamily=_normalize_event_family(clip),
+                shotSubtype=_normalize_shot_subtype(clip),
+                outcome=_normalize_outcome(clip),
+                confidence=_normalize_confidence(clip),
+                confidenceBeforeMapping=_to_optional_float(
+                    clip.get("confidenceBeforeMapping") or clip.get("confidence_before_mapping")
+                ),
+                confidenceAfterMapping=_to_optional_float(
+                    clip.get("confidenceAfterMapping") or clip.get("confidence_after_mapping")
+                ),
+                resultConfidence=_to_optional_float(clip.get("resultConfidence")),
+                clipDurationSeconds=_to_optional_float(clip.get("clipDurationSeconds")),
+                wasMerged=bool(clip.get("wasMerged", False)),
+                sourceEventCount=_to_optional_int(clip.get("sourceEventCount")),
+                isUncertain=_normalize_uncertain(clip),
+                rawVideoMAETopK=_normalize_top_k(
+                    clip.get("rawVideoMAETopK")
+                    or clip.get("rawTopLabels")
+                    or clip.get("videoMAE", {}).get("topK")
+                    or []
+                ),
+                rawXCLIPSuggestions=_normalize_top_k(
+                    clip.get("rawXCLIPSuggestions")
+                    or clip.get("comparisonRawTopLabels")
+                    or clip.get("xclip", {}).get("topK")
+                    or []
+                ),
+                expectedLabel=_first_non_empty(clip.get("expectedLabel"), clip.get("goldLabel"), clip.get("targetLabel")),
+            )
+        )
+    return records
+
+
+def build_trace_summary(records: list[ShadowClipRecord]) -> dict[str, list[str]]:
+    return {
+        "jobIds": unique_values(record.jobId for record in records),
+        "requestIds": unique_values(record.requestId for record in records),
+        "uploadTraceIds": unique_values(record.uploadTraceId for record in records),
+        "inferenceAttemptIds": unique_values(record.inferenceAttemptId for record in records),
+        "modelVersions": unique_values(record.modelVersion for record in records),
+    }
+
+
+def build_label_spread(records: list[ShadowClipRecord], label_distribution: dict[str, int]) -> dict[str, Any]:
+    total = max(len(records), 1)
+    unique_label_count = len(label_distribution)
+    dominant_label, dominant_count = ("", 0)
+    if label_distribution:
+        dominant_label, dominant_count = max(label_distribution.items(), key=lambda item: (item[1], item[0]))
+    entropy = 0.0
+    for count in label_distribution.values():
+        if count <= 0:
+            continue
+        probability = count / total
+        entropy -= probability * __import__("math").log(probability, 2)
+    spread_score = round(1.0 - (dominant_count / total), 4) if total else 0.0
+    return {
+        "uniqueLabelCount": unique_label_count,
+        "dominantLabel": dominant_label or "unknown",
+        "dominantLabelShare": round(dominant_count / total, 4) if total else 0.0,
+        "entropy": round(entropy, 4),
+        "spreadScore": spread_score,
+        "topLabels": sorted(label_distribution.items(), key=lambda item: (-item[1], item[0]))[:8],
+    }
+
+
+def build_miss_vs_made_confusion(records: list[ShadowClipRecord]) -> dict[str, int]:
+    counts = Counter(
+        {
+            "expectedMissPredictedMadeShot": 0,
+            "expectedMadePredictedMiss": 0,
+            "expectedMissPredictedHighlight": 0,
+            "expectedMadePredictedHighlight": 0,
+        }
+    )
+    for record in records:
+        expected = normalize_expected_label(record.expectedLabel)
+        predicted = normalize_expected_label(record.flatLabel)
+        if expected == "miss" and predicted == "made shot":
+            counts["expectedMissPredictedMadeShot"] += 1
+        elif expected == "made shot" and predicted == "miss":
+            counts["expectedMadePredictedMiss"] += 1
+        elif expected == "miss" and predicted == "highlight":
+            counts["expectedMissPredictedHighlight"] += 1
+        elif expected == "made shot" and predicted == "highlight":
+            counts["expectedMadePredictedHighlight"] += 1
+    return dict(counts)
+
+
+def build_collapse_examples(records: list[ShadowClipRecord]) -> list[dict[str, Any]]:
+    examples: list[dict[str, Any]] = []
+    for record in records:
+        raw_labels = [first_label(record.rawVideoMAETopK), first_label(record.rawXCLIPSuggestions)]
+        diversity = len({label for label in raw_labels if label and label != "none"})
+        if diversity >= 2 and record.flatLabel == "Highlight":
+            examples.append(
+                {
+                    "clipId": record.clipId,
+                    "flatLabel": record.flatLabel,
+                    "rawDiversity": diversity,
+                    "rawVideoMAETopK": record.rawVideoMAETopK[:3],
+                    "rawXCLIPSuggestions": record.rawXCLIPSuggestions[:3],
+                }
+            )
+    return examples
+
+
+def build_spread_warnings(label_spread: dict[str, Any], uncertainty_rate: float) -> list[str]:
+    warnings: list[str] = []
+    if label_spread["uniqueLabelCount"] < 4:
+        warnings.append("Mixed batch produced fewer than four flat labels.")
+    if label_spread["dominantLabelShare"] > 0.5:
+        warnings.append("One flat label still dominates more than half the batch.")
+    if uncertainty_rate > 0.5:
+        warnings.append("Uncertainty remains above 50% on this batch.")
+    return warnings
+
+
+def distribution(values: Iterable[Any]) -> dict[str, int]:
+    counts = Counter(normalize_bucket(value) for value in values)
+    return dict(sorted(counts.items(), key=lambda item: (-item[1], item[0])))
+
+
+def normalize_bucket(value: Any) -> str:
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    text = str(value).strip()
+    return text if text else "null"
+
+
+def normalize_expected_label(value: str | None) -> str:
+    text = normalize_text(value)
+    if text in {"made shot", "made", "make"}:
+        return "made shot"
+    if text in {"miss", "missed", "highlight", "uncertain"}:
+        return "miss" if text == "miss" or text == "missed" else "highlight"
+    return text
+
+
+def _normalize_flat_label(clip: dict[str, Any]) -> str:
+    raw = _first_non_empty(clip.get("finalLabel"), clip.get("label"), clip.get("displayLabel"), clip.get("action"), "Highlight")
+    text = normalize_text(raw)
+    if text in {"dunk", "layup", "three pointer", "three", "fast break", "block", "steal"}:
+        return canonical_to_display_label(text if text != "three pointer" else "three")
+    if text in {"made shot", "made"}:
+        return "Made Shot"
+    if text in {"miss", "missed", "highlight", "uncertain"}:
+        return "Highlight"
+    if text in {"three pointer", "3 pointer", "3 point"}:
+        return "Three Pointer"
+    if text in {"fastbreak"}:
+        return "Fast Break"
+    return str(raw)
+
+
+def _normalize_event_family(clip: dict[str, Any]) -> str:
+    value = _first_non_empty(clip.get("eventFamily"), clip.get("eventType"))
+    text = normalize_text(value)
+    if text in EVENT_FAMILIES:
+        return text
+    return "other" if _normalize_flat_label(clip) == "Highlight" else _taxonomy_from_label(_normalize_flat_label(clip))[0]
+
+
+def _normalize_shot_subtype(clip: dict[str, Any]) -> str | None:
+    value = _first_non_empty(clip.get("shotSubtype"), clip.get("shotType"))
+    text = normalize_text(value)
+    if text in {"dunk", "layup", "jumper", "three", "putback", "unknown"}:
+        return text
+    return _taxonomy_from_label(_normalize_flat_label(clip))[1]
+
+
+def _normalize_outcome(clip: dict[str, Any]) -> str:
+    value = _first_non_empty(clip.get("outcome"), clip.get("makeMiss"))
+    text = normalize_text(value)
+    if text in OUTCOMES:
+        return text
+    return _taxonomy_from_label(_normalize_flat_label(clip))[2]
+
+
+def _taxonomy_from_label(label: str) -> tuple[str, str | None, str]:
+    text = normalize_text(label)
+    if text == "dunk":
+        return "shot_attempt", "dunk", "made"
+    if text == "layup":
+        return "shot_attempt", "layup", "made"
+    if text == "three pointer" or text == "three":
+        return "shot_attempt", "three", "made"
+    if text == "made shot":
+        return "shot_attempt", "jumper", "made"
+    if text == "jumper":
+        return "shot_attempt", "jumper", "made"
+    if text == "putback":
+        return "shot_attempt", "putback", "made"
+    if text == "block":
+        return "defensive_event", None, "blocked"
+    if text == "steal":
+        return "turnover", None, "uncertain"
+    if text == "fast break":
+        return "transition", None, "uncertain"
+    if text == "miss":
+        return "shot_attempt", None, "missed"
+    return "other", None, "uncertain"
+
+
+def _normalize_confidence(clip: dict[str, Any]) -> float:
+    for key in ("confidenceAfterMapping", "confidence", "resultConfidence", "confidenceBeforeMapping"):
+        value = _to_optional_float(clip.get(key))
+        if value is not None:
+            return value
+    return 0.0
+
+
+def _normalize_uncertain(clip: dict[str, Any]) -> bool:
+    if "isUncertain" in clip:
+        return bool(clip["isUncertain"])
+    if normalize_text(_first_non_empty(clip.get("outcome"), clip.get("makeMiss"))) == "uncertain":
+        return True
+    return normalize_text(_first_non_empty(clip.get("finalLabel"), clip.get("label"), clip.get("displayLabel"), "")) == "highlight"
+
+
+def _normalize_top_k(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    rows: list[dict[str, Any]] = []
+    for item in value:
+        if isinstance(item, dict):
+            label = item.get("label") or item.get("rawLabel") or item.get("canonicalLabel") or item.get("displayLabel")
+            rows.append(
+                {
+                    "label": str(label) if label is not None else "unknown",
+                    "confidence": _to_optional_float(item.get("confidence")) or 0.0,
+                    "rawLabel": item.get("rawLabel") or item.get("raw_label"),
+                    "canonicalLabel": item.get("canonicalLabel") or item.get("canonical_label"),
+                    "modelVersion": item.get("modelVersion") or item.get("model_version"),
+                }
+            )
+        else:
+            rows.append({"label": str(item), "confidence": 0.0})
+    return rows
+
+
+def _to_optional_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _to_optional_int(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _first_non_empty(*values: Any) -> str | None:
+    for value in values:
+        if value is None:
+            continue
+        text = str(value).strip()
+        if text:
+            return text
+    return None
+
+
+def normalize_text(value: str | None) -> str:
+    if value is None:
+        return ""
+    return "".join(character.lower() if character.isalnum() else " " for character in str(value)).strip()
+
+
+def unique_values(values: Iterable[str | None]) -> list[str]:
+    seen: list[str] = []
+    for value in values:
+        if value is None:
+            continue
+        if value not in seen:
+            seen.append(value)
+    return seen
+
+
+def first_label(items: list[dict[str, Any]]) -> str:
+    if not items:
+        return "unknown"
+    first = items[0]
+    if isinstance(first, dict):
+        return str(first.get("label") or first.get("rawLabel") or first.get("canonicalLabel") or "unknown")
+    return str(first)
+
+
+def escape_md_cell(value: Any) -> str:
+    text = "" if value is None else str(value)
+    return text.replace("|", "\\|").replace("\n", " ")
+
+
+def build_duration_summary(values: Iterable[float | None]) -> dict[str, Any]:
+    samples = sorted(float(value) for value in values if value is not None)
+    if not samples:
+        return {"count": 0, "medianSeconds": 0.0, "p90Seconds": 0.0}
+    p90_index = max(int(round((len(samples) - 1) * 0.9)), 0)
+    return {
+        "count": len(samples),
+        "medianSeconds": round(median(samples), 4),
+        "p90Seconds": round(samples[p90_index], 4),
+    }
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

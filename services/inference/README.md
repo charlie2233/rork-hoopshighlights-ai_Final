@@ -52,6 +52,21 @@ Optional compatibility fields:
 - VideoMAE and X-CLIP stay in the loop as auxiliary signals; they are no longer the only source of basketball semantics.
 - A Qwen-based teacher labeler exists for offline audits and pseudo-label generation, but it is disabled in the live path by default.
 
+## Runtime calibration
+- The runtime labeler now loads a held-out gold calibration artifact from `services/inference/evals/runtime_calibration.json` when present.
+- Calibration is applied separately to `eventFamily`, `outcome`, and `shotSubtype` probabilities before uncertainty gating and flat-label derivation.
+- Teacher outputs remain training-only; the runtime calibration artifact is built from human-verified gold rows and runtime predictions only.
+
+To regenerate the checked-in calibration artifact:
+
+```bash
+cd /Users/hanfei/rork-hoopshighlights-ai_Final
+python3 services/inference/scripts/build_runtime_calibration.py \
+  --output services/inference/evals/runtime_calibration.json
+```
+
+The script also writes `services/inference/evals/runtime_calibration_report.md` for a quick holdout summary.
+
 ## Local run
 ```bash
 cd /Users/hanfei/rork-hoopshighlights-ai_Final/services/inference
@@ -164,6 +179,9 @@ Service and model config:
 - The callback/result payload also carries `uploadTraceId` and `inferenceAttemptId` so staging traces can be correlated end to end.
 - The result manifest remains the canonical artifact written by the service.
 - Perception overlays are exported as image artifacts for a few sampled frames when OpenCV is available.
+
+## Shadow eval
+Use [`docs/shadow_eval_reporting.md`](/Users/hanfei/rork-hoopshighlights-ai_Final/docs/shadow_eval_reporting.md) when you need to summarize a live staging batch or local mixed batch without touching the runtime contract. The shadow report records flat labels, hierarchical labels, uncertainty, miss-vs-made confusion, and mixed-batch spread.
 
 ## Portable deployment
 The Docker image is portable enough to run on a VM, container service, or Hugging Face-hosted container runtime as long as the following are present:
