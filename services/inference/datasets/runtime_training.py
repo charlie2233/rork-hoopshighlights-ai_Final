@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Any, Iterable
 
 import numpy as np
-from sklearn.feature_extraction import DictVectorizer
 
 from .annotations import ANNOTATION_SCHEMA_VERSION, ClipAnnotation, load_annotation_rows
 
@@ -99,16 +98,14 @@ def build_runtime_training_bundle(
     )
 
     active_records = [record for record in records if not record.ignored]
-    vectorizer = DictVectorizer(sparse=False)
     feature_rows = [record.features for record in active_records]
-    matrix = vectorizer.fit_transform(feature_rows) if feature_rows else np.zeros((0, 0), dtype=float)
-    feature_names = list(vectorizer.get_feature_names_out()) if feature_rows else []
+    feature_names, matrix = vectorize_feature_rows(feature_rows)
 
     split_records = split_records_by_bucket(records)
     output_dir.mkdir(parents=True, exist_ok=True)
     manifest = build_manifest(records, split_records, feature_names)
 
-    save_split_artifacts(output_dir, split_records, vectorizer, feature_names)
+    save_split_artifacts(output_dir, split_records, feature_names)
     save_record_dump(output_dir / "all_records.jsonl", records)
 
     lora_manifest = build_lora_training_export(
@@ -514,7 +511,6 @@ def _extract_numeric_signals(raw_runtime_outputs: dict[str, Any]) -> dict[str, f
 def save_split_artifacts(
     output_dir: Path,
     split_records: dict[str, list[RuntimeTrainingRecord]],
-    vectorizer: DictVectorizer,
     feature_names: list[str],
 ) -> None:
     for split, records in split_records.items():
@@ -522,7 +518,7 @@ def save_split_artifacts(
         split_dir.mkdir(parents=True, exist_ok=True)
         active_records = [record for record in records if not record.ignored]
         save_record_dump(split_dir / "records.jsonl", records)
-        matrix = vectorizer.transform([record.features for record in active_records]) if active_records else np.zeros((0, len(feature_names)), dtype=float)
+        matrix = build_feature_matrix([record.features for record in active_records], feature_names)
         matrix_payload = {
             "featureVersion": RUNTIME_TRAINING_FEATURE_VERSION,
             "featureNames": feature_names,
@@ -543,6 +539,47 @@ def save_split_artifacts(
             "matrix": matrix.tolist(),
         }
         (split_dir / "features.json").write_text(json.dumps(matrix_payload, indent=2), encoding="utf-8")
+
+
+def vectorize_feature_rows(feature_rows: list[dict[str, Any]]) -> tuple[list[str], np.ndarray]:
+    if not feature_rows:
+        return [], np.zeros((0, 0), dtype=float)
+    normalized_rows = [normalize_feature_row(row) for row in feature_rows]
+    feature_names = sorted({feature_name for row in normalized_rows for feature_name in row})
+    return feature_names, build_feature_matrix(normalized_rows, feature_names)
+
+
+def build_feature_matrix(feature_rows: list[dict[str, Any]], feature_names: list[str]) -> np.ndarray:
+    if not feature_names:
+        return np.zeros((len(feature_rows), 0), dtype=float)
+    normalized_rows = [normalize_feature_row(row) for row in feature_rows]
+    feature_index = {feature_name: index for index, feature_name in enumerate(feature_names)}
+    matrix = np.zeros((len(normalized_rows), len(feature_names)), dtype=float)
+    for row_index, row in enumerate(normalized_rows):
+        for feature_name, value in row.items():
+            column_index = feature_index.get(feature_name)
+            if column_index is None:
+                continue
+            matrix[row_index, column_index] = float(value)
+    return matrix
+
+
+def normalize_feature_row(row: dict[str, Any]) -> dict[str, float]:
+    normalized: dict[str, float] = {}
+    for key, value in row.items():
+        if value is None:
+            continue
+        if isinstance(value, str):
+            normalized[f"{key}={_normalize_label(value)}"] = 1.0
+            continue
+        if isinstance(value, bool):
+            normalized[key] = 1.0 if value else 0.0
+            continue
+        if isinstance(value, (int, float, np.integer, np.floating)):
+            normalized[key] = float(value)
+            continue
+        raise ValueError(f"Unsupported feature value for {key}: {value!r}")
+    return normalized
 
 
 def save_record_dump(path: Path, records: list[RuntimeTrainingRecord]) -> None:

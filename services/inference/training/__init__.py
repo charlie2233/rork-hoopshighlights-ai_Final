@@ -6,6 +6,7 @@ from .videomae_lora import (
     BasketballClipExample,
     BasketballLabelSpaces,
     HierarchicalVideoMAELabeler,
+    LoadedLoraRuntimeBundle,
     LoraRunArtifact,
     LoraRunResult,
     apply_rslora_to_backbone,
@@ -15,8 +16,11 @@ from .videomae_lora import (
     create_videomae_backbone,
     export_lora_logits_artifacts,
     fit_temperature,
+    load_runtime_bundle,
     normalize_label,
+    predict_source_path,
     predict_with_model,
+    save_runtime_artifacts,
     train_hierarchical_labeler,
 )
 
@@ -26,6 +30,7 @@ __all__ = [
     "BasketballClipExample",
     "BasketballLabelSpaces",
     "HierarchicalVideoMAELabeler",
+    "LoadedLoraRuntimeBundle",
     "LoraRunArtifact",
     "LoraRunResult",
     "apply_rslora_to_backbone",
@@ -35,7 +40,10 @@ __all__ = [
     "create_videomae_backbone",
     "export_lora_logits_artifacts",
     "fit_temperature",
+    "load_runtime_bundle",
     "normalize_label",
+    "predict_source_path",
     "predict_with_model",
+    "save_runtime_artifacts",
     "train_hierarchical_labeler",
 ]

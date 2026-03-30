@@ -38,7 +38,7 @@ def main(argv: list[str] | None = None) -> int:
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train frozen baseline vs rsLoRA VideoMAE adapters.")
-    parser.add_argument("--output-dir", type=Path, default=Path(__file__).resolve().parents[1] / "evals" / "videomae_lora")
+    parser.add_argument("--output-dir", type=Path, default=Path(__file__).resolve().parents[1] / "models" / "videomae_lora_v1")
     parser.add_argument("--model-name", type=str, default="MCG-NJU/videomae-base-finetuned-kinetics")
     parser.add_argument("--tiny-smoke", action="store_true")
     parser.add_argument("--frame-count", type=int, default=8)
@@ -65,6 +65,7 @@ def _summarize_result(result) -> dict[str, object]:
         "baselineMetrics": result.baseline_metrics,
         "rsloraMetrics": result.rslora_metrics,
         "artifacts": [artifact.path.name for artifact in result.artifacts],
+        "runtimeBundle": "runtime_bundle.json",
     }
 
 

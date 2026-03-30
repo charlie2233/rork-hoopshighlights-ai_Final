@@ -44,7 +44,7 @@ bash /Users/hanfei/rork-hoopshighlights-ai_Final/services/inference/scripts/run_
 After the tunnel is reachable, set the staging control-plane secret:
 
 ```bash
-cd /Users/hanfei/rork-hoopshhighlights-ai_Final/services/control-plane
+cd /Users/hanfei/rork-hoopshighlights-ai_Final/services/control-plane
 printf '%s' 'https://inference-staging.<your-zone>' | npx wrangler secret put INFERENCE_BASE_URL --env staging
 ```
 

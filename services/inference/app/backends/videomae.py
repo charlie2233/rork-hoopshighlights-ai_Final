@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from ..features import sample_video_frames
@@ -16,9 +17,17 @@ class VideoMAEActionRecognizer:
     device: str = "auto"
     top_k: int = 5
     frame_count: int = 16
+    lora_bundle_path: str | None = None
+
+    def resolved_model_version(self) -> str:
+        if self.lora_bundle_path:
+            return f"videomae-rslora:{self.model_name}"
+        return f"videomae:{self.model_name}"
 
     def recognize(self, candidate: CandidateWindow, features: VideoFeatures) -> ActionPrediction:
-        model_version = f"videomae:{self.model_name}"
+        if self.lora_bundle_path:
+            return self._recognize_lora(candidate, features)
+        model_version = self.resolved_model_version()
         try:
             import torch
 
@@ -80,6 +89,57 @@ class VideoMAEActionRecognizer:
             )
         except Exception as exc:
             return self._fallback(candidate, model_version, f"inference_failed:{exc.__class__.__name__}")
+
+    def _recognize_lora(self, candidate: CandidateWindow, features: VideoFeatures) -> ActionPrediction:
+        model_version = self.resolved_model_version()
+        try:
+            runtime_bundle, runtime_device = _load_lora_runtime_backend(self.lora_bundle_path or "", self.device)
+            prediction = _predict_lora_window(
+                runtime_bundle=runtime_bundle,
+                source_path=features.source_path,
+                clip_id=candidate.candidateId,
+                source_kind="runtime",
+                source_domain="live_runtime",
+                source_set="runtime_inference",
+                start_seconds=candidate.startTime,
+                end_seconds=candidate.endTime,
+            )
+            raw_top_labels = _build_lora_raw_top_labels(prediction, model_version)
+            top_labels = _build_lora_ranked_labels(prediction, model_version)
+            return ActionPrediction(
+                label=str(prediction["displayLabel"]),
+                canonicalLabel=str(prediction["canonicalLabel"]),
+                confidence=float(prediction["confidenceAfterMapping"]),
+                modelVersion=str(prediction.get("modelVersion") or runtime_bundle.runtime_metadata.get("modelVersion") or model_version),
+                promptSetVersion=None,
+                detectionMethod="videomae_lora",
+                topLabels=top_labels,
+                rawTopLabels=raw_top_labels,
+                eventFamily=str(prediction["eventFamily"]),
+                eventSubtype=_event_subtype_for_lora_prediction(prediction),
+                shotSubtype=prediction.get("shotSubtype"),
+                outcome=str(prediction["outcome"]),
+                confidenceBeforeMapping=float(prediction["confidenceBeforeMapping"]),
+                confidenceAfterMapping=float(prediction["confidenceAfterMapping"]),
+                eventFamilyConfidenceBeforeMapping=_head_confidence(prediction, "rawEventFamily"),
+                eventFamilyConfidenceAfterMapping=_head_confidence(prediction, "rawEventFamily"),
+                shotSubtypeConfidenceBeforeMapping=_head_confidence(prediction, "rawShotSubtype", present=prediction.get("shotSubtype") is not None),
+                shotSubtypeConfidenceAfterMapping=_head_confidence(prediction, "rawShotSubtype", present=prediction.get("shotSubtype") is not None),
+                outcomeConfidenceBeforeMapping=_head_confidence(prediction, "rawOutcome"),
+                outcomeConfidenceAfterMapping=_head_confidence(prediction, "rawOutcome"),
+                isUncertain=bool(prediction["isUncertain"]),
+                metadata={
+                    "candidate_id": candidate.candidateId,
+                    "frame_count": int(runtime_bundle.runtime_metadata.get("frameCount") or self.frame_count),
+                    "source_model": self.model_name,
+                    "lora_bundle_path": self.lora_bundle_path,
+                    "lora_runtime_device": str(runtime_device),
+                    "lora_temperature": prediction.get("temperature") or runtime_bundle.temperature,
+                    "lora_head_top_labels": prediction.get("rawTopLabels") or {},
+                },
+            )
+        except Exception as exc:
+            return self._fallback(candidate, model_version, f"lora_inference_failed:{exc.__class__.__name__}")
 
     def _fallback(self, candidate: CandidateWindow, model_version: str, failure_reason: str) -> ActionPrediction:
         if candidate.score >= 0.8:
@@ -170,6 +230,40 @@ def _move_inputs(inputs: dict[str, Any], device) -> dict[str, Any]:
     return {key: value.to(device) for key, value in inputs.items()}
 
 
+@lru_cache(maxsize=2)
+def _load_lora_runtime_backend(bundle_path: str, device: str) -> tuple[Any, Any]:
+    runtime_device = _resolve_device(device)
+    from services.inference.training.videomae_lora import load_runtime_bundle
+
+    bundle = load_runtime_bundle(Path(bundle_path), device=str(runtime_device))
+    return bundle, runtime_device
+
+
+def _predict_lora_window(
+    *,
+    runtime_bundle: Any,
+    source_path: Path,
+    clip_id: str,
+    source_kind: str,
+    source_domain: str,
+    source_set: str,
+    start_seconds: float | None,
+    end_seconds: float | None,
+) -> dict[str, Any]:
+    from services.inference.training.videomae_lora import predict_source_path
+
+    return predict_source_path(
+        runtime_bundle=runtime_bundle,
+        source_path=source_path,
+        clip_id=clip_id,
+        source_kind=source_kind,
+        source_domain=source_domain,
+        source_set=source_set,
+        start_seconds=start_seconds,
+        end_seconds=end_seconds,
+    )
+
+
 def _build_ranked_labels(
     probabilities,
     id2label: dict[int, str],
@@ -204,3 +298,75 @@ def _build_ranked_labels(
         )
 
     return raw_ranked, sum_label_scores(ranked)
+
+
+def _build_lora_ranked_labels(prediction: dict[str, Any], model_version: str) -> list[LabelScore]:
+    canonical_label = str(prediction.get("canonicalLabel") or "uncertain")
+    confidence = min(max(float(prediction.get("confidenceAfterMapping") or prediction.get("confidence") or 0.0), 0.0), 1.0)
+    raw_family = ((prediction.get("rawEventFamily") or {}).get("topLabels") or [])
+    extra: list[LabelScore] = [
+        LabelScore(
+            label=canonical_label,
+            confidence=confidence,
+            rawLabel=canonical_label,
+            modelVersion=model_version,
+        )
+    ]
+    for item in raw_family[:2]:
+        label = str(item.get("label") or "other")
+        if label == canonical_label:
+            continue
+        extra.append(
+            LabelScore(
+                label=label,
+                confidence=min(max(float(item.get("confidence") or 0.0), 0.0), 1.0),
+                rawLabel=f"eventFamily:{label}",
+                modelVersion=model_version,
+            )
+        )
+    return extra
+
+
+def _build_lora_raw_top_labels(prediction: dict[str, Any], model_version: str) -> list[RawLabelScore]:
+    rows: list[RawLabelScore] = []
+    for head_key, prefix in (
+        ("rawEventFamily", "eventFamily"),
+        ("rawOutcome", "outcome"),
+        ("rawShotSubtype", "shotSubtype"),
+    ):
+        top_labels = ((prediction.get(head_key) or {}).get("topLabels") or [])[:3]
+        for item in top_labels:
+            label = str(item.get("label") or "unknown")
+            rows.append(
+                RawLabelScore(
+                    rawLabel=f"{prefix}:{label}",
+                    canonicalLabel=label,
+                    confidence=min(max(float(item.get("confidence") or 0.0), 0.0), 1.0),
+                    modelVersion=model_version,
+                )
+            )
+    return rows
+
+
+def _head_confidence(prediction: dict[str, Any], head_key: str, *, present: bool = True) -> float | None:
+    if not present:
+        return None
+    try:
+        return float((prediction.get(head_key) or {}).get("confidence"))
+    except (TypeError, ValueError):
+        return None
+
+
+def _event_subtype_for_lora_prediction(prediction: dict[str, Any]) -> str | None:
+    event_family = str(prediction.get("eventFamily") or "other")
+    shot_subtype = prediction.get("shotSubtype")
+    outcome = str(prediction.get("outcome") or "uncertain")
+    if event_family == "shot_attempt" and shot_subtype:
+        return str(shot_subtype)
+    if event_family == "defensive_event":
+        return "block" if outcome == "blocked" else "defensive_event"
+    if event_family == "turnover":
+        return "steal"
+    if event_family == "transition":
+        return "fast_break"
+    return None

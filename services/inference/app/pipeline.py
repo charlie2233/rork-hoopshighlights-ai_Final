@@ -48,6 +48,7 @@ class InferenceService:
     settings: InferenceSettings
     candidate_proposer: HeuristicCandidateProposer
     primary_recognizer: VideoMAEActionRecognizer
+    adapted_primary_recognizer: Optional[VideoMAEActionRecognizer]
     comparison_recognizer: Optional[XClipActionRecognizer]
     event_inferencer: HeuristicEventInferencer
     reranker: ConfidenceReranker
@@ -82,22 +83,30 @@ class InferenceService:
                 candidates = self.candidate_proposer.propose(features)[: self.settings.max_candidates]
                 clip_drafts: list[WindowedClipDraft] = []
                 comparison_scores: list[float] = []
-                candidate_actions: list[tuple[object, object, object | None]] = []
+                candidate_actions: list[tuple[object, object, object | None, object | None]] = []
                 artifact_descriptors: list[ArtifactDescriptor] = []
 
                 for candidate in candidates:
                     primary_action = self.primary_recognizer.recognize(candidate, features)
+                    adapted_primary_action = None
+                    if self.adapted_primary_recognizer is not None:
+                        adapted_primary_action = self.adapted_primary_recognizer.recognize(candidate, features)
                     comparison = None
                     if self.comparison_recognizer is not None:
                         comparison = self.comparison_recognizer.recognize(candidate, features)
                         comparison_scores.append(comparison.confidence)
 
-                    candidate_actions.append((candidate, primary_action, comparison))
+                    candidate_actions.append((candidate, primary_action, comparison, adapted_primary_action))
 
                 candidate_actions = self._apply_temporal_aggregation(candidate_actions)
 
-                for candidate, primary_action, comparison in candidate_actions:
-                    base_action = self._resolve_action(primary_action, comparison)
+                for candidate, primary_action, comparison, adapted_primary_action in candidate_actions:
+                    lora_mode = self.settings.videomae_lora_mode.lower()
+                    baseline_action = self._resolve_action(primary_action, comparison)
+                    adapted_action = self._resolve_action(adapted_primary_action, comparison) if adapted_primary_action else None
+                    use_adapted_primary = adapted_action is not None and lora_mode in {"primary", "live"}
+                    base_action = adapted_action if use_adapted_primary else baseline_action
+                    active_primary_action = adapted_primary_action if use_adapted_primary else primary_action
                     perception = self._analyze_perception(preparation.prepared_path, candidate)
                     overlay_artifacts = self._persist_perception_overlays(
                         request.jobId,
@@ -122,12 +131,22 @@ class InferenceService:
                     )
                     runtime_prediction = self._predict_runtime_fusion(
                         action=base_action,
-                        primary_action=primary_action,
+                        primary_action=active_primary_action,
                         comparison_action=comparison,
                         structured_signals=structured_signals.as_metadata(),
                         candidate=candidate,
                         perception=perception,
                     )
+                    lora_runtime_shadow = None
+                    if adapted_action is not None and lora_mode == "shadow":
+                        lora_runtime_shadow = self._predict_runtime_fusion(
+                            action=adapted_action,
+                            primary_action=adapted_primary_action,
+                            comparison_action=comparison,
+                            structured_signals=structured_signals.as_metadata(),
+                            candidate=candidate,
+                            perception=perception,
+                        )
                     structured_action = self._apply_structured_decision(
                         action=base_action,
                         decision=structured_decision,
@@ -141,6 +160,14 @@ class InferenceService:
                         structured_signals=structured_signals.as_metadata(),
                         perception=perception,
                     )
+                    if lora_runtime_shadow is not None:
+                        action = self._attach_runtime_shadow(
+                            action=action,
+                            runtime_prediction=lora_runtime_shadow,
+                            structured_signals=structured_signals.as_metadata(),
+                            perception=perception,
+                            key="runtimeFusionLoRAShadow",
+                        )
                     event = self.event_inferencer.infer(candidate, action, features)
                     clip_drafts.append(
                         WindowedClipDraft(
@@ -403,12 +430,16 @@ class InferenceService:
     def _requested_model_version(self, request: InferenceJobRequest) -> str:
         if self.runtime_model is not None and self.settings.runtime_model_mode.lower() in {"primary", "live"}:
             return self.runtime_model.model_version
-        return f"videomae:{self.primary_recognizer.model_name}"
+        if self.adapted_primary_recognizer is not None and self.settings.videomae_lora_mode.lower() in {"primary", "live"}:
+            return self.adapted_primary_recognizer.resolved_model_version()
+        return self.primary_recognizer.resolved_model_version()
 
     def _action_recognizer_name(self) -> str:
         if self.runtime_model is not None and self.settings.runtime_model_mode.lower() in {"primary", "live"}:
             return f"runtime-fusion:{self.runtime_model.model_version}"
-        return f"videomae:{self.primary_recognizer.model_name}"
+        if self.adapted_primary_recognizer is not None and self.settings.videomae_lora_mode.lower() in {"primary", "live"}:
+            return self.adapted_primary_recognizer.resolved_model_version()
+        return self.primary_recognizer.resolved_model_version()
 
     def _aggregate_confidence(self, clips: list[RankedClip]) -> float:
         if not clips:
@@ -696,6 +727,28 @@ class InferenceService:
             )
         return structured_action
 
+    def _attach_runtime_shadow(
+        self,
+        *,
+        action,
+        runtime_prediction: RuntimeFusionPrediction,
+        structured_signals: dict[str, object],
+        perception: dict[str, object],
+        key: str,
+    ):
+        runtime_metadata = {
+            **runtime_prediction.metadata,
+            "structuredSignals": structured_signals,
+            "perceptionSummary": _summarize_perception(perception),
+        }
+        if hasattr(action, "model_copy"):
+            metadata = {
+                **dict(getattr(action, "metadata", {}) or {}),
+                key: runtime_metadata,
+            }
+            return action.model_copy(update={"metadata": metadata})
+        return action
+
     def _resolve_action(self, primary_action, comparison_action):
         if comparison_action is None:
             return primary_action
@@ -779,13 +832,16 @@ class InferenceService:
         if not candidate_actions:
             return candidate_actions
 
-        aggregated: list[tuple[object, object, object | None]] = []
-        for index, (candidate, primary_action, comparison_action) in enumerate(candidate_actions):
+        aggregated: list[tuple[object, object, object | None, object | None]] = []
+        for index, (candidate, primary_action, comparison_action, adapted_primary_action) in enumerate(candidate_actions):
             aggregated_primary = self._aggregate_action_over_neighbors(index, candidate_actions, primary_action, slot=1)
             aggregated_comparison = None
             if comparison_action is not None:
                 aggregated_comparison = self._aggregate_action_over_neighbors(index, candidate_actions, comparison_action, slot=2)
-            aggregated.append((candidate, aggregated_primary, aggregated_comparison))
+            aggregated_adapted = None
+            if adapted_primary_action is not None:
+                aggregated_adapted = self._aggregate_action_over_neighbors(index, candidate_actions, adapted_primary_action, slot=3)
+            aggregated.append((candidate, aggregated_primary, aggregated_comparison, aggregated_adapted))
         return aggregated
 
     def _aggregate_action_over_neighbors(self, index, candidate_actions, action, *, slot: int):
@@ -930,6 +986,7 @@ class InferenceService:
                 "rawTopLabels": [item.model_dump(mode="json") for item in clip.rawTopLabels],
                 "comparisonRawTopLabels": [item.model_dump(mode="json") for item in clip.comparisonRawTopLabels],
                 "runtimeFusionShadow": _runtime_metadata_from_clip(clip, "runtimeFusionShadow"),
+                "runtimeFusionLoRAShadow": _runtime_metadata_from_clip(clip, "runtimeFusionLoRAShadow"),
                 "runtimeFusionPrimary": (
                     _runtime_metadata_from_clip(clip, "runtimeFusionPrimary")
                     or _runtime_metadata_from_clip(clip, "runtimeFusionLive")
@@ -954,6 +1011,12 @@ class InferenceService:
                 "finalSegments": len(clips),
                 "runtimeModelMode": self.settings.runtime_model_mode,
                 "runtimeModelVersion": getattr(self.runtime_model, "model_version", None),
+                "videoMAELoraMode": self.settings.videomae_lora_mode,
+                "videoMAELoraVersion": (
+                    self.adapted_primary_recognizer.resolved_model_version()
+                    if self.adapted_primary_recognizer is not None
+                    else None
+                ),
             },
             "resultConfidence": manifest.resultConfidence,
         }
@@ -963,6 +1026,12 @@ def build_service(settings: InferenceSettings) -> InferenceService:
     comparison = None
     if settings.comparison_model.lower() == "xclip":
         comparison = XClipActionRecognizer(model_name=settings.model_name_xclip)
+    adapted_primary = None
+    if settings.videomae_lora_mode.lower() in {"shadow", "primary", "live"} and settings.videomae_lora_bundle_path.exists():
+        adapted_primary = VideoMAEActionRecognizer(
+            model_name=settings.model_name_videomae,
+            lora_bundle_path=str(settings.videomae_lora_bundle_path),
+        )
     teacher_labeler = None
     if settings.teacher_labeling_enabled:
         teacher_labeler = QwenTeacherLabeler(
@@ -988,6 +1057,7 @@ def build_service(settings: InferenceSettings) -> InferenceService:
             stride_seconds=settings.heuristic_stride_seconds,
         ),
         primary_recognizer=VideoMAEActionRecognizer(model_name=settings.model_name_videomae),
+        adapted_primary_recognizer=adapted_primary,
         comparison_recognizer=comparison,
         event_inferencer=HeuristicEventInferencer(),
         reranker=ConfidenceReranker(),

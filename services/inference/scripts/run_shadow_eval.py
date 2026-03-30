@@ -41,10 +41,10 @@ class ShadowClipRecord:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    records = load_batch_records(args.batch_results)
+    records = load_batch_records(args.batch_results, shadow_source=args.shadow_source)
     report = build_shadow_report(records)
     if args.baseline_results:
-        baseline_records = load_batch_records(args.baseline_results)
+        baseline_records = load_batch_records(args.baseline_results, shadow_source=args.shadow_source)
         baseline_report = build_shadow_report(baseline_records)
         report["baselineSummary"] = baseline_report["summary"]
         report["comparisonSummary"] = build_shadow_comparison_summary(
@@ -79,17 +79,23 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         nargs="+",
         help="Optional phase3d baseline batch results to compare against the candidate shadow batch.",
     )
+    parser.add_argument(
+        "--shadow-source",
+        choices=("auto", "runtimeFusionLoRAShadow", "runtimeFusionShadow", "runtimeFusionPrimary", "runtimeFusionLive"),
+        default="auto",
+        help="Which shadow payload to normalize when multiple shadow namespaces are present.",
+    )
     parser.add_argument("--output-dir", type=Path, required=True)
     return parser.parse_args(argv)
 
 
-def load_batch_records(paths: Iterable[Path]) -> list[ShadowClipRecord]:
+def load_batch_records(paths: Iterable[Path], *, shadow_source: str = "auto") -> list[ShadowClipRecord]:
     records: list[ShadowClipRecord] = []
     for path in paths:
         payload = json.loads(path.read_text(encoding="utf-8"))
         top_level_items = _extract_top_level_items(payload)
         for top_level in top_level_items:
-            records.extend(_normalize_batch_item(top_level))
+            records.extend(_normalize_batch_item(top_level, shadow_source=shadow_source))
     return records
 
 
@@ -246,7 +252,7 @@ def _extract_top_level_items(payload: Any) -> list[dict[str, Any]]:
     raise ValueError("Batch results must be a JSON object or array.")
 
 
-def _normalize_batch_item(item: dict[str, Any]) -> list[ShadowClipRecord]:
+def _normalize_batch_item(item: dict[str, Any], *, shadow_source: str = "auto") -> list[ShadowClipRecord]:
     top_job_id = _first_non_empty(item.get("jobId"), item.get("id"))
     top_request_id = _first_non_empty(item.get("requestId"), item.get("traceId"))
     top_upload_trace_id = _first_non_empty(item.get("uploadTraceId"), item.get("traceId"))
@@ -259,7 +265,7 @@ def _normalize_batch_item(item: dict[str, Any]) -> list[ShadowClipRecord]:
     for clip in clips:
         if not isinstance(clip, dict):
             continue
-        shadow_payload = _shadow_payload(clip)
+        shadow_payload = _shadow_payload(clip, shadow_source=shadow_source)
         records.append(
             ShadowClipRecord(
                 jobId=_first_non_empty(clip.get("jobId"), top_job_id),
@@ -681,8 +687,13 @@ def _first_defined(*values: Any) -> Any:
     return None
 
 
-def _shadow_payload(clip: dict[str, Any]) -> dict[str, Any] | None:
-    for key in ("runtimeFusionShadow", "runtimeFusionLive", "runtimeFusionPrimary"):
+def _shadow_payload(clip: dict[str, Any], *, shadow_source: str = "auto") -> dict[str, Any] | None:
+    keys = (
+        ("runtimeFusionLoRAShadow", "runtimeFusionShadow", "runtimeFusionLive", "runtimeFusionPrimary")
+        if shadow_source == "auto"
+        else (shadow_source,)
+    )
+    for key in keys:
         value = clip.get(key)
         if isinstance(value, dict):
             return value

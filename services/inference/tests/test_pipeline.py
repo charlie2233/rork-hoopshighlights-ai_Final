@@ -29,6 +29,7 @@ class PipelineSourceResolutionTests(unittest.IsolatedAsyncioTestCase):
             settings=self.settings,
             candidate_proposer=Mock(),
             primary_recognizer=Mock(),
+            adapted_primary_recognizer=None,
             comparison_recognizer=None,
             event_inferencer=Mock(),
             reranker=Mock(),
@@ -112,6 +113,7 @@ class PipelineCallbackResultsTests(unittest.TestCase):
             settings=InferenceSettings(),
             candidate_proposer=Mock(),
             primary_recognizer=Mock(),
+            adapted_primary_recognizer=None,
             comparison_recognizer=None,
             event_inferencer=Mock(),
             reranker=Mock(),
@@ -274,6 +276,82 @@ class PipelineCallbackResultsTests(unittest.TestCase):
             "runtime-fusion-v1",
         )
 
+    def test_build_callback_results_surfaces_lora_shadow_metadata(self) -> None:
+        manifest = InferenceManifest(
+            schemaVersion="2026-03-27",
+            jobId="job_123",
+            requestId="request-123",
+            uploadTraceId="upload-123",
+            inferenceAttemptId="attempt-123",
+            modelVersion="videomae:test",
+            resultConfidence=0.46,
+            failureReason=None,
+            generatedAt=datetime.now(timezone.utc),
+            clips=[
+                RankedClip(
+                    clipId="clip-1",
+                    startTime=0.0,
+                    endTime=4.75,
+                    clipDurationSeconds=4.75,
+                    eventCenterSeconds=2.25,
+                    preRollSeconds=2.25,
+                    postRollSeconds=2.5,
+                    windowPolicyVersion="basketball-v1",
+                    wasMerged=False,
+                    sourceEventCount=1,
+                    confidence=0.46,
+                    resultConfidence=0.46,
+                    label="Highlight",
+                    action="Highlight",
+                    canonicalLabel="jumper",
+                    eventFamily="shot_attempt",
+                    eventSubtype="jumper",
+                    shotSubtype="jumper",
+                    outcome="uncertain",
+                    eventType="shot_attempt",
+                    shotType="jumper",
+                    makeMiss="unknown",
+                    confidenceBeforeMapping=0.61,
+                    confidenceAfterMapping=0.46,
+                    isUncertain=True,
+                    audioScore=0.2,
+                    visualScore=0.4,
+                    motionScore=0.5,
+                    combinedScore=0.6,
+                    rankScore=0.46,
+                    detectionMethod="model",
+                    topLabels=[],
+                    comparisonTopLabels=[],
+                    rawTopLabels=[],
+                    comparisonRawTopLabels=[],
+                    metadata={
+                        "action_metadata": {
+                            "runtimeFusionLoRAShadow": {
+                                "runtime_fusion_model_version": "videomae-rslora:test",
+                                "label": "Dunk",
+                            }
+                        }
+                    },
+                )
+            ],
+            artifacts=[],
+            diagnostics=InferenceDiagnostics(
+                featureExtractor="ffprobe+opencv",
+                candidateProposer="heuristic-assisted",
+                actionRecognizer="videomae:test",
+                eventInferencer="heuristic-event-inferencer",
+                reranker="confidence-reranker",
+            ),
+        )
+
+        callback_results = self.service._build_callback_results(manifest)
+        clip = callback_results["clips"][0]
+
+        self.assertEqual(
+            clip["runtimeFusionLoRAShadow"]["runtime_fusion_model_version"],
+            "videomae-rslora:test",
+        )
+
 
 class PipelineRuntimeModelModeTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -282,6 +360,7 @@ class PipelineRuntimeModelModeTests(unittest.TestCase):
             settings=self.settings,
             candidate_proposer=Mock(),
             primary_recognizer=Mock(),
+            adapted_primary_recognizer=None,
             comparison_recognizer=None,
             event_inferencer=Mock(),
             reranker=Mock(),
@@ -330,6 +409,7 @@ class PipelineRuntimeModelModeTests(unittest.TestCase):
             settings=InferenceSettings(runtime_model_mode="primary"),
             candidate_proposer=Mock(),
             primary_recognizer=Mock(),
+            adapted_primary_recognizer=None,
             comparison_recognizer=None,
             event_inferencer=Mock(),
             reranker=Mock(),

@@ -129,6 +129,60 @@ class ShadowEvalTests(unittest.TestCase):
         self.assertEqual(record.confidenceAfterMapping, 0.62)
         self.assertEqual(record.rawVideoMAETopK[0]["label"], "steal")
 
+    def test_auto_prefers_lora_shadow_payload_when_present(self) -> None:
+        payload = {
+            "jobId": "job-shadow-lora-001",
+            "requestId": "req-shadow-lora-001",
+            "uploadTraceId": "upload-shadow-lora-001",
+            "inferenceAttemptId": "attempt-shadow-lora-001",
+            "modelVersion": "videomae:test",
+            "clips": [
+                {
+                    "clipId": "clip-shadow-lora-001",
+                    "label": "Highlight",
+                    "eventFamily": "other",
+                    "shotSubtype": None,
+                    "outcome": "uncertain",
+                    "confidence": 0.41,
+                    "clipDurationSeconds": 4.75,
+                    "runtimeFusionShadow": {
+                        "runtime_fusion_model_version": "runtime-fusion-v1",
+                        "label": "Highlight",
+                        "eventFamily": "other",
+                        "outcome": "uncertain",
+                        "confidence": 0.41,
+                    },
+                    "runtimeFusionLoRAShadow": {
+                        "runtime_fusion_model_version": "videomae-rslora:test",
+                        "label": "Dunk",
+                        "eventFamily": "shot_attempt",
+                        "shotSubtype": "dunk",
+                        "outcome": "made",
+                        "confidenceBeforeMapping": 0.77,
+                        "confidenceAfterMapping": 0.84,
+                        "confidence": 0.84,
+                        "isUncertain": False,
+                        "runtime_fusion_snapshot": {
+                            "videoMAE": [{"label": "dunk", "confidence": 0.7}],
+                            "xclip": [{"label": "dunk", "confidence": 0.44}],
+                        },
+                    },
+                }
+            ],
+        }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "shadow-lora.json"
+            path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+            records = load_batch_records([path], shadow_source="auto")
+
+        self.assertEqual(len(records), 1)
+        record = records[0]
+        self.assertEqual(record.modelVersion, "videomae-rslora:test")
+        self.assertEqual(record.flatLabel, "Dunk")
+        self.assertEqual(record.eventFamily, "shot_attempt")
+        self.assertEqual(record.rawVideoMAETopK[0]["label"], "dunk")
+
     def test_builds_phase3d_comparison_summary(self) -> None:
         fixture = self.repo_root() / "services" / "inference" / "tests" / "fixtures" / "shadow_batch_results.json"
         candidate_records = load_batch_records([fixture])

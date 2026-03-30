@@ -51,6 +51,10 @@ class InferenceSettings(BaseSettings):
     runtime_model_bundle_path: Path = Field(
         default=Path(__file__).resolve().parents[1] / "models" / "runtime_fusion_v1.json"
     )
+    videomae_lora_mode: str = "off"
+    videomae_lora_bundle_path: Path = Field(
+        default=Path(__file__).resolve().parents[1] / "models" / "videomae_lora_v1" / "runtime_bundle.json"
+    )
 
     def ensure_temp_dir(self) -> Path:
         self.temp_dir.mkdir(parents=True, exist_ok=True)

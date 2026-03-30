@@ -6,6 +6,7 @@ The canonical schema is defined in [`services/inference/datasets/annotation_sche
 
 - `clipId`
 - `sourceDomain`
+- `sourceRef`
 - `schemaVersion`
 - `eventFamily`
 - `outcome`
@@ -26,6 +27,7 @@ Migration notes:
 
 - `schemaVersion` was added to the annotation row contract so gold/silver artifacts can be migrated and traced across phases.
 - The duplicate schema files `clip_annotation_schema.json` and `clip_annotation.schema.json` are retired; `annotation_schema.json` is the only source of truth.
+- `sourceRef`, `teacherConfidence`, and the numeric basketball-signal fields can be null when a clip has not been fully reconciled yet; the canonical JSON schema now matches the Python loader on those optional fields.
 
 ## Gold
 

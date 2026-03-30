@@ -28,6 +28,9 @@ DEFAULT_FRAME_COUNT = 8
 DEFAULT_IMAGE_SIZE = 224
 DEFAULT_BASELINE_MODEL_NAME = "frozen"
 DEFAULT_RSLORA_MODEL_NAME = "videomae-rslora"
+DEFAULT_RUNTIME_BUNDLE_NAME = "runtime_bundle.json"
+DEFAULT_RUNTIME_HEADS_NAME = "rslora_heads.pt"
+DEFAULT_RUNTIME_ADAPTER_DIR = "rslora_adapter"
 
 
 @dataclass(frozen=True)
@@ -87,6 +90,15 @@ class LoraRunResult:
     baseline_metrics: dict[str, Any]
     rslora_metrics: dict[str, Any]
     artifacts: tuple[LoraRunArtifact, ...]
+
+
+@dataclass(frozen=True)
+class LoadedLoraRuntimeBundle:
+    model: HierarchicalVideoMAELabeler
+    label_spaces: BasketballLabelSpaces
+    runtime_metadata: dict[str, Any]
+    temperature: dict[str, float]
+    device: str
 
 
 @dataclass(frozen=True)
@@ -338,6 +350,21 @@ def create_videomae_backbone(
     return backbone, processor
 
 
+def resolve_backbone_geometry(
+    backbone: nn.Module,
+    *,
+    requested_frame_count: int,
+    requested_image_size: int,
+    tiny_smoke: bool,
+) -> tuple[int, int]:
+    if tiny_smoke:
+        return requested_frame_count, requested_image_size
+    config = getattr(backbone, "config", None)
+    resolved_frame_count = int(getattr(config, "num_frames", requested_frame_count) or requested_frame_count)
+    resolved_image_size = int(getattr(config, "image_size", requested_image_size) or requested_image_size)
+    return resolved_frame_count, resolved_image_size
+
+
 def apply_rslora_to_backbone(
     backbone: nn.Module,
     *,
@@ -441,6 +468,8 @@ def predict_with_model(
     image_size: int = DEFAULT_IMAGE_SIZE,
     device: str = "cpu",
     temperature: dict[str, float] | None = None,
+    start_seconds: float | None = None,
+    end_seconds: float | None = None,
 ) -> dict[str, Any]:
     device_t = torch.device(device)
     model = model.to(device_t)
@@ -448,7 +477,12 @@ def predict_with_model(
 
     if not example.video_available or not example.source_path:
         raise ValueError(f"Example {example.clip_id} does not have a video source")
-    frames = sample_video_frames(Path(example.source_path), frame_count=frame_count)
+    frames = sample_video_frames(
+        Path(example.source_path),
+        frame_count=frame_count,
+        start_seconds=start_seconds,
+        end_seconds=end_seconds,
+    )
     if not frames:
         raise RuntimeError(f"No frames sampled for {example.clip_id}")
     pixel_values = _frames_to_tensor(frames, image_size=image_size).to(device_t)
@@ -570,6 +604,160 @@ def export_lora_logits_artifacts(
             )
         )
     return tuple(artifacts)
+
+
+def save_runtime_artifacts(
+    *,
+    output_dir: Path,
+    model: HierarchicalVideoMAELabeler,
+    label_spaces: BasketballLabelSpaces,
+    model_name: str,
+    frame_count: int,
+    image_size: int,
+    temperature: dict[str, float],
+    lora_metadata: dict[str, Any],
+) -> tuple[LoraRunArtifact, ...]:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    adapter_dir = output_dir / DEFAULT_RUNTIME_ADAPTER_DIR
+    adapter_dir.mkdir(parents=True, exist_ok=True)
+    if not hasattr(model.backbone, "save_pretrained"):
+        raise RuntimeError("LoRA backbone does not support save_pretrained")
+    model.backbone.save_pretrained(adapter_dir)
+
+    head_payload = {
+        "eventFamily": model.event_family_head.state_dict(),
+        "outcome": model.outcome_head.state_dict(),
+        "shotSubtype": model.shot_subtype_head.state_dict(),
+    }
+    heads_path = output_dir / DEFAULT_RUNTIME_HEADS_NAME
+    torch.save(head_payload, heads_path)
+
+    runtime_bundle = {
+        "schemaVersion": VIDEO_LORA_SCHEMA_VERSION,
+        "featureSchemaVersion": VIDEO_LORA_FEATURE_SCHEMA_VERSION,
+        "modelVersion": f"videomae-rslora:{model_name}",
+        "baseModelName": model_name,
+        "labelSpaces": dataclasses.asdict(label_spaces),
+        "frameCount": frame_count,
+        "imageSize": image_size,
+        "temperature": temperature,
+        "lora": lora_metadata,
+        "adapterPath": DEFAULT_RUNTIME_ADAPTER_DIR,
+        "headsPath": DEFAULT_RUNTIME_HEADS_NAME,
+        "trainedAt": datetime.now(timezone.utc).isoformat(),
+    }
+    bundle_path = output_dir / DEFAULT_RUNTIME_BUNDLE_NAME
+    _write_json(bundle_path, runtime_bundle)
+
+    artifacts: list[LoraRunArtifact] = []
+    for path, media_type in (
+        (bundle_path, "application/json"),
+        (heads_path, "application/octet-stream"),
+    ):
+        artifacts.append(
+            LoraRunArtifact(
+                name=path.name,
+                path=path,
+                media_type=media_type,
+                size_bytes=path.stat().st_size,
+                sha256=_sha256_file(path),
+            )
+        )
+    return tuple(artifacts)
+
+
+def load_runtime_bundle(
+    bundle_path: Path,
+    *,
+    device: str = "cpu",
+) -> LoadedLoraRuntimeBundle:
+    try:
+        from peft import PeftModel  # type: ignore
+        from transformers import VideoMAEModel  # type: ignore
+    except Exception as exc:  # pragma: no cover - runtime dependency surfaced at load time
+        raise RuntimeError("transformers and peft are required to load the LoRA runtime bundle") from exc
+
+    runtime_payload = json.loads(bundle_path.read_text(encoding="utf-8"))
+    label_spaces_payload = runtime_payload.get("labelSpaces") or {}
+    label_spaces = BasketballLabelSpaces(
+        event_family=tuple(label_spaces_payload.get("event_family") or label_spaces_payload.get("eventFamily") or ("other",)),
+        outcome=tuple(label_spaces_payload.get("outcome") or ("uncertain",)),
+        shot_subtype=tuple(label_spaces_payload.get("shot_subtype") or label_spaces_payload.get("shotSubtype") or ("null",)),
+    )
+    base_model_name = str(runtime_payload["baseModelName"])
+    adapter_dir = bundle_path.parent / str(runtime_payload.get("adapterPath") or DEFAULT_RUNTIME_ADAPTER_DIR)
+    heads_path = bundle_path.parent / str(runtime_payload.get("headsPath") or DEFAULT_RUNTIME_HEADS_NAME)
+
+    runtime_device = torch.device(device)
+    backbone = VideoMAEModel.from_pretrained(base_model_name)
+    adapted_backbone = PeftModel.from_pretrained(backbone, adapter_dir, is_trainable=False)
+    model = HierarchicalVideoMAELabeler(adapted_backbone, label_spaces)
+    head_state = torch.load(heads_path, map_location=runtime_device)
+    model.event_family_head.load_state_dict(head_state["eventFamily"])
+    model.outcome_head.load_state_dict(head_state["outcome"])
+    model.shot_subtype_head.load_state_dict(head_state["shotSubtype"])
+    model = model.to(runtime_device)
+    model.eval()
+    temperature = {
+        str(key): float(value)
+        for key, value in dict(runtime_payload.get("temperature") or {}).items()
+        if value is not None
+    }
+    return LoadedLoraRuntimeBundle(
+        model=model,
+        label_spaces=label_spaces,
+        runtime_metadata=runtime_payload,
+        temperature=temperature,
+        device=str(runtime_device),
+    )
+
+
+@torch.no_grad()
+def predict_source_path(
+    *,
+    runtime_bundle: LoadedLoraRuntimeBundle,
+    source_path: Path,
+    clip_id: str,
+    source_kind: str = "runtime",
+    source_domain: str = "live_runtime",
+    source_set: str = "runtime_inference",
+    start_seconds: float | None = None,
+    end_seconds: float | None = None,
+) -> dict[str, Any]:
+    frame_count = int(runtime_bundle.runtime_metadata.get("frameCount") or DEFAULT_FRAME_COUNT)
+    image_size = int(runtime_bundle.runtime_metadata.get("imageSize") or DEFAULT_IMAGE_SIZE)
+    example = BasketballClipExample(
+        clip_id=clip_id,
+        source_kind=source_kind,
+        source_domain=source_domain,
+        source_set=source_set,
+        source_ref=str(source_path),
+        source_path=str(source_path),
+        split="runtime",
+        weight=1.0,
+        ignored=False,
+        video_available=True,
+        event_family="other",
+        outcome="uncertain",
+        shot_subtype=None,
+        teacher_confidence=None,
+        human_verified=False,
+        reviewer_notes="",
+        raw_runtime_outputs={},
+        raw_teacher_outputs=None,
+        schema_version=ANNOTATION_SCHEMA_VERSION,
+    )
+    return predict_with_model(
+        runtime_bundle.model,
+        example,
+        label_spaces=runtime_bundle.label_spaces,
+        frame_count=frame_count,
+        image_size=image_size,
+        device=runtime_bundle.device,
+        temperature=runtime_bundle.temperature,
+        start_seconds=start_seconds,
+        end_seconds=end_seconds,
+    )
 
 
 def render_comparison_report(
@@ -709,6 +897,20 @@ def train_and_export_lora_run(
         image_size=image_size,
     )
     baseline_model = HierarchicalVideoMAELabeler(backbone_baseline, label_spaces)
+    frame_count, image_size = resolve_backbone_geometry(
+        backbone_baseline,
+        requested_frame_count=frame_count,
+        requested_image_size=image_size,
+        tiny_smoke=tiny_smoke,
+    )
+    manifest = {
+        **manifest,
+        "summary": {
+            **manifest["summary"],
+            "frameCount": frame_count,
+            "imageSize": image_size,
+        },
+    }
     _freeze_backbone(baseline_model.backbone)
     baseline_training = train_hierarchical_labeler(
         model=baseline_model,
@@ -791,6 +993,16 @@ def train_and_export_lora_run(
         "calibration": rslora_temperatures,
         "lora": lora_metadata,
     }
+    runtime_artifacts = save_runtime_artifacts(
+        output_dir=output_dir,
+        model=rslora_model,
+        label_spaces=label_spaces,
+        model_name=model_name or "tiny-smoke",
+        frame_count=frame_count,
+        image_size=image_size,
+        temperature=rslora_temperatures,
+        lora_metadata=lora_metadata,
+    )
 
     artifacts = export_lora_logits_artifacts(
         output_dir=output_dir,
@@ -814,7 +1026,7 @@ def train_and_export_lora_run(
         manifest=manifest,
         baseline_metrics=baseline_metrics,
         rslora_metrics=rslora_metrics,
-        artifacts=artifacts,
+        artifacts=artifacts + runtime_artifacts,
     )
 
 

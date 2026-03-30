@@ -6,8 +6,15 @@ from pathlib import Path
 from typing import Any, Iterable
 
 
-ANNOTATION_SCHEMA_VERSION = "2026-03-30"
 ANNOTATION_SCHEMA_PATH = Path(__file__).with_name("annotation_schema.json")
+ANNOTATION_SCHEMA_MIGRATION_NOTES_PATH = Path(__file__).resolve().parents[2] / "docs" / "phase3c1_dataset_schema.md"
+
+
+def load_annotation_schema() -> dict[str, Any]:
+    return json.loads(ANNOTATION_SCHEMA_PATH.read_text(encoding="utf-8"))
+
+
+ANNOTATION_SCHEMA_VERSION = str(load_annotation_schema().get("schemaVersion") or "2026-03-30")
 
 
 @dataclass

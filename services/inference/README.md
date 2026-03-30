@@ -99,11 +99,14 @@ python3 services/inference/scripts/train_runtime_model.py \
 The lightweight encoder-adaptation path lives in [`docs/videomae_lora.md`](/Users/hanfei/rork-hoopshighlights-ai_Final/services/inference/docs/videomae_lora.md).
 It trains a frozen baseline and an rsLoRA-adapted VideoMAE backbone side by side, then exports adapted logits for downstream fusion.
 The LoRA-ready split export is generated alongside `runtime_training/` as `runtime_training/videomae_lora_v1/`.
+The staging/runtime bundle lives at `services/inference/models/videomae_lora_v1/runtime_bundle.json`.
 
 Runtime model rollout is controlled with:
 
 - `HOOPS_INFERENCE_RUNTIME_MODEL_MODE=off|shadow|primary`
 - `HOOPS_INFERENCE_RUNTIME_MODEL_BUNDLE_PATH=/absolute/path/to/runtime_fusion_v1.json`
+- `HOOPS_INFERENCE_VIDEOMAE_LORA_MODE=off|shadow|primary`
+- `HOOPS_INFERENCE_VIDEOMAE_LORA_BUNDLE_PATH=/absolute/path/to/videomae_lora_v1/runtime_bundle.json`
 
 Use `shadow` on staging first to keep the current live labels while capturing runtime-fusion metadata in the result manifest. Promote to `primary` only after the mixed-batch shadow report shows better flat-label spread and lower miss-vs-made confusion. For LoRA/encoder adaptation, compare the candidate batch against the phase3d baseline with `--baseline-results` in [`docs/shadow_eval_reporting.md`](/Users/hanfei/rork-hoopshighlights-ai_Final/docs/shadow_eval_reporting.md).
 
@@ -144,6 +147,13 @@ gcloud builds submit \
 ```
 
 After deploy, capture the Cloud Run URL and hand it to the control plane as `INFERENCE_BASE_URL` in the staging environment.
+For the LoRA shadow rollout, also configure:
+
+```bash
+HOOPS_INFERENCE_RUNTIME_MODEL_MODE=shadow
+HOOPS_INFERENCE_VIDEOMAE_LORA_MODE=shadow
+HOOPS_INFERENCE_VIDEOMAE_LORA_BUNDLE_PATH=/app/services/inference/models/videomae_lora_v1/runtime_bundle.json
+```
 
 ## Local tunnel path
 If you need to validate the callback path before a cloud deploy is available, use a named Cloudflare Tunnel or another durable staging hostname. Do not use `cloudflared tunnel --url`; that quick tunnel is ephemeral and should only appear in historical rollout reports.
@@ -195,6 +205,10 @@ Service and model config:
 - `HOOPS_INFERENCE_PERCEPTION_OVERLAY_FRAME_LIMIT`
 - `HOOPS_INFERENCE_TEACHER_LABELING_ENABLED`
 - `HOOPS_INFERENCE_TEACHER_FRAME_COUNT`
+- `HOOPS_INFERENCE_RUNTIME_MODEL_MODE`
+- `HOOPS_INFERENCE_RUNTIME_MODEL_BUNDLE_PATH`
+- `HOOPS_INFERENCE_VIDEOMAE_LORA_MODE`
+- `HOOPS_INFERENCE_VIDEOMAE_LORA_BUNDLE_PATH`
 
 ## Implementation notes
 - The service accepts `sourceObjectKey` as the primary production input and falls back to `sourceUrl` for compatibility.
