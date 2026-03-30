@@ -91,6 +91,8 @@ class XClipActionRecognizer:
                     "source_model": self.model_name,
                     "prompt_set_version": prompt_set_version,
                     "prompt_set_hash": xclip_prompt_set_hash(),
+                    "calibration_version": taxonomy.calibration_version,
+                    "calibrated_confidence": taxonomy.confidence_after_mapping,
                 },
             )
         except Exception as exc:
@@ -155,6 +157,8 @@ class XClipActionRecognizer:
                 "candidate_id": candidate.candidateId,
                 "prompt_set_version": prompt_set_version,
                 "prompt_set_hash": xclip_prompt_set_hash(),
+                "calibration_version": taxonomy.calibration_version,
+                "calibrated_confidence": taxonomy.confidence_after_mapping,
             },
         )
 

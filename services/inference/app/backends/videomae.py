@@ -74,6 +74,8 @@ class VideoMAEActionRecognizer:
                     "frame_count": len(frames),
                     "raw_prediction_labels": [item.rawLabel for item in raw_ranked if item.rawLabel],
                     "source_model": self.model_name,
+                    "calibration_version": taxonomy.calibration_version,
+                    "calibrated_confidence": taxonomy.confidence_after_mapping,
                 },
             )
         except Exception as exc:
@@ -132,7 +134,11 @@ class VideoMAEActionRecognizer:
             outcomeConfidenceBeforeMapping=taxonomy.outcome_confidence_before_mapping,
             outcomeConfidenceAfterMapping=taxonomy.outcome_confidence_after_mapping,
             isUncertain=taxonomy.is_uncertain,
-            metadata={"candidate_id": candidate.candidateId},
+            metadata={
+                "candidate_id": candidate.candidateId,
+                "calibration_version": taxonomy.calibration_version,
+                "calibrated_confidence": taxonomy.confidence_after_mapping,
+            },
         )
 
 

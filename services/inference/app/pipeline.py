@@ -539,6 +539,8 @@ class InferenceService:
         best = merged_top_labels[0] if merged_top_labels else getattr(primary_action, "topLabels", [None])[0]
         if best is None:
             return primary_action
+        primary_metadata = dict(getattr(primary_action, "metadata", {}) or {})
+        comparison_metadata = dict(getattr(comparison_action, "metadata", {}) or {})
         taxonomy = derive_basketball_taxonomy(
             best.label,
             best.confidence,
@@ -547,7 +549,7 @@ class InferenceService:
             prompt_set_version=getattr(comparison_action, "promptSetVersion", None),
         )
         metadata = {
-            **dict(getattr(primary_action, "metadata", {}) or {}),
+            **primary_metadata,
             "primary_label": getattr(primary_action, "label", None),
             "primary_canonical_label": getattr(primary_action, "canonicalLabel", None),
             "primary_event_family": getattr(primary_action, "eventFamily", None),
@@ -565,6 +567,8 @@ class InferenceService:
             "comparison_model_version": getattr(comparison_action, "modelVersion", None),
             "comparison_prompt_set_version": getattr(comparison_action, "promptSetVersion", None),
             "comparison_failure_reason": getattr(comparison_action, "failureReason", None),
+            "calibration_version": primary_metadata.get("calibration_version"),
+            "calibrated_confidence": primary_metadata.get("calibrated_confidence"),
             "resolved_by": "hierarchical_combination",
         }
 
@@ -634,6 +638,7 @@ class InferenceService:
         if best is None or not hasattr(action, "model_copy"):
             return action
 
+        action_metadata = dict(getattr(action, "metadata", {}) or {})
         taxonomy = derive_basketball_taxonomy(
             best.label,
             best.confidence,
@@ -642,12 +647,14 @@ class InferenceService:
             prompt_set_version=getattr(action, "promptSetVersion", None),
         )
         metadata = {
-            **dict(getattr(action, "metadata", {}) or {}),
+            **action_metadata,
             "temporal_aggregation": {
                 "member_candidate_ids": member_candidate_ids,
                 "member_count": len(member_candidate_ids),
                 "total_weight": round(total_weight, 4),
             },
+            "calibration_version": action_metadata.get("calibration_version"),
+            "calibrated_confidence": action_metadata.get("calibrated_confidence"),
         }
         return action.model_copy(
             update={

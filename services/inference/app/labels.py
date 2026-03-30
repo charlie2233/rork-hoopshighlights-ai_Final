@@ -5,6 +5,7 @@ import hashlib
 import re
 from typing import Iterable, Sequence
 
+from .calibration import RuntimeCalibration, get_runtime_calibration
 from .models import LabelScore, RawLabelScore
 
 
@@ -213,6 +214,7 @@ class BasketballTaxonomy:
     outcome_confidence_before_mapping: float
     outcome_confidence_after_mapping: float
     prompt_set_version: str | None = None
+    calibration_version: str | None = None
 
 
 def normalize_action_label(raw_label: str) -> str:
@@ -252,7 +254,9 @@ def derive_basketball_taxonomy(
     *,
     raw_top_labels: Sequence[RawLabelScore] | None = None,
     prompt_set_version: str | None = None,
+    calibration: RuntimeCalibration | None = None,
 ) -> BasketballTaxonomy:
+    runtime_calibration = calibration or get_runtime_calibration()
     ranked_labels = _normalize_ranked_labels(top_labels, canonical_label, confidence)
     primary_label = ranked_labels[0].label
     confidence_before_mapping = min(
@@ -260,8 +264,10 @@ def derive_basketball_taxonomy(
         1.0,
     )
 
+    family_distribution = _normalize_distribution(_score_dimension(ranked_labels, _family_key_for_label))
+    family_distribution = _calibrate_distribution(runtime_calibration, "eventFamily", family_distribution)
     family_confidence = _calibrate_dimension(
-        _normalize_distribution(_score_dimension(ranked_labels, _family_key_for_label)),
+        family_distribution,
         uncertainty_label="other",
         min_confidence=0.34,
         min_margin=0.06,
@@ -272,8 +278,10 @@ def derive_basketball_taxonomy(
     shot_confidence: HierarchicalConfidence | None = None
     shot_subtype: str | None = None
     if event_family == "shot":
+        shot_distribution = _normalize_distribution(_score_shot_subtypes(ranked_labels))
+        shot_distribution = _calibrate_distribution(runtime_calibration, "shotSubtype", shot_distribution)
         shot_confidence = _calibrate_dimension(
-            _normalize_distribution(_score_shot_subtypes(ranked_labels)),
+            shot_distribution,
             uncertainty_label=None,
             min_confidence=0.28,
             min_margin=0.05,
@@ -281,8 +289,10 @@ def derive_basketball_taxonomy(
         )
         shot_subtype = shot_confidence.label or _alternate_shot_subtype(ranked_labels, exclude={"miss", "uncertain"})
 
+    outcome_distribution = _normalize_distribution(_score_outcomes(ranked_labels, event_family=event_family))
+    outcome_distribution = _calibrate_distribution(runtime_calibration, "outcome", outcome_distribution)
     outcome_confidence = _calibrate_dimension(
-        _normalize_distribution(_score_outcomes(ranked_labels, event_family=event_family)),
+        outcome_distribution,
         uncertainty_label="uncertain",
         min_confidence=0.38,
         min_margin=0.08,
@@ -340,6 +350,7 @@ def derive_basketball_taxonomy(
         outcome_confidence_before_mapping=outcome_confidence.confidence_before_mapping,
         outcome_confidence_after_mapping=outcome_confidence.confidence_after_mapping,
         prompt_set_version=prompt_set_version,
+        calibration_version=runtime_calibration.schema_version if runtime_calibration is not None else None,
     )
 
 
@@ -565,6 +576,16 @@ def _normalize_distribution(scores: dict[str, float]) -> dict[str, float]:
         key: round(min(max(value / total, 0.0), 1.0), 4)
         for key, value in filtered.items()
     }
+
+
+def _calibrate_distribution(
+    runtime_calibration: RuntimeCalibration | None,
+    dimension: str,
+    distribution: dict[str, float],
+) -> dict[str, float]:
+    if runtime_calibration is None:
+        return distribution
+    return runtime_calibration.calibrate_distribution(dimension, distribution)
 
 
 def _calibrate_dimension(

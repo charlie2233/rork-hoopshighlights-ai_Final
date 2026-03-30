@@ -13,10 +13,21 @@ from services.inference.app.labels import (
     normalize_action_label,
     xclip_prompt_set_version,
 )
+from services.inference.app.calibration import RuntimeCalibration
 from services.inference.app.models import RawLabelScore
 
 
 class LabelNormalizationTests(unittest.TestCase):
+    @staticmethod
+    def no_calibration() -> RuntimeCalibration:
+        return RuntimeCalibration(
+            schema_version="runtime-calibration-test",
+            source_dataset="fixture",
+            split_strategy="unit-test",
+            dimensions={},
+            holdout_metrics={},
+        )
+
     def test_normalizes_common_video_model_labels(self) -> None:
         self.assertEqual(normalize_action_label("BasketballDunk"), "dunk")
         self.assertEqual(normalize_action_label("three pointer"), "three")
@@ -64,6 +75,7 @@ class LabelNormalizationTests(unittest.TestCase):
                 CanonicalLabelScore(label="jumper", confidence=0.51),
                 CanonicalLabelScore(label="miss", confidence=0.46),
             ],
+            calibration=self.no_calibration(),
         )
 
         self.assertEqual(taxonomy.event_family, "shot")
@@ -73,7 +85,7 @@ class LabelNormalizationTests(unittest.TestCase):
         self.assertTrue(taxonomy.is_uncertain)
 
     def test_derive_taxonomy_keeps_defensive_event_diversity(self) -> None:
-        taxonomy = derive_basketball_taxonomy("block", 0.84)
+        taxonomy = derive_basketball_taxonomy("block", 0.84, calibration=self.no_calibration())
 
         self.assertEqual(taxonomy.event_family, "defensive_event")
         self.assertEqual(taxonomy.event_subtype, "block")
@@ -81,8 +93,8 @@ class LabelNormalizationTests(unittest.TestCase):
         self.assertEqual(taxonomy.display_label, "Block")
 
     def test_derive_taxonomy_distinguishes_three_and_putback(self) -> None:
-        three_taxonomy = derive_basketball_taxonomy("three", 0.81)
-        putback_taxonomy = derive_basketball_taxonomy("putback", 0.78)
+        three_taxonomy = derive_basketball_taxonomy("three", 0.81, calibration=self.no_calibration())
+        putback_taxonomy = derive_basketball_taxonomy("putback", 0.78, calibration=self.no_calibration())
 
         self.assertEqual(three_taxonomy.shot_subtype, "three")
         self.assertEqual(three_taxonomy.display_label, "Three Pointer")
@@ -99,6 +111,7 @@ class LabelNormalizationTests(unittest.TestCase):
                 CanonicalLabelScore(label="fast break", confidence=0.12),
             ],
             prompt_set_version="xclip-bball-v2",
+            calibration=self.no_calibration(),
         )
 
         self.assertEqual(taxonomy.event_family, "shot")
