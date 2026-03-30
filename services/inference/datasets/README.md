@@ -4,6 +4,8 @@ This directory contains the offline annotation assets used by the structured-bas
 
 Files:
 
+- `gold_set.json`: curated gold seed rows used to bootstrap the human-verified dataset.
+- `silver_set.json`: teacher pseudo-label seed rows kept separate from the gold set.
 - `annotation_schema.json`: unified clip annotation schema shared by gold and silver sets.
 - `gold_annotations.jsonl`: human-verified annotations used for probe evaluation.
 - `silver_teacher_annotations.jsonl`: teacher pseudo-labels kept separate from the human gold set.
