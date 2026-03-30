@@ -1,0 +1,98 @@
+[
+  {
+    "clipId": "silver-runtime-vs-teacher-001",
+    "sourceDomain": "live_staging",
+    "priority": "high",
+    "reviewReason": "runtime_and_teacher_disagree",
+    "runtimeLabel": "Highlight",
+    "runtimeConfidence": 0.5636,
+    "teacherLabel": "made dunk",
+    "teacherConfidence": 0.92,
+    "ballVisible": true,
+    "hoopVisible": true
+  },
+  {
+    "clipId": "silver-runtime-vs-teacher-002",
+    "sourceDomain": "live_staging",
+    "priority": "high",
+    "reviewReason": "miss_vs_made_confidence_gap",
+    "runtimeLabel": "Highlight",
+    "runtimeConfidence": 0.8026,
+    "teacherLabel": "missed layup",
+    "teacherConfidence": 0.95,
+    "ballVisible": true,
+    "hoopVisible": true
+  },
+  {
+    "clipId": "silver-runtime-vs-teacher-003",
+    "sourceDomain": "structured_eval",
+    "priority": "high",
+    "reviewReason": "subtype_null_but_ball_hoop_evidence_strong",
+    "runtimeLabel": "steal",
+    "runtimeConfidence": 0.56,
+    "teacherLabel": "turnover",
+    "teacherConfidence": 0.89,
+    "ballVisible": true,
+    "hoopVisible": false
+  },
+  {
+    "clipId": "silver-runtime-vs-teacher-004",
+    "sourceDomain": "structured_eval",
+    "priority": "medium",
+    "reviewReason": "app_facing_label_only_highlight",
+    "runtimeLabel": "fast break",
+    "runtimeConfidence": 0.9,
+    "teacherLabel": "transition",
+    "teacherConfidence": 0.88,
+    "ballVisible": true,
+    "hoopVisible": true
+  },
+  {
+    "clipId": "silver-runtime-vs-teacher-005",
+    "sourceDomain": "manual_negative",
+    "priority": "high",
+    "reviewReason": "runtime_and_teacher_disagree",
+    "runtimeLabel": "Highlight",
+    "runtimeConfidence": 0.33,
+    "teacherLabel": "uncertain negative / replay",
+    "teacherConfidence": 0.86,
+    "ballVisible": true,
+    "hoopVisible": true
+  },
+  {
+    "clipId": "silver-runtime-vs-teacher-006",
+    "sourceDomain": "manual_negative",
+    "priority": "high",
+    "reviewReason": "hard_negative_candidate",
+    "runtimeLabel": "Highlight",
+    "runtimeConfidence": 0.24,
+    "teacherLabel": "abstain",
+    "teacherConfidence": 0.84,
+    "ballVisible": false,
+    "hoopVisible": true
+  },
+  {
+    "clipId": "silver-runtime-vs-teacher-007",
+    "sourceDomain": "manual_negative",
+    "priority": "medium",
+    "reviewReason": "hard_negative_candidate",
+    "runtimeLabel": "Highlight",
+    "runtimeConfidence": 0.22,
+    "teacherLabel": "abstain",
+    "teacherConfidence": 0.82,
+    "ballVisible": false,
+    "hoopVisible": false
+  },
+  {
+    "clipId": "silver-runtime-vs-teacher-008",
+    "sourceDomain": "manual_negative",
+    "priority": "medium",
+    "reviewReason": "hard_negative_candidate",
+    "runtimeLabel": "Highlight",
+    "runtimeConfidence": 0.31,
+    "teacherLabel": "abstain",
+    "teacherConfidence": 0.81,
+    "ballVisible": true,
+    "hoopVisible": true
+  }
+]

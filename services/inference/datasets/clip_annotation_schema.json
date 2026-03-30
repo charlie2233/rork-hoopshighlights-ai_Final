@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/charlie2233/rork-hoopshighlights-ai_Final/services/inference/datasets/clip_annotation_schema.json",
+  "title": "HoopsClips Unified Clip Annotation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "clipId",
+    "sourceDomain",
+    "eventFamily",
+    "outcome",
+    "shotSubtype",
+    "ballVisible",
+    "hoopVisible",
+    "ballNearRim",
+    "ballThroughHoopLikelihood",
+    "possessionChangeLikelihood",
+    "transitionLikelihood",
+    "teacherConfidence",
+    "humanVerified",
+    "reviewerNotes",
+    "rawRuntimeOutputs",
+    "rawTeacherOutputs"
+  ],
+  "properties": {
+    "clipId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sourceDomain": {
+      "type": "string",
+      "minLength": 1
+    },
+    "eventFamily": {
+      "type": "string",
+      "enum": ["shot_attempt", "turnover", "defensive_event", "transition", "other"]
+    },
+    "outcome": {
+      "type": "string",
+      "enum": ["made", "missed", "blocked", "uncertain"]
+    },
+    "shotSubtype": {
+      "anyOf": [
+        {"type": "string", "enum": ["dunk", "layup", "jumper", "three", "putback"]},
+        {"type": "null"}
+      ]
+    },
+    "ballVisible": {
+      "type": "boolean"
+    },
+    "hoopVisible": {
+      "type": "boolean"
+    },
+    "ballNearRim": {
+      "anyOf": [{"type": "number", "minimum": 0.0, "maximum": 1.0}, {"type": "null"}]
+    },
+    "ballThroughHoopLikelihood": {
+      "anyOf": [{"type": "number", "minimum": 0.0, "maximum": 1.0}, {"type": "null"}]
+    },
+    "possessionChangeLikelihood": {
+      "anyOf": [{"type": "number", "minimum": 0.0, "maximum": 1.0}, {"type": "null"}]
+    },
+    "transitionLikelihood": {
+      "anyOf": [{"type": "number", "minimum": 0.0, "maximum": 1.0}, {"type": "null"}]
+    },
+    "teacherConfidence": {
+      "anyOf": [{"type": "number", "minimum": 0.0, "maximum": 1.0}, {"type": "null"}]
+    },
+    "humanVerified": {
+      "type": "boolean"
+    },
+    "reviewerNotes": {
+      "type": "string"
+    },
+    "rawRuntimeOutputs": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "rawTeacherOutputs": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

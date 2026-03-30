@@ -1,37 +1,32 @@
-# HoopsClips Dataset Schema
+# Dataset Seeds
 
-This folder defines the clip-annotation contract used by both gold and silver basketball datasets.
+This directory holds the seed manifests for the basketball labeling pipeline.
 
-## Unified clip annotation
+## Roles
 
-Use [`clip_annotation.schema.json`](./clip_annotation.schema.json) for every clip-level row. The schema is intentionally shared so that:
+- `clip_annotation_schema.json`: unified annotation schema for gold and silver clip records.
+- `gold_set.json`: human-verified seed labels intended as the gold set.
+- `silver_set.json`: teacher-labeled or unverified clips kept separate from the gold set.
 
-- gold annotations and silver annotations stay structurally compatible
-- runtime outputs can be compared directly against teacher outputs
-- human review can override teacher labels without rewriting the data shape
+## Conventions
 
-Required fields capture:
+- `humanVerified: true` means the record belongs in the gold set.
+- `humanVerified: false` means the record is still silver/teacher-only and should not be treated as training truth.
+- `rawRuntimeOutputs` stores runtime model outputs.
+- `rawTeacherOutputs` stores offline teacher outputs and must not be merged into the gold label fields.
+- `reviewerNotes` should capture why a clip belongs in the set and what the next review action is.
 
-- clip identity and source provenance
-- hierarchy labels: `eventFamily`, `outcome`, `shotSubtype`
-- structured basketball evidence
-- human verification state
-- raw runtime and teacher payloads kept separate
+## Current Seed Sources
 
-## Gold vs Silver
+- Live staging smoke clips already validated in the structured-signal branch.
+- Structured regression eval clips from `services/inference/evals/structured_basketball_eval_set.json`.
+- Hard negatives that exercise abstain behavior:
+  - dead-ball
+  - inbound
+  - dribble-only
+  - replay
+  - celebration
+  - camera pan
+  - half-court setup without an event
 
-Gold rows are human-verified. They are the source of truth for evaluation and training targets.
-
-Silver rows are teacher- or runtime-assisted annotations that have not been fully human verified yet. They are useful for:
-
-- disagreement mining
-- bootstrapping review queues
-- offline probing
-- pseudo-label generation
-
-Keep the two tiers separate by using `humanVerified` plus `reviewerNotes` and the raw payload fields:
-
-- `rawRuntimeOutputs` for the live system output
-- `rawTeacherOutputs` for the offline teacher output
-
-Do not merge teacher labels into gold labels in place. Promote silver rows into gold only after human review.
+The goal of these files is to seed the next branch with an annotation contract, a gold/silver split, and a review queue. They are not a full annotation-tool workflow.

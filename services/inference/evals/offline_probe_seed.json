@@ -1,0 +1,117 @@
+{
+  "description": "Seed manifest for an interpretable offline probe over structured basketball signals, runtime logits, and teacher outputs.",
+  "featureColumns": [
+    "ballNearRim",
+    "ballThroughHoopLikelihood",
+    "possessionChangeLikelihood",
+    "transitionLikelihood",
+    "teacherConfidence",
+    "runtimeConfidence",
+    "runtimeTop1Label",
+    "runtimeTop5",
+    "teacherTop1Label",
+    "teacherTop1Confidence",
+    "eventFamily",
+    "outcome",
+    "shotSubtype"
+  ],
+  "targets": ["eventFamily", "outcome", "shotSubtype"],
+  "entries": [
+    {
+      "clipId": "gold-shot-made-dunk-001",
+      "split": "train",
+      "sourceSet": "gold_set.json",
+      "targetLabel": "made dunk"
+    },
+    {
+      "clipId": "gold-shot-missed-layup-001",
+      "split": "train",
+      "sourceSet": "gold_set.json",
+      "targetLabel": "missed layup"
+    },
+    {
+      "clipId": "gold-shot-made-jumper-001",
+      "split": "train",
+      "sourceSet": "gold_set.json",
+      "targetLabel": "made jumper"
+    },
+    {
+      "clipId": "gold-shot-made-three-001",
+      "split": "train",
+      "sourceSet": "gold_set.json",
+      "targetLabel": "made three"
+    },
+    {
+      "clipId": "gold-shot-blocked-layup-001",
+      "split": "train",
+      "sourceSet": "gold_set.json",
+      "targetLabel": "blocked"
+    },
+    {
+      "clipId": "gold-turnover-steal-001",
+      "split": "train",
+      "sourceSet": "gold_set.json",
+      "targetLabel": "turnover"
+    },
+    {
+      "clipId": "gold-transition-fastbreak-001",
+      "split": "train",
+      "sourceSet": "gold_set.json",
+      "targetLabel": "transition"
+    },
+    {
+      "clipId": "gold-negative-deadball-001",
+      "split": "train",
+      "sourceSet": "gold_set.json",
+      "targetLabel": "negative"
+    },
+    {
+      "clipId": "silver-runtime-vs-teacher-001",
+      "split": "val",
+      "sourceSet": "silver_set.json",
+      "targetLabel": "made dunk"
+    },
+    {
+      "clipId": "silver-runtime-vs-teacher-002",
+      "split": "val",
+      "sourceSet": "silver_set.json",
+      "targetLabel": "missed layup"
+    },
+    {
+      "clipId": "silver-runtime-vs-teacher-003",
+      "split": "val",
+      "sourceSet": "silver_set.json",
+      "targetLabel": "turnover"
+    },
+    {
+      "clipId": "silver-runtime-vs-teacher-004",
+      "split": "val",
+      "sourceSet": "silver_set.json",
+      "targetLabel": "transition"
+    },
+    {
+      "clipId": "silver-runtime-vs-teacher-005",
+      "split": "test",
+      "sourceSet": "silver_set.json",
+      "targetLabel": "negative"
+    },
+    {
+      "clipId": "silver-runtime-vs-teacher-006",
+      "split": "test",
+      "sourceSet": "silver_set.json",
+      "targetLabel": "negative"
+    },
+    {
+      "clipId": "silver-runtime-vs-teacher-007",
+      "split": "test",
+      "sourceSet": "silver_set.json",
+      "targetLabel": "negative"
+    },
+    {
+      "clipId": "silver-runtime-vs-teacher-008",
+      "split": "test",
+      "sourceSet": "silver_set.json",
+      "targetLabel": "negative"
+    }
+  ]
+}
