@@ -6,10 +6,12 @@ import unittest
 from pathlib import Path
 
 from services.inference.datasets.runtime_training import (
+    LORA_DATASET_VERSION,
     RUNTIME_TRAINING_FEATURE_VERSION,
     build_runtime_training_bundle,
     example_weight,
     is_ignored,
+    lora_example_weight,
 )
 
 
@@ -51,10 +53,47 @@ class RuntimeTrainingDataTests(unittest.TestCase):
             self.assertTrue((output_dir / "manifest.json").exists())
             self.assertTrue((output_dir / "feature_names.json").exists())
 
+            lora_manifest = json.loads((output_dir / "videomae_lora_v1" / "manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(lora_manifest["datasetVersion"], LORA_DATASET_VERSION)
+            self.assertGreater(lora_manifest["summary"]["trainingEligibleRecords"], 0)
+            self.assertGreater(lora_manifest["summary"]["calibrationAnchorRecords"], 0)
+
+            lora_train_records = [
+                json.loads(line)
+                for line in (output_dir / "videomae_lora_v1" / "train" / "records.jsonl").read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ]
+            lora_val_records = [
+                json.loads(line)
+                for line in (output_dir / "videomae_lora_v1" / "val" / "records.jsonl").read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ]
+            lora_test_records = [
+                json.loads(line)
+                for line in (output_dir / "videomae_lora_v1" / "test" / "records.jsonl").read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ]
+            self.assertTrue(any(record["sourceKind"] == "gold" for record in lora_train_records))
+            self.assertTrue(any(record["calibrationAnchor"] for record in lora_val_records if record["sourceKind"] == "gold"))
+            self.assertTrue(any(record["calibrationAnchor"] for record in lora_test_records if record["sourceKind"] == "gold"))
+            self.assertTrue(
+                any(
+                    (not record["trainingEligible"]) and record["exclusionReason"] == "missing_source_ref"
+                    for record in lora_train_records + lora_val_records + lora_test_records
+                    if record["sourceKind"] == "disagreement"
+                )
+            )
+            self.assertTrue(
+                any(record["trainingEligible"] and record["sourceRef"] for record in lora_train_records if record["sourceKind"] in {"gold", "silver"})
+            )
+
     def test_low_confidence_silver_rows_are_ignored(self) -> None:
         self.assertEqual(example_weight("silver", 0.6, None), 0.0)
         self.assertTrue(is_ignored("silver", 0.6, None))
         self.assertGreater(example_weight("silver", 0.95, None), example_weight("silver", 0.82, None))
+        self.assertEqual(lora_example_weight("silver", 0.6, None), 0.0)
+        self.assertGreater(lora_example_weight("gold", 1.0, None), lora_example_weight("silver", 0.95, None))
+        self.assertGreater(lora_example_weight("silver", 0.95, None), lora_example_weight("silver", 0.8, None))
 
 
 if __name__ == "__main__":

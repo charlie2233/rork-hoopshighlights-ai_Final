@@ -17,6 +17,9 @@ Runtime-training outputs:
 - `runtime_training/all_records.jsonl`: unified training records with source kind, split, weights, and derived display labels.
 - `runtime_training/{train,val,test}/records.jsonl`: split-specific record dumps.
 - `runtime_training/{train,val,test}/features.json`: JSON feature matrix exports for the runtime fusion model.
+- `runtime_training/videomae_lora_v1/manifest.json`: LoRA-oriented split policy, sample weights, eligibility flags, and calibration-anchor counts.
+- `runtime_training/videomae_lora_v1/all_records.jsonl`: candidate-window records for VideoMAE LoRA with source refs, hierarchy labels, and training eligibility.
+- `runtime_training/videomae_lora_v1/{train,val,test}/records.jsonl`: split-specific LoRA records. Gold remains the main val/test calibration anchor, with a small train-support slice.
 
 Migration notes:
 
@@ -33,5 +36,6 @@ Field intent:
 - `rawTeacherOutputs` stores teacher suggestions, evidence, and confidence separately from the final label fields.
 - `reviewerNotes` should capture why the row exists in the gold or silver set.
 - `schemaVersion` should be treated as a migration marker, not a label signal.
+- LoRA records with `trainingEligible=false` stay in the export for audit accounting, but should not be used for encoder fine-tuning until the exclusion reason is cleared, most commonly by attaching a `sourceRef`.
 
 These files are intended to support offline probe training, disagreement mining, and dataset curation.

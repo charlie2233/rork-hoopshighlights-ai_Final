@@ -14,6 +14,8 @@ from .annotations import ANNOTATION_SCHEMA_VERSION, ClipAnnotation, load_annotat
 
 RUNTIME_TRAINING_FEATURE_VERSION = "runtime-fusion-v1"
 DEFAULT_OUTPUT_DIR_NAME = "runtime_training"
+LORA_DATASET_VERSION = "videomae-lora-v1"
+LORA_EXPORT_DIR_NAME = "videomae_lora_v1"
 
 
 @dataclass(frozen=True)
@@ -36,6 +38,38 @@ class RuntimeTrainingRecord:
     rawTeacherOutputs: dict[str, Any] | None
     featureVersion: str
     features: dict[str, Any]
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class LoRATrainingRecord:
+    clipId: str
+    sourceKind: str
+    sourceDomain: str
+    sourceSet: str
+    schemaVersion: str
+    split: str
+    sampleWeight: float
+    ignored: bool
+    trainingEligible: bool
+    calibrationAnchor: bool
+    eventFamily: str
+    outcome: str
+    shotSubtype: str | None
+    displayLabel: str
+    sourceRef: str | None
+    sourceRefKind: str
+    resolvedSourcePath: str | None
+    sourcePathExists: bool
+    teacherConfidence: float | None
+    priorityScore: float | None
+    humanVerified: bool
+    reviewerNotes: str
+    exclusionReason: str | None
+    rawRuntimeOutputs: dict[str, Any]
+    rawTeacherOutputs: dict[str, Any] | None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -74,12 +108,68 @@ def build_runtime_training_bundle(
     output_dir.mkdir(parents=True, exist_ok=True)
     manifest = build_manifest(records, split_records, feature_names)
 
-    (output_dir / "manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
-    (output_dir / "feature_names.json").write_text(json.dumps(feature_names, indent=2), encoding="utf-8")
-
     save_split_artifacts(output_dir, split_records, vectorizer, feature_names)
     save_record_dump(output_dir / "all_records.jsonl", records)
 
+    lora_manifest = build_lora_training_export(
+        repo_root=repo_root,
+        output_dir=output_dir / LORA_EXPORT_DIR_NAME,
+        gold_rows=gold_rows,
+        silver_rows=silver_rows,
+        disagreement_rows=disagreement_rows,
+    )
+    manifest["loraExport"] = {
+        "datasetVersion": LORA_DATASET_VERSION,
+        "path": f"services/inference/datasets/{DEFAULT_OUTPUT_DIR_NAME}/{LORA_EXPORT_DIR_NAME}/manifest.json",
+        "summary": lora_manifest["summary"],
+    }
+
+    (output_dir / "manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
+    (output_dir / "feature_names.json").write_text(json.dumps(feature_names, indent=2), encoding="utf-8")
+
+    return manifest
+
+
+def build_lora_training_export(
+    *,
+    repo_root: Path,
+    output_dir: Path,
+    gold_rows: list[ClipAnnotation],
+    silver_rows: list[ClipAnnotation],
+    disagreement_rows: list[dict[str, Any]],
+) -> dict[str, Any]:
+    records = [
+        build_lora_annotation_record(
+            row,
+            repo_root=repo_root,
+            source_kind="gold",
+            source_set="gold_set",
+            source_domain=row.sourceDomain,
+        )
+        for row in gold_rows
+    ]
+    records.extend(
+        build_lora_annotation_record(
+            row,
+            repo_root=repo_root,
+            source_kind="silver",
+            source_set="silver_set",
+            source_domain=row.sourceDomain,
+        )
+        for row in silver_rows
+    )
+    records.extend(
+        build_lora_disagreement_record(row, repo_root=repo_root, source_set="disagreement_queue")
+        for row in disagreement_rows
+    )
+
+    split_records = split_lora_records_by_bucket(records)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    save_record_dump(output_dir / "all_records.jsonl", records)
+    for split, items in split_records.items():
+        save_record_dump(output_dir / split / "records.jsonl", items)
+    manifest = build_lora_manifest(records, split_records)
+    (output_dir / "manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
     return manifest
 
 
@@ -229,6 +319,123 @@ def build_runtime_features(
     return features
 
 
+def build_lora_annotation_record(
+    row: ClipAnnotation,
+    *,
+    repo_root: Path,
+    source_kind: str,
+    source_set: str,
+    source_domain: str,
+) -> LoRATrainingRecord:
+    source_ref = row.sourceRef
+    source_ref_kind, resolved_source_path, source_path_exists = resolve_source_ref(repo_root, source_ref)
+    split = assign_lora_split(
+        source_kind,
+        row.clipId,
+        row.eventFamily,
+        row.outcome,
+        row.shotSubtype,
+        row.teacherConfidence,
+        None,
+    )
+    sample_weight = lora_example_weight(source_kind, row.teacherConfidence, None)
+    training_eligible, exclusion_reason = determine_lora_eligibility(
+        source_kind=source_kind,
+        source_ref=source_ref,
+        teacher_confidence=row.teacherConfidence,
+        priority_score=None,
+    )
+    calibration_anchor = source_kind == "gold" and split in {"val", "test"}
+    return LoRATrainingRecord(
+        clipId=row.clipId,
+        sourceKind=source_kind,
+        sourceDomain=source_domain,
+        sourceSet=source_set,
+        schemaVersion=row.schemaVersion or ANNOTATION_SCHEMA_VERSION,
+        split=split,
+        sampleWeight=sample_weight,
+        ignored=not training_eligible,
+        trainingEligible=training_eligible,
+        calibrationAnchor=calibration_anchor,
+        eventFamily=row.eventFamily,
+        outcome=row.outcome,
+        shotSubtype=row.shotSubtype,
+        displayLabel=derive_display_label(row.eventFamily, row.outcome, row.shotSubtype),
+        sourceRef=source_ref,
+        sourceRefKind=source_ref_kind,
+        resolvedSourcePath=resolved_source_path,
+        sourcePathExists=source_path_exists,
+        teacherConfidence=row.teacherConfidence,
+        priorityScore=None,
+        humanVerified=row.humanVerified,
+        reviewerNotes=row.reviewerNotes,
+        exclusionReason=exclusion_reason,
+        rawRuntimeOutputs=row.rawRuntimeOutputs or {},
+        rawTeacherOutputs=row.rawTeacherOutputs,
+    )
+
+
+def build_lora_disagreement_record(
+    row: dict[str, Any],
+    *,
+    repo_root: Path,
+    source_set: str,
+) -> LoRATrainingRecord:
+    gold = row.get("gold", {})
+    runtime = row.get("runtime") or {}
+    teacher = row.get("teacher") or {}
+    source_ref = row.get("sourceRef")
+    teacher_confidence = teacher.get("confidence")
+    priority_score = _coerce_optional_float(row.get("priorityScore"))
+    split = assign_lora_split(
+        "disagreement",
+        str(row["clipId"]),
+        str(gold.get("eventFamily") or "other"),
+        str(gold.get("outcome") or "uncertain"),
+        gold.get("shotSubtype"),
+        teacher_confidence,
+        priority_score,
+    )
+    source_ref_kind, resolved_source_path, source_path_exists = resolve_source_ref(repo_root, source_ref)
+    training_eligible, exclusion_reason = determine_lora_eligibility(
+        source_kind="disagreement",
+        source_ref=source_ref,
+        teacher_confidence=teacher_confidence,
+        priority_score=priority_score,
+    )
+    return LoRATrainingRecord(
+        clipId=str(row["clipId"]),
+        sourceKind="disagreement",
+        sourceDomain=str(row.get("sourceDomain") or "disagreement_queue"),
+        sourceSet=source_set,
+        schemaVersion=str(row.get("schemaVersion") or ANNOTATION_SCHEMA_VERSION),
+        split=split,
+        sampleWeight=lora_example_weight("disagreement", teacher_confidence, priority_score),
+        ignored=not training_eligible,
+        trainingEligible=training_eligible,
+        calibrationAnchor=False,
+        eventFamily=str(gold.get("eventFamily") or "other"),
+        outcome=str(gold.get("outcome") or "uncertain"),
+        shotSubtype=gold.get("shotSubtype"),
+        displayLabel=derive_display_label(
+            str(gold.get("eventFamily") or "other"),
+            str(gold.get("outcome") or "uncertain"),
+            gold.get("shotSubtype"),
+        ),
+        sourceRef=None if source_ref is None else str(source_ref),
+        sourceRefKind=source_ref_kind,
+        resolvedSourcePath=resolved_source_path,
+        sourcePathExists=source_path_exists,
+        teacherConfidence=teacher_confidence,
+        priorityScore=priority_score,
+        humanVerified=False,
+        reviewerNotes=str(row.get("reviewerNotes") or ""),
+        exclusionReason=exclusion_reason,
+        rawRuntimeOutputs=runtime,
+        rawTeacherOutputs=teacher,
+    )
+
+
 def build_runtime_inference_features(
     *,
     runtime_snapshot: dict[str, Any],
@@ -261,6 +468,22 @@ def build_runtime_inference_features(
         source_ref=None,
         human_verified=False,
     )
+
+
+def resolve_source_ref(repo_root: Path, source_ref: str | None) -> tuple[str, str | None, bool]:
+    if not source_ref:
+        return "missing", None, False
+    text = str(source_ref)
+    lowered = text.lower()
+    if lowered.startswith("r2://"):
+        return "r2", None, False
+    if lowered.startswith("http://") or lowered.startswith("https://"):
+        return "url", None, False
+    path = Path(text)
+    if not path.is_absolute():
+        path = repo_root / text
+    path = path.resolve()
+    return ("local_path", str(path), path.exists())
 
 
 def _extract_numeric_signals(raw_runtime_outputs: dict[str, Any]) -> dict[str, float | None]:
@@ -374,8 +597,75 @@ def build_manifest(
     }
 
 
+def build_lora_manifest(
+    records: list[LoRATrainingRecord],
+    split_records: dict[str, list[LoRATrainingRecord]],
+) -> dict[str, Any]:
+    summary = {
+        "totalRecords": len(records),
+        "trainingEligibleRecords": sum(1 for record in records if record.trainingEligible),
+        "ignoredRecords": sum(1 for record in records if record.ignored),
+        "ignoredReasons": dict(
+            _count_by(record.exclusionReason for record in records if record.exclusionReason)
+        ),
+        "calibrationAnchorRecords": sum(1 for record in records if record.calibrationAnchor),
+        "splits": {
+            split: {
+                "records": len(items),
+                "trainingEligibleRecords": sum(1 for item in items if item.trainingEligible),
+                "ignoredRecords": sum(1 for item in items if item.ignored),
+                "ignoredReasons": dict(
+                    _count_by(item.exclusionReason for item in items if item.exclusionReason)
+                ),
+                "calibrationAnchorRecords": sum(1 for item in items if item.calibrationAnchor),
+                "sourceKinds": dict(_count_by(item.sourceKind for item in items)),
+                "eligibleSourceKinds": dict(_count_by(item.sourceKind for item in items if item.trainingEligible)),
+                "weightSum": round(sum(item.sampleWeight for item in items if item.trainingEligible), 2),
+            }
+            for split, items in split_records.items()
+        },
+    }
+    return {
+        "schemaVersion": ANNOTATION_SCHEMA_VERSION,
+        "datasetVersion": LORA_DATASET_VERSION,
+        "canonicalSchemaPath": "services/inference/datasets/annotation_schema.json",
+        "inputs": {
+            "goldSet": "services/inference/datasets/gold_set.json",
+            "silverSet": "services/inference/datasets/silver_set.json",
+            "disagreementQueue": "services/inference/datasets/disagreement_queue.jsonl",
+        },
+        "sourceReferencePolicy": {
+            "candidateWindows": "Each row points at a candidate clip window via sourceRef when available.",
+            "gold": "Gold rows keep the strongest labels and remain the main val/test calibration anchor, with a small train-support slice.",
+            "disagreement": "Rows without sourceRef remain in the export for audit priority, but are marked trainingEligible=false for encoder fine-tuning.",
+        },
+        "weightPolicy": {
+            "gold": 3.0,
+            "silverStrongConfidence": 1.5,
+            "silverMediumConfidence": 1.0,
+            "silverWeakConfidence": 0.5,
+            "silverIgnoredBelow": 0.75,
+            "disagreementBase": 1.0,
+            "disagreementMax": 1.6,
+        },
+        "splitPolicy": {
+            "gold": "stable hash: 25% train support, 37.5% val, 37.5% test",
+            "silver": "confidence-aware, train-heavy; strong silver can spill into val/test while weak silver stays train-only",
+            "disagreement": "train-heavy hard examples; rows without candidate clip refs stay ignored for LoRA until sourceRef is attached",
+        },
+        "summary": summary,
+    }
+
+
 def split_records_by_bucket(records: list[RuntimeTrainingRecord]) -> dict[str, list[RuntimeTrainingRecord]]:
     split_records: dict[str, list[RuntimeTrainingRecord]] = {"train": [], "val": [], "test": []}
+    for record in records:
+        split_records[record.split].append(record)
+    return split_records
+
+
+def split_lora_records_by_bucket(records: list[LoRATrainingRecord]) -> dict[str, list[LoRATrainingRecord]]:
+    split_records: dict[str, list[LoRATrainingRecord]] = {"train": [], "val": [], "test": []}
     for record in records:
         split_records[record.split].append(record)
     return split_records
@@ -412,6 +702,50 @@ def assign_split(
     return "train"
 
 
+def assign_lora_split(
+    source_kind: str,
+    clip_id: str,
+    event_family: str,
+    outcome: str,
+    shot_subtype: str | None,
+    teacher_confidence: float | None,
+    priority_score: float | None,
+) -> str:
+    bucket = _stable_bucket(f"lora:{source_kind}:{clip_id}:{event_family}:{outcome}:{shot_subtype or 'null'}")
+    if source_kind == "gold":
+        slot = bucket % 8
+        if slot < 2:
+            return "train"
+        if slot < 5:
+            return "val"
+        return "test"
+    if source_kind == "silver":
+        confidence = teacher_confidence or 0.0
+        slot = bucket % 10
+        if confidence >= 0.9:
+            if slot < 8:
+                return "train"
+            if slot == 8:
+                return "val"
+            return "test"
+        if confidence >= 0.82:
+            return "train" if slot < 9 else "val"
+        return "train"
+    if source_kind == "disagreement":
+        priority = priority_score or 0.0
+        slot = bucket % 20
+        if priority >= 0.8:
+            if slot < 16:
+                return "train"
+            if slot < 18:
+                return "val"
+            return "test"
+        if slot < 18:
+            return "train"
+        return "val"
+    return "train"
+
+
 def example_weight(
     source_kind: str,
     teacher_confidence: float | None,
@@ -434,12 +768,50 @@ def example_weight(
     return 1.0
 
 
+def lora_example_weight(
+    source_kind: str,
+    teacher_confidence: float | None,
+    priority_score: float | None,
+) -> float:
+    if source_kind == "gold":
+        return 3.0
+    if source_kind == "silver":
+        confidence = teacher_confidence or 0.0
+        if confidence < 0.75:
+            return 0.0
+        if confidence >= 0.9:
+            return 1.5
+        if confidence >= 0.82:
+            return 1.0
+        return 0.5
+    if source_kind == "disagreement":
+        priority = priority_score if priority_score is not None else 0.5
+        return round(min(1.6, 1.0 + 0.5 * float(priority)), 2)
+    return 1.0
+
+
 def is_ignored(source_kind: str, teacher_confidence: float | None, priority_score: float | None) -> bool:
     if source_kind == "silver":
         return (teacher_confidence or 0.0) < 0.75
     if source_kind == "disagreement":
         return False
     return False
+
+
+def determine_lora_eligibility(
+    *,
+    source_kind: str,
+    source_ref: str | None,
+    teacher_confidence: float | None,
+    priority_score: float | None,
+) -> tuple[bool, str | None]:
+    if not source_ref:
+        return False, "missing_source_ref"
+    if source_kind == "silver" and (teacher_confidence or 0.0) < 0.75:
+        return False, "low_teacher_confidence"
+    if source_kind == "disagreement" and priority_score is not None and priority_score < 0.2:
+        return False, "low_priority_disagreement"
+    return True, None
 
 
 def derive_display_label(event_family: str, outcome: str, shot_subtype: str | None) -> str:
@@ -491,3 +863,9 @@ def _count_by(items: Iterable[str]) -> dict[str, int]:
     for item in items:
         counts[item] = counts.get(item, 0) + 1
     return counts
+
+
+def _coerce_optional_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    return float(value)

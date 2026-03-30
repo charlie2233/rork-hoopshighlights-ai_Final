@@ -18,7 +18,7 @@ cd /Users/hanfei/rork-hoopshighlights-ai_Final
 python3 services/inference/scripts/build_probe_datasets.py --output-dir services/inference/datasets
 ```
 
-Build runtime-training splits and feature matrices:
+Build runtime-training splits, feature matrices, and the LoRA-ready candidate-window export:
 
 ```bash
 cd /Users/hanfei/rork-hoopshighlights-ai_Final
@@ -51,6 +51,8 @@ Interpretation:
 - `gold_set.json` and `silver_set.json` are the curated seed corpora used to bootstrap the generated JSONL datasets.
 - `annotation_schema.json` is the canonical row schema. The older duplicate schema filenames were removed during migration.
 - `runtime_training/` contains the split manifest and feature matrices for the runtime fusion model.
+- `runtime_training/videomae_lora_v1/` contains the candidate-window dataset for VideoMAE LoRA adaptation.
+- The LoRA export keeps gold as the main val/test calibration anchor, allows a small gold train-support slice, weights strong silver below gold, and marks disagreement rows without `sourceRef` as training-ineligible until clip paths are attached.
 - `models/runtime_fusion_v1.json` is the lightweight late-fusion runtime bundle consumed by the live inference service in `shadow` or `primary` mode.
 - `gold_annotations.jsonl` is the human-verified set.
 - `silver_teacher_annotations.jsonl` is the teacher-only pseudo-label set.

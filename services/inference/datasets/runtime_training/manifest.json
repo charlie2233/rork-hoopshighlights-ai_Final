@@ -73,6 +73,68 @@
     "goldSet": "services/inference/datasets/gold_set.json",
     "silverSet": "services/inference/datasets/silver_set.json"
   },
+  "loraExport": {
+    "datasetVersion": "videomae-lora-v1",
+    "path": "services/inference/datasets/runtime_training/videomae_lora_v1/manifest.json",
+    "summary": {
+      "calibrationAnchorRecords": 10,
+      "ignoredReasons": {
+        "missing_source_ref": 16
+      },
+      "ignoredRecords": 16,
+      "splits": {
+        "test": {
+          "calibrationAnchorRecords": 5,
+          "eligibleSourceKinds": {
+            "gold": 5
+          },
+          "ignoredReasons": {},
+          "ignoredRecords": 0,
+          "records": 5,
+          "sourceKinds": {
+            "gold": 5
+          },
+          "trainingEligibleRecords": 5,
+          "weightSum": 15.0
+        },
+        "train": {
+          "calibrationAnchorRecords": 0,
+          "eligibleSourceKinds": {
+            "gold": 6,
+            "silver": 8
+          },
+          "ignoredReasons": {
+            "missing_source_ref": 16
+          },
+          "ignoredRecords": 16,
+          "records": 30,
+          "sourceKinds": {
+            "disagreement": 16,
+            "gold": 6,
+            "silver": 8
+          },
+          "trainingEligibleRecords": 14,
+          "weightSum": 26.5
+        },
+        "val": {
+          "calibrationAnchorRecords": 5,
+          "eligibleSourceKinds": {
+            "gold": 5
+          },
+          "ignoredReasons": {},
+          "ignoredRecords": 0,
+          "records": 5,
+          "sourceKinds": {
+            "gold": 5
+          },
+          "trainingEligibleRecords": 5,
+          "weightSum": 15.0
+        }
+      },
+      "totalRecords": 40,
+      "trainingEligibleRecords": 24
+    }
+  },
   "schemaVersion": "2026-03-30",
   "splitPolicy": {
     "disagreement": "train-heavy hard examples with small val/test spillover",

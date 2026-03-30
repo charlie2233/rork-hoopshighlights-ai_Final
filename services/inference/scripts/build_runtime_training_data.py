@@ -16,7 +16,13 @@ def main(argv: list[str] | None = None) -> int:
     manifest = build_runtime_training_bundle(repo_root=REPO_ROOT, output_dir=args.output_dir)
     print(args.output_dir / "manifest.json")
     print(args.output_dir / "feature_names.json")
+    print(args.output_dir / "videomae_lora_v1" / "manifest.json")
     print(f"records={manifest['summary']['totalRecords']} active={manifest['summary']['activeRecords']}")
+    print(
+        "lora_records="
+        f"{manifest['loraExport']['summary']['totalRecords']} "
+        f"eligible={manifest['loraExport']['summary']['trainingEligibleRecords']}"
+    )
     return 0
 
 
@@ -32,4 +38,3 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
