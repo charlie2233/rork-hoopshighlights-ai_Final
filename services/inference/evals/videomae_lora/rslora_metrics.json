@@ -1,0 +1,96 @@
+{
+  "calibration": {
+    "eventFamily": 1.0,
+    "outcome": 1.0,
+    "shotSubtype": 1.0
+  },
+  "displayLabelDistribution": {
+    "Highlight": 1
+  },
+  "durationSummary": {
+    "sampleCount": 0
+  },
+  "eventFamily": {
+    "accuracy": 0.0,
+    "confusions": [
+      {
+        "count": 1,
+        "expected": "other",
+        "predicted": "turnover"
+      }
+    ],
+    "labelDistribution": {
+      "other": 1
+    },
+    "macroF1": 0.0,
+    "predictionDistribution": {
+      "turnover": 1
+    },
+    "sampleCount": 1
+  },
+  "eventFamilyDistribution": {
+    "other": 1
+  },
+  "examples": [
+    {
+      "clipId": "gold-shot-missed-layup-001",
+      "confidenceAfterMapping": 0.427,
+      "confidenceBeforeMapping": 0.427,
+      "displayLabel": "Highlight",
+      "eventFamily": "other",
+      "outcome": "uncertain",
+      "shotSubtype": null
+    }
+  ],
+  "lora": {
+    "loraAlpha": 16,
+    "loraDropout": 0.05,
+    "r": 8,
+    "targetModules": "all-linear",
+    "useRslora": true
+  },
+  "outcome": {
+    "accuracy": 0.0,
+    "confusions": [
+      {
+        "count": 1,
+        "expected": "uncertain",
+        "predicted": "missed"
+      }
+    ],
+    "labelDistribution": {
+      "uncertain": 1
+    },
+    "macroF1": 0.0,
+    "predictionDistribution": {
+      "missed": 1
+    },
+    "sampleCount": 1
+  },
+  "outcomeDistribution": {
+    "uncertain": 1
+  },
+  "sampleCount": 1,
+  "shotSubtype": {
+    "accuracy": 0.0,
+    "confusions": [
+      {
+        "count": 1,
+        "expected": "null",
+        "predicted": "dunk"
+      }
+    ],
+    "labelDistribution": {
+      "null": 1
+    },
+    "macroF1": 0.0,
+    "predictionDistribution": {
+      "dunk": 1
+    },
+    "sampleCount": 1
+  },
+  "shotSubtypeDistribution": {
+    "null": 1
+  },
+  "uncertaintyRate": 1.0
+}

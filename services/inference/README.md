@@ -95,6 +95,11 @@ python3 services/inference/scripts/train_runtime_model.py \
   --report-output services/inference/evals/runtime_fusion_v1_report.md
 ```
 
+## VideoMAE LoRA / rsLoRA
+The lightweight encoder-adaptation path lives in [`docs/videomae_lora.md`](/Users/hanfei/rork-hoopshighlights-ai_Final/services/inference/docs/videomae_lora.md).
+It trains a frozen baseline and an rsLoRA-adapted VideoMAE backbone side by side, then exports adapted logits for downstream fusion.
+The LoRA-ready split export is generated alongside `runtime_training/` as `runtime_training/videomae_lora_v1/`.
+
 Runtime model rollout is controlled with:
 
 - `HOOPS_INFERENCE_RUNTIME_MODEL_MODE=off|shadow|primary`

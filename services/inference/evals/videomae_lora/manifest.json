@@ -43,11 +43,17 @@
     "silver": "confidence-aware, train-heavy; strong silver can spill into val/test while weak silver stays train-only"
   },
   "summary": {
+    "batchSize": 1,
     "calibrationAnchorRecords": 10,
+    "device": "cpu",
+    "epochs": 1,
+    "frameCount": 4,
     "ignoredReasons": {
       "missing_source_ref": 16
     },
     "ignoredRecords": 16,
+    "imageSize": 112,
+    "learningRate": 0.0002,
     "splits": {
       "test": {
         "calibrationAnchorRecords": 5,
@@ -97,6 +103,7 @@
         "weightSum": 15.0
       }
     },
+    "tinySmoke": true,
     "totalRecords": 40,
     "trainingEligibleRecords": 24
   },

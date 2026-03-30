@@ -1,0 +1,7 @@
+{
+  "device": "cpu",
+  "epochs": 1,
+  "finalLoss": 5.09435,
+  "meanLoss": 7.048604,
+  "trainExamples": 3
+}

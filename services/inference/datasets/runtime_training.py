@@ -601,6 +601,19 @@ def build_lora_manifest(
     records: list[LoRATrainingRecord],
     split_records: dict[str, list[LoRATrainingRecord]],
 ) -> dict[str, Any]:
+    event_family_labels = _ordered_unique(
+        [record.eventFamily for record in records if record.eventFamily]
+        + ["shot_attempt", "turnover", "defensive_event", "transition", "other"]
+    )
+    outcome_labels = _ordered_unique(
+        [record.outcome for record in records if record.outcome]
+        + ["made", "missed", "blocked", "uncertain"]
+    )
+    shot_subtype_labels = _ordered_unique(
+        ["null"]
+        + [record.shotSubtype for record in records if record.shotSubtype]
+        + ["dunk", "layup", "jumper", "three", "putback"]
+    )
     summary = {
         "totalRecords": len(records),
         "trainingEligibleRecords": sum(1 for record in records if record.trainingEligible),
@@ -628,6 +641,7 @@ def build_lora_manifest(
     return {
         "schemaVersion": ANNOTATION_SCHEMA_VERSION,
         "datasetVersion": LORA_DATASET_VERSION,
+        "sourceDataset": f"services/inference/datasets/{DEFAULT_OUTPUT_DIR_NAME}/{LORA_EXPORT_DIR_NAME}",
         "canonicalSchemaPath": "services/inference/datasets/annotation_schema.json",
         "inputs": {
             "goldSet": "services/inference/datasets/gold_set.json",
@@ -638,6 +652,11 @@ def build_lora_manifest(
             "candidateWindows": "Each row points at a candidate clip window via sourceRef when available.",
             "gold": "Gold rows keep the strongest labels and remain the main val/test calibration anchor, with a small train-support slice.",
             "disagreement": "Rows without sourceRef remain in the export for audit priority, but are marked trainingEligible=false for encoder fine-tuning.",
+        },
+        "labelSpaces": {
+            "eventFamily": event_family_labels,
+            "outcome": outcome_labels,
+            "shotSubtype": shot_subtype_labels,
         },
         "weightPolicy": {
             "gold": 3.0,
@@ -863,6 +882,20 @@ def _count_by(items: Iterable[str]) -> dict[str, int]:
     for item in items:
         counts[item] = counts.get(item, 0) + 1
     return counts
+
+
+def _ordered_unique(items: Iterable[Any]) -> list[str]:
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for item in items:
+        if item is None:
+            continue
+        text = str(item).strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        ordered.append(text)
+    return ordered
 
 
 def _coerce_optional_float(value: Any) -> float | None:
