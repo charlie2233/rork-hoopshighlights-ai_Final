@@ -123,7 +123,6 @@ def evaluate_model(feature_rows: list[dict[str, Any]], labels: list[str], target
         LogisticRegression(
             max_iter=2000,
             solver="lbfgs",
-            multi_class="multinomial",
             class_weight="balanced",
         ),
     )
@@ -143,15 +142,18 @@ def evaluate_model(feature_rows: list[dict[str, Any]], labels: list[str], target
 
     vectorizer = fitted.named_steps["dictvectorizer"]
     clf = fitted.named_steps["logisticregression"]
-    top_features = []
+    top_features: dict[str, list[dict[str, Any]]] = {}
     feature_names = vectorizer.get_feature_names_out()
     if len(clf.classes_) > 1:
-        target_index = int(np.argmax([cls == clf.classes_[0] for cls in clf.classes_]))
-        class_name = clf.classes_[target_index]
-        class_index = list(clf.classes_).index(class_name)
-        coefs = clf.coef_[class_index]
-        feature_pairs = sorted(zip(feature_names, coefs), key=lambda item: item[1], reverse=True)
-        top_features = [{"feature": name, "weight": round(float(weight), 4)} for name, weight in feature_pairs[:10]]
+        coef_matrix = clf.coef_
+        if coef_matrix.ndim == 1:
+            coef_matrix = np.expand_dims(coef_matrix, axis=0)
+        for class_name, coefs in zip(clf.classes_, coef_matrix):
+            feature_pairs = sorted(zip(feature_names, coefs), key=lambda item: abs(item[1]), reverse=True)
+            top_features[str(class_name)] = [
+                {"feature": name, "weight": round(float(weight), 4)}
+                for name, weight in feature_pairs[:10]
+            ]
 
     matrix = confusion_matrix(labels, predictions, labels=list(TARGETS[target]))
     confusion_rows = []
@@ -375,6 +377,12 @@ def render_markdown(report: dict[str, Any]) -> str:
             lines.append(
                 f"- `{variant}` accuracy `{metrics['summary']['accuracy']}` macroF1 `{metrics['summary']['macroF1']}` top2 `{metrics['summary']['top2Accuracy']}`"
             )
+        class_features = report.get("featureImportances", {}).get(target, {})
+        if class_features:
+            lines.append("  - Top features by class:")
+            for class_name, features in class_features.items():
+                feature_text = ", ".join(f"{item['feature']} ({item['weight']})" for item in features[:3])
+                lines.append(f"    - `{class_name}`: {feature_text}")
     lines.append("")
     lines.append("## Disagreements")
     for reason, count in report["disagreementDistribution"].items():
