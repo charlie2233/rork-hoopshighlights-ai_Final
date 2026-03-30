@@ -86,6 +86,22 @@ python3 services/inference/scripts/build_runtime_training_data.py \
 
 The export writes a split manifest, per-split record dumps, and JSON feature matrices for the lightweight runtime labeler.
 
+## Runtime fusion model
+```bash
+cd /Users/hanfei/rork-hoopshighlights-ai_Final
+python3 services/inference/scripts/train_runtime_model.py \
+  --dataset-dir services/inference/datasets/runtime_training \
+  --output services/inference/models/runtime_fusion_v1.json \
+  --report-output services/inference/evals/runtime_fusion_v1_report.md
+```
+
+Runtime model rollout is controlled with:
+
+- `HOOPS_INFERENCE_RUNTIME_MODEL_MODE=off|shadow|primary`
+- `HOOPS_INFERENCE_RUNTIME_MODEL_BUNDLE_PATH=/absolute/path/to/runtime_fusion_v1.json`
+
+Use `shadow` on staging first to keep the current live labels while capturing runtime-fusion metadata in the result manifest. Promote to `primary` only after the mixed-batch shadow report shows better flat-label spread and lower miss-vs-made confusion.
+
 ## Docker
 ```bash
 cd /Users/hanfei/rork-hoopshighlights-ai_Final/services/inference

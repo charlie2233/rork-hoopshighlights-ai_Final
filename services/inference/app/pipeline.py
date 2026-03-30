@@ -21,6 +21,12 @@ from .heuristics import ConfidenceReranker, HeuristicCandidateProposer, Heuristi
 from .interfaces import ArtifactWriter, Perceptor, TeacherLabeler
 from .manifest import LocalArtifactWriter, build_manifest_dict
 from .perception import HeuristicBasketballPerceptor
+from .runtime_model import (
+    RuntimeFusionBundle,
+    RuntimeFusionPrediction,
+    build_runtime_snapshot,
+    get_runtime_fusion_bundle,
+)
 from .structured_signals import derive_structured_decision, derive_structured_signals
 from .teacher import QwenTeacherLabeler
 from .windowing import WindowedClipDraft, window_and_merge_clips
@@ -50,6 +56,7 @@ class InferenceService:
     r2_downloader: Optional[R2Downloader] = None
     perceptor: Optional[Perceptor] = None
     teacher_labeler: Optional[TeacherLabeler] = None
+    runtime_model: Optional[RuntimeFusionBundle] = None
 
     async def run(self, request: InferenceJobRequest) -> InferenceJobResponse:
         request_id = request.requestId or uuid4().hex
@@ -90,7 +97,7 @@ class InferenceService:
                 candidate_actions = self._apply_temporal_aggregation(candidate_actions)
 
                 for candidate, primary_action, comparison in candidate_actions:
-                    action = self._resolve_action(primary_action, comparison)
+                    base_action = self._resolve_action(primary_action, comparison)
                     perception = self._analyze_perception(preparation.prepared_path, candidate)
                     overlay_artifacts = self._persist_perception_overlays(
                         request.jobId,
@@ -100,25 +107,39 @@ class InferenceService:
                     artifact_descriptors.extend(overlay_artifacts)
                     structured_signals = derive_structured_signals(
                         candidate_metadata={"perception": perception},
-                        action=action,
+                        action=base_action,
                     )
                     structured_decision = derive_structured_decision(
                         signals=structured_signals,
-                        action=action,
+                        action=base_action,
                     )
                     teacher_suggestion = self._derive_teacher_suggestion(
                         source_path=preparation.prepared_path,
                         candidate=candidate,
-                        action=action,
+                        action=base_action,
                         perception=perception,
                         structured_signals=structured_signals.as_metadata(),
                     )
-                    action = self._apply_structured_decision(
-                        action=action,
+                    runtime_prediction = self._predict_runtime_fusion(
+                        action=base_action,
+                        primary_action=primary_action,
+                        comparison_action=comparison,
+                        structured_signals=structured_signals.as_metadata(),
+                        candidate=candidate,
+                        perception=perception,
+                    )
+                    structured_action = self._apply_structured_decision(
+                        action=base_action,
                         decision=structured_decision,
                         structured_signals=structured_signals.as_metadata(),
                         perception=perception,
                         teacher_suggestion=teacher_suggestion,
+                    )
+                    action = self._resolve_runtime_action(
+                        structured_action=structured_action,
+                        runtime_prediction=runtime_prediction,
+                        structured_signals=structured_signals.as_metadata(),
+                        perception=perception,
                     )
                     event = self.event_inferencer.infer(candidate, action, features)
                     clip_drafts.append(
@@ -247,7 +268,7 @@ class InferenceService:
                     diagnostics=InferenceDiagnostics(
                         featureExtractor="ffprobe+opencv+ffmpeg" if preparation.used_transcode else "ffprobe+opencv",
                         candidateProposer="heuristic-assisted",
-                        actionRecognizer=f"videomae:{self.primary_recognizer.model_name}",
+                        actionRecognizer=self._action_recognizer_name(),
                         comparisonRecognizer=f"xclip:{self.comparison_recognizer.model_name}" if self.comparison_recognizer else None,
                         eventInferencer="structured-basketball-signals",
                         reranker="confidence-reranker",
@@ -319,7 +340,7 @@ class InferenceService:
                 diagnostics=InferenceDiagnostics(
                     featureExtractor="ffprobe+opencv",
                     candidateProposer="heuristic-assisted",
-                    actionRecognizer=f"videomae:{self.primary_recognizer.model_name}",
+                    actionRecognizer=self._action_recognizer_name(),
                     comparisonRecognizer=f"xclip:{self.comparison_recognizer.model_name}" if self.comparison_recognizer else None,
                     eventInferencer="heuristic-event-inferencer",
                     reranker="confidence-reranker",
@@ -380,6 +401,13 @@ class InferenceService:
         return destination
 
     def _requested_model_version(self, request: InferenceJobRequest) -> str:
+        if self.runtime_model is not None and self.settings.runtime_model_mode.lower() in {"primary", "live"}:
+            return self.runtime_model.model_version
+        return f"videomae:{self.primary_recognizer.model_name}"
+
+    def _action_recognizer_name(self) -> str:
+        if self.runtime_model is not None and self.settings.runtime_model_mode.lower() in {"primary", "live"}:
+            return f"runtime-fusion:{self.runtime_model.model_version}"
         return f"videomae:{self.primary_recognizer.model_name}"
 
     def _aggregate_confidence(self, clips: list[RankedClip]) -> float:
@@ -519,6 +547,154 @@ class InferenceService:
                 }
             )
         return action
+
+    def _predict_runtime_fusion(
+        self,
+        *,
+        action,
+        primary_action,
+        comparison_action,
+        structured_signals: dict[str, object],
+        candidate,
+        perception: dict[str, object],
+    ) -> RuntimeFusionPrediction | None:
+        if self.runtime_model is None:
+            return None
+        try:
+            snapshot = build_runtime_snapshot(
+                action=action,
+                primary_action=primary_action,
+                comparison_action=comparison_action,
+                structured_signals=structured_signals,
+                source_kind="runtime",
+                source_domain=self.settings.environment,
+                source_set="runtime_inference",
+                human_verified=False,
+                ball_visible=_perception_visible(perception, "basketball"),
+                hoop_visible=_perception_visible(perception, "rim"),
+                clip_duration_seconds=max(candidate.endTime - candidate.startTime, 0.0),
+                event_center_seconds=round((candidate.startTime + candidate.endTime) / 2.0, 4),
+                pre_roll_seconds=0.0,
+                post_roll_seconds=0.0,
+                source_event_count=1,
+                was_merged=False,
+            )
+            return self.runtime_model.predict_from_snapshot(snapshot)
+        except Exception as exc:
+            if hasattr(action, "model_copy"):
+                metadata = {
+                    **dict(getattr(action, "metadata", {}) or {}),
+                    "runtimeFusionFailureReason": f"{exc.__class__.__name__}",
+                }
+                return None
+            return None
+
+    def _resolve_runtime_action(
+        self,
+        *,
+        structured_action,
+        runtime_prediction: RuntimeFusionPrediction | None,
+        structured_signals: dict[str, object],
+        perception: dict[str, object],
+    ):
+        if runtime_prediction is None:
+            return structured_action
+
+        mode = self.settings.runtime_model_mode.lower()
+        runtime_metadata = {
+            **runtime_prediction.metadata,
+            "structuredSignals": structured_signals,
+            "perceptionSummary": _summarize_perception(perception),
+        }
+        if mode == "shadow":
+            if hasattr(structured_action, "model_copy"):
+                metadata = {
+                    **dict(getattr(structured_action, "metadata", {}) or {}),
+                    "runtimeFusionShadow": runtime_metadata,
+                }
+                return structured_action.model_copy(update={"metadata": metadata})
+            return structured_action
+        if mode not in {"primary", "live"}:
+            return structured_action
+
+        event_family = _blend_event_family(structured_action, runtime_prediction)
+        outcome = _blend_outcome(structured_action, runtime_prediction, event_family)
+        shot_subtype = _blend_shot_subtype(structured_action, runtime_prediction, event_family)
+        canonical_label, display_label = _blend_display_label(event_family, outcome, shot_subtype)
+        family_before = max(
+            float(getattr(structured_action, "eventFamilyConfidenceBeforeMapping", 0.0) or 0.0),
+            float(runtime_prediction.event_family_confidence_before_mapping or 0.0),
+        )
+        family_after = max(
+            float(getattr(structured_action, "eventFamilyConfidenceAfterMapping", 0.0) or 0.0),
+            float(runtime_prediction.event_family_confidence_after_mapping or 0.0),
+        )
+        shot_before = _blend_confidence(
+            getattr(structured_action, "shotSubtypeConfidenceBeforeMapping", None),
+            runtime_prediction.shot_subtype_confidence_before_mapping,
+            present=shot_subtype is not None,
+        )
+        shot_after = _blend_confidence(
+            getattr(structured_action, "shotSubtypeConfidenceAfterMapping", None),
+            runtime_prediction.shot_subtype_confidence_after_mapping,
+            present=shot_subtype is not None,
+        )
+        outcome_before = max(
+            float(getattr(structured_action, "outcomeConfidenceBeforeMapping", 0.0) or 0.0),
+            float(runtime_prediction.outcome_confidence_before_mapping or 0.0),
+        )
+        outcome_after = max(
+            float(getattr(structured_action, "outcomeConfidenceAfterMapping", 0.0) or 0.0),
+            float(runtime_prediction.outcome_confidence_after_mapping or 0.0),
+        )
+        is_uncertain = outcome == "uncertain" or (display_label == "Highlight" and event_family in {"other", "shot_attempt"})
+        confidence_after = _blend_display_confidence(
+            display_label=display_label,
+            family_after=family_after,
+            shot_after=shot_after,
+            outcome_after=outcome_after,
+            is_uncertain=is_uncertain,
+        )
+        confidence_before = max(
+            float(getattr(structured_action, "confidenceBeforeMapping", 0.0) or 0.0),
+            float(runtime_prediction.confidence_before_mapping or 0.0),
+        )
+
+        if hasattr(structured_action, "model_copy"):
+            metadata = {
+                **dict(getattr(structured_action, "metadata", {}) or {}),
+                "runtimeFusionPrimary": runtime_metadata,
+                "runtimeFusionLive": runtime_metadata,
+                "resolved_by": "runtime_fusion_model",
+            }
+            return structured_action.model_copy(
+                update={
+                    "label": display_label,
+                    "canonicalLabel": canonical_label,
+                    "confidence": confidence_after,
+                    "modelVersion": runtime_prediction.model_version,
+                    "detectionMethod": "runtime_fusion",
+                    "eventFamily": event_family,
+                    "eventSubtype": _event_subtype_for_family(
+                        event_family,
+                        shot_subtype,
+                        outcome,
+                    ),
+                    "shotSubtype": shot_subtype,
+                    "outcome": outcome,
+                    "confidenceBeforeMapping": confidence_before,
+                    "confidenceAfterMapping": confidence_after,
+                    "eventFamilyConfidenceBeforeMapping": family_before,
+                    "eventFamilyConfidenceAfterMapping": family_after,
+                    "shotSubtypeConfidenceBeforeMapping": shot_before,
+                    "shotSubtypeConfidenceAfterMapping": shot_after,
+                    "outcomeConfidenceBeforeMapping": outcome_before,
+                    "outcomeConfidenceAfterMapping": outcome_after,
+                    "isUncertain": is_uncertain,
+                    "metadata": metadata,
+                }
+            )
+        return structured_action
 
     def _resolve_action(self, primary_action, comparison_action):
         if comparison_action is None:
@@ -753,6 +929,20 @@ class InferenceService:
                 "comparisonTopLabels": [item.model_dump(mode="json") for item in clip.comparisonTopLabels],
                 "rawTopLabels": [item.model_dump(mode="json") for item in clip.rawTopLabels],
                 "comparisonRawTopLabels": [item.model_dump(mode="json") for item in clip.comparisonRawTopLabels],
+                "runtimeFusionShadow": (
+                    clip.metadata.get("runtimeFusionShadow") if isinstance(clip.metadata, dict) else None
+                ),
+                "runtimeFusionPrimary": (
+                    (
+                        clip.metadata.get("runtimeFusionPrimary")
+                        or clip.metadata.get("runtimeFusionLive")
+                    )
+                    if isinstance(clip.metadata, dict)
+                    else None
+                ),
+                "runtimeFusionLive": (
+                    clip.metadata.get("runtimeFusionLive") if isinstance(clip.metadata, dict) else None
+                ),
             }
             for clip in manifest.clips
         ]
@@ -770,6 +960,8 @@ class InferenceService:
                 "usedGeminiRelabeling": False,
                 "candidateSegments": len(clips),
                 "finalSegments": len(clips),
+                "runtimeModelMode": self.settings.runtime_model_mode,
+                "runtimeModelVersion": getattr(self.runtime_model, "model_version", None),
             },
             "resultConfidence": manifest.resultConfidence,
         }
@@ -794,6 +986,9 @@ def build_service(settings: InferenceSettings) -> InferenceService:
             secret_access_key=settings.r2_secret_access_key,
             region_name=settings.r2_region_name,
         )
+    runtime_model = None
+    if settings.runtime_model_mode.lower() in {"shadow", "primary", "live"}:
+        runtime_model = get_runtime_fusion_bundle(str(settings.runtime_model_bundle_path))
     return InferenceService(
         settings=settings,
         candidate_proposer=HeuristicCandidateProposer(
@@ -812,6 +1007,7 @@ def build_service(settings: InferenceSettings) -> InferenceService:
             overlay_frame_limit=settings.perception_overlay_frame_limit,
         ),
         teacher_labeler=teacher_labeler,
+        runtime_model=runtime_model,
     )
 
 
@@ -835,3 +1031,124 @@ def _summarize_perception(perception: dict[str, object]) -> dict[str, object]:
         "overlayPaths": perception.get("overlayPaths") if isinstance(perception.get("overlayPaths"), list) else [],
         "failureReason": perception.get("failureReason"),
     }
+
+
+def _event_subtype_for_family(event_family: str, shot_subtype: str | None, outcome: str) -> str | None:
+    if event_family == "defensive_event":
+        return "block" if outcome == "blocked" else None
+    if event_family == "turnover":
+        return "steal"
+    if event_family == "transition":
+        return "fast_break"
+    return shot_subtype
+
+
+def _perception_visible(perception: dict[str, object], label: str) -> bool | None:
+    detection_counts = perception.get("detectionCounts")
+    track_counts = perception.get("trackCounts")
+    if isinstance(detection_counts, dict) and detection_counts.get(label):
+        return True
+    if isinstance(track_counts, dict) and track_counts.get(label):
+        return True
+    return False
+
+
+def _blend_event_family(structured_action, runtime_prediction: RuntimeFusionPrediction) -> str:
+    structured_family = getattr(structured_action, "eventFamily", None) or "other"
+    structured_confidence = float(getattr(structured_action, "eventFamilyConfidenceAfterMapping", 0.0) or 0.0)
+    runtime_family = runtime_prediction.event_family
+    runtime_confidence = float(runtime_prediction.event_family_confidence_after_mapping or 0.0)
+    if runtime_family in {"other", structured_family}:
+        return structured_family if structured_family != "other" else runtime_family
+    if runtime_confidence >= max(structured_confidence + 0.05, 0.58):
+        return runtime_family
+    return structured_family
+
+
+def _blend_outcome(structured_action, runtime_prediction: RuntimeFusionPrediction, event_family: str) -> str:
+    if event_family == "defensive_event":
+        if runtime_prediction.outcome == "blocked":
+            return "blocked"
+        structured_outcome = getattr(structured_action, "outcome", None) or "uncertain"
+        return "blocked" if structured_outcome == "blocked" else "uncertain"
+    if event_family != "shot_attempt":
+        return "uncertain"
+
+    structured_outcome = getattr(structured_action, "outcome", None) or "uncertain"
+    structured_confidence = float(getattr(structured_action, "outcomeConfidenceAfterMapping", 0.0) or 0.0)
+    runtime_outcome = runtime_prediction.outcome
+    runtime_confidence = float(runtime_prediction.outcome_confidence_after_mapping or 0.0)
+
+    if structured_outcome == "missed" and runtime_outcome == "made" and runtime_confidence < 0.85:
+        return structured_outcome
+    if runtime_outcome != "uncertain" and runtime_confidence >= max(structured_confidence + 0.04, 0.62):
+        return runtime_outcome
+    return structured_outcome
+
+
+def _blend_shot_subtype(structured_action, runtime_prediction: RuntimeFusionPrediction, event_family: str) -> str | None:
+    if event_family != "shot_attempt":
+        return None
+    structured_subtype = getattr(structured_action, "shotSubtype", None)
+    structured_confidence = float(getattr(structured_action, "shotSubtypeConfidenceAfterMapping", 0.0) or 0.0)
+    runtime_subtype = runtime_prediction.shot_subtype
+    runtime_confidence = float(runtime_prediction.shot_subtype_confidence_after_mapping or 0.0)
+    if runtime_subtype and runtime_confidence >= max(structured_confidence + 0.05, 0.58):
+        return runtime_subtype
+    return structured_subtype
+
+
+def _blend_display_label(event_family: str, outcome: str, shot_subtype: str | None) -> tuple[str, str]:
+    if event_family == "turnover":
+        return "steal", "Steal"
+    if event_family == "transition":
+        return "fast break", "Fast Break"
+    if event_family == "defensive_event":
+        return ("block", "Block") if outcome == "blocked" else ("uncertain", "Highlight")
+    if event_family != "shot_attempt":
+        return "uncertain", "Highlight"
+    if outcome == "missed":
+        return "miss", "Highlight"
+    if outcome == "blocked":
+        return "block", "Block"
+    if shot_subtype == "dunk" and outcome == "made":
+        return "dunk", "Dunk"
+    if shot_subtype == "layup" and outcome == "made":
+        return "layup", "Layup"
+    if shot_subtype == "three" and outcome == "made":
+        return "three", "Three Pointer"
+    if shot_subtype == "putback" and outcome == "made":
+        return "putback", "Made Shot"
+    if outcome == "made":
+        return shot_subtype or "jumper", "Made Shot"
+    return shot_subtype or "uncertain", "Highlight"
+
+
+def _blend_confidence(structured_value, runtime_value, *, present: bool) -> float | None:
+    if not present:
+        return None
+    return max(float(structured_value or 0.0), float(runtime_value or 0.0))
+
+
+def _blend_display_confidence(
+    *,
+    display_label: str,
+    family_after: float,
+    shot_after: float | None,
+    outcome_after: float,
+    is_uncertain: bool,
+) -> float:
+    shot_confidence = float(shot_after or 0.0)
+    if display_label in {"Steal", "Fast Break"}:
+        confidence = family_after
+    elif display_label == "Block":
+        confidence = max(family_after, outcome_after)
+    elif display_label in {"Dunk", "Layup", "Three Pointer"}:
+        confidence = max(family_after, shot_confidence)
+    elif display_label == "Made Shot":
+        confidence = min(max(family_after, shot_confidence), max(outcome_after, 0.3))
+    else:
+        confidence = max(family_after, shot_confidence, outcome_after)
+    if is_uncertain and display_label == "Highlight":
+        confidence = min(confidence, 0.46)
+    return round(min(max(confidence, 0.0), 1.0), 4)

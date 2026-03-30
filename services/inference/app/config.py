@@ -47,6 +47,10 @@ class InferenceSettings(BaseSettings):
     perception_overlay_frame_limit: int = 3
     teacher_labeling_enabled: bool = False
     teacher_frame_count: int = 4
+    runtime_model_mode: str = "shadow"
+    runtime_model_bundle_path: Path = Field(
+        default=Path(__file__).resolve().parents[1] / "models" / "runtime_fusion_v1.json"
+    )
 
     def ensure_temp_dir(self) -> Path:
         self.temp_dir.mkdir(parents=True, exist_ok=True)

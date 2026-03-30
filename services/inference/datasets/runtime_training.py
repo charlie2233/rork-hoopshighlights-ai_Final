@@ -229,6 +229,40 @@ def build_runtime_features(
     return features
 
 
+def build_runtime_inference_features(
+    *,
+    runtime_snapshot: dict[str, Any],
+    source_duration_seconds: float | None = None,
+) -> dict[str, Any]:
+    raw_runtime_outputs = {
+        "confidence": runtime_snapshot.get("confidence", 0.0),
+        "label": runtime_snapshot.get("label"),
+        "eventFamily": runtime_snapshot.get("eventFamily"),
+        "outcome": runtime_snapshot.get("outcome"),
+        "shotSubtype": runtime_snapshot.get("shotSubtype"),
+        "topKLabels": runtime_snapshot.get("topKLabels") or [],
+        "videoMAE": runtime_snapshot.get("videoMAE") or {},
+        "xclip": runtime_snapshot.get("xclip") or {},
+        "structuredSignals": runtime_snapshot.get("structuredSignals") or {},
+        "clipDurationSeconds": runtime_snapshot.get("clipDurationSeconds"),
+        "eventCenterSeconds": runtime_snapshot.get("eventCenterSeconds"),
+        "preRollSeconds": runtime_snapshot.get("preRollSeconds"),
+        "postRollSeconds": runtime_snapshot.get("postRollSeconds"),
+        "sourceDurationSeconds": source_duration_seconds,
+    }
+    return build_runtime_features(
+        source_kind="runtime",
+        source_domain="live_runtime",
+        source_set="inference_runtime",
+        raw_runtime_outputs=raw_runtime_outputs,
+        numeric_signals=_extract_numeric_signals(raw_runtime_outputs),
+        priority_score=None,
+        reasons=(),
+        source_ref=None,
+        human_verified=False,
+    )
+
+
 def _extract_numeric_signals(raw_runtime_outputs: dict[str, Any]) -> dict[str, float | None]:
     structured = raw_runtime_outputs.get("structuredSignals") or {}
     result: dict[str, float | None] = {

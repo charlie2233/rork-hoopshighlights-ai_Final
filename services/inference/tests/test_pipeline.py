@@ -3,6 +3,7 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 from services.inference.app.callback import CallbackClient
@@ -18,6 +19,7 @@ from services.inference.app.models import (
     RawLabelScore,
 )
 from services.inference.app.pipeline import InferenceService, _resolve_trace_fields
+from services.inference.app.runtime_model import RuntimeFusionPrediction
 
 
 class PipelineSourceResolutionTests(unittest.IsolatedAsyncioTestCase):
@@ -195,6 +197,149 @@ class PipelineCallbackResultsTests(unittest.TestCase):
         self.assertEqual(clip["confidenceAfterMapping"], 0.83)
         self.assertEqual(clip["rawTopLabels"][0]["rawLabel"], "jump shot")
         self.assertEqual(clip["comparisonRawTopLabels"][0]["canonicalLabel"], "miss")
+
+
+class PipelineRuntimeModelModeTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.settings = InferenceSettings(runtime_model_mode="shadow")
+        self.service = InferenceService(
+            settings=self.settings,
+            candidate_proposer=Mock(),
+            primary_recognizer=Mock(),
+            comparison_recognizer=None,
+            event_inferencer=Mock(),
+            reranker=Mock(),
+            artifact_writer=Mock(),
+            callback_client=CallbackClient(timeout_seconds=1.0),
+            r2_downloader=None,
+        )
+
+    def test_shadow_mode_preserves_structured_label_and_adds_shadow_metadata(self) -> None:
+        action = _make_action_stub()
+        prediction = RuntimeFusionPrediction(
+            model_version="runtime-fusion-v1",
+            event_family="turnover",
+            outcome="uncertain",
+            shot_subtype=None,
+            canonical_label="steal",
+            display_label="Steal",
+            confidence_before_mapping=0.62,
+            confidence_after_mapping=0.62,
+            event_family_confidence_before_mapping=0.62,
+            event_family_confidence_after_mapping=0.62,
+            shot_subtype_confidence_before_mapping=None,
+            shot_subtype_confidence_after_mapping=None,
+            outcome_confidence_before_mapping=0.44,
+            outcome_confidence_after_mapping=0.44,
+            is_uncertain=True,
+            metadata={"runtime_fusion_model_version": "runtime-fusion-v1"},
+        )
+
+        resolved = self.service._resolve_runtime_action(
+            structured_action=action,
+            runtime_prediction=prediction,
+            structured_signals={"ballNearRim": 0.12},
+            perception={},
+        )
+
+        self.assertEqual(resolved.label, "Highlight")
+        self.assertIn("runtimeFusionShadow", resolved.metadata)
+        self.assertEqual(
+            resolved.metadata["runtimeFusionShadow"]["runtime_fusion_model_version"],
+            "runtime-fusion-v1",
+        )
+
+    def test_primary_mode_promotes_runtime_prediction(self) -> None:
+        service = InferenceService(
+            settings=InferenceSettings(runtime_model_mode="primary"),
+            candidate_proposer=Mock(),
+            primary_recognizer=Mock(),
+            comparison_recognizer=None,
+            event_inferencer=Mock(),
+            reranker=Mock(),
+            artifact_writer=Mock(),
+            callback_client=CallbackClient(timeout_seconds=1.0),
+            r2_downloader=None,
+        )
+        action = _make_action_stub()
+        prediction = RuntimeFusionPrediction(
+            model_version="runtime-fusion-v1",
+            event_family="shot_attempt",
+            outcome="missed",
+            shot_subtype="jumper",
+            canonical_label="miss",
+            display_label="Highlight",
+            confidence_before_mapping=0.58,
+            confidence_after_mapping=0.46,
+            event_family_confidence_before_mapping=0.71,
+            event_family_confidence_after_mapping=0.71,
+            shot_subtype_confidence_before_mapping=0.49,
+            shot_subtype_confidence_after_mapping=0.49,
+            outcome_confidence_before_mapping=0.77,
+            outcome_confidence_after_mapping=0.77,
+            is_uncertain=False,
+            metadata={"runtime_fusion_model_version": "runtime-fusion-v1"},
+        )
+
+        resolved = service._resolve_runtime_action(
+            structured_action=action,
+            runtime_prediction=prediction,
+            structured_signals={"ballNearRim": 0.67},
+            perception={},
+        )
+
+        self.assertEqual(resolved.label, "Highlight")
+        self.assertEqual(resolved.canonicalLabel, "miss")
+        self.assertEqual(resolved.eventFamily, "shot_attempt")
+        self.assertEqual(resolved.outcome, "missed")
+        self.assertEqual(
+            resolved.metadata["runtimeFusionPrimary"]["runtime_fusion_model_version"],
+            "runtime-fusion-v1",
+        )
+
+
+def _make_action_stub():
+    def model_copy(*, update):
+        data = {
+            "metadata": {"resolved_by": "structured_basketball_signals"},
+            "label": "Highlight",
+            "canonicalLabel": "miss",
+            "eventFamily": "shot_attempt",
+            "eventSubtype": None,
+            "shotSubtype": "jumper",
+            "outcome": "missed",
+            "confidenceBeforeMapping": 0.58,
+            "confidenceAfterMapping": 0.46,
+            "eventFamilyConfidenceBeforeMapping": 0.61,
+            "eventFamilyConfidenceAfterMapping": 0.61,
+            "shotSubtypeConfidenceBeforeMapping": 0.49,
+            "shotSubtypeConfidenceAfterMapping": 0.49,
+            "outcomeConfidenceBeforeMapping": 0.77,
+            "outcomeConfidenceAfterMapping": 0.77,
+            "isUncertain": False,
+        }
+        data.update(update)
+        return SimpleNamespace(**data)
+
+    return SimpleNamespace(
+        metadata={"resolved_by": "structured_basketball_signals"},
+        label="Highlight",
+        canonicalLabel="miss",
+        eventFamily="shot_attempt",
+        eventSubtype=None,
+        shotSubtype="jumper",
+        outcome="missed",
+        confidenceBeforeMapping=0.58,
+        confidenceAfterMapping=0.46,
+        eventFamilyConfidenceBeforeMapping=0.61,
+        eventFamilyConfidenceAfterMapping=0.61,
+        shotSubtypeConfidenceBeforeMapping=0.49,
+        shotSubtypeConfidenceAfterMapping=0.49,
+        outcomeConfidenceBeforeMapping=0.77,
+        outcomeConfidenceAfterMapping=0.77,
+        isUncertain=False,
+        model_copy=model_copy,
+    )
 
 
 if __name__ == "__main__":
