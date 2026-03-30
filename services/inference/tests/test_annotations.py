@@ -9,6 +9,10 @@ from services.inference.datasets import annotation_template, load_annotation_row
 
 
 class AnnotationDatasetTests(unittest.TestCase):
+    @staticmethod
+    def repo_root() -> Path:
+        return Path(__file__).resolve().parents[3]
+
     def test_round_trip_annotation_rows(self) -> None:
         row = annotation_template(clip_id="clip-001", source_domain="gold:human_review")
         row.eventFamily = "shot_attempt"
@@ -66,8 +70,11 @@ class AnnotationDatasetTests(unittest.TestCase):
         rows = load_annotation_rows(path)
 
         self.assertGreaterEqual(len(rows), 8)
-        self.assertIsNone(rows[0].teacherConfidence)
         self.assertTrue(rows[0].humanVerified)
+        self.assertIsNotNone(rows[0].sourceRef)
+        self.assertIsNotNone(rows[0].teacherConfidence)
+        self.assertGreaterEqual(rows[0].teacherConfidence, 0.0)
+        self.assertLessEqual(rows[0].teacherConfidence, 1.0)
 
 
 if __name__ == "__main__":
