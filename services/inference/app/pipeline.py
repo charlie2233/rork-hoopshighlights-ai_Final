@@ -929,20 +929,12 @@ class InferenceService:
                 "comparisonTopLabels": [item.model_dump(mode="json") for item in clip.comparisonTopLabels],
                 "rawTopLabels": [item.model_dump(mode="json") for item in clip.rawTopLabels],
                 "comparisonRawTopLabels": [item.model_dump(mode="json") for item in clip.comparisonRawTopLabels],
-                "runtimeFusionShadow": (
-                    clip.metadata.get("runtimeFusionShadow") if isinstance(clip.metadata, dict) else None
-                ),
+                "runtimeFusionShadow": _runtime_metadata_from_clip(clip, "runtimeFusionShadow"),
                 "runtimeFusionPrimary": (
-                    (
-                        clip.metadata.get("runtimeFusionPrimary")
-                        or clip.metadata.get("runtimeFusionLive")
-                    )
-                    if isinstance(clip.metadata, dict)
-                    else None
+                    _runtime_metadata_from_clip(clip, "runtimeFusionPrimary")
+                    or _runtime_metadata_from_clip(clip, "runtimeFusionLive")
                 ),
-                "runtimeFusionLive": (
-                    clip.metadata.get("runtimeFusionLive") if isinstance(clip.metadata, dict) else None
-                ),
+                "runtimeFusionLive": _runtime_metadata_from_clip(clip, "runtimeFusionLive"),
             }
             for clip in manifest.clips
         ]
@@ -1152,3 +1144,15 @@ def _blend_display_confidence(
     if is_uncertain and display_label == "Highlight":
         confidence = min(confidence, 0.46)
     return round(min(max(confidence, 0.0), 1.0), 4)
+
+
+def _runtime_metadata_from_clip(clip, key: str):
+    metadata = getattr(clip, "metadata", None)
+    if not isinstance(metadata, dict):
+        return None
+    if metadata.get(key) is not None:
+        return metadata.get(key)
+    action_metadata = metadata.get("action_metadata")
+    if isinstance(action_metadata, dict):
+        return action_metadata.get(key)
+    return None

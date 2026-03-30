@@ -198,6 +198,82 @@ class PipelineCallbackResultsTests(unittest.TestCase):
         self.assertEqual(clip["rawTopLabels"][0]["rawLabel"], "jump shot")
         self.assertEqual(clip["comparisonRawTopLabels"][0]["canonicalLabel"], "miss")
 
+    def test_build_callback_results_surfaces_nested_runtime_shadow_metadata(self) -> None:
+        manifest = InferenceManifest(
+            schemaVersion="2026-03-27",
+            jobId="job_123",
+            requestId="request-123",
+            uploadTraceId="upload-123",
+            inferenceAttemptId="attempt-123",
+            modelVersion="videomae:test",
+            resultConfidence=0.46,
+            failureReason=None,
+            generatedAt=datetime.now(timezone.utc),
+            clips=[
+                RankedClip(
+                    clipId="clip-1",
+                    startTime=0.0,
+                    endTime=4.75,
+                    clipDurationSeconds=4.75,
+                    eventCenterSeconds=2.25,
+                    preRollSeconds=2.25,
+                    postRollSeconds=2.5,
+                    windowPolicyVersion="basketball-v1",
+                    wasMerged=False,
+                    sourceEventCount=1,
+                    confidence=0.46,
+                    resultConfidence=0.46,
+                    label="Highlight",
+                    action="Highlight",
+                    canonicalLabel="jumper",
+                    eventFamily="shot_attempt",
+                    eventSubtype="jumper",
+                    shotSubtype="jumper",
+                    outcome="uncertain",
+                    eventType="shot_attempt",
+                    shotType="jumper",
+                    makeMiss="unknown",
+                    confidenceBeforeMapping=0.61,
+                    confidenceAfterMapping=0.46,
+                    isUncertain=True,
+                    audioScore=0.2,
+                    visualScore=0.4,
+                    motionScore=0.5,
+                    combinedScore=0.6,
+                    rankScore=0.46,
+                    detectionMethod="model",
+                    topLabels=[],
+                    comparisonTopLabels=[],
+                    rawTopLabels=[],
+                    comparisonRawTopLabels=[],
+                    metadata={
+                        "action_metadata": {
+                            "runtimeFusionShadow": {
+                                "runtime_fusion_model_version": "runtime-fusion-v1",
+                                "label": "Highlight",
+                            }
+                        }
+                    },
+                )
+            ],
+            artifacts=[],
+            diagnostics=InferenceDiagnostics(
+                featureExtractor="ffprobe+opencv",
+                candidateProposer="heuristic-assisted",
+                actionRecognizer="videomae:test",
+                eventInferencer="heuristic-event-inferencer",
+                reranker="confidence-reranker",
+            ),
+        )
+
+        callback_results = self.service._build_callback_results(manifest)
+        clip = callback_results["clips"][0]
+
+        self.assertEqual(
+            clip["runtimeFusionShadow"]["runtime_fusion_model_version"],
+            "runtime-fusion-v1",
+        )
+
 
 class PipelineRuntimeModelModeTests(unittest.TestCase):
     def setUp(self) -> None:

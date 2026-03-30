@@ -77,6 +77,54 @@ class ShadowEvalTests(unittest.TestCase):
         self.assertEqual(records[0].jobId, "job-shadow-001")
         self.assertEqual(records[0].flatLabel, "Dunk")
 
+    def test_prefers_runtime_shadow_payload_when_present(self) -> None:
+        payload = {
+            "jobId": "job-shadow-rt-001",
+            "requestId": "req-shadow-rt-001",
+            "uploadTraceId": "upload-shadow-rt-001",
+            "inferenceAttemptId": "attempt-shadow-rt-001",
+            "modelVersion": "videomae:test",
+            "clips": [
+                {
+                    "clipId": "clip-shadow-rt-001",
+                    "label": "Highlight",
+                    "eventFamily": "other",
+                    "shotSubtype": None,
+                    "outcome": "uncertain",
+                    "confidence": 0.41,
+                    "clipDurationSeconds": 4.75,
+                    "runtimeFusionShadow": {
+                        "runtime_fusion_model_version": "runtime-fusion-v1",
+                        "label": "Steal",
+                        "eventFamily": "turnover",
+                        "shotSubtype": None,
+                        "outcome": "uncertain",
+                        "confidenceBeforeMapping": 0.62,
+                        "confidenceAfterMapping": 0.62,
+                        "confidence": 0.62,
+                        "isUncertain": True,
+                        "runtime_fusion_snapshot": {
+                            "videoMAE": [{"label": "steal", "confidence": 0.44}],
+                            "xclip": [{"label": "steal", "confidence": 0.51}],
+                        },
+                    },
+                }
+            ],
+        }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "shadow-runtime.json"
+            path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+            records = load_batch_records([path])
+
+        self.assertEqual(len(records), 1)
+        record = records[0]
+        self.assertEqual(record.modelVersion, "runtime-fusion-v1")
+        self.assertEqual(record.flatLabel, "Steal")
+        self.assertEqual(record.eventFamily, "turnover")
+        self.assertEqual(record.confidenceAfterMapping, 0.62)
+        self.assertEqual(record.rawVideoMAETopK[0]["label"], "steal")
+
 
 if __name__ == "__main__":
     unittest.main()

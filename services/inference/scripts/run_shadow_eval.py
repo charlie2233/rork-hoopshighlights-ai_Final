@@ -221,6 +221,7 @@ def _normalize_batch_item(item: dict[str, Any]) -> list[ShadowClipRecord]:
     for clip in clips:
         if not isinstance(clip, dict):
             continue
+        shadow_payload = _shadow_payload(clip)
         records.append(
             ShadowClipRecord(
                 jobId=_first_non_empty(clip.get("jobId"), top_job_id),
@@ -228,31 +229,56 @@ def _normalize_batch_item(item: dict[str, Any]) -> list[ShadowClipRecord]:
                 requestId=_first_non_empty(clip.get("requestId"), top_request_id),
                 uploadTraceId=_first_non_empty(clip.get("uploadTraceId"), top_upload_trace_id),
                 inferenceAttemptId=_first_non_empty(clip.get("inferenceAttemptId"), top_attempt_id),
-                modelVersion=_first_non_empty(clip.get("modelVersion"), top_model_version),
-                flatLabel=_normalize_flat_label(clip),
-                eventFamily=_normalize_event_family(clip),
-                shotSubtype=_normalize_shot_subtype(clip),
-                outcome=_normalize_outcome(clip),
-                confidence=_normalize_confidence(clip),
+                modelVersion=_first_non_empty(
+                    shadow_payload.get("modelVersion") if shadow_payload else None,
+                    shadow_payload.get("runtime_fusion_model_version") if shadow_payload else None,
+                    clip.get("modelVersion"),
+                    top_model_version,
+                ),
+                flatLabel=_normalize_flat_label(clip, shadow_payload),
+                eventFamily=_normalize_event_family(clip, shadow_payload),
+                shotSubtype=_normalize_shot_subtype(clip, shadow_payload),
+                outcome=_normalize_outcome(clip, shadow_payload),
+                confidence=_normalize_confidence(clip, shadow_payload),
                 confidenceBeforeMapping=_to_optional_float(
-                    clip.get("confidenceBeforeMapping") or clip.get("confidence_before_mapping")
+                    _first_defined(
+                        shadow_payload.get("confidenceBeforeMapping") if shadow_payload else None,
+                        shadow_payload.get("confidence_before_mapping") if shadow_payload else None,
+                        clip.get("confidenceBeforeMapping"),
+                        clip.get("confidence_before_mapping"),
+                    )
                 ),
                 confidenceAfterMapping=_to_optional_float(
-                    clip.get("confidenceAfterMapping") or clip.get("confidence_after_mapping")
+                    _first_defined(
+                        shadow_payload.get("confidenceAfterMapping") if shadow_payload else None,
+                        shadow_payload.get("confidence_after_mapping") if shadow_payload else None,
+                        clip.get("confidenceAfterMapping"),
+                        clip.get("confidence_after_mapping"),
+                    )
                 ),
                 resultConfidence=_to_optional_float(clip.get("resultConfidence")),
                 clipDurationSeconds=_to_optional_float(clip.get("clipDurationSeconds")),
                 wasMerged=bool(clip.get("wasMerged", False)),
                 sourceEventCount=_to_optional_int(clip.get("sourceEventCount")),
-                isUncertain=_normalize_uncertain(clip),
+                isUncertain=_normalize_uncertain(clip, shadow_payload),
                 rawVideoMAETopK=_normalize_top_k(
-                    clip.get("rawVideoMAETopK")
+                    (
+                        shadow_payload.get("runtime_fusion_snapshot", {}).get("videoMAE")
+                        if isinstance(shadow_payload, dict)
+                        else None
+                    )
+                    or clip.get("rawVideoMAETopK")
                     or clip.get("rawTopLabels")
                     or clip.get("videoMAE", {}).get("topK")
                     or []
                 ),
                 rawXCLIPSuggestions=_normalize_top_k(
-                    clip.get("rawXCLIPSuggestions")
+                    (
+                        shadow_payload.get("runtime_fusion_snapshot", {}).get("xclip")
+                        if isinstance(shadow_payload, dict)
+                        else None
+                    )
+                    or clip.get("rawXCLIPSuggestions")
                     or clip.get("comparisonRawTopLabels")
                     or clip.get("xclip", {}).get("topK")
                     or []
@@ -371,8 +397,16 @@ def normalize_expected_label(value: str | None) -> str:
     return text
 
 
-def _normalize_flat_label(clip: dict[str, Any]) -> str:
-    raw = _first_non_empty(clip.get("finalLabel"), clip.get("label"), clip.get("displayLabel"), clip.get("action"), "Highlight")
+def _normalize_flat_label(clip: dict[str, Any], shadow_payload: dict[str, Any] | None = None) -> str:
+    raw = _first_non_empty(
+        shadow_payload.get("label") if shadow_payload else None,
+        shadow_payload.get("displayLabel") if shadow_payload else None,
+        clip.get("finalLabel"),
+        clip.get("label"),
+        clip.get("displayLabel"),
+        clip.get("action"),
+        "Highlight",
+    )
     text = normalize_text(raw)
     if text in {"dunk", "layup", "three pointer", "three", "fast break", "block", "steal"}:
         return canonical_to_display_label(text if text != "three pointer" else "three")
@@ -387,28 +421,40 @@ def _normalize_flat_label(clip: dict[str, Any]) -> str:
     return str(raw)
 
 
-def _normalize_event_family(clip: dict[str, Any]) -> str:
-    value = _first_non_empty(clip.get("eventFamily"), clip.get("eventType"))
+def _normalize_event_family(clip: dict[str, Any], shadow_payload: dict[str, Any] | None = None) -> str:
+    value = _first_non_empty(
+        shadow_payload.get("eventFamily") if shadow_payload else None,
+        clip.get("eventFamily"),
+        clip.get("eventType"),
+    )
     text = normalize_text(value)
     if text in EVENT_FAMILIES:
         return text
-    return "other" if _normalize_flat_label(clip) == "Highlight" else _taxonomy_from_label(_normalize_flat_label(clip))[0]
+    return "other" if _normalize_flat_label(clip, shadow_payload) == "Highlight" else _taxonomy_from_label(_normalize_flat_label(clip, shadow_payload))[0]
 
 
-def _normalize_shot_subtype(clip: dict[str, Any]) -> str | None:
-    value = _first_non_empty(clip.get("shotSubtype"), clip.get("shotType"))
+def _normalize_shot_subtype(clip: dict[str, Any], shadow_payload: dict[str, Any] | None = None) -> str | None:
+    value = _first_non_empty(
+        shadow_payload.get("shotSubtype") if shadow_payload else None,
+        clip.get("shotSubtype"),
+        clip.get("shotType"),
+    )
     text = normalize_text(value)
     if text in {"dunk", "layup", "jumper", "three", "putback", "unknown"}:
         return text
-    return _taxonomy_from_label(_normalize_flat_label(clip))[1]
+    return _taxonomy_from_label(_normalize_flat_label(clip, shadow_payload))[1]
 
 
-def _normalize_outcome(clip: dict[str, Any]) -> str:
-    value = _first_non_empty(clip.get("outcome"), clip.get("makeMiss"))
+def _normalize_outcome(clip: dict[str, Any], shadow_payload: dict[str, Any] | None = None) -> str:
+    value = _first_non_empty(
+        shadow_payload.get("outcome") if shadow_payload else None,
+        clip.get("outcome"),
+        clip.get("makeMiss"),
+    )
     text = normalize_text(value)
     if text in OUTCOMES:
         return text
-    return _taxonomy_from_label(_normalize_flat_label(clip))[2]
+    return _taxonomy_from_label(_normalize_flat_label(clip, shadow_payload))[2]
 
 
 def _taxonomy_from_label(label: str) -> tuple[str, str | None, str]:
@@ -436,20 +482,41 @@ def _taxonomy_from_label(label: str) -> tuple[str, str | None, str]:
     return "other", None, "uncertain"
 
 
-def _normalize_confidence(clip: dict[str, Any]) -> float:
-    for key in ("confidenceAfterMapping", "confidence", "resultConfidence", "confidenceBeforeMapping"):
-        value = _to_optional_float(clip.get(key))
+def _normalize_confidence(clip: dict[str, Any], shadow_payload: dict[str, Any] | None = None) -> float:
+    for value in (
+        _to_optional_float(shadow_payload.get("confidenceAfterMapping")) if shadow_payload else None,
+        _to_optional_float(shadow_payload.get("confidence_after_mapping")) if shadow_payload else None,
+        _to_optional_float(shadow_payload.get("confidence")) if shadow_payload else None,
+        _to_optional_float(clip.get("confidenceAfterMapping")),
+        _to_optional_float(clip.get("confidence")),
+        _to_optional_float(clip.get("resultConfidence")),
+        _to_optional_float(clip.get("confidenceBeforeMapping")),
+    ):
         if value is not None:
             return value
     return 0.0
 
 
-def _normalize_uncertain(clip: dict[str, Any]) -> bool:
+def _normalize_uncertain(clip: dict[str, Any], shadow_payload: dict[str, Any] | None = None) -> bool:
+    if shadow_payload is not None and "isUncertain" in shadow_payload:
+        return bool(shadow_payload["isUncertain"])
     if "isUncertain" in clip:
         return bool(clip["isUncertain"])
-    if normalize_text(_first_non_empty(clip.get("outcome"), clip.get("makeMiss"))) == "uncertain":
+    if normalize_text(_first_non_empty(
+        shadow_payload.get("outcome") if shadow_payload else None,
+        clip.get("outcome"),
+        clip.get("makeMiss"),
+    )) == "uncertain":
         return True
-    return normalize_text(_first_non_empty(clip.get("finalLabel"), clip.get("label"), clip.get("displayLabel"), "")) == "highlight"
+    return normalize_text(
+        _first_non_empty(
+            shadow_payload.get("label") if shadow_payload else None,
+            clip.get("finalLabel"),
+            clip.get("label"),
+            clip.get("displayLabel"),
+            "",
+        )
+    ) == "highlight"
 
 
 def _normalize_top_k(value: Any) -> list[dict[str, Any]]:
@@ -498,6 +565,21 @@ def _first_non_empty(*values: Any) -> str | None:
         text = str(value).strip()
         if text:
             return text
+    return None
+
+
+def _first_defined(*values: Any) -> Any:
+    for value in values:
+        if value is not None:
+            return value
+    return None
+
+
+def _shadow_payload(clip: dict[str, Any]) -> dict[str, Any] | None:
+    for key in ("runtimeFusionShadow", "runtimeFusionLive", "runtimeFusionPrimary"):
+        value = clip.get(key)
+        if isinstance(value, dict):
+            return value
     return None
 
 
