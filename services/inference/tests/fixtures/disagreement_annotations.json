@@ -1,0 +1,152 @@
+[
+  {
+    "clipId": "clip-highlight-disagree-001",
+    "sourceDomain": "fixed_camera",
+    "eventFamily": "other",
+    "outcome": "uncertain",
+    "shotSubtype": null,
+    "ballVisible": true,
+    "hoopVisible": true,
+    "ballNearRim": 0.84,
+    "ballThroughHoopLikelihood": 0.21,
+    "possessionChangeLikelihood": 0.12,
+    "transitionLikelihood": 0.05,
+    "teacherConfidence": 0.91,
+    "humanVerified": false,
+    "reviewerNotes": "Runtime collapsed to Highlight despite clear shot context.",
+    "rawRuntimeOutputs": {
+      "label": "Highlight",
+      "confidence": 0.41,
+      "eventFamily": "other",
+      "outcome": "uncertain",
+      "shotSubtype": null
+    },
+    "rawTeacherOutputs": {
+      "displayLabelSuggestion": "Layup",
+      "confidence": 0.91,
+      "eventFamily": "shot_attempt",
+      "outcome": "missed",
+      "shotSubtype": "layup"
+    }
+  },
+  {
+    "clipId": "clip-miss-made-001",
+    "sourceDomain": "broadcast",
+    "eventFamily": "shot_attempt",
+    "outcome": "made",
+    "shotSubtype": "jumper",
+    "ballVisible": true,
+    "hoopVisible": true,
+    "ballNearRim": 0.42,
+    "ballThroughHoopLikelihood": 0.14,
+    "possessionChangeLikelihood": 0.08,
+    "transitionLikelihood": 0.04,
+    "teacherConfidence": 0.87,
+    "humanVerified": false,
+    "reviewerNotes": "Explicit miss vs made disagreement for audit.",
+    "rawRuntimeOutputs": {
+      "label": "Highlight",
+      "confidence": 0.49,
+      "eventFamily": "shot_attempt",
+      "outcome": "made",
+      "shotSubtype": "jumper"
+    },
+    "rawTeacherOutputs": {
+      "displayLabelSuggestion": "Miss",
+      "confidence": 0.87,
+      "eventFamily": "shot_attempt",
+      "outcome": "missed",
+      "shotSubtype": "jumper"
+    }
+  },
+  {
+    "clipId": "clip-null-subtype-strong-evidence-001",
+    "sourceDomain": "fixed_camera",
+    "eventFamily": "shot_attempt",
+    "outcome": "uncertain",
+    "shotSubtype": null,
+    "ballVisible": true,
+    "hoopVisible": true,
+    "ballNearRim": 0.93,
+    "ballThroughHoopLikelihood": 0.78,
+    "possessionChangeLikelihood": 0.11,
+    "transitionLikelihood": 0.03,
+    "teacherConfidence": 0.79,
+    "humanVerified": false,
+    "reviewerNotes": "Subtype is null even though the hoop evidence is strong.",
+    "rawRuntimeOutputs": {
+      "label": "Highlight",
+      "confidence": 0.36,
+      "eventFamily": "shot_attempt",
+      "outcome": "uncertain",
+      "shotSubtype": null
+    },
+    "rawTeacherOutputs": {
+      "displayLabelSuggestion": "Jumper",
+      "confidence": 0.79,
+      "eventFamily": "shot_attempt",
+      "outcome": "made",
+      "shotSubtype": "jumper"
+    }
+  },
+  {
+    "clipId": "clip-high-teacher-low-runtime-001",
+    "sourceDomain": "fixed_camera",
+    "eventFamily": "transition",
+    "outcome": "uncertain",
+    "shotSubtype": null,
+    "ballVisible": true,
+    "hoopVisible": false,
+    "ballNearRim": 0.08,
+    "ballThroughHoopLikelihood": 0.0,
+    "possessionChangeLikelihood": 0.86,
+    "transitionLikelihood": 0.91,
+    "teacherConfidence": 0.95,
+    "humanVerified": false,
+    "reviewerNotes": "Teacher is confident but runtime is weak on a clear transition.",
+    "rawRuntimeOutputs": {
+      "label": "Highlight",
+      "confidence": 0.31,
+      "eventFamily": "transition",
+      "outcome": "uncertain",
+      "shotSubtype": null
+    },
+    "rawTeacherOutputs": {
+      "displayLabelSuggestion": "Fast Break",
+      "confidence": 0.95,
+      "eventFamily": "transition",
+      "outcome": "uncertain",
+      "shotSubtype": null
+    }
+  },
+  {
+    "clipId": "clip-human-verified-gold-001",
+    "sourceDomain": "broadcast",
+    "eventFamily": "shot_attempt",
+    "outcome": "made",
+    "shotSubtype": "three",
+    "ballVisible": true,
+    "hoopVisible": true,
+    "ballNearRim": 0.61,
+    "ballThroughHoopLikelihood": 0.74,
+    "possessionChangeLikelihood": 0.06,
+    "transitionLikelihood": 0.12,
+    "teacherConfidence": 0.98,
+    "humanVerified": true,
+    "reviewerNotes": "Gold label already settled; keep out of the disagreement queue unless later models diverge.",
+    "rawRuntimeOutputs": {
+      "label": "Three Pointer",
+      "confidence": 0.88,
+      "eventFamily": "shot_attempt",
+      "outcome": "made",
+      "shotSubtype": "three"
+    },
+    "rawTeacherOutputs": {
+      "displayLabelSuggestion": "Three Pointer",
+      "confidence": 0.98,
+      "eventFamily": "shot_attempt",
+      "outcome": "made",
+      "shotSubtype": "three"
+    }
+  }
+]

@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rork.hoopshighlights.ai/schemas/clip-annotation.schema.json",
+  "title": "HoopsClips Clip Annotation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "clipId",
+    "sourceDomain",
+    "eventFamily",
+    "outcome",
+    "shotSubtype",
+    "ballVisible",
+    "hoopVisible",
+    "ballNearRim",
+    "ballThroughHoopLikelihood",
+    "possessionChangeLikelihood",
+    "transitionLikelihood",
+    "teacherConfidence",
+    "humanVerified",
+    "reviewerNotes",
+    "rawRuntimeOutputs",
+    "rawTeacherOutputs"
+  ],
+  "properties": {
+    "clipId": { "type": "string", "minLength": 1 },
+    "sourceDomain": { "type": "string", "minLength": 1 },
+    "eventFamily": {
+      "type": "string",
+      "enum": ["shot_attempt", "turnover", "defensive_event", "transition", "other"]
+    },
+    "outcome": {
+      "type": "string",
+      "enum": ["made", "missed", "blocked", "uncertain"]
+    },
+    "shotSubtype": {
+      "type": ["string", "null"],
+      "enum": ["dunk", "layup", "jumper", "three", "putback", "unknown", null]
+    },
+    "ballVisible": { "type": "boolean" },
+    "hoopVisible": { "type": "boolean" },
+    "ballNearRim": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+    "ballThroughHoopLikelihood": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+    "possessionChangeLikelihood": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+    "transitionLikelihood": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+    "teacherConfidence": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+    "humanVerified": { "type": "boolean" },
+    "reviewerNotes": { "type": "string" },
+    "rawRuntimeOutputs": { "type": "object" },
+    "rawTeacherOutputs": { "type": "object" }
+  }
+}

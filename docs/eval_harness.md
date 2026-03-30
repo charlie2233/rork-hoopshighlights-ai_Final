@@ -44,6 +44,7 @@ Measure whether the learned cloud pipeline improves on the current heuristic-hea
 - Treat VideoMAE and X-CLIP as auxiliary classifiers once structured ball / rim / player signals are enabled.
 - Store per-run manifests and summary metrics.
 - Keep teacher-label outputs separate from runtime outputs; use the Qwen-based teacher path only for offline audit and pseudo-label generation.
+- Use [`docs/disagreement_mining.md`](/Users/hanfei/rork-hoopshighlights-ai_Final/docs/disagreement_mining.md) to turn the unified annotation schema into a manual review queue for runtime-vs-teacher disagreements.
 - Promote reviewer corrections from the dashboard into the training set.
 - Generate the report with [`services/inference/scripts/run_eval_report.py`](/Users/hanfei/rork-hoopshighlights-ai_Final/services/inference/scripts/run_eval_report.py).
 - For live staging watchability reviews, follow [`docs/live_watchability_review.md`](/Users/hanfei/rork-hoopshighlights-ai_Final/docs/live_watchability_review.md).

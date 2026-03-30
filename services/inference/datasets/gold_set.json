@@ -12,7 +12,7 @@
     "ballThroughHoopLikelihood": 0.74,
     "possessionChangeLikelihood": 0.08,
     "transitionLikelihood": 0.05,
-    "teacherConfidence": null,
+    "teacherConfidence": 1.0,
     "humanVerified": true,
     "reviewerNotes": "Seed gold label from the validated staging smoke clip. Keep this separate from teacher outputs and re-check subtype on the next human review pass.",
     "rawRuntimeOutputs": {
@@ -27,7 +27,7 @@
       "outcome": "uncertain",
       "topKLabels": ["shooting basketball", "dribbling basketball", "playing basketball"]
     },
-    "rawTeacherOutputs": null
+    "rawTeacherOutputs": {}
   },
   {
     "clipId": "gold-shot-made-layup-001",
@@ -42,7 +42,7 @@
     "ballThroughHoopLikelihood": 0.71,
     "possessionChangeLikelihood": 0.12,
     "transitionLikelihood": 0.08,
-    "teacherConfidence": null,
+    "teacherConfidence": 1.0,
     "humanVerified": true,
     "reviewerNotes": "Human-verified made layup seed. Use as the short-range positive anchor for subtype separation.",
     "rawRuntimeOutputs": {
@@ -53,7 +53,7 @@
       "outcome": "made",
       "topKLabels": ["layup", "jumper", "miss"]
     },
-    "rawTeacherOutputs": null
+    "rawTeacherOutputs": {}
   },
   {
     "clipId": "gold-shot-made-jumper-001",
@@ -68,7 +68,7 @@
     "ballThroughHoopLikelihood": 0.68,
     "possessionChangeLikelihood": 0.06,
     "transitionLikelihood": 0.05,
-    "teacherConfidence": null,
+    "teacherConfidence": 1.0,
     "humanVerified": true,
     "reviewerNotes": "Mid-range positive anchor. Keeps the hierarchy from collapsing all made attempts into one generic class.",
     "rawRuntimeOutputs": {
@@ -79,7 +79,7 @@
       "outcome": "made",
       "topKLabels": ["jumper", "three", "miss"]
     },
-    "rawTeacherOutputs": null
+    "rawTeacherOutputs": {}
   },
   {
     "clipId": "gold-shot-made-three-001",
@@ -94,7 +94,7 @@
     "ballThroughHoopLikelihood": 0.76,
     "possessionChangeLikelihood": 0.04,
     "transitionLikelihood": 0.11,
-    "teacherConfidence": null,
+    "teacherConfidence": 1.0,
     "humanVerified": true,
     "reviewerNotes": "Catch-and-shoot three seed. Use as the long-range positive anchor.",
     "rawRuntimeOutputs": {
@@ -105,7 +105,7 @@
       "outcome": "made",
       "topKLabels": ["three", "jumper", "miss"]
     },
-    "rawTeacherOutputs": null
+    "rawTeacherOutputs": {}
   },
   {
     "clipId": "gold-shot-missed-jumper-001",
@@ -120,7 +120,7 @@
     "ballThroughHoopLikelihood": 0.11,
     "possessionChangeLikelihood": 0.07,
     "transitionLikelihood": 0.04,
-    "teacherConfidence": null,
+    "teacherConfidence": 1.0,
     "humanVerified": true,
     "reviewerNotes": "Missed jumper seed. This is the main negative anchor for miss-vs-made separation.",
     "rawRuntimeOutputs": {
@@ -131,7 +131,7 @@
       "outcome": "missed",
       "topKLabels": ["miss", "jumper", "three"]
     },
-    "rawTeacherOutputs": null
+    "rawTeacherOutputs": {}
   },
   {
     "clipId": "gold-shot-missed-layup-001",
@@ -146,7 +146,7 @@
     "ballThroughHoopLikelihood": 0.19,
     "possessionChangeLikelihood": 0.09,
     "transitionLikelihood": 0.05,
-    "teacherConfidence": null,
+    "teacherConfidence": 1.0,
     "humanVerified": true,
     "reviewerNotes": "Validated staging miss clip. Important because the live branch previously flattened misses into made shots.",
     "rawRuntimeOutputs": {
@@ -161,7 +161,7 @@
       "outcome": "missed",
       "topKLabels": ["shooting basketball", "playing basketball", "dribbling basketball"]
     },
-    "rawTeacherOutputs": null
+    "rawTeacherOutputs": {}
   },
   {
     "clipId": "gold-shot-blocked-layup-001",
@@ -176,7 +176,7 @@
     "ballThroughHoopLikelihood": 0.07,
     "possessionChangeLikelihood": 0.15,
     "transitionLikelihood": 0.08,
-    "teacherConfidence": null,
+    "teacherConfidence": 1.0,
     "humanVerified": true,
     "reviewerNotes": "Blocked-at-the-rim positive anchor. Should stay distinct from steals and generic misses.",
     "rawRuntimeOutputs": {
@@ -187,7 +187,7 @@
       "outcome": "blocked",
       "topKLabels": ["block", "steal", "miss"]
     },
-    "rawTeacherOutputs": null
+    "rawTeacherOutputs": {}
   },
   {
     "clipId": "gold-turnover-steal-001",
@@ -202,7 +202,7 @@
     "ballThroughHoopLikelihood": 0.0,
     "possessionChangeLikelihood": 0.83,
     "transitionLikelihood": 0.19,
-    "teacherConfidence": null,
+    "teacherConfidence": 1.0,
     "humanVerified": true,
     "reviewerNotes": "Live-ball steal / turnover anchor. Useful for possession-change separation.",
     "rawRuntimeOutputs": {
@@ -213,7 +213,7 @@
       "outcome": "uncertain",
       "topKLabels": ["steal", "block", "fast break"]
     },
-    "rawTeacherOutputs": null
+    "rawTeacherOutputs": {}
   },
   {
     "clipId": "gold-transition-fastbreak-001",
@@ -228,7 +228,7 @@
     "ballThroughHoopLikelihood": 0.0,
     "possessionChangeLikelihood": 0.21,
     "transitionLikelihood": 0.92,
-    "teacherConfidence": null,
+    "teacherConfidence": 1.0,
     "humanVerified": true,
     "reviewerNotes": "Fast-break anchor. Keep separate from made shot clips even when a finish happens at the end.",
     "rawRuntimeOutputs": {
@@ -239,7 +239,7 @@
       "outcome": "made",
       "topKLabels": ["fast break", "layup", "dunk"]
     },
-    "rawTeacherOutputs": null
+    "rawTeacherOutputs": {}
   },
   {
     "clipId": "gold-negative-deadball-001",
@@ -254,7 +254,7 @@
     "ballThroughHoopLikelihood": 0.0,
     "possessionChangeLikelihood": 0.03,
     "transitionLikelihood": 0.02,
-    "teacherConfidence": null,
+    "teacherConfidence": 1.0,
     "humanVerified": true,
     "reviewerNotes": "Hard negative. Dead-ball reset should abstain.",
     "rawRuntimeOutputs": {
@@ -265,7 +265,7 @@
       "outcome": "uncertain",
       "topKLabels": ["shooting basketball", "playing basketball", "dribbling basketball"]
     },
-    "rawTeacherOutputs": null
+    "rawTeacherOutputs": {}
   },
   {
     "clipId": "gold-negative-inbound-001",
@@ -280,7 +280,7 @@
     "ballThroughHoopLikelihood": 0.0,
     "possessionChangeLikelihood": 0.05,
     "transitionLikelihood": 0.03,
-    "teacherConfidence": null,
+    "teacherConfidence": 1.0,
     "humanVerified": true,
     "reviewerNotes": "Inbound negative. Ball and hoop are visible, but there is no coherent play.",
     "rawRuntimeOutputs": {
@@ -291,7 +291,7 @@
       "outcome": "uncertain",
       "topKLabels": ["playing basketball", "dribbling basketball", "shooting basketball"]
     },
-    "rawTeacherOutputs": null
+    "rawTeacherOutputs": {}
   },
   {
     "clipId": "gold-negative-dribble-only-001",
@@ -306,7 +306,7 @@
     "ballThroughHoopLikelihood": 0.0,
     "possessionChangeLikelihood": 0.09,
     "transitionLikelihood": 0.08,
-    "teacherConfidence": null,
+    "teacherConfidence": 1.0,
     "humanVerified": true,
     "reviewerNotes": "Dribble-only negative. Should stay below shot_attempt unless a release is visible.",
     "rawRuntimeOutputs": {
@@ -317,7 +317,7 @@
       "outcome": "uncertain",
       "topKLabels": ["dribbling basketball", "playing basketball", "shooting basketball"]
     },
-    "rawTeacherOutputs": null
+    "rawTeacherOutputs": {}
   },
   {
     "clipId": "gold-negative-replay-001",
@@ -332,7 +332,7 @@
     "ballThroughHoopLikelihood": 0.0,
     "possessionChangeLikelihood": 0.02,
     "transitionLikelihood": 0.01,
-    "teacherConfidence": null,
+    "teacherConfidence": 1.0,
     "humanVerified": true,
     "reviewerNotes": "Replay negative. Strong motion but not a live event.",
     "rawRuntimeOutputs": {
@@ -343,7 +343,7 @@
       "outcome": "uncertain",
       "topKLabels": ["playing basketball", "shooting basketball", "dribbling basketball"]
     },
-    "rawTeacherOutputs": null
+    "rawTeacherOutputs": {}
   },
   {
     "clipId": "gold-negative-celebration-001",
@@ -358,7 +358,7 @@
     "ballThroughHoopLikelihood": 0.0,
     "possessionChangeLikelihood": 0.01,
     "transitionLikelihood": 0.0,
-    "teacherConfidence": null,
+    "teacherConfidence": 1.0,
     "humanVerified": true,
     "reviewerNotes": "Celebration negative. Useful to prevent post-play scenes from becoming false highlights.",
     "rawRuntimeOutputs": {
@@ -369,7 +369,7 @@
       "outcome": "uncertain",
       "topKLabels": ["playing basketball", "dribbling basketball", "shooting basketball"]
     },
-    "rawTeacherOutputs": null
+    "rawTeacherOutputs": {}
   },
   {
     "clipId": "gold-negative-camera-pan-001",
@@ -384,7 +384,7 @@
     "ballThroughHoopLikelihood": 0.0,
     "possessionChangeLikelihood": 0.0,
     "transitionLikelihood": 0.12,
-    "teacherConfidence": null,
+    "teacherConfidence": 1.0,
     "humanVerified": true,
     "reviewerNotes": "Camera pan negative. Must abstain even if motion is high.",
     "rawRuntimeOutputs": {
@@ -395,7 +395,7 @@
       "outcome": "uncertain",
       "topKLabels": ["playing basketball", "dribbling basketball", "shooting basketball"]
     },
-    "rawTeacherOutputs": null
+    "rawTeacherOutputs": {}
   },
   {
     "clipId": "gold-negative-halfcourt-setup-001",
@@ -410,7 +410,7 @@
     "ballThroughHoopLikelihood": 0.0,
     "possessionChangeLikelihood": 0.04,
     "transitionLikelihood": 0.09,
-    "teacherConfidence": null,
+    "teacherConfidence": 1.0,
     "humanVerified": true,
     "reviewerNotes": "Half-court setup with no event. Helps the classifier abstain on pre-action possession.",
     "rawRuntimeOutputs": {
@@ -421,6 +421,6 @@
       "outcome": "uncertain",
       "topKLabels": ["playing basketball", "dribbling basketball", "shooting basketball"]
     },
-    "rawTeacherOutputs": null
+    "rawTeacherOutputs": {}
   }
 ]
