@@ -5,7 +5,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from services.inference.scripts.run_shadow_eval import build_shadow_report, load_batch_records
+from services.inference.scripts.run_shadow_eval import (
+    build_shadow_comparison_summary,
+    build_shadow_report,
+    load_batch_records,
+)
 
 
 class ShadowEvalTests(unittest.TestCase):
@@ -124,6 +128,34 @@ class ShadowEvalTests(unittest.TestCase):
         self.assertEqual(record.eventFamily, "turnover")
         self.assertEqual(record.confidenceAfterMapping, 0.62)
         self.assertEqual(record.rawVideoMAETopK[0]["label"], "steal")
+
+    def test_builds_phase3d_comparison_summary(self) -> None:
+        fixture = self.repo_root() / "services" / "inference" / "tests" / "fixtures" / "shadow_batch_results.json"
+        candidate_records = load_batch_records([fixture])
+        candidate_report = build_shadow_report(candidate_records)
+
+        baseline_payload = json.loads(fixture.read_text(encoding="utf-8"))
+        for clip in baseline_payload["clips"]:
+            clip["label"] = "Highlight"
+            clip["finalLabel"] = "Highlight"
+            clip["eventFamily"] = "other"
+            clip["shotSubtype"] = None
+            clip["outcome"] = "uncertain"
+            clip["confidence"] = 0.38
+            clip["confidenceBeforeMapping"] = 0.38
+            clip["confidenceAfterMapping"] = 0.38
+            clip["isUncertain"] = True
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            baseline_path = Path(temp_dir) / "phase3d-baseline.json"
+            baseline_path.write_text(json.dumps(baseline_payload, indent=2), encoding="utf-8")
+            baseline_report = build_shadow_report(load_batch_records([baseline_path]))
+
+        comparison = build_shadow_comparison_summary(baseline_report["summary"], candidate_report["summary"])
+
+        self.assertGreater(comparison["mixedBatchLabelSpread"]["uniqueLabelCountDelta"], 0)
+        self.assertLess(comparison["flatLabel"]["highlightShareDelta"], 0)
+        self.assertLessEqual(comparison["uncertaintyRateDelta"], 0)
 
 
 if __name__ == "__main__":

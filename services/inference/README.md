@@ -100,7 +100,7 @@ Runtime model rollout is controlled with:
 - `HOOPS_INFERENCE_RUNTIME_MODEL_MODE=off|shadow|primary`
 - `HOOPS_INFERENCE_RUNTIME_MODEL_BUNDLE_PATH=/absolute/path/to/runtime_fusion_v1.json`
 
-Use `shadow` on staging first to keep the current live labels while capturing runtime-fusion metadata in the result manifest. Promote to `primary` only after the mixed-batch shadow report shows better flat-label spread and lower miss-vs-made confusion.
+Use `shadow` on staging first to keep the current live labels while capturing runtime-fusion metadata in the result manifest. Promote to `primary` only after the mixed-batch shadow report shows better flat-label spread and lower miss-vs-made confusion. For LoRA/encoder adaptation, compare the candidate batch against the phase3d baseline with `--baseline-results` in [`docs/shadow_eval_reporting.md`](/Users/hanfei/rork-hoopshighlights-ai_Final/docs/shadow_eval_reporting.md).
 
 ## Docker
 ```bash
@@ -141,16 +141,11 @@ gcloud builds submit \
 After deploy, capture the Cloud Run URL and hand it to the control plane as `INFERENCE_BASE_URL` in the staging environment.
 
 ## Local tunnel path
-If you need to validate the callback path before a cloud deploy is available, expose the local service with a tunnel and point the control plane at the tunnel URL:
+If you need to validate the callback path before a cloud deploy is available, use a named Cloudflare Tunnel or another durable staging hostname. Do not use `cloudflared tunnel --url`; that quick tunnel is ephemeral and should only appear in historical rollout reports.
 
-```bash
-cd /Users/hanfei/rork-hoopshighlights-ai_Final/services/inference
-uvicorn app.main:app --host 127.0.0.1 --port 8080
-# in another terminal
-cloudflared tunnel --url http://127.0.0.1:8080
-```
+Use the helper doc and config template in [`docs/cloudflare_tunnel_staging.md`](/Users/hanfei/rork-hoopshighlights-ai_Final/docs/cloudflare_tunnel_staging.md). The companion script in [`services/inference/scripts/run_named_tunnel.sh`](/Users/hanfei/rork-hoopshighlights-ai_Final/services/inference/scripts/run_named_tunnel.sh) starts the local origin and the named tunnel together.
 
-Then set `INFERENCE_BASE_URL` to the tunnel URL in the staging control-plane environment and confirm `/readyz` reports `callback`, `ingress`, and `r2` as `configured` before starting a live job.
+Then set `INFERENCE_BASE_URL` to the durable staging hostname in the staging control-plane environment and confirm `/readyz` reports `callback`, `ingress`, and `r2` as `configured` before starting a live job.
 
 ## Endpoints
 - `GET /healthz`
@@ -206,7 +201,7 @@ Service and model config:
 - Perception overlays are exported as image artifacts for a few sampled frames when OpenCV is available.
 
 ## Shadow eval
-Use [`docs/shadow_eval_reporting.md`](/Users/hanfei/rork-hoopshighlights-ai_Final/docs/shadow_eval_reporting.md) when you need to summarize a live staging batch or local mixed batch without touching the runtime contract. The shadow report records flat labels, hierarchical labels, uncertainty, miss-vs-made confusion, and mixed-batch spread.
+Use [`docs/shadow_eval_reporting.md`](/Users/hanfei/rork-hoopshighlights-ai_Final/docs/shadow_eval_reporting.md) when you need to summarize a live staging batch or local mixed batch without touching the runtime contract. The shadow report records flat labels, hierarchical labels, uncertainty, miss-vs-made confusion, mixed-batch spread, and optional baseline-vs-candidate deltas for phase3d comparison.
 
 ## Portable deployment
 The Docker image is portable enough to run on a VM, container service, or Hugging Face-hosted container runtime as long as the following are present:

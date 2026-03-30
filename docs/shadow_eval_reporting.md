@@ -44,6 +44,25 @@ For best results, include the live staging fields on each clip row:
 
 If `expectedLabel` is present, the report also records miss-vs-made confusion against the expected label.
 
+## Comparison mode
+
+To compare a LoRA shadow batch against the phase3d baseline, pass the baseline batch separately:
+
+```bash
+python3 services/inference/scripts/run_shadow_eval.py \
+  --baseline-results /tmp/phase3d/*.json \
+  --batch-results /tmp/phase3d1-lora/*.json \
+  --output-dir /tmp/phase3d1-lora/report
+```
+
+The report then includes:
+
+- baseline summary metrics
+- candidate summary metrics
+- a direct delta section for flat-label spread, highlight dominance, uncertainty, and miss-vs-made confusion
+
+This is the preferred workflow for shadowing encoder-adaptation or other rollout experiments against phase3d.
+
 ## Command
 
 ```bash

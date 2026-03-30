@@ -43,6 +43,15 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     records = load_batch_records(args.batch_results)
     report = build_shadow_report(records)
+    if args.baseline_results:
+        baseline_records = load_batch_records(args.baseline_results)
+        baseline_report = build_shadow_report(baseline_records)
+        report["baselineSummary"] = baseline_report["summary"]
+        report["comparisonSummary"] = build_shadow_comparison_summary(
+            baseline_report["summary"],
+            report["summary"],
+        )
+        report["baselineCollapseExamples"] = baseline_report["collapseExamples"][:8]
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
     json_path = args.output_dir / "shadow_eval_report.json"
@@ -63,6 +72,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         nargs="+",
         required=True,
         help="One or more JSON files containing job result payloads or clip-level result arrays.",
+    )
+    parser.add_argument(
+        "--baseline-results",
+        type=Path,
+        nargs="+",
+        help="Optional phase3d baseline batch results to compare against the candidate shadow batch.",
     )
     parser.add_argument("--output-dir", type=Path, required=True)
     return parser.parse_args(argv)
@@ -136,6 +151,29 @@ def render_markdown(report: dict[str, Any]) -> str:
     lines.append(f"- Outcomes: `{json.dumps(summary['outcomeDistribution'], sort_keys=True)}`")
     lines.append(f"- Miss-vs-made confusion: `{json.dumps(summary['missVsMadeConfusion'], sort_keys=True)}`")
     lines.append("")
+    if report.get("baselineSummary") and report.get("comparisonSummary"):
+        baseline = report["baselineSummary"]
+        comparison = report["comparisonSummary"]
+        lines.append("## Comparison vs Baseline")
+        lines.append(
+            f"- Baseline flat labels: `{json.dumps(baseline['flatLabelDistribution'], sort_keys=True)}`"
+        )
+        lines.append(
+            f"- Candidate flat labels: `{json.dumps(summary['flatLabelDistribution'], sort_keys=True)}`"
+        )
+        lines.append(
+            f"- Flat label spread delta: `{comparison['mixedBatchLabelSpread']['spreadScoreDelta']:+.4f}`"
+        )
+        lines.append(
+            f"- Highlight share delta: `{comparison['flatLabel']['highlightShareDelta']:+.4f}`"
+        )
+        lines.append(
+            f"- Uncertainty delta: `{comparison['uncertaintyRateDelta']:+.4f}`"
+        )
+        lines.append(
+            f"- Miss-vs-made delta: `{json.dumps(comparison['missVsMadeConfusionDelta'], sort_keys=True)}`"
+        )
+        lines.append("")
     lines.append("## Mixed Batch Spread")
     lines.append(f"- Spread score: `{summary['mixedBatchLabelSpread']['spreadScore']:.4f}`")
     lines.append(f"- Top labels: `{json.dumps(summary['mixedBatchLabelSpread']['topLabels'], sort_keys=True)}`")
@@ -372,6 +410,74 @@ def build_spread_warnings(label_spread: dict[str, Any], uncertainty_rate: float)
     if uncertainty_rate > 0.5:
         warnings.append("Uncertainty remains above 50% on this batch.")
     return warnings
+
+
+def build_shadow_comparison_summary(baseline_summary: dict[str, Any], candidate_summary: dict[str, Any]) -> dict[str, Any]:
+    baseline_clip_count = max(int(baseline_summary.get("clipCount", 0)), 1)
+    candidate_clip_count = max(int(candidate_summary.get("clipCount", 0)), 1)
+    baseline_flat = baseline_summary.get("flatLabelDistribution", {})
+    candidate_flat = candidate_summary.get("flatLabelDistribution", {})
+    baseline_spread = baseline_summary.get("mixedBatchLabelSpread", {})
+    candidate_spread = candidate_summary.get("mixedBatchLabelSpread", {})
+    return {
+        "flatLabel": {
+            "baselineDominantLabel": baseline_spread.get("dominantLabel"),
+            "candidateDominantLabel": candidate_spread.get("dominantLabel"),
+            "baselineDominantLabelShare": baseline_spread.get("dominantLabelShare", 0.0),
+            "candidateDominantLabelShare": candidate_spread.get("dominantLabelShare", 0.0),
+            "dominantLabelShareDelta": round(
+                float(candidate_spread.get("dominantLabelShare", 0.0))
+                - float(baseline_spread.get("dominantLabelShare", 0.0)),
+                4,
+            ),
+            "highlightShareBaseline": round(float(baseline_flat.get("Highlight", 0)) / baseline_clip_count, 4),
+            "highlightShareCandidate": round(float(candidate_flat.get("Highlight", 0)) / candidate_clip_count, 4),
+            "highlightShareDelta": round(
+                float(candidate_flat.get("Highlight", 0)) / candidate_clip_count
+                - float(baseline_flat.get("Highlight", 0)) / baseline_clip_count,
+                4,
+            ),
+            "baselineDistribution": baseline_flat,
+            "candidateDistribution": candidate_flat,
+        },
+        "eventFamily": {
+            "baselineDistribution": baseline_summary.get("eventFamilyDistribution", {}),
+            "candidateDistribution": candidate_summary.get("eventFamilyDistribution", {}),
+        },
+        "outcome": {
+            "baselineDistribution": baseline_summary.get("outcomeDistribution", {}),
+            "candidateDistribution": candidate_summary.get("outcomeDistribution", {}),
+        },
+        "shotSubtype": {
+            "baselineDistribution": baseline_summary.get("shotSubtypeDistribution", {}),
+            "candidateDistribution": candidate_summary.get("shotSubtypeDistribution", {}),
+        },
+        "mixedBatchLabelSpread": {
+            "baselineUniqueLabelCount": baseline_spread.get("uniqueLabelCount", 0),
+            "candidateUniqueLabelCount": candidate_spread.get("uniqueLabelCount", 0),
+            "uniqueLabelCountDelta": int(candidate_spread.get("uniqueLabelCount", 0))
+            - int(baseline_spread.get("uniqueLabelCount", 0)),
+            "baselineSpreadScore": baseline_spread.get("spreadScore", 0.0),
+            "candidateSpreadScore": candidate_spread.get("spreadScore", 0.0),
+            "spreadScoreDelta": round(
+                float(candidate_spread.get("spreadScore", 0.0)) - float(baseline_spread.get("spreadScore", 0.0)),
+                4,
+            ),
+        },
+        "uncertaintyRateDelta": round(
+            float(candidate_summary.get("uncertaintyRate", 0.0)) - float(baseline_summary.get("uncertaintyRate", 0.0)),
+            4,
+        ),
+        "missVsMadeConfusionDelta": {
+            key: int(candidate_summary.get("missVsMadeConfusion", {}).get(key, 0))
+            - int(baseline_summary.get("missVsMadeConfusion", {}).get(key, 0))
+            for key in sorted(
+                set(baseline_summary.get("missVsMadeConfusion", {})).union(
+                    candidate_summary.get("missVsMadeConfusion", {})
+                )
+            )
+        },
+    }
 
 
 def distribution(values: Iterable[Any]) -> dict[str, int]:
