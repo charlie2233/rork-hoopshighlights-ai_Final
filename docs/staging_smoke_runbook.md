@@ -49,7 +49,7 @@ Before starting a live smoke, verify the inference service readiness endpoint re
 - `ingress`
 - `r2`
 
-If you are validating the callback path locally instead of using a deployed service, expose the inference service with a tunnel and use that public URL for `INFERENCE_BASE_URL`.
+If you are validating the callback path locally instead of using a deployed service, use the named-tunnel workflow in [`docs/cloudflare_tunnel_staging.md`](/Users/hanfei/rork-hoopshighlights-ai_Final/docs/cloudflare_tunnel_staging.md) and use that durable public URL for `INFERENCE_BASE_URL`. Do not use `cloudflared tunnel --url` for staging rollout or smoke tests.
 
 ## Exact Deploy Commands
 

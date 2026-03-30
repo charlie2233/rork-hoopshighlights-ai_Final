@@ -43,7 +43,7 @@ Secret names used by the control plane:
 - `R2_ACCESS_KEY_ID`
 - `R2_SECRET_ACCESS_KEY`
 
-`INFERENCE_BASE_URL` must point at the deployed external inference service for phase 2b staging cutover. It is stored as a secret so the staging Worker never depends on a localhost or hard-coded service URL.
+`INFERENCE_BASE_URL` must point at a durable external inference service URL for staging. Prefer the deployed Cloud Run URL; if you need a local fallback, use the named-tunnel workflow in [`docs/cloudflare_tunnel_staging.md`](/Users/hanfei/rork-hoopshighlights-ai_Final/docs/cloudflare_tunnel_staging.md). Do not rely on a quick `trycloudflare.com` tunnel for staging rollouts.
 
 Those names are the only secret identifiers to use in local and staging. Store values with `wrangler secret put`; do not put them in `vars`.
 
