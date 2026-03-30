@@ -1,12 +1,14 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://rork.hoopshighlights.ai/schemas/clip-annotation.schema.json",
+  "$id": "https://rork.hoopshighlights.ai/schemas/annotation-schema.json",
+  "schemaVersion": "2026-03-30",
   "title": "HoopsClips Clip Annotation",
   "type": "object",
   "additionalProperties": false,
   "required": [
     "clipId",
     "sourceDomain",
+    "schemaVersion",
     "eventFamily",
     "outcome",
     "shotSubtype",
@@ -25,6 +27,11 @@
   "properties": {
     "clipId": { "type": "string", "minLength": 1 },
     "sourceDomain": { "type": "string", "minLength": 1 },
+    "schemaVersion": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Schema version attached when the row was written. Defaults to the current canonical version if absent."
+    },
     "eventFamily": {
       "type": "string",
       "enum": ["shot_attempt", "turnover", "defensive_event", "transition", "other"]

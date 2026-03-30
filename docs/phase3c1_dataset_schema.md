@@ -2,10 +2,11 @@
 
 This phase uses one shared clip annotation schema for both gold and silver basketball datasets.
 
-The schema is defined in [`services/inference/datasets/clip_annotation.schema.json`](/Users/hanfei/rork-hoopshighlights-ai_Final/services/inference/datasets/clip_annotation.schema.json) and includes:
+The canonical schema is defined in [`services/inference/datasets/annotation_schema.json`](/Users/hanfei/rork-hoopshighlights-ai_Final/services/inference/datasets/annotation_schema.json) and includes:
 
 - `clipId`
 - `sourceDomain`
+- `schemaVersion`
 - `eventFamily`
 - `outcome`
 - `shotSubtype`
@@ -20,6 +21,11 @@ The schema is defined in [`services/inference/datasets/clip_annotation.schema.js
 - `reviewerNotes`
 - `rawRuntimeOutputs`
 - `rawTeacherOutputs`
+
+Migration notes:
+
+- `schemaVersion` was added to the annotation row contract so gold/silver artifacts can be migrated and traced across phases.
+- The duplicate schema files `clip_annotation_schema.json` and `clip_annotation.schema.json` are retired; `annotation_schema.json` is the only source of truth.
 
 ## Gold
 

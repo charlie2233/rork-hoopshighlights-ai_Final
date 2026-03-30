@@ -11,6 +11,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from services.inference.datasets import ANNOTATION_SCHEMA_VERSION
 from services.inference.scripts.run_eval_report import load_eval_rows, load_predictions
 
 
@@ -195,6 +196,7 @@ def build_gold_row(row: Any, prediction: Any) -> dict[str, Any]:
     return {
         "clipId": row.clip_id,
         "sourceDomain": source_domain,
+        "schemaVersion": ANNOTATION_SCHEMA_VERSION,
         "eventFamily": row.expected_event_family,
         "outcome": row.expected_outcome,
         "shotSubtype": row.expected_shot_subtype,
@@ -265,6 +267,7 @@ def build_hard_negative_row(spec: dict[str, Any]) -> dict[str, Any]:
     return {
         "clipId": spec["clipId"],
         "sourceDomain": spec["sourceDomain"],
+        "schemaVersion": ANNOTATION_SCHEMA_VERSION,
         "eventFamily": "other",
         "outcome": "uncertain",
         "shotSubtype": None,
@@ -288,6 +291,7 @@ def build_silver_row(gold_row: dict[str, Any]) -> dict[str, Any]:
     return {
         "clipId": gold_row["clipId"],
         "sourceDomain": "teacher_pseudo",
+        "schemaVersion": gold_row["schemaVersion"],
         "eventFamily": teacher.get("eventFamily") or gold_row["eventFamily"],
         "outcome": teacher.get("outcome") or gold_row["outcome"],
         "shotSubtype": teacher.get("shotSubtype") if teacher.get("shotSubtype") is not None else gold_row["shotSubtype"],
@@ -462,6 +466,7 @@ def build_disagreement_queue(gold_rows: list[dict[str, Any]], silver_rows: list[
                 {
                     "clipId": row["clipId"],
                     "sourceDomain": row["sourceDomain"],
+                    "schemaVersion": row["schemaVersion"],
                     "priorityScore": round(min(priority, 1.0), 3),
                     "reasons": unique_ordered(reasons),
                     "gold": {

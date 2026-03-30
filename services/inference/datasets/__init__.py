@@ -1,5 +1,6 @@
 from .annotations import (
-    CLIP_ANNOTATION_SCHEMA_PATH,
+    ANNOTATION_SCHEMA_PATH,
+    ANNOTATION_SCHEMA_VERSION,
     ClipAnnotation,
     annotation_template,
     load_annotation_rows,
@@ -7,7 +8,8 @@ from .annotations import (
 )
 
 __all__ = [
-    "CLIP_ANNOTATION_SCHEMA_PATH",
+    "ANNOTATION_SCHEMA_PATH",
+    "ANNOTATION_SCHEMA_VERSION",
     "ClipAnnotation",
     "annotation_template",
     "load_annotation_rows",

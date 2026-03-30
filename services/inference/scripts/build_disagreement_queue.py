@@ -17,6 +17,7 @@ DEFAULT_TOP_K = 50
 class UnifiedClipAnnotation:
     clip_id: str
     source_domain: str
+    schema_version: str | None
     event_family: str
     outcome: str
     shot_subtype: str | None
@@ -37,6 +38,7 @@ class UnifiedClipAnnotation:
 class DisagreementQueueItem:
     clip_id: str
     source_domain: str
+    schema_version: str | None
     review_bucket: str
     priority_score: float
     priority_reasons: list[str]
@@ -97,6 +99,7 @@ def parse_annotation(item: dict[str, Any]) -> UnifiedClipAnnotation:
     return UnifiedClipAnnotation(
         clip_id=str(item["clipId"]),
         source_domain=str(item["sourceDomain"]),
+        schema_version=_normalize_optional_text(item.get("schemaVersion")),
         event_family=str(item["eventFamily"]),
         outcome=str(item["outcome"]),
         shot_subtype=_normalize_optional_text(item.get("shotSubtype")),
@@ -192,6 +195,7 @@ def score_annotation(
     return DisagreementQueueItem(
         clip_id=annotation.clip_id,
         source_domain=annotation.source_domain,
+        schema_version=annotation.schema_version,
         review_bucket=review_bucket,
         priority_score=min(priority_score, 1.0),
         priority_reasons=priority_reasons,

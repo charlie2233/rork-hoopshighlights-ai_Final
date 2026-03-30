@@ -1,18 +1,20 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
 import json
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
 
-CLIP_ANNOTATION_SCHEMA_PATH = Path(__file__).with_name("clip_annotation_schema.json")
+ANNOTATION_SCHEMA_VERSION = "2026-03-30"
+ANNOTATION_SCHEMA_PATH = Path(__file__).with_name("annotation_schema.json")
 
 
 @dataclass
 class ClipAnnotation:
     clipId: str
     sourceDomain: str
+    schemaVersion: str
     sourceRef: str | None
     eventFamily: str
     outcome: str
@@ -37,6 +39,7 @@ def annotation_template(*, clip_id: str, source_domain: str) -> ClipAnnotation:
     return ClipAnnotation(
         clipId=clip_id,
         sourceDomain=source_domain,
+        schemaVersion=ANNOTATION_SCHEMA_VERSION,
         sourceRef=None,
         eventFamily="other",
         outcome="uncertain",
@@ -75,6 +78,7 @@ def _normalize_row(row: dict[str, Any]) -> dict[str, Any]:
     required_fields = {
         "clipId",
         "sourceDomain",
+        "schemaVersion",
         "eventFamily",
         "outcome",
         "shotSubtype",
@@ -91,14 +95,15 @@ def _normalize_row(row: dict[str, Any]) -> dict[str, Any]:
         "rawTeacherOutputs",
     }
     optional_fields = {"sourceRef"}
-    missing = sorted(required_fields.difference(row))
+    normalized = dict(row)
+    normalized["schemaVersion"] = str(normalized.get("schemaVersion") or ANNOTATION_SCHEMA_VERSION)
+    missing = sorted(required_fields.difference(normalized))
     if missing:
         raise ValueError(f"Annotation row is missing required fields: {', '.join(missing)}")
     extras = sorted(set(row).difference(required_fields).difference(optional_fields))
     if extras:
         raise ValueError(f"Annotation row contains unsupported fields: {', '.join(extras)}")
 
-    normalized = dict(row)
     normalized["clipId"] = str(normalized["clipId"])
     normalized["sourceDomain"] = str(normalized["sourceDomain"])
     normalized["sourceRef"] = None if normalized.get("sourceRef") is None else str(normalized["sourceRef"])

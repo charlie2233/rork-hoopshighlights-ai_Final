@@ -5,7 +5,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from services.inference.datasets import annotation_template, load_annotation_rows, write_annotation_rows
+from services.inference.datasets import (
+    ANNOTATION_SCHEMA_VERSION,
+    annotation_template,
+    load_annotation_rows,
+    write_annotation_rows,
+)
 
 
 class AnnotationDatasetTests(unittest.TestCase):
@@ -72,6 +77,7 @@ class AnnotationDatasetTests(unittest.TestCase):
         self.assertGreaterEqual(len(rows), 8)
         self.assertTrue(rows[0].humanVerified)
         self.assertIsNotNone(rows[0].sourceRef)
+        self.assertEqual(rows[0].schemaVersion, ANNOTATION_SCHEMA_VERSION)
         self.assertIsNotNone(rows[0].teacherConfidence)
         self.assertGreaterEqual(rows[0].teacherConfidence, 0.0)
         self.assertLessEqual(rows[0].teacherConfidence, 1.0)

@@ -31,6 +31,7 @@ python3 services/inference/scripts/run_offline_probe.py \
 Interpretation:
 
 - `gold_set.json` and `silver_set.json` are the curated seed corpora used to bootstrap the generated JSONL datasets.
+- `annotation_schema.json` is the canonical row schema. The older duplicate schema filenames were removed during migration.
 - `gold_annotations.jsonl` is the human-verified set.
 - `silver_teacher_annotations.jsonl` is the teacher-only pseudo-label set.
 - `disagreement_queue.jsonl` ranks clips for manual review, especially miss-vs-made, runtime-vs-teacher disagreements, and highlight-only collapses.

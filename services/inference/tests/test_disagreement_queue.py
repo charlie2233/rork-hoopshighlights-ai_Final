@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from services.inference.datasets import ANNOTATION_SCHEMA_VERSION
 from services.inference.scripts.build_disagreement_queue import (
     build_disagreement_queue,
     build_summary,
@@ -33,6 +34,7 @@ class DisagreementQueueTests(unittest.TestCase):
 
         self.assertEqual(len(queue), 4)
         self.assertEqual(queue[0].clip_id, "clip-highlight-disagree-001")
+        self.assertEqual(queue[0].schema_version, ANNOTATION_SCHEMA_VERSION)
         self.assertIn("runtime_teacher_disagree", queue[0].priority_reasons)
         self.assertIn("app_facing_label_only_highlight", queue[0].priority_reasons)
         self.assertIn("strong_ball_hoop_evidence_null_subtype", queue[0].priority_reasons)

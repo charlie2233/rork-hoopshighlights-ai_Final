@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from services.inference.datasets import ANNOTATION_SCHEMA_PATH, ANNOTATION_SCHEMA_VERSION
 from services.inference.scripts.build_probe_datasets import main as build_datasets_main
 from services.inference.scripts.run_offline_probe import build_probe_report, load_jsonl
 
@@ -32,12 +33,12 @@ class OfflineProbeTests(unittest.TestCase):
         self.assertGreaterEqual(sum(report["disagreementDistribution"].values()), 1)
 
     def test_schema_file_contains_required_fields(self) -> None:
-        schema_path = self.repo_root() / "services" / "inference" / "datasets" / "annotation_schema.json"
-        schema = json.loads(schema_path.read_text(encoding="utf-8"))
+        schema = json.loads(ANNOTATION_SCHEMA_PATH.read_text(encoding="utf-8"))
         required = set(schema["required"])
         for field in [
             "clipId",
             "sourceDomain",
+            "schemaVersion",
             "eventFamily",
             "outcome",
             "shotSubtype",
@@ -45,6 +46,7 @@ class OfflineProbeTests(unittest.TestCase):
             "rawTeacherOutputs",
         ]:
             self.assertIn(field, required)
+        self.assertEqual(schema["schemaVersion"], ANNOTATION_SCHEMA_VERSION)
 
     def test_dataset_generation_is_reproducible(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

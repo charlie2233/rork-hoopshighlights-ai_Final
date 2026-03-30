@@ -4,13 +4,14 @@ This workflow builds a review queue from unified clip annotations without changi
 
 ## Annotation Contract
 
-The queue builder consumes records that follow [`services/inference/datasets/clip_annotation_schema.json`](/Users/hanfei/rork-hoopshighlights-ai_Final/services/inference/datasets/clip_annotation_schema.json).
+The queue builder consumes records that follow the canonical [`services/inference/datasets/annotation_schema.json`](/Users/hanfei/rork-hoopshighlights-ai_Final/services/inference/datasets/annotation_schema.json).
 
 The important separation is:
 
 - `humanVerified` and `reviewerNotes` belong to the gold path.
 - `rawTeacherOutputs` belong to the teacher / silver path.
 - `rawRuntimeOutputs` belong to the live runtime path.
+- `schemaVersion` identifies the migration state of the annotation row and should be preserved when moving clips between gold, silver, and disagreement queues.
 
 Teacher output must never overwrite human gold labels.
 
