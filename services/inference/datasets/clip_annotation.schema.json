@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hoopsclips.ai/schemas/clip-annotation.schema.json",
+  "title": "HoopsClips Clip Annotation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "clipId",
+    "sourceDomain",
+    "eventFamily",
+    "outcome",
+    "shotSubtype",
+    "ballVisible",
+    "hoopVisible",
+    "ballNearRim",
+    "ballThroughHoopLikelihood",
+    "possessionChangeLikelihood",
+    "transitionLikelihood",
+    "teacherConfidence",
+    "humanVerified",
+    "reviewerNotes",
+    "rawRuntimeOutputs",
+    "rawTeacherOutputs"
+  ],
+  "properties": {
+    "clipId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable clip identifier used to join gold, silver, runtime, and teacher records."
+    },
+    "sourceDomain": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Origin of the clip, such as live staging, human review, teacher-generated audit, or imported dataset."
+    },
+    "eventFamily": {
+      "type": "string",
+      "enum": ["shot_attempt", "turnover", "defensive_event", "transition", "other"],
+      "description": "Unified family label shared by gold and silver annotations."
+    },
+    "outcome": {
+      "type": "string",
+      "enum": ["made", "missed", "blocked", "uncertain"],
+      "description": "Outcome-level label used for basketball-specific supervision."
+    },
+    "shotSubtype": {
+      "type": ["string", "null"],
+      "enum": ["dunk", "layup", "jumper", "three", "putback", null],
+      "description": "Shot subtype when the clip is a shot attempt; otherwise null."
+    },
+    "ballVisible": {
+      "type": "boolean",
+      "description": "Whether the ball is visible anywhere in the clip window."
+    },
+    "hoopVisible": {
+      "type": "boolean",
+      "description": "Whether the rim/hoop is visible anywhere in the clip window."
+    },
+    "ballNearRim": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Normalized strength that the ball was near the rim."
+    },
+    "ballThroughHoopLikelihood": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Normalized likelihood that the ball passed through the hoop."
+    },
+    "possessionChangeLikelihood": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Normalized likelihood of a possession change in the clip."
+    },
+    "transitionLikelihood": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Normalized likelihood that the clip is part of transition play."
+    },
+    "teacherConfidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Confidence reported by the offline teacher labeler, if present."
+    },
+    "humanVerified": {
+      "type": "boolean",
+      "description": "True only when a human has verified the annotation."
+    },
+    "reviewerNotes": {
+      "type": "string",
+      "description": "Short review notes explaining disagreements, ambiguity, or fixes."
+    },
+    "rawRuntimeOutputs": {
+      "type": "object",
+      "description": "Opaque runtime outputs captured before any gold/silver reconciliation.",
+      "additionalProperties": true
+    },
+    "rawTeacherOutputs": {
+      "type": "object",
+      "description": "Opaque offline teacher outputs captured separately from runtime outputs.",
+      "additionalProperties": true
+    }
+  }
+}
