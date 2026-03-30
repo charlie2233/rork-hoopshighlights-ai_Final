@@ -14,6 +14,7 @@ class AnnotationDatasetTests(unittest.TestCase):
         row.eventFamily = "shot_attempt"
         row.outcome = "missed"
         row.shotSubtype = "jumper"
+        row.sourceRef = "r2://basketball/gold/clip-001.mp4"
         row.ballVisible = True
         row.hoopVisible = True
         row.ballNearRim = 0.83
@@ -33,6 +34,7 @@ class AnnotationDatasetTests(unittest.TestCase):
 
         self.assertEqual(len(reloaded), 1)
         self.assertEqual(reloaded[0].clipId, "clip-001")
+        self.assertEqual(reloaded[0].sourceRef, "r2://basketball/gold/clip-001.mp4")
         self.assertEqual(reloaded[0].eventFamily, "shot_attempt")
         self.assertEqual(reloaded[0].outcome, "missed")
         self.assertEqual(reloaded[0].rawTeacherOutputs["eventFamily"], "shot_attempt")
@@ -58,6 +60,14 @@ class AnnotationDatasetTests(unittest.TestCase):
             path.write_text(json.dumps(payload), encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "missing required fields"):
                 load_annotation_rows(path)
+
+    def test_loads_seed_gold_set_rows(self) -> None:
+        path = self.repo_root() / "services" / "inference" / "datasets" / "gold_set.json"
+        rows = load_annotation_rows(path)
+
+        self.assertGreaterEqual(len(rows), 8)
+        self.assertIsNone(rows[0].teacherConfidence)
+        self.assertTrue(rows[0].humanVerified)
 
 
 if __name__ == "__main__":

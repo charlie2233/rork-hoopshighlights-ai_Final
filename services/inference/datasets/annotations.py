@@ -6,27 +6,28 @@ from pathlib import Path
 from typing import Any, Iterable
 
 
-CLIP_ANNOTATION_SCHEMA_PATH = Path(__file__).with_name("clip_annotation.schema.json")
+CLIP_ANNOTATION_SCHEMA_PATH = Path(__file__).with_name("clip_annotation_schema.json")
 
 
 @dataclass
 class ClipAnnotation:
     clipId: str
     sourceDomain: str
+    sourceRef: str | None
     eventFamily: str
     outcome: str
     shotSubtype: str | None
     ballVisible: bool
     hoopVisible: bool
-    ballNearRim: float
-    ballThroughHoopLikelihood: float
-    possessionChangeLikelihood: float
-    transitionLikelihood: float
-    teacherConfidence: float
+    ballNearRim: float | None
+    ballThroughHoopLikelihood: float | None
+    possessionChangeLikelihood: float | None
+    transitionLikelihood: float | None
+    teacherConfidence: float | None
     humanVerified: bool
     reviewerNotes: str
-    rawRuntimeOutputs: dict[str, Any]
-    rawTeacherOutputs: dict[str, Any]
+    rawRuntimeOutputs: dict[str, Any] | None
+    rawTeacherOutputs: dict[str, Any] | None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -36,6 +37,7 @@ def annotation_template(*, clip_id: str, source_domain: str) -> ClipAnnotation:
     return ClipAnnotation(
         clipId=clip_id,
         sourceDomain=source_domain,
+        sourceRef=None,
         eventFamily="other",
         outcome="uncertain",
         shotSubtype=None,
@@ -45,11 +47,11 @@ def annotation_template(*, clip_id: str, source_domain: str) -> ClipAnnotation:
         ballThroughHoopLikelihood=0.0,
         possessionChangeLikelihood=0.0,
         transitionLikelihood=0.0,
-        teacherConfidence=0.0,
+        teacherConfidence=None,
         humanVerified=False,
         reviewerNotes="",
         rawRuntimeOutputs={},
-        rawTeacherOutputs={},
+        rawTeacherOutputs=None,
     )
 
 
@@ -88,40 +90,47 @@ def _normalize_row(row: dict[str, Any]) -> dict[str, Any]:
         "rawRuntimeOutputs",
         "rawTeacherOutputs",
     }
+    optional_fields = {"sourceRef"}
     missing = sorted(required_fields.difference(row))
     if missing:
         raise ValueError(f"Annotation row is missing required fields: {', '.join(missing)}")
+    extras = sorted(set(row).difference(required_fields).difference(optional_fields))
+    if extras:
+        raise ValueError(f"Annotation row contains unsupported fields: {', '.join(extras)}")
 
     normalized = dict(row)
     normalized["clipId"] = str(normalized["clipId"])
     normalized["sourceDomain"] = str(normalized["sourceDomain"])
+    normalized["sourceRef"] = None if normalized.get("sourceRef") is None else str(normalized["sourceRef"])
     normalized["eventFamily"] = str(normalized["eventFamily"])
     normalized["outcome"] = str(normalized["outcome"])
     normalized["shotSubtype"] = None if normalized["shotSubtype"] is None else str(normalized["shotSubtype"])
     normalized["ballVisible"] = bool(normalized["ballVisible"])
     normalized["hoopVisible"] = bool(normalized["hoopVisible"])
-    normalized["ballNearRim"] = _clamp_probability(normalized["ballNearRim"], "ballNearRim")
-    normalized["ballThroughHoopLikelihood"] = _clamp_probability(
+    normalized["ballNearRim"] = _clamp_optional_probability(normalized["ballNearRim"], "ballNearRim")
+    normalized["ballThroughHoopLikelihood"] = _clamp_optional_probability(
         normalized["ballThroughHoopLikelihood"],
         "ballThroughHoopLikelihood",
     )
-    normalized["possessionChangeLikelihood"] = _clamp_probability(
+    normalized["possessionChangeLikelihood"] = _clamp_optional_probability(
         normalized["possessionChangeLikelihood"],
         "possessionChangeLikelihood",
     )
-    normalized["transitionLikelihood"] = _clamp_probability(
+    normalized["transitionLikelihood"] = _clamp_optional_probability(
         normalized["transitionLikelihood"],
         "transitionLikelihood",
     )
-    normalized["teacherConfidence"] = _clamp_probability(normalized["teacherConfidence"], "teacherConfidence")
+    normalized["teacherConfidence"] = _clamp_optional_probability(normalized["teacherConfidence"], "teacherConfidence")
     normalized["humanVerified"] = bool(normalized["humanVerified"])
     normalized["reviewerNotes"] = str(normalized["reviewerNotes"])
-    normalized["rawRuntimeOutputs"] = _coerce_mapping(normalized["rawRuntimeOutputs"], "rawRuntimeOutputs")
-    normalized["rawTeacherOutputs"] = _coerce_mapping(normalized["rawTeacherOutputs"], "rawTeacherOutputs")
+    normalized["rawRuntimeOutputs"] = _coerce_optional_mapping(normalized["rawRuntimeOutputs"], "rawRuntimeOutputs")
+    normalized["rawTeacherOutputs"] = _coerce_optional_mapping(normalized["rawTeacherOutputs"], "rawTeacherOutputs")
     return normalized
 
 
-def _clamp_probability(value: Any, field_name: str) -> float:
+def _clamp_optional_probability(value: Any, field_name: str) -> float | None:
+    if value is None:
+        return None
     try:
         parsed = float(value)
     except (TypeError, ValueError) as exc:
@@ -131,7 +140,9 @@ def _clamp_probability(value: Any, field_name: str) -> float:
     return parsed
 
 
-def _coerce_mapping(value: Any, field_name: str) -> dict[str, Any]:
+def _coerce_optional_mapping(value: Any, field_name: str) -> dict[str, Any] | None:
+    if value is None:
+        return None
     if not isinstance(value, dict):
         raise ValueError(f"{field_name} must be a JSON object.")
     return value
