@@ -2,6 +2,8 @@
 
 This runbook covers the live Cloudflare staging path for phase 2b: resource setup, deploy, iOS smoke, rollback, and the known failure modes for the happy-path flow.
 
+For the phase 3d runtime-model rollout, keep the same control-plane contract and use the staging path below as a shadow-validation checklist. The only expected user-visible change is better label quality in Review; the staging debug trace card must still render `requestId`, `uploadTraceId`, `inferenceAttemptId`, `modelVersion`, and `failureReason`.
+
 ## Preconditions
 
 - `wrangler login` is complete for the Cloudflare account.
@@ -101,6 +103,8 @@ The script now prints a summary with `requestIds.presign`, `requestIds.finalize`
 - Confirm the app renders the returned clips.
 - Confirm the live smoke command includes `--file` so the upload is backed by a real sample video.
 - Confirm the final JSON summary includes `modelVersion`, `confidence`, and `clipCount`.
+- For runtime-model shadow rollouts, confirm the Review tab still opens automatically and the staging trace card still shows the trace fields above.
+- For runtime-model shadow rollouts, note whether the flat labels spread beyond the fallback `Highlight` label on mixed batches.
 
 ## Rollback Checklist
 
