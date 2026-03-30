@@ -10,5 +10,4 @@ venv/
 .env
 .env.*
 tests/
-evals/
 scripts/
