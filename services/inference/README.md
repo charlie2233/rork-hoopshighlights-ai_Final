@@ -77,6 +77,15 @@ cp .env.example .env
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8080
 ```
 
+## Runtime training export
+```bash
+cd /Users/hanfei/rork-hoopshighlights-ai_Final
+python3 services/inference/scripts/build_runtime_training_data.py \
+  --output-dir services/inference/datasets/runtime_training
+```
+
+The export writes a split manifest, per-split record dumps, and JSON feature matrices for the lightweight runtime labeler.
+
 ## Docker
 ```bash
 cd /Users/hanfei/rork-hoopshighlights-ai_Final/services/inference

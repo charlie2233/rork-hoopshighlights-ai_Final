@@ -6,6 +6,7 @@ from .annotations import (
     load_annotation_rows,
     write_annotation_rows,
 )
+from .runtime_training import RUNTIME_TRAINING_FEATURE_VERSION, build_runtime_training_bundle
 
 __all__ = [
     "ANNOTATION_SCHEMA_PATH",
@@ -13,5 +14,7 @@ __all__ = [
     "ClipAnnotation",
     "annotation_template",
     "load_annotation_rows",
+    "RUNTIME_TRAINING_FEATURE_VERSION",
+    "build_runtime_training_bundle",
     "write_annotation_rows",
 ]

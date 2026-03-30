@@ -1,6 +1,6 @@
 # Clip Annotation Datasets
 
-This directory contains the offline annotation assets used by the structured-basketball probe.
+This directory contains the offline annotation assets used by the structured-basketball probe and runtime-training pipeline.
 
 Files:
 
@@ -11,11 +11,19 @@ Files:
 - `silver_teacher_annotations.jsonl`: teacher pseudo-labels kept separate from the human gold set.
 - `disagreement_queue.jsonl`: clips that should be prioritized for manual review.
 
+Runtime-training outputs:
+
+- `runtime_training/manifest.json`: split policy, weights, and source inventory.
+- `runtime_training/all_records.jsonl`: unified training records with source kind, split, weights, and derived display labels.
+- `runtime_training/{train,val,test}/records.jsonl`: split-specific record dumps.
+- `runtime_training/{train,val,test}/features.json`: JSON feature matrix exports for the runtime fusion model.
+
 Migration notes:
 
-- `schemaVersion` is now required on every annotation row and is set to `2026-03-30` for this phase.
-- `clip_annotation_schema.json` and `clip_annotation.schema.json` were removed; use `annotation_schema.json` as the single source of truth.
+- `schemaVersion` is stored on generated annotation rows and defaults to `2026-03-30` when missing on legacy seed rows.
+- `annotation_schema.json` is the single source of truth; the older schema filenames are deprecated compatibility leftovers.
 - Regenerate dataset artifacts with `python3 services/inference/scripts/build_probe_datasets.py --output-dir services/inference/datasets` after editing the seed corpora.
+- Regenerate runtime-training artifacts with `python3 services/inference/scripts/build_runtime_training_data.py --output-dir services/inference/datasets/runtime_training` after editing the seed corpora.
 
 Field intent:
 
