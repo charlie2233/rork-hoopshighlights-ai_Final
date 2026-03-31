@@ -25,6 +25,9 @@ Measure whether the learned cloud pipeline improves on the current heuristic-hea
 - Result schema validation failures
 - Label top-1 accuracy
 - Label top-k hit rate
+- Flat-label dominance, especially `Highlight`
+- Event-family `other` dominance
+- Mixed-batch flat-label spread and entropy
 - Event-family top-1 / top-k
 - Shot-subtype top-1 / top-k
 - Outcome top-1 / top-k
@@ -54,6 +57,7 @@ Measure whether the learned cloud pipeline improves on the current heuristic-hea
 - A short benchmark report in Markdown and JSON
 - A regression table with per-class precision, recall, and top-k hit rate
 - A taxonomy section with per-class metrics for `eventFamily`, `shotSubtype`, and `outcome`
+- A dominance section showing `Highlight` share, `eventFamily=other` share, and mixed-batch spread
 - Confusion matrices for label, family, subtype, and outcome
 - A clip-quality section with duration policy compliance and merge stats
 - A signal-audit section showing whether ball / hoop / player features explain the win or failure cases

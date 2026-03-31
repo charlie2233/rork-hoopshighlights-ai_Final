@@ -23,6 +23,14 @@ class EvalReportTests(unittest.TestCase):
         self.assertIn("three", report["perClass"])
         self.assertGreater(report["summary"]["accuracy"], 0.0)
         self.assertGreaterEqual(len(report["recommendedLabelingPriorities"]), 1)
+        self.assertIn("dominanceMetrics", report)
+        self.assertIn("mixedBatchLabelSpread", report)
+        self.assertEqual(report["summary"]["flatLabelDominanceRate"], 0.0)
+        self.assertEqual(report["summary"]["eventFamilyOtherDominanceRate"], 0.0)
+        self.assertEqual(report["dominanceMetrics"]["flatLabel"]["label"], "Highlight")
+        self.assertEqual(report["dominanceMetrics"]["eventFamilyOther"]["label"], "other")
+        self.assertEqual(report["mixedBatchLabelSpread"]["uniqueLabelCount"], 8)
+        self.assertGreater(report["mixedBatchLabelSpread"]["spreadScore"], 0.0)
 
         clip_stats = report["summary"]["clipDurationStats"]
         self.assertEqual(clip_stats["belowMinimumCount"], 0)

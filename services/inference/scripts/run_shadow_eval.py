@@ -117,6 +117,8 @@ def build_shadow_report(records: list[ShadowClipRecord]) -> dict[str, Any]:
     uncertainty_rate = round(sum(1 for record in records if record.isUncertain) / max(len(records), 1), 4)
     duration_summary = build_duration_summary(record.clipDurationSeconds for record in records)
     label_spread = build_label_spread(records, flat_label_distribution)
+    flat_label_dominance = build_dominance_summary(flat_label_distribution, total=len(records), label="Highlight")
+    event_family_other_dominance = build_dominance_summary(event_family_distribution, total=len(records), label="other")
     miss_vs_made_confusion = build_miss_vs_made_confusion(records)
     trace_summary = build_trace_summary(records)
     candidate_namespace_summary = build_namespace_summary(record.candidateNamespace for record in records)
@@ -136,9 +138,15 @@ def build_shadow_report(records: list[ShadowClipRecord]) -> dict[str, Any]:
             "shotSubtypeDistribution": shot_subtype_distribution,
             "outcomeDistribution": outcome_distribution,
             "uncertaintyRate": uncertainty_rate,
+            "flatLabelDominanceRate": flat_label_dominance["share"],
+            "eventFamilyOtherDominanceRate": event_family_other_dominance["share"],
             "missVsMadeConfusion": miss_vs_made_confusion,
             "durationSummary": duration_summary,
             "mixedBatchLabelSpread": label_spread,
+            "dominanceMetrics": {
+                "flatLabel": flat_label_dominance,
+                "eventFamilyOther": event_family_other_dominance,
+            },
         },
         "clips": [asdict(record) for record in records],
         "collapseExamples": collapse_examples,
@@ -157,6 +165,12 @@ def render_markdown(report: dict[str, Any]) -> str:
     lines.append(
         f"- Dominant flat label: `{summary['mixedBatchLabelSpread']['dominantLabel']}` "
         f"({summary['mixedBatchLabelSpread']['dominantLabelShare']:.2%})"
+    )
+    lines.append(
+        f"- Highlight dominance: `{summary['flatLabelDominanceRate']:.2%}`"
+    )
+    lines.append(
+        f"- Event-family `other` dominance: `{summary['eventFamilyOtherDominanceRate']:.2%}`"
     )
     lines.append(
         f"- Duration median: `{summary['durationSummary']['medianSeconds']:.2f}s`, "
@@ -187,10 +201,25 @@ def render_markdown(report: dict[str, Any]) -> str:
             f"- Candidate flat labels: `{json.dumps(summary['flatLabelDistribution'], sort_keys=True)}`"
         )
         lines.append(
+            f"- Baseline Highlight dominance: `{baseline.get('flatLabelDominanceRate', 0.0):.2%}`"
+        )
+        lines.append(
+            f"- Candidate Highlight dominance: `{summary.get('flatLabelDominanceRate', 0.0):.2%}`"
+        )
+        lines.append(
+            f"- Baseline event-family other dominance: `{baseline.get('eventFamilyOtherDominanceRate', 0.0):.2%}`"
+        )
+        lines.append(
+            f"- Candidate event-family other dominance: `{summary.get('eventFamilyOtherDominanceRate', 0.0):.2%}`"
+        )
+        lines.append(
             f"- Flat label spread delta: `{comparison['mixedBatchLabelSpread']['spreadScoreDelta']:+.4f}`"
         )
         lines.append(
             f"- Highlight share delta: `{comparison['flatLabel']['highlightShareDelta']:+.4f}`"
+        )
+        lines.append(
+            f"- Event-family other share delta: `{comparison['eventFamily']['otherShareDelta']:+.4f}`"
         )
         lines.append(
             f"- Uncertainty delta: `{comparison['uncertaintyRateDelta']:+.4f}`"
@@ -405,6 +434,23 @@ def build_label_spread(records: list[ShadowClipRecord], label_distribution: dict
     }
 
 
+def build_dominance_summary(distribution_map: dict[str, int], *, total: int, label: str) -> dict[str, Any]:
+    total = max(total, 1)
+    count = int(distribution_map.get(label, 0))
+    dominant_label, dominant_count = ("unknown", 0)
+    if distribution_map:
+        dominant_label, dominant_count = max(distribution_map.items(), key=lambda item: (item[1], item[0]))
+    return {
+        "label": label,
+        "count": count,
+        "share": round(count / total, 4),
+        "dominatesBatch": count > total / 2,
+        "dominantLabel": dominant_label or "unknown",
+        "dominantLabelShare": round(dominant_count / total, 4),
+        "distribution": distribution_map,
+    }
+
+
 def build_miss_vs_made_confusion(records: list[ShadowClipRecord]) -> dict[str, int]:
     counts = Counter(
         {
@@ -492,6 +538,19 @@ def build_shadow_comparison_summary(baseline_summary: dict[str, Any], candidate_
         "eventFamily": {
             "baselineDistribution": baseline_summary.get("eventFamilyDistribution", {}),
             "candidateDistribution": candidate_summary.get("eventFamilyDistribution", {}),
+            "baselineOtherShare": round(
+                float(baseline_summary.get("eventFamilyDistribution", {}).get("other", 0)) / baseline_clip_count,
+                4,
+            ),
+            "candidateOtherShare": round(
+                float(candidate_summary.get("eventFamilyDistribution", {}).get("other", 0)) / candidate_clip_count,
+                4,
+            ),
+            "otherShareDelta": round(
+                float(candidate_summary.get("eventFamilyDistribution", {}).get("other", 0)) / candidate_clip_count
+                - float(baseline_summary.get("eventFamilyDistribution", {}).get("other", 0)) / baseline_clip_count,
+                4,
+            ),
         },
         "outcome": {
             "baselineDistribution": baseline_summary.get("outcomeDistribution", {}),

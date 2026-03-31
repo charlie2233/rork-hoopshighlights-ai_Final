@@ -37,6 +37,10 @@ class ShadowEvalTests(unittest.TestCase):
         self.assertEqual(report["summary"]["outcomeDistribution"]["uncertain"], 2)
         self.assertEqual(report["summary"]["shotSubtypeDistribution"]["null"], 2)
         self.assertEqual(report["summary"]["uncertaintyRate"], 0.25)
+        self.assertEqual(report["summary"]["flatLabelDominanceRate"], 0.25)
+        self.assertEqual(report["summary"]["eventFamilyOtherDominanceRate"], 0.25)
+        self.assertEqual(report["summary"]["dominanceMetrics"]["flatLabel"]["label"], "Highlight")
+        self.assertEqual(report["summary"]["dominanceMetrics"]["eventFamilyOther"]["label"], "other")
         self.assertEqual(report["summary"]["missVsMadeConfusion"]["expectedMissPredictedMadeShot"], 1)
         self.assertEqual(report["summary"]["mixedBatchLabelSpread"]["uniqueLabelCount"], 4)
         self.assertGreaterEqual(report["summary"]["mixedBatchLabelSpread"]["spreadScore"], 0.0)
@@ -275,6 +279,7 @@ class ShadowEvalTests(unittest.TestCase):
 
         self.assertGreater(comparison["mixedBatchLabelSpread"]["uniqueLabelCountDelta"], 0)
         self.assertLess(comparison["flatLabel"]["highlightShareDelta"], 0)
+        self.assertLess(comparison["eventFamily"]["otherShareDelta"], 0)
         self.assertLessEqual(comparison["uncertaintyRateDelta"], 0)
 
 

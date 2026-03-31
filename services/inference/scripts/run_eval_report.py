@@ -208,6 +208,8 @@ def load_predictions(path: Path) -> dict[str, PredictionRow]:
 
 
 def build_report(eval_rows: list[EvaluationRow], predictions: dict[str, PredictionRow]) -> dict[str, Any]:
+    flat_label_distribution = distribution(prediction.label for prediction in predictions.values())
+    event_family_distribution = distribution(prediction.event_family for prediction in predictions.values())
     label_report = build_dimension_report(
         name="label",
         eval_rows=eval_rows,
@@ -248,6 +250,9 @@ def build_report(eval_rows: list[EvaluationRow], predictions: dict[str, Predicti
     failure_examples = build_failure_examples(eval_rows, predictions)
     duration_summary, per_label_distribution = build_duration_sections(eval_rows, predictions)
     labeling_priorities = build_labeling_priorities(label_report["perClass"], label_report["confusions"])
+    flat_label_dominance = build_dominance_summary(flat_label_distribution, total=len(predictions), label="Highlight")
+    event_family_other_dominance = build_dominance_summary(event_family_distribution, total=len(predictions), label="other")
+    mixed_batch_spread = build_label_spread_from_distribution(flat_label_distribution)
     uncertainty_rate = round(
         (
             sum(1 for prediction in predictions.values() if prediction.is_uncertain or prediction.outcome == "uncertain")
@@ -271,6 +276,8 @@ def build_report(eval_rows: list[EvaluationRow], predictions: dict[str, Predicti
             "outcomeTopKHitRate": outcome_report["summary"]["topKHitRate"],
             "clipDurationStats": duration_summary,
             "uncertaintyRate": uncertainty_rate,
+            "flatLabelDominanceRate": flat_label_dominance["share"],
+            "eventFamilyOtherDominanceRate": event_family_other_dominance["share"],
         },
         "perClass": label_report["perClass"],
         "taxonomyMetrics": {
@@ -309,6 +316,11 @@ def build_report(eval_rows: list[EvaluationRow], predictions: dict[str, Predicti
         "shotSubtypeMetrics": subtype_report["perClass"],
         "outcomeMetrics": outcome_report["perClass"],
         "perLabelDurationDistribution": per_label_distribution,
+        "mixedBatchLabelSpread": mixed_batch_spread,
+        "dominanceMetrics": {
+            "flatLabel": flat_label_dominance,
+            "eventFamilyOther": event_family_other_dominance,
+        },
         "confusionMatrices": {
             "displayLabel": label_report["confusions"],
             "eventFamily": family_report["confusions"],
@@ -549,6 +561,12 @@ def render_markdown(report: dict[str, Any]) -> str:
     lines.append(f"- Shot subtype accuracy: {summary['shotSubtypeAccuracy']:.4f}")
     lines.append(f"- Outcome accuracy: {summary['outcomeAccuracy']:.4f}")
     lines.append(f"- Uncertainty rate: {summary.get('uncertaintyRate', 0.0):.4f}")
+    lines.append(
+        f"- Highlight dominance: {summary.get('flatLabelDominanceRate', 0.0):.2%}"
+    )
+    lines.append(
+        f"- Event-family `other` dominance: {summary.get('eventFamilyOtherDominanceRate', 0.0):.2%}"
+    )
     lines.append(f"- Missing predictions: {summary['missingPredictions']}")
     clip_stats = summary.get("clipDurationStats", {})
     if clip_stats:
@@ -559,6 +577,17 @@ def render_markdown(report: dict[str, Any]) -> str:
             f"p90={clip_stats.get('p90Seconds', 0.0):.2f}s, "
             f"merged={clip_stats.get('mergedClipCount', 0)}"
         )
+    lines.append("")
+    lines.append("## Dominance")
+    lines.append(
+        f"- Flat label dominance: `{json.dumps(report['dominanceMetrics']['flatLabel'], sort_keys=True)}`"
+    )
+    lines.append(
+        f"- Event-family other dominance: `{json.dumps(report['dominanceMetrics']['eventFamilyOther'], sort_keys=True)}`"
+    )
+    lines.append(
+        f"- Mixed-batch spread: `{json.dumps(report['mixedBatchLabelSpread'], sort_keys=True)}`"
+    )
     lines.append("")
     lines.append("## Per Class")
     for label, stats in report["perClass"].items():
@@ -634,6 +663,59 @@ def build_duration_distribution(values: Iterable[float], merged_count: int) -> d
         "p90Seconds": round(samples[p90_index], 4),
         "mergedCount": merged_count,
     }
+
+
+def build_dominance_summary(distribution_map: dict[str, int], *, total: int, label: str) -> dict[str, Any]:
+    total = max(total, 1)
+    count = int(distribution_map.get(label, 0))
+    dominant_label, dominant_count = ("unknown", 0)
+    if distribution_map:
+        dominant_label, dominant_count = max(distribution_map.items(), key=lambda item: (item[1], item[0]))
+    return {
+        "label": label,
+        "count": count,
+        "share": round(count / total, 4),
+        "dominatesBatch": count > total / 2,
+        "dominantLabel": dominant_label or "unknown",
+        "dominantLabelShare": round(dominant_count / total, 4),
+        "distribution": distribution_map,
+    }
+
+
+def build_label_spread_from_distribution(distribution_map: dict[str, int]) -> dict[str, Any]:
+    total = max(sum(distribution_map.values()), 1)
+    dominant_label, dominant_count = ("", 0)
+    if distribution_map:
+        dominant_label, dominant_count = max(distribution_map.items(), key=lambda item: (item[1], item[0]))
+    entropy = 0.0
+    for count in distribution_map.values():
+        if count <= 0:
+            continue
+        probability = count / total
+        entropy -= probability * __import__("math").log(probability, 2)
+    spread_score = round(1.0 - (dominant_count / total), 4) if total else 0.0
+    return {
+        "uniqueLabelCount": len(distribution_map),
+        "dominantLabel": dominant_label or "unknown",
+        "dominantLabelShare": round(dominant_count / total, 4),
+        "entropy": round(entropy, 4),
+        "spreadScore": spread_score,
+        "topLabels": sorted(distribution_map.items(), key=lambda item: (-item[1], item[0]))[:8],
+    }
+
+
+def distribution(values: Iterable[Any]) -> dict[str, int]:
+    counts = Counter(normalize_bucket(value) for value in values)
+    return dict(sorted(counts.items(), key=lambda item: (-item[1], item[0])))
+
+
+def normalize_bucket(value: Any) -> str:
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    text = str(value).strip()
+    return text if text else "null"
 
 
 def taxonomy_for_label(label: str) -> tuple[str, str, str]:
