@@ -79,9 +79,9 @@ def load_perception_supervision_examples(repo_root: Path) -> list[PerceptionSupe
     disagreement_rows = _load_jsonl_annotations(dataset_dir / "disagreement_queue.jsonl")
 
     examples: list[PerceptionSupervisionExample] = []
-    examples.extend(_build_example(row, source_set="gold_set") for row in gold_rows)
-    examples.extend(_build_example(row, source_set="silver_set") for row in silver_rows)
-    examples.extend(_build_example(row, source_set="disagreement_queue") for row in disagreement_rows)
+    examples.extend(_build_example(row, source_set="gold_set", source_kind="gold") for row in gold_rows)
+    examples.extend(_build_example(row, source_set="silver_set", source_kind="silver") for row in silver_rows)
+    examples.extend(_build_example(row, source_set="disagreement_queue", source_kind="disagreement") for row in disagreement_rows)
     return examples
 
 
@@ -134,7 +134,12 @@ def build_perception_supervision_bundle(
     return manifest
 
 
-def extract_perception_context(annotation: ClipAnnotation) -> dict[str, Any]:
+def extract_perception_context(
+    annotation: ClipAnnotation,
+    *,
+    source_kind: str | None = None,
+    source_set: str | None = None,
+) -> dict[str, Any]:
     runtime_context = _find_context(annotation.rawRuntimeOutputs)
     teacher_context = _find_context(annotation.rawTeacherOutputs)
     structured_signals: dict[str, Any] = {}
@@ -152,21 +157,28 @@ def extract_perception_context(annotation: ClipAnnotation) -> dict[str, Any]:
         perception_summary.update(dict(annotation.rawRuntimeOutputs.get("perceptionSummary") or {}))
     if not structured_signals and isinstance(annotation.rawTeacherOutputs, dict):
         evidence = annotation.rawTeacherOutputs.get("evidence") or {}
-        structured_signals.update(dict(evidence.get("structuredSignals") or {}))
+        if isinstance(evidence, dict):
+            structured_signals.update(dict(evidence.get("structuredSignals") or {}))
     if not perception_summary and isinstance(annotation.rawTeacherOutputs, dict):
         evidence = annotation.rawTeacherOutputs.get("evidence") or {}
-        perception_summary.update(dict(evidence.get("perceptionSummary") or {}))
+        if isinstance(evidence, dict):
+            perception_summary.update(dict(evidence.get("perceptionSummary") or {}))
     return {
         "structuredSignals": structured_signals,
         "perceptionSummary": perception_summary,
         "sourceDomainTag": annotation.sourceDomain,
-        "sourceKind": annotation.sourceKind,
-        "sourceSet": _source_set_for_domain(annotation.sourceDomain),
+        "sourceKind": source_kind or _infer_source_kind(annotation, source_set=source_set),
+        "sourceSet": source_set or _source_set_for_domain(annotation.sourceDomain),
     }
 
 
-def build_perception_feature_dict(annotation: ClipAnnotation) -> dict[str, float]:
-    context = extract_perception_context(annotation)
+def build_perception_feature_dict(
+    annotation: ClipAnnotation,
+    *,
+    source_kind: str | None = None,
+    source_set: str | None = None,
+) -> dict[str, float]:
+    context = extract_perception_context(annotation, source_kind=source_kind, source_set=source_set)
     structured_signals = context["structuredSignals"]
     perception_summary = context["perceptionSummary"]
     detection_counts = dict(perception_summary.get("detectionCounts") or {})
@@ -230,17 +242,22 @@ def build_perception_feature_dict(annotation: ClipAnnotation) -> dict[str, float
     return features
 
 
-def build_perception_supervision_record(annotation: ClipAnnotation, *, source_set: str) -> PerceptionSupervisionExample:
-    source_kind = str(annotation.sourceKind)
+def build_perception_supervision_record(
+    annotation: ClipAnnotation,
+    *,
+    source_set: str,
+    source_kind: str | None = None,
+) -> PerceptionSupervisionExample:
+    resolved_source_kind = source_kind or _infer_source_kind(annotation, source_set=source_set)
     teacher_confidence = _coerce_optional_float(annotation.teacherConfidence)
-    weight = _example_weight(source_kind, teacher_confidence)
+    weight = _example_weight(resolved_source_kind, teacher_confidence)
     ignored = weight <= 0.0
-    split = _assign_split(annotation.clipId, source_kind, annotation.sourceDomain, source_set)
-    calibration_anchor = source_kind == "gold" and split in {"val", "test"}
-    context = extract_perception_context(annotation)
+    split = _assign_split(annotation.clipId, resolved_source_kind, annotation.sourceDomain, source_set)
+    calibration_anchor = resolved_source_kind == "gold" and split in {"val", "test"}
+    context = extract_perception_context(annotation, source_kind=resolved_source_kind, source_set=source_set)
     return PerceptionSupervisionExample(
         clip_id=annotation.clipId,
-        source_kind=source_kind,
+        source_kind=resolved_source_kind,
         source_domain=annotation.sourceDomain,
         source_set=source_set,
         schema_version=annotation.schemaVersion,
@@ -260,12 +277,12 @@ def build_perception_supervision_record(annotation: ClipAnnotation, *, source_se
         raw_runtime_outputs=annotation.rawRuntimeOutputs or {},
         raw_teacher_outputs=annotation.rawTeacherOutputs,
         perception_context=context,
-        features=build_perception_feature_dict(annotation),
+        features=build_perception_feature_dict(annotation, source_kind=resolved_source_kind, source_set=source_set),
     )
 
 
-def _build_example(annotation: ClipAnnotation, *, source_set: str) -> PerceptionSupervisionExample:
-    return build_perception_supervision_record(annotation, source_set=source_set)
+def _build_example(annotation: ClipAnnotation, *, source_set: str, source_kind: str | None = None) -> PerceptionSupervisionExample:
+    return build_perception_supervision_record(annotation, source_set=source_set, source_kind=source_kind)
 
 
 def _assign_split(clip_id: str, source_kind: str, source_domain: str, source_set: str) -> str:
@@ -320,6 +337,16 @@ def _source_set_for_domain(source_domain: str) -> str:
     return "gold_set"
 
 
+def _infer_source_kind(annotation: ClipAnnotation, *, source_set: str | None = None) -> str:
+    if source_set == "disagreement_queue":
+        return "disagreement"
+    if source_set == "silver_set":
+        return "silver"
+    if source_set == "gold_set":
+        return "gold"
+    return "gold" if annotation.humanVerified else "silver"
+
+
 def _primary_track(tracks: Sequence[dict[str, Any]], label: str) -> dict[str, Any] | None:
     candidates = [track for track in tracks if str(track.get("label") or "").lower() == label.lower()]
     if not candidates:
@@ -361,27 +388,29 @@ def _load_jsonl_annotations(path: Path) -> list[ClipAnnotation]:
         if not stripped:
             continue
         payload = json.loads(stripped)
+        gold = _coerce_mapping(payload.get("gold")) or {}
+        runtime = _coerce_mapping(payload.get("runtime")) or {}
+        teacher = _coerce_mapping(payload.get("teacher")) or {}
         rows.append(
             ClipAnnotation(
                 clipId=str(payload["clipId"]),
                 sourceDomain=str(payload["sourceDomain"]),
-                sourceKind=str(payload["sourceKind"]),
                 schemaVersion=str(payload.get("schemaVersion") or PERCEPTION_SUPERVISION_SCHEMA_VERSION),
                 sourceRef=payload.get("sourceRef"),
-                eventFamily=str(payload.get("eventFamily") or "other"),
-                outcome=str(payload.get("outcome") or "uncertain"),
-                shotSubtype=None if payload.get("shotSubtype") is None else str(payload.get("shotSubtype")),
+                eventFamily=str(gold.get("eventFamily") or teacher.get("eventFamily") or runtime.get("eventFamily") or "other"),
+                outcome=str(gold.get("outcome") or teacher.get("outcome") or runtime.get("outcome") or "uncertain"),
+                shotSubtype=_coerce_optional_string(gold.get("shotSubtype") or teacher.get("shotSubtype") or runtime.get("shotSubtype")),
                 ballVisible=bool(payload.get("ballVisible", False)),
                 hoopVisible=bool(payload.get("hoopVisible", False)),
                 ballNearRim=_coerce_optional_float(payload.get("ballNearRim")),
                 ballThroughHoopLikelihood=_coerce_optional_float(payload.get("ballThroughHoopLikelihood")),
                 possessionChangeLikelihood=_coerce_optional_float(payload.get("possessionChangeLikelihood")),
                 transitionLikelihood=_coerce_optional_float(payload.get("transitionLikelihood")),
-                teacherConfidence=_coerce_optional_float(payload.get("teacherConfidence")),
-                humanVerified=bool(payload.get("humanVerified", False)),
+                teacherConfidence=_coerce_optional_float(teacher.get("confidence") or payload.get("teacherConfidence")),
+                humanVerified=False,
                 reviewerNotes=str(payload.get("reviewerNotes") or ""),
-                rawRuntimeOutputs=_coerce_mapping(payload.get("rawRuntimeOutputs")),
-                rawTeacherOutputs=_coerce_mapping(payload.get("rawTeacherOutputs")),
+                rawRuntimeOutputs=runtime or None,
+                rawTeacherOutputs=teacher or None,
             )
         )
     return rows
@@ -402,6 +431,12 @@ def _coerce_optional_float(value: Any) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _coerce_optional_string(value: Any) -> str | None:
+    if value is None:
+        return None
+    return str(value)
 
 
 def _coerce_float(value: Any, default: float) -> float:

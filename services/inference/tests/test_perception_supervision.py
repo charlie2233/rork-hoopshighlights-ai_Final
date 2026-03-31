@@ -25,7 +25,6 @@ class PerceptionSupervisionTests(unittest.TestCase):
         annotation = ClipAnnotation(
             clipId="clip-123",
             sourceDomain="live_shadow",
-            sourceKind="gold",
             schemaVersion=PERCEPTION_SUPERVISION_SCHEMA_VERSION,
             sourceRef="r2://clips/clip-123.mp4",
             eventFamily="shot_attempt",
