@@ -12,6 +12,14 @@ from services.inference.app.labels import canonical_to_display_label
 
 EVENT_FAMILIES = ["shot_attempt", "turnover", "defensive_event", "transition", "other"]
 OUTCOMES = ["made", "missed", "blocked", "uncertain"]
+CANDIDATE_NAMESPACES = (
+    "runtimeFusionShadow",
+    "runtimeFusionLoRAShadow",
+    "runtimeFusionTemporalShadow",
+    "runtimeFusionDistilledShadow",
+    "runtimeFusionLive",
+    "runtimeFusionPrimary",
+)
 
 
 @dataclass
@@ -30,6 +38,7 @@ class ShadowClipRecord:
     confidenceBeforeMapping: float | None
     confidenceAfterMapping: float | None
     resultConfidence: float | None
+    candidateNamespace: str
     clipDurationSeconds: float | None
     wasMerged: bool
     sourceEventCount: int | None
@@ -47,6 +56,7 @@ def main(argv: list[str] | None = None) -> int:
         baseline_records = load_batch_records(args.baseline_results, shadow_source=args.shadow_source)
         baseline_report = build_shadow_report(baseline_records)
         report["baselineSummary"] = baseline_report["summary"]
+        report["baselineCandidateNamespaces"] = baseline_report["summary"].get("candidateNamespaces", {})
         report["comparisonSummary"] = build_shadow_comparison_summary(
             baseline_report["summary"],
             report["summary"],
@@ -81,7 +91,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--shadow-source",
-        choices=("auto", "runtimeFusionLoRAShadow", "runtimeFusionShadow", "runtimeFusionPrimary", "runtimeFusionLive"),
+        choices=("auto",) + CANDIDATE_NAMESPACES,
         default="auto",
         help="Which shadow payload to normalize when multiple shadow namespaces are present.",
     )
@@ -109,6 +119,7 @@ def build_shadow_report(records: list[ShadowClipRecord]) -> dict[str, Any]:
     label_spread = build_label_spread(records, flat_label_distribution)
     miss_vs_made_confusion = build_miss_vs_made_confusion(records)
     trace_summary = build_trace_summary(records)
+    candidate_namespace_summary = build_namespace_summary(record.candidateNamespace for record in records)
     collapse_examples = build_collapse_examples(records)
 
     return {
@@ -119,6 +130,7 @@ def build_shadow_report(records: list[ShadowClipRecord]) -> dict[str, Any]:
             "uploadTraceIds": trace_summary["uploadTraceIds"],
             "inferenceAttemptIds": trace_summary["inferenceAttemptIds"],
             "modelVersions": trace_summary["modelVersions"],
+            "candidateNamespaces": candidate_namespace_summary,
             "flatLabelDistribution": flat_label_distribution,
             "eventFamilyDistribution": event_family_distribution,
             "shotSubtypeDistribution": shot_subtype_distribution,
@@ -140,6 +152,7 @@ def render_markdown(report: dict[str, Any]) -> str:
     lines.append(f"- Jobs: `{summary['jobCount']}`")
     lines.append(f"- Clips: `{summary['clipCount']}`")
     lines.append(f"- Uncertainty rate: `{summary['uncertaintyRate']:.4f}`")
+    lines.append(f"- Candidate namespace: `{summary['candidateNamespaces']['dominantNamespace']}`")
     lines.append(f"- Mixed-batch unique labels: `{summary['mixedBatchLabelSpread']['uniqueLabelCount']}`")
     lines.append(
         f"- Dominant flat label: `{summary['mixedBatchLabelSpread']['dominantLabel']}` "
@@ -161,6 +174,12 @@ def render_markdown(report: dict[str, Any]) -> str:
         baseline = report["baselineSummary"]
         comparison = report["comparisonSummary"]
         lines.append("## Comparison vs Baseline")
+        lines.append(
+            f"- Baseline candidate namespace: `{baseline.get('candidateNamespaces', {}).get('dominantNamespace', 'unknown')}`"
+        )
+        lines.append(
+            f"- Candidate namespace: `{summary['candidateNamespaces']['dominantNamespace']}`"
+        )
         lines.append(
             f"- Baseline flat labels: `{json.dumps(baseline['flatLabelDistribution'], sort_keys=True)}`"
         )
@@ -186,7 +205,7 @@ def render_markdown(report: dict[str, Any]) -> str:
     lines.append("")
     lines.append("## Clip Table")
     lines.append(
-        "| clipId | jobId | requestId | uploadTraceId | inferenceAttemptId | modelVersion | flatLabel | eventFamily | shotSubtype | outcome | confidenceBeforeMapping | confidenceAfterMapping | confidence | durationSeconds | merged | sourceEventCount | uncertain | rawVideoMAETop1 | rawXCLIPTop1 |"
+        "| clipId | jobId | requestId | uploadTraceId | inferenceAttemptId | candidateNamespace | modelVersion | flatLabel | eventFamily | shotSubtype | outcome | confidenceBeforeMapping | confidenceAfterMapping | confidence | durationSeconds | merged | sourceEventCount | uncertain | rawVideoMAETop1 | rawXCLIPTop1 |"
     )
     lines.append(
         "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"
@@ -201,6 +220,7 @@ def render_markdown(report: dict[str, Any]) -> str:
                     escape_md_cell(clip.get("requestId")),
                     escape_md_cell(clip.get("uploadTraceId")),
                     escape_md_cell(clip.get("inferenceAttemptId")),
+                    escape_md_cell(clip.get("candidateNamespace")),
                     escape_md_cell(clip.get("modelVersion")),
                     escape_md_cell(clip.get("flatLabel")),
                     escape_md_cell(clip.get("eventFamily")),
@@ -265,7 +285,7 @@ def _normalize_batch_item(item: dict[str, Any], *, shadow_source: str = "auto") 
     for clip in clips:
         if not isinstance(clip, dict):
             continue
-        shadow_payload = _shadow_payload(clip, shadow_source=shadow_source)
+        shadow_namespace, shadow_payload = _resolve_shadow_payload(clip, shadow_source=shadow_source)
         records.append(
             ShadowClipRecord(
                 jobId=_first_non_empty(clip.get("jobId"), top_job_id),
@@ -301,6 +321,7 @@ def _normalize_batch_item(item: dict[str, Any], *, shadow_source: str = "auto") 
                     )
                 ),
                 resultConfidence=_to_optional_float(clip.get("resultConfidence")),
+                candidateNamespace=shadow_namespace or shadow_source,
                 clipDurationSeconds=_to_optional_float(clip.get("clipDurationSeconds")),
                 wasMerged=bool(clip.get("wasMerged", False)),
                 sourceEventCount=_to_optional_int(clip.get("sourceEventCount")),
@@ -340,6 +361,24 @@ def build_trace_summary(records: list[ShadowClipRecord]) -> dict[str, list[str]]
         "uploadTraceIds": unique_values(record.uploadTraceId for record in records),
         "inferenceAttemptIds": unique_values(record.inferenceAttemptId for record in records),
         "modelVersions": unique_values(record.modelVersion for record in records),
+        "candidateNamespaces": unique_values(record.candidateNamespace for record in records),
+    }
+
+
+def build_namespace_summary(values: Iterable[str | None]) -> dict[str, Any]:
+    counts = Counter(normalize_bucket(value) for value in values)
+    if not counts:
+        return {
+            "dominantNamespace": "unknown",
+            "dominantNamespaceShare": 0.0,
+            "namespaceCounts": {},
+        }
+    dominant_namespace, dominant_count = max(counts.items(), key=lambda item: (item[1], item[0]))
+    total = max(sum(counts.values()), 1)
+    return {
+        "dominantNamespace": dominant_namespace,
+        "dominantNamespaceShare": round(dominant_count / total, 4),
+        "namespaceCounts": dict(sorted(counts.items(), key=lambda item: (-item[1], item[0]))),
     }
 
 
@@ -426,6 +465,10 @@ def build_shadow_comparison_summary(baseline_summary: dict[str, Any], candidate_
     baseline_spread = baseline_summary.get("mixedBatchLabelSpread", {})
     candidate_spread = candidate_summary.get("mixedBatchLabelSpread", {})
     return {
+        "candidateNamespace": {
+            "baseline": baseline_summary.get("candidateNamespaces", {}).get("dominantNamespace", "unknown"),
+            "candidate": candidate_summary.get("candidateNamespaces", {}).get("dominantNamespace", "unknown"),
+        },
         "flatLabel": {
             "baselineDominantLabel": baseline_spread.get("dominantLabel"),
             "candidateDominantLabel": candidate_spread.get("dominantLabel"),
@@ -687,17 +730,24 @@ def _first_defined(*values: Any) -> Any:
     return None
 
 
-def _shadow_payload(clip: dict[str, Any], *, shadow_source: str = "auto") -> dict[str, Any] | None:
+def _resolve_shadow_payload(clip: dict[str, Any], *, shadow_source: str = "auto") -> tuple[str | None, dict[str, Any] | None]:
     keys = (
-        ("runtimeFusionLoRAShadow", "runtimeFusionShadow", "runtimeFusionLive", "runtimeFusionPrimary")
+        (
+            "runtimeFusionLoRAShadow",
+            "runtimeFusionTemporalShadow",
+            "runtimeFusionDistilledShadow",
+            "runtimeFusionShadow",
+            "runtimeFusionLive",
+            "runtimeFusionPrimary",
+        )
         if shadow_source == "auto"
         else (shadow_source,)
     )
     for key in keys:
         value = clip.get(key)
         if isinstance(value, dict):
-            return value
-    return None
+            return key, value
+    return None, None
 
 
 def normalize_text(value: str | None) -> str:

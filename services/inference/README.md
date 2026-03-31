@@ -147,13 +147,37 @@ gcloud builds submit \
 ```
 
 After deploy, capture the Cloud Run URL and hand it to the control plane as `INFERENCE_BASE_URL` in the staging environment.
-For the LoRA shadow rollout, also configure:
+For the phase3e basketball-specific shadow rollout, configure:
 
 ```bash
-HOOPS_INFERENCE_RUNTIME_MODEL_MODE=shadow
-HOOPS_INFERENCE_VIDEOMAE_LORA_MODE=shadow
+HOOPS_INFERENCE_RUNTIME_MODEL_MODE=off
+HOOPS_INFERENCE_TEMPORAL_ENCODER_MODE=shadow
+HOOPS_INFERENCE_TEMPORAL_ENCODER_BUNDLE_PATH=/app/services/inference/models/temporal_encoder_v1.json
+HOOPS_INFERENCE_DISTILLED_CLIP_ENCODER_MODE=off
+HOOPS_INFERENCE_DISTILLED_CLIP_ENCODER_BUNDLE_PATH=/app/services/inference/models/distilled_clip_encoder_v1.json
+HOOPS_INFERENCE_VIDEOMAE_LORA_MODE=off
 HOOPS_INFERENCE_VIDEOMAE_LORA_BUNDLE_PATH=/app/services/inference/models/videomae_lora_v1/runtime_bundle.json
 ```
+
+The branch also includes an offline candidate trainer for the two basketball-specific runtime heads:
+
+```bash
+cd /Users/hanfei/rork-hoopshighlights-ai_Final
+PYTHONPATH=/Users/hanfei/rork-hoopshighlights-ai_Final \
+services/inference/.venv/bin/python \
+  services/inference/scripts/train_basketball_runtime_candidates.py \
+  --output-dir /tmp/phase3e-candidates \
+  --write-models \
+  --temporal-epochs 60
+```
+
+That command exports:
+
+- `services/inference/models/temporal_encoder_v1.json`
+- `services/inference/models/distilled_clip_encoder_v1.json`
+- `/tmp/phase3e-candidates/comparison_report.md`
+
+The current offline winner is `temporalEncoder`, so staging shadow should use `runtimeFusionTemporalShadow` as the primary comparison namespace and leave the distilled encoder disabled unless you explicitly want a side-by-side shadow pass.
 
 ## Local tunnel path
 If you need to validate the callback path before a cloud deploy is available, use a named Cloudflare Tunnel or another durable staging hostname. Do not use `cloudflared tunnel --url`; that quick tunnel is ephemeral and should only appear in historical rollout reports.
@@ -207,6 +231,10 @@ Service and model config:
 - `HOOPS_INFERENCE_TEACHER_FRAME_COUNT`
 - `HOOPS_INFERENCE_RUNTIME_MODEL_MODE`
 - `HOOPS_INFERENCE_RUNTIME_MODEL_BUNDLE_PATH`
+- `HOOPS_INFERENCE_TEMPORAL_ENCODER_MODE`
+- `HOOPS_INFERENCE_TEMPORAL_ENCODER_BUNDLE_PATH`
+- `HOOPS_INFERENCE_DISTILLED_CLIP_ENCODER_MODE`
+- `HOOPS_INFERENCE_DISTILLED_CLIP_ENCODER_BUNDLE_PATH`
 - `HOOPS_INFERENCE_VIDEOMAE_LORA_MODE`
 - `HOOPS_INFERENCE_VIDEOMAE_LORA_BUNDLE_PATH`
 

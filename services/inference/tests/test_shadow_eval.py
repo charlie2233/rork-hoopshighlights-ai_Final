@@ -129,6 +129,72 @@ class ShadowEvalTests(unittest.TestCase):
         self.assertEqual(record.confidenceAfterMapping, 0.62)
         self.assertEqual(record.rawVideoMAETopK[0]["label"], "steal")
 
+    def test_reports_candidate_namespace_for_temporal_and_distilled_shadow_payloads(self) -> None:
+        payload = {
+            "jobId": "job-shadow-namespace-001",
+            "requestId": "req-shadow-namespace-001",
+            "uploadTraceId": "upload-shadow-namespace-001",
+            "inferenceAttemptId": "attempt-shadow-namespace-001",
+            "modelVersion": "videomae:test",
+            "clips": [
+                {
+                    "clipId": "clip-shadow-namespace-001",
+                    "label": "Highlight",
+                    "eventFamily": "other",
+                    "shotSubtype": None,
+                    "outcome": "uncertain",
+                    "confidence": 0.42,
+                    "clipDurationSeconds": 4.75,
+                    "runtimeFusionTemporalShadow": {
+                        "runtime_fusion_model_version": "runtime-fusion-temporal-v1",
+                        "label": "Layup",
+                        "eventFamily": "shot_attempt",
+                        "shotSubtype": "layup",
+                        "outcome": "made",
+                        "confidenceBeforeMapping": 0.73,
+                        "confidenceAfterMapping": 0.81,
+                        "confidence": 0.81,
+                        "isUncertain": False,
+                        "runtime_fusion_snapshot": {
+                            "videoMAE": [{"label": "layup", "confidence": 0.69}],
+                            "xclip": [{"label": "layup", "confidence": 0.48}],
+                        },
+                    },
+                    "runtimeFusionDistilledShadow": {
+                        "runtime_fusion_model_version": "runtime-fusion-distilled-v1",
+                        "label": "Dunk",
+                        "eventFamily": "shot_attempt",
+                        "shotSubtype": "dunk",
+                        "outcome": "made",
+                        "confidenceBeforeMapping": 0.79,
+                        "confidenceAfterMapping": 0.86,
+                        "confidence": 0.86,
+                        "isUncertain": False,
+                        "runtime_fusion_snapshot": {
+                            "videoMAE": [{"label": "dunk", "confidence": 0.72}],
+                            "xclip": [{"label": "dunk", "confidence": 0.55}],
+                        },
+                    },
+                }
+            ],
+        }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "shadow-namespaces.json"
+            path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+            temporal_records = load_batch_records([path], shadow_source="runtimeFusionTemporalShadow")
+            distilled_records = load_batch_records([path], shadow_source="runtimeFusionDistilledShadow")
+
+        self.assertEqual(len(temporal_records), 1)
+        self.assertEqual(temporal_records[0].candidateNamespace, "runtimeFusionTemporalShadow")
+        self.assertEqual(temporal_records[0].modelVersion, "runtime-fusion-temporal-v1")
+        self.assertEqual(temporal_records[0].flatLabel, "Layup")
+
+        self.assertEqual(len(distilled_records), 1)
+        self.assertEqual(distilled_records[0].candidateNamespace, "runtimeFusionDistilledShadow")
+        self.assertEqual(distilled_records[0].modelVersion, "runtime-fusion-distilled-v1")
+        self.assertEqual(distilled_records[0].flatLabel, "Dunk")
+
     def test_auto_prefers_lora_shadow_payload_when_present(self) -> None:
         payload = {
             "jobId": "job-shadow-lora-001",

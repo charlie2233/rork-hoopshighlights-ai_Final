@@ -14,6 +14,11 @@ from .backends.videomae import VideoMAEActionRecognizer
 from .backends.xclip import XClipActionRecognizer
 from .callback import CallbackClient
 from .config import InferenceSettings
+from .distilled_clip_encoder import (
+    DistilledClipEncoderBundle,
+    DistilledClipEncoderPrediction,
+    get_distilled_clip_encoder_bundle,
+)
 from .ffmpeg_tools import prepare_media_source
 from .features import extract_video_features
 from .labels import blend_label_scores, blend_raw_label_scores, derive_basketball_taxonomy
@@ -21,6 +26,7 @@ from .heuristics import ConfidenceReranker, HeuristicCandidateProposer, Heuristi
 from .interfaces import ArtifactWriter, Perceptor, TeacherLabeler
 from .manifest import LocalArtifactWriter, build_manifest_dict
 from .perception import HeuristicBasketballPerceptor
+from .perception_features import PerceptionObservation, derive_perception_features
 from .runtime_model import (
     RuntimeFusionBundle,
     RuntimeFusionPrediction,
@@ -29,6 +35,11 @@ from .runtime_model import (
 )
 from .structured_signals import derive_structured_decision, derive_structured_signals
 from .teacher import QwenTeacherLabeler
+from .temporal_encoder import (
+    TemporalEncoderBundle,
+    TemporalObservation,
+    get_temporal_encoder_bundle,
+)
 from .windowing import WindowedClipDraft, window_and_merge_clips
 from .models import (
     ArtifactDescriptor,
@@ -58,6 +69,8 @@ class InferenceService:
     perceptor: Optional[Perceptor] = None
     teacher_labeler: Optional[TeacherLabeler] = None
     runtime_model: Optional[RuntimeFusionBundle] = None
+    temporal_encoder: Optional[TemporalEncoderBundle] = None
+    distilled_clip_encoder: Optional[DistilledClipEncoderBundle] = None
 
     async def run(self, request: InferenceJobRequest) -> InferenceJobResponse:
         request_id = request.requestId or uuid4().hex
@@ -154,6 +167,22 @@ class InferenceService:
                         perception=perception,
                         teacher_suggestion=teacher_suggestion,
                     )
+                    temporal_runtime_shadow = self._predict_temporal_shadow(
+                        action=structured_action,
+                        primary_action=active_primary_action,
+                        comparison_action=comparison,
+                        structured_signals=structured_signals.as_metadata(),
+                        candidate=candidate,
+                        perception=perception,
+                    )
+                    distilled_runtime_shadow = self._predict_distilled_shadow(
+                        action=structured_action,
+                        primary_action=active_primary_action,
+                        comparison_action=comparison,
+                        structured_signals=structured_signals.as_metadata(),
+                        candidate=candidate,
+                        perception=perception,
+                    )
                     action = self._resolve_runtime_action(
                         structured_action=structured_action,
                         runtime_prediction=runtime_prediction,
@@ -167,6 +196,22 @@ class InferenceService:
                             structured_signals=structured_signals.as_metadata(),
                             perception=perception,
                             key="runtimeFusionLoRAShadow",
+                        )
+                    if temporal_runtime_shadow is not None:
+                        action = self._attach_candidate_shadow(
+                            action=action,
+                            shadow_payload=_temporal_shadow_payload(temporal_runtime_shadow),
+                            structured_signals=structured_signals.as_metadata(),
+                            perception=perception,
+                            key="runtimeFusionTemporalShadow",
+                        )
+                    if distilled_runtime_shadow is not None:
+                        action = self._attach_candidate_shadow(
+                            action=action,
+                            shadow_payload=_distilled_shadow_payload(distilled_runtime_shadow),
+                            structured_signals=structured_signals.as_metadata(),
+                            perception=perception,
+                            key="runtimeFusionDistilledShadow",
                         )
                     event = self.event_inferencer.infer(candidate, action, features)
                     clip_drafts.append(
@@ -620,6 +665,56 @@ class InferenceService:
                 return None
             return None
 
+    def _predict_temporal_shadow(
+        self,
+        *,
+        action,
+        primary_action,
+        comparison_action,
+        structured_signals: dict[str, object],
+        candidate,
+        perception: dict[str, object],
+    ):
+        if self.temporal_encoder is None or self.settings.temporal_encoder_mode.lower() != "shadow":
+            return None
+        try:
+            observations = _build_temporal_observations(
+                candidate=candidate,
+                structured_signals=structured_signals,
+                perception=perception,
+            )
+            if not observations:
+                return None
+            return self.temporal_encoder.predict(observations)
+        except Exception:
+            return None
+
+    def _predict_distilled_shadow(
+        self,
+        *,
+        action,
+        primary_action,
+        comparison_action,
+        structured_signals: dict[str, object],
+        candidate,
+        perception: dict[str, object],
+    ) -> DistilledClipEncoderPrediction | None:
+        if self.distilled_clip_encoder is None or self.settings.distilled_clip_encoder_mode.lower() != "shadow":
+            return None
+        try:
+            snapshot = _build_distilled_shadow_snapshot(
+                action=action,
+                primary_action=primary_action,
+                comparison_action=comparison_action,
+                structured_signals=structured_signals,
+                candidate=candidate,
+                perception=perception,
+                environment=self.settings.environment,
+            )
+            return self.distilled_clip_encoder.predict_from_snapshot(snapshot)
+        except Exception:
+            return None
+
     def _resolve_runtime_action(
         self,
         *,
@@ -738,6 +833,28 @@ class InferenceService:
     ):
         runtime_metadata = {
             **runtime_prediction.metadata,
+            "structuredSignals": structured_signals,
+            "perceptionSummary": _summarize_perception(perception),
+        }
+        if hasattr(action, "model_copy"):
+            metadata = {
+                **dict(getattr(action, "metadata", {}) or {}),
+                key: runtime_metadata,
+            }
+            return action.model_copy(update={"metadata": metadata})
+        return action
+
+    def _attach_candidate_shadow(
+        self,
+        *,
+        action,
+        shadow_payload: dict[str, object],
+        structured_signals: dict[str, object],
+        perception: dict[str, object],
+        key: str,
+    ):
+        runtime_metadata = {
+            **shadow_payload,
             "structuredSignals": structured_signals,
             "perceptionSummary": _summarize_perception(perception),
         }
@@ -987,6 +1104,8 @@ class InferenceService:
                 "comparisonRawTopLabels": [item.model_dump(mode="json") for item in clip.comparisonRawTopLabels],
                 "runtimeFusionShadow": _runtime_metadata_from_clip(clip, "runtimeFusionShadow"),
                 "runtimeFusionLoRAShadow": _runtime_metadata_from_clip(clip, "runtimeFusionLoRAShadow"),
+                "runtimeFusionTemporalShadow": _runtime_metadata_from_clip(clip, "runtimeFusionTemporalShadow"),
+                "runtimeFusionDistilledShadow": _runtime_metadata_from_clip(clip, "runtimeFusionDistilledShadow"),
                 "runtimeFusionPrimary": (
                     _runtime_metadata_from_clip(clip, "runtimeFusionPrimary")
                     or _runtime_metadata_from_clip(clip, "runtimeFusionLive")
@@ -1011,6 +1130,10 @@ class InferenceService:
                 "finalSegments": len(clips),
                 "runtimeModelMode": self.settings.runtime_model_mode,
                 "runtimeModelVersion": getattr(self.runtime_model, "model_version", None),
+                "temporalEncoderMode": self.settings.temporal_encoder_mode,
+                "temporalEncoderVersion": getattr(self.temporal_encoder, "model_version", None),
+                "distilledClipEncoderMode": self.settings.distilled_clip_encoder_mode,
+                "distilledClipEncoderVersion": getattr(self.distilled_clip_encoder, "model_version", None),
                 "videoMAELoraMode": self.settings.videomae_lora_mode,
                 "videoMAELoraVersion": (
                     self.adapted_primary_recognizer.resolved_model_version()
@@ -1050,6 +1173,12 @@ def build_service(settings: InferenceSettings) -> InferenceService:
     runtime_model = None
     if settings.runtime_model_mode.lower() in {"shadow", "primary", "live"}:
         runtime_model = get_runtime_fusion_bundle(str(settings.runtime_model_bundle_path))
+    temporal_encoder = None
+    if settings.temporal_encoder_mode.lower() in {"shadow", "primary", "live"}:
+        temporal_encoder = get_temporal_encoder_bundle(str(settings.temporal_encoder_bundle_path))
+    distilled_clip_encoder = None
+    if settings.distilled_clip_encoder_mode.lower() in {"shadow", "primary", "live"}:
+        distilled_clip_encoder = get_distilled_clip_encoder_bundle(str(settings.distilled_clip_encoder_bundle_path))
     return InferenceService(
         settings=settings,
         candidate_proposer=HeuristicCandidateProposer(
@@ -1070,7 +1199,146 @@ def build_service(settings: InferenceSettings) -> InferenceService:
         ),
         teacher_labeler=teacher_labeler,
         runtime_model=runtime_model,
+        temporal_encoder=temporal_encoder,
+        distilled_clip_encoder=distilled_clip_encoder,
     )
+
+
+def _build_temporal_observations(
+    *,
+    candidate,
+    structured_signals: dict[str, object],
+    perception: dict[str, object],
+) -> list[TemporalObservation]:
+    grouped_frames = _perception_frame_observations(perception)
+    summary_features = _perception_summary_features(perception)
+    clip_center = round((float(candidate.startTime) + float(candidate.endTime)) / 2.0, 4)
+    if not grouped_frames:
+        return [
+            TemporalObservation(
+                timestamp_seconds=clip_center,
+                structured_signals=dict(structured_signals),
+                perception_features=dict(summary_features),
+            )
+        ]
+
+    observations: list[TemporalObservation] = []
+    for index, frame_observations in enumerate(grouped_frames):
+        window_start = max(0, index - 1)
+        window_stop = min(len(grouped_frames), index + 2)
+        local_features = derive_perception_features(
+            grouped_frames[window_start:window_stop],
+            ball_labels=("basketball", "ball"),
+            rim_labels=("rim", "hoop"),
+            player_labels=("player", "players"),
+            defender_labels=("defender",),
+        )
+        frame_timestamp = float(frame_observations[0].timestamp_seconds)
+        local_structured = {
+            **dict(structured_signals),
+            "ballNearRim": max(float(structured_signals.get("ballNearRim") or 0.0), local_features.ballNearRim),
+            "ballAboveRim": max(float(structured_signals.get("ballAboveRim") or 0.0), local_features.ballAboveRim),
+            "ballArcApex": max(float(structured_signals.get("ballArcApex") or 0.0), local_features.ballAboveRim),
+            "ballThroughHoopLikelihood": max(
+                float(structured_signals.get("ballThroughHoopLikelihood") or 0.0),
+                local_features.ballThroughHoopLikelihood,
+            ),
+            "possessionChangeLikelihood": max(
+                float(structured_signals.get("possessionChangeLikelihood") or 0.0),
+                local_features.possessionChangeLikelihood,
+            ),
+            "transitionLikelihood": max(
+                float(structured_signals.get("transitionLikelihood") or 0.0),
+                local_features.transitionSpeedScore,
+            ),
+            "playerToRimDistance": local_features.playerToRimDistance,
+            "ballCarrierSpeed": max(float(structured_signals.get("ballCarrierSpeed") or 0.0), local_features.ballCarrierSpeed),
+            "transitionSpeedScore": max(
+                float(structured_signals.get("transitionSpeedScore") or 0.0),
+                local_features.transitionSpeedScore,
+            ),
+            "defenderProximityAtShot": max(
+                float(structured_signals.get("defenderProximityAtShot") or 0.0),
+                local_features.defenderProximityAtShot,
+            ),
+            "shotReleaseCandidate": max(
+                float(structured_signals.get("shotReleaseCandidate") or 0.0),
+                local_features.shotReleaseCandidate,
+            ),
+            "samePlayContinuityScore": max(
+                float(structured_signals.get("samePlayContinuityScore") or 0.0),
+                local_features.samePlayContinuityScore,
+            ),
+        }
+        observations.append(
+            TemporalObservation(
+                timestamp_seconds=frame_timestamp,
+                structured_signals=local_structured,
+                perception_features=dict(summary_features),
+            )
+        )
+    return observations
+
+
+def _build_distilled_shadow_snapshot(
+    *,
+    action,
+    primary_action,
+    comparison_action,
+    structured_signals: dict[str, object],
+    candidate,
+    perception: dict[str, object],
+    environment: str,
+) -> dict[str, object]:
+    summary_features = _perception_summary_features(perception)
+    raw_runtime_outputs = {
+        "label": getattr(action, "label", None),
+        "canonicalLabel": getattr(action, "canonicalLabel", None),
+        "confidence": getattr(action, "confidence", None),
+        "eventFamily": getattr(action, "eventFamily", None),
+        "outcome": getattr(action, "outcome", None),
+        "shotSubtype": getattr(action, "shotSubtype", None),
+        "modelVersion": getattr(action, "modelVersion", None),
+        "topKLabels": [item.model_dump(mode="json") for item in list(getattr(action, "topLabels", []))],
+        "rawTopLabels": [item.model_dump(mode="json") for item in list(getattr(action, "rawTopLabels", []))],
+        "videoMAE": {
+            "modelVersion": getattr(primary_action, "modelVersion", None),
+            "topK": [item.model_dump(mode="json") for item in list(getattr(primary_action, "topLabels", []))],
+        },
+        "xclip": {
+            "modelVersion": getattr(comparison_action, "modelVersion", None),
+            "topK": [item.model_dump(mode="json") for item in list(getattr(comparison_action, "topLabels", []))],
+        },
+    }
+    snapshot = {
+        "sourceKind": "runtime",
+        "sourceDomain": environment,
+        "sourceSet": "runtime_inference",
+        "sourceRefKind": "candidate_window",
+        "sourceRef": getattr(candidate, "candidateId", None),
+        "humanVerified": False,
+        "ballVisible": _perception_visible(perception, "basketball"),
+        "hoopVisible": _perception_visible(perception, "rim"),
+        "clipDurationSeconds": max(float(candidate.endTime) - float(candidate.startTime), 0.0),
+        "eventCenterSeconds": round((float(candidate.startTime) + float(candidate.endTime)) / 2.0, 4),
+        "preRollSeconds": 0.0,
+        "postRollSeconds": 0.0,
+        "sourceEventCount": 1,
+        "wasMerged": False,
+        "priorityScore": float(getattr(candidate, "score", 0.0) or 0.0),
+        "structuredSignals": {
+            **dict(structured_signals),
+            "basketballConfidence": summary_features.get("basketballConfidence", 0.0),
+            "rimConfidence": summary_features.get("rimConfidence", 0.0),
+            "playerCount": summary_features.get("playerCount", 0.0),
+            "trackedPlayerCount": summary_features.get("trackedPlayerCount", 0.0),
+            "trackedBallConfidence": summary_features.get("trackedBallConfidence", 0.0),
+        },
+        "rawRuntimeOutputs": raw_runtime_outputs,
+        "comparisonRawTopLabels": [item.model_dump(mode="json") for item in list(getattr(comparison_action, "rawTopLabels", []))],
+        "rawTopLabels": [item.model_dump(mode="json") for item in list(getattr(action, "rawTopLabels", []))],
+    }
+    return snapshot
 
 
 def _resolve_trace_fields(request: InferenceJobRequest, request_id: str) -> tuple[str, str]:
@@ -1093,6 +1361,144 @@ def _summarize_perception(perception: dict[str, object]) -> dict[str, object]:
         "overlayPaths": perception.get("overlayPaths") if isinstance(perception.get("overlayPaths"), list) else [],
         "failureReason": perception.get("failureReason"),
     }
+
+
+def _temporal_shadow_payload(prediction) -> dict[str, object]:
+    metadata = dict(getattr(prediction, "metadata", {}) or {})
+    return {
+        "modelVersion": getattr(prediction, "modelVersion", None),
+        "label": getattr(prediction, "label", None),
+        "canonicalLabel": getattr(prediction, "canonicalLabel", None),
+        "confidence": getattr(prediction, "confidence", None),
+        "eventFamily": getattr(prediction, "eventFamily", None),
+        "shotSubtype": getattr(prediction, "shotSubtype", None),
+        "outcome": getattr(prediction, "outcome", None),
+        "confidenceBeforeMapping": getattr(prediction, "confidenceBeforeMapping", None),
+        "confidenceAfterMapping": getattr(prediction, "confidenceAfterMapping", None),
+        "eventFamilyConfidenceBeforeMapping": getattr(prediction, "eventFamilyConfidenceBeforeMapping", None),
+        "eventFamilyConfidenceAfterMapping": getattr(prediction, "eventFamilyConfidenceAfterMapping", None),
+        "shotSubtypeConfidenceBeforeMapping": getattr(prediction, "shotSubtypeConfidenceBeforeMapping", None),
+        "shotSubtypeConfidenceAfterMapping": getattr(prediction, "shotSubtypeConfidenceAfterMapping", None),
+        "outcomeConfidenceBeforeMapping": getattr(prediction, "outcomeConfidenceBeforeMapping", None),
+        "outcomeConfidenceAfterMapping": getattr(prediction, "outcomeConfidenceAfterMapping", None),
+        "isUncertain": getattr(prediction, "isUncertain", None),
+        **metadata,
+    }
+
+
+def _distilled_shadow_payload(prediction: DistilledClipEncoderPrediction) -> dict[str, object]:
+    metadata = dict(prediction.metadata or {})
+    return {
+        "modelVersion": prediction.model_version,
+        "label": prediction.display_label,
+        "canonicalLabel": prediction.canonical_label,
+        "confidence": prediction.confidence_after_mapping,
+        "eventFamily": prediction.event_family,
+        "shotSubtype": prediction.shot_subtype,
+        "outcome": prediction.outcome,
+        "confidenceBeforeMapping": prediction.confidence_before_mapping,
+        "confidenceAfterMapping": prediction.confidence_after_mapping,
+        "eventFamilyConfidenceBeforeMapping": prediction.event_family_confidence_before_mapping,
+        "eventFamilyConfidenceAfterMapping": prediction.event_family_confidence_after_mapping,
+        "shotSubtypeConfidenceBeforeMapping": prediction.shot_subtype_confidence_before_mapping,
+        "shotSubtypeConfidenceAfterMapping": prediction.shot_subtype_confidence_after_mapping,
+        "outcomeConfidenceBeforeMapping": prediction.outcome_confidence_before_mapping,
+        "outcomeConfidenceAfterMapping": prediction.outcome_confidence_after_mapping,
+        "isUncertain": prediction.is_uncertain,
+        "rawHeadPredictions": {
+            key: value.as_dict() for key, value in prediction.raw_head_predictions.items()
+        },
+        **metadata,
+    }
+
+
+def _perception_frame_observations(perception: dict[str, object]) -> list[list[PerceptionObservation]]:
+    frames = perception.get("frames")
+    if not isinstance(frames, list):
+        return []
+    grouped: list[list[PerceptionObservation]] = []
+    for frame in frames:
+        if not isinstance(frame, dict):
+            continue
+        detections = frame.get("detections")
+        if not isinstance(detections, list):
+            continue
+        timestamp_seconds = float(frame.get("timestampSeconds") or 0.0)
+        observations: list[PerceptionObservation] = []
+        for detection in detections:
+            if not isinstance(detection, dict):
+                continue
+            label = str(detection.get("label") or "").strip()
+            box = detection.get("box")
+            if not label or not isinstance(box, dict):
+                continue
+            observations.append(
+                PerceptionObservation(
+                    label=label,
+                    bbox=(
+                        float(box.get("x1") or 0.0),
+                        float(box.get("y1") or 0.0),
+                        float(box.get("x2") or 0.0),
+                        float(box.get("y2") or 0.0),
+                    ),
+                    confidence=float(detection.get("confidence") or 0.0),
+                    timestamp_seconds=timestamp_seconds,
+                    track_id=detection.get("trackId"),
+                )
+            )
+        if observations:
+            grouped.append(observations)
+    return grouped
+
+
+def _perception_summary_features(perception: dict[str, object]) -> dict[str, float]:
+    detection_counts = perception.get("detectionCounts")
+    detection_counts = detection_counts if isinstance(detection_counts, dict) else {}
+    track_counts = perception.get("trackCounts")
+    track_counts = track_counts if isinstance(track_counts, dict) else {}
+    tracks = perception.get("tracks")
+    tracks = tracks if isinstance(tracks, list) else []
+    return {
+        "basketballConfidence": _primary_detection_confidence(perception, "basketball"),
+        "rimConfidence": _primary_detection_confidence(perception, "rim"),
+        "playerCount": float(detection_counts.get("player", 0) or 0.0),
+        "trackedPlayerCount": float(track_counts.get("player", 0) or 0.0),
+        "trackedBallConfidence": _track_average_confidence(tracks, perception.get("primaryBallTrackId")),
+    }
+
+
+def _primary_detection_confidence(perception: dict[str, object], label: str) -> float:
+    frames = perception.get("frames")
+    if not isinstance(frames, list):
+        return 0.0
+    wanted = label.lower()
+    best = 0.0
+    for frame in frames:
+        if not isinstance(frame, dict):
+            continue
+        detections = frame.get("detections")
+        if not isinstance(detections, list):
+            continue
+        for detection in detections:
+            if not isinstance(detection, dict):
+                continue
+            if str(detection.get("label") or "").lower() != wanted:
+                continue
+            best = max(best, float(detection.get("confidence") or 0.0))
+    return round(best, 4)
+
+
+def _track_average_confidence(tracks: list[object], track_id: object) -> float:
+    if track_id is None:
+        return 0.0
+    wanted = str(track_id)
+    for track in tracks:
+        if not isinstance(track, dict):
+            continue
+        if str(track.get("trackId") or "") != wanted:
+            continue
+        return round(float(track.get("averageConfidence") or 0.0), 4)
+    return 0.0
 
 
 def _event_subtype_for_family(event_family: str, shot_subtype: str | None, outcome: str) -> str | None:

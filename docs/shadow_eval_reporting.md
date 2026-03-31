@@ -17,6 +17,7 @@ Use the shadow-eval report when you want to measure a live staging batch or a lo
 - miss-vs-made confusion
 - mixed-batch label spread
 - raw VideoMAE and X-CLIP top-k suggestions when present
+- candidate namespace, so you can tell whether a clip came from `runtimeFusionTemporalShadow`, `runtimeFusionDistilledShadow`, or another rollout namespace
 
 ## Input shape
 
@@ -41,17 +42,20 @@ For best results, include the live staging fields on each clip row:
 - `sourceEventCount`
 - `rawTopLabels`
 - `comparisonRawTopLabels`
+- `runtimeFusionTemporalShadow`
+- `runtimeFusionDistilledShadow`
 
 If `expectedLabel` is present, the report also records miss-vs-made confusion against the expected label.
 
 ## Comparison mode
 
-To compare a LoRA shadow batch against the phase3d baseline, pass the baseline batch separately:
+To compare a new basketball-specific candidate batch against the phase3d1 baseline, pass the baseline batch separately. Use `--shadow-source` to select the candidate namespace you want to analyze:
 
 ```bash
 python3 services/inference/scripts/run_shadow_eval.py \
-  --baseline-results /tmp/phase3d/*.json \
-  --batch-results /tmp/phase3d1-lora/*.json \
+  --baseline-results /tmp/phase3d1/*.json \
+  --batch-results /tmp/phase3d1-candidate/*.json \
+  --shadow-source runtimeFusionTemporalShadow \
   --output-dir /tmp/phase3d1-lora/report
 ```
 
@@ -60,8 +64,10 @@ The report then includes:
 - baseline summary metrics
 - candidate summary metrics
 - a direct delta section for flat-label spread, highlight dominance, uncertainty, and miss-vs-made confusion
+- the dominant candidate namespace for the clips that were normalized
+- candidate namespace counts in the summary so temporal and distilled encoder runs stay explicit in the report
 
-This is the preferred workflow for shadowing encoder-adaptation or other rollout experiments against phase3d.
+Repeat the command with `--shadow-source runtimeFusionDistilledShadow` to compare the distilled encoder namespace separately. This is the preferred workflow for shadowing encoder-adaptation or other rollout experiments against the phase3d1 baseline.
 
 ## Command
 

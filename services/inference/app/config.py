@@ -51,6 +51,14 @@ class InferenceSettings(BaseSettings):
     runtime_model_bundle_path: Path = Field(
         default=Path(__file__).resolve().parents[1] / "models" / "runtime_fusion_v1.json"
     )
+    temporal_encoder_mode: str = "off"
+    temporal_encoder_bundle_path: Path = Field(
+        default=Path(__file__).resolve().parents[1] / "models" / "temporal_encoder_v1.json"
+    )
+    distilled_clip_encoder_mode: str = "off"
+    distilled_clip_encoder_bundle_path: Path = Field(
+        default=Path(__file__).resolve().parents[1] / "models" / "distilled_clip_encoder_v1.json"
+    )
     videomae_lora_mode: str = "off"
     videomae_lora_bundle_path: Path = Field(
         default=Path(__file__).resolve().parents[1] / "models" / "videomae_lora_v1" / "runtime_bundle.json"

@@ -352,6 +352,84 @@ class PipelineCallbackResultsTests(unittest.TestCase):
             "videomae-rslora:test",
         )
 
+    def test_build_callback_results_surfaces_temporal_and_distilled_shadow_metadata(self) -> None:
+        manifest = InferenceManifest(
+            schemaVersion="2026-03-27",
+            jobId="job_123",
+            requestId="request-123",
+            uploadTraceId="upload-123",
+            inferenceAttemptId="attempt-123",
+            modelVersion="videomae:test",
+            resultConfidence=0.61,
+            failureReason=None,
+            generatedAt=datetime.now(timezone.utc),
+            clips=[
+                RankedClip(
+                    clipId="clip-1",
+                    startTime=0.0,
+                    endTime=5.0,
+                    clipDurationSeconds=5.0,
+                    eventCenterSeconds=2.5,
+                    preRollSeconds=2.4,
+                    postRollSeconds=2.6,
+                    windowPolicyVersion="basketball-v1",
+                    wasMerged=False,
+                    sourceEventCount=1,
+                    confidence=0.61,
+                    resultConfidence=0.61,
+                    label="Highlight",
+                    action="Highlight",
+                    canonicalLabel="miss",
+                    eventFamily="shot_attempt",
+                    eventSubtype="jumper",
+                    shotSubtype="jumper",
+                    outcome="uncertain",
+                    eventType="shot_attempt",
+                    shotType="jumper",
+                    makeMiss="unknown",
+                    confidenceBeforeMapping=0.66,
+                    confidenceAfterMapping=0.61,
+                    isUncertain=True,
+                    audioScore=0.2,
+                    visualScore=0.4,
+                    motionScore=0.5,
+                    combinedScore=0.6,
+                    rankScore=0.61,
+                    detectionMethod="model",
+                    topLabels=[],
+                    comparisonTopLabels=[],
+                    rawTopLabels=[],
+                    comparisonRawTopLabels=[],
+                    metadata={
+                        "action_metadata": {
+                            "runtimeFusionTemporalShadow": {
+                                "modelVersion": "temporal-encoder-v1",
+                                "label": "Layup",
+                            },
+                            "runtimeFusionDistilledShadow": {
+                                "modelVersion": "distilled-clip-encoder-v1",
+                                "label": "Block",
+                            },
+                        }
+                    },
+                )
+            ],
+            artifacts=[],
+            diagnostics=InferenceDiagnostics(
+                featureExtractor="ffprobe+opencv",
+                candidateProposer="heuristic-assisted",
+                actionRecognizer="videomae:test",
+                eventInferencer="heuristic-event-inferencer",
+                reranker="confidence-reranker",
+            ),
+        )
+
+        callback_results = self.service._build_callback_results(manifest)
+        clip = callback_results["clips"][0]
+
+        self.assertEqual(clip["runtimeFusionTemporalShadow"]["modelVersion"], "temporal-encoder-v1")
+        self.assertEqual(clip["runtimeFusionDistilledShadow"]["modelVersion"], "distilled-clip-encoder-v1")
+
 
 class PipelineRuntimeModelModeTests(unittest.TestCase):
     def setUp(self) -> None:
