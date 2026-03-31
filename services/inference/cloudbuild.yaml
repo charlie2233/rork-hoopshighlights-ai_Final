@@ -3,7 +3,7 @@ substitutions:
   _REGION: us-central1
   _ARTIFACT_REPO: hoopsclips
   _ENVIRONMENT: staging
-  _VERSION: phase3e2-data-expansion-and-hard-negative-mining
+  _VERSION: phase3f-teacher-distilled-basketball-runtime-encoder
   _R2_BUCKET_NAME: hoopsclips-uploads-staging
   _R2_ENDPOINT_URL: https://78fb4442e6e37b2c46d7e539c6e79172.r2.cloudflarestorage.com
   _R2_REGION_NAME: auto
@@ -61,10 +61,10 @@ steps:
         HOOPS_INFERENCE_FFMPEG_VIDEO_PRESET=veryfast,
         HOOPS_INFERENCE_FFMPEG_VIDEO_CRF=28,
         HOOPS_INFERENCE_FFMPEG_MAX_WIDTH=1280,
-        HOOPS_INFERENCE_RUNTIME_MODEL_MODE=shadow,
+        HOOPS_INFERENCE_RUNTIME_MODEL_MODE=off,
         HOOPS_INFERENCE_RUNTIME_MODEL_BUNDLE_PATH=/app/services/inference/models/runtime_fusion_v1.json,
-        HOOPS_INFERENCE_TEMPORAL_ENCODER_MODE=off,
-        HOOPS_INFERENCE_TEMPORAL_ENCODER_BUNDLE_PATH=/app/services/inference/models/temporal_encoder_v1.json,
+        HOOPS_INFERENCE_TEMPORAL_ENCODER_MODE=shadow,
+        HOOPS_INFERENCE_TEMPORAL_ENCODER_BUNDLE_PATH=/app/services/inference/models/temporal_student_v1.json,
         HOOPS_INFERENCE_DISTILLED_CLIP_ENCODER_MODE=off,
         HOOPS_INFERENCE_DISTILLED_CLIP_ENCODER_BUNDLE_PATH=/app/services/inference/models/distilled_clip_encoder_v1.json,
         HOOPS_INFERENCE_VIDEOMAE_LORA_MODE=off,
