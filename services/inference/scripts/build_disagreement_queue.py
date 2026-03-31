@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from services.inference.scripts.run_eval_report import to_optional_float
+from services.inference.training.hard_negative_mining import hard_example_signal
 
 
 DEFAULT_TOP_K = 50
@@ -41,6 +42,10 @@ class DisagreementQueueItem:
     schema_version: str | None
     review_bucket: str
     priority_score: float
+    hard_example_score: float
+    hard_example_weight: float
+    hard_example: bool
+    hard_example_tier: str
     priority_reasons: list[str]
     runtime_label: str
     runtime_event_family: str
@@ -66,6 +71,8 @@ class DisagreementQueueItem:
     def as_dict(self) -> dict[str, Any]:
         data = asdict(self)
         data["priority_score"] = round(self.priority_score, 4)
+        data["hard_example_score"] = round(self.hard_example_score, 4)
+        data["hard_example_weight"] = round(self.hard_example_weight, 4)
         return data
 
 
@@ -187,6 +194,17 @@ def score_annotation(
     if not priority_reasons:
         return None
 
+    hard_example_score = hard_example_signal(
+        annotation.__dict__,
+        source_kind="disagreement",
+        source_domain=annotation.source_domain,
+        priority_score=priority_score,
+        teacher_confidence=teacher_confidence,
+        reasons=priority_reasons,
+    )
+    hard_example_weight = 1.0 + 1.8 * hard_example_score
+    hard_example_tier = _hard_example_tier(hard_example_score, priority_reasons)
+
     if annotation.human_verified:
         priority_score *= 0.9
         priority_reasons.append("human_verified_review")
@@ -198,6 +216,10 @@ def score_annotation(
         schema_version=annotation.schema_version,
         review_bucket=review_bucket,
         priority_score=min(priority_score, 1.0),
+        hard_example_score=round(hard_example_score, 4),
+        hard_example_weight=round(hard_example_weight, 4),
+        hard_example=hard_example_score >= 0.45,
+        hard_example_tier=hard_example_tier,
         priority_reasons=priority_reasons,
         runtime_label=runtime_label,
         runtime_event_family=runtime_event_family,
@@ -225,12 +247,15 @@ def score_annotation(
 def build_summary(queue: list[DisagreementQueueItem], annotations: Iterable[UnifiedClipAnnotation]) -> dict[str, Any]:
     by_bucket = Counter(item.review_bucket for item in queue)
     by_source = Counter(item.source_domain for item in queue)
+    hard_by_tier = Counter(item.hard_example_tier for item in queue if item.hard_example)
     source_total = Counter(annotation.source_domain for annotation in annotations)
     return {
         "totalAnnotations": sum(source_total.values()),
         "queuedClips": len(queue),
         "byBucket": dict(sorted(by_bucket.items())),
         "bySourceDomain": dict(sorted(by_source.items())),
+        "hardExampleQueued": sum(1 for item in queue if item.hard_example),
+        "hardExampleByTier": dict(sorted(hard_by_tier.items())),
     }
 
 
@@ -247,6 +272,7 @@ def render_markdown(summary: dict[str, Any], queue: list[DisagreementQueueItem])
     for index, item in enumerate(queue, start=1):
         lines.append(
             f"{index}. `{item.clip_id}` [{item.review_bucket}] score={item.priority_score:.2f} "
+            f"hard={item.hard_example_tier}:{item.hard_example_weight:.2f} "
             f"runtime={item.runtime_label} teacher={item.teacher_label or 'n/a'} reasons={', '.join(item.priority_reasons)}"
         )
     return "\n".join(lines) + "\n"
@@ -293,6 +319,16 @@ def _primary_bucket(priority_reasons: list[str]) -> str:
         if reason in priority_reasons:
             return reason
     return priority_reasons[0]
+
+
+def _hard_example_tier(hard_example_score: float, priority_reasons: list[str]) -> str:
+    if "miss_vs_made_conflict" in priority_reasons or "runtime_teacher_disagree" in priority_reasons:
+        return "critical"
+    if hard_example_score >= 0.8:
+        return "high"
+    if hard_example_score >= 0.55:
+        return "medium"
+    return "low"
 
 
 def _runtime_label(outputs: dict[str, Any]) -> str:

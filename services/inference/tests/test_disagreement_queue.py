@@ -5,7 +5,6 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from services.inference.datasets import ANNOTATION_SCHEMA_VERSION
 from services.inference.scripts.build_disagreement_queue import (
     build_disagreement_queue,
     build_summary,
@@ -34,19 +33,23 @@ class DisagreementQueueTests(unittest.TestCase):
 
         self.assertEqual(len(queue), 4)
         self.assertEqual(queue[0].clip_id, "clip-highlight-disagree-001")
-        self.assertEqual(queue[0].schema_version, ANNOTATION_SCHEMA_VERSION)
+        self.assertEqual(queue[0].schema_version, annotations[0].schema_version)
         self.assertIn("runtime_teacher_disagree", queue[0].priority_reasons)
         self.assertIn("app_facing_label_only_highlight", queue[0].priority_reasons)
         self.assertIn("strong_ball_hoop_evidence_null_subtype", queue[0].priority_reasons)
         self.assertIn("high_teacher_low_runtime", queue[0].priority_reasons)
+        self.assertTrue(queue[0].hard_example)
+        self.assertGreater(queue[0].hard_example_weight, 1.0)
 
         miss_made = next(item for item in queue if item.clip_id == "clip-miss-made-001")
         self.assertIn("miss_vs_made_conflict", miss_made.priority_reasons)
         self.assertIn("runtime_teacher_disagree", miss_made.priority_reasons)
+        self.assertTrue(miss_made.hard_example)
 
         strong_signal = next(item for item in queue if item.clip_id == "clip-null-subtype-strong-evidence-001")
         self.assertIn("strong_ball_hoop_evidence_null_subtype", strong_signal.priority_reasons)
         self.assertIn("high_teacher_low_runtime", strong_signal.priority_reasons)
+        self.assertIn(strong_signal.hard_example_tier, {"critical", "high", "medium"})
 
         high_teacher_low_runtime = next(item for item in queue if item.clip_id == "clip-high-teacher-low-runtime-001")
         self.assertIn("high_teacher_low_runtime", high_teacher_low_runtime.priority_reasons)
@@ -61,10 +64,13 @@ class DisagreementQueueTests(unittest.TestCase):
         self.assertEqual(summary["byBucket"]["runtime_teacher_disagree"], 4)
         self.assertEqual(summary["bySourceDomain"]["broadcast"], 1)
         self.assertEqual(summary["bySourceDomain"]["fixed_camera"], 3)
+        self.assertEqual(summary["hardExampleQueued"], 4)
+        self.assertGreaterEqual(summary["hardExampleByTier"].get("critical", 0), 1)
 
         markdown = render_markdown(summary, queue)
         self.assertIn("# Disagreement Review Queue", markdown)
         self.assertIn("clip-highlight-disagree-001", markdown)
+        self.assertIn("hard=", markdown)
 
         with tempfile.TemporaryDirectory() as temp_dir:
             json_path, md_path = write_artifacts(Path(temp_dir), summary, queue)

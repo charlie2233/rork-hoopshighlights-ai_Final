@@ -25,6 +25,7 @@ from services.inference.app.distilled_clip_encoder import (
     SHOT_SUBTYPE_LABELS,
 )
 from services.inference.datasets.annotations import ClipAnnotation, load_annotation_rows
+from services.inference.training.hard_negative_mining import hard_example_multiplier, hard_example_signal
 
 
 WEIGHT_POLICY = {
@@ -34,6 +35,8 @@ WEIGHT_POLICY = {
     "silverLowConfidence": 0.0,
     "disagreementBase": 0.8,
     "disagreementMax": 1.5,
+    "hardExampleMultiplier": 1.8,
+    "focalGamma": 1.25,
 }
 
 
@@ -361,7 +364,15 @@ def _build_disagreement_example(row: dict[str, Any]) -> DistilledClipTrainingExa
     source_domain = str(row.get("sourceDomain") or "disagreement_queue")
     teacher_confidence = _coerce_optional_float(teacher.get("confidence"))
     priority = _coerce_optional_float(row.get("priorityScore"))
-    weight = _disagreement_weight(teacher_confidence, priority)
+    hard_signal = hard_example_signal(
+        row,
+        source_kind="disagreement",
+        source_domain=source_domain,
+        priority_score=priority,
+        teacher_confidence=teacher_confidence,
+        reasons=row.get("reasons") or (),
+    )
+    weight = _disagreement_weight(teacher_confidence, priority, hard_signal=hard_signal)
     ignored = weight <= 0.0 or not row.get("sourceRef")
     split = _assign_disagreement_split(clip_id, str(gold.get("eventFamily") or "other"), str(gold.get("outcome") or "uncertain"), gold.get("shotSubtype"), teacher_confidence, priority)
     features = build_distilled_clip_feature_dict(
@@ -370,6 +381,7 @@ def _build_disagreement_example(row: dict[str, Any]) -> DistilledClipTrainingExa
             "sourceDomain": source_domain,
             "sourceSet": "disagreement_queue",
             "humanVerified": False,
+            "hardExampleSignal": hard_signal,
             "ballVisible": row.get("ballVisible"),
             "hoopVisible": row.get("hoopVisible"),
             "ballNearRim": row.get("ballNearRim"),
@@ -527,11 +539,17 @@ def _example_weight(source_kind: str, teacher_confidence: float | None, human_ve
     return 1.0
 
 
-def _disagreement_weight(teacher_confidence: float | None, priority_score: float | None) -> float:
+def _disagreement_weight(
+    teacher_confidence: float | None,
+    priority_score: float | None,
+    *,
+    hard_signal: float = 0.0,
+) -> float:
     confidence = teacher_confidence or 0.0
     priority = priority_score or 0.5
     base = WEIGHT_POLICY["disagreementBase"] + 0.4 * confidence + 0.4 * priority
-    return float(min(WEIGHT_POLICY["disagreementMax"], round(base, 2)))
+    multiplier = 1.0 + WEIGHT_POLICY["hardExampleMultiplier"] * min(max(hard_signal, 0.0), 1.0)
+    return float(min(WEIGHT_POLICY["disagreementMax"], round(base * multiplier, 2)))
 
 
 def _assign_split(

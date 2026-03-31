@@ -13,6 +13,13 @@ import numpy as np
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, top_k_accuracy_score
 
+from services.inference.training.hard_negative_mining import (
+    focal_reweighting,
+    hard_example_multiplier,
+    hard_example_signal,
+    summarize_hard_examples,
+)
+
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
@@ -30,6 +37,10 @@ DEFAULT_DATASET_DIR = REPO_ROOT / "services" / "inference" / "datasets" / "runti
 DEFAULT_OUTPUT = REPO_ROOT / "services" / "inference" / "models" / "runtime_fusion_v1.json"
 DEFAULT_REPORT = REPO_ROOT / "services" / "inference" / "evals" / "runtime_fusion_v1_report.md"
 FEATURE_SCHEMA_VERSION = "runtime-fusion-v1"
+HARD_EXAMPLE_MULTIPLIER = 1.8
+FOCAL_GAMMA = 1.25
+FOCAL_PASSES = 2
+HARD_NEGATIVE_DOMAINS = {"hard_negative", "benchmark_eval", "manual_negative", "teacher_pseudo"}
 
 TARGETS = {
     "eventFamily": EVENT_FAMILIES,
@@ -86,10 +97,17 @@ def main(argv: list[str] | None = None) -> int:
             "Teacher outputs remain offline/training-only and are not consumed at runtime.",
             "The runtime head fuses structured signals plus VideoMAE/X-CLIP-derived runtime outputs.",
             "Minimal gold support rows may be promoted from val into train to cover otherwise missing classes; remaining gold rows stay held out.",
+            "Hard-negative rows and disagreement rows receive explicit mining multipliers and focal-style reweighting during training.",
         ],
         "featureNames": feature_names,
         "targets": {},
         "supportPromotion": sorted(promoted_clip_ids),
+        "hardExampleMining": {
+            "hardNegativeMultiplier": HARD_EXAMPLE_MULTIPLIER,
+            "focalGamma": FOCAL_GAMMA,
+            "focalPasses": FOCAL_PASSES,
+            "hardNegativeDomains": sorted(HARD_NEGATIVE_DOMAINS),
+        },
     }
     report: dict[str, Any] = {
         "summary": {
@@ -199,15 +217,48 @@ def train_target(
     y_train = np.asarray([normalize_target_value(target_name, row) for row in train_rows], dtype=object)
     y_val = np.asarray([normalize_target_value(target_name, row) for row in val_rows], dtype=object)
     y_test = np.asarray([normalize_target_value(target_name, row) for row in test_rows], dtype=object)
-    w_train = np.asarray([float(row.get("weight", 1.0)) for row in train_rows], dtype=np.float64)
+    base_weights = np.asarray([float(row.get("weight", 1.0)) for row in train_rows], dtype=np.float64)
+    hard_signals = np.asarray([hard_example_signal(row) for row in train_rows], dtype=np.float64)
+    hard_weights = np.asarray([
+        hard_example_multiplier(row, base_multiplier=HARD_EXAMPLE_MULTIPLIER) for row in train_rows
+    ], dtype=np.float64)
+    hard_weighted_samples = base_weights * hard_weights
 
-    classifier = LogisticRegression(
+    baseline_classifier = LogisticRegression(
         max_iter=4000,
         solver="lbfgs",
         class_weight="balanced",
         random_state=42,
     )
-    classifier.fit(train_matrix, y_train, sample_weight=w_train)
+    baseline_classifier.fit(train_matrix, y_train, sample_weight=base_weights)
+    baseline_train_probabilities = baseline_classifier.predict_proba(train_matrix)
+    baseline_val_logits = baseline_classifier.decision_function(val_matrix)
+    baseline_val_logits = ensure_2d_logits(baseline_val_logits, baseline_classifier.classes_)
+    baseline_temperature = fit_temperature(baseline_val_logits, y_val, baseline_classifier.classes_)
+    baseline_val_probabilities = softmax_with_temperature(baseline_val_logits, baseline_temperature)
+    baseline_uncertainty_threshold, baseline_margin_threshold = derive_thresholds(
+        baseline_val_probabilities,
+        y_val,
+        baseline_classifier.classes_,
+    )
+
+    classifier = baseline_classifier
+    focal_weights = hard_weighted_samples
+    for _ in range(max(FOCAL_PASSES, 1)):
+        train_probabilities = classifier.predict_proba(train_matrix)
+        focal_weights = hard_weighted_samples * focal_reweighting(
+            train_probabilities,
+            y_train,
+            classifier.classes_,
+            gamma=FOCAL_GAMMA,
+        )
+        classifier = LogisticRegression(
+            max_iter=4000,
+            solver="lbfgs",
+            class_weight="balanced",
+            random_state=42,
+        )
+        classifier.fit(train_matrix, y_train, sample_weight=focal_weights)
 
     val_logits = classifier.decision_function(val_matrix)
     val_logits = ensure_2d_logits(val_logits, classifier.classes_)
@@ -222,8 +273,20 @@ def train_target(
     report = {
         "classes": list(classifier.classes_),
         "trainSupport": dict(Counter(str(label) for label in y_train)),
+        "hardExampleSummary": summarize_hard_examples(train_rows),
+        "hardExampleWeight": {
+            "baseMean": round(float(np.mean(base_weights)), 4),
+            "focusedMean": round(float(np.mean(focal_weights)), 4),
+            "hardSignalMean": round(float(np.mean(hard_signals)), 4),
+        },
         "valSupport": dict(Counter(str(label) for label in y_val)),
         "testSupport": dict(Counter(str(label) for label in y_test)),
+        "baseline": {
+            "temperature": round(baseline_temperature, 4),
+            "uncertaintyThreshold": round(baseline_uncertainty_threshold, 4),
+            "marginThreshold": round(baseline_margin_threshold, 4),
+            "validation": evaluate_probabilities(y_val, baseline_val_probabilities, baseline_classifier.classes_),
+        },
         "temperature": round(temperature, 4),
         "uncertaintyThreshold": round(uncertainty_threshold, 4),
         "marginThreshold": round(margin_threshold, 4),
@@ -238,6 +301,11 @@ def train_target(
         "uncertaintyThreshold": round(uncertainty_threshold, 4),
         "marginThreshold": round(margin_threshold, 4),
         "topK": 3,
+        "trainingStrategy": {
+            "hardNegativeMultiplier": HARD_EXAMPLE_MULTIPLIER,
+            "focalGamma": FOCAL_GAMMA,
+            "focalPasses": FOCAL_PASSES,
+        },
     }
     return {"bundle": bundle, "report": report}
 
@@ -346,6 +414,10 @@ def render_report(report: dict[str, Any]) -> str:
     lines.append("")
     for target_name, target_report in report["targets"].items():
         lines.append(f"## {target_name}")
+        lines.append(f"- Hard example rows: `{target_report['hardExampleSummary']['hardExampleCount']}`")
+        lines.append(f"- Hard example rate: `{target_report['hardExampleSummary']['hardExampleRate']}`")
+        lines.append(f"- Hard example mean weight: `{target_report['hardExampleWeight']['focusedMean']}`")
+        lines.append(f"- Baseline validation accuracy/macroF1: `{target_report['baseline']['validation']['accuracy']}` / `{target_report['baseline']['validation']['macroF1']}`")
         lines.append(f"- Temperature: `{target_report['temperature']}`")
         lines.append(f"- Uncertainty threshold: `{target_report['uncertaintyThreshold']}`")
         lines.append(f"- Margin threshold: `{target_report['marginThreshold']}`")
