@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 
 from services.inference.scripts.build_disagreement_queue import (
+    UnifiedClipAnnotation,
     build_disagreement_queue,
     build_summary,
     load_annotations,
@@ -78,6 +79,53 @@ class DisagreementQueueTests(unittest.TestCase):
             self.assertEqual(payload["summary"]["queuedClips"], 4)
             self.assertEqual(len(payload["queue"]), 4)
             self.assertTrue(md_path.exists())
+
+    def test_ineligible_teacher_pseudo_labels_do_not_drive_disagreement_scoring(self) -> None:
+        queue = build_disagreement_queue(
+            [
+                UnifiedClipAnnotation(
+                    clip_id="clip-low-confidence-teacher-001",
+                    source_domain="fixed_camera",
+                    schema_version="2026-03-31",
+                    event_family="shot_attempt",
+                    outcome="missed",
+                    shot_subtype="jumper",
+                    ball_visible=True,
+                    hoop_visible=True,
+                    ball_near_rim=0.81,
+                    ball_through_hoop_likelihood=0.12,
+                    possession_change_likelihood=0.04,
+                    transition_likelihood=0.05,
+                    teacher_confidence=0.63,
+                    human_verified=False,
+                    reviewer_notes="Teacher was uncertain; do not train on this.",
+                    raw_runtime_outputs={
+                        "label": "Highlight",
+                        "eventFamily": "shot_attempt",
+                        "outcome": "made",
+                        "shotSubtype": None,
+                        "confidence": 0.41,
+                    },
+                    raw_teacher_outputs={
+                        "displayLabelSuggestion": "Highlight",
+                        "eventFamily": "shot_attempt",
+                        "outcome": "missed",
+                        "shotSubtype": "jumper",
+                        "confidence": 0.63,
+                        "pseudoLabel": {"eligible": False, "reason": "confidence_below_threshold"},
+                    },
+                )
+            ],
+            min_teacher_confidence=0.75,
+            max_runtime_confidence=0.55,
+            min_ball_evidence=0.7,
+        )
+
+        self.assertEqual(len(queue), 1)
+        self.assertNotIn("runtime_teacher_disagree", queue[0].priority_reasons)
+        self.assertNotIn("miss_vs_made_conflict", queue[0].priority_reasons)
+        self.assertIn("app_facing_label_only_highlight", queue[0].priority_reasons)
+        self.assertIn("strong_ball_hoop_evidence_null_subtype", queue[0].priority_reasons)
 
 
 if __name__ == "__main__":

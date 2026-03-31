@@ -6,7 +6,15 @@ from pathlib import Path
 
 from services.inference.app.config import InferenceSettings
 from services.inference.app.models import CandidateWindow
-from services.inference.app.teacher import QwenTeacherLabeler, build_teacher_annotation_record
+from services.inference.app.teacher import (
+    QwenTeacherLabeler,
+    TEACHER_PSEUDO_LABEL_MIN_CONFIDENCE,
+    TEACHER_PSEUDO_LABEL_MIN_NEGATIVE_CONFIDENCE,
+    build_silver_annotation_record,
+    build_teacher_annotation_record,
+    normalize_teacher_output,
+    upsert_silver_annotation,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -18,6 +26,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--source-domain", type=str, default="teacher_audit")
     parser.add_argument("--output-dir", type=Path, default=None)
     parser.add_argument("--runtime-json", type=Path, default=None)
+    parser.add_argument("--silver-dataset", type=Path, default=None)
+    parser.add_argument("--source-ref", type=str, default=None)
+    parser.add_argument("--min-pseudo-confidence", type=float, default=TEACHER_PSEUDO_LABEL_MIN_CONFIDENCE)
+    parser.add_argument("--min-negative-confidence", type=float, default=TEACHER_PSEUDO_LABEL_MIN_NEGATIVE_CONFIDENCE)
     return parser.parse_args()
 
 
@@ -48,23 +60,43 @@ def main() -> int:
             "perceptionSummary": runtime_outputs.get("perceptionSummary") or {},
         },
     )
+    normalized_suggestion = normalize_teacher_output(
+        suggestion,
+        min_training_confidence=args.min_pseudo_confidence,
+        min_negative_confidence=args.min_negative_confidence,
+    )
 
     annotation = build_teacher_annotation_record(
         clip_id=candidate.candidateId,
         source_domain=args.source_domain,
-        teacher_output=suggestion,
+        teacher_output=normalized_suggestion,
         runtime_outputs=runtime_outputs,
+        source_ref=args.source_ref or str(args.source),
         human_verified=False,
     ).as_dict()
+
+    silver_record = build_silver_annotation_record(
+        clip_id=candidate.candidateId,
+        source_domain=args.source_domain,
+        teacher_output=normalized_suggestion,
+        runtime_outputs=runtime_outputs,
+        source_ref=args.source_ref or str(args.source),
+    )
+    if args.silver_dataset is not None and silver_record is not None:
+        upsert_silver_annotation(args.silver_dataset, silver_record)
 
     if args.output_dir is not None:
         args.output_dir.mkdir(parents=True, exist_ok=True)
         (args.output_dir / f"{candidate.candidateId}.teacher.json").write_text(
-            json.dumps(suggestion, indent=2, sort_keys=True),
+            json.dumps(normalized_suggestion, indent=2, sort_keys=True),
             encoding="utf-8",
         )
         (args.output_dir / f"{candidate.candidateId}.annotation.json").write_text(
             json.dumps(annotation, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+        (args.output_dir / f"{candidate.candidateId}.pseudo_label_gate.json").write_text(
+            json.dumps((normalized_suggestion.get("pseudoLabel") or {}), indent=2, sort_keys=True),
             encoding="utf-8",
         )
 

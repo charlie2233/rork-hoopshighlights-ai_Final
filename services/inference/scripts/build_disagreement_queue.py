@@ -154,19 +154,23 @@ def score_annotation(
 ) -> DisagreementQueueItem | None:
     runtime_outputs = annotation.raw_runtime_outputs
     teacher_outputs = annotation.raw_teacher_outputs
+    teacher_pseudo_label = _teacher_pseudo_label(teacher_outputs)
+    teacher_is_eligible = teacher_pseudo_label is None or bool(teacher_pseudo_label.get("eligible", False))
 
     runtime_label = _runtime_label(runtime_outputs)
-    teacher_label = _teacher_label(teacher_outputs)
+    teacher_label = _teacher_label(teacher_outputs) if teacher_is_eligible else None
     runtime_event_family = _runtime_event_family(runtime_outputs, runtime_label)
     runtime_outcome = _runtime_outcome(runtime_outputs)
     runtime_shot_subtype = _runtime_shot_subtype(runtime_outputs)
     runtime_confidence = _runtime_confidence(runtime_outputs)
-    teacher_event_family = _teacher_event_family(teacher_outputs)
-    teacher_outcome = _teacher_outcome(teacher_outputs)
-    teacher_shot_subtype = _teacher_shot_subtype(teacher_outputs)
+    teacher_event_family = _teacher_event_family(teacher_outputs) if teacher_is_eligible else None
+    teacher_outcome = _teacher_outcome(teacher_outputs) if teacher_is_eligible else None
+    teacher_shot_subtype = _teacher_shot_subtype(teacher_outputs) if teacher_is_eligible else None
     teacher_confidence = annotation.teacher_confidence if annotation.teacher_confidence is not None else _runtime_confidence(teacher_outputs)
     if teacher_confidence is None:
         teacher_confidence = _teacher_confidence(teacher_outputs)
+    if not teacher_is_eligible:
+        teacher_confidence = None
 
     priority_reasons: list[str] = []
     priority_score = 0.0
@@ -418,6 +422,11 @@ def _teacher_confidence(outputs: dict[str, Any]) -> float | None:
         if value is not None:
             return value
     return None
+
+
+def _teacher_pseudo_label(outputs: dict[str, Any]) -> dict[str, Any] | None:
+    pseudo = outputs.get("pseudoLabel")
+    return pseudo if isinstance(pseudo, dict) else None
 
 
 def _label_is_highlight_only(runtime_label: str) -> bool:
