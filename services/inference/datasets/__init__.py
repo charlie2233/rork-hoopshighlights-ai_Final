@@ -22,19 +22,30 @@ _RUNTIME_EXPORTS = {
     "run_offline_probe",
 }
 
+_TEACHER_EXPORTS = {
+    "TEACHER_SUPERVISION_DATASET_VERSION",
+    "build_teacher_supervision_bundle",
+    "teacher_supervision_weight",
+    "teacher_supervision_weight_components",
+}
+
 __all__ = [
     "ANNOTATION_SCHEMA_MIGRATION_NOTES_PATH",
     "ANNOTATION_SCHEMA_PATH",
     "ANNOTATION_SCHEMA_VERSION",
     "LORA_DATASET_VERSION",
     "RUNTIME_TRAINING_FEATURE_VERSION",
+    "TEACHER_SUPERVISION_DATASET_VERSION",
     "annotation_template",
     "build_runtime_training_bundle",
+    "build_teacher_supervision_bundle",
     "example_weight",
     "is_ignored",
     "load_annotation_rows",
     "lora_example_weight",
     "run_offline_probe",
+    "teacher_supervision_weight",
+    "teacher_supervision_weight_components",
     "write_annotation_rows",
 ]
 
@@ -42,6 +53,11 @@ __all__ = [
 def __getattr__(name: str) -> Any:
     if name in _RUNTIME_EXPORTS:
         module = import_module(".runtime_training", __name__)
+        value = getattr(module, name)
+        globals()[name] = value
+        return value
+    if name in _TEACHER_EXPORTS:
+        module = import_module(".teacher_supervision", __name__)
         value = getattr(module, name)
         globals()[name] = value
         return value
