@@ -36,6 +36,13 @@ _TEACHER_EXPORTS = {
     "teacher_supervision_weight_components",
 }
 
+_PSEUDO_LABEL_EXPORTS = {
+    "DEFAULT_MIN_TEACHER_CONFIDENCE",
+    "DEFAULT_SOURCE_DOMAINS",
+    "PSEUDO_LABEL_DATASET_VERSION",
+    "build_phase4_pseudo_label_bundle",
+}
+
 __all__ = [
     "ANNOTATION_SCHEMA_MIGRATION_NOTES_PATH",
     "ANNOTATION_SCHEMA_PATH",
@@ -45,10 +52,13 @@ __all__ = [
     "LORA_DATASET_VERSION",
     "RUNTIME_TRAINING_FEATURE_VERSION",
     "TEACHER_SUPERVISION_DATASET_VERSION",
+    "DEFAULT_MIN_TEACHER_CONFIDENCE",
+    "DEFAULT_SOURCE_DOMAINS",
     "annotation_template",
     "derive_coarse_event_window",
     "build_hard_negative_queue",
     "build_hard_negative_report",
+    "build_phase4_pseudo_label_bundle",
     "build_runtime_training_bundle",
     "build_teacher_supervision_bundle",
     "example_weight",
@@ -58,6 +68,7 @@ __all__ = [
     "load_live_payloads",
     "lora_example_weight",
     "normalize_event_localization_fields",
+    "PSEUDO_LABEL_DATASET_VERSION",
     "teacher_supervision_weight",
     "teacher_supervision_weight_components",
     "write_annotation_rows",
@@ -72,6 +83,11 @@ def __getattr__(name: str) -> Any:
         return value
     if name in _TEACHER_EXPORTS:
         module = import_module(".teacher_supervision", __name__)
+        value = getattr(module, name)
+        globals()[name] = value
+        return value
+    if name in _PSEUDO_LABEL_EXPORTS:
+        module = import_module(".pseudo_labeling", __name__)
         value = getattr(module, name)
         globals()[name] = value
         return value
