@@ -10,6 +10,7 @@ Files:
 - `gold_annotations.jsonl`: human-verified annotations used for probe evaluation.
 - `silver_teacher_annotations.jsonl`: teacher pseudo-labels kept separate from the human gold set.
 - `disagreement_queue.jsonl`: clips that should be prioritized for manual review.
+- `dataset_bridge.py`: import adapters for BARD event labels, E-BARD detections, SportsMOT tracking, and TrackID3x3 fixed-camera tracking.
 
 Runtime-training outputs:
 
@@ -25,6 +26,9 @@ Migration notes:
 
 - `schemaVersion` is stored on generated annotation rows and defaults to `2026-03-30` when missing on legacy seed rows.
 - `annotation_schema.json` is the single source of truth; the older schema filenames are deprecated compatibility leftovers.
+- Supported import adapters currently include `bard-event`, `ebard-detection`, `sportsmot-tracking`, and `trackid3x3-tracking`.
+- `sportsmot:tracking` is the canonical source domain for broadcast/telemetry tracking supervision.
+- `trackid3x3:fixed-camera` is the canonical source domain for fixed-camera or amateur-like tracking supervision.
 - Regenerate dataset artifacts with `python3 services/inference/scripts/build_probe_datasets.py --output-dir services/inference/datasets` after editing the seed corpora.
 - Regenerate runtime-training artifacts with `python3 services/inference/scripts/build_runtime_training_data.py --output-dir services/inference/datasets/runtime_training` after editing the seed corpora.
 

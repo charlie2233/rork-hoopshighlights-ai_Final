@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
+
+if __package__ in {None, ""}:
+    sys.path.append(str(Path(__file__).resolve().parents[3]))
 
 from services.inference.datasets.dataset_bridge import (
     import_external_basketball_dataset,
@@ -12,13 +16,15 @@ from services.inference.datasets.dataset_bridge import (
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Import BARD / E-BARD basketball annotations into the canonical schema.")
+    parser = argparse.ArgumentParser(
+        description="Import BARD, E-BARD, SportsMOT, or TrackID3x3 basketball annotations into the canonical schema."
+    )
     parser.add_argument("--input", required=True, help="Input .json or .jsonl file containing source annotations.")
     parser.add_argument("--output", required=True, help="Output .json file for canonical rows.")
     parser.add_argument(
         "--source-kind",
         required=True,
-        choices=("bard-event", "ebard-detection"),
+        choices=("bard-event", "ebard-detection", "sportsmot-tracking", "trackid3x3-tracking"),
         help="Source adapter to use.",
     )
     parser.add_argument(
@@ -29,7 +35,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--source-dataset",
         default=None,
-        help="Optional source dataset tag override. Defaults to BARD or E-BARD.",
+        help="Optional source dataset tag override. Defaults to the adapter's canonical source dataset.",
     )
     parser.add_argument(
         "--summary",
