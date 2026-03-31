@@ -3,7 +3,7 @@ substitutions:
   _REGION: us-central1
   _ARTIFACT_REPO: hoopsclips
   _ENVIRONMENT: staging
-  _VERSION: phase3f-teacher-distilled-basketball-runtime-encoder
+  _VERSION: phase3f2-domain-expansion-and-perception-retraining
   _R2_BUCKET_NAME: hoopsclips-uploads-staging
   _R2_ENDPOINT_URL: https://78fb4442e6e37b2c46d7e539c6e79172.r2.cloudflarestorage.com
   _R2_REGION_NAME: auto

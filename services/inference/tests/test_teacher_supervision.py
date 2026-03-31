@@ -32,19 +32,38 @@ class TeacherSupervisionDataTests(unittest.TestCase):
             ]
             gold_row = next(row for row in rows if row["sourceKind"] == "gold")
             silver_row = next(row for row in rows if row["sourceKind"] == "silver")
-            low_conf_row = next(row for row in rows if row["clipId"] == "silver-low-confidence-camera-pan-001")
-            high_conf_row = next(row for row in rows if row["clipId"] == "silver-dunk-pseudo-001")
+            low_conf_row = min(
+                (row for row in rows if row["sourceKind"] == "silver"),
+                key=lambda row: float(row.get("teacherConfidence") or 0.0),
+            )
+            high_conf_row = max(
+                (row for row in rows if row["sourceKind"] == "silver"),
+                key=lambda row: float(row.get("teacherConfidence") or 0.0),
+            )
+            lowest_eligible_row = min(
+                (row for row in rows if row["sourceKind"] == "silver" and row["trainingEligible"]),
+                key=lambda row: float(row.get("teacherConfidence") or 0.0),
+            )
+            teacher_separated_count = sum(
+                1
+                for row in rows
+                if row["sourceKind"] == "gold"
+                and row["selectedLabelSource"] == "gold"
+                and row.get("teacherEventFamily") is not None
+            )
 
             self.assertEqual(gold_row["selectedLabelSource"], "gold")
             self.assertEqual(gold_row["goldEventFamily"], gold_row["selectedEventFamily"])
-            self.assertIsNotNone(gold_row["teacherEventFamily"])
+            self.assertEqual(manifest["summary"]["teacherSeparatedRecords"], teacher_separated_count)
             self.assertEqual(silver_row["selectedLabelSource"], "teacher")
             self.assertIsNone(silver_row["goldEventFamily"])
             self.assertIsNotNone(silver_row["teacherEventFamily"])
             self.assertGreater(silver_row["weight"], 0.0)
-            self.assertTrue(low_conf_row["trainingEligible"])
-            self.assertEqual(low_conf_row["selectedLabelSource"], "teacher")
-            self.assertLess(low_conf_row["weight"], high_conf_row["weight"])
+            self.assertFalse(low_conf_row["trainingEligible"])
+            self.assertIsNone(low_conf_row["selectedLabelSource"])
+            self.assertTrue(lowest_eligible_row["trainingEligible"])
+            self.assertEqual(lowest_eligible_row["selectedLabelSource"], "teacher")
+            self.assertLess(lowest_eligible_row["weight"], high_conf_row["weight"])
 
             self.assertTrue((output_dir / "manifest.json").exists())
             self.assertTrue((output_dir / "weights.json").exists())
