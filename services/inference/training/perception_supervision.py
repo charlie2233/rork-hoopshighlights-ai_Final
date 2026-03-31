@@ -10,14 +10,25 @@ from statistics import mean
 from typing import Any, Iterable, Sequence
 
 from services.inference.datasets.annotations import ClipAnnotation, load_annotation_rows
+from services.inference.datasets.pseudo_labeling import load_phase4_pseudo_label_examples
 
 
 PERCEPTION_SUPERVISION_SCHEMA_VERSION = "2026-03-31"
-PERCEPTION_SUPERVISION_FEATURE_VERSION = "perception-supervision-v1"
+PERCEPTION_SUPERVISION_FEATURE_VERSION = "perception-supervision-v2"
 PERCEPTION_SUPERVISION_MODEL_VERSION = "perception-student-v1"
-PERCEPTION_SUPERVISION_SOURCE_DATASET = "gold_set+silver_set+disagreement_queue"
+PERCEPTION_SUPERVISION_SOURCE_DATASET = "gold_set+silver_set+disagreement_queue+phase4_in_domain+phase4_pseudo_labels"
 DEFAULT_OUTPUT_DIR_NAME = "perception_supervision"
 SPLIT_NAMES = ("train", "val", "test")
+PHASE4_IN_DOMAIN_SOURCE_SET = "phase4_in_domain"
+PHASE4_PSEUDO_SOURCE_SET = "phase4_pseudo_labels"
+PHASE4_ALLOWED_SOURCE_DOMAINS = (
+    "live_shadow",
+    "live_runtime",
+    "live_staging",
+    "staging_smoke",
+    "manual_negative",
+    "hard_negative",
+)
 
 
 @dataclass(frozen=True)
@@ -42,6 +53,14 @@ class PerceptionSupervisionExample:
     reviewer_notes: str
     raw_runtime_outputs: dict[str, Any]
     raw_teacher_outputs: dict[str, Any] | None
+    event_start_seconds: float | None
+    event_center_seconds: float | None
+    event_end_seconds: float | None
+    shot_release_time_seconds: float | None
+    ball_near_rim_time_seconds: float | None
+    ball_through_hoop_time_seconds: float | None
+    possession_change_time_seconds: float | None
+    transition_start_time_seconds: float | None
     perception_context: dict[str, Any]
     features: dict[str, float]
 
@@ -67,6 +86,14 @@ class PerceptionSupervisionExample:
             "reviewerNotes": self.reviewer_notes,
             "rawRuntimeOutputs": self.raw_runtime_outputs,
             "rawTeacherOutputs": self.raw_teacher_outputs,
+            "eventStartSeconds": self.event_start_seconds,
+            "eventCenterSeconds": self.event_center_seconds,
+            "eventEndSeconds": self.event_end_seconds,
+            "shotReleaseTimeSeconds": self.shot_release_time_seconds,
+            "ballNearRimTimeSeconds": self.ball_near_rim_time_seconds,
+            "ballThroughHoopTimeSeconds": self.ball_through_hoop_time_seconds,
+            "possessionChangeTimeSeconds": self.possession_change_time_seconds,
+            "transitionStartTimeSeconds": self.transition_start_time_seconds,
             "perceptionContext": self.perception_context,
             "features": self.features,
         }
@@ -77,11 +104,18 @@ def load_perception_supervision_examples(repo_root: Path) -> list[PerceptionSupe
     gold_rows = load_annotation_rows(dataset_dir / "gold_set.json")
     silver_rows = load_annotation_rows(dataset_dir / "silver_set.json")
     disagreement_rows = _load_jsonl_annotations(dataset_dir / "disagreement_queue.jsonl")
+    phase4_rows = load_annotation_rows(dataset_dir / "phase4_in_domain_annotations.json") if (dataset_dir / "phase4_in_domain_annotations.json").exists() else []
 
     examples: list[PerceptionSupervisionExample] = []
     examples.extend(_build_example(row, source_set="gold_set", source_kind="gold") for row in gold_rows)
     examples.extend(_build_example(row, source_set="silver_set", source_kind="silver") for row in silver_rows)
     examples.extend(_build_example(row, source_set="disagreement_queue", source_kind="disagreement") for row in disagreement_rows)
+    examples.extend(
+        _build_example(row, source_set=PHASE4_IN_DOMAIN_SOURCE_SET, source_kind="gold")
+        for row in phase4_rows
+        if row.humanVerified
+    )
+    examples.extend(_build_phase4_pseudo_examples(repo_root, dataset_dir=dataset_dir))
     return examples
 
 
@@ -185,6 +219,39 @@ def build_perception_feature_dict(
     track_counts = dict(perception_summary.get("trackCounts") or {})
     tracks = list(perception_summary.get("tracks") or [])
     frames = list(perception_summary.get("frames") or [])
+    raw_runtime_outputs = dict(annotation.rawRuntimeOutputs or {})
+    clip_duration = max(
+        _coerce_float(raw_runtime_outputs.get("clipDurationSeconds"), 0.0),
+        _coerce_float(annotation.eventEnd, 0.0),
+        _coerce_float(annotation.eventCenter, 0.0) * 2.0,
+        1.0,
+    )
+    event_start_seconds = _coerce_optional_float(annotation.eventStart)
+    event_center_seconds = _coerce_optional_float(annotation.eventCenter)
+    event_end_seconds = _coerce_optional_float(annotation.eventEnd)
+    shot_release_time_seconds = _coerce_optional_float(annotation.shotReleaseTime)
+    ball_near_rim_time_seconds = _coerce_optional_float(annotation.ballNearRimTime)
+    ball_through_hoop_time_seconds = _coerce_optional_float(annotation.ballThroughHoopTime)
+    possession_change_time_seconds = _coerce_optional_float(annotation.possessionChangeTime)
+    transition_start_time_seconds = _coerce_optional_float(annotation.transitionStartTime)
+    event_duration_seconds = (
+        max((event_end_seconds or 0.0) - (event_start_seconds or 0.0), 0.0)
+        if event_start_seconds is not None and event_end_seconds is not None
+        else 0.0
+    )
+    has_event_localization = any(
+        value is not None
+        for value in (
+            event_start_seconds,
+            event_center_seconds,
+            event_end_seconds,
+            shot_release_time_seconds,
+            ball_near_rim_time_seconds,
+            ball_through_hoop_time_seconds,
+            possession_change_time_seconds,
+            transition_start_time_seconds,
+        )
+    )
 
     features: dict[str, float] = {
         "ball.visible": 1.0 if annotation.ballVisible else 0.0,
@@ -209,6 +276,24 @@ def build_perception_feature_dict(
         "signal.ballThroughHoopLikelihood": _coerce_float(annotation.ballThroughHoopLikelihood, 0.0),
         "signal.possessionChangeLikelihood": _coerce_float(annotation.possessionChangeLikelihood, 0.0),
         "signal.transitionLikelihood": _coerce_float(annotation.transitionLikelihood, 0.0),
+        "event.hasLocalization": 1.0 if has_event_localization else 0.0,
+        "event.hasFullWindow": 1.0 if event_start_seconds is not None and event_center_seconds is not None and event_end_seconds is not None else 0.0,
+        "event.startSeconds": _coerce_float(event_start_seconds, 0.0),
+        "event.centerSeconds": _coerce_float(event_center_seconds, 0.0),
+        "event.endSeconds": _coerce_float(event_end_seconds, 0.0),
+        "event.durationSeconds": event_duration_seconds,
+        "event.shotReleaseTimeSeconds": _coerce_float(shot_release_time_seconds, 0.0),
+        "event.ballNearRimTimeSeconds": _coerce_float(ball_near_rim_time_seconds, 0.0),
+        "event.ballThroughHoopTimeSeconds": _coerce_float(ball_through_hoop_time_seconds, 0.0),
+        "event.possessionChangeTimeSeconds": _coerce_float(possession_change_time_seconds, 0.0),
+        "event.transitionStartTimeSeconds": _coerce_float(transition_start_time_seconds, 0.0),
+        "event.centerNormalized": _coerce_float(event_center_seconds, 0.0) / clip_duration,
+        "event.durationNormalized": event_duration_seconds / clip_duration,
+        "event.shotReleaseOffsetFromCenter": _time_offset(shot_release_time_seconds, event_center_seconds),
+        "event.ballNearRimOffsetFromCenter": _time_offset(ball_near_rim_time_seconds, event_center_seconds),
+        "event.ballThroughHoopOffsetFromCenter": _time_offset(ball_through_hoop_time_seconds, event_center_seconds),
+        "event.possessionChangeOffsetFromCenter": _time_offset(possession_change_time_seconds, event_center_seconds),
+        "event.transitionStartOffsetFromCenter": _time_offset(transition_start_time_seconds, event_center_seconds),
     }
 
     for key in (
@@ -250,7 +335,12 @@ def build_perception_supervision_record(
 ) -> PerceptionSupervisionExample:
     resolved_source_kind = source_kind or _infer_source_kind(annotation, source_set=source_set)
     teacher_confidence = _coerce_optional_float(annotation.teacherConfidence)
-    weight = _example_weight(resolved_source_kind, teacher_confidence)
+    weight = _example_weight(
+        resolved_source_kind,
+        teacher_confidence,
+        source_domain=annotation.sourceDomain,
+        source_set=source_set,
+    )
     ignored = weight <= 0.0
     split = _assign_split(annotation.clipId, resolved_source_kind, annotation.sourceDomain, source_set)
     calibration_anchor = resolved_source_kind == "gold" and split in {"val", "test"}
@@ -276,6 +366,14 @@ def build_perception_supervision_record(
         reviewer_notes=annotation.reviewerNotes,
         raw_runtime_outputs=annotation.rawRuntimeOutputs or {},
         raw_teacher_outputs=annotation.rawTeacherOutputs,
+        event_start_seconds=annotation.eventStart,
+        event_center_seconds=annotation.eventCenter,
+        event_end_seconds=annotation.eventEnd,
+        shot_release_time_seconds=annotation.shotReleaseTime,
+        ball_near_rim_time_seconds=annotation.ballNearRimTime,
+        ball_through_hoop_time_seconds=annotation.ballThroughHoopTime,
+        possession_change_time_seconds=annotation.possessionChangeTime,
+        transition_start_time_seconds=annotation.transitionStartTime,
         perception_context=context,
         features=build_perception_feature_dict(annotation, source_kind=resolved_source_kind, source_set=source_set),
     )
@@ -305,29 +403,50 @@ def _assign_split(clip_id: str, source_kind: str, source_domain: str, source_set
     return "train" if bucket < 85 else "test"
 
 
-def _example_weight(source_kind: str, teacher_confidence: float | None) -> float:
+def _example_weight(
+    source_kind: str,
+    teacher_confidence: float | None,
+    *,
+    source_domain: str,
+    source_set: str,
+) -> float:
     if source_kind == "gold":
-        return 4.0
-    if source_kind == "silver":
+        weight = 4.0
+    elif source_kind == "silver":
         confidence = teacher_confidence or 0.0
         if confidence >= 0.95:
-            return 1.5
-        if confidence >= 0.85:
-            return 1.0
-        if confidence >= 0.75:
-            return 0.5
-        return 0.0
-    if source_kind == "disagreement":
+            weight = 1.5
+        elif confidence >= 0.85:
+            weight = 1.0
+        elif confidence >= 0.75:
+            weight = 0.5
+        else:
+            weight = 0.0
+    elif source_kind == "disagreement":
         confidence = teacher_confidence or 0.0
         if confidence >= 0.9:
-            return 0.8
-        if confidence >= 0.8:
-            return 0.65
-        return 0.35
-    return 0.0
+            weight = 0.8
+        elif confidence >= 0.8:
+            weight = 0.65
+        else:
+            weight = 0.35
+    else:
+        weight = 0.0
+
+    if weight <= 0.0:
+        return 0.0
+    if source_set == PHASE4_IN_DOMAIN_SOURCE_SET and source_kind == "gold":
+        weight += 0.5
+    if source_set == PHASE4_PSEUDO_SOURCE_SET:
+        weight += 0.25
+    if source_domain in {"live_shadow", "live_runtime", "live_staging", "staging_smoke"}:
+        weight += 0.15
+    return round(min(weight, 5.0), 4)
 
 
 def _source_set_for_domain(source_domain: str) -> str:
+    if source_domain in PHASE4_ALLOWED_SOURCE_DOMAINS:
+        return PHASE4_IN_DOMAIN_SOURCE_SET
     if source_domain.startswith("live"):
         return "gold_set"
     if source_domain.startswith("teacher"):
@@ -340,6 +459,8 @@ def _source_set_for_domain(source_domain: str) -> str:
 def _infer_source_kind(annotation: ClipAnnotation, *, source_set: str | None = None) -> str:
     if source_set == "disagreement_queue":
         return "disagreement"
+    if source_set == PHASE4_PSEUDO_SOURCE_SET:
+        return "silver"
     if source_set == "silver_set":
         return "silver"
     if source_set == "gold_set":
@@ -406,6 +527,14 @@ def _load_jsonl_annotations(path: Path) -> list[ClipAnnotation]:
                 ballThroughHoopLikelihood=_coerce_optional_float(payload.get("ballThroughHoopLikelihood")),
                 possessionChangeLikelihood=_coerce_optional_float(payload.get("possessionChangeLikelihood")),
                 transitionLikelihood=_coerce_optional_float(payload.get("transitionLikelihood")),
+                eventStart=_coerce_optional_float(payload.get("eventStart")),
+                eventCenter=_coerce_optional_float(payload.get("eventCenter")),
+                eventEnd=_coerce_optional_float(payload.get("eventEnd")),
+                shotReleaseTime=_coerce_optional_float(payload.get("shotReleaseTime")),
+                ballNearRimTime=_coerce_optional_float(payload.get("ballNearRimTime")),
+                ballThroughHoopTime=_coerce_optional_float(payload.get("ballThroughHoopTime")),
+                possessionChangeTime=_coerce_optional_float(payload.get("possessionChangeTime")),
+                transitionStartTime=_coerce_optional_float(payload.get("transitionStartTime")),
                 teacherConfidence=_coerce_optional_float(teacher.get("confidence") or payload.get("teacherConfidence")),
                 humanVerified=False,
                 reviewerNotes=str(payload.get("reviewerNotes") or ""),
@@ -449,6 +578,59 @@ def _coerce_int(value: Any) -> int:
         return int(value)
     except (TypeError, ValueError):
         return 0
+
+
+def _time_offset(value: float | None, center: float | None) -> float:
+    if value is None or center is None:
+        return 0.0
+    return round(float(value) - float(center), 4)
+
+
+def _build_phase4_pseudo_examples(repo_root: Path, *, dataset_dir: Path) -> list[PerceptionSupervisionExample]:
+    phase4_path = dataset_dir / "phase4_in_domain_annotations.json"
+    if not phase4_path.exists():
+        return []
+    pseudo_records = load_phase4_pseudo_label_examples(
+        repo_root,
+        input_paths=[phase4_path],
+        source_domains=PHASE4_ALLOWED_SOURCE_DOMAINS,
+    )
+    return [
+        build_perception_supervision_record(
+            ClipAnnotation(
+                clipId=record.clipId,
+                sourceDomain=record.sourceDomain,
+                schemaVersion=record.schemaVersion,
+                sourceRef=record.sourceRef,
+                eventFamily=record.selectedEventFamily or "other",
+                outcome=record.selectedOutcome or "uncertain",
+                shotSubtype=record.selectedShotSubtype,
+                ballVisible=record.ballVisible,
+                hoopVisible=record.hoopVisible,
+                ballNearRim=record.ballNearRim,
+                ballThroughHoopLikelihood=record.ballThroughHoopLikelihood,
+                possessionChangeLikelihood=record.possessionChangeLikelihood,
+                transitionLikelihood=record.transitionLikelihood,
+                eventStart=record.eventStart,
+                eventCenter=record.eventCenter,
+                eventEnd=record.eventEnd,
+                shotReleaseTime=record.shotReleaseTime,
+                ballNearRimTime=record.ballNearRimTime,
+                ballThroughHoopTime=record.ballThroughHoopTime,
+                possessionChangeTime=record.possessionChangeTime,
+                transitionStartTime=record.transitionStartTime,
+                teacherConfidence=record.teacherConfidence,
+                humanVerified=False,
+                reviewerNotes=record.reviewerNotes,
+                rawRuntimeOutputs=record.rawRuntimeOutputs,
+                rawTeacherOutputs=record.rawTeacherOutputs,
+            ),
+            source_set=PHASE4_PSEUDO_SOURCE_SET,
+            source_kind="silver",
+        )
+        for record in pseudo_records
+        if record.recordType == "pseudo_label" and record.trainingEligible
+    ]
 
 
 def _write_split(output_dir: Path, split_name: str, examples: Sequence[PerceptionSupervisionExample], feature_names: Sequence[str]) -> None:

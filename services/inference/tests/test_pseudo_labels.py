@@ -162,6 +162,10 @@ class Phase4PseudoLabelTests(unittest.TestCase):
             self.assertEqual(pseudo_row["teacherEventFamily"], "shot_attempt")
             self.assertEqual(pseudo_row["selectedDisplayLabel"], "Dunk")
             self.assertEqual(pseudo_row["rawTeacherOutputs"]["confidence"], 0.93)
+            self.assertTrue(pseudo_row["ballVisible"])
+            self.assertTrue(pseudo_row["hoopVisible"])
+            self.assertIsNone(pseudo_row["eventStart"])
+            self.assertIsNone(pseudo_row["shotReleaseTime"])
             self.assertIn("below_confidence_gate", filtered_reasons)
             self.assertIn("outside_in_domain_slice", filtered_reasons)
 

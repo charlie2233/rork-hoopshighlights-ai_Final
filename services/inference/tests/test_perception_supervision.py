@@ -36,6 +36,14 @@ class PerceptionSupervisionTests(unittest.TestCase):
             ballThroughHoopLikelihood=0.87,
             possessionChangeLikelihood=0.14,
             transitionLikelihood=0.11,
+            eventStart=1.1,
+            eventCenter=2.1,
+            eventEnd=3.0,
+            shotReleaseTime=1.7,
+            ballNearRimTime=2.2,
+            ballThroughHoopTime=2.6,
+            possessionChangeTime=None,
+            transitionStartTime=0.4,
             teacherConfidence=0.98,
             humanVerified=True,
             reviewerNotes="Nested context should survive export.",
@@ -78,6 +86,9 @@ class PerceptionSupervisionTests(unittest.TestCase):
         self.assertEqual(features["perception.overlayPathCount"], 2.0)
         self.assertGreater(features["signal.ballNearRim"], 0.85)
         self.assertGreater(features["signal.samePlayContinuityScore"], 0.8)
+        self.assertEqual(features["event.hasLocalization"], 1.0)
+        self.assertGreater(features["event.centerNormalized"], 0.0)
+        self.assertAlmostEqual(features["event.shotReleaseOffsetFromCenter"], -0.4, places=4)
 
     def test_bundle_exports_features_and_preserves_gold_anchor_rows(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -115,6 +126,8 @@ class PerceptionSupervisionTests(unittest.TestCase):
             self.assertTrue(any(record["calibrationAnchor"] for record in val_records + test_records if record["sourceKind"] == "gold"))
             self.assertTrue(any(record["sourceKind"] == "silver" and not record["ignored"] for record in train_records))
             self.assertTrue(any(record["sourceSet"] == "disagreement_queue" for record in train_records + val_records + test_records))
+            self.assertTrue(any(record["sourceSet"] == "phase4_in_domain" for record in train_records + val_records + test_records))
+            self.assertTrue(any(record["sourceSet"] == "phase4_pseudo_labels" for record in train_records + val_records + test_records))
 
     def test_load_examples_preserves_detection_first_inputs_in_context(self) -> None:
         examples = load_perception_supervision_examples(REPO_ROOT)
@@ -127,6 +140,7 @@ class PerceptionSupervisionTests(unittest.TestCase):
         self.assertIn("perceptionSummary", example.perception_context)
         self.assertIn("structuredSignals", example.perception_context)
         self.assertIn("signal.ballThroughHoopLikelihood", example.features)
+        self.assertIn("event.hasLocalization", example.features)
         self.assertGreaterEqual(example.weight, 0.0)
 
     def test_low_confidence_silver_rows_are_ignored(self) -> None:

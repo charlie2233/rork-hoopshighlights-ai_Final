@@ -54,6 +54,20 @@ class Phase4PseudoLabelRecord:
     selectedOutcome: str | None
     selectedShotSubtype: str | None
     selectedDisplayLabel: str | None
+    ballVisible: bool
+    hoopVisible: bool
+    ballNearRim: float | None
+    ballThroughHoopLikelihood: float | None
+    possessionChangeLikelihood: float | None
+    transitionLikelihood: float | None
+    eventStart: float | None
+    eventCenter: float | None
+    eventEnd: float | None
+    shotReleaseTime: float | None
+    ballNearRimTime: float | None
+    ballThroughHoopTime: float | None
+    possessionChangeTime: float | None
+    transitionStartTime: float | None
     reviewerNotes: str
     rawRuntimeOutputs: dict[str, Any]
     rawTeacherOutputs: dict[str, Any] | None
@@ -84,6 +98,20 @@ class Phase4PseudoLabelRecord:
             "selectedOutcome": self.selectedOutcome,
             "selectedShotSubtype": self.selectedShotSubtype,
             "selectedDisplayLabel": self.selectedDisplayLabel,
+            "ballVisible": self.ballVisible,
+            "hoopVisible": self.hoopVisible,
+            "ballNearRim": self.ballNearRim,
+            "ballThroughHoopLikelihood": self.ballThroughHoopLikelihood,
+            "possessionChangeLikelihood": self.possessionChangeLikelihood,
+            "transitionLikelihood": self.transitionLikelihood,
+            "eventStart": self.eventStart,
+            "eventCenter": self.eventCenter,
+            "eventEnd": self.eventEnd,
+            "shotReleaseTime": self.shotReleaseTime,
+            "ballNearRimTime": self.ballNearRimTime,
+            "ballThroughHoopTime": self.ballThroughHoopTime,
+            "possessionChangeTime": self.possessionChangeTime,
+            "transitionStartTime": self.transitionStartTime,
             "reviewerNotes": self.reviewerNotes,
             "rawRuntimeOutputs": self.rawRuntimeOutputs,
             "rawTeacherOutputs": self.rawTeacherOutputs,
@@ -330,6 +358,20 @@ def _build_record(
         selectedOutcome=selected_outcome,
         selectedShotSubtype=selected_shot_subtype,
         selectedDisplayLabel=selected_display_label,
+        ballVisible=annotation.ballVisible,
+        hoopVisible=annotation.hoopVisible,
+        ballNearRim=annotation.ballNearRim,
+        ballThroughHoopLikelihood=annotation.ballThroughHoopLikelihood,
+        possessionChangeLikelihood=annotation.possessionChangeLikelihood,
+        transitionLikelihood=annotation.transitionLikelihood,
+        eventStart=annotation.eventStart,
+        eventCenter=annotation.eventCenter,
+        eventEnd=annotation.eventEnd,
+        shotReleaseTime=annotation.shotReleaseTime,
+        ballNearRimTime=annotation.ballNearRimTime,
+        ballThroughHoopTime=annotation.ballThroughHoopTime,
+        possessionChangeTime=annotation.possessionChangeTime,
+        transitionStartTime=annotation.transitionStartTime,
         reviewerNotes=annotation.reviewerNotes,
         rawRuntimeOutputs=dict(annotation.rawRuntimeOutputs or {}),
         rawTeacherOutputs=teacher_outputs,

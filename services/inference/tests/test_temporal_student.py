@@ -103,6 +103,14 @@ def _make_observation(
         "sourceRefPresent": True,
         "humanVerified": event_family == "shot_attempt",
         "clipDurationSeconds": 4.8,
+        "eventStartSeconds": 0.6,
+        "eventCenterSeconds": 2.4,
+        "eventEndSeconds": 3.6,
+        "shotReleaseTimeSeconds": 1.8 if event_family == "shot_attempt" else None,
+        "ballNearRimTimeSeconds": 2.5 if event_family == "shot_attempt" else None,
+        "ballThroughHoopTimeSeconds": 2.9 if outcome == "made" else None,
+        "possessionChangeTimeSeconds": 2.1 if event_family == "turnover" else None,
+        "transitionStartTimeSeconds": 0.4 if event_family == "transition" else None,
         "sourceEventCount": 1.0,
         "wasMerged": False,
         "position": position,
@@ -127,6 +135,8 @@ class TemporalStudentTests(unittest.TestCase):
         self.assertIn("ball_detection_confidence", feature_map)
         self.assertIn("tracking_continuity", feature_map)
         self.assertIn("runtime_label_highlight", feature_map)
+        self.assertIn("event_duration_seconds", feature_map)
+        self.assertIn("shot_release_time_seconds", feature_map)
 
     @unittest.skipIf(torch is None, "torch is required for temporal student training")
     def test_train_temporal_student_smoke_honors_hierarchy(self) -> None:
@@ -143,6 +153,7 @@ class TemporalStudentTests(unittest.TestCase):
                 for position in (0.15, 0.45, 0.7, 0.9)
             ),
             weight=4.0,
+            has_event_localization=True,
         )
         turnover = TemporalStudentTrainingExample(
             clip_id="gold-turnover",
@@ -157,6 +168,7 @@ class TemporalStudentTests(unittest.TestCase):
                 for position in (0.12, 0.42, 0.7, 0.9)
             ),
             weight=4.0,
+            has_event_localization=True,
         )
 
         result = train_temporal_student([made, turnover], hidden_size=8, epochs=6, learning_rate=0.05)
@@ -185,6 +197,7 @@ class TemporalStudentTests(unittest.TestCase):
                 for position in (0.15, 0.45, 0.72, 0.9)
             ),
             weight=4.0,
+            has_event_localization=True,
         )
         miss = TemporalStudentTrainingExample(
             clip_id="gold-miss-jumper",
@@ -199,6 +212,7 @@ class TemporalStudentTests(unittest.TestCase):
                 for position in (0.12, 0.4, 0.72, 0.9)
             ),
             weight=4.0,
+            has_event_localization=True,
         )
 
         result = train_temporal_student([made, miss], hidden_size=8, epochs=6, learning_rate=0.05)
@@ -208,9 +222,10 @@ class TemporalStudentTests(unittest.TestCase):
         self.assertIn("highlightDominance", metrics)
         self.assertIn("otherDominance", metrics)
         self.assertIn("missVsMadeConfusion", metrics)
+        self.assertIn("eventDetectionPrecision", metrics)
+        self.assertIn("eventDetectionRecall", metrics)
         self.assertGreaterEqual(metrics["flatLabelSpread"], 1)
 
 
 if __name__ == "__main__":
     unittest.main()
-

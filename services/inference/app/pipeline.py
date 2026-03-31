@@ -1308,6 +1308,7 @@ def _build_temporal_student_observations(
     environment: str,
 ) -> list[TemporalStudentObservation]:
     grouped_frames = _perception_frame_observations(perception)
+    event_markers = _infer_temporal_event_markers(candidate=candidate, grouped_frames=grouped_frames)
     summary_features = _perception_summary_features(perception)
     perception_summary = _summarize_perception(perception)
     raw_runtime_outputs = {
@@ -1333,7 +1334,6 @@ def _build_temporal_student_observations(
         },
     }
     clip_duration = max(float(candidate.endTime) - float(candidate.startTime), 0.0)
-    event_center = round((float(candidate.startTime) + float(candidate.endTime)) / 2.0, 4)
     runtime_base = {
         "sourceKind": "runtime",
         "sourceDomain": environment,
@@ -1341,7 +1341,7 @@ def _build_temporal_student_observations(
         "sourceRef": getattr(candidate, "candidateId", None),
         "humanVerified": False,
         "clipDurationSeconds": clip_duration,
-        "eventCenterSeconds": event_center,
+        **event_markers,
         "preRollSeconds": 0.0,
         "postRollSeconds": 0.0,
         "sourceEventCount": 1,
@@ -1352,7 +1352,7 @@ def _build_temporal_student_observations(
     if not grouped_frames:
         return [
             TemporalStudentObservation(
-                timestamp_seconds=event_center,
+                timestamp_seconds=float(event_markers["eventCenterSeconds"]),
                 structured_signals=dict(structured_signals),
                 perception_features=dict(summary_features),
                 detection_features=_temporal_student_detection_features(
@@ -1448,6 +1448,8 @@ def _build_distilled_shadow_snapshot(
     perception: dict[str, object],
     environment: str,
 ) -> dict[str, object]:
+    grouped_frames = _perception_frame_observations(perception)
+    event_markers = _infer_temporal_event_markers(candidate=candidate, grouped_frames=grouped_frames)
     summary_features = _perception_summary_features(perception)
     raw_runtime_outputs = {
         "label": getattr(action, "label", None),
@@ -1478,7 +1480,7 @@ def _build_distilled_shadow_snapshot(
         "ballVisible": _perception_visible(perception, "basketball"),
         "hoopVisible": _perception_visible(perception, "rim"),
         "clipDurationSeconds": max(float(candidate.endTime) - float(candidate.startTime), 0.0),
-        "eventCenterSeconds": round((float(candidate.startTime) + float(candidate.endTime)) / 2.0, 4),
+        **event_markers,
         "preRollSeconds": 0.0,
         "postRollSeconds": 0.0,
         "sourceEventCount": 1,
@@ -1497,6 +1499,92 @@ def _build_distilled_shadow_snapshot(
         "rawTopLabels": [item.model_dump(mode="json") for item in list(getattr(action, "rawTopLabels", []))],
     }
     return snapshot
+
+
+def _infer_temporal_event_markers(
+    *,
+    candidate,
+    grouped_frames: list[list[PerceptionObservation]],
+) -> dict[str, object]:
+    clip_start = float(candidate.startTime)
+    clip_end = float(candidate.endTime)
+    clip_duration = max(clip_end - clip_start, 0.0)
+    markers: dict[str, object] = {
+        "eventStartSeconds": 0.0,
+        "eventCenterSeconds": round(clip_duration / 2.0, 4),
+        "eventEndSeconds": round(clip_duration, 4),
+        "shotReleaseTimeSeconds": None,
+        "ballNearRimTimeSeconds": None,
+        "ballThroughHoopTimeSeconds": None,
+        "possessionChangeTimeSeconds": None,
+        "transitionStartTimeSeconds": None,
+    }
+    if not grouped_frames:
+        return markers
+
+    best_scores: dict[str, tuple[float, float | None]] = {
+        "shotReleaseTimeSeconds": (0.0, None),
+        "ballNearRimTimeSeconds": (0.0, None),
+        "ballThroughHoopTimeSeconds": (0.0, None),
+        "possessionChangeTimeSeconds": (0.0, None),
+    }
+    transition_candidate: tuple[float, float | None] = (0.0, None)
+    for frame_observations in grouped_frames:
+        if not frame_observations:
+            continue
+        local_features = derive_perception_features(
+            [frame_observations],
+            ball_labels=("basketball", "ball"),
+            rim_labels=("rim", "hoop"),
+            player_labels=("player", "players"),
+            defender_labels=("defender",),
+        )
+        timestamp_seconds = round(float(frame_observations[0].timestamp_seconds) - clip_start, 4)
+        if timestamp_seconds < 0.0 or timestamp_seconds > clip_duration:
+            continue
+        score_pairs = {
+            "shotReleaseTimeSeconds": float(local_features.shotReleaseCandidate),
+            "ballNearRimTimeSeconds": float(local_features.ballNearRim),
+            "ballThroughHoopTimeSeconds": float(local_features.ballThroughHoopLikelihood),
+            "possessionChangeTimeSeconds": float(local_features.possessionChangeLikelihood),
+        }
+        for key, score in score_pairs.items():
+            if score > best_scores[key][0]:
+                best_scores[key] = (score, timestamp_seconds)
+        transition_score = float(local_features.transitionSpeedScore)
+        if transition_score > transition_candidate[0]:
+            transition_candidate = (transition_score, timestamp_seconds)
+
+    thresholds = {
+        "shotReleaseTimeSeconds": 0.3,
+        "ballNearRimTimeSeconds": 0.25,
+        "ballThroughHoopTimeSeconds": 0.2,
+        "possessionChangeTimeSeconds": 0.25,
+    }
+    for key, (score, timestamp_seconds) in best_scores.items():
+        if timestamp_seconds is not None and score >= thresholds[key]:
+            markers[key] = timestamp_seconds
+    if transition_candidate[1] is not None and transition_candidate[0] >= 0.35:
+        markers["transitionStartTimeSeconds"] = transition_candidate[1]
+
+    anchor_times = [
+        value
+        for value in (
+            markers["shotReleaseTimeSeconds"],
+            markers["ballNearRimTimeSeconds"],
+            markers["ballThroughHoopTimeSeconds"],
+            markers["possessionChangeTimeSeconds"],
+            markers["transitionStartTimeSeconds"],
+        )
+        if isinstance(value, (int, float))
+    ]
+    if anchor_times:
+        event_start = max(min(anchor_times) - 0.35, 0.0)
+        event_end = min(max(anchor_times) + 0.35, clip_duration)
+        markers["eventStartSeconds"] = round(event_start, 4)
+        markers["eventEndSeconds"] = round(max(event_end, event_start), 4)
+        markers["eventCenterSeconds"] = round((event_start + event_end) / 2.0, 4)
+    return markers
 
 
 def _load_temporal_shadow_bundle(path: Path) -> TemporalEncoderBundle | TemporalStudentBundle | None:

@@ -13,9 +13,9 @@ from services.inference.app.runtime_model import derive_runtime_display_label
 from services.inference.app.temporal_encoder import TemporalTargetModel
 
 
-TEMPORAL_STUDENT_SCHEMA_VERSION = "temporal-student-v1"
-TEMPORAL_STUDENT_FEATURE_SCHEMA_VERSION = "temporal-student-feature-v1"
-TEMPORAL_STUDENT_MODEL_VERSION = "temporal-student-v1"
+TEMPORAL_STUDENT_SCHEMA_VERSION = "temporal-student-v2"
+TEMPORAL_STUDENT_FEATURE_SCHEMA_VERSION = "temporal-student-feature-v2"
+TEMPORAL_STUDENT_MODEL_VERSION = "temporal-student-staged-v1"
 TEMPORAL_STUDENT_BUNDLE_PATH = Path(__file__).resolve().parents[2] / "models" / "temporal_student_v1.json"
 MAX_TEMPORAL_STUDENT_TOPK = 3
 
@@ -23,6 +23,20 @@ EVENT_FAMILIES = ("shot_attempt", "turnover", "defensive_event", "transition", "
 OUTCOMES = ("made", "missed", "blocked", "uncertain")
 SHOT_SUBTYPES = ("dunk", "layup", "jumper", "three", "putback", "null")
 DISPLAY_LABELS = ("Dunk", "Layup", "Three Pointer", "Made Shot", "Block", "Steal", "Fast Break", "Highlight")
+CONDITIONED_OUTCOME_LABELS = {
+    "shot_attempt": ("made", "missed", "blocked", "uncertain"),
+    "defensive_event": ("blocked", "uncertain"),
+    "turnover": ("uncertain",),
+    "transition": ("uncertain",),
+    "other": ("uncertain",),
+}
+CONDITIONED_SUBTYPE_LABELS = {
+    "shot_attempt": ("dunk", "layup", "jumper", "three", "putback", "null"),
+    "defensive_event": ("null",),
+    "turnover": ("null",),
+    "transition": ("null",),
+    "other": ("null",),
+}
 
 
 @dataclass(frozen=True)
@@ -87,10 +101,25 @@ class TemporalStudentBundle:
         hidden, attention = self.encode_observations(observations)
         pooled = self.pool_hidden_states(hidden, attention)
         family_prediction = self.targets["eventFamily"].predict(pooled, model_version=self.model_version)
-        outcome_prediction = self.targets["outcome"].predict(pooled, model_version=self.model_version)
-        subtype_prediction = self.targets["shotSubtype"].predict(pooled, model_version=self.model_version)
-
         event_family = family_prediction.label if not family_prediction.is_uncertain else "other"
+        outcome_prediction = _predict_conditioned_target(
+            self.targets["outcome"],
+            pooled,
+            model_version=self.model_version,
+            allowed_labels=(
+                OUTCOMES if family_prediction.is_uncertain else CONDITIONED_OUTCOME_LABELS.get(event_family, OUTCOMES)
+            ),
+        )
+        subtype_prediction = _predict_conditioned_target(
+            self.targets["shotSubtype"],
+            pooled,
+            model_version=self.model_version,
+            allowed_labels=(
+                SHOT_SUBTYPES
+                if family_prediction.is_uncertain
+                else CONDITIONED_SUBTYPE_LABELS.get(event_family, SHOT_SUBTYPES)
+            ),
+        )
         outcome = _resolve_student_outcome(event_family, outcome_prediction)
         shot_subtype: str | None = None
         if event_family == "shot_attempt" and not subtype_prediction.is_uncertain and subtype_prediction.label != "null":
@@ -130,6 +159,17 @@ class TemporalStudentBundle:
             "temporal_student_family_top_labels": [item.model_dump(mode="json") for item in family_prediction.top_labels],
             "temporal_student_outcome_top_labels": [item.model_dump(mode="json") for item in outcome_prediction.top_labels],
             "temporal_student_subtype_top_labels": [item.model_dump(mode="json") for item in subtype_prediction.top_labels],
+            "temporal_student_head_chain": {
+                "eventFamily": event_family,
+                "outcomeAllowedLabels": list(
+                    OUTCOMES if family_prediction.is_uncertain else CONDITIONED_OUTCOME_LABELS.get(event_family, OUTCOMES)
+                ),
+                "shotSubtypeAllowedLabels": list(
+                    SHOT_SUBTYPES
+                    if family_prediction.is_uncertain
+                    else CONDITIONED_SUBTYPE_LABELS.get(event_family, SHOT_SUBTYPES)
+                ),
+            },
         }
         return ActionPrediction(
             label=display_label,
@@ -217,6 +257,38 @@ def build_temporal_student_feature_map(observation: TemporalStudentObservation) 
     runtime_event_family = _normalize_label(runtime.get("eventFamily") or runtime.get("runtimeEventFamily"))
     runtime_outcome = _normalize_label(runtime.get("outcome") or runtime.get("runtimeOutcome"))
     runtime_shot_subtype = _normalize_label(runtime.get("shotSubtype") or runtime.get("runtimeShotSubtype") or "null")
+    clip_duration_seconds = _coerce_float(runtime.get("clipDurationSeconds"), default=0.0)
+    event_start_raw = _coerce_optional_float(runtime.get("eventStartSeconds"))
+    event_center_raw = _coerce_optional_float(runtime.get("eventCenterSeconds"))
+    event_end_raw = _coerce_optional_float(runtime.get("eventEndSeconds"))
+    shot_release_raw = _coerce_optional_float(runtime.get("shotReleaseTimeSeconds"))
+    ball_near_rim_raw = _coerce_optional_float(runtime.get("ballNearRimTimeSeconds"))
+    ball_through_hoop_raw = _coerce_optional_float(runtime.get("ballThroughHoopTimeSeconds"))
+    possession_change_raw = _coerce_optional_float(runtime.get("possessionChangeTimeSeconds"))
+    transition_start_raw = _coerce_optional_float(runtime.get("transitionStartTimeSeconds"))
+    event_start_seconds = float(event_start_raw or 0.0)
+    event_center_seconds = float(event_center_raw or 0.0)
+    event_end_seconds = float(event_end_raw or 0.0)
+    shot_release_time_seconds = float(shot_release_raw or 0.0)
+    ball_near_rim_time_seconds = float(ball_near_rim_raw or 0.0)
+    ball_through_hoop_time_seconds = float(ball_through_hoop_raw or 0.0)
+    possession_change_time_seconds = float(possession_change_raw or 0.0)
+    transition_start_time_seconds = float(transition_start_raw or 0.0)
+    event_duration_seconds = max(event_end_seconds - event_start_seconds, 0.0)
+    localization_present = any(
+        value is not None
+        for value in (
+            event_start_raw,
+            event_center_raw,
+            event_end_raw,
+            shot_release_raw,
+            ball_near_rim_raw,
+            ball_through_hoop_raw,
+            possession_change_raw,
+            transition_start_raw,
+        )
+    )
+    normalized_duration = clip_duration_seconds if clip_duration_seconds > 0.0 else max(event_end_seconds, event_center_seconds, 1.0)
 
     features = {
         "timestamp_seconds": _coerce_float(observation.timestamp_seconds, default=0.0),
@@ -250,8 +322,25 @@ def build_temporal_student_feature_map(observation: TemporalStudentObservation) 
         "runtime_top_count": _coerce_float(runtime.get("topCount", runtime.get("runtimeTopCount")), default=0.0),
         "source_ref_present": _bool_float(runtime.get("sourceRefPresent", runtime.get("sourceRef"))),
         "human_verified": _bool_float(runtime.get("humanVerified")),
-        "clip_duration_seconds": _coerce_float(runtime.get("clipDurationSeconds")),
-        "event_center_seconds": _coerce_float(runtime.get("eventCenterSeconds")),
+        "clip_duration_seconds": clip_duration_seconds,
+        "event_start_seconds": event_start_seconds,
+        "event_center_seconds": event_center_seconds,
+        "event_end_seconds": event_end_seconds,
+        "event_duration_seconds": event_duration_seconds,
+        "event_localization_present": 1.0 if localization_present else 0.0,
+        "event_localization_complete": 1.0 if event_start_raw is not None and event_center_raw is not None and event_end_raw is not None else 0.0,
+        "event_center_seconds_norm": event_center_seconds / normalized_duration,
+        "event_duration_seconds_norm": event_duration_seconds / normalized_duration,
+        "shot_release_time_seconds": shot_release_time_seconds,
+        "ball_near_rim_time_seconds": ball_near_rim_time_seconds,
+        "ball_through_hoop_time_seconds": ball_through_hoop_time_seconds,
+        "possession_change_time_seconds": possession_change_time_seconds,
+        "transition_start_time_seconds": transition_start_time_seconds,
+        "shot_release_offset_from_center": _time_offset(shot_release_time_seconds, event_center_seconds),
+        "ball_near_rim_offset_from_center": _time_offset(ball_near_rim_time_seconds, event_center_seconds),
+        "ball_through_hoop_offset_from_center": _time_offset(ball_through_hoop_time_seconds, event_center_seconds),
+        "possession_change_offset_from_center": _time_offset(possession_change_time_seconds, event_center_seconds),
+        "transition_start_offset_from_center": _time_offset(transition_start_time_seconds, event_center_seconds),
         "pre_roll_seconds": _coerce_float(runtime.get("preRollSeconds")),
         "post_roll_seconds": _coerce_float(runtime.get("postRollSeconds")),
         "source_event_count": _coerce_float(runtime.get("sourceEventCount"), default=1.0),
@@ -336,21 +425,49 @@ def default_temporal_student_feature_names() -> tuple[str, ...]:
         "source_ref_present",
         "human_verified",
         "clip_duration_seconds",
+        "event_start_seconds",
         "event_center_seconds",
+        "event_end_seconds",
+        "event_duration_seconds",
+        "event_localization_present",
+        "event_localization_complete",
+        "event_center_seconds_norm",
+        "event_duration_seconds_norm",
+        "shot_release_time_seconds",
+        "ball_near_rim_time_seconds",
+        "ball_through_hoop_time_seconds",
+        "possession_change_time_seconds",
+        "transition_start_time_seconds",
+        "shot_release_offset_from_center",
+        "ball_near_rim_offset_from_center",
+        "ball_through_hoop_offset_from_center",
+        "possession_change_offset_from_center",
+        "transition_start_offset_from_center",
         "pre_roll_seconds",
         "post_roll_seconds",
         "source_event_count",
         "was_merged",
         "source_domain=hard_negative",
+        "source_domain=live_runtime",
+        "source_domain=live_staging",
         "source_domain=live_shadow",
+        "source_domain=staging_smoke",
         "source_domain=teacher_pseudo",
         "source_domain=benchmark_eval",
+        "source_domain=broadcast",
+        "source_domain=fixed_camera_indoor",
+        "source_domain=fixed_camera_outdoor",
+        "source_domain=phone_casual",
         "source_kind=gold",
+        "source_kind=runtime",
         "source_kind=silver",
         "source_kind=disagreement",
         "source_set=gold_set",
         "source_set=silver_set",
         "source_set=disagreement_queue",
+        "source_set=phase4_in_domain",
+        "source_set=phase4_pseudo_labels",
+        "source_set=runtime_inference",
         "runtime_label=highlight",
         "runtime_label=dunk",
         "runtime_label=layup",
@@ -515,6 +632,70 @@ def _resolve_student_outcome(event_family: str, prediction: TemporalTargetPredic
     return prediction.label
 
 
+def _predict_conditioned_target(
+    target: TemporalTargetModel,
+    pooled: np.ndarray,
+    *,
+    model_version: str,
+    allowed_labels: Sequence[str],
+) -> TemporalStudentTargetPrediction:
+    allowed = {str(label) for label in allowed_labels}
+    if not allowed or allowed == set(target.classes):
+        base_prediction = target.predict(pooled, model_version=model_version)
+        return TemporalStudentTargetPrediction(
+            label=base_prediction.label,
+            confidence=base_prediction.confidence,
+            margin=base_prediction.margin,
+            distribution=base_prediction.distribution,
+            top_labels=base_prediction.top_labels,
+            is_uncertain=base_prediction.is_uncertain,
+        )
+
+    logits = np.matmul(np.asarray(target.weight, dtype=np.float64), pooled) + np.asarray(
+        target.bias,
+        dtype=np.float64,
+    )
+    masked_logits = np.full_like(logits, -1e9, dtype=np.float64)
+    allowed_indices = [index for index, label in enumerate(target.classes) if label in allowed]
+    if not allowed_indices:
+        return _predict_conditioned_target(
+            target,
+            pooled,
+            model_version=model_version,
+            allowed_labels=target.classes,
+        )
+    for index in allowed_indices:
+        masked_logits[index] = logits[index]
+    probabilities = _softmax(masked_logits / max(target.temperature, 1e-3))
+    ranked = list(np.argsort(probabilities)[::-1])
+    top_index = ranked[0]
+    second_probability = float(probabilities[ranked[1]]) if len(ranked) > 1 else 0.0
+    top_probability = float(probabilities[top_index])
+    margin = max(top_probability - second_probability, 0.0)
+    distribution = {
+        str(label): round(float(probabilities[index]), 4)
+        for index, label in enumerate(target.classes)
+        if label in allowed
+    }
+    top_labels = tuple(
+        LabelScore(
+            label=str(target.classes[index]),
+            confidence=round(float(probabilities[index]), 4),
+            modelVersion=model_version,
+        )
+        for index in ranked[: target.top_k]
+        if target.classes[index] in allowed
+    )
+    return TemporalStudentTargetPrediction(
+        label=str(target.classes[top_index]),
+        confidence=round(top_probability, 4),
+        margin=round(margin, 4),
+        distribution=distribution,
+        top_labels=top_labels,
+        is_uncertain=top_probability < target.uncertainty_threshold or margin < target.margin_threshold,
+    )
+
+
 def _resolve_student_confidence(
     *,
     display_label: str,
@@ -586,3 +767,15 @@ def _softmax(logits: np.ndarray) -> np.ndarray:
         return np.ones_like(exp_logits) / max(len(exp_logits), 1)
     return exp_logits / denominator
 
+
+def _time_offset(value: float, center: float) -> float:
+    if value <= 0.0 or center <= 0.0:
+        return 0.0
+    return round(value - center, 4)
+
+
+def _coerce_optional_float(value: Any) -> float | None:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None

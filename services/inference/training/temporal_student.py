@@ -50,6 +50,7 @@ class TemporalStudentTrainingExample:
     split: str = "train"
     weight: float = 1.0
     source_domain: str = "unknown"
+    has_event_localization: bool = False
 
 
 @dataclass(frozen=True)
@@ -93,17 +94,33 @@ def load_temporal_student_examples(repo_root: Path) -> list[TemporalStudentTrain
     for example in perception_examples:
         if example.ignored:
             continue
+        event_family = example.event_family if example.event_family in EVENT_FAMILIES else "other"
+        outcome = example.outcome if example.outcome in OUTCOMES else "uncertain"
+        shot_subtype = example.shot_subtype if example.shot_subtype in SHOT_SUBTYPES else None
         examples.append(
             TemporalStudentTrainingExample(
                 clip_id=example.clip_id,
                 observations=_build_observations(example),
-                event_family=example.event_family,
-                outcome=example.outcome,
-                shot_subtype=example.shot_subtype,
+                event_family=event_family,
+                outcome=outcome,
+                shot_subtype=shot_subtype,
                 source_kind=example.source_kind,
                 source_domain=example.source_domain,
                 split=example.split,
                 weight=example.weight,
+                has_event_localization=any(
+                    value is not None
+                    for value in (
+                        example.event_start_seconds,
+                        example.event_center_seconds,
+                        example.event_end_seconds,
+                        example.shot_release_time_seconds,
+                        example.ball_near_rim_time_seconds,
+                        example.ball_through_hoop_time_seconds,
+                        example.possession_change_time_seconds,
+                        example.transition_start_time_seconds,
+                    )
+                ),
             )
         )
     return examples
@@ -206,6 +223,7 @@ def evaluate_temporal_student_bundle(
                 "predictedShotSubtype": prediction.shotSubtype or "null",
                 "predictedDisplayLabel": prediction.label,
                 "isUncertain": bool(prediction.isUncertain),
+                "hasEventLocalization": bool(example.has_event_localization),
             }
         )
     total = max(len(rows), 1)
@@ -236,6 +254,30 @@ def evaluate_temporal_student_bundle(
         for row in rows
         if row["expectedOutcome"] == "missed" and row["predictedDisplayLabel"] == "Made Shot"
     )
+    localized_rows = [row for row in rows if row["hasEventLocalization"]]
+    true_positive = sum(
+        1
+        for row in localized_rows
+        if row["expectedEventFamily"] != "other" and row["predictedEventFamily"] != "other"
+    )
+    false_positive = sum(
+        1
+        for row in localized_rows
+        if row["expectedEventFamily"] == "other" and row["predictedEventFamily"] != "other"
+    )
+    false_negative = sum(
+        1
+        for row in localized_rows
+        if row["expectedEventFamily"] != "other" and row["predictedEventFamily"] == "other"
+    )
+    event_detection_precision = round(
+        true_positive / max(true_positive + false_positive, 1),
+        4,
+    )
+    event_detection_recall = round(
+        true_positive / max(true_positive + false_negative, 1),
+        4,
+    )
     return {
         "eventFamilyAccuracy": event_family_accuracy,
         "outcomeAccuracy": outcome_accuracy,
@@ -249,6 +291,9 @@ def evaluate_temporal_student_bundle(
         "highlightDominance": highlight_dominance,
         "otherDominance": other_dominance,
         "missVsMadeConfusion": miss_vs_made_confusion,
+        "eventDetectionPrecision": event_detection_precision,
+        "eventDetectionRecall": event_detection_recall,
+        "eventDetectionLabeledRows": len(localized_rows),
         "evaluationRows": rows,
     }
 
@@ -394,6 +439,8 @@ def build_temporal_student_report(
         f"- Highlight dominance: `{metrics.get('highlightDominance')}`",
         f"- EventFamily=other dominance: `{metrics.get('otherDominance')}`",
         f"- Miss-vs-made confusion: `{metrics.get('missVsMadeConfusion')}`",
+        f"- Event-detection precision: `{metrics.get('eventDetectionPrecision')}`",
+        f"- Event-detection recall: `{metrics.get('eventDetectionRecall')}`",
         "",
         "## Distributions",
         f"- Flat labels: `{metrics.get('flatLabelDistribution')}`",
@@ -455,6 +502,8 @@ def _phase_structured_signals(
     structured_signals: dict[str, Any],
     position: float,
 ) -> dict[str, float]:
+    clip_duration = max(_coerce_float((example.raw_runtime_outputs or {}).get("clipDurationSeconds"), default=0.0), 1.0)
+    timestamp_seconds = round(position * clip_duration, 4)
     signals = {
         "ballNearRim": _coerce_float(structured_signals.get("ballNearRim"), default=_coerce_float(example.features.get("signal.ballNearRim"), default=0.0)),
         "ballAboveRim": _coerce_float(structured_signals.get("ballAboveRim"), default=0.0),
@@ -482,6 +531,22 @@ def _phase_structured_signals(
         signals["transitionSpeedScore"] = max(signals["transitionSpeedScore"], 0.68)
     if example.event_family == "turnover" and position >= 0.4:
         signals["possessionChangeLikelihood"] = max(signals["possessionChangeLikelihood"], 0.7)
+    release_activation = _localization_activation(timestamp_seconds, example.shot_release_time_seconds, width_seconds=0.45)
+    near_rim_activation = _localization_activation(timestamp_seconds, example.ball_near_rim_time_seconds, width_seconds=0.55)
+    through_hoop_activation = _localization_activation(timestamp_seconds, example.ball_through_hoop_time_seconds, width_seconds=0.55)
+    possession_activation = _localization_activation(timestamp_seconds, example.possession_change_time_seconds, width_seconds=0.6)
+    transition_activation = _localization_activation(timestamp_seconds, example.transition_start_time_seconds, width_seconds=0.8)
+    if release_activation > 0.0:
+        signals["shotReleaseCandidate"] = max(signals["shotReleaseCandidate"], 0.65 + (0.3 * release_activation))
+    if near_rim_activation > 0.0:
+        signals["ballNearRim"] = max(signals["ballNearRim"], 0.55 + (0.35 * near_rim_activation))
+    if through_hoop_activation > 0.0:
+        signals["ballThroughHoopLikelihood"] = max(signals["ballThroughHoopLikelihood"], 0.55 + (0.35 * through_hoop_activation))
+    if possession_activation > 0.0:
+        signals["possessionChangeLikelihood"] = max(signals["possessionChangeLikelihood"], 0.55 + (0.35 * possession_activation))
+    if transition_activation > 0.0:
+        signals["transitionLikelihood"] = max(signals["transitionLikelihood"], 0.55 + (0.35 * transition_activation))
+        signals["transitionSpeedScore"] = max(signals["transitionSpeedScore"], 0.5 + (0.32 * transition_activation))
     return {key: round(max(min(value, 1.0), 0.0), 4) for key, value in signals.items()}
 
 
@@ -577,7 +642,14 @@ def _runtime_features(
         "sourceRef": example.source_ref,
         "humanVerified": example.human_verified,
         "clipDurationSeconds": runtime.get("clipDurationSeconds", clip_duration),
-        "eventCenterSeconds": runtime.get("eventCenterSeconds", clip_duration / 2.0),
+        "eventStartSeconds": runtime.get("eventStartSeconds", example.event_start_seconds),
+        "eventCenterSeconds": runtime.get("eventCenterSeconds", example.event_center_seconds if example.event_center_seconds is not None else clip_duration / 2.0),
+        "eventEndSeconds": runtime.get("eventEndSeconds", example.event_end_seconds),
+        "shotReleaseTimeSeconds": runtime.get("shotReleaseTimeSeconds", example.shot_release_time_seconds),
+        "ballNearRimTimeSeconds": runtime.get("ballNearRimTimeSeconds", example.ball_near_rim_time_seconds),
+        "ballThroughHoopTimeSeconds": runtime.get("ballThroughHoopTimeSeconds", example.ball_through_hoop_time_seconds),
+        "possessionChangeTimeSeconds": runtime.get("possessionChangeTimeSeconds", example.possession_change_time_seconds),
+        "transitionStartTimeSeconds": runtime.get("transitionStartTimeSeconds", example.transition_start_time_seconds),
         "preRollSeconds": runtime.get("preRollSeconds", clip_duration / 2.0),
         "postRollSeconds": runtime.get("postRollSeconds", clip_duration / 2.0),
         "sourceEventCount": runtime.get("sourceEventCount", 1),
@@ -613,3 +685,12 @@ def _coerce_int(value: Any) -> int:
         return int(value)
     except (TypeError, ValueError):
         return 0
+
+
+def _localization_activation(timestamp_seconds: float, event_time_seconds: float | None, *, width_seconds: float) -> float:
+    if event_time_seconds is None:
+        return 0.0
+    distance = abs(float(timestamp_seconds) - float(event_time_seconds))
+    if distance >= width_seconds:
+        return 0.0
+    return round(1.0 - (distance / max(width_seconds, 1e-6)), 4)
