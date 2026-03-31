@@ -3,16 +3,18 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import sys
 
-from services.inference.training.distilled_clip_encoder import build_distilled_clip_encoder_bundle
+REPO_ROOT = Path(__file__).resolve().parents[3]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from services.inference.training.teacher_distilled_student import build_teacher_distilled_student_bundle
 from services.inference.training.temporal_encoder import (
     evaluate_temporal_encoder_bundle,
     load_temporal_training_examples,
     train_temporal_encoder_from_repo,
 )
-
-
-REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 def parse_args() -> argparse.Namespace:
@@ -50,23 +52,26 @@ def main() -> int:
     )
     temporal_metrics = evaluate_temporal_encoder_bundle(temporal_result.bundle, temporal_examples)
 
-    distilled_output_dir = args.output_dir / "distilled"
-    distilled_result = build_distilled_clip_encoder_bundle(REPO_ROOT, output_dir=distilled_output_dir)
-    distilled_bundle_path = args.output_dir / "distilled_clip_encoder_v1.json"
-    distilled_result.bundle.save(distilled_bundle_path)
+    teacher_distilled_output_dir = args.output_dir / "teacher_distilled"
+    teacher_distilled_result = build_teacher_distilled_student_bundle(REPO_ROOT, output_dir=teacher_distilled_output_dir)
+    teacher_distilled_bundle_path = args.output_dir / "teacher_distilled_clip_student_v1.json"
+    teacher_distilled_result.bundle.save(teacher_distilled_bundle_path)
 
     if args.write_models:
         model_dir = REPO_ROOT / "services" / "inference" / "models"
         model_dir.mkdir(parents=True, exist_ok=True)
         temporal_model_path = model_dir / "temporal_encoder_v1.json"
-        distilled_model_path = model_dir / "distilled_clip_encoder_v1.json"
+        teacher_distilled_model_path = model_dir / "teacher_distilled_clip_student_v1.json"
         temporal_model_path.write_text(temporal_output_path.read_text(encoding="utf-8"), encoding="utf-8")
-        distilled_model_path.write_text(distilled_bundle_path.read_text(encoding="utf-8"), encoding="utf-8")
+        teacher_distilled_model_path.write_text(
+            teacher_distilled_bundle_path.read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
 
     summary = build_summary(
-        baseline_metrics=distilled_result.baseline_metrics,
+        baseline_metrics=teacher_distilled_result.baseline_metrics,
         temporal_metrics=temporal_metrics,
-        distilled_metrics=distilled_result.distilled_metrics,
+        distilled_metrics=teacher_distilled_result.distilled_metrics,
     )
     report_path = args.output_dir / "comparison_report.md"
     json_path = args.output_dir / "comparison_report.json"
@@ -85,12 +90,12 @@ def build_summary(
     distilled_metrics: dict[str, object],
 ) -> dict[str, object]:
     scoreboard = {
-        "phase3d1Baseline": baseline_metrics,
-        "temporalEncoder": temporal_metrics,
-        "distilledClipEncoder": distilled_metrics,
+        "phase3e2Baseline": baseline_metrics,
+        "temporalStudent": temporal_metrics,
+        "teacherDistilledStudent": distilled_metrics,
     }
     winner = max(
-        ("temporalEncoder", "distilledClipEncoder"),
+        ("temporalStudent", "teacherDistilledStudent"),
         key=lambda key: candidate_score(scoreboard[key]),
     )
     return {
