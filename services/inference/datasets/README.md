@@ -14,6 +14,8 @@ Files:
 - `hard_negative_queue.jsonl`: live or shadow clips prioritized for retraining when `Highlight` or `eventFamily=other` dominates, with event-localization state preserved for active-learning triage.
 - `dataset_bridge.py`: import adapters for BARD event labels, E-BARD detections, SportsMOT tracking, and TrackID3x3 fixed-camera tracking.
 - `phase4_pseudo_labels/`: offline pseudo-label bundle for the in-domain slice, split into `gold_anchor_records.jsonl`, `pseudo_label_records.jsonl`, `filtered_records.jsonl`, and `manifest.json`.
+- `phase4_in_domain_annotations.json`: compact in-domain slice from staging smoke, live staging, and live shadow clips with explicit source domains and coarse temporal labels.
+- `phase4_event_localization_queue.jsonl`: event-level active-learning queue for the phase4 slice, sorted by disagreement pressure and hard-negative priority.
 
 Runtime-training outputs:
 
@@ -49,7 +51,7 @@ Field intent:
 - `phase4_pseudo_labels/` keeps gold anchors separate from retained pseudo-labels and only writes confidence-gated teacher-backed rows to the pseudo-label training file.
 - The phase4 pseudo-label builder is offline-only; it consumes stored annotations and does not make production teacher calls.
 - `hard_negative_queue.jsonl` rows carry `priorityScore`, `sampleWeight`, `trainingWeight`, and reason tags so retraining jobs can oversample hard clips without re-scoring them.
-- Both queue artifacts now also preserve `eventStartSeconds`, `eventCenterSeconds`, `eventEndSeconds`, and the other event-localization timestamps when present.
+- Both queue artifacts now also preserve the event-localization timestamps (`eventStart`, `eventCenter`, `eventEnd`, `shotReleaseTime`, `ballNearRimTime`, `ballThroughHoopTime`, `possessionChangeTime`, and `transitionStartTime`) when present.
 - `reviewerNotes` should capture why the row exists in the gold or silver set.
 - `schemaVersion` should be treated as a migration marker, not a label signal.
 - LoRA records with `trainingEligible=false` stay in the export for audit accounting, but should not be used for encoder fine-tuning until the exclusion reason is cleared, most commonly by attaching a `sourceRef`.
