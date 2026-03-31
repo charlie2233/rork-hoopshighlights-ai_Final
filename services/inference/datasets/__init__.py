@@ -1,3 +1,8 @@
+from __future__ import annotations
+
+from importlib import import_module
+from typing import Any
+
 from .annotations import (
     ANNOTATION_SCHEMA_MIGRATION_NOTES_PATH,
     ANNOTATION_SCHEMA_PATH,
@@ -6,15 +11,16 @@ from .annotations import (
     load_annotation_rows,
     write_annotation_rows,
 )
-from .runtime_training import (
-    LORA_DATASET_VERSION,
-    RUNTIME_TRAINING_FEATURE_VERSION,
-    build_runtime_training_bundle,
-    example_weight,
-    is_ignored,
-    lora_example_weight,
-    run_offline_probe,
-)
+
+_RUNTIME_EXPORTS = {
+    "LORA_DATASET_VERSION",
+    "RUNTIME_TRAINING_FEATURE_VERSION",
+    "build_runtime_training_bundle",
+    "example_weight",
+    "is_ignored",
+    "lora_example_weight",
+    "run_offline_probe",
+}
 
 __all__ = [
     "ANNOTATION_SCHEMA_MIGRATION_NOTES_PATH",
@@ -31,3 +37,12 @@ __all__ = [
     "run_offline_probe",
     "write_annotation_rows",
 ]
+
+
+def __getattr__(name: str) -> Any:
+    if name in _RUNTIME_EXPORTS:
+        module = import_module(".runtime_training", __name__)
+        value = getattr(module, name)
+        globals()[name] = value
+        return value
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
