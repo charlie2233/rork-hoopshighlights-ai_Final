@@ -223,6 +223,11 @@ def _import_bard_event_row(
         "sourceLabel": raw_label,
         "evidence": evidence,
         "evidenceFields": sorted(evidence),
+        "canonicalHierarchy": _canonical_hierarchy_payload(
+            event_family=event_family,
+            outcome=outcome,
+            shot_subtype=shot_subtype,
+        ),
         "importVersion": ANNOTATION_SCHEMA_VERSION,
         "notes": _first_text(row, "teacherNotes", "teacher_notes", "notes") or "BARD event supervision imported into canonical hierarchy.",
         "confidence": teacher_confidence,
@@ -279,6 +284,11 @@ def _import_ebard_detection_row(
         "detections": detections,
         "evidence": evidence,
         "evidenceFields": sorted(evidence),
+        "canonicalHierarchy": _canonical_hierarchy_payload(
+            event_family=event_family,
+            outcome=outcome,
+            shot_subtype=shot_subtype,
+        ),
         "importVersion": ANNOTATION_SCHEMA_VERSION,
         "notes": _first_text(row, "teacherNotes", "teacher_notes", "notes") or "E-BARD detection supervision imported into canonical hierarchy.",
         "confidence": teacher_confidence,
@@ -410,12 +420,31 @@ def _normalize_source_kind(source_kind: str) -> str:
         "sportsmot-tracking": "sportsmot-tracking",
         "sportsmot-tracks": "sportsmot-tracking",
         "trackid3x3": "trackid3x3-tracking",
+        "trackid3x3-fixed": "trackid3x3-tracking",
+        "trackid3x3-fixed-camera": "trackid3x3-tracking",
+        "trackid3x3-fixed-camera-tracking": "trackid3x3-tracking",
+        "trackid3x3-amateur": "trackid3x3-tracking",
+        "trackid3x3-amateur-like": "trackid3x3-tracking",
+        "trackid3x3-amateur-tracking": "trackid3x3-tracking",
         "trackid3x3-tracking": "trackid3x3-tracking",
         "trackid3x3-tracks": "trackid3x3-tracking",
     }
     if normalized not in aliases:
         raise ValueError(f"Unsupported source kind: {source_kind}")
     return aliases[normalized]
+
+
+def _canonical_hierarchy_payload(
+    *,
+    event_family: str,
+    outcome: str,
+    shot_subtype: str | None,
+) -> dict[str, Any]:
+    return {
+        "eventFamily": event_family,
+        "outcome": outcome,
+        "shotSubtype": shot_subtype,
+    }
 
 
 def _first_text(row: Mapping[str, Any], *keys: str) -> str | None:

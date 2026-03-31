@@ -64,6 +64,10 @@ class DatasetBridgeTests(unittest.TestCase):
         self.assertEqual(row.rawTeacherOutputs["sourceDataset"], "BARD")
         self.assertEqual(row.sourceDomain, DEFAULT_BARD_SOURCE_DOMAIN)
         self.assertEqual(row.rawTeacherOutputs["sourceDomainTag"], DEFAULT_BARD_SOURCE_DOMAIN)
+        self.assertEqual(
+            row.rawTeacherOutputs["canonicalHierarchy"],
+            {"eventFamily": "other", "outcome": "uncertain", "shotSubtype": None},
+        )
 
     def test_import_ebard_detection_rows_uses_detection_evidence(self) -> None:
         rows = import_ebard_detection_rows(
@@ -91,6 +95,10 @@ class DatasetBridgeTests(unittest.TestCase):
         self.assertIn("detections", row.rawTeacherOutputs)
         self.assertEqual(row.rawTeacherOutputs["sourceKind"], "ebard-detection")
         self.assertEqual(row.rawTeacherOutputs["evidence"]["evidence"]["annotator"], "detector")
+        self.assertEqual(
+            row.rawTeacherOutputs["canonicalHierarchy"],
+            {"eventFamily": "shot_attempt", "outcome": "uncertain", "shotSubtype": None},
+        )
 
     def test_import_sportsmot_tracking_rows_maps_transition_context(self) -> None:
         rows = import_sportsmot_tracking_rows(
@@ -143,6 +151,7 @@ class DatasetBridgeTests(unittest.TestCase):
         self.assertFalse(row.hoopVisible)
         self.assertEqual(row.rawTeacherOutputs["sourceKind"], "trackid3x3-tracking")
         self.assertEqual(row.rawTeacherOutputs["canonicalHierarchy"]["eventFamily"], "other")
+        self.assertEqual(row.rawTeacherOutputs["sourceDomainTag"], DEFAULT_TRACKID3X3_SOURCE_DOMAIN)
 
     def test_import_external_basketball_dataset_summary(self) -> None:
         result = import_external_basketball_dataset(
@@ -165,6 +174,31 @@ class DatasetBridgeTests(unittest.TestCase):
         tracking_summary = tracking_result.to_summary()
         self.assertEqual(tracking_summary["sourceKind"], "sportsmot-tracking")
         self.assertEqual(tracking_summary["sourceDomain"], DEFAULT_SPORTSMOT_SOURCE_DOMAIN)
+
+    def test_import_external_basketball_dataset_accepts_trackid3x3_fixed_camera_alias(self) -> None:
+        result = import_external_basketball_dataset(
+            [
+                {
+                    "clipId": "trackid3x3-fixed-001",
+                    "cameraType": "fixed",
+                    "sequenceLabel": "amateur fixed-camera setup",
+                    "tracks": [{"label": "player", "score": 0.82}],
+                }
+            ],
+            source_kind="trackid3x3-fixed-camera",
+            source_domain="trackid3x3:tracking:fixed-camera",
+            source_dataset="TrackID3x3-fixed",
+        )
+
+        self.assertEqual(result.source_kind, "trackid3x3-tracking")
+        self.assertEqual(result.source_domain, "trackid3x3:tracking:fixed-camera")
+        self.assertEqual(result.source_dataset, "TrackID3x3-fixed")
+        self.assertEqual(result.rows[0].rawTeacherOutputs["sourceKind"], "trackid3x3-tracking")
+        self.assertEqual(result.rows[0].rawTeacherOutputs["sourceDomainTag"], "trackid3x3:tracking:fixed-camera")
+        self.assertEqual(
+            result.rows[0].rawTeacherOutputs["canonicalHierarchy"],
+            {"eventFamily": "other", "outcome": "uncertain", "shotSubtype": None},
+        )
 
     def test_cli_round_trip_writes_canonical_rows(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

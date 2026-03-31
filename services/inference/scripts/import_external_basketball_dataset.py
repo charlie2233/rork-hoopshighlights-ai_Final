@@ -18,7 +18,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--source-kind",
         required=True,
-        choices=("bard-event", "ebard-detection", "sportsmot-tracking", "trackid3x3-tracking"),
+        choices=(
+            "bard-event",
+            "ebard-detection",
+            "sportsmot-tracking",
+            "trackid3x3-tracking",
+            "trackid3x3-fixed",
+            "trackid3x3-fixed-camera",
+            "trackid3x3-fixed-camera-tracking",
+            "trackid3x3-amateur",
+            "trackid3x3-amateur-like",
+            "trackid3x3-amateur-tracking",
+        ),
         help="Source adapter to use.",
     )
     parser.add_argument(
@@ -29,7 +40,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--source-dataset",
         default=None,
-        help="Optional source dataset tag override. Defaults to BARD or E-BARD.",
+        help="Optional source dataset tag override. Defaults to the adapter's standard source dataset.",
     )
     parser.add_argument(
         "--summary",

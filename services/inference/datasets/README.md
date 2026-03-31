@@ -29,10 +29,17 @@ External dataset bridge:
   - `ebard-detection` -> `ebard:detections`
   - `sportsmot-tracking` -> `sportsmot:tracking`
   - `trackid3x3-tracking` -> `trackid3x3:tracking`
+  - TrackID3x3 fixed-camera/amateur-style aliases also normalize to `trackid3x3-tracking`:
+    - `trackid3x3-fixed`
+    - `trackid3x3-fixed-camera`
+    - `trackid3x3-fixed-camera-tracking`
+    - `trackid3x3-amateur`
+    - `trackid3x3-amateur-like`
+    - `trackid3x3-amateur-tracking`
 - BARD-style text labels are mapped into `eventFamily`, `outcome`, and `shotSubtype` with explicit negative handling for replay, celebration, camera pan, inbound, dead-ball, setup, and other non-play clips.
 - E-BARD detection rows are mapped from object detections and proximity evidence into the same hierarchical schema.
 - SportsMOT and TrackID3x3 tracking rows can contribute player/ball/hoop track evidence, plus inferred transition and possession-change signals, while still preserving source-domain tags in canonical rows.
-- `rawTeacherOutputs` keeps the source-specific evidence and canonical hierarchy separate from the final labels.
+- `rawTeacherOutputs` keeps the source-specific evidence and canonical hierarchy separate from the final labels. All bridge paths now emit `canonicalHierarchy` for the resolved `eventFamily`, `outcome`, and `shotSubtype`.
 
 Migration notes:
 
