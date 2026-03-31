@@ -35,6 +35,12 @@ steps:
       - managed
       - --port
       - "8080"
+      - --min-instances
+      - "1"
+      - --max-instances
+      - "2"
+      - --concurrency
+      - "1"
       - --allow-unauthenticated
       - --set-env-vars
       - >-
