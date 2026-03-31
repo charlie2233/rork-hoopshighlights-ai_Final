@@ -2,17 +2,19 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
-from services.inference.training.distilled_clip_encoder import build_distilled_clip_encoder_bundle
-from services.inference.training.temporal_encoder import (
-    evaluate_temporal_encoder_bundle,
-    load_temporal_training_examples,
-    train_temporal_encoder_from_repo,
-)
-
-
 REPO_ROOT = Path(__file__).resolve().parents[3]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from services.inference.training.distilled_clip_encoder import build_distilled_clip_encoder_bundle
+from services.inference.training.temporal_student import (
+    evaluate_temporal_student_bundle,
+    load_temporal_student_examples,
+    train_temporal_student_from_repo,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -39,16 +41,16 @@ def main() -> int:
     args = parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
-    temporal_output_path = args.output_dir / "temporal_encoder_v1.json"
-    temporal_examples = load_temporal_training_examples(REPO_ROOT)
-    temporal_result = train_temporal_encoder_from_repo(
+    temporal_output_path = args.output_dir / "temporal_student_v1.json"
+    temporal_examples = load_temporal_student_examples(REPO_ROOT)
+    temporal_result = train_temporal_student_from_repo(
         REPO_ROOT,
         output_path=temporal_output_path,
         hidden_size=args.temporal_hidden_size,
         epochs=args.temporal_epochs,
         learning_rate=args.temporal_learning_rate,
     )
-    temporal_metrics = evaluate_temporal_encoder_bundle(temporal_result.bundle, temporal_examples)
+    temporal_metrics = evaluate_temporal_student_bundle(temporal_result.bundle, temporal_examples)
 
     distilled_output_dir = args.output_dir / "distilled"
     distilled_result = build_distilled_clip_encoder_bundle(REPO_ROOT, output_dir=distilled_output_dir)
@@ -58,7 +60,7 @@ def main() -> int:
     if args.write_models:
         model_dir = REPO_ROOT / "services" / "inference" / "models"
         model_dir.mkdir(parents=True, exist_ok=True)
-        temporal_model_path = model_dir / "temporal_encoder_v1.json"
+        temporal_model_path = model_dir / "temporal_student_v1.json"
         distilled_model_path = model_dir / "distilled_clip_encoder_v1.json"
         temporal_model_path.write_text(temporal_output_path.read_text(encoding="utf-8"), encoding="utf-8")
         distilled_model_path.write_text(distilled_bundle_path.read_text(encoding="utf-8"), encoding="utf-8")

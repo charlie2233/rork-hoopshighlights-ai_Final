@@ -30,6 +30,8 @@ Migration notes:
 - Supported import adapters currently include `bard-event`, `ebard-detection`, `sportsmot-tracking`, and `trackid3x3-tracking`.
 - `sportsmot:tracking` is the canonical source domain for broadcast/telemetry tracking supervision.
 - `trackid3x3:fixed-camera` is the canonical source domain for fixed-camera or amateur-like tracking supervision.
+- `broadcast`, `fixed_camera_indoor`, `fixed_camera_outdoor`, and `phone_casual` are now first-class source domains in the seed gold/silver corpora alongside the existing benchmark and hard-negative domains.
+- Human gold rows keep teacher suggestions out of the label fields; teacher pseudo-labels stay in `silver_teacher_annotations.jsonl` and in `rawTeacherOutputs` for audit, never as a replacement for `humanVerified=true`.
 - Regenerate dataset artifacts with `python3 services/inference/scripts/build_probe_datasets.py --output-dir services/inference/datasets` after editing the seed corpora.
 - Regenerate runtime-training artifacts with `python3 services/inference/scripts/build_runtime_training_data.py --output-dir services/inference/datasets/runtime_training` after editing the seed corpora.
 - Build a live hard-negative mining queue with `python3 services/inference/scripts/build_hard_negative_queue.py --input /tmp/batch.json --output-dir /tmp/hard-negative-queue`.

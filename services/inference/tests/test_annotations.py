@@ -74,13 +74,28 @@ class AnnotationDatasetTests(unittest.TestCase):
         path = self.repo_root() / "services" / "inference" / "datasets" / "gold_set.json"
         rows = load_annotation_rows(path)
 
-        self.assertGreaterEqual(len(rows), 8)
+        self.assertGreaterEqual(len(rows), 16)
         self.assertTrue(rows[0].humanVerified)
         self.assertIsNotNone(rows[0].sourceRef)
         self.assertEqual(rows[0].schemaVersion, ANNOTATION_SCHEMA_VERSION)
         self.assertIsNotNone(rows[0].teacherConfidence)
         self.assertGreaterEqual(rows[0].teacherConfidence, 0.0)
         self.assertLessEqual(rows[0].teacherConfidence, 1.0)
+        self.assertIn("broadcast", {row.sourceDomain for row in rows})
+        self.assertIn("fixed_camera_indoor", {row.sourceDomain for row in rows})
+        self.assertIn("fixed_camera_outdoor", {row.sourceDomain for row in rows})
+        self.assertIn("phone_casual", {row.sourceDomain for row in rows})
+
+    def test_seed_silver_set_rows_cover_new_domains(self) -> None:
+        path = self.repo_root() / "services" / "inference" / "datasets" / "silver_set.json"
+        rows = load_annotation_rows(path)
+
+        self.assertGreaterEqual(len(rows), 16)
+        self.assertFalse(rows[0].humanVerified)
+        self.assertIn("broadcast", {row.sourceDomain for row in rows})
+        self.assertIn("fixed_camera_indoor", {row.sourceDomain for row in rows})
+        self.assertIn("fixed_camera_outdoor", {row.sourceDomain for row in rows})
+        self.assertIn("phone_casual", {row.sourceDomain for row in rows})
 
 
 if __name__ == "__main__":
