@@ -10,6 +10,7 @@ Files:
 - `gold_annotations.jsonl`: human-verified annotations used for probe evaluation.
 - `silver_teacher_annotations.jsonl`: teacher pseudo-labels kept separate from the human gold set.
 - `disagreement_queue.jsonl`: clips that should be prioritized for manual review.
+- `hard_negative_queue.jsonl`: live or shadow clips prioritized for retraining when `Highlight` or `eventFamily=other` dominates.
 - `dataset_bridge.py`: import adapters for BARD event labels, E-BARD detections, SportsMOT tracking, and TrackID3x3 fixed-camera tracking.
 
 Runtime-training outputs:
@@ -31,6 +32,7 @@ Migration notes:
 - `trackid3x3:fixed-camera` is the canonical source domain for fixed-camera or amateur-like tracking supervision.
 - Regenerate dataset artifacts with `python3 services/inference/scripts/build_probe_datasets.py --output-dir services/inference/datasets` after editing the seed corpora.
 - Regenerate runtime-training artifacts with `python3 services/inference/scripts/build_runtime_training_data.py --output-dir services/inference/datasets/runtime_training` after editing the seed corpora.
+- Build a live hard-negative mining queue with `python3 services/inference/scripts/build_hard_negative_queue.py --input /tmp/batch.json --output-dir /tmp/hard-negative-queue`.
 
 Field intent:
 
@@ -38,6 +40,7 @@ Field intent:
 - `humanVerified=false` means the row is teacher-labeled or otherwise pseudo-labeled.
 - `rawRuntimeOutputs` stores the runtime model outputs, including VideoMAE and X-CLIP top-k signals.
 - `rawTeacherOutputs` stores teacher suggestions, evidence, and confidence separately from the final label fields.
+- `hard_negative_queue.jsonl` rows carry `priorityScore`, `sampleWeight`, `trainingWeight`, and reason tags so retraining jobs can oversample hard clips without re-scoring them.
 - `reviewerNotes` should capture why the row exists in the gold or silver set.
 - `schemaVersion` should be treated as a migration marker, not a label signal.
 - LoRA records with `trainingEligible=false` stay in the export for audit accounting, but should not be used for encoder fine-tuning until the exclusion reason is cleared, most commonly by attaching a `sourceRef`.
