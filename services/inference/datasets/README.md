@@ -21,11 +21,25 @@ Runtime-training outputs:
 - `runtime_training/videomae_lora_v1/all_records.jsonl`: candidate-window records for VideoMAE LoRA with source refs, hierarchy labels, and training eligibility.
 - `runtime_training/videomae_lora_v1/{train,val,test}/records.jsonl`: split-specific LoRA records. Gold remains the main val/test calibration anchor, with a small train-support slice.
 
+External dataset bridge:
+
+- `services/inference/datasets/dataset_bridge.py` maps external basketball sources into the canonical hierarchy.
+- Supported source kinds:
+  - `bard-event` -> `bard:events`
+  - `ebard-detection` -> `ebard:detections`
+  - `sportsmot-tracking` -> `sportsmot:tracking`
+  - `trackid3x3-tracking` -> `trackid3x3:tracking`
+- BARD-style text labels are mapped into `eventFamily`, `outcome`, and `shotSubtype` with explicit negative handling for replay, celebration, camera pan, inbound, dead-ball, setup, and other non-play clips.
+- E-BARD detection rows are mapped from object detections and proximity evidence into the same hierarchical schema.
+- SportsMOT and TrackID3x3 tracking rows can contribute player/ball/hoop track evidence, plus inferred transition and possession-change signals, while still preserving source-domain tags in canonical rows.
+- `rawTeacherOutputs` keeps the source-specific evidence and canonical hierarchy separate from the final labels.
+
 Migration notes:
 
 - `schemaVersion` is stored on generated annotation rows and defaults to `2026-03-30` when missing on legacy seed rows.
 - `annotation_schema.json` is the single source of truth; the older schema filenames are deprecated compatibility leftovers.
 - Regenerate dataset artifacts with `python3 services/inference/scripts/build_probe_datasets.py --output-dir services/inference/datasets` after editing the seed corpora.
+- Import external datasets with `python3 services/inference/scripts/import_external_basketball_dataset.py --input <input.jsonl> --output <rows.json> --source-kind <bard-event|ebard-detection|sportsmot-tracking|trackid3x3-tracking>`.
 - Regenerate runtime-training artifacts with `python3 services/inference/scripts/build_runtime_training_data.py --output-dir services/inference/datasets/runtime_training` after editing the seed corpora.
 
 Field intent:

@@ -12,13 +12,13 @@ from services.inference.datasets.dataset_bridge import (
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Import BARD / E-BARD basketball annotations into the canonical schema.")
+    parser = argparse.ArgumentParser(description="Import BARD, E-BARD, SportsMOT, or TrackID3x3 basketball annotations into the canonical hierarchical schema.")
     parser.add_argument("--input", required=True, help="Input .json or .jsonl file containing source annotations.")
     parser.add_argument("--output", required=True, help="Output .json file for canonical rows.")
     parser.add_argument(
         "--source-kind",
         required=True,
-        choices=("bard-event", "ebard-detection"),
+        choices=("bard-event", "ebard-detection", "sportsmot-tracking", "trackid3x3-tracking"),
         help="Source adapter to use.",
     )
     parser.add_argument(

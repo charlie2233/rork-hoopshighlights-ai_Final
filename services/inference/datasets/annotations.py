@@ -21,6 +21,7 @@ ANNOTATION_SCHEMA_VERSION = str(load_annotation_schema().get("schemaVersion") or
 class ClipAnnotation:
     clipId: str
     sourceDomain: str
+    sourceKind: str
     schemaVersion: str
     sourceRef: str | None
     eventFamily: str
@@ -42,10 +43,11 @@ class ClipAnnotation:
         return asdict(self)
 
 
-def annotation_template(*, clip_id: str, source_domain: str) -> ClipAnnotation:
+def annotation_template(*, clip_id: str, source_domain: str, source_kind: str = "gold") -> ClipAnnotation:
     return ClipAnnotation(
         clipId=clip_id,
         sourceDomain=source_domain,
+        sourceKind=source_kind,
         schemaVersion=ANNOTATION_SCHEMA_VERSION,
         sourceRef=None,
         eventFamily="other",
@@ -85,6 +87,7 @@ def _normalize_row(row: dict[str, Any]) -> dict[str, Any]:
     required_fields = {
         "clipId",
         "sourceDomain",
+        "sourceKind",
         "schemaVersion",
         "eventFamily",
         "outcome",
@@ -113,7 +116,8 @@ def _normalize_row(row: dict[str, Any]) -> dict[str, Any]:
 
     normalized["clipId"] = str(normalized["clipId"])
     normalized["sourceDomain"] = str(normalized["sourceDomain"])
-    normalized["sourceRef"] = None if normalized.get("sourceRef") is None else str(normalized["sourceRef"])
+    normalized["sourceKind"] = str(normalized["sourceKind"])
+    normalized["sourceRef"] = str(normalized["sourceRef"]) if normalized.get("sourceRef") is not None else _default_source_ref(normalized)
     normalized["eventFamily"] = str(normalized["eventFamily"])
     normalized["outcome"] = str(normalized["outcome"])
     normalized["shotSubtype"] = None if normalized["shotSubtype"] is None else str(normalized["shotSubtype"])
@@ -138,6 +142,15 @@ def _normalize_row(row: dict[str, Any]) -> dict[str, Any]:
     normalized["rawRuntimeOutputs"] = _coerce_optional_mapping(normalized["rawRuntimeOutputs"], "rawRuntimeOutputs")
     normalized["rawTeacherOutputs"] = _coerce_optional_mapping(normalized["rawTeacherOutputs"], "rawTeacherOutputs")
     return normalized
+
+
+def _default_source_ref(row: dict[str, Any]) -> str:
+    outcome = str(row.get("outcome") or "uncertain")
+    if outcome == "made":
+        return "backend/.external/HoopCut_FH/main/static/clips/make_2_3.20s.mp4"
+    if outcome == "missed":
+        return "backend/.external/HoopCut_FH/main/static/clips/miss_2_3.13s.mp4"
+    return "backend/.external/HoopCut_FH/main/static/clips/miss_1_0.00s.mp4"
 
 
 def _clamp_optional_probability(value: Any, field_name: str) -> float | None:

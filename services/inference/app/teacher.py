@@ -37,6 +37,7 @@ VALID_HARD_NEGATIVE_TYPES = {
 class TeacherAnnotationRecord:
     clipId: str
     sourceDomain: str
+    sourceKind: str
     schemaVersion: str
     sourceRef: str | None
     eventFamily: str
@@ -58,6 +59,7 @@ class TeacherAnnotationRecord:
         return {
             "clipId": self.clipId,
             "sourceDomain": self.sourceDomain,
+            "sourceKind": self.sourceKind,
             "schemaVersion": self.schemaVersion,
             "sourceRef": self.sourceRef,
             "eventFamily": self.eventFamily,
@@ -226,6 +228,7 @@ def build_teacher_annotation_record(
     return TeacherAnnotationRecord(
         clipId=clip_id,
         sourceDomain=source_domain,
+        sourceKind="silver",
         schemaVersion=TEACHER_ANNOTATION_SCHEMA_VERSION,
         sourceRef=source_ref,
         eventFamily=str(normalized_teacher_output.get("eventFamily") or "other"),

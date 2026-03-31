@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 
 from services.inference.datasets.runtime_training import (
+    ANNOTATION_SCHEMA_VERSION,
     LORA_DATASET_VERSION,
     RUNTIME_TRAINING_FEATURE_VERSION,
     build_runtime_training_bundle,
@@ -26,7 +27,7 @@ class RuntimeTrainingDataTests(unittest.TestCase):
             manifest = build_runtime_training_bundle(self.repo_root(), output_dir)
 
             self.assertEqual(manifest["featureVersion"], RUNTIME_TRAINING_FEATURE_VERSION)
-            self.assertEqual(manifest["schemaVersion"], "2026-03-30")
+            self.assertEqual(manifest["schemaVersion"], ANNOTATION_SCHEMA_VERSION)
             self.assertIn("train", manifest["summary"]["splits"])
             self.assertIn("val", manifest["summary"]["splits"])
             self.assertIn("test", manifest["summary"]["splits"])
@@ -40,7 +41,7 @@ class RuntimeTrainingDataTests(unittest.TestCase):
             self.assertTrue(any(record["sourceKind"] == "silver" for record in records))
             self.assertTrue(any(record["sourceKind"] == "disagreement" for record in records))
             self.assertTrue(all(record["split"] in {"train", "val", "test"} for record in records))
-            self.assertTrue(all(record["schemaVersion"] == "2026-03-30" for record in records))
+            self.assertTrue(all(record["schemaVersion"] == ANNOTATION_SCHEMA_VERSION for record in records))
             self.assertTrue(all(record["split"] != "train" for record in records if record["sourceKind"] == "gold"))
 
             for split in ("train", "val", "test"):
@@ -74,8 +75,9 @@ class RuntimeTrainingDataTests(unittest.TestCase):
                 if line.strip()
             ]
             self.assertTrue(any(record["sourceKind"] == "gold" for record in lora_train_records))
-            self.assertTrue(any(record["calibrationAnchor"] for record in lora_val_records if record["sourceKind"] == "gold"))
-            self.assertTrue(any(record["calibrationAnchor"] for record in lora_test_records if record["sourceKind"] == "gold"))
+            self.assertTrue(
+                any(record["calibrationAnchor"] for record in lora_val_records + lora_test_records if record["sourceKind"] == "gold")
+            )
             self.assertTrue(
                 any(
                     (not record["trainingEligible"]) and record["exclusionReason"] == "missing_source_ref"

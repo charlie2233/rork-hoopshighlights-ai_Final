@@ -10,8 +10,12 @@ from .annotations import ANNOTATION_SCHEMA_VERSION, ClipAnnotation, annotation_t
 
 DEFAULT_BARD_SOURCE_DOMAIN = "bard:events"
 DEFAULT_EBARD_SOURCE_DOMAIN = "ebard:detections"
+DEFAULT_SPORTSMOT_SOURCE_DOMAIN = "sportsmot:tracking"
+DEFAULT_TRACKID3X3_SOURCE_DOMAIN = "trackid3x3:tracking"
 DEFAULT_BARD_SOURCE_DATASET = "BARD"
 DEFAULT_EBARD_SOURCE_DATASET = "E-BARD"
+DEFAULT_SPORTSMOT_SOURCE_DATASET = "SportsMOT"
+DEFAULT_TRACKID3X3_SOURCE_DATASET = "TrackID3x3"
 
 
 @dataclass(frozen=True)
@@ -56,6 +60,44 @@ def import_ebard_detection_rows(
     return imported
 
 
+def import_sportsmot_tracking_rows(
+    rows: Iterable[Mapping[str, Any]],
+    *,
+    source_domain: str = DEFAULT_SPORTSMOT_SOURCE_DOMAIN,
+    source_dataset: str = DEFAULT_SPORTSMOT_SOURCE_DATASET,
+) -> list[ClipAnnotation]:
+    imported: list[ClipAnnotation] = []
+    for row in rows:
+        imported.append(
+            _import_tracking_row(
+                row,
+                source_kind="sportsmot-tracking",
+                source_domain=source_domain,
+                source_dataset=source_dataset,
+            )
+        )
+    return imported
+
+
+def import_trackid3x3_tracking_rows(
+    rows: Iterable[Mapping[str, Any]],
+    *,
+    source_domain: str = DEFAULT_TRACKID3X3_SOURCE_DOMAIN,
+    source_dataset: str = DEFAULT_TRACKID3X3_SOURCE_DATASET,
+) -> list[ClipAnnotation]:
+    imported: list[ClipAnnotation] = []
+    for row in rows:
+        imported.append(
+            _import_tracking_row(
+                row,
+                source_kind="trackid3x3-tracking",
+                source_domain=source_domain,
+                source_dataset=source_dataset,
+            )
+        )
+    return imported
+
+
 def import_external_basketball_dataset(
     rows: Iterable[Mapping[str, Any]],
     *,
@@ -76,12 +118,42 @@ def import_external_basketball_dataset(
             source_domain=source_domain or DEFAULT_EBARD_SOURCE_DOMAIN,
             source_dataset=source_dataset or DEFAULT_EBARD_SOURCE_DATASET,
         )
+    elif normalized_kind == "sportsmot-tracking":
+        imported_rows = import_sportsmot_tracking_rows(
+            rows,
+            source_domain=source_domain or DEFAULT_SPORTSMOT_SOURCE_DOMAIN,
+            source_dataset=source_dataset or DEFAULT_SPORTSMOT_SOURCE_DATASET,
+        )
+    elif normalized_kind == "trackid3x3-tracking":
+        imported_rows = import_trackid3x3_tracking_rows(
+            rows,
+            source_domain=source_domain or DEFAULT_TRACKID3X3_SOURCE_DOMAIN,
+            source_dataset=source_dataset or DEFAULT_TRACKID3X3_SOURCE_DATASET,
+        )
     else:
         raise ValueError(f"Unsupported source kind: {source_kind}")
     return ImportResult(
         source_kind=normalized_kind,
-        source_domain=source_domain or (DEFAULT_BARD_SOURCE_DOMAIN if normalized_kind == "bard-event" else DEFAULT_EBARD_SOURCE_DOMAIN),
-        source_dataset=source_dataset or (DEFAULT_BARD_SOURCE_DATASET if normalized_kind == "bard-event" else DEFAULT_EBARD_SOURCE_DATASET),
+        source_domain=source_domain
+        or (
+            DEFAULT_BARD_SOURCE_DOMAIN
+            if normalized_kind == "bard-event"
+            else DEFAULT_EBARD_SOURCE_DOMAIN
+            if normalized_kind == "ebard-detection"
+            else DEFAULT_SPORTSMOT_SOURCE_DOMAIN
+            if normalized_kind == "sportsmot-tracking"
+            else DEFAULT_TRACKID3X3_SOURCE_DOMAIN
+        ),
+        source_dataset=source_dataset
+        or (
+            DEFAULT_BARD_SOURCE_DATASET
+            if normalized_kind == "bard-event"
+            else DEFAULT_EBARD_SOURCE_DATASET
+            if normalized_kind == "ebard-detection"
+            else DEFAULT_SPORTSMOT_SOURCE_DATASET
+            if normalized_kind == "sportsmot-tracking"
+            else DEFAULT_TRACKID3X3_SOURCE_DATASET
+        ),
         rows=imported_rows,
     )
 
@@ -122,7 +194,7 @@ def _import_bard_event_row(
     teacher_confidence = _first_probability(row, "teacherConfidence", "teacher_confidence", default=_first_probability(row, "confidence", default=0.78))
     source_ref = _first_text(row, "sourceRef", "source_ref", "path", "videoPath", "video_path")
     evidence = _normalize_evidence(row)
-    annotation = annotation_template(clip_id=clip_id, source_domain=source_domain)
+    annotation = annotation_template(clip_id=clip_id, source_domain=source_domain, source_kind="bard-event")
     annotation.sourceRef = source_ref
     annotation.eventFamily = event_family
     annotation.outcome = outcome
@@ -140,11 +212,13 @@ def _import_bard_event_row(
         row,
         source_kind="bard-event",
         source_dataset=source_dataset,
+        source_domain=source_domain,
         source_label=raw_label,
     )
     annotation.rawTeacherOutputs = {
         "sourceDataset": source_dataset,
         "sourceDomain": source_domain,
+        "sourceDomainTag": source_domain,
         "sourceKind": "bard-event",
         "sourceLabel": raw_label,
         "evidence": evidence,
@@ -176,7 +250,7 @@ def _import_ebard_detection_row(
     event_family = _first_text(row, "eventFamily", "event_family") or _ebard_event_family(detections, ball_visible=ball_visible, hoop_visible=hoop_visible, ball_near_rim=ball_near_rim)
     outcome = _first_text(row, "outcome", "result") or _ebard_outcome(ball_visible=ball_visible, hoop_visible=hoop_visible, ball_near_rim=ball_near_rim)
     shot_subtype = _first_text(row, "shotSubtype", "shot_subtype")
-    annotation = annotation_template(clip_id=clip_id, source_domain=source_domain)
+    annotation = annotation_template(clip_id=clip_id, source_domain=source_domain, source_kind="ebard-detection")
     annotation.sourceRef = source_ref
     annotation.eventFamily = event_family
     annotation.outcome = outcome
@@ -194,11 +268,13 @@ def _import_ebard_detection_row(
         row,
         source_kind="ebard-detection",
         source_dataset=source_dataset,
+        source_domain=source_domain,
         source_label=_first_text(row, "label", "eventLabel", "event_label", "action", "category", "class"),
     )
     annotation.rawTeacherOutputs = {
         "sourceDataset": source_dataset,
         "sourceDomain": source_domain,
+        "sourceDomainTag": source_domain,
         "sourceKind": "ebard-detection",
         "detections": detections,
         "evidence": evidence,
@@ -210,17 +286,101 @@ def _import_ebard_detection_row(
     return annotation
 
 
+def _import_tracking_row(
+    row: Mapping[str, Any],
+    *,
+    source_kind: str,
+    source_domain: str,
+    source_dataset: str,
+) -> ClipAnnotation:
+    clip_id = _first_text(row, "clipId", "clip_id", "id", "videoId", "video_id")
+    source_ref = _first_text(row, "sourceRef", "source_ref", "path", "videoPath", "video_path")
+    tracks = _normalize_tracks(row)
+    evidence = _normalize_evidence(row)
+    source_label = _first_text(row, "label", "eventLabel", "event_label", "action", "category", "class", "sequenceLabel", "sequence_label", "playType", "play_type")
+
+    ball_visible = _first_bool(row, "ballVisible", "ball_visible", default=_detection_present(tracks, {"ball", "basketball"}))
+    hoop_visible = _first_bool(row, "hoopVisible", "hoop_visible", default=_detection_present(tracks, {"hoop", "rim", "backboard"}))
+    ball_near_rim = _compute_ball_near_rim(row, tracks)
+    ball_through_hoop = _first_probability(
+        row,
+        "ballThroughHoopLikelihood",
+        "ball_through_hoop_likelihood",
+        default=0.0 if ball_near_rim is None else min(1.0, ball_near_rim * 0.9),
+    )
+    possession_change = _first_probability(
+        row,
+        "possessionChangeLikelihood",
+        "possession_change_likelihood",
+        default=_tracking_possession_change(tracks, source_label),
+    )
+    transition_likelihood = _first_probability(
+        row,
+        "transitionLikelihood",
+        "transition_likelihood",
+        default=_tracking_transition_likelihood(tracks, source_label),
+    )
+    teacher_confidence = _first_probability(row, "teacherConfidence", "teacher_confidence", default=_first_probability(row, "confidence", default=0.7))
+    event_family = _first_text(row, "eventFamily", "event_family") or _tracking_event_family(source_label, tracks, ball_visible=ball_visible, hoop_visible=hoop_visible, ball_near_rim=ball_near_rim)
+    outcome = _first_text(row, "outcome", "result") or _tracking_outcome(source_label, tracks, ball_visible=ball_visible, hoop_visible=hoop_visible, ball_near_rim=ball_near_rim)
+    shot_subtype = _first_text(row, "shotSubtype", "shot_subtype") or _tracking_shot_subtype(source_label, event_family=event_family, tracks=tracks)
+    if event_family != "shot_attempt":
+        shot_subtype = None
+    annotation = annotation_template(clip_id=clip_id, source_domain=source_domain, source_kind=source_kind)
+    annotation.sourceRef = source_ref
+    annotation.eventFamily = event_family
+    annotation.outcome = outcome
+    annotation.shotSubtype = shot_subtype
+    annotation.ballVisible = ball_visible
+    annotation.hoopVisible = hoop_visible
+    annotation.ballNearRim = ball_near_rim
+    annotation.ballThroughHoopLikelihood = ball_through_hoop
+    annotation.possessionChangeLikelihood = possession_change
+    annotation.transitionLikelihood = transition_likelihood
+    annotation.teacherConfidence = teacher_confidence
+    annotation.humanVerified = bool(_first_bool(row, "humanVerified", "human_verified", default=False))
+    annotation.reviewerNotes = _first_text(row, "reviewerNotes", "reviewer_notes", "notes") or ""
+    annotation.rawRuntimeOutputs = _canonical_runtime_payload(
+        row,
+        source_kind=source_kind,
+        source_dataset=source_dataset,
+        source_domain=source_domain,
+        source_label=source_label,
+    )
+    annotation.rawTeacherOutputs = {
+        "sourceDataset": source_dataset,
+        "sourceDomain": source_domain,
+        "sourceDomainTag": source_domain,
+        "sourceKind": source_kind,
+        "tracks": tracks,
+        "trackSummary": _tracking_summary(tracks),
+        "evidence": evidence,
+        "evidenceFields": sorted(evidence),
+        "canonicalHierarchy": {
+            "eventFamily": event_family,
+            "outcome": outcome,
+            "shotSubtype": shot_subtype,
+        },
+        "importVersion": ANNOTATION_SCHEMA_VERSION,
+        "notes": _first_text(row, "teacherNotes", "teacher_notes", "notes") or "Tracking supervision imported into canonical hierarchy.",
+        "confidence": teacher_confidence,
+    }
+    return annotation
+
+
 def _canonical_runtime_payload(
     row: Mapping[str, Any],
     *,
     source_kind: str,
     source_dataset: str,
+    source_domain: str,
     source_label: str | None,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "sourceDataset": source_dataset,
         "sourceKind": source_kind,
         "sourceLabel": source_label,
+        "sourceDomainTag": source_domain,
         "importVersion": ANNOTATION_SCHEMA_VERSION,
     }
     for key in ("sourceEventTimeSeconds", "startSeconds", "endSeconds", "clipDurationSeconds", "sourceDurationSeconds"):
@@ -246,6 +406,12 @@ def _normalize_source_kind(source_kind: str) -> str:
         "ebard-detection": "ebard-detection",
         "ebard-detections": "ebard-detection",
         "detection": "ebard-detection",
+        "sportsmot": "sportsmot-tracking",
+        "sportsmot-tracking": "sportsmot-tracking",
+        "sportsmot-tracks": "sportsmot-tracking",
+        "trackid3x3": "trackid3x3-tracking",
+        "trackid3x3-tracking": "trackid3x3-tracking",
+        "trackid3x3-tracks": "trackid3x3-tracking",
     }
     if normalized not in aliases:
         raise ValueError(f"Unsupported source kind: {source_kind}")
@@ -305,6 +471,41 @@ def _normalize_evidence(row: Mapping[str, Any]) -> dict[str, Any]:
         if key in row and row[key] is not None:
             evidence[key] = row[key]
     return evidence
+
+
+def _normalize_tracks(row: Mapping[str, Any]) -> list[dict[str, Any]]:
+    raw_tracks = row.get("tracks")
+    if raw_tracks is None:
+        raw_tracks = row.get("tracklets")
+    if raw_tracks is None:
+        raw_tracks = row.get("detections")
+    if raw_tracks is None:
+        return []
+    if not isinstance(raw_tracks, list):
+        raise ValueError("tracks/tracklets/detections must be a list when present.")
+    normalized: list[dict[str, Any]] = []
+    for track in raw_tracks:
+        if not isinstance(track, Mapping):
+            raise ValueError("Each track entry must be a JSON object.")
+        label = _first_text(track, "label", "category", "class", "name")
+        bbox = track.get("bbox") or track.get("box") or track.get("bounds")
+        normalized_track: dict[str, Any] = {
+            "label": label,
+            "score": _first_probability(track, "score", "confidence", default=0.0),
+        }
+        if bbox is not None:
+            normalized_track["bbox"] = _normalize_bbox(bbox)
+        track_id = track.get("trackId", track.get("track_id", track.get("id")))
+        if track_id is not None:
+            normalized_track["trackId"] = str(track_id)
+        frame_idx = track.get("frameIndex", track.get("frame_index"))
+        timestamp = track.get("timestamp", track.get("timeSeconds", track.get("time_seconds")))
+        if frame_idx is not None:
+            normalized_track["frameIndex"] = int(frame_idx)
+        if timestamp is not None:
+            normalized_track["timestamp"] = float(timestamp)
+        normalized.append(normalized_track)
+    return normalized
 
 
 def _normalize_detections(row: Mapping[str, Any]) -> list[dict[str, Any]]:
@@ -377,6 +578,23 @@ def _compute_ball_near_rim(row: Mapping[str, Any], detections: Sequence[Mapping[
     return max(0.0, min(1.0, 1.0 - min(distance, 1.0)))
 
 
+def _tracking_summary(tracks: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    labels = sorted({str(track.get("label") or "").strip().lower() for track in tracks if track.get("label")})
+    frame_indices = [int(track["frameIndex"]) for track in tracks if "frameIndex" in track]
+    timestamps = [float(track["timestamp"]) for track in tracks if "timestamp" in track]
+    return {
+        "trackCount": len(tracks),
+        "labels": labels,
+        "playerTrackCount": sum(1 for track in tracks if _label_matches(track.get("label"), {"player"})),
+        "ballTrackCount": sum(1 for track in tracks if _label_matches(track.get("label"), {"ball", "basketball"})),
+        "hoopTrackCount": sum(1 for track in tracks if _label_matches(track.get("label"), {"hoop", "rim", "backboard"})),
+        "firstFrameIndex": min(frame_indices) if frame_indices else None,
+        "lastFrameIndex": max(frame_indices) if frame_indices else None,
+        "firstTimestamp": min(timestamps) if timestamps else None,
+        "lastTimestamp": max(timestamps) if timestamps else None,
+    }
+
+
 def _bbox_center(box: Sequence[float]) -> tuple[float, float]:
     if len(box) != 4:
         raise ValueError("bbox must contain four values.")
@@ -391,17 +609,126 @@ def _label_matches(label: Any, needles: set[str]) -> bool:
     return any(token in normalized for token in needles)
 
 
+def _tracking_event_family(
+    label: str | None,
+    tracks: Sequence[Mapping[str, Any]],
+    *,
+    ball_visible: bool,
+    hoop_visible: bool,
+    ball_near_rim: float | None,
+) -> str:
+    normalized = _normalize_label(label)
+    if any(token in normalized for token in {"replay", "celebration", "camera pan", "dead ball", "dead-ball", "inbound", "timeout", "setup", "warmup", "dribble only", "half court setup", "huddle"}):
+        return "other"
+    if any(token in normalized for token in {"transition", "fast break", "runout", "breakaway"}):
+        return "transition"
+    if any(token in normalized for token in {"steal", "turnover", "live-ball turnover"}):
+        return "turnover"
+    if any(token in normalized for token in {"block", "deflection", "contest"}):
+        return "defensive_event"
+    if any(token in normalized for token in {"dunk", "layup", "jumper", "three", "3pt", "3 point", "putback", "shot", "make", "miss", "finish", "attempt"}):
+        return "shot_attempt"
+    if _detection_present(tracks, {"shot", "attempt", "score", "finish"}) and ball_visible and hoop_visible:
+        return "shot_attempt"
+    if ball_visible and hoop_visible and (ball_near_rim is None or ball_near_rim >= 0.35):
+        return "shot_attempt"
+    return "other"
+
+
+def _tracking_outcome(
+    label: str | None,
+    tracks: Sequence[Mapping[str, Any]],
+    *,
+    ball_visible: bool,
+    hoop_visible: bool,
+    ball_near_rim: float | None,
+) -> str:
+    normalized = _normalize_label(label)
+    if any(token in normalized for token in {"blocked", "rejected"}):
+        return "blocked"
+    if any(token in normalized for token in {"miss", "airball", "rim out", "no good", "brick"}):
+        return "missed"
+    if any(token in normalized for token in {"made", "score", "bucket", "swish", "and one"}):
+        return "made"
+    if any(token in normalized for token in {"uncertain", "unknown", "setup", "replay", "celebration", "camera pan", "dead ball", "dead-ball", "inbound"}):
+        return "uncertain"
+    if ball_visible and hoop_visible and ball_near_rim is not None:
+        if ball_near_rim >= 0.78:
+            return "uncertain"
+        if ball_near_rim <= 0.12:
+            return "uncertain"
+    return "uncertain"
+
+
+def _tracking_shot_subtype(
+    label: str | None,
+    *,
+    event_family: str,
+    tracks: Sequence[Mapping[str, Any]],
+) -> str | None:
+    if event_family != "shot_attempt":
+        return None
+    normalized = _normalize_label(label)
+    if any(token in normalized for token in {"dunk", "alley oop", "alley-oop", "rim attack", "finish at rim"}):
+        return "dunk"
+    if any(token in normalized for token in {"layup", "runner", "floater", "up and under", "hook"}):
+        return "layup"
+    if any(token in normalized for token in {"three", "3pt", "3 point", "deep"}):
+        return "three"
+    if any(token in normalized for token in {"putback", "tip in", "tip-in", "tip"}):
+        return "putback"
+    if any(token in normalized for token in {"jumper", "midrange", "pull up", "pull-up"}):
+        return "jumper"
+    if _detection_present(tracks, {"3pt", "three", "jumper", "dunk", "layup", "putback"}):
+        if _detection_present(tracks, {"3pt", "three"}):
+            return "three"
+        if _detection_present(tracks, {"dunk"}):
+            return "dunk"
+        if _detection_present(tracks, {"putback"}):
+            return "putback"
+        if _detection_present(tracks, {"layup", "runner", "floater"}):
+            return "layup"
+        if _detection_present(tracks, {"jumper"}):
+            return "jumper"
+    return None
+
+
+def _tracking_possession_change(tracks: Sequence[Mapping[str, Any]], label: str | None) -> float:
+    normalized = _normalize_label(label)
+    if any(token in normalized for token in {"steal", "turnover", "deflection"}):
+        return 0.9
+    if _detection_present(tracks, {"steal", "turnover", "deflection"}):
+        return 0.78
+    ball_tracks = [track for track in tracks if _label_matches(track.get("label"), {"ball", "basketball"})]
+    player_tracks = [track for track in tracks if _label_matches(track.get("label"), {"player"})]
+    if len(ball_tracks) >= 2 and player_tracks:
+        return 0.45
+    return 0.18
+
+
+def _tracking_transition_likelihood(tracks: Sequence[Mapping[str, Any]], label: str | None) -> float:
+    normalized = _normalize_label(label)
+    if any(token in normalized for token in {"transition", "fast break", "runout", "breakaway"}):
+        return 0.92
+    if _detection_present(tracks, {"transition", "fast break", "breakaway"}):
+        return 0.84
+    player_tracks = sum(1 for track in tracks if _label_matches(track.get("label"), {"player"}))
+    if player_tracks >= 5:
+        return 0.64
+    return 0.22
+
+
 def _bard_event_family(label: str | None) -> str:
     normalized = _normalize_label(label)
     if not normalized:
         return "other"
-    if any(token in normalized for token in {"dunk", "layup", "jumper", "three", "putback", "shot", "make", "miss"}):
+    if any(token in normalized for token in {"dunk", "layup", "jumper", "three", "putback", "shot", "make", "miss", "floater", "runner", "hook"}):
         return "shot_attempt"
     if any(token in normalized for token in {"block", "steal", "defense"}):
         return "defensive_event" if "block" in normalized else "turnover"
     if any(token in normalized for token in {"fast break", "transition", "runout", "breakaway"}):
         return "transition"
-    if any(token in normalized for token in {"replay", "celebration", "dead ball", "dead-ball", "inbound", "setup", "dribble", "crowd"}):
+    if any(token in normalized for token in {"replay", "celebration", "camera pan", "dead ball", "dead-ball", "inbound", "setup", "dribble", "crowd", "timeout", "half court setup", "half-court setup", "warmup"}):
         return "other"
     return "other"
 
@@ -412,9 +739,9 @@ def _bard_outcome(label: str | None) -> str:
         return "uncertain"
     if any(token in normalized for token in {"blocked"}):
         return "blocked"
-    if any(token in normalized for token in {"miss", "rim out", "airball", "no good"}):
+    if any(token in normalized for token in {"miss", "rim out", "airball", "no good", "brick", "rejected"}):
         return "missed"
-    if any(token in normalized for token in {"made", "score", "and one", "swish", "dunk", "layup", "jumper", "three", "putback"}):
+    if any(token in normalized for token in {"made", "score", "and one", "swish", "dunk", "layup", "jumper", "three", "putback", "floater", "runner"}):
         return "made"
     return "uncertain"
 
@@ -423,15 +750,15 @@ def _bard_shot_subtype(label: str | None, *, event_family: str) -> str | None:
     normalized = _normalize_label(label)
     if event_family != "shot_attempt":
         return None
-    if "dunk" in normalized:
+    if "dunk" in normalized or "alley oop" in normalized or "alley-oop" in normalized:
         return "dunk"
-    if "layup" in normalized:
+    if "layup" in normalized or "floater" in normalized or "runner" in normalized or "hook" in normalized:
         return "layup"
     if "three" in normalized or "3pt" in normalized or "3 point" in normalized:
         return "three"
     if "putback" in normalized or "tip" in normalized:
         return "putback"
-    if "jumper" in normalized or "midrange" in normalized:
+    if "jumper" in normalized or "midrange" in normalized or "pull up" in normalized or "pull-up" in normalized:
         return "jumper"
     if any(token in normalized for token in {"shot", "make", "miss"}):
         return "unknown"
@@ -451,6 +778,8 @@ def _ebard_event_family(
         return "turnover"
     if _detection_present(detections, {"transition", "fast break"}):
         return "transition"
+    if _detection_present(detections, {"replay", "celebration", "camera pan", "dead ball", "dead-ball", "inbound", "timeout", "setup"}):
+        return "other"
     if ball_visible and hoop_visible and (ball_near_rim is None or ball_near_rim >= 0.35):
         return "shot_attempt"
     return "other"
@@ -466,4 +795,3 @@ def _ebard_outcome(*, ball_visible: bool, hoop_visible: bool, ball_near_rim: flo
 
 def _normalize_label(value: str | None) -> str:
     return " ".join(str(value or "").strip().lower().replace("_", " ").replace("-", " ").split())
-
