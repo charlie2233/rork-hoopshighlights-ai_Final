@@ -1,16 +1,11 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://rork.hoopshighlights.ai/schemas/annotation-schema.json",
-  "schemaVersion": "2026-03-30",
-  "title": "HoopsClips Clip Annotation",
-  "description": "Canonical annotation schema for gold, silver, and disagreement-queue basketball clips.",
-  "migrationNotes": "Older duplicate schema filenames were retired in phase3c1. This file is the only source of truth.",
+  "schemaVersion": "2026-03-31",
+  "title": "HoopsClips clip annotation schema",
   "type": "object",
-  "additionalProperties": false,
   "required": [
     "clipId",
     "sourceDomain",
-    "schemaVersion",
+    "sourceKind",
     "eventFamily",
     "outcome",
     "shotSubtype",
@@ -24,42 +19,27 @@
     "humanVerified",
     "reviewerNotes",
     "rawRuntimeOutputs",
-    "rawTeacherOutputs"
+    "rawTeacherOutputs",
+    "schemaVersion"
   ],
   "properties": {
-    "clipId": { "type": "string", "minLength": 1 },
-    "sourceDomain": { "type": "string", "minLength": 1 },
-    "sourceRef": {
-      "type": ["string", "null"],
-      "description": "Optional original clip reference. Can be a local relative path, absolute path, URL, or r2:// reference."
-    },
-    "schemaVersion": {
-      "type": "string",
-      "minLength": 1,
-      "description": "Schema version attached when the row was written. Defaults to the current canonical version if absent."
-    },
-    "eventFamily": {
-      "type": "string",
-      "enum": ["shot_attempt", "turnover", "defensive_event", "transition", "other"]
-    },
-    "outcome": {
-      "type": "string",
-      "enum": ["made", "missed", "blocked", "uncertain"]
-    },
-    "shotSubtype": {
-      "type": ["string", "null"],
-      "enum": ["dunk", "layup", "jumper", "three", "putback", "unknown", null]
-    },
+    "clipId": { "type": "string" },
+    "sourceDomain": { "type": "string" },
+    "sourceKind": { "type": "string" },
+    "eventFamily": { "type": "string" },
+    "outcome": { "type": "string" },
+    "shotSubtype": { "type": ["string", "null"] },
     "ballVisible": { "type": "boolean" },
     "hoopVisible": { "type": "boolean" },
-    "ballNearRim": { "type": ["number", "null"], "minimum": 0.0, "maximum": 1.0 },
-    "ballThroughHoopLikelihood": { "type": ["number", "null"], "minimum": 0.0, "maximum": 1.0 },
-    "possessionChangeLikelihood": { "type": ["number", "null"], "minimum": 0.0, "maximum": 1.0 },
-    "transitionLikelihood": { "type": ["number", "null"], "minimum": 0.0, "maximum": 1.0 },
-    "teacherConfidence": { "type": ["number", "null"], "minimum": 0.0, "maximum": 1.0 },
+    "ballNearRim": { "type": "number" },
+    "ballThroughHoopLikelihood": { "type": "number" },
+    "possessionChangeLikelihood": { "type": "number" },
+    "transitionLikelihood": { "type": "number" },
+    "teacherConfidence": { "type": "number" },
     "humanVerified": { "type": "boolean" },
     "reviewerNotes": { "type": "string" },
-    "rawRuntimeOutputs": { "type": ["object", "null"] },
-    "rawTeacherOutputs": { "type": ["object", "null"] }
+    "rawRuntimeOutputs": { "type": "object" },
+    "rawTeacherOutputs": { "type": "object" },
+    "schemaVersion": { "type": "string" }
   }
 }

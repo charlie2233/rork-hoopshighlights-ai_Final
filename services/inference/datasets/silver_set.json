@@ -1,350 +1,354 @@
 [
   {
-    "ballNearRim": 0.97,
-    "ballThroughHoopLikelihood": 0.74,
-    "ballVisible": true,
-    "clipId": "silver-runtime-vs-teacher-001",
+    "clipId": "silver-dunk-pseudo-001",
+    "sourceDomain": "teacher_pseudo",
+    "sourceKind": "silver",
     "eventFamily": "shot_attempt",
-    "hoopVisible": true,
-    "humanVerified": false,
     "outcome": "made",
-    "possessionChangeLikelihood": 0.08,
-    "rawRuntimeOutputs": {
-      "confidence": 0.5636,
-      "eventFamily": "shot_attempt",
-      "label": "Highlight",
-      "outcome": "uncertain",
-      "rawTopLabels": [
-        "shooting basketball",
-        "dribbling basketball",
-        "playing basketball"
-      ],
-      "shotSubtype": "dunk"
-    },
-    "rawTeacherOutputs": {
-      "confidence": 0.92,
-      "eventFamily": "shot_attempt",
-      "evidence": [
-        "ball above rim",
-        "player near rim",
-        "clear finish through hoop"
-      ],
-      "modelVersion": "teacher:Qwen/Qwen2.5-VL-7B-Instruct",
-      "notes": "Teacher is confident this is a made dunk.",
-      "outcome": "made",
-      "promptVersion": "qwen-basketball-teacher-v1",
-      "shotSubtype": "dunk"
-    },
-    "reviewerNotes": "Runtime stayed on Highlight while teacher suggested a clearer made dunk. Review before promoting to gold.",
-    "schemaVersion": "2026-03-30",
     "shotSubtype": "dunk",
-    "sourceDomain": "live_staging",
-    "sourceRef": "backend/.external/HoopCut_FH/main/static/clips/make_2_3.20s.mp4",
-    "teacherConfidence": 0.92,
-    "transitionLikelihood": 0.05
+    "ballVisible": true,
+    "hoopVisible": true,
+    "ballNearRim": 0.91,
+    "ballThroughHoopLikelihood": 0.93,
+    "possessionChangeLikelihood": 0.15,
+    "transitionLikelihood": 0.18,
+    "teacherConfidence": 0.93,
+    "humanVerified": false,
+    "reviewerNotes": "Teacher is confident on the dunk, but this remains pseudo-labeled.",
+    "rawRuntimeOutputs": {
+      "confidence": 0.76,
+      "eventFamily": "shot_attempt",
+      "label": "dunk",
+      "outcome": "made",
+      "shotSubtype": "dunk"
+    },
+    "rawTeacherOutputs": {
+      "confidence": 0.93,
+      "eventFamily": "shot_attempt",
+      "label": "dunk",
+      "outcome": "made",
+      "shotSubtype": "dunk"
+    },
+    "schemaVersion": "2026-03-31"
   },
   {
-    "ballNearRim": 0.87,
-    "ballThroughHoopLikelihood": 0.19,
-    "ballVisible": true,
-    "clipId": "silver-runtime-vs-teacher-002",
+    "clipId": "silver-layup-pseudo-001",
+    "sourceDomain": "teacher_pseudo",
+    "sourceKind": "silver",
     "eventFamily": "shot_attempt",
+    "outcome": "made",
+    "shotSubtype": "layup",
+    "ballVisible": true,
     "hoopVisible": true,
+    "ballNearRim": 0.84,
+    "ballThroughHoopLikelihood": 0.88,
+    "possessionChangeLikelihood": 0.18,
+    "transitionLikelihood": 0.22,
+    "teacherConfidence": 0.9,
     "humanVerified": false,
-    "outcome": "missed",
-    "possessionChangeLikelihood": 0.09,
+    "reviewerNotes": "Clean layup with mild rim contact.",
     "rawRuntimeOutputs": {
-      "confidence": 0.8026,
+      "confidence": 0.71,
       "eventFamily": "shot_attempt",
-      "label": "Highlight",
-      "outcome": "missed",
-      "rawTopLabels": [
-        "shooting basketball",
-        "playing basketball",
-        "dribbling basketball"
-      ],
+      "label": "made_shot",
+      "outcome": "made",
       "shotSubtype": "layup"
     },
     "rawTeacherOutputs": {
-      "confidence": 0.95,
+      "confidence": 0.9,
       "eventFamily": "shot_attempt",
-      "evidence": [
-        "near-rim attempt",
-        "ball does not go through hoop",
-        "contested finish"
-      ],
-      "modelVersion": "teacher:Qwen/Qwen2.5-VL-7B-Instruct",
-      "notes": "Teacher strongly supports missed layup.",
-      "outcome": "missed",
-      "promptVersion": "qwen-basketball-teacher-v1",
+      "label": "layup",
+      "outcome": "made",
       "shotSubtype": "layup"
     },
-    "reviewerNotes": "Runtime and teacher agree on missed outcome; keep as silver until a human verifies the exact subtype.",
-    "schemaVersion": "2026-03-30",
-    "shotSubtype": "layup",
-    "sourceDomain": "live_staging",
-    "sourceRef": "backend/.external/HoopCut_FH/main/static/clips/miss_2_3.13s.mp4",
-    "teacherConfidence": 0.95,
-    "transitionLikelihood": 0.05
+    "schemaVersion": "2026-03-31"
   },
   {
-    "ballNearRim": 0.01,
-    "ballThroughHoopLikelihood": 0.0,
+    "clipId": "silver-three-pseudo-001",
+    "sourceDomain": "teacher_pseudo",
+    "sourceKind": "silver",
+    "eventFamily": "shot_attempt",
+    "outcome": "made",
+    "shotSubtype": "jumper",
     "ballVisible": true,
-    "clipId": "silver-runtime-vs-teacher-003",
-    "eventFamily": "turnover",
-    "hoopVisible": false,
+    "hoopVisible": true,
+    "ballNearRim": 0.8,
+    "ballThroughHoopLikelihood": 0.87,
+    "possessionChangeLikelihood": 0.14,
+    "transitionLikelihood": 0.2,
+    "teacherConfidence": 0.88,
     "humanVerified": false,
+    "reviewerNotes": "Arc and release resemble a 3PT jumper; keep for subtype learning.",
+    "rawRuntimeOutputs": {
+      "confidence": 0.68,
+      "eventFamily": "shot_attempt",
+      "label": "jumper",
+      "outcome": "made",
+      "shotSubtype": "jumper"
+    },
+    "rawTeacherOutputs": {
+      "confidence": 0.88,
+      "eventFamily": "shot_attempt",
+      "label": "three",
+      "outcome": "made",
+      "shotSubtype": "jumper"
+    },
+    "schemaVersion": "2026-03-31"
+  },
+  {
+    "clipId": "silver-miss-pseudo-001",
+    "sourceDomain": "teacher_pseudo",
+    "sourceKind": "silver",
+    "eventFamily": "shot_attempt",
+    "outcome": "missed",
+    "shotSubtype": "jumper",
+    "ballVisible": true,
+    "hoopVisible": true,
+    "ballNearRim": 0.6,
+    "ballThroughHoopLikelihood": 0.18,
+    "possessionChangeLikelihood": 0.4,
+    "transitionLikelihood": 0.27,
+    "teacherConfidence": 0.87,
+    "humanVerified": false,
+    "reviewerNotes": "Contested jumper missed short; useful miss-vs-made correction signal.",
+    "rawRuntimeOutputs": {
+      "confidence": 0.61,
+      "eventFamily": "shot_attempt",
+      "label": "made_shot",
+      "outcome": "made",
+      "shotSubtype": "jumper"
+    },
+    "rawTeacherOutputs": {
+      "confidence": 0.87,
+      "eventFamily": "shot_attempt",
+      "label": "miss",
+      "outcome": "missed",
+      "shotSubtype": "jumper"
+    },
+    "schemaVersion": "2026-03-31"
+  },
+  {
+    "clipId": "silver-steal-disagreement-001",
+    "sourceDomain": "disagreement_queue",
+    "sourceKind": "silver",
+    "eventFamily": "turnover",
     "outcome": "uncertain",
-    "possessionChangeLikelihood": 0.81,
+    "shotSubtype": null,
+    "ballVisible": true,
+    "hoopVisible": false,
+    "ballNearRim": 0.03,
+    "ballThroughHoopLikelihood": 0.02,
+    "possessionChangeLikelihood": 0.95,
+    "transitionLikelihood": 0.83,
+    "teacherConfidence": 0.86,
+    "humanVerified": false,
+    "reviewerNotes": "Runtime and teacher agree on turnover; keep for silver expansion.",
     "rawRuntimeOutputs": {
       "confidence": 0.56,
       "eventFamily": "turnover",
       "label": "steal",
       "outcome": "uncertain",
-      "rawTopLabels": [
-        "steal",
-        "block",
-        "fast break"
-      ],
-      "shotSubtype": null
-    },
-    "rawTeacherOutputs": {
-      "confidence": 0.89,
-      "eventFamily": "turnover",
-      "evidence": [
-        "ball change of possession",
-        "live-ball deflection"
-      ],
-      "modelVersion": "teacher:Qwen/Qwen2.5-VL-7B-Instruct",
-      "notes": "Teacher points to a turnover / steal.",
-      "outcome": "uncertain",
-      "promptVersion": "qwen-basketball-teacher-v1",
-      "shotSubtype": null
-    },
-    "reviewerNotes": "Teacher and runtime both point at turnover, but the clip still needs human review for final gold status.",
-    "schemaVersion": "2026-03-30",
-    "shotSubtype": null,
-    "sourceDomain": "structured_eval",
-    "sourceRef": "r2://basketball/silver/turnover_steal_001.mp4",
-    "teacherConfidence": 0.89,
-    "transitionLikelihood": 0.18
-  },
-  {
-    "ballNearRim": 0.11,
-    "ballThroughHoopLikelihood": 0.0,
-    "ballVisible": true,
-    "clipId": "silver-runtime-vs-teacher-004",
-    "eventFamily": "transition",
-    "hoopVisible": true,
-    "humanVerified": false,
-    "outcome": "uncertain",
-    "possessionChangeLikelihood": 0.18,
-    "rawRuntimeOutputs": {
-      "confidence": 0.9,
-      "eventFamily": "transition",
-      "label": "fast break",
-      "outcome": "made",
-      "rawTopLabels": [
-        "fast break",
-        "layup",
-        "dunk"
-      ],
-      "shotSubtype": null
-    },
-    "rawTeacherOutputs": {
-      "confidence": 0.88,
-      "eventFamily": "transition",
-      "evidence": [
-        "team displacement",
-        "lead pass",
-        "runout pace"
-      ],
-      "modelVersion": "teacher:Qwen/Qwen2.5-VL-7B-Instruct",
-      "notes": "Transition is present, but finish outcome is unclear.",
-      "outcome": "uncertain",
-      "promptVersion": "qwen-basketball-teacher-v1",
-      "shotSubtype": null
-    },
-    "reviewerNotes": "Silver transition example. Keep separate from gold until a reviewer confirms whether the sequence contains a finish.",
-    "schemaVersion": "2026-03-30",
-    "shotSubtype": null,
-    "sourceDomain": "structured_eval",
-    "sourceRef": "r2://basketball/silver/transition_001.mp4",
-    "teacherConfidence": 0.88,
-    "transitionLikelihood": 0.94
-  },
-  {
-    "ballNearRim": 0.14,
-    "ballThroughHoopLikelihood": 0.0,
-    "ballVisible": true,
-    "clipId": "silver-runtime-vs-teacher-005",
-    "eventFamily": "other",
-    "hoopVisible": true,
-    "humanVerified": false,
-    "outcome": "uncertain",
-    "possessionChangeLikelihood": 0.02,
-    "rawRuntimeOutputs": {
-      "confidence": 0.33,
-      "eventFamily": "other",
-      "label": "Highlight",
-      "outcome": "uncertain",
-      "rawTopLabels": [
-        "playing basketball",
-        "shooting basketball",
-        "dribbling basketball"
-      ],
       "shotSubtype": null
     },
     "rawTeacherOutputs": {
       "confidence": 0.86,
-      "eventFamily": "other",
-      "evidence": [
-        "broadcast replay posture",
-        "no live possession"
-      ],
-      "modelVersion": "teacher:Qwen/Qwen2.5-VL-7B-Instruct",
-      "notes": "Teacher suggests replay / non-event.",
+      "eventFamily": "turnover",
+      "label": "steal",
       "outcome": "uncertain",
-      "promptVersion": "qwen-basketball-teacher-v1",
       "shotSubtype": null
     },
-    "reviewerNotes": "Replay negative. High teacher confidence should still be kept separate until verified as a hard negative.",
-    "schemaVersion": "2026-03-30",
-    "shotSubtype": null,
-    "sourceDomain": "manual_negative",
-    "sourceRef": "r2://basketball/silver/hard_negative_replay_001.mp4",
-    "teacherConfidence": 0.86,
-    "transitionLikelihood": 0.01
+    "schemaVersion": "2026-03-31"
   },
   {
-    "ballNearRim": 0.0,
-    "ballThroughHoopLikelihood": 0.0,
-    "ballVisible": false,
-    "clipId": "silver-runtime-vs-teacher-006",
-    "eventFamily": "other",
+    "clipId": "silver-fastbreak-disagreement-001",
+    "sourceDomain": "disagreement_queue",
+    "sourceKind": "silver",
+    "eventFamily": "transition",
+    "outcome": "made",
+    "shotSubtype": "layup",
+    "ballVisible": true,
     "hoopVisible": true,
+    "ballNearRim": 0.72,
+    "ballThroughHoopLikelihood": 0.84,
+    "possessionChangeLikelihood": 0.72,
+    "transitionLikelihood": 0.96,
+    "teacherConfidence": 0.84,
     "humanVerified": false,
-    "outcome": "uncertain",
-    "possessionChangeLikelihood": 0.01,
+    "reviewerNotes": "Fast-break finish; runtime label was too generic.",
     "rawRuntimeOutputs": {
-      "confidence": 0.24,
-      "eventFamily": "other",
-      "label": "Highlight",
-      "outcome": "uncertain",
-      "rawTopLabels": [
-        "playing basketball",
-        "dribbling basketball",
-        "shooting basketball"
-      ],
-      "shotSubtype": null
+      "confidence": 0.74,
+      "eventFamily": "transition",
+      "label": "fast_break",
+      "outcome": "made",
+      "shotSubtype": "layup"
     },
     "rawTeacherOutputs": {
       "confidence": 0.84,
-      "eventFamily": "other",
-      "evidence": [
-        "dead-ball reset",
-        "no clear event"
-      ],
-      "modelVersion": "teacher:Qwen/Qwen2.5-VL-7B-Instruct",
-      "notes": "Teacher abstains.",
-      "outcome": "uncertain",
-      "promptVersion": "qwen-basketball-teacher-v1",
-      "shotSubtype": null
+      "eventFamily": "transition",
+      "label": "fast_break",
+      "outcome": "made",
+      "shotSubtype": "layup"
     },
-    "reviewerNotes": "Dead-ball negative. Should be promoted only after a human verifies the lack of live action.",
-    "schemaVersion": "2026-03-30",
-    "shotSubtype": null,
-    "sourceDomain": "manual_negative",
-    "sourceRef": "r2://basketball/silver/hard_negative_dead_ball_001.mp4",
-    "teacherConfidence": 0.84,
-    "transitionLikelihood": 0.0
+    "schemaVersion": "2026-03-31"
   },
   {
+    "clipId": "silver-hard-negative-celebration-001",
+    "sourceDomain": "hard_negative",
+    "sourceKind": "silver",
+    "eventFamily": "other",
+    "outcome": "uncertain",
+    "shotSubtype": null,
+    "ballVisible": false,
+    "hoopVisible": false,
     "ballNearRim": 0.0,
     "ballThroughHoopLikelihood": 0.0,
-    "ballVisible": false,
-    "clipId": "silver-runtime-vs-teacher-007",
-    "eventFamily": "other",
-    "hoopVisible": false,
+    "possessionChangeLikelihood": 0.03,
+    "transitionLikelihood": 0.02,
+    "teacherConfidence": 0.63,
     "humanVerified": false,
-    "outcome": "uncertain",
-    "possessionChangeLikelihood": 0.0,
+    "reviewerNotes": "Celebration after the play is over; useful hard negative.",
     "rawRuntimeOutputs": {
-      "confidence": 0.22,
+      "confidence": 0.44,
       "eventFamily": "other",
       "label": "Highlight",
       "outcome": "uncertain",
-      "rawTopLabels": [
-        "playing basketball",
-        "shooting basketball",
-        "dribbling basketball"
-      ],
       "shotSubtype": null
     },
     "rawTeacherOutputs": {
-      "confidence": 0.82,
+      "confidence": 0.63,
       "eventFamily": "other",
-      "evidence": [
-        "celebration posture",
-        "ball absent"
-      ],
-      "modelVersion": "teacher:Qwen/Qwen2.5-VL-7B-Instruct",
-      "notes": "Teacher abstains.",
+      "label": "other",
       "outcome": "uncertain",
-      "promptVersion": "qwen-basketball-teacher-v1",
       "shotSubtype": null
     },
-    "reviewerNotes": "Celebration negative. Good source for disagreement mining because runtime often over-rewards motion.",
-    "schemaVersion": "2026-03-30",
-    "shotSubtype": null,
-    "sourceDomain": "manual_negative",
-    "sourceRef": "r2://basketball/silver/hard_negative_celebration_001.mp4",
-    "teacherConfidence": 0.82,
-    "transitionLikelihood": 0.0
+    "schemaVersion": "2026-03-31"
   },
   {
-    "ballNearRim": 0.07,
-    "ballThroughHoopLikelihood": 0.0,
-    "ballVisible": true,
-    "clipId": "silver-runtime-vs-teacher-008",
+    "clipId": "silver-hard-negative-replay-001",
+    "sourceDomain": "hard_negative",
+    "sourceKind": "silver",
     "eventFamily": "other",
-    "hoopVisible": true,
-    "humanVerified": false,
     "outcome": "uncertain",
-    "possessionChangeLikelihood": 0.04,
+    "shotSubtype": null,
+    "ballVisible": false,
+    "hoopVisible": false,
+    "ballNearRim": 0.0,
+    "ballThroughHoopLikelihood": 0.0,
+    "possessionChangeLikelihood": 0.02,
+    "transitionLikelihood": 0.01,
+    "teacherConfidence": 0.6,
+    "humanVerified": false,
+    "reviewerNotes": "Scoreboard replay / cutaway; no live basketball signal.",
+    "rawRuntimeOutputs": {
+      "confidence": 0.39,
+      "eventFamily": "other",
+      "label": "Highlight",
+      "outcome": "uncertain",
+      "shotSubtype": null
+    },
+    "rawTeacherOutputs": {
+      "confidence": 0.6,
+      "eventFamily": "other",
+      "label": "other",
+      "outcome": "uncertain",
+      "shotSubtype": null
+    },
+    "schemaVersion": "2026-03-31"
+  },
+  {
+    "clipId": "silver-hard-negative-dribble-only-001",
+    "sourceDomain": "hard_negative",
+    "sourceKind": "silver",
+    "eventFamily": "other",
+    "outcome": "uncertain",
+    "shotSubtype": null,
+    "ballVisible": true,
+    "hoopVisible": false,
+    "ballNearRim": 0.01,
+    "ballThroughHoopLikelihood": 0.0,
+    "possessionChangeLikelihood": 0.1,
+    "transitionLikelihood": 0.08,
+    "teacherConfidence": 0.58,
+    "humanVerified": false,
+    "reviewerNotes": "Dribble sequence only; keep as hard negative for highlight suppression.",
+    "rawRuntimeOutputs": {
+      "confidence": 0.46,
+      "eventFamily": "other",
+      "label": "Highlight",
+      "outcome": "uncertain",
+      "shotSubtype": null
+    },
+    "rawTeacherOutputs": {
+      "confidence": 0.58,
+      "eventFamily": "other",
+      "label": "other",
+      "outcome": "uncertain",
+      "shotSubtype": null
+    },
+    "schemaVersion": "2026-03-31"
+  },
+  {
+    "clipId": "silver-low-confidence-camera-pan-001",
+    "sourceDomain": "hard_negative",
+    "sourceKind": "silver",
+    "eventFamily": "other",
+    "outcome": "uncertain",
+    "shotSubtype": null,
+    "ballVisible": false,
+    "hoopVisible": false,
+    "ballNearRim": 0.0,
+    "ballThroughHoopLikelihood": 0.0,
+    "possessionChangeLikelihood": 0.01,
+    "transitionLikelihood": 0.01,
+    "teacherConfidence": 0.42,
+    "humanVerified": false,
+    "reviewerNotes": "Very low-confidence camera pan negative; should be gated out of active silver expansion.",
     "rawRuntimeOutputs": {
       "confidence": 0.31,
       "eventFamily": "other",
       "label": "Highlight",
       "outcome": "uncertain",
-      "rawTopLabels": [
-        "playing basketball",
-        "dribbling basketball",
-        "shooting basketball"
-      ],
       "shotSubtype": null
     },
     "rawTeacherOutputs": {
-      "confidence": 0.81,
+      "confidence": 0.42,
       "eventFamily": "other",
-      "evidence": [
-        "setup only",
-        "no shot release",
-        "no possession change"
-      ],
-      "modelVersion": "teacher:Qwen/Qwen2.5-VL-7B-Instruct",
-      "notes": "Teacher abstains.",
+      "label": "other",
       "outcome": "uncertain",
-      "promptVersion": "qwen-basketball-teacher-v1",
       "shotSubtype": null
     },
-    "reviewerNotes": "Half-court setup without an event. Strong candidate for the abstain bucket.",
-    "schemaVersion": "2026-03-30",
-    "shotSubtype": null,
-    "sourceDomain": "manual_negative",
-    "sourceRef": "r2://basketball/silver/hard_negative_halfcourt_setup_001.mp4",
-    "teacherConfidence": 0.81,
-    "transitionLikelihood": 0.09
+    "schemaVersion": "2026-03-31"
+  },
+  {
+    "clipId": "silver-block-shadow-001",
+    "sourceDomain": "live_shadow",
+    "sourceKind": "silver",
+    "eventFamily": "defensive_event",
+    "outcome": "blocked",
+    "shotSubtype": "jumper",
+    "ballVisible": true,
+    "hoopVisible": true,
+    "ballNearRim": 0.58,
+    "ballThroughHoopLikelihood": 0.14,
+    "possessionChangeLikelihood": 0.35,
+    "transitionLikelihood": 0.26,
+    "teacherConfidence": 0.79,
+    "humanVerified": false,
+    "reviewerNotes": "Block is likely but not yet gold-verified; good medium-confidence silver.",
+    "rawRuntimeOutputs": {
+      "confidence": 0.6,
+      "eventFamily": "defensive_event",
+      "label": "block",
+      "outcome": "blocked",
+      "shotSubtype": "jumper"
+    },
+    "rawTeacherOutputs": {
+      "confidence": 0.79,
+      "eventFamily": "defensive_event",
+      "label": "block",
+      "outcome": "blocked",
+      "shotSubtype": "jumper"
+    },
+    "schemaVersion": "2026-03-31"
   }
 ]
