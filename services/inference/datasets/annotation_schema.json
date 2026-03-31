@@ -4,7 +4,7 @@
   "schemaVersion": "2026-03-30",
   "title": "HoopsClips Clip Annotation",
   "description": "Canonical annotation schema for gold, silver, and disagreement-queue basketball clips.",
-  "migrationNotes": "Older duplicate schema filenames were retired in phase3c1. This file is the only source of truth.",
+  "migrationNotes": "Older duplicate schema filenames were retired in phase3c1. Phase4 adds optional event-localization fields and old rows continue to load with null defaults when those fields are absent.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -59,6 +59,14 @@
     "teacherConfidence": { "type": ["number", "null"], "minimum": 0.0, "maximum": 1.0 },
     "humanVerified": { "type": "boolean" },
     "reviewerNotes": { "type": "string" },
+    "eventStart": { "type": ["number", "null"], "minimum": 0.0 },
+    "eventCenter": { "type": ["number", "null"], "minimum": 0.0 },
+    "eventEnd": { "type": ["number", "null"], "minimum": 0.0 },
+    "shotReleaseTime": { "type": ["number", "null"], "minimum": 0.0 },
+    "ballNearRimTime": { "type": ["number", "null"], "minimum": 0.0 },
+    "ballThroughHoopTime": { "type": ["number", "null"], "minimum": 0.0 },
+    "possessionChangeTime": { "type": ["number", "null"], "minimum": 0.0 },
+    "transitionStartTime": { "type": ["number", "null"], "minimum": 0.0 },
     "rawRuntimeOutputs": { "type": ["object", "null"] },
     "rawTeacherOutputs": { "type": ["object", "null"] }
   }

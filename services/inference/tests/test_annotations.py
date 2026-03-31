@@ -8,6 +8,7 @@ from pathlib import Path
 from services.inference.datasets import (
     ANNOTATION_SCHEMA_VERSION,
     annotation_template,
+    derive_coarse_event_window,
     load_annotation_rows,
     write_annotation_rows,
 )
@@ -30,6 +31,14 @@ class AnnotationDatasetTests(unittest.TestCase):
         row.ballThroughHoopLikelihood = 0.12
         row.possessionChangeLikelihood = 0.09
         row.transitionLikelihood = 0.14
+        row.eventStart = 1.2
+        row.eventCenter = 2.4
+        row.eventEnd = 3.8
+        row.shotReleaseTime = 1.8
+        row.ballNearRimTime = 2.8
+        row.ballThroughHoopTime = 3.1
+        row.possessionChangeTime = 0.9
+        row.transitionStartTime = 0.3
         row.teacherConfidence = 0.67
         row.humanVerified = True
         row.reviewerNotes = "Clean miss with visible rim."
@@ -47,6 +56,58 @@ class AnnotationDatasetTests(unittest.TestCase):
         self.assertEqual(reloaded[0].eventFamily, "shot_attempt")
         self.assertEqual(reloaded[0].outcome, "missed")
         self.assertEqual(reloaded[0].rawTeacherOutputs["eventFamily"], "shot_attempt")
+        self.assertEqual(reloaded[0].eventStart, 1.2)
+        self.assertEqual(reloaded[0].transitionStartTime, 0.3)
+
+    def test_annotation_template_defaults_event_localization_fields_to_null(self) -> None:
+        row = annotation_template(clip_id="clip-004", source_domain="gold:human_review")
+        self.assertIsNone(row.eventStart)
+        self.assertIsNone(row.eventCenter)
+        self.assertIsNone(row.eventEnd)
+        self.assertIsNone(row.shotReleaseTime)
+        self.assertIsNone(row.ballNearRimTime)
+        self.assertIsNone(row.ballThroughHoopTime)
+        self.assertIsNone(row.possessionChangeTime)
+        self.assertIsNone(row.transitionStartTime)
+
+    def test_legacy_rows_load_with_missing_event_localization_fields(self) -> None:
+        payload = [
+            {
+                "clipId": "clip-legacy",
+                "sourceDomain": "gold:human_review",
+                "schemaVersion": ANNOTATION_SCHEMA_VERSION,
+                "sourceRef": None,
+                "eventFamily": "other",
+                "outcome": "uncertain",
+                "shotSubtype": None,
+                "ballVisible": False,
+                "hoopVisible": False,
+                "ballNearRim": None,
+                "ballThroughHoopLikelihood": None,
+                "possessionChangeLikelihood": None,
+                "transitionLikelihood": None,
+                "teacherConfidence": None,
+                "humanVerified": False,
+                "reviewerNotes": "",
+                "rawRuntimeOutputs": {},
+                "rawTeacherOutputs": None,
+            }
+        ]
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "annotations.json"
+            path.write_text(json.dumps(payload), encoding="utf-8")
+            reloaded = load_annotation_rows(path)
+
+        self.assertIsNone(reloaded[0].eventStart)
+        self.assertIsNone(reloaded[0].eventCenter)
+        self.assertIsNone(reloaded[0].eventEnd)
+        self.assertIsNone(reloaded[0].shotReleaseTime)
+
+    def test_derive_coarse_event_window_clips_to_source_duration(self) -> None:
+        window = derive_coarse_event_window(5.0, clip_duration_seconds=6.0, half_window_seconds=1.5)
+        self.assertEqual(window["eventCenter"], 5.0)
+        self.assertEqual(window["eventStart"], 3.5)
+        self.assertEqual(window["eventEnd"], 6.0)
 
     def test_write_rejects_probability_out_of_range(self) -> None:
         row = annotation_template(clip_id="clip-002", source_domain="silver:teacher")

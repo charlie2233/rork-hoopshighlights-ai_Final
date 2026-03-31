@@ -7,6 +7,7 @@ Files:
 - `gold_set.json`: curated gold seed rows used to bootstrap the human-verified dataset.
 - `silver_set.json`: teacher pseudo-label seed rows kept separate from the gold set.
 - `annotation_schema.json`: canonical unified clip annotation schema shared by gold and silver sets.
+- `event_localization.py`: helper functions for coarse event-time spans and localization field normalization.
 - `gold_annotations.jsonl`: human-verified annotations used for probe evaluation.
 - `silver_teacher_annotations.jsonl`: teacher pseudo-labels kept separate from the human gold set.
 - `disagreement_queue.jsonl`: clips that should be prioritized for manual review.
@@ -27,6 +28,8 @@ Migration notes:
 
 - `schemaVersion` is stored on generated annotation rows and defaults to `2026-03-30` when missing on legacy seed rows.
 - `annotation_schema.json` is the single source of truth; the older schema filenames are deprecated compatibility leftovers.
+- Phase4 adds optional event-localization fields: `eventStart`, `eventCenter`, `eventEnd`, `shotReleaseTime`, `ballNearRimTime`, `ballThroughHoopTime`, `possessionChangeTime`, and `transitionStartTime`.
+- Legacy rows without localization fields still load because the Python loader injects `null` defaults before validation and export.
 - Supported import adapters currently include `bard-event`, `ebard-detection`, `sportsmot-tracking`, and `trackid3x3-tracking`.
 - `sportsmot:tracking` is the canonical source domain for broadcast/telemetry tracking supervision.
 - `trackid3x3:fixed-camera` is the canonical source domain for fixed-camera or amateur-like tracking supervision.

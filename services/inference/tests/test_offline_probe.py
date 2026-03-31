@@ -50,6 +50,19 @@ class OfflineProbeTests(unittest.TestCase):
             "rawTeacherOutputs",
         ]:
             self.assertIn(field, required)
+
+        properties = set(schema["properties"])
+        for field in [
+            "eventStart",
+            "eventCenter",
+            "eventEnd",
+            "shotReleaseTime",
+            "ballNearRimTime",
+            "ballThroughHoopTime",
+            "possessionChangeTime",
+            "transitionStartTime",
+        ]:
+            self.assertIn(field, properties)
         self.assertEqual(schema["schemaVersion"], ANNOTATION_SCHEMA_VERSION)
 
     def test_dataset_generation_is_reproducible(self) -> None:

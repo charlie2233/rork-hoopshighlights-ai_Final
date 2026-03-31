@@ -5,6 +5,12 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
+from .event_localization import (
+    EVENT_LOCALIZATION_FIELDS,
+    event_localization_template,
+    normalize_event_localization_fields,
+)
+
 
 ANNOTATION_SCHEMA_PATH = Path(__file__).with_name("annotation_schema.json")
 ANNOTATION_SCHEMA_MIGRATION_NOTES_PATH = Path(__file__).resolve().parents[2] / "docs" / "phase3c1_dataset_schema.md"
@@ -37,12 +43,21 @@ class ClipAnnotation:
     reviewerNotes: str
     rawRuntimeOutputs: dict[str, Any] | None
     rawTeacherOutputs: dict[str, Any] | None
+    eventStart: float | None = None
+    eventCenter: float | None = None
+    eventEnd: float | None = None
+    shotReleaseTime: float | None = None
+    ballNearRimTime: float | None = None
+    ballThroughHoopTime: float | None = None
+    possessionChangeTime: float | None = None
+    transitionStartTime: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 
 def annotation_template(*, clip_id: str, source_domain: str) -> ClipAnnotation:
+    localization = event_localization_template()
     return ClipAnnotation(
         clipId=clip_id,
         sourceDomain=source_domain,
@@ -62,6 +77,7 @@ def annotation_template(*, clip_id: str, source_domain: str) -> ClipAnnotation:
         reviewerNotes="",
         rawRuntimeOutputs={},
         rawTeacherOutputs=None,
+        **localization,
     )
 
 
@@ -101,7 +117,7 @@ def _normalize_row(row: dict[str, Any]) -> dict[str, Any]:
         "rawRuntimeOutputs",
         "rawTeacherOutputs",
     }
-    optional_fields = {"sourceRef"}
+    optional_fields = {"sourceRef", *EVENT_LOCALIZATION_FIELDS}
     normalized = dict(row)
     normalized["schemaVersion"] = str(normalized.get("schemaVersion") or ANNOTATION_SCHEMA_VERSION)
     missing = sorted(required_fields.difference(normalized))
@@ -135,6 +151,7 @@ def _normalize_row(row: dict[str, Any]) -> dict[str, Any]:
     normalized["teacherConfidence"] = _clamp_optional_probability(normalized["teacherConfidence"], "teacherConfidence")
     normalized["humanVerified"] = bool(normalized["humanVerified"])
     normalized["reviewerNotes"] = str(normalized["reviewerNotes"])
+    normalized.update(normalize_event_localization_fields(normalized))
     normalized["rawRuntimeOutputs"] = _coerce_optional_mapping(normalized["rawRuntimeOutputs"], "rawRuntimeOutputs")
     normalized["rawTeacherOutputs"] = _coerce_optional_mapping(normalized["rawTeacherOutputs"], "rawTeacherOutputs")
     return normalized
