@@ -502,5 +502,261 @@
     "sourceRef": "r2://basketball/gold/hard_negative_halfcourt_setup_001.mp4",
     "teacherConfidence": 1.0,
     "transitionLikelihood": 0.09
+  },
+  {
+    "ballNearRim": 0.52,
+    "ballThroughHoopLikelihood": 0.78,
+    "ballVisible": true,
+    "clipId": "gold-shot-made-three-broadcast-001",
+    "eventFamily": "shot_attempt",
+    "hoopVisible": true,
+    "humanVerified": true,
+    "outcome": "made",
+    "possessionChangeLikelihood": 0.05,
+    "rawRuntimeOutputs": {
+      "confidence": 0.84,
+      "eventFamily": "shot_attempt",
+      "label": "three",
+      "modelVersion": "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
+      "outcome": "made",
+      "shotSubtype": "three",
+      "topKLabels": [
+        "three",
+        "jumper",
+        "layup"
+      ]
+    },
+    "rawTeacherOutputs": {},
+    "reviewerNotes": "Broadcast wing three with clean camera coverage and a made outcome.",
+    "schemaVersion": "2026-03-30",
+    "shotSubtype": "three",
+    "sourceDomain": "broadcast",
+    "sourceRef": "r2://basketball/gold/broadcast_made_three_001.mp4",
+    "teacherConfidence": 1.0,
+    "transitionLikelihood": 0.09
+  },
+  {
+    "ballNearRim": 0.89,
+    "ballThroughHoopLikelihood": 0.73,
+    "ballVisible": true,
+    "clipId": "gold-shot-made-layup-fixed-indoor-001",
+    "eventFamily": "shot_attempt",
+    "hoopVisible": true,
+    "humanVerified": true,
+    "outcome": "made",
+    "possessionChangeLikelihood": 0.08,
+    "rawRuntimeOutputs": {
+      "confidence": 0.76,
+      "eventFamily": "shot_attempt",
+      "label": "layup",
+      "modelVersion": "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
+      "outcome": "made",
+      "shotSubtype": "layup",
+      "topKLabels": [
+        "layup",
+        "jumper",
+        "putback"
+      ]
+    },
+    "rawTeacherOutputs": {},
+    "reviewerNotes": "Fixed-camera indoor gym layup with tighter framing and partial occlusion.",
+    "schemaVersion": "2026-03-30",
+    "shotSubtype": "layup",
+    "sourceDomain": "fixed_camera_indoor",
+    "sourceRef": "r2://basketball/gold/fixed_indoor_made_layup_001.mp4",
+    "teacherConfidence": 1.0,
+    "transitionLikelihood": 0.06
+  },
+  {
+    "ballNearRim": 0.61,
+    "ballThroughHoopLikelihood": 0.14,
+    "ballVisible": true,
+    "clipId": "gold-shot-missed-jumper-fixed-outdoor-001",
+    "eventFamily": "shot_attempt",
+    "hoopVisible": true,
+    "humanVerified": true,
+    "outcome": "missed",
+    "possessionChangeLikelihood": 0.07,
+    "rawRuntimeOutputs": {
+      "confidence": 0.7,
+      "eventFamily": "shot_attempt",
+      "label": "miss",
+      "modelVersion": "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
+      "outcome": "missed",
+      "shotSubtype": "jumper",
+      "topKLabels": [
+        "miss",
+        "jumper",
+        "three"
+      ]
+    },
+    "rawTeacherOutputs": {},
+    "reviewerNotes": "Fixed-camera outdoor angle on a contested jumper that rims out.",
+    "schemaVersion": "2026-03-30",
+    "shotSubtype": "jumper",
+    "sourceDomain": "fixed_camera_outdoor",
+    "sourceRef": "r2://basketball/gold/fixed_outdoor_missed_jumper_001.mp4",
+    "teacherConfidence": 1.0,
+    "transitionLikelihood": 0.04
+  },
+  {
+    "ballNearRim": 0.17,
+    "ballThroughHoopLikelihood": 0.03,
+    "ballVisible": true,
+    "clipId": "gold-transition-fastbreak-phone-casual-001",
+    "eventFamily": "transition",
+    "hoopVisible": true,
+    "humanVerified": true,
+    "outcome": "uncertain",
+    "possessionChangeLikelihood": 0.78,
+    "rawRuntimeOutputs": {
+      "confidence": 0.66,
+      "eventFamily": "transition",
+      "label": "fast break",
+      "modelVersion": "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
+      "outcome": "uncertain",
+      "shotSubtype": null,
+      "topKLabels": [
+        "fast break",
+        "layup",
+        "highlight"
+      ]
+    },
+    "rawTeacherOutputs": {},
+    "reviewerNotes": "Phone-casual runout; the frame is noisy but the possession context is clearly transition.",
+    "schemaVersion": "2026-03-30",
+    "shotSubtype": null,
+    "sourceDomain": "phone_casual",
+    "sourceRef": "r2://basketball/gold/phone_casual_fast_break_001.mp4",
+    "teacherConfidence": 1.0,
+    "transitionLikelihood": 0.91
+  },
+  {
+    "ballNearRim": 0.02,
+    "ballThroughHoopLikelihood": 0.0,
+    "ballVisible": false,
+    "clipId": "gold-negative-replay-broadcast-001",
+    "eventFamily": "other",
+    "hoopVisible": true,
+    "humanVerified": true,
+    "outcome": "uncertain",
+    "possessionChangeLikelihood": 0.01,
+    "rawRuntimeOutputs": {
+      "confidence": 0.35,
+      "eventFamily": "other",
+      "label": "Highlight",
+      "modelVersion": "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
+      "outcome": "uncertain",
+      "shotSubtype": null,
+      "topKLabels": [
+        "highlight",
+        "uncertain",
+        "three"
+      ]
+    },
+    "rawTeacherOutputs": {},
+    "reviewerNotes": "Broadcast replay wipe; no live possession should be inferred.",
+    "schemaVersion": "2026-03-30",
+    "shotSubtype": null,
+    "sourceDomain": "broadcast",
+    "sourceRef": "r2://basketball/gold/broadcast_negative_replay_001.mp4",
+    "teacherConfidence": 1.0,
+    "transitionLikelihood": 0.01
+  },
+  {
+    "ballNearRim": 0.04,
+    "ballThroughHoopLikelihood": 0.0,
+    "ballVisible": true,
+    "clipId": "gold-negative-deadball-fixed-indoor-001",
+    "eventFamily": "other",
+    "hoopVisible": true,
+    "humanVerified": true,
+    "outcome": "uncertain",
+    "possessionChangeLikelihood": 0.02,
+    "rawRuntimeOutputs": {
+      "confidence": 0.27,
+      "eventFamily": "other",
+      "label": "Highlight",
+      "modelVersion": "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
+      "outcome": "uncertain",
+      "shotSubtype": null,
+      "topKLabels": [
+        "highlight",
+        "uncertain",
+        "steal"
+      ]
+    },
+    "rawTeacherOutputs": {},
+    "reviewerNotes": "Dead-ball reset in a fixed-camera gym sequence.",
+    "schemaVersion": "2026-03-30",
+    "shotSubtype": null,
+    "sourceDomain": "fixed_camera_indoor",
+    "sourceRef": "r2://basketball/gold/fixed_indoor_negative_deadball_001.mp4",
+    "teacherConfidence": 1.0,
+    "transitionLikelihood": 0.03
+  },
+  {
+    "ballNearRim": 0.08,
+    "ballThroughHoopLikelihood": 0.0,
+    "ballVisible": true,
+    "clipId": "gold-negative-inbound-fixed-outdoor-001",
+    "eventFamily": "other",
+    "hoopVisible": true,
+    "humanVerified": true,
+    "outcome": "uncertain",
+    "possessionChangeLikelihood": 0.06,
+    "rawRuntimeOutputs": {
+      "confidence": 0.31,
+      "eventFamily": "other",
+      "label": "Highlight",
+      "modelVersion": "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
+      "outcome": "uncertain",
+      "shotSubtype": null,
+      "topKLabels": [
+        "highlight",
+        "uncertain",
+        "steal"
+      ]
+    },
+    "rawTeacherOutputs": {},
+    "reviewerNotes": "Outdoor inbound pass with no release or finish.",
+    "schemaVersion": "2026-03-30",
+    "shotSubtype": null,
+    "sourceDomain": "fixed_camera_outdoor",
+    "sourceRef": "r2://basketball/gold/fixed_outdoor_negative_inbound_001.mp4",
+    "teacherConfidence": 1.0,
+    "transitionLikelihood": 0.02
+  },
+  {
+    "ballNearRim": 0.0,
+    "ballThroughHoopLikelihood": 0.0,
+    "ballVisible": false,
+    "clipId": "gold-negative-camera-pan-phone-casual-001",
+    "eventFamily": "other",
+    "hoopVisible": false,
+    "humanVerified": true,
+    "outcome": "uncertain",
+    "possessionChangeLikelihood": 0.0,
+    "rawRuntimeOutputs": {
+      "confidence": 0.22,
+      "eventFamily": "other",
+      "label": "Highlight",
+      "modelVersion": "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
+      "outcome": "uncertain",
+      "shotSubtype": null,
+      "topKLabels": [
+        "highlight",
+        "uncertain",
+        "steal"
+      ]
+    },
+    "rawTeacherOutputs": {},
+    "reviewerNotes": "Phone pans across the sideline and crowd; no live basketball action.",
+    "schemaVersion": "2026-03-30",
+    "shotSubtype": null,
+    "sourceDomain": "phone_casual",
+    "sourceRef": "r2://basketball/gold/phone_casual_negative_camera_pan_001.mp4",
+    "teacherConfidence": 1.0,
+    "transitionLikelihood": 0.0
   }
 ]
