@@ -147,6 +147,7 @@ gcloud builds submit \
 ```
 
 The Cloud Build recipe now tags the pushed image with `$BUILD_ID`, so the same command works for manual `gcloud builds submit` runs as well as trigger-driven deploys.
+The checked-in [`services/inference/.gcloudignore`](/Users/hanfei/rork-hoopshighlights-ai_Final/services/inference/.gcloudignore) intentionally excludes `.venv/`, local tests, and docs from the upload context so manual staging deploys do not waste time archiving local development artifacts.
 
 After deploy, capture the Cloud Run URL and hand it to the control plane as `INFERENCE_BASE_URL` in the staging environment.
 For the phase3e basketball-specific shadow rollout, configure:
