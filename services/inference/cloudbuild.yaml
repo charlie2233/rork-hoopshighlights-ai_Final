@@ -36,8 +36,6 @@ steps:
       - --port
       - "8080"
       - --allow-unauthenticated
-      - --service-account
-      - hoopsclips-inference@$PROJECT_ID.iam.gserviceaccount.com
       - --set-env-vars
       - >-
         HOOPS_INFERENCE_SERVICE_NAME=${_SERVICE_NAME},
