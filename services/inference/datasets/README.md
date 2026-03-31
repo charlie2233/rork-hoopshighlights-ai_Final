@@ -10,9 +10,10 @@ Files:
 - `event_localization.py`: helper functions for coarse event-time spans and localization field normalization.
 - `gold_annotations.jsonl`: human-verified annotations used for probe evaluation.
 - `silver_teacher_annotations.jsonl`: teacher pseudo-labels kept separate from the human gold set.
-- `disagreement_queue.jsonl`: clips that should be prioritized for manual review.
-- `hard_negative_queue.jsonl`: live or shadow clips prioritized for retraining when `Highlight` or `eventFamily=other` dominates.
+- `disagreement_queue.jsonl`: clips prioritized for manual review, including event-level localization gaps and uncertainty sampling hints.
+- `hard_negative_queue.jsonl`: live or shadow clips prioritized for retraining when `Highlight` or `eventFamily=other` dominates, with event-localization state preserved for active-learning triage.
 - `dataset_bridge.py`: import adapters for BARD event labels, E-BARD detections, SportsMOT tracking, and TrackID3x3 fixed-camera tracking.
+- `phase4_pseudo_labels/`: offline pseudo-label bundle for the in-domain slice, split into `gold_anchor_records.jsonl`, `pseudo_label_records.jsonl`, `filtered_records.jsonl`, and `manifest.json`.
 
 Runtime-training outputs:
 
@@ -45,7 +46,10 @@ Field intent:
 - `humanVerified=false` means the row is teacher-labeled or otherwise pseudo-labeled.
 - `rawRuntimeOutputs` stores the runtime model outputs, including VideoMAE and X-CLIP top-k signals.
 - `rawTeacherOutputs` stores teacher suggestions, evidence, and confidence separately from the final label fields.
+- `phase4_pseudo_labels/` keeps gold anchors separate from retained pseudo-labels and only writes confidence-gated teacher-backed rows to the pseudo-label training file.
+- The phase4 pseudo-label builder is offline-only; it consumes stored annotations and does not make production teacher calls.
 - `hard_negative_queue.jsonl` rows carry `priorityScore`, `sampleWeight`, `trainingWeight`, and reason tags so retraining jobs can oversample hard clips without re-scoring them.
+- Both queue artifacts now also preserve `eventStartSeconds`, `eventCenterSeconds`, `eventEndSeconds`, and the other event-localization timestamps when present.
 - `reviewerNotes` should capture why the row exists in the gold or silver set.
 - `schemaVersion` should be treated as a migration marker, not a label signal.
 - LoRA records with `trainingEligible=false` stay in the export for audit accounting, but should not be used for encoder fine-tuning until the exclusion reason is cleared, most commonly by attaching a `sourceRef`.

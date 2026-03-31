@@ -4,6 +4,7 @@
     "ballThroughHoopLikelihood": 0.21,
     "ballVisible": true,
     "clipId": "clip-highlight-disagree-001",
+    "eventCenterSeconds": 2.9,
     "eventFamily": "other",
     "hoopVisible": true,
     "humanVerified": false,

@@ -33,12 +33,16 @@ class DisagreementQueueTests(unittest.TestCase):
         )
 
         self.assertEqual(len(queue), 4)
-        self.assertEqual(queue[0].clip_id, "clip-highlight-disagree-001")
-        self.assertEqual(queue[0].schema_version, ANNOTATION_SCHEMA_VERSION)
-        self.assertIn("runtime_teacher_disagree", queue[0].priority_reasons)
-        self.assertIn("app_facing_label_only_highlight", queue[0].priority_reasons)
-        self.assertIn("strong_ball_hoop_evidence_null_subtype", queue[0].priority_reasons)
-        self.assertIn("high_teacher_low_runtime", queue[0].priority_reasons)
+        highlight_disagree = next(item for item in queue if item.clip_id == "clip-highlight-disagree-001")
+        self.assertEqual(highlight_disagree.schema_version, ANNOTATION_SCHEMA_VERSION)
+        self.assertIn("runtime_teacher_disagree", highlight_disagree.priority_reasons)
+        self.assertIn("app_facing_label_only_highlight", highlight_disagree.priority_reasons)
+        self.assertIn("strong_ball_hoop_evidence_null_subtype", highlight_disagree.priority_reasons)
+        self.assertIn("high_teacher_low_runtime", highlight_disagree.priority_reasons)
+        self.assertIn("uncertainty_sampling", highlight_disagree.priority_reasons)
+        self.assertIn("event_localization_needed", highlight_disagree.priority_reasons)
+        self.assertEqual(highlight_disagree.event_localization_state, "coarse")
+        self.assertAlmostEqual(highlight_disagree.event_center_seconds or 0.0, 2.9)
 
         miss_made = next(item for item in queue if item.clip_id == "clip-miss-made-001")
         self.assertIn("miss_vs_made_conflict", miss_made.priority_reasons)
@@ -59,11 +63,14 @@ class DisagreementQueueTests(unittest.TestCase):
 
         self.assertEqual(summary["queuedClips"], 4)
         self.assertEqual(summary["byBucket"]["runtime_teacher_disagree"], 4)
+        self.assertEqual(summary["byEventLocalizationState"]["coarse"], 1)
+        self.assertEqual(summary["byEventLocalizationState"]["missing"], 3)
         self.assertEqual(summary["bySourceDomain"]["broadcast"], 1)
         self.assertEqual(summary["bySourceDomain"]["fixed_camera"], 3)
 
         markdown = render_markdown(summary, queue)
         self.assertIn("# Disagreement Review Queue", markdown)
+        self.assertIn("## Event Localization", markdown)
         self.assertIn("clip-highlight-disagree-001", markdown)
 
         with tempfile.TemporaryDirectory() as temp_dir:

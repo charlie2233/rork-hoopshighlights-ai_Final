@@ -27,6 +27,14 @@ class UnifiedClipAnnotation:
     ball_through_hoop_likelihood: float | None
     possession_change_likelihood: float | None
     transition_likelihood: float | None
+    event_start_seconds: float | None
+    event_center_seconds: float | None
+    event_end_seconds: float | None
+    shot_release_time_seconds: float | None
+    ball_near_rim_time_seconds: float | None
+    ball_through_hoop_time_seconds: float | None
+    possession_change_time_seconds: float | None
+    transition_start_time_seconds: float | None
     teacher_confidence: float | None
     human_verified: bool
     reviewer_notes: str
@@ -58,6 +66,16 @@ class DisagreementQueueItem:
     ball_through_hoop_likelihood: float | None
     possession_change_likelihood: float | None
     transition_likelihood: float | None
+    event_start_seconds: float | None
+    event_center_seconds: float | None
+    event_end_seconds: float | None
+    shot_release_time_seconds: float | None
+    ball_near_rim_time_seconds: float | None
+    ball_through_hoop_time_seconds: float | None
+    possession_change_time_seconds: float | None
+    transition_start_time_seconds: float | None
+    event_localization_state: str
+    in_domain_runtime_clip: bool
     human_verified: bool
     reviewer_notes: str
     raw_runtime_outputs: dict[str, Any]
@@ -109,6 +127,14 @@ def parse_annotation(item: dict[str, Any]) -> UnifiedClipAnnotation:
         ball_through_hoop_likelihood=to_optional_float(item.get("ballThroughHoopLikelihood")),
         possession_change_likelihood=to_optional_float(item.get("possessionChangeLikelihood")),
         transition_likelihood=to_optional_float(item.get("transitionLikelihood")),
+        event_start_seconds=_optional_event_seconds(item, "eventStartSeconds", "eventStart", "event_start_seconds"),
+        event_center_seconds=_optional_event_seconds(item, "eventCenterSeconds", "eventCenter", "event_center_seconds"),
+        event_end_seconds=_optional_event_seconds(item, "eventEndSeconds", "eventEnd", "event_end_seconds"),
+        shot_release_time_seconds=_optional_event_seconds(item, "shotReleaseTimeSeconds", "shotReleaseTime", "shot_release_time_seconds"),
+        ball_near_rim_time_seconds=_optional_event_seconds(item, "ballNearRimTimeSeconds", "ballNearRimTime", "ball_near_rim_time_seconds"),
+        ball_through_hoop_time_seconds=_optional_event_seconds(item, "ballThroughHoopTimeSeconds", "ballThroughHoopTime", "ball_through_hoop_time_seconds"),
+        possession_change_time_seconds=_optional_event_seconds(item, "possessionChangeTimeSeconds", "possessionChangeTime", "possession_change_time_seconds"),
+        transition_start_time_seconds=_optional_event_seconds(item, "transitionStartTimeSeconds", "transitionStartTime", "transition_start_time_seconds"),
         teacher_confidence=to_optional_float(item.get("teacherConfidence")),
         human_verified=bool(item.get("humanVerified", False)),
         reviewer_notes=str(item.get("reviewerNotes", "")),
@@ -184,6 +210,20 @@ def score_annotation(
         priority_reasons.append("high_teacher_low_runtime")
         priority_score += 0.2
 
+    event_localization_state = _event_localization_state(annotation)
+    if priority_reasons and event_localization_state in {"missing", "coarse"}:
+        priority_reasons.append("event_localization_needed")
+        priority_score += 0.16 if event_localization_state == "missing" else 0.1
+
+    if runtime_confidence is not None and runtime_confidence <= max_runtime_confidence:
+        priority_reasons.append("uncertainty_sampling")
+        priority_score += 0.14
+
+    in_domain_runtime_clip = _is_in_domain_runtime(annotation.source_domain)
+    if priority_reasons and in_domain_runtime_clip:
+        priority_reasons.append("in_domain_runtime_clip")
+        priority_score += 0.08
+
     if not priority_reasons:
         return None
 
@@ -215,6 +255,16 @@ def score_annotation(
         ball_through_hoop_likelihood=annotation.ball_through_hoop_likelihood,
         possession_change_likelihood=annotation.possession_change_likelihood,
         transition_likelihood=annotation.transition_likelihood,
+        event_start_seconds=annotation.event_start_seconds,
+        event_center_seconds=annotation.event_center_seconds,
+        event_end_seconds=annotation.event_end_seconds,
+        shot_release_time_seconds=annotation.shot_release_time_seconds,
+        ball_near_rim_time_seconds=annotation.ball_near_rim_time_seconds,
+        ball_through_hoop_time_seconds=annotation.ball_through_hoop_time_seconds,
+        possession_change_time_seconds=annotation.possession_change_time_seconds,
+        transition_start_time_seconds=annotation.transition_start_time_seconds,
+        event_localization_state=event_localization_state,
+        in_domain_runtime_clip=in_domain_runtime_clip,
         human_verified=annotation.human_verified,
         reviewer_notes=annotation.reviewer_notes,
         raw_runtime_outputs=runtime_outputs,
@@ -225,11 +275,13 @@ def score_annotation(
 def build_summary(queue: list[DisagreementQueueItem], annotations: Iterable[UnifiedClipAnnotation]) -> dict[str, Any]:
     by_bucket = Counter(item.review_bucket for item in queue)
     by_source = Counter(item.source_domain for item in queue)
+    by_event_localization = Counter(item.event_localization_state for item in queue)
     source_total = Counter(annotation.source_domain for annotation in annotations)
     return {
         "totalAnnotations": sum(source_total.values()),
         "queuedClips": len(queue),
         "byBucket": dict(sorted(by_bucket.items())),
+        "byEventLocalizationState": dict(sorted(by_event_localization.items())),
         "bySourceDomain": dict(sorted(by_source.items())),
     }
 
@@ -243,11 +295,16 @@ def render_markdown(summary: dict[str, Any], queue: list[DisagreementQueueItem])
     for bucket, count in summary["byBucket"].items():
         lines.append(f"- {bucket}: {count}")
     lines.append("")
+    lines.append("## Event Localization")
+    for state, count in summary["byEventLocalizationState"].items():
+        lines.append(f"- {state}: {count}")
+    lines.append("")
     lines.append("## Queue")
     for index, item in enumerate(queue, start=1):
         lines.append(
             f"{index}. `{item.clip_id}` [{item.review_bucket}] score={item.priority_score:.2f} "
-            f"runtime={item.runtime_label} teacher={item.teacher_label or 'n/a'} reasons={', '.join(item.priority_reasons)}"
+            f"state={item.event_localization_state} runtime={item.runtime_label} "
+            f"teacher={item.teacher_label or 'n/a'} reasons={', '.join(item.priority_reasons)}"
         )
     return "\n".join(lines) + "\n"
 
@@ -288,6 +345,8 @@ def _primary_bucket(priority_reasons: list[str]) -> str:
         "app_facing_label_only_highlight",
         "strong_ball_hoop_evidence_null_subtype",
         "high_teacher_low_runtime",
+        "event_localization_needed",
+        "uncertainty_sampling",
         "human_verified_review",
     ):
         if reason in priority_reasons:
@@ -425,6 +484,42 @@ def _strong_ball_hoop_evidence(annotation: UnifiedClipAnnotation, min_ball_evide
         annotation.transition_likelihood or 0.0,
     ]
     return max(signals) >= min_ball_evidence
+
+
+def _event_localization_state(annotation: UnifiedClipAnnotation) -> str:
+    if annotation.event_center_seconds is None:
+        return "missing"
+    if annotation.event_start_seconds is None or annotation.event_end_seconds is None:
+        return "coarse"
+    return "localized"
+
+
+def _is_in_domain_runtime(source_domain: str) -> bool:
+    normalized = source_domain.strip().lower()
+    return any(
+        token in normalized
+        for token in (
+            "live_runtime",
+            "live-runtime",
+            "runtime_shadow",
+            "runtime-shadow",
+            "shadow_runtime",
+            "shadow-runtime",
+            "staging",
+            "product_path",
+            "product-path",
+            "worker_path",
+            "worker-path",
+        )
+    )
+
+
+def _optional_event_seconds(item: dict[str, Any], *keys: str) -> float | None:
+    for key in keys:
+        value = to_optional_float(item.get(key))
+        if value is not None:
+            return value
+    return None
 
 
 def _normalize_optional_text(value: Any) -> str | None:

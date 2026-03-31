@@ -34,6 +34,7 @@ class HardNegativeMiningTests(unittest.TestCase):
                     "finalLabel": "Highlight",
                     "eventFamily": "other",
                     "outcome": "uncertain",
+                    "eventCenterSeconds": 3.15,
                     "clipDurationSeconds": 6.0,
                     "wasMerged": True,
                     "sourceEventCount": 3,
@@ -98,7 +99,14 @@ class HardNegativeMiningTests(unittest.TestCase):
         self.assertIn("final_label_highlight", queue[0].priority_reasons)
         self.assertIn("event_family_other", queue[0].priority_reasons)
         self.assertIn("merged_multi_event", queue[0].priority_reasons)
+        self.assertIn("uncertainty_sampling", queue[0].priority_reasons)
+        self.assertIn("event_localization_needed", queue[0].priority_reasons)
+        self.assertIn("in_domain_runtime_clip", queue[0].priority_reasons)
+        self.assertEqual(queue[0].event_localization_state, "coarse")
+        self.assertAlmostEqual(queue[0].event_center_seconds or 0.0, 3.15)
         self.assertIn("low_margin", queue[1].priority_reasons)
+        self.assertIn("uncertainty_sampling", queue[1].priority_reasons)
+        self.assertIn("event_localization_needed", queue[1].priority_reasons)
         self.assertGreater(queue[0].sample_weight, queue[1].sample_weight)
         self.assertEqual(queue[0].review_bucket, "cross_model_disagreement")
         self.assertEqual(queue[1].review_bucket, "low_margin")
@@ -131,6 +139,7 @@ class HardNegativeMiningTests(unittest.TestCase):
 
         self.assertEqual(report.summary["queuedClips"], 1)
         self.assertEqual(report.summary["queueVersion"], "hard-negative-v1")
+        self.assertEqual(report.summary["byEventLocalizationState"]["missing"], 1)
         self.assertIn("training-ready", markdown.lower())
         self.assertIn("clip-other-001", markdown)
         self.assertGreater(report.queue[0].training_weight, 1.0)

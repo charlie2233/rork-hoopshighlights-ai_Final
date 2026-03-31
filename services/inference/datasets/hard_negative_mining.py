@@ -36,6 +36,16 @@ class LiveMiningClip:
     was_merged: bool
     source_event_count: int | None
     clip_duration_seconds: float | None
+    event_start_seconds: float | None
+    event_center_seconds: float | None
+    event_end_seconds: float | None
+    shot_release_time_seconds: float | None
+    ball_near_rim_time_seconds: float | None
+    ball_through_hoop_time_seconds: float | None
+    possession_change_time_seconds: float | None
+    transition_start_time_seconds: float | None
+    event_localization_state: str
+    in_domain_runtime_clip: bool
     is_uncertain: bool
     raw_top_labels: list[dict[str, Any]]
     comparison_raw_top_labels: list[dict[str, Any]]
@@ -66,6 +76,16 @@ class HardNegativeQueueItem:
     was_merged: bool
     source_event_count: int | None
     clip_duration_seconds: float | None
+    event_start_seconds: float | None
+    event_center_seconds: float | None
+    event_end_seconds: float | None
+    shot_release_time_seconds: float | None
+    ball_near_rim_time_seconds: float | None
+    ball_through_hoop_time_seconds: float | None
+    possession_change_time_seconds: float | None
+    transition_start_time_seconds: float | None
+    event_localization_state: str
+    in_domain_runtime_clip: bool
     review_bucket: str
     priority_score: float
     sample_weight: float
@@ -196,12 +216,21 @@ def score_live_clip(
     if clip.is_uncertain or outcome == "uncertain":
         reasons.append("uncertain")
         priority_score += 0.14
+    if low_margin or low_result_confidence or clip.is_uncertain or outcome == "uncertain":
+        reasons.append("uncertainty_sampling")
+        priority_score += 0.12
     if clip.was_merged or (clip.source_event_count or 0) > 1:
         reasons.append("merged_multi_event")
         priority_score += 0.12
     if low_result_confidence:
         reasons.append("low_result_confidence")
         priority_score += 0.1
+    if clip.event_localization_state in {"missing", "coarse"}:
+        reasons.append("event_localization_needed")
+        priority_score += 0.16 if clip.event_localization_state == "missing" else 0.1
+    if clip.in_domain_runtime_clip:
+        reasons.append("in_domain_runtime_clip")
+        priority_score += 0.08
 
     if not reasons:
         return None
@@ -234,6 +263,16 @@ def score_live_clip(
         was_merged=clip.was_merged,
         source_event_count=clip.source_event_count,
         clip_duration_seconds=clip.clip_duration_seconds,
+        event_start_seconds=clip.event_start_seconds,
+        event_center_seconds=clip.event_center_seconds,
+        event_end_seconds=clip.event_end_seconds,
+        shot_release_time_seconds=clip.shot_release_time_seconds,
+        ball_near_rim_time_seconds=clip.ball_near_rim_time_seconds,
+        ball_through_hoop_time_seconds=clip.ball_through_hoop_time_seconds,
+        possession_change_time_seconds=clip.possession_change_time_seconds,
+        transition_start_time_seconds=clip.transition_start_time_seconds,
+        event_localization_state=clip.event_localization_state,
+        in_domain_runtime_clip=clip.in_domain_runtime_clip,
         review_bucket=bucket,
         priority_score=priority_score,
         sample_weight=sample_weight,
@@ -272,6 +311,7 @@ def build_summary(queue: Sequence[HardNegativeQueueItem]) -> dict[str, Any]:
         "byReason": _count_by(reason for item in queue for reason in item.priority_reasons),
         "byFinalLabel": _count_by(_normalized_label(item.final_label) for item in queue),
         "byEventFamily": _count_by(_normalized_label(item.event_family) for item in queue if item.event_family),
+        "byEventLocalizationState": _count_by(item.event_localization_state for item in queue),
         "bySourceDomain": _count_by(item.source_domain for item in queue),
         "bySourceBatchId": _count_by(item.source_batch_id for item in queue if item.source_batch_id),
         "priorityScore": _score_stats(item.priority_score for item in queue),
@@ -288,6 +328,7 @@ def render_markdown(report: HardNegativeMiningReport) -> str:
     lines.append(f"- Training-ready rows: `{summary['queuedClips']}`")
     lines.append(f"- Dominant label: `{_dominant(summary['byFinalLabel'])}`")
     lines.append(f"- Dominant event family: `{_dominant(summary['byEventFamily'])}`")
+    lines.append(f"- Dominant localization state: `{_dominant(summary['byEventLocalizationState'])}`")
     lines.append(f"- Mean sample weight: `{summary['sampleWeight']['mean']:.2f}`")
     lines.append(f"- Max sample weight: `{summary['sampleWeight']['max']:.2f}`")
     lines.append("")
@@ -299,7 +340,7 @@ def render_markdown(report: HardNegativeMiningReport) -> str:
     for index, item in enumerate(report.queue, start=1):
         lines.append(
             f"{index}. `{item.clip_id}` [{item.review_bucket}] weight={item.sample_weight:.2f} "
-            f"priority={item.priority_score:.2f} reasons={', '.join(item.priority_reasons)}"
+            f"state={item.event_localization_state} priority={item.priority_score:.2f} reasons={', '.join(item.priority_reasons)}"
         )
     return "\n".join(lines) + "\n"
 
@@ -353,6 +394,20 @@ def normalize_clip_row(row: Mapping[str, Any], *, source_batch_id: str | None = 
         raw_runtime_outputs["selectedShadow"] = shadow_snapshot
     raw_teacher_outputs = _raw_teacher_snapshot(row)
     source_event_count = _optional_int(row.get("sourceEventCount"))
+    event_start_seconds = _optional_event_seconds(row, shadow_snapshot, "eventStartSeconds", "eventStart", "event_start_seconds")
+    event_center_seconds = _optional_event_seconds(row, shadow_snapshot, "eventCenterSeconds", "eventCenter", "event_center_seconds")
+    event_end_seconds = _optional_event_seconds(row, shadow_snapshot, "eventEndSeconds", "eventEnd", "event_end_seconds")
+    shot_release_time_seconds = _optional_event_seconds(row, shadow_snapshot, "shotReleaseTimeSeconds", "shotReleaseTime", "shot_release_time_seconds")
+    ball_near_rim_time_seconds = _optional_event_seconds(row, shadow_snapshot, "ballNearRimTimeSeconds", "ballNearRimTime", "ball_near_rim_time_seconds")
+    ball_through_hoop_time_seconds = _optional_event_seconds(row, shadow_snapshot, "ballThroughHoopTimeSeconds", "ballThroughHoopTime", "ball_through_hoop_time_seconds")
+    possession_change_time_seconds = _optional_event_seconds(row, shadow_snapshot, "possessionChangeTimeSeconds", "possessionChangeTime", "possession_change_time_seconds")
+    transition_start_time_seconds = _optional_event_seconds(row, shadow_snapshot, "transitionStartTimeSeconds", "transitionStartTime", "transition_start_time_seconds")
+    event_localization_state = _event_localization_state(
+        event_start_seconds=event_start_seconds,
+        event_center_seconds=event_center_seconds,
+        event_end_seconds=event_end_seconds,
+    )
+    in_domain_runtime_clip = _is_in_domain_runtime_source(source_domain, source_batch, source_event_count)
 
     return LiveMiningClip(
         clip_id=_required_text(row, "clipId"),
@@ -376,6 +431,16 @@ def normalize_clip_row(row: Mapping[str, Any], *, source_batch_id: str | None = 
         was_merged=bool(row.get("wasMerged", False)),
         source_event_count=source_event_count,
         clip_duration_seconds=_optional_float(row.get("clipDurationSeconds")),
+        event_start_seconds=event_start_seconds,
+        event_center_seconds=event_center_seconds,
+        event_end_seconds=event_end_seconds,
+        shot_release_time_seconds=shot_release_time_seconds,
+        ball_near_rim_time_seconds=ball_near_rim_time_seconds,
+        ball_through_hoop_time_seconds=ball_through_hoop_time_seconds,
+        possession_change_time_seconds=possession_change_time_seconds,
+        transition_start_time_seconds=transition_start_time_seconds,
+        event_localization_state=event_localization_state,
+        in_domain_runtime_clip=in_domain_runtime_clip,
         is_uncertain=bool(row.get("isUncertain", False)),
         raw_top_labels=raw_top_labels,
         comparison_raw_top_labels=comparison_top_labels,
@@ -430,6 +495,14 @@ def _raw_runtime_snapshot(row: Mapping[str, Any]) -> dict[str, Any]:
         "wasMerged": row.get("wasMerged"),
         "sourceEventCount": row.get("sourceEventCount"),
         "margin": row.get("margin"),
+        "eventStartSeconds": row.get("eventStartSeconds") or row.get("eventStart") or row.get("event_start_seconds"),
+        "eventCenterSeconds": row.get("eventCenterSeconds") or row.get("eventCenter") or row.get("event_center_seconds"),
+        "eventEndSeconds": row.get("eventEndSeconds") or row.get("eventEnd") or row.get("event_end_seconds"),
+        "shotReleaseTimeSeconds": row.get("shotReleaseTimeSeconds") or row.get("shotReleaseTime") or row.get("shot_release_time_seconds"),
+        "ballNearRimTimeSeconds": row.get("ballNearRimTimeSeconds") or row.get("ballNearRimTime") or row.get("ball_near_rim_time_seconds"),
+        "ballThroughHoopTimeSeconds": row.get("ballThroughHoopTimeSeconds") or row.get("ballThroughHoopTime") or row.get("ball_through_hoop_time_seconds"),
+        "possessionChangeTimeSeconds": row.get("possessionChangeTimeSeconds") or row.get("possessionChangeTime") or row.get("possession_change_time_seconds"),
+        "transitionStartTimeSeconds": row.get("transitionStartTimeSeconds") or row.get("transitionStartTime") or row.get("transition_start_time_seconds"),
     }
     if row.get("runtimeFusionTemporalShadow"):
         snapshot["runtimeFusionTemporalShadow"] = row["runtimeFusionTemporalShadow"]
@@ -469,6 +542,14 @@ def _shadow_snapshot(shadow: Mapping[str, Any] | None) -> dict[str, Any]:
             "confidenceAfterMapping": shadow.get("confidenceAfterMapping"),
             "resultConfidence": shadow.get("resultConfidence"),
             "runtime_fusion_model_version": shadow.get("runtime_fusion_model_version") or shadow.get("modelVersion"),
+            "eventStartSeconds": shadow.get("eventStartSeconds") or shadow.get("eventStart") or shadow.get("event_start_seconds"),
+            "eventCenterSeconds": shadow.get("eventCenterSeconds") or shadow.get("eventCenter") or shadow.get("event_center_seconds"),
+            "eventEndSeconds": shadow.get("eventEndSeconds") or shadow.get("eventEnd") or shadow.get("event_end_seconds"),
+            "shotReleaseTimeSeconds": shadow.get("shotReleaseTimeSeconds") or shadow.get("shotReleaseTime") or shadow.get("shot_release_time_seconds"),
+            "ballNearRimTimeSeconds": shadow.get("ballNearRimTimeSeconds") or shadow.get("ballNearRimTime") or shadow.get("ball_near_rim_time_seconds"),
+            "ballThroughHoopTimeSeconds": shadow.get("ballThroughHoopTimeSeconds") or shadow.get("ballThroughHoopTime") or shadow.get("ball_through_hoop_time_seconds"),
+            "possessionChangeTimeSeconds": shadow.get("possessionChangeTimeSeconds") or shadow.get("possessionChangeTime") or shadow.get("possession_change_time_seconds"),
+            "transitionStartTimeSeconds": shadow.get("transitionStartTimeSeconds") or shadow.get("transitionStartTime") or shadow.get("transition_start_time_seconds"),
         }
     )
     return {key: value for key, value in snapshot.items() if value is not None}
@@ -529,6 +610,8 @@ def _source_tags(
         tags.append("uncertain")
     if clip.was_merged or (clip.source_event_count or 0) > 1:
         tags.append("multi_event")
+    if clip.in_domain_runtime_clip:
+        tags.append("in_domain_runtime")
     tags.extend(reason for reason in reasons if reason not in tags)
     return _ordered_unique(tags)
 
@@ -552,6 +635,60 @@ def _primary_bucket(
     if event_family == "other":
         return "other_only"
     return reasons[0] if reasons else DEFAULT_QUEUE_BUCKET
+
+
+def _event_localization_state(
+    *,
+    event_start_seconds: float | None,
+    event_center_seconds: float | None,
+    event_end_seconds: float | None,
+) -> str:
+    if event_center_seconds is None:
+        return "missing"
+    if event_start_seconds is None or event_end_seconds is None:
+        return "coarse"
+    return "localized"
+
+
+def _is_in_domain_runtime_source(
+    source_domain: str,
+    source_batch_id: str | None,
+    source_event_count: int | None,
+) -> bool:
+    normalized = " ".join(part for part in (source_domain, source_batch_id or "") if part).lower()
+    if any(
+        token in normalized
+        for token in (
+            "live_runtime",
+            "live-runtime",
+            "runtime_shadow",
+            "runtime-shadow",
+            "shadow_runtime",
+            "shadow-runtime",
+            "staging",
+            "product_path",
+            "product-path",
+            "worker_path",
+            "worker-path",
+        )
+    ):
+        return True
+    return source_domain.strip().lower() == DEFAULT_SOURCE_DOMAIN and (source_event_count is not None or source_batch_id is not None)
+
+
+def _optional_event_seconds(
+    row: Mapping[str, Any],
+    shadow_snapshot: Mapping[str, Any],
+    *keys: str,
+) -> float | None:
+    for key in keys:
+        value = row.get(key)
+        if value is None:
+            value = shadow_snapshot.get(key)
+        parsed = _optional_float(value)
+        if parsed is not None:
+            return parsed
+    return None
 
 
 def _score_stats(values: Iterable[float]) -> dict[str, float]:
