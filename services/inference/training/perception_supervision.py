@@ -16,10 +16,14 @@ from services.inference.datasets.pseudo_labeling import load_phase4_pseudo_label
 PERCEPTION_SUPERVISION_SCHEMA_VERSION = "2026-03-31"
 PERCEPTION_SUPERVISION_FEATURE_VERSION = "perception-supervision-v2"
 PERCEPTION_SUPERVISION_MODEL_VERSION = "perception-student-v1"
-PERCEPTION_SUPERVISION_SOURCE_DATASET = "gold_set+silver_set+disagreement_queue+phase4_in_domain+phase4_pseudo_labels"
+PERCEPTION_SUPERVISION_SOURCE_DATASET = (
+    "gold_set+silver_set+disagreement_queue+phase4_in_domain+"
+    "phase4_event_localization_queue+phase4_pseudo_labels"
+)
 DEFAULT_OUTPUT_DIR_NAME = "perception_supervision"
 SPLIT_NAMES = ("train", "val", "test")
 PHASE4_IN_DOMAIN_SOURCE_SET = "phase4_in_domain"
+PHASE4_EVENT_QUEUE_SOURCE_SET = "phase4_event_localization_queue"
 PHASE4_PSEUDO_SOURCE_SET = "phase4_pseudo_labels"
 PHASE4_ALLOWED_SOURCE_DOMAINS = (
     "live_shadow",
@@ -105,6 +109,11 @@ def load_perception_supervision_examples(repo_root: Path) -> list[PerceptionSupe
     silver_rows = load_annotation_rows(dataset_dir / "silver_set.json")
     disagreement_rows = _load_jsonl_annotations(dataset_dir / "disagreement_queue.jsonl")
     phase4_rows = load_annotation_rows(dataset_dir / "phase4_in_domain_annotations.json") if (dataset_dir / "phase4_in_domain_annotations.json").exists() else []
+    phase4_event_queue_rows = (
+        _load_jsonl_annotations(dataset_dir / "phase4_event_localization_queue.jsonl")
+        if (dataset_dir / "phase4_event_localization_queue.jsonl").exists()
+        else []
+    )
 
     examples: list[PerceptionSupervisionExample] = []
     examples.extend(_build_example(row, source_set="gold_set", source_kind="gold") for row in gold_rows)
@@ -114,6 +123,10 @@ def load_perception_supervision_examples(repo_root: Path) -> list[PerceptionSupe
         _build_example(row, source_set=PHASE4_IN_DOMAIN_SOURCE_SET, source_kind="gold")
         for row in phase4_rows
         if row.humanVerified
+    )
+    examples.extend(
+        _build_example(row, source_set=PHASE4_EVENT_QUEUE_SOURCE_SET, source_kind="disagreement")
+        for row in phase4_event_queue_rows
     )
     examples.extend(_build_phase4_pseudo_examples(repo_root, dataset_dir=dataset_dir))
     return examples
@@ -437,6 +450,8 @@ def _example_weight(
         return 0.0
     if source_set == PHASE4_IN_DOMAIN_SOURCE_SET and source_kind == "gold":
         weight += 0.5
+    if source_set == PHASE4_EVENT_QUEUE_SOURCE_SET:
+        weight += 0.35
     if source_set == PHASE4_PSEUDO_SOURCE_SET:
         weight += 0.25
     if source_domain in {"live_shadow", "live_runtime", "live_staging", "staging_smoke"}:
@@ -458,6 +473,8 @@ def _source_set_for_domain(source_domain: str) -> str:
 
 def _infer_source_kind(annotation: ClipAnnotation, *, source_set: str | None = None) -> str:
     if source_set == "disagreement_queue":
+        return "disagreement"
+    if source_set == PHASE4_EVENT_QUEUE_SOURCE_SET:
         return "disagreement"
     if source_set == PHASE4_PSEUDO_SOURCE_SET:
         return "silver"

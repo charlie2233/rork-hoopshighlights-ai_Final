@@ -201,6 +201,7 @@ class ShadowEvalTests(unittest.TestCase):
                         "runtime_fusion_model_version": "runtime-fusion-temporal-v1",
                         "label": "Layup",
                         "eventFamily": "shot_attempt",
+                        "temporal_student_event_spotter_family": "shot_attempt",
                         "shotSubtype": "layup",
                         "outcome": "made",
                         "confidenceBeforeMapping": 0.73,
@@ -241,6 +242,7 @@ class ShadowEvalTests(unittest.TestCase):
         self.assertEqual(temporal_records[0].candidateNamespace, "runtimeFusionTemporalShadow")
         self.assertEqual(temporal_records[0].modelVersion, "runtime-fusion-temporal-v1")
         self.assertEqual(temporal_records[0].flatLabel, "Layup")
+        self.assertEqual(temporal_records[0].eventSpotterFamily, "shot_attempt")
 
         self.assertEqual(len(distilled_records), 1)
         self.assertEqual(distilled_records[0].candidateNamespace, "runtimeFusionDistilledShadow")

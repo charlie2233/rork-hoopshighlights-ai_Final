@@ -74,7 +74,7 @@ async function runBatchItem(args: ParsedArgs, item: BatchManifestItem, index: nu
       durationSeconds: item.durationSeconds ?? 24,
       installId: item.installId ?? "install-local-001",
       appVersion: item.appVersion ?? "1.0.0",
-      analysisVersion: item.analysisVersion ?? "phase4"
+      analysisVersion: item.analysisVersion ?? "phase4a"
     }
   });
 

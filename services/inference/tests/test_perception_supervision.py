@@ -127,6 +127,7 @@ class PerceptionSupervisionTests(unittest.TestCase):
             self.assertTrue(any(record["sourceKind"] == "silver" and not record["ignored"] for record in train_records))
             self.assertTrue(any(record["sourceSet"] == "disagreement_queue" for record in train_records + val_records + test_records))
             self.assertTrue(any(record["sourceSet"] == "phase4_in_domain" for record in train_records + val_records + test_records))
+            self.assertTrue(any(record["sourceSet"] == "phase4_event_localization_queue" for record in train_records + val_records + test_records))
             self.assertTrue(any(record["sourceSet"] == "phase4_pseudo_labels" for record in train_records + val_records + test_records))
 
     def test_load_examples_preserves_detection_first_inputs_in_context(self) -> None:
