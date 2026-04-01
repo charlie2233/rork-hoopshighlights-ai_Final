@@ -9,6 +9,7 @@ from services.inference.scripts.run_shadow_eval import (
     build_shadow_comparison_summary,
     build_shadow_report,
     load_batch_records,
+    load_manual_audits,
 )
 
 
@@ -39,6 +40,10 @@ class ShadowEvalTests(unittest.TestCase):
         self.assertEqual(report["summary"]["uncertaintyRate"], 0.25)
         self.assertEqual(report["summary"]["highlightDominance"], 0.25)
         self.assertEqual(report["summary"]["eventFamilyOtherDominance"], 0.25)
+        self.assertEqual(report["summary"]["splitOtherDistribution"]["ambiguous_event"], 1)
+        self.assertEqual(report["summary"]["otherBucketAudit"]["eligibleOtherClips"], 1)
+        self.assertEqual(report["summary"]["otherBucketAudit"]["manualAuditDistribution"]["real_event_missed_by_model"], 1)
+        self.assertEqual(report["summary"]["otherBucketAudit"]["trueModelMissRateWithinOther"], 1.0)
         self.assertEqual(report["summary"]["missVsMadeConfusion"]["expectedMissPredictedMadeShot"], 1)
         self.assertEqual(report["summary"]["mixedBatchLabelSpread"]["uniqueLabelCount"], 4)
         self.assertGreaterEqual(report["summary"]["mixedBatchLabelSpread"]["spreadScore"], 0.0)
@@ -180,6 +185,57 @@ class ShadowEvalTests(unittest.TestCase):
         self.assertEqual(record.eventFamily, "turnover")
         self.assertEqual(record.confidenceAfterMapping, 0.62)
         self.assertEqual(record.rawVideoMAETopK[0]["label"], "steal")
+
+    def test_applies_manual_other_audit_overrides_from_jsonl(self) -> None:
+        payload = {
+            "jobId": "job-shadow-audit-001",
+            "requestId": "req-shadow-audit-001",
+            "uploadTraceId": "upload-shadow-audit-001",
+            "inferenceAttemptId": "attempt-shadow-audit-001",
+            "clips": [
+                {
+                    "clipId": "clip-shadow-audit-001",
+                    "label": "Highlight",
+                    "eventFamily": "other",
+                    "shotSubtype": None,
+                    "outcome": "uncertain",
+                    "confidence": 0.44,
+                    "clipDurationSeconds": 4.75,
+                    "runtimeFusionTemporalShadow": {
+                        "runtime_fusion_model_version": "runtime-fusion-temporal-v1",
+                        "label": "Highlight",
+                        "eventFamily": "other",
+                        "eventFamilyOtherBucket": "setup",
+                        "eventFamilyOtherBucketReason": "Set offense with weak event evidence.",
+                        "confidenceBeforeMapping": 0.44,
+                        "confidenceAfterMapping": 0.44,
+                        "confidence": 0.44,
+                        "isUncertain": True,
+                    },
+                }
+            ],
+        }
+        audit_row = {
+            "clipId": "clip-shadow-audit-001",
+            "manualAuditLabel": "true_negative_non_event",
+            "manualAuditRationale": "Manual review marked this as a setup clip.",
+        }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            payload_path = Path(temp_dir) / "shadow-audit.json"
+            audit_path = Path(temp_dir) / "audit.jsonl"
+            payload_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+            audit_path.write_text(json.dumps(audit_row) + "\n", encoding="utf-8")
+            records = load_batch_records(
+                [payload_path],
+                shadow_source="runtimeFusionTemporalShadow",
+                manual_audits=load_manual_audits([audit_path]),
+            )
+
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0].otherBucket, "setup")
+        self.assertEqual(records[0].manualAuditLabel, "true_negative_non_event")
+        self.assertEqual(records[0].manualAuditRationale, "Manual review marked this as a setup clip.")
 
     def test_reports_candidate_namespace_for_temporal_and_distilled_shadow_payloads(self) -> None:
         payload = {

@@ -180,6 +180,7 @@ def score_annotation(
     runtime_outcome = _runtime_outcome(runtime_outputs)
     runtime_shot_subtype = _runtime_shot_subtype(runtime_outputs)
     runtime_confidence = _runtime_confidence(runtime_outputs)
+    runtime_event_family_margin = _runtime_event_family_margin(runtime_outputs)
     teacher_event_family = _teacher_event_family(teacher_outputs)
     teacher_outcome = _teacher_outcome(teacher_outputs)
     teacher_shot_subtype = _teacher_shot_subtype(teacher_outputs)
@@ -194,9 +195,26 @@ def score_annotation(
         priority_reasons.append("app_facing_label_only_highlight")
         priority_score += 0.25
 
+    if runtime_event_family == "other":
+        priority_reasons.append("runtime_event_family_other")
+        priority_score += 0.22
+
+    if runtime_event_family_margin is not None and runtime_event_family_margin <= 0.18:
+        priority_reasons.append("low_margin_event_family")
+        priority_score += 0.18
+
     if _runtime_and_teacher_disagree(runtime_label, teacher_label, runtime_event_family, teacher_event_family, runtime_outcome, teacher_outcome):
         priority_reasons.append("runtime_teacher_disagree")
         priority_score += 0.4
+
+    if _event_missed_by_runtime(
+        runtime_event_family=runtime_event_family,
+        teacher_event_family=teacher_event_family,
+        teacher_confidence=teacher_confidence,
+        min_teacher_confidence=min_teacher_confidence,
+    ):
+        priority_reasons.append("event_missed_by_runtime")
+        priority_score += 0.32
 
     if _runtime_missed_likely_event(
         runtime_event_family=runtime_event_family,
@@ -350,6 +368,9 @@ def main() -> int:
 
 def _primary_bucket(priority_reasons: list[str]) -> str:
     for reason in (
+        "event_missed_by_runtime",
+        "runtime_event_family_other",
+        "low_margin_event_family",
         "runtime_missed_likely_event",
         "runtime_teacher_disagree",
         "miss_vs_made_conflict",
@@ -485,6 +506,22 @@ def _miss_made_conflict(runtime_outcome: str, teacher_outcome: str | None, runti
     return False
 
 
+def _event_missed_by_runtime(
+    *,
+    runtime_event_family: str,
+    teacher_event_family: str | None,
+    teacher_confidence: float | None,
+    min_teacher_confidence: float,
+) -> bool:
+    if runtime_event_family != "other":
+        return False
+    if teacher_event_family in {None, "other"}:
+        return False
+    if teacher_confidence is not None and teacher_confidence < min_teacher_confidence:
+        return False
+    return True
+
+
 def _runtime_missed_likely_event(
     *,
     runtime_event_family: str,
@@ -502,6 +539,42 @@ def _runtime_missed_likely_event(
     if _label_is_highlight_only(runtime_label) and runtime_event_family in {"unknown", ""}:
         return True
     return False
+
+
+def _runtime_event_family_margin(outputs: dict[str, Any]) -> float | None:
+    for key in (
+        "eventFamilyMargin",
+        "event_family_margin",
+        "temporal_student_family_margin",
+        "temporal_student_event_spotter_margin",
+    ):
+        value = to_optional_float(outputs.get(key))
+        if value is not None:
+            return value
+
+    for key in (
+        "eventFamilyDistribution",
+        "event_family_distribution",
+        "temporal_student_family_distribution",
+        "temporal_student_event_spotter_distribution",
+    ):
+        distribution = outputs.get(key)
+        if not isinstance(distribution, dict):
+            continue
+        ordered = sorted(
+            (
+                to_optional_float(value)
+                for value in distribution.values()
+                if to_optional_float(value) is not None
+            ),
+            reverse=True,
+        )
+        if not ordered:
+            continue
+        top_probability = ordered[0]
+        second_probability = ordered[1] if len(ordered) > 1 else 0.0
+        return round(float(top_probability) - float(second_probability), 4)
+    return None
 
 
 def _strong_ball_hoop_evidence(annotation: UnifiedClipAnnotation, min_ball_evidence: float) -> bool:

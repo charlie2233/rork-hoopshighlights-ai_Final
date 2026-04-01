@@ -12,6 +12,20 @@ from services.inference.app.labels import canonical_to_display_label
 
 EVENT_FAMILIES = ["shot_attempt", "turnover", "defensive_event", "transition", "other"]
 OUTCOMES = ["made", "missed", "blocked", "uncertain"]
+OTHER_BUCKETS = [
+    "non_event",
+    "setup",
+    "dead_ball",
+    "replay_or_reaction",
+    "ambiguous_event",
+    "other_true_unknown",
+]
+OTHER_AUDIT_LABELS = [
+    "true_negative_non_event",
+    "real_event_missed_by_model",
+    "ambiguous_clip",
+    "data_or_sampling_issue",
+]
 CANDIDATE_NAMESPACES = (
     "runtimeFusionShadow",
     "runtimeFusionLoRAShadow",
@@ -33,6 +47,8 @@ class ShadowClipRecord:
     flatLabel: str
     eventFamily: str
     eventSpotterFamily: str | None
+    otherBucket: str | None
+    otherBucketReason: str | None
     shotSubtype: str | None
     outcome: str
     confidence: float
@@ -51,14 +67,21 @@ class ShadowClipRecord:
     expectedOutcome: str | None = None
     expectedShotSubtype: str | None = None
     sourceDomain: str | None = None
+    manualAuditLabel: str | None = None
+    manualAuditRationale: str | None = None
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    records = load_batch_records(args.batch_results, shadow_source=args.shadow_source)
+    manual_audits = load_manual_audits(args.other_audit)
+    records = load_batch_records(args.batch_results, shadow_source=args.shadow_source, manual_audits=manual_audits)
     report = build_shadow_report(records)
     if args.baseline_results:
-        baseline_records = load_batch_records(args.baseline_results, shadow_source=args.shadow_source)
+        baseline_records = load_batch_records(
+            args.baseline_results,
+            shadow_source=args.shadow_source,
+            manual_audits=manual_audits,
+        )
         baseline_report = build_shadow_report(baseline_records)
         report["baselineSummary"] = baseline_report["summary"]
         report["baselineCandidateNamespaces"] = baseline_report["summary"].get("candidateNamespaces", {})
@@ -100,17 +123,35 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default="auto",
         help="Which shadow payload to normalize when multiple shadow namespaces are present.",
     )
+    parser.add_argument(
+        "--other-audit",
+        type=Path,
+        nargs="*",
+        default=[],
+        help="Optional JSON/JSONL files mapping clipId to manual other-bucket audit labels.",
+    )
     parser.add_argument("--output-dir", type=Path, required=True)
     return parser.parse_args(argv)
 
 
-def load_batch_records(paths: Iterable[Path], *, shadow_source: str = "auto") -> list[ShadowClipRecord]:
+def load_batch_records(
+    paths: Iterable[Path],
+    *,
+    shadow_source: str = "auto",
+    manual_audits: dict[str, dict[str, str | None]] | None = None,
+) -> list[ShadowClipRecord]:
     records: list[ShadowClipRecord] = []
     for path in paths:
         payload = json.loads(path.read_text(encoding="utf-8"))
         top_level_items = _extract_top_level_items(payload)
         for top_level in top_level_items:
-            records.extend(_normalize_batch_item(top_level, shadow_source=shadow_source))
+            records.extend(
+                _normalize_batch_item(
+                    top_level,
+                    shadow_source=shadow_source,
+                    manual_audits=manual_audits or {},
+                )
+            )
     return records
 
 
@@ -131,6 +172,8 @@ def build_shadow_report(records: list[ShadowClipRecord]) -> dict[str, Any]:
     clip_total = max(len(records), 1)
     highlight_dominance = round(flat_label_distribution.get("Highlight", 0) / clip_total, 4)
     event_family_other_dominance = round(event_family_distribution.get("other", 0) / clip_total, 4)
+    other_bucket_distribution = build_other_bucket_distribution(records)
+    other_bucket_audit = build_other_bucket_audit(records)
 
     return {
         "summary": {
@@ -149,6 +192,8 @@ def build_shadow_report(records: list[ShadowClipRecord]) -> dict[str, Any]:
             "uncertaintyRate": uncertainty_rate,
             "highlightDominance": highlight_dominance,
             "eventFamilyOtherDominance": event_family_other_dominance,
+            "splitOtherDistribution": other_bucket_distribution,
+            "otherBucketAudit": other_bucket_audit,
             "missVsMadeConfusion": miss_vs_made_confusion,
             "eventSpotterPrecision": labeled_eval["eventSpotterPrecision"],
             "eventSpotterRecall": labeled_eval["eventSpotterRecall"],
@@ -175,6 +220,7 @@ def render_markdown(report: dict[str, Any]) -> str:
     lines.append(f"- Uncertainty rate: `{summary['uncertaintyRate']:.4f}`")
     lines.append(f"- Highlight dominance: `{summary['highlightDominance']:.4f}`")
     lines.append(f"- EventFamily=other dominance: `{summary['eventFamilyOtherDominance']:.4f}`")
+    lines.append(f"- Split-other distribution: `{json.dumps(summary['splitOtherDistribution'], sort_keys=True)}`")
     lines.append(f"- Candidate namespace: `{summary['candidateNamespaces']['dominantNamespace']}`")
     lines.append(f"- Mixed-batch unique labels: `{summary['mixedBatchLabelSpread']['uniqueLabelCount']}`")
     lines.append(
@@ -192,6 +238,7 @@ def render_markdown(report: dict[str, Any]) -> str:
     lines.append(f"- Shot subtypes: `{json.dumps(summary['shotSubtypeDistribution'], sort_keys=True)}`")
     lines.append(f"- Outcomes: `{json.dumps(summary['outcomeDistribution'], sort_keys=True)}`")
     lines.append(f"- Source domains: `{json.dumps(summary['sourceDomainDistribution'], sort_keys=True)}`")
+    lines.append(f"- Other audit: `{json.dumps(summary['otherBucketAudit'], sort_keys=True)}`")
     lines.append(f"- Miss-vs-made confusion: `{json.dumps(summary['missVsMadeConfusion'], sort_keys=True)}`")
     if summary.get("labeledClipCount", 0) > 0:
         lines.append(
@@ -241,10 +288,10 @@ def render_markdown(report: dict[str, Any]) -> str:
     lines.append("")
     lines.append("## Clip Table")
     lines.append(
-        "| clipId | jobId | requestId | uploadTraceId | inferenceAttemptId | candidateNamespace | modelVersion | flatLabel | eventFamily | shotSubtype | outcome | confidenceBeforeMapping | confidenceAfterMapping | confidence | durationSeconds | merged | sourceEventCount | uncertain | rawVideoMAETop1 | rawXCLIPTop1 |"
+        "| clipId | jobId | requestId | uploadTraceId | inferenceAttemptId | candidateNamespace | modelVersion | flatLabel | eventFamily | otherBucket | manualAudit | shotSubtype | outcome | confidenceBeforeMapping | confidenceAfterMapping | confidence | durationSeconds | merged | sourceEventCount | uncertain | rawVideoMAETop1 | rawXCLIPTop1 |"
     )
     lines.append(
-        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"
     )
     for clip in report["clips"]:
         lines.append(
@@ -260,6 +307,8 @@ def render_markdown(report: dict[str, Any]) -> str:
                     escape_md_cell(clip.get("modelVersion")),
                     escape_md_cell(clip.get("flatLabel")),
                     escape_md_cell(clip.get("eventFamily")),
+                    escape_md_cell(clip.get("otherBucket")),
+                    escape_md_cell(clip.get("manualAuditLabel")),
                     escape_md_cell(clip.get("shotSubtype")),
                     escape_md_cell(clip.get("outcome")),
                     escape_md_cell(clip.get("confidenceBeforeMapping")),
@@ -308,7 +357,12 @@ def _extract_top_level_items(payload: Any) -> list[dict[str, Any]]:
     raise ValueError("Batch results must be a JSON object or array.")
 
 
-def _normalize_batch_item(item: dict[str, Any], *, shadow_source: str = "auto") -> list[ShadowClipRecord]:
+def _normalize_batch_item(
+    item: dict[str, Any],
+    *,
+    shadow_source: str = "auto",
+    manual_audits: dict[str, dict[str, str | None]] | None = None,
+) -> list[ShadowClipRecord]:
     top_job_id = _first_non_empty(item.get("jobId"), item.get("id"))
     top_request_id = _first_non_empty(item.get("requestId"), item.get("traceId"))
     top_upload_trace_id = _first_non_empty(item.get("uploadTraceId"), item.get("traceId"))
@@ -322,6 +376,7 @@ def _normalize_batch_item(item: dict[str, Any], *, shadow_source: str = "auto") 
         if not isinstance(clip, dict):
             continue
         shadow_namespace, shadow_payload = _resolve_shadow_payload(clip, shadow_source=shadow_source)
+        audit_override = (manual_audits or {}).get(str(clip.get("clipId") or clip.get("id") or "unknown"), {})
         records.append(
             ShadowClipRecord(
                 jobId=_first_non_empty(clip.get("jobId"), top_job_id),
@@ -338,6 +393,8 @@ def _normalize_batch_item(item: dict[str, Any], *, shadow_source: str = "auto") 
                 flatLabel=_normalize_flat_label(clip, shadow_payload),
                 eventFamily=_normalize_event_family(clip, shadow_payload),
                 eventSpotterFamily=_normalize_event_spotter_family(clip, shadow_payload),
+                otherBucket=_normalize_other_bucket(clip, shadow_payload),
+                otherBucketReason=_normalize_other_bucket_reason(clip, shadow_payload),
                 shotSubtype=_normalize_shot_subtype(clip, shadow_payload),
                 outcome=_normalize_outcome(clip, shadow_payload),
                 confidence=_normalize_confidence(clip, shadow_payload),
@@ -390,9 +447,44 @@ def _normalize_batch_item(item: dict[str, Any], *, shadow_source: str = "auto") 
                 expectedOutcome=_first_non_empty(clip.get("expectedOutcome"), item.get("expectedOutcome")),
                 expectedShotSubtype=_first_non_empty(clip.get("expectedShotSubtype"), item.get("expectedShotSubtype")),
                 sourceDomain=_first_non_empty(clip.get("sourceDomain"), item.get("sourceDomain")),
+                manualAuditLabel=_normalize_other_audit_label(clip, shadow_payload, audit_override),
+                manualAuditRationale=_normalize_other_audit_rationale(clip, shadow_payload, audit_override),
             )
         )
     return records
+
+
+def load_manual_audits(paths: Iterable[Path]) -> dict[str, dict[str, str | None]]:
+    audit_map: dict[str, dict[str, str | None]] = {}
+    for path in paths:
+        if not path.exists():
+            raise FileNotFoundError(f"Missing manual audit file: {path}")
+        raw_text = path.read_text(encoding="utf-8").strip()
+        if not raw_text:
+            continue
+        entries: list[dict[str, Any]]
+        if path.suffix == ".jsonl":
+            entries = [json.loads(line) for line in raw_text.splitlines() if line.strip()]
+        else:
+            payload = json.loads(raw_text)
+            if isinstance(payload, dict):
+                candidate_entries = payload.get("records") or payload.get("audits") or payload.get("clips") or []
+                entries = candidate_entries if isinstance(candidate_entries, list) else [payload]
+            elif isinstance(payload, list):
+                entries = payload
+            else:
+                raise ValueError(f"Unsupported manual audit payload: {path}")
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            clip_id = _first_non_empty(entry.get("clipId"), entry.get("clip_id"))
+            if clip_id is None:
+                continue
+            audit_map[clip_id] = {
+                "manualAuditLabel": _normalize_other_audit_label(entry, None, {}),
+                "manualAuditRationale": _normalize_other_audit_rationale(entry, None, {}),
+            }
+    return audit_map
 
 
 def build_trace_summary(records: list[ShadowClipRecord]) -> dict[str, list[str]]:
@@ -533,6 +625,30 @@ def build_labeled_eval_summary(records: list[ShadowClipRecord]) -> dict[str, Any
         "eventFamilyAccuracy": event_family_accuracy,
         "outcomeAccuracy": outcome_accuracy,
         "shotSubtypeAccuracy": shot_subtype_accuracy,
+    }
+
+
+def build_other_bucket_distribution(records: list[ShadowClipRecord]) -> dict[str, int]:
+    other_records = [record for record in records if normalize_bucket(record.eventFamily) == "other"]
+    return distribution(record.otherBucket for record in other_records if record.otherBucket)
+
+
+def build_other_bucket_audit(records: list[ShadowClipRecord]) -> dict[str, Any]:
+    other_records = [record for record in records if normalize_bucket(record.eventFamily) == "other"]
+    audited_records = [record for record in other_records if record.manualAuditLabel]
+    total_records = max(len(records), 1)
+    audit_distribution = distribution(record.manualAuditLabel for record in audited_records)
+    true_negative_count = audit_distribution.get("true_negative_non_event", 0)
+    true_model_miss_count = audit_distribution.get("real_event_missed_by_model", 0)
+    return {
+        "eligibleOtherClips": len(other_records),
+        "auditedOtherClips": len(audited_records),
+        "unauditedOtherClips": max(len(other_records) - len(audited_records), 0),
+        "manualAuditDistribution": audit_distribution,
+        "trueNegativeRateWithinOther": round(true_negative_count / len(audited_records), 4) if audited_records else None,
+        "trueModelMissRateWithinOther": round(true_model_miss_count / len(audited_records), 4) if audited_records else None,
+        "trueNegativeShareOfBatch": round(true_negative_count / total_records, 4),
+        "trueModelMissShareOfBatch": round(true_model_miss_count / total_records, 4),
     }
 
 
@@ -715,6 +831,30 @@ def _normalize_event_spotter_family(clip: dict[str, Any], shadow_payload: dict[s
     return None
 
 
+def _normalize_other_bucket(clip: dict[str, Any], shadow_payload: dict[str, Any] | None = None) -> str | None:
+    metadata = shadow_payload.get("metadata") if isinstance(shadow_payload, dict) else None
+    value = _first_non_empty(
+        shadow_payload.get("eventFamilyOtherBucket") if shadow_payload else None,
+        shadow_payload.get("temporal_student_other_bucket") if shadow_payload else None,
+        metadata.get("eventFamilyOtherBucket") if isinstance(metadata, dict) else None,
+        metadata.get("temporal_student_other_bucket") if isinstance(metadata, dict) else None,
+        clip.get("eventFamilyOtherBucket"),
+    )
+    text = normalize_text(value).replace(" ", "_")
+    return text if text in OTHER_BUCKETS else None
+
+
+def _normalize_other_bucket_reason(clip: dict[str, Any], shadow_payload: dict[str, Any] | None = None) -> str | None:
+    metadata = shadow_payload.get("metadata") if isinstance(shadow_payload, dict) else None
+    return _first_non_empty(
+        shadow_payload.get("eventFamilyOtherBucketReason") if shadow_payload else None,
+        shadow_payload.get("temporal_student_other_bucket_reason") if shadow_payload else None,
+        metadata.get("eventFamilyOtherBucketReason") if isinstance(metadata, dict) else None,
+        metadata.get("temporal_student_other_bucket_reason") if isinstance(metadata, dict) else None,
+        clip.get("eventFamilyOtherBucketReason"),
+    )
+
+
 def _normalize_shot_subtype(clip: dict[str, Any], shadow_payload: dict[str, Any] | None = None) -> str | None:
     value = _first_non_empty(
         shadow_payload.get("shotSubtype") if shadow_payload else None,
@@ -820,6 +960,38 @@ def _normalize_top_k(value: Any) -> list[dict[str, Any]]:
         else:
             rows.append({"label": str(item), "confidence": 0.0})
     return rows
+
+
+def _normalize_other_audit_label(
+    clip: dict[str, Any],
+    shadow_payload: dict[str, Any] | None,
+    audit_override: dict[str, str | None],
+) -> str | None:
+    metadata = shadow_payload.get("metadata") if isinstance(shadow_payload, dict) else None
+    value = _first_non_empty(
+        audit_override.get("manualAuditLabel"),
+        shadow_payload.get("manualAuditLabel") if shadow_payload else None,
+        metadata.get("manualAuditLabel") if isinstance(metadata, dict) else None,
+        clip.get("manualAuditLabel"),
+        clip.get("otherAuditLabel"),
+    )
+    text = normalize_text(value).replace(" ", "_")
+    return text if text in OTHER_AUDIT_LABELS else None
+
+
+def _normalize_other_audit_rationale(
+    clip: dict[str, Any],
+    shadow_payload: dict[str, Any] | None,
+    audit_override: dict[str, str | None],
+) -> str | None:
+    metadata = shadow_payload.get("metadata") if isinstance(shadow_payload, dict) else None
+    return _first_non_empty(
+        audit_override.get("manualAuditRationale"),
+        shadow_payload.get("manualAuditRationale") if shadow_payload else None,
+        metadata.get("manualAuditRationale") if isinstance(metadata, dict) else None,
+        clip.get("manualAuditRationale"),
+        clip.get("otherAuditRationale"),
+    )
 
 
 def _to_optional_float(value: Any) -> float | None:

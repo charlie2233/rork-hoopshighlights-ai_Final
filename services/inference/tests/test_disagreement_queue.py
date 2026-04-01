@@ -42,6 +42,9 @@ class DisagreementQueueTests(unittest.TestCase):
         self.assertIn("high_teacher_low_runtime", highlight_disagree.priority_reasons)
         self.assertIn("uncertainty_sampling", highlight_disagree.priority_reasons)
         self.assertIn("event_localization_needed", highlight_disagree.priority_reasons)
+        self.assertIn("runtime_event_family_other", highlight_disagree.priority_reasons)
+        self.assertIn("low_margin_event_family", highlight_disagree.priority_reasons)
+        self.assertIn("event_missed_by_runtime", highlight_disagree.priority_reasons)
         self.assertEqual(highlight_disagree.event_localization_state, "coarse")
         self.assertAlmostEqual(highlight_disagree.event_center_seconds or 0.0, 2.9)
 
@@ -64,7 +67,7 @@ class DisagreementQueueTests(unittest.TestCase):
         summary = build_summary(queue, annotations)
 
         self.assertEqual(summary["queuedClips"], 4)
-        self.assertEqual(summary["byBucket"]["runtime_missed_likely_event"], 1)
+        self.assertEqual(summary["byBucket"]["event_missed_by_runtime"], 1)
         self.assertEqual(summary["byBucket"]["runtime_teacher_disagree"], 3)
         self.assertEqual(summary["byEventLocalizationState"]["coarse"], 1)
         self.assertEqual(summary["byEventLocalizationState"]["missing"], 3)

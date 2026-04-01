@@ -20,6 +20,14 @@ TEMPORAL_STUDENT_BUNDLE_PATH = Path(__file__).resolve().parents[2] / "models" / 
 MAX_TEMPORAL_STUDENT_TOPK = 3
 
 EVENT_FAMILIES = ("shot_attempt", "turnover", "defensive_event", "transition", "other")
+OTHER_BUCKETS = (
+    "non_event",
+    "setup",
+    "dead_ball",
+    "replay_or_reaction",
+    "ambiguous_event",
+    "other_true_unknown",
+)
 OUTCOMES = ("made", "missed", "blocked", "uncertain")
 SHOT_SUBTYPES = ("dunk", "layup", "jumper", "three", "putback", "null")
 DISPLAY_LABELS = ("Dunk", "Layup", "Three Pointer", "Made Shot", "Block", "Steal", "Fast Break", "Highlight")
@@ -172,6 +180,12 @@ class TemporalStudentBundle:
             ),
             4,
         )
+        other_bucket, other_bucket_reason, other_bucket_scores = _classify_other_bucket(
+            observations=observations,
+            event_family=event_family,
+            event_spotter_prediction=event_spotter_prediction,
+            family_prediction=family_prediction,
+        )
         metadata = {
             "temporal_student_model_version": self.model_version,
             "temporal_student_schema_version": self.schema_version,
@@ -180,6 +194,10 @@ class TemporalStudentBundle:
             "temporal_student_attention": [round(float(value), 4) for value in attention.tolist()],
             "temporal_student_event_spotter_family": spotted_event_family,
             "temporal_student_event_spotter_likely_event": gate_open,
+            "temporal_student_event_spotter_margin": round(event_spotter_prediction.margin, 4),
+            "temporal_student_family_margin": round(family_prediction.margin, 4),
+            "temporal_student_outcome_margin": round(outcome_prediction.margin, 4),
+            "temporal_student_subtype_margin": round(subtype_prediction.margin, 4),
             "temporal_student_event_spotter_distribution": event_spotter_prediction.distribution,
             "temporal_student_event_spotter_top_labels": [
                 item.model_dump(mode="json") for item in event_spotter_prediction.top_labels
@@ -197,6 +215,9 @@ class TemporalStudentBundle:
                 "outcomeAllowedLabels": list(CONDITIONED_OUTCOME_LABELS.get(event_family, OUTCOMES)) if gate_open else ["uncertain"],
                 "shotSubtypeAllowedLabels": list(CONDITIONED_SUBTYPE_LABELS.get(event_family, SHOT_SUBTYPES)) if gate_open else ["null"],
             },
+            "eventFamilyOtherBucket": other_bucket,
+            "eventFamilyOtherBucketReason": other_bucket_reason,
+            "eventFamilyOtherBucketScores": other_bucket_scores,
         }
         return ActionPrediction(
             label=display_label,
@@ -756,6 +777,103 @@ def _resolve_student_confidence(
     return min(max(confidence, 0.0), 1.0)
 
 
+def _classify_other_bucket(
+    *,
+    observations: Sequence[TemporalStudentObservation],
+    event_family: str,
+    event_spotter_prediction: TemporalStudentTargetPrediction,
+    family_prediction: TemporalStudentTargetPrediction,
+) -> tuple[str | None, str | None, dict[str, float]]:
+    if event_family != "other":
+        return None, None, {}
+
+    signal_summary = _summarize_other_bucket_signals(observations)
+    shot_signal = max(
+        signal_summary["shot_release_candidate"],
+        signal_summary["ball_near_rim"],
+        signal_summary["ball_through_hoop_likelihood"],
+        signal_summary["ball_above_rim"],
+        signal_summary["ball_arc_apex"],
+    )
+    transition_signal = max(
+        signal_summary["transition_likelihood"],
+        signal_summary["transition_speed_score"],
+        signal_summary["possession_change_likelihood"],
+        signal_summary["ball_carrier_speed"],
+    )
+    setup_context = min(
+        1.0,
+        max(signal_summary["hoop_visible"], signal_summary["ball_visible"] * 0.4)
+        * max(signal_summary["tracked_player_presence"], signal_summary["tracking_continuity"], 0.15),
+    )
+    reaction_sparse = min(
+        max(1.0 - signal_summary["ball_visible"], 0.0),
+        max(1.0 - signal_summary["hoop_visible"], 0.0),
+        max(1.0 - max(signal_summary["detection_density"], signal_summary["tracking_density"]), 0.0),
+    )
+    likely_event_score = max(
+        shot_signal,
+        transition_signal,
+        max(1.0 - event_spotter_prediction.margin / 0.25, 0.0) * max_non_other_probability(event_spotter_prediction.distribution),
+        max(1.0 - family_prediction.margin / 0.25, 0.0) * max_non_other_probability(family_prediction.distribution),
+    )
+
+    bucket_scores = {
+        "ambiguous_event": min(
+            1.0,
+            max(shot_signal, transition_signal, likely_event_score)
+            * max(0.45, 1.0 - min(event_spotter_prediction.margin, family_prediction.margin) / 0.2),
+        ),
+        "setup": min(
+            1.0,
+            setup_context
+            * max(1.0 - shot_signal, 0.0)
+            * max(1.0 - transition_signal * 0.9, 0.0)
+            * max(signal_summary["tracking_continuity"], 0.25),
+        ),
+        "dead_ball": min(
+            1.0,
+            max(signal_summary["hoop_visible"], signal_summary["tracked_player_presence"], 0.2)
+            * max(1.0 - shot_signal, 0.0)
+            * max(1.0 - transition_signal, 0.0)
+            * max(1.0 - signal_summary["possession_change_likelihood"], 0.0),
+        ),
+        "replay_or_reaction": min(
+            1.0,
+            reaction_sparse
+            * max(1.0 - signal_summary["tracking_continuity"], 0.0)
+            * max(1.0 - signal_summary["ball_visible"] * 0.8, 0.0),
+        ),
+        "non_event": min(
+            1.0,
+            max(1.0 - max(shot_signal, transition_signal, setup_context), 0.0)
+            * max(1.0 - signal_summary["tracking_continuity"] * 0.75, 0.0),
+        ),
+        "other_true_unknown": 0.2,
+    }
+    strongest_bucket = max(
+        (bucket for bucket in bucket_scores if bucket != "other_true_unknown"),
+        key=lambda bucket: bucket_scores[bucket],
+    )
+    strongest_score = bucket_scores[strongest_bucket]
+    if strongest_score < 0.28:
+        strongest_bucket = "other_true_unknown"
+        strongest_score = 1.0 - strongest_score
+    bucket_scores["other_true_unknown"] = max(
+        bucket_scores["other_true_unknown"],
+        round(min(max(1.0 - strongest_score, 0.0), 1.0), 4),
+    )
+    reason = _other_bucket_reason(
+        bucket=strongest_bucket,
+        signal_summary=signal_summary,
+        shot_signal=shot_signal,
+        transition_signal=transition_signal,
+        event_spotter_prediction=event_spotter_prediction,
+        family_prediction=family_prediction,
+    )
+    return strongest_bucket, reason, {key: round(value, 4) for key, value in bucket_scores.items()}
+
+
 def _fallback_temporal_prediction(
     *,
     label: str,
@@ -842,3 +960,101 @@ def _coerce_optional_float(value: Any) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _summarize_other_bucket_signals(observations: Sequence[TemporalStudentObservation]) -> dict[str, float]:
+    def max_from(paths: Sequence[tuple[str, str]], *, default: float = 0.0) -> float:
+        values: list[float] = []
+        for observation in observations:
+            for source_name, key in paths:
+                source = getattr(observation, source_name) or {}
+                if not isinstance(source, dict):
+                    continue
+                value = _coerce_optional_float(source.get(key))
+                if value is not None:
+                    values.append(value)
+        return round(max(values) if values else default, 4)
+
+    def mean_from(paths: Sequence[tuple[str, str]], *, default: float = 0.0) -> float:
+        values: list[float] = []
+        for observation in observations:
+            for source_name, key in paths:
+                source = getattr(observation, source_name) or {}
+                if not isinstance(source, dict):
+                    continue
+                value = _coerce_optional_float(source.get(key))
+                if value is not None:
+                    values.append(value)
+        if not values:
+            return default
+        return round(sum(values) / len(values), 4)
+
+    return {
+        "ball_visible": mean_from((("perception_features", "ballVisible"), ("detection_features", "ballVisible"))),
+        "hoop_visible": mean_from((("perception_features", "hoopVisible"), ("detection_features", "hoopVisible"))),
+        "shot_release_candidate": max_from((("structured_signals", "shotReleaseCandidate"),)),
+        "ball_near_rim": max_from((("structured_signals", "ballNearRim"),)),
+        "ball_above_rim": max_from((("structured_signals", "ballAboveRim"),)),
+        "ball_arc_apex": max_from((("structured_signals", "ballArcApex"),)),
+        "ball_through_hoop_likelihood": max_from((("structured_signals", "ballThroughHoopLikelihood"),)),
+        "possession_change_likelihood": max_from((("structured_signals", "possessionChangeLikelihood"),)),
+        "transition_likelihood": max_from((("structured_signals", "transitionLikelihood"),)),
+        "transition_speed_score": max_from((("structured_signals", "transitionSpeedScore"),)),
+        "ball_carrier_speed": max_from((("structured_signals", "ballCarrierSpeed"),)),
+        "tracking_continuity": max_from((("structured_signals", "samePlayContinuityScore"), ("tracking_features", "trackingContinuity"))),
+        "tracked_player_presence": min(
+            1.0,
+            max_from((("tracking_features", "playerTrackCount"), ("perception_features", "playerCount"),)) / 6.0,
+        ),
+        "detection_density": mean_from((("perception_features", "detectionDensity"), ("detection_features", "detectionDensity"))),
+        "tracking_density": mean_from((("perception_features", "trackingDensity"), ("tracking_features", "trackingDensity"))),
+    }
+
+
+def max_non_other_probability(distribution: dict[str, float]) -> float:
+    return max(
+        (
+            float(value)
+            for label, value in (distribution or {}).items()
+            if _normalize_label(label) not in {None, "other"}
+        ),
+        default=0.0,
+    )
+
+
+def _other_bucket_reason(
+    *,
+    bucket: str,
+    signal_summary: dict[str, float],
+    shot_signal: float,
+    transition_signal: float,
+    event_spotter_prediction: TemporalStudentTargetPrediction,
+    family_prediction: TemporalStudentTargetPrediction,
+) -> str:
+    if bucket == "ambiguous_event":
+        return (
+            "Non-other basketball cues remained present, but the event spotter/family margins stayed low "
+            f"({event_spotter_prediction.margin:.2f}/{family_prediction.margin:.2f})."
+        )
+    if bucket == "setup":
+        return (
+            "Players and rim stayed visible with continuity, but shot/transition evidence never became strong enough "
+            "to open the event gate."
+        )
+    if bucket == "dead_ball":
+        return (
+            "Court context stayed active, but possession, transition, and shot signals all remained weak, matching a "
+            "dead-ball or reset segment."
+        )
+    if bucket == "replay_or_reaction":
+        return (
+            "Ball/rim visibility and motion density stayed sparse, which looks closer to replay/reaction footage than a live event."
+        )
+    if bucket == "non_event":
+        return (
+            "Structured basketball signals stayed broadly absent, so the clip looks like a non-event segment."
+        )
+    return (
+        "Signals were too mixed to confidently route beyond the residual other bucket "
+        f"(shot={shot_signal:.2f}, transition={transition_signal:.2f}, continuity={signal_summary['tracking_continuity']:.2f})."
+    )
