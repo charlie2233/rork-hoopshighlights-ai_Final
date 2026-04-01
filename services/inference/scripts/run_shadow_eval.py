@@ -46,6 +46,10 @@ class ShadowClipRecord:
     rawVideoMAETopK: list[dict[str, Any]]
     rawXCLIPSuggestions: list[dict[str, Any]]
     expectedLabel: str | None = None
+    expectedEventFamily: str | None = None
+    expectedOutcome: str | None = None
+    expectedShotSubtype: str | None = None
+    sourceDomain: str | None = None
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -114,13 +118,18 @@ def build_shadow_report(records: list[ShadowClipRecord]) -> dict[str, Any]:
     event_family_distribution = distribution(record.eventFamily for record in records)
     shot_subtype_distribution = distribution(record.shotSubtype for record in records)
     outcome_distribution = distribution(record.outcome for record in records)
+    source_domain_distribution = distribution(record.sourceDomain for record in records)
     uncertainty_rate = round(sum(1 for record in records if record.isUncertain) / max(len(records), 1), 4)
     duration_summary = build_duration_summary(record.clipDurationSeconds for record in records)
     label_spread = build_label_spread(records, flat_label_distribution)
     miss_vs_made_confusion = build_miss_vs_made_confusion(records)
+    labeled_eval = build_labeled_eval_summary(records)
     trace_summary = build_trace_summary(records)
     candidate_namespace_summary = build_namespace_summary(record.candidateNamespace for record in records)
     collapse_examples = build_collapse_examples(records)
+    clip_total = max(len(records), 1)
+    highlight_dominance = round(flat_label_distribution.get("Highlight", 0) / clip_total, 4)
+    event_family_other_dominance = round(event_family_distribution.get("other", 0) / clip_total, 4)
 
     return {
         "summary": {
@@ -135,8 +144,17 @@ def build_shadow_report(records: list[ShadowClipRecord]) -> dict[str, Any]:
             "eventFamilyDistribution": event_family_distribution,
             "shotSubtypeDistribution": shot_subtype_distribution,
             "outcomeDistribution": outcome_distribution,
+            "sourceDomainDistribution": source_domain_distribution,
             "uncertaintyRate": uncertainty_rate,
+            "highlightDominance": highlight_dominance,
+            "eventFamilyOtherDominance": event_family_other_dominance,
             "missVsMadeConfusion": miss_vs_made_confusion,
+            "eventDetectionPrecision": labeled_eval["eventDetectionPrecision"],
+            "eventDetectionRecall": labeled_eval["eventDetectionRecall"],
+            "eventFamilyAccuracy": labeled_eval["eventFamilyAccuracy"],
+            "outcomeAccuracy": labeled_eval["outcomeAccuracy"],
+            "shotSubtypeAccuracy": labeled_eval["shotSubtypeAccuracy"],
+            "labeledClipCount": labeled_eval["labeledClipCount"],
             "durationSummary": duration_summary,
             "mixedBatchLabelSpread": label_spread,
         },
@@ -152,6 +170,8 @@ def render_markdown(report: dict[str, Any]) -> str:
     lines.append(f"- Jobs: `{summary['jobCount']}`")
     lines.append(f"- Clips: `{summary['clipCount']}`")
     lines.append(f"- Uncertainty rate: `{summary['uncertaintyRate']:.4f}`")
+    lines.append(f"- Highlight dominance: `{summary['highlightDominance']:.4f}`")
+    lines.append(f"- EventFamily=other dominance: `{summary['eventFamilyOtherDominance']:.4f}`")
     lines.append(f"- Candidate namespace: `{summary['candidateNamespaces']['dominantNamespace']}`")
     lines.append(f"- Mixed-batch unique labels: `{summary['mixedBatchLabelSpread']['uniqueLabelCount']}`")
     lines.append(
@@ -168,7 +188,16 @@ def render_markdown(report: dict[str, Any]) -> str:
     lines.append(f"- Event families: `{json.dumps(summary['eventFamilyDistribution'], sort_keys=True)}`")
     lines.append(f"- Shot subtypes: `{json.dumps(summary['shotSubtypeDistribution'], sort_keys=True)}`")
     lines.append(f"- Outcomes: `{json.dumps(summary['outcomeDistribution'], sort_keys=True)}`")
+    lines.append(f"- Source domains: `{json.dumps(summary['sourceDomainDistribution'], sort_keys=True)}`")
     lines.append(f"- Miss-vs-made confusion: `{json.dumps(summary['missVsMadeConfusion'], sort_keys=True)}`")
+    if summary.get("labeledClipCount", 0) > 0:
+        lines.append(
+            f"- Event detection precision / recall: "
+            f"`{summary['eventDetectionPrecision']}` / `{summary['eventDetectionRecall']}`"
+        )
+        lines.append(f"- Event family accuracy: `{summary['eventFamilyAccuracy']}`")
+        lines.append(f"- Outcome accuracy: `{summary['outcomeAccuracy']}`")
+        lines.append(f"- Shot subtype accuracy: `{summary['shotSubtypeAccuracy']}`")
     lines.append("")
     if report.get("baselineSummary") and report.get("comparisonSummary"):
         baseline = report["baselineSummary"]
@@ -349,6 +378,10 @@ def _normalize_batch_item(item: dict[str, Any], *, shadow_source: str = "auto") 
                     or []
                 ),
                 expectedLabel=_first_non_empty(clip.get("expectedLabel"), clip.get("goldLabel"), clip.get("targetLabel")),
+                expectedEventFamily=_first_non_empty(clip.get("expectedEventFamily"), item.get("expectedEventFamily")),
+                expectedOutcome=_first_non_empty(clip.get("expectedOutcome"), item.get("expectedOutcome")),
+                expectedShotSubtype=_first_non_empty(clip.get("expectedShotSubtype"), item.get("expectedShotSubtype")),
+                sourceDomain=_first_non_empty(clip.get("sourceDomain"), item.get("sourceDomain")),
             )
         )
     return records
@@ -426,6 +459,69 @@ def build_miss_vs_made_confusion(records: list[ShadowClipRecord]) -> dict[str, i
         elif expected == "made shot" and predicted == "highlight":
             counts["expectedMadePredictedHighlight"] += 1
     return dict(counts)
+
+
+def build_labeled_eval_summary(records: list[ShadowClipRecord]) -> dict[str, Any]:
+    labeled = [record for record in records if record.expectedEventFamily]
+    if not labeled:
+        return {
+            "labeledClipCount": 0,
+            "eventDetectionPrecision": None,
+            "eventDetectionRecall": None,
+            "eventFamilyAccuracy": None,
+            "outcomeAccuracy": None,
+            "shotSubtypeAccuracy": None,
+        }
+
+    actual_positive = [record for record in labeled if normalize_bucket(record.expectedEventFamily) != "other"]
+    predicted_positive = [record for record in labeled if normalize_bucket(record.eventFamily) != "other"]
+    true_positive = [
+        record
+        for record in labeled
+        if normalize_bucket(record.expectedEventFamily) != "other" and normalize_bucket(record.eventFamily) != "other"
+    ]
+    precision = round(len(true_positive) / len(predicted_positive), 4) if predicted_positive else None
+    recall = round(len(true_positive) / len(actual_positive), 4) if actual_positive else None
+    event_family_accuracy = round(
+        sum(1 for record in labeled if normalize_bucket(record.expectedEventFamily) == normalize_bucket(record.eventFamily))
+        / len(labeled),
+        4,
+    )
+
+    outcome_labeled = [record for record in labeled if record.expectedOutcome]
+    outcome_accuracy = (
+        round(
+            sum(1 for record in outcome_labeled if normalize_bucket(record.expectedOutcome) == normalize_bucket(record.outcome))
+            / len(outcome_labeled),
+            4,
+        )
+        if outcome_labeled
+        else None
+    )
+
+    subtype_labeled = [record for record in labeled if record.expectedShotSubtype]
+    shot_subtype_accuracy = (
+        round(
+            sum(
+                1
+                for record in subtype_labeled
+                if normalize_bucket(record.expectedShotSubtype) == normalize_bucket(record.shotSubtype)
+            )
+            / len(subtype_labeled),
+            4,
+        )
+        if subtype_labeled
+        else None
+    )
+
+    return {
+        "labeledClipCount": len(labeled),
+        "eventDetectionPrecision": precision,
+        "eventDetectionRecall": recall,
+        "eventFamilyAccuracy": event_family_accuracy,
+        "outcomeAccuracy": outcome_accuracy,
+        "shotSubtypeAccuracy": shot_subtype_accuracy,
+    }
 
 
 def build_collapse_examples(records: list[ShadowClipRecord]) -> list[dict[str, Any]]:

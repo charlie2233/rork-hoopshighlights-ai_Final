@@ -58,7 +58,13 @@ def _distance(box_a: BBox, box_b: BBox) -> float:
 
 def _logistic(value: float, midpoint: float, scale: float) -> float:
     scale = max(scale, 1e-6)
-    return 1.0 / (1.0 + exp(-(value - midpoint) / scale))
+    z = (value - midpoint) / scale
+    # Use a numerically stable sigmoid so extreme live tracking velocities do not
+    # overflow and silently disable the temporal shadow path.
+    if z >= 0.0:
+        return 1.0 / (1.0 + exp(-min(z, 700.0)))
+    exp_z = exp(max(z, -700.0))
+    return exp_z / (1.0 + exp_z)
 
 
 def _distance_score(distance: float, scale: float) -> float:

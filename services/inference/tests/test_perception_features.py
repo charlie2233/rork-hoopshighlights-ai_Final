@@ -143,6 +143,25 @@ class PerceptionFeatureExtractionTests(unittest.TestCase):
         self.assertEqual(features.shotReleaseCandidate, 0.0)
         self.assertEqual(features.samePlayContinuityScore, 0.0)
 
+    def test_extreme_ball_velocity_does_not_overflow_sigmoid(self) -> None:
+        frames = [
+            [
+                _obs("ball", (0.48, 5000.00, 0.52, 5000.04), t=0.0, track_id="ball"),
+                _obs("rim", (0.44, 0.34, 0.56, 0.40), t=0.0),
+                _obs("player", (0.40, 0.58, 0.50, 0.78), t=0.0, track_id="offense-1"),
+            ],
+            [
+                _obs("ball", (0.48, -5000.00, 0.52, -4999.96), t=0.1, track_id="ball"),
+                _obs("rim", (0.44, 0.34, 0.56, 0.40), t=0.1),
+                _obs("player", (0.42, 0.54, 0.52, 0.74), t=0.1, track_id="offense-1"),
+            ],
+        ]
+
+        features = derive_perception_features(frames)
+
+        self.assertGreaterEqual(features.shotReleaseCandidate, 0.0)
+        self.assertLessEqual(features.shotReleaseCandidate, 1.0)
+
 
 if __name__ == "__main__":
     unittest.main()

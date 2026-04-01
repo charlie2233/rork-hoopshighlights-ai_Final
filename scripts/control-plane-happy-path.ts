@@ -166,6 +166,10 @@ async function runHttpHappyPath(baseUrl: string, args: ParsedArgs, upload: Uploa
 
   const finalResponse = await pollHttpJob(`${baseUrl}/jobs/${createResponse.jobId}`, args);
   const summaryClips = summarizeClips(finalResponse.results?.clips ?? []);
+  const callbackRequestId =
+    typeof finalResponse.results?.requestId === "string" && finalResponse.results.requestId.length > 0
+      ? finalResponse.results.requestId
+      : finalizeResponse.requestId ?? args.traceId;
 
   return {
     mode: "http",
@@ -183,7 +187,7 @@ async function runHttpHappyPath(baseUrl: string, args: ParsedArgs, upload: Uploa
     requestIds: {
       presign: createResponse.requestId ?? args.traceId,
       finalize: finalizeResponse.requestId ?? args.traceId,
-      callback: finalizeResponse.requestId ?? args.traceId,
+      callback: callbackRequestId,
       poll: finalResponse.requestId ?? args.traceId
     }
   };

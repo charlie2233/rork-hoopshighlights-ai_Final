@@ -37,11 +37,63 @@ class ShadowEvalTests(unittest.TestCase):
         self.assertEqual(report["summary"]["outcomeDistribution"]["uncertain"], 2)
         self.assertEqual(report["summary"]["shotSubtypeDistribution"]["null"], 2)
         self.assertEqual(report["summary"]["uncertaintyRate"], 0.25)
+        self.assertEqual(report["summary"]["highlightDominance"], 0.25)
+        self.assertEqual(report["summary"]["eventFamilyOtherDominance"], 0.25)
         self.assertEqual(report["summary"]["missVsMadeConfusion"]["expectedMissPredictedMadeShot"], 1)
         self.assertEqual(report["summary"]["mixedBatchLabelSpread"]["uniqueLabelCount"], 4)
         self.assertGreaterEqual(report["summary"]["mixedBatchLabelSpread"]["spreadScore"], 0.0)
         self.assertEqual(len(report["collapseExamples"]), 1)
         self.assertGreaterEqual(len(report["labelSpreadWarnings"]), 0)
+
+    def test_report_includes_labeled_eval_metrics_when_expected_fields_exist(self) -> None:
+        payload = {
+            "jobId": "job-labeled-001",
+            "requestId": "req-labeled-001",
+            "uploadTraceId": "upload-labeled-001",
+            "inferenceAttemptId": "attempt-labeled-001",
+            "clips": [
+                {
+                    "clipId": "clip-labeled-001",
+                    "label": "Layup",
+                    "eventFamily": "shot_attempt",
+                    "shotSubtype": "layup",
+                    "outcome": "made",
+                    "confidence": 0.88,
+                    "clipDurationSeconds": 4.75,
+                    "expectedLabel": "Layup",
+                    "expectedEventFamily": "shot_attempt",
+                    "expectedOutcome": "made",
+                    "expectedShotSubtype": "layup",
+                    "sourceDomain": "live_shadow",
+                },
+                {
+                    "clipId": "clip-labeled-002",
+                    "label": "Highlight",
+                    "eventFamily": "other",
+                    "shotSubtype": None,
+                    "outcome": "uncertain",
+                    "confidence": 0.42,
+                    "clipDurationSeconds": 4.25,
+                    "expectedLabel": "Highlight",
+                    "expectedEventFamily": "other",
+                    "expectedOutcome": "uncertain",
+                    "sourceDomain": "live_shadow",
+                },
+            ],
+        }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "labeled.json"
+            path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+            report = build_shadow_report(load_batch_records([path]))
+
+        self.assertEqual(report["summary"]["labeledClipCount"], 2)
+        self.assertEqual(report["summary"]["eventDetectionPrecision"], 1.0)
+        self.assertEqual(report["summary"]["eventDetectionRecall"], 1.0)
+        self.assertEqual(report["summary"]["eventFamilyAccuracy"], 1.0)
+        self.assertEqual(report["summary"]["outcomeAccuracy"], 1.0)
+        self.assertEqual(report["summary"]["shotSubtypeAccuracy"], 1.0)
+        self.assertEqual(report["summary"]["sourceDomainDistribution"]["live_shadow"], 2)
 
     def test_cli_writes_markdown_and_json(self) -> None:
         fixture = self.repo_root() / "services" / "inference" / "tests" / "fixtures" / "shadow_batch_results.json"

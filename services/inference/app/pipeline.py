@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -57,6 +58,8 @@ from .models import (
     RankedClip,
 )
 from .storage import R2Downloader
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -675,7 +678,14 @@ class InferenceService:
             if not observations:
                 return None
             return self.temporal_encoder.predict(observations)
-        except Exception:
+        except Exception as exc:
+            logger.warning(
+                "temporal shadow prediction failed for candidate %s on %s: %s",
+                getattr(candidate, "candidateId", "unknown"),
+                self.settings.version,
+                exc,
+                exc_info=True,
+            )
             return None
 
     def _predict_distilled_shadow(
