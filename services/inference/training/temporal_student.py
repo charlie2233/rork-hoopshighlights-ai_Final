@@ -16,6 +16,7 @@ from services.inference.app.runtime_models.temporal_student import (
     TemporalStudentBundle,
     TemporalStudentObservation,
     TemporalStudentTargetPrediction,
+    build_temporal_student_feature_map,
     default_temporal_student_feature_names,
     vectorize_temporal_student_observation,
     write_temporal_student_bundle,
@@ -36,7 +37,7 @@ except ModuleNotFoundError:  # pragma: no cover - depends on torch availability
     F = None
 
 
-TEMPORAL_STUDENT_MODEL_VERSION = "temporal-student-v1"
+TEMPORAL_STUDENT_MODEL_VERSION = "temporal-student-gated-v2"
 DEFAULT_TEMPORAL_STUDENT_SEED = 7
 
 
@@ -51,6 +52,7 @@ class TemporalStudentTrainingExample:
     split: str = "train"
     weight: float = 1.0
     source_domain: str = "unknown"
+    source_set: str = "unknown"
     has_event_localization: bool = False
 
 
@@ -68,6 +70,7 @@ if nn is not None:
             self.projection = nn.Linear(input_size, hidden_size)
             self.attention = nn.Linear(hidden_size, 1)
             pooled_size = hidden_size * 4
+            self.event_spotter_head = nn.Linear(pooled_size, len(label_spaces["eventSpotter"]))
             self.event_family_head = nn.Linear(pooled_size, len(label_spaces["eventFamily"]))
             self.outcome_head = nn.Linear(pooled_size, len(label_spaces["outcome"]))
             self.shot_subtype_head = nn.Linear(pooled_size, len(label_spaces["shotSubtype"]))
@@ -82,6 +85,7 @@ if nn is not None:
             pooled_delta = hidden[:, -1, :] - hidden[:, 0, :]
             pooled = torch.cat([weighted_mean, pooled_max, pooled_last, pooled_delta], dim=-1)
             logits = {
+                "eventSpotter": self.event_spotter_head(pooled),
                 "eventFamily": self.event_family_head(pooled),
                 "outcome": self.outcome_head(pooled),
                 "shotSubtype": self.shot_subtype_head(pooled),
@@ -107,8 +111,28 @@ def load_temporal_student_examples(repo_root: Path) -> list[TemporalStudentTrain
                 shot_subtype=shot_subtype,
                 source_kind=example.source_kind,
                 source_domain=example.source_domain,
+                source_set=example.source_set,
                 split=example.split,
-                weight=example.weight,
+                weight=_reweighted_example_weight(
+                    float(example.weight),
+                    event_family=event_family,
+                    source_kind=example.source_kind,
+                    source_domain=example.source_domain,
+                    source_set=example.source_set,
+                    has_event_localization=any(
+                        value is not None
+                        for value in (
+                            example.event_start_seconds,
+                            example.event_center_seconds,
+                            example.event_end_seconds,
+                            example.shot_release_time_seconds,
+                            example.ball_near_rim_time_seconds,
+                            example.ball_through_hoop_time_seconds,
+                            example.possession_change_time_seconds,
+                            example.transition_start_time_seconds,
+                        )
+                    ),
+                ),
                 has_event_localization=any(
                     value is not None
                     for value in (
@@ -165,8 +189,9 @@ def train_temporal_student(
     if torch.cuda.is_available():  # pragma: no cover - depends on local torch runtime
         torch.cuda.manual_seed_all(int(random_seed))
 
-    input_feature_names = default_temporal_student_feature_names()
+    input_feature_names = derive_temporal_student_feature_names(examples)
     label_spaces = {
+        "eventSpotter": EVENT_FAMILIES,
         "eventFamily": EVENT_FAMILIES,
         "outcome": OUTCOMES,
         "shotSubtype": SHOT_SUBTYPES,
@@ -182,7 +207,9 @@ def train_temporal_student(
             logits=logits,
             targets=dataset["targets"],
             weights=dataset["weights"],
+            event_mask=dataset["event_mask"],
             shot_mask=dataset["shot_mask"],
+            localization_mask=dataset["localization_mask"],
         )
         loss.backward()
         optimizer.step()
@@ -204,6 +231,43 @@ def train_temporal_student(
     )
 
 
+def derive_temporal_student_feature_names(
+    examples: Sequence[TemporalStudentTrainingExample],
+) -> tuple[str, ...]:
+    feature_names = set(default_temporal_student_feature_names())
+    for example in examples:
+        for observation in example.observations:
+            feature_names.update(build_temporal_student_feature_map(observation).keys())
+    return tuple(sorted(feature_names))
+
+
+def _reweighted_example_weight(
+    base_weight: float,
+    *,
+    event_family: str,
+    source_kind: str,
+    source_domain: str,
+    source_set: str,
+    has_event_localization: bool,
+) -> float:
+    if base_weight <= 0.0:
+        return 0.0
+    weight = float(base_weight)
+    if event_family != "other":
+        weight += 0.25
+    if has_event_localization:
+        weight += 0.35
+    if source_kind == "disagreement":
+        weight += 0.2
+    if source_set == "phase4_event_localization_queue":
+        weight += 0.25
+    if source_domain in {"live_shadow", "live_runtime", "live_staging", "staging_smoke"}:
+        weight += 0.15
+    if source_domain in {"hard_negative", "manual_negative"} and event_family == "other":
+        weight += 0.45
+    return round(min(weight, 6.0), 4)
+
+
 def evaluate_temporal_student_bundle(
     bundle: TemporalStudentBundle,
     examples: Sequence[TemporalStudentTrainingExample],
@@ -219,12 +283,21 @@ def evaluate_temporal_student_bundle(
     rows: list[dict[str, Any]] = []
     for example in evaluation_examples:
         prediction = bundle.predict(example.observations)
+        predicted_spotter_family = str(
+            (prediction.metadata or {}).get("temporal_student_event_spotter_family")
+            or prediction.eventFamily
+            or "other"
+        )
         rows.append(
             {
                 "clipId": example.clip_id,
                 "expectedEventFamily": example.event_family,
                 "expectedOutcome": example.outcome,
                 "expectedShotSubtype": example.shot_subtype or "null",
+                "predictedSpotterFamily": predicted_spotter_family,
+                "predictedSpotterLikelyEvent": bool(
+                    (prediction.metadata or {}).get("temporal_student_event_spotter_likely_event")
+                ),
                 "predictedEventFamily": prediction.eventFamily or "other",
                 "predictedOutcome": prediction.outcome or "uncertain",
                 "predictedShotSubtype": prediction.shotSubtype or "null",
@@ -265,17 +338,17 @@ def evaluate_temporal_student_bundle(
     true_positive = sum(
         1
         for row in localized_rows
-        if row["expectedEventFamily"] != "other" and row["predictedEventFamily"] != "other"
+        if row["expectedEventFamily"] != "other" and row["predictedSpotterFamily"] != "other"
     )
     false_positive = sum(
         1
         for row in localized_rows
-        if row["expectedEventFamily"] == "other" and row["predictedEventFamily"] != "other"
+        if row["expectedEventFamily"] == "other" and row["predictedSpotterFamily"] != "other"
     )
     false_negative = sum(
         1
         for row in localized_rows
-        if row["expectedEventFamily"] != "other" and row["predictedEventFamily"] == "other"
+        if row["expectedEventFamily"] != "other" and row["predictedSpotterFamily"] == "other"
     )
     event_detection_precision = round(
         true_positive / max(true_positive + false_positive, 1),
@@ -298,6 +371,8 @@ def evaluate_temporal_student_bundle(
         "highlightDominance": highlight_dominance,
         "otherDominance": other_dominance,
         "missVsMadeConfusion": miss_vs_made_confusion,
+        "eventSpotterPrecision": event_detection_precision,
+        "eventSpotterRecall": event_detection_recall,
         "eventDetectionPrecision": event_detection_precision,
         "eventDetectionRecall": event_detection_recall,
         "eventDetectionLabeledRows": len(localized_rows),
@@ -326,6 +401,7 @@ def build_training_tensors(
         dtype=torch.float32,
     )
     targets = {
+        "eventSpotter": torch.tensor([EVENT_FAMILIES.index(example.event_family) for example in examples], dtype=torch.long),
         "eventFamily": torch.tensor([EVENT_FAMILIES.index(example.event_family) for example in examples], dtype=torch.long),
         "outcome": torch.tensor([OUTCOMES.index(example.outcome) for example in examples], dtype=torch.long),
         "shotSubtype": torch.tensor(
@@ -334,12 +410,16 @@ def build_training_tensors(
         ),
     }
     weights = torch.tensor([float(max(example.weight, 0.0)) for example in examples], dtype=torch.float32)
+    event_mask = torch.tensor([1.0 if example.event_family != "other" else 0.0 for example in examples], dtype=torch.float32)
     shot_mask = torch.tensor([1.0 if example.event_family == "shot_attempt" else 0.0 for example in examples], dtype=torch.float32)
+    localization_mask = torch.tensor([1.0 if example.has_event_localization else 0.0 for example in examples], dtype=torch.float32)
     return {
         "inputs": inputs,
         "targets": targets,
         "weights": weights,
+        "event_mask": event_mask,
         "shot_mask": shot_mask,
+        "localization_mask": localization_mask,
     }
 
 
@@ -348,22 +428,41 @@ def compute_student_loss(
     logits: dict[str, Any],
     targets: dict[str, Any],
     weights,
+    event_mask,
     shot_mask,
+    localization_mask,
 ):
+    spotter_loss = _focal_cross_entropy(logits["eventSpotter"], targets["eventSpotter"], gamma=2.0)
     event_loss = F.cross_entropy(logits["eventFamily"], targets["eventFamily"], reduction="none")
     outcome_loss = F.cross_entropy(logits["outcome"], targets["outcome"], reduction="none")
     subtype_loss = F.cross_entropy(logits["shotSubtype"], targets["shotSubtype"], reduction="none")
 
-    weighted_event = event_loss * weights
-    weighted_outcome = outcome_loss * weights
+    negative_mask = 1.0 - event_mask
+    spotter_weights = weights * (1.2 + (0.4 * negative_mask) + (0.25 * event_mask) + (0.2 * localization_mask))
+    family_weights = weights * (1.0 + (0.2 * event_mask) + (0.1 * localization_mask))
+    outcome_weights = weights * event_mask
+    weighted_spotter = spotter_loss * spotter_weights
+    weighted_event = event_loss * family_weights
+    weighted_outcome = outcome_loss * outcome_weights
     weighted_subtype = subtype_loss * weights * shot_mask
-    normalizer = torch.clamp(weights.sum(), min=1e-6)
+    spotter_normalizer = torch.clamp(spotter_weights.sum(), min=1e-6)
+    normalizer = torch.clamp(family_weights.sum(), min=1e-6)
+    outcome_normalizer = torch.clamp(outcome_weights.sum(), min=1e-6)
     subtype_normalizer = torch.clamp((weights * shot_mask).sum(), min=1e-6)
     return (
-        weighted_event.sum() / normalizer
-        + weighted_outcome.sum() / normalizer
+        weighted_spotter.sum() / spotter_normalizer
+        + weighted_event.sum() / normalizer
+        + weighted_outcome.sum() / outcome_normalizer
         + weighted_subtype.sum() / subtype_normalizer
     )
+
+
+def _focal_cross_entropy(logits, targets, *, gamma: float) -> Any:
+    base_loss = F.cross_entropy(logits, targets, reduction="none")
+    probabilities = torch.softmax(logits, dim=1)
+    target_probabilities = probabilities.gather(1, targets.unsqueeze(1)).squeeze(1)
+    modulation = torch.pow(1.0 - target_probabilities, gamma)
+    return base_loss * modulation
 
 
 def compute_training_metrics(
@@ -398,6 +497,7 @@ def export_temporal_student_bundle(
 
     targets = {}
     for name, labels, head in (
+        ("eventSpotter", label_spaces["eventSpotter"], model.event_spotter_head),
         ("eventFamily", label_spaces["eventFamily"], model.event_family_head),
         ("outcome", label_spaces["outcome"], model.outcome_head),
         ("shotSubtype", label_spaces["shotSubtype"], model.shot_subtype_head),
@@ -410,15 +510,15 @@ def export_temporal_student_bundle(
         )
 
     return TemporalStudentBundle(
-        schema_version="temporal-student-v1",
-        feature_schema_version="temporal-student-feature-v1",
+        schema_version="temporal-student-v3",
+        feature_schema_version="temporal-student-feature-v3",
         model_version=TEMPORAL_STUDENT_MODEL_VERSION,
         trained_at=datetime.now(timezone.utc).isoformat(),
         source_dataset=source_dataset,
         notes=(
-            "Perception-first temporal student trained on structured basketball signals.",
-            "Gold examples anchor evaluation and weighting remains source-aware.",
-            "Candidate windows stay frozen; only labels and perception features change.",
+            "Perception-first temporal student trained on structured basketball signals and event-spotting supervision.",
+            "A first-stage event spotter gates outcome and subtype inference on likely basketball events.",
+            "Phase4 event-localization queue is included as disagreement-weighted in-domain supervision.",
         ),
         input_feature_names=tuple(input_feature_names),
         hidden_size=int(model.projection.out_features),
@@ -439,6 +539,7 @@ def build_temporal_student_report(
         "# Temporal Student Report",
         "",
         f"- Event family accuracy: `{metrics.get('eventFamilyAccuracy')}`",
+        f"- Event-spotter precision / recall: `{metrics.get('eventSpotterPrecision')}` / `{metrics.get('eventSpotterRecall')}`",
         f"- Outcome accuracy: `{metrics.get('outcomeAccuracy')}`",
         f"- Shot subtype accuracy: `{metrics.get('shotSubtypeAccuracy')}`",
         f"- Uncertainty rate: `{metrics.get('uncertaintyRate')}`",
@@ -468,14 +569,23 @@ def build_temporal_student_report(
 def _export_target(*, name: str, labels: Sequence[str], weight_matrix: np.ndarray, bias_vector: np.ndarray):
     from services.inference.app.temporal_encoder import TemporalTargetModel
 
+    if name == "eventSpotter":
+        uncertainty_threshold = 0.5
+        margin_threshold = 0.08
+    elif name == "eventFamily":
+        uncertainty_threshold = 0.48
+        margin_threshold = 0.06
+    else:
+        uncertainty_threshold = 0.46
+        margin_threshold = 0.05
     return TemporalTargetModel(
         name=name,
         classes=tuple(str(label) for label in labels),
         weight=tuple(tuple(float(value) for value in row) for row in weight_matrix.tolist()),
         bias=tuple(float(value) for value in bias_vector.tolist()),
         temperature=1.0,
-        uncertainty_threshold=0.48 if name == "eventFamily" else 0.46,
-        margin_threshold=0.06 if name == "eventFamily" else 0.05,
+        uncertainty_threshold=uncertainty_threshold,
+        margin_threshold=margin_threshold,
         top_k=3,
     )
 
@@ -509,8 +619,6 @@ def _phase_structured_signals(
     structured_signals: dict[str, Any],
     position: float,
 ) -> dict[str, float]:
-    clip_duration = max(_coerce_float((example.raw_runtime_outputs or {}).get("clipDurationSeconds"), default=0.0), 1.0)
-    timestamp_seconds = round(position * clip_duration, 4)
     signals = {
         "ballNearRim": _coerce_float(structured_signals.get("ballNearRim"), default=_coerce_float(example.features.get("signal.ballNearRim"), default=0.0)),
         "ballAboveRim": _coerce_float(structured_signals.get("ballAboveRim"), default=0.0),
@@ -525,35 +633,6 @@ def _phase_structured_signals(
         "shotReleaseCandidate": _coerce_float(structured_signals.get("shotReleaseCandidate"), default=0.0),
         "samePlayContinuityScore": _coerce_float(structured_signals.get("samePlayContinuityScore"), default=0.0),
     }
-    if example.event_family == "shot_attempt":
-        if position >= 0.55:
-            signals["shotReleaseCandidate"] = max(signals["shotReleaseCandidate"], 0.82)
-            signals["ballNearRim"] = max(signals["ballNearRim"], 0.6)
-        if example.outcome == "made" and position >= 0.7:
-            signals["ballThroughHoopLikelihood"] = max(signals["ballThroughHoopLikelihood"], 0.78)
-        if example.outcome == "missed" and position >= 0.7:
-            signals["ballThroughHoopLikelihood"] = min(signals["ballThroughHoopLikelihood"], 0.2)
-    if example.event_family == "transition":
-        signals["transitionLikelihood"] = max(signals["transitionLikelihood"], 0.72)
-        signals["transitionSpeedScore"] = max(signals["transitionSpeedScore"], 0.68)
-    if example.event_family == "turnover" and position >= 0.4:
-        signals["possessionChangeLikelihood"] = max(signals["possessionChangeLikelihood"], 0.7)
-    release_activation = _localization_activation(timestamp_seconds, example.shot_release_time_seconds, width_seconds=0.45)
-    near_rim_activation = _localization_activation(timestamp_seconds, example.ball_near_rim_time_seconds, width_seconds=0.55)
-    through_hoop_activation = _localization_activation(timestamp_seconds, example.ball_through_hoop_time_seconds, width_seconds=0.55)
-    possession_activation = _localization_activation(timestamp_seconds, example.possession_change_time_seconds, width_seconds=0.6)
-    transition_activation = _localization_activation(timestamp_seconds, example.transition_start_time_seconds, width_seconds=0.8)
-    if release_activation > 0.0:
-        signals["shotReleaseCandidate"] = max(signals["shotReleaseCandidate"], 0.65 + (0.3 * release_activation))
-    if near_rim_activation > 0.0:
-        signals["ballNearRim"] = max(signals["ballNearRim"], 0.55 + (0.35 * near_rim_activation))
-    if through_hoop_activation > 0.0:
-        signals["ballThroughHoopLikelihood"] = max(signals["ballThroughHoopLikelihood"], 0.55 + (0.35 * through_hoop_activation))
-    if possession_activation > 0.0:
-        signals["possessionChangeLikelihood"] = max(signals["possessionChangeLikelihood"], 0.55 + (0.35 * possession_activation))
-    if transition_activation > 0.0:
-        signals["transitionLikelihood"] = max(signals["transitionLikelihood"], 0.55 + (0.35 * transition_activation))
-        signals["transitionSpeedScore"] = max(signals["transitionSpeedScore"], 0.5 + (0.32 * transition_activation))
     return {key: round(max(min(value, 1.0), 0.0), 4) for key, value in signals.items()}
 
 
@@ -615,9 +694,6 @@ def _phase_tracking_features(
     position: float,
 ) -> dict[str, float]:
     track_counts = dict(perception_summary.get("trackCounts") or {})
-    continuity = _coerce_float(example.features.get("signal.samePlayContinuityScore"), default=0.0)
-    if example.event_family == "transition":
-        continuity = max(continuity, 0.66)
     return {
         "playerTrackCount": float(_coerce_int(track_counts.get("player")) or 3),
         "trackedPlayerCount": float(_coerce_int(track_counts.get("player")) or 3),
@@ -627,7 +703,7 @@ def _phase_tracking_features(
         ),
         "ballTrackCount": float(_coerce_int(track_counts.get("basketball")) or (1 if example.ball_visible else 0)),
         "rimTrackCount": float(_coerce_int(track_counts.get("rim")) or (1 if example.hoop_visible else 0)),
-        "trackingContinuity": continuity,
+        "trackingContinuity": _coerce_float(example.features.get("signal.samePlayContinuityScore"), default=0.0),
         "trackingDensity": _coerce_float(example.features.get("perception.trackCount.total"), default=0.0) / 6.0,
     }
 
@@ -641,22 +717,22 @@ def _runtime_features(
         "label": runtime.get("label"),
         "canonicalLabel": runtime.get("canonicalLabel") or runtime.get("label"),
         "displayLabel": runtime.get("label"),
-        "eventFamily": runtime.get("eventFamily") or example.event_family,
-        "outcome": runtime.get("outcome") or example.outcome,
-        "shotSubtype": runtime.get("shotSubtype") or example.shot_subtype,
+        "eventFamily": runtime.get("eventFamily"),
+        "outcome": runtime.get("outcome"),
+        "shotSubtype": runtime.get("shotSubtype"),
         "confidence": runtime.get("confidence", 0.0),
         "topCount": len(runtime.get("topKLabels") or []),
         "sourceRef": example.source_ref,
         "humanVerified": example.human_verified,
         "clipDurationSeconds": runtime.get("clipDurationSeconds", clip_duration),
-        "eventStartSeconds": runtime.get("eventStartSeconds", example.event_start_seconds),
-        "eventCenterSeconds": runtime.get("eventCenterSeconds", example.event_center_seconds if example.event_center_seconds is not None else clip_duration / 2.0),
-        "eventEndSeconds": runtime.get("eventEndSeconds", example.event_end_seconds),
-        "shotReleaseTimeSeconds": runtime.get("shotReleaseTimeSeconds", example.shot_release_time_seconds),
-        "ballNearRimTimeSeconds": runtime.get("ballNearRimTimeSeconds", example.ball_near_rim_time_seconds),
-        "ballThroughHoopTimeSeconds": runtime.get("ballThroughHoopTimeSeconds", example.ball_through_hoop_time_seconds),
-        "possessionChangeTimeSeconds": runtime.get("possessionChangeTimeSeconds", example.possession_change_time_seconds),
-        "transitionStartTimeSeconds": runtime.get("transitionStartTimeSeconds", example.transition_start_time_seconds),
+        "eventStartSeconds": runtime.get("eventStartSeconds"),
+        "eventCenterSeconds": runtime.get("eventCenterSeconds", clip_duration / 2.0),
+        "eventEndSeconds": runtime.get("eventEndSeconds"),
+        "shotReleaseTimeSeconds": runtime.get("shotReleaseTimeSeconds"),
+        "ballNearRimTimeSeconds": runtime.get("ballNearRimTimeSeconds"),
+        "ballThroughHoopTimeSeconds": runtime.get("ballThroughHoopTimeSeconds"),
+        "possessionChangeTimeSeconds": runtime.get("possessionChangeTimeSeconds"),
+        "transitionStartTimeSeconds": runtime.get("transitionStartTimeSeconds"),
         "preRollSeconds": runtime.get("preRollSeconds", clip_duration / 2.0),
         "postRollSeconds": runtime.get("postRollSeconds", clip_duration / 2.0),
         "sourceEventCount": runtime.get("sourceEventCount", 1),
@@ -692,12 +768,3 @@ def _coerce_int(value: Any) -> int:
         return int(value)
     except (TypeError, ValueError):
         return 0
-
-
-def _localization_activation(timestamp_seconds: float, event_time_seconds: float | None, *, width_seconds: float) -> float:
-    if event_time_seconds is None:
-        return 0.0
-    distance = abs(float(timestamp_seconds) - float(event_time_seconds))
-    if distance >= width_seconds:
-        return 0.0
-    return round(1.0 - (distance / max(width_seconds, 1e-6)), 4)

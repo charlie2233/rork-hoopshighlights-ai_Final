@@ -298,7 +298,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     fileSizeBytes: Number.parseInt(map.get("--file-size-bytes") ?? "10485760", 10),
     durationSeconds: Number.parseFloat(map.get("--duration-seconds") ?? "24"),
     appVersion: map.get("--app-version") ?? "1.0.0",
-    analysisVersion: map.get("--analysis-version") ?? "phase1a",
+    analysisVersion: map.get("--analysis-version") ?? "phase4a",
     modelVersion: map.get("--model-version") ?? "video-mae-stub-v1",
     traceId: map.get("--trace-id") ?? crypto.randomUUID(),
     pollIntervalSeconds: Number.parseFloat(map.get("--poll-interval-seconds") ?? "1"),

@@ -131,6 +131,7 @@ class TemporalStudentTests(unittest.TestCase):
 
         self.assertGreater(len(examples), 0)
         self.assertTrue(any(example.source_kind == "gold" for example in examples))
+        self.assertTrue(any(example.source_set == "phase4_event_localization_queue" for example in examples))
         feature_map = build_temporal_student_feature_map(examples[0].observations[0])
         self.assertIn("ball_detection_confidence", feature_map)
         self.assertIn("tracking_continuity", feature_map)
@@ -178,6 +179,7 @@ class TemporalStudentTests(unittest.TestCase):
         self.assertEqual(made_prediction.eventFamily, "shot_attempt")
         self.assertEqual(made_prediction.outcome, "made")
         self.assertEqual(made_prediction.shotSubtype, "dunk")
+        self.assertTrue(made_prediction.metadata.get("temporal_student_event_spotter_likely_event"))
         self.assertEqual(turnover_prediction.eventFamily, "turnover")
         self.assertIsNone(turnover_prediction.shotSubtype)
         self.assertIn(turnover_prediction.label, {"Steal", "Highlight", "Fast Break"})
@@ -222,9 +224,61 @@ class TemporalStudentTests(unittest.TestCase):
         self.assertIn("highlightDominance", metrics)
         self.assertIn("otherDominance", metrics)
         self.assertIn("missVsMadeConfusion", metrics)
+        self.assertIn("eventSpotterPrecision", metrics)
+        self.assertIn("eventSpotterRecall", metrics)
         self.assertIn("eventDetectionPrecision", metrics)
         self.assertIn("eventDetectionRecall", metrics)
         self.assertGreaterEqual(metrics["flatLabelSpread"], 1)
+
+    @unittest.skipIf(torch is None, "torch is required for temporal student training")
+    def test_temporal_student_can_confidently_gate_non_events(self) -> None:
+        shot = TemporalStudentTrainingExample(
+            clip_id="gold-made-three",
+            source_kind="gold",
+            source_domain="live_shadow",
+            source_set="gold_set",
+            split="val",
+            event_family="shot_attempt",
+            outcome="made",
+            shot_subtype="three",
+            observations=tuple(
+                _make_observation(event_family="shot_attempt", outcome="made", shot_subtype="three", position=position)
+                for position in (0.14, 0.42, 0.7, 0.9)
+            ),
+            weight=4.0,
+            has_event_localization=True,
+        )
+        negative = TemporalStudentTrainingExample(
+            clip_id="gold-hard-negative-pan",
+            source_kind="gold",
+            source_domain="manual_negative",
+            source_set="phase4_event_localization_queue",
+            split="test",
+            event_family="other",
+            outcome="uncertain",
+            shot_subtype=None,
+            observations=tuple(
+                _make_observation(
+                    event_family="other",
+                    outcome="uncertain",
+                    shot_subtype=None,
+                    position=position,
+                    ball_visible=False,
+                    hoop_visible=False,
+                )
+                for position in (0.12, 0.38, 0.68, 0.9)
+            ),
+            weight=4.5,
+            has_event_localization=False,
+        )
+
+        result = train_temporal_student([shot, negative], hidden_size=8, epochs=10, learning_rate=0.05)
+        negative_prediction = result.bundle.predict(negative.observations)
+
+        self.assertEqual(negative_prediction.eventFamily, "other")
+        self.assertEqual(negative_prediction.outcome, "uncertain")
+        self.assertIsNone(negative_prediction.shotSubtype)
+        self.assertFalse(negative_prediction.metadata.get("temporal_student_event_spotter_likely_event"))
 
 
 if __name__ == "__main__":

@@ -13,9 +13,9 @@ from services.inference.app.runtime_model import derive_runtime_display_label
 from services.inference.app.temporal_encoder import TemporalTargetModel
 
 
-TEMPORAL_STUDENT_SCHEMA_VERSION = "temporal-student-v2"
-TEMPORAL_STUDENT_FEATURE_SCHEMA_VERSION = "temporal-student-feature-v2"
-TEMPORAL_STUDENT_MODEL_VERSION = "temporal-student-staged-v1"
+TEMPORAL_STUDENT_SCHEMA_VERSION = "temporal-student-v3"
+TEMPORAL_STUDENT_FEATURE_SCHEMA_VERSION = "temporal-student-feature-v3"
+TEMPORAL_STUDENT_MODEL_VERSION = "temporal-student-gated-v2"
 TEMPORAL_STUDENT_BUNDLE_PATH = Path(__file__).resolve().parents[2] / "models" / "temporal_student_v1.json"
 MAX_TEMPORAL_STUDENT_TOPK = 3
 
@@ -100,29 +100,48 @@ class TemporalStudentBundle:
     def predict(self, observations: Sequence[TemporalStudentObservation]) -> ActionPrediction:
         hidden, attention = self.encode_observations(observations)
         pooled = self.pool_hidden_states(hidden, attention)
-        family_prediction = self.targets["eventFamily"].predict(pooled, model_version=self.model_version)
-        event_family = family_prediction.label if not family_prediction.is_uncertain else "other"
-        outcome_prediction = _predict_conditioned_target(
-            self.targets["outcome"],
-            pooled,
-            model_version=self.model_version,
-            allowed_labels=(
-                OUTCOMES if family_prediction.is_uncertain else CONDITIONED_OUTCOME_LABELS.get(event_family, OUTCOMES)
-            ),
-        )
-        subtype_prediction = _predict_conditioned_target(
-            self.targets["shotSubtype"],
-            pooled,
-            model_version=self.model_version,
-            allowed_labels=(
-                SHOT_SUBTYPES
-                if family_prediction.is_uncertain
-                else CONDITIONED_SUBTYPE_LABELS.get(event_family, SHOT_SUBTYPES)
-            ),
-        )
-        outcome = _resolve_student_outcome(event_family, outcome_prediction)
+        event_spotter_target = self.targets.get("eventSpotter") or self.targets["eventFamily"]
+        family_target = self.targets.get("eventFamily") or event_spotter_target
+        event_spotter_prediction = event_spotter_target.predict(pooled, model_version=self.model_version)
+        family_prediction = family_target.predict(pooled, model_version=self.model_version)
+        spotted_event_family = event_spotter_prediction.label if not event_spotter_prediction.is_uncertain else "other"
+        gate_open = not event_spotter_prediction.is_uncertain and spotted_event_family != "other"
+        if gate_open:
+            if family_prediction.is_uncertain or family_prediction.label == "other":
+                event_family = spotted_event_family
+            else:
+                event_family = family_prediction.label
+        else:
+            event_family = "other"
+
+        if gate_open:
+            outcome_prediction = _predict_conditioned_target(
+                self.targets["outcome"],
+                pooled,
+                model_version=self.model_version,
+                allowed_labels=CONDITIONED_OUTCOME_LABELS.get(event_family, OUTCOMES),
+            )
+            subtype_prediction = _predict_conditioned_target(
+                self.targets["shotSubtype"],
+                pooled,
+                model_version=self.model_version,
+                allowed_labels=CONDITIONED_SUBTYPE_LABELS.get(event_family, SHOT_SUBTYPES),
+            )
+            outcome = _resolve_student_outcome(event_family, outcome_prediction)
+        else:
+            outcome_prediction = _fallback_temporal_prediction(
+                label="uncertain",
+                confidence=event_spotter_prediction.confidence,
+                model_version=self.model_version,
+            )
+            subtype_prediction = _fallback_temporal_prediction(
+                label="null",
+                confidence=event_spotter_prediction.confidence,
+                model_version=self.model_version,
+            )
+            outcome = "uncertain"
         shot_subtype: str | None = None
-        if event_family == "shot_attempt" and not subtype_prediction.is_uncertain and subtype_prediction.label != "null":
+        if gate_open and event_family == "shot_attempt" and not subtype_prediction.is_uncertain and subtype_prediction.label != "null":
             shot_subtype = subtype_prediction.label
 
         canonical_label, display_label = derive_runtime_display_label(
@@ -131,18 +150,24 @@ class TemporalStudentBundle:
             shot_subtype=shot_subtype,
         )
         is_uncertain = (
-            family_prediction.is_uncertain
-            or outcome_prediction.is_uncertain
-            or (event_family == "shot_attempt" and shot_subtype is None and outcome != "made")
-            or display_label == "Highlight"
+            event_spotter_prediction.is_uncertain
+            or (gate_open and family_prediction.is_uncertain)
+            or (gate_open and outcome_prediction.is_uncertain)
+            or (gate_open and event_family == "shot_attempt" and shot_subtype is None and outcome != "made")
+            or (gate_open and display_label == "Highlight")
         )
-        confidence_before_mapping = family_prediction.confidence
+        confidence_before_mapping = event_spotter_prediction.confidence if not gate_open else max(
+            event_spotter_prediction.confidence,
+            family_prediction.confidence,
+        )
         confidence_after_mapping = round(
             _resolve_student_confidence(
                 display_label=display_label,
+                event_spotter_prediction=event_spotter_prediction,
                 family_prediction=family_prediction,
                 outcome_prediction=outcome_prediction,
                 subtype_prediction=subtype_prediction,
+                gate_open=gate_open,
                 is_uncertain=is_uncertain,
             ),
             4,
@@ -153,6 +178,12 @@ class TemporalStudentBundle:
             "temporal_student_feature_schema_version": self.feature_schema_version,
             "temporal_student_frame_count": len(observations),
             "temporal_student_attention": [round(float(value), 4) for value in attention.tolist()],
+            "temporal_student_event_spotter_family": spotted_event_family,
+            "temporal_student_event_spotter_likely_event": gate_open,
+            "temporal_student_event_spotter_distribution": event_spotter_prediction.distribution,
+            "temporal_student_event_spotter_top_labels": [
+                item.model_dump(mode="json") for item in event_spotter_prediction.top_labels
+            ],
             "temporal_student_family_distribution": family_prediction.distribution,
             "temporal_student_outcome_distribution": outcome_prediction.distribution,
             "temporal_student_subtype_distribution": subtype_prediction.distribution,
@@ -160,15 +191,11 @@ class TemporalStudentBundle:
             "temporal_student_outcome_top_labels": [item.model_dump(mode="json") for item in outcome_prediction.top_labels],
             "temporal_student_subtype_top_labels": [item.model_dump(mode="json") for item in subtype_prediction.top_labels],
             "temporal_student_head_chain": {
+                "eventSpotter": spotted_event_family,
+                "gateOpen": gate_open,
                 "eventFamily": event_family,
-                "outcomeAllowedLabels": list(
-                    OUTCOMES if family_prediction.is_uncertain else CONDITIONED_OUTCOME_LABELS.get(event_family, OUTCOMES)
-                ),
-                "shotSubtypeAllowedLabels": list(
-                    SHOT_SUBTYPES
-                    if family_prediction.is_uncertain
-                    else CONDITIONED_SUBTYPE_LABELS.get(event_family, SHOT_SUBTYPES)
-                ),
+                "outcomeAllowedLabels": list(CONDITIONED_OUTCOME_LABELS.get(event_family, OUTCOMES)) if gate_open else ["uncertain"],
+                "shotSubtypeAllowedLabels": list(CONDITIONED_SUBTYPE_LABELS.get(event_family, SHOT_SUBTYPES)) if gate_open else ["null"],
             },
         }
         return ActionPrediction(
@@ -177,28 +204,32 @@ class TemporalStudentBundle:
             confidence=confidence_after_mapping,
             modelVersion=self.model_version,
             detectionMethod="temporal_student",
-            topLabels=list(family_prediction.top_labels),
+            topLabels=list(event_spotter_prediction.top_labels),
             eventFamily=event_family,
             shotSubtype=shot_subtype,
             outcome=outcome,
             confidenceBeforeMapping=round(confidence_before_mapping, 4),
             confidenceAfterMapping=confidence_after_mapping,
-            eventFamilyConfidenceBeforeMapping=family_prediction.confidence,
+            eventFamilyConfidenceBeforeMapping=event_spotter_prediction.confidence,
             eventFamilyConfidenceAfterMapping=round(
-                max(family_prediction.confidence - (0.08 if family_prediction.is_uncertain else 0.0), 0.0),
+                max(
+                    max(event_spotter_prediction.confidence, family_prediction.confidence)
+                    - (0.08 if event_spotter_prediction.is_uncertain else 0.0),
+                    0.0,
+                ),
                 4,
             ),
-            shotSubtypeConfidenceBeforeMapping=subtype_prediction.confidence if shot_subtype is not None else None,
+            shotSubtypeConfidenceBeforeMapping=subtype_prediction.confidence if gate_open and shot_subtype is not None else None,
             shotSubtypeConfidenceAfterMapping=(
                 round(max(subtype_prediction.confidence - (0.06 if subtype_prediction.is_uncertain else 0.0), 0.0), 4)
-                if shot_subtype is not None
+                if gate_open and shot_subtype is not None
                 else None
             ),
-            outcomeConfidenceBeforeMapping=outcome_prediction.confidence,
+            outcomeConfidenceBeforeMapping=outcome_prediction.confidence if gate_open else None,
             outcomeConfidenceAfterMapping=round(
                 max(outcome_prediction.confidence - (0.06 if outcome_prediction.is_uncertain else 0.0), 0.0),
                 4,
-            ),
+            ) if gate_open else None,
             isUncertain=is_uncertain,
             metadata=metadata,
         )
@@ -451,10 +482,12 @@ def default_temporal_student_feature_names() -> tuple[str, ...]:
         "source_domain=live_runtime",
         "source_domain=live_staging",
         "source_domain=live_shadow",
+        "source_domain=manual_negative",
         "source_domain=staging_smoke",
         "source_domain=teacher_pseudo",
         "source_domain=benchmark_eval",
         "source_domain=broadcast",
+        "source_domain=fixed_camera",
         "source_domain=fixed_camera_indoor",
         "source_domain=fixed_camera_outdoor",
         "source_domain=phone_casual",
@@ -466,6 +499,7 @@ def default_temporal_student_feature_names() -> tuple[str, ...]:
         "source_set=silver_set",
         "source_set=disagreement_queue",
         "source_set=phase4_in_domain",
+        "source_set=phase4_event_localization_queue",
         "source_set=phase4_pseudo_labels",
         "source_set=runtime_inference",
         "runtime_label=highlight",
@@ -699,12 +733,18 @@ def _predict_conditioned_target(
 def _resolve_student_confidence(
     *,
     display_label: str,
+    event_spotter_prediction: TemporalStudentTargetPrediction,
     family_prediction: TemporalTargetPrediction,
     outcome_prediction: TemporalTargetPrediction,
     subtype_prediction: TemporalTargetPrediction,
+    gate_open: bool,
     is_uncertain: bool,
 ) -> float:
-    confidence = family_prediction.confidence
+    confidence = max(event_spotter_prediction.confidence, family_prediction.confidence if gate_open else 0.0)
+    if not gate_open:
+        if display_label == "Highlight":
+            return min(max(confidence, 0.0), 1.0)
+        return min(max(confidence, 0.0), 1.0)
     if display_label in {"Dunk", "Layup", "Three Pointer"}:
         confidence = max(confidence, subtype_prediction.confidence)
     elif display_label == "Made Shot":
@@ -714,6 +754,29 @@ def _resolve_student_confidence(
     if is_uncertain and display_label == "Highlight":
         confidence = min(confidence, 0.46)
     return min(max(confidence, 0.0), 1.0)
+
+
+def _fallback_temporal_prediction(
+    *,
+    label: str,
+    confidence: float,
+    model_version: str,
+) -> TemporalStudentTargetPrediction:
+    bounded_confidence = round(min(max(float(confidence), 0.0), 1.0), 4)
+    return TemporalStudentTargetPrediction(
+        label=label,
+        confidence=bounded_confidence,
+        margin=0.0,
+        distribution={label: bounded_confidence},
+        top_labels=(
+            LabelScore(
+                label=label,
+                confidence=bounded_confidence,
+                modelVersion=model_version,
+            ),
+        ),
+        is_uncertain=label in {"uncertain", "null"},
+    )
 
 
 def _add_categorical(features: dict[str, float], prefix: str, value: Any) -> None:

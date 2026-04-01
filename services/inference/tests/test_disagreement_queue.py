@@ -36,6 +36,7 @@ class DisagreementQueueTests(unittest.TestCase):
         highlight_disagree = next(item for item in queue if item.clip_id == "clip-highlight-disagree-001")
         self.assertEqual(highlight_disagree.schema_version, ANNOTATION_SCHEMA_VERSION)
         self.assertIn("runtime_teacher_disagree", highlight_disagree.priority_reasons)
+        self.assertIn("runtime_missed_likely_event", highlight_disagree.priority_reasons)
         self.assertIn("app_facing_label_only_highlight", highlight_disagree.priority_reasons)
         self.assertIn("strong_ball_hoop_evidence_null_subtype", highlight_disagree.priority_reasons)
         self.assertIn("high_teacher_low_runtime", highlight_disagree.priority_reasons)
@@ -54,6 +55,7 @@ class DisagreementQueueTests(unittest.TestCase):
 
         high_teacher_low_runtime = next(item for item in queue if item.clip_id == "clip-high-teacher-low-runtime-001")
         self.assertIn("high_teacher_low_runtime", high_teacher_low_runtime.priority_reasons)
+        self.assertNotIn("runtime_missed_likely_event", high_teacher_low_runtime.priority_reasons)
         self.assertNotIn("clip-human-verified-gold-001", [item.clip_id for item in queue])
 
     def test_rendered_outputs_are_stable_and_machine_readable(self) -> None:
@@ -62,7 +64,8 @@ class DisagreementQueueTests(unittest.TestCase):
         summary = build_summary(queue, annotations)
 
         self.assertEqual(summary["queuedClips"], 4)
-        self.assertEqual(summary["byBucket"]["runtime_teacher_disagree"], 4)
+        self.assertEqual(summary["byBucket"]["runtime_missed_likely_event"], 1)
+        self.assertEqual(summary["byBucket"]["runtime_teacher_disagree"], 3)
         self.assertEqual(summary["byEventLocalizationState"]["coarse"], 1)
         self.assertEqual(summary["byEventLocalizationState"]["missing"], 3)
         self.assertEqual(summary["bySourceDomain"]["broadcast"], 1)

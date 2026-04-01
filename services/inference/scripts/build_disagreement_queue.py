@@ -198,6 +198,16 @@ def score_annotation(
         priority_reasons.append("runtime_teacher_disagree")
         priority_score += 0.4
 
+    if _runtime_missed_likely_event(
+        runtime_event_family=runtime_event_family,
+        runtime_label=runtime_label,
+        teacher_event_family=teacher_event_family,
+        teacher_confidence=teacher_confidence,
+        min_teacher_confidence=min_teacher_confidence,
+    ):
+        priority_reasons.append("runtime_missed_likely_event")
+        priority_score += 0.32
+
     if _miss_made_conflict(runtime_outcome, teacher_outcome, runtime_label, teacher_label):
         priority_reasons.append("miss_vs_made_conflict")
         priority_score += 0.3
@@ -340,6 +350,7 @@ def main() -> int:
 
 def _primary_bucket(priority_reasons: list[str]) -> str:
     for reason in (
+        "runtime_missed_likely_event",
         "runtime_teacher_disagree",
         "miss_vs_made_conflict",
         "app_facing_label_only_highlight",
@@ -470,6 +481,25 @@ def _runtime_and_teacher_disagree(
 def _miss_made_conflict(runtime_outcome: str, teacher_outcome: str | None, runtime_label: str, teacher_label: str | None) -> bool:
     made_miss = {"made", "missed"}
     if runtime_outcome in made_miss and teacher_outcome in made_miss and runtime_outcome != teacher_outcome:
+        return True
+    return False
+
+
+def _runtime_missed_likely_event(
+    *,
+    runtime_event_family: str,
+    runtime_label: str,
+    teacher_event_family: str | None,
+    teacher_confidence: float | None,
+    min_teacher_confidence: float,
+) -> bool:
+    if teacher_event_family in {None, "other"}:
+        return False
+    if teacher_confidence is not None and teacher_confidence < min_teacher_confidence:
+        return False
+    if runtime_event_family == "other":
+        return True
+    if _label_is_highlight_only(runtime_label) and runtime_event_family in {"unknown", ""}:
         return True
     return False
 

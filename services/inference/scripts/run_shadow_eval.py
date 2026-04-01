@@ -32,6 +32,7 @@ class ShadowClipRecord:
     modelVersion: str | None
     flatLabel: str
     eventFamily: str
+    eventSpotterFamily: str | None
     shotSubtype: str | None
     outcome: str
     confidence: float
@@ -149,6 +150,8 @@ def build_shadow_report(records: list[ShadowClipRecord]) -> dict[str, Any]:
             "highlightDominance": highlight_dominance,
             "eventFamilyOtherDominance": event_family_other_dominance,
             "missVsMadeConfusion": miss_vs_made_confusion,
+            "eventSpotterPrecision": labeled_eval["eventSpotterPrecision"],
+            "eventSpotterRecall": labeled_eval["eventSpotterRecall"],
             "eventDetectionPrecision": labeled_eval["eventDetectionPrecision"],
             "eventDetectionRecall": labeled_eval["eventDetectionRecall"],
             "eventFamilyAccuracy": labeled_eval["eventFamilyAccuracy"],
@@ -191,6 +194,10 @@ def render_markdown(report: dict[str, Any]) -> str:
     lines.append(f"- Source domains: `{json.dumps(summary['sourceDomainDistribution'], sort_keys=True)}`")
     lines.append(f"- Miss-vs-made confusion: `{json.dumps(summary['missVsMadeConfusion'], sort_keys=True)}`")
     if summary.get("labeledClipCount", 0) > 0:
+        lines.append(
+            f"- Event spotter precision / recall: "
+            f"`{summary['eventSpotterPrecision']}` / `{summary['eventSpotterRecall']}`"
+        )
         lines.append(
             f"- Event detection precision / recall: "
             f"`{summary['eventDetectionPrecision']}` / `{summary['eventDetectionRecall']}`"
@@ -330,6 +337,7 @@ def _normalize_batch_item(item: dict[str, Any], *, shadow_source: str = "auto") 
                 ),
                 flatLabel=_normalize_flat_label(clip, shadow_payload),
                 eventFamily=_normalize_event_family(clip, shadow_payload),
+                eventSpotterFamily=_normalize_event_spotter_family(clip, shadow_payload),
                 shotSubtype=_normalize_shot_subtype(clip, shadow_payload),
                 outcome=_normalize_outcome(clip, shadow_payload),
                 confidence=_normalize_confidence(clip, shadow_payload),
@@ -466,6 +474,8 @@ def build_labeled_eval_summary(records: list[ShadowClipRecord]) -> dict[str, Any
     if not labeled:
         return {
             "labeledClipCount": 0,
+            "eventSpotterPrecision": None,
+            "eventSpotterRecall": None,
             "eventDetectionPrecision": None,
             "eventDetectionRecall": None,
             "eventFamilyAccuracy": None,
@@ -474,11 +484,11 @@ def build_labeled_eval_summary(records: list[ShadowClipRecord]) -> dict[str, Any
         }
 
     actual_positive = [record for record in labeled if normalize_bucket(record.expectedEventFamily) != "other"]
-    predicted_positive = [record for record in labeled if normalize_bucket(record.eventFamily) != "other"]
+    predicted_positive = [record for record in labeled if normalize_bucket(_spotter_family(record)) != "other"]
     true_positive = [
         record
         for record in labeled
-        if normalize_bucket(record.expectedEventFamily) != "other" and normalize_bucket(record.eventFamily) != "other"
+        if normalize_bucket(record.expectedEventFamily) != "other" and normalize_bucket(_spotter_family(record)) != "other"
     ]
     precision = round(len(true_positive) / len(predicted_positive), 4) if predicted_positive else None
     recall = round(len(true_positive) / len(actual_positive), 4) if actual_positive else None
@@ -516,12 +526,18 @@ def build_labeled_eval_summary(records: list[ShadowClipRecord]) -> dict[str, Any
 
     return {
         "labeledClipCount": len(labeled),
+        "eventSpotterPrecision": precision,
+        "eventSpotterRecall": recall,
         "eventDetectionPrecision": precision,
         "eventDetectionRecall": recall,
         "eventFamilyAccuracy": event_family_accuracy,
         "outcomeAccuracy": outcome_accuracy,
         "shotSubtypeAccuracy": shot_subtype_accuracy,
     }
+
+
+def _spotter_family(record: ShadowClipRecord) -> str:
+    return record.eventSpotterFamily or record.eventFamily
 
 
 def build_collapse_examples(records: list[ShadowClipRecord]) -> list[dict[str, Any]]:
@@ -682,6 +698,21 @@ def _normalize_event_family(clip: dict[str, Any], shadow_payload: dict[str, Any]
     if text in EVENT_FAMILIES:
         return text
     return "other" if _normalize_flat_label(clip, shadow_payload) == "Highlight" else _taxonomy_from_label(_normalize_flat_label(clip, shadow_payload))[0]
+
+
+def _normalize_event_spotter_family(clip: dict[str, Any], shadow_payload: dict[str, Any] | None = None) -> str | None:
+    metadata = shadow_payload.get("metadata") if isinstance(shadow_payload, dict) else None
+    value = _first_non_empty(
+        shadow_payload.get("eventSpotterFamily") if shadow_payload else None,
+        shadow_payload.get("temporal_student_event_spotter_family") if shadow_payload else None,
+        metadata.get("temporal_student_event_spotter_family") if isinstance(metadata, dict) else None,
+        clip.get("eventSpotterFamily"),
+    )
+    text = normalize_text(value)
+    family = text.replace(" ", "_")
+    if family in EVENT_FAMILIES:
+        return family
+    return None
 
 
 def _normalize_shot_subtype(clip: dict[str, Any], shadow_payload: dict[str, Any] | None = None) -> str | None:
