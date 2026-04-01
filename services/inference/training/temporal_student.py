@@ -37,6 +37,7 @@ except ModuleNotFoundError:  # pragma: no cover - depends on torch availability
 
 
 TEMPORAL_STUDENT_MODEL_VERSION = "temporal-student-v1"
+DEFAULT_TEMPORAL_STUDENT_SEED = 7
 
 
 @dataclass(frozen=True)
@@ -152,11 +153,17 @@ def train_temporal_student(
     hidden_size: int = 16,
     epochs: int = 140,
     learning_rate: float = 0.025,
+    random_seed: int = DEFAULT_TEMPORAL_STUDENT_SEED,
 ) -> TemporalStudentTrainingResult:
     if torch is None or nn is None or F is None:  # pragma: no cover
         raise RuntimeError("torch is required to train the temporal student")
     if not examples:
         raise ValueError("At least one training example is required.")
+
+    np.random.seed(int(random_seed))
+    torch.manual_seed(int(random_seed))
+    if torch.cuda.is_available():  # pragma: no cover - depends on local torch runtime
+        torch.cuda.manual_seed_all(int(random_seed))
 
     input_feature_names = default_temporal_student_feature_names()
     label_spaces = {

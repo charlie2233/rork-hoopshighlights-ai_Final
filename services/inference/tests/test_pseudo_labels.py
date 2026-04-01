@@ -210,6 +210,51 @@ class Phase4PseudoLabelTests(unittest.TestCase):
             self.assertTrue((out_dir / "pseudo_label_records.jsonl").exists())
             self.assertTrue((out_dir / "filtered_records.jsonl").exists())
 
+    def test_build_phase4_pseudo_label_bundle_filters_partial_teacher_labels(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            temp_dir = Path(tmp_dir)
+            input_path = temp_dir / "phase4_inputs.jsonl"
+            row = self._make_row(
+                clip_id="teacher-partial-001",
+                source_domain="live_staging",
+                human_verified=False,
+                teacher_confidence=0.95,
+                event_family="shot_attempt",
+                outcome="made",
+                shot_subtype="layup",
+                runtime_label="Highlight",
+                teacher_notes="Teacher record missing outcome should not be retained.",
+            )
+            row.rawTeacherOutputs = {
+                "confidence": 0.95,
+                "eventFamily": "shot_attempt",
+                "shotSubtype": "layup",
+                "notes": "Missing outcome.",
+            }
+            input_path.write_text(
+                json.dumps(row.to_dict(), sort_keys=True),
+                encoding="utf-8",
+            )
+
+            output_dir = temp_dir / "out"
+            manifest = build_phase4_pseudo_label_bundle(
+                self.repo_root(),
+                output_dir,
+                input_paths=[input_path],
+                min_teacher_confidence=0.82,
+                source_domains=("live_staging",),
+            )
+
+            self.assertEqual(manifest["summary"]["pseudoLabelRecords"], 0)
+            self.assertEqual(manifest["summary"]["filteredRecords"], 1)
+            filtered_rows = [
+                json.loads(line)
+                for line in (output_dir / "filtered_records.jsonl").read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ]
+            self.assertEqual(filtered_rows[0]["gateReason"], "incomplete_teacher_labels")
+            self.assertIsNone(filtered_rows[0]["selectedOutcome"])
+
 
 if __name__ == "__main__":
     unittest.main()

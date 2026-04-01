@@ -276,6 +276,7 @@ def _build_record(
     teacher_confidence = _teacher_confidence(annotation, teacher_outputs)
     source_domain_allowed = annotation.sourceDomain in allowed_source_domains if allowed_source_domains else True
     has_teacher_outputs = teacher_outputs is not None
+    has_complete_teacher_labels = teacher_event_family is not None and teacher_outcome is not None
 
     gold_event_family = annotation.eventFamily if annotation.humanVerified else None
     gold_outcome = annotation.outcome if annotation.humanVerified else None
@@ -308,6 +309,12 @@ def _build_record(
             confidence_gate_passed = False
             training_eligible = False
             gate_reason = "missing_teacher_confidence"
+        elif not has_complete_teacher_labels:
+            record_type = "filtered"
+            selected_label_source = "teacher"
+            confidence_gate_passed = False
+            training_eligible = False
+            gate_reason = "incomplete_teacher_labels"
         elif teacher_confidence < min_teacher_confidence:
             record_type = "filtered"
             selected_label_source = "teacher"
@@ -321,9 +328,9 @@ def _build_record(
             training_eligible = True
             gate_reason = "retained"
 
-    selected_event_family = annotation.eventFamily if selected_label_source == "gold" else teacher_event_family or annotation.eventFamily
-    selected_outcome = annotation.outcome if selected_label_source == "gold" else teacher_outcome or annotation.outcome
-    selected_shot_subtype = annotation.shotSubtype if selected_label_source == "gold" else teacher_shot_subtype or annotation.shotSubtype
+    selected_event_family = annotation.eventFamily if selected_label_source == "gold" else teacher_event_family
+    selected_outcome = annotation.outcome if selected_label_source == "gold" else teacher_outcome
+    selected_shot_subtype = annotation.shotSubtype if selected_label_source == "gold" else teacher_shot_subtype
     if selected_event_family is not None and selected_outcome is not None:
         _, selected_display_label = _derive_display_label(
             event_family=selected_event_family,

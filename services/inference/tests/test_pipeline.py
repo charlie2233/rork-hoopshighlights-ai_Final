@@ -431,6 +431,37 @@ class PipelineCallbackResultsTests(unittest.TestCase):
         self.assertEqual(clip["runtimeFusionDistilledShadow"]["modelVersion"], "distilled-clip-encoder-v1")
 
 
+class PipelineTeacherGuardTests(unittest.TestCase):
+    def test_runtime_teacher_suggestions_are_disabled_even_with_legacy_flag(self) -> None:
+        settings = InferenceSettings()
+        settings.teacher_labeling_enabled = True
+        teacher_labeler = Mock()
+        service = InferenceService(
+            settings=settings,
+            candidate_proposer=Mock(),
+            primary_recognizer=Mock(),
+            adapted_primary_recognizer=None,
+            comparison_recognizer=None,
+            event_inferencer=Mock(),
+            reranker=Mock(),
+            artifact_writer=Mock(),
+            callback_client=CallbackClient(timeout_seconds=1.0),
+            r2_downloader=None,
+            teacher_labeler=teacher_labeler,
+        )
+
+        suggestion = service._derive_teacher_suggestion(
+            source_path=Path("/tmp/source.mp4"),
+            candidate=SimpleNamespace(candidateId="cand-1", startTime=0.0, endTime=5.0),
+            action=SimpleNamespace(label="Highlight"),
+            perception={},
+            structured_signals={},
+        )
+
+        self.assertIsNone(suggestion)
+        teacher_labeler.suggest.assert_not_called()
+
+
 class PipelineRuntimeModelModeTests(unittest.TestCase):
     def setUp(self) -> None:
         self.settings = InferenceSettings(runtime_model_mode="shadow")

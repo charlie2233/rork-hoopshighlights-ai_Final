@@ -45,6 +45,8 @@ class InferenceSettings(BaseSettings):
     ffmpeg_enable_transcode: bool = True
     perception_sample_frames: int = 12
     perception_overlay_frame_limit: int = 3
+    # Retained for backward-compatible env parsing. Runtime inference ignores this and
+    # keeps teacher models offline-only for audit/training workflows.
     teacher_labeling_enabled: bool = False
     teacher_frame_count: int = 4
     runtime_model_mode: str = "shadow"

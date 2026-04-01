@@ -40,7 +40,6 @@ from .runtime_models.temporal_student import (
     get_temporal_student_bundle,
 )
 from .structured_signals import derive_structured_decision, derive_structured_signals
-from .teacher import QwenTeacherLabeler
 from .temporal_encoder import (
     TemporalEncoderBundle,
     TemporalObservation,
@@ -559,36 +558,9 @@ class InferenceService:
         perception: dict[str, object],
         structured_signals: dict[str, object],
     ) -> dict[str, object] | None:
-        if self.teacher_labeler is None or not self.settings.teacher_labeling_enabled:
-            return None
-        try:
-            return dict(
-                self.teacher_labeler.suggest(
-                    source_path,
-                    candidate,
-                    {
-                        "structuredSignals": structured_signals,
-                        "actionSummary": {
-                            "label": getattr(action, "label", None),
-                            "canonicalLabel": getattr(action, "canonicalLabel", None),
-                            "eventFamily": getattr(action, "eventFamily", None),
-                            "shotSubtype": getattr(action, "shotSubtype", None),
-                            "outcome": getattr(action, "outcome", None),
-                            "topLabels": [
-                                item.model_dump(mode="json")
-                                for item in list(getattr(action, "topLabels", []))[:3]
-                            ],
-                            "rawTopLabels": [
-                                item.model_dump(mode="json")
-                                for item in list(getattr(action, "rawTopLabels", []))[:3]
-                            ],
-                        },
-                        "perceptionSummary": _summarize_perception(perception),
-                    },
-                )
-            )
-        except Exception as exc:
-            return {"status": "unavailable", "failureReason": f"teacher_failed:{exc.__class__.__name__}"}
+        # Teacher inference is kept strictly offline for audit/training workflows.
+        # Runtime requests carry no teacher sidecar, even if legacy env flags are present.
+        return None
 
     def _apply_structured_decision(
         self,
@@ -1172,12 +1144,6 @@ def build_service(settings: InferenceSettings) -> InferenceService:
             model_name=settings.model_name_videomae,
             lora_bundle_path=str(settings.videomae_lora_bundle_path),
         )
-    teacher_labeler = None
-    if settings.teacher_labeling_enabled:
-        teacher_labeler = QwenTeacherLabeler(
-            model_name=settings.teacher_model_name,
-            frame_count=settings.teacher_frame_count,
-        )
     r2_downloader = None
     if settings.has_r2_configuration():
         r2_downloader = R2Downloader(
@@ -1214,7 +1180,7 @@ def build_service(settings: InferenceSettings) -> InferenceService:
             sample_frames=settings.perception_sample_frames,
             overlay_frame_limit=settings.perception_overlay_frame_limit,
         ),
-        teacher_labeler=teacher_labeler,
+        teacher_labeler=None,
         runtime_model=runtime_model,
         temporal_encoder=temporal_encoder,
         distilled_clip_encoder=distilled_clip_encoder,
