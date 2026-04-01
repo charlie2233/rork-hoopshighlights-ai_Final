@@ -40,6 +40,10 @@ from .runtime_models.temporal_student import (
     TemporalStudentObservation,
     get_temporal_student_bundle,
 )
+from .runtime_models.temporal_event_detector import (
+    TemporalEventDetectorBundle,
+    get_temporal_event_detector_bundle,
+)
 from .structured_signals import derive_structured_decision, derive_structured_signals
 from .temporal_encoder import (
     TemporalEncoderBundle,
@@ -77,7 +81,7 @@ class InferenceService:
     perceptor: Optional[Perceptor] = None
     teacher_labeler: Optional[TeacherLabeler] = None
     runtime_model: Optional[RuntimeFusionBundle] = None
-    temporal_encoder: Optional[TemporalEncoderBundle | TemporalStudentBundle] = None
+    temporal_encoder: Optional[TemporalEncoderBundle | TemporalStudentBundle | TemporalEventDetectorBundle] = None
     distilled_clip_encoder: Optional[DistilledClipEncoderBundle] = None
 
     async def run(self, request: InferenceJobRequest) -> InferenceJobResponse:
@@ -659,7 +663,7 @@ class InferenceService:
         if self.temporal_encoder is None or self.settings.temporal_encoder_mode.lower() != "shadow":
             return None
         try:
-            if isinstance(self.temporal_encoder, TemporalStudentBundle):
+            if isinstance(self.temporal_encoder, (TemporalStudentBundle, TemporalEventDetectorBundle)):
                 observations = _build_temporal_student_observations(
                     action=action,
                     primary_action=primary_action,
@@ -1563,7 +1567,7 @@ def _infer_temporal_event_markers(
     return markers
 
 
-def _load_temporal_shadow_bundle(path: Path) -> TemporalEncoderBundle | TemporalStudentBundle | None:
+def _load_temporal_shadow_bundle(path: Path) -> TemporalEncoderBundle | TemporalStudentBundle | TemporalEventDetectorBundle | None:
     if not path.exists():
         return None
     try:
@@ -1572,6 +1576,8 @@ def _load_temporal_shadow_bundle(path: Path) -> TemporalEncoderBundle | Temporal
         return None
     schema_version = str(payload.get("schemaVersion") or "")
     feature_schema_version = str(payload.get("featureSchemaVersion") or "")
+    if "temporal-event-detector" in schema_version or "temporal-event-detector" in feature_schema_version:
+        return get_temporal_event_detector_bundle(str(path))
     if "temporal-student" in schema_version or "temporal-student" in feature_schema_version:
         return get_temporal_student_bundle(str(path))
     return get_temporal_encoder_bundle(str(path))

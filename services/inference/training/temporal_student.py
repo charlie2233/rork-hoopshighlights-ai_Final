@@ -334,20 +334,20 @@ def evaluate_temporal_student_bundle(
         for row in rows
         if row["expectedOutcome"] == "missed" and row["predictedDisplayLabel"] == "Made Shot"
     )
-    localized_rows = [row for row in rows if row["hasEventLocalization"]]
+    labeled_rows = [row for row in rows if row["expectedEventFamily"] in EVENT_FAMILIES]
     true_positive = sum(
         1
-        for row in localized_rows
+        for row in labeled_rows
         if row["expectedEventFamily"] != "other" and row["predictedSpotterFamily"] != "other"
     )
     false_positive = sum(
         1
-        for row in localized_rows
+        for row in labeled_rows
         if row["expectedEventFamily"] == "other" and row["predictedSpotterFamily"] != "other"
     )
     false_negative = sum(
         1
-        for row in localized_rows
+        for row in labeled_rows
         if row["expectedEventFamily"] != "other" and row["predictedSpotterFamily"] == "other"
     )
     event_detection_precision = round(
@@ -375,7 +375,7 @@ def evaluate_temporal_student_bundle(
         "eventSpotterRecall": event_detection_recall,
         "eventDetectionPrecision": event_detection_precision,
         "eventDetectionRecall": event_detection_recall,
-        "eventDetectionLabeledRows": len(localized_rows),
+        "eventDetectionLabeledRows": len(labeled_rows),
         "evaluationRows": rows,
     }
 

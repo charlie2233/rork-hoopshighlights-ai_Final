@@ -834,7 +834,9 @@ def _normalize_event_spotter_family(clip: dict[str, Any], shadow_payload: dict[s
     metadata = shadow_payload.get("metadata") if isinstance(shadow_payload, dict) else None
     value = _first_non_empty(
         shadow_payload.get("eventSpotterFamily") if shadow_payload else None,
+        shadow_payload.get("temporal_event_detector_event_family") if shadow_payload else None,
         shadow_payload.get("temporal_student_event_spotter_family") if shadow_payload else None,
+        metadata.get("temporal_event_detector_event_family") if isinstance(metadata, dict) else None,
         metadata.get("temporal_student_event_spotter_family") if isinstance(metadata, dict) else None,
         clip.get("eventSpotterFamily"),
     )

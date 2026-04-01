@@ -55,7 +55,7 @@ class InferenceSettings(BaseSettings):
     )
     temporal_encoder_mode: str = "off"
     temporal_encoder_bundle_path: Path = Field(
-        default=Path(__file__).resolve().parents[1] / "models" / "temporal_encoder_v1.json"
+        default=Path(__file__).resolve().parents[1] / "models" / "temporal_event_detector_v1.json"
     )
     distilled_clip_encoder_mode: str = "off"
     distilled_clip_encoder_bundle_path: Path = Field(
