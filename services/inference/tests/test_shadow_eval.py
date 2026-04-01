@@ -186,6 +186,44 @@ class ShadowEvalTests(unittest.TestCase):
         self.assertEqual(record.confidenceAfterMapping, 0.62)
         self.assertEqual(record.rawVideoMAETopK[0]["label"], "steal")
 
+    def test_temporal_shadow_event_family_preserves_hierarchical_label_and_fallback_clip_id(self) -> None:
+        payload = {
+            "jobId": "job-shadow-temporal-001",
+            "requestId": "req-shadow-temporal-001",
+            "uploadTraceId": "upload-shadow-temporal-001",
+            "inferenceAttemptId": "attempt-shadow-temporal-001",
+            "clips": [
+                {
+                    "label": "Highlight",
+                    "eventFamily": "other",
+                    "shotSubtype": None,
+                    "outcome": "uncertain",
+                    "confidence": 0.41,
+                    "clipDurationSeconds": 4.75,
+                    "runtimeFusionTemporalShadow": {
+                        "runtime_fusion_model_version": "temporal-student-gated-v2",
+                        "label": "Highlight",
+                        "eventFamily": "shot_attempt",
+                        "shotSubtype": "layup",
+                        "outcome": "uncertain",
+                        "confidenceBeforeMapping": 0.93,
+                        "confidenceAfterMapping": 0.41,
+                        "confidence": 0.41,
+                        "isUncertain": True,
+                    },
+                }
+            ],
+        }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "shadow-temporal.json"
+            path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+            records = load_batch_records([path], shadow_source="runtimeFusionTemporalShadow")
+
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0].clipId, "job-shadow-temporal-001:clip-1")
+        self.assertEqual(records[0].eventFamily, "shot_attempt")
+
     def test_applies_manual_other_audit_overrides_from_jsonl(self) -> None:
         payload = {
             "jobId": "job-shadow-audit-001",

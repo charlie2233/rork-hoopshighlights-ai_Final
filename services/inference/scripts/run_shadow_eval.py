@@ -372,15 +372,20 @@ def _normalize_batch_item(
     if not isinstance(clips, list) or not clips:
         clips = [item]
     records: list[ShadowClipRecord] = []
-    for clip in clips:
+    for clip_index, clip in enumerate(clips):
         if not isinstance(clip, dict):
             continue
         shadow_namespace, shadow_payload = _resolve_shadow_payload(clip, shadow_source=shadow_source)
-        audit_override = (manual_audits or {}).get(str(clip.get("clipId") or clip.get("id") or "unknown"), {})
+        clip_identifier = _resolve_clip_identifier(
+            clip,
+            clip_index=clip_index,
+            job_id=_first_non_empty(clip.get("jobId"), top_job_id),
+        )
+        audit_override = (manual_audits or {}).get(clip_identifier, {})
         records.append(
             ShadowClipRecord(
                 jobId=_first_non_empty(clip.get("jobId"), top_job_id),
-                clipId=str(clip.get("clipId") or clip.get("id") or "unknown"),
+                clipId=clip_identifier,
                 requestId=_first_non_empty(clip.get("requestId"), top_request_id),
                 uploadTraceId=_first_non_empty(clip.get("uploadTraceId"), top_upload_trace_id),
                 inferenceAttemptId=_first_non_empty(clip.get("inferenceAttemptId"), top_attempt_id),
@@ -452,6 +457,15 @@ def _normalize_batch_item(
             )
         )
     return records
+
+
+def _resolve_clip_identifier(clip: dict[str, Any], *, clip_index: int, job_id: Any) -> str:
+    clip_id = _first_non_empty(clip.get("clipId"), clip.get("id"))
+    if clip_id is not None:
+        return str(clip_id)
+    if job_id is not None:
+        return f"{job_id}:clip-{clip_index + 1}"
+    return f"unknown:clip-{clip_index + 1}"
 
 
 def load_manual_audits(paths: Iterable[Path]) -> dict[str, dict[str, str | None]]:
@@ -810,9 +824,9 @@ def _normalize_event_family(clip: dict[str, Any], shadow_payload: dict[str, Any]
         clip.get("eventFamily"),
         clip.get("eventType"),
     )
-    text = normalize_text(value)
-    if text in EVENT_FAMILIES:
-        return text
+    family = normalize_text(value).replace(" ", "_")
+    if family in EVENT_FAMILIES:
+        return family
     return "other" if _normalize_flat_label(clip, shadow_payload) == "Highlight" else _taxonomy_from_label(_normalize_flat_label(clip, shadow_payload))[0]
 
 
