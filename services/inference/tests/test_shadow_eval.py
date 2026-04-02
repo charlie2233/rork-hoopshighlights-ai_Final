@@ -100,6 +100,183 @@ class ShadowEvalTests(unittest.TestCase):
         self.assertEqual(report["summary"]["shotSubtypeAccuracy"], 1.0)
         self.assertEqual(report["summary"]["sourceDomainDistribution"]["live_shadow"], 2)
 
+    def test_report_includes_proposal_metrics_for_temporal_shadow(self) -> None:
+        payload = {
+            "jobId": "job-proposal-001",
+            "requestId": "req-proposal-001",
+            "uploadTraceId": "upload-proposal-001",
+            "inferenceAttemptId": "attempt-proposal-001",
+            "clips": [
+                {
+                    "clipId": "clip-proposal-accepted",
+                    "label": "Highlight",
+                    "eventFamily": "other",
+                    "shotSubtype": None,
+                    "outcome": "uncertain",
+                    "confidence": 0.41,
+                    "clipDurationSeconds": 4.5,
+                    "expectedEventFamily": "shot_attempt",
+                    "expectedOutcome": "made",
+                    "expectedShotSubtype": "layup",
+                    "runtimeFusionTemporalShadow": {
+                        "modelVersion": "temporal-event-detector-tridet-hybrid-v1",
+                        "label": "Layup",
+                        "eventFamily": "shot_attempt",
+                        "shotSubtype": "layup",
+                        "outcome": "made",
+                        "confidenceBeforeMapping": 0.88,
+                        "confidenceAfterMapping": 0.93,
+                        "confidence": 0.93,
+                        "isUncertain": False,
+                        "temporal_event_detector_proposal_accepted": True,
+                        "temporal_event_detector_event_score": 1.0,
+                        "temporal_event_detector_proposal_rejector_label": "real_event",
+                        "temporal_event_detector_proposal_rejector_confidence": 0.91,
+                        "temporal_event_detector_event_family": "shot_attempt",
+                    },
+                },
+                {
+                    "clipId": "clip-proposal-rejected",
+                    "label": "Highlight",
+                    "eventFamily": "other",
+                    "shotSubtype": None,
+                    "outcome": "uncertain",
+                    "confidence": 0.41,
+                    "clipDurationSeconds": 4.5,
+                    "expectedEventFamily": "other",
+                    "expectedOutcome": "uncertain",
+                    "manualAuditLabel": "true_negative_non_event",
+                    "runtimeFusionTemporalShadow": {
+                        "modelVersion": "temporal-event-detector-tridet-hybrid-v1",
+                        "label": "Highlight",
+                        "eventFamily": "other",
+                        "shotSubtype": None,
+                        "outcome": "uncertain",
+                        "confidenceBeforeMapping": 0.32,
+                        "confidenceAfterMapping": 0.32,
+                        "confidence": 0.32,
+                        "isUncertain": True,
+                        "temporal_event_detector_proposal_accepted": False,
+                        "temporal_event_detector_event_score": 0.0,
+                        "temporal_event_detector_proposal_rejector_label": "non_event",
+                        "temporal_event_detector_proposal_rejector_confidence": 0.89,
+                        "temporal_event_detector_event_family": "other",
+                    },
+                },
+            ],
+        }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "proposal-shadow.json"
+            path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+            report = build_shadow_report(load_batch_records([path], shadow_source="runtimeFusionTemporalShadow"))
+
+        self.assertEqual(report["summary"]["proposalAcceptanceRate"], 0.5)
+        self.assertEqual(report["summary"]["proposalAcceptanceClipCount"], 2)
+        self.assertEqual(report["summary"]["eventnessCalibration"]["eligibleClips"], 2)
+        self.assertEqual(report["summary"]["eventnessCalibration"]["brierScore"], 0.0)
+        self.assertEqual(report["summary"]["acceptedShotProposalOutcomeAccuracy"], 1.0)
+        self.assertEqual(report["summary"]["rejectedProposalAudit"]["eligibleRejectedClips"], 1)
+        self.assertEqual(report["summary"]["rejectedProposalAudit"]["trueNegativeRate"], 1.0)
+        self.assertEqual(report["summary"]["rejectedProposalAudit"]["trueMissRate"], 0.0)
+
+    def test_report_includes_phase4d_proposal_metrics(self) -> None:
+        payload = {
+            "jobId": "job-proposal-001",
+            "requestId": "req-proposal-001",
+            "uploadTraceId": "upload-proposal-001",
+            "inferenceAttemptId": "attempt-proposal-001",
+            "clips": [
+                {
+                    "clipId": "clip-proposal-accepted",
+                    "label": "Highlight",
+                    "eventFamily": "other",
+                    "outcome": "uncertain",
+                    "shotSubtype": None,
+                    "expectedEventFamily": "shot_attempt",
+                    "expectedOutcome": "made",
+                    "runtimeFusionTemporalShadow": {
+                        "modelVersion": "temporal-event-detector-tridet-hybrid-v1",
+                        "label": "Layup",
+                        "eventFamily": "shot_attempt",
+                        "outcome": "made",
+                        "shotSubtype": "layup",
+                        "confidenceBeforeMapping": 0.72,
+                        "confidenceAfterMapping": 0.81,
+                        "confidence": 0.81,
+                        "isUncertain": False,
+                        "temporal_event_detector_proposal_accepted": True,
+                        "temporal_event_detector_event_score": 0.82,
+                        "temporal_event_detector_proposal_rejector_label": "real_event",
+                        "temporal_event_detector_proposal_rejector_confidence": 0.88,
+                    },
+                },
+                {
+                    "clipId": "clip-proposal-rejected-negative",
+                    "label": "Highlight",
+                    "eventFamily": "other",
+                    "outcome": "uncertain",
+                    "shotSubtype": None,
+                    "expectedEventFamily": "other",
+                    "expectedOutcome": "uncertain",
+                    "runtimeFusionTemporalShadow": {
+                        "modelVersion": "temporal-event-detector-tridet-hybrid-v1",
+                        "label": "Highlight",
+                        "eventFamily": "other",
+                        "outcome": "uncertain",
+                        "shotSubtype": None,
+                        "confidenceBeforeMapping": 0.28,
+                        "confidenceAfterMapping": 0.31,
+                        "confidence": 0.31,
+                        "isUncertain": True,
+                        "temporal_event_detector_proposal_accepted": False,
+                        "temporal_event_detector_event_score": 0.18,
+                        "temporal_event_detector_proposal_rejector_label": "dead_ball",
+                        "temporal_event_detector_proposal_rejector_confidence": 0.74,
+                    },
+                },
+                {
+                    "clipId": "clip-proposal-rejected-miss",
+                    "label": "Highlight",
+                    "eventFamily": "other",
+                    "outcome": "uncertain",
+                    "shotSubtype": None,
+                    "expectedEventFamily": "shot_attempt",
+                    "expectedOutcome": "missed",
+                    "runtimeFusionTemporalShadow": {
+                        "modelVersion": "temporal-event-detector-tridet-hybrid-v1",
+                        "label": "Highlight",
+                        "eventFamily": "other",
+                        "outcome": "uncertain",
+                        "shotSubtype": None,
+                        "confidenceBeforeMapping": 0.34,
+                        "confidenceAfterMapping": 0.37,
+                        "confidence": 0.37,
+                        "isUncertain": True,
+                        "temporal_event_detector_proposal_accepted": False,
+                        "temporal_event_detector_event_score": 0.27,
+                        "temporal_event_detector_proposal_rejector_label": "ambiguous",
+                        "temporal_event_detector_proposal_rejector_confidence": 0.58,
+                    },
+                },
+            ],
+        }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "proposal.json"
+            path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+            report = build_shadow_report(load_batch_records([path], shadow_source="runtimeFusionTemporalShadow"))
+
+        self.assertEqual(report["summary"]["proposalAcceptanceRate"], 0.3333)
+        self.assertEqual(report["summary"]["acceptedShotProposalOutcomeAccuracy"], 1.0)
+        self.assertEqual(report["summary"]["eventnessCalibration"]["eligibleClips"], 3)
+        self.assertAlmostEqual(report["summary"]["eventnessCalibration"]["brierScore"], 0.1992, places=4)
+        self.assertEqual(report["summary"]["rejectedProposalAudit"]["eligibleRejectedClips"], 2)
+        self.assertEqual(report["summary"]["rejectedProposalAudit"]["trueNegativeCount"], 1)
+        self.assertEqual(report["summary"]["rejectedProposalAudit"]["trueMissCount"], 1)
+        self.assertEqual(report["summary"]["rejectedProposalAudit"]["trueNegativeRate"], 0.5)
+        self.assertEqual(report["summary"]["rejectedProposalAudit"]["trueMissRate"], 0.5)
+
     def test_cli_writes_markdown_and_json(self) -> None:
         fixture = self.repo_root() / "services" / "inference" / "tests" / "fixtures" / "shadow_batch_results.json"
         records = load_batch_records([fixture])

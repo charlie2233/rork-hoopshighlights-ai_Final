@@ -69,6 +69,10 @@ class ShadowClipRecord:
     sourceDomain: str | None = None
     manualAuditLabel: str | None = None
     manualAuditRationale: str | None = None
+    proposalAccepted: bool | None = None
+    proposalScore: float | None = None
+    proposalRejectorLabel: str | None = None
+    proposalRejectorConfidence: float | None = None
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -166,6 +170,7 @@ def build_shadow_report(records: list[ShadowClipRecord]) -> dict[str, Any]:
     label_spread = build_label_spread(records, flat_label_distribution)
     miss_vs_made_confusion = build_miss_vs_made_confusion(records)
     labeled_eval = build_labeled_eval_summary(records)
+    proposal_summary = build_proposal_summary(records)
     trace_summary = build_trace_summary(records)
     candidate_namespace_summary = build_namespace_summary(record.candidateNamespace for record in records)
     collapse_examples = build_collapse_examples(records)
@@ -174,7 +179,6 @@ def build_shadow_report(records: list[ShadowClipRecord]) -> dict[str, Any]:
     event_family_other_dominance = round(event_family_distribution.get("other", 0) / clip_total, 4)
     other_bucket_distribution = build_other_bucket_distribution(records)
     other_bucket_audit = build_other_bucket_audit(records)
-
     return {
         "summary": {
             "jobCount": len(trace_summary["jobIds"]),
@@ -192,6 +196,11 @@ def build_shadow_report(records: list[ShadowClipRecord]) -> dict[str, Any]:
             "uncertaintyRate": uncertainty_rate,
             "highlightDominance": highlight_dominance,
             "eventFamilyOtherDominance": event_family_other_dominance,
+            "proposalAcceptanceRate": proposal_summary["proposalAcceptanceRate"],
+            "proposalAcceptanceClipCount": proposal_summary["proposalAcceptanceClipCount"],
+            "eventnessCalibration": proposal_summary["eventnessCalibration"],
+            "acceptedShotProposalOutcomeAccuracy": proposal_summary["acceptedShotProposalOutcomeAccuracy"],
+            "rejectedProposalAudit": proposal_summary["rejectedProposalAudit"],
             "splitOtherDistribution": other_bucket_distribution,
             "otherBucketAudit": other_bucket_audit,
             "missVsMadeConfusion": miss_vs_made_confusion,
@@ -220,6 +229,8 @@ def render_markdown(report: dict[str, Any]) -> str:
     lines.append(f"- Uncertainty rate: `{summary['uncertaintyRate']:.4f}`")
     lines.append(f"- Highlight dominance: `{summary['highlightDominance']:.4f}`")
     lines.append(f"- EventFamily=other dominance: `{summary['eventFamilyOtherDominance']:.4f}`")
+    lines.append(f"- Proposal acceptance rate: `{summary.get('proposalAcceptanceRate')}`")
+    lines.append(f"- Eventness calibration: `{json.dumps(summary.get('eventnessCalibration'), sort_keys=True)}`")
     lines.append(f"- Split-other distribution: `{json.dumps(summary['splitOtherDistribution'], sort_keys=True)}`")
     lines.append(f"- Candidate namespace: `{summary['candidateNamespaces']['dominantNamespace']}`")
     lines.append(f"- Mixed-batch unique labels: `{summary['mixedBatchLabelSpread']['uniqueLabelCount']}`")
@@ -239,6 +250,10 @@ def render_markdown(report: dict[str, Any]) -> str:
     lines.append(f"- Outcomes: `{json.dumps(summary['outcomeDistribution'], sort_keys=True)}`")
     lines.append(f"- Source domains: `{json.dumps(summary['sourceDomainDistribution'], sort_keys=True)}`")
     lines.append(f"- Other audit: `{json.dumps(summary['otherBucketAudit'], sort_keys=True)}`")
+    lines.append(
+        f"- Accepted-shot outcome accuracy: `{summary.get('acceptedShotProposalOutcomeAccuracy')}`"
+    )
+    lines.append(f"- Rejected proposal audit: `{json.dumps(summary.get('rejectedProposalAudit'), sort_keys=True)}`")
     lines.append(f"- Miss-vs-made confusion: `{json.dumps(summary['missVsMadeConfusion'], sort_keys=True)}`")
     if summary.get("labeledClipCount", 0) > 0:
         lines.append(
@@ -288,10 +303,10 @@ def render_markdown(report: dict[str, Any]) -> str:
     lines.append("")
     lines.append("## Clip Table")
     lines.append(
-        "| clipId | jobId | requestId | uploadTraceId | inferenceAttemptId | candidateNamespace | modelVersion | flatLabel | eventFamily | otherBucket | manualAudit | shotSubtype | outcome | confidenceBeforeMapping | confidenceAfterMapping | confidence | durationSeconds | merged | sourceEventCount | uncertain | rawVideoMAETop1 | rawXCLIPTop1 |"
+        "| clipId | jobId | requestId | uploadTraceId | inferenceAttemptId | candidateNamespace | modelVersion | flatLabel | eventFamily | proposalAccepted | proposalRejector | proposalEventScore | otherBucket | manualAudit | shotSubtype | outcome | confidenceBeforeMapping | confidenceAfterMapping | confidence | durationSeconds | merged | sourceEventCount | uncertain | rawVideoMAETop1 | rawXCLIPTop1 |"
     )
     lines.append(
-        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"
     )
     for clip in report["clips"]:
         lines.append(
@@ -307,6 +322,9 @@ def render_markdown(report: dict[str, Any]) -> str:
                     escape_md_cell(clip.get("modelVersion")),
                     escape_md_cell(clip.get("flatLabel")),
                     escape_md_cell(clip.get("eventFamily")),
+                    escape_md_cell(clip.get("proposalAccepted")),
+                    escape_md_cell(clip.get("proposalRejectorLabel")),
+                    escape_md_cell(clip.get("proposalScore")),
                     escape_md_cell(clip.get("otherBucket")),
                     escape_md_cell(clip.get("manualAuditLabel")),
                     escape_md_cell(clip.get("shotSubtype")),
@@ -421,6 +439,10 @@ def _normalize_batch_item(
                 ),
                 resultConfidence=_to_optional_float(clip.get("resultConfidence")),
                 candidateNamespace=shadow_namespace or shadow_source,
+                proposalAccepted=_normalize_proposal_accepted(clip, shadow_payload),
+                proposalScore=_normalize_proposal_event_score(clip, shadow_payload),
+                proposalRejectorLabel=_normalize_proposal_rejector_label(clip, shadow_payload),
+                proposalRejectorConfidence=_normalize_proposal_rejector_confidence(clip, shadow_payload),
                 clipDurationSeconds=_to_optional_float(clip.get("clipDurationSeconds")),
                 wasMerged=bool(clip.get("wasMerged", False)),
                 sourceEventCount=_to_optional_int(clip.get("sourceEventCount")),
@@ -642,6 +664,84 @@ def build_labeled_eval_summary(records: list[ShadowClipRecord]) -> dict[str, Any
     }
 
 
+def build_proposal_summary(records: list[ShadowClipRecord]) -> dict[str, Any]:
+    eligible_records = [record for record in records if record.proposalAccepted is not None]
+    proposal_acceptance_rate = (
+        round(sum(1 for record in eligible_records if record.proposalAccepted) / len(eligible_records), 4)
+        if eligible_records
+        else None
+    )
+
+    labeled_scored = [
+        record
+        for record in eligible_records
+        if record.expectedEventFamily is not None and record.proposalScore is not None
+    ]
+    if labeled_scored:
+        positive_rows = [record for record in labeled_scored if normalize_bucket(record.expectedEventFamily) != "other"]
+        negative_rows = [record for record in labeled_scored if normalize_bucket(record.expectedEventFamily) == "other"]
+        eventness_brier = round(
+            sum(
+                (float(record.proposalScore) - (1.0 if normalize_bucket(record.expectedEventFamily) != "other" else 0.0)) ** 2
+                for record in labeled_scored
+            )
+            / len(labeled_scored),
+            4,
+        )
+        eventness_calibration = {
+            "eligibleClips": len(labeled_scored),
+            "brierScore": eventness_brier,
+            "positiveMeanScore": round(sum(float(record.proposalScore) for record in positive_rows) / len(positive_rows), 4)
+            if positive_rows
+            else None,
+            "negativeMeanScore": round(sum(float(record.proposalScore) for record in negative_rows) / len(negative_rows), 4)
+            if negative_rows
+            else None,
+        }
+    else:
+        eventness_calibration = None
+
+    accepted_shot_rows = [
+        record
+        for record in eligible_records
+        if record.proposalAccepted
+        and normalize_bucket(record.expectedEventFamily) == "shot_attempt"
+        and record.expectedOutcome is not None
+    ]
+    accepted_shot_outcome_accuracy = (
+        round(
+            sum(1 for record in accepted_shot_rows if normalize_bucket(record.expectedOutcome) == normalize_bucket(record.outcome))
+            / len(accepted_shot_rows),
+            4,
+        )
+        if accepted_shot_rows
+        else None
+    )
+
+    rejected_labeled_rows = [
+        record
+        for record in eligible_records
+        if record.proposalAccepted is False and record.expectedEventFamily is not None
+    ]
+    rejected_true_negative = sum(1 for record in rejected_labeled_rows if normalize_bucket(record.expectedEventFamily) == "other")
+    rejected_true_miss = sum(1 for record in rejected_labeled_rows if normalize_bucket(record.expectedEventFamily) != "other")
+    rejected_proposal_audit = {
+        "eligibleRejectedClips": len(rejected_labeled_rows),
+        "trueNegativeCount": rejected_true_negative,
+        "trueMissCount": rejected_true_miss,
+        "trueNegativeRate": round(rejected_true_negative / len(rejected_labeled_rows), 4) if rejected_labeled_rows else None,
+        "trueMissRate": round(rejected_true_miss / len(rejected_labeled_rows), 4) if rejected_labeled_rows else None,
+    }
+
+    return {
+        "proposalAcceptanceRate": proposal_acceptance_rate,
+        "proposalAcceptanceClipCount": len(eligible_records),
+        "eventnessCalibration": eventness_calibration,
+        "acceptedShotProposalOutcomeAccuracy": accepted_shot_outcome_accuracy,
+        "rejectedProposalAudit": rejected_proposal_audit,
+    }
+
+
 def build_other_bucket_distribution(records: list[ShadowClipRecord]) -> dict[str, int]:
     other_records = [record for record in records if normalize_bucket(record.eventFamily) == "other"]
     return distribution(record.otherBucket for record in other_records if record.otherBucket)
@@ -858,6 +958,51 @@ def _normalize_other_bucket(clip: dict[str, Any], shadow_payload: dict[str, Any]
     )
     text = normalize_text(value).replace(" ", "_")
     return text if text in OTHER_BUCKETS else None
+
+
+def _normalize_proposal_accepted(clip: dict[str, Any], shadow_payload: dict[str, Any] | None = None) -> bool | None:
+    metadata = shadow_payload.get("metadata") if isinstance(shadow_payload, dict) else None
+    value = _first_defined(
+        shadow_payload.get("temporal_event_detector_proposal_accepted") if shadow_payload else None,
+        shadow_payload.get("temporal_event_detector_gate_open") if shadow_payload else None,
+        metadata.get("temporal_event_detector_proposal_accepted") if isinstance(metadata, dict) else None,
+        metadata.get("temporal_event_detector_gate_open") if isinstance(metadata, dict) else None,
+        clip.get("proposalAccepted"),
+    )
+    if value is None:
+        return None
+    return bool(value)
+
+
+def _normalize_proposal_event_score(clip: dict[str, Any], shadow_payload: dict[str, Any] | None = None) -> float | None:
+    metadata = shadow_payload.get("metadata") if isinstance(shadow_payload, dict) else None
+    return _to_optional_float(
+        _first_defined(
+            shadow_payload.get("temporal_event_detector_event_score") if shadow_payload else None,
+            metadata.get("temporal_event_detector_event_score") if isinstance(metadata, dict) else None,
+            clip.get("proposalScore"),
+        )
+    )
+
+
+def _normalize_proposal_rejector_label(clip: dict[str, Any], shadow_payload: dict[str, Any] | None = None) -> str | None:
+    metadata = shadow_payload.get("metadata") if isinstance(shadow_payload, dict) else None
+    return _first_non_empty(
+        shadow_payload.get("temporal_event_detector_proposal_rejector_label") if shadow_payload else None,
+        metadata.get("temporal_event_detector_proposal_rejector_label") if isinstance(metadata, dict) else None,
+        clip.get("proposalRejectorLabel"),
+    )
+
+
+def _normalize_proposal_rejector_confidence(clip: dict[str, Any], shadow_payload: dict[str, Any] | None = None) -> float | None:
+    metadata = shadow_payload.get("metadata") if isinstance(shadow_payload, dict) else None
+    return _to_optional_float(
+        _first_defined(
+            shadow_payload.get("temporal_event_detector_proposal_rejector_confidence") if shadow_payload else None,
+            metadata.get("temporal_event_detector_proposal_rejector_confidence") if isinstance(metadata, dict) else None,
+            clip.get("proposalRejectorConfidence"),
+        )
+    )
 
 
 def _normalize_other_bucket_reason(clip: dict[str, Any], shadow_payload: dict[str, Any] | None = None) -> str | None:

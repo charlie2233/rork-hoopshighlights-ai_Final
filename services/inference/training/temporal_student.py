@@ -54,6 +54,7 @@ class TemporalStudentTrainingExample:
     source_domain: str = "unknown"
     source_set: str = "unknown"
     has_event_localization: bool = False
+    reviewer_notes: str = ""
 
 
 @dataclass(frozen=True)
@@ -146,6 +147,7 @@ def load_temporal_student_examples(repo_root: Path) -> list[TemporalStudentTrain
                         example.transition_start_time_seconds,
                     )
                 ),
+                reviewer_notes=example.reviewer_notes,
             )
         )
     return examples

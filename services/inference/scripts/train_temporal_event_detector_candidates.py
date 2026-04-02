@@ -22,7 +22,7 @@ from services.inference.training.temporal_student import evaluate_temporal_stude
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Train and compare temporal detector candidates for phase4c."
+        description="Train and compare hybrid temporal detector candidates for phase4d."
     )
     parser.add_argument(
         "--output-dir",
@@ -33,6 +33,12 @@ def parse_args() -> argparse.Namespace:
         "--write-models",
         action="store_true",
         help="Write the winning bundle into services/inference/models/temporal_event_detector_v1.json.",
+    )
+    parser.add_argument(
+        "--write-model-architecture",
+        choices=("winner", "actionformer", "tridet"),
+        default="winner",
+        help="Select which candidate bundle to write when --write-models is set.",
     )
     parser.add_argument("--hidden-size", type=int, default=18)
     parser.add_argument("--epochs", type=int, default=140)
@@ -97,7 +103,9 @@ def main() -> int:
         model_dir = REPO_ROOT / "services" / "inference" / "models"
         model_dir.mkdir(parents=True, exist_ok=True)
         final_path = model_dir / "temporal_event_detector_v1.json"
-        final_path.write_text(winner_path.read_text(encoding="utf-8"), encoding="utf-8")
+        selected_name = winner_name if args.write_model_architecture == "winner" else args.write_model_architecture
+        selected_path = actionformer_path if selected_name == "actionformer" else tridet_path
+        final_path.write_text(selected_path.read_text(encoding="utf-8"), encoding="utf-8")
 
     report_path = args.output_dir / "comparison_report.md"
     json_path = args.output_dir / "comparison_report.json"

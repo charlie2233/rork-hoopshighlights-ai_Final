@@ -8,13 +8,19 @@ from typing import Any, Sequence
 
 import numpy as np
 
+from services.inference.app.temporal_encoder import TemporalTargetModel
 from services.inference.app.runtime_models.temporal_event_detector import (
     EVENT_FAMILIES,
     OUTCOMES,
+    PROPOSAL_REJECT_LABELS,
     SHOT_SUBTYPES,
+    TEMPORAL_EVENT_DETECTOR_FEATURE_SCHEMA_VERSION,
+    TEMPORAL_EVENT_DETECTOR_MODEL_VERSION,
+    TEMPORAL_EVENT_DETECTOR_SCHEMA_VERSION,
     TemporalConvLayer,
     TemporalEventDetectorBundle,
     build_temporal_event_detector_feature_map,
+    build_proposal_rejector_feature_map,
     default_temporal_event_detector_feature_names,
     vectorize_temporal_event_detector_observation,
     write_temporal_event_detector_bundle,
@@ -116,6 +122,15 @@ if nn is not None:
             }
 
 
+    class TorchProposalRejector(nn.Module):
+        def __init__(self, input_size: int) -> None:
+            super().__init__()
+            self.classifier = nn.Linear(input_size, len(PROPOSAL_REJECT_LABELS))
+
+        def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+            return self.classifier(inputs)
+
+
 def load_temporal_event_detector_examples(repo_root: Path) -> list[TemporalTrainingExample]:
     return load_temporal_student_examples(repo_root)
 
@@ -183,6 +198,7 @@ def train_temporal_event_detector(
         architecture=architecture,
         source_dataset="perception_supervision+phase4_event_localization_queue+teacher_backed",
     )
+    bundle = train_proposal_rejector_bundle(bundle, examples)
     bundle = calibrate_temporal_event_detector_bundle(bundle, examples)
     return TemporalEventDetectorTrainingResult(
         bundle=bundle,
@@ -268,6 +284,193 @@ def build_training_tensors(
         "outcomeTargets": torch.tensor(outcome_targets, dtype=torch.long),
         "subtypeTargets": torch.tensor(subtype_targets, dtype=torch.long),
     }
+
+
+def train_proposal_rejector_bundle(
+    bundle: TemporalEventDetectorBundle,
+    examples: Sequence[TemporalTrainingExample],
+    *,
+    epochs: int = 180,
+    learning_rate: float = 0.03,
+    random_seed: int = DEFAULT_TEMPORAL_EVENT_DETECTOR_SEED + 5,
+) -> TemporalEventDetectorBundle:
+    if torch is None or nn is None or F is None:  # pragma: no cover
+        raise RuntimeError("torch is required to train the proposal rejector")
+    rows = build_proposal_rejector_rows(bundle, examples)
+    train_rows = [row for row in rows if row["split"] == "train"]
+    if not train_rows:
+        train_rows = rows
+    if len({str(row["label"]) for row in train_rows}) <= 1:
+        return replace(
+            bundle,
+            proposal_rejector_feature_names=(),
+            proposal_rejector=None,
+        )
+    feature_names = derive_proposal_rejector_feature_names(rows)
+    if not feature_names:
+        return bundle
+
+    np.random.seed(int(random_seed))
+    torch.manual_seed(int(random_seed))
+    if torch.cuda.is_available():  # pragma: no cover
+        torch.cuda.manual_seed_all(int(random_seed))
+
+    inputs = torch.tensor(
+        [
+            [float(row["features"].get(name, 0.0)) for name in feature_names]
+            for row in train_rows
+        ],
+        dtype=torch.float32,
+    )
+    targets = torch.tensor(
+        [PROPOSAL_REJECT_LABELS.index(str(row["label"])) for row in train_rows],
+        dtype=torch.long,
+    )
+    weights = torch.tensor([float(row["weight"]) for row in train_rows], dtype=torch.float32)
+    model = TorchProposalRejector(len(feature_names))
+    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+
+    for _ in range(epochs):
+        optimizer.zero_grad()
+        logits = model(inputs)
+        loss = compute_proposal_rejector_loss(logits=logits, targets=targets, weights=weights)
+        loss.backward()
+        optimizer.step()
+
+    target_model = export_proposal_rejector_target(model)
+    return replace(
+        bundle,
+        proposal_rejector_feature_names=feature_names,
+        proposal_rejector=target_model,
+    )
+
+
+def build_proposal_rejector_rows(
+    bundle: TemporalEventDetectorBundle,
+    examples: Sequence[TemporalTrainingExample],
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for example in examples:
+        proposal = bundle.propose(example.observations)
+        rows.append(
+            {
+                "clipId": example.clip_id,
+                "split": example.split,
+                "sourceKind": example.source_kind,
+                "sourceDomain": example.source_domain,
+                "sourceSet": example.source_set,
+                "eventFamily": example.event_family,
+                "outcome": example.outcome,
+                "shotSubtype": example.shot_subtype,
+                "label": infer_proposal_reject_label(example),
+                "weight": proposal_reject_weight(example),
+                "features": build_proposal_rejector_feature_map(
+                    observations=example.observations,
+                    proposal=proposal,
+                ),
+            }
+        )
+    return rows
+
+
+def derive_proposal_rejector_feature_names(rows: Sequence[dict[str, Any]]) -> tuple[str, ...]:
+    feature_names: set[str] = set()
+    for row in rows:
+        feature_names.update(str(name) for name in (row.get("features") or {}).keys())
+    return tuple(sorted(feature_names))
+
+
+def compute_proposal_rejector_loss(*, logits: Any, targets: Any, weights: Any):
+    base_loss = F.cross_entropy(logits, targets, reduction="none")
+    probabilities = torch.softmax(logits, dim=-1)
+    pt = probabilities[torch.arange(probabilities.shape[0]), targets]
+    focal = torch.pow(1.0 - pt, 2.0)
+    weighted = base_loss * focal * weights
+    return weighted.sum() / torch.clamp(weights.sum(), min=1e-6)
+
+
+def export_proposal_rejector_target(model: Any) -> TemporalTargetModel:
+    return TemporalTargetModel(
+        name="proposalRejector",
+        classes=tuple(PROPOSAL_REJECT_LABELS),
+        weight=tuple(
+            tuple(float(value) for value in row)
+            for row in model.classifier.weight.detach().cpu().numpy().tolist()
+        ),
+        bias=tuple(float(value) for value in model.classifier.bias.detach().cpu().numpy().tolist()),
+        temperature=1.0,
+        uncertainty_threshold=0.5,
+        margin_threshold=0.08,
+        top_k=3,
+    )
+
+
+def infer_proposal_reject_label(example: TemporalTrainingExample) -> str:
+    if example.event_family != "other":
+        return "real_event"
+    text = " ".join(
+        item
+        for item in (
+            example.clip_id,
+            example.source_domain,
+            example.source_set,
+            getattr(example, "reviewer_notes", ""),
+        )
+        if item
+    ).lower()
+    if any(token in text for token in ("dead_ball", "dead-ball", "dead ball")):
+        return "dead_ball"
+    if any(token in text for token in ("replay", "celebration", "reaction")):
+        return "replay_or_reaction"
+    if any(token in text for token in ("inbound", "setup", "halfcourt", "half-court")):
+        return "setup"
+    if any(
+        token in text
+        for token in (
+            "camera_pan",
+            "camera-pan",
+            "camera pan",
+            "dribble_only",
+            "dribble-only",
+            "dribble only",
+            "non_event",
+            "non-event",
+            "non event",
+        )
+    ):
+        return "non_event"
+    return "ambiguous"
+
+
+def proposal_reject_weight(example: TemporalTrainingExample) -> float:
+    weight = max(float(example.weight), 0.0)
+    label = infer_proposal_reject_label(example)
+    text = " ".join(
+        item
+        for item in (
+            example.clip_id,
+            example.source_domain,
+            example.source_set,
+            getattr(example, "reviewer_notes", ""),
+        )
+        if item
+    ).lower()
+    if label != "real_event":
+        weight *= 1.45
+    if label in {"dead_ball", "setup", "replay_or_reaction"}:
+        weight *= 1.15
+    if label == "non_event" and any(
+        token in text
+        for token in ("camera_pan", "camera-pan", "camera pan", "dribble_only", "dribble-only", "dribble only")
+    ):
+        weight *= 1.15
+    if example.source_kind == "disagreement":
+        weight *= 1.2
+    if example.source_domain in {"manual_negative", "hard_negative"} and label != "real_event":
+        weight *= 1.15
+    if example.has_event_localization and example.event_family != "other":
+        weight *= 1.1
+    return round(weight, 4)
 
 
 def derive_frame_targets(example: TemporalTrainingExample) -> dict[str, Any]:
@@ -396,6 +599,19 @@ def evaluate_temporal_event_detector_bundle(
     for example in evaluation_examples:
         prediction = bundle.predict(example.observations)
         metadata = prediction.metadata or {}
+        proposal_accepted = bool(
+            metadata.get("temporal_event_detector_proposal_accepted")
+            if "temporal_event_detector_proposal_accepted" in metadata
+            else metadata.get("temporal_event_detector_gate_open")
+        )
+        proposal_score = float(
+            metadata.get("temporal_event_detector_event_score")
+            or 0.0
+        )
+        rejector_label = str(
+            metadata.get("temporal_event_detector_proposal_rejector_label")
+            or "null"
+        )
         predicted_spotter_family = str(
             metadata.get("temporal_event_detector_event_family")
             or metadata.get("temporal_student_event_spotter_family")
@@ -420,6 +636,9 @@ def evaluate_temporal_event_detector_bundle(
                 "predictedDisplayLabel": prediction.label,
                 "isUncertain": bool(prediction.isUncertain),
                 "hasEventLocalization": bool(example.has_event_localization),
+                "proposalAccepted": proposal_accepted,
+                "proposalScore": round(proposal_score, 4),
+                "proposalRejectorLabel": rejector_label,
             }
         )
     total = max(len(rows), 1)
@@ -469,11 +688,44 @@ def evaluate_temporal_event_detector_bundle(
     event_detection_recall = round(true_positive / max(true_positive + false_negative, 1), 4)
     other_examples = [row for row in rows if row["predictedEventFamily"] == "other"]
     true_missed_events_in_other = sum(1 for row in other_examples if row["expectedEventFamily"] != "other")
+    proposal_acceptance_rate = round(
+        sum(1 for row in rows if row["proposalAccepted"]) / total,
+        4,
+    )
+    eventness_brier = round(
+        sum(
+            (float(row["proposalScore"]) - (1.0 if row["expectedEventFamily"] != "other" else 0.0)) ** 2
+            for row in rows
+        )
+        / total,
+        4,
+    )
+    accepted_shot_rows = [
+        row
+        for row in rows
+        if row["proposalAccepted"] and row["expectedEventFamily"] == "shot_attempt"
+    ]
+    accepted_shot_total = len(accepted_shot_rows)
+    accepted_shot_outcome_accuracy = (
+        round(
+            sum(1 for row in accepted_shot_rows if row["expectedOutcome"] == row["predictedOutcome"])
+            / accepted_shot_total,
+            4,
+        )
+        if accepted_shot_rows
+        else None
+    )
+    rejected_rows = [row for row in rows if not row["proposalAccepted"]]
+    rejected_true_negative = sum(1 for row in rejected_rows if row["expectedEventFamily"] == "other")
+    rejected_true_miss = sum(1 for row in rejected_rows if row["expectedEventFamily"] != "other")
     return {
         "eventFamilyAccuracy": event_family_accuracy,
         "outcomeAccuracy": outcome_accuracy,
         "shotSubtypeAccuracy": shot_subtype_accuracy,
         "uncertaintyRate": uncertainty_rate,
+        "proposalAcceptanceRate": proposal_acceptance_rate,
+        "eventnessBrier": eventness_brier,
+        "acceptedShotProposalOutcomeAccuracy": accepted_shot_outcome_accuracy,
         "flatLabelSpread": len(flat_label_distribution),
         "flatLabelDistribution": flat_label_distribution,
         "eventFamilyDistribution": event_family_distribution,
@@ -488,6 +740,8 @@ def evaluate_temporal_event_detector_bundle(
         "eventDetectionRecall": event_detection_recall,
         "eventDetectionLabeledRows": len(labeled_rows),
         "predictedOtherTrueMissRate": round(true_missed_events_in_other / max(len(other_examples), 1), 4),
+        "rejectedProposalTrueNegativeRate": round(rejected_true_negative / max(len(rejected_rows), 1), 4) if rejected_rows else None,
+        "rejectedProposalTrueMissRate": round(rejected_true_miss / max(len(rejected_rows), 1), 4) if rejected_rows else None,
         "evaluationRows": rows,
     }
 
@@ -503,23 +757,87 @@ def calibrate_temporal_event_detector_bundle(
     ]
     if not calibration_examples:
         return bundle
-    best_bundle = bundle
-    best_metrics = evaluate_temporal_event_detector_bundle(bundle, calibration_examples)
+    if len(calibration_examples) < 6:
+        return bundle
+    best_bundle = _calibrate_proposal_rejector(bundle, calibration_examples)
+    best_bundle = _calibrate_outcome_target(best_bundle, calibration_examples)
+    best_metrics = evaluate_temporal_event_detector_bundle(best_bundle, calibration_examples)
     best_score = candidate_score(best_metrics)
-    for threshold in (0.18, 0.22, 0.26, 0.3, 0.34, 0.38, 0.42):
-        for margin in (0.02, 0.035, 0.05, 0.065, 0.08):
-            candidate_bundle = replace(
-                bundle,
-                event_score_threshold=float(threshold),
-                event_margin_threshold=float(margin),
-            )
-            metrics = evaluate_temporal_event_detector_bundle(candidate_bundle, calibration_examples)
-            score = candidate_score(metrics)
-            if score <= best_score:
-                continue
-            best_bundle = candidate_bundle
-            best_metrics = metrics
-            best_score = score
+    calibrated_base = best_bundle
+    for threshold in (0.24, 0.3, 0.36, 0.42):
+        for margin in (0.03, 0.05, 0.07):
+            for eventness_temperature in (0.9, 1.05, 1.2):
+                candidate_bundle = replace(
+                    calibrated_base,
+                    event_score_threshold=float(threshold),
+                    event_margin_threshold=float(margin),
+                    eventness_temperature=float(eventness_temperature),
+                )
+                metrics = evaluate_temporal_event_detector_bundle(candidate_bundle, calibration_examples)
+                score = candidate_score(metrics)
+                if score > best_score:
+                    best_bundle = candidate_bundle
+                    best_metrics = metrics
+                    best_score = score
+    best_bundle = train_proposal_rejector_bundle(best_bundle, examples)
+    best_bundle = _calibrate_proposal_rejector(best_bundle, calibration_examples)
+    best_bundle = _calibrate_outcome_target(best_bundle, calibration_examples)
+    return best_bundle
+
+
+def _calibrate_proposal_rejector(
+    bundle: TemporalEventDetectorBundle,
+    examples: Sequence[TemporalTrainingExample],
+) -> TemporalEventDetectorBundle:
+    if bundle.proposal_rejector is None:
+        return bundle
+    best_bundle = bundle
+    best_metrics = evaluate_temporal_event_detector_bundle(bundle, examples)
+    best_score = candidate_score(best_metrics)
+    for temperature in (0.9, 1.1, 1.3):
+        for uncertainty in (0.46, 0.52, 0.58):
+            for margin in (0.05, 0.08, 0.11):
+                candidate_rejector = replace(
+                    bundle.proposal_rejector,
+                    temperature=float(temperature),
+                    uncertainty_threshold=float(uncertainty),
+                    margin_threshold=float(margin),
+                )
+                candidate_bundle = replace(bundle, proposal_rejector=candidate_rejector)
+                metrics = evaluate_temporal_event_detector_bundle(candidate_bundle, examples)
+                score = candidate_score(metrics)
+                if score > best_score:
+                    best_bundle = candidate_bundle
+                    best_metrics = metrics
+                    best_score = score
+    return best_bundle
+
+
+def _calibrate_outcome_target(
+    bundle: TemporalEventDetectorBundle,
+    examples: Sequence[TemporalTrainingExample],
+) -> TemporalEventDetectorBundle:
+    outcome_target = bundle.targets.get("outcome")
+    if outcome_target is None:
+        return bundle
+    best_bundle = bundle
+    best_score = candidate_score(evaluate_temporal_event_detector_bundle(bundle, examples))
+    for temperature in (0.9, 1.05, 1.2):
+        for uncertainty in (0.42, 0.48, 0.54):
+            for margin in (0.05, 0.08):
+                candidate_target = replace(
+                    outcome_target,
+                    temperature=float(temperature),
+                    uncertainty_threshold=float(uncertainty),
+                    margin_threshold=float(margin),
+                )
+                candidate_targets = dict(bundle.targets)
+                candidate_targets["outcome"] = candidate_target
+                candidate_bundle = replace(bundle, targets=candidate_targets)
+                score = candidate_score(evaluate_temporal_event_detector_bundle(candidate_bundle, examples))
+                if score > best_score:
+                    best_bundle = candidate_bundle
+                    best_score = score
     return best_bundle
 
 
@@ -544,16 +862,20 @@ def export_temporal_event_detector_bundle(
         for layer in model.temporal_layers
     )
     return TemporalEventDetectorBundle(
-        schema_version="temporal-event-detector-v1",
-        feature_schema_version="temporal-event-detector-feature-v1",
-        model_version=f"temporal-event-detector-{architecture}-v1",
+        schema_version=TEMPORAL_EVENT_DETECTOR_SCHEMA_VERSION,
+        feature_schema_version=TEMPORAL_EVENT_DETECTOR_FEATURE_SCHEMA_VERSION,
+        model_version=(
+            TEMPORAL_EVENT_DETECTOR_MODEL_VERSION
+            if architecture == "tridet"
+            else f"temporal-event-detector-{architecture}-hybrid-v1"
+        ),
         detector_family=architecture,
         trained_at=datetime.now(timezone.utc).isoformat(),
         source_dataset=source_dataset,
         notes=(
             f"{architecture} temporal detector over structured basketball signals, perception features, and clip-runtime cues.",
-            "A first-stage detector predicts event family and segment boundaries before outcome/subtype gating.",
-            "Outcome and subtype remain gated on confident detector output to avoid Highlight/other collapse from false positives.",
+            "TriDet is used as a proposal stage only; it does not emit final flat labels directly.",
+            "A proposal rejector and gated hierarchy prevent confident dunk/made collapse on weak or non-event proposals.",
         ),
         input_feature_names=tuple(input_feature_names),
         hidden_size=int(model.projection.out_features),
@@ -624,6 +946,9 @@ def build_temporal_event_detector_report(
                 f"- outcomeAccuracy: `{metrics.get('outcomeAccuracy')}`",
                 f"- shotSubtypeAccuracy: `{metrics.get('shotSubtypeAccuracy')}`",
                 f"- eventDetectionPrecision / Recall: `{metrics.get('eventDetectionPrecision')}` / `{metrics.get('eventDetectionRecall')}`",
+                f"- proposalAcceptanceRate: `{metrics.get('proposalAcceptanceRate')}`",
+                f"- acceptedShotProposalOutcomeAccuracy: `{metrics.get('acceptedShotProposalOutcomeAccuracy')}`",
+                f"- eventnessBrier: `{metrics.get('eventnessBrier')}`",
                 f"- uncertaintyRate: `{metrics.get('uncertaintyRate')}`",
                 f"- highlightDominance: `{metrics.get('highlightDominance')}`",
                 f"- otherDominance: `{metrics.get('otherDominance')}`",
@@ -634,15 +959,26 @@ def build_temporal_event_detector_report(
 
 
 def candidate_score(metrics: dict[str, Any]) -> float:
+    proposal_acceptance_rate = float(metrics.get("proposalAcceptanceRate", 0.0) or 0.0)
+    uncertainty_rate = float(metrics.get("uncertaintyRate", 0.0) or 0.0)
+    rejected_true_negative_rate = float(metrics.get("rejectedProposalTrueNegativeRate", 0.0) or 0.0)
+    rejected_true_miss_rate = float(metrics.get("rejectedProposalTrueMissRate", 0.0) or 0.0)
     return (
-        float(metrics.get("eventFamilyAccuracy", 0.0))
-        + float(metrics.get("outcomeAccuracy", 0.0))
-        + float(metrics.get("eventDetectionPrecision", 0.0))
-        + float(metrics.get("eventDetectionRecall", 0.0))
-        + (0.4 * float(metrics.get("shotSubtypeAccuracy", 0.0)))
-        - float(metrics.get("uncertaintyRate", 0.0))
-        - (0.6 * float(metrics.get("highlightDominance", 0.0)))
-        - (0.6 * float(metrics.get("otherDominance", 0.0)))
+        (1.15 * float(metrics.get("eventFamilyAccuracy", 0.0)))
+        + (0.95 * float(metrics.get("outcomeAccuracy", 0.0)))
+        + (0.9 * float(metrics.get("eventDetectionPrecision", 0.0)))
+        + (0.9 * float(metrics.get("eventDetectionRecall", 0.0)))
+        + (1.0 * float(metrics.get("acceptedShotProposalOutcomeAccuracy", 0.0) or 0.0))
+        + (0.35 * (1.0 - float(metrics.get("eventnessBrier", 1.0) or 1.0)))
+        + (0.25 * float(metrics.get("shotSubtypeAccuracy", 0.0) or 0.0))
+        + (0.3 * rejected_true_negative_rate)
+        - (0.7 * rejected_true_miss_rate)
+        - (0.7 * float(metrics.get("highlightDominance", 0.0)))
+        - (0.7 * float(metrics.get("otherDominance", 0.0)))
+        - (0.45 * abs(proposal_acceptance_rate - 0.45))
+        - (0.55 * abs(uncertainty_rate - 0.18))
+        - (0.45 * max(0.0, proposal_acceptance_rate - 0.85))
+        - (0.65 * max(0.0, 0.05 - uncertainty_rate))
     )
 
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import tempfile
 import unittest
 from importlib import util
@@ -36,6 +37,7 @@ training = _load_training_module()
 TemporalTrainingExample = training.TemporalTrainingExample
 evaluate_temporal_event_detector_bundle = training.evaluate_temporal_event_detector_bundle
 train_temporal_event_detector = training.train_temporal_event_detector
+infer_proposal_reject_label = training.infer_proposal_reject_label
 write_temporal_event_detector_bundle = training.write_temporal_event_detector_bundle
 
 
@@ -133,6 +135,34 @@ def _make_observation(
 
 
 class TemporalEventDetectorTests(unittest.TestCase):
+    def test_infers_rejector_label_from_reviewer_notes(self) -> None:
+        example = TemporalTrainingExample(
+            clip_id="clip-ambiguous-negative",
+            source_kind="disagreement",
+            source_domain="live_shadow",
+            source_set="phase4_event_localization_queue",
+            split="train",
+            event_family="other",
+            outcome="uncertain",
+            shot_subtype=None,
+            observations=tuple(
+                _make_observation(
+                    event_family="other",
+                    outcome="uncertain",
+                    shot_subtype=None,
+                    position=position,
+                    ball_visible=False,
+                    hoop_visible=False,
+                )
+                for position in (0.15, 0.4, 0.66, 0.92)
+            ),
+            weight=2.0,
+            has_event_localization=False,
+            reviewer_notes="Manual review: dead-ball reset before inbound.",
+        )
+
+        self.assertEqual(infer_proposal_reject_label(example), "dead_ball")
+
     @unittest.skipIf(torch is None, "torch is required for temporal event detector training")
     def test_actionformer_smoke_predicts_shot_attempt(self) -> None:
         shot = TemporalTrainingExample(
@@ -167,9 +197,33 @@ class TemporalEventDetectorTests(unittest.TestCase):
             weight=4.0,
             has_event_localization=True,
         )
+        negative = TemporalTrainingExample(
+            clip_id="clip-negative-camera-pan",
+            source_kind="gold",
+            source_domain="manual_negative",
+            source_set="phase4_event_localization_queue",
+            split="test",
+            event_family="other",
+            outcome="uncertain",
+            shot_subtype=None,
+            observations=tuple(
+                _make_observation(
+                    event_family="other",
+                    outcome="uncertain",
+                    shot_subtype=None,
+                    position=position,
+                    ball_visible=False,
+                    hoop_visible=False,
+                )
+                for position in (0.11, 0.36, 0.63, 0.89)
+            ),
+            weight=4.0,
+            has_event_localization=False,
+            reviewer_notes="Camera pan across the crowd; no live event.",
+        )
 
         result = train_temporal_event_detector(
-            [shot, transition],
+            [shot, transition, negative],
             architecture="actionformer",
             hidden_size=8,
             epochs=18,
@@ -234,6 +288,93 @@ class TemporalEventDetectorTests(unittest.TestCase):
         self.assertEqual(prediction.eventFamily, "other")
         self.assertEqual(prediction.label, "Highlight")
         self.assertFalse(prediction.metadata["temporal_event_detector_gate_open"])
+        self.assertFalse(prediction.metadata["temporal_event_detector_proposal_accepted"])
+        self.assertIsNotNone(prediction.metadata["temporal_event_detector_proposal_rejector_label"])
+        self.assertTrue(result.bundle.proposal_rejector is not None)
+
+    @unittest.skipIf(torch is None, "torch is required for temporal event detector training")
+    def test_accepted_proposal_does_not_force_shot_attempt_when_family_is_weak(self) -> None:
+        shot = TemporalTrainingExample(
+            clip_id="clip-shot-weak-family",
+            source_kind="gold",
+            source_domain="live_shadow",
+            source_set="phase4_event_localization_queue",
+            split="val",
+            event_family="shot_attempt",
+            outcome="made",
+            shot_subtype="layup",
+            observations=tuple(
+                _make_observation(event_family="shot_attempt", outcome="made", shot_subtype="layup", position=position)
+                for position in (0.14, 0.43, 0.69, 0.9)
+            ),
+            weight=4.0,
+            has_event_localization=True,
+        )
+        transition = TemporalTrainingExample(
+            clip_id="clip-transition-weak-family",
+            source_kind="gold",
+            source_domain="live_shadow",
+            source_set="phase4_event_localization_queue",
+            split="test",
+            event_family="transition",
+            outcome="uncertain",
+            shot_subtype=None,
+            observations=tuple(
+                _make_observation(event_family="transition", outcome="uncertain", shot_subtype=None, position=position)
+                for position in (0.1, 0.36, 0.64, 0.9)
+            ),
+            weight=4.0,
+            has_event_localization=True,
+        )
+        negative = TemporalTrainingExample(
+            clip_id="clip-negative-weak-family",
+            source_kind="gold",
+            source_domain="manual_negative",
+            source_set="phase4_event_localization_queue",
+            split="test",
+            event_family="other",
+            outcome="uncertain",
+            shot_subtype=None,
+            observations=tuple(
+                _make_observation(
+                    event_family="other",
+                    outcome="uncertain",
+                    shot_subtype=None,
+                    position=position,
+                    ball_visible=False,
+                    hoop_visible=False,
+                )
+                for position in (0.12, 0.39, 0.65, 0.9)
+            ),
+            weight=4.0,
+            has_event_localization=False,
+            reviewer_notes="Half-court setup with no real event.",
+        )
+
+        result = train_temporal_event_detector(
+            [shot, transition, negative],
+            architecture="tridet",
+            hidden_size=8,
+            epochs=10,
+            learning_rate=0.05,
+        )
+        weakened_family_target = replace(
+            result.bundle.targets["eventFamily"],
+            uncertainty_threshold=0.999,
+            margin_threshold=0.999,
+        )
+        weakened_bundle = replace(
+            result.bundle,
+            targets={**result.bundle.targets, "eventFamily": weakened_family_target},
+        )
+
+        prediction = weakened_bundle.predict(shot.observations)
+
+        self.assertTrue(prediction.metadata["temporal_event_detector_proposal_accepted"])
+        self.assertFalse(prediction.metadata["temporal_event_detector_classifier_gate_open"])
+        self.assertEqual(prediction.eventFamily, "other")
+        self.assertEqual(prediction.outcome, "uncertain")
+        self.assertIsNone(prediction.shotSubtype)
 
     @unittest.skipIf(torch is None, "torch is required for temporal event detector training")
     def test_evaluation_reports_detector_metrics_and_bundle_roundtrip(self) -> None:
@@ -269,18 +410,45 @@ class TemporalEventDetectorTests(unittest.TestCase):
             weight=4.0,
             has_event_localization=True,
         )
+        negative = TemporalTrainingExample(
+            clip_id="clip-negative-dead-ball",
+            source_kind="gold",
+            source_domain="manual_negative",
+            source_set="phase4_event_localization_queue",
+            split="test",
+            event_family="other",
+            outcome="uncertain",
+            shot_subtype=None,
+            observations=tuple(
+                _make_observation(
+                    event_family="other",
+                    outcome="uncertain",
+                    shot_subtype=None,
+                    position=position,
+                    ball_visible=False,
+                    hoop_visible=False,
+                )
+                for position in (0.14, 0.39, 0.65, 0.88)
+            ),
+            weight=4.0,
+            has_event_localization=False,
+            reviewer_notes="Dead-ball reset with no live event.",
+        )
 
         result = train_temporal_event_detector(
-            [shot, turnover],
+            [shot, turnover, negative],
             architecture="actionformer",
             hidden_size=8,
             epochs=8,
             learning_rate=0.05,
         )
-        metrics = evaluate_temporal_event_detector_bundle(result.bundle, [shot, turnover])
+        metrics = evaluate_temporal_event_detector_bundle(result.bundle, [shot, turnover, negative])
         self.assertIn("eventDetectionPrecision", metrics)
         self.assertIn("eventDetectionRecall", metrics)
         self.assertIn("predictedOtherTrueMissRate", metrics)
+        self.assertIn("proposalAcceptanceRate", metrics)
+        self.assertIn("acceptedShotProposalOutcomeAccuracy", metrics)
+        self.assertIn("eventnessBrier", metrics)
 
         with tempfile.TemporaryDirectory() as temp_dir:
             bundle_path = Path(temp_dir) / "temporal-event-detector.json"
@@ -288,6 +456,9 @@ class TemporalEventDetectorTests(unittest.TestCase):
             loaded = load_temporal_event_detector_bundle(bundle_path)
         prediction = loaded.predict(shot.observations)
         self.assertEqual(prediction.metadata["temporal_event_detector_family"], "actionformer")
+        self.assertEqual(loaded.schema_version, "temporal-event-detector-v2")
+        self.assertEqual(loaded.model_version, "temporal-event-detector-actionformer-hybrid-v1")
+        self.assertTrue(loaded.proposal_rejector is not None)
 
     @unittest.skipIf(torch is None, "torch is required for temporal event detector training")
     def test_event_detection_metrics_count_coarse_gold_rows(self) -> None:
