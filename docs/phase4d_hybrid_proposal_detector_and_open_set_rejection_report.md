@@ -1,127 +1,113 @@
-# Phase 4d: Hybrid Proposal Detector And Open-Set Rejection
+# Phase 4d: Hybrid Proposal Detector and Open-Set Rejection
+
+Branch: `codex/phase4d-hybrid-proposal-detector-and-open-set-rejection`
+
+Base verified state: `8e73ae7`
 
 ## Goal
 
-Keep TriDet as a high-recall temporal proposal generator, add a proposal rejector plus calibrated gated classifiers, and verify on live staging whether the runtime stops collapsing into confident `dunk/made` predictions on non-events and weak events.
+Keep TriDet as a high-recall temporal proposal generator, add a proposal rejector plus calibrated gated hierarchy, and validate the combined stack on live staging in shadow mode without changing the control-plane contract.
 
-## Branch And Deploy
+## Code Changes
 
-- Branch: `codex/phase4d-hybrid-proposal-detector-and-open-set-rejection`
-- Verified base: `8e73ae7`
-- Cloud Build: `995ca103-11e9-4abd-886d-f68ac69740a0`
-- Cloud Run service: `hoopsclips-inference-staging`
-- Cloud Run revision: `hoopsclips-inference-staging-00027-jpq`
-- Cloud Run URL: `https://hoopsclips-inference-staging-npya43jiia-uc.a.run.app`
-- Inference version: `phase4d-hybrid-proposal-detector-and-open-set-rejection`
-- Worker URL: `https://hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev`
-- Runtime mode on staging: `shadow`
-
-## What Changed
-
-- TriDet is kept as the temporal proposal stage only.
-- A phase4d proposal rejector is added with labels:
-  - `real_event`
-  - `non_event`
-  - `setup`
-  - `dead_ball`
-  - `replay_or_reaction`
-  - `ambiguous`
-- Hierarchical heads stay gated behind proposal acceptance:
-  - `eventFamily`
-  - `outcome`
-  - `shotSubtype`
-- Calibration surfaces were added or updated for:
-  - proposal eventness
-  - proposal rejector
-  - outcome head
-- Shadow eval reporting now includes:
-  - proposal acceptance rate
-  - eventness calibration
-  - accepted-shot outcome accuracy
-  - rejected-proposal audit
+- Kept TriDet / ActionFormer as proposal generators only at runtime and moved final hierarchy behind proposal acceptance in [services/inference/app/runtime_models/temporal_event_detector.py](/Users/hanfei/rork-hoopshighlights-ai_Final/services/inference/app/runtime_models/temporal_event_detector.py).
+- Added second-stage proposal rejector training, export, and calibration in [services/inference/training/temporal_event_detector.py](/Users/hanfei/rork-hoopshighlights-ai_Final/services/inference/training/temporal_event_detector.py).
+- Extended shadow reporting with proposal acceptance, rejector outputs, and eventness calibration in [services/inference/scripts/run_shadow_eval.py](/Users/hanfei/rork-hoopshighlights-ai_Final/services/inference/scripts/run_shadow_eval.py).
+- Updated the deployed temporal bundle in [services/inference/models/temporal_event_detector_v1.json](/Users/hanfei/rork-hoopshighlights-ai_Final/services/inference/models/temporal_event_detector_v1.json).
+- Kept staging rollout in shadow mode through [services/inference/cloudbuild.yaml](/Users/hanfei/rork-hoopshighlights-ai_Final/services/inference/cloudbuild.yaml).
 
 ## Validation
 
-### Local Validation
+### Local validation
 
 - `services/inference/.venv/bin/python -m unittest services.inference.tests.test_temporal_event_detector services.inference.tests.test_shadow_eval services.inference.tests.test_pipeline`
 - `services/inference/.venv/bin/python services/inference/scripts/train_temporal_event_detector_candidates.py --output-dir /tmp/phase4d-candidates --write-models --write-model-architecture winner`
 - `npm --prefix services/control-plane run typecheck`
 - `xcodebuild -project ios/HoopsClips.xcodeproj -scheme HoopsClips -configuration Staging -destination 'platform=iOS Simulator,id=09C3102D-6824-4BA2-8CBE-F6348561F6E8' -derivedDataPath /tmp/HoopsClipsPhase4d CODE_SIGNING_ALLOWED=NO HOOPS_CLOUD_ANALYSIS_BASE_URL=https://hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev build`
 
-### Staging Health
+All of the above passed.
 
+### Staging deploy
+
+- Cloud Build: `995ca103-11e9-4abd-886d-f68ac69740a0`
+- Cloud Run revision: `hoopsclips-inference-staging-00027-jpq`
+- Cloud Run URL: [https://hoopsclips-inference-staging-npya43jiia-uc.a.run.app](https://hoopsclips-inference-staging-npya43jiia-uc.a.run.app)
 - `/version` returned `phase4d-hybrid-proposal-detector-and-open-set-rejection`
 - `/readyz` returned `ready`
 
-### Worker Smoke
+### Worker-path smoke
 
-- Smoke job completed through the Worker path
-- `jobId`: `3ae6c1950c404a788a56169f8e48598d`
-- `uploadTraceId`: `d0e1e7ce8c094e2199cc8481d7976aa9`
-- `inferenceAttemptId`: `3f09e565667e45978f72d19a352c7059`
-- Final app-facing clip label remained `Highlight`
-- Control-plane callback and trace hydration remained healthy
+- Job: `3ae6c1950c404a788a56169f8e48598d`
+- Upload trace: `d0e1e7ce8c094e2199cc8481d7976aa9`
+- Inference attempt: `3f09e565667e45978f72d19a352c7059`
+- Final status: `completed`
+- Result: `1` clip, shipped flat label `Highlight`, duration `4.5s`
 
-### Simulator Upload
+### Simulator upload
 
-- Simulator automation completed successfully against staging
-- Review rendered the live `Staging Debug Trace` card
-- Screenshot: ![phase4d iOS smoke](/tmp/phase4d-ios-smoke.png)
+- Built app path: `/tmp/HoopsClipsPhase4d/Build/Products/Staging-iphonesimulator/HoopsClips.app`
+- Booted simulator: `iPhone 16e (09C3102D-6824-4BA2-8CBE-F6348561F6E8)`
+- Late screenshot confirming Review + trace metadata: ![phase4d iOS smoke](/tmp/phase4d-ios-smoke-late.png)
+- Visible trace card fields on Review:
+  - requestId `22954c640b3b4e7aaba92028c2a2d9ce`
+  - uploadTraceId `6c4f2c93973f47b79676a8c9f8179e51`
+  - inferenceAttemptId `d09654bc1b2e409582e4b8df963f3142`
 
-### Mixed Live Shadow Batch
+### Mixed live shadow batch
 
-- Batch size: `9`
-- Result files: `/tmp/phase4d-batch/results/*.json`
-- Shadow report:
-  - [shadow_eval_report.md](/tmp/phase4d-batch/shadow-report/shadow_eval_report.md)
-  - [shadow_eval_report.json](/tmp/phase4d-batch/shadow-report/shadow_eval_report.json)
+- Manifest size: `9` clips
+- Output dir: `/tmp/phase4d-batch/results`
+- Shadow report: `/tmp/phase4d-batch/shadow-report/shadow_eval_report.md`
 
-## Shadow Metrics
+Summary from `/tmp/phase4d-batch/shadow-report/shadow_eval_report.json`:
 
 - Flat label distribution: `{"Dunk": 9}`
-- Event family distribution: `{"shot_attempt": 9}`
+- EventFamily distribution: `{"shot_attempt": 9}`
 - Outcome distribution: `{"made": 9}`
-- Shot subtype distribution: `{"dunk": 9}`
+- ShotSubtype distribution: `{"dunk": 9}`
 - Proposal acceptance rate: `1.0`
-- Accepted-shot proposal outcome accuracy: `0.5`
-- Eventness calibration:
-  - `brierScore = 0.2694`
-  - `positiveMeanScore = 0.8732`
-  - `negativeMeanScore = 0.8808`
-- Event detection precision / recall: `0.6667 / 1.0`
-- Event spotter precision / recall: `0.6667 / 1.0`
+- Eventness calibration: `{"brierScore": 0.2694, "eligibleClips": 9, "negativeMeanScore": 0.8808, "positiveMeanScore": 0.8732}`
 - Uncertainty rate: `0.0`
+- Outcome accuracy on accepted shot proposals: `0.5`
 - Highlight dominance: `0.0`
 - EventFamily=`other` dominance: `0.0`
-- Rejected proposal audit: no rejected proposals (`0/9`)
-- Miss-vs-made confusion artifact: `expectedMissPredictedMadeShot = 0`
+- Rejected proposal audit: no proposals were rejected
+- Mixed-batch label spread: `1` unique label, `Dunk` at `100%`
 
-## Interpretation
+Representative failure cases:
 
-Phase 4d removed the old `Highlight/other` collapse, but it did not solve the real failure mode. The runtime shifted into a different pathological mode:
+- Expected made dunk clip stayed `Dunk` / `shot_attempt` / `made`, which is acceptable.
+- Expected miss layup clips were still labeled `Dunk` / `shot_attempt` / `made`.
+- Expected `other` / uncertain clips were also labeled `Dunk` / `shot_attempt` / `made`.
 
-- every shadow clip was accepted as a proposal
-- every accepted proposal was verified as `real_event`
-- every clip became `shot_attempt`
-- every clip became `made`
-- every clip became `dunk`
-- uncertainty collapsed back to `0.0`
+## Verdict
 
-That means the proposal rejector and gated hierarchy did not create meaningful open-set rejection on this live batch. The model is still over-trusting weak or wrong proposals and then confidently forcing a single positive basketball outcome.
+Phase 4d failed the branch goal.
 
-## Acceptance Check
+What improved:
 
-- No collapse to a single confident positive label: failed
-- `Highlight < 50%`: passed, but only because all clips collapsed to `Dunk`
-- `eventFamily other < 40%`: passed, but only because all clips collapsed to `shot_attempt`
-- Materially better shot-attempt precision than phase4c: not achieved on live behavior
-- Outcome accuracy on accepted shot proposals > `0.333`: passed (`0.5`)
-- Uncertainty no longer collapses to `0.0`: failed
-- No smoke/simulator regression: passed
+- Accepted-shot outcome accuracy improved from the phase4c live value of `0.3333` to `0.5`.
+- The control-plane contract stayed intact.
+- Worker smoke, simulator upload, Review trace metadata, and shadow reporting all remained healthy.
+
+What failed:
+
+- The live shadow batch still collapsed to a single confident positive label.
+- Uncertainty still collapsed to `0.0`.
+- The proposal rejector did not reject any proposal on the mixed batch.
+- Eventness remained poorly discriminative on live data: the mean proposal score for negatives (`0.8808`) was slightly higher than for positives (`0.8732`).
+- The branch eliminated the phase4c `Highlight/other` failure only by replacing it with universal `Dunk/made`.
+
+Acceptance criteria result:
+
+- `no collapse to a single confident positive label`: failed
+- `Highlight < 50%`: passed trivially but not meaningful
+- `eventFamily other < 40%`: passed trivially but not meaningful
+- `materially better shot_attempt precision than phase4c`: failed in practice
+- `outcome accuracy on accepted shot proposals improves over 0.333`: passed (`0.5`)
+- `uncertainty no longer collapses to 0.0`: failed
+- `no smoke/simulator regression`: passed
 
 ## Decision
 
-Do not promote phase4d beyond shadow.
-
-The infra and contract are healthy, but the model behavior is still not safe enough for live labels. The phase4d verifier did not reject enough proposals and allowed a full-batch `dunk/made` collapse. The next iteration needs stronger rejection supervision and/or stricter open-set behavior on near-event negatives before this stack is promotable.
+Keep phase4d in shadow mode only. It is not promotable. The remaining blocker is model behavior, not staging infrastructure or control-plane integration.
