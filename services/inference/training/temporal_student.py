@@ -54,6 +54,14 @@ class TemporalStudentTrainingExample:
     source_domain: str = "unknown"
     source_set: str = "unknown"
     has_event_localization: bool = False
+    event_start_seconds: float | None = None
+    event_center_seconds: float | None = None
+    event_end_seconds: float | None = None
+    shot_release_time_seconds: float | None = None
+    ball_near_rim_time_seconds: float | None = None
+    ball_through_hoop_time_seconds: float | None = None
+    possession_change_time_seconds: float | None = None
+    transition_start_time_seconds: float | None = None
     reviewer_notes: str = ""
 
 
@@ -147,6 +155,14 @@ def load_temporal_student_examples(repo_root: Path) -> list[TemporalStudentTrain
                         example.transition_start_time_seconds,
                     )
                 ),
+                event_start_seconds=example.event_start_seconds,
+                event_center_seconds=example.event_center_seconds,
+                event_end_seconds=example.event_end_seconds,
+                shot_release_time_seconds=example.shot_release_time_seconds,
+                ball_near_rim_time_seconds=example.ball_near_rim_time_seconds,
+                ball_through_hoop_time_seconds=example.ball_through_hoop_time_seconds,
+                possession_change_time_seconds=example.possession_change_time_seconds,
+                transition_start_time_seconds=example.transition_start_time_seconds,
                 reviewer_notes=example.reviewer_notes,
             )
         )

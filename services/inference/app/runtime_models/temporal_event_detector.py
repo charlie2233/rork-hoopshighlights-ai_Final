@@ -28,9 +28,9 @@ from services.inference.app.runtime_models.temporal_student import (
 )
 
 
-TEMPORAL_EVENT_DETECTOR_SCHEMA_VERSION = "temporal-event-detector-v2"
-TEMPORAL_EVENT_DETECTOR_FEATURE_SCHEMA_VERSION = "temporal-event-detector-feature-v2"
-TEMPORAL_EVENT_DETECTOR_MODEL_VERSION = "temporal-event-detector-tridet-hybrid-v1"
+TEMPORAL_EVENT_DETECTOR_SCHEMA_VERSION = "temporal-event-detector-v3"
+TEMPORAL_EVENT_DETECTOR_FEATURE_SCHEMA_VERSION = "temporal-event-detector-feature-v3"
+TEMPORAL_EVENT_DETECTOR_MODEL_VERSION = "temporal-event-detector-tridet-open-set-v1"
 TEMPORAL_EVENT_DETECTOR_BUNDLE_PATH = (
     Path(__file__).resolve().parents[2] / "models" / "temporal_event_detector_v1.json"
 )
@@ -53,6 +53,8 @@ PROPOSAL_REJECT_LABELS = (
     "replay_or_reaction",
     "ambiguous",
 )
+PROPOSAL_RANK_LABELS = ("secondary", "primary")
+PROPOSAL_ACCEPT_LABELS = ("reject", "accept")
 HARD_REJECT_LABELS = frozenset({"non_event", "setup", "dead_ball", "replay_or_reaction"})
 PROPOSAL_REJECTOR_AGGREGATE_FEATURES = (
     "ball_visible",
@@ -100,6 +102,7 @@ class TemporalConvLayer:
 
 @dataclass(frozen=True)
 class TemporalEventProposal:
+    proposal_index: int
     start_index: int
     center_index: int
     end_index: int
@@ -116,6 +119,19 @@ class TemporalEventProposal:
     start_scores: np.ndarray
     end_scores: np.ndarray
     event_spotter_prediction: TemporalStudentTargetPrediction
+    spotter_ranking_score: float
+    boundary_score: float
+
+
+@dataclass(frozen=True)
+class RankedTemporalEventProposal:
+    proposal: TemporalEventProposal
+    rejector_prediction: TemporalTargetPrediction
+    ranker_prediction: TemporalTargetPrediction
+    acceptor_prediction: TemporalTargetPrediction
+    acceptance_score: float
+    competition_margin: float
+    accepted: bool
 
 
 @dataclass(frozen=True)
@@ -148,6 +164,13 @@ class TemporalEventDetectorBundle:
     eventness_temperature: float = 1.0
     proposal_rejector_feature_names: tuple[str, ...] = ()
     proposal_rejector: TemporalTargetModel | None = None
+    proposal_ranker_feature_names: tuple[str, ...] = ()
+    proposal_ranker: TemporalTargetModel | None = None
+    proposal_acceptor_feature_names: tuple[str, ...] = ()
+    proposal_acceptor: TemporalTargetModel | None = None
+    proposal_acceptance_threshold: float = 0.62
+    proposal_competition_margin_threshold: float = 0.06
+    proposal_candidate_limit: int = 4
 
     def encode_observations(self, observations: Sequence[TemporalStudentObservation]) -> np.ndarray:
         frame_matrix = np.asarray(
@@ -169,6 +192,14 @@ class TemporalEventDetectorBundle:
         return hidden
 
     def propose(self, observations: Sequence[TemporalStudentObservation]) -> TemporalEventProposal:
+        return self.propose_candidates(observations, max_candidates=1)[0]
+
+    def propose_candidates(
+        self,
+        observations: Sequence[TemporalStudentObservation],
+        *,
+        max_candidates: int | None = None,
+    ) -> list[TemporalEventProposal]:
         if not observations:
             raise ValueError("At least one temporal detector observation is required.")
         hidden = self.encode_observations(observations)
@@ -187,40 +218,68 @@ class TemporalEventDetectorBundle:
         end_scores = _softmax(
             np.matmul(hidden, np.asarray(self.end_weight, dtype=np.float64)) + float(self.end_bias)
         )
-        center_index, coarse_event_family, event_spotter_prediction, best_event_score = self._spot_event(
+        candidate_specs = self._score_candidate_specs(
             frame_family_probabilities=frame_family_probabilities,
             eventness=eventness,
             start_scores=start_scores,
             end_scores=end_scores,
         )
-        start_index = int(np.argmax(start_scores[: center_index + 1])) if center_index >= 0 else 0
-        end_index = int(center_index + np.argmax(end_scores[center_index:])) if center_index < len(observations) else len(observations) - 1
-        if end_index < start_index:
-            end_index = start_index
-        pooled, segment_attention = self._pool_segment(hidden, start_index=start_index, end_index=end_index)
-        return TemporalEventProposal(
-            start_index=start_index,
-            center_index=center_index,
-            end_index=end_index,
-            start_seconds=round(float(observations[start_index].timestamp_seconds), 4),
-            center_seconds=round(float(observations[center_index].timestamp_seconds), 4),
-            end_seconds=round(float(observations[end_index].timestamp_seconds), 4),
-            event_score=round(best_event_score, 4),
-            event_margin=round(event_spotter_prediction.margin, 4),
-            coarse_event_family=coarse_event_family,
-            hidden=hidden,
-            pooled_vector=pooled,
-            segment_attention=segment_attention,
-            eventness=eventness,
-            start_scores=start_scores,
-            end_scores=end_scores,
-            event_spotter_prediction=event_spotter_prediction,
-        )
+        proposals: list[TemporalEventProposal] = []
+        seen_segments: set[tuple[int, int]] = set()
+        limit = max(1, int(max_candidates or self.proposal_candidate_limit))
+        for spec in candidate_specs:
+            center_index = int(spec["center_index"])
+            start_index = int(np.argmax(start_scores[: center_index + 1])) if center_index >= 0 else 0
+            end_index = (
+                int(center_index + np.argmax(end_scores[center_index:]))
+                if center_index < len(observations)
+                else len(observations) - 1
+            )
+            if end_index < start_index:
+                end_index = start_index
+            segment_key = (start_index, end_index)
+            if segment_key in seen_segments:
+                continue
+            seen_segments.add(segment_key)
+            pooled, segment_attention = self._pool_segment(hidden, start_index=start_index, end_index=end_index)
+            proposals.append(
+                TemporalEventProposal(
+                    proposal_index=len(proposals),
+                    start_index=start_index,
+                    center_index=center_index,
+                    end_index=end_index,
+                    start_seconds=round(float(observations[start_index].timestamp_seconds), 4),
+                    center_seconds=round(float(observations[center_index].timestamp_seconds), 4),
+                    end_seconds=round(float(observations[end_index].timestamp_seconds), 4),
+                    event_score=round(float(spec["event_score"]), 4),
+                    event_margin=round(float(spec["event_margin"]), 4),
+                    coarse_event_family=str(spec["coarse_event_family"]),
+                    hidden=hidden,
+                    pooled_vector=pooled,
+                    segment_attention=segment_attention,
+                    eventness=eventness,
+                    start_scores=start_scores,
+                    end_scores=end_scores,
+                    event_spotter_prediction=spec["prediction"],
+                    spotter_ranking_score=round(float(spec["ranking_score"]), 4),
+                    boundary_score=round(float(spec["boundary_score"]), 4),
+                )
+            )
+            if len(proposals) >= limit:
+                break
+        if not proposals:
+            raise ValueError("Unable to generate at least one temporal proposal.")
+        return proposals
 
     def predict(self, observations: Sequence[TemporalStudentObservation]) -> ActionPrediction:
-        proposal = self.propose(observations)
-        rejector_prediction = self._predict_proposal_rejector(observations, proposal)
-        proposal_accepted = self._proposal_accepted(proposal, rejector_prediction)
+        proposals = self.propose_candidates(observations)
+        scored_proposals = self._score_ranked_proposals(observations, proposals)
+        selected = scored_proposals[0]
+        proposal = selected.proposal
+        rejector_prediction = selected.rejector_prediction
+        ranker_prediction = selected.ranker_prediction
+        acceptor_prediction = selected.acceptor_prediction
+        proposal_accepted = selected.accepted
         classifier_gate_open = False
 
         if proposal_accepted:
@@ -228,14 +287,16 @@ class TemporalEventDetectorBundle:
                 self.targets["eventFamily"],
                 proposal.pooled_vector,
                 model_version=self.model_version,
-                allowed_labels=tuple(label for label in EVENT_FAMILIES if label != "other"),
+                allowed_labels=EVENT_FAMILIES,
             )
             event_family = family_prediction.label
             if family_prediction.is_uncertain or event_family not in EVENT_FAMILIES or event_family == "other":
                 event_family = "other"
             classifier_gate_open = (
                 rejector_prediction.label == "real_event"
+                and ranker_prediction.label == "primary"
                 and not rejector_prediction.is_uncertain
+                and not ranker_prediction.is_uncertain
                 and event_family != "other"
                 and not family_prediction.is_uncertain
             )
@@ -302,18 +363,22 @@ class TemporalEventDetectorBundle:
             not proposal_accepted
             or not classifier_gate_open
             or rejector_prediction.is_uncertain
+            or ranker_prediction.is_uncertain
+            or acceptor_prediction.is_uncertain
             or rejector_prediction.label != "real_event"
+            or ranker_prediction.label != "primary"
             or family_prediction.is_uncertain
+            or selected.competition_margin < self.proposal_competition_margin_threshold
+            or selected.acceptance_score < (self.proposal_acceptance_threshold + 0.08)
             or (classifier_gate_open and event_family == "shot_attempt" and outcome_prediction.is_uncertain)
             or (event_family == "shot_attempt" and shot_subtype is None)
         )
-        confidence_before_mapping = proposal.event_score if not proposal_accepted else max(
-            proposal.event_score,
-            family_prediction.confidence,
+        confidence_before_mapping = selected.acceptance_score if proposal_accepted else max(
+            min(selected.acceptance_score, proposal.event_score),
+            0.18,
         )
         if proposal_accepted:
-            confidence_after_mapping = round(
-                _resolve_student_confidence(
+            resolved_confidence = _resolve_student_confidence(
                     display_label=display_label,
                     event_spotter_prediction=proposal.event_spotter_prediction,
                     family_prediction=family_prediction,
@@ -321,12 +386,17 @@ class TemporalEventDetectorBundle:
                     subtype_prediction=subtype_prediction,
                     gate_open=classifier_gate_open,
                     is_uncertain=is_uncertain,
+                )
+            confidence_after_mapping = round(
+                min(
+                    resolved_confidence,
+                    max(selected.acceptance_score - (0.08 if is_uncertain else 0.0), 0.18),
                 ),
                 4,
             )
         else:
             confidence_after_mapping = round(
-                max(min(proposal.event_score, rejector_prediction.confidence) - 0.12, 0.18),
+                max(min(selected.acceptance_score, rejector_prediction.confidence, 0.49) - 0.04, 0.18),
                 4,
             )
 
@@ -351,6 +421,12 @@ class TemporalEventDetectorBundle:
             "temporal_event_detector_event_score_threshold": round(self.event_score_threshold, 4),
             "temporal_event_detector_event_margin_threshold": round(self.event_margin_threshold, 4),
             "temporal_event_detector_eventness_temperature": round(self.eventness_temperature, 4),
+            "temporal_event_detector_proposal_acceptance_threshold": round(self.proposal_acceptance_threshold, 4),
+            "temporal_event_detector_proposal_competition_margin_threshold": round(
+                self.proposal_competition_margin_threshold,
+                4,
+            ),
+            "temporal_event_detector_proposal_candidate_count": len(scored_proposals),
             "temporal_event_detector_segment": {
                 "startIndex": proposal.start_index,
                 "centerIndex": proposal.center_index,
@@ -361,6 +437,10 @@ class TemporalEventDetectorBundle:
             },
             "temporal_event_detector_event_score": proposal.event_score,
             "temporal_event_detector_event_margin": proposal.event_margin,
+            "temporal_event_detector_proposal_rank_score": proposal.spotter_ranking_score,
+            "temporal_event_detector_proposal_acceptance_score": round(selected.acceptance_score, 4),
+            "temporal_event_detector_proposal_competition_margin": round(selected.competition_margin, 4),
+            "temporal_event_detector_boundary_score": proposal.boundary_score,
             "temporal_event_detector_eventness": [round(float(value), 4) for value in proposal.eventness.tolist()],
             "temporal_event_detector_start_scores": [round(float(value), 4) for value in proposal.start_scores.tolist()],
             "temporal_event_detector_end_scores": [round(float(value), 4) for value in proposal.end_scores.tolist()],
@@ -376,6 +456,20 @@ class TemporalEventDetectorBundle:
             "temporal_event_detector_proposal_rejector_top_labels": [
                 item.model_dump(mode="json") for item in rejector_prediction.top_labels
             ],
+            "temporal_event_detector_proposal_ranker_label": ranker_prediction.label,
+            "temporal_event_detector_proposal_ranker_confidence": round(ranker_prediction.confidence, 4),
+            "temporal_event_detector_proposal_ranker_margin": round(ranker_prediction.margin, 4),
+            "temporal_event_detector_proposal_ranker_distribution": ranker_prediction.distribution,
+            "temporal_event_detector_proposal_ranker_top_labels": [
+                item.model_dump(mode="json") for item in ranker_prediction.top_labels
+            ],
+            "temporal_event_detector_proposal_acceptor_label": acceptor_prediction.label,
+            "temporal_event_detector_proposal_acceptor_confidence": round(acceptor_prediction.confidence, 4),
+            "temporal_event_detector_proposal_acceptor_margin": round(acceptor_prediction.margin, 4),
+            "temporal_event_detector_proposal_acceptor_distribution": acceptor_prediction.distribution,
+            "temporal_event_detector_proposal_acceptor_top_labels": [
+                item.model_dump(mode="json") for item in acceptor_prediction.top_labels
+            ],
             "temporal_event_detector_proposal_rejector_temperature": (
                 round(self.proposal_rejector.temperature, 4) if self.proposal_rejector is not None else None
             ),
@@ -384,6 +478,24 @@ class TemporalEventDetectorBundle:
             ),
             "temporal_event_detector_proposal_rejector_margin_threshold": (
                 round(self.proposal_rejector.margin_threshold, 4) if self.proposal_rejector is not None else None
+            ),
+            "temporal_event_detector_proposal_ranker_temperature": (
+                round(self.proposal_ranker.temperature, 4) if self.proposal_ranker is not None else None
+            ),
+            "temporal_event_detector_proposal_ranker_uncertainty_threshold": (
+                round(self.proposal_ranker.uncertainty_threshold, 4) if self.proposal_ranker is not None else None
+            ),
+            "temporal_event_detector_proposal_ranker_margin_threshold": (
+                round(self.proposal_ranker.margin_threshold, 4) if self.proposal_ranker is not None else None
+            ),
+            "temporal_event_detector_proposal_acceptor_temperature": (
+                round(self.proposal_acceptor.temperature, 4) if self.proposal_acceptor is not None else None
+            ),
+            "temporal_event_detector_proposal_acceptor_uncertainty_threshold": (
+                round(self.proposal_acceptor.uncertainty_threshold, 4) if self.proposal_acceptor is not None else None
+            ),
+            "temporal_event_detector_proposal_acceptor_margin_threshold": (
+                round(self.proposal_acceptor.margin_threshold, 4) if self.proposal_acceptor is not None else None
             ),
             "temporal_event_detector_family_distribution": family_prediction.distribution,
             "temporal_event_detector_outcome_distribution": outcome_prediction.distribution,
@@ -475,26 +587,15 @@ class TemporalEventDetectorBundle:
         pooled = np.concatenate([weighted_mean, pooled_max, pooled_last, pooled_delta], axis=0)
         return pooled, attention
 
-    def _spot_event(
+    def _score_candidate_specs(
         self,
         *,
         frame_family_probabilities: np.ndarray,
         eventness: np.ndarray,
         start_scores: np.ndarray,
         end_scores: np.ndarray,
-    ) -> tuple[int, str, TemporalStudentTargetPrediction, float]:
-        center_index = 0
-        best_score = -1.0
-        best_family = "other"
-        best_distribution: dict[str, float] | None = None
-        best_top_labels: tuple[LabelScore, ...] = ()
-        best_margin = 0.0
-        best_confidence = 0.0
-        best_other_index = 0
-        best_other_confidence = 0.0
-        best_other_distribution: dict[str, float] | None = None
-        best_other_top_labels: tuple[LabelScore, ...] = ()
-        best_other_margin = 0.0
+    ) -> list[dict[str, Any]]:
+        candidate_specs: list[dict[str, Any]] = []
         for index in range(frame_family_probabilities.shape[0]):
             probabilities = frame_family_probabilities[index]
             ranking = list(np.argsort(probabilities)[::-1])
@@ -530,39 +631,38 @@ class TemporalEventDetectorBundle:
                 )
                 for label_index in ranking[:MAX_TEMPORAL_EVENT_DETECTOR_TOPK]
             )
-            if other_confidence > best_other_confidence:
-                best_other_index = index
-                best_other_confidence = other_confidence
-                best_other_distribution = distribution
-                best_other_top_labels = top_labels
-                best_other_margin = round(max(top_probability - second_probability, 0.0), 4)
-            if ranking_score <= best_score:
-                continue
-            best_score = ranking_score
-            best_confidence = confidence_score
-            center_index = index
-            best_family = str(EVENT_FAMILIES[best_non_other_index]) if confidence_score >= self.event_score_threshold else "other"
-            best_distribution = distribution
-            best_top_labels = top_labels
-            best_margin = round(max(best_non_other_probability - second_probability, 0.0), 4)
-        if best_other_confidence >= max(best_confidence + 0.02, 0.5):
-            center_index = best_other_index
-            best_family = "other"
-            best_confidence = best_other_confidence
-            best_distribution = best_other_distribution
-            best_top_labels = best_other_top_labels
-            best_margin = best_other_margin
-        prediction = TemporalStudentTargetPrediction(
-            label=best_family,
-            confidence=round(best_confidence, 4),
-            margin=best_margin,
-            distribution=best_distribution or {"other": 1.0},
-            top_labels=best_top_labels or (
-                LabelScore(label="other", confidence=1.0, modelVersion=self.model_version),
-            ),
-            is_uncertain=best_confidence < self.event_score_threshold or best_margin < self.event_margin_threshold,
-        )
-        return center_index, best_family, prediction, round(best_confidence, 4)
+            coarse_family = (
+                str(EVENT_FAMILIES[best_non_other_index])
+                if confidence_score >= self.event_score_threshold
+                else "other"
+            )
+            prediction = TemporalStudentTargetPrediction(
+                label=coarse_family,
+                confidence=round(confidence_score, 4),
+                margin=round(max(best_non_other_probability - second_probability, 0.0), 4),
+                distribution=distribution,
+                top_labels=top_labels,
+                is_uncertain=(
+                    confidence_score < self.event_score_threshold
+                    or max(best_non_other_probability - second_probability, 0.0) < self.event_margin_threshold
+                ),
+            )
+            candidate_specs.append(
+                {
+                    "center_index": index,
+                    "coarse_event_family": coarse_family,
+                    "prediction": prediction,
+                    "event_score": round(confidence_score, 4),
+                    "event_margin": round(max(best_non_other_probability - second_probability, 0.0), 4),
+                    "boundary_score": round(boundary_score, 4),
+                    "ranking_score": round(
+                        max(ranking_score, other_confidence * 0.92 if EVENT_FAMILIES[top_index] == "other" else 0.0),
+                        4,
+                    ),
+                }
+            )
+        candidate_specs.sort(key=lambda spec: float(spec["ranking_score"]), reverse=True)
+        return candidate_specs
 
     def _predict_proposal_rejector(
         self,
@@ -583,29 +683,198 @@ class TemporalEventDetectorBundle:
         )
         return self.proposal_rejector.predict(feature_vector, model_version=self.model_version)
 
-    def _proposal_accepted(
+    def _predict_proposal_ranker(
+        self,
+        observations: Sequence[TemporalStudentObservation],
+        proposal: TemporalEventProposal,
+    ) -> TemporalTargetPrediction:
+        if self.proposal_ranker is None or not self.proposal_ranker_feature_names:
+            return _fallback_target_prediction(
+                label="primary" if proposal.coarse_event_family != "other" and not proposal.event_spotter_prediction.is_uncertain else "secondary",
+                confidence=proposal.event_spotter_prediction.confidence,
+                margin=proposal.event_spotter_prediction.margin,
+                model_version=self.model_version,
+                classes=PROPOSAL_RANK_LABELS,
+                default_label="secondary",
+            )
+        feature_map = build_proposal_rejector_feature_map(observations=observations, proposal=proposal)
+        feature_vector = np.asarray(
+            [float(feature_map.get(name, 0.0)) for name in self.proposal_ranker_feature_names],
+            dtype=np.float64,
+        )
+        return self.proposal_ranker.predict(feature_vector, model_version=self.model_version)
+
+    def _predict_proposal_acceptor(
+        self,
+        *,
+        proposal: TemporalEventProposal,
+        rejector_prediction: TemporalTargetPrediction,
+        ranker_prediction: TemporalTargetPrediction,
+    ) -> TemporalTargetPrediction:
+        if self.proposal_acceptor is None or not self.proposal_acceptor_feature_names:
+            conservative_accept = (
+                proposal.coarse_event_family != "other"
+                and not proposal.event_spotter_prediction.is_uncertain
+                and proposal.event_score >= max(self.event_score_threshold + 0.08, 0.4)
+                and proposal.event_margin >= max(self.event_margin_threshold + 0.02, 0.05)
+                and rejector_prediction.label == "real_event"
+                and not rejector_prediction.is_uncertain
+                and ranker_prediction.label == "primary"
+                and not ranker_prediction.is_uncertain
+            )
+            return _fallback_target_prediction(
+                label="accept" if conservative_accept else "reject",
+                confidence=min(
+                    0.94 if conservative_accept else 0.82,
+                    max(
+                        proposal.event_spotter_prediction.confidence,
+                        rejector_prediction.confidence,
+                        ranker_prediction.confidence,
+                    ),
+                ),
+                margin=max(
+                    0.08 if conservative_accept else 0.12,
+                    min(
+                        proposal.event_spotter_prediction.margin,
+                        rejector_prediction.margin,
+                        ranker_prediction.margin,
+                    ),
+                ),
+                model_version=self.model_version,
+                classes=PROPOSAL_ACCEPT_LABELS,
+                default_label="reject",
+            )
+        feature_map = build_proposal_acceptor_feature_map(
+            proposal=proposal,
+            rejector_prediction=rejector_prediction,
+            ranker_prediction=ranker_prediction,
+        )
+        feature_vector = np.asarray(
+            [float(feature_map.get(name, 0.0)) for name in self.proposal_acceptor_feature_names],
+            dtype=np.float64,
+        )
+        return self.proposal_acceptor.predict(feature_vector, model_version=self.model_version)
+
+    def _score_ranked_proposals(
+        self,
+        observations: Sequence[TemporalStudentObservation],
+        proposals: Sequence[TemporalEventProposal],
+    ) -> list[RankedTemporalEventProposal]:
+        staged: list[
+            tuple[
+                TemporalEventProposal,
+                TemporalTargetPrediction,
+                TemporalTargetPrediction,
+                TemporalTargetPrediction,
+                float,
+            ]
+        ] = []
+        for proposal in proposals:
+            rejector_prediction = self._predict_proposal_rejector(observations, proposal)
+            ranker_prediction = self._predict_proposal_ranker(observations, proposal)
+            acceptor_prediction = self._predict_proposal_acceptor(
+                proposal=proposal,
+                rejector_prediction=rejector_prediction,
+                ranker_prediction=ranker_prediction,
+            )
+            acceptance_score = self._proposal_acceptance_score(
+                proposal,
+                rejector_prediction,
+                ranker_prediction,
+                acceptor_prediction,
+            )
+            staged.append((proposal, rejector_prediction, ranker_prediction, acceptor_prediction, acceptance_score))
+        staged.sort(key=lambda item: item[4], reverse=True)
+        scored: list[RankedTemporalEventProposal] = []
+        for index, (proposal, rejector_prediction, ranker_prediction, acceptor_prediction, acceptance_score) in enumerate(staged):
+            next_score = staged[index + 1][4] if index + 1 < len(staged) else 0.0
+            competition_margin = round(max(acceptance_score - next_score, 0.0), 4)
+            accepted = self._proposal_accepted(
+                proposal=proposal,
+                rejector_prediction=rejector_prediction,
+                ranker_prediction=ranker_prediction,
+                acceptor_prediction=acceptor_prediction,
+                acceptance_score=acceptance_score,
+                competition_margin=competition_margin,
+            )
+            scored.append(
+                RankedTemporalEventProposal(
+                    proposal=proposal,
+                    rejector_prediction=rejector_prediction,
+                    ranker_prediction=ranker_prediction,
+                    acceptor_prediction=acceptor_prediction,
+                    acceptance_score=acceptance_score,
+                    competition_margin=competition_margin,
+                    accepted=accepted,
+                )
+            )
+        return scored
+
+    def _proposal_acceptance_score(
         self,
         proposal: TemporalEventProposal,
         rejector_prediction: TemporalTargetPrediction,
+        ranker_prediction: TemporalTargetPrediction,
+        acceptor_prediction: TemporalTargetPrediction,
+    ) -> float:
+        if self.proposal_acceptor is not None:
+            return round(
+                float(
+                    acceptor_prediction.distribution.get(
+                        "accept",
+                        acceptor_prediction.confidence if acceptor_prediction.label == "accept" else 1.0 - acceptor_prediction.confidence,
+                    )
+                ),
+                4,
+            )
+        verifier_real_event_score = float(
+            rejector_prediction.distribution.get(
+                "real_event",
+                rejector_prediction.confidence if rejector_prediction.label == "real_event" else 1.0 - rejector_prediction.confidence,
+            )
+        )
+        rank_primary_score = float(
+            ranker_prediction.distribution.get(
+                "primary",
+                ranker_prediction.confidence if ranker_prediction.label == "primary" else 1.0 - ranker_prediction.confidence,
+            )
+        )
+        return round(
+            (0.42 * float(proposal.event_score))
+            + (0.38 * verifier_real_event_score)
+            + (0.2 * rank_primary_score),
+            4,
+        )
+
+    def _proposal_accepted(
+        self,
+        *,
+        proposal: TemporalEventProposal,
+        rejector_prediction: TemporalTargetPrediction,
+        ranker_prediction: TemporalTargetPrediction,
+        acceptor_prediction: TemporalTargetPrediction,
+        acceptance_score: float,
+        competition_margin: float,
     ) -> bool:
-        if proposal.event_score < self.event_score_threshold:
+        if proposal.event_score < max(self.event_score_threshold - 0.02, 0.18):
             return False
-        if proposal.event_margin < self.event_margin_threshold:
-            return False
-        if proposal.coarse_event_family == "other":
+        if proposal.event_margin < max(self.event_margin_threshold - 0.01, 0.02):
             return False
         if rejector_prediction.label in HARD_REJECT_LABELS and not rejector_prediction.is_uncertain:
             return False
-        if rejector_prediction.label == "real_event":
-            return True
-        if rejector_prediction.label == "ambiguous":
+        if rejector_prediction.label != "real_event":
             return False
-        if rejector_prediction.is_uncertain:
-            return (
-                proposal.event_spotter_prediction.confidence >= max(self.event_score_threshold + 0.08, 0.5)
-                and proposal.event_spotter_prediction.margin >= max(self.event_margin_threshold, 0.05)
-            )
-        return False
+        if ranker_prediction.label != "primary":
+            return False
+        if self.proposal_acceptor is not None and acceptor_prediction.label != "accept":
+            return False
+        if rejector_prediction.is_uncertain or ranker_prediction.is_uncertain or acceptor_prediction.is_uncertain:
+            return False
+        if acceptance_score < self.proposal_acceptance_threshold:
+            return False
+        if competition_margin < self.proposal_competition_margin_threshold:
+            return False
+        return True
 
 
 def vectorize_temporal_event_detector_observation(
@@ -647,6 +916,7 @@ def build_proposal_rejector_feature_map(
     feature_map: dict[str, float] = {
         "proposal_event_score": proposal.event_score,
         "proposal_event_margin": proposal.event_margin,
+        "proposal_rank_score": proposal.spotter_ranking_score,
         "proposal_start_ratio": round(max(proposal.start_seconds - clip_start, 0.0) / clip_duration, 4),
         "proposal_center_ratio": round(max(proposal.center_seconds - clip_start, 0.0) / clip_duration, 4),
         "proposal_end_ratio": round(max(proposal.end_seconds - clip_start, 0.0) / clip_duration, 4),
@@ -655,9 +925,41 @@ def build_proposal_rejector_feature_map(
         "proposal_eventness_center": round(float(proposal.eventness[proposal.center_index]), 4),
         "proposal_eventness_mean": round(float(np.mean(proposal.eventness[proposal.start_index : proposal.end_index + 1])), 4),
         "proposal_eventness_max": round(float(np.max(proposal.eventness[proposal.start_index : proposal.end_index + 1])), 4),
+        "proposal_eventness_min": round(float(np.min(proposal.eventness[proposal.start_index : proposal.end_index + 1])), 4),
         "proposal_segment_attention_peak": round(float(np.max(proposal.segment_attention)), 4),
         "proposal_segment_attention_entropy": round(_entropy(proposal.segment_attention), 4),
+        "proposal_eventness_prev": round(
+            float(proposal.eventness[max(proposal.center_index - 1, 0)]),
+            4,
+        ),
+        "proposal_eventness_next": round(
+            float(proposal.eventness[min(proposal.center_index + 1, len(proposal.eventness) - 1)]),
+            4,
+        ),
+        "proposal_start_peak_local": round(
+            float(np.max(proposal.start_scores[max(proposal.start_index - 1, 0) : min(proposal.start_index + 2, len(proposal.start_scores))])),
+            4,
+        ),
+        "proposal_end_peak_local": round(
+            float(np.max(proposal.end_scores[max(proposal.end_index - 1, 0) : min(proposal.end_index + 2, len(proposal.end_scores))])),
+            4,
+        ),
+        "proposal_clip_mid_distance": round(
+            abs(((proposal.start_seconds + proposal.end_seconds) / 2.0) - ((clip_start + clip_end) / 2.0)) / clip_duration,
+            4,
+        ),
     }
+    left_context = proposal.eventness[max(proposal.start_index - 2, 0) : proposal.start_index + 1]
+    right_context = proposal.eventness[proposal.end_index : min(proposal.end_index + 3, len(proposal.eventness))]
+    feature_map["proposal_left_context_eventness_mean"] = round(float(np.mean(left_context)), 4) if left_context.size else 0.0
+    feature_map["proposal_right_context_eventness_mean"] = round(float(np.mean(right_context)), 4) if right_context.size else 0.0
+    feature_map["proposal_eventness_context_gap"] = round(
+        feature_map["proposal_eventness_mean"] - max(
+            feature_map["proposal_left_context_eventness_mean"],
+            feature_map["proposal_right_context_eventness_mean"],
+        ),
+        4,
+    )
     for family in EVENT_FAMILIES:
         feature_map[f"proposal_family_{family}"] = float(proposal.event_spotter_prediction.distribution.get(family, 0.0))
     for index, value in enumerate(proposal.pooled_vector.tolist()):
@@ -667,6 +969,39 @@ def build_proposal_rejector_feature_map(
         feature_map[f"segment_mean_{name}"] = round(float(np.mean(values)), 4) if values else 0.0
         feature_map[f"segment_max_{name}"] = round(float(np.max(values)), 4) if values else 0.0
     return feature_map
+
+
+def build_proposal_acceptor_feature_map(
+    *,
+    proposal: TemporalEventProposal,
+    rejector_prediction: TemporalTargetPrediction,
+    ranker_prediction: TemporalTargetPrediction,
+) -> dict[str, float]:
+    rejector_real_event_score = float(
+        rejector_prediction.distribution.get(
+            "real_event",
+            rejector_prediction.confidence if rejector_prediction.label == "real_event" else 1.0 - rejector_prediction.confidence,
+        )
+    )
+    ranker_primary_score = float(
+        ranker_prediction.distribution.get(
+            "primary",
+            ranker_prediction.confidence if ranker_prediction.label == "primary" else 1.0 - ranker_prediction.confidence,
+        )
+    )
+    return {
+        "proposal_event_score": round(float(proposal.event_score), 4),
+        "proposal_event_margin": round(float(proposal.event_margin), 4),
+        "proposal_rank_score": round(float(proposal.spotter_ranking_score), 4),
+        "proposal_boundary_score": round(float(proposal.boundary_score), 4),
+        "proposal_coarse_family_non_other": 0.0 if proposal.coarse_event_family == "other" else 1.0,
+        "proposal_rejector_real_event_score": round(rejector_real_event_score, 4),
+        "proposal_rejector_margin": round(float(rejector_prediction.margin), 4),
+        "proposal_rejector_uncertain": 1.0 if rejector_prediction.is_uncertain else 0.0,
+        "proposal_ranker_primary_score": round(ranker_primary_score, 4),
+        "proposal_ranker_margin": round(float(ranker_prediction.margin), 4),
+        "proposal_ranker_uncertain": 1.0 if ranker_prediction.is_uncertain else 0.0,
+    }
 
 
 def _include_temporal_event_detector_feature(name: str) -> bool:
@@ -716,6 +1051,34 @@ def load_temporal_event_detector_bundle(path: Path | None = None) -> TemporalEve
             margin_threshold=float(proposal_rejector_target_payload.get("marginThreshold", 0.08)),
             top_k=int(proposal_rejector_target_payload.get("topK", MAX_TEMPORAL_EVENT_DETECTOR_TOPK)),
         )
+    proposal_ranker_payload = payload.get("proposalRanker") or {}
+    proposal_ranker_target_payload = proposal_ranker_payload.get("target") or {}
+    proposal_ranker = None
+    if proposal_ranker_target_payload:
+        proposal_ranker = TemporalTargetModel(
+            name="proposalRanker",
+            classes=tuple(str(item) for item in proposal_ranker_target_payload.get("classes", [])),
+            weight=tuple(tuple(float(value) for value in row) for row in proposal_ranker_target_payload.get("weight", [])),
+            bias=tuple(float(value) for value in proposal_ranker_target_payload.get("bias", [])),
+            temperature=float(proposal_ranker_target_payload.get("temperature", 1.0)),
+            uncertainty_threshold=float(proposal_ranker_target_payload.get("uncertaintyThreshold", 0.5)),
+            margin_threshold=float(proposal_ranker_target_payload.get("marginThreshold", 0.08)),
+            top_k=int(proposal_ranker_target_payload.get("topK", MAX_TEMPORAL_EVENT_DETECTOR_TOPK)),
+        )
+    proposal_acceptor_payload = payload.get("proposalAcceptor") or {}
+    proposal_acceptor_target_payload = proposal_acceptor_payload.get("target") or {}
+    proposal_acceptor = None
+    if proposal_acceptor_target_payload:
+        proposal_acceptor = TemporalTargetModel(
+            name="proposalAcceptor",
+            classes=tuple(str(item) for item in proposal_acceptor_target_payload.get("classes", [])),
+            weight=tuple(tuple(float(value) for value in row) for row in proposal_acceptor_target_payload.get("weight", [])),
+            bias=tuple(float(value) for value in proposal_acceptor_target_payload.get("bias", [])),
+            temperature=float(proposal_acceptor_target_payload.get("temperature", 1.0)),
+            uncertainty_threshold=float(proposal_acceptor_target_payload.get("uncertaintyThreshold", 0.5)),
+            margin_threshold=float(proposal_acceptor_target_payload.get("marginThreshold", 0.08)),
+            top_k=int(proposal_acceptor_target_payload.get("topK", MAX_TEMPORAL_EVENT_DETECTOR_TOPK)),
+        )
     return TemporalEventDetectorBundle(
         schema_version=str(payload.get("schemaVersion", TEMPORAL_EVENT_DETECTOR_SCHEMA_VERSION)),
         feature_schema_version=str(payload.get("featureSchemaVersion", TEMPORAL_EVENT_DETECTOR_FEATURE_SCHEMA_VERSION)),
@@ -747,6 +1110,13 @@ def load_temporal_event_detector_bundle(path: Path | None = None) -> TemporalEve
         eventness_temperature=float(payload.get("eventnessTemperature", 1.0)),
         proposal_rejector_feature_names=tuple(str(item) for item in proposal_rejector_payload.get("featureNames", [])),
         proposal_rejector=proposal_rejector,
+        proposal_ranker_feature_names=tuple(str(item) for item in proposal_ranker_payload.get("featureNames", [])),
+        proposal_ranker=proposal_ranker,
+        proposal_acceptor_feature_names=tuple(str(item) for item in proposal_acceptor_payload.get("featureNames", [])),
+        proposal_acceptor=proposal_acceptor,
+        proposal_acceptance_threshold=float(payload.get("proposalAcceptanceThreshold", 0.62)),
+        proposal_competition_margin_threshold=float(payload.get("proposalCompetitionMarginThreshold", 0.06)),
+        proposal_candidate_limit=int(payload.get("proposalCandidateLimit", 4)),
     )
 
 
@@ -804,6 +1174,9 @@ def write_temporal_event_detector_bundle(path: Path, bundle: TemporalEventDetect
         "eventScoreThreshold": bundle.event_score_threshold,
         "eventMarginThreshold": bundle.event_margin_threshold,
         "eventnessTemperature": bundle.eventness_temperature,
+        "proposalAcceptanceThreshold": bundle.proposal_acceptance_threshold,
+        "proposalCompetitionMarginThreshold": bundle.proposal_competition_margin_threshold,
+        "proposalCandidateLimit": bundle.proposal_candidate_limit,
         "targets": {
             name: {
                 "classes": list(target.classes),
@@ -832,6 +1205,38 @@ def write_temporal_event_detector_bundle(path: Path, bundle: TemporalEventDetect
             if bundle.proposal_rejector is not None
             else None
         ),
+        "proposalRanker": (
+            {
+                "featureNames": list(bundle.proposal_ranker_feature_names),
+                "target": {
+                    "classes": list(bundle.proposal_ranker.classes),
+                    "weight": [list(row) for row in bundle.proposal_ranker.weight],
+                    "bias": list(bundle.proposal_ranker.bias),
+                    "temperature": bundle.proposal_ranker.temperature,
+                    "uncertaintyThreshold": bundle.proposal_ranker.uncertainty_threshold,
+                    "marginThreshold": bundle.proposal_ranker.margin_threshold,
+                    "topK": bundle.proposal_ranker.top_k,
+                },
+            }
+            if bundle.proposal_ranker is not None
+            else None
+        ),
+        "proposalAcceptor": (
+            {
+                "featureNames": list(bundle.proposal_acceptor_feature_names),
+                "target": {
+                    "classes": list(bundle.proposal_acceptor.classes),
+                    "weight": [list(row) for row in bundle.proposal_acceptor.weight],
+                    "bias": list(bundle.proposal_acceptor.bias),
+                    "temperature": bundle.proposal_acceptor.temperature,
+                    "uncertaintyThreshold": bundle.proposal_acceptor.uncertainty_threshold,
+                    "marginThreshold": bundle.proposal_acceptor.margin_threshold,
+                    "topK": bundle.proposal_acceptor.top_k,
+                },
+            }
+            if bundle.proposal_acceptor is not None
+            else None
+        ),
     }
     path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
 
@@ -854,17 +1259,19 @@ def _best_non_other_label(prediction: TemporalStudentTargetPrediction) -> str | 
     return None
 
 
-def _fallback_rejector_prediction(
+def _fallback_target_prediction(
     *,
     label: str,
     confidence: float,
     margin: float,
     model_version: str,
+    classes: Sequence[str],
+    default_label: str,
 ) -> TemporalTargetPrediction:
-    safe_label = label if label in PROPOSAL_REJECT_LABELS else "ambiguous"
+    safe_label = label if label in classes else default_label
     confidence = round(min(max(float(confidence), 0.0), 1.0), 4)
     margin = round(min(max(float(margin), 0.0), 1.0), 4)
-    distribution = {item: 0.0 for item in PROPOSAL_REJECT_LABELS}
+    distribution = {item: 0.0 for item in classes}
     distribution[safe_label] = confidence
     top_labels = (LabelScore(label=safe_label, confidence=confidence, modelVersion=model_version),)
     return TemporalTargetPrediction(
@@ -873,7 +1280,24 @@ def _fallback_rejector_prediction(
         margin=margin,
         distribution=distribution,
         top_labels=top_labels,
-        is_uncertain=safe_label != "real_event" and confidence < 0.6,
+        is_uncertain=safe_label != default_label and confidence < 0.6,
+    )
+
+
+def _fallback_rejector_prediction(
+    *,
+    label: str,
+    confidence: float,
+    margin: float,
+    model_version: str,
+) -> TemporalTargetPrediction:
+    return _fallback_target_prediction(
+        label=label,
+        confidence=confidence,
+        margin=margin,
+        model_version=model_version,
+        classes=PROPOSAL_REJECT_LABELS,
+        default_label="ambiguous",
     )
 
 

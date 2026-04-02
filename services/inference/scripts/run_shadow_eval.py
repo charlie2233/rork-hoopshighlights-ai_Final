@@ -978,7 +978,9 @@ def _normalize_proposal_event_score(clip: dict[str, Any], shadow_payload: dict[s
     metadata = shadow_payload.get("metadata") if isinstance(shadow_payload, dict) else None
     return _to_optional_float(
         _first_defined(
+            shadow_payload.get("temporal_event_detector_proposal_acceptance_score") if shadow_payload else None,
             shadow_payload.get("temporal_event_detector_event_score") if shadow_payload else None,
+            metadata.get("temporal_event_detector_proposal_acceptance_score") if isinstance(metadata, dict) else None,
             metadata.get("temporal_event_detector_event_score") if isinstance(metadata, dict) else None,
             clip.get("proposalScore"),
         )

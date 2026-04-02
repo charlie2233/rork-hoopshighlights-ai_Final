@@ -291,6 +291,8 @@ class TemporalEventDetectorTests(unittest.TestCase):
         self.assertFalse(prediction.metadata["temporal_event_detector_proposal_accepted"])
         self.assertIsNotNone(prediction.metadata["temporal_event_detector_proposal_rejector_label"])
         self.assertTrue(result.bundle.proposal_rejector is not None)
+        self.assertTrue(result.bundle.proposal_ranker is not None)
+        self.assertTrue(result.bundle.proposal_acceptor is not None)
 
     @unittest.skipIf(torch is None, "torch is required for temporal event detector training")
     def test_accepted_proposal_does_not_force_shot_attempt_when_family_is_weak(self) -> None:
@@ -366,6 +368,20 @@ class TemporalEventDetectorTests(unittest.TestCase):
         weakened_bundle = replace(
             result.bundle,
             targets={**result.bundle.targets, "eventFamily": weakened_family_target},
+            proposal_rejector=replace(
+                result.bundle.proposal_rejector,
+                uncertainty_threshold=0.0,
+                margin_threshold=0.0,
+            ) if result.bundle.proposal_rejector is not None else None,
+            proposal_ranker=replace(
+                result.bundle.proposal_ranker,
+                uncertainty_threshold=0.0,
+                margin_threshold=0.0,
+            ) if result.bundle.proposal_ranker is not None else None,
+            proposal_acceptor_feature_names=(),
+            proposal_acceptor=None,
+            proposal_acceptance_threshold=0.2,
+            proposal_competition_margin_threshold=0.0,
         )
 
         prediction = weakened_bundle.predict(shot.observations)
@@ -456,9 +472,11 @@ class TemporalEventDetectorTests(unittest.TestCase):
             loaded = load_temporal_event_detector_bundle(bundle_path)
         prediction = loaded.predict(shot.observations)
         self.assertEqual(prediction.metadata["temporal_event_detector_family"], "actionformer")
-        self.assertEqual(loaded.schema_version, "temporal-event-detector-v2")
-        self.assertEqual(loaded.model_version, "temporal-event-detector-actionformer-hybrid-v1")
+        self.assertEqual(loaded.schema_version, "temporal-event-detector-v3")
+        self.assertEqual(loaded.model_version, "temporal-event-detector-actionformer-open-set-v1")
         self.assertTrue(loaded.proposal_rejector is not None)
+        self.assertTrue(loaded.proposal_ranker is not None)
+        self.assertTrue(loaded.proposal_acceptor is not None)
 
     @unittest.skipIf(torch is None, "torch is required for temporal event detector training")
     def test_event_detection_metrics_count_coarse_gold_rows(self) -> None:

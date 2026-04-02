@@ -69,6 +69,20 @@ test("structured teacher metadata stays additive in the callback contract", asyn
       evidence: ["ball near rim", "no make"],
       promptSetVersion: "qwen-basketball-teacher-v1"
     };
+    clip.runtimeFusionTemporalShadow = {
+      modelVersion: "temporal-event-detector-tridet-open-set-v1",
+      eventFamily: "other",
+      outcome: "uncertain",
+      shotSubtype: null,
+      isUncertain: true,
+      metadata: {
+        temporal_event_detector_proposal_accepted: false,
+        temporal_event_detector_proposal_acceptance_score: 0.41,
+        temporal_event_detector_proposal_rejector_label: "dead_ball",
+        temporal_event_detector_proposal_ranker_label: "secondary",
+        temporal_event_detector_proposal_acceptor_label: "reject"
+      }
+    };
   }
 
   const callbackResponse = await invokeInternalRoute(
@@ -109,4 +123,8 @@ test("structured teacher metadata stays additive in the callback contract", asyn
   assert.equal(jobJson.failureReason, null);
   assert.equal(jobJson.results?.clipCount, 1);
   assert.equal(jobJson.results?.clips[0]?.label, "made_shot");
+  assert.equal(
+    (jobJson.results?.clips?.[0] as Record<string, unknown> | undefined)?.runtimeFusionTemporalShadow !== undefined,
+    true
+  );
 });
