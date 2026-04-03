@@ -162,6 +162,26 @@ class PerceptionFeatureExtractionTests(unittest.TestCase):
         self.assertGreaterEqual(features.shotReleaseCandidate, 0.0)
         self.assertLessEqual(features.shotReleaseCandidate, 1.0)
 
+    def test_ball_arc_apex_rises_for_midflight_arc(self) -> None:
+        frames = [
+            [
+                _obs("ball", (0.48, 0.54, 0.52, 0.58), t=0.0, track_id="ball"),
+                _obs("rim", (0.44, 0.34, 0.56, 0.40), t=0.0),
+            ],
+            [
+                _obs("ball", (0.49, 0.22, 0.53, 0.26), t=0.1, track_id="ball"),
+                _obs("rim", (0.44, 0.34, 0.56, 0.40), t=0.1),
+            ],
+            [
+                _obs("ball", (0.50, 0.56, 0.54, 0.60), t=0.2, track_id="ball"),
+                _obs("rim", (0.44, 0.34, 0.56, 0.40), t=0.2),
+            ],
+        ]
+
+        features = derive_perception_features(frames)
+
+        self.assertGreater(features.ballArcApex, 0.4)
+
 
 if __name__ == "__main__":
     unittest.main()

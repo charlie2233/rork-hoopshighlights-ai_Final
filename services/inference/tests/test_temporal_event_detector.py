@@ -620,9 +620,9 @@ class TemporalEventDetectorTests(unittest.TestCase):
         self.assertEqual(refreshed.proposal_ranker, result.bundle.proposal_ranker)
         self.assertEqual(refreshed.proposal_acceptor, result.bundle.proposal_acceptor)
         self.assertTrue(bool(refreshed.shot_specialist_feature_names))
-        self.assertIn("phase4f_shot_specialist_refresh", refreshed.source_dataset)
+        self.assertIn("phase4g_proposal_conditioned_shot_refresh", refreshed.source_dataset)
         self.assertIn(
-            "Shot-specialist heads refreshed from the frozen phase4e TriDet proposal stack.",
+            "Proposal-conditioned shot-specialist heads refreshed from the frozen phase4e TriDet proposal stack.",
             refreshed.notes,
         )
 
@@ -845,4 +845,4 @@ class TemporalEventDetectorTests(unittest.TestCase):
                 for row in rows
             )
         )
-        self.assertTrue(any(row["useForCalibration"] for row in rows))
+        self.assertFalse(any(row["useForCalibration"] for row in rows))

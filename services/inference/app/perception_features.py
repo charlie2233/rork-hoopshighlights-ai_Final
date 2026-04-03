@@ -139,6 +139,21 @@ def _ball_velocity(series: Sequence[PerceptionObservation]) -> tuple[float, floa
     return ((last_cx - first_cx) / dt, (last_cy - first_cy) / dt)
 
 
+def _arc_score(series: Sequence[PerceptionObservation]) -> float:
+    if len(series) < 3:
+        return 0.0
+    centers_y = [_center(obs.bbox)[1] for obs in series]
+    apex_index = min(range(len(centers_y)), key=centers_y.__getitem__)
+    if apex_index == 0 or apex_index == len(centers_y) - 1:
+        return 0.0
+    apex_y = centers_y[apex_index]
+    left_drop = centers_y[0] - apex_y
+    right_drop = centers_y[-1] - apex_y
+    if left_drop <= 0.0 or right_drop <= 0.0:
+        return 0.0
+    return _clamp01(min(left_drop, right_drop) / 0.18)
+
+
 def _collect(series: Sequence[PerceptionObservation], frame_time: float, tolerance: float = 0.15) -> list[PerceptionObservation]:
     return [obs for obs in series if abs(obs.timestamp_seconds - frame_time) <= tolerance]
 
