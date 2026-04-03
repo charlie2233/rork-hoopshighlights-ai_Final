@@ -181,6 +181,7 @@ def derive_perception_features(
     shot_candidate_scores: list[float] = []
     ball_near_rim_scores: list[float] = []
     ball_above_rim_scores: list[float] = []
+    near_rim_distances: list[float] = []
     continuity_pairs: list[float] = []
     carrier_track_ids: list[str] = []
     ball_velocity_x, ball_velocity_y = _ball_velocity(ball_series) if len(ball_series) >= 2 else (0.0, 0.0)
@@ -216,6 +217,7 @@ def derive_perception_features(
 
         ball_near_rim_scores.append(near_rim)
         ball_above_rim_scores.append(above_rim)
+        near_rim_distances.append(normalized_distance)
         shot_candidate_scores.append(_clamp01(0.5 * near_rim + 0.3 * above_rim + 0.2 * vertical_motion))
         continuity_pairs.append(_clamp01(0.5 * player_proximity + 0.5 * (1.0 - defender_proximity)))
 
