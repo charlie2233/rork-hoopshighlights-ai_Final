@@ -16,12 +16,14 @@ from services.inference.app.runtime_models.temporal_event_detector import (
     PROPOSAL_RANK_LABELS,
     PROPOSAL_REJECT_LABELS,
     SHOT_SUBTYPES,
+    SHOT_SPECIALIST_SUBTYPE_LABELS,
     TEMPORAL_EVENT_DETECTOR_FEATURE_SCHEMA_VERSION,
     TEMPORAL_EVENT_DETECTOR_MODEL_VERSION,
     TEMPORAL_EVENT_DETECTOR_SCHEMA_VERSION,
     TemporalConvLayer,
     TemporalEventDetectorBundle,
     TemporalEventProposal,
+    build_shot_specialist_feature_map,
     build_proposal_acceptor_feature_map,
     build_temporal_event_detector_feature_map,
     build_proposal_rejector_feature_map,
@@ -154,6 +156,24 @@ if nn is not None:
             return self.classifier(inputs)
 
 
+    class TorchShotSpecialistHead(nn.Module):
+        def __init__(self, input_size: int, output_size: int) -> None:
+            super().__init__()
+            self.classifier = nn.Linear(input_size, output_size)
+
+        def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+            return self.classifier(inputs)
+
+
+    class TorchShotSpecialistTarget(nn.Module):
+        def __init__(self, input_size: int, output_size: int) -> None:
+            super().__init__()
+            self.classifier = nn.Linear(input_size, output_size)
+
+        def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+            return self.classifier(inputs)
+
+
 def load_temporal_event_detector_examples(repo_root: Path) -> list[TemporalTrainingExample]:
     return load_temporal_student_examples(repo_root)
 
@@ -224,6 +244,7 @@ def train_temporal_event_detector(
     bundle = train_proposal_rejector_bundle(bundle, examples)
     bundle = train_proposal_ranker_bundle(bundle, examples)
     bundle = train_proposal_acceptor_bundle(bundle, examples)
+    bundle = train_shot_specialist_bundle(bundle, examples)
     bundle = calibrate_temporal_event_detector_bundle(bundle, examples)
     return TemporalEventDetectorTrainingResult(
         bundle=bundle,
@@ -487,6 +508,301 @@ def train_proposal_acceptor_bundle(
         bundle,
         proposal_acceptor_feature_names=feature_names,
         proposal_acceptor=target_model,
+    )
+
+
+def build_shot_specialist_rows(
+    bundle: TemporalEventDetectorBundle,
+    examples: Sequence[TemporalTrainingExample],
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for example in examples:
+        proposals, preferred_index, _alignment_scores = build_candidate_proposal_alignment(bundle, example)
+        if not proposals:
+            continue
+        selected_index = preferred_index if preferred_index is not None else 0
+        proposal = proposals[selected_index]
+        features = build_shot_specialist_feature_map(
+            observations=example.observations,
+            proposal=proposal,
+        )
+        shot_like_negative = (
+            example.event_family in {"other", "transition"}
+            and float(features.get("shot_attempt_likelihood", 0.0)) >= 0.28
+        )
+        is_shot_like_example = example.event_family == "shot_attempt" or example.outcome == "blocked" or shot_like_negative
+        if not is_shot_like_example:
+            continue
+        outcome_label = example.outcome if example.outcome in OUTCOMES and not shot_like_negative else "uncertain"
+        subtype_label = (
+            example.shot_subtype
+            if example.shot_subtype in {"dunk", "layup", "jumper", "three", "putback"} and outcome_label != "uncertain"
+            else "uncertain"
+        )
+        rows.append(
+            {
+                "clipId": example.clip_id,
+                "split": example.split,
+                "sourceKind": example.source_kind,
+                "sourceDomain": example.source_domain,
+                "sourceSet": example.source_set,
+                "eventFamily": example.event_family,
+                "outcomeLabel": outcome_label,
+                "subtypeLabel": subtype_label,
+                "features": features,
+                "outcomeWeight": shot_specialist_outcome_weight(example, outcome_label=outcome_label),
+                "subtypeWeight": shot_specialist_subtype_weight(example, subtype_label=subtype_label),
+            }
+        )
+    return rows
+
+
+def derive_shot_specialist_feature_names(rows: Sequence[dict[str, Any]]) -> tuple[str, ...]:
+    feature_names: set[str] = set()
+    for row in rows:
+        features = row.get("features")
+        if isinstance(features, dict):
+            feature_names.update(str(name) for name in features.keys())
+    return tuple(sorted(feature_names))
+
+
+def compute_shot_specialist_loss(*, logits: Any, targets: Any, weights: Any):
+    base_loss = F.cross_entropy(logits, targets, reduction="none")
+    probabilities = torch.softmax(logits, dim=-1)
+    pt = probabilities[torch.arange(probabilities.shape[0]), targets]
+    focal = torch.pow(1.0 - pt, 1.85)
+    weighted = base_loss * focal * weights
+    return weighted.sum() / torch.clamp(weights.sum(), min=1e-6)
+
+
+def export_shot_specialist_target(
+    model: Any,
+    *,
+    name: str,
+    labels: Sequence[str],
+    uncertainty_threshold: float,
+    margin_threshold: float,
+    top_k: int,
+) -> TemporalTargetModel:
+    return TemporalTargetModel(
+        name=name,
+        classes=tuple(str(label) for label in labels),
+        weight=tuple(
+            tuple(float(value) for value in row)
+            for row in model.classifier.weight.detach().cpu().numpy().tolist()
+        ),
+        bias=tuple(float(value) for value in model.classifier.bias.detach().cpu().numpy().tolist()),
+        temperature=1.0,
+        uncertainty_threshold=uncertainty_threshold,
+        margin_threshold=margin_threshold,
+        top_k=top_k,
+    )
+
+
+def shot_specialist_outcome_weight(
+    example: TemporalTrainingExample,
+    *,
+    outcome_label: str,
+) -> float:
+    weight = max(float(example.weight), 0.0)
+    if outcome_label in {"missed", "blocked"}:
+        weight *= 1.4
+    if outcome_label == "uncertain":
+        weight *= 1.25
+    if example.source_kind == "disagreement":
+        weight *= 1.15
+    if example.source_domain in {"live_staging", "staging_smoke", "benchmark_eval"}:
+        weight *= 1.15
+    if example.event_family == "defensive_event" or example.outcome == "blocked":
+        weight *= 1.2
+    return round(weight, 4)
+
+
+def shot_specialist_subtype_weight(
+    example: TemporalTrainingExample,
+    *,
+    subtype_label: str,
+) -> float:
+    weight = max(float(example.weight), 0.0)
+    if subtype_label in {"dunk", "layup"}:
+        weight *= 1.3
+    if subtype_label in {"jumper", "three"}:
+        weight *= 1.25
+    if subtype_label == "uncertain":
+        weight *= 1.15
+    if example.outcome in {"missed", "blocked"}:
+        weight *= 1.1
+    if example.source_kind == "disagreement":
+        weight *= 1.1
+    if example.source_domain in {"live_staging", "staging_smoke", "benchmark_eval"}:
+        weight *= 1.1
+    return round(weight, 4)
+
+
+def train_shot_specialist_bundle(
+    bundle: TemporalEventDetectorBundle,
+    examples: Sequence[TemporalTrainingExample],
+    *,
+    epochs: int = 220,
+    learning_rate: float = 0.02,
+    random_seed: int = DEFAULT_TEMPORAL_EVENT_DETECTOR_SEED + 17,
+) -> TemporalEventDetectorBundle:
+    if torch is None or nn is None or F is None:  # pragma: no cover
+        raise RuntimeError("torch is required to train the shot specialist")
+    rows = build_shot_specialist_rows(bundle, examples)
+    train_rows = [row for row in rows if row["split"] == "train"]
+    if not train_rows:
+        train_rows = rows
+    feature_names = derive_shot_specialist_feature_names(rows)
+    if not feature_names:
+        return replace(
+            bundle,
+            shot_specialist_feature_names=(),
+            shot_specialist_outcome=None,
+            shot_specialist_subtype=None,
+        )
+
+    np.random.seed(int(random_seed))
+    torch.manual_seed(int(random_seed))
+    if torch.cuda.is_available():  # pragma: no cover
+        torch.cuda.manual_seed_all(int(random_seed))
+
+    targets = dict(bundle.targets)
+    targets.pop("shotOutcomeSpecialist", None)
+    targets.pop("shotSubtypeSpecialist", None)
+    shot_outcome_target: TemporalTargetModel | None = None
+    shot_subtype_target: TemporalTargetModel | None = None
+
+    outcome_labels = {str(row["outcomeLabel"]) for row in train_rows}
+    if len(outcome_labels) > 1:
+        inputs = torch.tensor(
+            [[float(row["features"].get(name, 0.0)) for name in feature_names] for row in train_rows],
+            dtype=torch.float32,
+        )
+        outcome_targets = torch.tensor(
+            [OUTCOMES.index(str(row["outcomeLabel"])) for row in train_rows],
+            dtype=torch.long,
+        )
+        outcome_weights = torch.tensor(
+            [float(row["outcomeWeight"]) for row in train_rows],
+            dtype=torch.float32,
+        )
+        outcome_model = TorchShotSpecialistHead(len(feature_names), len(OUTCOMES))
+        optimizer = torch.optim.Adam(outcome_model.parameters(), lr=learning_rate)
+        for _ in range(epochs):
+            optimizer.zero_grad()
+            loss = compute_shot_specialist_loss(
+                logits=outcome_model(inputs),
+                targets=outcome_targets,
+                weights=outcome_weights,
+            )
+            loss.backward()
+            optimizer.step()
+        shot_outcome_target = export_shot_specialist_target(
+            outcome_model,
+            name="shotOutcomeSpecialist",
+            labels=OUTCOMES,
+            uncertainty_threshold=0.62,
+            margin_threshold=0.12,
+            top_k=3,
+        )
+        targets["shotOutcomeSpecialist"] = shot_outcome_target
+
+    subtype_rows = [row for row in train_rows if str(row["subtypeLabel"]) in SHOT_SPECIALIST_SUBTYPE_LABELS]
+    subtype_labels = {str(row["subtypeLabel"]) for row in subtype_rows}
+    if len(subtype_labels) > 1:
+        inputs = torch.tensor(
+            [[float(row["features"].get(name, 0.0)) for name in feature_names] for row in subtype_rows],
+            dtype=torch.float32,
+        )
+        subtype_targets = torch.tensor(
+            [SHOT_SPECIALIST_SUBTYPE_LABELS.index(str(row["subtypeLabel"])) for row in subtype_rows],
+            dtype=torch.long,
+        )
+        subtype_weights = torch.tensor(
+            [float(row["subtypeWeight"]) for row in subtype_rows],
+            dtype=torch.float32,
+        )
+        subtype_model = TorchShotSpecialistHead(len(feature_names), len(SHOT_SPECIALIST_SUBTYPE_LABELS))
+        optimizer = torch.optim.Adam(subtype_model.parameters(), lr=learning_rate)
+        for _ in range(epochs):
+            optimizer.zero_grad()
+            loss = compute_shot_specialist_loss(
+                logits=subtype_model(inputs),
+                targets=subtype_targets,
+                weights=subtype_weights,
+            )
+            loss.backward()
+            optimizer.step()
+        shot_subtype_target = export_shot_specialist_target(
+            subtype_model,
+            name="shotSubtypeSpecialist",
+            labels=SHOT_SPECIALIST_SUBTYPE_LABELS,
+            uncertainty_threshold=0.68,
+            margin_threshold=0.14,
+            top_k=3,
+        )
+        targets["shotSubtypeSpecialist"] = shot_subtype_target
+
+    return replace(
+        bundle,
+        shot_specialist_feature_names=feature_names,
+        targets=targets,
+        shot_specialist_outcome=shot_outcome_target,
+        shot_specialist_subtype=shot_subtype_target,
+    )
+
+
+def refresh_shot_specialist_bundle(
+    bundle: TemporalEventDetectorBundle,
+    examples: Sequence[TemporalTrainingExample],
+    *,
+    epochs: int = 220,
+    learning_rate: float = 0.02,
+    random_seed: int = DEFAULT_TEMPORAL_EVENT_DETECTOR_SEED + 17,
+) -> TemporalEventDetectorBundle:
+    refreshed_bundle = train_shot_specialist_bundle(
+        bundle,
+        examples,
+        epochs=epochs,
+        learning_rate=learning_rate,
+        random_seed=random_seed,
+    )
+    calibration_examples = [
+        example
+        for example in examples
+        if example.source_kind == "gold" and example.split in {"val", "test"}
+    ]
+    if len(calibration_examples) >= 6:
+        refreshed_bundle = _calibrate_specialist_target(
+            refreshed_bundle,
+            calibration_examples,
+            target_key="shotOutcomeSpecialist",
+            temperatures=(0.95, 1.1, 1.25),
+            uncertainty_thresholds=(0.58, 0.64, 0.7),
+            margin_thresholds=(0.1, 0.14, 0.18),
+        )
+        refreshed_bundle = _calibrate_specialist_target(
+            refreshed_bundle,
+            calibration_examples,
+            target_key="shotSubtypeSpecialist",
+            temperatures=(0.95, 1.1, 1.25),
+            uncertainty_thresholds=(0.64, 0.7, 0.76),
+            margin_thresholds=(0.12, 0.16, 0.2),
+        )
+    notes = tuple(
+        dict.fromkeys(
+            [
+                *refreshed_bundle.notes,
+                "Shot-specialist heads refreshed from the frozen phase4e TriDet proposal stack.",
+            ]
+        )
+    )
+    return replace(
+        refreshed_bundle,
+        trained_at=datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        source_dataset=f"{bundle.source_dataset}+phase4f_shot_specialist_refresh",
+        notes=notes,
     )
 
 
@@ -1190,6 +1506,31 @@ def evaluate_temporal_event_detector_bundle(
         if accepted_shot_rows
         else None
     )
+    accepted_shot_subtype_distribution = dict(
+        sorted(Counter(row["predictedShotSubtype"] for row in accepted_shot_rows).items())
+    )
+    accepted_shot_abstention_rate = (
+        round(
+            sum(
+                1
+                for row in accepted_shot_rows
+                if row["predictedOutcome"] == "made" and row["predictedShotSubtype"] in {"null", "uncertain"}
+            )
+            / accepted_shot_total,
+            4,
+        )
+        if accepted_shot_rows
+        else None
+    )
+    dunk_dominance = (
+        round(
+            sum(1 for row in accepted_shot_rows if str(row["predictedDisplayLabel"]).strip().lower() == "dunk")
+            / accepted_shot_total,
+            4,
+        )
+        if accepted_shot_rows
+        else None
+    )
     rejected_rows = [row for row in rows if not row["proposalAccepted"]]
     rejected_true_negative = sum(1 for row in rejected_rows if row["expectedEventFamily"] == "other")
     rejected_true_miss = sum(1 for row in rejected_rows if row["expectedEventFamily"] != "other")
@@ -1201,6 +1542,9 @@ def evaluate_temporal_event_detector_bundle(
         "proposalAcceptanceRate": proposal_acceptance_rate,
         "eventnessBrier": eventness_brier,
         "acceptedShotProposalOutcomeAccuracy": accepted_shot_outcome_accuracy,
+        "acceptedShotSubtypeDistribution": accepted_shot_subtype_distribution,
+        "acceptedShotAbstentionRate": accepted_shot_abstention_rate,
+        "dunkDominance": dunk_dominance,
         "flatLabelSpread": len(flat_label_distribution),
         "flatLabelDistribution": flat_label_distribution,
         "eventFamilyDistribution": event_family_distribution,
@@ -1238,6 +1582,22 @@ def calibrate_temporal_event_detector_bundle(
     best_bundle = _calibrate_proposal_ranker(best_bundle, calibration_examples)
     best_bundle = _calibrate_proposal_acceptor(best_bundle, calibration_examples)
     best_bundle = _calibrate_outcome_target(best_bundle, calibration_examples)
+    best_bundle = _calibrate_specialist_target(
+        best_bundle,
+        calibration_examples,
+        target_key="shotOutcomeSpecialist",
+        temperatures=(0.95, 1.1, 1.25),
+        uncertainty_thresholds=(0.58, 0.64, 0.7),
+        margin_thresholds=(0.1, 0.14, 0.18),
+    )
+    best_bundle = _calibrate_specialist_target(
+        best_bundle,
+        calibration_examples,
+        target_key="shotSubtypeSpecialist",
+        temperatures=(0.95, 1.1, 1.25),
+        uncertainty_thresholds=(0.64, 0.7, 0.76),
+        margin_thresholds=(0.12, 0.16, 0.2),
+    )
     best_metrics = evaluate_temporal_event_detector_bundle(best_bundle, calibration_examples)
     best_score = candidate_score(best_metrics)
     calibrated_base = best_bundle
@@ -1267,6 +1627,22 @@ def calibrate_temporal_event_detector_bundle(
     best_bundle = _calibrate_proposal_ranker(best_bundle, calibration_examples)
     best_bundle = _calibrate_proposal_acceptor(best_bundle, calibration_examples)
     best_bundle = _calibrate_outcome_target(best_bundle, calibration_examples)
+    best_bundle = _calibrate_specialist_target(
+        best_bundle,
+        calibration_examples,
+        target_key="shotOutcomeSpecialist",
+        temperatures=(0.95, 1.1, 1.25),
+        uncertainty_thresholds=(0.58, 0.64, 0.7),
+        margin_thresholds=(0.1, 0.14, 0.18),
+    )
+    best_bundle = _calibrate_specialist_target(
+        best_bundle,
+        calibration_examples,
+        target_key="shotSubtypeSpecialist",
+        temperatures=(0.95, 1.1, 1.25),
+        uncertainty_thresholds=(0.64, 0.7, 0.76),
+        margin_thresholds=(0.12, 0.16, 0.2),
+    )
     return best_bundle
 
 
@@ -1369,6 +1745,44 @@ def _calibrate_outcome_target(
                 candidate_targets = dict(bundle.targets)
                 candidate_targets["outcome"] = candidate_target
                 candidate_bundle = replace(bundle, targets=candidate_targets)
+                score = candidate_score(evaluate_temporal_event_detector_bundle(candidate_bundle, examples))
+                if score > best_score:
+                    best_bundle = candidate_bundle
+                    best_score = score
+    return best_bundle
+
+
+def _calibrate_specialist_target(
+    bundle: TemporalEventDetectorBundle,
+    examples: Sequence[TemporalTrainingExample],
+    *,
+    target_key: str,
+    temperatures: Sequence[float],
+    uncertainty_thresholds: Sequence[float],
+    margin_thresholds: Sequence[float],
+) -> TemporalEventDetectorBundle:
+    target = bundle.targets.get(target_key)
+    if target is None:
+        return bundle
+    best_bundle = bundle
+    best_score = candidate_score(evaluate_temporal_event_detector_bundle(bundle, examples))
+    for temperature in temperatures:
+        for uncertainty in uncertainty_thresholds:
+            for margin in margin_thresholds:
+                candidate_target = replace(
+                    target,
+                    temperature=float(temperature),
+                    uncertainty_threshold=float(uncertainty),
+                    margin_threshold=float(margin),
+                )
+                candidate_targets = dict(bundle.targets)
+                candidate_targets[target_key] = candidate_target
+                replace_kwargs: dict[str, Any] = {"targets": candidate_targets}
+                if target_key == "shotOutcomeSpecialist":
+                    replace_kwargs["shot_specialist_outcome"] = candidate_target
+                elif target_key == "shotSubtypeSpecialist":
+                    replace_kwargs["shot_specialist_subtype"] = candidate_target
+                candidate_bundle = replace(bundle, **replace_kwargs)
                 score = candidate_score(evaluate_temporal_event_detector_bundle(candidate_bundle, examples))
                 if score > best_score:
                     best_bundle = candidate_bundle
@@ -1487,6 +1901,8 @@ def build_temporal_event_detector_report(
                 f"- eventDetectionPrecision / Recall: `{metrics.get('eventDetectionPrecision')}` / `{metrics.get('eventDetectionRecall')}`",
                 f"- proposalAcceptanceRate: `{metrics.get('proposalAcceptanceRate')}`",
                 f"- acceptedShotProposalOutcomeAccuracy: `{metrics.get('acceptedShotProposalOutcomeAccuracy')}`",
+                f"- acceptedShotAbstentionRate: `{metrics.get('acceptedShotAbstentionRate')}`",
+                f"- dunkDominance: `{metrics.get('dunkDominance')}`",
                 f"- eventnessBrier: `{metrics.get('eventnessBrier')}`",
                 f"- uncertaintyRate: `{metrics.get('uncertaintyRate')}`",
                 f"- highlightDominance: `{metrics.get('highlightDominance')}`",
@@ -1503,17 +1919,21 @@ def candidate_score(metrics: dict[str, Any]) -> float:
     rejected_true_negative_rate = float(metrics.get("rejectedProposalTrueNegativeRate", 0.0) or 0.0)
     rejected_true_miss_rate = float(metrics.get("rejectedProposalTrueMissRate", 0.0) or 0.0)
     flat_label_spread = float(len(metrics.get("flatLabelDistribution", {}) or {}))
+    dunk_dominance = float(metrics.get("dunkDominance", 0.0) or 0.0)
+    abstention_rate = float(metrics.get("acceptedShotAbstentionRate", 0.0) or 0.0)
     return (
         (1.15 * float(metrics.get("eventFamilyAccuracy", 0.0)))
         + (0.95 * float(metrics.get("outcomeAccuracy", 0.0)))
         + (0.9 * float(metrics.get("eventDetectionPrecision", 0.0)))
         + (0.9 * float(metrics.get("eventDetectionRecall", 0.0)))
-        + (1.0 * float(metrics.get("acceptedShotProposalOutcomeAccuracy", 0.0) or 0.0))
+        + (1.25 * float(metrics.get("acceptedShotProposalOutcomeAccuracy", 0.0) or 0.0))
         + (0.35 * (1.0 - float(metrics.get("eventnessBrier", 1.0) or 1.0)))
         + (0.25 * float(metrics.get("shotSubtypeAccuracy", 0.0) or 0.0))
+        + (0.18 * abstention_rate)
         + (0.3 * rejected_true_negative_rate)
         - (0.7 * rejected_true_miss_rate)
         + (0.08 * flat_label_spread)
+        - (0.9 * dunk_dominance)
         - (0.7 * float(metrics.get("highlightDominance", 0.0)))
         - (0.7 * float(metrics.get("otherDominance", 0.0)))
         - (0.55 * abs(proposal_acceptance_rate - 0.45))

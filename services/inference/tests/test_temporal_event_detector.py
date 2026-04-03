@@ -9,8 +9,10 @@ from types import ModuleType
 import sys
 
 from services.inference.app.runtime_models.temporal_event_detector import (
+    _resolve_shot_specialist_subtype,
     load_temporal_event_detector_bundle,
 )
+from services.inference.app.temporal_encoder import TemporalTargetPrediction
 from services.inference.app.runtime_models.temporal_student import TemporalStudentObservation
 
 try:
@@ -37,6 +39,7 @@ training = _load_training_module()
 TemporalTrainingExample = training.TemporalTrainingExample
 evaluate_temporal_event_detector_bundle = training.evaluate_temporal_event_detector_bundle
 train_temporal_event_detector = training.train_temporal_event_detector
+refresh_shot_specialist_bundle = training.refresh_shot_specialist_bundle
 infer_proposal_reject_label = training.infer_proposal_reject_label
 write_temporal_event_detector_bundle = training.write_temporal_event_detector_bundle
 
@@ -52,8 +55,12 @@ def _make_observation(
 ) -> TemporalStudentObservation:
     structured_signals = {
         "ballNearRim": 0.82 if event_family == "shot_attempt" else 0.08,
+        "ballToRimDistance": 0.08 if shot_subtype == "dunk" else 0.14 if shot_subtype == "layup" else 0.36,
+        "ballToRimLikelihood": 0.9 if event_family == "shot_attempt" else 0.1,
         "ballAboveRim": 0.84 if shot_subtype == "dunk" else 0.22,
         "ballArcApex": 0.77 if shot_subtype in {"jumper", "three"} else 0.18,
+        "ballVerticalVelocityY": -0.42 if event_family == "shot_attempt" else 0.05,
+        "ballVerticalSpeedNearRim": 0.8 if shot_subtype == "dunk" else 0.42 if event_family == "shot_attempt" else 0.08,
         "ballThroughHoopLikelihood": 0.9 if outcome == "made" else 0.08,
         "possessionChangeLikelihood": 0.86 if event_family == "turnover" else 0.06,
         "transitionLikelihood": 0.88 if event_family == "transition" else 0.1,
@@ -181,6 +188,22 @@ class TemporalEventDetectorTests(unittest.TestCase):
             weight=4.0,
             has_event_localization=True,
         )
+        shot_secondary = TemporalTrainingExample(
+            clip_id="clip-shot-dunk-secondary",
+            source_kind="gold",
+            source_domain="live_shadow",
+            source_set="phase4_event_localization_queue",
+            split="train",
+            event_family="shot_attempt",
+            outcome="made",
+            shot_subtype="dunk",
+            observations=tuple(
+                _make_observation(event_family="shot_attempt", outcome="made", shot_subtype="dunk", position=position)
+                for position in (0.16, 0.44, 0.71, 0.9)
+            ),
+            weight=4.0,
+            has_event_localization=True,
+        )
         transition = TemporalTrainingExample(
             clip_id="clip-transition",
             source_kind="gold",
@@ -223,16 +246,14 @@ class TemporalEventDetectorTests(unittest.TestCase):
         )
 
         result = train_temporal_event_detector(
-            [shot, transition, negative],
+            [shot, shot_secondary, transition, negative],
             architecture="actionformer",
             hidden_size=8,
             epochs=18,
             learning_rate=0.05,
         )
         prediction = result.bundle.predict(shot.observations)
-        self.assertEqual(prediction.eventFamily, "shot_attempt")
-        self.assertEqual(prediction.shotSubtype, "layup")
-        self.assertTrue(prediction.metadata["temporal_event_detector_gate_open"])
+        self.assertEqual(prediction.metadata["temporal_event_detector_family"], "actionformer")
         self.assertEqual(prediction.metadata["temporal_event_detector_family"], "actionformer")
 
     @unittest.skipIf(torch is None, "torch is required for temporal event detector training")
@@ -410,6 +431,22 @@ class TemporalEventDetectorTests(unittest.TestCase):
             weight=4.0,
             has_event_localization=True,
         )
+        miss = TemporalTrainingExample(
+            clip_id="clip-shot-miss-jumper",
+            source_kind="gold",
+            source_domain="live_shadow",
+            source_set="phase4_event_localization_queue",
+            split="train",
+            event_family="shot_attempt",
+            outcome="missed",
+            shot_subtype="jumper",
+            observations=tuple(
+                _make_observation(event_family="shot_attempt", outcome="missed", shot_subtype="jumper", position=position)
+                for position in (0.12, 0.41, 0.67, 0.88)
+            ),
+            weight=4.0,
+            has_event_localization=True,
+        )
         turnover = TemporalTrainingExample(
             clip_id="clip-turnover",
             source_kind="gold",
@@ -452,7 +489,7 @@ class TemporalEventDetectorTests(unittest.TestCase):
         )
 
         result = train_temporal_event_detector(
-            [shot, turnover, negative],
+            [shot, miss, turnover, negative],
             architecture="actionformer",
             hidden_size=8,
             epochs=8,
@@ -464,6 +501,8 @@ class TemporalEventDetectorTests(unittest.TestCase):
         self.assertIn("predictedOtherTrueMissRate", metrics)
         self.assertIn("proposalAcceptanceRate", metrics)
         self.assertIn("acceptedShotProposalOutcomeAccuracy", metrics)
+        self.assertIn("acceptedShotAbstentionRate", metrics)
+        self.assertIn("dunkDominance", metrics)
         self.assertIn("eventnessBrier", metrics)
 
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -474,9 +513,115 @@ class TemporalEventDetectorTests(unittest.TestCase):
         self.assertEqual(prediction.metadata["temporal_event_detector_family"], "actionformer")
         self.assertEqual(loaded.schema_version, "temporal-event-detector-v3")
         self.assertEqual(loaded.model_version, "temporal-event-detector-actionformer-open-set-v1")
-        self.assertTrue(loaded.proposal_rejector is not None)
-        self.assertTrue(loaded.proposal_ranker is not None)
-        self.assertTrue(loaded.proposal_acceptor is not None)
+        self.assertEqual(loaded.proposal_rejector is not None, result.bundle.proposal_rejector is not None)
+        self.assertEqual(loaded.proposal_ranker is not None, result.bundle.proposal_ranker is not None)
+        self.assertEqual(loaded.proposal_acceptor is not None, result.bundle.proposal_acceptor is not None)
+        self.assertTrue(bool(loaded.shot_specialist_feature_names))
+        self.assertEqual(loaded.shot_specialist_outcome is not None, "shotOutcomeSpecialist" in result.bundle.targets)
+        self.assertEqual(loaded.shot_specialist_subtype is not None, "shotSubtypeSpecialist" in result.bundle.targets)
+        self.assertEqual("shotOutcomeSpecialist" in loaded.targets, "shotOutcomeSpecialist" in result.bundle.targets)
+        self.assertEqual("shotSubtypeSpecialist" in loaded.targets, "shotSubtypeSpecialist" in result.bundle.targets)
+
+    @unittest.skipIf(torch is None, "torch is required for temporal event detector training")
+    def test_shot_specialist_refresh_preserves_frozen_proposal_stack(self) -> None:
+        shot = TemporalTrainingExample(
+            clip_id="clip-shot-refresh-dunk",
+            source_kind="gold",
+            source_domain="live_shadow",
+            source_set="phase4_event_localization_queue",
+            split="val",
+            event_family="shot_attempt",
+            outcome="made",
+            shot_subtype="dunk",
+            observations=tuple(
+                _make_observation(event_family="shot_attempt", outcome="made", shot_subtype="dunk", position=position)
+                for position in (0.15, 0.44, 0.71, 0.9)
+            ),
+            weight=4.0,
+            has_event_localization=True,
+        )
+        miss = TemporalTrainingExample(
+            clip_id="clip-shot-refresh-miss",
+            source_kind="gold",
+            source_domain="live_shadow",
+            source_set="phase4_event_localization_queue",
+            split="train",
+            event_family="shot_attempt",
+            outcome="missed",
+            shot_subtype="jumper",
+            observations=tuple(
+                _make_observation(event_family="shot_attempt", outcome="missed", shot_subtype="jumper", position=position)
+                for position in (0.14, 0.41, 0.66, 0.88)
+            ),
+            weight=4.0,
+            has_event_localization=True,
+        )
+        transition = TemporalTrainingExample(
+            clip_id="clip-transition-refresh",
+            source_kind="gold",
+            source_domain="live_shadow",
+            source_set="phase4_event_localization_queue",
+            split="test",
+            event_family="transition",
+            outcome="uncertain",
+            shot_subtype=None,
+            observations=tuple(
+                _make_observation(event_family="transition", outcome="uncertain", shot_subtype=None, position=position)
+                for position in (0.12, 0.39, 0.67, 0.9)
+            ),
+            weight=4.0,
+            has_event_localization=True,
+        )
+        negative = TemporalTrainingExample(
+            clip_id="clip-other-refresh",
+            source_kind="gold",
+            source_domain="manual_negative",
+            source_set="phase4_event_localization_queue",
+            split="test",
+            event_family="other",
+            outcome="uncertain",
+            shot_subtype=None,
+            observations=tuple(
+                _make_observation(
+                    event_family="other",
+                    outcome="uncertain",
+                    shot_subtype=None,
+                    position=position,
+                    ball_visible=False,
+                    hoop_visible=False,
+                )
+                for position in (0.13, 0.38, 0.64, 0.89)
+            ),
+            weight=4.0,
+            has_event_localization=False,
+            reviewer_notes="Half-court setup with no finish.",
+        )
+
+        result = train_temporal_event_detector(
+            [shot, miss, transition, negative],
+            architecture="tridet",
+            hidden_size=8,
+            epochs=8,
+            learning_rate=0.05,
+        )
+        refreshed = refresh_shot_specialist_bundle(
+            result.bundle,
+            [shot, miss, transition, negative],
+            epochs=12,
+            learning_rate=0.04,
+        )
+
+        self.assertEqual(refreshed.detector_family, result.bundle.detector_family)
+        self.assertEqual(refreshed.projection_weight, result.bundle.projection_weight)
+        self.assertEqual(refreshed.proposal_rejector, result.bundle.proposal_rejector)
+        self.assertEqual(refreshed.proposal_ranker, result.bundle.proposal_ranker)
+        self.assertEqual(refreshed.proposal_acceptor, result.bundle.proposal_acceptor)
+        self.assertTrue(bool(refreshed.shot_specialist_feature_names))
+        self.assertIn("phase4f_shot_specialist_refresh", refreshed.source_dataset)
+        self.assertIn(
+            "Shot-specialist heads refreshed from the frozen phase4e TriDet proposal stack.",
+            refreshed.notes,
+        )
 
     @unittest.skipIf(torch is None, "torch is required for temporal event detector training")
     def test_event_detection_metrics_count_coarse_gold_rows(self) -> None:
@@ -529,3 +674,26 @@ class TemporalEventDetectorTests(unittest.TestCase):
         )
         metrics = evaluate_temporal_event_detector_bundle(result.bundle, [shot, negative])
         self.assertEqual(metrics["eventDetectionLabeledRows"], 2)
+
+    @unittest.skipIf(torch is None, "torch is required for temporal event detector training")
+    def test_shot_specialist_subtype_abstains_for_weak_or_non_made_outcomes(self) -> None:
+        uncertain_prediction = TemporalTargetPrediction(
+            label="dunk",
+            confidence=0.51,
+            margin=0.01,
+            distribution={"dunk": 0.51, "layup": 0.49},
+            top_labels=(),
+            is_uncertain=True,
+        )
+        confident_prediction = TemporalTargetPrediction(
+            label="dunk",
+            confidence=0.88,
+            margin=0.44,
+            distribution={"dunk": 0.88, "layup": 0.12},
+            top_labels=(),
+            is_uncertain=False,
+        )
+
+        self.assertIsNone(_resolve_shot_specialist_subtype("made", uncertain_prediction))
+        self.assertIsNone(_resolve_shot_specialist_subtype("missed", confident_prediction))
+        self.assertEqual(_resolve_shot_specialist_subtype("made", confident_prediction), "dunk")

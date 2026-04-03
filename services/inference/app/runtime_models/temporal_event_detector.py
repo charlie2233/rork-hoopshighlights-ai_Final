@@ -29,8 +29,8 @@ from services.inference.app.runtime_models.temporal_student import (
 
 
 TEMPORAL_EVENT_DETECTOR_SCHEMA_VERSION = "temporal-event-detector-v3"
-TEMPORAL_EVENT_DETECTOR_FEATURE_SCHEMA_VERSION = "temporal-event-detector-feature-v3"
-TEMPORAL_EVENT_DETECTOR_MODEL_VERSION = "temporal-event-detector-tridet-open-set-v1"
+TEMPORAL_EVENT_DETECTOR_FEATURE_SCHEMA_VERSION = "temporal-event-detector-feature-v4"
+TEMPORAL_EVENT_DETECTOR_MODEL_VERSION = "temporal-event-detector-tridet-shot-specialist-v1"
 TEMPORAL_EVENT_DETECTOR_BUNDLE_PATH = (
     Path(__file__).resolve().parents[2] / "models" / "temporal_event_detector_v1.json"
 )
@@ -55,6 +55,7 @@ PROPOSAL_REJECT_LABELS = (
 )
 PROPOSAL_RANK_LABELS = ("secondary", "primary")
 PROPOSAL_ACCEPT_LABELS = ("reject", "accept")
+SHOT_SPECIALIST_SUBTYPE_LABELS = ("dunk", "layup", "jumper", "three", "putback", "uncertain")
 HARD_REJECT_LABELS = frozenset({"non_event", "setup", "dead_ball", "replay_or_reaction"})
 PROPOSAL_REJECTOR_AGGREGATE_FEATURES = (
     "ball_visible",
@@ -83,6 +84,24 @@ PROPOSAL_REJECTOR_AGGREGATE_FEATURES = (
     "event_localization_present",
     "event_localization_complete",
     "event_duration_seconds_norm",
+)
+SHOT_SPECIALIST_SIGNAL_FEATURES = (
+    "ball_near_rim",
+    "ball_to_rim_distance",
+    "ball_to_rim_likelihood",
+    "ball_above_rim",
+    "ball_arc_apex",
+    "ball_vertical_velocity_y",
+    "ball_vertical_speed_near_rim",
+    "ball_through_hoop_likelihood",
+    "player_to_rim_distance",
+    "defender_proximity_at_shot",
+    "shot_release_candidate",
+    "ball_detection_confidence",
+    "hoop_detection_confidence",
+    "tracked_ball_confidence",
+    "basketball_confidence",
+    "rim_confidence",
 )
 REJECT_LABEL_TO_OTHER_BUCKET = {
     "non_event": "non_event",
@@ -135,6 +154,13 @@ class RankedTemporalEventProposal:
 
 
 @dataclass(frozen=True)
+class TemporalShotSpecialistBundle:
+    feature_names: tuple[str, ...]
+    outcome_target: TemporalTargetModel
+    subtype_target: TemporalTargetModel
+
+
+@dataclass(frozen=True)
 class TemporalEventDetectorBundle:
     schema_version: str
     feature_schema_version: str
@@ -168,6 +194,9 @@ class TemporalEventDetectorBundle:
     proposal_ranker: TemporalTargetModel | None = None
     proposal_acceptor_feature_names: tuple[str, ...] = ()
     proposal_acceptor: TemporalTargetModel | None = None
+    shot_specialist_feature_names: tuple[str, ...] = ()
+    shot_specialist_outcome: TemporalTargetModel | None = None
+    shot_specialist_subtype: TemporalTargetModel | None = None
     proposal_acceptance_threshold: float = 0.62
     proposal_competition_margin_threshold: float = 0.06
     proposal_candidate_limit: int = 4
@@ -281,6 +310,9 @@ class TemporalEventDetectorBundle:
         acceptor_prediction = selected.acceptor_prediction
         proposal_accepted = selected.accepted
         classifier_gate_open = False
+        likely_shot_attempt = False
+        shot_specialist_features: dict[str, float] = {}
+        shot_specialist_abstained = False
 
         if proposal_accepted:
             family_prediction = _predict_conditioned_target(
@@ -301,19 +333,41 @@ class TemporalEventDetectorBundle:
                 and not family_prediction.is_uncertain
             )
             if classifier_gate_open:
-                outcome_prediction = _predict_conditioned_target(
-                    self.targets["outcome"],
-                    proposal.pooled_vector,
-                    model_version=self.model_version,
-                    allowed_labels=CONDITIONED_OUTCOME_LABELS.get(event_family, OUTCOMES),
-                )
-                subtype_prediction = _predict_conditioned_target(
-                    self.targets["shotSubtype"],
-                    proposal.pooled_vector,
-                    model_version=self.model_version,
-                    allowed_labels=CONDITIONED_SUBTYPE_LABELS.get(event_family, SHOT_SUBTYPES),
-                )
-                outcome = _resolve_outcome(event_family, outcome_prediction)
+                if event_family == "shot_attempt":
+                    shot_specialist_features = build_shot_specialist_feature_map(
+                        observations=observations,
+                        proposal=proposal,
+                    )
+                    likely_shot_attempt = True
+                    outcome_prediction = self._predict_shot_specialist_target(
+                        target_name="shotOutcomeSpecialist",
+                        feature_map=shot_specialist_features,
+                        fallback_target=self.targets["outcome"],
+                        fallback_vector=proposal.pooled_vector,
+                        allowed_labels=CONDITIONED_OUTCOME_LABELS.get(event_family, OUTCOMES),
+                    )
+                    subtype_prediction = self._predict_shot_specialist_target(
+                        target_name="shotSubtypeSpecialist",
+                        feature_map=shot_specialist_features,
+                        fallback_target=self.targets["shotSubtype"],
+                        fallback_vector=proposal.pooled_vector,
+                        allowed_labels=SHOT_SPECIALIST_SUBTYPE_LABELS,
+                    )
+                    outcome = _resolve_outcome(event_family, outcome_prediction)
+                else:
+                    outcome_prediction = _predict_conditioned_target(
+                        self.targets["outcome"],
+                        proposal.pooled_vector,
+                        model_version=self.model_version,
+                        allowed_labels=CONDITIONED_OUTCOME_LABELS.get(event_family, OUTCOMES),
+                    )
+                    subtype_prediction = _predict_conditioned_target(
+                        self.targets["shotSubtype"],
+                        proposal.pooled_vector,
+                        model_version=self.model_version,
+                        allowed_labels=CONDITIONED_SUBTYPE_LABELS.get(event_family, SHOT_SUBTYPES),
+                    )
+                    outcome = _resolve_outcome(event_family, outcome_prediction)
             else:
                 outcome_prediction = _fallback_temporal_prediction(
                     label="uncertain",
@@ -346,13 +400,32 @@ class TemporalEventDetectorBundle:
             outcome = "uncertain"
 
         shot_subtype: str | None = None
-        if (
+        if proposal_accepted and event_family == "shot_attempt":
+            shot_subtype = _resolve_shot_specialist_subtype(outcome, subtype_prediction)
+            shot_specialist_abstained = outcome == "made" and shot_subtype is None
+        elif (
             proposal_accepted
-            and event_family == "shot_attempt"
             and not subtype_prediction.is_uncertain
             and subtype_prediction.label not in {"null", "unknown"}
         ):
             shot_subtype = subtype_prediction.label
+        using_shot_specialist = (
+            proposal_accepted
+            and classifier_gate_open
+            and likely_shot_attempt
+            and event_family == "shot_attempt"
+            and bool(shot_specialist_features)
+        )
+        outcome_target = (
+            self.shot_specialist_outcome
+            if using_shot_specialist and self.shot_specialist_outcome is not None
+            else self.targets["outcome"]
+        )
+        subtype_target = (
+            self.shot_specialist_subtype
+            if using_shot_specialist and self.shot_specialist_subtype is not None
+            else self.targets["shotSubtype"]
+        )
 
         canonical_label, display_label = derive_runtime_display_label(
             event_family=event_family,
@@ -370,8 +443,12 @@ class TemporalEventDetectorBundle:
             or family_prediction.is_uncertain
             or selected.competition_margin < self.proposal_competition_margin_threshold
             or selected.acceptance_score < (self.proposal_acceptance_threshold + 0.08)
-            or (classifier_gate_open and event_family == "shot_attempt" and outcome_prediction.is_uncertain)
-            or (event_family == "shot_attempt" and shot_subtype is None)
+            or (classifier_gate_open and event_family == "shot_attempt" and outcome == "uncertain")
+            or (
+                using_shot_specialist
+                and outcome == "made"
+                and (shot_specialist_abstained or subtype_prediction.is_uncertain)
+            )
         )
         confidence_before_mapping = selected.acceptance_score if proposal_accepted else max(
             min(selected.acceptance_score, proposal.event_score),
@@ -386,6 +463,9 @@ class TemporalEventDetectorBundle:
                     subtype_prediction=subtype_prediction,
                     gate_open=classifier_gate_open,
                     is_uncertain=is_uncertain,
+                    outcome=outcome,
+                    shot_specialist_used=using_shot_specialist,
+                    shot_specialist_abstained=shot_specialist_abstained,
                 )
             confidence_after_mapping = round(
                 min(
@@ -497,6 +577,10 @@ class TemporalEventDetectorBundle:
             "temporal_event_detector_proposal_acceptor_margin_threshold": (
                 round(self.proposal_acceptor.margin_threshold, 4) if self.proposal_acceptor is not None else None
             ),
+            "temporal_event_detector_shot_specialist_used": using_shot_specialist,
+            "temporal_event_detector_likely_shot_attempt": likely_shot_attempt,
+            "temporal_event_detector_shot_specialist_abstained": shot_specialist_abstained,
+            "temporal_event_detector_shot_specialist_feature_count": len(shot_specialist_features),
             "temporal_event_detector_family_distribution": family_prediction.distribution,
             "temporal_event_detector_outcome_distribution": outcome_prediction.distribution,
             "temporal_event_detector_subtype_distribution": subtype_prediction.distribution,
@@ -509,12 +593,18 @@ class TemporalEventDetectorBundle:
             "temporal_event_detector_subtype_top_labels": [
                 item.model_dump(mode="json") for item in subtype_prediction.top_labels
             ],
-            "temporal_event_detector_outcome_temperature": round(self.targets["outcome"].temperature, 4),
+            "temporal_event_detector_outcome_temperature": round(outcome_target.temperature, 4),
             "temporal_event_detector_outcome_uncertainty_threshold": round(
-                self.targets["outcome"].uncertainty_threshold,
+                outcome_target.uncertainty_threshold,
                 4,
             ),
-            "temporal_event_detector_outcome_margin_threshold": round(self.targets["outcome"].margin_threshold, 4),
+            "temporal_event_detector_outcome_margin_threshold": round(outcome_target.margin_threshold, 4),
+            "temporal_event_detector_subtype_temperature": round(subtype_target.temperature, 4),
+            "temporal_event_detector_subtype_uncertainty_threshold": round(
+                subtype_target.uncertainty_threshold,
+                4,
+            ),
+            "temporal_event_detector_subtype_margin_threshold": round(subtype_target.margin_threshold, 4),
             "temporal_student_event_spotter_family": proposal.coarse_event_family,
             "temporal_student_event_spotter_likely_event": proposal_accepted,
             "temporal_student_event_spotter_margin": round(proposal.event_spotter_prediction.margin, 4),
@@ -531,6 +621,11 @@ class TemporalEventDetectorBundle:
             "temporal_student_family_top_labels": [item.model_dump(mode="json") for item in family_prediction.top_labels],
             "temporal_student_outcome_top_labels": [item.model_dump(mode="json") for item in outcome_prediction.top_labels],
             "temporal_student_subtype_top_labels": [item.model_dump(mode="json") for item in subtype_prediction.top_labels],
+            "temporal_event_detector_shot_specialist_features": (
+                {name: round(float(value), 4) for name, value in shot_specialist_features.items()}
+                if using_shot_specialist
+                else None
+            ),
             "eventFamilyOtherBucket": other_bucket,
             "eventFamilyOtherBucketReason": other_bucket_reason,
             "eventFamilyOtherBucketScores": other_bucket_scores,
@@ -754,6 +849,34 @@ class TemporalEventDetectorBundle:
             dtype=np.float64,
         )
         return self.proposal_acceptor.predict(feature_vector, model_version=self.model_version)
+
+    def _predict_shot_specialist_target(
+        self,
+        *,
+        target_name: str,
+        feature_map: dict[str, float],
+        fallback_target: TemporalTargetModel,
+        fallback_vector: np.ndarray,
+        allowed_labels: Sequence[str],
+    ) -> TemporalTargetPrediction:
+        if target_name == "shotOutcomeSpecialist":
+            target = self.shot_specialist_outcome
+        elif target_name == "shotSubtypeSpecialist":
+            target = self.shot_specialist_subtype
+        else:
+            target = None
+        if target is None or not self.shot_specialist_feature_names:
+            return _predict_conditioned_target(
+                fallback_target,
+                fallback_vector,
+                model_version=self.model_version,
+                allowed_labels=allowed_labels,
+            )
+        feature_vector = np.asarray(
+            [float(feature_map.get(name, 0.0)) for name in self.shot_specialist_feature_names],
+            dtype=np.float64,
+        )
+        return target.predict(feature_vector, model_version=self.model_version)
 
     def _score_ranked_proposals(
         self,
@@ -1004,6 +1127,218 @@ def build_proposal_acceptor_feature_map(
     }
 
 
+def build_shot_specialist_feature_map(
+    *,
+    observations: Sequence[TemporalStudentObservation],
+    proposal: TemporalEventProposal,
+) -> dict[str, float]:
+    if not observations:
+        return {}
+    feature_maps = [build_temporal_student_feature_map(observation) for observation in observations]
+    timestamps = [float(observation.timestamp_seconds) for observation in observations]
+    release_index = _resolve_shot_anchor_index(
+        observations,
+        timestamps=timestamps,
+        runtime_key="shotReleaseTimeSeconds",
+        fallback_index=proposal.center_index,
+    )
+    rim_index = _resolve_shot_anchor_index(
+        observations,
+        timestamps=timestamps,
+        runtime_key="ballNearRimTimeSeconds",
+        fallback_index=proposal.center_index,
+    )
+    finish_index = _resolve_shot_anchor_index(
+        observations,
+        timestamps=timestamps,
+        runtime_key="ballThroughHoopTimeSeconds",
+        fallback_index=max(rim_index, proposal.end_index),
+    )
+    release_window = _window_indices(release_index, radius=1, length=len(observations))
+    rim_window = _window_indices(rim_index, radius=1, length=len(observations))
+    finish_window = _window_indices(finish_index, radius=1, length=len(observations))
+    segment_window = range(proposal.start_index, proposal.end_index + 1)
+
+    feature_map: dict[str, float] = {
+        "shot_release_index_ratio": round(release_index / max(len(observations) - 1, 1), 4),
+        "shot_rim_index_ratio": round(rim_index / max(len(observations) - 1, 1), 4),
+        "shot_finish_index_ratio": round(finish_index / max(len(observations) - 1, 1), 4),
+        "shot_release_to_rim_travel_time": round(max(timestamps[rim_index] - timestamps[release_index], 0.0), 4),
+        "shot_release_to_finish_travel_time": round(max(timestamps[finish_index] - timestamps[release_index], 0.0), 4),
+        "shot_rim_to_finish_time": round(max(timestamps[finish_index] - timestamps[rim_index], 0.0), 4),
+        "shot_proposal_duration_seconds": round(max(proposal.end_seconds - proposal.start_seconds, 0.0), 4),
+        "shot_proposal_event_score": round(float(proposal.event_score), 4),
+        "shot_proposal_event_margin": round(float(proposal.event_margin), 4),
+        "shot_proposal_rank_score": round(float(proposal.spotter_ranking_score), 4),
+        "shot_proposal_boundary_score": round(float(proposal.boundary_score), 4),
+    }
+    for index, value in enumerate(proposal.pooled_vector.tolist()):
+        feature_map[f"shot_proposal_embedding_{index}"] = round(float(value), 6)
+
+    _append_window_signal_stats(feature_map, feature_maps, release_window, prefix="release")
+    _append_window_signal_stats(feature_map, feature_maps, rim_window, prefix="rim")
+    _append_window_signal_stats(feature_map, feature_maps, finish_window, prefix="finish")
+    _append_window_signal_stats(feature_map, feature_maps, segment_window, prefix="segment")
+
+    release_player_to_rim = feature_map.get("release_player_to_rim_distance_mean", 0.0)
+    rim_player_to_rim = feature_map.get("rim_player_to_rim_distance_mean", 0.0)
+    finish_player_to_rim = feature_map.get("finish_player_to_rim_distance_mean", 0.0)
+    rim_near = feature_map.get("rim_ball_near_rim_max", 0.0)
+    finish_through = feature_map.get("finish_ball_through_hoop_likelihood_max", 0.0)
+    release_above = feature_map.get("release_ball_above_rim_mean", 0.0)
+    rim_above = feature_map.get("rim_ball_above_rim_max", 0.0)
+    finish_above = feature_map.get("finish_ball_above_rim_max", 0.0)
+    release_arc = feature_map.get("release_ball_arc_apex_max", 0.0)
+    rim_arc = feature_map.get("rim_ball_arc_apex_max", 0.0)
+    finish_arc = feature_map.get("finish_ball_arc_apex_max", 0.0)
+    release_ball_to_rim = feature_map.get("release_ball_to_rim_distance_mean", 0.0)
+    rim_ball_to_rim = feature_map.get("rim_ball_to_rim_distance_min", 0.0)
+    finish_ball_to_rim = feature_map.get("finish_ball_to_rim_distance_min", 0.0)
+    rim_vertical_velocity = feature_map.get("rim_ball_vertical_velocity_y_mean", 0.0)
+    finish_vertical_velocity = feature_map.get("finish_ball_vertical_velocity_y_mean", 0.0)
+    near_rim_vertical_speed = max(
+        feature_map.get("rim_ball_vertical_speed_near_rim_max", 0.0),
+        feature_map.get("finish_ball_vertical_speed_near_rim_max", 0.0),
+    )
+    release_shot = feature_map.get("release_shot_release_candidate_max", 0.0)
+    rim_defender = feature_map.get("rim_defender_proximity_at_shot_max", 0.0)
+    finish_defender = feature_map.get("finish_defender_proximity_at_shot_max", 0.0)
+    segment_ball_to_rim_min = feature_map.get("segment_ball_to_rim_distance_min", 0.0)
+    segment_ball_to_rim_range = (
+        feature_map.get("segment_ball_to_rim_distance_max", 0.0) - feature_map.get("segment_ball_to_rim_distance_min", 0.0)
+    )
+    feature_map["shot_ball_to_rim_curve_range"] = round(segment_ball_to_rim_range, 4)
+    feature_map["shot_release_to_rim_distance_drop"] = round(max(release_ball_to_rim - rim_ball_to_rim, 0.0), 4)
+    feature_map["shot_finish_distance_rebound"] = round(max(finish_ball_to_rim - rim_ball_to_rim, 0.0), 4)
+    feature_map["shot_ball_vertical_proxy"] = round(max(rim_above - release_above, finish_above - release_above), 4)
+    feature_map["shot_rim_vertical_velocity"] = round(rim_vertical_velocity, 4)
+    feature_map["shot_finish_vertical_velocity"] = round(finish_vertical_velocity, 4)
+    feature_map["shot_near_rim_vertical_speed"] = round(near_rim_vertical_speed, 4)
+    feature_map["shot_arc_proxy"] = round(max(release_arc, rim_arc, finish_arc), 4)
+    feature_map["shot_finish_evidence"] = round(
+        max(
+            finish_through,
+            (0.34 * rim_near)
+            + (0.22 * rim_above)
+            + (0.16 * release_shot)
+            + (0.14 * feature_map.get("rim_ball_to_rim_likelihood_max", 0.0))
+            + (0.14 * feature_map["shot_release_to_rim_distance_drop"]),
+        ),
+        4,
+    )
+    feature_map["shot_made_evidence"] = round(
+        max(
+            finish_through,
+            (0.28 * rim_near)
+            + (0.22 * rim_above)
+            + (0.18 * release_shot)
+            + (0.12 * max(1.0 - segment_ball_to_rim_min, 0.0))
+            + (0.12 * feature_map["shot_release_to_rim_distance_drop"])
+            + (0.08 * feature_map["shot_near_rim_vertical_speed"]),
+        ),
+        4,
+    )
+    feature_map["shot_miss_evidence"] = round(
+        max(
+            (0.3 * release_shot) + (0.22 * rim_arc) + (0.18 * max(1.0 - finish_through, 0.0)),
+            (0.22 * max(1.0 - finish_through, 0.0))
+            + (0.18 * feature_map.get("rim_ball_to_rim_likelihood_max", 0.0))
+            + (0.18 * feature_map["shot_finish_distance_rebound"]),
+        ),
+        4,
+    )
+    feature_map["shot_block_evidence"] = round(
+        max(
+            finish_defender * 0.72 * max(release_shot, 0.35),
+            rim_defender * 0.58 * max(rim_near, 0.3),
+        ),
+        4,
+    )
+    feature_map["shot_dunk_evidence"] = round(
+        max(feature_map["shot_made_evidence"], 0.0)
+        * max(rim_above, feature_map["shot_arc_proxy"], 0.0)
+        * max(1.0 - rim_player_to_rim / 0.22, 0.0)
+        * max(min(feature_map["shot_near_rim_vertical_speed"] / 0.55, 1.0), 0.25),
+        4,
+    )
+    feature_map["shot_layup_evidence"] = round(
+        max(1.0 - release_player_to_rim / 0.28, 0.0)
+        * max(release_shot, 0.35)
+        * max(1.0 - rim_above * 0.6, 0.0)
+        * max(1.0 - feature_map["shot_near_rim_vertical_speed"] * 0.7, 0.0),
+        4,
+    )
+    feature_map["shot_three_evidence"] = round(
+        min(max((release_player_to_rim - 0.28) / 0.22, 0.0), 1.0) * max(release_shot, 0.35),
+        4,
+    )
+    feature_map["shot_jumper_evidence"] = round(
+        max(0.0, 1.0 - abs(release_player_to_rim - 0.35) / 0.28) * max(release_shot, 0.32),
+        4,
+    )
+    feature_map["shot_putback_evidence"] = round(
+        max(feature_map.get("segment_same_play_continuity_score_max", 0.0), 0.0) * max(1.0 - finish_player_to_rim / 0.24, 0.0),
+        4,
+    )
+    feature_map["shot_attempt_likelihood"] = round(
+        max(
+            feature_map["shot_finish_evidence"],
+            feature_map["shot_miss_evidence"],
+            feature_map["shot_block_evidence"],
+            0.18 * feature_map.get("segment_ball_to_rim_likelihood_max", 0.0),
+        ),
+        4,
+    )
+    return feature_map
+
+
+def _append_window_signal_stats(
+    destination: dict[str, float],
+    feature_maps: Sequence[dict[str, float]],
+    indices: Sequence[int] | range,
+    *,
+    prefix: str,
+) -> None:
+    window = [feature_maps[index] for index in indices]
+    for feature_name in SHOT_SPECIALIST_SIGNAL_FEATURES:
+        values = [float(item.get(feature_name, 0.0)) for item in window]
+        destination[f"{prefix}_{feature_name}_mean"] = round(float(np.mean(values)), 4) if values else 0.0
+        destination[f"{prefix}_{feature_name}_max"] = round(float(np.max(values)), 4) if values else 0.0
+        destination[f"{prefix}_{feature_name}_min"] = round(float(np.min(values)), 4) if values else 0.0
+
+
+def _resolve_shot_anchor_index(
+    observations: Sequence[TemporalStudentObservation],
+    *,
+    timestamps: Sequence[float],
+    runtime_key: str,
+    fallback_index: int,
+) -> int:
+    raw_value = _coerce_optional_time((observations[0].runtime_features or {}).get(runtime_key)) if observations else None
+    if raw_value is None:
+        return int(min(max(fallback_index, 0), max(len(timestamps) - 1, 0)))
+    return _closest_timestamp_index(timestamps, raw_value)
+
+
+def _window_indices(center_index: int, *, radius: int, length: int) -> range:
+    start_index = max(center_index - radius, 0)
+    end_index = min(center_index + radius, max(length - 1, 0))
+    return range(start_index, end_index + 1)
+
+
+def _closest_timestamp_index(timestamps: Sequence[float], target_seconds: float) -> int:
+    return min(range(len(timestamps)), key=lambda index: abs(float(timestamps[index]) - float(target_seconds)))
+
+
+def _coerce_optional_time(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _include_temporal_event_detector_feature(name: str) -> bool:
     if name in TEMPORAL_EVENT_DETECTOR_EXCLUDED_FEATURES:
         return False
@@ -1114,6 +1449,9 @@ def load_temporal_event_detector_bundle(path: Path | None = None) -> TemporalEve
         proposal_ranker=proposal_ranker,
         proposal_acceptor_feature_names=tuple(str(item) for item in proposal_acceptor_payload.get("featureNames", [])),
         proposal_acceptor=proposal_acceptor,
+        shot_specialist_feature_names=tuple(str(item) for item in payload.get("shotSpecialistFeatureNames", [])),
+        shot_specialist_outcome=targets.get("shotOutcomeSpecialist"),
+        shot_specialist_subtype=targets.get("shotSubtypeSpecialist"),
         proposal_acceptance_threshold=float(payload.get("proposalAcceptanceThreshold", 0.62)),
         proposal_competition_margin_threshold=float(payload.get("proposalCompetitionMarginThreshold", 0.06)),
         proposal_candidate_limit=int(payload.get("proposalCandidateLimit", 4)),
@@ -1177,6 +1515,7 @@ def write_temporal_event_detector_bundle(path: Path, bundle: TemporalEventDetect
         "proposalAcceptanceThreshold": bundle.proposal_acceptance_threshold,
         "proposalCompetitionMarginThreshold": bundle.proposal_competition_margin_threshold,
         "proposalCandidateLimit": bundle.proposal_candidate_limit,
+        "shotSpecialistFeatureNames": list(bundle.shot_specialist_feature_names),
         "targets": {
             name: {
                 "classes": list(target.classes),
@@ -1248,6 +1587,17 @@ def _resolve_outcome(event_family: str, prediction: TemporalStudentTargetPredict
         return "uncertain"
     if prediction.is_uncertain:
         return "uncertain"
+    return prediction.label
+
+
+def _resolve_shot_specialist_subtype(
+    outcome: str,
+    prediction: TemporalTargetPrediction,
+) -> str | None:
+    if outcome != "made" or prediction.is_uncertain:
+        return None
+    if prediction.label in {"null", "uncertain", "unknown"}:
+        return None
     return prediction.label
 
 

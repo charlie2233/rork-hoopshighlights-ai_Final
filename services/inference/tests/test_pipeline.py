@@ -405,6 +405,8 @@ class PipelineCallbackResultsTests(unittest.TestCase):
                             "runtimeFusionTemporalShadow": {
                                 "modelVersion": "temporal-encoder-v1",
                                 "label": "Layup",
+                                "temporal_event_detector_shot_specialist_used": True,
+                                "temporal_event_detector_shot_specialist_abstained": True,
                             },
                             "runtimeFusionDistilledShadow": {
                                 "modelVersion": "distilled-clip-encoder-v1",
@@ -428,6 +430,8 @@ class PipelineCallbackResultsTests(unittest.TestCase):
         clip = callback_results["clips"][0]
 
         self.assertEqual(clip["runtimeFusionTemporalShadow"]["modelVersion"], "temporal-encoder-v1")
+        self.assertEqual(clip["runtimeFusionTemporalShadow"]["temporal_event_detector_shot_specialist_used"], True)
+        self.assertEqual(clip["runtimeFusionTemporalShadow"]["temporal_event_detector_shot_specialist_abstained"], True)
         self.assertEqual(clip["runtimeFusionDistilledShadow"]["modelVersion"], "distilled-clip-encoder-v1")
 
 

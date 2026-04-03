@@ -75,6 +75,8 @@ test("structured teacher metadata stays additive in the callback contract", asyn
       outcome: "uncertain",
       shotSubtype: null,
       isUncertain: true,
+      temporal_event_detector_shot_specialist_used: true,
+      temporal_event_detector_shot_specialist_abstained: true,
       metadata: {
         temporal_event_detector_proposal_accepted: false,
         temporal_event_detector_proposal_acceptance_score: 0.41,
@@ -125,6 +127,11 @@ test("structured teacher metadata stays additive in the callback contract", asyn
   assert.equal(jobJson.results?.clips[0]?.label, "made_shot");
   assert.equal(
     (jobJson.results?.clips?.[0] as Record<string, unknown> | undefined)?.runtimeFusionTemporalShadow !== undefined,
+    true
+  );
+  assert.equal(
+    ((jobJson.results?.clips?.[0] as Record<string, unknown> | undefined)?.runtimeFusionTemporalShadow as Record<string, unknown>)
+      ?.temporal_event_detector_shot_specialist_abstained,
     true
   );
 });

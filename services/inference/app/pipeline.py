@@ -1234,8 +1234,21 @@ def _build_temporal_observations(
         local_structured = {
             **dict(structured_signals),
             "ballNearRim": max(float(structured_signals.get("ballNearRim") or 0.0), local_features.ballNearRim),
+            "ballToRimDistance": min(
+                float(structured_signals.get("ballToRimDistance") or 1.0),
+                local_features.ballToRimDistance,
+            ),
+            "ballToRimLikelihood": max(
+                float(structured_signals.get("ballToRimLikelihood") or 0.0),
+                local_features.ballToRimLikelihood,
+            ),
             "ballAboveRim": max(float(structured_signals.get("ballAboveRim") or 0.0), local_features.ballAboveRim),
-            "ballArcApex": max(float(structured_signals.get("ballArcApex") or 0.0), local_features.ballAboveRim),
+            "ballArcApex": max(float(structured_signals.get("ballArcApex") or 0.0), local_features.ballArcApex),
+            "ballVerticalVelocityY": local_features.ballVerticalVelocityY,
+            "ballVerticalSpeedNearRim": max(
+                float(structured_signals.get("ballVerticalSpeedNearRim") or 0.0),
+                local_features.ballVerticalSpeedNearRim,
+            ),
             "ballThroughHoopLikelihood": max(
                 float(structured_signals.get("ballThroughHoopLikelihood") or 0.0),
                 local_features.ballThroughHoopLikelihood,
@@ -1363,8 +1376,21 @@ def _build_temporal_student_observations(
         local_structured = {
             **dict(structured_signals),
             "ballNearRim": max(float(structured_signals.get("ballNearRim") or 0.0), local_features.ballNearRim),
+            "ballToRimDistance": min(
+                float(structured_signals.get("ballToRimDistance") or 1.0),
+                local_features.ballToRimDistance,
+            ),
+            "ballToRimLikelihood": max(
+                float(structured_signals.get("ballToRimLikelihood") or 0.0),
+                local_features.ballToRimLikelihood,
+            ),
             "ballAboveRim": max(float(structured_signals.get("ballAboveRim") or 0.0), local_features.ballAboveRim),
-            "ballArcApex": max(float(structured_signals.get("ballArcApex") or 0.0), local_features.ballAboveRim),
+            "ballArcApex": max(float(structured_signals.get("ballArcApex") or 0.0), local_features.ballArcApex),
+            "ballVerticalVelocityY": local_features.ballVerticalVelocityY,
+            "ballVerticalSpeedNearRim": max(
+                float(structured_signals.get("ballVerticalSpeedNearRim") or 0.0),
+                local_features.ballVerticalSpeedNearRim,
+            ),
             "ballThroughHoopLikelihood": max(
                 float(structured_signals.get("ballThroughHoopLikelihood") or 0.0),
                 local_features.ballThroughHoopLikelihood,

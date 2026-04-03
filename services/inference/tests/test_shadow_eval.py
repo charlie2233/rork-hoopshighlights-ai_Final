@@ -176,6 +176,9 @@ class ShadowEvalTests(unittest.TestCase):
         self.assertEqual(report["summary"]["eventnessCalibration"]["eligibleClips"], 2)
         self.assertEqual(report["summary"]["eventnessCalibration"]["brierScore"], 0.0)
         self.assertEqual(report["summary"]["acceptedShotProposalOutcomeAccuracy"], 1.0)
+        self.assertEqual(report["summary"]["acceptedShotSubtypeDistribution"], {"layup": 1})
+        self.assertEqual(report["summary"]["acceptedShotAbstentionRate"], 0.0)
+        self.assertEqual(report["summary"]["dunkDominance"], 0.0)
         self.assertEqual(report["summary"]["rejectedProposalAudit"]["eligibleRejectedClips"], 1)
         self.assertEqual(report["summary"]["rejectedProposalAudit"]["trueNegativeRate"], 1.0)
         self.assertEqual(report["summary"]["rejectedProposalAudit"]["trueMissRate"], 0.0)
@@ -269,6 +272,9 @@ class ShadowEvalTests(unittest.TestCase):
 
         self.assertEqual(report["summary"]["proposalAcceptanceRate"], 0.3333)
         self.assertEqual(report["summary"]["acceptedShotProposalOutcomeAccuracy"], 1.0)
+        self.assertEqual(report["summary"]["acceptedShotSubtypeDistribution"], {"layup": 1})
+        self.assertEqual(report["summary"]["acceptedShotAbstentionRate"], 0.0)
+        self.assertEqual(report["summary"]["dunkDominance"], 0.0)
         self.assertEqual(report["summary"]["eventnessCalibration"]["eligibleClips"], 3)
         self.assertAlmostEqual(report["summary"]["eventnessCalibration"]["brierScore"], 0.1992, places=4)
         self.assertEqual(report["summary"]["rejectedProposalAudit"]["eligibleRejectedClips"], 2)
@@ -276,6 +282,78 @@ class ShadowEvalTests(unittest.TestCase):
         self.assertEqual(report["summary"]["rejectedProposalAudit"]["trueMissCount"], 1)
         self.assertEqual(report["summary"]["rejectedProposalAudit"]["trueNegativeRate"], 0.5)
         self.assertEqual(report["summary"]["rejectedProposalAudit"]["trueMissRate"], 0.5)
+
+    def test_report_tracks_shot_specialist_abstention(self) -> None:
+        payload = {
+            "jobId": "job-specialist-001",
+            "requestId": "req-specialist-001",
+            "uploadTraceId": "upload-specialist-001",
+            "inferenceAttemptId": "attempt-specialist-001",
+            "clips": [
+                {
+                    "clipId": "clip-generic-made",
+                    "label": "Highlight",
+                    "eventFamily": "other",
+                    "outcome": "uncertain",
+                    "shotSubtype": None,
+                    "expectedEventFamily": "shot_attempt",
+                    "expectedOutcome": "made",
+                    "runtimeFusionTemporalShadow": {
+                        "modelVersion": "temporal-event-detector-tridet-shot-specialist-v1",
+                        "label": "Made Shot",
+                        "eventFamily": "shot_attempt",
+                        "outcome": "made",
+                        "shotSubtype": None,
+                        "confidenceBeforeMapping": 0.61,
+                        "confidenceAfterMapping": 0.54,
+                        "confidence": 0.54,
+                        "isUncertain": True,
+                        "metadata": {
+                            "temporal_event_detector_proposal_accepted": True,
+                            "temporal_event_detector_event_score": 0.74,
+                            "temporal_event_detector_shot_specialist_used": True,
+                            "temporal_event_detector_shot_specialist_abstained": True,
+                        },
+                    },
+                },
+                {
+                    "clipId": "clip-dunk-made",
+                    "label": "Highlight",
+                    "eventFamily": "other",
+                    "outcome": "uncertain",
+                    "shotSubtype": None,
+                    "expectedEventFamily": "shot_attempt",
+                    "expectedOutcome": "made",
+                    "runtimeFusionTemporalShadow": {
+                        "modelVersion": "temporal-event-detector-tridet-shot-specialist-v1",
+                        "label": "Dunk",
+                        "eventFamily": "shot_attempt",
+                        "outcome": "made",
+                        "shotSubtype": "dunk",
+                        "confidenceBeforeMapping": 0.72,
+                        "confidenceAfterMapping": 0.7,
+                        "confidence": 0.7,
+                        "isUncertain": False,
+                        "metadata": {
+                            "temporal_event_detector_proposal_accepted": True,
+                            "temporal_event_detector_event_score": 0.82,
+                            "temporal_event_detector_shot_specialist_used": True,
+                            "temporal_event_detector_shot_specialist_abstained": False,
+                        },
+                    },
+                },
+            ],
+        }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "specialist.json"
+            path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+            report = build_shadow_report(load_batch_records([path], shadow_source="runtimeFusionTemporalShadow"))
+
+        self.assertEqual(report["summary"]["acceptedShotProposalOutcomeAccuracy"], 1.0)
+        self.assertEqual(report["summary"]["acceptedShotSubtypeDistribution"], {"dunk": 1, "null": 1})
+        self.assertEqual(report["summary"]["acceptedShotAbstentionRate"], 0.5)
+        self.assertEqual(report["summary"]["dunkDominance"], 0.5)
 
     def test_cli_writes_markdown_and_json(self) -> None:
         fixture = self.repo_root() / "services" / "inference" / "tests" / "fixtures" / "shadow_batch_results.json"

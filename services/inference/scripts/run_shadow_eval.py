@@ -73,6 +73,8 @@ class ShadowClipRecord:
     proposalScore: float | None = None
     proposalRejectorLabel: str | None = None
     proposalRejectorConfidence: float | None = None
+    shotSpecialistUsed: bool | None = None
+    shotSpecialistAbstained: bool | None = None
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -200,6 +202,9 @@ def build_shadow_report(records: list[ShadowClipRecord]) -> dict[str, Any]:
             "proposalAcceptanceClipCount": proposal_summary["proposalAcceptanceClipCount"],
             "eventnessCalibration": proposal_summary["eventnessCalibration"],
             "acceptedShotProposalOutcomeAccuracy": proposal_summary["acceptedShotProposalOutcomeAccuracy"],
+            "acceptedShotSubtypeDistribution": proposal_summary["acceptedShotSubtypeDistribution"],
+            "acceptedShotAbstentionRate": proposal_summary["acceptedShotAbstentionRate"],
+            "dunkDominance": proposal_summary["dunkDominance"],
             "rejectedProposalAudit": proposal_summary["rejectedProposalAudit"],
             "splitOtherDistribution": other_bucket_distribution,
             "otherBucketAudit": other_bucket_audit,
@@ -253,6 +258,11 @@ def render_markdown(report: dict[str, Any]) -> str:
     lines.append(
         f"- Accepted-shot outcome accuracy: `{summary.get('acceptedShotProposalOutcomeAccuracy')}`"
     )
+    lines.append(
+        f"- Accepted-shot subtype distribution: `{json.dumps(summary.get('acceptedShotSubtypeDistribution'), sort_keys=True)}`"
+    )
+    lines.append(f"- Accepted-shot abstention rate: `{summary.get('acceptedShotAbstentionRate')}`")
+    lines.append(f"- Dunk dominance: `{summary.get('dunkDominance')}`")
     lines.append(f"- Rejected proposal audit: `{json.dumps(summary.get('rejectedProposalAudit'), sort_keys=True)}`")
     lines.append(f"- Miss-vs-made confusion: `{json.dumps(summary['missVsMadeConfusion'], sort_keys=True)}`")
     if summary.get("labeledClipCount", 0) > 0:
@@ -443,6 +453,8 @@ def _normalize_batch_item(
                 proposalScore=_normalize_proposal_event_score(clip, shadow_payload),
                 proposalRejectorLabel=_normalize_proposal_rejector_label(clip, shadow_payload),
                 proposalRejectorConfidence=_normalize_proposal_rejector_confidence(clip, shadow_payload),
+                shotSpecialistUsed=_normalize_shot_specialist_used(clip, shadow_payload),
+                shotSpecialistAbstained=_normalize_shot_specialist_abstained(clip, shadow_payload),
                 clipDurationSeconds=_to_optional_float(clip.get("clipDurationSeconds")),
                 wasMerged=bool(clip.get("wasMerged", False)),
                 sourceEventCount=_to_optional_int(clip.get("sourceEventCount")),
@@ -717,6 +729,35 @@ def build_proposal_summary(records: list[ShadowClipRecord]) -> dict[str, Any]:
         if accepted_shot_rows
         else None
     )
+    accepted_shot_subtype_distribution = distribution(
+        (record.shotSubtype or "null") for record in accepted_shot_rows
+    )
+    accepted_shot_abstention_rate = (
+        round(
+            sum(
+                1
+                for record in accepted_shot_rows
+                if normalize_bucket(record.outcome) == "made"
+                and (
+                    record.shotSpecialistAbstained is True
+                    or normalize_bucket(record.shotSubtype or "null") in {"null", "uncertain"}
+                )
+            )
+            / len(accepted_shot_rows),
+            4,
+        )
+        if accepted_shot_rows
+        else None
+    )
+    dunk_dominance = (
+        round(
+            sum(1 for record in accepted_shot_rows if normalize_text(record.flatLabel) == "dunk")
+            / len(accepted_shot_rows),
+            4,
+        )
+        if accepted_shot_rows
+        else None
+    )
 
     rejected_labeled_rows = [
         record
@@ -738,6 +779,9 @@ def build_proposal_summary(records: list[ShadowClipRecord]) -> dict[str, Any]:
         "proposalAcceptanceClipCount": len(eligible_records),
         "eventnessCalibration": eventness_calibration,
         "acceptedShotProposalOutcomeAccuracy": accepted_shot_outcome_accuracy,
+        "acceptedShotSubtypeDistribution": accepted_shot_subtype_distribution,
+        "acceptedShotAbstentionRate": accepted_shot_abstention_rate,
+        "dunkDominance": dunk_dominance,
         "rejectedProposalAudit": rejected_proposal_audit,
     }
 
@@ -1007,6 +1051,30 @@ def _normalize_proposal_rejector_confidence(clip: dict[str, Any], shadow_payload
     )
 
 
+def _normalize_shot_specialist_used(clip: dict[str, Any], shadow_payload: dict[str, Any] | None = None) -> bool | None:
+    metadata = shadow_payload.get("metadata") if isinstance(shadow_payload, dict) else None
+    value = _first_defined(
+        shadow_payload.get("temporal_event_detector_shot_specialist_used") if shadow_payload else None,
+        metadata.get("temporal_event_detector_shot_specialist_used") if isinstance(metadata, dict) else None,
+        clip.get("shotSpecialistUsed"),
+    )
+    if value is None:
+        return None
+    return bool(value)
+
+
+def _normalize_shot_specialist_abstained(clip: dict[str, Any], shadow_payload: dict[str, Any] | None = None) -> bool | None:
+    metadata = shadow_payload.get("metadata") if isinstance(shadow_payload, dict) else None
+    value = _first_defined(
+        shadow_payload.get("temporal_event_detector_shot_specialist_abstained") if shadow_payload else None,
+        metadata.get("temporal_event_detector_shot_specialist_abstained") if isinstance(metadata, dict) else None,
+        clip.get("shotSpecialistAbstained"),
+    )
+    if value is None:
+        return None
+    return bool(value)
+
+
 def _normalize_other_bucket_reason(clip: dict[str, Any], shadow_payload: dict[str, Any] | None = None) -> str | None:
     metadata = shadow_payload.get("metadata") if isinstance(shadow_payload, dict) else None
     return _first_non_empty(
@@ -1019,14 +1087,21 @@ def _normalize_other_bucket_reason(clip: dict[str, Any], shadow_payload: dict[st
 
 
 def _normalize_shot_subtype(clip: dict[str, Any], shadow_payload: dict[str, Any] | None = None) -> str | None:
+    if shadow_payload is not None and "shotSubtype" in shadow_payload:
+        if shadow_payload.get("shotSubtype") is None:
+            return None
+    elif "shotSubtype" in clip and clip.get("shotSubtype") is None:
+        return None
     value = _first_non_empty(
         shadow_payload.get("shotSubtype") if shadow_payload else None,
         clip.get("shotSubtype"),
         clip.get("shotType"),
     )
     text = normalize_text(value)
-    if text in {"dunk", "layup", "jumper", "three", "putback", "unknown"}:
+    if text in {"dunk", "layup", "jumper", "three", "putback"}:
         return text
+    if text in {"null", "uncertain", "unknown", ""}:
+        return None
     return _taxonomy_from_label(_normalize_flat_label(clip, shadow_payload))[1]
 
 

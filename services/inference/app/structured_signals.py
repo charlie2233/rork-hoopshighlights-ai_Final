@@ -14,8 +14,12 @@ SHOT_LABELS = {"dunk", "layup", "jumper", "three", "putback", "miss"}
 @dataclass(frozen=True)
 class StructuredBasketballSignals:
     ballNearRim: float
+    ballToRimDistance: float
+    ballToRimLikelihood: float
     ballAboveRim: float
     ballArcApex: float
+    ballVerticalVelocityY: float
+    ballVerticalSpeedNearRim: float
     ballThroughHoopLikelihood: float
     possessionChangeLikelihood: float
     playerToRimDistance: float | None
@@ -102,6 +106,7 @@ def derive_structured_signals(
 
     rim_anchor = rim_points[0] if rim_points else None
     near_rim_distances: list[float] = []
+    vertical_velocities: list[float] = []
     above_rim_frames = 0
     through_hoop_hits = 0
     shot_release_score = 0.0
@@ -117,6 +122,8 @@ def derive_structured_signals(
                 if point["center"][1] < rim_center[1]:
                     above_rim_frames += 1
         for previous, current in zip(ball_points, ball_points[1:]):
+            dt = max(current["timestamp"] - previous["timestamp"], 0.001)
+            vertical_velocities.append((current["center"][1] - previous["center"][1]) / max(frame_height, 1.0) / dt)
             previous_above = previous["center"][1] < rim_center[1]
             current_below = current["center"][1] > rim_center[1]
             inside_rim_lane = rim_anchor["box"]["x1"] - (rim_width * 0.5) <= current["center"][0] <= rim_anchor["box"]["x2"] + (rim_width * 0.5)
@@ -134,12 +141,23 @@ def derive_structured_signals(
     continuity_score = _continuity_score(ball_track, player_tracks)
 
     ball_near_rim = 0.0
+    ball_to_rim_distance = 1.0
+    ball_to_rim_likelihood = 0.0
     if near_rim_distances:
         best_distance = min(near_rim_distances)
+        ball_to_rim_distance = min(max(best_distance, 0.0), 1.0)
         ball_near_rim = max(0.0, 1.0 - min(best_distance / 0.24, 1.0))
+        ball_to_rim_likelihood = max(0.0, 1.0 - min(best_distance / 0.28, 1.0))
 
     ball_above_rim = (above_rim_frames / len(ball_points)) if ball_points else 0.0
     ball_through_hoop = min(max((through_hoop_hits / max(len(ball_points) - 1, 1)) * 1.8, 0.0), 1.0)
+    ball_vertical_velocity_y = max(min(vertical_velocities[-1], 1.0), -1.0) if vertical_velocities else 0.0
+    near_rim_vertical_velocities = [
+        abs(vertical_velocities[index])
+        for index in range(len(vertical_velocities))
+        if index + 1 < len(near_rim_distances) and near_rim_distances[index + 1] <= 0.32
+    ]
+    ball_vertical_speed_near_rim = min(max(max(near_rim_vertical_velocities, default=0.0) * 0.45, 0.0), 1.0)
 
     if action.canonicalLabel in {"fast break", "steal"}:
         transition_speed_score = min(max(transition_speed_score + 0.1, 0.0), 1.0)
@@ -151,8 +169,12 @@ def derive_structured_signals(
 
     return StructuredBasketballSignals(
         ballNearRim=min(max(ball_near_rim, 0.0), 1.0),
+        ballToRimDistance=min(max(ball_to_rim_distance, 0.0), 1.0),
+        ballToRimLikelihood=min(max(ball_to_rim_likelihood, 0.0), 1.0),
         ballAboveRim=min(max(ball_above_rim, 0.0), 1.0),
         ballArcApex=min(max(arc_score, 0.0), 1.0),
+        ballVerticalVelocityY=max(min(ball_vertical_velocity_y, 1.0), -1.0),
+        ballVerticalSpeedNearRim=min(max(ball_vertical_speed_near_rim, 0.0), 1.0),
         ballThroughHoopLikelihood=min(max(ball_through_hoop, 0.0), 1.0),
         possessionChangeLikelihood=min(max(possession_change_likelihood, 0.0), 1.0),
         playerToRimDistance=round(player_to_rim_distance, 4) if player_to_rim_distance is not None else None,

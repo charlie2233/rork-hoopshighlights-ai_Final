@@ -357,6 +357,16 @@ def build_temporal_student_feature_map(observation: TemporalStudentObservation) 
         "detection_density": _coerce_float(detection.get("detectionDensity", perception.get("detectionDensity")), default=0.0),
         "tracking_density": _coerce_float(tracking.get("trackingDensity", perception.get("trackingDensity")), default=0.0),
         "ball_near_rim": _coerce_float(structured.get("ballNearRim")),
+        "ball_to_rim_distance": _coerce_float(structured.get("ballToRimDistance", structured.get("ball_to_rim_distance"))),
+        "ball_to_rim_likelihood": _coerce_float(
+            structured.get("ballToRimLikelihood", structured.get("ball_to_rim_likelihood"))
+        ),
+        "ball_vertical_velocity_y": _coerce_float(
+            structured.get("ballVerticalVelocityY", structured.get("ball_vertical_velocity_y"))
+        ),
+        "ball_vertical_speed_near_rim": _coerce_float(
+            structured.get("ballVerticalSpeedNearRim", structured.get("ball_vertical_speed_near_rim"))
+        ),
         "ball_above_rim": _coerce_float(structured.get("ballAboveRim")),
         "ball_arc_apex": _coerce_float(structured.get("ballArcApex")),
         "ball_through_hoop_likelihood": _coerce_float(structured.get("ballThroughHoopLikelihood")),
@@ -459,6 +469,10 @@ def default_temporal_student_feature_names() -> tuple[str, ...]:
         "detection_density",
         "tracking_density",
         "ball_near_rim",
+        "ball_to_rim_distance",
+        "ball_to_rim_likelihood",
+        "ball_vertical_velocity_y",
+        "ball_vertical_speed_near_rim",
         "ball_above_rim",
         "ball_arc_apex",
         "ball_through_hoop_likelihood",
@@ -760,6 +774,9 @@ def _resolve_student_confidence(
     subtype_prediction: TemporalTargetPrediction,
     gate_open: bool,
     is_uncertain: bool,
+    outcome: str | None = None,
+    shot_specialist_used: bool = False,
+    shot_specialist_abstained: bool = False,
 ) -> float:
     confidence = max(event_spotter_prediction.confidence, family_prediction.confidence if gate_open else 0.0)
     if not gate_open:
@@ -772,8 +789,12 @@ def _resolve_student_confidence(
         confidence = min(max(confidence, subtype_prediction.confidence), max(outcome_prediction.confidence, 0.3))
     elif display_label == "Block":
         confidence = max(confidence, outcome_prediction.confidence)
+    if shot_specialist_used and outcome == "made" and shot_specialist_abstained:
+        confidence = min(confidence, max(outcome_prediction.confidence * 0.78, 0.38))
     if is_uncertain and display_label == "Highlight":
         confidence = min(confidence, 0.46)
+    elif is_uncertain and shot_specialist_used:
+        confidence = min(confidence, 0.58)
     return min(max(confidence, 0.0), 1.0)
 
 

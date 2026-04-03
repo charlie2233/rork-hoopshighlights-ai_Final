@@ -23,7 +23,12 @@ class PerceptionObservation:
 class PerceptionFeatureVector:
     playerToRimDistance: float
     ballNearRim: float
+    ballToRimDistance: float
+    ballToRimLikelihood: float
     ballAboveRim: float
+    ballArcApex: float
+    ballVerticalVelocityY: float
+    ballVerticalSpeedNearRim: float
     ballThroughHoopLikelihood: float
     possessionChangeLikelihood: float
     transitionSpeedScore: float
@@ -35,6 +40,10 @@ class PerceptionFeatureVector:
 
 def _clamp01(value: float) -> float:
     return max(0.0, min(1.0, value))
+
+
+def _clamp_signed(value: float, limit: float = 1.0) -> float:
+    return max(-limit, min(limit, value))
 
 
 def _center(box: BBox) -> tuple[float, float]:
@@ -134,6 +143,10 @@ def _collect(series: Sequence[PerceptionObservation], frame_time: float, toleran
     return [obs for obs in series if abs(obs.timestamp_seconds - frame_time) <= tolerance]
 
 
+def _zero_feature_vector() -> PerceptionFeatureVector:
+    return PerceptionFeatureVector(*(0.0 for _ in range(len(PerceptionFeatureVector.__dataclass_fields__))))
+
+
 def derive_perception_features(
     frames: Sequence[Sequence[PerceptionObservation]],
     *,
@@ -144,7 +157,7 @@ def derive_perception_features(
 ) -> PerceptionFeatureVector:
     grouped = _group_by_time(frames)
     if not grouped:
-        return PerceptionFeatureVector(*(0.0 for _ in range(10)))
+        return _zero_feature_vector()
 
     all_frames = [frame for _, frame in grouped]
     ball_series = [obs for frame in all_frames for obs in frame if obs.label.lower() in {label.lower() for label in ball_labels}]
@@ -158,7 +171,7 @@ def derive_perception_features(
     ]
 
     if not ball_series:
-        return PerceptionFeatureVector(*(0.0 for _ in range(10)))
+        return _zero_feature_vector()
 
     ball_series = sorted(ball_series, key=lambda obs: obs.timestamp_seconds)
     rim_series = sorted(rim_series, key=lambda obs: obs.timestamp_seconds)
@@ -170,6 +183,7 @@ def derive_perception_features(
     ball_above_rim_scores: list[float] = []
     continuity_pairs: list[float] = []
     carrier_track_ids: list[str] = []
+    ball_velocity_x, ball_velocity_y = _ball_velocity(ball_series) if len(ball_series) >= 2 else (0.0, 0.0)
 
     for ball in ball_series:
         nearest_rim = _nearest(rim_series, ball)
@@ -189,10 +203,7 @@ def derive_perception_features(
         near_rim = _proximity_score(normalized_distance, 0.35)
         above_rim = _clamp01((rim_center[1] - ball_center[1]) / max(rim_height * 2.5, 1e-6))
 
-        vertical_motion = 0.0
-        if len(ball_series) >= 2:
-            vx, vy = _ball_velocity(ball_series)
-            vertical_motion = _clamp01(_logistic(-vy, -0.01, 0.08))
+        vertical_motion = _clamp01(_logistic(-ball_velocity_y, -0.01, 0.08))
 
         player_proximity = 0.0
         defender_proximity = 0.0
@@ -217,6 +228,10 @@ def derive_perception_features(
 
     ball_near_rim = max(ball_near_rim_scores)
     ball_above_rim = max(ball_above_rim_scores)
+    best_ball_to_rim_distance = min(near_rim_distances) if near_rim_distances else 1.0
+    ball_to_rim_likelihood = _clamp01(1.0 - min(best_ball_to_rim_distance / 0.28, 1.0))
+    ball_vertical_speed_near_rim = _clamp01(_logistic(abs(ball_velocity_y), 0.12, 0.08))
+    ball_arc_apex = _arc_score(ball_series)
 
     if shot_rim is None:
         player_to_rim_distance = 0.0
@@ -272,7 +287,12 @@ def derive_perception_features(
     return PerceptionFeatureVector(
         playerToRimDistance=_clamp01(player_to_rim_distance),
         ballNearRim=_clamp01(ball_near_rim),
+        ballToRimDistance=_clamp01(best_ball_to_rim_distance),
+        ballToRimLikelihood=_clamp01(ball_to_rim_likelihood),
         ballAboveRim=_clamp01(ball_above_rim),
+        ballArcApex=_clamp01(ball_arc_apex),
+        ballVerticalVelocityY=_clamp_signed(ball_velocity_y),
+        ballVerticalSpeedNearRim=_clamp01(ball_vertical_speed_near_rim),
         ballThroughHoopLikelihood=_clamp01(ball_through_hoop_likelihood),
         possessionChangeLikelihood=_clamp01(possession_change_likelihood),
         transitionSpeedScore=_clamp01(transition_speed_score),
