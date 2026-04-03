@@ -10,6 +10,8 @@ import sys
 
 from services.inference.app.runtime_models.temporal_event_detector import (
     _resolve_shot_specialist_subtype,
+    _should_attempt_shot_subtype,
+    _should_promote_generic_shot_attempt,
     load_temporal_event_detector_bundle,
 )
 from services.inference.app.temporal_encoder import TemporalTargetPrediction
@@ -40,6 +42,7 @@ TemporalTrainingExample = training.TemporalTrainingExample
 evaluate_temporal_event_detector_bundle = training.evaluate_temporal_event_detector_bundle
 train_temporal_event_detector = training.train_temporal_event_detector
 refresh_shot_specialist_bundle = training.refresh_shot_specialist_bundle
+build_proposal_conditioned_shot_rows = training.build_proposal_conditioned_shot_rows
 infer_proposal_reject_label = training.infer_proposal_reject_label
 write_temporal_event_detector_bundle = training.write_temporal_event_detector_bundle
 
@@ -695,5 +698,151 @@ class TemporalEventDetectorTests(unittest.TestCase):
         )
 
         self.assertIsNone(_resolve_shot_specialist_subtype("made", uncertain_prediction))
-        self.assertIsNone(_resolve_shot_specialist_subtype("missed", confident_prediction))
+        self.assertEqual(_resolve_shot_specialist_subtype("missed", confident_prediction), "dunk")
         self.assertEqual(_resolve_shot_specialist_subtype("made", confident_prediction), "dunk")
+
+    def test_shot_specialist_subtype_gate_is_outcome_first(self) -> None:
+        uncertain_outcome = TemporalTargetPrediction(
+            label="uncertain",
+            confidence=0.61,
+            margin=0.03,
+            distribution={"uncertain": 0.61, "made": 0.39},
+            top_labels=(),
+            is_uncertain=True,
+        )
+        confident_outcome = TemporalTargetPrediction(
+            label="missed",
+            confidence=0.78,
+            margin=0.22,
+            distribution={"missed": 0.78, "made": 0.12, "blocked": 0.1},
+            top_labels=(),
+            is_uncertain=False,
+        )
+
+        self.assertFalse(
+            _should_attempt_shot_subtype(
+                outcome="uncertain",
+                outcome_prediction=uncertain_outcome,
+                acceptance_score=0.84,
+            )
+        )
+        self.assertTrue(
+            _should_attempt_shot_subtype(
+                outcome="missed",
+                outcome_prediction=confident_outcome,
+                acceptance_score=0.84,
+            )
+        )
+
+    def test_generic_shot_attempt_promotion_requires_confident_family_and_acceptance(self) -> None:
+        confident_family = TemporalTargetPrediction(
+            label="shot_attempt",
+            confidence=0.81,
+            margin=0.27,
+            distribution={"shot_attempt": 0.81, "transition": 0.12, "other": 0.07},
+            top_labels=(),
+            is_uncertain=False,
+        )
+        uncertain_outcome = TemporalTargetPrediction(
+            label="uncertain",
+            confidence=0.53,
+            margin=0.08,
+            distribution={"uncertain": 0.53, "missed": 0.27, "made": 0.2},
+            top_labels=(),
+            is_uncertain=True,
+        )
+
+        self.assertTrue(
+            _should_promote_generic_shot_attempt(
+                proposal_accepted=True,
+                classifier_gate_open=True,
+                event_family="shot_attempt",
+                outcome="uncertain",
+                family_prediction=confident_family,
+                outcome_prediction=uncertain_outcome,
+                shot_specialist_used=True,
+                acceptance_score=0.82,
+            )
+        )
+        self.assertFalse(
+            _should_promote_generic_shot_attempt(
+                proposal_accepted=False,
+                classifier_gate_open=True,
+                event_family="shot_attempt",
+                outcome="uncertain",
+                family_prediction=confident_family,
+                outcome_prediction=uncertain_outcome,
+                shot_specialist_used=True,
+                acceptance_score=0.82,
+            )
+        )
+
+    @unittest.skipIf(torch is None, "torch is required for temporal event detector training")
+    def test_builds_proposal_conditioned_shot_rows(self) -> None:
+        shot = TemporalTrainingExample(
+            clip_id="clip-shot-conditioned",
+            source_kind="gold",
+            source_domain="live_shadow",
+            source_set="phase4_event_localization_queue",
+            split="val",
+            event_family="shot_attempt",
+            outcome="made",
+            shot_subtype="layup",
+            observations=tuple(
+                _make_observation(event_family="shot_attempt", outcome="made", shot_subtype="layup", position=position)
+                for position in (0.14, 0.39, 0.68, 0.9)
+            ),
+            weight=4.0,
+            has_event_localization=True,
+        )
+        negative = TemporalTrainingExample(
+            clip_id="clip-shot-conditioned-negative",
+            source_kind="gold",
+            source_domain="manual_negative",
+            source_set="phase4_event_localization_queue",
+            split="test",
+            event_family="other",
+            outcome="uncertain",
+            shot_subtype=None,
+            observations=tuple(
+                _make_observation(
+                    event_family="other",
+                    outcome="uncertain",
+                    shot_subtype=None,
+                    position=position,
+                    ball_visible=True,
+                    hoop_visible=True,
+                )
+                for position in (0.12, 0.37, 0.63, 0.89)
+            ),
+            weight=4.0,
+            has_event_localization=False,
+            reviewer_notes="Near-shot setup with no finish.",
+        )
+
+        result = train_temporal_event_detector(
+            [shot, negative],
+            architecture="tridet",
+            hidden_size=8,
+            epochs=10,
+            learning_rate=0.05,
+        )
+        rows = build_proposal_conditioned_shot_rows(result.bundle, [shot, negative])
+        self.assertTrue(rows)
+        shot_rows = [row for row in rows if row["clipId"] == shot.clip_id]
+        self.assertTrue(shot_rows)
+        self.assertTrue(all(row["proposalLikelyShotAttempt"] for row in shot_rows))
+        self.assertTrue(
+            any(
+                row["proposalCategory"] in {"accepted_true_shot", "borderline_accepted", "rejected_near_shot"}
+                for row in shot_rows
+            )
+        )
+        self.assertTrue(
+            any(
+                row["clipId"] == negative.clip_id
+                and row["proposalCategory"] in {"accepted_false_shot", "borderline_accepted", "rejected_near_shot"}
+                for row in rows
+            )
+        )
+        self.assertTrue(any(row["useForCalibration"] for row in rows))

@@ -515,45 +515,139 @@ def build_shot_specialist_rows(
     bundle: TemporalEventDetectorBundle,
     examples: Sequence[TemporalTrainingExample],
 ) -> list[dict[str, Any]]:
+    return [
+        row
+        for row in build_proposal_conditioned_shot_rows(bundle, examples)
+        if bool(row.get("includeInShotSpecialistDataset"))
+    ]
+
+
+def build_proposal_conditioned_shot_rows(
+    bundle: TemporalEventDetectorBundle,
+    examples: Sequence[TemporalTrainingExample],
+) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for example in examples:
-        proposals, preferred_index, _alignment_scores = build_candidate_proposal_alignment(bundle, example)
+        proposals, _preferred_index, alignment_scores = build_candidate_proposal_alignment(bundle, example)
         if not proposals:
             continue
-        selected_index = preferred_index if preferred_index is not None else 0
-        proposal = proposals[selected_index]
-        features = build_shot_specialist_feature_map(
-            observations=example.observations,
-            proposal=proposal,
-        )
-        shot_like_negative = (
-            example.event_family in {"other", "transition"}
-            and float(features.get("shot_attempt_likelihood", 0.0)) >= 0.28
-        )
-        is_shot_like_example = example.event_family == "shot_attempt" or example.outcome == "blocked" or shot_like_negative
-        if not is_shot_like_example:
-            continue
-        outcome_label = example.outcome if example.outcome in OUTCOMES and not shot_like_negative else "uncertain"
-        subtype_label = (
-            example.shot_subtype
-            if example.shot_subtype in {"dunk", "layup", "jumper", "three", "putback"} and outcome_label != "uncertain"
-            else "uncertain"
-        )
-        rows.append(
-            {
-                "clipId": example.clip_id,
-                "split": example.split,
-                "sourceKind": example.source_kind,
-                "sourceDomain": example.source_domain,
-                "sourceSet": example.source_set,
-                "eventFamily": example.event_family,
-                "outcomeLabel": outcome_label,
-                "subtypeLabel": subtype_label,
-                "features": features,
-                "outcomeWeight": shot_specialist_outcome_weight(example, outcome_label=outcome_label),
-                "subtypeWeight": shot_specialist_subtype_weight(example, subtype_label=subtype_label),
-            }
-        )
+        alignment_by_index = {
+            index: float(alignment_scores[index]) if index < len(alignment_scores) else 0.0
+            for index in range(len(proposals))
+        }
+        for ranked_proposal in bundle._score_ranked_proposals(example.observations, proposals):
+            proposal = ranked_proposal.proposal
+            alignment_score = alignment_by_index.get(int(proposal.proposal_index), 0.0)
+            features = build_shot_specialist_feature_map(
+                observations=example.observations,
+                proposal=proposal,
+                ranked_proposal=ranked_proposal,
+            )
+            shot_attempt_likelihood = float(features.get("shot_attempt_likelihood", 0.0))
+            proposal_shot_attempt_score = float(features.get("shot_proposal_shot_attempt_score", 0.0))
+            proposal_likely_shot_attempt = (
+                proposal.coarse_event_family == "shot_attempt"
+                or shot_attempt_likelihood >= 0.34
+                or alignment_score >= 0.22
+                or (
+                    ranked_proposal.accepted
+                    and ranked_proposal.acceptance_score >= max(bundle.proposal_acceptance_threshold + 0.02, 0.64)
+                    and proposal_shot_attempt_score >= 0.42
+                )
+            )
+            accepted_true_shot = (
+                ranked_proposal.accepted
+                and proposal_likely_shot_attempt
+                and example.event_family == "shot_attempt"
+                and alignment_score >= 0.24
+            )
+            accepted_false_shot = (
+                ranked_proposal.accepted
+                and proposal_likely_shot_attempt
+                and not accepted_true_shot
+            )
+            borderline_accepted = (
+                ranked_proposal.accepted
+                and proposal_likely_shot_attempt
+                and (
+                    ranked_proposal.acceptance_score < bundle.proposal_acceptance_threshold + 0.08
+                    or ranked_proposal.competition_margin < bundle.proposal_competition_margin_threshold + 0.04
+                    or proposal.event_score < bundle.event_score_threshold + 0.08
+                )
+            )
+            rejected_near_shot = (
+                not ranked_proposal.accepted
+                and proposal_likely_shot_attempt
+                and (
+                    alignment_score >= 0.2
+                    or shot_attempt_likelihood >= 0.24
+                    or proposal.event_score >= max(bundle.event_score_threshold - 0.02, 0.18)
+                )
+            )
+            include_in_dataset = accepted_true_shot or accepted_false_shot or borderline_accepted or rejected_near_shot
+            if not include_in_dataset:
+                continue
+
+            if accepted_true_shot:
+                proposal_category = "accepted_true_shot"
+                outcome_label = example.outcome if example.outcome in OUTCOMES else "uncertain"
+                subtype_label = (
+                    example.shot_subtype
+                    if example.shot_subtype in {"dunk", "layup", "jumper", "three", "putback"}
+                    and outcome_label != "uncertain"
+                    else "uncertain"
+                )
+            elif accepted_false_shot:
+                proposal_category = "accepted_false_shot"
+                outcome_label = "uncertain"
+                subtype_label = "uncertain"
+            elif borderline_accepted:
+                proposal_category = "borderline_accepted"
+                outcome_label = "uncertain"
+                subtype_label = "uncertain"
+            else:
+                proposal_category = "rejected_near_shot"
+                outcome_label = "uncertain"
+                subtype_label = "uncertain"
+
+            rows.append(
+                {
+                    "clipId": example.clip_id,
+                    "proposalIndex": int(proposal.proposal_index),
+                    "split": example.split,
+                    "sourceKind": example.source_kind,
+                    "sourceDomain": example.source_domain,
+                    "sourceSet": example.source_set,
+                    "eventFamily": example.event_family,
+                    "proposalEventFamily": proposal.coarse_event_family,
+                    "proposalCategory": proposal_category,
+                    "proposalAccepted": ranked_proposal.accepted,
+                    "proposalLikelyShotAttempt": proposal_likely_shot_attempt,
+                    "proposalAlignmentScore": round(alignment_score, 4),
+                    "proposalAcceptanceScore": round(float(ranked_proposal.acceptance_score), 4),
+                    "proposalCompetitionMargin": round(float(ranked_proposal.competition_margin), 4),
+                    "includeInShotSpecialistDataset": include_in_dataset,
+                    "useForTraining": proposal_category in {"accepted_true_shot", "accepted_false_shot"},
+                    "useForCalibration": (
+                        example.source_kind == "gold"
+                        and example.split in {"val", "test"}
+                        and proposal_category in {"accepted_true_shot", "accepted_false_shot"}
+                    ),
+                    "outcomeLabel": outcome_label,
+                    "subtypeLabel": subtype_label,
+                    "features": features,
+                    "outcomeWeight": shot_specialist_outcome_weight(
+                        example,
+                        outcome_label=outcome_label,
+                        proposal_category=proposal_category,
+                    ),
+                    "subtypeWeight": shot_specialist_subtype_weight(
+                        example,
+                        subtype_label=subtype_label,
+                        proposal_category=proposal_category,
+                    ),
+                }
+            )
     return rows
 
 
@@ -603,12 +697,28 @@ def shot_specialist_outcome_weight(
     example: TemporalTrainingExample,
     *,
     outcome_label: str,
+    proposal_category: str,
 ) -> float:
     weight = max(float(example.weight), 0.0)
+    if proposal_category == "accepted_true_shot":
+        weight *= 1.65
+    elif proposal_category == "accepted_false_shot":
+        weight *= 1.2
+    elif proposal_category == "borderline_accepted":
+        weight *= 0.8
+    elif proposal_category == "rejected_near_shot":
+        weight *= 0.55
     if outcome_label in {"missed", "blocked"}:
-        weight *= 1.4
+        weight *= 1.5
+    elif outcome_label == "made":
+        weight *= 1.18
     if outcome_label == "uncertain":
-        weight *= 1.25
+        if proposal_category == "accepted_true_shot":
+            weight *= 0.95
+        elif proposal_category == "accepted_false_shot":
+            weight *= 0.85
+        else:
+            weight *= 0.75
     if example.source_kind == "disagreement":
         weight *= 1.15
     if example.source_domain in {"live_staging", "staging_smoke", "benchmark_eval"}:
@@ -622,14 +732,23 @@ def shot_specialist_subtype_weight(
     example: TemporalTrainingExample,
     *,
     subtype_label: str,
+    proposal_category: str,
 ) -> float:
     weight = max(float(example.weight), 0.0)
+    if proposal_category == "accepted_true_shot":
+        weight *= 1.45
+    elif proposal_category == "accepted_false_shot":
+        weight *= 0.85
+    elif proposal_category == "borderline_accepted":
+        weight *= 0.72
+    elif proposal_category == "rejected_near_shot":
+        weight *= 0.55
     if subtype_label in {"dunk", "layup"}:
         weight *= 1.3
     if subtype_label in {"jumper", "three"}:
         weight *= 1.25
     if subtype_label == "uncertain":
-        weight *= 1.15
+        weight *= 0.9
     if example.outcome in {"missed", "blocked"}:
         weight *= 1.1
     if example.source_kind == "disagreement":
@@ -650,9 +769,9 @@ def train_shot_specialist_bundle(
     if torch is None or nn is None or F is None:  # pragma: no cover
         raise RuntimeError("torch is required to train the shot specialist")
     rows = build_shot_specialist_rows(bundle, examples)
-    train_rows = [row for row in rows if row["split"] == "train"]
+    train_rows = [row for row in rows if row["split"] == "train" and row["useForTraining"]]
     if not train_rows:
-        train_rows = rows
+        train_rows = [row for row in rows if row["useForTraining"]]
     feature_names = derive_shot_specialist_feature_names(rows)
     if not feature_names:
         return replace(
@@ -708,7 +827,12 @@ def train_shot_specialist_bundle(
         )
         targets["shotOutcomeSpecialist"] = shot_outcome_target
 
-    subtype_rows = [row for row in train_rows if str(row["subtypeLabel"]) in SHOT_SPECIALIST_SUBTYPE_LABELS]
+    subtype_rows = [
+        row
+        for row in train_rows
+        if row["outcomeLabel"] != "uncertain"
+        and str(row["subtypeLabel"]) in SHOT_SPECIALIST_SUBTYPE_LABELS
+    ]
     subtype_labels = {str(row["subtypeLabel"]) for row in subtype_rows}
     if len(subtype_labels) > 1:
         inputs = torch.tensor(
@@ -753,6 +877,193 @@ def train_shot_specialist_bundle(
     )
 
 
+def summarize_proposal_conditioned_shot_rows(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "totalRows": len(rows),
+        "acceptedRows": sum(1 for row in rows if row.get("proposalAccepted")),
+        "trainingRows": sum(1 for row in rows if row.get("useForTraining")),
+        "calibrationRows": sum(1 for row in rows if row.get("useForCalibration")),
+        "likelyShotAttemptRows": sum(1 for row in rows if row.get("proposalLikelyShotAttempt")),
+        "categories": dict(sorted(Counter(str(row.get("proposalCategory") or "unknown") for row in rows).items())),
+    }
+
+
+def _proposal_conditioned_calibration_rows(
+    rows: Sequence[dict[str, Any]],
+    *,
+    require_outcome_resolution: bool,
+) -> list[dict[str, Any]]:
+    filtered = [
+        row
+        for row in rows
+        if row.get("useForCalibration")
+        and row.get("proposalAccepted")
+        and row.get("proposalLikelyShotAttempt")
+        and str(row.get("proposalCategory")) in {"accepted_true_shot", "accepted_false_shot"}
+    ]
+    if require_outcome_resolution:
+        filtered = [
+            row
+            for row in filtered
+            if str(row.get("proposalCategory")) == "accepted_true_shot"
+            and str(row.get("outcomeLabel")) != "uncertain"
+        ]
+    return filtered
+
+
+def _proposal_conditioned_target_calibration(
+    bundle: TemporalEventDetectorBundle,
+    rows: Sequence[dict[str, Any]],
+    *,
+    target_key: str,
+    gold_key: str,
+) -> dict[str, Any] | None:
+    target = bundle.targets.get(target_key)
+    if target is None or not bundle.shot_specialist_feature_names:
+        return None
+    eligible_rows = _proposal_conditioned_calibration_rows(
+        rows,
+        require_outcome_resolution=(target_key == "shotSubtypeSpecialist"),
+    )
+    if not eligible_rows:
+        return None
+
+    bucket_bounds = ((0.0, 0.2), (0.2, 0.4), (0.4, 0.6), (0.6, 0.8), (0.8, 1.0))
+    bucket_totals = [{"count": 0, "correct": 0, "confidence": 0.0} for _ in bucket_bounds]
+    label_space = tuple(str(label) for label in target.classes)
+    predicted_distribution: Counter[str] = Counter()
+    gold_distribution: Counter[str] = Counter()
+    confidence_sum = 0.0
+    brier_sum = 0.0
+    correct = 0
+    abstained = 0
+    evaluated = 0
+
+    for row in eligible_rows:
+        gold_label = str(row.get(gold_key) or "uncertain")
+        if gold_label not in label_space:
+            continue
+        feature_vector = np.asarray(
+            [float((row.get("features") or {}).get(name, 0.0)) for name in bundle.shot_specialist_feature_names],
+            dtype=np.float64,
+        )
+        prediction = target.predict(feature_vector, model_version=bundle.model_version)
+        evaluated += 1
+        confidence_sum += float(prediction.confidence)
+        predicted_distribution[str(prediction.label)] += 1
+        gold_distribution[gold_label] += 1
+        if str(prediction.label) == gold_label:
+            correct += 1
+        if prediction.is_uncertain or str(prediction.label) in {"uncertain", "null"}:
+            abstained += 1
+        brier_sum += sum(
+            (float(prediction.distribution.get(label, 0.0)) - (1.0 if label == gold_label else 0.0)) ** 2
+            for label in label_space
+        ) / max(len(label_space), 1)
+        confidence = min(max(float(prediction.confidence), 0.0), 1.0)
+        bucket_index = 0
+        for index, (low, high) in enumerate(bucket_bounds):
+            if confidence < high or (index == len(bucket_bounds) - 1 and confidence <= high):
+                bucket_index = index
+                break
+        bucket_totals[bucket_index]["count"] += 1
+        bucket_totals[bucket_index]["confidence"] += confidence
+        bucket_totals[bucket_index]["correct"] += int(str(prediction.label) == gold_label)
+
+    if evaluated == 0:
+        return None
+
+    ece = 0.0
+    bins: list[dict[str, Any]] = []
+    for (low, high), bucket in zip(bucket_bounds, bucket_totals):
+        count = int(bucket["count"])
+        mean_confidence = round(float(bucket["confidence"]) / count, 4) if count else 0.0
+        accuracy = round(float(bucket["correct"]) / count, 4) if count else 0.0
+        if count:
+            ece += (count / evaluated) * abs(accuracy - mean_confidence)
+        bins.append(
+            {
+                "minScore": low,
+                "maxScore": high,
+                "count": count,
+                "meanConfidence": mean_confidence,
+                "accuracy": accuracy,
+            }
+        )
+
+    return {
+        "sampleCount": evaluated,
+        "accuracy": round(correct / evaluated, 4),
+        "meanConfidence": round(confidence_sum / evaluated, 4),
+        "brierScore": round(brier_sum / evaluated, 4),
+        "expectedCalibrationError": round(ece, 4),
+        "abstentionRate": round(abstained / evaluated, 4),
+        "predictedDistribution": dict(sorted(predicted_distribution.items())),
+        "goldDistribution": dict(sorted(gold_distribution.items())),
+        "bins": bins,
+    }
+
+
+def _proposal_conditioned_target_score(summary: dict[str, Any] | None, *, target_key: str) -> float:
+    if not summary:
+        return float("-inf")
+    desired_abstention = 0.14 if target_key == "shotOutcomeSpecialist" else 0.24
+    abstention_rate = float(summary.get("abstentionRate", desired_abstention))
+    return (
+        (1.35 * float(summary.get("accuracy", 0.0)))
+        + (0.45 * (1.0 - float(summary.get("brierScore", 1.0))))
+        + (0.4 * (1.0 - float(summary.get("expectedCalibrationError", 1.0))))
+        - (0.35 * abs(abstention_rate - desired_abstention))
+        - (0.2 * max(abstention_rate - (desired_abstention * 1.5), 0.0))
+    )
+
+
+def _calibrate_proposal_conditioned_specialist_target(
+    bundle: TemporalEventDetectorBundle,
+    rows: Sequence[dict[str, Any]],
+    *,
+    target_key: str,
+    gold_key: str,
+    temperatures: Sequence[float],
+    uncertainty_thresholds: Sequence[float],
+    margin_thresholds: Sequence[float],
+) -> TemporalEventDetectorBundle:
+    target = bundle.targets.get(target_key)
+    if target is None:
+        return bundle
+    best_bundle = bundle
+    best_summary = _proposal_conditioned_target_calibration(bundle, rows, target_key=target_key, gold_key=gold_key)
+    best_score = _proposal_conditioned_target_score(best_summary, target_key=target_key)
+    for temperature in temperatures:
+        for uncertainty in uncertainty_thresholds:
+            for margin in margin_thresholds:
+                candidate_target = replace(
+                    target,
+                    temperature=float(temperature),
+                    uncertainty_threshold=float(uncertainty),
+                    margin_threshold=float(margin),
+                )
+                candidate_targets = dict(bundle.targets)
+                candidate_targets[target_key] = candidate_target
+                replace_kwargs: dict[str, Any] = {"targets": candidate_targets}
+                if target_key == "shotOutcomeSpecialist":
+                    replace_kwargs["shot_specialist_outcome"] = candidate_target
+                elif target_key == "shotSubtypeSpecialist":
+                    replace_kwargs["shot_specialist_subtype"] = candidate_target
+                candidate_bundle = replace(bundle, **replace_kwargs)
+                summary = _proposal_conditioned_target_calibration(
+                    candidate_bundle,
+                    rows,
+                    target_key=target_key,
+                    gold_key=gold_key,
+                )
+                score = _proposal_conditioned_target_score(summary, target_key=target_key)
+                if score > best_score:
+                    best_bundle = candidate_bundle
+                    best_score = score
+    return best_bundle
+
+
 def refresh_shot_specialist_bundle(
     bundle: TemporalEventDetectorBundle,
     examples: Sequence[TemporalTrainingExample],
@@ -773,35 +1084,44 @@ def refresh_shot_specialist_bundle(
         for example in examples
         if example.source_kind == "gold" and example.split in {"val", "test"}
     ]
-    if len(calibration_examples) >= 6:
-        refreshed_bundle = _calibrate_specialist_target(
+    proposal_conditioned_rows = build_proposal_conditioned_shot_rows(refreshed_bundle, calibration_examples)
+    if len(_proposal_conditioned_calibration_rows(proposal_conditioned_rows, require_outcome_resolution=False)) >= 4:
+        refreshed_bundle = _calibrate_proposal_conditioned_specialist_target(
             refreshed_bundle,
-            calibration_examples,
+            proposal_conditioned_rows,
             target_key="shotOutcomeSpecialist",
+            gold_key="outcomeLabel",
             temperatures=(0.95, 1.1, 1.25),
-            uncertainty_thresholds=(0.58, 0.64, 0.7),
-            margin_thresholds=(0.1, 0.14, 0.18),
+            uncertainty_thresholds=(0.48, 0.54, 0.6),
+            margin_thresholds=(0.08, 0.12, 0.16),
         )
-        refreshed_bundle = _calibrate_specialist_target(
+    if len(_proposal_conditioned_calibration_rows(proposal_conditioned_rows, require_outcome_resolution=True)) >= 4:
+        refreshed_bundle = _calibrate_proposal_conditioned_specialist_target(
             refreshed_bundle,
-            calibration_examples,
+            proposal_conditioned_rows,
             target_key="shotSubtypeSpecialist",
+            gold_key="subtypeLabel",
             temperatures=(0.95, 1.1, 1.25),
-            uncertainty_thresholds=(0.64, 0.7, 0.76),
-            margin_thresholds=(0.12, 0.16, 0.2),
+            uncertainty_thresholds=(0.54, 0.6, 0.66),
+            margin_thresholds=(0.1, 0.14, 0.18),
         )
     notes = tuple(
         dict.fromkeys(
             [
                 *refreshed_bundle.notes,
-                "Shot-specialist heads refreshed from the frozen phase4e TriDet proposal stack.",
+                "Proposal-conditioned shot-specialist heads refreshed from the frozen phase4e TriDet proposal stack.",
             ]
         )
     )
     return replace(
         refreshed_bundle,
         trained_at=datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
-        source_dataset=f"{bundle.source_dataset}+phase4f_shot_specialist_refresh",
+        source_dataset=f"{bundle.source_dataset}+phase4g_proposal_conditioned_shot_refresh",
+        model_version=(
+            "temporal-event-detector-tridet-proposal-conditioned-shot-specialist-v2"
+            if bundle.detector_family == "tridet"
+            else f"temporal-event-detector-{bundle.detector_family}-proposal-conditioned-shot-specialist-v2"
+        ),
         notes=notes,
     )
 
@@ -1514,7 +1834,7 @@ def evaluate_temporal_event_detector_bundle(
             sum(
                 1
                 for row in accepted_shot_rows
-                if row["predictedOutcome"] == "made" and row["predictedShotSubtype"] in {"null", "uncertain"}
+                if row["predictedShotSubtype"] in {"null", "uncertain"}
             )
             / accepted_shot_total,
             4,
@@ -1534,6 +1854,20 @@ def evaluate_temporal_event_detector_bundle(
     rejected_rows = [row for row in rows if not row["proposalAccepted"]]
     rejected_true_negative = sum(1 for row in rejected_rows if row["expectedEventFamily"] == "other")
     rejected_true_miss = sum(1 for row in rejected_rows if row["expectedEventFamily"] != "other")
+    proposal_conditioned_rows = build_proposal_conditioned_shot_rows(bundle, evaluation_examples)
+    proposal_conditioned_summary = summarize_proposal_conditioned_shot_rows(proposal_conditioned_rows)
+    proposal_conditioned_outcome_calibration = _proposal_conditioned_target_calibration(
+        bundle,
+        proposal_conditioned_rows,
+        target_key="shotOutcomeSpecialist",
+        gold_key="outcomeLabel",
+    )
+    proposal_conditioned_subtype_calibration = _proposal_conditioned_target_calibration(
+        bundle,
+        proposal_conditioned_rows,
+        target_key="shotSubtypeSpecialist",
+        gold_key="subtypeLabel",
+    )
     return {
         "eventFamilyAccuracy": event_family_accuracy,
         "outcomeAccuracy": outcome_accuracy,
@@ -1561,6 +1895,9 @@ def evaluate_temporal_event_detector_bundle(
         "predictedOtherTrueMissRate": round(true_missed_events_in_other / max(len(other_examples), 1), 4),
         "rejectedProposalTrueNegativeRate": round(rejected_true_negative / max(len(rejected_rows), 1), 4) if rejected_rows else None,
         "rejectedProposalTrueMissRate": round(rejected_true_miss / max(len(rejected_rows), 1), 4) if rejected_rows else None,
+        "proposalConditionedShotRows": proposal_conditioned_summary,
+        "proposalConditionedOutcomeCalibration": proposal_conditioned_outcome_calibration,
+        "proposalConditionedSubtypeCalibration": proposal_conditioned_subtype_calibration,
         "evaluationRows": rows,
     }
 
@@ -1582,21 +1919,24 @@ def calibrate_temporal_event_detector_bundle(
     best_bundle = _calibrate_proposal_ranker(best_bundle, calibration_examples)
     best_bundle = _calibrate_proposal_acceptor(best_bundle, calibration_examples)
     best_bundle = _calibrate_outcome_target(best_bundle, calibration_examples)
-    best_bundle = _calibrate_specialist_target(
+    proposal_conditioned_rows = build_proposal_conditioned_shot_rows(best_bundle, calibration_examples)
+    best_bundle = _calibrate_proposal_conditioned_specialist_target(
         best_bundle,
-        calibration_examples,
+        proposal_conditioned_rows,
         target_key="shotOutcomeSpecialist",
+        gold_key="outcomeLabel",
         temperatures=(0.95, 1.1, 1.25),
-        uncertainty_thresholds=(0.58, 0.64, 0.7),
-        margin_thresholds=(0.1, 0.14, 0.18),
+        uncertainty_thresholds=(0.48, 0.54, 0.6),
+        margin_thresholds=(0.08, 0.12, 0.16),
     )
-    best_bundle = _calibrate_specialist_target(
+    best_bundle = _calibrate_proposal_conditioned_specialist_target(
         best_bundle,
-        calibration_examples,
+        proposal_conditioned_rows,
         target_key="shotSubtypeSpecialist",
+        gold_key="subtypeLabel",
         temperatures=(0.95, 1.1, 1.25),
-        uncertainty_thresholds=(0.64, 0.7, 0.76),
-        margin_thresholds=(0.12, 0.16, 0.2),
+        uncertainty_thresholds=(0.54, 0.6, 0.66),
+        margin_thresholds=(0.1, 0.14, 0.18),
     )
     best_metrics = evaluate_temporal_event_detector_bundle(best_bundle, calibration_examples)
     best_score = candidate_score(best_metrics)
@@ -1627,21 +1967,24 @@ def calibrate_temporal_event_detector_bundle(
     best_bundle = _calibrate_proposal_ranker(best_bundle, calibration_examples)
     best_bundle = _calibrate_proposal_acceptor(best_bundle, calibration_examples)
     best_bundle = _calibrate_outcome_target(best_bundle, calibration_examples)
-    best_bundle = _calibrate_specialist_target(
+    proposal_conditioned_rows = build_proposal_conditioned_shot_rows(best_bundle, calibration_examples)
+    best_bundle = _calibrate_proposal_conditioned_specialist_target(
         best_bundle,
-        calibration_examples,
+        proposal_conditioned_rows,
         target_key="shotOutcomeSpecialist",
+        gold_key="outcomeLabel",
         temperatures=(0.95, 1.1, 1.25),
-        uncertainty_thresholds=(0.58, 0.64, 0.7),
-        margin_thresholds=(0.1, 0.14, 0.18),
+        uncertainty_thresholds=(0.48, 0.54, 0.6),
+        margin_thresholds=(0.08, 0.12, 0.16),
     )
-    best_bundle = _calibrate_specialist_target(
+    best_bundle = _calibrate_proposal_conditioned_specialist_target(
         best_bundle,
-        calibration_examples,
+        proposal_conditioned_rows,
         target_key="shotSubtypeSpecialist",
+        gold_key="subtypeLabel",
         temperatures=(0.95, 1.1, 1.25),
-        uncertainty_thresholds=(0.64, 0.7, 0.76),
-        margin_thresholds=(0.12, 0.16, 0.2),
+        uncertainty_thresholds=(0.54, 0.6, 0.66),
+        margin_thresholds=(0.1, 0.14, 0.18),
     )
     return best_bundle
 

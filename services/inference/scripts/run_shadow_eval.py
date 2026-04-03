@@ -737,11 +737,8 @@ def build_proposal_summary(records: list[ShadowClipRecord]) -> dict[str, Any]:
             sum(
                 1
                 for record in accepted_shot_rows
-                if normalize_bucket(record.outcome) == "made"
-                and (
-                    record.shotSpecialistAbstained is True
-                    or normalize_bucket(record.shotSubtype or "null") in {"null", "uncertain"}
-                )
+                if record.shotSpecialistAbstained is True
+                or normalize_bucket(record.shotSubtype or "null") in {"null", "uncertain"}
             )
             / len(accepted_shot_rows),
             4,

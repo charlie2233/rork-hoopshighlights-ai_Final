@@ -314,6 +314,9 @@ class TemporalEventDetectorBundle:
         shot_specialist_features: dict[str, float] = {}
         shot_specialist_abstained = False
 
+        subtype_gate_open = False
+        promoted_generic_shot_attempt = False
+
         if proposal_accepted:
             family_prediction = _predict_conditioned_target(
                 self.targets["eventFamily"],
@@ -337,6 +340,7 @@ class TemporalEventDetectorBundle:
                     shot_specialist_features = build_shot_specialist_feature_map(
                         observations=observations,
                         proposal=proposal,
+                        ranked_proposal=selected,
                     )
                     likely_shot_attempt = True
                     outcome_prediction = self._predict_shot_specialist_target(
@@ -346,14 +350,26 @@ class TemporalEventDetectorBundle:
                         fallback_vector=proposal.pooled_vector,
                         allowed_labels=CONDITIONED_OUTCOME_LABELS.get(event_family, OUTCOMES),
                     )
-                    subtype_prediction = self._predict_shot_specialist_target(
-                        target_name="shotSubtypeSpecialist",
-                        feature_map=shot_specialist_features,
-                        fallback_target=self.targets["shotSubtype"],
-                        fallback_vector=proposal.pooled_vector,
-                        allowed_labels=SHOT_SPECIALIST_SUBTYPE_LABELS,
-                    )
                     outcome = _resolve_outcome(event_family, outcome_prediction)
+                    subtype_gate_open = _should_attempt_shot_subtype(
+                        outcome=outcome,
+                        outcome_prediction=outcome_prediction,
+                        acceptance_score=selected.acceptance_score,
+                    )
+                    if subtype_gate_open:
+                        subtype_prediction = self._predict_shot_specialist_target(
+                            target_name="shotSubtypeSpecialist",
+                            feature_map=shot_specialist_features,
+                            fallback_target=self.targets["shotSubtype"],
+                            fallback_vector=proposal.pooled_vector,
+                            allowed_labels=SHOT_SPECIALIST_SUBTYPE_LABELS,
+                        )
+                    else:
+                        subtype_prediction = _fallback_temporal_prediction(
+                            label="uncertain",
+                            confidence=min(max(outcome_prediction.confidence, 0.22), 0.62),
+                            model_version=self.model_version,
+                        )
                 else:
                     outcome_prediction = _predict_conditioned_target(
                         self.targets["outcome"],
@@ -402,7 +418,7 @@ class TemporalEventDetectorBundle:
         shot_subtype: str | None = None
         if proposal_accepted and event_family == "shot_attempt":
             shot_subtype = _resolve_shot_specialist_subtype(outcome, subtype_prediction)
-            shot_specialist_abstained = outcome == "made" and shot_subtype is None
+            shot_specialist_abstained = outcome != "uncertain" and shot_subtype is None
         elif (
             proposal_accepted
             and not subtype_prediction.is_uncertain
@@ -416,6 +432,16 @@ class TemporalEventDetectorBundle:
             and event_family == "shot_attempt"
             and bool(shot_specialist_features)
         )
+        promoted_generic_shot_attempt = _should_promote_generic_shot_attempt(
+            proposal_accepted=proposal_accepted,
+            classifier_gate_open=classifier_gate_open,
+            event_family=event_family,
+            outcome=outcome,
+            family_prediction=family_prediction,
+            outcome_prediction=outcome_prediction,
+            shot_specialist_used=using_shot_specialist,
+            acceptance_score=selected.acceptance_score,
+        )
         outcome_target = (
             self.shot_specialist_outcome
             if using_shot_specialist and self.shot_specialist_outcome is not None
@@ -427,11 +453,14 @@ class TemporalEventDetectorBundle:
             else self.targets["shotSubtype"]
         )
 
-        canonical_label, display_label = derive_runtime_display_label(
-            event_family=event_family,
-            outcome=outcome,
-            shot_subtype=shot_subtype,
-        )
+        if promoted_generic_shot_attempt:
+            canonical_label, display_label = "shot_attempt", "Shot Attempt"
+        else:
+            canonical_label, display_label = derive_runtime_display_label(
+                event_family=event_family,
+                outcome=outcome,
+                shot_subtype=shot_subtype,
+            )
         is_uncertain = (
             not proposal_accepted
             or not classifier_gate_open
@@ -581,6 +610,8 @@ class TemporalEventDetectorBundle:
             "temporal_event_detector_likely_shot_attempt": likely_shot_attempt,
             "temporal_event_detector_shot_specialist_abstained": shot_specialist_abstained,
             "temporal_event_detector_shot_specialist_feature_count": len(shot_specialist_features),
+            "temporal_event_detector_shot_specialist_subtype_gate_open": subtype_gate_open,
+            "temporal_event_detector_generic_shot_attempt_promoted": promoted_generic_shot_attempt,
             "temporal_event_detector_family_distribution": family_prediction.distribution,
             "temporal_event_detector_outcome_distribution": outcome_prediction.distribution,
             "temporal_event_detector_subtype_distribution": subtype_prediction.distribution,
@@ -1131,6 +1162,7 @@ def build_shot_specialist_feature_map(
     *,
     observations: Sequence[TemporalStudentObservation],
     proposal: TemporalEventProposal,
+    ranked_proposal: RankedTemporalEventProposal | None = None,
 ) -> dict[str, float]:
     if not observations:
         return {}
@@ -1172,6 +1204,45 @@ def build_shot_specialist_feature_map(
         "shot_proposal_rank_score": round(float(proposal.spotter_ranking_score), 4),
         "shot_proposal_boundary_score": round(float(proposal.boundary_score), 4),
     }
+    if ranked_proposal is not None:
+        rejector_real_event_score = float(
+            ranked_proposal.rejector_prediction.distribution.get(
+                "real_event",
+                ranked_proposal.rejector_prediction.confidence
+                if ranked_proposal.rejector_prediction.label == "real_event"
+                else 1.0 - ranked_proposal.rejector_prediction.confidence,
+            )
+        )
+        ranker_primary_score = float(
+            ranked_proposal.ranker_prediction.distribution.get(
+                "primary",
+                ranked_proposal.ranker_prediction.confidence
+                if ranked_proposal.ranker_prediction.label == "primary"
+                else 1.0 - ranked_proposal.ranker_prediction.confidence,
+            )
+        )
+        acceptor_accept_score = float(
+            ranked_proposal.acceptor_prediction.distribution.get(
+                "accept",
+                ranked_proposal.acceptor_prediction.confidence
+                if ranked_proposal.acceptor_prediction.label == "accept"
+                else 1.0 - ranked_proposal.acceptor_prediction.confidence,
+            )
+        )
+        feature_map.update(
+            {
+                "shot_proposal_acceptance_score": round(float(ranked_proposal.acceptance_score), 4),
+                "shot_proposal_competition_margin": round(float(ranked_proposal.competition_margin), 4),
+                "shot_proposal_accepted": 1.0 if ranked_proposal.accepted else 0.0,
+                "shot_proposal_rejector_real_event_score": round(rejector_real_event_score, 4),
+                "shot_proposal_ranker_primary_score": round(ranker_primary_score, 4),
+                "shot_proposal_acceptor_accept_score": round(acceptor_accept_score, 4),
+                "shot_proposal_shot_attempt_score": round(
+                    float(proposal.event_spotter_prediction.distribution.get("shot_attempt", 0.0)),
+                    4,
+                ),
+            }
+        )
     for index, value in enumerate(proposal.pooled_vector.tolist()):
         feature_map[f"shot_proposal_embedding_{index}"] = round(float(value), 6)
 
@@ -1594,11 +1665,52 @@ def _resolve_shot_specialist_subtype(
     outcome: str,
     prediction: TemporalTargetPrediction,
 ) -> str | None:
-    if outcome != "made" or prediction.is_uncertain:
+    if outcome == "uncertain" or prediction.is_uncertain:
         return None
     if prediction.label in {"null", "uncertain", "unknown"}:
         return None
     return prediction.label
+
+
+def _should_attempt_shot_subtype(
+    *,
+    outcome: str,
+    outcome_prediction: TemporalTargetPrediction,
+    acceptance_score: float,
+) -> bool:
+    if outcome == "uncertain" or outcome_prediction.is_uncertain:
+        return False
+    if outcome_prediction.confidence < 0.66:
+        return False
+    if outcome_prediction.margin < 0.1:
+        return False
+    if float(acceptance_score) < 0.72:
+        return False
+    return True
+
+
+def _should_promote_generic_shot_attempt(
+    *,
+    proposal_accepted: bool,
+    classifier_gate_open: bool,
+    event_family: str,
+    outcome: str,
+    family_prediction: TemporalTargetPrediction,
+    outcome_prediction: TemporalTargetPrediction,
+    shot_specialist_used: bool,
+    acceptance_score: float,
+) -> bool:
+    if not proposal_accepted or not classifier_gate_open or not shot_specialist_used:
+        return False
+    if event_family != "shot_attempt" or outcome != "uncertain":
+        return False
+    if family_prediction.is_uncertain or family_prediction.confidence < 0.62:
+        return False
+    if outcome_prediction.confidence < 0.48:
+        return False
+    if float(acceptance_score) < 0.7:
+        return False
+    return True
 
 
 def _best_non_other_label(prediction: TemporalStudentTargetPrediction) -> str | None:

@@ -71,7 +71,9 @@ test("structured teacher metadata stays additive in the callback contract", asyn
     };
     clip.runtimeFusionTemporalShadow = {
       modelVersion: "temporal-event-detector-tridet-open-set-v1",
-      eventFamily: "other",
+      label: "Shot Attempt",
+      canonicalLabel: "shot_attempt",
+      eventFamily: "shot_attempt",
       outcome: "uncertain",
       shotSubtype: null,
       isUncertain: true,
@@ -133,5 +135,10 @@ test("structured teacher metadata stays additive in the callback contract", asyn
     ((jobJson.results?.clips?.[0] as Record<string, unknown> | undefined)?.runtimeFusionTemporalShadow as Record<string, unknown>)
       ?.temporal_event_detector_shot_specialist_abstained,
     true
+  );
+  assert.equal(
+    ((jobJson.results?.clips?.[0] as Record<string, unknown> | undefined)?.runtimeFusionTemporalShadow as Record<string, unknown>)
+      ?.label,
+    "Shot Attempt"
   );
 });

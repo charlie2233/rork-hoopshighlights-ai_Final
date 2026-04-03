@@ -79,6 +79,9 @@ def build_shot_specialist_refresh_report(
             f"- Accepted-shot abstention rate: `{baseline_metrics.get('acceptedShotAbstentionRate')}`",
             f"- Dunk dominance: `{baseline_metrics.get('dunkDominance')}`",
             f"- Uncertainty rate: `{baseline_metrics.get('uncertaintyRate')}`",
+            f"- Proposal-conditioned shot rows: `{baseline_metrics.get('proposalConditionedShotRows')}`",
+            f"- Proposal-conditioned outcome calibration: `{baseline_metrics.get('proposalConditionedOutcomeCalibration')}`",
+            f"- Proposal-conditioned subtype calibration: `{baseline_metrics.get('proposalConditionedSubtypeCalibration')}`",
             "",
             "## Specialist Refresh",
             "",
@@ -90,6 +93,9 @@ def build_shot_specialist_refresh_report(
             f"- Uncertainty rate: `{refresh_metrics.get('uncertaintyRate')}`",
             f"- Flat label distribution: `{refresh_metrics.get('flatLabelDistribution')}`",
             f"- EventFamily distribution: `{refresh_metrics.get('eventFamilyDistribution')}`",
+            f"- Proposal-conditioned shot rows: `{refresh_metrics.get('proposalConditionedShotRows')}`",
+            f"- Proposal-conditioned outcome calibration: `{refresh_metrics.get('proposalConditionedOutcomeCalibration')}`",
+            f"- Proposal-conditioned subtype calibration: `{refresh_metrics.get('proposalConditionedSubtypeCalibration')}`",
         ]
     )
 
