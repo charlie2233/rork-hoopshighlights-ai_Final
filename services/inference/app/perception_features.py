@@ -139,7 +139,7 @@ def _ball_velocity(series: Sequence[PerceptionObservation]) -> tuple[float, floa
     return ((last_cx - first_cx) / dt, (last_cy - first_cy) / dt)
 
 
-def _arc_score(series: Sequence[PerceptionObservation]) -> float:
+def compute_arc_score(series: Sequence[PerceptionObservation]) -> float:
     if len(series) < 3:
         return 0.0
     centers_y = [_center(obs.bbox)[1] for obs in series]
@@ -248,7 +248,9 @@ def derive_perception_features(
     best_ball_to_rim_distance = min(near_rim_distances) if near_rim_distances else 1.0
     ball_to_rim_likelihood = _clamp01(1.0 - min(best_ball_to_rim_distance / 0.28, 1.0))
     ball_vertical_speed_near_rim = _clamp01(_logistic(abs(ball_velocity_y), 0.12, 0.08))
-    ball_arc_apex = _arc_score(ball_series)
+    # Keep this helper as a normal module symbol because the Cloud Run shadow
+    # path has shown brittle late-binding around underscored helpers.
+    ball_arc_apex = compute_arc_score(ball_series)
 
     if shot_rim is None:
         player_to_rim_distance = 0.0
