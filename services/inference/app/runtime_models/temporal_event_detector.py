@@ -309,7 +309,21 @@ class TemporalEventDetectorBundle:
         ranker_prediction = selected.ranker_prediction
         acceptor_prediction = selected.acceptor_prediction
         proposal_accepted = selected.accepted
-        classifier_gate_open = False
+        acceptance_probability = _calibrated_acceptance_probability(
+            acceptor_prediction=acceptor_prediction,
+            fallback_score=selected.acceptance_score,
+        )
+        acceptance_energy = _prediction_energy(acceptor_prediction)
+        gate_rejection_reason = _family_gate_rejection_reason(
+            proposal_accepted=proposal_accepted,
+            rejector_prediction=rejector_prediction,
+            ranker_prediction=ranker_prediction,
+            acceptance_probability=acceptance_probability,
+            competition_margin=selected.competition_margin,
+            acceptance_threshold=self.proposal_acceptance_threshold,
+            competition_margin_threshold=self.proposal_competition_margin_threshold,
+        )
+        classifier_gate_open = gate_rejection_reason is None
         likely_shot_attempt = False
         shot_specialist_features: dict[str, float] = {}
         shot_specialist_abstained = False
@@ -327,14 +341,6 @@ class TemporalEventDetectorBundle:
             event_family = family_prediction.label
             if family_prediction.is_uncertain or event_family not in EVENT_FAMILIES or event_family == "other":
                 event_family = "other"
-            classifier_gate_open = (
-                rejector_prediction.label == "real_event"
-                and ranker_prediction.label == "primary"
-                and not rejector_prediction.is_uncertain
-                and not ranker_prediction.is_uncertain
-                and event_family != "other"
-                and not family_prediction.is_uncertain
-            )
             if classifier_gate_open:
                 if event_family == "shot_attempt":
                     shot_specialist_features = build_shot_specialist_feature_map(
@@ -558,6 +564,8 @@ class TemporalEventDetectorBundle:
             "temporal_event_detector_gate_open": classifier_gate_open,
             "temporal_event_detector_proposal_accepted": proposal_accepted,
             "temporal_event_detector_classifier_gate_open": classifier_gate_open,
+            "temporal_event_detector_family_gate_open": classifier_gate_open,
+            "temporal_event_detector_family_gate_rejection_reason": gate_rejection_reason,
             "temporal_event_detector_proposal_rejector_label": rejector_prediction.label,
             "temporal_event_detector_proposal_rejector_confidence": round(rejector_prediction.confidence, 4),
             "temporal_event_detector_proposal_rejector_margin": round(rejector_prediction.margin, 4),
@@ -579,6 +587,9 @@ class TemporalEventDetectorBundle:
             "temporal_event_detector_proposal_acceptor_top_labels": [
                 item.model_dump(mode="json") for item in acceptor_prediction.top_labels
             ],
+            "temporal_event_detector_proposal_acceptance_raw_score": round(float(selected.acceptance_score), 4),
+            "temporal_event_detector_proposal_acceptance_probability": round(float(acceptance_probability), 4),
+            "temporal_event_detector_proposal_acceptance_energy": acceptance_energy,
             "temporal_event_detector_proposal_rejector_temperature": (
                 round(self.proposal_rejector.temperature, 4) if self.proposal_rejector is not None else None
             ),
@@ -607,6 +618,7 @@ class TemporalEventDetectorBundle:
                 round(self.proposal_acceptor.margin_threshold, 4) if self.proposal_acceptor is not None else None
             ),
             "temporal_event_detector_shot_specialist_used": using_shot_specialist,
+            "temporal_event_detector_shot_head_invoked": using_shot_specialist,
             "temporal_event_detector_likely_shot_attempt": likely_shot_attempt,
             "temporal_event_detector_shot_specialist_abstained": shot_specialist_abstained,
             "temporal_event_detector_shot_specialist_feature_count": len(shot_specialist_features),
@@ -1711,6 +1723,51 @@ def _should_promote_generic_shot_attempt(
     if float(acceptance_score) < 0.7:
         return False
     return True
+
+
+def _calibrated_acceptance_probability(
+    *,
+    acceptor_prediction: TemporalTargetPrediction,
+    fallback_score: float,
+) -> float:
+    if acceptor_prediction.confidence > 0.0:
+        return round(min(max(float(acceptor_prediction.confidence), 0.0), 1.0), 4)
+    return round(min(max(float(fallback_score), 0.0), 1.0), 4)
+
+
+def _prediction_energy(prediction: TemporalTargetPrediction) -> float | None:
+    raw_logits = prediction.raw_logits
+    if not raw_logits:
+        return None
+    logits = np.asarray(raw_logits, dtype=np.float64)
+    max_logit = float(np.max(logits))
+    logsumexp = max_logit + float(np.log(np.sum(np.exp(logits - max_logit))))
+    return round(-logsumexp, 4)
+
+
+def _family_gate_rejection_reason(
+    *,
+    proposal_accepted: bool,
+    rejector_prediction: TemporalTargetPrediction,
+    ranker_prediction: TemporalTargetPrediction,
+    acceptance_probability: float,
+    competition_margin: float,
+    acceptance_threshold: float,
+    competition_margin_threshold: float,
+) -> str | None:
+    if not proposal_accepted:
+        return "proposal_rejected"
+    if rejector_prediction.label in HARD_REJECT_LABELS and not rejector_prediction.is_uncertain:
+        return f"hard_rejector:{rejector_prediction.label}"
+    if rejector_prediction.label != "real_event":
+        return f"rejector:{rejector_prediction.label}"
+    if ranker_prediction.label != "primary":
+        return f"ranker:{ranker_prediction.label}"
+    if acceptance_probability < acceptance_threshold:
+        return "acceptance_probability_below_threshold"
+    if competition_margin < competition_margin_threshold:
+        return "competition_margin_below_threshold"
+    return None
 
 
 def _best_non_other_label(prediction: TemporalStudentTargetPrediction) -> str | None:

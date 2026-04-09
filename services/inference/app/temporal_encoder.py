@@ -36,6 +36,7 @@ class TemporalTargetPrediction:
     distribution: dict[str, float]
     top_labels: tuple[LabelScore, ...]
     is_uncertain: bool
+    raw_logits: tuple[float, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -80,6 +81,7 @@ class TemporalTargetModel:
             distribution=distribution,
             top_labels=top_labels,
             is_uncertain=is_uncertain,
+            raw_logits=tuple(float(value) for value in np.asarray(logits, dtype=np.float64).tolist()),
         )
 
 

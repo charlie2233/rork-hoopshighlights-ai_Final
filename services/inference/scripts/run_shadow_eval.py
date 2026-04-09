@@ -815,8 +815,8 @@ def build_proposal_summary(records: list[ShadowClipRecord]) -> dict[str, Any]:
     family_gate_open_rate = (
         round(family_gate_open_count / len(family_gate_records), 4) if family_gate_records else None
     )
-    shot_head_records = [record for record in records if record.shotSpecialistUsed is not None]
-    shot_head_invocation_count = sum(1 for record in shot_head_records if record.shotSpecialistUsed)
+    shot_head_records = [record for record in records if record.shotHeadInvoked is not None]
+    shot_head_invocation_count = sum(1 for record in shot_head_records if record.shotHeadInvoked)
     shot_head_invocation_rate = (
         round(shot_head_invocation_count / len(shot_head_records), 4) if shot_head_records else None
     )

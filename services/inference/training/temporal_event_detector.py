@@ -58,6 +58,13 @@ class TemporalEventDetectorTrainingResult:
     training_examples: int
 
 
+@dataclass(frozen=True)
+class BinaryTrainingLossConfig:
+    mode: str = "focal_class_balanced"
+    focal_gamma: float = 1.75
+    class_balance_alpha: float = 0.5
+
+
 if nn is not None:
     class TorchTemporalEventDetector(nn.Module):
         def __init__(self, input_size: int, hidden_size: int, architecture: str) -> None:
@@ -208,6 +215,8 @@ def train_temporal_event_detector(
     epochs: int = 180,
     learning_rate: float = 0.02,
     random_seed: int = DEFAULT_TEMPORAL_EVENT_DETECTOR_SEED,
+    proposal_rejector_loss: BinaryTrainingLossConfig = BinaryTrainingLossConfig(),
+    proposal_acceptor_loss: BinaryTrainingLossConfig = BinaryTrainingLossConfig(),
 ) -> TemporalEventDetectorTrainingResult:
     if torch is None or nn is None or F is None:  # pragma: no cover
         raise RuntimeError("torch is required to train the temporal event detector")
@@ -241,9 +250,9 @@ def train_temporal_event_detector(
         architecture=architecture,
         source_dataset="perception_supervision+phase4_event_localization_queue+teacher_backed",
     )
-    bundle = train_proposal_rejector_bundle(bundle, examples)
+    bundle = train_proposal_rejector_bundle(bundle, examples, loss_config=proposal_rejector_loss)
     bundle = train_proposal_ranker_bundle(bundle, examples)
-    bundle = train_proposal_acceptor_bundle(bundle, examples)
+    bundle = train_proposal_acceptor_bundle(bundle, examples, loss_config=proposal_acceptor_loss)
     bundle = train_shot_specialist_bundle(bundle, examples)
     bundle = calibrate_temporal_event_detector_bundle(bundle, examples)
     return TemporalEventDetectorTrainingResult(
@@ -339,6 +348,7 @@ def train_proposal_rejector_bundle(
     epochs: int = 180,
     learning_rate: float = 0.03,
     random_seed: int = DEFAULT_TEMPORAL_EVENT_DETECTOR_SEED + 5,
+    loss_config: BinaryTrainingLossConfig = BinaryTrainingLossConfig(),
 ) -> TemporalEventDetectorBundle:
     if torch is None or nn is None or F is None:  # pragma: no cover
         raise RuntimeError("torch is required to train the proposal rejector")
@@ -379,7 +389,12 @@ def train_proposal_rejector_bundle(
     for _ in range(epochs):
         optimizer.zero_grad()
         logits = model(inputs)
-        loss = compute_proposal_rejector_loss(logits=logits, targets=targets, weights=weights)
+        loss = compute_proposal_rejector_loss(
+            logits=logits,
+            targets=targets,
+            weights=weights,
+            loss_config=loss_config,
+        )
         loss.backward()
         optimizer.step()
 
@@ -461,6 +476,7 @@ def train_proposal_acceptor_bundle(
     epochs: int = 180,
     learning_rate: float = 0.02,
     random_seed: int = DEFAULT_TEMPORAL_EVENT_DETECTOR_SEED + 13,
+    loss_config: BinaryTrainingLossConfig = BinaryTrainingLossConfig(),
 ) -> TemporalEventDetectorBundle:
     if torch is None or nn is None or F is None:  # pragma: no cover
         raise RuntimeError("torch is required to train the proposal acceptor")
@@ -499,7 +515,12 @@ def train_proposal_acceptor_bundle(
     for _ in range(epochs):
         optimizer.zero_grad()
         logits = model(inputs)
-        loss = compute_proposal_acceptor_loss(logits=logits, targets=targets, weights=weights)
+        loss = compute_proposal_acceptor_loss(
+            logits=logits,
+            targets=targets,
+            weights=weights,
+            loss_config=loss_config,
+        )
         loss.backward()
         optimizer.step()
 
@@ -1241,13 +1262,14 @@ def derive_proposal_rejector_feature_names(rows: Sequence[dict[str, Any]]) -> tu
     return tuple(sorted(feature_names))
 
 
-def compute_proposal_rejector_loss(*, logits: Any, targets: Any, weights: Any):
-    base_loss = F.cross_entropy(logits, targets, reduction="none")
-    probabilities = torch.softmax(logits, dim=-1)
-    pt = probabilities[torch.arange(probabilities.shape[0]), targets]
-    focal = torch.pow(1.0 - pt, 2.0)
-    weighted = base_loss * focal * weights
-    return weighted.sum() / torch.clamp(weights.sum(), min=1e-6)
+def compute_proposal_rejector_loss(
+    *,
+    logits: Any,
+    targets: Any,
+    weights: Any,
+    loss_config: BinaryTrainingLossConfig = BinaryTrainingLossConfig(),
+):
+    return _compute_binary_training_loss(logits=logits, targets=targets, weights=weights, loss_config=loss_config)
 
 
 def compute_proposal_ranker_loss(*, logits: Any, targets: Any, weights: Any, group_ids: Sequence[str]):
@@ -1283,13 +1305,47 @@ def derive_proposal_acceptor_feature_names(rows: Sequence[dict[str, Any]]) -> tu
     return tuple(sorted(feature_names))
 
 
-def compute_proposal_acceptor_loss(*, logits: Any, targets: Any, weights: Any):
-    loss = F.cross_entropy(logits, targets, reduction="none")
+def compute_proposal_acceptor_loss(
+    *,
+    logits: Any,
+    targets: Any,
+    weights: Any,
+    loss_config: BinaryTrainingLossConfig = BinaryTrainingLossConfig(),
+):
+    return _compute_binary_training_loss(logits=logits, targets=targets, weights=weights, loss_config=loss_config)
+
+
+def _compute_binary_training_loss(
+    *,
+    logits: Any,
+    targets: Any,
+    weights: Any,
+    loss_config: BinaryTrainingLossConfig,
+):
+    base_loss = F.cross_entropy(logits, targets, reduction="none")
+    effective_weights = weights
+    mode = str(loss_config.mode or "focal").lower()
+    if "class" in mode:
+        class_weights = _binary_class_balance_weights(targets, alpha=float(loss_config.class_balance_alpha))
+        effective_weights = effective_weights * class_weights
     probabilities = torch.softmax(logits, dim=-1)
     pt = probabilities[torch.arange(probabilities.shape[0]), targets]
-    focal = torch.pow(1.0 - pt, 1.75)
-    weighted = loss * focal * weights
-    return weighted.sum() / torch.clamp(weights.sum(), min=1e-6)
+    focal_gamma = float(loss_config.focal_gamma)
+    if "focal" in mode:
+        focal = torch.pow(1.0 - pt, focal_gamma)
+    else:
+        focal = torch.ones_like(pt)
+    weighted = base_loss * focal * effective_weights
+    return weighted.sum() / torch.clamp(effective_weights.sum(), min=1e-6)
+
+
+def _binary_class_balance_weights(targets: Any, *, alpha: float) -> Any:
+    counts = torch.bincount(targets, minlength=2).float()
+    total = torch.clamp(counts.sum(), min=1.0)
+    inverse_frequency = total / torch.clamp(counts, min=1.0)
+    inverse_frequency = inverse_frequency / torch.clamp(inverse_frequency.mean(), min=1e-6)
+    blended = (1.0 - float(alpha)) + (float(alpha) * inverse_frequency)
+    return blended[targets]
 
 
 def export_proposal_rejector_target(model: Any) -> TemporalTargetModel:
@@ -1324,7 +1380,13 @@ def export_proposal_ranker_target(model: Any) -> TemporalTargetModel:
     )
 
 
-def export_proposal_acceptor_target(model: Any) -> TemporalTargetModel:
+def export_proposal_acceptor_target(
+    model: Any,
+    *,
+    temperature: float = 1.0,
+    uncertainty_threshold: float = 0.58,
+    margin_threshold: float = 0.06,
+) -> TemporalTargetModel:
     return TemporalTargetModel(
         name="proposalAcceptor",
         classes=tuple(PROPOSAL_ACCEPT_LABELS),
@@ -1333,9 +1395,9 @@ def export_proposal_acceptor_target(model: Any) -> TemporalTargetModel:
             for row in model.classifier.weight.detach().cpu().numpy().tolist()
         ),
         bias=tuple(float(value) for value in model.classifier.bias.detach().cpu().numpy().tolist()),
-        temperature=1.0,
-        uncertainty_threshold=0.58,
-        margin_threshold=0.06,
+        temperature=float(temperature),
+        uncertainty_threshold=float(uncertainty_threshold),
+        margin_threshold=float(margin_threshold),
         top_k=2,
     )
 
@@ -1709,10 +1771,32 @@ def evaluate_temporal_event_detector_bundle(
             if "temporal_event_detector_proposal_accepted" in metadata
             else metadata.get("temporal_event_detector_gate_open")
         )
+        family_gate_open = bool(
+            metadata.get("temporal_event_detector_family_gate_open")
+            if "temporal_event_detector_family_gate_open" in metadata
+            else metadata.get("temporal_event_detector_classifier_gate_open")
+        )
         proposal_score = float(
             metadata.get("temporal_event_detector_proposal_acceptance_score")
             or metadata.get("temporal_event_detector_event_score")
             or 0.0
+        )
+        acceptance_probability = float(
+            metadata.get("temporal_event_detector_proposal_acceptance_probability")
+            or metadata.get("temporal_event_detector_proposal_acceptor_confidence")
+            or proposal_score
+            or 0.0
+        )
+        acceptance_raw_score = float(
+            metadata.get("temporal_event_detector_proposal_acceptance_raw_score")
+            or proposal_score
+            or 0.0
+        )
+        acceptance_energy = metadata.get("temporal_event_detector_proposal_acceptance_energy")
+        shot_head_invoked = bool(
+            metadata.get("temporal_event_detector_shot_head_invoked")
+            if "temporal_event_detector_shot_head_invoked" in metadata
+            else metadata.get("temporal_event_detector_shot_specialist_used")
         )
         rejector_label = str(
             metadata.get("temporal_event_detector_proposal_rejector_label")
@@ -1747,9 +1831,18 @@ def evaluate_temporal_event_detector_bundle(
                 "isUncertain": bool(prediction.isUncertain),
                 "hasEventLocalization": bool(example.has_event_localization),
                 "proposalAccepted": proposal_accepted,
+                "familyGateOpen": family_gate_open,
                 "proposalScore": round(proposal_score, 4),
+                "proposalAcceptanceRawScore": round(acceptance_raw_score, 4),
+                "proposalAcceptanceProbability": round(acceptance_probability, 4),
+                "proposalAcceptanceEnergy": acceptance_energy,
                 "proposalRejectorLabel": rejector_label,
                 "proposalAcceptorLabel": acceptor_label,
+                "shotHeadInvoked": shot_head_invoked,
+                "familyGateRejectionReason": str(
+                    metadata.get("temporal_event_detector_family_gate_rejection_reason")
+                    or "none"
+                ),
             }
         )
     total = max(len(rows), 1)
@@ -1774,6 +1867,8 @@ def evaluate_temporal_event_detector_bundle(
     subtype_distribution = dict(sorted(Counter(row["predictedShotSubtype"] for row in rows).items()))
     highlight_dominance = round(flat_label_distribution.get("Highlight", 0) / total, 4)
     other_dominance = round(event_family_distribution.get("other", 0) / total, 4)
+    family_gate_open_rate = round(sum(1 for row in rows if row["familyGateOpen"]) / total, 4)
+    shot_head_invocation_rate = round(sum(1 for row in rows if row["shotHeadInvoked"]) / total, 4)
     miss_vs_made_confusion = sum(
         1
         for row in rows
@@ -1811,6 +1906,8 @@ def evaluate_temporal_event_detector_bundle(
         / total,
         4,
     )
+    acceptance_calibration = _binary_acceptance_calibration(rows)
+    acceptance_coverage_risk_curve = _coverage_risk_curve(rows)
     accepted_shot_rows = [
         row
         for row in rows
@@ -1874,7 +1971,11 @@ def evaluate_temporal_event_detector_bundle(
         "shotSubtypeAccuracy": shot_subtype_accuracy,
         "uncertaintyRate": uncertainty_rate,
         "proposalAcceptanceRate": proposal_acceptance_rate,
+        "familyGateOpenRate": family_gate_open_rate,
+        "shotHeadInvocationRate": shot_head_invocation_rate,
         "eventnessBrier": eventness_brier,
+        "proposalAcceptanceCalibration": acceptance_calibration,
+        "proposalAcceptanceCoverageRiskCurve": acceptance_coverage_risk_curve,
         "acceptedShotProposalOutcomeAccuracy": accepted_shot_outcome_accuracy,
         "acceptedShotSubtypeDistribution": accepted_shot_subtype_distribution,
         "acceptedShotAbstentionRate": accepted_shot_abstention_rate,
@@ -1900,6 +2001,81 @@ def evaluate_temporal_event_detector_bundle(
         "proposalConditionedSubtypeCalibration": proposal_conditioned_subtype_calibration,
         "evaluationRows": rows,
     }
+
+
+def _binary_acceptance_calibration(rows: Sequence[dict[str, Any]]) -> dict[str, Any] | None:
+    scored_rows = [
+        row
+        for row in rows
+        if row.get("proposalAcceptanceProbability") is not None and row.get("expectedEventFamily") is not None
+    ]
+    if not scored_rows:
+        return None
+    bucket_bounds = ((0.0, 0.2), (0.2, 0.4), (0.4, 0.6), (0.6, 0.8), (0.8, 1.0))
+    bucket_totals = [{"count": 0, "correct": 0, "probability": 0.0} for _ in bucket_bounds]
+    brier_sum = 0.0
+    for row in scored_rows:
+        probability = float(row["proposalAcceptanceProbability"])
+        target = 1.0 if str(row["expectedEventFamily"]) != "other" else 0.0
+        brier_sum += (probability - target) ** 2
+        bucket_index = 0
+        for index, (low, high) in enumerate(bucket_bounds):
+            if probability < high or (index == len(bucket_bounds) - 1 and probability <= high):
+                bucket_index = index
+                break
+        bucket_totals[bucket_index]["count"] += 1
+        bucket_totals[bucket_index]["probability"] += probability
+        bucket_totals[bucket_index]["correct"] += int((probability >= 0.5) == (target >= 0.5))
+    bins: list[dict[str, Any]] = []
+    ece = 0.0
+    total = len(scored_rows)
+    for (low, high), bucket in zip(bucket_bounds, bucket_totals):
+        count = int(bucket["count"])
+        mean_probability = round(float(bucket["probability"]) / count, 4) if count else 0.0
+        accuracy = round(float(bucket["correct"]) / count, 4) if count else 0.0
+        if count:
+            ece += (count / total) * abs(accuracy - mean_probability)
+        bins.append(
+            {
+                "minScore": low,
+                "maxScore": high,
+                "count": count,
+                "meanProbability": mean_probability,
+                "accuracy": accuracy,
+            }
+        )
+    return {
+        "sampleCount": total,
+        "brierScore": round(brier_sum / total, 4),
+        "expectedCalibrationError": round(ece, 4),
+        "bins": bins,
+    }
+
+
+def _coverage_risk_curve(rows: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
+    scored_rows = [
+        row
+        for row in rows
+        if row.get("proposalAcceptanceProbability") is not None and row.get("expectedEventFamily") is not None
+    ]
+    if not scored_rows:
+        return []
+    ranked_rows = sorted(scored_rows, key=lambda row: float(row["proposalAcceptanceProbability"]), reverse=True)
+    total = len(ranked_rows)
+    thresholds = (0.25, 0.4, 0.55, 0.7, 0.85)
+    curve: list[dict[str, Any]] = []
+    for threshold in thresholds:
+        keep_count = max(int(round(total * threshold)), 1)
+        kept = ranked_rows[:keep_count]
+        accepted = sum(1 for row in kept if float(row["proposalAcceptanceProbability"]) >= 0.5)
+        misses = sum(1 for row in kept if str(row["expectedEventFamily"]) != "shot_attempt" and float(row["proposalAcceptanceProbability"]) >= 0.5)
+        curve.append(
+            {
+                "coverage": round(len(kept) / total, 4),
+                "risk": round(misses / max(accepted, 1), 4),
+            }
+        )
+    return curve
 
 
 def calibrate_temporal_event_detector_bundle(
@@ -2258,12 +2434,15 @@ def build_temporal_event_detector_report(
 
 def candidate_score(metrics: dict[str, Any]) -> float:
     proposal_acceptance_rate = float(metrics.get("proposalAcceptanceRate", 0.0) or 0.0)
+    family_gate_open_rate = float(metrics.get("familyGateOpenRate", 0.0) or 0.0)
+    shot_head_invocation_rate = float(metrics.get("shotHeadInvocationRate", 0.0) or 0.0)
     uncertainty_rate = float(metrics.get("uncertaintyRate", 0.0) or 0.0)
     rejected_true_negative_rate = float(metrics.get("rejectedProposalTrueNegativeRate", 0.0) or 0.0)
     rejected_true_miss_rate = float(metrics.get("rejectedProposalTrueMissRate", 0.0) or 0.0)
     flat_label_spread = float(len(metrics.get("flatLabelDistribution", {}) or {}))
     dunk_dominance = float(metrics.get("dunkDominance", 0.0) or 0.0)
     abstention_rate = float(metrics.get("acceptedShotAbstentionRate", 0.0) or 0.0)
+    acceptance_calibration = metrics.get("proposalAcceptanceCalibration") or {}
     return (
         (1.15 * float(metrics.get("eventFamilyAccuracy", 0.0)))
         + (0.95 * float(metrics.get("outcomeAccuracy", 0.0)))
@@ -2275,6 +2454,8 @@ def candidate_score(metrics: dict[str, Any]) -> float:
         + (0.18 * abstention_rate)
         + (0.3 * rejected_true_negative_rate)
         - (0.7 * rejected_true_miss_rate)
+        + (0.2 * family_gate_open_rate)
+        + (0.15 * shot_head_invocation_rate)
         + (0.08 * flat_label_spread)
         - (0.9 * dunk_dominance)
         - (0.7 * float(metrics.get("highlightDominance", 0.0)))
@@ -2284,6 +2465,7 @@ def candidate_score(metrics: dict[str, Any]) -> float:
         - (0.9 * max(0.0, proposal_acceptance_rate - 0.8))
         - (0.9 * max(0.0, 0.06 - uncertainty_rate))
         - (0.75 * max(0.0, 2.0 - flat_label_spread))
+        - (0.25 * float(acceptance_calibration.get("expectedCalibrationError", 0.0) or 0.0))
     )
 
 

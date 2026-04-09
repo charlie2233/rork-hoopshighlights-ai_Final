@@ -45,6 +45,8 @@ refresh_shot_specialist_bundle = training.refresh_shot_specialist_bundle
 build_proposal_conditioned_shot_rows = training.build_proposal_conditioned_shot_rows
 infer_proposal_reject_label = training.infer_proposal_reject_label
 write_temporal_event_detector_bundle = training.write_temporal_event_detector_bundle
+compute_proposal_acceptor_loss = training.compute_proposal_acceptor_loss
+BinaryTrainingLossConfig = training.BinaryTrainingLossConfig
 
 
 def _make_observation(
@@ -314,6 +316,7 @@ class TemporalEventDetectorTests(unittest.TestCase):
         self.assertFalse(prediction.metadata["temporal_event_detector_gate_open"])
         self.assertFalse(prediction.metadata["temporal_event_detector_proposal_accepted"])
         self.assertIsNotNone(prediction.metadata["temporal_event_detector_proposal_rejector_label"])
+        self.assertEqual(prediction.metadata["temporal_event_detector_family_gate_rejection_reason"], "proposal_rejected")
         self.assertTrue(result.bundle.proposal_rejector is not None)
         self.assertTrue(result.bundle.proposal_ranker is not None)
         self.assertTrue(result.bundle.proposal_acceptor is not None)
@@ -411,7 +414,8 @@ class TemporalEventDetectorTests(unittest.TestCase):
         prediction = weakened_bundle.predict(shot.observations)
 
         self.assertTrue(prediction.metadata["temporal_event_detector_proposal_accepted"])
-        self.assertFalse(prediction.metadata["temporal_event_detector_classifier_gate_open"])
+        self.assertTrue(prediction.metadata["temporal_event_detector_classifier_gate_open"])
+        self.assertIsNone(prediction.metadata["temporal_event_detector_family_gate_rejection_reason"])
         self.assertEqual(prediction.eventFamily, "other")
         self.assertEqual(prediction.outcome, "uncertain")
         self.assertIsNone(prediction.shotSubtype)
@@ -503,10 +507,13 @@ class TemporalEventDetectorTests(unittest.TestCase):
         self.assertIn("eventDetectionRecall", metrics)
         self.assertIn("predictedOtherTrueMissRate", metrics)
         self.assertIn("proposalAcceptanceRate", metrics)
+        self.assertIn("familyGateOpenRate", metrics)
+        self.assertIn("shotHeadInvocationRate", metrics)
         self.assertIn("acceptedShotProposalOutcomeAccuracy", metrics)
         self.assertIn("acceptedShotAbstentionRate", metrics)
         self.assertIn("dunkDominance", metrics)
         self.assertIn("eventnessBrier", metrics)
+        self.assertIn("proposalAcceptanceCalibration", metrics)
 
         with tempfile.TemporaryDirectory() as temp_dir:
             bundle_path = Path(temp_dir) / "temporal-event-detector.json"
@@ -776,6 +783,37 @@ class TemporalEventDetectorTests(unittest.TestCase):
                 acceptance_score=0.82,
             )
         )
+
+    @unittest.skipIf(torch is None, "torch is required for temporal event detector training")
+    def test_proposal_acceptor_loss_supports_class_balanced_modes(self) -> None:
+        logits = torch.tensor([[2.2, 0.1], [0.2, 2.0], [1.8, 0.4]], dtype=torch.float32)
+        targets = torch.tensor([1, 0, 1], dtype=torch.long)
+        weights = torch.tensor([1.0, 1.0, 1.0], dtype=torch.float32)
+        focal_loss = compute_proposal_acceptor_loss(
+            logits=logits,
+            targets=targets,
+            weights=weights,
+            loss_config=BinaryTrainingLossConfig(mode="focal", focal_gamma=1.5, class_balance_alpha=0.5),
+        )
+        balanced_loss = compute_proposal_acceptor_loss(
+            logits=logits,
+            targets=targets,
+            weights=weights,
+            loss_config=BinaryTrainingLossConfig(mode="class_balanced", focal_gamma=1.5, class_balance_alpha=0.5),
+        )
+        mixed_loss = compute_proposal_acceptor_loss(
+            logits=logits,
+            targets=targets,
+            weights=weights,
+            loss_config=BinaryTrainingLossConfig(
+                mode="focal_class_balanced",
+                focal_gamma=1.5,
+                class_balance_alpha=0.5,
+            ),
+        )
+        self.assertGreater(float(focal_loss.item()), 0.0)
+        self.assertGreater(float(balanced_loss.item()), 0.0)
+        self.assertGreater(float(mixed_loss.item()), 0.0)
 
     @unittest.skipIf(torch is None, "torch is required for temporal event detector training")
     def test_builds_proposal_conditioned_shot_rows(self) -> None:
