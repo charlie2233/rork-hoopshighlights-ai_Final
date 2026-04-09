@@ -128,10 +128,15 @@ class ShadowEvalTests(unittest.TestCase):
                         "confidenceAfterMapping": 0.93,
                         "confidence": 0.93,
                         "isUncertain": False,
+                        "temporal_event_detector_classifier_gate_open": True,
                         "temporal_event_detector_proposal_accepted": True,
                         "temporal_event_detector_event_score": 1.0,
+                        "temporal_event_detector_proposal_acceptance_probability": 0.94,
+                        "temporal_event_detector_proposal_energy_score": 0.11,
                         "temporal_event_detector_proposal_rejector_label": "real_event",
                         "temporal_event_detector_proposal_rejector_confidence": 0.91,
+                        "temporal_event_detector_shot_specialist_used": True,
+                        "temporal_event_detector_shot_specialist_abstained": False,
                         "temporal_event_detector_event_family": "shot_attempt",
                     },
                 },
@@ -156,10 +161,15 @@ class ShadowEvalTests(unittest.TestCase):
                         "confidenceAfterMapping": 0.32,
                         "confidence": 0.32,
                         "isUncertain": True,
+                        "temporal_event_detector_classifier_gate_open": False,
                         "temporal_event_detector_proposal_accepted": False,
                         "temporal_event_detector_event_score": 0.0,
+                        "temporal_event_detector_proposal_acceptance_probability": 0.09,
+                        "temporal_event_detector_proposal_energy_score": 0.77,
                         "temporal_event_detector_proposal_rejector_label": "non_event",
                         "temporal_event_detector_proposal_rejector_confidence": 0.89,
+                        "temporal_event_detector_shot_specialist_used": False,
+                        "temporal_event_detector_shot_specialist_abstained": False,
                         "temporal_event_detector_event_family": "other",
                     },
                 },
@@ -173,11 +183,21 @@ class ShadowEvalTests(unittest.TestCase):
 
         self.assertEqual(report["summary"]["proposalAcceptanceRate"], 0.5)
         self.assertEqual(report["summary"]["proposalAcceptanceClipCount"], 2)
+        self.assertEqual(report["summary"]["proposalAcceptedCount"], 1)
+        self.assertEqual(report["summary"]["familyGateOpenRate"], 0.5)
+        self.assertEqual(report["summary"]["familyGateOpenCount"], 1)
+        self.assertEqual(report["summary"]["shotHeadInvocationRate"], 0.5)
+        self.assertEqual(report["summary"]["shotHeadInvocationCount"], 1)
         self.assertEqual(report["summary"]["eventnessCalibration"]["eligibleClips"], 2)
         self.assertEqual(report["summary"]["eventnessCalibration"]["brierScore"], 0.0)
         self.assertEqual(report["summary"]["acceptedShotProposalOutcomeAccuracy"], 1.0)
         self.assertEqual(report["summary"]["acceptedShotSubtypeDistribution"], {"layup": 1})
         self.assertEqual(report["summary"]["acceptedShotAbstentionRate"], 0.0)
+        self.assertIsNotNone(report["summary"]["acceptedShotOutcomeCalibration"])
+        self.assertEqual(report["summary"]["acceptedShotOutcomeCalibration"]["scoredClips"], 1)
+        self.assertEqual(report["summary"]["acceptedShotOutcomeCalibration"]["brierScore"], 0.0049)
+        self.assertEqual(len(report["summary"]["acceptedShotOutcomeCalibration"]["reliabilityBuckets"]), 5)
+        self.assertEqual(len(report["summary"]["acceptedShotOutcomeCalibration"]["coverageRiskCurve"]), 1)
         self.assertEqual(report["summary"]["dunkDominance"], 0.0)
         self.assertEqual(report["summary"]["rejectedProposalAudit"]["eligibleRejectedClips"], 1)
         self.assertEqual(report["summary"]["rejectedProposalAudit"]["trueNegativeRate"], 1.0)
@@ -208,10 +228,15 @@ class ShadowEvalTests(unittest.TestCase):
                         "confidenceAfterMapping": 0.81,
                         "confidence": 0.81,
                         "isUncertain": False,
+                        "temporal_event_detector_classifier_gate_open": True,
                         "temporal_event_detector_proposal_accepted": True,
                         "temporal_event_detector_event_score": 0.82,
+                        "temporal_event_detector_proposal_acceptance_probability": 0.83,
+                        "temporal_event_detector_proposal_energy_score": 0.18,
                         "temporal_event_detector_proposal_rejector_label": "real_event",
                         "temporal_event_detector_proposal_rejector_confidence": 0.88,
+                        "temporal_event_detector_shot_specialist_used": True,
+                        "temporal_event_detector_shot_specialist_abstained": False,
                     },
                 },
                 {
@@ -232,10 +257,15 @@ class ShadowEvalTests(unittest.TestCase):
                         "confidenceAfterMapping": 0.31,
                         "confidence": 0.31,
                         "isUncertain": True,
+                        "temporal_event_detector_classifier_gate_open": False,
                         "temporal_event_detector_proposal_accepted": False,
                         "temporal_event_detector_event_score": 0.18,
+                        "temporal_event_detector_proposal_acceptance_probability": 0.19,
+                        "temporal_event_detector_proposal_energy_score": 0.65,
                         "temporal_event_detector_proposal_rejector_label": "dead_ball",
                         "temporal_event_detector_proposal_rejector_confidence": 0.74,
+                        "temporal_event_detector_shot_specialist_used": False,
+                        "temporal_event_detector_shot_specialist_abstained": False,
                     },
                 },
                 {
@@ -256,10 +286,15 @@ class ShadowEvalTests(unittest.TestCase):
                         "confidenceAfterMapping": 0.37,
                         "confidence": 0.37,
                         "isUncertain": True,
+                        "temporal_event_detector_classifier_gate_open": False,
                         "temporal_event_detector_proposal_accepted": False,
                         "temporal_event_detector_event_score": 0.27,
+                        "temporal_event_detector_proposal_acceptance_probability": 0.24,
+                        "temporal_event_detector_proposal_energy_score": 0.59,
                         "temporal_event_detector_proposal_rejector_label": "ambiguous",
                         "temporal_event_detector_proposal_rejector_confidence": 0.58,
+                        "temporal_event_detector_shot_specialist_used": False,
+                        "temporal_event_detector_shot_specialist_abstained": False,
                     },
                 },
             ],
@@ -271,17 +306,190 @@ class ShadowEvalTests(unittest.TestCase):
             report = build_shadow_report(load_batch_records([path], shadow_source="runtimeFusionTemporalShadow"))
 
         self.assertEqual(report["summary"]["proposalAcceptanceRate"], 0.3333)
+        self.assertEqual(report["summary"]["familyGateOpenRate"], 0.3333)
+        self.assertEqual(report["summary"]["shotHeadInvocationRate"], 0.3333)
         self.assertEqual(report["summary"]["acceptedShotProposalOutcomeAccuracy"], 1.0)
         self.assertEqual(report["summary"]["acceptedShotSubtypeDistribution"], {"layup": 1})
         self.assertEqual(report["summary"]["acceptedShotAbstentionRate"], 0.0)
         self.assertEqual(report["summary"]["dunkDominance"], 0.0)
         self.assertEqual(report["summary"]["eventnessCalibration"]["eligibleClips"], 3)
         self.assertAlmostEqual(report["summary"]["eventnessCalibration"]["brierScore"], 0.1992, places=4)
+        self.assertIsNotNone(report["summary"]["acceptedShotOutcomeCalibration"])
+        self.assertEqual(report["summary"]["acceptedShotOutcomeCalibration"]["scoredClips"], 1)
+        self.assertAlmostEqual(report["summary"]["acceptedShotOutcomeCalibration"]["brierScore"], 0.0361, places=4)
+        self.assertAlmostEqual(report["summary"]["acceptedShotOutcomeCalibration"]["eceLite"], 0.19, places=2)
         self.assertEqual(report["summary"]["rejectedProposalAudit"]["eligibleRejectedClips"], 2)
         self.assertEqual(report["summary"]["rejectedProposalAudit"]["trueNegativeCount"], 1)
         self.assertEqual(report["summary"]["rejectedProposalAudit"]["trueMissCount"], 1)
         self.assertEqual(report["summary"]["rejectedProposalAudit"]["trueNegativeRate"], 0.5)
         self.assertEqual(report["summary"]["rejectedProposalAudit"]["trueMissRate"], 0.5)
+
+    def test_report_exposes_calibration_curve_for_accepted_shots(self) -> None:
+        payload = {
+            "jobId": "job-calibration-001",
+            "requestId": "req-calibration-001",
+            "uploadTraceId": "upload-calibration-001",
+            "inferenceAttemptId": "attempt-calibration-001",
+            "clips": [
+                {
+                    "clipId": "clip-calibration-accepted-good",
+                    "label": "Layup",
+                    "eventFamily": "shot_attempt",
+                    "shotSubtype": "layup",
+                    "outcome": "made",
+                    "confidence": 0.91,
+                    "confidenceAfterMapping": 0.92,
+                    "expectedEventFamily": "shot_attempt",
+                    "expectedOutcome": "made",
+                    "runtimeFusionTemporalShadow": {
+                        "label": "Layup",
+                        "eventFamily": "shot_attempt",
+                        "shotSubtype": "layup",
+                        "outcome": "made",
+                        "confidenceAfterMapping": 0.92,
+                        "confidence": 0.92,
+                        "isUncertain": False,
+                        "temporal_event_detector_proposal_accepted": True,
+                        "temporal_event_detector_classifier_gate_open": True,
+                        "temporal_event_detector_shot_specialist_used": True,
+                    },
+                },
+                {
+                    "clipId": "clip-calibration-accepted-bad",
+                    "label": "Jumper",
+                    "eventFamily": "shot_attempt",
+                    "shotSubtype": "jumper",
+                    "outcome": "missed",
+                    "confidence": 0.22,
+                    "confidenceAfterMapping": 0.21,
+                    "expectedEventFamily": "shot_attempt",
+                    "expectedOutcome": "made",
+                    "runtimeFusionTemporalShadow": {
+                        "label": "Jumper",
+                        "eventFamily": "shot_attempt",
+                        "shotSubtype": "jumper",
+                        "outcome": "missed",
+                        "confidenceAfterMapping": 0.21,
+                        "confidence": 0.21,
+                        "isUncertain": True,
+                        "temporal_event_detector_proposal_accepted": True,
+                        "temporal_event_detector_classifier_gate_open": True,
+                        "temporal_event_detector_shot_specialist_used": True,
+                    },
+                },
+                {
+                    "clipId": "clip-calibration-rejected",
+                    "label": "Highlight",
+                    "eventFamily": "other",
+                    "outcome": "uncertain",
+                    "confidenceAfterMapping": 0.14,
+                    "expectedEventFamily": "other",
+                    "expectedOutcome": "uncertain",
+                    "runtimeFusionTemporalShadow": {
+                        "label": "Highlight",
+                        "eventFamily": "other",
+                        "outcome": "uncertain",
+                        "confidenceAfterMapping": 0.14,
+                        "confidence": 0.14,
+                        "isUncertain": True,
+                        "temporal_event_detector_proposal_accepted": False,
+                        "temporal_event_detector_classifier_gate_open": False,
+                        "temporal_event_detector_shot_specialist_used": False,
+                    },
+                },
+            ],
+        }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "calibration.json"
+            path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+            report = build_shadow_report(load_batch_records([path], shadow_source="runtimeFusionTemporalShadow"))
+
+        calibration = report["summary"]["acceptedShotOutcomeCalibration"]
+        self.assertEqual(calibration["scoredClips"], 2)
+        self.assertEqual(len(calibration["reliabilityBuckets"]), 5)
+        self.assertEqual(len(calibration["coverageRiskCurve"]), 2)
+        self.assertAlmostEqual(calibration["brierScore"], 0.0252, places=4)
+        self.assertEqual(calibration["coverageRiskCurve"][0]["coverage"], 0.5)
+        self.assertEqual(calibration["coverageRiskCurve"][1]["coverage"], 1.0)
+
+    def test_report_warns_on_acceptance_collapse_and_gate_suppression(self) -> None:
+        payload = {
+            "jobId": "job-guardrail-001",
+            "requestId": "req-guardrail-001",
+            "uploadTraceId": "upload-guardrail-001",
+            "inferenceAttemptId": "attempt-guardrail-001",
+            "clips": [
+                {
+                    "clipId": "clip-guardrail-accepted",
+                    "label": "Highlight",
+                    "eventFamily": "other",
+                    "outcome": "uncertain",
+                    "confidenceAfterMapping": 0.33,
+                    "expectedEventFamily": "shot_attempt",
+                    "expectedOutcome": "made",
+                    "runtimeFusionTemporalShadow": {
+                        "label": "Highlight",
+                        "eventFamily": "other",
+                        "outcome": "uncertain",
+                        "confidenceAfterMapping": 0.33,
+                        "confidence": 0.33,
+                        "isUncertain": True,
+                        "temporal_event_detector_proposal_accepted": True,
+                        "temporal_event_detector_classifier_gate_open": False,
+                        "temporal_event_detector_shot_specialist_used": False,
+                    },
+                }
+            ],
+        }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "guardrail.json"
+            path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+            report = build_shadow_report(load_batch_records([path], shadow_source="runtimeFusionTemporalShadow"))
+
+        warnings = report["labelSpreadWarnings"]
+        self.assertIn("Proposal acceptance collapsed to 0% or 100%.", warnings)
+        self.assertIn("Accepted proposals exist, but family gate never opened.", warnings)
+        self.assertIn("Accepted proposals exist, but shot head never invoked.", warnings)
+
+    def test_report_warns_on_zero_acceptance(self) -> None:
+        payload = {
+            "jobId": "job-guardrail-002",
+            "requestId": "req-guardrail-002",
+            "uploadTraceId": "upload-guardrail-002",
+            "inferenceAttemptId": "attempt-guardrail-002",
+            "clips": [
+                {
+                    "clipId": "clip-guardrail-rejected",
+                    "label": "Highlight",
+                    "eventFamily": "other",
+                    "outcome": "uncertain",
+                    "confidenceAfterMapping": 0.18,
+                    "expectedEventFamily": "other",
+                    "expectedOutcome": "uncertain",
+                    "runtimeFusionTemporalShadow": {
+                        "label": "Highlight",
+                        "eventFamily": "other",
+                        "outcome": "uncertain",
+                        "confidenceAfterMapping": 0.18,
+                        "confidence": 0.18,
+                        "isUncertain": True,
+                        "temporal_event_detector_proposal_accepted": False,
+                        "temporal_event_detector_classifier_gate_open": False,
+                        "temporal_event_detector_shot_specialist_used": False,
+                    },
+                }
+            ],
+        }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "zero-acceptance.json"
+            path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+            report = build_shadow_report(load_batch_records([path], shadow_source="runtimeFusionTemporalShadow"))
+
+        self.assertEqual(report["summary"]["proposalAcceptanceRate"], 0.0)
+        self.assertIn("Proposal acceptance collapsed to 0% or 100%.", report["labelSpreadWarnings"])
 
     def test_report_tracks_shot_specialist_abstention(self) -> None:
         payload = {

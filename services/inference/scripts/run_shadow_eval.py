@@ -71,8 +71,14 @@ class ShadowClipRecord:
     manualAuditRationale: str | None = None
     proposalAccepted: bool | None = None
     proposalScore: float | None = None
+    proposalAcceptanceRawScore: float | None = None
+    proposalAcceptanceProbability: float | None = None
+    proposalEnergyScore: float | None = None
     proposalRejectorLabel: str | None = None
     proposalRejectorConfidence: float | None = None
+    familyGateOpen: bool | None = None
+    familyGateRejectionReason: str | None = None
+    shotHeadInvoked: bool | None = None
     shotSpecialistUsed: bool | None = None
     shotSpecialistAbstained: bool | None = None
 
@@ -168,17 +174,21 @@ def build_shadow_report(records: list[ShadowClipRecord]) -> dict[str, Any]:
     outcome_distribution = distribution(record.outcome for record in records)
     source_domain_distribution = distribution(record.sourceDomain for record in records)
     uncertainty_rate = round(sum(1 for record in records if record.isUncertain) / max(len(records), 1), 4)
+    raw_event_family_other_rate = round(event_family_distribution.get("other", 0) / max(len(records), 1), 4)
     duration_summary = build_duration_summary(record.clipDurationSeconds for record in records)
     label_spread = build_label_spread(records, flat_label_distribution)
     miss_vs_made_confusion = build_miss_vs_made_confusion(records)
     labeled_eval = build_labeled_eval_summary(records)
     proposal_summary = build_proposal_summary(records)
+    accepted_shot_outcome_calibration = proposal_summary.get("acceptedShotOutcomeCalibration")
     trace_summary = build_trace_summary(records)
     candidate_namespace_summary = build_namespace_summary(record.candidateNamespace for record in records)
     collapse_examples = build_collapse_examples(records)
     clip_total = max(len(records), 1)
     highlight_dominance = round(flat_label_distribution.get("Highlight", 0) / clip_total, 4)
     event_family_other_dominance = round(event_family_distribution.get("other", 0) / clip_total, 4)
+    dominant_flat_label = label_spread["dominantLabel"]
+    dominant_flat_label_share = label_spread["dominantLabelShare"]
     other_bucket_distribution = build_other_bucket_distribution(records)
     other_bucket_audit = build_other_bucket_audit(records)
     return {
@@ -196,14 +206,26 @@ def build_shadow_report(records: list[ShadowClipRecord]) -> dict[str, Any]:
             "outcomeDistribution": outcome_distribution,
             "sourceDomainDistribution": source_domain_distribution,
             "uncertaintyRate": uncertainty_rate,
+            "rawEventFamilyOtherRate": raw_event_family_other_rate,
             "highlightDominance": highlight_dominance,
             "eventFamilyOtherDominance": event_family_other_dominance,
+            "dominantFlatLabel": dominant_flat_label,
+            "dominantFlatLabelShare": dominant_flat_label_share,
             "proposalAcceptanceRate": proposal_summary["proposalAcceptanceRate"],
             "proposalAcceptanceClipCount": proposal_summary["proposalAcceptanceClipCount"],
+            "proposalAcceptedCount": proposal_summary["proposalAcceptedCount"],
+            "familyGateOpenRate": proposal_summary["familyGateOpenRate"],
+            "familyGateOpenClipCount": proposal_summary["familyGateOpenClipCount"],
+            "familyGateOpenCount": proposal_summary["familyGateOpenCount"],
+            "shotHeadInvocationRate": proposal_summary["shotHeadInvocationRate"],
+            "shotHeadInvocationClipCount": proposal_summary["shotHeadInvocationClipCount"],
+            "shotHeadInvocationCount": proposal_summary["shotHeadInvocationCount"],
             "eventnessCalibration": proposal_summary["eventnessCalibration"],
+            "acceptanceCalibration": proposal_summary["acceptanceCalibration"],
             "acceptedShotProposalOutcomeAccuracy": proposal_summary["acceptedShotProposalOutcomeAccuracy"],
             "acceptedShotSubtypeDistribution": proposal_summary["acceptedShotSubtypeDistribution"],
             "acceptedShotAbstentionRate": proposal_summary["acceptedShotAbstentionRate"],
+            "acceptedShotOutcomeCalibration": accepted_shot_outcome_calibration,
             "dunkDominance": proposal_summary["dunkDominance"],
             "rejectedProposalAudit": proposal_summary["rejectedProposalAudit"],
             "splitOtherDistribution": other_bucket_distribution,
@@ -222,7 +244,11 @@ def build_shadow_report(records: list[ShadowClipRecord]) -> dict[str, Any]:
         },
         "clips": [asdict(record) for record in records],
         "collapseExamples": collapse_examples,
-        "labelSpreadWarnings": build_spread_warnings(label_spread, uncertainty_rate),
+        "labelSpreadWarnings": build_spread_warnings(
+            label_spread,
+            uncertainty_rate,
+            proposal_summary=proposal_summary,
+        ),
     }
 
 
@@ -232,10 +258,19 @@ def render_markdown(report: dict[str, Any]) -> str:
     lines.append(f"- Jobs: `{summary['jobCount']}`")
     lines.append(f"- Clips: `{summary['clipCount']}`")
     lines.append(f"- Uncertainty rate: `{summary['uncertaintyRate']:.4f}`")
+    lines.append(f"- Raw eventFamily=other rate: `{summary['rawEventFamilyOtherRate']:.4f}`")
     lines.append(f"- Highlight dominance: `{summary['highlightDominance']:.4f}`")
     lines.append(f"- EventFamily=other dominance: `{summary['eventFamilyOtherDominance']:.4f}`")
+    lines.append(f"- Dominant flat label: `{summary['dominantFlatLabel']}`")
+    lines.append(f"- Dominant flat-label share: `{summary['dominantFlatLabelShare']:.4f}`")
     lines.append(f"- Proposal acceptance rate: `{summary.get('proposalAcceptanceRate')}`")
+    lines.append(f"- Family gate open rate: `{summary.get('familyGateOpenRate')}`")
+    lines.append(f"- Shot head invocation rate: `{summary.get('shotHeadInvocationRate')}`")
     lines.append(f"- Eventness calibration: `{json.dumps(summary.get('eventnessCalibration'), sort_keys=True)}`")
+    lines.append(f"- Acceptance calibration: `{json.dumps(summary.get('acceptanceCalibration'), sort_keys=True)}`")
+    lines.append(
+        f"- Accepted-shot outcome calibration: `{json.dumps(summary.get('acceptedShotOutcomeCalibration'), sort_keys=True)}`"
+    )
     lines.append(f"- Split-other distribution: `{json.dumps(summary['splitOtherDistribution'], sort_keys=True)}`")
     lines.append(f"- Candidate namespace: `{summary['candidateNamespaces']['dominantNamespace']}`")
     lines.append(f"- Mixed-batch unique labels: `{summary['mixedBatchLabelSpread']['uniqueLabelCount']}`")
@@ -313,10 +348,10 @@ def render_markdown(report: dict[str, Any]) -> str:
     lines.append("")
     lines.append("## Clip Table")
     lines.append(
-        "| clipId | jobId | requestId | uploadTraceId | inferenceAttemptId | candidateNamespace | modelVersion | flatLabel | eventFamily | proposalAccepted | proposalRejector | proposalEventScore | otherBucket | manualAudit | shotSubtype | outcome | confidenceBeforeMapping | confidenceAfterMapping | confidence | durationSeconds | merged | sourceEventCount | uncertain | rawVideoMAETop1 | rawXCLIPTop1 |"
+        "| clipId | jobId | requestId | uploadTraceId | inferenceAttemptId | candidateNamespace | modelVersion | flatLabel | eventFamily | proposalAccepted | familyGateOpen | shotHeadInvoked | proposalRejector | proposalEventScore | proposalAcceptanceProbability | proposalEnergyScore | otherBucket | manualAudit | shotSubtype | outcome | confidenceBeforeMapping | confidenceAfterMapping | confidence | durationSeconds | merged | sourceEventCount | uncertain | rawVideoMAETop1 | rawXCLIPTop1 |"
     )
     lines.append(
-        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"
     )
     for clip in report["clips"]:
         lines.append(
@@ -333,8 +368,12 @@ def render_markdown(report: dict[str, Any]) -> str:
                     escape_md_cell(clip.get("flatLabel")),
                     escape_md_cell(clip.get("eventFamily")),
                     escape_md_cell(clip.get("proposalAccepted")),
+                    escape_md_cell(clip.get("familyGateOpen")),
+                    escape_md_cell(clip.get("shotHeadInvoked")),
                     escape_md_cell(clip.get("proposalRejectorLabel")),
                     escape_md_cell(clip.get("proposalScore")),
+                    escape_md_cell(clip.get("proposalAcceptanceProbability")),
+                    escape_md_cell(clip.get("proposalEnergyScore")),
                     escape_md_cell(clip.get("otherBucket")),
                     escape_md_cell(clip.get("manualAuditLabel")),
                     escape_md_cell(clip.get("shotSubtype")),
@@ -451,8 +490,14 @@ def _normalize_batch_item(
                 candidateNamespace=shadow_namespace or shadow_source,
                 proposalAccepted=_normalize_proposal_accepted(clip, shadow_payload),
                 proposalScore=_normalize_proposal_event_score(clip, shadow_payload),
+                proposalAcceptanceRawScore=_normalize_proposal_acceptance_raw_score(clip, shadow_payload),
+                proposalAcceptanceProbability=_normalize_proposal_acceptance_probability(clip, shadow_payload),
+                proposalEnergyScore=_normalize_proposal_energy_score(clip, shadow_payload),
                 proposalRejectorLabel=_normalize_proposal_rejector_label(clip, shadow_payload),
                 proposalRejectorConfidence=_normalize_proposal_rejector_confidence(clip, shadow_payload),
+                familyGateOpen=_normalize_family_gate_open(clip, shadow_payload),
+                familyGateRejectionReason=_normalize_family_gate_rejection_reason(clip, shadow_payload),
+                shotHeadInvoked=_normalize_shot_head_invoked(clip, shadow_payload),
                 shotSpecialistUsed=_normalize_shot_specialist_used(clip, shadow_payload),
                 shotSpecialistAbstained=_normalize_shot_specialist_abstained(clip, shadow_payload),
                 clipDurationSeconds=_to_optional_float(clip.get("clipDurationSeconds")),
@@ -683,18 +728,29 @@ def build_proposal_summary(records: list[ShadowClipRecord]) -> dict[str, Any]:
         if eligible_records
         else None
     )
+    proposal_accepted_count = sum(1 for record in eligible_records if record.proposalAccepted)
+    family_gate_records = [record for record in records if record.familyGateOpen is not None]
+    family_gate_open_count = sum(1 for record in family_gate_records if record.familyGateOpen)
+    family_gate_open_rate = (
+        round(family_gate_open_count / len(family_gate_records), 4) if family_gate_records else None
+    )
+    shot_head_records = [record for record in records if record.shotSpecialistUsed is not None]
+    shot_head_invocation_count = sum(1 for record in shot_head_records if record.shotSpecialistUsed)
+    shot_head_invocation_rate = (
+        round(shot_head_invocation_count / len(shot_head_records), 4) if shot_head_records else None
+    )
 
     labeled_scored = [
         record
         for record in eligible_records
-        if record.expectedEventFamily is not None and record.proposalScore is not None
+        if record.expectedEventFamily is not None and record.proposalAcceptanceProbability is not None
     ]
     if labeled_scored:
         positive_rows = [record for record in labeled_scored if normalize_bucket(record.expectedEventFamily) != "other"]
         negative_rows = [record for record in labeled_scored if normalize_bucket(record.expectedEventFamily) == "other"]
         eventness_brier = round(
             sum(
-                (float(record.proposalScore) - (1.0 if normalize_bucket(record.expectedEventFamily) != "other" else 0.0)) ** 2
+                (float(record.proposalAcceptanceProbability) - (1.0 if normalize_bucket(record.expectedEventFamily) != "other" else 0.0)) ** 2
                 for record in labeled_scored
             )
             / len(labeled_scored),
@@ -703,20 +759,28 @@ def build_proposal_summary(records: list[ShadowClipRecord]) -> dict[str, Any]:
         eventness_calibration = {
             "eligibleClips": len(labeled_scored),
             "brierScore": eventness_brier,
-            "positiveMeanScore": round(sum(float(record.proposalScore) for record in positive_rows) / len(positive_rows), 4)
+            "positiveMeanScore": round(
+                sum(float(record.proposalAcceptanceProbability) for record in positive_rows) / len(positive_rows),
+                4,
+            )
             if positive_rows
             else None,
-            "negativeMeanScore": round(sum(float(record.proposalScore) for record in negative_rows) / len(negative_rows), 4)
+            "negativeMeanScore": round(
+                sum(float(record.proposalAcceptanceProbability) for record in negative_rows) / len(negative_rows),
+                4,
+            )
             if negative_rows
             else None,
         }
     else:
         eventness_calibration = None
+    acceptance_calibration = build_acceptance_calibration_summary(eligible_records)
 
     accepted_shot_rows = [
         record
         for record in eligible_records
         if record.proposalAccepted
+        and (record.familyGateOpen is True if record.familyGateOpen is not None else True)
         and normalize_bucket(record.expectedEventFamily) == "shot_attempt"
         and record.expectedOutcome is not None
     ]
@@ -729,6 +793,7 @@ def build_proposal_summary(records: list[ShadowClipRecord]) -> dict[str, Any]:
         if accepted_shot_rows
         else None
     )
+    accepted_shot_outcome_calibration = build_outcome_calibration_summary(accepted_shot_rows)
     accepted_shot_subtype_distribution = distribution(
         (record.shotSubtype or "null") for record in accepted_shot_rows
     )
@@ -774,12 +839,100 @@ def build_proposal_summary(records: list[ShadowClipRecord]) -> dict[str, Any]:
     return {
         "proposalAcceptanceRate": proposal_acceptance_rate,
         "proposalAcceptanceClipCount": len(eligible_records),
+        "proposalAcceptedCount": proposal_accepted_count,
+        "familyGateOpenRate": family_gate_open_rate,
+        "familyGateOpenClipCount": len(family_gate_records),
+        "familyGateOpenCount": family_gate_open_count,
+        "shotHeadInvocationRate": shot_head_invocation_rate,
+        "shotHeadInvocationClipCount": len(shot_head_records),
+        "shotHeadInvocationCount": shot_head_invocation_count,
         "eventnessCalibration": eventness_calibration,
+        "acceptanceCalibration": acceptance_calibration,
         "acceptedShotProposalOutcomeAccuracy": accepted_shot_outcome_accuracy,
+        "acceptedShotOutcomeCalibration": accepted_shot_outcome_calibration,
         "acceptedShotSubtypeDistribution": accepted_shot_subtype_distribution,
         "acceptedShotAbstentionRate": accepted_shot_abstention_rate,
         "dunkDominance": dunk_dominance,
         "rejectedProposalAudit": rejected_proposal_audit,
+    }
+
+
+def build_outcome_calibration_summary(records: list[ShadowClipRecord]) -> dict[str, Any] | None:
+    scored = [
+        record
+        for record in records
+        if record.expectedOutcome is not None and record.confidenceAfterMapping is not None
+    ]
+    if not scored:
+        return None
+
+    def correctness(record: ShadowClipRecord) -> float:
+        return 1.0 if normalize_bucket(record.expectedOutcome) == normalize_bucket(record.outcome) else 0.0
+
+    total = len(scored)
+    brier = round(
+        sum((float(record.confidenceAfterMapping) - correctness(record)) ** 2 for record in scored) / total,
+        4,
+    )
+    bins: list[dict[str, Any]] = []
+    bin_edges = [(0.0, 0.2), (0.2, 0.4), (0.4, 0.6), (0.6, 0.8), (0.8, 1.000001)]
+    for lower, upper in bin_edges:
+        bucket = [
+            record
+            for record in scored
+            if lower <= float(record.confidenceAfterMapping) < upper
+            or (upper > 1.0 and float(record.confidenceAfterMapping) == 1.0)
+        ]
+        if not bucket:
+            bins.append(
+                {
+                    "bin": f"[{lower:.1f},{upper:.1f})",
+                    "count": 0,
+                    "accuracy": None,
+                    "meanConfidence": None,
+                    "risk": None,
+                }
+            )
+            continue
+        mean_confidence = sum(float(record.confidenceAfterMapping) for record in bucket) / len(bucket)
+        accuracy = sum(correctness(record) for record in bucket) / len(bucket)
+        bins.append(
+            {
+                "bin": f"[{lower:.1f},{upper:.1f})",
+                "count": len(bucket),
+                "accuracy": round(accuracy, 4),
+                "meanConfidence": round(mean_confidence, 4),
+                "risk": round(1.0 - accuracy, 4),
+            }
+        )
+
+    ece_lite = round(
+        sum(
+            (bin_entry["count"] / total) * abs(bin_entry["accuracy"] - bin_entry["meanConfidence"])
+            for bin_entry in bins
+            if bin_entry["count"] > 0 and bin_entry["accuracy"] is not None and bin_entry["meanConfidence"] is not None
+        ),
+        4,
+    )
+    coverage_curve = []
+    ordered = sorted(scored, key=lambda record: float(record.confidenceAfterMapping), reverse=True)
+    for index, _ in enumerate(ordered, start=1):
+        covered = ordered[:index]
+        accuracy = sum(correctness(record) for record in covered) / len(covered)
+        coverage_curve.append(
+            {
+                "coverage": round(index / total, 4),
+                "risk": round(1.0 - accuracy, 4),
+                "count": len(covered),
+            }
+        )
+
+    return {
+        "scoredClips": total,
+        "brierScore": brier,
+        "eceLite": ece_lite,
+        "reliabilityBuckets": bins,
+        "coverageRiskCurve": coverage_curve,
     }
 
 
@@ -829,7 +982,12 @@ def build_collapse_examples(records: list[ShadowClipRecord]) -> list[dict[str, A
     return examples
 
 
-def build_spread_warnings(label_spread: dict[str, Any], uncertainty_rate: float) -> list[str]:
+def build_spread_warnings(
+    label_spread: dict[str, Any],
+    uncertainty_rate: float,
+    *,
+    proposal_summary: dict[str, Any] | None = None,
+) -> list[str]:
     warnings: list[str] = []
     if label_spread["uniqueLabelCount"] < 4:
         warnings.append("Mixed batch produced fewer than four flat labels.")
@@ -837,6 +995,18 @@ def build_spread_warnings(label_spread: dict[str, Any], uncertainty_rate: float)
         warnings.append("One flat label still dominates more than half the batch.")
     if uncertainty_rate > 0.5:
         warnings.append("Uncertainty remains above 50% on this batch.")
+    if proposal_summary:
+        proposal_acceptance_rate = proposal_summary.get("proposalAcceptanceRate")
+        proposal_acceptance_clip_count = int(proposal_summary.get("proposalAcceptanceClipCount") or 0)
+        proposal_accepted_count = int(proposal_summary.get("proposalAcceptedCount") or 0)
+        family_gate_open_count = int(proposal_summary.get("familyGateOpenCount") or 0)
+        shot_head_invocation_count = int(proposal_summary.get("shotHeadInvocationCount") or 0)
+        if proposal_acceptance_rate in {0.0, 1.0} and proposal_acceptance_clip_count > 0:
+            warnings.append("Proposal acceptance collapsed to 0% or 100%.")
+        if proposal_accepted_count > 0 and family_gate_open_count == 0:
+            warnings.append("Accepted proposals exist, but family gate never opened.")
+        if proposal_accepted_count > 0 and shot_head_invocation_count == 0:
+            warnings.append("Accepted proposals exist, but shot head never invoked.")
     return warnings
 
 
@@ -1015,6 +1185,45 @@ def _normalize_proposal_accepted(clip: dict[str, Any], shadow_payload: dict[str,
     return bool(value)
 
 
+def _normalize_family_gate_open(clip: dict[str, Any], shadow_payload: dict[str, Any] | None = None) -> bool | None:
+    metadata = shadow_payload.get("metadata") if isinstance(shadow_payload, dict) else None
+    value = _first_defined(
+        shadow_payload.get("temporal_event_detector_classifier_gate_open") if shadow_payload else None,
+        shadow_payload.get("temporal_event_detector_gate_open") if shadow_payload else None,
+        metadata.get("temporal_event_detector_classifier_gate_open") if isinstance(metadata, dict) else None,
+        metadata.get("temporal_event_detector_gate_open") if isinstance(metadata, dict) else None,
+        clip.get("familyGateOpen"),
+    )
+    if value is None:
+        return None
+    return bool(value)
+
+
+def _normalize_family_gate_rejection_reason(
+    clip: dict[str, Any],
+    shadow_payload: dict[str, Any] | None = None,
+) -> str | None:
+    metadata = shadow_payload.get("metadata") if isinstance(shadow_payload, dict) else None
+    return _first_non_empty(
+        shadow_payload.get("temporal_event_detector_family_gate_rejection_reason") if shadow_payload else None,
+        metadata.get("temporal_event_detector_family_gate_rejection_reason") if isinstance(metadata, dict) else None,
+        clip.get("familyGateRejectionReason"),
+    )
+
+
+def _normalize_shot_head_invoked(clip: dict[str, Any], shadow_payload: dict[str, Any] | None = None) -> bool | None:
+    metadata = shadow_payload.get("metadata") if isinstance(shadow_payload, dict) else None
+    value = _first_defined(
+        shadow_payload.get("temporal_event_detector_shot_head_invoked") if shadow_payload else None,
+        metadata.get("temporal_event_detector_shot_head_invoked") if isinstance(metadata, dict) else None,
+        clip.get("shotHeadInvoked"),
+        clip.get("shotSpecialistUsed"),
+    )
+    if value is None:
+        return None
+    return bool(value)
+
+
 def _normalize_proposal_event_score(clip: dict[str, Any], shadow_payload: dict[str, Any] | None = None) -> float | None:
     metadata = shadow_payload.get("metadata") if isinstance(shadow_payload, dict) else None
     return _to_optional_float(
@@ -1024,6 +1233,50 @@ def _normalize_proposal_event_score(clip: dict[str, Any], shadow_payload: dict[s
             metadata.get("temporal_event_detector_proposal_acceptance_score") if isinstance(metadata, dict) else None,
             metadata.get("temporal_event_detector_event_score") if isinstance(metadata, dict) else None,
             clip.get("proposalScore"),
+        )
+    )
+
+
+def _normalize_proposal_acceptance_raw_score(
+    clip: dict[str, Any], shadow_payload: dict[str, Any] | None = None
+) -> float | None:
+    metadata = shadow_payload.get("metadata") if isinstance(shadow_payload, dict) else None
+    return _to_optional_float(
+        _first_defined(
+            shadow_payload.get("temporal_event_detector_proposal_acceptance_raw_score") if shadow_payload else None,
+            metadata.get("temporal_event_detector_proposal_acceptance_raw_score") if isinstance(metadata, dict) else None,
+            clip.get("proposalAcceptanceRawScore"),
+            clip.get("proposalScore"),
+        )
+    )
+
+
+def _normalize_proposal_acceptance_probability(
+    clip: dict[str, Any], shadow_payload: dict[str, Any] | None = None
+) -> float | None:
+    metadata = shadow_payload.get("metadata") if isinstance(shadow_payload, dict) else None
+    return _to_optional_float(
+        _first_defined(
+            shadow_payload.get("temporal_event_detector_proposal_acceptance_probability") if shadow_payload else None,
+            metadata.get("temporal_event_detector_proposal_acceptance_probability") if isinstance(metadata, dict) else None,
+            clip.get("proposalAcceptanceProbability"),
+            clip.get("proposalAcceptanceProbabilityCalibrated"),
+            clip.get("proposalScore"),
+        )
+    )
+
+
+def _normalize_proposal_energy_score(
+    clip: dict[str, Any], shadow_payload: dict[str, Any] | None = None
+) -> float | None:
+    metadata = shadow_payload.get("metadata") if isinstance(shadow_payload, dict) else None
+    return _to_optional_float(
+        _first_defined(
+            shadow_payload.get("temporal_event_detector_proposal_acceptance_energy") if shadow_payload else None,
+            shadow_payload.get("temporal_event_detector_proposal_energy_score") if shadow_payload else None,
+            metadata.get("temporal_event_detector_proposal_acceptance_energy") if isinstance(metadata, dict) else None,
+            metadata.get("temporal_event_detector_proposal_energy_score") if isinstance(metadata, dict) else None,
+            clip.get("proposalEnergyScore"),
         )
     )
 
