@@ -252,6 +252,85 @@ def build_shadow_report(records: list[ShadowClipRecord]) -> dict[str, Any]:
     }
 
 
+def build_acceptance_calibration_summary(records: list[ShadowClipRecord]) -> dict[str, Any] | None:
+    scored = [
+        record
+        for record in records
+        if record.expectedEventFamily is not None and record.proposalAcceptanceProbability is not None
+    ]
+    if not scored:
+        return None
+
+    def correctness(record: ShadowClipRecord) -> float:
+        return 1.0 if normalize_bucket(record.expectedEventFamily) != "other" else 0.0
+
+    total = len(scored)
+    brier = round(
+        sum((float(record.proposalAcceptanceProbability) - correctness(record)) ** 2 for record in scored) / total,
+        4,
+    )
+    bins: list[dict[str, Any]] = []
+    bin_edges = [(0.0, 0.2), (0.2, 0.4), (0.4, 0.6), (0.6, 0.8), (0.8, 1.000001)]
+    for lower, upper in bin_edges:
+        bucket = [
+            record
+            for record in scored
+            if lower <= float(record.proposalAcceptanceProbability) < upper
+            or (upper > 1.0 and float(record.proposalAcceptanceProbability) == 1.0)
+        ]
+        if not bucket:
+            bins.append(
+                {
+                    "bin": f"[{lower:.1f},{upper:.1f})",
+                    "count": 0,
+                    "accuracy": None,
+                    "meanConfidence": None,
+                    "risk": None,
+                }
+            )
+            continue
+        mean_confidence = sum(float(record.proposalAcceptanceProbability) for record in bucket) / len(bucket)
+        accuracy = sum(correctness(record) for record in bucket) / len(bucket)
+        bins.append(
+            {
+                "bin": f"[{lower:.1f},{upper:.1f})",
+                "count": len(bucket),
+                "accuracy": round(accuracy, 4),
+                "meanConfidence": round(mean_confidence, 4),
+                "risk": round(1.0 - accuracy, 4),
+            }
+        )
+
+    ece_lite = round(
+        sum(
+            (bin_entry["count"] / total) * abs(bin_entry["accuracy"] - bin_entry["meanConfidence"])
+            for bin_entry in bins
+            if bin_entry["count"] > 0 and bin_entry["accuracy"] is not None and bin_entry["meanConfidence"] is not None
+        ),
+        4,
+    )
+    coverage_curve = []
+    ordered = sorted(scored, key=lambda record: float(record.proposalAcceptanceProbability), reverse=True)
+    for index, _ in enumerate(ordered, start=1):
+        covered = ordered[:index]
+        accuracy = sum(correctness(record) for record in covered) / len(covered)
+        coverage_curve.append(
+            {
+                "coverage": round(index / total, 4),
+                "risk": round(1.0 - accuracy, 4),
+                "count": len(covered),
+            }
+        )
+
+    return {
+        "scoredClips": total,
+        "brierScore": brier,
+        "eceLite": ece_lite,
+        "reliabilityBuckets": bins,
+        "coverageRiskCurve": coverage_curve,
+    }
+
+
 def render_markdown(report: dict[str, Any]) -> str:
     summary = report["summary"]
     lines = ["# Shadow Eval Report", ""]
@@ -348,10 +427,10 @@ def render_markdown(report: dict[str, Any]) -> str:
     lines.append("")
     lines.append("## Clip Table")
     lines.append(
-        "| clipId | jobId | requestId | uploadTraceId | inferenceAttemptId | candidateNamespace | modelVersion | flatLabel | eventFamily | proposalAccepted | familyGateOpen | shotHeadInvoked | proposalRejector | proposalEventScore | proposalAcceptanceProbability | proposalEnergyScore | otherBucket | manualAudit | shotSubtype | outcome | confidenceBeforeMapping | confidenceAfterMapping | confidence | durationSeconds | merged | sourceEventCount | uncertain | rawVideoMAETop1 | rawXCLIPTop1 |"
+        "| clipId | jobId | requestId | uploadTraceId | inferenceAttemptId | candidateNamespace | modelVersion | flatLabel | eventFamily | proposalAccepted | familyGateOpen | familyGateRejectionReason | shotHeadInvoked | proposalRejector | proposalEventScore | proposalAcceptanceRawScore | proposalAcceptanceProbability | proposalEnergyScore | otherBucket | manualAudit | shotSubtype | outcome | confidenceBeforeMapping | confidenceAfterMapping | confidence | durationSeconds | merged | sourceEventCount | uncertain | rawVideoMAETop1 | rawXCLIPTop1 |"
     )
     lines.append(
-        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"
     )
     for clip in report["clips"]:
         lines.append(
@@ -369,9 +448,11 @@ def render_markdown(report: dict[str, Any]) -> str:
                     escape_md_cell(clip.get("eventFamily")),
                     escape_md_cell(clip.get("proposalAccepted")),
                     escape_md_cell(clip.get("familyGateOpen")),
+                    escape_md_cell(clip.get("familyGateRejectionReason")),
                     escape_md_cell(clip.get("shotHeadInvoked")),
                     escape_md_cell(clip.get("proposalRejectorLabel")),
                     escape_md_cell(clip.get("proposalScore")),
+                    escape_md_cell(clip.get("proposalAcceptanceRawScore")),
                     escape_md_cell(clip.get("proposalAcceptanceProbability")),
                     escape_md_cell(clip.get("proposalEnergyScore")),
                     escape_md_cell(clip.get("otherBucket")),
@@ -857,6 +938,85 @@ def build_proposal_summary(records: list[ShadowClipRecord]) -> dict[str, Any]:
     }
 
 
+def build_acceptance_calibration_summary(records: list[ShadowClipRecord]) -> dict[str, Any] | None:
+    scored = [
+        record
+        for record in records
+        if record.proposalAccepted is not None and record.proposalAcceptanceProbability is not None
+    ]
+    if not scored:
+        return None
+
+    def correctness(record: ShadowClipRecord) -> float:
+        return 1.0 if bool(record.proposalAccepted) else 0.0
+
+    total = len(scored)
+    brier = round(
+        sum((float(record.proposalAcceptanceProbability) - correctness(record)) ** 2 for record in scored) / total,
+        4,
+    )
+    bins: list[dict[str, Any]] = []
+    bin_edges = [(0.0, 0.2), (0.2, 0.4), (0.4, 0.6), (0.6, 0.8), (0.8, 1.000001)]
+    for lower, upper in bin_edges:
+        bucket = [
+            record
+            for record in scored
+            if lower <= float(record.proposalAcceptanceProbability) < upper
+            or (upper > 1.0 and float(record.proposalAcceptanceProbability) == 1.0)
+        ]
+        if not bucket:
+            bins.append(
+                {
+                    "bin": f"[{lower:.1f},{upper:.1f})",
+                    "count": 0,
+                    "accuracy": None,
+                    "meanProbability": None,
+                    "risk": None,
+                }
+            )
+            continue
+        mean_probability = sum(float(record.proposalAcceptanceProbability) for record in bucket) / len(bucket)
+        accuracy = sum(correctness(record) for record in bucket) / len(bucket)
+        bins.append(
+            {
+                "bin": f"[{lower:.1f},{upper:.1f})",
+                "count": len(bucket),
+                "accuracy": round(accuracy, 4),
+                "meanProbability": round(mean_probability, 4),
+                "risk": round(1.0 - accuracy, 4),
+            }
+        )
+
+    ece_lite = round(
+        sum(
+            (bin_entry["count"] / total) * abs(bin_entry["accuracy"] - bin_entry["meanProbability"])
+            for bin_entry in bins
+            if bin_entry["count"] > 0 and bin_entry["accuracy"] is not None and bin_entry["meanProbability"] is not None
+        ),
+        4,
+    )
+    coverage_curve = []
+    ordered = sorted(scored, key=lambda record: float(record.proposalAcceptanceProbability), reverse=True)
+    for index, _ in enumerate(ordered, start=1):
+        covered = ordered[:index]
+        accuracy = sum(correctness(record) for record in covered) / len(covered)
+        coverage_curve.append(
+            {
+                "coverage": round(index / total, 4),
+                "risk": round(1.0 - accuracy, 4),
+                "count": len(covered),
+            }
+        )
+
+    return {
+        "scoredClips": total,
+        "brierScore": brier,
+        "eceLite": ece_lite,
+        "reliabilityBuckets": bins,
+        "coverageRiskCurve": coverage_curve,
+    }
+
+
 def build_outcome_calibration_summary(records: list[ShadowClipRecord]) -> dict[str, Any] | None:
     scored = [
         record
@@ -1188,8 +1348,10 @@ def _normalize_proposal_accepted(clip: dict[str, Any], shadow_payload: dict[str,
 def _normalize_family_gate_open(clip: dict[str, Any], shadow_payload: dict[str, Any] | None = None) -> bool | None:
     metadata = shadow_payload.get("metadata") if isinstance(shadow_payload, dict) else None
     value = _first_defined(
+        shadow_payload.get("temporal_event_detector_family_gate_open") if shadow_payload else None,
         shadow_payload.get("temporal_event_detector_classifier_gate_open") if shadow_payload else None,
         shadow_payload.get("temporal_event_detector_gate_open") if shadow_payload else None,
+        metadata.get("temporal_event_detector_family_gate_open") if isinstance(metadata, dict) else None,
         metadata.get("temporal_event_detector_classifier_gate_open") if isinstance(metadata, dict) else None,
         metadata.get("temporal_event_detector_gate_open") if isinstance(metadata, dict) else None,
         clip.get("familyGateOpen"),

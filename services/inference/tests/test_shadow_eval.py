@@ -129,8 +129,11 @@ class ShadowEvalTests(unittest.TestCase):
                         "confidence": 0.93,
                         "isUncertain": False,
                         "temporal_event_detector_classifier_gate_open": True,
+                        "temporal_event_detector_family_gate_open": True,
+                        "temporal_event_detector_family_gate_rejection_reason": None,
                         "temporal_event_detector_proposal_accepted": True,
                         "temporal_event_detector_event_score": 1.0,
+                        "temporal_event_detector_proposal_acceptance_raw_score": 0.88,
                         "temporal_event_detector_proposal_acceptance_probability": 0.94,
                         "temporal_event_detector_proposal_energy_score": 0.11,
                         "temporal_event_detector_proposal_rejector_label": "real_event",
@@ -162,8 +165,11 @@ class ShadowEvalTests(unittest.TestCase):
                         "confidence": 0.32,
                         "isUncertain": True,
                         "temporal_event_detector_classifier_gate_open": False,
+                        "temporal_event_detector_family_gate_open": False,
+                        "temporal_event_detector_family_gate_rejection_reason": "proposal_rejected",
                         "temporal_event_detector_proposal_accepted": False,
                         "temporal_event_detector_event_score": 0.0,
+                        "temporal_event_detector_proposal_acceptance_raw_score": 0.22,
                         "temporal_event_detector_proposal_acceptance_probability": 0.09,
                         "temporal_event_detector_proposal_energy_score": 0.77,
                         "temporal_event_detector_proposal_rejector_label": "non_event",
@@ -188,8 +194,10 @@ class ShadowEvalTests(unittest.TestCase):
         self.assertEqual(report["summary"]["familyGateOpenCount"], 1)
         self.assertEqual(report["summary"]["shotHeadInvocationRate"], 0.5)
         self.assertEqual(report["summary"]["shotHeadInvocationCount"], 1)
+        self.assertIsNotNone(report["summary"]["acceptanceCalibration"])
+        self.assertEqual(report["summary"]["acceptanceCalibration"]["scoredClips"], 2)
         self.assertEqual(report["summary"]["eventnessCalibration"]["eligibleClips"], 2)
-        self.assertEqual(report["summary"]["eventnessCalibration"]["brierScore"], 0.0)
+        self.assertAlmostEqual(report["summary"]["eventnessCalibration"]["brierScore"], 0.0059, places=4)
         self.assertEqual(report["summary"]["acceptedShotProposalOutcomeAccuracy"], 1.0)
         self.assertEqual(report["summary"]["acceptedShotSubtypeDistribution"], {"layup": 1})
         self.assertEqual(report["summary"]["acceptedShotAbstentionRate"], 0.0)
@@ -308,12 +316,14 @@ class ShadowEvalTests(unittest.TestCase):
         self.assertEqual(report["summary"]["proposalAcceptanceRate"], 0.3333)
         self.assertEqual(report["summary"]["familyGateOpenRate"], 0.3333)
         self.assertEqual(report["summary"]["shotHeadInvocationRate"], 0.3333)
+        self.assertIsNotNone(report["summary"]["acceptanceCalibration"])
+        self.assertEqual(report["summary"]["acceptanceCalibration"]["scoredClips"], 3)
         self.assertEqual(report["summary"]["acceptedShotProposalOutcomeAccuracy"], 1.0)
         self.assertEqual(report["summary"]["acceptedShotSubtypeDistribution"], {"layup": 1})
         self.assertEqual(report["summary"]["acceptedShotAbstentionRate"], 0.0)
         self.assertEqual(report["summary"]["dunkDominance"], 0.0)
         self.assertEqual(report["summary"]["eventnessCalibration"]["eligibleClips"], 3)
-        self.assertAlmostEqual(report["summary"]["eventnessCalibration"]["brierScore"], 0.1992, places=4)
+        self.assertAlmostEqual(report["summary"]["eventnessCalibration"]["brierScore"], 0.2142, places=4)
         self.assertIsNotNone(report["summary"]["acceptedShotOutcomeCalibration"])
         self.assertEqual(report["summary"]["acceptedShotOutcomeCalibration"]["scoredClips"], 1)
         self.assertAlmostEqual(report["summary"]["acceptedShotOutcomeCalibration"]["brierScore"], 0.0361, places=4)
