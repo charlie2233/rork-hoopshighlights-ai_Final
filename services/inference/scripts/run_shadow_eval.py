@@ -1377,7 +1377,9 @@ def _normalize_shot_head_invoked(clip: dict[str, Any], shadow_payload: dict[str,
     metadata = shadow_payload.get("metadata") if isinstance(shadow_payload, dict) else None
     value = _first_defined(
         shadow_payload.get("temporal_event_detector_shot_head_invoked") if shadow_payload else None,
+        shadow_payload.get("temporal_event_detector_shot_specialist_used") if shadow_payload else None,
         metadata.get("temporal_event_detector_shot_head_invoked") if isinstance(metadata, dict) else None,
+        metadata.get("temporal_event_detector_shot_specialist_used") if isinstance(metadata, dict) else None,
         clip.get("shotHeadInvoked"),
         clip.get("shotSpecialistUsed"),
     )
