@@ -1,0 +1,122 @@
+[
+  {
+    "clipId": "structured-made-dunk-001",
+    "sourceRef": "r2://basketball/structured_eval/made_dunk_001.mp4",
+    "expectedLabel": "dunk",
+    "expectedEventFamily": "shot_attempt",
+    "expectedShotSubtype": "dunk",
+    "expectedOutcome": "made",
+    "split": "test",
+    "sourceDurationSeconds": 6.4,
+    "signalAuditFocus": "ball above rim, player near rim, clear finish through hoop",
+    "notes": "One-step explosive finish from the lane line."
+  },
+  {
+    "clipId": "structured-made-layup-001",
+    "sourceRef": "r2://basketball/structured_eval/made_layup_001.mp4",
+    "expectedLabel": "layup",
+    "expectedEventFamily": "shot_attempt",
+    "expectedShotSubtype": "layup",
+    "expectedOutcome": "made",
+    "split": "test",
+    "sourceDurationSeconds": 5.8,
+    "signalAuditFocus": "ball release below rim, player-to-rim distance stays short",
+    "notes": "Glass finish with defender on the hip."
+  },
+  {
+    "clipId": "structured-made-jumper-001",
+    "sourceRef": "r2://basketball/structured_eval/made_jumper_001.mp4",
+    "expectedLabel": "jumper",
+    "expectedEventFamily": "shot_attempt",
+    "expectedShotSubtype": "jumper",
+    "expectedOutcome": "made",
+    "split": "test",
+    "sourceDurationSeconds": 5.6,
+    "signalAuditFocus": "release point and arc should matter more than rim proximity",
+    "notes": "Mid-range pull-up with enough setup to see the rise."
+  },
+  {
+    "clipId": "structured-made-three-001",
+    "sourceRef": "r2://basketball/structured_eval/made_three_001.mp4",
+    "expectedLabel": "three",
+    "expectedEventFamily": "shot_attempt",
+    "expectedShotSubtype": "three",
+    "expectedOutcome": "made",
+    "split": "test",
+    "sourceDurationSeconds": 6.6,
+    "signalAuditFocus": "larger player-to-rim distance should separate threes from jumpers",
+    "notes": "Catch-and-shoot wing three in transition."
+  },
+  {
+    "clipId": "structured-miss-jumper-001",
+    "sourceRef": "r2://basketball/structured_eval/miss_jumper_001.mp4",
+    "expectedLabel": "miss",
+    "expectedEventFamily": "shot_attempt",
+    "expectedShotSubtype": "jumper",
+    "expectedOutcome": "missed",
+    "split": "test",
+    "sourceDurationSeconds": 5.2,
+    "signalAuditFocus": "shot release exists without credible through-hoop evidence",
+    "notes": "Open jumper that clangs long."
+  },
+  {
+    "clipId": "structured-miss-layup-001",
+    "sourceRef": "r2://basketball/structured_eval/miss_layup_001.mp4",
+    "expectedLabel": "miss",
+    "expectedEventFamily": "shot_attempt",
+    "expectedShotSubtype": "layup",
+    "expectedOutcome": "missed",
+    "split": "test",
+    "sourceDurationSeconds": 4.9,
+    "signalAuditFocus": "near-rim attempt should still separate made from missed",
+    "notes": "Contested layup rolls off the front rim."
+  },
+  {
+    "clipId": "structured-turnover-001",
+    "sourceRef": "r2://basketball/structured_eval/turnover_001.mp4",
+    "expectedLabel": "steal",
+    "expectedEventFamily": "turnover",
+    "expectedShotSubtype": null,
+    "expectedOutcome": "uncertain",
+    "split": "test",
+    "sourceDurationSeconds": 5.0,
+    "signalAuditFocus": "possession-change and ball-carrier reassignment should dominate",
+    "notes": "Deflection in the passing lane to a live-ball steal."
+  },
+  {
+    "clipId": "structured-block-001",
+    "sourceRef": "r2://basketball/structured_eval/block_001.mp4",
+    "expectedLabel": "block",
+    "expectedEventFamily": "defensive_event",
+    "expectedShotSubtype": "layup",
+    "expectedOutcome": "blocked",
+    "split": "test",
+    "sourceDurationSeconds": 5.7,
+    "signalAuditFocus": "defender proximity at shot with no make evidence",
+    "notes": "Help-side contest pins the attempt on the glass."
+  },
+  {
+    "clipId": "structured-transition-001",
+    "sourceRef": "r2://basketball/structured_eval/transition_001.mp4",
+    "expectedLabel": "fast break",
+    "expectedEventFamily": "transition",
+    "expectedShotSubtype": null,
+    "expectedOutcome": "uncertain",
+    "split": "test",
+    "sourceDurationSeconds": 8.1,
+    "signalAuditFocus": "ball-carrier speed plus team-wide displacement should dominate",
+    "notes": "Two-on-one runout with long lead pass."
+  },
+  {
+    "clipId": "structured-negative-001",
+    "sourceRef": "r2://basketball/structured_eval/negative_deadball_001.mp4",
+    "expectedLabel": "uncertain",
+    "expectedEventFamily": "other",
+    "expectedShotSubtype": null,
+    "expectedOutcome": "uncertain",
+    "split": "test",
+    "sourceDurationSeconds": 4.3,
+    "signalAuditFocus": "no coherent ball-rim-player relation should stay abstained",
+    "notes": "Dead-ball reset and players jogging into half court."
+  }
+]

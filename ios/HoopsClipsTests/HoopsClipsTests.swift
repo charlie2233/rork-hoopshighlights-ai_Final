@@ -243,6 +243,23 @@ struct HoopsClipsTests {
         #expect(response.results?.diagnostics.backendModelVersion == "cloud-v1")
     }
 
+    @Test func testCloudTraceSnapshotCodableRoundTrip() throws {
+        let trace = CloudAnalysisTraceSnapshot(
+            requestId: "request-123",
+            uploadTraceId: "upload-trace-456",
+            inferenceAttemptId: "attempt-789",
+            modelVersion: "runtime-model-v1",
+            failureReason: "none"
+        )
+
+        let encoded = try JSONEncoder().encode(trace)
+        let decoded = try JSONDecoder().decode(CloudAnalysisTraceSnapshot.self, from: encoded)
+
+        #expect(decoded == trace)
+        #expect(decoded.modelVersion == "runtime-model-v1")
+        #expect(decoded.failureReason == "none")
+    }
+
     @Test func testAudioFallbackSplitsContinuousSignalIntoBoundedClips() async {
         let service = await VideoAnalysisService()
         let peaks = [Double](repeating: 1.0, count: 600)

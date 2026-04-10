@@ -1,3 +1,15 @@
 node_modules
 .env
 .expo
+.codex-build/
+.codex-multi-agent/
+.next/
+.wrangler/
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+ios/Config/LocalSecrets.xcconfig
+/HoopsClips.xcodeproj/
+/HoopsHighlightsAI.xcodeproj/
+/backend/

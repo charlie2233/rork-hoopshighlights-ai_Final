@@ -77,7 +77,7 @@ final class AuthService {
         errorMessage = nil
         defer { isLoading = false }
 
-        let clientID = AppConstants.googleClientID
+        let clientID = AppRuntimeConfig.shared.googleClientID
         guard !clientID.isEmpty else {
             errorMessage = "Google Sign-In is not configured yet."
             return

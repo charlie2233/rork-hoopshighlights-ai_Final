@@ -20,6 +20,12 @@ def classify_window(window: CandidateWindow) -> CloudClip:
     else:
         label = "Highlight"
 
+    shot_type = None
+    if label == "Three Pointer":
+        shot_type = "three_pointer"
+    elif label in {"Made Shot", "Layup", "Dunk"}:
+        shot_type = "field_goal"
+
     return CloudClip(
         startTime=round(window.start_time, 3),
         endTime=round(window.end_time, 3),
@@ -32,6 +38,9 @@ def classify_window(window: CandidateWindow) -> CloudClip:
         combinedScore=round(combined, 4),
         shouldAutoKeep=confidence >= 0.62,
         shouldEnableSlowMotion=label in {"Dunk", "Posterize"},
+        eventType="basketball_highlight",
+        shotType=shot_type,
+        rankScore=round(combined, 4),
     )
 
 

@@ -59,7 +59,14 @@ class JobStoreBase:
         return await self.update_job(job_id, storage_path=storage_path, progress=0.12, stage="Upload complete")
 
     async def mark_queued(self, job_id: str) -> StoredJob:
-        return await self.update_job(job_id, status=JobStatus.QUEUED, progress=0.28, stage="Queued on server")
+        return await self.update_job(
+            job_id,
+            status=JobStatus.QUEUED,
+            progress=0.28,
+            stage="Queued on server",
+            attempt=1,
+            failure_reason=None,
+        )
 
     async def mark_processing(self, job_id: str, stage: str, progress: float) -> StoredJob:
         return await self.update_job(
@@ -69,6 +76,8 @@ class JobStoreBase:
             progress=progress,
             error_code=None,
             error_message=None,
+            failure_reason=None,
+            started_at=now_utc(),
         )
 
     async def mark_failed(self, job_id: str, error_code: str, error_message: str) -> StoredJob:
@@ -79,6 +88,8 @@ class JobStoreBase:
             stage="Analysis failed",
             error_code=error_code,
             error_message=error_message,
+            failure_reason=error_code,
+            finished_at=now_utc(),
         )
 
     async def mark_succeeded(self, job_id: str, results: CloudAnalysisResult) -> StoredJob:
@@ -90,6 +101,9 @@ class JobStoreBase:
             results=results,
             error_code=None,
             error_message=None,
+            model_version=results.modelVersion,
+            failure_reason=None,
+            finished_at=now_utc(),
         )
 
     async def mark_expired(self, job_id: str) -> StoredJob:
@@ -100,6 +114,8 @@ class JobStoreBase:
             stage="Expired",
             error_code="expired",
             error_message="Cloud analysis job expired.",
+            failure_reason="expired",
+            finished_at=now_utc(),
         )
 
 
@@ -290,6 +306,14 @@ class FirestoreJobStore(JobStoreBase):
             "stage": job.stage,
             "errorCode": job.error_code,
             "errorMessage": job.error_message,
+            "modelVersion": job.model_version,
+            "failureReason": job.failure_reason,
+            "traceId": job.trace_id,
+            "startedAt": job.started_at,
+            "finishedAt": job.finished_at,
+            "workerVersion": job.worker_version,
+            "resultObjectKey": job.result_object_key,
+            "attempt": job.attempt,
             "storagePath": job.storage_path,
             "quotaRemainingToday": job.quota_remaining_today,
         }
@@ -321,6 +345,14 @@ class FirestoreJobStore(JobStoreBase):
             stage=payload.get("stage") or "Preparing upload",
             error_code=payload.get("errorCode"),
             error_message=payload.get("errorMessage"),
+            model_version=payload.get("modelVersion"),
+            failure_reason=payload.get("failureReason"),
+            trace_id=payload.get("traceId"),
+            started_at=payload.get("startedAt"),
+            finished_at=payload.get("finishedAt"),
+            worker_version=payload.get("workerVersion"),
+            result_object_key=payload.get("resultObjectKey"),
+            attempt=int(payload.get("attempt") or 0),
             results=results,
             storage_path=payload.get("storagePath"),
             quota_remaining_today=int(payload.get("quotaRemainingToday") or 0),

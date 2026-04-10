@@ -1,0 +1,9 @@
+tunnel: hoopsclips-inference-staging
+
+# Replace this with the local credentials file created by `cloudflared tunnel create`.
+credentials-file: /Users/hanfei/.cloudflared/<tunnel-uuid>.json
+
+ingress:
+  - hostname: inference-staging.<your-zone>
+    service: http://127.0.0.1:8080
+  - service: http_status:404

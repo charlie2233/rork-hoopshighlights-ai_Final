@@ -1,0 +1,10 @@
+# Keep Cloud Build uploads limited to the runtime service inputs.
+.venv/
+docs/
+scripts/
+tests/
+cloudflared/
+.env
+.env.*
+README.md
+.dockerignore

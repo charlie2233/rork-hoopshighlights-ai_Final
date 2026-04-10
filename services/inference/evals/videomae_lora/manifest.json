@@ -1,0 +1,119 @@
+{
+  "canonicalSchemaPath": "services/inference/datasets/annotation_schema.json",
+  "datasetVersion": "videomae-lora-v1",
+  "inputs": {
+    "disagreementQueue": "services/inference/datasets/disagreement_queue.jsonl",
+    "goldSet": "services/inference/datasets/gold_set.json",
+    "silverSet": "services/inference/datasets/silver_set.json"
+  },
+  "labelSpaces": {
+    "eventFamily": [
+      "shot_attempt",
+      "defensive_event",
+      "turnover",
+      "transition",
+      "other"
+    ],
+    "outcome": [
+      "made",
+      "missed",
+      "blocked",
+      "uncertain"
+    ],
+    "shotSubtype": [
+      "null",
+      "dunk",
+      "layup",
+      "jumper",
+      "three",
+      "putback",
+      "unknown"
+    ]
+  },
+  "schemaVersion": "2026-03-30",
+  "sourceDataset": "services/inference/datasets/runtime_training/videomae_lora_v1",
+  "sourceReferencePolicy": {
+    "candidateWindows": "Each row points at a candidate clip window via sourceRef when available.",
+    "disagreement": "Rows without sourceRef remain in the export for audit priority, but are marked trainingEligible=false for encoder fine-tuning.",
+    "gold": "Gold rows keep the strongest labels and remain the main val/test calibration anchor, with a small train-support slice."
+  },
+  "splitPolicy": {
+    "disagreement": "train-heavy hard examples; rows without candidate clip refs stay ignored for LoRA until sourceRef is attached",
+    "gold": "stable hash: 25% train support, 37.5% val, 37.5% test",
+    "silver": "confidence-aware, train-heavy; strong silver can spill into val/test while weak silver stays train-only"
+  },
+  "summary": {
+    "batchSize": 1,
+    "calibrationAnchorRecords": 10,
+    "device": "cpu",
+    "epochs": 1,
+    "frameCount": 4,
+    "ignoredReasons": {
+      "missing_source_ref": 16
+    },
+    "ignoredRecords": 16,
+    "imageSize": 112,
+    "learningRate": 0.0002,
+    "splits": {
+      "test": {
+        "calibrationAnchorRecords": 5,
+        "eligibleSourceKinds": {
+          "gold": 5
+        },
+        "ignoredReasons": {},
+        "ignoredRecords": 0,
+        "records": 5,
+        "sourceKinds": {
+          "gold": 5
+        },
+        "trainingEligibleRecords": 5,
+        "weightSum": 15.0
+      },
+      "train": {
+        "calibrationAnchorRecords": 0,
+        "eligibleSourceKinds": {
+          "gold": 6,
+          "silver": 8
+        },
+        "ignoredReasons": {
+          "missing_source_ref": 16
+        },
+        "ignoredRecords": 16,
+        "records": 30,
+        "sourceKinds": {
+          "disagreement": 16,
+          "gold": 6,
+          "silver": 8
+        },
+        "trainingEligibleRecords": 14,
+        "weightSum": 26.5
+      },
+      "val": {
+        "calibrationAnchorRecords": 5,
+        "eligibleSourceKinds": {
+          "gold": 5
+        },
+        "ignoredReasons": {},
+        "ignoredRecords": 0,
+        "records": 5,
+        "sourceKinds": {
+          "gold": 5
+        },
+        "trainingEligibleRecords": 5,
+        "weightSum": 15.0
+      }
+    },
+    "tinySmoke": true,
+    "totalRecords": 40,
+    "trainingEligibleRecords": 24
+  },
+  "weightPolicy": {
+    "disagreementBase": 1.0,
+    "disagreementMax": 1.6,
+    "gold": 3.0,
+    "silverIgnoredBelow": 0.75,
+    "silverMediumConfidence": 1.0,
+    "silverStrongConfidence": 1.5,
+    "silverWeakConfidence": 0.5
+  }
+}

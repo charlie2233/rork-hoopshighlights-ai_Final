@@ -1,0 +1,47 @@
+{
+  "adapterPath": "rslora_adapter",
+  "baseModelName": "MCG-NJU/videomae-base-finetuned-kinetics",
+  "featureSchemaVersion": "videomae-lora-features-v1",
+  "frameCount": 16,
+  "headsPath": "rslora_heads.pt",
+  "imageSize": 224,
+  "labelSpaces": {
+    "event_family": [
+      "shot_attempt",
+      "defensive_event",
+      "turnover",
+      "transition",
+      "other"
+    ],
+    "outcome": [
+      "made",
+      "missed",
+      "blocked",
+      "uncertain"
+    ],
+    "shot_subtype": [
+      "null",
+      "dunk",
+      "layup",
+      "jumper",
+      "three",
+      "putback",
+      "unknown"
+    ]
+  },
+  "lora": {
+    "loraAlpha": 16,
+    "loraDropout": 0.05,
+    "r": 8,
+    "targetModules": "all-linear",
+    "useRslora": true
+  },
+  "modelVersion": "videomae-rslora:MCG-NJU/videomae-base-finetuned-kinetics",
+  "schemaVersion": "videomae-lora-v1",
+  "temperature": {
+    "eventFamily": 1.0,
+    "outcome": 1.0,
+    "shotSubtype": 1.0
+  },
+  "trainedAt": "2026-03-30T23:42:08.195488+00:00"
+}

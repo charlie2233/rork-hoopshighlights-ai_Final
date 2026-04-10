@@ -1,0 +1,188 @@
+{
+  "canonicalSchemaPath": "services/inference/datasets/annotation_schema.json",
+  "featureNames": [
+    "ballVisible",
+    "hoopVisible",
+    "humanVerified",
+    "priorityScore",
+    "reason=app_facing_highlight_only",
+    "reason=hard_negative",
+    "reason=high_teacher_low_runtime",
+    "reason=miss_vs_made_disagreement",
+    "reason=runtime_teacher_family_disagreement",
+    "reason=runtime_teacher_outcome_disagreement",
+    "runtimeConfidence",
+    "runtimeEventFamily=defensive_event",
+    "runtimeEventFamily=other",
+    "runtimeEventFamily=shot_attempt",
+    "runtimeEventFamily=transition",
+    "runtimeEventFamily=turnover",
+    "runtimeLabel=block",
+    "runtimeLabel=dunk",
+    "runtimeLabel=fast_break",
+    "runtimeLabel=highlight",
+    "runtimeLabel=jumper",
+    "runtimeLabel=layup",
+    "runtimeLabel=made_shot",
+    "runtimeLabel=miss",
+    "runtimeLabel=putback",
+    "runtimeLabel=steal",
+    "runtimeLabel=three",
+    "runtimeOutcome=blocked",
+    "runtimeOutcome=made",
+    "runtimeOutcome=missed",
+    "runtimeOutcome=uncertain",
+    "runtimeShotSubtype=dunk",
+    "runtimeShotSubtype=jumper",
+    "runtimeShotSubtype=layup",
+    "runtimeShotSubtype=null",
+    "runtimeShotSubtype=putback",
+    "runtimeShotSubtype=three",
+    "runtimeShotSubtype=unknown",
+    "runtimeTop1=block",
+    "runtimeTop1=dribbling_basketball",
+    "runtimeTop1=fast_break",
+    "runtimeTop1=jumper",
+    "runtimeTop1=layup",
+    "runtimeTop1=miss",
+    "runtimeTop1=none",
+    "runtimeTop1=playing_basketball",
+    "runtimeTop1=shooting_basketball",
+    "runtimeTop1=steal",
+    "runtimeTop1=three",
+    "runtimeTopCount",
+    "runtimeVideoMAE=none",
+    "runtimeXCLIP=none",
+    "sourceDomain=benchmark_eval",
+    "sourceDomain=hard_negative",
+    "sourceDomain=live_staging",
+    "sourceDomain=manual_negative",
+    "sourceDomain=staging_smoke",
+    "sourceDomain=structured_eval",
+    "sourceKind=disagreement",
+    "sourceKind=gold",
+    "sourceKind=silver",
+    "sourceRefPresent",
+    "sourceSet=disagreement_queue",
+    "sourceSet=gold_set",
+    "sourceSet=silver_set"
+  ],
+  "featureVersion": "runtime-fusion-v1",
+  "inputs": {
+    "disagreementQueue": "services/inference/datasets/disagreement_queue.jsonl",
+    "goldSet": "services/inference/datasets/gold_set.json",
+    "silverSet": "services/inference/datasets/silver_set.json"
+  },
+  "loraExport": {
+    "datasetVersion": "videomae-lora-v1",
+    "path": "services/inference/datasets/runtime_training/videomae_lora_v1/manifest.json",
+    "summary": {
+      "calibrationAnchorRecords": 10,
+      "ignoredReasons": {
+        "missing_source_ref": 16
+      },
+      "ignoredRecords": 16,
+      "splits": {
+        "test": {
+          "calibrationAnchorRecords": 5,
+          "eligibleSourceKinds": {
+            "gold": 5
+          },
+          "ignoredReasons": {},
+          "ignoredRecords": 0,
+          "records": 5,
+          "sourceKinds": {
+            "gold": 5
+          },
+          "trainingEligibleRecords": 5,
+          "weightSum": 15.0
+        },
+        "train": {
+          "calibrationAnchorRecords": 0,
+          "eligibleSourceKinds": {
+            "gold": 6,
+            "silver": 8
+          },
+          "ignoredReasons": {
+            "missing_source_ref": 16
+          },
+          "ignoredRecords": 16,
+          "records": 30,
+          "sourceKinds": {
+            "disagreement": 16,
+            "gold": 6,
+            "silver": 8
+          },
+          "trainingEligibleRecords": 14,
+          "weightSum": 26.5
+        },
+        "val": {
+          "calibrationAnchorRecords": 5,
+          "eligibleSourceKinds": {
+            "gold": 5
+          },
+          "ignoredReasons": {},
+          "ignoredRecords": 0,
+          "records": 5,
+          "sourceKinds": {
+            "gold": 5
+          },
+          "trainingEligibleRecords": 5,
+          "weightSum": 15.0
+        }
+      },
+      "totalRecords": 40,
+      "trainingEligibleRecords": 24
+    }
+  },
+  "schemaVersion": "2026-03-30",
+  "splitPolicy": {
+    "disagreement": "train-heavy hard examples with small val/test spillover",
+    "gold": "val/test anchor only",
+    "silver": "train-heavy with light val/test spillover based on stable hash"
+  },
+  "summary": {
+    "activeRecords": 40,
+    "featureCount": 65,
+    "ignoredRecords": 0,
+    "splits": {
+      "test": {
+        "activeRecords": 11,
+        "ignoredRecords": 0,
+        "records": 11,
+        "sourceKinds": {
+          "disagreement": 1,
+          "gold": 9,
+          "silver": 1
+        }
+      },
+      "train": {
+        "activeRecords": 16,
+        "ignoredRecords": 0,
+        "records": 16,
+        "sourceKinds": {
+          "disagreement": 12,
+          "silver": 4
+        }
+      },
+      "val": {
+        "activeRecords": 13,
+        "ignoredRecords": 0,
+        "records": 13,
+        "sourceKinds": {
+          "disagreement": 3,
+          "gold": 7,
+          "silver": 3
+        }
+      }
+    },
+    "totalRecords": 40
+  },
+  "weightPolicy": {
+    "disagreementBase": 0.8,
+    "gold": 4.0,
+    "silverHighConfidence": 1.5,
+    "silverLowConfidence": 0.0,
+    "silverMediumConfidence": 1.0
+  }
+}

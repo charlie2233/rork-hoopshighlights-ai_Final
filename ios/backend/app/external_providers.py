@@ -141,6 +141,11 @@ def parse_external_clips_from_payload(
             "detectionMethod": "cloud",
             "shouldAutoKeep": bool(item.get("shouldAutoKeep", True)),
             "shouldEnableSlowMotion": bool(item.get("shouldEnableSlowMotion", False)),
+            "eventType": item.get("eventType") or "basketball_highlight",
+            "shotType": item.get("shotType") or _derive_shot_type(str(item.get("label") or item.get("action") or "")),
+            "makeMiss": item.get("makeMiss") or _derive_make_miss(str(item.get("label") or item.get("action") or "")),
+            "rankScore": round(clamp(_coerce_float(item.get("rankScore"), _coerce_float(item.get("combinedScore"), 0.76)), 0.0, 1.0), 4),
+            "reviewStatus": item.get("reviewStatus"),
         }
         parsed.append(CloudClip(**clip_payload))
 
@@ -170,6 +175,11 @@ def apply_autohighlight_boosts(clips: Sequence[CloudClip], boosts: Sequence[floa
                 detectionMethod=clip.detectionMethod,
                 shouldAutoKeep=should_auto_keep,
                 shouldEnableSlowMotion=clip.shouldEnableSlowMotion,
+                eventType=clip.eventType,
+                shotType=clip.shotType,
+                makeMiss=clip.makeMiss,
+                rankScore=combined,
+                reviewStatus=clip.reviewStatus,
             )
         )
 
@@ -199,6 +209,24 @@ def _coerce_float(value: object, default: float) -> float:
         return float(value)
     except (TypeError, ValueError):
         return default
+
+
+def _derive_shot_type(label: str) -> Optional[str]:
+    normalized = label.lower()
+    if "three" in normalized:
+        return "three_pointer"
+    if any(token in normalized for token in ("shot", "layup", "dunk", "miss")):
+        return "field_goal"
+    return None
+
+
+def _derive_make_miss(label: str) -> Optional[str]:
+    normalized = label.lower()
+    if "made" in normalized:
+        return "make"
+    if "miss" in normalized:
+        return "miss"
+    return None
 
 
 def _run_json_command(

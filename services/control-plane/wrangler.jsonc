@@ -1,0 +1,172 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "hoopsclips-control-plane",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-03-27",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "JOB_STATE",
+        "class_name": "JobStateDO"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["JobStateDO"]
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "R2_UPLOADS",
+      "bucket_name": "hoopsclips-uploads"
+    },
+    {
+      "binding": "R2_RESULTS",
+      "bucket_name": "hoopsclips-results"
+    }
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "hoopsclips-control-plane",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "queues": {
+    "producers": [
+      {
+        "binding": "ANALYSIS_QUEUE",
+        "queue": "hoopsclips-analysis"
+      },
+      {
+        "binding": "ANALYSIS_DLQ",
+        "queue": "hoopsclips-analysis-dlq"
+      }
+    ],
+    "consumers": [
+      {
+        "queue": "hoopsclips-analysis",
+        "max_batch_size": 1,
+        "max_batch_timeout": 30,
+        "max_retries": 3,
+        "dead_letter_queue": "hoopsclips-analysis-dlq"
+      }
+    ]
+  },
+  "vars": {
+    "APP_ENV": "local",
+    "SCHEMA_VERSION": "phase1a-staging-happy-path",
+    "DEFAULT_POLL_AFTER_SECONDS": "2",
+    "SIGNED_UPLOAD_TTL_SECONDS": "900",
+    "JOB_TTL_SECONDS": "3600",
+    "PROCESSING_TIMEOUT_SECONDS": "300",
+    "MAX_INFERENCE_ATTEMPTS": "3",
+    "MAX_FILE_SIZE_BYTES": "524288000",
+    "MAX_DURATION_SECONDS": "1800",
+    "R2_ACCOUNT_ID": "",
+    "R2_UPLOAD_BUCKET_NAME": "hoopsclips-uploads",
+    "R2_RESULT_BUCKET_NAME": "hoopsclips-results"
+  },
+  "secrets": {
+    "required": [
+      "ADMIN_API_TOKEN",
+      "CONTROL_PLANE_BASE_URL",
+      "CONTROL_PLANE_SHARED_SECRET",
+      "INFERENCE_BASE_URL",
+      "INFERENCE_SHARED_SECRET",
+      "R2_ACCESS_KEY_ID",
+      "R2_SECRET_ACCESS_KEY"
+    ]
+  },
+  "env": {
+    "staging": {
+      "name": "hoopsclips-control-plane-staging",
+      "vars": {
+        "APP_ENV": "staging",
+        "SCHEMA_VERSION": "phase1b-live-staging-deploy",
+        "DEFAULT_POLL_AFTER_SECONDS": "2",
+        "SIGNED_UPLOAD_TTL_SECONDS": "900",
+        "JOB_TTL_SECONDS": "3600",
+        "PROCESSING_TIMEOUT_SECONDS": "300",
+        "MAX_INFERENCE_ATTEMPTS": "3",
+        "MAX_FILE_SIZE_BYTES": "524288000",
+        "MAX_DURATION_SECONDS": "1800",
+        "R2_ACCOUNT_ID": "78fb4442e6e37b2c46d7e539c6e79172",
+        "R2_UPLOAD_BUCKET_NAME": "hoopsclips-uploads-staging",
+        "R2_RESULT_BUCKET_NAME": "hoopsclips-results-staging"
+      },
+      "secrets": {
+        "required": [
+          "ADMIN_API_TOKEN",
+          "CONTROL_PLANE_BASE_URL",
+          "CONTROL_PLANE_SHARED_SECRET",
+          "INFERENCE_BASE_URL",
+          "INFERENCE_SHARED_SECRET",
+          "R2_ACCESS_KEY_ID",
+          "R2_SECRET_ACCESS_KEY"
+        ]
+      },
+      "durable_objects": {
+        "bindings": [
+          {
+            "name": "JOB_STATE",
+            "class_name": "JobStateDO"
+          }
+        ]
+      },
+      "migrations": [
+        {
+          "tag": "v1",
+          "new_sqlite_classes": ["JobStateDO"]
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "R2_UPLOADS",
+          "bucket_name": "hoopsclips-uploads-staging"
+        },
+        {
+          "binding": "R2_RESULTS",
+          "bucket_name": "hoopsclips-results-staging"
+        }
+      ],
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "hoopsclips-control-plane-staging",
+          "database_id": "9d44a3b3-b89f-4ddf-b88f-de5b5ac42f23",
+          "migrations_dir": "migrations"
+        }
+      ],
+      "queues": {
+        "producers": [
+          {
+            "binding": "ANALYSIS_QUEUE",
+            "queue": "hoopsclips-analysis"
+          },
+          {
+            "binding": "ANALYSIS_DLQ",
+            "queue": "hoopsclips-analysis-dlq"
+          }
+        ],
+        "consumers": [
+          {
+            "queue": "hoopsclips-analysis",
+            "max_batch_size": 1,
+            "max_batch_timeout": 30,
+            "max_retries": 3,
+            "dead_letter_queue": "hoopsclips-analysis-dlq"
+          }
+        ]
+      }
+    }
+  }
+}

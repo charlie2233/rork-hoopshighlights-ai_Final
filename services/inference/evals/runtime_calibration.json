@@ -1,0 +1,568 @@
+{
+  "dimensions": {
+    "eventFamily": {
+      "defensive_event": {
+        "bins": [
+          {
+            "calibratedScore": 0.75,
+            "count": 0,
+            "maxScore": 0.2,
+            "minScore": 0.0,
+            "positives": 0
+          },
+          {
+            "calibratedScore": 0.75,
+            "count": 0,
+            "maxScore": 0.4,
+            "minScore": 0.2,
+            "positives": 0
+          },
+          {
+            "calibratedScore": 0.6667,
+            "count": 1,
+            "maxScore": 0.6,
+            "minScore": 0.4,
+            "positives": 1
+          },
+          {
+            "calibratedScore": 0.6667,
+            "count": 0,
+            "maxScore": 0.8,
+            "minScore": 0.6,
+            "positives": 0
+          },
+          {
+            "calibratedScore": 0.6667,
+            "count": 1,
+            "maxScore": 1.0,
+            "minScore": 0.8,
+            "positives": 1
+          }
+        ],
+        "fallbackScore": 0.75,
+        "label": "defensive_event",
+        "support": 2
+      },
+      "other": {
+        "bins": [
+          {
+            "calibratedScore": 0.8333,
+            "count": 0,
+            "maxScore": 0.2,
+            "minScore": 0.0,
+            "positives": 0
+          },
+          {
+            "calibratedScore": 0.8333,
+            "count": 0,
+            "maxScore": 0.4,
+            "minScore": 0.2,
+            "positives": 0
+          },
+          {
+            "calibratedScore": 0.8333,
+            "count": 4,
+            "maxScore": 0.6,
+            "minScore": 0.4,
+            "positives": 4
+          },
+          {
+            "calibratedScore": 0.8333,
+            "count": 0,
+            "maxScore": 0.8,
+            "minScore": 0.6,
+            "positives": 0
+          },
+          {
+            "calibratedScore": 0.8333,
+            "count": 0,
+            "maxScore": 1.0,
+            "minScore": 0.8,
+            "positives": 0
+          }
+        ],
+        "fallbackScore": 0.8333,
+        "label": "other",
+        "support": 4
+      },
+      "shot_attempt": {
+        "bins": [
+          {
+            "calibratedScore": 0.8571,
+            "count": 0,
+            "maxScore": 0.2,
+            "minScore": 0.0,
+            "positives": 0
+          },
+          {
+            "calibratedScore": 0.8571,
+            "count": 0,
+            "maxScore": 0.4,
+            "minScore": 0.2,
+            "positives": 0
+          },
+          {
+            "calibratedScore": 0.6667,
+            "count": 1,
+            "maxScore": 0.6,
+            "minScore": 0.4,
+            "positives": 1
+          },
+          {
+            "calibratedScore": 0.75,
+            "count": 2,
+            "maxScore": 0.8,
+            "minScore": 0.6,
+            "positives": 2
+          },
+          {
+            "calibratedScore": 0.75,
+            "count": 2,
+            "maxScore": 1.0,
+            "minScore": 0.8,
+            "positives": 2
+          }
+        ],
+        "fallbackScore": 0.8571,
+        "label": "shot_attempt",
+        "support": 5
+      },
+      "transition": {
+        "bins": [
+          {
+            "calibratedScore": 0.75,
+            "count": 0,
+            "maxScore": 0.2,
+            "minScore": 0.0,
+            "positives": 0
+          },
+          {
+            "calibratedScore": 0.75,
+            "count": 0,
+            "maxScore": 0.4,
+            "minScore": 0.2,
+            "positives": 0
+          },
+          {
+            "calibratedScore": 0.75,
+            "count": 0,
+            "maxScore": 0.6,
+            "minScore": 0.4,
+            "positives": 0
+          },
+          {
+            "calibratedScore": 0.6667,
+            "count": 1,
+            "maxScore": 0.8,
+            "minScore": 0.6,
+            "positives": 1
+          },
+          {
+            "calibratedScore": 0.6667,
+            "count": 1,
+            "maxScore": 1.0,
+            "minScore": 0.8,
+            "positives": 1
+          }
+        ],
+        "fallbackScore": 0.75,
+        "label": "transition",
+        "support": 2
+      },
+      "turnover": {
+        "bins": [
+          {
+            "calibratedScore": 0.6667,
+            "count": 0,
+            "maxScore": 0.2,
+            "minScore": 0.0,
+            "positives": 0
+          },
+          {
+            "calibratedScore": 0.6667,
+            "count": 0,
+            "maxScore": 0.4,
+            "minScore": 0.2,
+            "positives": 0
+          },
+          {
+            "calibratedScore": 0.6667,
+            "count": 1,
+            "maxScore": 0.6,
+            "minScore": 0.4,
+            "positives": 1
+          },
+          {
+            "calibratedScore": 0.6667,
+            "count": 0,
+            "maxScore": 0.8,
+            "minScore": 0.6,
+            "positives": 0
+          },
+          {
+            "calibratedScore": 0.6667,
+            "count": 0,
+            "maxScore": 1.0,
+            "minScore": 0.8,
+            "positives": 0
+          }
+        ],
+        "fallbackScore": 0.6667,
+        "label": "turnover",
+        "support": 1
+      }
+    },
+    "outcome": {
+      "blocked": {
+        "bins": [
+          {
+            "calibratedScore": 0.75,
+            "count": 0,
+            "maxScore": 0.2,
+            "minScore": 0.0,
+            "positives": 0
+          },
+          {
+            "calibratedScore": 0.75,
+            "count": 0,
+            "maxScore": 0.4,
+            "minScore": 0.2,
+            "positives": 0
+          },
+          {
+            "calibratedScore": 0.6667,
+            "count": 1,
+            "maxScore": 0.6,
+            "minScore": 0.4,
+            "positives": 1
+          },
+          {
+            "calibratedScore": 0.6667,
+            "count": 0,
+            "maxScore": 0.8,
+            "minScore": 0.6,
+            "positives": 0
+          },
+          {
+            "calibratedScore": 0.6667,
+            "count": 1,
+            "maxScore": 1.0,
+            "minScore": 0.8,
+            "positives": 1
+          }
+        ],
+        "fallbackScore": 0.75,
+        "label": "blocked",
+        "support": 2
+      },
+      "made": {
+        "bins": [
+          {
+            "calibratedScore": 0.5714,
+            "count": 0,
+            "maxScore": 0.2,
+            "minScore": 0.0,
+            "positives": 0
+          },
+          {
+            "calibratedScore": 0.5714,
+            "count": 0,
+            "maxScore": 0.4,
+            "minScore": 0.2,
+            "positives": 0
+          },
+          {
+            "calibratedScore": 0.3333,
+            "count": 1,
+            "maxScore": 0.6,
+            "minScore": 0.4,
+            "positives": 0
+          },
+          {
+            "calibratedScore": 0.3333,
+            "count": 1,
+            "maxScore": 0.8,
+            "minScore": 0.6,
+            "positives": 0
+          },
+          {
+            "calibratedScore": 0.8,
+            "count": 3,
+            "maxScore": 1.0,
+            "minScore": 0.8,
+            "positives": 3
+          }
+        ],
+        "fallbackScore": 0.5714,
+        "label": "made",
+        "support": 5
+      },
+      "missed": {
+        "bins": [
+          {
+            "calibratedScore": 0.6667,
+            "count": 0,
+            "maxScore": 0.2,
+            "minScore": 0.0,
+            "positives": 0
+          },
+          {
+            "calibratedScore": 0.6667,
+            "count": 0,
+            "maxScore": 0.4,
+            "minScore": 0.2,
+            "positives": 0
+          },
+          {
+            "calibratedScore": 0.6667,
+            "count": 0,
+            "maxScore": 0.6,
+            "minScore": 0.4,
+            "positives": 0
+          },
+          {
+            "calibratedScore": 0.6667,
+            "count": 1,
+            "maxScore": 0.8,
+            "minScore": 0.6,
+            "positives": 1
+          },
+          {
+            "calibratedScore": 0.6667,
+            "count": 0,
+            "maxScore": 1.0,
+            "minScore": 0.8,
+            "positives": 0
+          }
+        ],
+        "fallbackScore": 0.6667,
+        "label": "missed",
+        "support": 1
+      },
+      "uncertain": {
+        "bins": [
+          {
+            "calibratedScore": 0.875,
+            "count": 0,
+            "maxScore": 0.2,
+            "minScore": 0.0,
+            "positives": 0
+          },
+          {
+            "calibratedScore": 0.875,
+            "count": 0,
+            "maxScore": 0.4,
+            "minScore": 0.2,
+            "positives": 0
+          },
+          {
+            "calibratedScore": 0.8571,
+            "count": 5,
+            "maxScore": 0.6,
+            "minScore": 0.4,
+            "positives": 5
+          },
+          {
+            "calibratedScore": 0.6667,
+            "count": 1,
+            "maxScore": 0.8,
+            "minScore": 0.6,
+            "positives": 1
+          },
+          {
+            "calibratedScore": 0.8571,
+            "count": 0,
+            "maxScore": 1.0,
+            "minScore": 0.8,
+            "positives": 0
+          }
+        ],
+        "fallbackScore": 0.875,
+        "label": "uncertain",
+        "support": 6
+      }
+    },
+    "shotSubtype": {
+      "jumper": {
+        "bins": [
+          {
+            "calibratedScore": 0.8,
+            "count": 0,
+            "maxScore": 0.2,
+            "minScore": 0.0,
+            "positives": 0
+          },
+          {
+            "calibratedScore": 0.8,
+            "count": 0,
+            "maxScore": 0.4,
+            "minScore": 0.2,
+            "positives": 0
+          },
+          {
+            "calibratedScore": 0.6667,
+            "count": 1,
+            "maxScore": 0.6,
+            "minScore": 0.4,
+            "positives": 1
+          },
+          {
+            "calibratedScore": 0.6667,
+            "count": 1,
+            "maxScore": 0.8,
+            "minScore": 0.6,
+            "positives": 1
+          },
+          {
+            "calibratedScore": 0.6667,
+            "count": 1,
+            "maxScore": 1.0,
+            "minScore": 0.8,
+            "positives": 1
+          }
+        ],
+        "fallbackScore": 0.8,
+        "label": "jumper",
+        "support": 3
+      },
+      "layup": {
+        "bins": [
+          {
+            "calibratedScore": 0.8333,
+            "count": 0,
+            "maxScore": 0.2,
+            "minScore": 0.0,
+            "positives": 0
+          },
+          {
+            "calibratedScore": 0.8333,
+            "count": 0,
+            "maxScore": 0.4,
+            "minScore": 0.2,
+            "positives": 0
+          },
+          {
+            "calibratedScore": 0.6667,
+            "count": 1,
+            "maxScore": 0.6,
+            "minScore": 0.4,
+            "positives": 1
+          },
+          {
+            "calibratedScore": 0.6667,
+            "count": 1,
+            "maxScore": 0.8,
+            "minScore": 0.6,
+            "positives": 1
+          },
+          {
+            "calibratedScore": 0.75,
+            "count": 2,
+            "maxScore": 1.0,
+            "minScore": 0.8,
+            "positives": 2
+          }
+        ],
+        "fallbackScore": 0.8333,
+        "label": "layup",
+        "support": 4
+      },
+      "uncertain": {
+        "bins": [
+          {
+            "calibratedScore": 0.8,
+            "count": 0,
+            "maxScore": 0.2,
+            "minScore": 0.0,
+            "positives": 0
+          },
+          {
+            "calibratedScore": 0.8,
+            "count": 0,
+            "maxScore": 0.4,
+            "minScore": 0.2,
+            "positives": 0
+          },
+          {
+            "calibratedScore": 0.6667,
+            "count": 1,
+            "maxScore": 0.6,
+            "minScore": 0.4,
+            "positives": 1
+          },
+          {
+            "calibratedScore": 0.6667,
+            "count": 1,
+            "maxScore": 0.8,
+            "minScore": 0.6,
+            "positives": 1
+          },
+          {
+            "calibratedScore": 0.6667,
+            "count": 1,
+            "maxScore": 1.0,
+            "minScore": 0.8,
+            "positives": 1
+          }
+        ],
+        "fallbackScore": 0.8,
+        "label": "uncertain",
+        "support": 3
+      }
+    }
+  },
+  "generatedAt": "2026-03-30T16:39:21.917696+00:00",
+  "holdoutMetrics": {
+    "eventFamily": {
+      "accuracy": 1.0,
+      "expectedCalibrationError": 0.475,
+      "goldDistribution": {
+        "other": 1,
+        "shot_attempt": 1
+      },
+      "labelDistribution": {
+        "other": 1,
+        "shot_attempt": 1
+      },
+      "meanCalibratedConfidence": 0.7916,
+      "meanConfidence": 0.525,
+      "sampleCount": 2
+    },
+    "outcome": {
+      "accuracy": 1.0,
+      "expectedCalibrationError": 0.475,
+      "goldDistribution": {
+        "missed": 1,
+        "uncertain": 1
+      },
+      "labelDistribution": {
+        "missed": 1,
+        "uncertain": 1
+      },
+      "meanCalibratedConfidence": 0.7619,
+      "meanConfidence": 0.525,
+      "sampleCount": 2
+    },
+    "shotSubtype": {
+      "accuracy": 1.0,
+      "expectedCalibrationError": 0.37,
+      "goldDistribution": {
+        "jumper": 1
+      },
+      "labelDistribution": {
+        "jumper": 1
+      },
+      "meanCalibratedConfidence": 0.6667,
+      "meanConfidence": 0.63,
+      "sampleCount": 1
+    }
+  },
+  "notes": [
+    "Calibration fits only on held-out gold rows.",
+    "Teacher outputs remain training-only and are not read at inference time.",
+    "Calibration tables are monotonic bin lookups applied before uncertainty gating."
+  ],
+  "schemaVersion": "runtime-calibration-v1",
+  "sourceDataset": "services/inference/datasets/gold_annotations.jsonl",
+  "splitStrategy": "hash:clipId:40-40-20(train-calibration-test)"
+}

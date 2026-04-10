@@ -1,10 +1,15 @@
 import Foundation
+import OSLog
 import UniformTypeIdentifiers
 
 struct CloudAnalysisService {
     private let session: URLSession
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
+    private let logger = Logger(
+        subsystem: Bundle.main.bundleIdentifier ?? "HoopsClips",
+        category: "cloud-analysis"
+    )
 
     init(session: URLSession = .shared) {
         self.session = session
@@ -20,15 +25,93 @@ struct CloudAnalysisService {
         installID: String,
         appVersion: String = "v1.0",
         analysisVersion: String = AppConstants.cloudAnalysisVersion,
+        traceUpdate: (@MainActor @Sendable (CloudAnalysisTraceSnapshot) -> Void)? = nil,
         progress: @escaping @MainActor @Sendable (Double, String) -> Void
     ) async throws -> CloudAnalysisResult {
-        guard let baseURL = configuredBaseURL() else {
+        let requestId = makeRequestID()
+        let uploadTraceId = makeRequestID()
+        guard let baseURL = configuredBaseURL(requestId: requestId) else {
             throw CloudAnalysisError.notConfigured
         }
 
         let fileInfo = try fileInfo(for: url)
+        var trace = CloudAnalysisTraceSnapshot(
+            requestId: requestId,
+            uploadTraceId: uploadTraceId,
+            inferenceAttemptId: nil,
+            modelVersion: nil,
+            failureReason: nil
+        )
+        traceUpdate?(trace)
+
+        logger.info(
+            "Cloud analysis starting request_id=\(requestId, privacy: .public) environment=\(AppRuntimeConfig.shared.environmentName, privacy: .public) base_url=\(baseURL.absoluteString, privacy: .public)"
+        )
+
         await progress(0.02, "Preparing upload")
-        let job = try await createJob(
+        if usesHappyPathFlow {
+            let presign = try await requestPresignedUpload(
+                baseURL: baseURL,
+                request: CloudUploadPresignRequest(
+                    filename: url.lastPathComponent,
+                    contentType: fileInfo.contentType,
+                    fileSizeBytes: fileInfo.fileSizeBytes,
+                    durationSeconds: duration,
+                    installId: installID,
+                    appVersion: appVersion,
+                    analysisVersion: analysisVersion
+                ),
+                requestId: requestId,
+                uploadTraceId: uploadTraceId
+            )
+            trace.uploadTraceId = presign.uploadTraceId ?? trace.uploadTraceId
+            trace.modelVersion = presign.modelVersion ?? trace.modelVersion
+            trace.failureReason = presign.failureReason ?? trace.failureReason
+            traceUpdate?(trace)
+            logger.info(
+                "Cloud analysis presign received request_id=\(requestId, privacy: .public) job_id=\(presign.jobId, privacy: .public)"
+            )
+
+            await progress(0.15, "Uploading video")
+            try await uploadVideo(to: presign, from: url)
+            logger.info(
+                "Cloud analysis upload completed request_id=\(requestId, privacy: .public) job_id=\(presign.jobId, privacy: .public) object_key=\(presign.uploadObjectKey, privacy: .public)"
+            )
+
+            await progress(0.28, "Creating job")
+            let job = try await createHappyPathJob(
+                baseURL: baseURL,
+                request: CloudCreateJobRequest(
+                    jobId: presign.jobId,
+                    installId: installID,
+                    sourceObjectKey: presign.uploadObjectKey,
+                    resultObjectKey: presign.resultObjectKey
+                ),
+                requestId: requestId,
+                uploadTraceId: uploadTraceId
+            )
+            trace.uploadTraceId = job.uploadTraceId ?? trace.uploadTraceId
+            trace.inferenceAttemptId = job.inferenceAttemptId ?? trace.inferenceAttemptId
+            trace.modelVersion = job.modelVersion ?? trace.modelVersion
+            trace.failureReason = job.failureReason ?? trace.failureReason
+            traceUpdate?(trace)
+            logger.info(
+                "Cloud analysis job created request_id=\(requestId, privacy: .public) job_id=\(job.jobId, privacy: .public) status=\(job.status, privacy: .public)"
+            )
+
+            return try await pollJob(
+                baseURL: baseURL,
+                jobID: job.jobId,
+                initialPollAfterSeconds: job.pollAfterSeconds ?? 2,
+                progress: progress,
+                requestId: requestId,
+                uploadTraceId: uploadTraceId,
+                traceState: trace,
+                traceUpdate: traceUpdate
+            )
+        }
+
+        let job = try await createLegacyJob(
             baseURL: baseURL,
             request: CreateCloudAnalysisJobRequest(
                 filename: url.lastPathComponent,
@@ -38,26 +121,67 @@ struct CloudAnalysisService {
                 installId: installID,
                 appVersion: appVersion,
                 analysisVersion: analysisVersion
-            )
+            ),
+            requestId: requestId,
+            uploadTraceId: uploadTraceId
         )
+        trace.uploadTraceId = job.uploadTraceId ?? trace.uploadTraceId
+        trace.inferenceAttemptId = job.inferenceAttemptId ?? trace.inferenceAttemptId
+        trace.modelVersion = job.modelVersion ?? trace.modelVersion
+        trace.failureReason = job.failureReason ?? trace.failureReason
+        traceUpdate?(trace)
 
         await progress(0.15, "Uploading video")
-        try await uploadVideo(to: job, from: url)
+        try await uploadLegacyVideo(to: job, from: url)
 
         await progress(0.28, "Queued on server")
-        _ = try await startJob(baseURL: baseURL, jobID: job.jobId, installID: installID)
+        let started = try await startLegacyJob(
+            baseURL: baseURL,
+            jobID: job.jobId,
+            installID: installID,
+            requestId: requestId,
+            uploadTraceId: uploadTraceId
+        )
+        trace.uploadTraceId = started.uploadTraceId ?? trace.uploadTraceId
+        trace.inferenceAttemptId = started.inferenceAttemptId ?? trace.inferenceAttemptId
+        trace.modelVersion = started.modelVersion ?? trace.modelVersion
+        trace.failureReason = started.failureReason ?? trace.failureReason
+        traceUpdate?(trace)
 
         return try await pollJob(
             baseURL: baseURL,
             jobID: job.jobId,
             initialPollAfterSeconds: job.pollAfterSeconds,
-            progress: progress
+            progress: progress,
+            requestId: requestId,
+            uploadTraceId: uploadTraceId,
+            traceState: trace,
+            traceUpdate: traceUpdate
         )
     }
 
-    private func configuredBaseURL() -> URL? {
-        guard !AppConstants.cloudAnalysisBaseURL.isEmpty else { return nil }
-        return URL(string: AppConstants.cloudAnalysisBaseURL)
+    private func configuredBaseURL(requestId: String) -> URL? {
+        guard !AppConstants.cloudAnalysisBaseURL.isEmpty,
+              let url = URL(string: AppConstants.cloudAnalysisBaseURL) else {
+            logger.error("Cloud analysis base URL missing request_id=\(requestId, privacy: .public)")
+            return nil
+        }
+
+        if usesHappyPathFlow, isLoopback(url) {
+            logger.error(
+                "Cloud analysis staging base URL cannot be loopback request_id=\(requestId, privacy: .public) base_url=\(url.absoluteString, privacy: .public)"
+            )
+            return nil
+        }
+
+        return url
+    }
+
+    private var usesHappyPathFlow: Bool {
+        let normalizedEnvironment = AppRuntimeConfig.shared.environmentName
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        return normalizedEnvironment == "staging" || normalizedEnvironment == "production"
     }
 
     private func fileInfo(for url: URL) throws -> (fileSizeBytes: Int64, contentType: String) {
@@ -83,13 +207,76 @@ struct CloudAnalysisService {
         }
     }
 
-    private func createJob(
+    private func requestPresignedUpload(
         baseURL: URL,
-        request body: CreateCloudAnalysisJobRequest
+        request body: CloudUploadPresignRequest,
+        requestId: String,
+        uploadTraceId: String
+    ) async throws -> CloudUploadPresignResponse {
+        var request = URLRequest(url: baseURL.appending(path: "uploads/presign"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(requestId, forHTTPHeaderField: "X-Request-ID")
+        request.setValue(uploadTraceId, forHTTPHeaderField: "X-Upload-Trace-ID")
+        request.httpBody = try encoder.encode(body)
+
+        let (data, response) = try await session.data(for: request)
+        return try decodeResponse(
+            data: data,
+            response: response,
+            successType: CloudUploadPresignResponse.self
+        )
+    }
+
+    private func createHappyPathJob(
+        baseURL: URL,
+        request body: CloudCreateJobRequest,
+        requestId: String,
+        uploadTraceId: String
+    ) async throws -> CloudCreateJobResponse {
+        var request = URLRequest(url: baseURL.appending(path: "jobs"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(requestId, forHTTPHeaderField: "X-Request-ID")
+        request.setValue(uploadTraceId, forHTTPHeaderField: "X-Upload-Trace-ID")
+        request.httpBody = try encoder.encode(body)
+
+        let (data, response) = try await session.data(for: request)
+        return try decodeResponse(
+            data: data,
+            response: response,
+            successType: CloudCreateJobResponse.self
+        )
+    }
+
+    private func uploadVideo(to presign: CloudUploadPresignResponse, from url: URL) async throws {
+        guard let uploadURL = URL(string: presign.uploadUrl) else {
+            throw CloudAnalysisError.invalidResponse
+        }
+
+        var request = URLRequest(url: uploadURL)
+        request.httpMethod = presign.uploadMethod
+        for (header, value) in presign.uploadHeaders {
+            request.setValue(value, forHTTPHeaderField: header)
+        }
+
+        let (_, response) = try await session.upload(for: request, fromFile: url)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw CloudAnalysisError.uploadFailed
+        }
+    }
+
+    private func createLegacyJob(
+        baseURL: URL,
+        request body: CreateCloudAnalysisJobRequest,
+        requestId: String,
+        uploadTraceId: String
     ) async throws -> CreateCloudAnalysisJobResponse {
         var request = URLRequest(url: baseURL.appending(path: "v1/analysis/jobs"))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(requestId, forHTTPHeaderField: "X-Request-ID")
+        request.setValue(uploadTraceId, forHTTPHeaderField: "X-Upload-Trace-ID")
         request.httpBody = try encoder.encode(body)
 
         let (data, response) = try await session.data(for: request)
@@ -100,7 +287,7 @@ struct CloudAnalysisService {
         )
     }
 
-    private func uploadVideo(to job: CreateCloudAnalysisJobResponse, from url: URL) async throws {
+    private func uploadLegacyVideo(to job: CreateCloudAnalysisJobResponse, from url: URL) async throws {
         guard let uploadURL = URL(string: job.uploadUrl) else {
             throw CloudAnalysisError.invalidResponse
         }
@@ -117,14 +304,18 @@ struct CloudAnalysisService {
         }
     }
 
-    private func startJob(
+    private func startLegacyJob(
         baseURL: URL,
         jobID: String,
-        installID: String
+        installID: String,
+        requestId: String,
+        uploadTraceId: String
     ) async throws -> StartCloudAnalysisJobResponse {
         var request = URLRequest(url: baseURL.appending(path: "v1/analysis/jobs/\(jobID)/start"))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(requestId, forHTTPHeaderField: "X-Request-ID")
+        request.setValue(uploadTraceId, forHTTPHeaderField: "X-Upload-Trace-ID")
         request.httpBody = try encoder.encode(StartCloudAnalysisJobRequest(installId: installID))
 
         let (data, response) = try await session.data(for: request)
@@ -139,44 +330,97 @@ struct CloudAnalysisService {
         baseURL: URL,
         jobID: String,
         initialPollAfterSeconds: Int,
-        progress: @escaping @MainActor @Sendable (Double, String) -> Void
+        progress: @escaping @MainActor @Sendable (Double, String) -> Void,
+        requestId: String,
+        uploadTraceId: String,
+        traceState: CloudAnalysisTraceSnapshot,
+        traceUpdate: (@MainActor @Sendable (CloudAnalysisTraceSnapshot) -> Void)?
     ) async throws -> CloudAnalysisResult {
         let timeoutNanos: UInt64 = 180 * 1_000_000_000
         let deadline = DispatchTime.now().uptimeNanoseconds + timeoutNanos
         var pollDelay = max(1, initialPollAfterSeconds)
+        var trace = traceState
 
         while DispatchTime.now().uptimeNanoseconds < deadline {
             try await Task.sleep(nanoseconds: UInt64(pollDelay) * 1_000_000_000)
 
-            let request = URLRequest(url: baseURL.appending(path: "v1/analysis/jobs/\(jobID)"))
+            let path = usesHappyPathFlow ? "jobs/\(jobID)" : "v1/analysis/jobs/\(jobID)"
+            var request = URLRequest(url: baseURL.appending(path: path))
+            request.setValue(requestId, forHTTPHeaderField: "X-Request-ID")
+            request.setValue(uploadTraceId, forHTTPHeaderField: "X-Upload-Trace-ID")
+
             let (data, response) = try await session.data(for: request)
             let job: CloudAnalysisJobResponse = try decodeResponse(
                 data: data,
                 response: response,
                 successType: CloudAnalysisJobResponse.self
             )
+            trace.uploadTraceId = job.uploadTraceId ?? trace.uploadTraceId
+            trace.inferenceAttemptId = job.inferenceAttemptId ?? trace.inferenceAttemptId
+            trace.modelVersion = job.modelVersion ?? trace.modelVersion
+            trace.failureReason = job.failureReason ?? trace.failureReason
+            traceUpdate?(trace)
 
             switch CloudAnalysisJobState(rawValue: job.status) {
-            case .succeeded:
+            case .created, .uploadPending, .uploaded:
+                await progress(min(max(job.progress, 0.0), 0.35), job.stage.isEmpty ? "Uploading video" : job.stage)
+                logger.info(
+                    "Cloud analysis poll request_id=\(requestId, privacy: .public) job_id=\(jobID, privacy: .public) status=\(job.status, privacy: .public) progress=\(job.progress, privacy: .public)"
+                )
+            case .queued:
+                await progress(min(max(job.progress, 0.0), 0.55), job.stage.isEmpty ? "Queued on server" : job.stage)
+                logger.info(
+                    "Cloud analysis poll request_id=\(requestId, privacy: .public) job_id=\(jobID, privacy: .public) status=\(job.status, privacy: .public) progress=\(job.progress, privacy: .public)"
+                )
+            case .processing:
+                await progress(max(0.55, min(job.progress, 0.92)), job.stage.isEmpty ? "Analyzing in cloud" : job.stage)
+                logger.info(
+                    "Cloud analysis poll request_id=\(requestId, privacy: .public) job_id=\(jobID, privacy: .public) status=\(job.status, privacy: .public) progress=\(job.progress, privacy: .public)"
+                )
+            case .completed, .succeeded:
                 await progress(0.96, "Finalizing clips")
                 guard let results = job.results else {
                     throw CloudAnalysisError.invalidResponse
                 }
+                trace.uploadTraceId = results.uploadTraceId ?? trace.uploadTraceId
+                trace.inferenceAttemptId = results.inferenceAttemptId ?? trace.inferenceAttemptId
+                trace.modelVersion = results.modelVersion ?? trace.modelVersion
+                trace.failureReason = results.failureReason ?? trace.failureReason
+                traceUpdate?(trace)
+                logger.info(
+                    "Cloud analysis completed request_id=\(requestId, privacy: .public) job_id=\(jobID, privacy: .public) clip_count=\(results.clipCount, privacy: .public)"
+                )
                 return results
             case .failed:
+                trace.failureReason = job.failureReason ?? job.errorCode ?? "analysis_failed"
+                traceUpdate?(trace)
+                logger.error(
+                    "Cloud analysis failed request_id=\(requestId, privacy: .public) job_id=\(jobID, privacy: .public) failure_reason=\(job.failureReason ?? job.errorCode ?? "analysis_failed", privacy: .public)"
+                )
                 throw CloudAnalysisError.backend(
-                    code: job.errorCode ?? "analysis_failed",
+                    code: job.failureReason ?? job.errorCode ?? "analysis_failed",
                     message: job.errorMessage ?? "Cloud analysis failed."
                 )
             case .expired:
+                trace.failureReason = "expired"
+                traceUpdate?(trace)
+                logger.error(
+                    "Cloud analysis expired request_id=\(requestId, privacy: .public) job_id=\(jobID, privacy: .public)"
+                )
                 throw CloudAnalysisError.backend(
                     code: "expired",
                     message: "Cloud analysis job expired before completion."
                 )
-            case .created, .queued:
-                await progress(min(max(job.progress, 0.0), 0.55), job.stage.isEmpty ? "Queued on server" : job.stage)
-            case .processing:
-                await progress(max(0.55, min(job.progress, 0.92)), job.stage.isEmpty ? "Analyzing in cloud" : job.stage)
+            case .cancelled:
+                trace.failureReason = job.failureReason ?? "cancelled"
+                traceUpdate?(trace)
+                logger.error(
+                    "Cloud analysis cancelled request_id=\(requestId, privacy: .public) job_id=\(jobID, privacy: .public) failure_reason=\(job.failureReason ?? "cancelled", privacy: .public)"
+                )
+                throw CloudAnalysisError.backend(
+                    code: job.failureReason ?? "cancelled",
+                    message: job.errorMessage ?? "Cloud analysis job was cancelled."
+                )
             case .none:
                 throw CloudAnalysisError.invalidResponse
             }
@@ -202,8 +446,8 @@ struct CloudAnalysisService {
                 throw CloudAnalysisError.quotaExceeded(apiError?.quotaRemainingToday)
             }
             throw CloudAnalysisError.backend(
-                code: apiError?.errorCode ?? "http_\(http.statusCode)",
-                message: apiError?.errorMessage ?? "Cloud analysis request failed."
+                code: apiError?.failureReason ?? apiError?.errorCode ?? "http_\(http.statusCode)",
+                message: apiError?.errorMessage ?? apiError?.failureReason ?? "Cloud analysis request failed."
             )
         }
 
@@ -212,5 +456,14 @@ struct CloudAnalysisService {
         } catch {
             throw CloudAnalysisError.invalidResponse
         }
+    }
+
+    private func makeRequestID() -> String {
+        UUID().uuidString.replacingOccurrences(of: "-", with: "")
+    }
+
+    private func isLoopback(_ url: URL) -> Bool {
+        guard let host = url.host?.lowercased() else { return false }
+        return host == "localhost" || host == "127.0.0.1" || host == "::1"
     }
 }

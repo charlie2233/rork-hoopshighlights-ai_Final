@@ -76,16 +76,22 @@ def run_analysis(job: StoredJob, settings: Settings, source_path: Path) -> Cloud
     diagnostics = CloudDiagnostics(
         processingMs=max(elapsed_ms, 1),
         backendModelVersion=model_version,
+        modelVersion=model_version,
         usedVideoIntelligence=False,
         usedGeminiRelabeling=used_gemini,
         candidateSegments=candidate_segments,
         finalSegments=len(clips),
+        failureReason=None,
     )
+    result_confidence = round(sum(clip.confidence for clip in clips) / len(clips), 4) if clips else 0.0
 
     return CloudAnalysisResult(
         clipCount=len(clips),
         clips=clips,
         diagnostics=diagnostics,
+        resultConfidence=result_confidence,
+        modelVersion=model_version,
+        failureReason=None,
     )
 
 

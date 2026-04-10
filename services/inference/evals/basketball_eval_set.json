@@ -1,0 +1,200 @@
+[
+  {
+    "clipId": "eval-dunk-001",
+    "sourceRef": "r2://basketball/eval/dunk_001.mp4",
+    "expectedLabel": "dunk",
+    "expectedEventFamily": "shot",
+    "expectedShotSubtype": "dunk",
+    "expectedOutcome": "made",
+    "split": "test",
+    "sourceDurationSeconds": 6.3,
+    "notes": "Fast rim finish with clear vertical explosion."
+  },
+  {
+    "clipId": "eval-dunk-002",
+    "sourceRef": "r2://basketball/eval/dunk_002.mp4",
+    "expectedLabel": "dunk",
+    "expectedEventFamily": "shot",
+    "expectedShotSubtype": "dunk",
+    "expectedOutcome": "made",
+    "split": "test",
+    "sourceDurationSeconds": 6.7,
+    "notes": "Crowd reaction and contact finish."
+  },
+  {
+    "clipId": "eval-layup-001",
+    "sourceRef": "r2://basketball/eval/layup_001.mp4",
+    "expectedLabel": "layup",
+    "expectedEventFamily": "shot",
+    "expectedShotSubtype": "layup",
+    "expectedOutcome": "made",
+    "split": "test",
+    "sourceDurationSeconds": 5.5,
+    "notes": "Right-handed layup off glass."
+  },
+  {
+    "clipId": "eval-layup-002",
+    "sourceRef": "r2://basketball/eval/layup_002.mp4",
+    "expectedLabel": "miss",
+    "expectedEventFamily": "shot",
+    "expectedShotSubtype": "layup",
+    "expectedOutcome": "missed",
+    "split": "test",
+    "sourceDurationSeconds": 5.0,
+    "notes": "Rim out on a contested layup."
+  },
+  {
+    "clipId": "eval-jumper-001",
+    "sourceRef": "r2://basketball/eval/jumper_001.mp4",
+    "expectedLabel": "jumper",
+    "expectedEventFamily": "shot",
+    "expectedShotSubtype": "jumper",
+    "expectedOutcome": "made",
+    "split": "test",
+    "sourceDurationSeconds": 5.8,
+    "notes": "Mid-range catch-and-shoot jumper."
+  },
+  {
+    "clipId": "eval-jumper-002",
+    "sourceRef": "r2://basketball/eval/jumper_002.mp4",
+    "expectedLabel": "miss",
+    "expectedEventFamily": "shot",
+    "expectedShotSubtype": "jumper",
+    "expectedOutcome": "missed",
+    "split": "test",
+    "sourceDurationSeconds": 5.1,
+    "notes": "Short contested jumper, no make."
+  },
+  {
+    "clipId": "eval-three-001",
+    "sourceRef": "r2://basketball/eval/three_001.mp4",
+    "expectedLabel": "three",
+    "expectedEventFamily": "shot",
+    "expectedShotSubtype": "three",
+    "expectedOutcome": "made",
+    "split": "test",
+    "sourceDurationSeconds": 6.2,
+    "notes": "Catch-and-shoot three with clear release and make."
+  },
+  {
+    "clipId": "eval-three-002",
+    "sourceRef": "r2://basketball/eval/three_002.mp4",
+    "expectedLabel": "miss",
+    "expectedEventFamily": "shot",
+    "expectedShotSubtype": "three",
+    "expectedOutcome": "missed",
+    "split": "test",
+    "sourceDurationSeconds": 5.9,
+    "notes": "Late-clock three that misses long."
+  },
+  {
+    "clipId": "eval-putback-001",
+    "sourceRef": "r2://basketball/eval/putback_001.mp4",
+    "expectedLabel": "putback",
+    "expectedEventFamily": "shot",
+    "expectedShotSubtype": "putback",
+    "expectedOutcome": "made",
+    "split": "test",
+    "sourceDurationSeconds": 5.4,
+    "notes": "Offensive rebound into immediate putback."
+  },
+  {
+    "clipId": "eval-putback-002",
+    "sourceRef": "r2://basketball/eval/putback_002.mp4",
+    "expectedLabel": "miss",
+    "expectedEventFamily": "shot",
+    "expectedShotSubtype": "putback",
+    "expectedOutcome": "missed",
+    "split": "test",
+    "sourceDurationSeconds": 4.8,
+    "notes": "Tip attempt misses on the second effort."
+  },
+  {
+    "clipId": "eval-block-001",
+    "sourceRef": "r2://basketball/eval/block_001.mp4",
+    "expectedLabel": "block",
+    "expectedEventFamily": "defensive_event",
+    "expectedShotSubtype": "layup",
+    "expectedOutcome": "blocked",
+    "split": "test",
+    "sourceDurationSeconds": 5.2,
+    "notes": "Help-side block at the rim."
+  },
+  {
+    "clipId": "eval-block-002",
+    "sourceRef": "r2://basketball/eval/block_002.mp4",
+    "expectedLabel": "block",
+    "expectedEventFamily": "defensive_event",
+    "expectedShotSubtype": "jumper",
+    "expectedOutcome": "blocked",
+    "split": "test",
+    "sourceDurationSeconds": 6.0,
+    "notes": "Chasedown block in transition."
+  },
+  {
+    "clipId": "eval-steal-001",
+    "sourceRef": "r2://basketball/eval/steal_001.mp4",
+    "expectedLabel": "steal",
+    "expectedEventFamily": "turnover",
+    "expectedShotSubtype": null,
+    "expectedOutcome": "uncertain",
+    "split": "test",
+    "sourceDurationSeconds": 5.0,
+    "notes": "Pickpocket at the top of the key."
+  },
+  {
+    "clipId": "eval-steal-002",
+    "sourceRef": "r2://basketball/eval/steal_002.mp4",
+    "expectedLabel": "steal",
+    "expectedEventFamily": "turnover",
+    "expectedShotSubtype": null,
+    "expectedOutcome": "uncertain",
+    "split": "test",
+    "sourceDurationSeconds": 4.9,
+    "notes": "Deflection leading to a turnover."
+  },
+  {
+    "clipId": "eval-fastbreak-001",
+    "sourceRef": "r2://basketball/eval/fastbreak_001.mp4",
+    "expectedLabel": "fast break",
+    "expectedEventFamily": "transition",
+    "expectedShotSubtype": null,
+    "expectedOutcome": "made",
+    "split": "test",
+    "sourceDurationSeconds": 7.9,
+    "notes": "Outlet pass and open-court runout."
+  },
+  {
+    "clipId": "eval-fastbreak-002",
+    "sourceRef": "r2://basketball/eval/fastbreak_002.mp4",
+    "expectedLabel": "fast break",
+    "expectedEventFamily": "transition",
+    "expectedShotSubtype": null,
+    "expectedOutcome": "uncertain",
+    "split": "test",
+    "sourceDurationSeconds": 8.7,
+    "notes": "Secondary break with trailer finish."
+  },
+  {
+    "clipId": "eval-miss-001",
+    "sourceRef": "r2://basketball/eval/miss_001.mp4",
+    "expectedLabel": "miss",
+    "expectedEventFamily": "shot",
+    "expectedShotSubtype": "jumper",
+    "expectedOutcome": "missed",
+    "split": "test",
+    "sourceDurationSeconds": 4.5,
+    "notes": "Clear miss that should not be filtered out."
+  },
+  {
+    "clipId": "eval-miss-002",
+    "sourceRef": "r2://basketball/eval/miss_002.mp4",
+    "expectedLabel": "miss",
+    "expectedEventFamily": "shot",
+    "expectedShotSubtype": "layup",
+    "expectedOutcome": "missed",
+    "split": "test",
+    "sourceDurationSeconds": 4.4,
+    "notes": "Missed layup with rebound continuation."
+  }
+]

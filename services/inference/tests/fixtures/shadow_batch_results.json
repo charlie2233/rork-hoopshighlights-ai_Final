@@ -1,0 +1,112 @@
+{
+  "jobId": "job-shadow-001",
+  "requestId": "req-shadow-001",
+  "uploadTraceId": "upload-shadow-001",
+  "inferenceAttemptId": "attempt-shadow-001",
+  "modelVersion": "runtime:v1-shadow",
+  "clips": [
+    {
+      "clipId": "clip-shadow-001",
+      "label": "Dunk",
+      "finalLabel": "Dunk",
+      "eventFamily": "shot_attempt",
+      "shotSubtype": "dunk",
+      "outcome": "made",
+      "confidence": 0.94,
+      "confidenceBeforeMapping": 0.86,
+      "confidenceAfterMapping": 0.93,
+      "resultConfidence": 0.92,
+      "clipDurationSeconds": 6.4,
+      "wasMerged": false,
+      "sourceEventCount": 1,
+      "isUncertain": false,
+      "rawTopLabels": [
+        {"label": "dunk", "confidence": 0.91},
+        {"label": "layup", "confidence": 0.44},
+        {"label": "putback", "confidence": 0.22}
+      ],
+      "comparisonRawTopLabels": [
+        {"label": "dunk", "confidence": 0.88},
+        {"label": "layup", "confidence": 0.31}
+      ]
+    },
+    {
+      "clipId": "clip-shadow-002",
+      "expectedLabel": "miss",
+      "label": "Made Shot",
+      "finalLabel": "Made Shot",
+      "eventFamily": "shot_attempt",
+      "shotSubtype": "jumper",
+      "outcome": "made",
+      "confidence": 0.61,
+      "confidenceBeforeMapping": 0.57,
+      "confidenceAfterMapping": 0.59,
+      "resultConfidence": 0.58,
+      "clipDurationSeconds": 5.2,
+      "wasMerged": false,
+      "sourceEventCount": 1,
+      "isUncertain": false,
+      "rawTopLabels": [
+        {"label": "jumper", "confidence": 0.72},
+        {"label": "miss", "confidence": 0.63},
+        {"label": "three", "confidence": 0.18}
+      ],
+      "comparisonRawTopLabels": [
+        {"label": "jumper", "confidence": 0.68},
+        {"label": "three", "confidence": 0.21}
+      ]
+    },
+    {
+      "clipId": "clip-shadow-003",
+      "label": "Highlight",
+      "finalLabel": "Highlight",
+      "eventFamily": "other",
+      "eventFamilyOtherBucket": "ambiguous_event",
+      "eventFamilyOtherBucketReason": "Shot cues stayed present but event margins remained low.",
+      "manualAuditLabel": "real_event_missed_by_model",
+      "manualAuditRationale": "Manual review marked this as a missed shot attempt.",
+      "shotSubtype": null,
+      "outcome": "uncertain",
+      "confidence": 0.42,
+      "confidenceBeforeMapping": 0.44,
+      "confidenceAfterMapping": 0.41,
+      "resultConfidence": 0.41,
+      "clipDurationSeconds": 4.8,
+      "wasMerged": false,
+      "sourceEventCount": 1,
+      "isUncertain": true,
+      "rawTopLabels": [
+        {"label": "uncertain", "confidence": 0.77},
+        {"label": "fast break", "confidence": 0.26}
+      ],
+      "comparisonRawTopLabels": [
+        {"label": "layup", "confidence": 0.74},
+        {"label": "uncertain", "confidence": 0.24}
+      ]
+    },
+    {
+      "clipId": "clip-shadow-004",
+      "label": "Steal",
+      "finalLabel": "Steal",
+      "eventFamily": "turnover",
+      "shotSubtype": null,
+      "outcome": "uncertain",
+      "confidence": 0.79,
+      "confidenceBeforeMapping": 0.76,
+      "confidenceAfterMapping": 0.78,
+      "resultConfidence": 0.77,
+      "clipDurationSeconds": 5.6,
+      "wasMerged": true,
+      "sourceEventCount": 2,
+      "isUncertain": false,
+      "rawTopLabels": [
+        {"label": "steal", "confidence": 0.84},
+        {"label": "block", "confidence": 0.35}
+      ],
+      "comparisonRawTopLabels": [
+        {"label": "steal", "confidence": 0.81},
+        {"label": "fast break", "confidence": 0.23}
+      ]
+    }
+  ]
+}

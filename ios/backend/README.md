@@ -27,11 +27,20 @@ The public request and response payloads stay unchanged across all modes.
 
 ## Run locally
 ```bash
-cd /Users/hanfei/rork-hoopshighlights-ai_Final/backend
-python3 -m venv .venv
+cd /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend
+uv venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8080
+```
+
+## Run contract tests
+```bash
+cd /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend
+uv venv .venv
+source .venv/bin/activate
+pip install -r requirements-dev.txt
+python -m unittest discover -s tests
 ```
 
 ## Optional external model integrations
@@ -43,14 +52,14 @@ The backend can now call two repo-backed adapters without changing the iOS API c
 Those repos are not vendored into this repository. Keep them in ignored local directories and wire them in through environment variables:
 
 ```bash
-cd /Users/hanfei/rork-hoopshighlights-ai_Final/backend
+cd /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend
 ./scripts/setup_external_backends.sh --with-venvs
 ```
 
 That script clones:
 
-- `/Users/hanfei/rork-hoopshighlights-ai_Final/backend/.external/HoopCut_FH`
-- `/Users/hanfei/rork-hoopshighlights-ai_Final/backend/.external/autohighlight`
+- `/Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.external/HoopCut_FH`
+- `/Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.external/autohighlight`
 
 Then you can selectively install dependencies into isolated virtualenvs:
 
@@ -73,14 +82,14 @@ Then you can selectively install dependencies into isolated virtualenvs:
 - `HOOPS_FIRESTORE_USAGE_COLLECTION`: Firestore collection for usage counters (default `usageCounters`)
 - `HOOPS_CLOUD_TASKS_QUEUE`: Cloud Tasks queue name (default `analysis-jobs`)
 - `HOOPS_ENABLE_LOCAL_UPLOAD_EMULATION`: force-enable or disable the local upload emulator
-- `HOOPS_EXTERNAL_REPO_ROOT`: default root for ignored external repo clones (default `backend/.external`)
+- `HOOPS_EXTERNAL_REPO_ROOT`: default root for ignored external repo clones (default `ios/backend/.external`)
 - `HOOPS_DETECTION_PROVIDER`: `heuristic`, `hybrid`, or `hoopcut` (default `hybrid`)
 - `HOOPS_POST_RANKING_PROVIDER`: `native` or `autohighlight` (default `native`)
 - `HOOPS_HOOPCUT_REPO_PATH`: explicit HoopCut checkout path
 - `HOOPS_HOOPCUT_PYTHON`: Python executable for the HoopCut virtualenv
 - `HOOPS_AUTOHIGHLIGHT_REPO_PATH`: explicit autohighlight checkout path
 - `HOOPS_AUTOHIGHLIGHT_PYTHON`: Python executable for the autohighlight virtualenv
-- `HOOPS_DAILY_QUOTA`: per-install rolling quota (default `3`)
+- `HOOPS_DAILY_QUOTA`: per-install rolling quota (default `5`)
 - `HOOPS_MAX_DURATION_SECONDS`: max backend video duration (default `1800`)
 - `HOOPS_MAX_FILE_SIZE_BYTES`: max video size for v1 (default `524288000`)
 - `HOOPS_BACKEND_MODEL_VERSION`: version string exposed in diagnostics (default `cloud-v1`)
@@ -92,7 +101,7 @@ Then you can selectively install dependencies into isolated virtualenvs:
 - `autohighlight` post-ranking is optional and only runs when the repo path and dedicated Python runtime are configured.
 - Managed mode downloads the source object from GCS into ephemeral local disk before analysis.
 - Temporary local analysis files are deleted after each run.
-- Source objects are deleted after terminal job states (`succeeded`, `failed`, `expired`).
+- Source objects are deleted after terminal job states (`succeeded`, `failed`, `expired`, `cancelled`).
 
 ## Deployment
 `cloudbuild.yaml` deploys the service to Cloud Run and wires:

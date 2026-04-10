@@ -4,18 +4,21 @@ import RevenueCat
 @main
 struct HoopsClipsApp: App {
     init() {
-        let apiKey: String
-        #if DEBUG
-        apiKey = AppConstants.revenueCatTestAPIKey
-        Purchases.logLevel = .debug
-        #else
-        apiKey = AppConstants.revenueCatProdAPIKey
-        #endif
+        let runtimeConfig = AppRuntimeConfig.shared
+        if !runtimeConfig.missingRequiredKeys.isEmpty {
+            print("Missing HoopsClips runtime config keys: \(runtimeConfig.missingRequiredKeys.joined(separator: ", "))")
+        }
+        let apiKey = runtimeConfig.revenueCatAPIKey
+        if runtimeConfig.environmentName != "production" {
+            Purchases.logLevel = .debug
+        }
         if !apiKey.isEmpty {
             Purchases.configure(withAPIKey: apiKey)
         }
-        Task { @MainActor in
-            AnalysisNotificationService.shared.configure()
+        if !LaunchAutomation.isEnabled {
+            Task { @MainActor in
+                AnalysisNotificationService.shared.configure()
+            }
         }
     }
 

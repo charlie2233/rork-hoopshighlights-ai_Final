@@ -38,10 +38,19 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
     router = APIRouter()
     runtime: Optional[BackendRuntime] = None
 
-    def _error_response(error: APIError) -> JSONResponse:
+    def _request_id(request: Request) -> str:
+        header_value = request.headers.get("x-request-id", "").strip()
+        return header_value or uuid4().hex
+
+    def _error_response(error: APIError, request_id: str, model_version: Optional[str] = None) -> JSONResponse:
         return JSONResponse(
             status_code=error.status_code,
-            content=error.to_response().model_dump(exclude_none=True),
+            content=error.to_response().model_copy(
+                update={
+                    "requestId": request_id,
+                    "modelVersion": model_version,
+                }
+            ).model_dump(exclude_none=True),
         )
 
     async def _require_job(job_id: str):
@@ -113,8 +122,9 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
         response_model=CreateCloudAnalysisJobResponse,
         responses={429: {"model": ErrorResponse}},
     )
-    async def create_job(request: CreateCloudAnalysisJobRequest):
+    async def create_job(request: CreateCloudAnalysisJobRequest, raw_request: Request):
         assert runtime is not None
+        request_id = _request_id(raw_request)
         try:
             if request.durationSeconds > resolved_settings.max_duration_seconds:
                 raise APIError(400, "unsupported_duration", "Videos longer than 30 minutes are not supported in cloud analysis right now.")
@@ -127,6 +137,7 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
             job = await runtime.job_store.create_job(job_id, request, upload, quota_remaining)
 
             return CreateCloudAnalysisJobResponse(
+                requestId=request_id,
                 jobId=job.job_id,
                 uploadUrl=upload.upload_url,
                 uploadHeaders=upload.upload_headers,
@@ -135,7 +146,7 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
                 quotaRemainingToday=quota_remaining,
             )
         except APIError as error:
-            return _error_response(error)
+            return _error_response(error, request_id)
 
     if resolved_settings.enable_local_upload_emulation:
 
@@ -146,6 +157,7 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
         )
         async def upload_video(job_id: str, request: Request):
             assert runtime is not None
+            request_id = _request_id(request)
             try:
                 job = await _require_job(job_id)
                 payload = await request.body()
@@ -156,71 +168,93 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
 
                 storage_path = runtime.storage.accept_local_upload(job, payload)
                 await runtime.job_store.mark_uploaded(job_id, storage_path)
-                return Response(status_code=204)
+                return Response(status_code=204, headers={"X-Request-ID": request_id})
             except APIError as error:
-                return _error_response(error)
+                return _error_response(error, request_id)
 
     @router.post(
         "/v1/analysis/jobs/{job_id}/start",
         response_model=StartCloudAnalysisJobResponse,
         responses={400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
     )
-    async def start_job(job_id: str, request: StartCloudAnalysisJobRequest):
+    async def start_job(job_id: str, request: StartCloudAnalysisJobRequest, raw_request: Request):
         assert runtime is not None
+        request_id = _request_id(raw_request)
         try:
             job = await _require_job(job_id)
             if job.install_id != request.installId:
                 raise APIError(403, "install_mismatch", "Install ID does not own this analysis job.")
             if job.status != JobStatus.CREATED:
-                return StartCloudAnalysisJobResponse(jobId=job.job_id, status=job.status.value)
+                return StartCloudAnalysisJobResponse(
+                    requestId=request_id,
+                    jobId=job.job_id,
+                    status=job.status.value,
+                    modelVersion=job.model_version,
+                    failureReason=job.failure_reason or job.error_code,
+                )
             if not await runtime.storage.object_exists(job):
                 raise APIError(400, "upload_missing", "Upload is missing. Complete the signed upload before starting analysis.")
 
             job = await runtime.job_store.mark_queued(job_id)
             await runtime.dispatcher.enqueue_process(job)
-            return StartCloudAnalysisJobResponse(jobId=job.job_id, status=job.status.value)
+            return StartCloudAnalysisJobResponse(
+                requestId=request_id,
+                jobId=job.job_id,
+                status=job.status.value,
+                modelVersion=job.model_version,
+                failureReason=job.failure_reason,
+            )
         except APIError as error:
-            return _error_response(error)
+            return _error_response(error, request_id)
 
     @router.get(
         "/v1/analysis/jobs/{job_id}",
         responses={404: {"model": ErrorResponse}},
     )
-    async def get_job(job_id: str):
+    async def get_job(job_id: str, request: Request):
+        request_id = _request_id(request)
         try:
             job = await _require_job(job_id)
-            return job.to_job_response()
+            return job.to_job_response(request_id)
         except APIError as error:
-            return _error_response(error)
+            return _error_response(error, request_id)
 
     @router.delete(
         "/v1/analysis/jobs/{job_id}",
         status_code=204,
         responses={404: {"model": ErrorResponse}},
     )
-    async def delete_job(job_id: str):
+    async def delete_job(job_id: str, request: Request):
         assert runtime is not None
+        request_id = _request_id(request)
         try:
             job = await _require_job(job_id)
             await runtime.job_store.mark_expired(job_id)
             runtime.storage.cleanup(job)
-            return Response(status_code=204)
+            return Response(status_code=204, headers={"X-Request-ID": request_id})
         except APIError as error:
-            return _error_response(error)
+            return _error_response(error, request_id)
 
     @router.post(
         "/v1/internal/process/{job_id}",
         responses={403: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
     )
-    async def process_job(job_id: str, x_hoops_internal_secret: Optional[str] = Header(default=None)):
+    async def process_job(job_id: str, request: Request, x_hoops_internal_secret: Optional[str] = Header(default=None)):
+        request_id = _request_id(request)
         try:
             if resolved_settings.internal_process_secret and x_hoops_internal_secret != resolved_settings.internal_process_secret:
                 raise APIError(403, "forbidden", "Invalid internal processing secret.")
             await _require_job(job_id)
             await _process_job(job_id)
             job = await _require_job(job_id)
-            return {"jobId": job.job_id, "status": job.status.value}
+            return {
+                "requestId": request_id,
+                "jobId": job.job_id,
+                "status": job.status.value,
+                "modelVersion": job.model_version,
+                "failureReason": job.failure_reason or job.error_code,
+            }
         except APIError as error:
-            return _error_response(error)
+            return _error_response(error, request_id)
 
     return router

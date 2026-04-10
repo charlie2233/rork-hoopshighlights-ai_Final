@@ -1,0 +1,170 @@
+[
+  {
+    "ballNearRim": 0.84,
+    "ballThroughHoopLikelihood": 0.21,
+    "ballVisible": true,
+    "clipId": "clip-highlight-disagree-001",
+    "eventCenterSeconds": 2.9,
+    "eventFamily": "other",
+    "hoopVisible": true,
+    "humanVerified": false,
+    "outcome": "uncertain",
+    "possessionChangeLikelihood": 0.12,
+    "rawRuntimeOutputs": {
+      "confidence": 0.41,
+      "eventFamilyDistribution": {
+        "other": 0.46,
+        "shot_attempt": 0.38,
+        "transition": 0.16
+      },
+      "eventFamilyMargin": 0.08,
+      "eventFamily": "other",
+      "label": "Highlight",
+      "outcome": "uncertain",
+      "shotSubtype": null
+    },
+    "rawTeacherOutputs": {
+      "confidence": 0.91,
+      "displayLabelSuggestion": "Layup",
+      "eventFamily": "shot_attempt",
+      "outcome": "missed",
+      "shotSubtype": "layup"
+    },
+    "reviewerNotes": "Runtime collapsed to Highlight despite clear shot context.",
+    "schemaVersion": "2026-03-30",
+    "shotSubtype": null,
+    "sourceDomain": "fixed_camera",
+    "teacherConfidence": 0.91,
+    "transitionLikelihood": 0.05
+  },
+  {
+    "ballNearRim": 0.42,
+    "ballThroughHoopLikelihood": 0.14,
+    "ballVisible": true,
+    "clipId": "clip-miss-made-001",
+    "eventFamily": "shot_attempt",
+    "hoopVisible": true,
+    "humanVerified": false,
+    "outcome": "made",
+    "possessionChangeLikelihood": 0.08,
+    "rawRuntimeOutputs": {
+      "confidence": 0.49,
+      "eventFamily": "shot_attempt",
+      "label": "Highlight",
+      "outcome": "made",
+      "shotSubtype": "jumper"
+    },
+    "rawTeacherOutputs": {
+      "confidence": 0.87,
+      "displayLabelSuggestion": "Miss",
+      "eventFamily": "shot_attempt",
+      "outcome": "missed",
+      "shotSubtype": "jumper"
+    },
+    "reviewerNotes": "Explicit miss vs made disagreement for audit.",
+    "schemaVersion": "2026-03-30",
+    "shotSubtype": "jumper",
+    "sourceDomain": "broadcast",
+    "teacherConfidence": 0.87,
+    "transitionLikelihood": 0.04
+  },
+  {
+    "ballNearRim": 0.93,
+    "ballThroughHoopLikelihood": 0.78,
+    "ballVisible": true,
+    "clipId": "clip-null-subtype-strong-evidence-001",
+    "eventFamily": "shot_attempt",
+    "hoopVisible": true,
+    "humanVerified": false,
+    "outcome": "uncertain",
+    "possessionChangeLikelihood": 0.11,
+    "rawRuntimeOutputs": {
+      "confidence": 0.36,
+      "eventFamily": "shot_attempt",
+      "label": "Highlight",
+      "outcome": "uncertain",
+      "shotSubtype": null
+    },
+    "rawTeacherOutputs": {
+      "confidence": 0.79,
+      "displayLabelSuggestion": "Jumper",
+      "eventFamily": "shot_attempt",
+      "outcome": "made",
+      "shotSubtype": "jumper"
+    },
+    "reviewerNotes": "Subtype is null even though the hoop evidence is strong.",
+    "schemaVersion": "2026-03-30",
+    "shotSubtype": null,
+    "sourceDomain": "fixed_camera",
+    "teacherConfidence": 0.79,
+    "transitionLikelihood": 0.03
+  },
+  {
+    "ballNearRim": 0.08,
+    "ballThroughHoopLikelihood": 0.0,
+    "ballVisible": true,
+    "clipId": "clip-high-teacher-low-runtime-001",
+    "eventFamily": "transition",
+    "hoopVisible": false,
+    "humanVerified": false,
+    "outcome": "uncertain",
+    "possessionChangeLikelihood": 0.86,
+    "rawRuntimeOutputs": {
+      "confidence": 0.31,
+      "eventFamilyDistribution": {
+        "transition": 0.54,
+        "other": 0.34,
+        "turnover": 0.12
+      },
+      "eventFamilyMargin": 0.2,
+      "eventFamily": "transition",
+      "label": "Highlight",
+      "outcome": "uncertain",
+      "shotSubtype": null
+    },
+    "rawTeacherOutputs": {
+      "confidence": 0.95,
+      "displayLabelSuggestion": "Fast Break",
+      "eventFamily": "transition",
+      "outcome": "uncertain",
+      "shotSubtype": null
+    },
+    "reviewerNotes": "Teacher is confident but runtime is weak on a clear transition.",
+    "schemaVersion": "2026-03-30",
+    "shotSubtype": null,
+    "sourceDomain": "fixed_camera",
+    "teacherConfidence": 0.95,
+    "transitionLikelihood": 0.91
+  },
+  {
+    "ballNearRim": 0.61,
+    "ballThroughHoopLikelihood": 0.74,
+    "ballVisible": true,
+    "clipId": "clip-human-verified-gold-001",
+    "eventFamily": "shot_attempt",
+    "hoopVisible": true,
+    "humanVerified": true,
+    "outcome": "made",
+    "possessionChangeLikelihood": 0.06,
+    "rawRuntimeOutputs": {
+      "confidence": 0.88,
+      "eventFamily": "shot_attempt",
+      "label": "Three Pointer",
+      "outcome": "made",
+      "shotSubtype": "three"
+    },
+    "rawTeacherOutputs": {
+      "confidence": 0.98,
+      "displayLabelSuggestion": "Three Pointer",
+      "eventFamily": "shot_attempt",
+      "outcome": "made",
+      "shotSubtype": "three"
+    },
+    "reviewerNotes": "Gold label already settled; keep out of the disagreement queue unless later models diverge.",
+    "schemaVersion": "2026-03-30",
+    "shotSubtype": "three",
+    "sourceDomain": "broadcast",
+    "teacherConfidence": 0.98,
+    "transitionLikelihood": 0.12
+  }
+]
