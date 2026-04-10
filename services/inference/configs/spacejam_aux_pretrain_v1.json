@@ -1,0 +1,40 @@
+{
+  "schemaVersion": "spacejam-aux-pretrain-v1",
+  "featureFlag": "spacejam_aux_pretrain_v1",
+  "enabled": true,
+  "spacejam": {
+    "manifestPath": "services/inference/datasets/external/spacejam/clip_annotations.json",
+    "clipRoot": "services/inference/datasets/external/spacejam/clips",
+    "sourceDomain": "spacejam:clip",
+    "sourceDataset": "SpaceJam",
+    "sourceSet": "spacejam_aux_clip_v1",
+    "ignoreJoints": true,
+    "dropUnmapped": true,
+    "labelMap": {
+      "Shoot": "shot_candidate_aux",
+      "No Action": "coarse_non_event_aux"
+    }
+  },
+  "pretraining": {
+    "modality": "clip_only",
+    "target": "encoder_and_proposal_features_only",
+    "backbone": "MCG-NJU/videomae-base-finetuned-kinetics",
+    "epochs": 2,
+    "batchSize": 2,
+    "learningRate": 0.0002,
+    "device": "cpu",
+    "freezeRuntimeContract": true
+  },
+  "fineTune": {
+    "dataset": "HoopsClips",
+    "taxonomy": "existing_runtime_taxonomy",
+    "runtimeContractUnchanged": true,
+    "shadowPayloadUnchanged": true
+  },
+  "abortConditions": {
+    "calibrationWorsens": true,
+    "dominantFlatLabelShareIncreases": true,
+    "familyGateOpenRateDrops": true,
+    "uncertaintyOrCollapseRegresses": true
+  }
+}

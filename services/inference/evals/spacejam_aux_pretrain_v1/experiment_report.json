@@ -1,0 +1,34 @@
+{
+  "abortConditions": {
+    "calibrationWorsens": true,
+    "dominantFlatLabelShareIncreases": true,
+    "familyGateOpenRateDrops": true,
+    "uncertaintyOrCollapseRegresses": true
+  },
+  "afterMetrics": null,
+  "baselineMetrics": {
+    "acceptedShotOutcomeAccuracy": 1.0,
+    "brierScore": 0.0077,
+    "dominantFlatLabelShare": 0.5455,
+    "eceLite": 0.0456,
+    "familyGateOpenRate": 0.5455,
+    "flatLabelDistribution": {
+      "Fast Break": 1,
+      "Highlight": 6,
+      "Layup": 1,
+      "Made Shot": 3
+    },
+    "highlightDominance": 0.5455,
+    "missVsMadeConfusion": 0,
+    "proposalAcceptanceRate": 0.5455,
+    "rawEventFamilyOtherRate": 0.4545,
+    "shotHeadInvocationRate": 0.4545,
+    "uncertaintyRate": 0.6364
+  },
+  "featureFlag": "spacejam_aux_pretrain_v1",
+  "reason": "The configured SpaceJam manifest is not present locally, so the auxiliary-pretraining run was not started.",
+  "recommendation": "revise",
+  "schemaVersion": "spacejam-aux-pretrain-v1",
+  "spacejamSummary": null,
+  "status": "blocked_missing_spacejam_manifest"
+}
