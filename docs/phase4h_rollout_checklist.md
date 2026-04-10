@@ -1,5 +1,18 @@
 # Phase 4h Rollout Checklist
 
+## Staging Validation Result - 2026-04-10
+
+- Result: no-go; hold and recalibrate before any larger shadow rollout.
+- Batch: `43` completed Worker-path uploads produced `63` clips through staging.
+- Eval artifact: `services/inference/evals/phase4h_staging_eval/shadow_eval_report.json`.
+- Audit queue: `services/inference/evals/phase4h_staging_eval/phase4h_audit_queue.json`.
+- Proposal acceptance rate: `0.127` (`8` / `63`), below the `0.35` lower bound.
+- Family gate open rate: `0.0`; accepted proposals existed but `familyGateOpenCount == 0`.
+- Shot head invocation rate: `0.0`; accepted-shot outcome accuracy is not computable.
+- Dominant flat label: `Highlight` at `1.0`; raw `eventFamily=other` is `1.0`.
+- Miss-to-made drift: `0`, but this is weak because no clip reached a made-shot label.
+- Telemetry gap: staged payload lacks calibrated acceptance probability, acceptance energy score, and explicit family-gate rejection reasons.
+
 ## Before Shadow Deploy
 
 - Confirm branch is `codex/phase4h-calibrated-acceptance-gate-unblocking`.
