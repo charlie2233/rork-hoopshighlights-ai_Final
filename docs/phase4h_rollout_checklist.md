@@ -13,9 +13,20 @@
 - Miss-to-made drift: `0`, but this is weak because no clip reached a made-shot label.
 - Telemetry gap: staged payload lacks calibrated acceptance probability, acceptance energy score, and explicit family-gate rejection reasons.
 
+## Family Gate Suppression Replay - 2026-04-11
+
+- Branch: `codex/phase4h-family-gate-suppression-fix`.
+- Debug report: `docs/phase4h_family_gate_debug_report.md`.
+- Sweep report: `docs/phase4h_family_gate_sweep_report.md`.
+- Accepted-slice replay: `8` accepted proposals; all were known made-shot clips.
+- Root cause: family top-1 was `transition` at `0.5264`, shot_attempt was top-2 at `0.4706`, and the old gate suppressed the accepted proposal without an exported closure reason.
+- Comparator result: accepted-implies-family-eval with close-margin spotter rescue opens `8` family gates and invokes the shot head `8` times on replay.
+- Recommended smoke setting: family temperature `1.0`, top-1 threshold `0.42`, top-2 margin threshold `0.02`, spotter rescue max delta `0.08`.
+- Next gate: run only a small `15-20` clip staging smoke. Do not promote to another large batch until calibrated acceptance probability, energy score, and explicit family-gate closure reasons are present in staging payloads.
+
 ## Before Shadow Deploy
 
-- Confirm branch is `codex/phase4h-calibrated-acceptance-gate-unblocking`.
+- Confirm branch is `codex/phase4h-family-gate-suppression-fix`.
 - Confirm `services/inference/tests/test_temporal_event_detector.py` passes.
 - Confirm `services/inference/tests/test_shadow_eval.py` passes.
 - Confirm syntax check passes for all touched Phase 4h files.

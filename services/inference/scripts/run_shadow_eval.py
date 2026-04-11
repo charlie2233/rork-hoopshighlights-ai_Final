@@ -228,6 +228,7 @@ def build_shadow_report(records: list[ShadowClipRecord]) -> dict[str, Any]:
             "acceptedShotOutcomeCalibration": accepted_shot_outcome_calibration,
             "dunkDominance": proposal_summary["dunkDominance"],
             "rejectedProposalAudit": proposal_summary["rejectedProposalAudit"],
+            "acceptedClosedWithoutReason": proposal_summary["acceptedClosedWithoutReason"],
             "splitOtherDistribution": other_bucket_distribution,
             "otherBucketAudit": other_bucket_audit,
             "missVsMadeConfusion": miss_vs_made_confusion,
@@ -916,6 +917,19 @@ def build_proposal_summary(records: list[ShadowClipRecord]) -> dict[str, Any]:
         "trueNegativeRate": round(rejected_true_negative / len(rejected_labeled_rows), 4) if rejected_labeled_rows else None,
         "trueMissRate": round(rejected_true_miss / len(rejected_labeled_rows), 4) if rejected_labeled_rows else None,
     }
+    accepted_closed_without_reason = [
+        {
+            "clipId": record.clipId,
+            "jobId": record.jobId,
+            "eventFamily": record.eventFamily,
+            "proposalScore": record.proposalScore,
+            "expectedEventFamily": record.expectedEventFamily,
+        }
+        for record in eligible_records
+        if record.proposalAccepted is True
+        and record.familyGateOpen is False
+        and not record.familyGateRejectionReason
+    ]
 
     return {
         "proposalAcceptanceRate": proposal_acceptance_rate,
@@ -935,6 +949,7 @@ def build_proposal_summary(records: list[ShadowClipRecord]) -> dict[str, Any]:
         "acceptedShotAbstentionRate": accepted_shot_abstention_rate,
         "dunkDominance": dunk_dominance,
         "rejectedProposalAudit": rejected_proposal_audit,
+        "acceptedClosedWithoutReason": accepted_closed_without_reason,
     }
 
 
@@ -1161,12 +1176,19 @@ def build_spread_warnings(
         proposal_accepted_count = int(proposal_summary.get("proposalAcceptedCount") or 0)
         family_gate_open_count = int(proposal_summary.get("familyGateOpenCount") or 0)
         shot_head_invocation_count = int(proposal_summary.get("shotHeadInvocationCount") or 0)
+        missing_gate_reasons = sum(
+            1
+            for record in proposal_summary.get("acceptedClosedWithoutReason", [])
+            if record.get("clipId")
+        )
         if proposal_acceptance_rate in {0.0, 1.0} and proposal_acceptance_clip_count > 0:
             warnings.append("Proposal acceptance collapsed to 0% or 100%.")
         if proposal_accepted_count > 0 and family_gate_open_count == 0:
             warnings.append("Accepted proposals exist, but family gate never opened.")
         if proposal_accepted_count > 0 and shot_head_invocation_count == 0:
             warnings.append("Accepted proposals exist, but shot head never invoked.")
+        if missing_gate_reasons > 0:
+            warnings.append("Accepted-but-closed proposals are missing explicit family gate rejection reasons.")
     return warnings
 
 

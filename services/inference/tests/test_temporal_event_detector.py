@@ -9,13 +9,18 @@ from types import ModuleType
 import sys
 
 from services.inference.app.runtime_models.temporal_event_detector import (
+    _build_shadow_forced_family_eval,
+    _build_shadow_relaxed_family_eval,
     _resolve_shot_specialist_subtype,
+    _resolve_accepted_event_family,
     _should_attempt_shot_subtype,
     _should_promote_generic_shot_attempt,
     load_temporal_event_detector_bundle,
 )
+from services.inference.app.models import LabelScore
 from services.inference.app.temporal_encoder import TemporalTargetPrediction
 from services.inference.app.runtime_models.temporal_student import TemporalStudentObservation
+from services.inference.app.runtime_models.temporal_student import TemporalStudentTargetPrediction
 
 try:
     import torch  # type: ignore
@@ -147,6 +152,92 @@ def _make_observation(
 
 
 class TemporalEventDetectorTests(unittest.TestCase):
+    def test_accepted_family_resolution_uses_spotter_when_family_margin_is_close(self) -> None:
+        family_prediction = TemporalTargetPrediction(
+            label="transition",
+            confidence=0.5264,
+            margin=0.0558,
+            distribution={
+                "shot_attempt": 0.4706,
+                "turnover": 0.0019,
+                "defensive_event": 0.0002,
+                "transition": 0.5264,
+                "other": 0.001,
+            },
+            top_labels=(
+                LabelScore(label="transition", confidence=0.5264, modelVersion="test"),
+                LabelScore(label="shot_attempt", confidence=0.4706, modelVersion="test"),
+            ),
+            is_uncertain=True,
+            raw_logits=(0.1, -5.4, -6.1, 0.21, -5.9),
+        )
+        spotter_prediction = TemporalStudentTargetPrediction(
+            label="shot_attempt",
+            confidence=0.8265,
+            margin=0.56,
+            distribution={"shot_attempt": 0.8265, "transition": 0.14, "other": 0.0335},
+            top_labels=(LabelScore(label="shot_attempt", confidence=0.8265, modelVersion="test"),),
+            is_uncertain=False,
+        )
+
+        resolution = _resolve_accepted_event_family(
+            family_prediction=family_prediction,
+            event_spotter_prediction=spotter_prediction,
+            acceptance_score=0.8726,
+        )
+        forced = _build_shadow_forced_family_eval(
+            proposal_accepted=True,
+            family_prediction=family_prediction,
+            event_spotter_prediction=spotter_prediction,
+        )
+        relaxed = _build_shadow_relaxed_family_eval(
+            proposal_accepted=True,
+            family_resolution=resolution,
+        )
+
+        self.assertEqual(resolution.event_family, "shot_attempt")
+        self.assertEqual(resolution.reason, "spotter_family_close_margin_rescue")
+        self.assertEqual(forced["family"], "transition")
+        self.assertFalse(forced["shotHeadWouldInvoke"])
+        self.assertEqual(relaxed["family"], "shot_attempt")
+        self.assertTrue(relaxed["shotHeadWouldInvoke"])
+
+    def test_accepted_family_resolution_does_not_rescue_low_acceptance(self) -> None:
+        family_prediction = TemporalTargetPrediction(
+            label="transition",
+            confidence=0.53,
+            margin=0.05,
+            distribution={
+                "shot_attempt": 0.48,
+                "turnover": 0.0,
+                "defensive_event": 0.0,
+                "transition": 0.53,
+                "other": 0.0,
+            },
+            top_labels=(
+                LabelScore(label="transition", confidence=0.53, modelVersion="test"),
+                LabelScore(label="shot_attempt", confidence=0.48, modelVersion="test"),
+            ),
+            is_uncertain=True,
+        )
+        spotter_prediction = TemporalStudentTargetPrediction(
+            label="shot_attempt",
+            confidence=0.8,
+            margin=0.5,
+            distribution={"shot_attempt": 0.8, "transition": 0.1, "other": 0.1},
+            top_labels=(LabelScore(label="shot_attempt", confidence=0.8, modelVersion="test"),),
+            is_uncertain=False,
+        )
+
+        resolution = _resolve_accepted_event_family(
+            family_prediction=family_prediction,
+            event_spotter_prediction=spotter_prediction,
+            acceptance_score=0.62,
+        )
+
+        self.assertEqual(resolution.event_family, "transition")
+        self.assertEqual(resolution.reason, "family_top1_relaxed_margin")
+
     def test_infers_rejector_label_from_reviewer_notes(self) -> None:
         example = TemporalTrainingExample(
             clip_id="clip-ambiguous-negative",
@@ -322,7 +413,7 @@ class TemporalEventDetectorTests(unittest.TestCase):
         self.assertTrue(result.bundle.proposal_acceptor is not None)
 
     @unittest.skipIf(torch is None, "torch is required for temporal event detector training")
-    def test_accepted_proposal_does_not_force_shot_attempt_when_family_is_weak(self) -> None:
+    def test_accepted_proposal_uses_spotter_rescue_when_family_gate_is_overstrict(self) -> None:
         shot = TemporalTrainingExample(
             clip_id="clip-shot-weak-family",
             source_kind="gold",
@@ -416,9 +507,14 @@ class TemporalEventDetectorTests(unittest.TestCase):
         self.assertTrue(prediction.metadata["temporal_event_detector_proposal_accepted"])
         self.assertTrue(prediction.metadata["temporal_event_detector_classifier_gate_open"])
         self.assertIsNone(prediction.metadata["temporal_event_detector_family_gate_rejection_reason"])
-        self.assertEqual(prediction.eventFamily, "other")
-        self.assertEqual(prediction.outcome, "uncertain")
-        self.assertIsNone(prediction.shotSubtype)
+        self.assertEqual(prediction.eventFamily, "shot_attempt")
+        self.assertEqual(prediction.metadata["temporal_event_detector_family_resolution_reason"], "spotter_family_close_margin_rescue")
+        self.assertTrue(prediction.metadata["temporal_event_detector_shot_head_invoked"])
+        self.assertTrue(prediction.metadata["temporal_event_detector_shadow_forced_family_eval"]["familyGateWouldOpen"])
+        self.assertTrue(prediction.metadata["temporal_event_detector_shadow_relaxed_family_eval"]["familyGateWouldOpen"])
+        self.assertTrue(
+            prediction.metadata["temporal_event_detector_shot_head_preconditions"]["eventFamilyIsShotAttempt"]
+        )
 
     @unittest.skipIf(torch is None, "torch is required for temporal event detector training")
     def test_evaluation_reports_detector_metrics_and_bundle_roundtrip(self) -> None:

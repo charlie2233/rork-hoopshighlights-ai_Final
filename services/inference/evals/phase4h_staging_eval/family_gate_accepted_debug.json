@@ -1,0 +1,567 @@
+{
+  "acceptedProposalCount": 8,
+  "rawBatchDir": "/tmp/phase4h-staging-eval/batch",
+  "rows": [
+    {
+      "acceptanceEnergyScore": null,
+      "acceptanceScore": 0.8726,
+      "calibratedAcceptanceProbability": null,
+      "clipId": "d71d2879c44a46698a0f777532df29d2:clip-1",
+      "eventSpotterFamily": "shot_attempt",
+      "eventSpotterFamilyProbabilityInFamilyHead": 0.4706,
+      "expectedEventFamily": "shot_attempt",
+      "expectedOutcome": "made",
+      "expectedShotSubtype": "dunk",
+      "explicitGateClosureReason": "accepted_but_family_margin_low_and_spotter_disagrees",
+      "familyEnergyScore": null,
+      "featureValidityFlags": {
+        "available": false,
+        "reason": "feature_validity_flags_absent_from_current_staging_payload"
+      },
+      "gateOpen": false,
+      "inferenceAttemptId": "d2e4fa94b05041f99c574c3f07f587ad",
+      "jobId": "d71d2879c44a46698a0f777532df29d2",
+      "mapperFallbackReason": "event_family_other_highlight_fallback",
+      "predictedEventFamily": "other",
+      "predictedOutcome": "uncertain",
+      "predictedShotSubtype": null,
+      "proposalAccepted": true,
+      "proxyFamilyLogitsFromProbabilities": {
+        "defensive_event": -8.5172,
+        "other": -6.9078,
+        "shot_attempt": -0.7537,
+        "transition": -0.6417,
+        "turnover": -6.2659
+      },
+      "rawFamilyLogits": null,
+      "rawFamilyLogitsSource": "unavailable_in_current_staging_payload",
+      "requestId": "f9e05c90-1b1f-4940-910b-69f76b2b1ca6",
+      "shadowForcedFamilyEval": {
+        "enabled": true,
+        "family": "transition",
+        "familyGateWouldOpen": true,
+        "mode": "accepted_implies_family_eval_top1",
+        "shotHeadWouldInvoke": false
+      },
+      "shadowRelaxedFamilyEval": {
+        "enabled": true,
+        "family": "shot_attempt",
+        "familyGateWouldOpen": true,
+        "mode": "accepted_with_relaxed_family_margin_and_spotter_rescue",
+        "reason": "spotter_family_close_margin_rescue",
+        "shotHeadWouldInvoke": true
+      },
+      "shotHeadPreconditions": {
+        "classifierGateOpen": false,
+        "eventFamilyIsShotAttempt": false,
+        "proposalAccepted": true,
+        "shotHeadInvoked": false
+      },
+      "sourceDomain": "staging_hoopcut_known_made",
+      "temperatureScaledFamilyProbabilities": {
+        "defensive_event": 0.0002,
+        "other": 0.001,
+        "shot_attempt": 0.4706,
+        "transition": 0.5263,
+        "turnover": 0.0019
+      },
+      "top1Family": "transition",
+      "top1FamilyProbability": 0.5264,
+      "top2Family": "shot_attempt",
+      "top2FamilyProbability": 0.4706,
+      "top2Margin": 0.0558,
+      "uploadTraceId": "f1a26fad96e1442b9de6b950122465f5"
+    },
+    {
+      "acceptanceEnergyScore": null,
+      "acceptanceScore": 0.8726,
+      "calibratedAcceptanceProbability": null,
+      "clipId": "2aa63636630c4a5384c69d585439c9cf:clip-1",
+      "eventSpotterFamily": "shot_attempt",
+      "eventSpotterFamilyProbabilityInFamilyHead": 0.4706,
+      "expectedEventFamily": "shot_attempt",
+      "expectedOutcome": "made",
+      "expectedShotSubtype": "dunk",
+      "explicitGateClosureReason": "accepted_but_family_margin_low_and_spotter_disagrees",
+      "familyEnergyScore": null,
+      "featureValidityFlags": {
+        "available": false,
+        "reason": "feature_validity_flags_absent_from_current_staging_payload"
+      },
+      "gateOpen": false,
+      "inferenceAttemptId": "b659e777efe440378d5cccf82b80677e",
+      "jobId": "2aa63636630c4a5384c69d585439c9cf",
+      "mapperFallbackReason": "event_family_other_highlight_fallback",
+      "predictedEventFamily": "other",
+      "predictedOutcome": "uncertain",
+      "predictedShotSubtype": null,
+      "proposalAccepted": true,
+      "proxyFamilyLogitsFromProbabilities": {
+        "defensive_event": -8.5172,
+        "other": -6.9078,
+        "shot_attempt": -0.7537,
+        "transition": -0.6417,
+        "turnover": -6.2659
+      },
+      "rawFamilyLogits": null,
+      "rawFamilyLogitsSource": "unavailable_in_current_staging_payload",
+      "requestId": "65264107-b6e0-4c2a-84e5-922e9ffd825d",
+      "shadowForcedFamilyEval": {
+        "enabled": true,
+        "family": "transition",
+        "familyGateWouldOpen": true,
+        "mode": "accepted_implies_family_eval_top1",
+        "shotHeadWouldInvoke": false
+      },
+      "shadowRelaxedFamilyEval": {
+        "enabled": true,
+        "family": "shot_attempt",
+        "familyGateWouldOpen": true,
+        "mode": "accepted_with_relaxed_family_margin_and_spotter_rescue",
+        "reason": "spotter_family_close_margin_rescue",
+        "shotHeadWouldInvoke": true
+      },
+      "shotHeadPreconditions": {
+        "classifierGateOpen": false,
+        "eventFamilyIsShotAttempt": false,
+        "proposalAccepted": true,
+        "shotHeadInvoked": false
+      },
+      "sourceDomain": "staging_hoopcut_known_made",
+      "temperatureScaledFamilyProbabilities": {
+        "defensive_event": 0.0002,
+        "other": 0.001,
+        "shot_attempt": 0.4706,
+        "transition": 0.5263,
+        "turnover": 0.0019
+      },
+      "top1Family": "transition",
+      "top1FamilyProbability": 0.5264,
+      "top2Family": "shot_attempt",
+      "top2FamilyProbability": 0.4706,
+      "top2Margin": 0.0558,
+      "uploadTraceId": "45d613a463fd4e9da3b4a5279a5b8828"
+    },
+    {
+      "acceptanceEnergyScore": null,
+      "acceptanceScore": 0.8726,
+      "calibratedAcceptanceProbability": null,
+      "clipId": "505fcb9380154c0db345373b1f67f942:clip-1",
+      "eventSpotterFamily": "shot_attempt",
+      "eventSpotterFamilyProbabilityInFamilyHead": 0.4706,
+      "expectedEventFamily": "shot_attempt",
+      "expectedOutcome": "made",
+      "expectedShotSubtype": "dunk",
+      "explicitGateClosureReason": "accepted_but_family_margin_low_and_spotter_disagrees",
+      "familyEnergyScore": null,
+      "featureValidityFlags": {
+        "available": false,
+        "reason": "feature_validity_flags_absent_from_current_staging_payload"
+      },
+      "gateOpen": false,
+      "inferenceAttemptId": "55bf7bec32cd41139f23d9d3a31dbb78",
+      "jobId": "505fcb9380154c0db345373b1f67f942",
+      "mapperFallbackReason": "event_family_other_highlight_fallback",
+      "predictedEventFamily": "other",
+      "predictedOutcome": "uncertain",
+      "predictedShotSubtype": null,
+      "proposalAccepted": true,
+      "proxyFamilyLogitsFromProbabilities": {
+        "defensive_event": -8.5172,
+        "other": -6.9078,
+        "shot_attempt": -0.7537,
+        "transition": -0.6417,
+        "turnover": -6.2659
+      },
+      "rawFamilyLogits": null,
+      "rawFamilyLogitsSource": "unavailable_in_current_staging_payload",
+      "requestId": "9cd8244b-2046-4868-8366-087d358d83b4",
+      "shadowForcedFamilyEval": {
+        "enabled": true,
+        "family": "transition",
+        "familyGateWouldOpen": true,
+        "mode": "accepted_implies_family_eval_top1",
+        "shotHeadWouldInvoke": false
+      },
+      "shadowRelaxedFamilyEval": {
+        "enabled": true,
+        "family": "shot_attempt",
+        "familyGateWouldOpen": true,
+        "mode": "accepted_with_relaxed_family_margin_and_spotter_rescue",
+        "reason": "spotter_family_close_margin_rescue",
+        "shotHeadWouldInvoke": true
+      },
+      "shotHeadPreconditions": {
+        "classifierGateOpen": false,
+        "eventFamilyIsShotAttempt": false,
+        "proposalAccepted": true,
+        "shotHeadInvoked": false
+      },
+      "sourceDomain": "staging_hoopcut_known_made",
+      "temperatureScaledFamilyProbabilities": {
+        "defensive_event": 0.0002,
+        "other": 0.001,
+        "shot_attempt": 0.4706,
+        "transition": 0.5263,
+        "turnover": 0.0019
+      },
+      "top1Family": "transition",
+      "top1FamilyProbability": 0.5264,
+      "top2Family": "shot_attempt",
+      "top2FamilyProbability": 0.4706,
+      "top2Margin": 0.0558,
+      "uploadTraceId": "d42b70ef720b421dac231922afc28d81"
+    },
+    {
+      "acceptanceEnergyScore": null,
+      "acceptanceScore": 0.8726,
+      "calibratedAcceptanceProbability": null,
+      "clipId": "7958f1dac8b3436dabab5264ae341919:clip-1",
+      "eventSpotterFamily": "shot_attempt",
+      "eventSpotterFamilyProbabilityInFamilyHead": 0.4706,
+      "expectedEventFamily": "shot_attempt",
+      "expectedOutcome": "made",
+      "expectedShotSubtype": "dunk",
+      "explicitGateClosureReason": "accepted_but_family_margin_low_and_spotter_disagrees",
+      "familyEnergyScore": null,
+      "featureValidityFlags": {
+        "available": false,
+        "reason": "feature_validity_flags_absent_from_current_staging_payload"
+      },
+      "gateOpen": false,
+      "inferenceAttemptId": "20c15f3e15174a80a8f0397c4699dfc6",
+      "jobId": "7958f1dac8b3436dabab5264ae341919",
+      "mapperFallbackReason": "event_family_other_highlight_fallback",
+      "predictedEventFamily": "other",
+      "predictedOutcome": "uncertain",
+      "predictedShotSubtype": null,
+      "proposalAccepted": true,
+      "proxyFamilyLogitsFromProbabilities": {
+        "defensive_event": -8.5172,
+        "other": -6.9078,
+        "shot_attempt": -0.7537,
+        "transition": -0.6417,
+        "turnover": -6.2659
+      },
+      "rawFamilyLogits": null,
+      "rawFamilyLogitsSource": "unavailable_in_current_staging_payload",
+      "requestId": "8c5bb5e0-479a-4c90-a625-cb61e1993fe9",
+      "shadowForcedFamilyEval": {
+        "enabled": true,
+        "family": "transition",
+        "familyGateWouldOpen": true,
+        "mode": "accepted_implies_family_eval_top1",
+        "shotHeadWouldInvoke": false
+      },
+      "shadowRelaxedFamilyEval": {
+        "enabled": true,
+        "family": "shot_attempt",
+        "familyGateWouldOpen": true,
+        "mode": "accepted_with_relaxed_family_margin_and_spotter_rescue",
+        "reason": "spotter_family_close_margin_rescue",
+        "shotHeadWouldInvoke": true
+      },
+      "shotHeadPreconditions": {
+        "classifierGateOpen": false,
+        "eventFamilyIsShotAttempt": false,
+        "proposalAccepted": true,
+        "shotHeadInvoked": false
+      },
+      "sourceDomain": "staging_hoopcut_known_made",
+      "temperatureScaledFamilyProbabilities": {
+        "defensive_event": 0.0002,
+        "other": 0.001,
+        "shot_attempt": 0.4706,
+        "transition": 0.5263,
+        "turnover": 0.0019
+      },
+      "top1Family": "transition",
+      "top1FamilyProbability": 0.5264,
+      "top2Family": "shot_attempt",
+      "top2FamilyProbability": 0.4706,
+      "top2Margin": 0.0558,
+      "uploadTraceId": "a63f4ea27a184e25bdd03d3988a24b44"
+    },
+    {
+      "acceptanceEnergyScore": null,
+      "acceptanceScore": 0.8726,
+      "calibratedAcceptanceProbability": null,
+      "clipId": "081080779d544737acc513fcf01e9bee:clip-1",
+      "eventSpotterFamily": "shot_attempt",
+      "eventSpotterFamilyProbabilityInFamilyHead": 0.4706,
+      "expectedEventFamily": "shot_attempt",
+      "expectedOutcome": "made",
+      "expectedShotSubtype": "dunk",
+      "explicitGateClosureReason": "accepted_but_family_margin_low_and_spotter_disagrees",
+      "familyEnergyScore": null,
+      "featureValidityFlags": {
+        "available": false,
+        "reason": "feature_validity_flags_absent_from_current_staging_payload"
+      },
+      "gateOpen": false,
+      "inferenceAttemptId": "595c42c95f7442a4a5641041c534071b",
+      "jobId": "081080779d544737acc513fcf01e9bee",
+      "mapperFallbackReason": "event_family_other_highlight_fallback",
+      "predictedEventFamily": "other",
+      "predictedOutcome": "uncertain",
+      "predictedShotSubtype": null,
+      "proposalAccepted": true,
+      "proxyFamilyLogitsFromProbabilities": {
+        "defensive_event": -8.5172,
+        "other": -6.9078,
+        "shot_attempt": -0.7537,
+        "transition": -0.6417,
+        "turnover": -6.2659
+      },
+      "rawFamilyLogits": null,
+      "rawFamilyLogitsSource": "unavailable_in_current_staging_payload",
+      "requestId": "d4ec7fca-da98-4b96-ac08-a2def1039248",
+      "shadowForcedFamilyEval": {
+        "enabled": true,
+        "family": "transition",
+        "familyGateWouldOpen": true,
+        "mode": "accepted_implies_family_eval_top1",
+        "shotHeadWouldInvoke": false
+      },
+      "shadowRelaxedFamilyEval": {
+        "enabled": true,
+        "family": "shot_attempt",
+        "familyGateWouldOpen": true,
+        "mode": "accepted_with_relaxed_family_margin_and_spotter_rescue",
+        "reason": "spotter_family_close_margin_rescue",
+        "shotHeadWouldInvoke": true
+      },
+      "shotHeadPreconditions": {
+        "classifierGateOpen": false,
+        "eventFamilyIsShotAttempt": false,
+        "proposalAccepted": true,
+        "shotHeadInvoked": false
+      },
+      "sourceDomain": "staging_hoopcut_known_made",
+      "temperatureScaledFamilyProbabilities": {
+        "defensive_event": 0.0002,
+        "other": 0.001,
+        "shot_attempt": 0.4706,
+        "transition": 0.5263,
+        "turnover": 0.0019
+      },
+      "top1Family": "transition",
+      "top1FamilyProbability": 0.5264,
+      "top2Family": "shot_attempt",
+      "top2FamilyProbability": 0.4706,
+      "top2Margin": 0.0558,
+      "uploadTraceId": "9d0d4444e80745e3924e90668ace74e5"
+    },
+    {
+      "acceptanceEnergyScore": null,
+      "acceptanceScore": 0.8726,
+      "calibratedAcceptanceProbability": null,
+      "clipId": "d3a90653a10d4d65b8a306801bd30a86:clip-1",
+      "eventSpotterFamily": "shot_attempt",
+      "eventSpotterFamilyProbabilityInFamilyHead": 0.4706,
+      "expectedEventFamily": "shot_attempt",
+      "expectedOutcome": "made",
+      "expectedShotSubtype": "dunk",
+      "explicitGateClosureReason": "accepted_but_family_margin_low_and_spotter_disagrees",
+      "familyEnergyScore": null,
+      "featureValidityFlags": {
+        "available": false,
+        "reason": "feature_validity_flags_absent_from_current_staging_payload"
+      },
+      "gateOpen": false,
+      "inferenceAttemptId": "a22f5a43000345498eaaa7711e6d8352",
+      "jobId": "d3a90653a10d4d65b8a306801bd30a86",
+      "mapperFallbackReason": "event_family_other_highlight_fallback",
+      "predictedEventFamily": "other",
+      "predictedOutcome": "uncertain",
+      "predictedShotSubtype": null,
+      "proposalAccepted": true,
+      "proxyFamilyLogitsFromProbabilities": {
+        "defensive_event": -8.5172,
+        "other": -6.9078,
+        "shot_attempt": -0.7537,
+        "transition": -0.6417,
+        "turnover": -6.2659
+      },
+      "rawFamilyLogits": null,
+      "rawFamilyLogitsSource": "unavailable_in_current_staging_payload",
+      "requestId": "48420573-6f27-4900-b26a-a7cbc422e723",
+      "shadowForcedFamilyEval": {
+        "enabled": true,
+        "family": "transition",
+        "familyGateWouldOpen": true,
+        "mode": "accepted_implies_family_eval_top1",
+        "shotHeadWouldInvoke": false
+      },
+      "shadowRelaxedFamilyEval": {
+        "enabled": true,
+        "family": "shot_attempt",
+        "familyGateWouldOpen": true,
+        "mode": "accepted_with_relaxed_family_margin_and_spotter_rescue",
+        "reason": "spotter_family_close_margin_rescue",
+        "shotHeadWouldInvoke": true
+      },
+      "shotHeadPreconditions": {
+        "classifierGateOpen": false,
+        "eventFamilyIsShotAttempt": false,
+        "proposalAccepted": true,
+        "shotHeadInvoked": false
+      },
+      "sourceDomain": "staging_hoopcut_known_made",
+      "temperatureScaledFamilyProbabilities": {
+        "defensive_event": 0.0002,
+        "other": 0.001,
+        "shot_attempt": 0.4706,
+        "transition": 0.5263,
+        "turnover": 0.0019
+      },
+      "top1Family": "transition",
+      "top1FamilyProbability": 0.5264,
+      "top2Family": "shot_attempt",
+      "top2FamilyProbability": 0.4706,
+      "top2Margin": 0.0558,
+      "uploadTraceId": "ee49f532d7b44a0791bce4cf81033ea5"
+    },
+    {
+      "acceptanceEnergyScore": null,
+      "acceptanceScore": 0.8726,
+      "calibratedAcceptanceProbability": null,
+      "clipId": "f859a308118c42d0b22cf582f42e8e0a:clip-1",
+      "eventSpotterFamily": "shot_attempt",
+      "eventSpotterFamilyProbabilityInFamilyHead": 0.4706,
+      "expectedEventFamily": "shot_attempt",
+      "expectedOutcome": "made",
+      "expectedShotSubtype": "dunk",
+      "explicitGateClosureReason": "accepted_but_family_margin_low_and_spotter_disagrees",
+      "familyEnergyScore": null,
+      "featureValidityFlags": {
+        "available": false,
+        "reason": "feature_validity_flags_absent_from_current_staging_payload"
+      },
+      "gateOpen": false,
+      "inferenceAttemptId": "fa3c67b223b949dcbb91ddccf8511754",
+      "jobId": "f859a308118c42d0b22cf582f42e8e0a",
+      "mapperFallbackReason": "event_family_other_highlight_fallback",
+      "predictedEventFamily": "other",
+      "predictedOutcome": "uncertain",
+      "predictedShotSubtype": null,
+      "proposalAccepted": true,
+      "proxyFamilyLogitsFromProbabilities": {
+        "defensive_event": -8.5172,
+        "other": -6.9078,
+        "shot_attempt": -0.7537,
+        "transition": -0.6417,
+        "turnover": -6.2659
+      },
+      "rawFamilyLogits": null,
+      "rawFamilyLogitsSource": "unavailable_in_current_staging_payload",
+      "requestId": "92ef6d49-f82d-4740-89fb-6ed0e565751b",
+      "shadowForcedFamilyEval": {
+        "enabled": true,
+        "family": "transition",
+        "familyGateWouldOpen": true,
+        "mode": "accepted_implies_family_eval_top1",
+        "shotHeadWouldInvoke": false
+      },
+      "shadowRelaxedFamilyEval": {
+        "enabled": true,
+        "family": "shot_attempt",
+        "familyGateWouldOpen": true,
+        "mode": "accepted_with_relaxed_family_margin_and_spotter_rescue",
+        "reason": "spotter_family_close_margin_rescue",
+        "shotHeadWouldInvoke": true
+      },
+      "shotHeadPreconditions": {
+        "classifierGateOpen": false,
+        "eventFamilyIsShotAttempt": false,
+        "proposalAccepted": true,
+        "shotHeadInvoked": false
+      },
+      "sourceDomain": "staging_hoopcut_known_made",
+      "temperatureScaledFamilyProbabilities": {
+        "defensive_event": 0.0002,
+        "other": 0.001,
+        "shot_attempt": 0.4706,
+        "transition": 0.5263,
+        "turnover": 0.0019
+      },
+      "top1Family": "transition",
+      "top1FamilyProbability": 0.5264,
+      "top2Family": "shot_attempt",
+      "top2FamilyProbability": 0.4706,
+      "top2Margin": 0.0558,
+      "uploadTraceId": "c2feea03ac104741a0c5e2bb8c1f973d"
+    },
+    {
+      "acceptanceEnergyScore": null,
+      "acceptanceScore": 0.8726,
+      "calibratedAcceptanceProbability": null,
+      "clipId": "50d003aedd814d4d8bbcd4b3741cc21c:clip-1",
+      "eventSpotterFamily": "shot_attempt",
+      "eventSpotterFamilyProbabilityInFamilyHead": 0.4706,
+      "expectedEventFamily": "shot_attempt",
+      "expectedOutcome": "made",
+      "expectedShotSubtype": "dunk",
+      "explicitGateClosureReason": "accepted_but_family_margin_low_and_spotter_disagrees",
+      "familyEnergyScore": null,
+      "featureValidityFlags": {
+        "available": false,
+        "reason": "feature_validity_flags_absent_from_current_staging_payload"
+      },
+      "gateOpen": false,
+      "inferenceAttemptId": "9822207a2d1448148fcb591aa2a8c153",
+      "jobId": "50d003aedd814d4d8bbcd4b3741cc21c",
+      "mapperFallbackReason": "event_family_other_highlight_fallback",
+      "predictedEventFamily": "other",
+      "predictedOutcome": "uncertain",
+      "predictedShotSubtype": null,
+      "proposalAccepted": true,
+      "proxyFamilyLogitsFromProbabilities": {
+        "defensive_event": -8.5172,
+        "other": -6.9078,
+        "shot_attempt": -0.7537,
+        "transition": -0.6417,
+        "turnover": -6.2659
+      },
+      "rawFamilyLogits": null,
+      "rawFamilyLogitsSource": "unavailable_in_current_staging_payload",
+      "requestId": "52d91f80-e84e-4338-9313-25222c661e1d",
+      "shadowForcedFamilyEval": {
+        "enabled": true,
+        "family": "transition",
+        "familyGateWouldOpen": true,
+        "mode": "accepted_implies_family_eval_top1",
+        "shotHeadWouldInvoke": false
+      },
+      "shadowRelaxedFamilyEval": {
+        "enabled": true,
+        "family": "shot_attempt",
+        "familyGateWouldOpen": true,
+        "mode": "accepted_with_relaxed_family_margin_and_spotter_rescue",
+        "reason": "spotter_family_close_margin_rescue",
+        "shotHeadWouldInvoke": true
+      },
+      "shotHeadPreconditions": {
+        "classifierGateOpen": false,
+        "eventFamilyIsShotAttempt": false,
+        "proposalAccepted": true,
+        "shotHeadInvoked": false
+      },
+      "sourceDomain": "staging_hoopcut_known_made",
+      "temperatureScaledFamilyProbabilities": {
+        "defensive_event": 0.0002,
+        "other": 0.001,
+        "shot_attempt": 0.4706,
+        "transition": 0.5263,
+        "turnover": 0.0019
+      },
+      "top1Family": "transition",
+      "top1FamilyProbability": 0.5264,
+      "top2Family": "shot_attempt",
+      "top2FamilyProbability": 0.4706,
+      "top2Margin": 0.0558,
+      "uploadTraceId": "335606ebc36e4fa7a5e9f6732e4cf730"
+    }
+  ],
+  "sourceReport": "services/inference/evals/phase4h_staging_eval/shadow_eval_report.json"
+}

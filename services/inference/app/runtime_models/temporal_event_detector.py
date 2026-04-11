@@ -57,6 +57,11 @@ PROPOSAL_RANK_LABELS = ("secondary", "primary")
 PROPOSAL_ACCEPT_LABELS = ("reject", "accept")
 SHOT_SPECIALIST_SUBTYPE_LABELS = ("dunk", "layup", "jumper", "three", "putback", "uncertain")
 HARD_REJECT_LABELS = frozenset({"non_event", "setup", "dead_ball", "replay_or_reaction"})
+FAMILY_GATE_SPOTTER_RESCUE_MAX_DELTA = 0.08
+FAMILY_GATE_SPOTTER_RESCUE_MIN_PROBABILITY = 0.35
+FAMILY_GATE_SPOTTER_RESCUE_MIN_ACCEPTANCE = 0.7
+FAMILY_GATE_RELAXED_TOP1_MIN_CONFIDENCE = 0.42
+FAMILY_GATE_RELAXED_TOP1_MIN_MARGIN = 0.02
 PROPOSAL_REJECTOR_AGGREGATE_FEATURES = (
     "ball_visible",
     "hoop_visible",
@@ -158,6 +163,19 @@ class TemporalShotSpecialistBundle:
     feature_names: tuple[str, ...]
     outcome_target: TemporalTargetModel
     subtype_target: TemporalTargetModel
+
+
+@dataclass(frozen=True)
+class FamilyGateResolution:
+    event_family: str
+    reason: str
+    top1_label: str | None
+    top1_probability: float | None
+    top2_label: str | None
+    top2_probability: float | None
+    top2_margin: float | None
+    spotter_family: str | None
+    spotter_probability: float | None
 
 
 @dataclass(frozen=True)
@@ -338,9 +356,12 @@ class TemporalEventDetectorBundle:
                 model_version=self.model_version,
                 allowed_labels=EVENT_FAMILIES,
             )
-            event_family = family_prediction.label
-            if family_prediction.is_uncertain or event_family not in EVENT_FAMILIES or event_family == "other":
-                event_family = "other"
+            family_resolution = _resolve_accepted_event_family(
+                family_prediction=family_prediction,
+                event_spotter_prediction=proposal.event_spotter_prediction,
+                acceptance_score=selected.acceptance_score,
+            )
+            event_family = family_resolution.event_family
             if classifier_gate_open:
                 if event_family == "shot_attempt":
                     shot_specialist_features = build_shot_specialist_feature_map(
@@ -407,6 +428,17 @@ class TemporalEventDetectorBundle:
                 label="other",
                 confidence=min(proposal.event_score, 0.49),
                 model_version=self.model_version,
+            )
+            family_resolution = FamilyGateResolution(
+                event_family="other",
+                reason="proposal_not_accepted",
+                top1_label=family_prediction.label,
+                top1_probability=family_prediction.confidence,
+                top2_label=None,
+                top2_probability=None,
+                top2_margin=None,
+                spotter_family=proposal.event_spotter_prediction.label,
+                spotter_probability=None,
             )
             outcome_prediction = _fallback_temporal_prediction(
                 label="uncertain",
@@ -527,6 +559,36 @@ class TemporalEventDetectorBundle:
             other_bucket_reason = f"proposal_rejected:{rejector_prediction.label}"
             other_bucket_scores = rejector_prediction.distribution
 
+        shot_head_preconditions = _build_shot_head_preconditions(
+            proposal_accepted=proposal_accepted,
+            classifier_gate_open=classifier_gate_open,
+            likely_shot_attempt=likely_shot_attempt,
+            event_family=event_family,
+            shot_specialist_features=shot_specialist_features,
+            using_shot_specialist=using_shot_specialist,
+        )
+        forced_family_eval = _build_shadow_forced_family_eval(
+            proposal_accepted=proposal_accepted,
+            family_prediction=family_prediction,
+            event_spotter_prediction=proposal.event_spotter_prediction,
+        )
+        relaxed_family_eval = _build_shadow_relaxed_family_eval(
+            proposal_accepted=proposal_accepted,
+            family_resolution=family_resolution,
+        )
+        family_energy = _prediction_energy(family_prediction)
+        mapper_fallback_reason = _mapper_fallback_reason(
+            proposal_accepted=proposal_accepted,
+            classifier_gate_open=classifier_gate_open,
+            event_family=event_family,
+            outcome=outcome,
+            shot_subtype=shot_subtype,
+            display_label=display_label,
+            shot_specialist_used=using_shot_specialist,
+            shot_specialist_abstained=shot_specialist_abstained,
+        )
+        feature_validity_flags = _build_feature_validity_flags(observations)
+
         metadata = {
             "temporal_event_detector_model_version": self.model_version,
             "temporal_event_detector_schema_version": self.schema_version,
@@ -627,6 +689,17 @@ class TemporalEventDetectorBundle:
             "temporal_event_detector_family_distribution": family_prediction.distribution,
             "temporal_event_detector_outcome_distribution": outcome_prediction.distribution,
             "temporal_event_detector_subtype_distribution": subtype_prediction.distribution,
+            "temporal_event_detector_family_raw_logits": _prediction_raw_logits(family_prediction),
+            "temporal_event_detector_family_temperature": round(self.targets["eventFamily"].temperature, 4),
+            "temporal_event_detector_family_energy": family_energy,
+            "temporal_event_detector_family_top1_label": family_resolution.top1_label,
+            "temporal_event_detector_family_top1_probability": family_resolution.top1_probability,
+            "temporal_event_detector_family_top2_label": family_resolution.top2_label,
+            "temporal_event_detector_family_top2_probability": family_resolution.top2_probability,
+            "temporal_event_detector_family_top2_margin": family_resolution.top2_margin,
+            "temporal_event_detector_family_resolution_reason": family_resolution.reason,
+            "temporal_event_detector_family_spotter_family": family_resolution.spotter_family,
+            "temporal_event_detector_family_spotter_probability": family_resolution.spotter_probability,
             "temporal_event_detector_family_top_labels": [
                 item.model_dump(mode="json") for item in family_prediction.top_labels
             ],
@@ -669,6 +742,11 @@ class TemporalEventDetectorBundle:
                 if using_shot_specialist
                 else None
             ),
+            "temporal_event_detector_shot_head_preconditions": shot_head_preconditions,
+            "temporal_event_detector_mapper_fallback_reason": mapper_fallback_reason,
+            "temporal_event_detector_feature_validity_flags": feature_validity_flags,
+            "temporal_event_detector_shadow_forced_family_eval": forced_family_eval,
+            "temporal_event_detector_shadow_relaxed_family_eval": relaxed_family_eval,
             "eventFamilyOtherBucket": other_bucket,
             "eventFamilyOtherBucketReason": other_bucket_reason,
             "eventFamilyOtherBucketScores": other_bucket_scores,
@@ -1736,13 +1814,20 @@ def _calibrated_acceptance_probability(
 
 
 def _prediction_energy(prediction: TemporalTargetPrediction) -> float | None:
-    raw_logits = prediction.raw_logits
+    raw_logits = getattr(prediction, "raw_logits", None)
     if not raw_logits:
         return None
     logits = np.asarray(raw_logits, dtype=np.float64)
     max_logit = float(np.max(logits))
     logsumexp = max_logit + float(np.log(np.sum(np.exp(logits - max_logit))))
     return round(-logsumexp, 4)
+
+
+def _prediction_raw_logits(prediction: TemporalTargetPrediction) -> list[float] | None:
+    raw_logits = getattr(prediction, "raw_logits", None)
+    if raw_logits is None:
+        return None
+    return [round(float(value), 4) for value in raw_logits]
 
 
 def _family_gate_rejection_reason(
@@ -1768,6 +1853,235 @@ def _family_gate_rejection_reason(
     if competition_margin < competition_margin_threshold:
         return "competition_margin_below_threshold"
     return None
+
+
+def _resolve_accepted_event_family(
+    *,
+    family_prediction: TemporalTargetPrediction,
+    event_spotter_prediction: TemporalStudentTargetPrediction,
+    acceptance_score: float,
+) -> FamilyGateResolution:
+    ranking = _rank_distribution(family_prediction.distribution)
+    top1_label = ranking[0][0] if ranking else family_prediction.label
+    top1_probability = ranking[0][1] if ranking else family_prediction.confidence
+    top2_label = ranking[1][0] if len(ranking) > 1 else None
+    top2_probability = ranking[1][1] if len(ranking) > 1 else None
+    top2_margin = (
+        round(max(float(top1_probability) - float(top2_probability), 0.0), 4)
+        if top2_probability is not None
+        else None
+    )
+    spotter_family = event_spotter_prediction.label if event_spotter_prediction.label in EVENT_FAMILIES else None
+    spotter_probability = (
+        round(float(family_prediction.distribution.get(spotter_family, 0.0)), 4)
+        if spotter_family is not None
+        else None
+    )
+
+    if not family_prediction.is_uncertain and family_prediction.label in EVENT_FAMILIES and family_prediction.label != "other":
+        return FamilyGateResolution(
+            event_family=family_prediction.label,
+            reason="family_top1_confident",
+            top1_label=top1_label,
+            top1_probability=top1_probability,
+            top2_label=top2_label,
+            top2_probability=top2_probability,
+            top2_margin=top2_margin,
+            spotter_family=spotter_family,
+            spotter_probability=spotter_probability,
+        )
+
+    if (
+        spotter_family is not None
+        and spotter_family != "other"
+        and not event_spotter_prediction.is_uncertain
+        and spotter_probability is not None
+        and spotter_probability >= FAMILY_GATE_SPOTTER_RESCUE_MIN_PROBABILITY
+        and float(top1_probability) - float(spotter_probability) <= FAMILY_GATE_SPOTTER_RESCUE_MAX_DELTA
+        and float(acceptance_score) >= FAMILY_GATE_SPOTTER_RESCUE_MIN_ACCEPTANCE
+    ):
+        return FamilyGateResolution(
+            event_family=spotter_family,
+            reason="spotter_family_close_margin_rescue",
+            top1_label=top1_label,
+            top1_probability=top1_probability,
+            top2_label=top2_label,
+            top2_probability=top2_probability,
+            top2_margin=top2_margin,
+            spotter_family=spotter_family,
+            spotter_probability=spotter_probability,
+        )
+
+    if (
+        top1_label is not None
+        and top1_label != "other"
+        and top1_label in EVENT_FAMILIES
+        and float(top1_probability) >= FAMILY_GATE_RELAXED_TOP1_MIN_CONFIDENCE
+        and (top2_margin is None or top2_margin >= FAMILY_GATE_RELAXED_TOP1_MIN_MARGIN)
+        and float(family_prediction.distribution.get("other", 0.0)) <= 0.25
+    ):
+        return FamilyGateResolution(
+            event_family=top1_label,
+            reason="family_top1_relaxed_margin",
+            top1_label=top1_label,
+            top1_probability=top1_probability,
+            top2_label=top2_label,
+            top2_probability=top2_probability,
+            top2_margin=top2_margin,
+            spotter_family=spotter_family,
+            spotter_probability=spotter_probability,
+        )
+
+    reason = "family_uncertain"
+    if top1_label == "other":
+        reason = "family_top1_other"
+    elif top2_margin is not None and top2_margin < FAMILY_GATE_RELAXED_TOP1_MIN_MARGIN:
+        reason = "family_margin_below_relaxed_threshold"
+    return FamilyGateResolution(
+        event_family="other",
+        reason=reason,
+        top1_label=top1_label,
+        top1_probability=top1_probability,
+        top2_label=top2_label,
+        top2_probability=top2_probability,
+        top2_margin=top2_margin,
+        spotter_family=spotter_family,
+        spotter_probability=spotter_probability,
+    )
+
+
+def _build_shadow_forced_family_eval(
+    *,
+    proposal_accepted: bool,
+    family_prediction: TemporalTargetPrediction,
+    event_spotter_prediction: TemporalStudentTargetPrediction,
+) -> dict[str, Any]:
+    ranking = _rank_distribution(family_prediction.distribution)
+    top1_label = ranking[0][0] if ranking else family_prediction.label
+    top1_probability = ranking[0][1] if ranking else family_prediction.confidence
+    family = top1_label if proposal_accepted and top1_label in EVENT_FAMILIES else "other"
+    gate_open = bool(proposal_accepted and family != "other")
+    return {
+        "enabled": True,
+        "mode": "accepted_implies_family_eval_top1",
+        "proposalAccepted": proposal_accepted,
+        "family": family,
+        "familyGateWouldOpen": gate_open,
+        "shotHeadWouldInvoke": bool(gate_open and family == "shot_attempt"),
+        "top1Family": top1_label,
+        "top1Probability": top1_probability,
+        "spotterFamily": event_spotter_prediction.label,
+        "reason": "proposal_not_accepted" if not proposal_accepted else "forced_family_eval",
+    }
+
+
+def _build_shadow_relaxed_family_eval(
+    *,
+    proposal_accepted: bool,
+    family_resolution: FamilyGateResolution,
+) -> dict[str, Any]:
+    gate_open = bool(proposal_accepted and family_resolution.event_family != "other")
+    return {
+        "enabled": True,
+        "mode": "accepted_with_relaxed_family_margin_and_spotter_rescue",
+        "proposalAccepted": proposal_accepted,
+        "family": family_resolution.event_family,
+        "familyGateWouldOpen": gate_open,
+        "shotHeadWouldInvoke": bool(gate_open and family_resolution.event_family == "shot_attempt"),
+        "top1Family": family_resolution.top1_label,
+        "top1Probability": family_resolution.top1_probability,
+        "top2Family": family_resolution.top2_label,
+        "top2Probability": family_resolution.top2_probability,
+        "top2Margin": family_resolution.top2_margin,
+        "spotterFamily": family_resolution.spotter_family,
+        "spotterProbability": family_resolution.spotter_probability,
+        "reason": family_resolution.reason,
+    }
+
+
+def _build_shot_head_preconditions(
+    *,
+    proposal_accepted: bool,
+    classifier_gate_open: bool,
+    likely_shot_attempt: bool,
+    event_family: str,
+    shot_specialist_features: dict[str, float],
+    using_shot_specialist: bool,
+) -> dict[str, bool]:
+    return {
+        "proposalAccepted": bool(proposal_accepted),
+        "classifierGateOpen": bool(classifier_gate_open),
+        "likelyShotAttempt": bool(likely_shot_attempt),
+        "eventFamilyIsShotAttempt": event_family == "shot_attempt",
+        "shotSpecialistFeaturesPresent": bool(shot_specialist_features),
+        "shotHeadInvoked": bool(using_shot_specialist),
+    }
+
+
+def _mapper_fallback_reason(
+    *,
+    proposal_accepted: bool,
+    classifier_gate_open: bool,
+    event_family: str,
+    outcome: str,
+    shot_subtype: str | None,
+    display_label: str,
+    shot_specialist_used: bool,
+    shot_specialist_abstained: bool,
+) -> str | None:
+    if not proposal_accepted:
+        return "proposal_rejected_highlight_fallback"
+    if not classifier_gate_open:
+        return "classifier_gate_closed_highlight_fallback"
+    if event_family == "other":
+        return "event_family_other_highlight_fallback"
+    if event_family == "shot_attempt" and outcome == "uncertain":
+        return "shot_attempt_uncertain_outcome_generic_fallback" if display_label == "Shot Attempt" else "shot_attempt_uncertain_outcome_highlight_fallback"
+    if event_family == "shot_attempt" and shot_specialist_used and shot_specialist_abstained:
+        return "shot_specialist_subtype_abstained"
+    if event_family == "shot_attempt" and shot_subtype is None and outcome == "made":
+        return "made_shot_without_subtype"
+    return None
+
+
+def _build_feature_validity_flags(observations: Sequence[TemporalStudentObservation]) -> dict[str, bool]:
+    feature_maps = [build_temporal_event_detector_feature_map(observation) for observation in observations]
+    if not feature_maps:
+        return {
+            "hasObservations": False,
+            "ballSignalPresent": False,
+            "rimSignalPresent": False,
+            "trackingSignalPresent": False,
+            "shotTimingSignalPresent": False,
+        }
+    return {
+        "hasObservations": True,
+        "ballSignalPresent": any(
+            bool(features.get("ball_visible")) or float(features.get("ball_detection_confidence", 0.0)) > 0.0
+            for features in feature_maps
+        ),
+        "rimSignalPresent": any(
+            bool(features.get("hoop_visible")) or float(features.get("hoop_detection_confidence", 0.0)) > 0.0
+            for features in feature_maps
+        ),
+        "trackingSignalPresent": any(
+            float(features.get("tracking_density", 0.0)) > 0.0 or float(features.get("tracked_player_count", 0.0)) > 0.0
+            for features in feature_maps
+        ),
+        "shotTimingSignalPresent": any(
+            float(features.get("shot_release_candidate", 0.0)) > 0.0
+            or float(features.get("ball_near_rim", 0.0)) > 0.0
+            for features in feature_maps
+        ),
+    }
+
+
+def _rank_distribution(distribution: dict[str, float]) -> list[tuple[str, float]]:
+    return sorted(
+        ((str(label), round(float(probability), 4)) for label, probability in distribution.items()),
+        key=lambda item: item[1],
+        reverse=True,
+    )
 
 
 def _best_non_other_label(prediction: TemporalStudentTargetPrediction) -> str | None:

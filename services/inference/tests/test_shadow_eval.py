@@ -462,6 +462,8 @@ class ShadowEvalTests(unittest.TestCase):
         self.assertIn("Proposal acceptance collapsed to 0% or 100%.", warnings)
         self.assertIn("Accepted proposals exist, but family gate never opened.", warnings)
         self.assertIn("Accepted proposals exist, but shot head never invoked.", warnings)
+        self.assertIn("Accepted-but-closed proposals are missing explicit family gate rejection reasons.", warnings)
+        self.assertEqual(len(report["summary"]["acceptedClosedWithoutReason"]), 1)
 
     def test_report_warns_on_zero_acceptance(self) -> None:
         payload = {
