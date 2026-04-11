@@ -1,0 +1,1810 @@
+{
+  "clips": [
+    {
+      "candidateNamespace": "runtimeFusionTemporalShadow",
+      "clipDurationSeconds": 4.5,
+      "clipId": "d48f6b5996d54dcb87e9890f075fe8ab:clip-1",
+      "confidence": 0.58,
+      "confidenceAfterMapping": 0.58,
+      "confidenceBeforeMapping": 0.8726,
+      "eventFamily": "shot_attempt",
+      "eventSpotterFamily": "shot_attempt",
+      "expectedEventFamily": "shot_attempt",
+      "expectedLabel": "Dunk",
+      "expectedOutcome": "made",
+      "expectedShotSubtype": "dunk",
+      "familyGateOpen": true,
+      "familyGateRejectionReason": null,
+      "flatLabel": "Made Shot",
+      "inferenceAttemptId": "6cff7b8ec1f147da8ac0cc512aed2479",
+      "isUncertain": true,
+      "jobId": "d48f6b5996d54dcb87e9890f075fe8ab",
+      "manualAuditLabel": null,
+      "manualAuditRationale": null,
+      "modelVersion": "temporal-event-detector-tridet-proposal-conditioned-shot-specialist-v2",
+      "otherBucket": null,
+      "otherBucketReason": null,
+      "outcome": "made",
+      "proposalAcceptanceProbability": 0.8726,
+      "proposalAcceptanceRawScore": 0.8726,
+      "proposalAccepted": true,
+      "proposalEnergyScore": -0.7086,
+      "proposalRejectorConfidence": 0.9094,
+      "proposalRejectorLabel": "real_event",
+      "proposalScore": 0.8726,
+      "rawVideoMAETopK": [
+        {
+          "canonicalLabel": "fast break",
+          "confidence": 0.39,
+          "label": "fast break",
+          "modelVersion": "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
+          "rawLabel": "fast break"
+        }
+      ],
+      "rawXCLIPSuggestions": [
+        {
+          "canonicalLabel": "fast break",
+          "confidence": 0.33,
+          "label": "fast break",
+          "modelVersion": "xclip:microsoft/xclip-base-patch32",
+          "rawLabel": "fast break"
+        }
+      ],
+      "requestId": "9e2ec502-7e6b-44d4-88b9-5b4c249bc181",
+      "resultConfidence": null,
+      "shotHeadInvoked": true,
+      "shotSpecialistAbstained": true,
+      "shotSpecialistUsed": true,
+      "shotSubtype": null,
+      "sourceDomain": "staging_hoopcut_known_made",
+      "sourceEventCount": 1,
+      "uploadTraceId": "2197f5d458314ebeb4dedd90e1561661",
+      "wasMerged": false
+    },
+    {
+      "candidateNamespace": "runtimeFusionTemporalShadow",
+      "clipDurationSeconds": 5.25,
+      "clipId": "1811784ecfd9436da61a2b5f922baf54:clip-1",
+      "confidence": 0.18,
+      "confidenceAfterMapping": 0.18,
+      "confidenceBeforeMapping": 0.18,
+      "eventFamily": "other",
+      "eventSpotterFamily": "transition",
+      "expectedEventFamily": "shot_attempt",
+      "expectedLabel": "Missed Shot",
+      "expectedOutcome": "missed",
+      "expectedShotSubtype": "layup",
+      "familyGateOpen": false,
+      "familyGateRejectionReason": "proposal_rejected",
+      "flatLabel": "Highlight",
+      "inferenceAttemptId": "43101b3d6aa54a198aa754a8dd15fda8",
+      "isUncertain": true,
+      "jobId": "1811784ecfd9436da61a2b5f922baf54",
+      "manualAuditLabel": null,
+      "manualAuditRationale": null,
+      "modelVersion": "temporal-event-detector-tridet-proposal-conditioned-shot-specialist-v2",
+      "otherBucket": "ambiguous_event",
+      "otherBucketReason": "proposal_rejected:ambiguous",
+      "outcome": "uncertain",
+      "proposalAcceptanceProbability": 0.9345,
+      "proposalAcceptanceRawScore": 0.0655,
+      "proposalAccepted": false,
+      "proposalEnergyScore": -1.1892,
+      "proposalRejectorConfidence": 1.0,
+      "proposalRejectorLabel": "ambiguous",
+      "proposalScore": 0.0655,
+      "rawVideoMAETopK": [
+        {
+          "canonicalLabel": "fast break",
+          "confidence": 0.39,
+          "label": "fast break",
+          "modelVersion": "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
+          "rawLabel": "fast break"
+        }
+      ],
+      "rawXCLIPSuggestions": [
+        {
+          "canonicalLabel": "fast break",
+          "confidence": 0.33,
+          "label": "fast break",
+          "modelVersion": "xclip:microsoft/xclip-base-patch32",
+          "rawLabel": "fast break"
+        }
+      ],
+      "requestId": "2cf6c516-3877-41d1-bde8-7077f4ba5a04",
+      "resultConfidence": null,
+      "shotHeadInvoked": false,
+      "shotSpecialistAbstained": false,
+      "shotSpecialistUsed": false,
+      "shotSubtype": null,
+      "sourceDomain": "staging_hoopcut_known_miss",
+      "sourceEventCount": 1,
+      "uploadTraceId": "fa58aa0cadf14353bef1552607a8f83a",
+      "wasMerged": false
+    },
+    {
+      "candidateNamespace": "runtimeFusionTemporalShadow",
+      "clipDurationSeconds": 4.2,
+      "clipId": "861d8a93836c4c5486e75520feb4503b:clip-1",
+      "confidence": 0.18,
+      "confidenceAfterMapping": 0.18,
+      "confidenceBeforeMapping": 0.18,
+      "eventFamily": "other",
+      "eventSpotterFamily": "transition",
+      "expectedEventFamily": "shot_attempt",
+      "expectedLabel": "Missed Shot",
+      "expectedOutcome": "missed",
+      "expectedShotSubtype": "layup",
+      "familyGateOpen": false,
+      "familyGateRejectionReason": "proposal_rejected",
+      "flatLabel": "Highlight",
+      "inferenceAttemptId": "051846f060f04b53b51bc46f1025db2a",
+      "isUncertain": true,
+      "jobId": "861d8a93836c4c5486e75520feb4503b",
+      "manualAuditLabel": null,
+      "manualAuditRationale": null,
+      "modelVersion": "temporal-event-detector-tridet-proposal-conditioned-shot-specialist-v2",
+      "otherBucket": "ambiguous_event",
+      "otherBucketReason": "proposal_rejected:ambiguous",
+      "outcome": "uncertain",
+      "proposalAcceptanceProbability": 0.9339,
+      "proposalAcceptanceRawScore": 0.0661,
+      "proposalAccepted": false,
+      "proposalEnergyScore": -1.1815,
+      "proposalRejectorConfidence": 0.9998,
+      "proposalRejectorLabel": "ambiguous",
+      "proposalScore": 0.0661,
+      "rawVideoMAETopK": [
+        {
+          "canonicalLabel": "fast break",
+          "confidence": 0.39,
+          "label": "fast break",
+          "modelVersion": "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
+          "rawLabel": "fast break"
+        }
+      ],
+      "rawXCLIPSuggestions": [
+        {
+          "canonicalLabel": "fast break",
+          "confidence": 0.33,
+          "label": "fast break",
+          "modelVersion": "xclip:microsoft/xclip-base-patch32",
+          "rawLabel": "fast break"
+        }
+      ],
+      "requestId": "37fecfcc-853e-4387-973e-981976b11645",
+      "resultConfidence": null,
+      "shotHeadInvoked": false,
+      "shotSpecialistAbstained": false,
+      "shotSpecialistUsed": false,
+      "shotSubtype": null,
+      "sourceDomain": "staging_hoopcut_known_miss",
+      "sourceEventCount": 1,
+      "uploadTraceId": "322ceda2a70b4aa2aa59b54ceaba6399",
+      "wasMerged": false
+    },
+    {
+      "candidateNamespace": "runtimeFusionTemporalShadow",
+      "clipDurationSeconds": 4.75,
+      "clipId": "2755a51b9b244708b7397207968e1c01:clip-1",
+      "confidence": 0.18,
+      "confidenceAfterMapping": 0.18,
+      "confidenceBeforeMapping": 0.18,
+      "eventFamily": "other",
+      "eventSpotterFamily": "shot_attempt",
+      "expectedEventFamily": null,
+      "expectedLabel": null,
+      "expectedOutcome": null,
+      "expectedShotSubtype": null,
+      "familyGateOpen": false,
+      "familyGateRejectionReason": "proposal_rejected",
+      "flatLabel": "Highlight",
+      "inferenceAttemptId": "2b1abd2609d34c0eb795cb2921e5c2a8",
+      "isUncertain": true,
+      "jobId": "2755a51b9b244708b7397207968e1c01",
+      "manualAuditLabel": null,
+      "manualAuditRationale": null,
+      "modelVersion": "temporal-event-detector-tridet-proposal-conditioned-shot-specialist-v2",
+      "otherBucket": "ambiguous_event",
+      "otherBucketReason": "proposal_rejected:ambiguous",
+      "outcome": "uncertain",
+      "proposalAcceptanceProbability": 0.9236,
+      "proposalAcceptanceRawScore": 0.0764,
+      "proposalAccepted": false,
+      "proposalEnergyScore": -1.1246,
+      "proposalRejectorConfidence": 0.9982,
+      "proposalRejectorLabel": "ambiguous",
+      "proposalScore": 0.0764,
+      "rawVideoMAETopK": [
+        {
+          "canonicalLabel": "layup",
+          "confidence": 0.44,
+          "label": "layup",
+          "modelVersion": "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
+          "rawLabel": "layup"
+        }
+      ],
+      "rawXCLIPSuggestions": [
+        {
+          "canonicalLabel": "three",
+          "confidence": 0.37,
+          "label": "three",
+          "modelVersion": "xclip:microsoft/xclip-base-patch32",
+          "rawLabel": "three"
+        }
+      ],
+      "requestId": "47f31761-fcdc-4d0a-b988-0a88328c43c4",
+      "resultConfidence": null,
+      "shotHeadInvoked": false,
+      "shotSpecialistAbstained": false,
+      "shotSpecialistUsed": false,
+      "shotSubtype": null,
+      "sourceDomain": "staging_hoopcut_demo_mixed_unlabeled",
+      "sourceEventCount": 1,
+      "uploadTraceId": "c33e2546ba9249348bc72480a894e095",
+      "wasMerged": false
+    },
+    {
+      "candidateNamespace": "runtimeFusionTemporalShadow",
+      "clipDurationSeconds": 7.9,
+      "clipId": "2755a51b9b244708b7397207968e1c01:clip-2",
+      "confidence": 0.18,
+      "confidenceAfterMapping": 0.18,
+      "confidenceBeforeMapping": 0.18,
+      "eventFamily": "other",
+      "eventSpotterFamily": "other",
+      "expectedEventFamily": null,
+      "expectedLabel": null,
+      "expectedOutcome": null,
+      "expectedShotSubtype": null,
+      "familyGateOpen": false,
+      "familyGateRejectionReason": "proposal_rejected",
+      "flatLabel": "Highlight",
+      "inferenceAttemptId": "2b1abd2609d34c0eb795cb2921e5c2a8",
+      "isUncertain": true,
+      "jobId": "2755a51b9b244708b7397207968e1c01",
+      "manualAuditLabel": null,
+      "manualAuditRationale": null,
+      "modelVersion": "temporal-event-detector-tridet-proposal-conditioned-shot-specialist-v2",
+      "otherBucket": "ambiguous_event",
+      "otherBucketReason": "proposal_rejected:ambiguous",
+      "outcome": "uncertain",
+      "proposalAcceptanceProbability": 0.9885,
+      "proposalAcceptanceRawScore": 0.0115,
+      "proposalAccepted": false,
+      "proposalEnergyScore": -2.1608,
+      "proposalRejectorConfidence": 0.9897,
+      "proposalRejectorLabel": "ambiguous",
+      "proposalScore": 0.0115,
+      "rawVideoMAETopK": [
+        {
+          "canonicalLabel": "uncertain",
+          "confidence": 0.24,
+          "label": "uncertain",
+          "modelVersion": "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
+          "rawLabel": "uncertain"
+        }
+      ],
+      "rawXCLIPSuggestions": [
+        {
+          "canonicalLabel": "uncertain",
+          "confidence": 0.22,
+          "label": "uncertain",
+          "modelVersion": "xclip:microsoft/xclip-base-patch32",
+          "rawLabel": "uncertain"
+        }
+      ],
+      "requestId": "47f31761-fcdc-4d0a-b988-0a88328c43c4",
+      "resultConfidence": null,
+      "shotHeadInvoked": false,
+      "shotSpecialistAbstained": false,
+      "shotSpecialistUsed": false,
+      "shotSubtype": null,
+      "sourceDomain": "staging_hoopcut_demo_mixed_unlabeled",
+      "sourceEventCount": 4,
+      "uploadTraceId": "c33e2546ba9249348bc72480a894e095",
+      "wasMerged": true
+    },
+    {
+      "candidateNamespace": "runtimeFusionTemporalShadow",
+      "clipDurationSeconds": 7.515,
+      "clipId": "2755a51b9b244708b7397207968e1c01:clip-3",
+      "confidence": 0.18,
+      "confidenceAfterMapping": 0.18,
+      "confidenceBeforeMapping": 0.18,
+      "eventFamily": "other",
+      "eventSpotterFamily": "other",
+      "expectedEventFamily": null,
+      "expectedLabel": null,
+      "expectedOutcome": null,
+      "expectedShotSubtype": null,
+      "familyGateOpen": false,
+      "familyGateRejectionReason": "proposal_rejected",
+      "flatLabel": "Highlight",
+      "inferenceAttemptId": "2b1abd2609d34c0eb795cb2921e5c2a8",
+      "isUncertain": true,
+      "jobId": "2755a51b9b244708b7397207968e1c01",
+      "manualAuditLabel": null,
+      "manualAuditRationale": null,
+      "modelVersion": "temporal-event-detector-tridet-proposal-conditioned-shot-specialist-v2",
+      "otherBucket": "ambiguous_event",
+      "otherBucketReason": "proposal_rejected:ambiguous",
+      "outcome": "uncertain",
+      "proposalAcceptanceProbability": 0.9875,
+      "proposalAcceptanceRawScore": 0.0125,
+      "proposalAccepted": false,
+      "proposalEnergyScore": -2.1324,
+      "proposalRejectorConfidence": 0.9875,
+      "proposalRejectorLabel": "ambiguous",
+      "proposalScore": 0.0125,
+      "rawVideoMAETopK": [
+        {
+          "canonicalLabel": "uncertain",
+          "confidence": 0.24,
+          "label": "uncertain",
+          "modelVersion": "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
+          "rawLabel": "uncertain"
+        }
+      ],
+      "rawXCLIPSuggestions": [
+        {
+          "canonicalLabel": "uncertain",
+          "confidence": 0.22,
+          "label": "uncertain",
+          "modelVersion": "xclip:microsoft/xclip-base-patch32",
+          "rawLabel": "uncertain"
+        }
+      ],
+      "requestId": "47f31761-fcdc-4d0a-b988-0a88328c43c4",
+      "resultConfidence": null,
+      "shotHeadInvoked": false,
+      "shotSpecialistAbstained": false,
+      "shotSpecialistUsed": false,
+      "shotSubtype": null,
+      "sourceDomain": "staging_hoopcut_demo_mixed_unlabeled",
+      "sourceEventCount": 3,
+      "uploadTraceId": "c33e2546ba9249348bc72480a894e095",
+      "wasMerged": true
+    },
+    {
+      "candidateNamespace": "runtimeFusionTemporalShadow",
+      "clipDurationSeconds": 4.5,
+      "clipId": "de9463da378d4ad697c2337d28ffec2a:clip-1",
+      "confidence": 0.58,
+      "confidenceAfterMapping": 0.58,
+      "confidenceBeforeMapping": 0.8726,
+      "eventFamily": "shot_attempt",
+      "eventSpotterFamily": "shot_attempt",
+      "expectedEventFamily": "shot_attempt",
+      "expectedLabel": "Dunk",
+      "expectedOutcome": "made",
+      "expectedShotSubtype": "dunk",
+      "familyGateOpen": true,
+      "familyGateRejectionReason": null,
+      "flatLabel": "Made Shot",
+      "inferenceAttemptId": "5a8bcfd29efd414db5a82ecaa0aacb48",
+      "isUncertain": true,
+      "jobId": "de9463da378d4ad697c2337d28ffec2a",
+      "manualAuditLabel": null,
+      "manualAuditRationale": null,
+      "modelVersion": "temporal-event-detector-tridet-proposal-conditioned-shot-specialist-v2",
+      "otherBucket": null,
+      "otherBucketReason": null,
+      "outcome": "made",
+      "proposalAcceptanceProbability": 0.8726,
+      "proposalAcceptanceRawScore": 0.8726,
+      "proposalAccepted": true,
+      "proposalEnergyScore": -0.7086,
+      "proposalRejectorConfidence": 0.9094,
+      "proposalRejectorLabel": "real_event",
+      "proposalScore": 0.8726,
+      "rawVideoMAETopK": [
+        {
+          "canonicalLabel": "fast break",
+          "confidence": 0.39,
+          "label": "fast break",
+          "modelVersion": "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
+          "rawLabel": "fast break"
+        }
+      ],
+      "rawXCLIPSuggestions": [
+        {
+          "canonicalLabel": "fast break",
+          "confidence": 0.33,
+          "label": "fast break",
+          "modelVersion": "xclip:microsoft/xclip-base-patch32",
+          "rawLabel": "fast break"
+        }
+      ],
+      "requestId": "7fdaafba-520e-469b-a8b9-bb7ea5fdb365",
+      "resultConfidence": null,
+      "shotHeadInvoked": true,
+      "shotSpecialistAbstained": true,
+      "shotSpecialistUsed": true,
+      "shotSubtype": null,
+      "sourceDomain": "staging_hoopcut_known_made",
+      "sourceEventCount": 1,
+      "uploadTraceId": "a942043895214c56a9581c2532a04e95",
+      "wasMerged": false
+    },
+    {
+      "candidateNamespace": "runtimeFusionTemporalShadow",
+      "clipDurationSeconds": 5.25,
+      "clipId": "c266e2bb827045679bcb45158500c023:clip-1",
+      "confidence": 0.18,
+      "confidenceAfterMapping": 0.18,
+      "confidenceBeforeMapping": 0.18,
+      "eventFamily": "other",
+      "eventSpotterFamily": "transition",
+      "expectedEventFamily": "shot_attempt",
+      "expectedLabel": "Missed Shot",
+      "expectedOutcome": "missed",
+      "expectedShotSubtype": "layup",
+      "familyGateOpen": false,
+      "familyGateRejectionReason": "proposal_rejected",
+      "flatLabel": "Highlight",
+      "inferenceAttemptId": "493bf98355da4fed9305d57573889dc5",
+      "isUncertain": true,
+      "jobId": "c266e2bb827045679bcb45158500c023",
+      "manualAuditLabel": null,
+      "manualAuditRationale": null,
+      "modelVersion": "temporal-event-detector-tridet-proposal-conditioned-shot-specialist-v2",
+      "otherBucket": "ambiguous_event",
+      "otherBucketReason": "proposal_rejected:ambiguous",
+      "outcome": "uncertain",
+      "proposalAcceptanceProbability": 0.9345,
+      "proposalAcceptanceRawScore": 0.0655,
+      "proposalAccepted": false,
+      "proposalEnergyScore": -1.1892,
+      "proposalRejectorConfidence": 1.0,
+      "proposalRejectorLabel": "ambiguous",
+      "proposalScore": 0.0655,
+      "rawVideoMAETopK": [
+        {
+          "canonicalLabel": "fast break",
+          "confidence": 0.39,
+          "label": "fast break",
+          "modelVersion": "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
+          "rawLabel": "fast break"
+        }
+      ],
+      "rawXCLIPSuggestions": [
+        {
+          "canonicalLabel": "fast break",
+          "confidence": 0.33,
+          "label": "fast break",
+          "modelVersion": "xclip:microsoft/xclip-base-patch32",
+          "rawLabel": "fast break"
+        }
+      ],
+      "requestId": "e30e58f9-8eea-4d89-99d9-c07f11a1e8ef",
+      "resultConfidence": null,
+      "shotHeadInvoked": false,
+      "shotSpecialistAbstained": false,
+      "shotSpecialistUsed": false,
+      "shotSubtype": null,
+      "sourceDomain": "staging_hoopcut_known_miss",
+      "sourceEventCount": 1,
+      "uploadTraceId": "35d6426a1168412caab56d03224b5f29",
+      "wasMerged": false
+    },
+    {
+      "candidateNamespace": "runtimeFusionTemporalShadow",
+      "clipDurationSeconds": 4.2,
+      "clipId": "cd5ec7b3b4be4f11b6e7c38597cc9e08:clip-1",
+      "confidence": 0.18,
+      "confidenceAfterMapping": 0.18,
+      "confidenceBeforeMapping": 0.18,
+      "eventFamily": "other",
+      "eventSpotterFamily": "transition",
+      "expectedEventFamily": "shot_attempt",
+      "expectedLabel": "Missed Shot",
+      "expectedOutcome": "missed",
+      "expectedShotSubtype": "layup",
+      "familyGateOpen": false,
+      "familyGateRejectionReason": "proposal_rejected",
+      "flatLabel": "Highlight",
+      "inferenceAttemptId": "21f39c1a0840419b9563c6e357affae9",
+      "isUncertain": true,
+      "jobId": "cd5ec7b3b4be4f11b6e7c38597cc9e08",
+      "manualAuditLabel": null,
+      "manualAuditRationale": null,
+      "modelVersion": "temporal-event-detector-tridet-proposal-conditioned-shot-specialist-v2",
+      "otherBucket": "ambiguous_event",
+      "otherBucketReason": "proposal_rejected:ambiguous",
+      "outcome": "uncertain",
+      "proposalAcceptanceProbability": 0.9339,
+      "proposalAcceptanceRawScore": 0.0661,
+      "proposalAccepted": false,
+      "proposalEnergyScore": -1.1815,
+      "proposalRejectorConfidence": 0.9998,
+      "proposalRejectorLabel": "ambiguous",
+      "proposalScore": 0.0661,
+      "rawVideoMAETopK": [
+        {
+          "canonicalLabel": "fast break",
+          "confidence": 0.39,
+          "label": "fast break",
+          "modelVersion": "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
+          "rawLabel": "fast break"
+        }
+      ],
+      "rawXCLIPSuggestions": [
+        {
+          "canonicalLabel": "fast break",
+          "confidence": 0.33,
+          "label": "fast break",
+          "modelVersion": "xclip:microsoft/xclip-base-patch32",
+          "rawLabel": "fast break"
+        }
+      ],
+      "requestId": "3a9cb7f0-101b-42b5-89b2-d78aed67fb12",
+      "resultConfidence": null,
+      "shotHeadInvoked": false,
+      "shotSpecialistAbstained": false,
+      "shotSpecialistUsed": false,
+      "shotSubtype": null,
+      "sourceDomain": "staging_hoopcut_known_miss",
+      "sourceEventCount": 1,
+      "uploadTraceId": "7443f1bbcb0043c4bf5f2fbb38ea1afb",
+      "wasMerged": false
+    },
+    {
+      "candidateNamespace": "runtimeFusionTemporalShadow",
+      "clipDurationSeconds": 4.75,
+      "clipId": "5fcbbe8f6a8d4fe9a01e8f034e6bae17:clip-1",
+      "confidence": 0.18,
+      "confidenceAfterMapping": 0.18,
+      "confidenceBeforeMapping": 0.18,
+      "eventFamily": "other",
+      "eventSpotterFamily": "shot_attempt",
+      "expectedEventFamily": null,
+      "expectedLabel": null,
+      "expectedOutcome": null,
+      "expectedShotSubtype": null,
+      "familyGateOpen": false,
+      "familyGateRejectionReason": "proposal_rejected",
+      "flatLabel": "Highlight",
+      "inferenceAttemptId": "3b043f4bfdc24f0195e572228fdeab94",
+      "isUncertain": true,
+      "jobId": "5fcbbe8f6a8d4fe9a01e8f034e6bae17",
+      "manualAuditLabel": null,
+      "manualAuditRationale": null,
+      "modelVersion": "temporal-event-detector-tridet-proposal-conditioned-shot-specialist-v2",
+      "otherBucket": "ambiguous_event",
+      "otherBucketReason": "proposal_rejected:ambiguous",
+      "outcome": "uncertain",
+      "proposalAcceptanceProbability": 0.9236,
+      "proposalAcceptanceRawScore": 0.0764,
+      "proposalAccepted": false,
+      "proposalEnergyScore": -1.1246,
+      "proposalRejectorConfidence": 0.9982,
+      "proposalRejectorLabel": "ambiguous",
+      "proposalScore": 0.0764,
+      "rawVideoMAETopK": [
+        {
+          "canonicalLabel": "layup",
+          "confidence": 0.44,
+          "label": "layup",
+          "modelVersion": "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
+          "rawLabel": "layup"
+        }
+      ],
+      "rawXCLIPSuggestions": [
+        {
+          "canonicalLabel": "three",
+          "confidence": 0.37,
+          "label": "three",
+          "modelVersion": "xclip:microsoft/xclip-base-patch32",
+          "rawLabel": "three"
+        }
+      ],
+      "requestId": "7a6a6fc4-0275-4dad-b0d9-644ec44b8318",
+      "resultConfidence": null,
+      "shotHeadInvoked": false,
+      "shotSpecialistAbstained": false,
+      "shotSpecialistUsed": false,
+      "shotSubtype": null,
+      "sourceDomain": "staging_hoopcut_demo_mixed_unlabeled",
+      "sourceEventCount": 1,
+      "uploadTraceId": "e87bfaa6186443118a34e9547d94a37d",
+      "wasMerged": false
+    },
+    {
+      "candidateNamespace": "runtimeFusionTemporalShadow",
+      "clipDurationSeconds": 7.9,
+      "clipId": "5fcbbe8f6a8d4fe9a01e8f034e6bae17:clip-2",
+      "confidence": 0.18,
+      "confidenceAfterMapping": 0.18,
+      "confidenceBeforeMapping": 0.18,
+      "eventFamily": "other",
+      "eventSpotterFamily": "other",
+      "expectedEventFamily": null,
+      "expectedLabel": null,
+      "expectedOutcome": null,
+      "expectedShotSubtype": null,
+      "familyGateOpen": false,
+      "familyGateRejectionReason": "proposal_rejected",
+      "flatLabel": "Highlight",
+      "inferenceAttemptId": "3b043f4bfdc24f0195e572228fdeab94",
+      "isUncertain": true,
+      "jobId": "5fcbbe8f6a8d4fe9a01e8f034e6bae17",
+      "manualAuditLabel": null,
+      "manualAuditRationale": null,
+      "modelVersion": "temporal-event-detector-tridet-proposal-conditioned-shot-specialist-v2",
+      "otherBucket": "ambiguous_event",
+      "otherBucketReason": "proposal_rejected:ambiguous",
+      "outcome": "uncertain",
+      "proposalAcceptanceProbability": 0.9885,
+      "proposalAcceptanceRawScore": 0.0115,
+      "proposalAccepted": false,
+      "proposalEnergyScore": -2.1608,
+      "proposalRejectorConfidence": 0.9897,
+      "proposalRejectorLabel": "ambiguous",
+      "proposalScore": 0.0115,
+      "rawVideoMAETopK": [
+        {
+          "canonicalLabel": "uncertain",
+          "confidence": 0.24,
+          "label": "uncertain",
+          "modelVersion": "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
+          "rawLabel": "uncertain"
+        }
+      ],
+      "rawXCLIPSuggestions": [
+        {
+          "canonicalLabel": "uncertain",
+          "confidence": 0.22,
+          "label": "uncertain",
+          "modelVersion": "xclip:microsoft/xclip-base-patch32",
+          "rawLabel": "uncertain"
+        }
+      ],
+      "requestId": "7a6a6fc4-0275-4dad-b0d9-644ec44b8318",
+      "resultConfidence": null,
+      "shotHeadInvoked": false,
+      "shotSpecialistAbstained": false,
+      "shotSpecialistUsed": false,
+      "shotSubtype": null,
+      "sourceDomain": "staging_hoopcut_demo_mixed_unlabeled",
+      "sourceEventCount": 4,
+      "uploadTraceId": "e87bfaa6186443118a34e9547d94a37d",
+      "wasMerged": true
+    },
+    {
+      "candidateNamespace": "runtimeFusionTemporalShadow",
+      "clipDurationSeconds": 7.515,
+      "clipId": "5fcbbe8f6a8d4fe9a01e8f034e6bae17:clip-3",
+      "confidence": 0.18,
+      "confidenceAfterMapping": 0.18,
+      "confidenceBeforeMapping": 0.18,
+      "eventFamily": "other",
+      "eventSpotterFamily": "other",
+      "expectedEventFamily": null,
+      "expectedLabel": null,
+      "expectedOutcome": null,
+      "expectedShotSubtype": null,
+      "familyGateOpen": false,
+      "familyGateRejectionReason": "proposal_rejected",
+      "flatLabel": "Highlight",
+      "inferenceAttemptId": "3b043f4bfdc24f0195e572228fdeab94",
+      "isUncertain": true,
+      "jobId": "5fcbbe8f6a8d4fe9a01e8f034e6bae17",
+      "manualAuditLabel": null,
+      "manualAuditRationale": null,
+      "modelVersion": "temporal-event-detector-tridet-proposal-conditioned-shot-specialist-v2",
+      "otherBucket": "ambiguous_event",
+      "otherBucketReason": "proposal_rejected:ambiguous",
+      "outcome": "uncertain",
+      "proposalAcceptanceProbability": 0.9875,
+      "proposalAcceptanceRawScore": 0.0125,
+      "proposalAccepted": false,
+      "proposalEnergyScore": -2.1324,
+      "proposalRejectorConfidence": 0.9875,
+      "proposalRejectorLabel": "ambiguous",
+      "proposalScore": 0.0125,
+      "rawVideoMAETopK": [
+        {
+          "canonicalLabel": "uncertain",
+          "confidence": 0.24,
+          "label": "uncertain",
+          "modelVersion": "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
+          "rawLabel": "uncertain"
+        }
+      ],
+      "rawXCLIPSuggestions": [
+        {
+          "canonicalLabel": "uncertain",
+          "confidence": 0.22,
+          "label": "uncertain",
+          "modelVersion": "xclip:microsoft/xclip-base-patch32",
+          "rawLabel": "uncertain"
+        }
+      ],
+      "requestId": "7a6a6fc4-0275-4dad-b0d9-644ec44b8318",
+      "resultConfidence": null,
+      "shotHeadInvoked": false,
+      "shotSpecialistAbstained": false,
+      "shotSpecialistUsed": false,
+      "shotSubtype": null,
+      "sourceDomain": "staging_hoopcut_demo_mixed_unlabeled",
+      "sourceEventCount": 3,
+      "uploadTraceId": "e87bfaa6186443118a34e9547d94a37d",
+      "wasMerged": true
+    },
+    {
+      "candidateNamespace": "runtimeFusionTemporalShadow",
+      "clipDurationSeconds": 4.5,
+      "clipId": "e1e935b4b54048759f32c304c79b8897:clip-1",
+      "confidence": 0.58,
+      "confidenceAfterMapping": 0.58,
+      "confidenceBeforeMapping": 0.8726,
+      "eventFamily": "shot_attempt",
+      "eventSpotterFamily": "shot_attempt",
+      "expectedEventFamily": "shot_attempt",
+      "expectedLabel": "Dunk",
+      "expectedOutcome": "made",
+      "expectedShotSubtype": "dunk",
+      "familyGateOpen": true,
+      "familyGateRejectionReason": null,
+      "flatLabel": "Made Shot",
+      "inferenceAttemptId": "f676bdc2ad944b13bc737de8e706ea0a",
+      "isUncertain": true,
+      "jobId": "e1e935b4b54048759f32c304c79b8897",
+      "manualAuditLabel": null,
+      "manualAuditRationale": null,
+      "modelVersion": "temporal-event-detector-tridet-proposal-conditioned-shot-specialist-v2",
+      "otherBucket": null,
+      "otherBucketReason": null,
+      "outcome": "made",
+      "proposalAcceptanceProbability": 0.8726,
+      "proposalAcceptanceRawScore": 0.8726,
+      "proposalAccepted": true,
+      "proposalEnergyScore": -0.7086,
+      "proposalRejectorConfidence": 0.9094,
+      "proposalRejectorLabel": "real_event",
+      "proposalScore": 0.8726,
+      "rawVideoMAETopK": [
+        {
+          "canonicalLabel": "fast break",
+          "confidence": 0.39,
+          "label": "fast break",
+          "modelVersion": "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
+          "rawLabel": "fast break"
+        }
+      ],
+      "rawXCLIPSuggestions": [
+        {
+          "canonicalLabel": "fast break",
+          "confidence": 0.33,
+          "label": "fast break",
+          "modelVersion": "xclip:microsoft/xclip-base-patch32",
+          "rawLabel": "fast break"
+        }
+      ],
+      "requestId": "04c2b69d-95eb-457b-89b0-8c778f09792c",
+      "resultConfidence": null,
+      "shotHeadInvoked": true,
+      "shotSpecialistAbstained": true,
+      "shotSpecialistUsed": true,
+      "shotSubtype": null,
+      "sourceDomain": "staging_hoopcut_known_made",
+      "sourceEventCount": 1,
+      "uploadTraceId": "6cd2f925675841279360400974b84d2f",
+      "wasMerged": false
+    },
+    {
+      "candidateNamespace": "runtimeFusionTemporalShadow",
+      "clipDurationSeconds": 5.25,
+      "clipId": "5b455ca8d19044a680e02cd8afdd000a:clip-1",
+      "confidence": 0.18,
+      "confidenceAfterMapping": 0.18,
+      "confidenceBeforeMapping": 0.18,
+      "eventFamily": "other",
+      "eventSpotterFamily": "transition",
+      "expectedEventFamily": "shot_attempt",
+      "expectedLabel": "Missed Shot",
+      "expectedOutcome": "missed",
+      "expectedShotSubtype": "layup",
+      "familyGateOpen": false,
+      "familyGateRejectionReason": "proposal_rejected",
+      "flatLabel": "Highlight",
+      "inferenceAttemptId": "661bda5f24e5477dabb5441136bb524f",
+      "isUncertain": true,
+      "jobId": "5b455ca8d19044a680e02cd8afdd000a",
+      "manualAuditLabel": null,
+      "manualAuditRationale": null,
+      "modelVersion": "temporal-event-detector-tridet-proposal-conditioned-shot-specialist-v2",
+      "otherBucket": "ambiguous_event",
+      "otherBucketReason": "proposal_rejected:ambiguous",
+      "outcome": "uncertain",
+      "proposalAcceptanceProbability": 0.9345,
+      "proposalAcceptanceRawScore": 0.0655,
+      "proposalAccepted": false,
+      "proposalEnergyScore": -1.1892,
+      "proposalRejectorConfidence": 1.0,
+      "proposalRejectorLabel": "ambiguous",
+      "proposalScore": 0.0655,
+      "rawVideoMAETopK": [
+        {
+          "canonicalLabel": "fast break",
+          "confidence": 0.39,
+          "label": "fast break",
+          "modelVersion": "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
+          "rawLabel": "fast break"
+        }
+      ],
+      "rawXCLIPSuggestions": [
+        {
+          "canonicalLabel": "fast break",
+          "confidence": 0.33,
+          "label": "fast break",
+          "modelVersion": "xclip:microsoft/xclip-base-patch32",
+          "rawLabel": "fast break"
+        }
+      ],
+      "requestId": "07ecfe72-7db7-4cf2-8e53-a6a892367808",
+      "resultConfidence": null,
+      "shotHeadInvoked": false,
+      "shotSpecialistAbstained": false,
+      "shotSpecialistUsed": false,
+      "shotSubtype": null,
+      "sourceDomain": "staging_hoopcut_known_miss",
+      "sourceEventCount": 1,
+      "uploadTraceId": "062c7a5c42264b77bc6e02c1a55d1f13",
+      "wasMerged": false
+    },
+    {
+      "candidateNamespace": "runtimeFusionTemporalShadow",
+      "clipDurationSeconds": 4.2,
+      "clipId": "7a2d729389fd4230942af7e18267f166:clip-1",
+      "confidence": 0.4149,
+      "confidenceAfterMapping": 0.4149,
+      "confidenceBeforeMapping": 0.4549,
+      "eventFamily": "other",
+      "eventSpotterFamily": "shot_attempt",
+      "expectedEventFamily": "shot_attempt",
+      "expectedLabel": "Missed Shot",
+      "expectedOutcome": "missed",
+      "expectedShotSubtype": "layup",
+      "familyGateOpen": false,
+      "familyGateRejectionReason": "proposal_rejected",
+      "flatLabel": "Highlight",
+      "inferenceAttemptId": "594ff7fb022a4b9188abcb713c70008b",
+      "isUncertain": true,
+      "jobId": "7a2d729389fd4230942af7e18267f166",
+      "manualAuditLabel": null,
+      "manualAuditRationale": null,
+      "modelVersion": "temporal-event-detector-tridet-proposal-conditioned-shot-specialist-v2",
+      "otherBucket": "ambiguous_event",
+      "otherBucketReason": "proposal_rejected:ambiguous",
+      "outcome": "uncertain",
+      "proposalAcceptanceProbability": 0.5451,
+      "proposalAcceptanceRawScore": 0.4549,
+      "proposalAccepted": false,
+      "proposalEnergyScore": -0.5038,
+      "proposalRejectorConfidence": 0.9168,
+      "proposalRejectorLabel": "ambiguous",
+      "proposalScore": 0.4549,
+      "rawVideoMAETopK": [
+        {
+          "canonicalLabel": "jumper",
+          "confidence": 0.4639,
+          "label": "shooting basketball",
+          "modelVersion": "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
+          "rawLabel": "shooting basketball"
+        },
+        {
+          "canonicalLabel": "uncertain",
+          "confidence": 0.2622,
+          "label": "playing basketball",
+          "modelVersion": "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
+          "rawLabel": "playing basketball"
+        },
+        {
+          "canonicalLabel": "uncertain",
+          "confidence": 0.0148,
+          "label": "dribbling basketball",
+          "modelVersion": "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
+          "rawLabel": "dribbling basketball"
+        },
+        {
+          "canonicalLabel": "uncertain",
+          "confidence": 0.0139,
+          "label": "playing volleyball",
+          "modelVersion": "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
+          "rawLabel": "playing volleyball"
+        },
+        {
+          "canonicalLabel": "dunk",
+          "confidence": 0.0108,
+          "label": "dunking basketball",
+          "modelVersion": "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
+          "rawLabel": "dunking basketball"
+        }
+      ],
+      "rawXCLIPSuggestions": [
+        {
+          "canonicalLabel": "fast break",
+          "confidence": 0.33,
+          "label": "fast break",
+          "modelVersion": "xclip:microsoft/xclip-base-patch32",
+          "rawLabel": "fast break"
+        }
+      ],
+      "requestId": "c3674fdd-fef2-4bc6-ac94-cf4f69e188f6",
+      "resultConfidence": null,
+      "shotHeadInvoked": false,
+      "shotSpecialistAbstained": false,
+      "shotSpecialistUsed": false,
+      "shotSubtype": null,
+      "sourceDomain": "staging_hoopcut_known_miss",
+      "sourceEventCount": 1,
+      "uploadTraceId": "d7bfef91c8624a7483883a2c3fff6b3e",
+      "wasMerged": false
+    },
+    {
+      "candidateNamespace": "runtimeFusionTemporalShadow",
+      "clipDurationSeconds": 4.75,
+      "clipId": "b84f24e2c6af4f1b9b58393aaacaa009:clip-1",
+      "confidence": 0.45,
+      "confidenceAfterMapping": 0.45,
+      "confidenceBeforeMapping": 0.7108,
+      "eventFamily": "other",
+      "eventSpotterFamily": "shot_attempt",
+      "expectedEventFamily": null,
+      "expectedLabel": null,
+      "expectedOutcome": null,
+      "expectedShotSubtype": null,
+      "familyGateOpen": false,
+      "familyGateRejectionReason": "proposal_rejected",
+      "flatLabel": "Highlight",
+      "inferenceAttemptId": "9a7a0af3fd764ae3af50440087b048a0",
+      "isUncertain": true,
+      "jobId": "b84f24e2c6af4f1b9b58393aaacaa009",
+      "manualAuditLabel": null,
+      "manualAuditRationale": null,
+      "modelVersion": "temporal-event-detector-tridet-proposal-conditioned-shot-specialist-v2",
+      "otherBucket": "ambiguous_event",
+      "otherBucketReason": "proposal_rejected:ambiguous",
+      "outcome": "uncertain",
+      "proposalAcceptanceProbability": 0.7108,
+      "proposalAcceptanceRawScore": 0.7108,
+      "proposalAccepted": false,
+      "proposalEnergyScore": -0.5683,
+      "proposalRejectorConfidence": 0.7021,
+      "proposalRejectorLabel": "ambiguous",
+      "proposalScore": 0.7108,
+      "rawVideoMAETopK": [
+        {
+          "canonicalLabel": "jumper",
+          "confidence": 0.2191,
+          "label": "shooting basketball",
+          "modelVersion": "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
+          "rawLabel": "shooting basketball"
+        },
+        {
+          "canonicalLabel": "uncertain",
+          "confidence": 0.2049,
+          "label": "dribbling basketball",
+          "modelVersion": "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
+          "rawLabel": "dribbling basketball"
+        },
+        {
+          "canonicalLabel": "uncertain",
+          "confidence": 0.0823,
+          "label": "playing volleyball",
+          "modelVersion": "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
+          "rawLabel": "playing volleyball"
+        },
+        {
+          "canonicalLabel": "uncertain",
+          "confidence": 0.0516,
+          "label": "playing basketball",
+          "modelVersion": "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
+          "rawLabel": "playing basketball"
+        },
+        {
+          "canonicalLabel": "uncertain",
+          "confidence": 0.0113,
+          "label": "catching or throwing baseball",
+          "modelVersion": "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
+          "rawLabel": "catching or throwing baseball"
+        }
+      ],
+      "rawXCLIPSuggestions": [
+        {
+          "canonicalLabel": "three",
+          "confidence": 0.37,
+          "label": "three",
+          "modelVersion": "xclip:microsoft/xclip-base-patch32",
+          "rawLabel": "three"
+        }
+      ],
+      "requestId": "cc614c99-5a28-472f-9af3-8a59c7632eaa",
+      "resultConfidence": null,
+      "shotHeadInvoked": false,
+      "shotSpecialistAbstained": false,
+      "shotSpecialistUsed": false,
+      "shotSubtype": null,
+      "sourceDomain": "staging_hoopcut_demo_mixed_unlabeled",
+      "sourceEventCount": 1,
+      "uploadTraceId": "51ff5248c8384079a055d0f1bb9500b2",
+      "wasMerged": false
+    },
+    {
+      "candidateNamespace": "runtimeFusionTemporalShadow",
+      "clipDurationSeconds": 7.9,
+      "clipId": "b84f24e2c6af4f1b9b58393aaacaa009:clip-2",
+      "confidence": 0.18,
+      "confidenceAfterMapping": 0.18,
+      "confidenceBeforeMapping": 0.18,
+      "eventFamily": "other",
+      "eventSpotterFamily": "other",
+      "expectedEventFamily": null,
+      "expectedLabel": null,
+      "expectedOutcome": null,
+      "expectedShotSubtype": null,
+      "familyGateOpen": false,
+      "familyGateRejectionReason": "proposal_rejected",
+      "flatLabel": "Highlight",
+      "inferenceAttemptId": "9a7a0af3fd764ae3af50440087b048a0",
+      "isUncertain": true,
+      "jobId": "b84f24e2c6af4f1b9b58393aaacaa009",
+      "manualAuditLabel": null,
+      "manualAuditRationale": null,
+      "modelVersion": "temporal-event-detector-tridet-proposal-conditioned-shot-specialist-v2",
+      "otherBucket": "ambiguous_event",
+      "otherBucketReason": "proposal_rejected:ambiguous",
+      "outcome": "uncertain",
+      "proposalAcceptanceProbability": 0.9885,
+      "proposalAcceptanceRawScore": 0.0115,
+      "proposalAccepted": false,
+      "proposalEnergyScore": -2.162,
+      "proposalRejectorConfidence": 0.982,
+      "proposalRejectorLabel": "ambiguous",
+      "proposalScore": 0.0115,
+      "rawVideoMAETopK": [
+        {
+          "canonicalLabel": "uncertain",
+          "confidence": 0.3976,
+          "label": "dribbling basketball",
+          "modelVersion": "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
+          "rawLabel": "dribbling basketball"
+        },
+        {
+          "canonicalLabel": "jumper",
+          "confidence": 0.2634,
+          "label": "shooting basketball",
+          "modelVersion": "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
+          "rawLabel": "shooting basketball"
+        },
+        {
+          "canonicalLabel": "uncertain",
+          "confidence": 0.08,
+          "label": "playing basketball",
+          "modelVersion": "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
+          "rawLabel": "playing basketball"
+        },
+        {
+          "canonicalLabel": "dunk",
+          "confidence": 0.0121,
+          "label": "dunking basketball",
+          "modelVersion": "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
+          "rawLabel": "dunking basketball"
+        },
+        {
+          "canonicalLabel": "uncertain",
+          "confidence": 0.0023,
+          "label": "playing volleyball",
+          "modelVersion": "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
+          "rawLabel": "playing volleyball"
+        },
+        {
+          "canonicalLabel": "uncertain",
+          "confidence": 0.0006,
+          "label": "squat",
+          "modelVersion": "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
+          "rawLabel": "squat"
+        },
+        {
+          "canonicalLabel": "uncertain",
+          "confidence": 0.0006,
+          "label": "tobogganing",
+          "modelVersion": "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
+          "rawLabel": "tobogganing"
+        },
+        {
+          "canonicalLabel": "uncertain",
+          "confidence": 0.0003,
+          "label": "playing bass guitar",
+          "modelVersion": "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
+          "rawLabel": "playing bass guitar"
+        }
+      ],
+      "rawXCLIPSuggestions": [
+        {
+          "canonicalLabel": "uncertain",
+          "confidence": 0.22,
+          "label": "uncertain",
+          "modelVersion": "xclip:microsoft/xclip-base-patch32",
+          "rawLabel": "uncertain"
+        }
+      ],
+      "requestId": "cc614c99-5a28-472f-9af3-8a59c7632eaa",
+      "resultConfidence": null,
+      "shotHeadInvoked": false,
+      "shotSpecialistAbstained": false,
+      "shotSpecialistUsed": false,
+      "shotSubtype": null,
+      "sourceDomain": "staging_hoopcut_demo_mixed_unlabeled",
+      "sourceEventCount": 4,
+      "uploadTraceId": "51ff5248c8384079a055d0f1bb9500b2",
+      "wasMerged": true
+    },
+    {
+      "candidateNamespace": "runtimeFusionTemporalShadow",
+      "clipDurationSeconds": 7.515,
+      "clipId": "b84f24e2c6af4f1b9b58393aaacaa009:clip-3",
+      "confidence": 0.18,
+      "confidenceAfterMapping": 0.18,
+      "confidenceBeforeMapping": 0.18,
+      "eventFamily": "other",
+      "eventSpotterFamily": "other",
+      "expectedEventFamily": null,
+      "expectedLabel": null,
+      "expectedOutcome": null,
+      "expectedShotSubtype": null,
+      "familyGateOpen": false,
+      "familyGateRejectionReason": "proposal_rejected",
+      "flatLabel": "Highlight",
+      "inferenceAttemptId": "9a7a0af3fd764ae3af50440087b048a0",
+      "isUncertain": true,
+      "jobId": "b84f24e2c6af4f1b9b58393aaacaa009",
+      "manualAuditLabel": null,
+      "manualAuditRationale": null,
+      "modelVersion": "temporal-event-detector-tridet-proposal-conditioned-shot-specialist-v2",
+      "otherBucket": "ambiguous_event",
+      "otherBucketReason": "proposal_rejected:ambiguous",
+      "outcome": "uncertain",
+      "proposalAcceptanceProbability": 0.9878,
+      "proposalAcceptanceRawScore": 0.0122,
+      "proposalAccepted": false,
+      "proposalEnergyScore": -2.1403,
+      "proposalRejectorConfidence": 0.9785,
+      "proposalRejectorLabel": "ambiguous",
+      "proposalScore": 0.0122,
+      "rawVideoMAETopK": [
+        {
+          "canonicalLabel": "uncertain",
+          "confidence": 0.3917,
+          "label": "dribbling basketball",
+          "modelVersion": "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
+          "rawLabel": "dribbling basketball"
+        },
+        {
+          "canonicalLabel": "jumper",
+          "confidence": 0.2121,
+          "label": "shooting basketball",
+          "modelVersion": "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
+          "rawLabel": "shooting basketball"
+        },
+        {
+          "canonicalLabel": "uncertain",
+          "confidence": 0.0824,
+          "label": "playing basketball",
+          "modelVersion": "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
+          "rawLabel": "playing basketball"
+        },
+        {
+          "canonicalLabel": "dunk",
+          "confidence": 0.0242,
+          "label": "dunking basketball",
+          "modelVersion": "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
+          "rawLabel": "dunking basketball"
+        },
+        {
+          "canonicalLabel": "uncertain",
+          "confidence": 0.0018,
+          "label": "playing volleyball",
+          "modelVersion": "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
+          "rawLabel": "playing volleyball"
+        },
+        {
+          "canonicalLabel": "uncertain",
+          "confidence": 0.0006,
+          "label": "playing bass guitar",
+          "modelVersion": "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
+          "rawLabel": "playing bass guitar"
+        },
+        {
+          "canonicalLabel": "uncertain",
+          "confidence": 0.0003,
+          "label": "squat",
+          "modelVersion": "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
+          "rawLabel": "squat"
+        },
+        {
+          "canonicalLabel": "uncertain",
+          "confidence": 0.0003,
+          "label": "tobogganing",
+          "modelVersion": "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
+          "rawLabel": "tobogganing"
+        }
+      ],
+      "rawXCLIPSuggestions": [
+        {
+          "canonicalLabel": "uncertain",
+          "confidence": 0.22,
+          "label": "uncertain",
+          "modelVersion": "xclip:microsoft/xclip-base-patch32",
+          "rawLabel": "uncertain"
+        }
+      ],
+      "requestId": "cc614c99-5a28-472f-9af3-8a59c7632eaa",
+      "resultConfidence": null,
+      "shotHeadInvoked": false,
+      "shotSpecialistAbstained": false,
+      "shotSpecialistUsed": false,
+      "shotSubtype": null,
+      "sourceDomain": "staging_hoopcut_demo_mixed_unlabeled",
+      "sourceEventCount": 3,
+      "uploadTraceId": "51ff5248c8384079a055d0f1bb9500b2",
+      "wasMerged": true
+    }
+  ],
+  "collapseExamples": [
+    {
+      "clipId": "2755a51b9b244708b7397207968e1c01:clip-1",
+      "flatLabel": "Highlight",
+      "rawDiversity": 2,
+      "rawVideoMAETopK": [
+        {
+          "canonicalLabel": "layup",
+          "confidence": 0.44,
+          "label": "layup",
+          "modelVersion": "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
+          "rawLabel": "layup"
+        }
+      ],
+      "rawXCLIPSuggestions": [
+        {
+          "canonicalLabel": "three",
+          "confidence": 0.37,
+          "label": "three",
+          "modelVersion": "xclip:microsoft/xclip-base-patch32",
+          "rawLabel": "three"
+        }
+      ]
+    },
+    {
+      "clipId": "5fcbbe8f6a8d4fe9a01e8f034e6bae17:clip-1",
+      "flatLabel": "Highlight",
+      "rawDiversity": 2,
+      "rawVideoMAETopK": [
+        {
+          "canonicalLabel": "layup",
+          "confidence": 0.44,
+          "label": "layup",
+          "modelVersion": "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
+          "rawLabel": "layup"
+        }
+      ],
+      "rawXCLIPSuggestions": [
+        {
+          "canonicalLabel": "three",
+          "confidence": 0.37,
+          "label": "three",
+          "modelVersion": "xclip:microsoft/xclip-base-patch32",
+          "rawLabel": "three"
+        }
+      ]
+    },
+    {
+      "clipId": "7a2d729389fd4230942af7e18267f166:clip-1",
+      "flatLabel": "Highlight",
+      "rawDiversity": 2,
+      "rawVideoMAETopK": [
+        {
+          "canonicalLabel": "jumper",
+          "confidence": 0.4639,
+          "label": "shooting basketball",
+          "modelVersion": "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
+          "rawLabel": "shooting basketball"
+        },
+        {
+          "canonicalLabel": "uncertain",
+          "confidence": 0.2622,
+          "label": "playing basketball",
+          "modelVersion": "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
+          "rawLabel": "playing basketball"
+        },
+        {
+          "canonicalLabel": "uncertain",
+          "confidence": 0.0148,
+          "label": "dribbling basketball",
+          "modelVersion": "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
+          "rawLabel": "dribbling basketball"
+        }
+      ],
+      "rawXCLIPSuggestions": [
+        {
+          "canonicalLabel": "fast break",
+          "confidence": 0.33,
+          "label": "fast break",
+          "modelVersion": "xclip:microsoft/xclip-base-patch32",
+          "rawLabel": "fast break"
+        }
+      ]
+    },
+    {
+      "clipId": "b84f24e2c6af4f1b9b58393aaacaa009:clip-1",
+      "flatLabel": "Highlight",
+      "rawDiversity": 2,
+      "rawVideoMAETopK": [
+        {
+          "canonicalLabel": "jumper",
+          "confidence": 0.2191,
+          "label": "shooting basketball",
+          "modelVersion": "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
+          "rawLabel": "shooting basketball"
+        },
+        {
+          "canonicalLabel": "uncertain",
+          "confidence": 0.2049,
+          "label": "dribbling basketball",
+          "modelVersion": "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
+          "rawLabel": "dribbling basketball"
+        },
+        {
+          "canonicalLabel": "uncertain",
+          "confidence": 0.0823,
+          "label": "playing volleyball",
+          "modelVersion": "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
+          "rawLabel": "playing volleyball"
+        }
+      ],
+      "rawXCLIPSuggestions": [
+        {
+          "canonicalLabel": "three",
+          "confidence": 0.37,
+          "label": "three",
+          "modelVersion": "xclip:microsoft/xclip-base-patch32",
+          "rawLabel": "three"
+        }
+      ]
+    },
+    {
+      "clipId": "b84f24e2c6af4f1b9b58393aaacaa009:clip-2",
+      "flatLabel": "Highlight",
+      "rawDiversity": 2,
+      "rawVideoMAETopK": [
+        {
+          "canonicalLabel": "uncertain",
+          "confidence": 0.3976,
+          "label": "dribbling basketball",
+          "modelVersion": "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
+          "rawLabel": "dribbling basketball"
+        },
+        {
+          "canonicalLabel": "jumper",
+          "confidence": 0.2634,
+          "label": "shooting basketball",
+          "modelVersion": "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
+          "rawLabel": "shooting basketball"
+        },
+        {
+          "canonicalLabel": "uncertain",
+          "confidence": 0.08,
+          "label": "playing basketball",
+          "modelVersion": "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
+          "rawLabel": "playing basketball"
+        }
+      ],
+      "rawXCLIPSuggestions": [
+        {
+          "canonicalLabel": "uncertain",
+          "confidence": 0.22,
+          "label": "uncertain",
+          "modelVersion": "xclip:microsoft/xclip-base-patch32",
+          "rawLabel": "uncertain"
+        }
+      ]
+    },
+    {
+      "clipId": "b84f24e2c6af4f1b9b58393aaacaa009:clip-3",
+      "flatLabel": "Highlight",
+      "rawDiversity": 2,
+      "rawVideoMAETopK": [
+        {
+          "canonicalLabel": "uncertain",
+          "confidence": 0.3917,
+          "label": "dribbling basketball",
+          "modelVersion": "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
+          "rawLabel": "dribbling basketball"
+        },
+        {
+          "canonicalLabel": "jumper",
+          "confidence": 0.2121,
+          "label": "shooting basketball",
+          "modelVersion": "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
+          "rawLabel": "shooting basketball"
+        },
+        {
+          "canonicalLabel": "uncertain",
+          "confidence": 0.0824,
+          "label": "playing basketball",
+          "modelVersion": "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
+          "rawLabel": "playing basketball"
+        }
+      ],
+      "rawXCLIPSuggestions": [
+        {
+          "canonicalLabel": "uncertain",
+          "confidence": 0.22,
+          "label": "uncertain",
+          "modelVersion": "xclip:microsoft/xclip-base-patch32",
+          "rawLabel": "uncertain"
+        }
+      ]
+    }
+  ],
+  "labelSpreadWarnings": [
+    "Mixed batch produced fewer than four flat labels.",
+    "One flat label still dominates more than half the batch.",
+    "Uncertainty remains above 50% on this batch."
+  ],
+  "summary": {
+    "acceptanceCalibration": {
+      "brierScore": 0.7099,
+      "coverageRiskCurve": [
+        {
+          "count": 1,
+          "coverage": 0.0556,
+          "risk": 1.0
+        },
+        {
+          "count": 2,
+          "coverage": 0.1111,
+          "risk": 1.0
+        },
+        {
+          "count": 3,
+          "coverage": 0.1667,
+          "risk": 1.0
+        },
+        {
+          "count": 4,
+          "coverage": 0.2222,
+          "risk": 1.0
+        },
+        {
+          "count": 5,
+          "coverage": 0.2778,
+          "risk": 1.0
+        },
+        {
+          "count": 6,
+          "coverage": 0.3333,
+          "risk": 1.0
+        },
+        {
+          "count": 7,
+          "coverage": 0.3889,
+          "risk": 1.0
+        },
+        {
+          "count": 8,
+          "coverage": 0.4444,
+          "risk": 1.0
+        },
+        {
+          "count": 9,
+          "coverage": 0.5,
+          "risk": 1.0
+        },
+        {
+          "count": 10,
+          "coverage": 0.5556,
+          "risk": 1.0
+        },
+        {
+          "count": 11,
+          "coverage": 0.6111,
+          "risk": 1.0
+        },
+        {
+          "count": 12,
+          "coverage": 0.6667,
+          "risk": 1.0
+        },
+        {
+          "count": 13,
+          "coverage": 0.7222,
+          "risk": 1.0
+        },
+        {
+          "count": 14,
+          "coverage": 0.7778,
+          "risk": 0.9286
+        },
+        {
+          "count": 15,
+          "coverage": 0.8333,
+          "risk": 0.8667
+        },
+        {
+          "count": 16,
+          "coverage": 0.8889,
+          "risk": 0.8125
+        },
+        {
+          "count": 17,
+          "coverage": 0.9444,
+          "risk": 0.8235
+        },
+        {
+          "count": 18,
+          "coverage": 1.0,
+          "risk": 0.8333
+        }
+      ],
+      "eceLite": 0.74,
+      "reliabilityBuckets": [
+        {
+          "accuracy": null,
+          "bin": "[0.0,0.2)",
+          "count": 0,
+          "meanProbability": null,
+          "risk": null
+        },
+        {
+          "accuracy": null,
+          "bin": "[0.2,0.4)",
+          "count": 0,
+          "meanProbability": null,
+          "risk": null
+        },
+        {
+          "accuracy": 0.0,
+          "bin": "[0.4,0.6)",
+          "count": 1,
+          "meanProbability": 0.5451,
+          "risk": 1.0
+        },
+        {
+          "accuracy": 0.0,
+          "bin": "[0.6,0.8)",
+          "count": 1,
+          "meanProbability": 0.7108,
+          "risk": 1.0
+        },
+        {
+          "accuracy": 0.1875,
+          "bin": "[0.8,1.0)",
+          "count": 16,
+          "meanProbability": 0.9415,
+          "risk": 0.8125
+        }
+      ],
+      "scoredClips": 18
+    },
+    "acceptedClosedWithoutReason": [],
+    "acceptedShotAbstentionRate": 1.0,
+    "acceptedShotOutcomeCalibration": {
+      "brierScore": 0.1764,
+      "coverageRiskCurve": [
+        {
+          "count": 1,
+          "coverage": 0.3333,
+          "risk": 0.0
+        },
+        {
+          "count": 2,
+          "coverage": 0.6667,
+          "risk": 0.0
+        },
+        {
+          "count": 3,
+          "coverage": 1.0,
+          "risk": 0.0
+        }
+      ],
+      "eceLite": 0.42,
+      "reliabilityBuckets": [
+        {
+          "accuracy": null,
+          "bin": "[0.0,0.2)",
+          "count": 0,
+          "meanConfidence": null,
+          "risk": null
+        },
+        {
+          "accuracy": null,
+          "bin": "[0.2,0.4)",
+          "count": 0,
+          "meanConfidence": null,
+          "risk": null
+        },
+        {
+          "accuracy": 1.0,
+          "bin": "[0.4,0.6)",
+          "count": 3,
+          "meanConfidence": 0.58,
+          "risk": 0.0
+        },
+        {
+          "accuracy": null,
+          "bin": "[0.6,0.8)",
+          "count": 0,
+          "meanConfidence": null,
+          "risk": null
+        },
+        {
+          "accuracy": null,
+          "bin": "[0.8,1.0)",
+          "count": 0,
+          "meanConfidence": null,
+          "risk": null
+        }
+      ],
+      "scoredClips": 3
+    },
+    "acceptedShotProposalOutcomeAccuracy": 1.0,
+    "acceptedShotSubtypeDistribution": {
+      "null": 3
+    },
+    "candidateNamespaces": {
+      "dominantNamespace": "runtimeFusionTemporalShadow",
+      "dominantNamespaceShare": 1.0,
+      "namespaceCounts": {
+        "runtimeFusionTemporalShadow": 18
+      }
+    },
+    "clipCount": 18,
+    "dominantFlatLabel": "Highlight",
+    "dominantFlatLabelShare": 0.8333,
+    "dunkDominance": 0.0,
+    "durationSummary": {
+      "count": 18,
+      "medianSeconds": 5.0,
+      "p90Seconds": 7.9
+    },
+    "eventDetectionPrecision": 1.0,
+    "eventDetectionRecall": 1.0,
+    "eventFamilyAccuracy": 0.3333,
+    "eventFamilyDistribution": {
+      "other": 15,
+      "shot_attempt": 3
+    },
+    "eventFamilyOtherDominance": 0.8333,
+    "eventSpotterPrecision": 1.0,
+    "eventSpotterRecall": 1.0,
+    "eventnessCalibration": {
+      "brierScore": 0.0308,
+      "eligibleClips": 9,
+      "negativeMeanScore": null,
+      "positiveMeanScore": 0.8705
+    },
+    "familyGateOpenClipCount": 18,
+    "familyGateOpenCount": 3,
+    "familyGateOpenRate": 0.1667,
+    "flatLabelDistribution": {
+      "Highlight": 15,
+      "Made Shot": 3
+    },
+    "highlightDominance": 0.8333,
+    "inferenceAttemptIds": [
+      "6cff7b8ec1f147da8ac0cc512aed2479",
+      "43101b3d6aa54a198aa754a8dd15fda8",
+      "051846f060f04b53b51bc46f1025db2a",
+      "2b1abd2609d34c0eb795cb2921e5c2a8",
+      "5a8bcfd29efd414db5a82ecaa0aacb48",
+      "493bf98355da4fed9305d57573889dc5",
+      "21f39c1a0840419b9563c6e357affae9",
+      "3b043f4bfdc24f0195e572228fdeab94",
+      "f676bdc2ad944b13bc737de8e706ea0a",
+      "661bda5f24e5477dabb5441136bb524f",
+      "594ff7fb022a4b9188abcb713c70008b",
+      "9a7a0af3fd764ae3af50440087b048a0"
+    ],
+    "jobCount": 12,
+    "labeledClipCount": 9,
+    "missVsMadeConfusion": {
+      "expectedMadePredictedHighlight": 0,
+      "expectedMadePredictedMiss": 0,
+      "expectedMissPredictedHighlight": 0,
+      "expectedMissPredictedMadeShot": 0
+    },
+    "mixedBatchLabelSpread": {
+      "dominantLabel": "Highlight",
+      "dominantLabelShare": 0.8333,
+      "entropy": 0.65,
+      "spreadScore": 0.1667,
+      "topLabels": [
+        [
+          "Highlight",
+          15
+        ],
+        [
+          "Made Shot",
+          3
+        ]
+      ],
+      "uniqueLabelCount": 2
+    },
+    "modelVersions": [
+      "temporal-event-detector-tridet-proposal-conditioned-shot-specialist-v2"
+    ],
+    "otherBucketAudit": {
+      "auditedOtherClips": 0,
+      "eligibleOtherClips": 15,
+      "manualAuditDistribution": {},
+      "trueModelMissRateWithinOther": null,
+      "trueModelMissShareOfBatch": 0.0,
+      "trueNegativeRateWithinOther": null,
+      "trueNegativeShareOfBatch": 0.0,
+      "unauditedOtherClips": 15
+    },
+    "outcomeAccuracy": 0.3333,
+    "outcomeDistribution": {
+      "made": 3,
+      "uncertain": 15
+    },
+    "proposalAcceptanceClipCount": 18,
+    "proposalAcceptanceRate": 0.1667,
+    "proposalAcceptedCount": 3,
+    "rawEventFamilyOtherRate": 0.8333,
+    "rejectedProposalAudit": {
+      "eligibleRejectedClips": 6,
+      "trueMissCount": 6,
+      "trueMissRate": 1.0,
+      "trueNegativeCount": 0,
+      "trueNegativeRate": 0.0
+    },
+    "requestIds": [
+      "9e2ec502-7e6b-44d4-88b9-5b4c249bc181",
+      "2cf6c516-3877-41d1-bde8-7077f4ba5a04",
+      "37fecfcc-853e-4387-973e-981976b11645",
+      "47f31761-fcdc-4d0a-b988-0a88328c43c4",
+      "7fdaafba-520e-469b-a8b9-bb7ea5fdb365",
+      "e30e58f9-8eea-4d89-99d9-c07f11a1e8ef",
+      "3a9cb7f0-101b-42b5-89b2-d78aed67fb12",
+      "7a6a6fc4-0275-4dad-b0d9-644ec44b8318",
+      "04c2b69d-95eb-457b-89b0-8c778f09792c",
+      "07ecfe72-7db7-4cf2-8e53-a6a892367808",
+      "c3674fdd-fef2-4bc6-ac94-cf4f69e188f6",
+      "cc614c99-5a28-472f-9af3-8a59c7632eaa"
+    ],
+    "shotHeadInvocationClipCount": 18,
+    "shotHeadInvocationCount": 3,
+    "shotHeadInvocationRate": 0.1667,
+    "shotSubtypeAccuracy": 0.0,
+    "shotSubtypeDistribution": {
+      "null": 18
+    },
+    "sourceDomainDistribution": {
+      "staging_hoopcut_demo_mixed_unlabeled": 9,
+      "staging_hoopcut_known_made": 3,
+      "staging_hoopcut_known_miss": 6
+    },
+    "splitOtherDistribution": {
+      "ambiguous_event": 15
+    },
+    "uncertaintyRate": 1.0,
+    "uploadTraceIds": [
+      "2197f5d458314ebeb4dedd90e1561661",
+      "fa58aa0cadf14353bef1552607a8f83a",
+      "322ceda2a70b4aa2aa59b54ceaba6399",
+      "c33e2546ba9249348bc72480a894e095",
+      "a942043895214c56a9581c2532a04e95",
+      "35d6426a1168412caab56d03224b5f29",
+      "7443f1bbcb0043c4bf5f2fbb38ea1afb",
+      "e87bfaa6186443118a34e9547d94a37d",
+      "6cd2f925675841279360400974b84d2f",
+      "062c7a5c42264b77bc6e02c1a55d1f13",
+      "d7bfef91c8624a7483883a2c3fff6b3e",
+      "51ff5248c8384079a055d0f1bb9500b2"
+    ]
+  }
+}

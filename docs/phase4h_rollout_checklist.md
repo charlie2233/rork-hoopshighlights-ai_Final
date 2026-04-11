@@ -24,6 +24,18 @@
 - Recommended smoke setting: family temperature `1.0`, top-1 threshold `0.42`, top-2 margin threshold `0.02`, spotter rescue max delta `0.08`.
 - Next gate: run only a small `15-20` clip staging smoke. Do not promote to another large batch until calibrated acceptance probability, energy score, and explicit family-gate closure reasons are present in staging payloads.
 
+## Family Gate Smoke - 2026-04-11
+
+- Branch: `codex/phase4h-family-gate-suppression-fix`.
+- Smoke report: `docs/phase4h_smoke_report.md`.
+- Eval artifact: `services/inference/evals/phase4h_smoke/shadow_eval_report.json`.
+- Cloud Run revision: `hoopsclips-inference-staging-00034-xtc`.
+- Result: no-go for follow-on branch creation from this smoke.
+- Accepted proposals reached the shot stack: `proposalAcceptedCount=3`, `familyGateOpenCount=3`, `shotHeadInvocationCount=3`.
+- Safety held for made/dunk collapse and miss-to-made drift: `Made Shot=3`, `Highlight=15`, `missToMadeDrift=0`, no concrete subtype emitted.
+- Smoke failed the flat-label dominance guard: `Highlight=0.8333`, above the `0.80` smoke cap.
+- Next gate: do not run a medium batch yet and do not create `codex/phase4h-acceptor-coverage-lift` from this no-go smoke without explicit approval.
+
 ## Before Shadow Deploy
 
 - Confirm branch is `codex/phase4h-family-gate-suppression-fix`.
