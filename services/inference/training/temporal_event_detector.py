@@ -193,6 +193,8 @@ def train_temporal_event_detector_from_repo(
     hidden_size: int = 18,
     epochs: int = 180,
     learning_rate: float = 0.02,
+    proposal_rejector_loss: BinaryTrainingLossConfig = BinaryTrainingLossConfig(),
+    proposal_acceptor_loss: BinaryTrainingLossConfig = BinaryTrainingLossConfig(),
 ) -> TemporalEventDetectorTrainingResult:
     examples = load_temporal_event_detector_examples(repo_root)
     result = train_temporal_event_detector(
@@ -201,6 +203,8 @@ def train_temporal_event_detector_from_repo(
         hidden_size=hidden_size,
         epochs=epochs,
         learning_rate=learning_rate,
+        proposal_rejector_loss=proposal_rejector_loss,
+        proposal_acceptor_loss=proposal_acceptor_loss,
     )
     if output_path is not None:
         write_temporal_event_detector_bundle(output_path, result.bundle)

@@ -1,0 +1,100 @@
+{
+  "datasetSummary": {
+    "acceptanceLabelDistribution": {
+      "accept": 42,
+      "unknown": 39
+    },
+    "acceptedProposalsWithGateOpenCount": 3,
+    "acceptedProposalsWithShotHeadCount": 3,
+    "baselineAcceptanceRate": 0.127,
+    "datasetSourceDistribution": {
+      "phase4h_gate_unblock_smoke_18clip": 18,
+      "phase4h_staging_eval_63clip": 63
+    },
+    "eventFamilyDistribution": {
+      "other": 39,
+      "shot_attempt": 42
+    },
+    "hardNegativeDistribution": {},
+    "missingHardNegativeBuckets": [
+      "dead_ball",
+      "replay_or_reaction",
+      "setup",
+      "true_negative_non_event"
+    ],
+    "outcomeDistribution": {
+      "made": 14,
+      "missed": 28,
+      "uncertain": 39
+    },
+    "proposalAcceptanceRateInSourceArtifacts": 0.1358,
+    "proposalAcceptedCountInSourceArtifacts": 11,
+    "requiresHumanReviewCount": 39,
+    "rowCount": 81
+  },
+  "guardrails": {
+    "doNotChangeDetectorFamily": true,
+    "doNotChangeFamilyRescueThresholds": true,
+    "doNotUseSpaceJam": true,
+    "missToMadeDriftMustRemain": 0,
+    "rejectIfDominantFlatLabelShareIncreases": true
+  },
+  "reason": "The standing dataset has labeled positives and unknown demo clips, but too few confirmed hard negatives for a safe acceptor weight update.",
+  "recommendedReplayConfig": {
+    "acceptanceLiftOverBaseline": 0.2434,
+    "acceptedAuditedRejectCount": 0,
+    "acceptedPrecisionOnAuditedClips": 1.0,
+    "acceptedUnknownCount": 1,
+    "calibratedAcceptanceProbabilityThreshold": 0.3,
+    "dominantFlatLabel": "Highlight",
+    "dominantFlatLabelShare": 0.642,
+    "dunkMadeHallucinationSignal": 0,
+    "energyThreshold": -0.8,
+    "eventFamilyDistribution": {
+      "other": 52,
+      "shot_attempt": 29
+    },
+    "familyGateOpenCount": 29,
+    "flatLabelDistribution": {
+      "Highlight": 52,
+      "Made Shot": 14,
+      "Shot Attempt": 15
+    },
+    "missToMadeDrift": 0,
+    "proposalAcceptanceRate": 0.3704,
+    "proposalAcceptedCount": 30,
+    "rawEventFamilyOtherRate": 0.642,
+    "shotHeadInvocationCount": 29,
+    "sourceAcceptance": {
+      "phase4h_gate_unblock_smoke_18clip": {
+        "acceptanceRate": 0.2778,
+        "acceptedCount": 5,
+        "rowCount": 18
+      },
+      "phase4h_staging_eval_63clip": {
+        "acceptanceRate": 0.3968,
+        "acceptedCount": 25,
+        "rowCount": 63
+      }
+    },
+    "temperature": 1.0,
+    "trainingLossConfig": "focal_class_balanced:g1.75:a0.50"
+  },
+  "status": "blocked_by_missing_curated_hard_negatives",
+  "trainingConfig": {
+    "energyScoreReporting": true,
+    "outlierExposureBuckets": [
+      "dead_ball",
+      "replay_or_reaction",
+      "setup",
+      "true_negative_non_event"
+    ],
+    "proposalAcceptorClassBalanceAlpha": 0.65,
+    "proposalAcceptorFocalGamma": 2.0,
+    "proposalAcceptorLossMode": "focal_class_balanced",
+    "proposalRejectorClassBalanceAlpha": 0.5,
+    "proposalRejectorFocalGamma": 1.75,
+    "proposalRejectorLossMode": "focal_class_balanced",
+    "temperatureScaling": true
+  }
+}

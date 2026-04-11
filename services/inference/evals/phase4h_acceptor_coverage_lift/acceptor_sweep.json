@@ -1,0 +1,984 @@
+{
+  "baselineAcceptanceRate": 0.127,
+  "fullRowsIncluded": false,
+  "recommendedConfig": {
+    "acceptanceLiftOverBaseline": 0.2434,
+    "acceptedAuditedRejectCount": 0,
+    "acceptedPrecisionOnAuditedClips": 1.0,
+    "acceptedUnknownCount": 1,
+    "calibratedAcceptanceProbabilityThreshold": 0.3,
+    "dominantFlatLabel": "Highlight",
+    "dominantFlatLabelShare": 0.642,
+    "dunkMadeHallucinationSignal": 0,
+    "energyThreshold": -0.8,
+    "eventFamilyDistribution": {
+      "other": 52,
+      "shot_attempt": 29
+    },
+    "familyGateOpenCount": 29,
+    "flatLabelDistribution": {
+      "Highlight": 52,
+      "Made Shot": 14,
+      "Shot Attempt": 15
+    },
+    "missToMadeDrift": 0,
+    "proposalAcceptanceRate": 0.3704,
+    "proposalAcceptedCount": 30,
+    "rawEventFamilyOtherRate": 0.642,
+    "shotHeadInvocationCount": 29,
+    "sourceAcceptance": {
+      "phase4h_gate_unblock_smoke_18clip": {
+        "acceptanceRate": 0.2778,
+        "acceptedCount": 5,
+        "rowCount": 18
+      },
+      "phase4h_staging_eval_63clip": {
+        "acceptanceRate": 0.3968,
+        "acceptedCount": 25,
+        "rowCount": 63
+      }
+    },
+    "temperature": 1.0,
+    "trainingLossConfig": "focal_class_balanced:g1.75:a0.50"
+  },
+  "selectedRows": [
+    {
+      "acceptanceLiftOverBaseline": 0.2434,
+      "acceptedAuditedRejectCount": 0,
+      "acceptedPrecisionOnAuditedClips": 1.0,
+      "acceptedUnknownCount": 1,
+      "calibratedAcceptanceProbabilityThreshold": 0.3,
+      "dominantFlatLabel": "Highlight",
+      "dominantFlatLabelShare": 0.642,
+      "dunkMadeHallucinationSignal": 0,
+      "energyThreshold": -0.8,
+      "eventFamilyDistribution": {
+        "other": 52,
+        "shot_attempt": 29
+      },
+      "familyGateOpenCount": 29,
+      "flatLabelDistribution": {
+        "Highlight": 52,
+        "Made Shot": 14,
+        "Shot Attempt": 15
+      },
+      "missToMadeDrift": 0,
+      "proposalAcceptanceRate": 0.3704,
+      "proposalAcceptedCount": 30,
+      "rawEventFamilyOtherRate": 0.642,
+      "shotHeadInvocationCount": 29,
+      "sourceAcceptance": {
+        "phase4h_gate_unblock_smoke_18clip": {
+          "acceptanceRate": 0.2778,
+          "acceptedCount": 5,
+          "rowCount": 18
+        },
+        "phase4h_staging_eval_63clip": {
+          "acceptanceRate": 0.3968,
+          "acceptedCount": 25,
+          "rowCount": 63
+        }
+      },
+      "temperature": 1.0,
+      "trainingLossConfig": "focal_class_balanced:g1.75:a0.50"
+    },
+    {
+      "acceptanceLiftOverBaseline": 0.0088,
+      "acceptedAuditedRejectCount": 0,
+      "acceptedPrecisionOnAuditedClips": 1.0,
+      "acceptedUnknownCount": 0,
+      "calibratedAcceptanceProbabilityThreshold": 0.65,
+      "dominantFlatLabel": "Highlight",
+      "dominantFlatLabelShare": 0.8642,
+      "dunkMadeHallucinationSignal": 0,
+      "energyThreshold": null,
+      "eventFamilyDistribution": {
+        "other": 70,
+        "shot_attempt": 11
+      },
+      "familyGateOpenCount": 11,
+      "flatLabelDistribution": {
+        "Highlight": 70,
+        "Made Shot": 11
+      },
+      "missToMadeDrift": 0,
+      "proposalAcceptanceRate": 0.1358,
+      "proposalAcceptedCount": 11,
+      "rawEventFamilyOtherRate": 0.8642,
+      "shotHeadInvocationCount": 11,
+      "sourceAcceptance": {
+        "phase4h_gate_unblock_smoke_18clip": {
+          "acceptanceRate": 0.1667,
+          "acceptedCount": 3,
+          "rowCount": 18
+        },
+        "phase4h_staging_eval_63clip": {
+          "acceptanceRate": 0.127,
+          "acceptedCount": 8,
+          "rowCount": 63
+        }
+      },
+      "temperature": 1.5,
+      "trainingLossConfig": "focal_class_balanced:g1.75:a0.50"
+    },
+    {
+      "acceptanceLiftOverBaseline": 0.0088,
+      "acceptedAuditedRejectCount": 0,
+      "acceptedPrecisionOnAuditedClips": 1.0,
+      "acceptedUnknownCount": 0,
+      "calibratedAcceptanceProbabilityThreshold": 0.65,
+      "dominantFlatLabel": "Highlight",
+      "dominantFlatLabelShare": 0.8642,
+      "dunkMadeHallucinationSignal": 0,
+      "energyThreshold": null,
+      "eventFamilyDistribution": {
+        "other": 70,
+        "shot_attempt": 11
+      },
+      "familyGateOpenCount": 11,
+      "flatLabelDistribution": {
+        "Highlight": 70,
+        "Made Shot": 11
+      },
+      "missToMadeDrift": 0,
+      "proposalAcceptanceRate": 0.1358,
+      "proposalAcceptedCount": 11,
+      "rawEventFamilyOtherRate": 0.8642,
+      "shotHeadInvocationCount": 11,
+      "sourceAcceptance": {
+        "phase4h_gate_unblock_smoke_18clip": {
+          "acceptanceRate": 0.1667,
+          "acceptedCount": 3,
+          "rowCount": 18
+        },
+        "phase4h_staging_eval_63clip": {
+          "acceptanceRate": 0.127,
+          "acceptedCount": 8,
+          "rowCount": 63
+        }
+      },
+      "temperature": 1.5,
+      "trainingLossConfig": "focal_class_balanced:g2.00:a0.65"
+    },
+    {
+      "acceptanceLiftOverBaseline": 0.0088,
+      "acceptedAuditedRejectCount": 0,
+      "acceptedPrecisionOnAuditedClips": 1.0,
+      "acceptedUnknownCount": 0,
+      "calibratedAcceptanceProbabilityThreshold": 0.65,
+      "dominantFlatLabel": "Highlight",
+      "dominantFlatLabelShare": 0.8642,
+      "dunkMadeHallucinationSignal": 0,
+      "energyThreshold": null,
+      "eventFamilyDistribution": {
+        "other": 70,
+        "shot_attempt": 11
+      },
+      "familyGateOpenCount": 11,
+      "flatLabelDistribution": {
+        "Highlight": 70,
+        "Made Shot": 11
+      },
+      "missToMadeDrift": 0,
+      "proposalAcceptanceRate": 0.1358,
+      "proposalAcceptedCount": 11,
+      "rawEventFamilyOtherRate": 0.8642,
+      "shotHeadInvocationCount": 11,
+      "sourceAcceptance": {
+        "phase4h_gate_unblock_smoke_18clip": {
+          "acceptanceRate": 0.1667,
+          "acceptedCount": 3,
+          "rowCount": 18
+        },
+        "phase4h_staging_eval_63clip": {
+          "acceptanceRate": 0.127,
+          "acceptedCount": 8,
+          "rowCount": 63
+        }
+      },
+      "temperature": 1.5,
+      "trainingLossConfig": "class_balanced:g0.00:a0.65"
+    },
+    {
+      "acceptanceLiftOverBaseline": 0.0088,
+      "acceptedAuditedRejectCount": 0,
+      "acceptedPrecisionOnAuditedClips": 1.0,
+      "acceptedUnknownCount": 0,
+      "calibratedAcceptanceProbabilityThreshold": 0.65,
+      "dominantFlatLabel": "Highlight",
+      "dominantFlatLabelShare": 0.8642,
+      "dunkMadeHallucinationSignal": 0,
+      "energyThreshold": -1.5,
+      "eventFamilyDistribution": {
+        "other": 70,
+        "shot_attempt": 11
+      },
+      "familyGateOpenCount": 11,
+      "flatLabelDistribution": {
+        "Highlight": 70,
+        "Made Shot": 11
+      },
+      "missToMadeDrift": 0,
+      "proposalAcceptanceRate": 0.1358,
+      "proposalAcceptedCount": 11,
+      "rawEventFamilyOtherRate": 0.8642,
+      "shotHeadInvocationCount": 11,
+      "sourceAcceptance": {
+        "phase4h_gate_unblock_smoke_18clip": {
+          "acceptanceRate": 0.1667,
+          "acceptedCount": 3,
+          "rowCount": 18
+        },
+        "phase4h_staging_eval_63clip": {
+          "acceptanceRate": 0.127,
+          "acceptedCount": 8,
+          "rowCount": 63
+        }
+      },
+      "temperature": 1.5,
+      "trainingLossConfig": "focal_class_balanced:g1.75:a0.50"
+    },
+    {
+      "acceptanceLiftOverBaseline": 0.0088,
+      "acceptedAuditedRejectCount": 0,
+      "acceptedPrecisionOnAuditedClips": 1.0,
+      "acceptedUnknownCount": 0,
+      "calibratedAcceptanceProbabilityThreshold": 0.65,
+      "dominantFlatLabel": "Highlight",
+      "dominantFlatLabelShare": 0.8642,
+      "dunkMadeHallucinationSignal": 0,
+      "energyThreshold": -1.5,
+      "eventFamilyDistribution": {
+        "other": 70,
+        "shot_attempt": 11
+      },
+      "familyGateOpenCount": 11,
+      "flatLabelDistribution": {
+        "Highlight": 70,
+        "Made Shot": 11
+      },
+      "missToMadeDrift": 0,
+      "proposalAcceptanceRate": 0.1358,
+      "proposalAcceptedCount": 11,
+      "rawEventFamilyOtherRate": 0.8642,
+      "shotHeadInvocationCount": 11,
+      "sourceAcceptance": {
+        "phase4h_gate_unblock_smoke_18clip": {
+          "acceptanceRate": 0.1667,
+          "acceptedCount": 3,
+          "rowCount": 18
+        },
+        "phase4h_staging_eval_63clip": {
+          "acceptanceRate": 0.127,
+          "acceptedCount": 8,
+          "rowCount": 63
+        }
+      },
+      "temperature": 1.5,
+      "trainingLossConfig": "focal_class_balanced:g2.00:a0.65"
+    },
+    {
+      "acceptanceLiftOverBaseline": 0.0088,
+      "acceptedAuditedRejectCount": 0,
+      "acceptedPrecisionOnAuditedClips": 1.0,
+      "acceptedUnknownCount": 0,
+      "calibratedAcceptanceProbabilityThreshold": 0.65,
+      "dominantFlatLabel": "Highlight",
+      "dominantFlatLabelShare": 0.8642,
+      "dunkMadeHallucinationSignal": 0,
+      "energyThreshold": -1.5,
+      "eventFamilyDistribution": {
+        "other": 70,
+        "shot_attempt": 11
+      },
+      "familyGateOpenCount": 11,
+      "flatLabelDistribution": {
+        "Highlight": 70,
+        "Made Shot": 11
+      },
+      "missToMadeDrift": 0,
+      "proposalAcceptanceRate": 0.1358,
+      "proposalAcceptedCount": 11,
+      "rawEventFamilyOtherRate": 0.8642,
+      "shotHeadInvocationCount": 11,
+      "sourceAcceptance": {
+        "phase4h_gate_unblock_smoke_18clip": {
+          "acceptanceRate": 0.1667,
+          "acceptedCount": 3,
+          "rowCount": 18
+        },
+        "phase4h_staging_eval_63clip": {
+          "acceptanceRate": 0.127,
+          "acceptedCount": 8,
+          "rowCount": 63
+        }
+      },
+      "temperature": 1.5,
+      "trainingLossConfig": "class_balanced:g0.00:a0.65"
+    },
+    {
+      "acceptanceLiftOverBaseline": 0.0088,
+      "acceptedAuditedRejectCount": 0,
+      "acceptedPrecisionOnAuditedClips": 1.0,
+      "acceptedUnknownCount": 0,
+      "calibratedAcceptanceProbabilityThreshold": 0.65,
+      "dominantFlatLabel": "Highlight",
+      "dominantFlatLabelShare": 0.8642,
+      "dunkMadeHallucinationSignal": 0,
+      "energyThreshold": -1.25,
+      "eventFamilyDistribution": {
+        "other": 70,
+        "shot_attempt": 11
+      },
+      "familyGateOpenCount": 11,
+      "flatLabelDistribution": {
+        "Highlight": 70,
+        "Made Shot": 11
+      },
+      "missToMadeDrift": 0,
+      "proposalAcceptanceRate": 0.1358,
+      "proposalAcceptedCount": 11,
+      "rawEventFamilyOtherRate": 0.8642,
+      "shotHeadInvocationCount": 11,
+      "sourceAcceptance": {
+        "phase4h_gate_unblock_smoke_18clip": {
+          "acceptanceRate": 0.1667,
+          "acceptedCount": 3,
+          "rowCount": 18
+        },
+        "phase4h_staging_eval_63clip": {
+          "acceptanceRate": 0.127,
+          "acceptedCount": 8,
+          "rowCount": 63
+        }
+      },
+      "temperature": 1.5,
+      "trainingLossConfig": "focal_class_balanced:g1.75:a0.50"
+    },
+    {
+      "acceptanceLiftOverBaseline": 0.0088,
+      "acceptedAuditedRejectCount": 0,
+      "acceptedPrecisionOnAuditedClips": 1.0,
+      "acceptedUnknownCount": 0,
+      "calibratedAcceptanceProbabilityThreshold": 0.65,
+      "dominantFlatLabel": "Highlight",
+      "dominantFlatLabelShare": 0.8642,
+      "dunkMadeHallucinationSignal": 0,
+      "energyThreshold": -1.25,
+      "eventFamilyDistribution": {
+        "other": 70,
+        "shot_attempt": 11
+      },
+      "familyGateOpenCount": 11,
+      "flatLabelDistribution": {
+        "Highlight": 70,
+        "Made Shot": 11
+      },
+      "missToMadeDrift": 0,
+      "proposalAcceptanceRate": 0.1358,
+      "proposalAcceptedCount": 11,
+      "rawEventFamilyOtherRate": 0.8642,
+      "shotHeadInvocationCount": 11,
+      "sourceAcceptance": {
+        "phase4h_gate_unblock_smoke_18clip": {
+          "acceptanceRate": 0.1667,
+          "acceptedCount": 3,
+          "rowCount": 18
+        },
+        "phase4h_staging_eval_63clip": {
+          "acceptanceRate": 0.127,
+          "acceptedCount": 8,
+          "rowCount": 63
+        }
+      },
+      "temperature": 1.5,
+      "trainingLossConfig": "focal_class_balanced:g2.00:a0.65"
+    },
+    {
+      "acceptanceLiftOverBaseline": 0.0088,
+      "acceptedAuditedRejectCount": 0,
+      "acceptedPrecisionOnAuditedClips": 1.0,
+      "acceptedUnknownCount": 0,
+      "calibratedAcceptanceProbabilityThreshold": 0.65,
+      "dominantFlatLabel": "Highlight",
+      "dominantFlatLabelShare": 0.8642,
+      "dunkMadeHallucinationSignal": 0,
+      "energyThreshold": -1.25,
+      "eventFamilyDistribution": {
+        "other": 70,
+        "shot_attempt": 11
+      },
+      "familyGateOpenCount": 11,
+      "flatLabelDistribution": {
+        "Highlight": 70,
+        "Made Shot": 11
+      },
+      "missToMadeDrift": 0,
+      "proposalAcceptanceRate": 0.1358,
+      "proposalAcceptedCount": 11,
+      "rawEventFamilyOtherRate": 0.8642,
+      "shotHeadInvocationCount": 11,
+      "sourceAcceptance": {
+        "phase4h_gate_unblock_smoke_18clip": {
+          "acceptanceRate": 0.1667,
+          "acceptedCount": 3,
+          "rowCount": 18
+        },
+        "phase4h_staging_eval_63clip": {
+          "acceptanceRate": 0.127,
+          "acceptedCount": 8,
+          "rowCount": 63
+        }
+      },
+      "temperature": 1.5,
+      "trainingLossConfig": "class_balanced:g0.00:a0.65"
+    },
+    {
+      "acceptanceLiftOverBaseline": 0.0088,
+      "acceptedAuditedRejectCount": 0,
+      "acceptedPrecisionOnAuditedClips": 1.0,
+      "acceptedUnknownCount": 0,
+      "calibratedAcceptanceProbabilityThreshold": 0.65,
+      "dominantFlatLabel": "Highlight",
+      "dominantFlatLabelShare": 0.8642,
+      "dunkMadeHallucinationSignal": 0,
+      "energyThreshold": -1.0,
+      "eventFamilyDistribution": {
+        "other": 70,
+        "shot_attempt": 11
+      },
+      "familyGateOpenCount": 11,
+      "flatLabelDistribution": {
+        "Highlight": 70,
+        "Made Shot": 11
+      },
+      "missToMadeDrift": 0,
+      "proposalAcceptanceRate": 0.1358,
+      "proposalAcceptedCount": 11,
+      "rawEventFamilyOtherRate": 0.8642,
+      "shotHeadInvocationCount": 11,
+      "sourceAcceptance": {
+        "phase4h_gate_unblock_smoke_18clip": {
+          "acceptanceRate": 0.1667,
+          "acceptedCount": 3,
+          "rowCount": 18
+        },
+        "phase4h_staging_eval_63clip": {
+          "acceptanceRate": 0.127,
+          "acceptedCount": 8,
+          "rowCount": 63
+        }
+      },
+      "temperature": 1.5,
+      "trainingLossConfig": "focal_class_balanced:g1.75:a0.50"
+    },
+    {
+      "acceptanceLiftOverBaseline": 0.0088,
+      "acceptedAuditedRejectCount": 0,
+      "acceptedPrecisionOnAuditedClips": 1.0,
+      "acceptedUnknownCount": 0,
+      "calibratedAcceptanceProbabilityThreshold": 0.65,
+      "dominantFlatLabel": "Highlight",
+      "dominantFlatLabelShare": 0.8642,
+      "dunkMadeHallucinationSignal": 0,
+      "energyThreshold": -1.0,
+      "eventFamilyDistribution": {
+        "other": 70,
+        "shot_attempt": 11
+      },
+      "familyGateOpenCount": 11,
+      "flatLabelDistribution": {
+        "Highlight": 70,
+        "Made Shot": 11
+      },
+      "missToMadeDrift": 0,
+      "proposalAcceptanceRate": 0.1358,
+      "proposalAcceptedCount": 11,
+      "rawEventFamilyOtherRate": 0.8642,
+      "shotHeadInvocationCount": 11,
+      "sourceAcceptance": {
+        "phase4h_gate_unblock_smoke_18clip": {
+          "acceptanceRate": 0.1667,
+          "acceptedCount": 3,
+          "rowCount": 18
+        },
+        "phase4h_staging_eval_63clip": {
+          "acceptanceRate": 0.127,
+          "acceptedCount": 8,
+          "rowCount": 63
+        }
+      },
+      "temperature": 1.5,
+      "trainingLossConfig": "focal_class_balanced:g2.00:a0.65"
+    },
+    {
+      "acceptanceLiftOverBaseline": 0.0088,
+      "acceptedAuditedRejectCount": 0,
+      "acceptedPrecisionOnAuditedClips": 1.0,
+      "acceptedUnknownCount": 0,
+      "calibratedAcceptanceProbabilityThreshold": 0.65,
+      "dominantFlatLabel": "Highlight",
+      "dominantFlatLabelShare": 0.8642,
+      "dunkMadeHallucinationSignal": 0,
+      "energyThreshold": -1.0,
+      "eventFamilyDistribution": {
+        "other": 70,
+        "shot_attempt": 11
+      },
+      "familyGateOpenCount": 11,
+      "flatLabelDistribution": {
+        "Highlight": 70,
+        "Made Shot": 11
+      },
+      "missToMadeDrift": 0,
+      "proposalAcceptanceRate": 0.1358,
+      "proposalAcceptedCount": 11,
+      "rawEventFamilyOtherRate": 0.8642,
+      "shotHeadInvocationCount": 11,
+      "sourceAcceptance": {
+        "phase4h_gate_unblock_smoke_18clip": {
+          "acceptanceRate": 0.1667,
+          "acceptedCount": 3,
+          "rowCount": 18
+        },
+        "phase4h_staging_eval_63clip": {
+          "acceptanceRate": 0.127,
+          "acceptedCount": 8,
+          "rowCount": 63
+        }
+      },
+      "temperature": 1.5,
+      "trainingLossConfig": "class_balanced:g0.00:a0.65"
+    },
+    {
+      "acceptanceLiftOverBaseline": 0.0088,
+      "acceptedAuditedRejectCount": 0,
+      "acceptedPrecisionOnAuditedClips": 1.0,
+      "acceptedUnknownCount": 0,
+      "calibratedAcceptanceProbabilityThreshold": 0.65,
+      "dominantFlatLabel": "Highlight",
+      "dominantFlatLabelShare": 0.8642,
+      "dunkMadeHallucinationSignal": 0,
+      "energyThreshold": -0.8,
+      "eventFamilyDistribution": {
+        "other": 70,
+        "shot_attempt": 11
+      },
+      "familyGateOpenCount": 11,
+      "flatLabelDistribution": {
+        "Highlight": 70,
+        "Made Shot": 11
+      },
+      "missToMadeDrift": 0,
+      "proposalAcceptanceRate": 0.1358,
+      "proposalAcceptedCount": 11,
+      "rawEventFamilyOtherRate": 0.8642,
+      "shotHeadInvocationCount": 11,
+      "sourceAcceptance": {
+        "phase4h_gate_unblock_smoke_18clip": {
+          "acceptanceRate": 0.1667,
+          "acceptedCount": 3,
+          "rowCount": 18
+        },
+        "phase4h_staging_eval_63clip": {
+          "acceptanceRate": 0.127,
+          "acceptedCount": 8,
+          "rowCount": 63
+        }
+      },
+      "temperature": 1.5,
+      "trainingLossConfig": "focal_class_balanced:g1.75:a0.50"
+    },
+    {
+      "acceptanceLiftOverBaseline": 0.0088,
+      "acceptedAuditedRejectCount": 0,
+      "acceptedPrecisionOnAuditedClips": 1.0,
+      "acceptedUnknownCount": 0,
+      "calibratedAcceptanceProbabilityThreshold": 0.65,
+      "dominantFlatLabel": "Highlight",
+      "dominantFlatLabelShare": 0.8642,
+      "dunkMadeHallucinationSignal": 0,
+      "energyThreshold": -0.8,
+      "eventFamilyDistribution": {
+        "other": 70,
+        "shot_attempt": 11
+      },
+      "familyGateOpenCount": 11,
+      "flatLabelDistribution": {
+        "Highlight": 70,
+        "Made Shot": 11
+      },
+      "missToMadeDrift": 0,
+      "proposalAcceptanceRate": 0.1358,
+      "proposalAcceptedCount": 11,
+      "rawEventFamilyOtherRate": 0.8642,
+      "shotHeadInvocationCount": 11,
+      "sourceAcceptance": {
+        "phase4h_gate_unblock_smoke_18clip": {
+          "acceptanceRate": 0.1667,
+          "acceptedCount": 3,
+          "rowCount": 18
+        },
+        "phase4h_staging_eval_63clip": {
+          "acceptanceRate": 0.127,
+          "acceptedCount": 8,
+          "rowCount": 63
+        }
+      },
+      "temperature": 1.5,
+      "trainingLossConfig": "focal_class_balanced:g2.00:a0.65"
+    },
+    {
+      "acceptanceLiftOverBaseline": 0.0088,
+      "acceptedAuditedRejectCount": 0,
+      "acceptedPrecisionOnAuditedClips": 1.0,
+      "acceptedUnknownCount": 0,
+      "calibratedAcceptanceProbabilityThreshold": 0.65,
+      "dominantFlatLabel": "Highlight",
+      "dominantFlatLabelShare": 0.8642,
+      "dunkMadeHallucinationSignal": 0,
+      "energyThreshold": -0.8,
+      "eventFamilyDistribution": {
+        "other": 70,
+        "shot_attempt": 11
+      },
+      "familyGateOpenCount": 11,
+      "flatLabelDistribution": {
+        "Highlight": 70,
+        "Made Shot": 11
+      },
+      "missToMadeDrift": 0,
+      "proposalAcceptanceRate": 0.1358,
+      "proposalAcceptedCount": 11,
+      "rawEventFamilyOtherRate": 0.8642,
+      "shotHeadInvocationCount": 11,
+      "sourceAcceptance": {
+        "phase4h_gate_unblock_smoke_18clip": {
+          "acceptanceRate": 0.1667,
+          "acceptedCount": 3,
+          "rowCount": 18
+        },
+        "phase4h_staging_eval_63clip": {
+          "acceptanceRate": 0.127,
+          "acceptedCount": 8,
+          "rowCount": 63
+        }
+      },
+      "temperature": 1.5,
+      "trainingLossConfig": "class_balanced:g0.00:a0.65"
+    },
+    {
+      "acceptanceLiftOverBaseline": 0.0088,
+      "acceptedAuditedRejectCount": 0,
+      "acceptedPrecisionOnAuditedClips": 1.0,
+      "acceptedUnknownCount": 0,
+      "calibratedAcceptanceProbabilityThreshold": 0.65,
+      "dominantFlatLabel": "Highlight",
+      "dominantFlatLabelShare": 0.8642,
+      "dunkMadeHallucinationSignal": 0,
+      "energyThreshold": null,
+      "eventFamilyDistribution": {
+        "other": 70,
+        "shot_attempt": 11
+      },
+      "familyGateOpenCount": 11,
+      "flatLabelDistribution": {
+        "Highlight": 70,
+        "Made Shot": 11
+      },
+      "missToMadeDrift": 0,
+      "proposalAcceptanceRate": 0.1358,
+      "proposalAcceptedCount": 11,
+      "rawEventFamilyOtherRate": 0.8642,
+      "shotHeadInvocationCount": 11,
+      "sourceAcceptance": {
+        "phase4h_gate_unblock_smoke_18clip": {
+          "acceptanceRate": 0.1667,
+          "acceptedCount": 3,
+          "rowCount": 18
+        },
+        "phase4h_staging_eval_63clip": {
+          "acceptanceRate": 0.127,
+          "acceptedCount": 8,
+          "rowCount": 63
+        }
+      },
+      "temperature": 2.0,
+      "trainingLossConfig": "focal_class_balanced:g1.75:a0.50"
+    },
+    {
+      "acceptanceLiftOverBaseline": 0.0088,
+      "acceptedAuditedRejectCount": 0,
+      "acceptedPrecisionOnAuditedClips": 1.0,
+      "acceptedUnknownCount": 0,
+      "calibratedAcceptanceProbabilityThreshold": 0.65,
+      "dominantFlatLabel": "Highlight",
+      "dominantFlatLabelShare": 0.8642,
+      "dunkMadeHallucinationSignal": 0,
+      "energyThreshold": null,
+      "eventFamilyDistribution": {
+        "other": 70,
+        "shot_attempt": 11
+      },
+      "familyGateOpenCount": 11,
+      "flatLabelDistribution": {
+        "Highlight": 70,
+        "Made Shot": 11
+      },
+      "missToMadeDrift": 0,
+      "proposalAcceptanceRate": 0.1358,
+      "proposalAcceptedCount": 11,
+      "rawEventFamilyOtherRate": 0.8642,
+      "shotHeadInvocationCount": 11,
+      "sourceAcceptance": {
+        "phase4h_gate_unblock_smoke_18clip": {
+          "acceptanceRate": 0.1667,
+          "acceptedCount": 3,
+          "rowCount": 18
+        },
+        "phase4h_staging_eval_63clip": {
+          "acceptanceRate": 0.127,
+          "acceptedCount": 8,
+          "rowCount": 63
+        }
+      },
+      "temperature": 2.0,
+      "trainingLossConfig": "focal_class_balanced:g2.00:a0.65"
+    },
+    {
+      "acceptanceLiftOverBaseline": 0.0088,
+      "acceptedAuditedRejectCount": 0,
+      "acceptedPrecisionOnAuditedClips": 1.0,
+      "acceptedUnknownCount": 0,
+      "calibratedAcceptanceProbabilityThreshold": 0.65,
+      "dominantFlatLabel": "Highlight",
+      "dominantFlatLabelShare": 0.8642,
+      "dunkMadeHallucinationSignal": 0,
+      "energyThreshold": null,
+      "eventFamilyDistribution": {
+        "other": 70,
+        "shot_attempt": 11
+      },
+      "familyGateOpenCount": 11,
+      "flatLabelDistribution": {
+        "Highlight": 70,
+        "Made Shot": 11
+      },
+      "missToMadeDrift": 0,
+      "proposalAcceptanceRate": 0.1358,
+      "proposalAcceptedCount": 11,
+      "rawEventFamilyOtherRate": 0.8642,
+      "shotHeadInvocationCount": 11,
+      "sourceAcceptance": {
+        "phase4h_gate_unblock_smoke_18clip": {
+          "acceptanceRate": 0.1667,
+          "acceptedCount": 3,
+          "rowCount": 18
+        },
+        "phase4h_staging_eval_63clip": {
+          "acceptanceRate": 0.127,
+          "acceptedCount": 8,
+          "rowCount": 63
+        }
+      },
+      "temperature": 2.0,
+      "trainingLossConfig": "class_balanced:g0.00:a0.65"
+    },
+    {
+      "acceptanceLiftOverBaseline": 0.0088,
+      "acceptedAuditedRejectCount": 0,
+      "acceptedPrecisionOnAuditedClips": 1.0,
+      "acceptedUnknownCount": 0,
+      "calibratedAcceptanceProbabilityThreshold": 0.65,
+      "dominantFlatLabel": "Highlight",
+      "dominantFlatLabelShare": 0.8642,
+      "dunkMadeHallucinationSignal": 0,
+      "energyThreshold": -1.5,
+      "eventFamilyDistribution": {
+        "other": 70,
+        "shot_attempt": 11
+      },
+      "familyGateOpenCount": 11,
+      "flatLabelDistribution": {
+        "Highlight": 70,
+        "Made Shot": 11
+      },
+      "missToMadeDrift": 0,
+      "proposalAcceptanceRate": 0.1358,
+      "proposalAcceptedCount": 11,
+      "rawEventFamilyOtherRate": 0.8642,
+      "shotHeadInvocationCount": 11,
+      "sourceAcceptance": {
+        "phase4h_gate_unblock_smoke_18clip": {
+          "acceptanceRate": 0.1667,
+          "acceptedCount": 3,
+          "rowCount": 18
+        },
+        "phase4h_staging_eval_63clip": {
+          "acceptanceRate": 0.127,
+          "acceptedCount": 8,
+          "rowCount": 63
+        }
+      },
+      "temperature": 2.0,
+      "trainingLossConfig": "focal_class_balanced:g1.75:a0.50"
+    },
+    {
+      "acceptanceLiftOverBaseline": 0.0088,
+      "acceptedAuditedRejectCount": 0,
+      "acceptedPrecisionOnAuditedClips": 1.0,
+      "acceptedUnknownCount": 0,
+      "calibratedAcceptanceProbabilityThreshold": 0.65,
+      "dominantFlatLabel": "Highlight",
+      "dominantFlatLabelShare": 0.8642,
+      "dunkMadeHallucinationSignal": 0,
+      "energyThreshold": -1.5,
+      "eventFamilyDistribution": {
+        "other": 70,
+        "shot_attempt": 11
+      },
+      "familyGateOpenCount": 11,
+      "flatLabelDistribution": {
+        "Highlight": 70,
+        "Made Shot": 11
+      },
+      "missToMadeDrift": 0,
+      "proposalAcceptanceRate": 0.1358,
+      "proposalAcceptedCount": 11,
+      "rawEventFamilyOtherRate": 0.8642,
+      "shotHeadInvocationCount": 11,
+      "sourceAcceptance": {
+        "phase4h_gate_unblock_smoke_18clip": {
+          "acceptanceRate": 0.1667,
+          "acceptedCount": 3,
+          "rowCount": 18
+        },
+        "phase4h_staging_eval_63clip": {
+          "acceptanceRate": 0.127,
+          "acceptedCount": 8,
+          "rowCount": 63
+        }
+      },
+      "temperature": 2.0,
+      "trainingLossConfig": "focal_class_balanced:g2.00:a0.65"
+    },
+    {
+      "acceptanceLiftOverBaseline": 0.0088,
+      "acceptedAuditedRejectCount": 0,
+      "acceptedPrecisionOnAuditedClips": 1.0,
+      "acceptedUnknownCount": 0,
+      "calibratedAcceptanceProbabilityThreshold": 0.65,
+      "dominantFlatLabel": "Highlight",
+      "dominantFlatLabelShare": 0.8642,
+      "dunkMadeHallucinationSignal": 0,
+      "energyThreshold": -1.5,
+      "eventFamilyDistribution": {
+        "other": 70,
+        "shot_attempt": 11
+      },
+      "familyGateOpenCount": 11,
+      "flatLabelDistribution": {
+        "Highlight": 70,
+        "Made Shot": 11
+      },
+      "missToMadeDrift": 0,
+      "proposalAcceptanceRate": 0.1358,
+      "proposalAcceptedCount": 11,
+      "rawEventFamilyOtherRate": 0.8642,
+      "shotHeadInvocationCount": 11,
+      "sourceAcceptance": {
+        "phase4h_gate_unblock_smoke_18clip": {
+          "acceptanceRate": 0.1667,
+          "acceptedCount": 3,
+          "rowCount": 18
+        },
+        "phase4h_staging_eval_63clip": {
+          "acceptanceRate": 0.127,
+          "acceptedCount": 8,
+          "rowCount": 63
+        }
+      },
+      "temperature": 2.0,
+      "trainingLossConfig": "class_balanced:g0.00:a0.65"
+    },
+    {
+      "acceptanceLiftOverBaseline": 0.0088,
+      "acceptedAuditedRejectCount": 0,
+      "acceptedPrecisionOnAuditedClips": 1.0,
+      "acceptedUnknownCount": 0,
+      "calibratedAcceptanceProbabilityThreshold": 0.65,
+      "dominantFlatLabel": "Highlight",
+      "dominantFlatLabelShare": 0.8642,
+      "dunkMadeHallucinationSignal": 0,
+      "energyThreshold": -1.25,
+      "eventFamilyDistribution": {
+        "other": 70,
+        "shot_attempt": 11
+      },
+      "familyGateOpenCount": 11,
+      "flatLabelDistribution": {
+        "Highlight": 70,
+        "Made Shot": 11
+      },
+      "missToMadeDrift": 0,
+      "proposalAcceptanceRate": 0.1358,
+      "proposalAcceptedCount": 11,
+      "rawEventFamilyOtherRate": 0.8642,
+      "shotHeadInvocationCount": 11,
+      "sourceAcceptance": {
+        "phase4h_gate_unblock_smoke_18clip": {
+          "acceptanceRate": 0.1667,
+          "acceptedCount": 3,
+          "rowCount": 18
+        },
+        "phase4h_staging_eval_63clip": {
+          "acceptanceRate": 0.127,
+          "acceptedCount": 8,
+          "rowCount": 63
+        }
+      },
+      "temperature": 2.0,
+      "trainingLossConfig": "focal_class_balanced:g1.75:a0.50"
+    },
+    {
+      "acceptanceLiftOverBaseline": 0.0088,
+      "acceptedAuditedRejectCount": 0,
+      "acceptedPrecisionOnAuditedClips": 1.0,
+      "acceptedUnknownCount": 0,
+      "calibratedAcceptanceProbabilityThreshold": 0.65,
+      "dominantFlatLabel": "Highlight",
+      "dominantFlatLabelShare": 0.8642,
+      "dunkMadeHallucinationSignal": 0,
+      "energyThreshold": -1.25,
+      "eventFamilyDistribution": {
+        "other": 70,
+        "shot_attempt": 11
+      },
+      "familyGateOpenCount": 11,
+      "flatLabelDistribution": {
+        "Highlight": 70,
+        "Made Shot": 11
+      },
+      "missToMadeDrift": 0,
+      "proposalAcceptanceRate": 0.1358,
+      "proposalAcceptedCount": 11,
+      "rawEventFamilyOtherRate": 0.8642,
+      "shotHeadInvocationCount": 11,
+      "sourceAcceptance": {
+        "phase4h_gate_unblock_smoke_18clip": {
+          "acceptanceRate": 0.1667,
+          "acceptedCount": 3,
+          "rowCount": 18
+        },
+        "phase4h_staging_eval_63clip": {
+          "acceptanceRate": 0.127,
+          "acceptedCount": 8,
+          "rowCount": 63
+        }
+      },
+      "temperature": 2.0,
+      "trainingLossConfig": "focal_class_balanced:g2.00:a0.65"
+    }
+  ],
+  "sweepRowCount": 900
+}

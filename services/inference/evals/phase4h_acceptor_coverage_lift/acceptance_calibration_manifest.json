@@ -1,0 +1,33 @@
+{
+  "acceptanceLabelDistribution": {
+    "accept": 42,
+    "unknown": 39
+  },
+  "acceptedProposalsWithGateOpenCount": 3,
+  "acceptedProposalsWithShotHeadCount": 3,
+  "baselineAcceptanceRate": 0.127,
+  "datasetSourceDistribution": {
+    "phase4h_gate_unblock_smoke_18clip": 18,
+    "phase4h_staging_eval_63clip": 63
+  },
+  "eventFamilyDistribution": {
+    "other": 39,
+    "shot_attempt": 42
+  },
+  "hardNegativeDistribution": {},
+  "missingHardNegativeBuckets": [
+    "dead_ball",
+    "replay_or_reaction",
+    "setup",
+    "true_negative_non_event"
+  ],
+  "outcomeDistribution": {
+    "made": 14,
+    "missed": 28,
+    "uncertain": 39
+  },
+  "proposalAcceptanceRateInSourceArtifacts": 0.1358,
+  "proposalAcceptedCountInSourceArtifacts": 11,
+  "requiresHumanReviewCount": 39,
+  "rowCount": 81
+}

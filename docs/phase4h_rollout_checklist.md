@@ -36,11 +36,26 @@
 - Smoke failed the flat-label dominance guard: `Highlight=0.8333`, above the `0.80` smoke cap.
 - Next gate: do not run a medium batch yet and do not create `codex/phase4h-acceptor-coverage-lift` from this no-go smoke without explicit approval.
 
+## Acceptor Coverage Lift Replay - 2026-04-11
+
+- Branch: `codex/phase4h-acceptor-coverage-lift`, based on `7e183fe`.
+- Calibration plan: `docs/phase4h_acceptor_calibration_plan.md`.
+- Sweep report: `docs/phase4h_acceptor_sweep_report.md`.
+- Retrain report: `docs/phase4h_acceptor_retrain_report.md`.
+- Bootstrap dataset: `services/inference/evals/phase4h_acceptor_coverage_lift/acceptance_calibration_dataset.jsonl`.
+- Dataset rows: `81` from the `63`-clip staging batch and `18`-clip smoke batch.
+- Current source artifact acceptance rate: `0.1358`; staging baseline remains `0.127`.
+- Recommended replay-only config: temperature `1.0`, calibrated acceptance probability threshold `0.3`, energy threshold `-0.8`.
+- Replay lift: proposal acceptance `0.3704`, family gate opens `29`, shot head invocations `29`, dominant flat-label share `0.642`, miss-to-made drift `0`.
+- Safety caveat: confirmed hard-negative buckets are still missing for `dead_ball`, `replay_or_reaction`, `setup`, and `true_negative_non_event`.
+- Decision: rerun a small smoke only after the acceptor change is wired behind the existing shadow path; do not request a `60-80` clip medium batch until high-scoring unknown clips and hard negatives are audited.
+
 ## Before Shadow Deploy
 
-- Confirm branch is `codex/phase4h-family-gate-suppression-fix`.
+- Confirm branch is the exact smoke candidate branch: `codex/phase4h-family-gate-suppression-fix` for gate-only smoke, or `codex/phase4h-acceptor-coverage-lift` only after the acceptor threshold/config change is explicitly approved.
 - Confirm `services/inference/tests/test_temporal_event_detector.py` passes.
 - Confirm `services/inference/tests/test_shadow_eval.py` passes.
+- Confirm `services/inference/tests/test_phase4h_acceptor_coverage_lift.py` passes for acceptor coverage work.
 - Confirm syntax check passes for all touched Phase 4h files.
 - Confirm no app-facing contract fields changed in control-plane or iOS payload parsing.
 

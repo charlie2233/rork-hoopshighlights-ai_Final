@@ -15,6 +15,7 @@ from services.inference.app.runtime_models.temporal_event_detector import (
 )
 from services.inference.app.runtime_models.temporal_student import get_temporal_student_bundle
 from services.inference.training.temporal_event_detector import (
+    BinaryTrainingLossConfig,
     build_temporal_event_detector_report,
     candidate_score,
     evaluate_temporal_event_detector_bundle,
@@ -59,6 +60,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--hidden-size", type=int, default=18)
     parser.add_argument("--epochs", type=int, default=140)
     parser.add_argument("--learning-rate", type=float, default=0.02)
+    parser.add_argument(
+        "--proposal-rejector-loss-mode",
+        choices=("cross_entropy", "class_balanced", "focal", "focal_class_balanced"),
+        default="focal_class_balanced",
+    )
+    parser.add_argument("--proposal-rejector-focal-gamma", type=float, default=1.75)
+    parser.add_argument("--proposal-rejector-class-balance-alpha", type=float, default=0.5)
+    parser.add_argument(
+        "--proposal-acceptor-loss-mode",
+        choices=("cross_entropy", "class_balanced", "focal", "focal_class_balanced"),
+        default="focal_class_balanced",
+    )
+    parser.add_argument("--proposal-acceptor-focal-gamma", type=float, default=1.75)
+    parser.add_argument("--proposal-acceptor-class-balance-alpha", type=float, default=0.5)
     return parser.parse_args()
 
 
@@ -103,6 +118,16 @@ def build_shot_specialist_refresh_report(
 def main() -> int:
     args = parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
+    proposal_rejector_loss = BinaryTrainingLossConfig(
+        mode=args.proposal_rejector_loss_mode,
+        focal_gamma=args.proposal_rejector_focal_gamma,
+        class_balance_alpha=args.proposal_rejector_class_balance_alpha,
+    )
+    proposal_acceptor_loss = BinaryTrainingLossConfig(
+        mode=args.proposal_acceptor_loss_mode,
+        focal_gamma=args.proposal_acceptor_focal_gamma,
+        class_balance_alpha=args.proposal_acceptor_class_balance_alpha,
+    )
 
     examples = load_temporal_event_detector_examples(REPO_ROOT)
     if args.freeze_proposal_stack:
@@ -157,6 +182,8 @@ def main() -> int:
         hidden_size=args.hidden_size,
         epochs=args.epochs,
         learning_rate=args.learning_rate,
+        proposal_rejector_loss=proposal_rejector_loss,
+        proposal_acceptor_loss=proposal_acceptor_loss,
     )
     actionformer_metrics = evaluate_temporal_event_detector_bundle(actionformer_result.bundle, examples)
 
@@ -168,6 +195,8 @@ def main() -> int:
         hidden_size=args.hidden_size,
         epochs=args.epochs,
         learning_rate=args.learning_rate,
+        proposal_rejector_loss=proposal_rejector_loss,
+        proposal_acceptor_loss=proposal_acceptor_loss,
     )
     tridet_metrics = evaluate_temporal_event_detector_bundle(tridet_result.bundle, examples)
 
@@ -190,6 +219,8 @@ def main() -> int:
             4,
         ),
         "winnerBundlePath": str(winner_path),
+        "proposalRejectorLoss": proposal_rejector_loss.__dict__,
+        "proposalAcceptorLoss": proposal_acceptor_loss.__dict__,
     }
 
     if args.write_models:
