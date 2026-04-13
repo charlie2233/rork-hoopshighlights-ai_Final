@@ -9,10 +9,10 @@
 ## Queue Artifact
 
 - CSV: `services/inference/evals/phase4h_acceptor_coverage_lift/hard_negative_label_queue.csv`.
-- Total queue rows: `50`.
-- Queue type distribution: `{"accepted_proposal_light_label": 11, "hard_negative_bucket_assignment": 39}`.
-- Candidate hard-negative rows: `39`.
-- Accepted proposal light-label rows: `11`.
+- Total queue rows: `65`.
+- Queue type distribution: `{"accepted_proposal_light_label": 14, "hard_negative_bucket_assignment": 51}`.
+- Candidate hard-negative rows: `51`.
+- Accepted proposal light-label rows: `14`.
 
 ## Confirmed Hard-Negative Counts
 

@@ -50,6 +50,29 @@
 - Safety caveat: confirmed hard-negative buckets are still missing for `dead_ball`, `replay_or_reaction`, `setup`, and `true_negative_non_event`.
 - Decision: rerun a small smoke only after the acceptor change is wired behind the existing shadow path; do not request a `60-80` clip medium batch until high-scoring unknown clips and hard negatives are audited.
 
+## Acceptor Coverage Smoke - 2026-04-13
+
+- Branch: `codex/phase4h-acceptor-coverage-lift`.
+- Smoke report: `docs/phase4h_acceptor_smoke_report.md`.
+- Eval artifact: `services/inference/evals/phase4h_acceptor_smoke/shadow_eval_report.json`.
+- Cloud Run revision: `hoopsclips-inference-staging-00035-nzj`.
+- Runtime config: family temperature `1.0`, acceptance threshold `0.3`, energy threshold `-0.8`.
+- Completed Worker-path outputs: `11` jobs, `15` clip windows; `0` completed-job failures and `0` null `runtimeFusionTemporalShadow` payloads.
+- Harness caveat: two transient `ECONNRESET` polling failures occurred before the 20-item manifest finished; this decision uses the completed `15` clip windows only.
+- Accepted path remained unblocked: `proposalAcceptedCount=3`, `familyGateOpenCount=3`, `shotHeadInvocationCount=3`.
+- Smoke failed promotion guards: dominant flat-label share `0.8` (`Highlight`), raw `eventFamily=other` `0.8`, uncertainty rate `1.0`.
+- Safety held for miss-to-made drift and subtype collapse: `expectedMissPredictedMadeShot=0`, no concrete subtype emitted.
+- Decision: no-go for medium batch. Fill the hard-negative and accepted-proposal label queue before retrain or another staging-size request.
+
+## Hard-Negative Labeling Bootstrap - 2026-04-13
+
+- Labeling plan: `docs/phase4h_hard_negative_labeling_plan.md`.
+- Queue artifact: `services/inference/evals/phase4h_acceptor_coverage_lift/hard_negative_label_queue.csv`.
+- Total queue rows: `65`.
+- Queue source counts: `phase4h_staging_eval_63clip=38`, `phase4h_gate_unblock_smoke_18clip=12`, `phase4h_acceptor_smoke_15clip=15`.
+- Queue type counts: `hard_negative_bucket_assignment=51`, `accepted_proposal_light_label=14`.
+- Confirmed hard-negative bucket counts remain `0` for `dead_ball`, `replay_or_reaction`, `setup`, and `true_negative_non_event`; blank manual fields require review before training use.
+
 ## Before Shadow Deploy
 
 - Confirm branch is the exact smoke candidate branch: `codex/phase4h-family-gate-suppression-fix` for gate-only smoke, or `codex/phase4h-acceptor-coverage-lift` only after the acceptor threshold/config change is explicitly approved.

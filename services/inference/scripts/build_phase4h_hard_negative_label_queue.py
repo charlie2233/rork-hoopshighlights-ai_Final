@@ -15,6 +15,9 @@ HARD_NEGATIVE_BUCKETS = (
     "true_negative_non_event",
 )
 DEFAULT_DATASET = Path("services/inference/evals/phase4h_acceptor_coverage_lift/acceptance_calibration_dataset.jsonl")
+DEFAULT_SHADOW_REPORTS = (
+    Path("services/inference/evals/phase4h_acceptor_smoke/shadow_eval_report.json"),
+)
 DEFAULT_QUEUE = Path("services/inference/evals/phase4h_acceptor_coverage_lift/hard_negative_label_queue.csv")
 DEFAULT_DOC = Path("docs/phase4h_hard_negative_labeling_plan.md")
 
@@ -22,6 +25,7 @@ DEFAULT_DOC = Path("docs/phase4h_hard_negative_labeling_plan.md")
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     rows = list(load_jsonl(args.dataset))
+    rows.extend(load_shadow_report_rows(args.shadow_report))
     queue_rows = build_label_queue(rows)
     args.output_csv.parent.mkdir(parents=True, exist_ok=True)
     args.output_csv.write_text(render_csv(queue_rows), encoding="utf-8")
@@ -43,6 +47,13 @@ def main(argv: list[str] | None = None) -> int:
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build Phase 4h hard-negative and accepted-shot labeling queue.")
     parser.add_argument("--dataset", type=Path, default=DEFAULT_DATASET)
+    parser.add_argument(
+        "--shadow-report",
+        type=Path,
+        action="append",
+        default=list(DEFAULT_SHADOW_REPORTS),
+        help="Optional shadow eval report(s) to append to the labeling queue source rows.",
+    )
     parser.add_argument("--output-csv", type=Path, default=DEFAULT_QUEUE)
     parser.add_argument("--output-doc", type=Path, default=DEFAULT_DOC)
     return parser.parse_args(argv)
@@ -52,6 +63,69 @@ def load_jsonl(path: Path) -> Iterable[dict[str, Any]]:
     for line in path.read_text(encoding="utf-8").splitlines():
         if line.strip():
             yield json.loads(line)
+
+
+def load_shadow_report_rows(paths: Iterable[Path]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for path in paths:
+        if not path.exists():
+            continue
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        clips = payload.get("clips")
+        if not isinstance(clips, list):
+            continue
+        dataset_source = dataset_source_for_report(path)
+        for clip in clips:
+            if isinstance(clip, dict):
+                rows.append(row_from_shadow_clip(clip, dataset_source=dataset_source))
+    return rows
+
+
+def dataset_source_for_report(path: Path) -> str:
+    parts = set(path.parts)
+    if "phase4h_acceptor_smoke" in parts:
+        return "phase4h_acceptor_smoke_15clip"
+    return path.parent.name or "shadow_eval_report"
+
+
+def row_from_shadow_clip(clip: dict[str, Any], *, dataset_source: str) -> dict[str, Any]:
+    event_family = clip.get("eventFamily")
+    acceptance_probability = first_present(
+        clip.get("proposalAcceptanceProbability"),
+        clip.get("proposalAcceptanceProbabilityCalibrated"),
+    )
+    return {
+        "clipId": clip.get("clipId"),
+        "datasetSource": dataset_source,
+        "sourceDomain": clip.get("sourceDomain"),
+        "jobId": clip.get("jobId"),
+        "requestId": clip.get("requestId"),
+        "uploadTraceId": clip.get("uploadTraceId"),
+        "inferenceAttemptId": clip.get("inferenceAttemptId"),
+        "modelVersion": clip.get("modelVersion"),
+        "predictedFlatLabel": clip.get("flatLabel"),
+        "predictedEventFamily": event_family,
+        "eventFamily": event_family,
+        "outcome": clip.get("outcome"),
+        "shotSubtype": clip.get("shotSubtype"),
+        "proposalAccepted": clip.get("proposalAccepted"),
+        "familyGateOpen": clip.get("familyGateOpen"),
+        "shotHeadInvoked": clip.get("shotHeadInvoked"),
+        "acceptanceScore": first_present(clip.get("proposalAcceptanceRawScore"), acceptance_probability),
+        "calibratedAcceptanceProbability": acceptance_probability,
+        "energyScore": clip.get("proposalEnergyScore"),
+        "manualAuditLabel": clip.get("manualAuditLabel"),
+        "splitOtherBucket": clip.get("otherBucket"),
+        "acceptanceLabel": "unknown",
+        "shotAttempt": normalize(event_family) == "shot_attempt",
+    }
+
+
+def first_present(*values: Any) -> Any:
+    for value in values:
+        if value is not None:
+            return value
+    return None
 
 
 def build_label_queue(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -196,7 +270,7 @@ def render_csv(rows: list[dict[str, Any]]) -> str:
     from io import StringIO
 
     output = StringIO()
-    writer = csv.DictWriter(output, fieldnames=fieldnames)
+    writer = csv.DictWriter(output, fieldnames=fieldnames, lineterminator="\n")
     writer.writeheader()
     writer.writerows(rows)
     return output.getvalue()
