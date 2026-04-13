@@ -9,6 +9,10 @@ from services.inference.scripts.run_phase4h_acceptor_coverage_lift import (
     recommend_sweep,
     run_acceptor_sweeps,
 )
+from services.inference.scripts.build_phase4h_hard_negative_label_queue import (
+    build_label_queue,
+    queue_summary,
+)
 
 
 class Phase4hAcceptorCoverageLiftTests(unittest.TestCase):
@@ -182,6 +186,49 @@ class Phase4hAcceptorCoverageLiftTests(unittest.TestCase):
         self.assertGreater(recommended["familyGateOpenCount"], 0)
         self.assertGreater(recommended["shotHeadInvocationCount"], 0)
         self.assertEqual(recommended["missToMadeDrift"], 0)
+
+    def test_hard_negative_label_queue_leaves_manual_labels_blank(self) -> None:
+        queue = build_label_queue(
+            [
+                {
+                    "datasetSource": "fixture",
+                    "clipId": "other-collapse",
+                    "acceptanceLabel": "unknown",
+                    "eventFamily": "other",
+                    "predictedEventFamily": "other",
+                    "predictedFlatLabel": "Highlight",
+                    "proposalAccepted": False,
+                    "acceptanceScore": 0.2,
+                },
+                {
+                    "datasetSource": "fixture",
+                    "clipId": "accepted-shot",
+                    "acceptanceLabel": "accept",
+                    "eventFamily": "shot_attempt",
+                    "predictedEventFamily": "shot_attempt",
+                    "predictedFlatLabel": "Made Shot",
+                    "proposalAccepted": True,
+                    "shotAttempt": True,
+                    "acceptanceScore": 0.9,
+                },
+            ]
+        )
+
+        self.assertEqual(len(queue), 2)
+        hard_negative = next(row for row in queue if row["queueType"] == "hard_negative_bucket_assignment")
+        self.assertEqual(
+            hard_negative["candidateHardNegativeBuckets"],
+            "dead_ball|replay_or_reaction|setup|true_negative_non_event",
+        )
+        self.assertEqual(hard_negative["manualHardNegativeBucket"], "")
+        self.assertEqual(hard_negative["manualAuditLabel"], "")
+        accepted = next(row for row in queue if row["queueType"] == "accepted_proposal_light_label")
+        self.assertEqual(accepted["manualShotAttempt"], "")
+        self.assertEqual(accepted["manualOutcome"], "")
+
+        summary = queue_summary(queue)
+        self.assertEqual(summary["hardNegativeCandidateRows"], 1)
+        self.assertEqual(summary["acceptedProposalRows"], 1)
 
 
 if __name__ == "__main__":

@@ -57,6 +57,9 @@ class InferenceSettings(BaseSettings):
     temporal_encoder_bundle_path: Path = Field(
         default=Path(__file__).resolve().parents[1] / "models" / "temporal_event_detector_v1.json"
     )
+    temporal_event_detector_family_temperature: float | None = None
+    temporal_event_detector_proposal_acceptance_threshold: float | None = None
+    temporal_event_detector_proposal_acceptance_energy_threshold: float | None = None
     distilled_clip_encoder_mode: str = "off"
     distilled_clip_encoder_bundle_path: Path = Field(
         default=Path(__file__).resolve().parents[1] / "models" / "distilled_clip_encoder_v1.json"

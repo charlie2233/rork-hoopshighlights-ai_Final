@@ -4,7 +4,7 @@ import asyncio
 import json
 import logging
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -1173,6 +1173,7 @@ def build_service(settings: InferenceSettings) -> InferenceService:
     temporal_encoder = None
     if settings.temporal_encoder_mode.lower() in {"shadow", "primary", "live"}:
         temporal_encoder = _load_temporal_shadow_bundle(settings.temporal_encoder_bundle_path)
+        temporal_encoder = _apply_temporal_event_detector_overrides(settings, temporal_encoder)
     distilled_clip_encoder = None
     if settings.distilled_clip_encoder_mode.lower() in {"shadow", "primary", "live"}:
         distilled_clip_encoder = get_distilled_clip_encoder_bundle(str(settings.distilled_clip_encoder_bundle_path))
@@ -1607,6 +1608,34 @@ def _load_temporal_shadow_bundle(path: Path) -> TemporalEncoderBundle | Temporal
     if "temporal-student" in schema_version or "temporal-student" in feature_schema_version:
         return get_temporal_student_bundle(str(path))
     return get_temporal_encoder_bundle(str(path))
+
+
+def _apply_temporal_event_detector_overrides(
+    settings: InferenceSettings,
+    bundle: TemporalEncoderBundle | TemporalStudentBundle | TemporalEventDetectorBundle | None,
+) -> TemporalEncoderBundle | TemporalStudentBundle | TemporalEventDetectorBundle | None:
+    if not isinstance(bundle, TemporalEventDetectorBundle):
+        return bundle
+    updates: dict[str, object] = {}
+    if settings.temporal_event_detector_proposal_acceptance_threshold is not None:
+        updates["proposal_acceptance_threshold"] = float(
+            settings.temporal_event_detector_proposal_acceptance_threshold
+        )
+    if settings.temporal_event_detector_proposal_acceptance_energy_threshold is not None:
+        updates["proposal_acceptance_energy_threshold"] = float(
+            settings.temporal_event_detector_proposal_acceptance_energy_threshold
+        )
+    if settings.temporal_event_detector_family_temperature is not None and "eventFamily" in bundle.targets:
+        updates["targets"] = {
+            **bundle.targets,
+            "eventFamily": replace(
+                bundle.targets["eventFamily"],
+                temperature=float(settings.temporal_event_detector_family_temperature),
+            ),
+        }
+    if not updates:
+        return bundle
+    return replace(bundle, **updates)
 
 
 def _resolve_trace_fields(request: InferenceJobRequest, request_id: str) -> tuple[str, str]:

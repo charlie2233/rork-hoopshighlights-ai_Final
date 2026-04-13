@@ -18,6 +18,8 @@ from services.inference.app.runtime_models.temporal_event_detector import (
     load_temporal_event_detector_bundle,
 )
 from services.inference.app.models import LabelScore
+from services.inference.app.config import InferenceSettings
+from services.inference.app.pipeline import _apply_temporal_event_detector_overrides
 from services.inference.app.temporal_encoder import TemporalTargetPrediction
 from services.inference.app.runtime_models.temporal_student import TemporalStudentObservation
 from services.inference.app.runtime_models.temporal_student import TemporalStudentTargetPrediction
@@ -514,6 +516,76 @@ class TemporalEventDetectorTests(unittest.TestCase):
         self.assertTrue(prediction.metadata["temporal_event_detector_shadow_relaxed_family_eval"]["familyGateWouldOpen"])
         self.assertTrue(
             prediction.metadata["temporal_event_detector_shot_head_preconditions"]["eventFamilyIsShotAttempt"]
+        )
+
+    @unittest.skipIf(torch is None, "torch is required for temporal event detector training")
+    def test_acceptor_smoke_overrides_are_additive_and_energy_gated(self) -> None:
+        shot = TemporalTrainingExample(
+            clip_id="clip-shot-energy-gate",
+            source_kind="gold",
+            source_domain="live_shadow",
+            source_set="phase4_event_localization_queue",
+            split="val",
+            event_family="shot_attempt",
+            outcome="made",
+            shot_subtype="layup",
+            observations=tuple(
+                _make_observation(event_family="shot_attempt", outcome="made", shot_subtype="layup", position=position)
+                for position in (0.14, 0.43, 0.69, 0.9)
+            ),
+            weight=4.0,
+            has_event_localization=True,
+        )
+        negative = TemporalTrainingExample(
+            clip_id="clip-negative-energy-gate",
+            source_kind="gold",
+            source_domain="manual_negative",
+            source_set="phase4_event_localization_queue",
+            split="test",
+            event_family="other",
+            outcome="uncertain",
+            shot_subtype=None,
+            observations=tuple(
+                _make_observation(
+                    event_family="other",
+                    outcome="uncertain",
+                    shot_subtype=None,
+                    position=position,
+                    ball_visible=False,
+                    hoop_visible=False,
+                )
+                for position in (0.12, 0.39, 0.65, 0.9)
+            ),
+            weight=4.0,
+            has_event_localization=False,
+        )
+        result = train_temporal_event_detector(
+            [shot, negative],
+            architecture="tridet",
+            hidden_size=8,
+            epochs=10,
+            learning_rate=0.05,
+        )
+        settings = InferenceSettings(
+            temporal_event_detector_family_temperature=1.0,
+            temporal_event_detector_proposal_acceptance_threshold=0.3,
+            temporal_event_detector_proposal_acceptance_energy_threshold=0.0,
+        )
+
+        overridden = _apply_temporal_event_detector_overrides(settings, result.bundle)
+
+        self.assertEqual(overridden.proposal_acceptance_threshold, 0.3)
+        self.assertEqual(overridden.proposal_acceptance_energy_threshold, 0.0)
+        self.assertEqual(overridden.targets["eventFamily"].temperature, 1.0)
+        prediction = overridden.predict(shot.observations)
+        self.assertFalse(prediction.metadata["temporal_event_detector_proposal_accepted"])
+        self.assertEqual(
+            prediction.metadata["temporal_event_detector_family_gate_rejection_reason"],
+            "proposal_rejected",
+        )
+        self.assertEqual(
+            prediction.metadata["temporal_event_detector_proposal_acceptance_energy_threshold"],
+            0.0,
         )
 
     @unittest.skipIf(torch is None, "torch is required for temporal event detector training")

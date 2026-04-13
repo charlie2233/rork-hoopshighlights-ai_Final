@@ -216,6 +216,7 @@ class TemporalEventDetectorBundle:
     shot_specialist_outcome: TemporalTargetModel | None = None
     shot_specialist_subtype: TemporalTargetModel | None = None
     proposal_acceptance_threshold: float = 0.62
+    proposal_acceptance_energy_threshold: float | None = None
     proposal_competition_margin_threshold: float = 0.06
     proposal_candidate_limit: int = 4
 
@@ -337,6 +338,8 @@ class TemporalEventDetectorBundle:
             rejector_prediction=rejector_prediction,
             ranker_prediction=ranker_prediction,
             acceptance_probability=acceptance_probability,
+            acceptance_energy=acceptance_energy,
+            acceptance_energy_threshold=self.proposal_acceptance_energy_threshold,
             competition_margin=selected.competition_margin,
             acceptance_threshold=self.proposal_acceptance_threshold,
             competition_margin_threshold=self.proposal_competition_margin_threshold,
@@ -599,6 +602,11 @@ class TemporalEventDetectorBundle:
             "temporal_event_detector_event_margin_threshold": round(self.event_margin_threshold, 4),
             "temporal_event_detector_eventness_temperature": round(self.eventness_temperature, 4),
             "temporal_event_detector_proposal_acceptance_threshold": round(self.proposal_acceptance_threshold, 4),
+            "temporal_event_detector_proposal_acceptance_energy_threshold": (
+                round(float(self.proposal_acceptance_energy_threshold), 4)
+                if self.proposal_acceptance_energy_threshold is not None
+                else None
+            ),
             "temporal_event_detector_proposal_competition_margin_threshold": round(
                 self.proposal_competition_margin_threshold,
                 4,
@@ -1116,6 +1124,13 @@ class TemporalEventDetectorBundle:
             return False
         if acceptance_score < self.proposal_acceptance_threshold:
             return False
+        acceptance_energy = _prediction_energy(acceptor_prediction)
+        if (
+            self.proposal_acceptance_energy_threshold is not None
+            and acceptance_energy is not None
+            and acceptance_energy < self.proposal_acceptance_energy_threshold
+        ):
+            return False
         if competition_margin < self.proposal_competition_margin_threshold:
             return False
         return True
@@ -1614,6 +1629,11 @@ def load_temporal_event_detector_bundle(path: Path | None = None) -> TemporalEve
         shot_specialist_outcome=targets.get("shotOutcomeSpecialist"),
         shot_specialist_subtype=targets.get("shotSubtypeSpecialist"),
         proposal_acceptance_threshold=float(payload.get("proposalAcceptanceThreshold", 0.62)),
+        proposal_acceptance_energy_threshold=(
+            float(payload["proposalAcceptanceEnergyThreshold"])
+            if payload.get("proposalAcceptanceEnergyThreshold") is not None
+            else None
+        ),
         proposal_competition_margin_threshold=float(payload.get("proposalCompetitionMarginThreshold", 0.06)),
         proposal_candidate_limit=int(payload.get("proposalCandidateLimit", 4)),
     )
@@ -1674,6 +1694,7 @@ def write_temporal_event_detector_bundle(path: Path, bundle: TemporalEventDetect
         "eventMarginThreshold": bundle.event_margin_threshold,
         "eventnessTemperature": bundle.eventness_temperature,
         "proposalAcceptanceThreshold": bundle.proposal_acceptance_threshold,
+        "proposalAcceptanceEnergyThreshold": bundle.proposal_acceptance_energy_threshold,
         "proposalCompetitionMarginThreshold": bundle.proposal_competition_margin_threshold,
         "proposalCandidateLimit": bundle.proposal_candidate_limit,
         "shotSpecialistFeatureNames": list(bundle.shot_specialist_feature_names),
@@ -1836,6 +1857,8 @@ def _family_gate_rejection_reason(
     rejector_prediction: TemporalTargetPrediction,
     ranker_prediction: TemporalTargetPrediction,
     acceptance_probability: float,
+    acceptance_energy: float | None,
+    acceptance_energy_threshold: float | None,
     competition_margin: float,
     acceptance_threshold: float,
     competition_margin_threshold: float,
@@ -1850,6 +1873,12 @@ def _family_gate_rejection_reason(
         return f"ranker:{ranker_prediction.label}"
     if acceptance_probability < acceptance_threshold:
         return "acceptance_probability_below_threshold"
+    if (
+        acceptance_energy_threshold is not None
+        and acceptance_energy is not None
+        and acceptance_energy < acceptance_energy_threshold
+    ):
+        return "acceptance_energy_below_threshold"
     if competition_margin < competition_margin_threshold:
         return "competition_margin_below_threshold"
     return None
