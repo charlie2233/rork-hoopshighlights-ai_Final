@@ -1,0 +1,51 @@
+{
+  "acceptedProposalLightLabelCount": 0,
+  "ambiguousCount": 0,
+  "confirmedCountsByBucket": {
+    "dead_ball": 0,
+    "replay_or_reaction": 0,
+    "setup": 0,
+    "true_negative_non_event": 0
+  },
+  "confirmedRows": 0,
+  "conflictCount": 0,
+  "generatedAt": "2026-04-13",
+  "inputExpandedRows": 110,
+  "inputExpandedUniqueClips": 96,
+  "localPreRetrainRequirements": {
+    "accepted_proposal_light_labels": {
+      "confirmed": 0,
+      "met": false,
+      "required": 25
+    },
+    "dead_ball": {
+      "confirmed": 0,
+      "met": false,
+      "required": 20
+    },
+    "replay_or_reaction": {
+      "confirmed": 0,
+      "met": false,
+      "required": 20
+    },
+    "setup": {
+      "confirmed": 0,
+      "met": false,
+      "required": 20
+    },
+    "true_negative_non_event": {
+      "confirmed": 0,
+      "met": false,
+      "required": 20
+    }
+  },
+  "localPreRetrainUnlocked": false,
+  "recommendation": "continue labeling",
+  "roadmapContextTarget": {
+    "met": false,
+    "required": 300,
+    "taggedPhase4hClips": 0
+  },
+  "uniqueClipsReviewed": 0,
+  "unlabeledRemainingCount": 96
+}

@@ -18,6 +18,13 @@ from services.inference.scripts.build_phase4h_labeling_pack import (
     normalize_seed_queue,
     progress_summary,
 )
+from services.inference.scripts.build_phase4h_label_ingestion import (
+    LabelIngestionError,
+    build_review_packs,
+    build_training_seed,
+    compute_retrain_readiness,
+    ingest_reviewed_rows,
+)
 
 
 class Phase4hAcceptorCoverageLiftTests(unittest.TestCase):
@@ -301,6 +308,158 @@ class Phase4hAcceptorCoverageLiftTests(unittest.TestCase):
         self.assertEqual(progress["recommendation"], "continue labeling")
 
         report_path.unlink()
+
+    def test_label_ingestion_slices_review_packs_by_priority(self) -> None:
+        rows = [
+            {
+                "row_id": "accepted:1",
+                "clip_id": "clip-a",
+                "source_batch": "phase4h_staging_eval_63clip",
+                "candidate_bucket": "accepted_proposal_light_label",
+                "candidate_reason": "proposal_accepted",
+                "proposal_accepted": "true",
+                "priority_score": "0.9",
+                "source_artifact_path": "artifact.json",
+                "job_id": "job-a",
+                "request_id": "request-a",
+                "upload_trace_id": "upload-a",
+                "inference_attempt_id": "attempt-a",
+            },
+            {
+                "row_id": "hard:1",
+                "clip_id": "clip-b",
+                "source_batch": "phase4h_staging_eval_63clip",
+                "candidate_bucket": "dead_ball|replay_or_reaction|setup|true_negative_non_event",
+                "candidate_reason": "needs_human_bucket_assignment",
+                "priority_score": "0.8",
+                "source_artifact_path": "artifact.json",
+                "job_id": "job-b",
+                "request_id": "request-b",
+                "upload_trace_id": "upload-b",
+                "inference_attempt_id": "attempt-b",
+            },
+            {
+                "row_id": "miss:1",
+                "clip_id": "clip-c",
+                "source_batch": "phase4h_staging_eval_63clip",
+                "candidate_bucket": "possible_real_event_miss",
+                "candidate_reason": "predicted_event_family_other",
+                "predicted_event_family": "other",
+                "priority_score": "0.7",
+            },
+            {
+                "row_id": "miss:dupe",
+                "clip_id": "clip-a",
+                "source_batch": "phase4h_staging_eval_63clip",
+                "candidate_bucket": "possible_real_event_miss",
+                "candidate_reason": "duplicate_clip_lower_priority",
+                "predicted_event_family": "other",
+                "priority_score": "0.1",
+            },
+        ]
+
+        packs = build_review_packs(rows)
+
+        self.assertEqual(len(packs["review_pack_01_accepted_proposals"]), 1)
+        self.assertEqual(len(packs["review_pack_02_hard_negatives_priority"]), 1)
+        self.assertEqual(len(packs["review_pack_03_remaining_predicted_other"]), 1)
+        self.assertEqual(packs["review_pack_01_accepted_proposals"][0]["clip_id"], "clip-a")
+        self.assertEqual(packs["review_pack_03_remaining_predicted_other"][0]["clip_id"], "clip-c")
+        self.assertIn("provenance_score=", packs["review_pack_02_hard_negatives_priority"][0]["pack_priority_reason"])
+
+    def test_label_ingestion_rejects_malformed_reviewer_values(self) -> None:
+        with self.assertRaises(LabelIngestionError):
+            ingest_reviewed_rows(
+                [
+                    {
+                        "row_id": "bad:1",
+                        "clip_id": "clip-bad",
+                        "reviewer_split_other_bucket": "dead-ball-ish",
+                        "review_status": "reviewed",
+                        "qa_status": "passed",
+                    }
+                ]
+            )
+
+    def test_label_ingestion_excludes_conflicting_clip_labels(self) -> None:
+        confirmed, conflicts = ingest_reviewed_rows(
+            [
+                {
+                    "row_id": "row:1",
+                    "clip_id": "clip-conflict",
+                    "source_batch": "fixture",
+                    "candidate_bucket": "dead_ball|replay_or_reaction|setup|true_negative_non_event",
+                    "reviewer_split_other_bucket": "dead_ball",
+                    "review_status": "reviewed",
+                    "qa_status": "passed",
+                },
+                {
+                    "row_id": "row:2",
+                    "clip_id": "clip-conflict",
+                    "source_batch": "fixture",
+                    "candidate_bucket": "dead_ball|replay_or_reaction|setup|true_negative_non_event",
+                    "reviewer_split_other_bucket": "setup",
+                    "review_status": "reviewed",
+                    "qa_status": "passed",
+                },
+            ]
+        )
+
+        self.assertEqual(confirmed, [])
+        self.assertEqual(len(conflicts), 1)
+        self.assertEqual(conflicts[0]["clip_id"], "clip-conflict")
+
+    def test_retrain_readiness_uses_confirmed_labels_only(self) -> None:
+        confirmed, conflicts = ingest_reviewed_rows(
+            [
+                {
+                    "row_id": "row:dead",
+                    "clip_id": "clip-dead",
+                    "source_batch": "fixture",
+                    "candidate_bucket": "dead_ball|replay_or_reaction|setup|true_negative_non_event",
+                    "reviewer_split_other_bucket": "dead_ball",
+                    "review_status": "reviewed",
+                    "qa_status": "passed",
+                },
+                {
+                    "row_id": "row:accepted",
+                    "clip_id": "clip-shot",
+                    "source_batch": "fixture",
+                    "candidate_bucket": "accepted_proposal_light_label",
+                    "reviewer_shot_attempt": "true",
+                    "reviewer_outcome": "missed",
+                    "review_status": "reviewed",
+                    "qa_status": "passed",
+                },
+                {
+                    "row_id": "row:blank",
+                    "clip_id": "clip-blank",
+                    "source_batch": "fixture",
+                    "candidate_bucket": "dead_ball|replay_or_reaction|setup|true_negative_non_event",
+                    "review_status": "needs_review",
+                    "qa_status": "not_started",
+                },
+            ]
+        )
+        readiness = compute_retrain_readiness(
+            confirmed_rows=confirmed,
+            expanded_rows=[
+                {"clip_id": "clip-dead"},
+                {"clip_id": "clip-shot"},
+                {"clip_id": "clip-blank"},
+            ],
+            conflicts=conflicts,
+        )
+        seed = build_training_seed(confirmed)
+
+        self.assertEqual(readiness["confirmedCountsByBucket"]["dead_ball"], 1)
+        self.assertEqual(readiness["acceptedProposalLightLabelCount"], 1)
+        self.assertFalse(readiness["localPreRetrainUnlocked"])
+        self.assertEqual(readiness["recommendation"], "continue labeling")
+        self.assertEqual(len(seed), 2)
+        labels = {row["clipId"]: row["acceptorLabel"] for row in seed}
+        self.assertEqual(labels["clip-dead"], "reject")
+        self.assertEqual(labels["clip-shot"], "accept")
 
     def _write_shadow_report(self, payload: dict) -> "Path":
         from pathlib import Path

@@ -87,6 +87,19 @@
 - Confirmed hard-negative bucket counts remain `0` until human review fills `reviewer_split_other_bucket`.
 - Decision: continue labeling. Do not retrain or request a medium batch from this branch.
 
+## Label Ingestion and Retrain Gate - 2026-04-13
+
+- Branch: `codex/phase4h-label-ingestion-and-retrain-gate`, based on `90f4d6b`.
+- Workflow: `docs/phase4h_label_ingestion_workflow.md`.
+- Readiness report: `docs/phase4h_retrain_readiness_report.md`.
+- Review pack 01: `services/inference/evals/phase4h_acceptor_coverage_lift/review_pack_01_accepted_proposals.csv` with `14` accepted-proposal rows.
+- Review pack 02: `services/inference/evals/phase4h_acceptor_coverage_lift/review_pack_02_hard_negatives_priority.csv` with `51` priority hard-negative rows.
+- Review pack 03: `services/inference/evals/phase4h_acceptor_coverage_lift/review_pack_03_remaining_predicted_other.csv` with `31` remaining predicted-other/model-miss rows.
+- Confirmed label outputs: `confirmed_phase4h_labels.csv`, `confirmed_phase4h_labels.jsonl`, and `phase4h_acceptor_training_seed.jsonl`.
+- Current confirmed counts remain `0` for all hard-negative buckets and accepted-proposal light labels because reviewer truth has not been entered.
+- Local retrain gate remains locked until confirmed counts reach `20` each for `dead_ball`, `replay_or_reaction`, `setup`, `true_negative_non_event`, plus `25` accepted-proposal light labels.
+- Decision: continue labeling. Do not retrain, run another smoke, request a medium batch, or change thresholds from this branch.
+
 ## Before Shadow Deploy
 
 - Confirm branch is the exact smoke candidate branch: `codex/phase4h-family-gate-suppression-fix` for gate-only smoke, or `codex/phase4h-acceptor-coverage-lift` only after the acceptor threshold/config change is explicitly approved.
