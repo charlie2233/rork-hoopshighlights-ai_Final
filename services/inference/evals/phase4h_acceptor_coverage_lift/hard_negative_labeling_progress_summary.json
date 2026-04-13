@@ -1,0 +1,87 @@
+{
+  "expanded": {
+    "acceptedProposalLightLabelRows": 14,
+    "byBatchType": {
+      "accepted_proposal_review": 14,
+      "smoke": 33,
+      "staging": 63
+    },
+    "byCandidateBucket": {
+      "accepted_proposal_light_label": 14,
+      "dead_ball|replay_or_reaction|setup|true_negative_non_event": 51,
+      "possible_real_event_miss": 45
+    },
+    "bySourceBatch": {
+      "phase4h_acceptor_smoke_15clip": 21,
+      "phase4h_gate_unblock_smoke_18clip": 18,
+      "phase4h_staging_eval_63clip": 71
+    },
+    "candidateHardNegativeOptionCounts": {
+      "dead_ball": 51,
+      "replay_or_reaction": 51,
+      "setup": 51,
+      "true_negative_non_event": 51
+    },
+    "confirmedRowsByBucket": {
+      "dead_ball": 0,
+      "replay_or_reaction": 0,
+      "setup": 0,
+      "true_negative_non_event": 0
+    },
+    "qaStatus": {
+      "not_started": 110
+    },
+    "remainingUnlabeledRows": 110,
+    "reviewStatus": {
+      "needs_review": 110
+    },
+    "totalRows": 110,
+    "uniqueClipCount": 96
+  },
+  "generatedAt": "2026-04-13",
+  "hardNegativeBuckets": [
+    "dead_ball",
+    "replay_or_reaction",
+    "setup",
+    "true_negative_non_event"
+  ],
+  "normalized": {
+    "acceptedProposalLightLabelRows": 14,
+    "byBatchType": {
+      "accepted_proposal_review": 14,
+      "smoke": 21,
+      "staging": 30
+    },
+    "byCandidateBucket": {
+      "accepted_proposal_light_label": 14,
+      "dead_ball|replay_or_reaction|setup|true_negative_non_event": 51
+    },
+    "bySourceBatch": {
+      "phase4h_acceptor_smoke_15clip": 15,
+      "phase4h_gate_unblock_smoke_18clip": 12,
+      "phase4h_staging_eval_63clip": 38
+    },
+    "candidateHardNegativeOptionCounts": {
+      "dead_ball": 51,
+      "replay_or_reaction": 51,
+      "setup": 51,
+      "true_negative_non_event": 51
+    },
+    "confirmedRowsByBucket": {
+      "dead_ball": 0,
+      "replay_or_reaction": 0,
+      "setup": 0,
+      "true_negative_non_event": 0
+    },
+    "qaStatus": {
+      "not_started": 65
+    },
+    "remainingUnlabeledRows": 65,
+    "reviewStatus": {
+      "needs_review": 65
+    },
+    "totalRows": 65,
+    "uniqueClipCount": 65
+  },
+  "recommendation": "continue labeling"
+}

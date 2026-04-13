@@ -73,6 +73,20 @@
 - Queue type counts: `hard_negative_bucket_assignment=51`, `accepted_proposal_light_label=14`.
 - Confirmed hard-negative bucket counts remain `0` for `dead_ball`, `replay_or_reaction`, `setup`, and `true_negative_non_event`; blank manual fields require review before training use.
 
+## Hard-Negative Labeling Sprint - 2026-04-13
+
+- Branch: `codex/phase4h-hard-negative-labeling-sprint`, based on `35b1b5d`.
+- Labeling guide: `docs/phase4h_labeling_guide.md`.
+- Progress report: `docs/phase4h_labeling_progress_report.md`.
+- Normalized reviewer queue: `services/inference/evals/phase4h_acceptor_coverage_lift/hard_negative_label_queue_normalized.csv`.
+- Expanded reviewer queue: `services/inference/evals/phase4h_acceptor_coverage_lift/hard_negative_label_queue_expanded.csv`.
+- Machine-readable progress: `services/inference/evals/phase4h_acceptor_coverage_lift/hard_negative_labeling_progress_summary.json`.
+- Smoke runner notes: `docs/phase4h_smoke_runner_reliability_notes.md`.
+- Normalized seed rows: `65`; expanded rows: `110` across `96` unique clips.
+- Expanded candidate buckets: `hard_negative_bucket_assignment options=51`, `possible_real_event_miss=45`, `accepted_proposal_light_label=14`.
+- Confirmed hard-negative bucket counts remain `0` until human review fills `reviewer_split_other_bucket`.
+- Decision: continue labeling. Do not retrain or request a medium batch from this branch.
+
 ## Before Shadow Deploy
 
 - Confirm branch is the exact smoke candidate branch: `codex/phase4h-family-gate-suppression-fix` for gate-only smoke, or `codex/phase4h-acceptor-coverage-lift` only after the acceptor threshold/config change is explicitly approved.

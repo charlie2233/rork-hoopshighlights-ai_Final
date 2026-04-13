@@ -13,6 +13,11 @@ from services.inference.scripts.build_phase4h_hard_negative_label_queue import (
     build_label_queue,
     queue_summary,
 )
+from services.inference.scripts.build_phase4h_labeling_pack import (
+    expand_queue,
+    normalize_seed_queue,
+    progress_summary,
+)
 
 
 class Phase4hAcceptorCoverageLiftTests(unittest.TestCase):
@@ -229,6 +234,83 @@ class Phase4hAcceptorCoverageLiftTests(unittest.TestCase):
         summary = queue_summary(queue)
         self.assertEqual(summary["hardNegativeCandidateRows"], 1)
         self.assertEqual(summary["acceptedProposalRows"], 1)
+
+    def test_labeling_pack_keeps_reviewer_fields_blank_and_expands(self) -> None:
+        seed_rows = [
+            {
+                "queueId": "hard:seed-other",
+                "queueType": "hard_negative_bucket_assignment",
+                "clipId": "seed-other",
+                "datasetSource": "phase4h_staging_eval_63clip",
+                "predictedFlatLabel": "Highlight",
+                "predictedEventFamily": "other",
+                "eventFamily": "other",
+                "proposalAccepted": "False",
+                "priorityReason": "predicted_highlight|event_family_other",
+            },
+            {
+                "queueId": "accepted:seed-shot",
+                "queueType": "accepted_proposal_light_label",
+                "clipId": "seed-shot",
+                "datasetSource": "phase4h_acceptor_smoke_15clip",
+                "predictedFlatLabel": "Made Shot",
+                "predictedEventFamily": "shot_attempt",
+                "eventFamily": "shot_attempt",
+                "proposalAccepted": "True",
+                "priorityReason": "accepted_proposal",
+            },
+        ]
+        normalized = normalize_seed_queue(seed_rows, audit_by_clip={})
+        self.assertEqual(len(normalized), 2)
+        for row in normalized:
+            self.assertEqual(row["review_status"], "needs_review")
+            self.assertEqual(row["qa_status"], "not_started")
+            self.assertEqual(row["reviewer_split_other_bucket"], "")
+            self.assertEqual(row["reviewer_manual_audit_label"], "")
+            self.assertEqual(row["reviewer_shot_attempt"], "")
+            self.assertEqual(row["reviewer_outcome"], "")
+
+        report_path = self._write_shadow_report(
+            {
+                "clips": [
+                    {
+                        "clipId": "new-other",
+                        "flatLabel": "Highlight",
+                        "eventFamily": "other",
+                        "proposalAccepted": False,
+                        "sourceDomain": "fixture",
+                    },
+                    {
+                        "clipId": "new-shot",
+                        "flatLabel": "Highlight",
+                        "eventFamily": "other",
+                        "expectedEventFamily": "shot_attempt",
+                        "proposalAccepted": False,
+                        "sourceDomain": "fixture",
+                    },
+                ]
+            }
+        )
+        expanded = expand_queue(normalized, [report_path], audit_by_clip={})
+        self.assertGreater(len(expanded), len(normalized))
+        self.assertTrue(all(row["review_status"] == "needs_review" for row in expanded))
+        self.assertIn("possible_real_event_miss", {row["candidate_bucket"] for row in expanded})
+
+        progress = progress_summary(normalized=normalized, expanded=expanded)
+        self.assertEqual(progress["expanded"]["confirmedRowsByBucket"]["dead_ball"], 0)
+        self.assertEqual(progress["recommendation"], "continue labeling")
+
+        report_path.unlink()
+
+    def _write_shadow_report(self, payload: dict) -> "Path":
+        from pathlib import Path
+        import json
+        import tempfile
+
+        handle = tempfile.NamedTemporaryFile("w", suffix=".json", delete=False)
+        with handle:
+            json.dump(payload, handle)
+        return Path(handle.name)
 
 
 if __name__ == "__main__":
