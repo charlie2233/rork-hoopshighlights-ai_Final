@@ -257,9 +257,9 @@ struct SettingsView: View {
 
                 SettingsPreviewStat(
                     icon: "person.crop.circle.badge.checkmark",
-                    value: AppConstants.googleClientID.isEmpty ? "Missing" : "Ready",
+                    value: AppConstants.googleSignInConfigured ? "Ready" : "Missing",
                     label: "Google Sign-In",
-                    tint: AppConstants.googleClientID.isEmpty ? AppTheme.dangerRed : AppTheme.successGreen
+                    tint: AppConstants.googleSignInConfigured ? AppTheme.successGreen : AppTheme.dangerRed
                 )
                 .settingsPreviewStatCard()
             }

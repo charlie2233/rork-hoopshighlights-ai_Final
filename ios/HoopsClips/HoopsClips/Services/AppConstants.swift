@@ -18,6 +18,14 @@ enum AppConstants {
         runtimeConfig.googleClientID
     }
 
+    static var googleReversedClientID: String {
+        runtimeConfig.googleReversedClientID
+    }
+
+    static var googleSignInConfigured: Bool {
+        runtimeConfig.googleSignInConfigured
+    }
+
     static var sentryDSN: String {
         runtimeConfig.sentryDSN
     }

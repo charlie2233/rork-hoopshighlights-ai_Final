@@ -5,18 +5,23 @@
 - Cloud analysis stays internal-only until authenticated rollout, dashboard alignment, and Phase 4h gates are green.
 
 ## Release config
-- Fill `HoopsClips/HoopsClips/Config/LocalSecrets.xcconfig` or CI equivalents with:
+- GitHub Actions `production` environment is the source of truth for Release secrets.
+- Fill GitHub `production` and the local mirror file `HoopsClips/HoopsClips/Config/LocalSecrets.xcconfig` with:
   - `HOOPS_DEVELOPMENT_TEAM`
   - `HOOPS_REVENUECAT_API_KEY`
   - `HOOPS_GOOGLE_CLIENT_ID`
+  - `HOOPS_GOOGLE_REVERSED_CLIENT_ID`
   - `HOOPS_SENTRY_DSN`
+- Generate the local mirror with `./ios/scripts/materialize_local_secrets.sh` from operator-held environment variables on the smoke machine.
 - Keep `HOOPS_CLOUD_LAUNCH_MODE = disabled` for the public Release build.
 - Keep `HOOPS_CLOUD_ANALYSIS_BASE_URL` empty for the public Release build.
+- Require the manual `Release Secrets Preflight` GitHub Actions workflow to pass before the real-device Release smoke.
 
 ## Required validation before launch
 - Release app installs and signs successfully on a real device.
 - Google sign-in succeeds in Release.
 - RevenueCat offerings load and purchase/restore paths work in Release.
+- RevenueCat purchase/restore uses an Apple sandbox tester account, not a live purchase.
 - Video import works from Photos and Files.
 - On-device analysis completes without cloud fallback.
 - Review and export flows complete successfully.

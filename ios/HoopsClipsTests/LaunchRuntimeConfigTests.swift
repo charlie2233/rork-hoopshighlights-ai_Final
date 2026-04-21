@@ -7,6 +7,7 @@ struct LaunchRuntimeConfigTests {
             environmentName: "production",
             revenueCatAPIKey: "prod_key",
             googleClientID: "google_client",
+            googleReversedClientID: "com.googleusercontent.apps.example",
             cloudAnalysisBaseURL: "",
             sentryDSN: "",
             cloudLaunchMode: .disabled
@@ -15,6 +16,7 @@ struct LaunchRuntimeConfigTests {
         #expect(config.missingRequiredKeys.isEmpty)
         #expect(config.cloudLaunchMode == .disabled)
         #expect(config.allowsCloudAnalysisRequests == false)
+        #expect(config.googleSignInConfigured)
         #expect(config.launchAnalysisMode == .local)
     }
 
@@ -23,6 +25,7 @@ struct LaunchRuntimeConfigTests {
             environmentName: "production",
             revenueCatAPIKey: "prod_key",
             googleClientID: "google_client",
+            googleReversedClientID: "com.googleusercontent.apps.example",
             cloudAnalysisBaseURL: "http://example.com",
             sentryDSN: "",
             cloudLaunchMode: .enabled
@@ -38,6 +41,7 @@ struct LaunchRuntimeConfigTests {
             environmentName: "production",
             revenueCatAPIKey: "prod_key",
             googleClientID: "google_client",
+            googleReversedClientID: "com.googleusercontent.apps.example",
             cloudAnalysisBaseURL: "https://api.hoopsclips.example",
             sentryDSN: "https://dsn.ingest.sentry.io/1",
             cloudLaunchMode: .enabled
@@ -46,5 +50,20 @@ struct LaunchRuntimeConfigTests {
         #expect(config.missingRequiredKeys.isEmpty)
         #expect(config.allowsCloudAnalysisRequests)
         #expect(config.launchAnalysisMode == .cloud)
+    }
+
+    @Test func testProductionRequiresGoogleReversedClientIDForGoogleReadiness() {
+        let config = AppRuntimeConfig(
+            environmentName: "production",
+            revenueCatAPIKey: "prod_key",
+            googleClientID: "google_client",
+            googleReversedClientID: "",
+            cloudAnalysisBaseURL: "",
+            sentryDSN: "",
+            cloudLaunchMode: .disabled
+        )
+
+        #expect(config.googleSignInConfigured == false)
+        #expect(config.missingRequiredKeys.contains("HOOPSGoogleReversedClientID"))
     }
 }

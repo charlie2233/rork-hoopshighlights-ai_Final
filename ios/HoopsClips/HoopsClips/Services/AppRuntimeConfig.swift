@@ -27,6 +27,7 @@ struct AppRuntimeConfig {
     let environmentName: String
     let revenueCatAPIKey: String
     let googleClientID: String
+    let googleReversedClientID: String
     let cloudAnalysisBaseURL: String
     let sentryDSN: String
     let cloudLaunchMode: CloudLaunchMode
@@ -35,6 +36,7 @@ struct AppRuntimeConfig {
         environmentName: String,
         revenueCatAPIKey: String,
         googleClientID: String,
+        googleReversedClientID: String,
         cloudAnalysisBaseURL: String,
         sentryDSN: String,
         cloudLaunchMode: CloudLaunchMode
@@ -42,6 +44,7 @@ struct AppRuntimeConfig {
         self.environmentName = environmentName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         self.revenueCatAPIKey = revenueCatAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
         self.googleClientID = googleClientID.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.googleReversedClientID = googleReversedClientID.trimmingCharacters(in: .whitespacesAndNewlines)
         self.cloudAnalysisBaseURL = cloudAnalysisBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
         self.sentryDSN = sentryDSN.trimmingCharacters(in: .whitespacesAndNewlines)
         self.cloudLaunchMode = cloudLaunchMode
@@ -52,6 +55,7 @@ struct AppRuntimeConfig {
             environmentName: bundle.string(for: "HOOPSAppEnvironment") ?? "debug",
             revenueCatAPIKey: bundle.string(for: "HOOPSRevenueCatAPIKey") ?? "",
             googleClientID: bundle.string(for: "HOOPSGoogleClientID") ?? "",
+            googleReversedClientID: bundle.string(for: "HOOPSGoogleReversedClientID") ?? "",
             cloudAnalysisBaseURL: bundle.string(for: "HOOPSCloudAnalysisBaseURL") ?? "",
             sentryDSN: bundle.string(for: "HOOPSSentryDSN") ?? "",
             cloudLaunchMode: CloudLaunchMode(
@@ -66,6 +70,10 @@ struct AppRuntimeConfig {
 
     var isDebug: Bool {
         environmentName == "debug"
+    }
+
+    var googleSignInConfigured: Bool {
+        !googleClientID.isEmpty && !googleReversedClientID.isEmpty
     }
 
     var resolvedCloudAnalysisBaseURL: URL? {
@@ -99,6 +107,9 @@ struct AppRuntimeConfig {
         }
         if googleClientID.isEmpty {
             missing.append("HOOPSGoogleClientID")
+        }
+        if googleReversedClientID.isEmpty {
+            missing.append("HOOPSGoogleReversedClientID")
         }
         if cloudLaunchMode.allowsCloudRequests && resolvedCloudAnalysisBaseURL == nil {
             missing.append("HOOPSCloudAnalysisBaseURL")

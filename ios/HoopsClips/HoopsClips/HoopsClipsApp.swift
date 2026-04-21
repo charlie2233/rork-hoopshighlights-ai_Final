@@ -1,5 +1,6 @@
 import SwiftUI
 import RevenueCat
+import GoogleSignIn
 
 @main
 struct HoopsClipsApp: App {
@@ -31,6 +32,9 @@ struct HoopsClipsApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .onOpenURL { url in
+                    _ = GIDSignIn.sharedInstance.handle(url)
+                }
         }
     }
 }
