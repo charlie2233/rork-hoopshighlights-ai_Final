@@ -14,6 +14,7 @@ app.json
 # Xcode
 build/
 DerivedData/
+HoopsClips/HoopsClips/Config/LocalSecrets.xcconfig
 *.xcuserstate
 *.xcuserdatad/
 xcuserdata/

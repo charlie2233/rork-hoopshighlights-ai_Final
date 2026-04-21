@@ -57,9 +57,24 @@ final class HighlightsViewModel {
 
     var showingVideoPicker = false
     var showingSaveSuccess = false
-    var analysisMode: AnalysisExecutionMode = .cloud
+    var analysisMode: AnalysisExecutionMode = AppRuntimeConfig.shared.launchAnalysisMode
     var cloudQuotaRemaining: Int?
     var isCloudFallbackOffered = false
+
+    var analysisModeDisplayName: String {
+        switch analysisMode {
+        case .cloud:
+            return "Cloud"
+        case .local:
+            return "On-device"
+        case .localFallback:
+            return "Fallback"
+        }
+    }
+
+    var launchModeSummary: String {
+        AppConstants.cloudLaunchStatusLabel
+    }
 
     var historyProjects: [PersistedProjectRecord] {
         projectLibrary.projects.sorted { lhs, rhs in
@@ -130,9 +145,15 @@ final class HighlightsViewModel {
         beginBackgroundAnalysisTask()
         defer { endBackgroundAnalysisTask() }
 
+        analysisService.updateSettings(settings)
+
+        guard AppConstants.cloudAnalysisEnabled else {
+            await runPrimaryLocalAnalysis(for: url, status: "Analyzing on device")
+            return
+        }
+
         analysisMode = .cloud
         isCloudFallbackOffered = false
-        analysisService.updateSettings(settings)
         analysisService.beginExternalAnalysis(status: "Preparing upload")
 
         do {
@@ -162,6 +183,20 @@ final class HighlightsViewModel {
         } catch {
             await fallbackToLocalAnalysis(from: CloudAnalysisError.network(error.localizedDescription))
         }
+    }
+
+    private func runPrimaryLocalAnalysis(for url: URL, status: String) async {
+        analysisMode = .local
+        isCloudFallbackOffered = false
+        cloudQuotaRemaining = nil
+        analysisService.beginExternalAnalysis(status: status)
+        await analysisService.analyze(url: url, settings: settings)
+        applyDefaultRedundantClipSuppression()
+        AnalysisNotificationService.shared.notifyAnalysisCompleted(
+            clipsCount: analysisService.clips.count,
+            usedFallback: false
+        )
+        recordAnalysisCompleted()
     }
 
     func toggleClip(_ clip: Clip) {
@@ -420,7 +455,7 @@ final class HighlightsViewModel {
         exportPostProcessing = project.exportPostProcessing
         customAudioURL = projectStore.existingURL(for: project.customAudioRelativePath)
 
-        analysisMode = project.analysisMode ?? .cloud
+        analysisMode = project.analysisMode ?? AppRuntimeConfig.shared.launchAnalysisMode
         lastAnalysisStatusSummary = project.analysisStatusSummary
         lastAnalyzedAt = project.lastAnalyzedAt
         lastExportedAt = project.lastExportedAt
@@ -457,7 +492,7 @@ final class HighlightsViewModel {
         customAudioURL = nil
 
         showingSaveSuccess = false
-        analysisMode = .cloud
+        analysisMode = AppRuntimeConfig.shared.launchAnalysisMode
         cloudQuotaRemaining = nil
         isCloudFallbackOffered = false
         lastAnalysisStatusSummary = nil

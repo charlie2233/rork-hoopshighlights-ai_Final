@@ -65,7 +65,7 @@ struct SettingsView: View {
         let icon: String
     }
 
-    private struct SettingsPreviewStat: Identifiable {
+    fileprivate struct SettingsPreviewStat: Identifiable {
         let id = UUID()
         let icon: String
         let value: String
@@ -111,6 +111,7 @@ struct SettingsView: View {
                 ScrollView {
                     VStack(spacing: 24) {
                         settingsHeroCard
+                        runtimeStatusCard
                         workflowHubLink
                         membershipHubLink
                         supportHubLink
@@ -237,6 +238,54 @@ struct SettingsView: View {
         }
     }
 
+    private var runtimeStatusCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            RorkSectionHeader(
+                title: "Launch Status",
+                icon: "antenna.radiowaves.left.and.right",
+                subtitle: "What this build can use in production right now."
+            )
+
+            HStack(spacing: 10) {
+                SettingsPreviewStat(
+                    icon: "cpu.fill",
+                    value: AppConstants.cloudLaunchStatusLabel,
+                    label: "Analysis Path",
+                    tint: AppConstants.cloudAnalysisEnabled ? AppTheme.warningYellow : AppTheme.successGreen
+                )
+                .settingsPreviewStatCard()
+
+                SettingsPreviewStat(
+                    icon: "person.crop.circle.badge.checkmark",
+                    value: AppConstants.googleClientID.isEmpty ? "Missing" : "Ready",
+                    label: "Google Sign-In",
+                    tint: AppConstants.googleClientID.isEmpty ? AppTheme.dangerRed : AppTheme.successGreen
+                )
+                .settingsPreviewStatCard()
+            }
+
+            HStack(spacing: 10) {
+                SettingsPreviewStat(
+                    icon: "creditcard.fill",
+                    value: AppConstants.revenueCatAPIKey.isEmpty ? "Missing" : "Ready",
+                    label: "RevenueCat",
+                    tint: AppConstants.revenueCatAPIKey.isEmpty ? AppTheme.dangerRed : AppTheme.successGreen
+                )
+                .settingsPreviewStatCard()
+
+                SettingsPreviewStat(
+                    icon: "exclamationmark.bubble.fill",
+                    value: LaunchTelemetry.shared.supportStatusLabel,
+                    label: "Telemetry",
+                    tint: AppConstants.sentryDSN.isEmpty ? AppTheme.subtleText : AppTheme.successGreen
+                )
+                .settingsPreviewStatCard()
+            }
+        }
+        .padding(16)
+        .rorkCard(cornerRadius: 18, stroke: AppTheme.softBorder, glowOpacity: 0.05)
+    }
+
     private var membershipHubLink: some View {
         settingsHubLink(
             title: "Membership & Account",
@@ -319,9 +368,9 @@ struct SettingsView: View {
 
         return [
             SettingsPreviewStat(
-                icon: "sparkles",
+                icon: AppConstants.cloudAnalysisEnabled ? "sparkles" : "cpu.fill",
                 value: "\(subscriptionManager.freeUsesRemaining)",
-                label: "Free Left",
+                label: AppConstants.cloudAnalysisEnabled ? "Free Left" : "On Device",
                 tint: subscriptionManager.freeUsesRemaining > 0 ? AppTheme.warningYellow : AppTheme.dangerRed
             ),
             SettingsPreviewStat(
@@ -334,7 +383,7 @@ struct SettingsView: View {
     }
 
     private var settingsFootnote: some View {
-        Text("Settings now use focused subpages so account, workflow, and support changes are easier to review before you commit them.")
+        Text("Public launch is configured to prefer on-device analysis. Keep cloud review internal until the cutover checklist and Phase 4h gates are green.")
             .font(.caption2)
             .foregroundStyle(AppTheme.subtleText)
             .multilineTextAlignment(.center)
@@ -1452,5 +1501,25 @@ struct SettingsView: View {
             return "\(minutes) min"
         }
         return "\(minutes)m \(seconds)s"
+    }
+}
+
+private extension SettingsView.SettingsPreviewStat {
+    @ViewBuilder
+    func settingsPreviewStatCard() -> some View {
+        VStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(tint)
+            Text(value)
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(.white)
+            Text(label)
+                .font(.caption2)
+                .foregroundStyle(AppTheme.subtleText)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 12)
+        .rorkCard(cornerRadius: 14, fill: AnyShapeStyle(AppTheme.surfaceBg.opacity(0.72)), stroke: AppTheme.softBorder, glowOpacity: 0.04)
     }
 }

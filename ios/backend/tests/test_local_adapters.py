@@ -22,6 +22,7 @@ class LocalAdapterTests(unittest.IsolatedAsyncioTestCase):
             upload_root=self._temp_dir,
             external_repo_root=self._temp_dir / "external",
             internal_process_secret=None,
+            public_api_enabled=True,
             gcp_project_id=None,
             gcp_region="us-central1",
             gcs_bucket_name="charlie-hoops-ai-analysis-temp",

@@ -2,6 +2,7 @@ import Foundation
 
 nonisolated enum AnalysisExecutionMode: String, Codable, Sendable {
     case cloud
+    case local
     case localFallback
 }
 

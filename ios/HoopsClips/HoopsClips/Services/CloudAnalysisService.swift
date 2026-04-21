@@ -56,6 +56,7 @@ struct CloudAnalysisService {
     }
 
     private func configuredBaseURL() -> URL? {
+        guard AppConstants.cloudAnalysisEnabled else { return nil }
         guard !AppConstants.cloudAnalysisBaseURL.isEmpty else { return nil }
         return URL(string: AppConstants.cloudAnalysisBaseURL)
     }
