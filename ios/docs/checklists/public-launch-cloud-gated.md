@@ -6,6 +6,7 @@
 
 ## Release config
 - GitHub Actions `production` environment is the source of truth for Release secrets and required Release URLs.
+- Rork release operators should use `ios/docs/runbooks/rork-release-operator-handoff.md` as the handoff entrypoint.
 - Fill GitHub `production` secrets and the local mirror file `HoopsClips/HoopsClips/Config/LocalSecrets.xcconfig` with:
   - `HOOPS_DEVELOPMENT_TEAM`
   - `HOOPS_REVENUECAT_API_KEY`

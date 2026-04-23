@@ -4,6 +4,7 @@
 - Public launch path: on-device analysis only.
 - Internal-only path: cloud backend and any future dashboard moderation flows.
 - GitHub Actions `production` environment is the source of truth for Release secrets and required legal-link URLs; the local ignored xcconfig is only a smoke-machine mirror.
+- Rork release operations should start from `ios/docs/runbooks/rork-release-operator-handoff.md`.
 
 ## What the app should do
 - Release builds should default to `HOOPS_CLOUD_LAUNCH_MODE = disabled`.
