@@ -8,6 +8,8 @@ struct LaunchRuntimeConfigTests {
             revenueCatAPIKey: "prod_key",
             googleClientID: "google_client",
             googleReversedClientID: "com.googleusercontent.apps.example",
+            privacyPolicyURL: "https://example.com/privacy",
+            termsOfServiceURL: "https://example.com/terms",
             cloudAnalysisBaseURL: "",
             sentryDSN: "",
             cloudLaunchMode: .disabled
@@ -26,6 +28,8 @@ struct LaunchRuntimeConfigTests {
             revenueCatAPIKey: "prod_key",
             googleClientID: "google_client",
             googleReversedClientID: "com.googleusercontent.apps.example",
+            privacyPolicyURL: "https://example.com/privacy",
+            termsOfServiceURL: "https://example.com/terms",
             cloudAnalysisBaseURL: "http://example.com",
             sentryDSN: "",
             cloudLaunchMode: .enabled
@@ -42,6 +46,8 @@ struct LaunchRuntimeConfigTests {
             revenueCatAPIKey: "prod_key",
             googleClientID: "google_client",
             googleReversedClientID: "com.googleusercontent.apps.example",
+            privacyPolicyURL: "https://example.com/privacy",
+            termsOfServiceURL: "https://example.com/terms",
             cloudAnalysisBaseURL: "https://api.hoopsclips.example",
             sentryDSN: "https://dsn.ingest.sentry.io/1",
             cloudLaunchMode: .enabled
@@ -58,6 +64,8 @@ struct LaunchRuntimeConfigTests {
             revenueCatAPIKey: "prod_key",
             googleClientID: "google_client",
             googleReversedClientID: "",
+            privacyPolicyURL: "https://example.com/privacy",
+            termsOfServiceURL: "https://example.com/terms",
             cloudAnalysisBaseURL: "",
             sentryDSN: "",
             cloudLaunchMode: .disabled
@@ -65,5 +73,23 @@ struct LaunchRuntimeConfigTests {
 
         #expect(config.googleSignInConfigured == false)
         #expect(config.missingRequiredKeys.contains("HOOPSGoogleReversedClientID"))
+    }
+
+    @Test func testProductionRequiresReachableLegalLinksForPublishReadiness() {
+        let config = AppRuntimeConfig(
+            environmentName: "production",
+            revenueCatAPIKey: "prod_key",
+            googleClientID: "google_client",
+            googleReversedClientID: "com.googleusercontent.apps.example",
+            privacyPolicyURL: "not-a-url",
+            termsOfServiceURL: "",
+            cloudAnalysisBaseURL: "",
+            sentryDSN: "",
+            cloudLaunchMode: .disabled
+        )
+
+        #expect(config.legalLinksConfigured == false)
+        #expect(config.missingRequiredKeys.contains("HOOPSPrivacyPolicyURL"))
+        #expect(config.missingRequiredKeys.contains("HOOPSTermsOfServiceURL"))
     }
 }

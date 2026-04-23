@@ -28,6 +28,8 @@ struct AppRuntimeConfig {
     let revenueCatAPIKey: String
     let googleClientID: String
     let googleReversedClientID: String
+    let privacyPolicyURL: String
+    let termsOfServiceURL: String
     let cloudAnalysisBaseURL: String
     let sentryDSN: String
     let cloudLaunchMode: CloudLaunchMode
@@ -37,6 +39,8 @@ struct AppRuntimeConfig {
         revenueCatAPIKey: String,
         googleClientID: String,
         googleReversedClientID: String,
+        privacyPolicyURL: String,
+        termsOfServiceURL: String,
         cloudAnalysisBaseURL: String,
         sentryDSN: String,
         cloudLaunchMode: CloudLaunchMode
@@ -45,6 +49,8 @@ struct AppRuntimeConfig {
         self.revenueCatAPIKey = revenueCatAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
         self.googleClientID = googleClientID.trimmingCharacters(in: .whitespacesAndNewlines)
         self.googleReversedClientID = googleReversedClientID.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.privacyPolicyURL = privacyPolicyURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.termsOfServiceURL = termsOfServiceURL.trimmingCharacters(in: .whitespacesAndNewlines)
         self.cloudAnalysisBaseURL = cloudAnalysisBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
         self.sentryDSN = sentryDSN.trimmingCharacters(in: .whitespacesAndNewlines)
         self.cloudLaunchMode = cloudLaunchMode
@@ -56,6 +62,8 @@ struct AppRuntimeConfig {
             revenueCatAPIKey: bundle.string(for: "HOOPSRevenueCatAPIKey") ?? "",
             googleClientID: bundle.string(for: "HOOPSGoogleClientID") ?? "",
             googleReversedClientID: bundle.string(for: "HOOPSGoogleReversedClientID") ?? "",
+            privacyPolicyURL: bundle.string(for: "HOOPSPrivacyPolicyURL") ?? "",
+            termsOfServiceURL: bundle.string(for: "HOOPSTermsOfServiceURL") ?? "",
             cloudAnalysisBaseURL: bundle.string(for: "HOOPSCloudAnalysisBaseURL") ?? "",
             sentryDSN: bundle.string(for: "HOOPSSentryDSN") ?? "",
             cloudLaunchMode: CloudLaunchMode(
@@ -76,12 +84,32 @@ struct AppRuntimeConfig {
         !googleClientID.isEmpty && !googleReversedClientID.isEmpty
     }
 
+    var resolvedPrivacyPolicyURL: URL? {
+        resolvedURL(from: privacyPolicyURL)
+    }
+
+    var resolvedTermsOfServiceURL: URL? {
+        resolvedURL(from: termsOfServiceURL)
+    }
+
+    var legalLinksConfigured: Bool {
+        resolvedPrivacyPolicyURL != nil && resolvedTermsOfServiceURL != nil
+    }
+
     var resolvedCloudAnalysisBaseURL: URL? {
         guard cloudLaunchMode.allowsCloudRequests, !cloudAnalysisBaseURL.isEmpty else {
             return nil
         }
 
-        guard let url = URL(string: cloudAnalysisBaseURL),
+        return resolvedURL(from: cloudAnalysisBaseURL)
+    }
+
+    private func resolvedURL(from rawValue: String) -> URL? {
+        guard !rawValue.isEmpty else {
+            return nil
+        }
+
+        guard let url = URL(string: rawValue),
               let scheme = url.scheme?.lowercased(),
               scheme == "https" || (isDebug && scheme == "http") else {
             return nil
@@ -110,6 +138,12 @@ struct AppRuntimeConfig {
         }
         if googleReversedClientID.isEmpty {
             missing.append("HOOPSGoogleReversedClientID")
+        }
+        if resolvedPrivacyPolicyURL == nil {
+            missing.append("HOOPSPrivacyPolicyURL")
+        }
+        if resolvedTermsOfServiceURL == nil {
+            missing.append("HOOPSTermsOfServiceURL")
         }
         if cloudLaunchMode.allowsCloudRequests && resolvedCloudAnalysisBaseURL == nil {
             missing.append("HOOPSCloudAnalysisBaseURL")

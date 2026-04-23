@@ -281,6 +281,18 @@ struct SettingsView: View {
                 )
                 .settingsPreviewStatCard()
             }
+
+            HStack(spacing: 10) {
+                SettingsPreviewStat(
+                    icon: "doc.text.fill",
+                    value: AppConstants.legalLinksConfigured ? "Ready" : "Missing",
+                    label: "Legal Links",
+                    tint: AppConstants.legalLinksConfigured ? AppTheme.successGreen : AppTheme.dangerRed
+                )
+                .settingsPreviewStatCard()
+
+                Spacer(minLength: 0)
+            }
         }
         .padding(16)
         .rorkCard(cornerRadius: 18, stroke: AppTheme.softBorder, glowOpacity: 0.05)
@@ -443,7 +455,31 @@ struct SettingsView: View {
             accent: AppTheme.neonPurple
         ) {
             aboutSection
+            legalLinksSection
             localLibrarySection
+        }
+    }
+
+    private var legalLinksSection: some View {
+        settingsCard(title: "Legal", icon: "doc.text.fill") {
+            Text("Open the policies that should stay reachable from the shipped app and App Store listing.")
+                .font(.caption)
+                .foregroundStyle(AppTheme.subtleText)
+                .fixedSize(horizontal: false, vertical: true)
+
+            legalLinkRow(
+                title: "Privacy Policy",
+                subtitle: "Review how account, billing, and device-local processing are described.",
+                icon: "hand.raised.fill",
+                url: AppConstants.privacyPolicyURL
+            )
+
+            legalLinkRow(
+                title: "Terms of Service",
+                subtitle: "Review product terms, acceptable use, and subscription language.",
+                icon: "doc.text.magnifyingglass",
+                url: AppConstants.termsOfServiceURL
+            )
         }
     }
 
@@ -1356,6 +1392,75 @@ struct SettingsView: View {
         }
         .padding(16)
         .rorkCard(cornerRadius: 16, stroke: AppTheme.accentPurple.opacity(0.15), glowOpacity: 0.05)
+    }
+
+    @ViewBuilder
+    private func legalLinkRow(title: String, subtitle: String, icon: String, url: URL?) -> some View {
+        if let url {
+            Link(destination: url) {
+                HStack(spacing: 12) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(AppTheme.accentPurple.opacity(0.14))
+                            .frame(width: 40, height: 40)
+                        Image(systemName: icon)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(AppTheme.neonPurple)
+                    }
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(title)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.white)
+                        Text(subtitle)
+                            .font(.caption2)
+                            .foregroundStyle(AppTheme.subtleText)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    Spacer(minLength: 0)
+
+                    Image(systemName: "arrow.up.right.square")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(AppTheme.neonPurple)
+                }
+                .padding(12)
+                .background(AppTheme.surfaceBg.opacity(0.42), in: .rect(cornerRadius: 14))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14)
+                        .stroke(AppTheme.softBorder, lineWidth: 1)
+                )
+            }
+        } else {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(AppTheme.dangerRed.opacity(0.12))
+                        .frame(width: 40, height: 40)
+                    Image(systemName: icon)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(AppTheme.dangerRed)
+                }
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.white)
+                    Text("Missing release URL. Populate the production config before App Store submission.")
+                        .font(.caption2)
+                        .foregroundStyle(AppTheme.subtleText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding(12)
+            .background(AppTheme.surfaceBg.opacity(0.42), in: .rect(cornerRadius: 14))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14)
+                    .stroke(AppTheme.dangerRed.opacity(0.2), lineWidth: 1)
+            )
+        }
     }
 
     private func weightSlider(label: String, value: Binding<Double>, color: Color) -> some View {

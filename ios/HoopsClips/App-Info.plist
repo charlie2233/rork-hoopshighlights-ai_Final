@@ -39,10 +39,14 @@
 	<string>$(HOOPS_GOOGLE_CLIENT_ID)</string>
 	<key>HOOPSGoogleReversedClientID</key>
 	<string>$(HOOPS_GOOGLE_REVERSED_CLIENT_ID)</string>
+	<key>HOOPSPrivacyPolicyURL</key>
+	<string>$(HOOPS_PRIVACY_POLICY_URL)</string>
 	<key>HOOPSRevenueCatAPIKey</key>
 	<string>$(HOOPS_REVENUECAT_API_KEY)</string>
 	<key>HOOPSSentryDSN</key>
 	<string>$(HOOPS_SENTRY_DSN)</string>
+	<key>HOOPSTermsOfServiceURL</key>
+	<string>$(HOOPS_TERMS_OF_SERVICE_URL)</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>LSApplicationQueriesSchemes</key>
@@ -55,8 +59,10 @@
 	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Allow Hoops Highlights AI to save exported highlight reels back to your photo library.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Save exported highlight reels to your photo library</string>
+	<string>Allow Hoops Highlights AI to import and save basketball highlight videos using your photo library.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

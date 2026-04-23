@@ -5,13 +5,16 @@
 - Cloud analysis stays internal-only until authenticated rollout, dashboard alignment, and Phase 4h gates are green.
 
 ## Release config
-- GitHub Actions `production` environment is the source of truth for Release secrets.
-- Fill GitHub `production` and the local mirror file `HoopsClips/HoopsClips/Config/LocalSecrets.xcconfig` with:
+- GitHub Actions `production` environment is the source of truth for Release secrets and required Release URLs.
+- Fill GitHub `production` secrets and the local mirror file `HoopsClips/HoopsClips/Config/LocalSecrets.xcconfig` with:
   - `HOOPS_DEVELOPMENT_TEAM`
   - `HOOPS_REVENUECAT_API_KEY`
   - `HOOPS_GOOGLE_CLIENT_ID`
   - `HOOPS_GOOGLE_REVERSED_CLIENT_ID`
   - `HOOPS_SENTRY_DSN`
+- Fill GitHub `production` environment variables and the same local mirror with:
+  - `HOOPS_PRIVACY_POLICY_URL`
+  - `HOOPS_TERMS_OF_SERVICE_URL`
 - Generate the local mirror with `./ios/scripts/materialize_local_secrets.sh` from operator-held environment variables on the smoke machine.
 - Keep `HOOPS_CLOUD_LAUNCH_MODE = disabled` for the public Release build.
 - Keep `HOOPS_CLOUD_ANALYSIS_BASE_URL` empty for the public Release build.
@@ -27,6 +30,7 @@
 - Review and export flows complete successfully.
 - Save to Photos works.
 - Support Center is reachable and shows launch status accurately.
+- About & Privacy opens the Privacy Policy and Terms of Service URLs from the shipped app.
 - Launch telemetry writes unified logs in Release, and staged DSN config is visible in Settings when present.
 
 ## Explicit no-go items for public cloud cutover

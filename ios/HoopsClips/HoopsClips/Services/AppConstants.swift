@@ -22,6 +22,18 @@ enum AppConstants {
         runtimeConfig.googleReversedClientID
     }
 
+    static var privacyPolicyURL: URL? {
+        runtimeConfig.resolvedPrivacyPolicyURL
+    }
+
+    static var termsOfServiceURL: URL? {
+        runtimeConfig.resolvedTermsOfServiceURL
+    }
+
+    static var legalLinksConfigured: Bool {
+        runtimeConfig.legalLinksConfigured
+    }
+
     static var googleSignInConfigured: Bool {
         runtimeConfig.googleSignInConfigured
     }
