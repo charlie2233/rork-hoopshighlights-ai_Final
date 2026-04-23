@@ -2,7 +2,7 @@
 
 ## Current status
 - Launch posture: public app launch with cloud gated.
-- Report state: blocked pending production secret population, legal-link URL population, and a trusted physical iPhone connected to this Mac.
+- Report state: blocked pending production secret population and a trusted physical iPhone connected to this Mac.
 
 ## Automated validation completed from this branch
 - iOS launch-gating unit tests: passed via `LaunchRuntimeConfigTests`.
@@ -42,7 +42,7 @@
 | Legal links open | pending |  |
 
 ## Blockers
-- GitHub `production` environment has been created, but it still needs real secrets for signing, Google, RevenueCat, and telemetry, plus real `HOOPS_PRIVACY_POLICY_URL` and `HOOPS_TERMS_OF_SERVICE_URL` environment variables.
+- GitHub `production` environment has the real legal-link URLs populated, but it still needs real secrets for signing, Google, RevenueCat, and telemetry.
 - Local `LocalSecrets.xcconfig` has not been materialized on this Mac because the operator-held Release values are not available in the current shell.
 - The only visible physical iPhone is currently offline, so no true Release-device smoke has been executed yet.
 - External crash-reporting client is not linked in this branch; launch telemetry currently relies on unified logs, with DSN config surfaced for future enablement.
