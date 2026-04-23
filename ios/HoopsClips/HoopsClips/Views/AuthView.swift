@@ -186,11 +186,50 @@ struct AuthView: View {
                 )
             }
 
+            legalAcknowledgement
+                .padding(.top, 8)
+        }
+    }
+
+    @ViewBuilder
+    private var legalAcknowledgement: some View {
+        if let termsURL = AppConstants.termsOfServiceURL,
+           let privacyURL = AppConstants.privacyPolicyURL {
+            VStack(spacing: 4) {
+                Text("By signing in, you agree to our")
+                    .font(.caption2)
+                    .foregroundStyle(AppTheme.subtleText)
+
+                ViewThatFits(in: .vertical) {
+                    HStack(spacing: 4) {
+                        legalLink(title: "Terms of Service", url: termsURL)
+                        Text("and")
+                            .font(.caption2)
+                            .foregroundStyle(AppTheme.subtleText)
+                        legalLink(title: "Privacy Policy", url: privacyURL)
+                    }
+
+                    VStack(spacing: 4) {
+                        legalLink(title: "Terms of Service", url: termsURL)
+                        legalLink(title: "Privacy Policy", url: privacyURL)
+                    }
+                }
+                .multilineTextAlignment(.center)
+            }
+        } else {
             Text("By signing in, you agree to our Terms of Service and Privacy Policy.")
                 .font(.caption2)
                 .foregroundStyle(AppTheme.subtleText)
                 .multilineTextAlignment(.center)
-                .padding(.top, 8)
+        }
+    }
+
+    private func legalLink(title: String, url: URL) -> some View {
+        Link(destination: url) {
+            Text(title)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(AppTheme.neonPurple)
+                .underline()
         }
     }
 

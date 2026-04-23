@@ -78,7 +78,7 @@ final class AuthService {
         defer { isLoading = false }
 
         let clientID = AppConstants.googleClientID
-        guard !clientID.isEmpty else {
+        guard AppConstants.googleSignInConfigured else {
             errorMessage = "Google Sign-In is not configured yet."
             return
         }

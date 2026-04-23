@@ -65,7 +65,7 @@ struct SettingsView: View {
         let icon: String
     }
 
-    private struct SettingsPreviewStat: Identifiable {
+    fileprivate struct SettingsPreviewStat: Identifiable {
         let id = UUID()
         let icon: String
         let value: String
@@ -111,6 +111,7 @@ struct SettingsView: View {
                 ScrollView {
                     VStack(spacing: 24) {
                         settingsHeroCard
+                        runtimeStatusCard
                         workflowHubLink
                         membershipHubLink
                         supportHubLink
@@ -237,6 +238,66 @@ struct SettingsView: View {
         }
     }
 
+    private var runtimeStatusCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            RorkSectionHeader(
+                title: "Launch Status",
+                icon: "antenna.radiowaves.left.and.right",
+                subtitle: "What this build can use in production right now."
+            )
+
+            HStack(spacing: 10) {
+                SettingsPreviewStat(
+                    icon: "cpu.fill",
+                    value: AppConstants.cloudLaunchStatusLabel,
+                    label: "Analysis Path",
+                    tint: AppConstants.cloudAnalysisEnabled ? AppTheme.warningYellow : AppTheme.successGreen
+                )
+                .settingsPreviewStatCard()
+
+                SettingsPreviewStat(
+                    icon: "person.crop.circle.badge.checkmark",
+                    value: AppConstants.googleSignInConfigured ? "Ready" : "Missing",
+                    label: "Google Sign-In",
+                    tint: AppConstants.googleSignInConfigured ? AppTheme.successGreen : AppTheme.dangerRed
+                )
+                .settingsPreviewStatCard()
+            }
+
+            HStack(spacing: 10) {
+                SettingsPreviewStat(
+                    icon: "creditcard.fill",
+                    value: AppConstants.revenueCatAPIKey.isEmpty ? "Missing" : "Ready",
+                    label: "RevenueCat",
+                    tint: AppConstants.revenueCatAPIKey.isEmpty ? AppTheme.dangerRed : AppTheme.successGreen
+                )
+                .settingsPreviewStatCard()
+
+                SettingsPreviewStat(
+                    icon: "exclamationmark.bubble.fill",
+                    value: LaunchTelemetry.shared.supportStatusLabel,
+                    label: "Telemetry",
+                    tint: AppConstants.sentryDSN.isEmpty ? AppTheme.subtleText : AppTheme.successGreen
+                )
+                .settingsPreviewStatCard()
+            }
+
+            HStack(spacing: 10) {
+                SettingsPreviewStat(
+                    icon: "doc.text.fill",
+                    value: AppConstants.legalLinksConfigured ? "Ready" : "Missing",
+                    label: "Legal Links",
+                    tint: AppConstants.legalLinksConfigured ? AppTheme.successGreen : AppTheme.dangerRed
+                )
+                .settingsPreviewStatCard()
+
+                Spacer(minLength: 0)
+            }
+        }
+        .padding(16)
+        .rorkCard(cornerRadius: 18, stroke: AppTheme.softBorder, glowOpacity: 0.05)
+    }
+
     private var membershipHubLink: some View {
         settingsHubLink(
             title: "Membership & Account",
@@ -319,9 +380,9 @@ struct SettingsView: View {
 
         return [
             SettingsPreviewStat(
-                icon: "sparkles",
+                icon: AppConstants.cloudAnalysisEnabled ? "sparkles" : "cpu.fill",
                 value: "\(subscriptionManager.freeUsesRemaining)",
-                label: "Free Left",
+                label: AppConstants.cloudAnalysisEnabled ? "Free Left" : "On Device",
                 tint: subscriptionManager.freeUsesRemaining > 0 ? AppTheme.warningYellow : AppTheme.dangerRed
             ),
             SettingsPreviewStat(
@@ -334,7 +395,7 @@ struct SettingsView: View {
     }
 
     private var settingsFootnote: some View {
-        Text("Settings now use focused subpages so account, workflow, and support changes are easier to review before you commit them.")
+        Text("Public launch is configured to prefer on-device analysis. Keep cloud review internal until the cutover checklist and Phase 4h gates are green.")
             .font(.caption2)
             .foregroundStyle(AppTheme.subtleText)
             .multilineTextAlignment(.center)
@@ -394,7 +455,31 @@ struct SettingsView: View {
             accent: AppTheme.neonPurple
         ) {
             aboutSection
+            legalLinksSection
             localLibrarySection
+        }
+    }
+
+    private var legalLinksSection: some View {
+        settingsCard(title: "Legal", icon: "doc.text.fill") {
+            Text("Open the policies that should stay reachable from the shipped app and App Store listing.")
+                .font(.caption)
+                .foregroundStyle(AppTheme.subtleText)
+                .fixedSize(horizontal: false, vertical: true)
+
+            legalLinkRow(
+                title: "Privacy Policy",
+                subtitle: "Review how account, billing, and device-local processing are described.",
+                icon: "hand.raised.fill",
+                url: AppConstants.privacyPolicyURL
+            )
+
+            legalLinkRow(
+                title: "Terms of Service",
+                subtitle: "Review product terms, acceptable use, and subscription language.",
+                icon: "doc.text.magnifyingglass",
+                url: AppConstants.termsOfServiceURL
+            )
         }
     }
 
@@ -1309,6 +1394,75 @@ struct SettingsView: View {
         .rorkCard(cornerRadius: 16, stroke: AppTheme.accentPurple.opacity(0.15), glowOpacity: 0.05)
     }
 
+    @ViewBuilder
+    private func legalLinkRow(title: String, subtitle: String, icon: String, url: URL?) -> some View {
+        if let url {
+            Link(destination: url) {
+                HStack(spacing: 12) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(AppTheme.accentPurple.opacity(0.14))
+                            .frame(width: 40, height: 40)
+                        Image(systemName: icon)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(AppTheme.neonPurple)
+                    }
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(title)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.white)
+                        Text(subtitle)
+                            .font(.caption2)
+                            .foregroundStyle(AppTheme.subtleText)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    Spacer(minLength: 0)
+
+                    Image(systemName: "arrow.up.right.square")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(AppTheme.neonPurple)
+                }
+                .padding(12)
+                .background(AppTheme.surfaceBg.opacity(0.42), in: .rect(cornerRadius: 14))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14)
+                        .stroke(AppTheme.softBorder, lineWidth: 1)
+                )
+            }
+        } else {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(AppTheme.dangerRed.opacity(0.12))
+                        .frame(width: 40, height: 40)
+                    Image(systemName: icon)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(AppTheme.dangerRed)
+                }
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.white)
+                    Text("Missing release URL. Populate the production config before App Store submission.")
+                        .font(.caption2)
+                        .foregroundStyle(AppTheme.subtleText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding(12)
+            .background(AppTheme.surfaceBg.opacity(0.42), in: .rect(cornerRadius: 14))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14)
+                    .stroke(AppTheme.dangerRed.opacity(0.2), lineWidth: 1)
+            )
+        }
+    }
+
     private func weightSlider(label: String, value: Binding<Double>, color: Color) -> some View {
         VStack(spacing: 4) {
             HStack {
@@ -1452,5 +1606,25 @@ struct SettingsView: View {
             return "\(minutes) min"
         }
         return "\(minutes)m \(seconds)s"
+    }
+}
+
+private extension SettingsView.SettingsPreviewStat {
+    @ViewBuilder
+    func settingsPreviewStatCard() -> some View {
+        VStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(tint)
+            Text(value)
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(.white)
+            Text(label)
+                .font(.caption2)
+                .foregroundStyle(AppTheme.subtleText)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 12)
+        .rorkCard(cornerRadius: 14, fill: AnyShapeStyle(AppTheme.surfaceBg.opacity(0.72)), stroke: AppTheme.softBorder, glowOpacity: 0.04)
     }
 }

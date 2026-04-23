@@ -16,6 +16,7 @@ class Settings:
     upload_root: Path
     external_repo_root: Path
     internal_process_secret: Optional[str]
+    public_api_enabled: bool
     gcp_project_id: Optional[str]
     gcp_region: str
     gcs_bucket_name: str
@@ -48,6 +49,10 @@ class Settings:
         return self.environment == "local"
 
     @property
+    def is_managed(self) -> bool:
+        return not self.is_local
+
+    @property
     def cloud_tasks_parent(self) -> Optional[str]:
         if not self.gcp_project_id:
             return None
@@ -68,6 +73,10 @@ class Settings:
     @property
     def autohighlight_is_configured(self) -> bool:
         return self.autohighlight_repo_path is not None and self.autohighlight_python_bin is not None
+
+    def validate(self) -> None:
+        if self.is_managed and not self.internal_process_secret:
+            raise ValueError("HOOPS_INTERNAL_PROCESS_SECRET is required outside local mode.")
 
 
 def _resolve_optional_path(value: Optional[str]) -> Optional[Path]:
@@ -110,6 +119,12 @@ def get_settings() -> Settings:
     else:
         enable_local_upload_emulation = environment == "local"
 
+    explicit_public_api = os.getenv("HOOPS_PUBLIC_API_ENABLED")
+    if explicit_public_api is not None:
+        public_api_enabled = explicit_public_api.strip().lower() == "true"
+    else:
+        public_api_enabled = environment == "local"
+
     detection_provider = os.getenv("HOOPS_DETECTION_PROVIDER", "hybrid").strip().lower() or "hybrid"
     post_ranking_provider = os.getenv("HOOPS_POST_RANKING_PROVIDER", "native").strip().lower() or "native"
 
@@ -148,6 +163,7 @@ def get_settings() -> Settings:
         upload_root=upload_root,
         external_repo_root=external_repo_root,
         internal_process_secret=os.getenv("HOOPS_INTERNAL_PROCESS_SECRET") or None,
+        public_api_enabled=public_api_enabled,
         gcp_project_id=project_id,
         gcp_region=os.getenv("HOOPS_GCP_REGION", "us-central1"),
         gcs_bucket_name=os.getenv("HOOPS_GCS_BUCKET", "charlie-hoops-ai-analysis-temp"),
@@ -175,3 +191,6 @@ def get_settings() -> Settings:
         backend_model_version=os.getenv("HOOPS_BACKEND_MODEL_VERSION", "cloud-v1"),
         use_gemini_relabeling=os.getenv("HOOPS_USE_GEMINI_RELABELING", "false").lower() == "true",
     )
+
+    settings.validate()
+    return settings

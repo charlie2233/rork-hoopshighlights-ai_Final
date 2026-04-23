@@ -22,12 +22,13 @@ This service keeps the existing iOS cloud-analysis API contract stable while swa
 - Uses `GCSStorageProvider` for V4 signed uploads and source-object cleanup
 - Uses `CloudTasksDispatcher` to enqueue `POST /v1/internal/process/{jobId}`
 - Disables local upload emulation by default
+- Keeps the public `/v1/analysis/*` routes internal-only by default until authenticated rollout is ready
 
-The public request and response payloads stay unchanged across all modes.
+The public request and response payloads stay unchanged in local mode. Managed launch mode keeps the internal processing surface available while the public analysis surface stays off.
 
 ## Run locally
 ```bash
-cd /Users/hanfei/rork-hoopshighlights-ai_Final/backend
+cd /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
@@ -43,7 +44,7 @@ The backend can now call two repo-backed adapters without changing the iOS API c
 Those repos are not vendored into this repository. Keep them in ignored local directories and wire them in through environment variables:
 
 ```bash
-cd /Users/hanfei/rork-hoopshighlights-ai_Final/backend
+cd /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend
 ./scripts/setup_external_backends.sh --with-venvs
 ```
 
@@ -65,7 +66,8 @@ Then you can selectively install dependencies into isolated virtualenvs:
 - `HOOPS_PUBLIC_BASE_URL`: base URL returned in local signed-upload URLs (default `http://127.0.0.1:8080`)
 - `HOOPS_CLOUD_RUN_BASE_URL`: base URL Cloud Tasks calls in managed mode
 - `HOOPS_UPLOAD_ROOT`: temp storage root for local uploads and transient downloads (default `/tmp/hoops-ai`)
-- `HOOPS_INTERNAL_PROCESS_SECRET`: optional shared secret for `/v1/internal/process/{jobId}`
+- `HOOPS_INTERNAL_PROCESS_SECRET`: required shared secret for `/v1/internal/process/{jobId}` outside local mode
+- `HOOPS_PUBLIC_API_ENABLED`: enables public `/v1/analysis/*` routes (default `true` in local, `false` elsewhere)
 - `HOOPS_GCP_PROJECT_ID`: Google Cloud project ID for Firestore, GCS, and Cloud Tasks
 - `HOOPS_GCP_REGION`: task queue / Cloud Run region (default `us-central1`)
 - `HOOPS_GCS_BUCKET`: upload bucket (default `charlie-hoops-ai-analysis-temp`)
@@ -73,14 +75,14 @@ Then you can selectively install dependencies into isolated virtualenvs:
 - `HOOPS_FIRESTORE_USAGE_COLLECTION`: Firestore collection for usage counters (default `usageCounters`)
 - `HOOPS_CLOUD_TASKS_QUEUE`: Cloud Tasks queue name (default `analysis-jobs`)
 - `HOOPS_ENABLE_LOCAL_UPLOAD_EMULATION`: force-enable or disable the local upload emulator
-- `HOOPS_EXTERNAL_REPO_ROOT`: default root for ignored external repo clones (default `backend/.external`)
+- `HOOPS_EXTERNAL_REPO_ROOT`: default root for ignored external repo clones (default `ios/backend/.external`)
 - `HOOPS_DETECTION_PROVIDER`: `heuristic`, `hybrid`, or `hoopcut` (default `hybrid`)
 - `HOOPS_POST_RANKING_PROVIDER`: `native` or `autohighlight` (default `native`)
 - `HOOPS_HOOPCUT_REPO_PATH`: explicit HoopCut checkout path
 - `HOOPS_HOOPCUT_PYTHON`: Python executable for the HoopCut virtualenv
 - `HOOPS_AUTOHIGHLIGHT_REPO_PATH`: explicit autohighlight checkout path
 - `HOOPS_AUTOHIGHLIGHT_PYTHON`: Python executable for the autohighlight virtualenv
-- `HOOPS_DAILY_QUOTA`: per-install rolling quota (default `3`)
+- `HOOPS_DAILY_QUOTA`: per-install rolling quota (default `5`)
 - `HOOPS_MAX_DURATION_SECONDS`: max backend video duration (default `1800`)
 - `HOOPS_MAX_FILE_SIZE_BYTES`: max video size for v1 (default `524288000`)
 - `HOOPS_BACKEND_MODEL_VERSION`: version string exposed in diagnostics (default `cloud-v1`)
@@ -99,6 +101,7 @@ Then you can selectively install dependencies into isolated virtualenvs:
 - service account
 - managed environment variables
 - `HOOPS_INTERNAL_PROCESS_SECRET` from Secret Manager
+- public API disabled in managed mode by default
 - local upload emulation disabled in managed mode
 
 Before production cutover, verify:
@@ -106,6 +109,11 @@ Before production cutover, verify:
 - the `analysis-jobs` queue exists in `us-central1`
 - the Cloud Run service account can access Firestore, Cloud Storage, and Cloud Tasks
 - the GCS bucket `charlie-hoops-ai-analysis-temp` exists
+
+## Launch posture
+- Public App Store launch should treat this backend as internal-only.
+- The iOS app should ship on the on-device analysis path until cloud authn/authz and rollout gates are ready.
+- `installId` is not a sufficient public auth boundary. Do not re-enable `/v1/analysis/*` in managed mode until there is a real identity and authorization model.
 
 ## Current tier behavior
 - Free tier is enforced in the iOS client: videos longer than 15 minutes require Pro before analysis starts.

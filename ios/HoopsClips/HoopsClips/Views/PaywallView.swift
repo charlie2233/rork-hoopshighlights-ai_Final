@@ -5,7 +5,7 @@ struct PaywallView: View {
     @Bindable var subscriptionManager: SubscriptionManager
     @Environment(\.dismiss) private var dismiss
     @State private var offerings: Offerings?
-    @State private var isLoadingOfferings = true
+    @State private var isLoadingOfferings = false
 
     var body: some View {
         NavigationStack {
@@ -40,7 +40,11 @@ struct PaywallView: View {
                 }
             }
             .task {
-                await loadOfferings()
+                if subscriptionManager.billingConfigured {
+                    await loadOfferings()
+                } else {
+                    isLoadingOfferings = false
+                }
             }
             .alert("Error", isPresented: .init(
                 get: { subscriptionManager.errorMessage != nil },
@@ -74,7 +78,7 @@ struct PaywallView: View {
                 .font(.system(size: 32, weight: .bold))
                 .foregroundStyle(.white)
 
-            Text("Unlimited AI analysis with no restrictions.\nYou've used \(max(AppConstants.cloudAnalysisDailyQuota - subscriptionManager.freeUsesRemaining, 0)) of \(AppConstants.cloudAnalysisDailyQuota) free analyses.")
+            Text("Unlimited highlight analysis and exports.\nYou've used \(max(AppConstants.cloudAnalysisDailyQuota - subscriptionManager.freeUsesRemaining, 0)) of \(AppConstants.cloudAnalysisDailyQuota) free analyses.")
                 .font(.subheadline)
                 .foregroundStyle(AppTheme.subtleText)
                 .multilineTextAlignment(.center)
@@ -84,10 +88,10 @@ struct PaywallView: View {
 
     private var featuresSection: some View {
         VStack(spacing: 12) {
-            featureRow(icon: "infinity", title: "Unlimited Analyses", subtitle: "No caps on video processing")
-            featureRow(icon: "bolt.fill", title: "Priority Processing", subtitle: "Faster AI detection pipeline")
+            featureRow(icon: "infinity", title: "Unlimited Analyses", subtitle: "No caps on highlight generation")
+            featureRow(icon: "bolt.fill", title: "Long-Game Access", subtitle: "Analyze longer games without the free-tier cap")
             featureRow(icon: "film.stack.fill", title: "Unlimited Exports", subtitle: "Export all your highlights freely")
-            featureRow(icon: "sparkles", title: "Same AI Model", subtitle: "Free and Pro use the same highlight detection model")
+            featureRow(icon: "sparkles", title: "Launch-Safe Mode", subtitle: "Public builds default to the on-device analysis path")
         }
         .padding(16)
         .rorkCard(cornerRadius: 18, stroke: AppTheme.softBorder, glowOpacity: 0.06)
@@ -127,6 +131,20 @@ struct PaywallView: View {
                 ProgressView()
                     .tint(AppTheme.neonPurple)
                     .frame(height: 60)
+            } else if !subscriptionManager.billingConfigured {
+                VStack(spacing: 8) {
+                    Image(systemName: "creditcard.trianglebadge.exclamationmark")
+                        .font(.title2)
+                        .foregroundStyle(AppTheme.warningYellow)
+                    Text(subscriptionManager.billingUnavailableMessage)
+                        .font(.subheadline)
+                        .foregroundStyle(AppTheme.subtleText)
+                    Text("Configure the production RevenueCat key before enabling purchases in release.")
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.subtleText)
+                        .multilineTextAlignment(.center)
+                }
+                .frame(height: 96)
             } else if let package = offerings?.current?.availablePackages.first {
                 Button {
                     Task {
@@ -199,6 +217,12 @@ struct PaywallView: View {
     }
 
     private func loadOfferings() async {
+        guard subscriptionManager.billingConfigured else {
+            offerings = nil
+            isLoadingOfferings = false
+            return
+        }
+
         isLoadingOfferings = true
         do {
             offerings = try await Purchases.shared.offerings()

@@ -277,7 +277,9 @@ struct VideoPlayerView: View {
             RorkSectionHeader(
                 title: "AI Analysis",
                 icon: "brain.head.profile.fill",
-                subtitle: "Detects key basketball moments and builds reviewable clips"
+                subtitle: AppConstants.cloudAnalysisEnabled
+                    ? "Cloud analysis is available for internal builds."
+                    : "On-device Vision + audio analysis is the public launch path."
             )
 
             if viewModel.analysisService.isAnalyzing {
@@ -407,7 +409,9 @@ struct VideoPlayerView: View {
             Image(systemName: "timer")
                 .foregroundStyle(AppTheme.subtleText)
             let estimatedSeconds = Int(max(viewModel.videoDuration * 0.42, 12))
-            Text("Estimated: ~\(estimatedSeconds)s cloud analysis")
+            Text(AppConstants.cloudAnalysisEnabled
+                 ? "Estimated: ~\(estimatedSeconds)s cloud analysis"
+                 : "Estimated: ~\(estimatedSeconds)s on-device analysis")
                 .font(.caption)
                 .foregroundStyle(AppTheme.subtleText)
             Spacer()
@@ -454,6 +458,9 @@ struct VideoPlayerView: View {
         if requiresProForCurrentVideo {
             return "Free tier supports up to \(formatDuration(AppConstants.nonProMaxAnalysisDuration)). Upgrade to analyze longer games."
         }
+        if !AppConstants.cloudAnalysisEnabled {
+            return "Public launch uses on-device analysis by default. Cloud review stays internal until cutover gates pass."
+        }
         if let remaining = viewModel.cloudQuotaRemaining {
             if remaining > 0 {
                 return "Cloud AI quota remaining today: \(remaining)"
@@ -473,6 +480,9 @@ struct VideoPlayerView: View {
         }
         if status.contains("cloud") {
             return "Cloud Analyzing..."
+        }
+        if status.contains("device") {
+            return "On-Device..."
         }
         if status.contains("local analysis") {
             return "Fallback..."
@@ -494,6 +504,9 @@ struct VideoPlayerView: View {
         if requiresProForCurrentVideo {
             return "Upgrade to analyze videos longer than \(formatDuration(AppConstants.nonProMaxAnalysisDuration))"
         }
-        return "Cloud-first, slower, and much more accurate"
+        if AppConstants.cloudAnalysisEnabled {
+            return "Internal cloud analysis is enabled for this build"
+        }
+        return "On-device Vision + audio analysis for the public launch path"
     }
 }

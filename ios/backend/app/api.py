@@ -44,6 +44,10 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
             content=error.to_response().model_dump(exclude_none=True),
         )
 
+    def _require_public_api_enabled() -> None:
+        if not resolved_settings.public_api_enabled:
+            raise APIError(status_code=404, error_code="not_found", error_message="Not found.")
+
     async def _require_job(job_id: str):
         assert runtime is not None
         job = await runtime.job_store.get_job(job_id)
@@ -116,6 +120,7 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
     async def create_job(request: CreateCloudAnalysisJobRequest):
         assert runtime is not None
         try:
+            _require_public_api_enabled()
             if request.durationSeconds > resolved_settings.max_duration_seconds:
                 raise APIError(400, "unsupported_duration", "Videos longer than 30 minutes are not supported in cloud analysis right now.")
             if request.fileSizeBytes > resolved_settings.max_file_size_bytes:
@@ -168,6 +173,7 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
     async def start_job(job_id: str, request: StartCloudAnalysisJobRequest):
         assert runtime is not None
         try:
+            _require_public_api_enabled()
             job = await _require_job(job_id)
             if job.install_id != request.installId:
                 raise APIError(403, "install_mismatch", "Install ID does not own this analysis job.")
@@ -188,6 +194,7 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
     )
     async def get_job(job_id: str):
         try:
+            _require_public_api_enabled()
             job = await _require_job(job_id)
             return job.to_job_response()
         except APIError as error:
@@ -201,6 +208,7 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
     async def delete_job(job_id: str):
         assert runtime is not None
         try:
+            _require_public_api_enabled()
             job = await _require_job(job_id)
             await runtime.job_store.mark_expired(job_id)
             runtime.storage.cleanup(job)

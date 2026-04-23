@@ -1,15 +1,25 @@
 import SwiftUI
 import RevenueCat
+import GoogleSignIn
 
 @main
 struct HoopsClipsApp: App {
     init() {
-        let apiKey: String
+        let runtimeConfig = AppRuntimeConfig.shared
+        let telemetry = LaunchTelemetry.shared
+
+        telemetry.configure()
+
+        if !runtimeConfig.missingRequiredKeys.isEmpty {
+            let message = "Missing HoopsClips runtime config keys: \(runtimeConfig.missingRequiredKeys.joined(separator: ", "))"
+            telemetry.recordConfigurationIssue(message)
+        }
+
+        let apiKey = AppConstants.revenueCatAPIKey
         #if DEBUG
-        apiKey = AppConstants.revenueCatTestAPIKey
-        Purchases.logLevel = .debug
-        #else
-        apiKey = AppConstants.revenueCatProdAPIKey
+        if !apiKey.isEmpty {
+            Purchases.logLevel = .debug
+        }
         #endif
         if !apiKey.isEmpty {
             Purchases.configure(withAPIKey: apiKey)
@@ -22,6 +32,9 @@ struct HoopsClipsApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .onOpenURL { url in
+                    _ = GIDSignIn.sharedInstance.handle(url)
+                }
         }
     }
 }
