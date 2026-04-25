@@ -4,7 +4,7 @@ import os
 final class LaunchTelemetry {
     static let shared = LaunchTelemetry(runtimeConfig: .shared)
 
-    private let logger = Logger(subsystem: "app.rork.hoopshighlights-ai", category: "launch")
+    private let logger = Logger(subsystem: "atrak.charlie.hoopsclips", category: "launch")
     private let runtimeConfig: AppRuntimeConfig
 
     init(runtimeConfig: AppRuntimeConfig) {
