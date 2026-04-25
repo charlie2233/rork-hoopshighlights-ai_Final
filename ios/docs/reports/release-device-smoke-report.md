@@ -3,6 +3,7 @@
 ## Current status
 - Launch posture: public app launch with cloud gated.
 - Report state: blocked pending production secret population and a trusted physical iPhone connected to this Mac.
+- Latest GitHub preflight evidence: `Release Secrets Preflight` run `24942384598` failed on 2026-04-25 because the five required production secrets are missing.
 
 ## Automated validation completed from this branch
 - iOS launch-gating unit tests: passed via `LaunchRuntimeConfigTests`.
@@ -42,7 +43,7 @@
 | Legal links open | pending |  |
 
 ## Blockers
-- GitHub `production` environment has the real legal-link URLs populated, but it still needs real secrets for signing, Google, RevenueCat, and telemetry.
+- GitHub `production` environment has the real legal-link URLs populated, but the 2026-04-25 preflight failed because these required secrets are still missing: `HOOPS_DEVELOPMENT_TEAM`, `HOOPS_REVENUECAT_API_KEY`, `HOOPS_GOOGLE_CLIENT_ID`, `HOOPS_GOOGLE_REVERSED_CLIENT_ID`, and `HOOPS_SENTRY_DSN`.
 - Local `LocalSecrets.xcconfig` has not been materialized on this Mac because the operator-held Release values are not available in the current shell.
-- The only visible physical iPhone is currently offline, so no true Release-device smoke has been executed yet.
+- The only visible physical iPhone is currently unavailable, so no true Release-device smoke has been executed yet.
 - External crash-reporting client is not linked in this branch; launch telemetry currently relies on unified logs, with DSN config surfaced for future enablement.
