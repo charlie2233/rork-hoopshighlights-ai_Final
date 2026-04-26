@@ -1,6 +1,7 @@
 import SwiftUI
 import AVKit
 import PhotosUI
+import UniformTypeIdentifiers
 
 struct VideoPlayerView: View {
     @Bindable var viewModel: HighlightsViewModel
@@ -15,6 +16,8 @@ struct VideoPlayerView: View {
     @State private var showingPaywall = false
     @State private var showingNoClipsAlert = false
     @State private var showingDurationLimitAlert = false
+    @State private var isImportingVideo = false
+    @State private var importErrorMessage: String?
 
     var body: some View {
         NavigationStack {
@@ -63,19 +66,15 @@ struct VideoPlayerView: View {
             .photosPicker(isPresented: $viewModel.showingVideoPicker, selection: $selectedPhotoItem, matching: .videos)
             .fileImporter(isPresented: $showingFilePicker, allowedContentTypes: [.movie, .video, .mpeg4Movie, .quickTimeMovie]) { result in
                 if case .success(let url) = result {
-                    Task { await viewModel.loadVideo(url: url) }
+                    importVideo(from: url)
+                } else if case .failure(let error) = result {
+                    importErrorMessage = "Could not import that file: \(error.localizedDescription)"
                 }
             }
             .onChange(of: selectedPhotoItem) { _, newValue in
                 guard let item = newValue else { return }
                 selectedPhotoItem = nil
-                Task {
-                    if let data = try? await item.loadTransferable(type: Data.self) {
-                        let tempURL = URL.temporaryDirectory.appending(path: "imported_video_\(UUID().uuidString).mp4")
-                        try? data.write(to: tempURL, options: .atomic)
-                        await viewModel.loadVideo(url: tempURL)
-                    }
-                }
+                importVideo(from: item)
             }
             .onAppear {
                 syncPlayer(with: viewModel.videoURL)
@@ -108,6 +107,55 @@ struct VideoPlayerView: View {
             } message: {
                 Text("\(languageStore.text(.proRequiredMessagePrefix)) \(formatDuration(AppConstants.nonProMaxAnalysisDuration)). \(languageStore.text(.proRequiredMessageMiddle)) \(formatDuration(viewModel.videoDuration)).")
             }
+            .alert("Video Import Failed", isPresented: Binding(
+                get: { importErrorMessage != nil },
+                set: { if !$0 { importErrorMessage = nil } }
+            )) {
+                Button("OK", role: .cancel) { importErrorMessage = nil }
+            } message: {
+                Text(importErrorMessage ?? "Choose another video and try again.")
+            }
+        }
+    }
+
+    private func importVideo(from url: URL) {
+        guard !isImportingVideo else { return }
+        isImportingVideo = true
+        importErrorMessage = nil
+
+        Task {
+            await viewModel.loadVideo(url: url)
+            isImportingVideo = false
+            if !viewModel.isVideoLoaded {
+                importErrorMessage = "Hoops Clips could not read that video. Try importing it from Files or choose another clip."
+            }
+        }
+    }
+
+    private func importVideo(from item: PhotosPickerItem) {
+        guard !isImportingVideo else { return }
+        isImportingVideo = true
+        importErrorMessage = nil
+
+        Task {
+            do {
+                if let importedVideo = try await item.loadTransferable(type: ImportedVideoFile.self) {
+                    await viewModel.loadVideo(url: importedVideo.url)
+                } else if let data = try await item.loadTransferable(type: Data.self) {
+                    let tempURL = URL.temporaryDirectory.appending(path: "imported_video_\(UUID().uuidString).mov")
+                    try data.write(to: tempURL, options: .atomic)
+                    await viewModel.loadVideo(url: tempURL)
+                } else {
+                    importErrorMessage = "Hoops Clips could not access that video from Photos. Try saving it to Files and importing from there."
+                }
+            } catch {
+                importErrorMessage = "Hoops Clips could not import that video: \(error.localizedDescription)"
+            }
+
+            isImportingVideo = false
+            if importErrorMessage == nil && !viewModel.isVideoLoaded {
+                importErrorMessage = "Hoops Clips could not read that video. Try importing it from Files or choose another clip."
+            }
         }
     }
 
@@ -138,6 +186,8 @@ struct VideoPlayerView: View {
         showingNoClipsAlert = false
         showingDurationLimitAlert = false
         analysisStarted = false
+        isImportingVideo = false
+        importErrorMessage = nil
     }
 
     private var importSection: some View {
@@ -162,9 +212,15 @@ struct VideoPlayerView: View {
                 showSourcePicker = true
             } label: {
                 HStack(spacing: 12) {
-                    Image(systemName: "plus.circle.fill")
-                        .font(.title3)
-                    Text(languageStore.text(.selectVideo))
+                    if isImportingVideo {
+                        ProgressView()
+                            .tint(.white)
+                            .controlSize(.small)
+                    } else {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.title3)
+                    }
+                    Text(isImportingVideo ? "Preparing video..." : languageStore.text(.selectVideo))
                         .font(.headline)
                 }
                 .foregroundStyle(.white)
@@ -176,6 +232,8 @@ struct VideoPlayerView: View {
                 RoundedRectangle(cornerRadius: 16)
                     .stroke(AppTheme.neonPurple.opacity(0.25), lineWidth: 1)
             )
+            .disabled(isImportingVideo)
+            .opacity(isImportingVideo ? 0.82 : 1)
 
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                 featurePill(icon: "sparkles", text: languageStore.text(.smartHighlights))
@@ -501,5 +559,21 @@ struct VideoPlayerView: View {
 
     private var analysisSectionSubtitle: String {
         languageStore.text(.aiAnalysisSubtitle)
+    }
+}
+
+private struct ImportedVideoFile: Transferable {
+    let url: URL
+
+    static var transferRepresentation: some TransferRepresentation {
+        FileRepresentation(contentType: .movie) { video in
+            SentTransferredFile(video.url)
+        } importing: { received in
+            let sourceURL = received.file
+            let fileExtension = sourceURL.pathExtension.isEmpty ? "mov" : sourceURL.pathExtension
+            let tempURL = URL.temporaryDirectory.appending(path: "imported_video_\(UUID().uuidString).\(fileExtension)")
+            try FileManager.default.copyItem(at: sourceURL, to: tempURL)
+            return ImportedVideoFile(url: tempURL)
+        }
     }
 }
