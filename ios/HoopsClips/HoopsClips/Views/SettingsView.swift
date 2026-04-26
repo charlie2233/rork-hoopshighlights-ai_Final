@@ -1382,7 +1382,7 @@ struct SettingsView: View {
                 .foregroundStyle(AppTheme.dangerRed)
 
                 HStack {
-                    Text("Restore all AI tuning values to the original Rork MAX defaults.")
+                    Text("Restore all AI tuning values to the original Hoops Clips defaults.")
                         .font(.caption2)
                         .foregroundStyle(AppTheme.subtleText)
                     Spacer()

@@ -149,11 +149,11 @@ struct VideoPlayerView: View {
             .onAppear { pulseAnimation = true }
 
             VStack(spacing: 12) {
-                Text("Import Game Footage")
+                Text("Turn Games Into Hoops Clips")
                     .font(.title2.bold())
                     .foregroundStyle(.white)
 
-                Text("AI will analyze your basketball video\nand extract the best highlights")
+                Text("Find your best plays, trim the dead time,\nand build a share-ready reel in minutes.")
                     .font(.subheadline)
                     .foregroundStyle(AppTheme.subtleText)
                     .multilineTextAlignment(.center)
@@ -180,10 +180,10 @@ struct VideoPlayerView: View {
             )
 
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                featurePill(icon: "brain.head.profile.fill", text: "AI Detection")
-                featurePill(icon: "bolt.fill", text: "Fast Processing")
-                featurePill(icon: "film.stack.fill", text: "Auto Clips")
-                featurePill(icon: "sparkles.rectangle.stack.fill", text: "Rork MAX UI")
+                featurePill(icon: "sparkles", text: "Smart Highlights")
+                featurePill(icon: "bolt.fill", text: "Fast Reels")
+                featurePill(icon: "film.stack.fill", text: "Auto Trim")
+                featurePill(icon: "basketball.fill", text: "Hoops Clips")
             }
         }
         .padding(18)

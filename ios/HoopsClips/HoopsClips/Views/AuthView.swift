@@ -68,7 +68,7 @@ struct AuthView: View {
                     .foregroundStyle(.white)
             }
 
-            Text("AI-powered basketball highlight detection.\nSign in to get started.")
+            Text("Turn basketball videos into share-ready highlight reels.\nSign in to start clipping.")
                 .font(.subheadline)
                 .foregroundStyle(AppTheme.subtleText)
                 .multilineTextAlignment(.center)
