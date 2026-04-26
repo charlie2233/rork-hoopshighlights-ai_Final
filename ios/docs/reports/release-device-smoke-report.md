@@ -2,14 +2,15 @@
 
 ## Current status
 - Launch posture: public app launch with cloud gated.
-- Report state: blocked pending local secret mirror materialization; a trusted physical iPhone is now visible to this Mac.
-- Latest GitHub preflight evidence: `Release Secrets Preflight` run `24947639140` passed on 2026-04-26 on `main`, verifying production secret presence, Release build settings, cloud-disabled launch posture, Release simulator build, and built Info.plist wiring.
+- Report state: blocked pending Developer Mode enablement on the paired physical iPhone.
+- Latest GitHub preflight evidence: `Release Secrets Preflight` run `24947775294` passed on 2026-04-26 on `main`, verifying production secret presence, Release build settings, cloud-disabled launch posture, Release simulator build, and built Info.plist wiring.
 
 ## Automated validation completed from this branch
 - iOS launch-gating unit tests: passed via `LaunchRuntimeConfigTests`.
 - Simulator app launch sanity check: passed after adding explicit RevenueCat guards for unconfigured builds.
 - Backend launch-guardrail unit tests: passed locally.
 - Release simulator artifact wiring: passed with an explicit app plist. Verified that Release resolves `HOOPS_CLOUD_LAUNCH_MODE = disabled`, an empty cloud base URL, the Google callback URL scheme, the legal-link URLs, and the staged billing/telemetry keys when injected.
+- Local Release device build settings: passed after materializing `LocalSecrets.xcconfig`; Release resolves non-empty signing, RevenueCat, Google, legal-link, and telemetry settings while preserving cloud-disabled launch posture.
 - Google Sign-In callback plumbing is now wired from `HOOPS_GOOGLE_REVERSED_CLIENT_ID`; real-device sign-in still requires populated Release secrets.
 - Privacy Policy and Terms of Service links are now surfaced in-app; the real-device smoke still needs to verify both links open the intended production pages.
 
@@ -44,6 +45,6 @@
 
 ## Blockers
 - GitHub `production` environment secrets and legal-link variables passed the `main` Release preflight on 2026-04-26.
-- Local `LocalSecrets.xcconfig` has not been materialized on this Mac because GitHub secrets are write-only and the operator-held Release values are not available in the current shell.
-- The visible physical iPhone is now available and paired (`charlie`'s iPhone, iPhone 15 Pro), but no true Release-device smoke has been executed yet.
+- Local `LocalSecrets.xcconfig` has been materialized on this Mac and Release build settings validate without exposing secret values.
+- The visible physical iPhone is now available and paired (`charlie`'s iPhone, iPhone 15 Pro), but true Release-device build/install is blocked because Developer Mode is disabled on the device.
 - External crash-reporting client is not linked in this branch; launch telemetry currently relies on unified logs, with DSN config surfaced for future enablement.
