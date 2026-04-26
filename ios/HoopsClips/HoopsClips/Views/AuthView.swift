@@ -62,12 +62,9 @@ struct AuthView: View {
             }
 
             VStack(spacing: 8) {
-                Text("Hoops Highlights")
-                    .font(.system(size: 28, weight: .bold))
+                Text("Hoops Clips")
+                    .font(.system(size: 32, weight: .bold))
                     .foregroundStyle(.white)
-                Text("AI")
-                    .font(.system(size: 28, weight: .bold))
-                    .foregroundStyle(AppTheme.neonPurple)
             }
 
             Text("AI-powered basketball highlight detection.\nSign in to get started.")
