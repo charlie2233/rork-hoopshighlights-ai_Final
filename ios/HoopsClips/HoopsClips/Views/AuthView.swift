@@ -7,6 +7,7 @@ struct AuthView: View {
     @State private var authMode: AuthMode = .welcome
     @State private var email = ""
     @State private var password = ""
+    @State private var selectedPhoneRegion: PhoneRegion = .unitedStates
     @State private var phoneNumber = ""
     @State private var verificationCode = ""
     @State private var codeSent = false
@@ -280,21 +281,15 @@ struct AuthView: View {
 
     private var phoneForm: some View {
         VStack(spacing: 16) {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Phone Number")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(AppTheme.subtleText)
-                TextField("+1 (555) 123-4567", text: $phoneNumber)
-                    .keyboardType(.phonePad)
-                    .foregroundStyle(.white)
-                    .padding(14)
-                    .background(AppTheme.surfaceBg.opacity(0.55), in: .rect(cornerRadius: 12))
-                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(AppTheme.softBorder, lineWidth: 1))
-            }
+            PhoneNumberInputView(
+                title: "Phone Number",
+                selectedRegion: $selectedPhoneRegion,
+                nationalNumber: $phoneNumber
+            )
 
             if !codeSent {
                 Button {
-                    authService.sendPhoneVerificationCode(to: phoneNumber)
+                    authService.sendPhoneVerificationCode(to: normalizedPhoneNumber)
                     withAnimation(.snappy) { codeSent = true }
                 } label: {
                     Text("Send Code")
@@ -304,10 +299,10 @@ struct AuthView: View {
                         .frame(height: 52)
                         .background(AppTheme.purpleGradient, in: .rect(cornerRadius: 14))
                 }
-                .disabled(phoneNumber.isEmpty)
-                .opacity(phoneNumber.isEmpty ? 0.5 : 1)
+                .disabled(!isPhoneNumberReady)
+                .opacity(isPhoneNumberReady ? 1 : 0.5)
             } else {
-                codeInfoBanner(destination: phoneNumber)
+                codeInfoBanner(destination: normalizedPhoneNumber)
 
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Verification Code")
@@ -322,7 +317,7 @@ struct AuthView: View {
                 }
 
                 Button {
-                    Task { await authService.signInWithPhone(phoneNumber: phoneNumber, code: verificationCode) }
+                    Task { await authService.signInWithPhone(phoneNumber: normalizedPhoneNumber, code: verificationCode) }
                 } label: {
                     HStack(spacing: 8) {
                         if authService.isLoading {
@@ -339,7 +334,7 @@ struct AuthView: View {
                 .disabled(authService.isLoading)
 
                 Button {
-                    authService.sendPhoneVerificationCode(to: phoneNumber)
+                    authService.sendPhoneVerificationCode(to: normalizedPhoneNumber)
                 } label: {
                     Text("Resend Code")
                         .font(.caption.weight(.semibold))
@@ -349,6 +344,14 @@ struct AuthView: View {
 
             backButton
         }
+    }
+
+    private var normalizedPhoneNumber: String {
+        PhoneNumberFormatter.normalizedNumber(from: phoneNumber, region: selectedPhoneRegion)
+    }
+
+    private var isPhoneNumberReady: Bool {
+        PhoneNumberFormatter.hasEnoughDigits(phoneNumber, region: selectedPhoneRegion)
     }
 
     private func codeInfoBanner(destination: String) -> some View {

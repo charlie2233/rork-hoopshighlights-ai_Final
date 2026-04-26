@@ -5,6 +5,7 @@ struct VerificationView: View {
     @State private var emailCode = ""
     @State private var phoneCode = ""
     @State private var linkEmail = ""
+    @State private var linkPhoneRegion: PhoneRegion = .unitedStates
     @State private var linkPhone = ""
     @State private var showLinkEmail = false
     @State private var showLinkPhone = false
@@ -285,16 +286,15 @@ struct VerificationView: View {
                 }
             } else {
                 VStack(spacing: 12) {
-                    TextField("+1 (555) 123-4567", text: $linkPhone)
-                        .keyboardType(.phonePad)
-                        .foregroundStyle(.white)
-                        .padding(14)
-                        .background(AppTheme.surfaceBg.opacity(0.55), in: .rect(cornerRadius: 12))
-                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(AppTheme.softBorder, lineWidth: 1))
+                    PhoneNumberInputView(
+                        title: "Phone Number",
+                        selectedRegion: $linkPhoneRegion,
+                        nationalNumber: $linkPhone
+                    )
 
                     Button {
-                        guard !linkPhone.isEmpty else { return }
-                        authService.linkPhone(linkPhone)
+                        guard linkPhoneIsReady else { return }
+                        authService.linkPhone(normalizedLinkPhone)
                     } label: {
                         Text("Send Verification Code")
                             .font(.subheadline.weight(.bold))
@@ -303,11 +303,19 @@ struct VerificationView: View {
                             .frame(height: 44)
                             .background(AppTheme.purpleGradient, in: .rect(cornerRadius: 12))
                     }
-                    .disabled(linkPhone.isEmpty)
-                    .opacity(linkPhone.isEmpty ? 0.5 : 1)
+                    .disabled(!linkPhoneIsReady)
+                    .opacity(linkPhoneIsReady ? 1 : 0.5)
                 }
             }
         }
+    }
+
+    private var normalizedLinkPhone: String {
+        PhoneNumberFormatter.normalizedNumber(from: linkPhone, region: linkPhoneRegion)
+    }
+
+    private var linkPhoneIsReady: Bool {
+        PhoneNumberFormatter.hasEnoughDigits(linkPhone, region: linkPhoneRegion)
     }
 
     private var skipButton: some View {
