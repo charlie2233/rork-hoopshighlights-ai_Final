@@ -23,6 +23,14 @@ struct SettingsView: View {
 
         var id: String { rawValue }
 
+        var textKey: AppTextKey {
+            switch self {
+            case .suggestion: return .settingsFeedbackSuggestion
+            case .bug: return .settingsFeedbackBug
+            case .question: return .settingsFeedbackQuestion
+            }
+        }
+
         var icon: String {
             switch self {
             case .suggestion: return "sparkles"
@@ -73,32 +81,34 @@ struct SettingsView: View {
         let tint: Color
     }
 
-    private static let commonFAQItems: [FAQItem] = [
-        FAQItem(
-            id: "no-clips",
-            question: "Why did the app find few or no clips?",
-            answer: "Lower the confidence threshold, increase clip duration range, and check the source video has clear motion and audible peaks. Low-light or static camera footage can reduce detection quality.",
-            icon: "film.badge.questionmark"
-        ),
-        FAQItem(
-            id: "weights",
-            question: "When should I change AI weights?",
-            answer: "Leave weights balanced for most games. Use Advanced Settings only if your footage is unusual, like very loud gyms (audio bias) or silent clips with strong movement (motion/pose bias).",
-            icon: "slider.horizontal.3"
-        ),
-        FAQItem(
-            id: "export-format",
-            question: "Should I export MP4 or MOV?",
-            answer: "MP4 is the best default for sharing and cross-platform compatibility. MOV is a good Apple-native option if you plan to edit or manage clips in Apple-focused workflows.",
-            icon: "doc.badge.gearshape"
-        ),
-        FAQItem(
-            id: "quick-share",
-            question: "How does Review & Share work on iPhone?",
-            answer: "After export completes, the app opens an in-app review of the latest reel first. From the Review & Share section, you can replay it, save it to Photos, or open the iOS share sheet for Messages, AirDrop, Files, or social apps.",
-            icon: "square.and.arrow.up.fill"
-        )
-    ]
+    private var commonFAQItems: [FAQItem] {
+        [
+            FAQItem(
+                id: "no-clips",
+                question: languageStore.text(.settingsFAQNoClipsQuestion),
+                answer: languageStore.text(.settingsFAQNoClipsAnswer),
+                icon: "film.badge.questionmark"
+            ),
+            FAQItem(
+                id: "weights",
+                question: languageStore.text(.settingsFAQWeightsQuestion),
+                answer: languageStore.text(.settingsFAQWeightsAnswer),
+                icon: "slider.horizontal.3"
+            ),
+            FAQItem(
+                id: "export-format",
+                question: languageStore.text(.settingsFAQExportFormatQuestion),
+                answer: languageStore.text(.settingsFAQExportFormatAnswer),
+                icon: "doc.badge.gearshape"
+            ),
+            FAQItem(
+                id: "quick-share",
+                question: languageStore.text(.settingsFAQQuickShareQuestion),
+                answer: languageStore.text(.settingsFAQQuickShareAnswer),
+                icon: "square.and.arrow.up.fill"
+            )
+        ]
+    }
 
     var body: some View {
         NavigationStack {
@@ -136,13 +146,13 @@ struct SettingsView: View {
             .sheet(isPresented: $showingPaywall) {
                 PaywallView(subscriptionManager: subscriptionManager, authService: authService)
             }
-            .alert("Reset Settings?", isPresented: $showingResetAlert) {
-                Button("Reset", role: .destructive) {
+            .alert(languageStore.text(.settingsResetTitle), isPresented: $showingResetAlert) {
+                Button(languageStore.text(.settingsReset), role: .destructive) {
                     viewModel.settings = AnalysisSettings()
                 }
-                Button("Cancel", role: .cancel) { }
+                Button(languageStore.text(.settingsCancel), role: .cancel) { }
             } message: {
-                Text("This will restore all AI settings to their defaults.")
+                Text(languageStore.text(.settingsResetMessage))
             }
         }
     }
@@ -154,7 +164,7 @@ struct SettingsView: View {
                     RoundedRectangle(cornerRadius: 18, style: .continuous)
                         .fill(AppTheme.accentPurple.opacity(0.18))
                         .frame(width: 62, height: 62)
-                    Image(systemName: "slider.horizontal.3")
+                    Image(systemName: "gearshape.2.fill")
                         .font(.title2.weight(.bold))
                         .foregroundStyle(AppTheme.neonPurple)
                 }
@@ -185,21 +195,6 @@ struct SettingsView: View {
                     value: subscriptionManager.isProUser ? "Pro" : "\(subscriptionManager.freeUsesRemaining)",
                     label: subscriptionManager.isProUser ? languageStore.text(.plan) : languageStore.text(.freeLeft),
                     tint: subscriptionManager.isProUser ? AppTheme.successGreen : AppTheme.warningYellow
-                )
-            }
-
-            HStack(spacing: 10) {
-                RorkMetricChip(
-                    icon: "clock.badge.checkmark.fill",
-                    value: formattedTargetDuration(viewModel.settings.targetHighlightDuration),
-                    label: languageStore.text(.targetReel),
-                    tint: AppTheme.warningYellow
-                )
-                RorkMetricChip(
-                    icon: "square.stack.3d.up.fill",
-                    value: viewModel.selectedFormat.rawValue,
-                    label: languageStore.text(.export),
-                    tint: AppTheme.neonPurple
                 )
             }
         }
@@ -279,19 +274,19 @@ struct SettingsView: View {
                 SettingsPreviewStat(
                     icon: "scope",
                     value: "\(Int(viewModel.settings.confidenceThreshold * 100))%",
-                    label: "Threshold",
+                    label: languageStore.text(.settingsThreshold),
                     tint: AppTheme.neonPurple
                 ),
                 SettingsPreviewStat(
                     icon: "clock.badge.checkmark.fill",
                     value: formattedTargetDuration(viewModel.settings.targetHighlightDuration),
-                    label: "Target",
+                    label: languageStore.text(.settingsTarget),
                     tint: AppTheme.warningYellow
                 ),
                 SettingsPreviewStat(
                     icon: "gauge.with.dots.needle.67percent",
-                    value: "\(Int(viewModel.settings.framesSampledPerSecond)) fps",
-                    label: "Sampling",
+                    value: formattedFrameRate(viewModel.settings.framesSampledPerSecond),
+                    label: languageStore.text(.settingsSampling),
                     tint: AppTheme.successGreen
                 )
             ]
@@ -377,7 +372,7 @@ struct SettingsView: View {
             RorkSectionHeader(
                 title: languageStore.text(.accountQuickActions),
                 icon: "person.crop.circle.fill",
-                subtitle: "Signed in with \(authMethodLabel)"
+                subtitle: "\(languageStore.text(.settingsSignedInWith)) \(authMethodLabel)"
             )
 
             signOutButton
@@ -395,14 +390,14 @@ struct SettingsView: View {
             stats: [
                 SettingsPreviewStat(
                     icon: feedbackType.icon,
-                    value: feedbackType.rawValue,
-                    label: "Draft Type",
+                    value: languageStore.text(feedbackType.textKey),
+                    label: languageStore.text(.settingsDraftType),
                     tint: AppTheme.warningYellow
                 ),
                 SettingsPreviewStat(
                     icon: "text.alignleft",
                     value: "\(feedbackCharacterCount)",
-                    label: "Draft Chars",
+                    label: languageStore.text(.settingsDraftChars),
                     tint: feedbackCharacterCount >= 8 ? AppTheme.successGreen : AppTheme.subtleText
                 )
             ]
@@ -420,14 +415,14 @@ struct SettingsView: View {
             stats: [
                 SettingsPreviewStat(
                     icon: "internaldrive.fill",
-                    value: "On Device",
-                    label: "History",
+                    value: languageStore.text(.settingsOnDevice),
+                    label: languageStore.text(.settingsHistory),
                     tint: AppTheme.successGreen
                 ),
                 SettingsPreviewStat(
                     icon: "brain.head.profile.fill",
-                    value: "Vision + Audio",
-                    label: "Engine",
+                    value: languageStore.text(.settingsVisionAudio),
+                    label: languageStore.text(.settingsEngine),
                     tint: AppTheme.neonPurple
                 )
             ]
@@ -447,7 +442,7 @@ struct SettingsView: View {
                 ),
                 SettingsPreviewStat(
                     icon: "infinity",
-                    value: "Unlimited",
+                    value: languageStore.text(.settingsUnlimited),
                     label: languageStore.text(.analysis),
                     tint: AppTheme.neonPurple
                 )
@@ -458,20 +453,20 @@ struct SettingsView: View {
             SettingsPreviewStat(
                 icon: AppConstants.cloudAnalysisEnabled ? "sparkles" : "cpu.fill",
                 value: "\(subscriptionManager.freeUsesRemaining)",
-                label: AppConstants.cloudAnalysisEnabled ? languageStore.text(.freeLeft) : "On Device",
+                label: AppConstants.cloudAnalysisEnabled ? languageStore.text(.freeLeft) : languageStore.text(.settingsOnDevice),
                 tint: subscriptionManager.freeUsesRemaining > 0 ? AppTheme.warningYellow : AppTheme.dangerRed
             ),
             SettingsPreviewStat(
                 icon: "crown.fill",
                 value: "$9.99",
-                label: "Monthly",
+                label: languageStore.text(.settingsMonthly),
                 tint: AppTheme.neonPurple
             )
         ]
     }
 
     private var settingsFootnote: some View {
-        Text("Developer-only launch diagnostics are hidden from production users.")
+        Text(languageStore.text(.settingsDeveloperFootnote))
             .font(.caption2)
             .foregroundStyle(AppTheme.subtleText)
             .multilineTextAlignment(.center)
@@ -488,7 +483,7 @@ struct SettingsView: View {
     private var workflowSettingsPage: some View {
         settingsDetailPage(
             title: languageStore.text(.workflowDefaults),
-            subtitle: "Tune clip selection and analysis behavior for your footage.",
+            subtitle: languageStore.text(.settingsWorkflowDetailSubtitle),
             icon: "waveform.and.magnifyingglass",
             accent: AppTheme.neonPurple
         ) {
@@ -501,7 +496,7 @@ struct SettingsView: View {
     private var membershipSettingsPage: some View {
         settingsDetailPage(
             title: languageStore.text(.membershipAccount),
-            subtitle: "See how you’re signed in and manage access.",
+            subtitle: languageStore.text(.settingsMembershipDetailSubtitle),
             icon: "person.crop.circle.badge.checkmark",
             accent: AppTheme.successGreen
         ) {
@@ -514,7 +509,7 @@ struct SettingsView: View {
     private var supportSettingsPage: some View {
         settingsDetailPage(
             title: languageStore.text(.supportCenter),
-            subtitle: "Feedback, bug reports, and setup help in one place.",
+            subtitle: languageStore.text(.settingsSupportDetailSubtitle),
             icon: "bubble.left.and.exclamationmark.bubble.right.fill",
             accent: AppTheme.warningYellow
         ) {
@@ -526,7 +521,7 @@ struct SettingsView: View {
     private var aboutSettingsPage: some View {
         settingsDetailPage(
             title: languageStore.text(.aboutPrivacy),
-            subtitle: "Core app details, storage behavior, and device-local history notes.",
+            subtitle: languageStore.text(.settingsAboutDetailSubtitle),
             icon: "lock.doc.fill",
             accent: AppTheme.neonPurple
         ) {
@@ -537,22 +532,22 @@ struct SettingsView: View {
     }
 
     private var legalLinksSection: some View {
-        settingsCard(title: "Legal", icon: "doc.text.fill") {
-            Text("Open the policies that should stay reachable from the shipped app and App Store listing.")
+        settingsCard(title: languageStore.text(.settingsLegal), icon: "doc.text.fill") {
+            Text(languageStore.text(.settingsLegalSubtitle))
                 .font(.caption)
                 .foregroundStyle(AppTheme.subtleText)
                 .fixedSize(horizontal: false, vertical: true)
 
             legalLinkRow(
-                title: "Privacy Policy",
-                subtitle: "Review how account, billing, and device-local processing are described.",
+                title: languageStore.text(.legalPrivacy),
+                subtitle: languageStore.text(.settingsPrivacyPolicySubtitle),
                 icon: "hand.raised.fill",
                 url: AppConstants.privacyPolicyURL
             )
 
             legalLinkRow(
-                title: "Terms of Service",
-                subtitle: "Review product terms, acceptable use, and subscription language.",
+                title: languageStore.text(.legalTerms),
+                subtitle: languageStore.text(.settingsTermsSubtitle),
                 icon: "doc.text.magnifyingglass",
                 url: AppConstants.termsOfServiceURL
             )
@@ -560,17 +555,17 @@ struct SettingsView: View {
     }
 
     private var localLibrarySection: some View {
-        settingsCard(title: "On-Device Library", icon: "internaldrive.fill") {
-            Text("Imported videos, the latest export for each project, and the project event timeline stay in the app’s local storage on this device. Nothing here is synced to a server by this feature.")
+        settingsCard(title: languageStore.text(.settingsOnDeviceLibrary), icon: "internaldrive.fill") {
+            Text(languageStore.text(.settingsOnDeviceLibraryDescription))
                 .font(.caption)
                 .foregroundStyle(AppTheme.subtleText)
                 .fixedSize(horizontal: false, vertical: true)
 
             HStack(spacing: 10) {
-                aiFeatureTag("Source Video")
-                aiFeatureTag("Latest Export")
-                aiFeatureTag("Event Timeline")
-                aiFeatureTag("Restore on Launch")
+                aiFeatureTag(languageStore.text(.settingsSourceVideoTag))
+                aiFeatureTag(languageStore.text(.settingsLatestExportTag))
+                aiFeatureTag(languageStore.text(.settingsEventTimelineTag))
+                aiFeatureTag(languageStore.text(.settingsRestoreOnLaunchTag))
             }
         }
     }
@@ -702,15 +697,15 @@ struct SettingsView: View {
     }
 
     private var aiWeightsSection: some View {
-        settingsCard(title: "AI Analysis Weights", icon: "brain.head.profile.fill") {
-            weightSlider(label: "Audio (Crowd Noise)", value: $viewModel.settings.audioWeight, color: .blue)
-            weightSlider(label: "Motion Detection", value: $viewModel.settings.motionWeight, color: .orange)
-            weightSlider(label: "Body Pose Analysis", value: $viewModel.settings.poseWeight, color: .green)
-            weightSlider(label: "Scene Brightness", value: $viewModel.settings.sceneWeight, color: .yellow)
+        settingsCard(title: languageStore.text(.settingsAIAnalysisWeights), icon: "brain.head.profile.fill") {
+            weightSlider(label: languageStore.text(.settingsAudioCrowdNoise), value: $viewModel.settings.audioWeight, color: .blue)
+            weightSlider(label: languageStore.text(.settingsMotionDetection), value: $viewModel.settings.motionWeight, color: .orange)
+            weightSlider(label: languageStore.text(.settingsBodyPoseAnalysis), value: $viewModel.settings.poseWeight, color: .green)
+            weightSlider(label: languageStore.text(.settingsSceneBrightness), value: $viewModel.settings.sceneWeight, color: .yellow)
 
             let total = viewModel.settings.audioWeight + viewModel.settings.motionWeight + viewModel.settings.poseWeight + viewModel.settings.sceneWeight
             HStack {
-                Text("Total Weight")
+                Text(languageStore.text(.settingsTotalWeight))
                     .font(.caption)
                     .foregroundStyle(AppTheme.subtleText)
                 Spacer()
@@ -734,7 +729,7 @@ struct SettingsView: View {
                 Image(systemName: "sparkles")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(AppTheme.neonPurple)
-                Text("Current Detection Profile")
+                Text(languageStore.text(.settingsCurrentDetectionProfile))
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.white)
                 Spacer()
@@ -744,12 +739,12 @@ struct SettingsView: View {
                 RorkMetricChip(
                     icon: "scope",
                     value: "\(Int(viewModel.settings.confidenceThreshold * 100))%",
-                    label: "Threshold"
+                    label: languageStore.text(.settingsThreshold)
                 )
                 RorkMetricChip(
                     icon: "gauge.with.dots.needle.67percent",
-                    value: "\(Int(viewModel.settings.framesSampledPerSecond)) fps",
-                    label: "Sampling",
+                    value: formattedFrameRate(viewModel.settings.framesSampledPerSecond),
+                    label: languageStore.text(.settingsSampling),
                     tint: AppTheme.warningYellow
                 )
             }
@@ -757,14 +752,14 @@ struct SettingsView: View {
             HStack(spacing: 10) {
                 RorkMetricChip(
                     icon: normalized ? "checkmark.seal.fill" : "exclamationmark.triangle.fill",
-                    value: normalized ? "Balanced" : "Adjust",
-                    label: "Weights",
+                    value: normalized ? languageStore.text(.settingsBalanced) : languageStore.text(.settingsAdjust),
+                    label: languageStore.text(.settingsWeights),
                     tint: normalized ? AppTheme.successGreen : AppTheme.warningYellow
                 )
                 RorkMetricChip(
                     icon: viewModel.settings.preferKeepUncertain ? "checkmark.circle.fill" : "xmark.circle.fill",
-                    value: viewModel.settings.preferKeepUncertain ? "On" : "Off",
-                    label: "Keep Uncertain",
+                    value: viewModel.settings.preferKeepUncertain ? languageStore.text(.settingsOn) : languageStore.text(.settingsOff),
+                    label: languageStore.text(.settingsKeepUncertain),
                     tint: viewModel.settings.preferKeepUncertain ? AppTheme.successGreen : AppTheme.dangerRed
                 )
             }
@@ -773,7 +768,7 @@ struct SettingsView: View {
                 RorkMetricChip(
                     icon: "clock.badge.checkmark.fill",
                     value: formattedTargetDuration(viewModel.settings.targetHighlightDuration),
-                    label: "Target Reel",
+                    label: languageStore.text(.settingsTargetReel),
                     tint: AppTheme.warningYellow
                 )
                 Spacer()
@@ -784,20 +779,20 @@ struct SettingsView: View {
     }
 
     private var clipSettingsSection: some View {
-        settingsCard(title: "Clip & Reel Duration", icon: "scissors") {
+        settingsCard(title: languageStore.text(.settingsClipReelDuration), icon: "scissors") {
             VStack(spacing: 4) {
                 HStack {
-                    Text("Minimum")
+                    Text(languageStore.text(.settingsMinimum))
                         .font(.subheadline)
                         .foregroundStyle(.white)
                     Spacer()
-                    Text(String(format: "%.1f sec", viewModel.settings.minClipDuration))
+                    Text(formattedSeconds(viewModel.settings.minClipDuration, fractionalDigits: 1))
                         .font(.subheadline.monospacedDigit())
                         .foregroundStyle(AppTheme.neonPurple)
                 }
                 Slider(value: $viewModel.settings.minClipDuration, in: 1.0...5.0, step: 0.5)
                     .tint(AppTheme.accentPurple)
-                Text("Shortest clip the AI will keep")
+                Text(languageStore.text(.settingsShortestClipHelp))
                     .font(.caption2)
                     .foregroundStyle(AppTheme.subtleText)
             }
@@ -806,17 +801,17 @@ struct SettingsView: View {
 
             VStack(spacing: 4) {
                 HStack {
-                    Text("Maximum")
+                    Text(languageStore.text(.settingsMaximum))
                         .font(.subheadline)
                         .foregroundStyle(.white)
                     Spacer()
-                    Text(String(format: "%.0f sec", viewModel.settings.maxClipDuration))
+                    Text(formattedSeconds(viewModel.settings.maxClipDuration, fractionalDigits: 0))
                         .font(.subheadline.monospacedDigit())
                         .foregroundStyle(AppTheme.neonPurple)
                 }
                 Slider(value: $viewModel.settings.maxClipDuration, in: 5.0...30.0, step: 1.0)
                     .tint(AppTheme.accentPurple)
-                Text("Longest clip the AI will keep")
+                Text(languageStore.text(.settingsLongestClipHelp))
                     .font(.caption2)
                     .foregroundStyle(AppTheme.subtleText)
             }
@@ -825,7 +820,7 @@ struct SettingsView: View {
 
             VStack(spacing: 4) {
                 HStack {
-                    Text("Target Highlight")
+                    Text(languageStore.text(.settingsTargetHighlight))
                         .font(.subheadline)
                         .foregroundStyle(.white)
                     Spacer()
@@ -835,7 +830,7 @@ struct SettingsView: View {
                 }
                 Slider(value: $viewModel.settings.targetHighlightDuration, in: 15.0...180.0, step: 5.0)
                     .tint(AppTheme.accentPurple)
-                Text("Caps the default auto-kept reel length after analysis. You can still keep more clips manually in Review.")
+                Text(languageStore.text(.settingsTargetHighlightHelp))
                     .font(.caption2)
                     .foregroundStyle(AppTheme.subtleText)
             }
@@ -847,7 +842,7 @@ struct SettingsView: View {
             + viewModel.settings.motionWeight
             + viewModel.settings.poseWeight
             + viewModel.settings.sceneWeight
-        let weightsStatus = abs(weightsTotal - 1.0) < 0.05 ? "Balanced" : "Custom"
+        let weightsStatus = abs(weightsTotal - 1.0) < 0.05 ? languageStore.text(.settingsBalanced) : languageStore.text(.settingsCustom)
 
         return VStack(alignment: .leading, spacing: 12) {
             DisclosureGroup(isExpanded: $showingAdvancedSettings) {
@@ -862,9 +857,9 @@ struct SettingsView: View {
             } label: {
                 VStack(alignment: .leading, spacing: 10) {
                     RorkSectionHeader(
-                        title: "Advanced Settings",
+                        title: languageStore.text(.settingsAdvancedSettings),
                         icon: "gearshape.2.fill",
-                        subtitle: "For fine-tuning — most users won't need to change these"
+                        subtitle: languageStore.text(.settingsAdvancedSubtitle)
                     )
 
                     if !showingAdvancedSettings {
@@ -872,19 +867,19 @@ struct SettingsView: View {
                             RorkMetricChip(
                                 icon: "scope",
                                 value: "\(Int(viewModel.settings.confidenceThreshold * 100))%",
-                                label: "Threshold"
+                                label: languageStore.text(.settingsThreshold)
                             )
                             RorkMetricChip(
                                 icon: "gauge.with.dots.needle.67percent",
-                                value: "\(Int(viewModel.settings.framesSampledPerSecond)) fps",
-                                label: "Sampling",
+                                value: formattedFrameRate(viewModel.settings.framesSampledPerSecond),
+                                label: languageStore.text(.settingsSampling),
                                 tint: AppTheme.warningYellow
                             )
                             RorkMetricChip(
                                 icon: "brain.head.profile.fill",
                                 value: weightsStatus,
-                                label: "Weights",
-                                tint: weightsStatus == "Balanced" ? AppTheme.successGreen : AppTheme.neonPurple
+                                label: languageStore.text(.settingsWeights),
+                                tint: abs(weightsTotal - 1.0) < 0.05 ? AppTheme.successGreen : AppTheme.neonPurple
                             )
                         }
                     }
@@ -902,7 +897,7 @@ struct SettingsView: View {
                 Image(systemName: "scope")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(AppTheme.neonPurple)
-                Text("Confidence Threshold")
+                Text(languageStore.text(.settingsConfidenceThreshold))
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.white)
                 Spacer()
@@ -910,7 +905,7 @@ struct SettingsView: View {
 
             VStack(spacing: 4) {
                 HStack {
-                    Text("Threshold")
+                    Text(languageStore.text(.settingsThreshold))
                         .font(.subheadline)
                         .foregroundStyle(.white)
                     Spacer()
@@ -920,7 +915,7 @@ struct SettingsView: View {
                 }
                 Slider(value: $viewModel.settings.confidenceThreshold, in: 0.1...0.9, step: 0.05)
                     .tint(AppTheme.accentPurple)
-                Text("Lower = more clips found (may include false positives)")
+                Text(languageStore.text(.settingsLowerConfidenceHelp))
                     .font(.caption2)
                     .foregroundStyle(AppTheme.subtleText)
             }
@@ -940,7 +935,7 @@ struct SettingsView: View {
                 Image(systemName: "slider.horizontal.3")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(AppTheme.neonPurple)
-                Text("Detection Behavior")
+                Text(languageStore.text(.settingsDetectionBehavior))
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.white)
                 Spacer()
@@ -948,17 +943,17 @@ struct SettingsView: View {
 
             VStack(spacing: 4) {
                 HStack {
-                    Text("Clip Padding")
+                    Text(languageStore.text(.settingsClipPadding))
                         .font(.subheadline)
                         .foregroundStyle(.white)
                     Spacer()
-                    Text(String(format: "%.1fs", viewModel.settings.clipPadding))
+                    Text(formattedSeconds(viewModel.settings.clipPadding, fractionalDigits: 1))
                         .font(.subheadline.monospacedDigit())
                         .foregroundStyle(AppTheme.neonPurple)
                 }
                 Slider(value: $viewModel.settings.clipPadding, in: 0.5...3.0, step: 0.5)
                     .tint(AppTheme.accentPurple)
-                Text("Adds extra lead-in / follow-through around detected moments")
+                Text(languageStore.text(.settingsClipPaddingHelp))
                     .font(.caption2)
                     .foregroundStyle(AppTheme.subtleText)
             }
@@ -967,10 +962,10 @@ struct SettingsView: View {
 
             Toggle(isOn: $viewModel.settings.preferKeepUncertain) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Keep Uncertain Clips")
+                    Text(languageStore.text(.settingsKeepUncertainClips))
                         .font(.subheadline)
                         .foregroundStyle(.white)
-                    Text("When unsure, keep clips for manual review")
+                    Text(languageStore.text(.settingsKeepUncertainHelp))
                         .font(.caption2)
                         .foregroundStyle(AppTheme.subtleText)
                 }
@@ -987,20 +982,20 @@ struct SettingsView: View {
     }
 
     private var performanceSection: some View {
-        settingsCard(title: "Performance", icon: "gauge.with.dots.needle.67percent") {
+        settingsCard(title: languageStore.text(.settingsPerformance), icon: "gauge.with.dots.needle.67percent") {
             VStack(spacing: 4) {
                 HStack {
-                    Text("Frames Per Second")
+                    Text(languageStore.text(.settingsFramesPerSecond))
                         .font(.subheadline)
                         .foregroundStyle(.white)
                     Spacer()
-                    Text(String(format: "%.0f fps", viewModel.settings.framesSampledPerSecond))
+                    Text(formattedFrameRate(viewModel.settings.framesSampledPerSecond))
                         .font(.subheadline.monospacedDigit())
                         .foregroundStyle(AppTheme.neonPurple)
                 }
                 Slider(value: $viewModel.settings.framesSampledPerSecond, in: 1.0...10.0, step: 1.0)
                     .tint(AppTheme.accentPurple)
-                Text("Higher = more accurate but slower analysis")
+                Text(languageStore.text(.settingsPerformanceHelp))
                     .font(.caption2)
                     .foregroundStyle(AppTheme.subtleText)
             }
@@ -1008,7 +1003,7 @@ struct SettingsView: View {
     }
 
     private var aboutSection: some View {
-        settingsCard(title: "About", icon: "info.circle.fill") {
+        settingsCard(title: languageStore.text(.settingsAbout), icon: "info.circle.fill") {
             VStack(spacing: 12) {
                 HStack {
                     Text("Hoops Clips")
@@ -1020,16 +1015,16 @@ struct SettingsView: View {
                         .foregroundStyle(AppTheme.subtleText)
                 }
 
-                Text("Smart basketball highlight detection that helps you find, review, export, and save your best clips directly on your iPhone.")
+                Text(languageStore.text(.settingsAboutDescription))
                     .font(.caption)
                     .foregroundStyle(AppTheme.subtleText)
                     .fixedSize(horizontal: false, vertical: true)
 
                 HStack(spacing: 16) {
-                    aiFeatureTag("Smart Clips")
-                    aiFeatureTag("Private")
-                    aiFeatureTag("Fast Export")
-                    aiFeatureTag("Share Ready")
+                    aiFeatureTag(languageStore.text(.settingsSmartClipsTag))
+                    aiFeatureTag(languageStore.text(.settingsPrivateTag))
+                    aiFeatureTag(languageStore.text(.settingsFastExportTag))
+                    aiFeatureTag(languageStore.text(.settingsShareReadyTag))
                 }
             }
         }
@@ -1038,9 +1033,9 @@ struct SettingsView: View {
     private var contactSuggestionsSection: some View {
         VStack(alignment: .leading, spacing: 14) {
             RorkSectionHeader(
-                title: "Contact & Suggestions",
+                title: languageStore.text(.settingsContactSuggestions),
                 icon: "paperplane.fill",
-                subtitle: "Send feedback directly from the app to the team"
+                subtitle: languageStore.text(.settingsContactSubtitle)
             )
 
             if let feedbackBanner {
@@ -1065,7 +1060,7 @@ struct SettingsView: View {
             }
 
             VStack(alignment: .leading, spacing: 10) {
-                Text("Type")
+                Text(languageStore.text(.settingsFeedbackType))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(AppTheme.subtleText)
 
@@ -1078,7 +1073,7 @@ struct SettingsView: View {
                                 HStack(spacing: 8) {
                                     Image(systemName: type.icon)
                                         .font(.caption.weight(.semibold))
-                                    Text(type.rawValue)
+                                    Text(languageStore.text(type.textKey))
                                         .font(.caption.weight(.medium))
                                 }
                                 .foregroundStyle(feedbackType == type ? .white : AppTheme.subtleText)
@@ -1104,7 +1099,7 @@ struct SettingsView: View {
             }
 
             VStack(alignment: .leading, spacing: 8) {
-                Text("Email (optional)")
+                Text(languageStore.text(.settingsEmailOptional))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(AppTheme.subtleText)
 
@@ -1124,7 +1119,7 @@ struct SettingsView: View {
 
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    Text("Message")
+                    Text(languageStore.text(.settingsMessage))
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(AppTheme.subtleText)
                     Spacer()
@@ -1142,7 +1137,7 @@ struct SettingsView: View {
                         )
 
                     if feedbackMessage.isEmpty {
-                        Text("Tell us what to improve, report a bug, or ask a question...")
+                        Text(languageStore.text(.settingsMessagePlaceholder))
                             .font(.subheadline)
                             .foregroundStyle(AppTheme.subtleText)
                             .padding(.horizontal, 16)
@@ -1168,7 +1163,7 @@ struct SettingsView: View {
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "eraser.fill")
-                        Text("Clear")
+                        Text(languageStore.text(.settingsClear))
                     }
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(AppTheme.subtleText)
@@ -1191,7 +1186,7 @@ struct SettingsView: View {
                         } else {
                             Image(systemName: "paperplane.fill")
                         }
-                        Text(isSubmittingFeedback ? "Sending..." : "Send")
+                        Text(isSubmittingFeedback ? languageStore.text(.settingsSending) : languageStore.text(.settingsSend))
                             .font(.subheadline.bold())
                     }
                     .foregroundStyle(.white)
@@ -1208,7 +1203,7 @@ struct SettingsView: View {
                 .opacity((isSubmittingFeedback || !canSubmitFeedback) ? 0.55 : 1.0)
             }
 
-            Text("Submitted securely over HTTPS via Formspree. Avoid sending passwords or private account data.")
+            Text(languageStore.text(.settingsFeedbackPrivacyNote))
                 .font(.caption2)
                 .foregroundStyle(AppTheme.subtleText)
         }
@@ -1219,13 +1214,13 @@ struct SettingsView: View {
     private var commonFAQSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             RorkSectionHeader(
-                title: "Common FAQ",
+                title: languageStore.text(.settingsCommonFAQ),
                 icon: "questionmark.circle.fill",
-                subtitle: "Quick answers for setup, exports, and detection tuning"
+                subtitle: languageStore.text(.settingsFAQSubtitle)
             )
 
             VStack(spacing: 10) {
-                ForEach(Self.commonFAQItems) { item in
+                ForEach(commonFAQItems) { item in
                     DisclosureGroup(isExpanded: faqBinding(for: item.id)) {
                         Text(item.answer)
                             .font(.caption)
@@ -1267,9 +1262,9 @@ struct SettingsView: View {
     private var accountSection: some View {
         VStack(alignment: .leading, spacing: 14) {
             RorkSectionHeader(
-                title: "Account",
+                title: languageStore.text(.account),
                 icon: "person.crop.circle.fill",
-                subtitle: "Your sign-in details"
+                subtitle: languageStore.text(.settingsAccountDetailsSubtitle)
             )
 
             HStack(spacing: 14) {
@@ -1293,7 +1288,7 @@ struct SettingsView: View {
                             .font(.caption)
                             .foregroundStyle(AppTheme.subtleText)
                     }
-                    Text("Signed in with \(authMethodLabel)")
+                    Text("\(languageStore.text(.settingsSignedInWith)) \(authMethodLabel)")
                         .font(.caption2)
                         .foregroundStyle(AppTheme.subtleText)
                 }
@@ -1320,10 +1315,10 @@ struct SettingsView: View {
         switch authService.currentUser?.authMethod {
         case .apple: return "Apple"
         case .google: return "Google"
-        case .email: return "Email"
-        case .phone: return "Phone"
-        case .anonymous: return "Guest"
-        case nil: return "Unknown"
+        case .email: return languageStore.text(.email)
+        case .phone: return languageStore.text(.phoneNumber)
+        case .anonymous: return languageStore.text(.settingsGuest)
+        case nil: return languageStore.text(.settingsUnknown)
         }
     }
 
@@ -1334,9 +1329,9 @@ struct SettingsView: View {
     private var subscriptionSection: some View {
         VStack(alignment: .leading, spacing: 14) {
             RorkSectionHeader(
-                title: "Subscription",
+                title: languageStore.text(.settingsSubscription),
                 icon: "crown.fill",
-                subtitle: subscriptionManager.isProUser ? "You have unlimited access" : (membershipRequiresAccountSignIn ? "Sign in required" : "Free tier")
+                subtitle: subscriptionManager.isProUser ? languageStore.text(.settingsUnlimitedAccess) : (membershipRequiresAccountSignIn ? languageStore.text(.settingsSignInRequired) : languageStore.text(.settingsFreeTier))
             )
 
             if subscriptionManager.isProUser {
@@ -1345,10 +1340,10 @@ struct SettingsView: View {
                         .font(.title2)
                         .foregroundStyle(AppTheme.successGreen)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Pro Member")
+                        Text(languageStore.text(.settingsProMember))
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(.white)
-                        Text("Unlimited AI analyses & exports")
+                        Text(languageStore.text(.settingsUnlimitedAIExports))
                             .font(.caption)
                             .foregroundStyle(AppTheme.subtleText)
                     }
@@ -1359,13 +1354,13 @@ struct SettingsView: View {
                     RorkMetricChip(
                         icon: "sparkles",
                         value: "\(subscriptionManager.freeUsesRemaining)",
-                        label: "Free Left",
+                        label: languageStore.text(.freeLeft),
                         tint: subscriptionManager.freeUsesRemaining > 0 ? AppTheme.warningYellow : AppTheme.dangerRed
                     )
                     RorkMetricChip(
                         icon: "crown.fill",
                         value: "$9.99",
-                        label: "Per Month",
+                        label: languageStore.text(.settingsPerMonth),
                         tint: AppTheme.neonPurple
                     )
                 }
@@ -1376,7 +1371,7 @@ struct SettingsView: View {
                     HStack(spacing: 10) {
                         Image(systemName: "crown.fill")
                             .font(.subheadline)
-                        Text(membershipRequiresAccountSignIn ? "Sign In to Upgrade" : "Upgrade to Pro")
+                        Text(membershipRequiresAccountSignIn ? languageStore.text(.settingsSignInToUpgrade) : languageStore.text(.settingsUpgradeToPro))
                             .font(.subheadline.bold())
                         Spacer()
                         Image(systemName: "chevron.right")
@@ -1402,7 +1397,7 @@ struct SettingsView: View {
         } label: {
             HStack {
                 Image(systemName: "rectangle.portrait.and.arrow.right")
-                Text("Sign Out")
+                Text(languageStore.text(.settingsSignOut))
                     .fontWeight(.semibold)
                 Spacer()
                 Image(systemName: "chevron.right")
@@ -1436,7 +1431,7 @@ struct SettingsView: View {
             VStack(spacing: 6) {
                 HStack {
                     Image(systemName: "arrow.counterclockwise")
-                    Text("Reset to Defaults")
+                    Text(languageStore.text(.settingsResetToDefaults))
                         .fontWeight(.semibold)
                     Spacer()
                     Image(systemName: "chevron.right")
@@ -1526,7 +1521,7 @@ struct SettingsView: View {
                     Text(title)
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.white)
-                    Text("Missing release URL. Populate the production config before App Store submission.")
+                    Text(languageStore.text(.settingsMissingReleaseURL))
                         .font(.caption2)
                         .foregroundStyle(AppTheme.subtleText)
                         .fixedSize(horizontal: false, vertical: true)
@@ -1588,7 +1583,7 @@ struct SettingsView: View {
     private func submitFeedback() async {
         guard canSubmitFeedback else {
             feedbackBanner = FeedbackBanner(
-                message: "Please add a message (8-1200 chars) and check the email format if provided.",
+                message: languageStore.text(.settingsFeedbackValidationMessage),
                 icon: "exclamationmark.triangle.fill",
                 tint: AppTheme.dangerRed
             )
@@ -1597,7 +1592,7 @@ struct SettingsView: View {
 
         guard let endpoint = URL(string: "https://formspree.io/f/xlgwzrdk") else {
             feedbackBanner = FeedbackBanner(
-                message: "Feedback form is not configured correctly.",
+                message: languageStore.text(.settingsFeedbackConfigError),
                 icon: "xmark.octagon.fill",
                 tint: AppTheme.dangerRed
             )
@@ -1643,7 +1638,7 @@ struct SettingsView: View {
                 let envelope = try? JSONDecoder().decode(FormspreeErrorEnvelope.self, from: data)
                 let serverMessage = envelope?.errors?.compactMap(\.message).first
                 feedbackBanner = FeedbackBanner(
-                    message: serverMessage ?? "Couldn’t send feedback right now. Please try again.",
+                    message: serverMessage ?? languageStore.text(.settingsFeedbackSendFailure),
                     icon: "wifi.exclamationmark",
                     tint: AppTheme.dangerRed
                 )
@@ -1651,14 +1646,14 @@ struct SettingsView: View {
             }
 
             feedbackBanner = FeedbackBanner(
-                message: "Thanks. Your \(feedbackType.rawValue.lowercased()) was sent.",
+                message: languageStore.text(.settingsFeedbackSentThanks),
                 icon: "checkmark.circle.fill",
                 tint: AppTheme.successGreen
             )
             feedbackMessage = ""
         } catch {
             feedbackBanner = FeedbackBanner(
-                message: "Network error while sending feedback. Check connection and try again.",
+                message: languageStore.text(.settingsFeedbackNetworkError),
                 icon: "wifi.exclamationmark",
                 tint: AppTheme.dangerRed
             )
@@ -1677,15 +1672,33 @@ struct SettingsView: View {
 
     private func formattedTargetDuration(_ duration: Double) -> String {
         if duration < 60 {
-            return String(format: "%.0f sec", duration)
+            return formattedSeconds(duration, fractionalDigits: 0)
         }
 
         let minutes = Int(duration) / 60
         let seconds = Int(duration) % 60
+        if languageStore.selectedLanguage == .chinese {
+            if seconds == 0 {
+                return "\(minutes) 分钟"
+            }
+            return "\(minutes)分 \(seconds)秒"
+        }
+
         if seconds == 0 {
             return "\(minutes) min"
         }
         return "\(minutes)m \(seconds)s"
+    }
+
+    private func formattedSeconds(_ duration: Double, fractionalDigits: Int) -> String {
+        let format = "%.\(fractionalDigits)f"
+        let value = String(format: format, duration)
+        return languageStore.selectedLanguage == .chinese ? "\(value) 秒" : "\(value) sec"
+    }
+
+    private func formattedFrameRate(_ framesPerSecond: Double) -> String {
+        let value = String(format: "%.0f", framesPerSecond)
+        return languageStore.selectedLanguage == .chinese ? "\(value) 帧/秒" : "\(value) fps"
     }
 }
 

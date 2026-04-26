@@ -157,6 +157,120 @@ enum AppTextKey {
     case aboutPrivacy
     case aboutPrivacySubtitle
     case resetDefaultsDescription
+    case settingsThreshold
+    case settingsTarget
+    case settingsSampling
+    case settingsDraftType
+    case settingsDraftChars
+    case settingsOnDevice
+    case settingsHistory
+    case settingsEngine
+    case settingsVisionAudio
+    case settingsUnlimited
+    case settingsMonthly
+    case settingsSignedInWith
+    case settingsWorkflowDetailSubtitle
+    case settingsMembershipDetailSubtitle
+    case settingsSupportDetailSubtitle
+    case settingsAboutDetailSubtitle
+    case settingsLegal
+    case settingsLegalSubtitle
+    case settingsPrivacyPolicySubtitle
+    case settingsTermsSubtitle
+    case settingsOnDeviceLibrary
+    case settingsOnDeviceLibraryDescription
+    case settingsSourceVideoTag
+    case settingsLatestExportTag
+    case settingsEventTimelineTag
+    case settingsRestoreOnLaunchTag
+    case settingsAIAnalysisWeights
+    case settingsAudioCrowdNoise
+    case settingsMotionDetection
+    case settingsBodyPoseAnalysis
+    case settingsSceneBrightness
+    case settingsTotalWeight
+    case settingsCurrentDetectionProfile
+    case settingsBalanced
+    case settingsAdjust
+    case settingsWeights
+    case settingsKeepUncertain
+    case settingsOn
+    case settingsOff
+    case settingsTargetReel
+    case settingsClipReelDuration
+    case settingsMinimum
+    case settingsMaximum
+    case settingsTargetHighlight
+    case settingsShortestClipHelp
+    case settingsLongestClipHelp
+    case settingsTargetHighlightHelp
+    case settingsAdvancedSettings
+    case settingsAdvancedSubtitle
+    case settingsCustom
+    case settingsConfidenceThreshold
+    case settingsLowerConfidenceHelp
+    case settingsDetectionBehavior
+    case settingsClipPadding
+    case settingsClipPaddingHelp
+    case settingsKeepUncertainClips
+    case settingsKeepUncertainHelp
+    case settingsPerformance
+    case settingsFramesPerSecond
+    case settingsPerformanceHelp
+    case settingsAbout
+    case settingsAboutDescription
+    case settingsSmartClipsTag
+    case settingsPrivateTag
+    case settingsFastExportTag
+    case settingsShareReadyTag
+    case settingsContactSuggestions
+    case settingsContactSubtitle
+    case settingsFeedbackSuggestion
+    case settingsFeedbackBug
+    case settingsFeedbackQuestion
+    case settingsFeedbackType
+    case settingsEmailOptional
+    case settingsMessage
+    case settingsMessagePlaceholder
+    case settingsClear
+    case settingsSending
+    case settingsSend
+    case settingsFeedbackPrivacyNote
+    case settingsCommonFAQ
+    case settingsFAQSubtitle
+    case settingsFAQNoClipsQuestion
+    case settingsFAQNoClipsAnswer
+    case settingsFAQWeightsQuestion
+    case settingsFAQWeightsAnswer
+    case settingsFAQExportFormatQuestion
+    case settingsFAQExportFormatAnswer
+    case settingsFAQQuickShareQuestion
+    case settingsFAQQuickShareAnswer
+    case settingsAccountDetailsSubtitle
+    case settingsSubscription
+    case settingsProMember
+    case settingsUnlimitedAccess
+    case settingsUnlimitedAIExports
+    case settingsSignInRequired
+    case settingsFreeTier
+    case settingsPerMonth
+    case settingsSignInToUpgrade
+    case settingsUpgradeToPro
+    case settingsSignOut
+    case settingsGuest
+    case settingsUnknown
+    case settingsResetTitle
+    case settingsReset
+    case settingsCancel
+    case settingsResetMessage
+    case settingsResetToDefaults
+    case settingsMissingReleaseURL
+    case settingsFeedbackValidationMessage
+    case settingsFeedbackConfigError
+    case settingsFeedbackSendFailure
+    case settingsFeedbackNetworkError
+    case settingsFeedbackSentThanks
+    case settingsDeveloperFootnote
 }
 
 @Observable
@@ -203,7 +317,7 @@ extension AppLanguage {
         .tabSettings: "Settings",
         .settingsTitle: "Settings",
         .languageTitle: "Language",
-        .languageSubtitle: "Choose how Hoops Clips talks to you.",
+        .languageSubtitle: "Choose the language Hoops Clips uses.",
         .languageCardTitle: "App Language",
         .languageCardSubtitle: "Pick the language for navigation, launch screens, and core controls.",
         .languageCurrent: "Current",
@@ -282,8 +396,8 @@ extension AppLanguage {
         .analyzing: "Analyzing...",
         .finalizing: "Finalizing...",
         .refining: "Refining...",
-        .controlRoom: "Control Room",
-        .controlRoomSubtitle: "Manage your account, tune AI defaults, and jump into focused setup screens instead of one long settings list.",
+        .controlRoom: "App Setup",
+        .controlRoomSubtitle: "Manage language, membership, defaults, and support from clean sections.",
         .account: "Account",
         .plan: "Plan",
         .freeLeft: "Free Left",
@@ -298,12 +412,126 @@ extension AppLanguage {
         .supportCenterSubtitle: "Send feedback, report bugs, and browse quick answers.",
         .aboutPrivacy: "About & Privacy",
         .aboutPrivacySubtitle: "How the app works, what is saved on device, and reset controls.",
-        .resetDefaultsDescription: "Restore all AI tuning values to the original Hoops Clips defaults."
+        .resetDefaultsDescription: "Restore all AI tuning values to the original Hoops Clips defaults.",
+        .settingsThreshold: "Threshold",
+        .settingsTarget: "Target",
+        .settingsSampling: "Sampling",
+        .settingsDraftType: "Draft Type",
+        .settingsDraftChars: "Draft Chars",
+        .settingsOnDevice: "On Device",
+        .settingsHistory: "History",
+        .settingsEngine: "Engine",
+        .settingsVisionAudio: "Vision + Audio",
+        .settingsUnlimited: "Unlimited",
+        .settingsMonthly: "Monthly",
+        .settingsSignedInWith: "Signed in with",
+        .settingsWorkflowDetailSubtitle: "Tune clip selection and analysis behavior for your footage.",
+        .settingsMembershipDetailSubtitle: "See how you're signed in and manage access.",
+        .settingsSupportDetailSubtitle: "Feedback, bug reports, and setup help in one place.",
+        .settingsAboutDetailSubtitle: "Core app details, storage behavior, and device-local history notes.",
+        .settingsLegal: "Legal",
+        .settingsLegalSubtitle: "Open the policies that stay reachable from the shipped app and App Store listing.",
+        .settingsPrivacyPolicySubtitle: "Review how account, billing, and device-local processing are described.",
+        .settingsTermsSubtitle: "Review product terms, acceptable use, and subscription language.",
+        .settingsOnDeviceLibrary: "On-Device Library",
+        .settingsOnDeviceLibraryDescription: "Imported videos, the latest export for each project, and the project event timeline stay in the app's local storage on this device. Nothing here is synced to a server by this feature.",
+        .settingsSourceVideoTag: "Source Video",
+        .settingsLatestExportTag: "Latest Export",
+        .settingsEventTimelineTag: "Event Timeline",
+        .settingsRestoreOnLaunchTag: "Restore on Launch",
+        .settingsAIAnalysisWeights: "AI Analysis Weights",
+        .settingsAudioCrowdNoise: "Audio (Crowd Noise)",
+        .settingsMotionDetection: "Motion Detection",
+        .settingsBodyPoseAnalysis: "Body Pose Analysis",
+        .settingsSceneBrightness: "Scene Brightness",
+        .settingsTotalWeight: "Total Weight",
+        .settingsCurrentDetectionProfile: "Current Detection Profile",
+        .settingsBalanced: "Balanced",
+        .settingsAdjust: "Adjust",
+        .settingsWeights: "Weights",
+        .settingsKeepUncertain: "Keep Uncertain",
+        .settingsOn: "On",
+        .settingsOff: "Off",
+        .settingsTargetReel: "Target Reel",
+        .settingsClipReelDuration: "Clip & Reel Duration",
+        .settingsMinimum: "Minimum",
+        .settingsMaximum: "Maximum",
+        .settingsTargetHighlight: "Target Highlight",
+        .settingsShortestClipHelp: "Shortest clip the AI will keep",
+        .settingsLongestClipHelp: "Longest clip the AI will keep",
+        .settingsTargetHighlightHelp: "Caps the default auto-kept reel length after analysis. You can still keep more clips manually in Review.",
+        .settingsAdvancedSettings: "Advanced Settings",
+        .settingsAdvancedSubtitle: "For fine-tuning. Most users don't need to change these.",
+        .settingsCustom: "Custom",
+        .settingsConfidenceThreshold: "Confidence Threshold",
+        .settingsLowerConfidenceHelp: "Lower = more clips found, but may include false positives.",
+        .settingsDetectionBehavior: "Detection Behavior",
+        .settingsClipPadding: "Clip Padding",
+        .settingsClipPaddingHelp: "Adds extra lead-in and follow-through around detected moments.",
+        .settingsKeepUncertainClips: "Keep Uncertain Clips",
+        .settingsKeepUncertainHelp: "When unsure, keep clips for manual review.",
+        .settingsPerformance: "Performance",
+        .settingsFramesPerSecond: "Frames Per Second",
+        .settingsPerformanceHelp: "Higher = more accurate but slower analysis.",
+        .settingsAbout: "About",
+        .settingsAboutDescription: "Smart basketball highlight detection that helps you find, review, export, and save your best clips directly on your iPhone.",
+        .settingsSmartClipsTag: "Smart Clips",
+        .settingsPrivateTag: "Private",
+        .settingsFastExportTag: "Fast Export",
+        .settingsShareReadyTag: "Share Ready",
+        .settingsContactSuggestions: "Contact & Suggestions",
+        .settingsContactSubtitle: "Send feedback directly from the app to the team.",
+        .settingsFeedbackSuggestion: "Suggestion",
+        .settingsFeedbackBug: "Bug Report",
+        .settingsFeedbackQuestion: "Question",
+        .settingsFeedbackType: "Type",
+        .settingsEmailOptional: "Email (optional)",
+        .settingsMessage: "Message",
+        .settingsMessagePlaceholder: "Tell us what to improve, report a bug, or ask a question...",
+        .settingsClear: "Clear",
+        .settingsSending: "Sending...",
+        .settingsSend: "Send",
+        .settingsFeedbackPrivacyNote: "Submitted securely over HTTPS via Formspree. Avoid sending passwords or private account data.",
+        .settingsCommonFAQ: "Common FAQ",
+        .settingsFAQSubtitle: "Quick answers for setup, exports, and detection tuning.",
+        .settingsFAQNoClipsQuestion: "Why did the app find few or no clips?",
+        .settingsFAQNoClipsAnswer: "Lower the confidence threshold, increase the clip duration range, and check that the source video has clear motion and audible peaks. Low-light or static camera footage can reduce detection quality.",
+        .settingsFAQWeightsQuestion: "When should I change AI weights?",
+        .settingsFAQWeightsAnswer: "Leave weights balanced for most games. Use Advanced Settings only if your footage is unusual, like very loud gyms or silent clips with strong movement.",
+        .settingsFAQExportFormatQuestion: "Should I export MP4 or MOV?",
+        .settingsFAQExportFormatAnswer: "MP4 is the best default for sharing and cross-platform compatibility. MOV is a good Apple-native option if you plan to edit clips in Apple-focused workflows.",
+        .settingsFAQQuickShareQuestion: "How does Review & Share work on iPhone?",
+        .settingsFAQQuickShareAnswer: "After export completes, the app opens an in-app review of the latest reel first. You can replay it, save it to Photos, or open the iOS share sheet.",
+        .settingsAccountDetailsSubtitle: "Your sign-in details",
+        .settingsSubscription: "Subscription",
+        .settingsProMember: "Pro Member",
+        .settingsUnlimitedAccess: "You have unlimited access",
+        .settingsUnlimitedAIExports: "Unlimited AI analyses & exports",
+        .settingsSignInRequired: "Sign in required",
+        .settingsFreeTier: "Free tier",
+        .settingsPerMonth: "Per Month",
+        .settingsSignInToUpgrade: "Sign In to Upgrade",
+        .settingsUpgradeToPro: "Upgrade to Pro",
+        .settingsSignOut: "Sign Out",
+        .settingsGuest: "Guest",
+        .settingsUnknown: "Unknown",
+        .settingsResetTitle: "Reset Settings?",
+        .settingsReset: "Reset",
+        .settingsCancel: "Cancel",
+        .settingsResetMessage: "This will restore all AI settings to their defaults.",
+        .settingsResetToDefaults: "Reset to Defaults",
+        .settingsMissingReleaseURL: "Missing release URL. Populate the production config before App Store submission.",
+        .settingsFeedbackValidationMessage: "Please add a message (8-1200 chars) and check the email format if provided.",
+        .settingsFeedbackConfigError: "Feedback form is not configured correctly.",
+        .settingsFeedbackSendFailure: "Couldn't send feedback right now. Please try again.",
+        .settingsFeedbackNetworkError: "Network error while sending feedback. Check connection and try again.",
+        .settingsFeedbackSentThanks: "Thanks. Your feedback was sent.",
+        .settingsDeveloperFootnote: "Developer-only launch diagnostics are hidden from production users."
     ]
 
     private static let chineseText: [AppTextKey: String] = [
         .tabPlayer: "播放器",
-        .tabReview: "审核",
+        .tabReview: "回看",
         .tabExport: "导出",
         .tabHistory: "历史",
         .tabSettings: "设置",
@@ -388,8 +616,8 @@ extension AppLanguage {
         .analyzing: "正在分析...",
         .finalizing: "正在完成...",
         .refining: "正在优化...",
-        .controlRoom: "控制中心",
-        .controlRoomSubtitle: "管理账号、调整 AI 默认设置，并进入专门的设置页面。",
+        .controlRoom: "应用设置",
+        .controlRoomSubtitle: "在清晰分区中管理语言、会员、默认设置和支持。",
         .account: "账号",
         .plan: "方案",
         .freeLeft: "免费剩余",
@@ -404,7 +632,121 @@ extension AppLanguage {
         .supportCenterSubtitle: "发送反馈、报告问题并查看快速答案。",
         .aboutPrivacy: "关于与隐私",
         .aboutPrivacySubtitle: "核心信息、本机保存内容和重置控制。",
-        .resetDefaultsDescription: "将所有 AI 调整恢复为 Hoops Clips 默认值。"
+        .resetDefaultsDescription: "将所有 AI 调整恢复为 Hoops Clips 默认值。",
+        .settingsThreshold: "阈值",
+        .settingsTarget: "目标",
+        .settingsSampling: "采样",
+        .settingsDraftType: "草稿类型",
+        .settingsDraftChars: "草稿字数",
+        .settingsOnDevice: "本机处理",
+        .settingsHistory: "历史",
+        .settingsEngine: "引擎",
+        .settingsVisionAudio: "视觉 + 音频",
+        .settingsUnlimited: "无限",
+        .settingsMonthly: "月付",
+        .settingsSignedInWith: "登录方式",
+        .settingsWorkflowDetailSubtitle: "根据你的素材调整片段选择和分析行为。",
+        .settingsMembershipDetailSubtitle: "查看登录方式并管理访问权限。",
+        .settingsSupportDetailSubtitle: "集中处理反馈、问题报告和设置帮助。",
+        .settingsAboutDetailSubtitle: "应用信息、存储方式和本机历史说明。",
+        .settingsLegal: "法律信息",
+        .settingsLegalSubtitle: "打开正式 App 和 App Store 页面需要可访问的政策链接。",
+        .settingsPrivacyPolicySubtitle: "查看账号、订阅和本机处理方式的说明。",
+        .settingsTermsSubtitle: "查看产品条款、可接受使用和订阅说明。",
+        .settingsOnDeviceLibrary: "本机资料库",
+        .settingsOnDeviceLibraryDescription: "导入的视频、每个项目的最新导出和项目时间线都会保存在此设备的应用本地存储中。此功能不会把这些内容同步到服务器。",
+        .settingsSourceVideoTag: "源视频",
+        .settingsLatestExportTag: "最新导出",
+        .settingsEventTimelineTag: "事件时间线",
+        .settingsRestoreOnLaunchTag: "启动时恢复",
+        .settingsAIAnalysisWeights: "AI 分析权重",
+        .settingsAudioCrowdNoise: "音频（观众声）",
+        .settingsMotionDetection: "动作检测",
+        .settingsBodyPoseAnalysis: "人体姿态分析",
+        .settingsSceneBrightness: "画面亮度",
+        .settingsTotalWeight: "总权重",
+        .settingsCurrentDetectionProfile: "当前检测配置",
+        .settingsBalanced: "均衡",
+        .settingsAdjust: "需调整",
+        .settingsWeights: "权重",
+        .settingsKeepUncertain: "保留不确定",
+        .settingsOn: "开启",
+        .settingsOff: "关闭",
+        .settingsTargetReel: "目标集锦",
+        .settingsClipReelDuration: "片段与集锦时长",
+        .settingsMinimum: "最短",
+        .settingsMaximum: "最长",
+        .settingsTargetHighlight: "目标高光",
+        .settingsShortestClipHelp: "AI 会保留的最短片段",
+        .settingsLongestClipHelp: "AI 会保留的最长片段",
+        .settingsTargetHighlightHelp: "限制分析后默认自动保留的集锦总时长。你仍可在回看页手动保留更多片段。",
+        .settingsAdvancedSettings: "高级设置",
+        .settingsAdvancedSubtitle: "用于精细调整。大多数用户不需要修改。",
+        .settingsCustom: "自定义",
+        .settingsConfidenceThreshold: "置信度阈值",
+        .settingsLowerConfidenceHelp: "越低会找到更多片段，但可能包含误检。",
+        .settingsDetectionBehavior: "检测行为",
+        .settingsClipPadding: "片段前后延伸",
+        .settingsClipPaddingHelp: "在检测到的瞬间前后添加额外过渡时间。",
+        .settingsKeepUncertainClips: "保留不确定片段",
+        .settingsKeepUncertainHelp: "AI 不确定时，保留给你手动回看。",
+        .settingsPerformance: "性能",
+        .settingsFramesPerSecond: "每秒帧数",
+        .settingsPerformanceHelp: "越高越准确，但分析会更慢。",
+        .settingsAbout: "关于",
+        .settingsAboutDescription: "智能篮球高光检测，帮助你直接在 iPhone 上查找、回看、导出并保存最佳片段。",
+        .settingsSmartClipsTag: "智能片段",
+        .settingsPrivateTag: "隐私友好",
+        .settingsFastExportTag: "快速导出",
+        .settingsShareReadyTag: "适合分享",
+        .settingsContactSuggestions: "联系与建议",
+        .settingsContactSubtitle: "直接从应用向团队发送反馈。",
+        .settingsFeedbackSuggestion: "建议",
+        .settingsFeedbackBug: "问题报告",
+        .settingsFeedbackQuestion: "问题",
+        .settingsFeedbackType: "类型",
+        .settingsEmailOptional: "邮箱（可选）",
+        .settingsMessage: "消息",
+        .settingsMessagePlaceholder: "告诉我们哪里可以改进、报告问题或提出疑问...",
+        .settingsClear: "清空",
+        .settingsSending: "正在发送...",
+        .settingsSend: "发送",
+        .settingsFeedbackPrivacyNote: "反馈会通过 Formspree 以 HTTPS 安全提交。请不要发送密码或私人账号信息。",
+        .settingsCommonFAQ: "常见问题",
+        .settingsFAQSubtitle: "关于设置、导出和检测调整的快速回答。",
+        .settingsFAQNoClipsQuestion: "为什么应用只找到很少或没有片段？",
+        .settingsFAQNoClipsAnswer: "可以降低置信度阈值、增加片段时长范围，并确认源视频有清晰动作和可听到的声音峰值。低光或固定机位素材可能降低检测质量。",
+        .settingsFAQWeightsQuestion: "什么时候需要调整 AI 权重？",
+        .settingsFAQWeightsAnswer: "大多数比赛保持均衡即可。只有在素材很特殊时才使用高级设置，例如场馆很吵，或静音但动作很明显的片段。",
+        .settingsFAQExportFormatQuestion: "应该导出 MP4 还是 MOV？",
+        .settingsFAQExportFormatAnswer: "MP4 最适合分享和跨平台使用。若你主要在 Apple 生态内继续编辑或管理片段，MOV 也很合适。",
+        .settingsFAQQuickShareQuestion: "iPhone 上的回看与分享怎么用？",
+        .settingsFAQQuickShareAnswer: "导出完成后，应用会先打开最新集锦的应用内回看。你可以重播、保存到照片，或打开 iOS 分享菜单。",
+        .settingsAccountDetailsSubtitle: "你的登录信息",
+        .settingsSubscription: "订阅",
+        .settingsProMember: "Pro 会员",
+        .settingsUnlimitedAccess: "你拥有无限访问权限",
+        .settingsUnlimitedAIExports: "无限 AI 分析和导出",
+        .settingsSignInRequired: "需要登录",
+        .settingsFreeTier: "免费版",
+        .settingsPerMonth: "每月",
+        .settingsSignInToUpgrade: "登录后升级",
+        .settingsUpgradeToPro: "升级到 Pro",
+        .settingsSignOut: "退出登录",
+        .settingsGuest: "访客",
+        .settingsUnknown: "未知",
+        .settingsResetTitle: "重置设置？",
+        .settingsReset: "重置",
+        .settingsCancel: "取消",
+        .settingsResetMessage: "这会将所有 AI 设置恢复为默认值。",
+        .settingsResetToDefaults: "恢复默认值",
+        .settingsMissingReleaseURL: "缺少发布链接。提交 App Store 前请填写生产配置。",
+        .settingsFeedbackValidationMessage: "请填写 8-1200 个字符的消息，并检查邮箱格式。",
+        .settingsFeedbackConfigError: "反馈表单配置不正确。",
+        .settingsFeedbackSendFailure: "现在无法发送反馈，请稍后再试。",
+        .settingsFeedbackNetworkError: "发送反馈时出现网络错误。请检查连接后重试。",
+        .settingsFeedbackSentThanks: "谢谢，你的反馈已发送。",
+        .settingsDeveloperFootnote: "开发者发布诊断信息已对正式用户隐藏。"
     ]
 
     private static let spanishText: [AppTextKey: String] = [
@@ -415,7 +757,7 @@ extension AppLanguage {
         .tabSettings: "Ajustes",
         .settingsTitle: "Ajustes",
         .languageTitle: "Idioma",
-        .languageSubtitle: "Elige cómo Hoops Clips te habla.",
+        .languageSubtitle: "Elige el idioma de Hoops Clips.",
         .languageCardTitle: "Idioma de la app",
         .languageCardSubtitle: "Elige el idioma para navegación, pantallas iniciales y controles clave.",
         .languageCurrent: "Actual",
@@ -494,8 +836,8 @@ extension AppLanguage {
         .analyzing: "Analizando...",
         .finalizing: "Finalizando...",
         .refining: "Refinando...",
-        .controlRoom: "Panel de control",
-        .controlRoomSubtitle: "Gestiona tu cuenta, ajusta la IA y entra a pantallas enfocadas sin una lista interminable.",
+        .controlRoom: "Configuración de la app",
+        .controlRoomSubtitle: "Gestiona idioma, membresía, valores predeterminados y soporte en secciones claras.",
         .account: "Cuenta",
         .plan: "Plan",
         .freeLeft: "Gratis",
@@ -510,12 +852,126 @@ extension AppLanguage {
         .supportCenterSubtitle: "Envía feedback, reporta bugs y mira respuestas rápidas.",
         .aboutPrivacy: "Acerca de y privacidad",
         .aboutPrivacySubtitle: "Detalles de la app, guardado local y controles de reset.",
-        .resetDefaultsDescription: "Restaurar todos los ajustes de IA a los valores de Hoops Clips."
+        .resetDefaultsDescription: "Restaurar todos los ajustes de IA a los valores de Hoops Clips.",
+        .settingsThreshold: "Umbral",
+        .settingsTarget: "Objetivo",
+        .settingsSampling: "Muestreo",
+        .settingsDraftType: "Tipo de borrador",
+        .settingsDraftChars: "Caracteres",
+        .settingsOnDevice: "En el dispositivo",
+        .settingsHistory: "Historial",
+        .settingsEngine: "Motor",
+        .settingsVisionAudio: "Visión + audio",
+        .settingsUnlimited: "Ilimitado",
+        .settingsMonthly: "Mensual",
+        .settingsSignedInWith: "Sesión iniciada con",
+        .settingsWorkflowDetailSubtitle: "Ajusta la selección de clips y el análisis según tu video.",
+        .settingsMembershipDetailSubtitle: "Revisa cómo iniciaste sesión y gestiona el acceso.",
+        .settingsSupportDetailSubtitle: "Feedback, reportes de errores y ayuda de configuración en un solo lugar.",
+        .settingsAboutDetailSubtitle: "Detalles de la app, almacenamiento y notas del historial local.",
+        .settingsLegal: "Legal",
+        .settingsLegalSubtitle: "Abre las políticas que deben estar disponibles en la app publicada y en App Store.",
+        .settingsPrivacyPolicySubtitle: "Revisa cómo se explican la cuenta, la facturación y el procesamiento local.",
+        .settingsTermsSubtitle: "Revisa términos del producto, uso aceptable y lenguaje de suscripción.",
+        .settingsOnDeviceLibrary: "Biblioteca local",
+        .settingsOnDeviceLibraryDescription: "Los videos importados, la exportación más reciente de cada proyecto y la línea de tiempo se guardan localmente en esta app en este dispositivo. Esta función no sincroniza ese contenido con un servidor.",
+        .settingsSourceVideoTag: "Video fuente",
+        .settingsLatestExportTag: "Última exportación",
+        .settingsEventTimelineTag: "Línea de tiempo",
+        .settingsRestoreOnLaunchTag: "Restaurar al abrir",
+        .settingsAIAnalysisWeights: "Pesos del análisis IA",
+        .settingsAudioCrowdNoise: "Audio (ruido del público)",
+        .settingsMotionDetection: "Detección de movimiento",
+        .settingsBodyPoseAnalysis: "Análisis de pose corporal",
+        .settingsSceneBrightness: "Brillo de escena",
+        .settingsTotalWeight: "Peso total",
+        .settingsCurrentDetectionProfile: "Perfil de detección actual",
+        .settingsBalanced: "Equilibrado",
+        .settingsAdjust: "Ajustar",
+        .settingsWeights: "Pesos",
+        .settingsKeepUncertain: "Mantener dudosos",
+        .settingsOn: "Activado",
+        .settingsOff: "Desactivado",
+        .settingsTargetReel: "Reel objetivo",
+        .settingsClipReelDuration: "Duración de clips y reel",
+        .settingsMinimum: "Mínimo",
+        .settingsMaximum: "Máximo",
+        .settingsTargetHighlight: "Highlight objetivo",
+        .settingsShortestClipHelp: "Clip más corto que la IA conservará",
+        .settingsLongestClipHelp: "Clip más largo que la IA conservará",
+        .settingsTargetHighlightHelp: "Limita la duración total del reel auto-conservado después del análisis. Aún puedes guardar más clips manualmente en Revisar.",
+        .settingsAdvancedSettings: "Ajustes avanzados",
+        .settingsAdvancedSubtitle: "Para ajuste fino. La mayoría de usuarios no necesita cambiarlos.",
+        .settingsCustom: "Personalizado",
+        .settingsConfidenceThreshold: "Umbral de confianza",
+        .settingsLowerConfidenceHelp: "Más bajo = más clips encontrados, pero puede incluir falsos positivos.",
+        .settingsDetectionBehavior: "Comportamiento de detección",
+        .settingsClipPadding: "Margen del clip",
+        .settingsClipPaddingHelp: "Añade entrada y seguimiento extra alrededor de los momentos detectados.",
+        .settingsKeepUncertainClips: "Mantener clips dudosos",
+        .settingsKeepUncertainHelp: "Si la IA duda, conserva el clip para revisión manual.",
+        .settingsPerformance: "Rendimiento",
+        .settingsFramesPerSecond: "Fotogramas por segundo",
+        .settingsPerformanceHelp: "Más alto = más precisión, pero análisis más lento.",
+        .settingsAbout: "Acerca de",
+        .settingsAboutDescription: "Detección inteligente de highlights de básquet para encontrar, revisar, exportar y guardar tus mejores clips directamente en tu iPhone.",
+        .settingsSmartClipsTag: "Clips inteligentes",
+        .settingsPrivateTag: "Privado",
+        .settingsFastExportTag: "Exportación rápida",
+        .settingsShareReadyTag: "Listo para compartir",
+        .settingsContactSuggestions: "Contacto y sugerencias",
+        .settingsContactSubtitle: "Envía feedback directamente al equipo desde la app.",
+        .settingsFeedbackSuggestion: "Sugerencia",
+        .settingsFeedbackBug: "Reporte de error",
+        .settingsFeedbackQuestion: "Pregunta",
+        .settingsFeedbackType: "Tipo",
+        .settingsEmailOptional: "Email (opcional)",
+        .settingsMessage: "Mensaje",
+        .settingsMessagePlaceholder: "Cuéntanos qué mejorar, reporta un error o haz una pregunta...",
+        .settingsClear: "Borrar",
+        .settingsSending: "Enviando...",
+        .settingsSend: "Enviar",
+        .settingsFeedbackPrivacyNote: "Se envía de forma segura por HTTPS vía Formspree. Evita enviar contraseñas o datos privados de cuenta.",
+        .settingsCommonFAQ: "Preguntas frecuentes",
+        .settingsFAQSubtitle: "Respuestas rápidas sobre configuración, exportación y ajuste de detección.",
+        .settingsFAQNoClipsQuestion: "¿Por qué la app encontró pocos clips o ninguno?",
+        .settingsFAQNoClipsAnswer: "Baja el umbral de confianza, aumenta el rango de duración de clips y comprueba que el video tenga movimiento claro y picos de audio. La poca luz o una cámara fija pueden reducir la calidad.",
+        .settingsFAQWeightsQuestion: "¿Cuándo debería cambiar los pesos de IA?",
+        .settingsFAQWeightsAnswer: "Déjalos equilibrados para la mayoría de partidos. Usa Ajustes avanzados solo si el video es inusual, como gimnasios muy ruidosos o clips silenciosos con mucho movimiento.",
+        .settingsFAQExportFormatQuestion: "¿Debería exportar MP4 o MOV?",
+        .settingsFAQExportFormatAnswer: "MP4 es el mejor valor predeterminado para compartir y compatibilidad. MOV es buena opción si planeas editar en flujos de Apple.",
+        .settingsFAQQuickShareQuestion: "¿Cómo funciona Revisar y compartir en iPhone?",
+        .settingsFAQQuickShareAnswer: "Cuando termina la exportación, la app abre primero una revisión interna del reel más reciente. Puedes reproducirlo, guardarlo en Fotos o abrir la hoja de compartir de iOS.",
+        .settingsAccountDetailsSubtitle: "Tus datos de inicio de sesión",
+        .settingsSubscription: "Suscripción",
+        .settingsProMember: "Miembro Pro",
+        .settingsUnlimitedAccess: "Tienes acceso ilimitado",
+        .settingsUnlimitedAIExports: "Análisis IA y exportaciones ilimitadas",
+        .settingsSignInRequired: "Inicio de sesión requerido",
+        .settingsFreeTier: "Plan gratis",
+        .settingsPerMonth: "Por mes",
+        .settingsSignInToUpgrade: "Inicia sesión para mejorar",
+        .settingsUpgradeToPro: "Mejorar a Pro",
+        .settingsSignOut: "Cerrar sesión",
+        .settingsGuest: "Invitado",
+        .settingsUnknown: "Desconocido",
+        .settingsResetTitle: "¿Restablecer ajustes?",
+        .settingsReset: "Restablecer",
+        .settingsCancel: "Cancelar",
+        .settingsResetMessage: "Esto restaurará todos los ajustes de IA a sus valores predeterminados.",
+        .settingsResetToDefaults: "Restablecer valores",
+        .settingsMissingReleaseURL: "Falta la URL de lanzamiento. Completa la configuración de producción antes de enviar a App Store.",
+        .settingsFeedbackValidationMessage: "Añade un mensaje de 8 a 1200 caracteres y revisa el formato del email si lo incluyes.",
+        .settingsFeedbackConfigError: "El formulario de feedback no está configurado correctamente.",
+        .settingsFeedbackSendFailure: "No se pudo enviar el feedback ahora. Inténtalo de nuevo.",
+        .settingsFeedbackNetworkError: "Error de red al enviar feedback. Revisa la conexión e inténtalo de nuevo.",
+        .settingsFeedbackSentThanks: "Gracias. Tu feedback fue enviado.",
+        .settingsDeveloperFootnote: "Los diagnósticos de lanzamiento para desarrolladores están ocultos para usuarios de producción."
     ]
 
     private static let frenchText: [AppTextKey: String] = [
         .tabPlayer: "Lecteur",
-        .tabReview: "Revue",
+        .tabReview: "Revoir",
         .tabExport: "Exporter",
         .tabHistory: "Historique",
         .tabSettings: "Réglages",
@@ -600,8 +1056,8 @@ extension AppLanguage {
         .analyzing: "Analyse...",
         .finalizing: "Finalisation...",
         .refining: "Optimisation...",
-        .controlRoom: "Centre de contrôle",
-        .controlRoomSubtitle: "Gère ton compte, ajuste l'IA et ouvre des écrans ciblés au lieu d'une longue liste.",
+        .controlRoom: "Configuration de l'app",
+        .controlRoomSubtitle: "Gère la langue, l'abonnement, les réglages par défaut et l'aide dans des sections claires.",
         .account: "Compte",
         .plan: "Formule",
         .freeLeft: "Restant",
@@ -616,6 +1072,120 @@ extension AppLanguage {
         .supportCenterSubtitle: "Envoie un avis, signale un bug et consulte les réponses rapides.",
         .aboutPrivacy: "À propos et confidentialité",
         .aboutPrivacySubtitle: "Détails de l'app, stockage local et options de reset.",
-        .resetDefaultsDescription: "Restaurer tous les réglages IA aux valeurs Hoops Clips."
+        .resetDefaultsDescription: "Restaurer tous les réglages IA aux valeurs Hoops Clips.",
+        .settingsThreshold: "Seuil",
+        .settingsTarget: "Objectif",
+        .settingsSampling: "Échantillonnage",
+        .settingsDraftType: "Type de brouillon",
+        .settingsDraftChars: "Caractères",
+        .settingsOnDevice: "Sur l'appareil",
+        .settingsHistory: "Historique",
+        .settingsEngine: "Moteur",
+        .settingsVisionAudio: "Vision + audio",
+        .settingsUnlimited: "Illimité",
+        .settingsMonthly: "Mensuel",
+        .settingsSignedInWith: "Connecté avec",
+        .settingsWorkflowDetailSubtitle: "Ajuste la sélection des clips et l'analyse selon ta vidéo.",
+        .settingsMembershipDetailSubtitle: "Vois comment tu es connecté et gère l'accès.",
+        .settingsSupportDetailSubtitle: "Retours, signalements de bugs et aide de configuration au même endroit.",
+        .settingsAboutDetailSubtitle: "Détails de l'app, stockage et notes d'historique local.",
+        .settingsLegal: "Mentions légales",
+        .settingsLegalSubtitle: "Ouvre les politiques qui doivent rester accessibles dans l'app publiée et sur l'App Store.",
+        .settingsPrivacyPolicySubtitle: "Consulte la façon dont le compte, la facturation et le traitement local sont expliqués.",
+        .settingsTermsSubtitle: "Consulte les conditions du produit, l'utilisation acceptable et les informations d'abonnement.",
+        .settingsOnDeviceLibrary: "Bibliothèque locale",
+        .settingsOnDeviceLibraryDescription: "Les vidéos importées, le dernier export de chaque projet et la chronologie restent dans le stockage local de l'app sur cet appareil. Cette fonction ne synchronise rien avec un serveur.",
+        .settingsSourceVideoTag: "Vidéo source",
+        .settingsLatestExportTag: "Dernier export",
+        .settingsEventTimelineTag: "Chronologie",
+        .settingsRestoreOnLaunchTag: "Restaurer au lancement",
+        .settingsAIAnalysisWeights: "Pondération de l'analyse IA",
+        .settingsAudioCrowdNoise: "Audio (bruit du public)",
+        .settingsMotionDetection: "Détection du mouvement",
+        .settingsBodyPoseAnalysis: "Analyse de la posture",
+        .settingsSceneBrightness: "Luminosité de la scène",
+        .settingsTotalWeight: "Poids total",
+        .settingsCurrentDetectionProfile: "Profil de détection actuel",
+        .settingsBalanced: "Équilibré",
+        .settingsAdjust: "Ajuster",
+        .settingsWeights: "Poids",
+        .settingsKeepUncertain: "Garder incertain",
+        .settingsOn: "Activé",
+        .settingsOff: "Désactivé",
+        .settingsTargetReel: "Reel cible",
+        .settingsClipReelDuration: "Durée des clips et du reel",
+        .settingsMinimum: "Minimum",
+        .settingsMaximum: "Maximum",
+        .settingsTargetHighlight: "Highlight cible",
+        .settingsShortestClipHelp: "Clip le plus court que l'IA gardera",
+        .settingsLongestClipHelp: "Clip le plus long que l'IA gardera",
+        .settingsTargetHighlightHelp: "Limite la durée totale du reel gardé automatiquement après analyse. Tu peux toujours garder plus de clips manuellement dans Revoir.",
+        .settingsAdvancedSettings: "Réglages avancés",
+        .settingsAdvancedSubtitle: "Pour un réglage fin. La plupart des utilisateurs n'ont pas besoin de les modifier.",
+        .settingsCustom: "Personnalisé",
+        .settingsConfidenceThreshold: "Seuil de confiance",
+        .settingsLowerConfidenceHelp: "Plus bas = plus de clips trouvés, mais avec plus de faux positifs possibles.",
+        .settingsDetectionBehavior: "Comportement de détection",
+        .settingsClipPadding: "Marge du clip",
+        .settingsClipPaddingHelp: "Ajoute une entrée et une sortie autour des moments détectés.",
+        .settingsKeepUncertainClips: "Garder les clips incertains",
+        .settingsKeepUncertainHelp: "Si l'IA hésite, garde le clip pour une revue manuelle.",
+        .settingsPerformance: "Performance",
+        .settingsFramesPerSecond: "Images par seconde",
+        .settingsPerformanceHelp: "Plus haut = plus précis, mais l'analyse est plus lente.",
+        .settingsAbout: "À propos",
+        .settingsAboutDescription: "Détection intelligente de highlights de basket pour trouver, revoir, exporter et enregistrer tes meilleurs clips directement sur ton iPhone.",
+        .settingsSmartClipsTag: "Clips intelligents",
+        .settingsPrivateTag: "Privé",
+        .settingsFastExportTag: "Export rapide",
+        .settingsShareReadyTag: "Prêt à partager",
+        .settingsContactSuggestions: "Contact et suggestions",
+        .settingsContactSubtitle: "Envoie un retour directement à l'équipe depuis l'app.",
+        .settingsFeedbackSuggestion: "Suggestion",
+        .settingsFeedbackBug: "Signalement de bug",
+        .settingsFeedbackQuestion: "Question",
+        .settingsFeedbackType: "Type",
+        .settingsEmailOptional: "Email (facultatif)",
+        .settingsMessage: "Message",
+        .settingsMessagePlaceholder: "Dis-nous quoi améliorer, signale un bug ou pose une question...",
+        .settingsClear: "Effacer",
+        .settingsSending: "Envoi...",
+        .settingsSend: "Envoyer",
+        .settingsFeedbackPrivacyNote: "Envoyé de façon sécurisée via HTTPS avec Formspree. Évite d'envoyer des mots de passe ou des données de compte privées.",
+        .settingsCommonFAQ: "FAQ",
+        .settingsFAQSubtitle: "Réponses rapides sur la configuration, les exports et les réglages de détection.",
+        .settingsFAQNoClipsQuestion: "Pourquoi l'app a trouvé peu ou aucun clip ?",
+        .settingsFAQNoClipsAnswer: "Baisse le seuil de confiance, augmente la plage de durée des clips et vérifie que la vidéo a un mouvement clair et des pics audio audibles. Une faible lumière ou une caméra fixe peut réduire la qualité.",
+        .settingsFAQWeightsQuestion: "Quand modifier les poids de l'IA ?",
+        .settingsFAQWeightsAnswer: "Garde-les équilibrés pour la plupart des matchs. Utilise les réglages avancés seulement si la vidéo est inhabituelle, par exemple un gymnase très bruyant ou des clips muets avec beaucoup de mouvement.",
+        .settingsFAQExportFormatQuestion: "Exporter en MP4 ou en MOV ?",
+        .settingsFAQExportFormatAnswer: "MP4 est le meilleur choix par défaut pour partager et rester compatible. MOV convient bien si tu comptes éditer dans des workflows Apple.",
+        .settingsFAQQuickShareQuestion: "Comment fonctionne Revoir et partager sur iPhone ?",
+        .settingsFAQQuickShareAnswer: "Quand l'export est terminé, l'app ouvre d'abord une revue interne du dernier reel. Tu peux le relire, l'enregistrer dans Photos ou ouvrir la feuille de partage iOS.",
+        .settingsAccountDetailsSubtitle: "Tes informations de connexion",
+        .settingsSubscription: "Abonnement",
+        .settingsProMember: "Membre Pro",
+        .settingsUnlimitedAccess: "Tu as un accès illimité",
+        .settingsUnlimitedAIExports: "Analyses IA et exports illimités",
+        .settingsSignInRequired: "Connexion requise",
+        .settingsFreeTier: "Offre gratuite",
+        .settingsPerMonth: "Par mois",
+        .settingsSignInToUpgrade: "Connecte-toi pour passer Pro",
+        .settingsUpgradeToPro: "Passer Pro",
+        .settingsSignOut: "Se déconnecter",
+        .settingsGuest: "Invité",
+        .settingsUnknown: "Inconnu",
+        .settingsResetTitle: "Réinitialiser les réglages ?",
+        .settingsReset: "Réinitialiser",
+        .settingsCancel: "Annuler",
+        .settingsResetMessage: "Cela restaurera tous les réglages IA à leurs valeurs par défaut.",
+        .settingsResetToDefaults: "Restaurer les valeurs",
+        .settingsMissingReleaseURL: "URL de publication manquante. Renseigne la configuration de production avant l'envoi à l'App Store.",
+        .settingsFeedbackValidationMessage: "Ajoute un message de 8 à 1200 caractères et vérifie le format de l'email si tu l'indiques.",
+        .settingsFeedbackConfigError: "Le formulaire de retour n'est pas configuré correctement.",
+        .settingsFeedbackSendFailure: "Impossible d'envoyer le retour maintenant. Réessaie.",
+        .settingsFeedbackNetworkError: "Erreur réseau pendant l'envoi du retour. Vérifie la connexion et réessaie.",
+        .settingsFeedbackSentThanks: "Merci. Ton retour a été envoyé.",
+        .settingsDeveloperFootnote: "Les diagnostics de lancement réservés aux développeurs sont masqués pour les utilisateurs en production."
     ]
 }
