@@ -34,13 +34,9 @@ final class AnalysisNotificationService: NSObject {
             let content = UNMutableNotificationContent()
             content.title = "Analysis Complete"
             if clipsCount > 0 {
-                content.body = usedFallback
-                    ? "Your highlight scan finished with local fallback and found \(clipsCount) clip\(clipsCount == 1 ? "" : "s")."
-                    : "Your highlight scan finished and found \(clipsCount) clip\(clipsCount == 1 ? "" : "s")."
+                content.body = "Your highlight scan finished and found \(clipsCount) clip\(clipsCount == 1 ? "" : "s")."
             } else {
-                content.body = usedFallback
-                    ? "Your highlight scan finished after local fallback, but no strong clips were detected."
-                    : "Your highlight scan finished, but no strong clips were detected."
+                content.body = "Your highlight scan finished, but no strong clips were detected."
             }
             content.sound = .default
 

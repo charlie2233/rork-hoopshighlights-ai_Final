@@ -174,7 +174,7 @@ final class VideoAnalysisService {
                 thresholdOverride: max(0.22, settings.confidenceThreshold * 0.72)
             )
             if rawClips.isEmpty {
-                statusMessage = "Applying fallback detection..."
+                statusMessage = "Refining detection..."
                 if audioPeaks.max() ?? 0 > 0.25 {
                     rawClips = buildAudioOnlyClips(audioPeaks: audioPeaks, duration: durationSeconds)
                     if !rawClips.isEmpty {

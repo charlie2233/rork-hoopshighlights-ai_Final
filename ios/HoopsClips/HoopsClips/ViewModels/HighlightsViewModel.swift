@@ -64,11 +64,9 @@ final class HighlightsViewModel {
     var analysisModeDisplayName: String {
         switch analysisMode {
         case .cloud:
-            return "Cloud"
-        case .local:
+            return "Enhanced"
+        case .local, .localFallback:
             return "On-device"
-        case .localFallback:
-            return "Fallback"
         }
     }
 
@@ -634,7 +632,7 @@ final class HighlightsViewModel {
 
         analysisMode = .localFallback
         isCloudFallbackOffered = true
-        analysisService.updateExternalAnalysis(progress: 0.0, status: "Falling back to local analysis")
+        analysisService.updateExternalAnalysis(progress: 0.0, status: "Analyzing on device")
         guard let url = videoURL else {
             analysisService.finishExternalAnalysis(with: error.localizedDescription)
             recordAnalysisFailure(message: error.localizedDescription)

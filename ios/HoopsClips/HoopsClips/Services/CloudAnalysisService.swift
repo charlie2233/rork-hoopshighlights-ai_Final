@@ -27,7 +27,7 @@ struct CloudAnalysisService {
         }
 
         let fileInfo = try fileInfo(for: url)
-        await progress(0.02, "Preparing upload")
+        await progress(0.02, "Preparing analysis")
         let job = try await createJob(
             baseURL: baseURL,
             request: CreateCloudAnalysisJobRequest(
@@ -41,10 +41,10 @@ struct CloudAnalysisService {
             )
         )
 
-        await progress(0.15, "Uploading video")
+        await progress(0.15, "Starting analysis")
         try await uploadVideo(to: job, from: url)
 
-        await progress(0.28, "Queued on server")
+        await progress(0.28, "Preparing clips")
         _ = try await startJob(baseURL: baseURL, jobID: job.jobId, installID: installID)
 
         return try await pollJob(
@@ -167,17 +167,17 @@ struct CloudAnalysisService {
             case .failed:
                 throw CloudAnalysisError.backend(
                     code: job.errorCode ?? "analysis_failed",
-                    message: job.errorMessage ?? "Cloud analysis failed."
+                    message: job.errorMessage ?? "Analysis failed."
                 )
             case .expired:
                 throw CloudAnalysisError.backend(
                     code: "expired",
-                    message: "Cloud analysis job expired before completion."
+                    message: "Analysis took too long before completion."
                 )
             case .created, .queued:
-                await progress(min(max(job.progress, 0.0), 0.55), job.stage.isEmpty ? "Queued on server" : job.stage)
+                await progress(min(max(job.progress, 0.0), 0.55), job.stage.isEmpty ? "Preparing clips" : job.stage)
             case .processing:
-                await progress(max(0.55, min(job.progress, 0.92)), job.stage.isEmpty ? "Analyzing in cloud" : job.stage)
+                await progress(max(0.55, min(job.progress, 0.92)), job.stage.isEmpty ? "Analyzing" : job.stage)
             case .none:
                 throw CloudAnalysisError.invalidResponse
             }
@@ -204,7 +204,7 @@ struct CloudAnalysisService {
             }
             throw CloudAnalysisError.backend(
                 code: apiError?.errorCode ?? "http_\(http.statusCode)",
-                message: apiError?.errorMessage ?? "Cloud analysis request failed."
+                message: apiError?.errorMessage ?? "Analysis request failed."
             )
         }
 

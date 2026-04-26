@@ -70,7 +70,8 @@ final class SubscriptionManager {
             return false
         } catch {
             if (error as NSError).code == RevenueCat.ErrorCode.purchaseCancelledError.rawValue { return false }
-            errorMessage = error.localizedDescription
+            LaunchTelemetry.shared.recordConfigurationIssue("Purchase failed: \(error.localizedDescription)")
+            errorMessage = "We couldn't complete the purchase. Please try again."
             return false
         }
     }
@@ -92,7 +93,8 @@ final class SubscriptionManager {
                 errorMessage = "No active subscription found."
             }
         } catch {
-            errorMessage = error.localizedDescription
+            LaunchTelemetry.shared.recordConfigurationIssue("Restore purchases failed: \(error.localizedDescription)")
+            errorMessage = "We couldn't restore purchases. Please try again."
         }
     }
 }

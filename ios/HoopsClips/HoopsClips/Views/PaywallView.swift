@@ -101,7 +101,7 @@ struct PaywallView: View {
             featureRow(icon: "infinity", title: "Unlimited Analyses", subtitle: "No caps on highlight generation")
             featureRow(icon: "bolt.fill", title: "Long-Game Access", subtitle: "Analyze longer games without the free-tier cap")
             featureRow(icon: "film.stack.fill", title: "Unlimited Exports", subtitle: "Export all your highlights freely")
-            featureRow(icon: "sparkles", title: "Launch-Safe Mode", subtitle: "Public builds default to the on-device analysis path")
+            featureRow(icon: "wand.and.stars", title: "Clean Pro Exports", subtitle: "Export without the Hoops Clips end card")
         }
         .padding(16)
         .rorkCard(cornerRadius: 18, stroke: AppTheme.softBorder, glowOpacity: 0.06)
@@ -151,7 +151,7 @@ struct PaywallView: View {
                     Text(subscriptionManager.billingUnavailableMessage)
                         .font(.subheadline)
                         .foregroundStyle(AppTheme.subtleText)
-                    Text("Configure the production RevenueCat key before enabling purchases in release.")
+                    Text("Please try again later.")
                         .font(.caption)
                         .foregroundStyle(AppTheme.subtleText)
                         .multilineTextAlignment(.center)
@@ -303,15 +303,15 @@ struct PaywallView: View {
             offerings = loadedOfferings
 
             if loadedOfferings.current == nil {
-                offeringsLoadMessage = "No current RevenueCat offering is configured."
+                offeringsLoadMessage = "Subscription options are temporarily unavailable. Please try again later."
                 LaunchTelemetry.shared.recordConfigurationIssue("RevenueCat offerings loaded without a current offering.")
             } else if loadedOfferings.current?.availablePackages.isEmpty == true {
-                offeringsLoadMessage = "The current RevenueCat offering has no available packages."
+                offeringsLoadMessage = "Subscription options are temporarily unavailable. Please try again later."
                 LaunchTelemetry.shared.recordConfigurationIssue("RevenueCat current offering loaded with no available packages.")
             }
         } catch {
             offerings = nil
-            offeringsLoadMessage = "RevenueCat returned: \(error.localizedDescription)"
+            offeringsLoadMessage = "Subscription options are temporarily unavailable. Please try again later."
             LaunchTelemetry.shared.recordConfigurationIssue("RevenueCat offerings failed: \(error.localizedDescription)")
         }
         isLoadingOfferings = false

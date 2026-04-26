@@ -155,8 +155,8 @@ struct HistoryView: View {
 
                     if let analysisMode = project.analysisMode {
                         historyBadge(
-                            icon: analysisMode == .cloud ? "icloud.fill" : "cpu.fill",
-                            text: analysisMode == .cloud ? "Cloud" : "Local"
+                            icon: userFacingAnalysisModeIcon(analysisMode),
+                            text: userFacingAnalysisModeLabel(analysisMode)
                         )
                     }
                 }
@@ -274,9 +274,9 @@ private struct HistoryProjectDetailView: View {
                 )
                 if let analysisMode = project.analysisMode {
                     RorkMetricChip(
-                        icon: analysisMode == .cloud ? "icloud.fill" : "cpu.fill",
-                        value: analysisMode == .cloud ? "Cloud" : "Local",
-                        label: "Mode",
+                        icon: userFacingAnalysisModeIcon(analysisMode),
+                        value: userFacingAnalysisModeLabel(analysisMode),
+                        label: "Analysis",
                         tint: AppTheme.successGreen
                     )
                 }
@@ -505,5 +505,23 @@ private struct HistoryProjectDetailView: View {
         previewPlayer = AVPlayer(url: url)
         previewPlayer?.play()
         previewTitle = title
+    }
+}
+
+fileprivate func userFacingAnalysisModeLabel(_ mode: AnalysisExecutionMode) -> String {
+    switch mode {
+    case .cloud:
+        return "Enhanced"
+    case .local, .localFallback:
+        return "On-device"
+    }
+}
+
+fileprivate func userFacingAnalysisModeIcon(_ mode: AnalysisExecutionMode) -> String {
+    switch mode {
+    case .cloud:
+        return "sparkles"
+    case .local, .localFallback:
+        return "iphone"
     }
 }

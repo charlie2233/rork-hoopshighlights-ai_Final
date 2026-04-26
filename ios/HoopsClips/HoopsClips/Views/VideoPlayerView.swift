@@ -92,7 +92,7 @@ struct VideoPlayerView: View {
                 Button("OK", role: .cancel) { }
             } message: {
                 if viewModel.isCloudFallbackOffered {
-                    Text("Cloud analysis and local fallback both finished without finding enough confident highlights in this clip.")
+                    Text("Analysis finished without finding enough confident highlights in this clip.")
                 } else {
                     Text("AI couldn't detect enough confident highlights in this video.")
                 }
@@ -278,9 +278,7 @@ struct VideoPlayerView: View {
             RorkSectionHeader(
                 title: "AI Analysis",
                 icon: "brain.head.profile.fill",
-                subtitle: AppConstants.cloudAnalysisEnabled
-                    ? "Cloud analysis is available for internal builds."
-                    : "On-device Vision + audio analysis is the public launch path."
+                subtitle: analysisSectionSubtitle
             )
 
             if viewModel.analysisService.isAnalyzing {
@@ -410,9 +408,7 @@ struct VideoPlayerView: View {
             Image(systemName: "timer")
                 .foregroundStyle(AppTheme.subtleText)
             let estimatedSeconds = Int(max(viewModel.videoDuration * 0.42, 12))
-            Text(AppConstants.cloudAnalysisEnabled
-                 ? "Estimated: ~\(estimatedSeconds)s cloud analysis"
-                 : "Estimated: ~\(estimatedSeconds)s on-device analysis")
+            Text("Estimated: ~\(estimatedSeconds)s analysis")
                 .font(.caption)
                 .foregroundStyle(AppTheme.subtleText)
             Spacer()
@@ -459,16 +455,13 @@ struct VideoPlayerView: View {
         if requiresProForCurrentVideo {
             return "Free tier supports up to \(formatDuration(AppConstants.nonProMaxAnalysisDuration)). Upgrade to analyze longer games."
         }
-        if !AppConstants.cloudAnalysisEnabled {
-            return "Public launch uses on-device analysis by default. Cloud review stays internal until cutover gates pass."
-        }
         if let remaining = viewModel.cloudQuotaRemaining {
             if remaining > 0 {
-                return "Cloud AI quota remaining today: \(remaining)"
+                return "\(remaining) free analysis\(remaining == 1 ? "" : "es") remaining today."
             }
-            return "Cloud AI quota is exhausted today. Local fallback still runs when possible."
+            return "You've used today's free analyses. Upgrade for unlimited access."
         }
-        return "Cloud AI runs slower, but it targets much better highlight accuracy."
+        return "Ready to find your best clips."
     }
 
     private var analysisProgressTitle: String {
@@ -479,14 +472,11 @@ struct VideoPlayerView: View {
         if status.contains("queued") {
             return "Queued..."
         }
-        if status.contains("cloud") {
-            return "Cloud Analyzing..."
-        }
         if status.contains("device") {
-            return "On-Device..."
+            return "Analyzing..."
         }
         if status.contains("local analysis") {
-            return "Fallback..."
+            return "Analyzing..."
         }
         if status.contains("finalizing") {
             return "Finalizing..."
@@ -505,9 +495,10 @@ struct VideoPlayerView: View {
         if requiresProForCurrentVideo {
             return "Upgrade to analyze videos longer than \(formatDuration(AppConstants.nonProMaxAnalysisDuration))"
         }
-        if AppConstants.cloudAnalysisEnabled {
-            return "Internal cloud analysis is enabled for this build"
-        }
-        return "On-device Vision + audio analysis for the public launch path"
+        return "Find highlight clips from this video"
+    }
+
+    private var analysisSectionSubtitle: String {
+        "Find the best plays, trim the noise, and build a reel fast."
     }
 }

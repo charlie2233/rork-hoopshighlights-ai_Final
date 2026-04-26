@@ -110,13 +110,17 @@ struct SettingsView: View {
                 ScrollView {
                     VStack(spacing: 24) {
                         AnyView(settingsHeroCard)
+                        #if DEBUG
                         AnyView(runtimeStatusCard)
+                        #endif
                         AnyView(workflowHubLink)
                         AnyView(membershipHubLink)
                         AnyView(accountQuickActionCard)
                         AnyView(supportHubLink)
                         AnyView(aboutHubLink)
+                        #if DEBUG
                         AnyView(settingsFootnote)
+                        #endif
                     }
                     .padding(.horizontal, 16)
                     .padding(.top, 8)
@@ -403,7 +407,7 @@ struct SettingsView: View {
     }
 
     private var settingsFootnote: some View {
-        Text("Public launch is configured to prefer on-device analysis. Keep cloud review internal until the cutover checklist and Phase 4h gates are green.")
+        Text("Developer-only launch diagnostics are hidden from production users.")
             .font(.caption2)
             .foregroundStyle(AppTheme.subtleText)
             .multilineTextAlignment(.center)
@@ -943,7 +947,7 @@ struct SettingsView: View {
         settingsCard(title: "About", icon: "info.circle.fill") {
             VStack(spacing: 12) {
                 HStack {
-                    Text("Hoops Highlights AI")
+                    Text("Hoops Clips")
                         .font(.headline)
                         .foregroundStyle(.white)
                     Spacer()
@@ -952,16 +956,16 @@ struct SettingsView: View {
                         .foregroundStyle(AppTheme.subtleText)
                 }
 
-                Text("AI-powered basketball highlight detection using on-device Vision framework analysis. Combines body pose estimation, motion detection, audio peak analysis, and scene classification for accurate clip extraction.")
+                Text("Smart basketball highlight detection that helps you find, review, export, and save your best clips directly on your iPhone.")
                     .font(.caption)
                     .foregroundStyle(AppTheme.subtleText)
                     .fixedSize(horizontal: false, vertical: true)
 
                 HStack(spacing: 16) {
-                    aiFeatureTag("Vision API")
-                    aiFeatureTag("Body Pose")
-                    aiFeatureTag("Audio Analysis")
-                    aiFeatureTag("Motion")
+                    aiFeatureTag("Smart Clips")
+                    aiFeatureTag("Private")
+                    aiFeatureTag("Fast Export")
+                    aiFeatureTag("Share Ready")
                 }
             }
         }
@@ -1552,7 +1556,7 @@ struct SettingsView: View {
             category: feedbackType.rawValue,
             email: optionalEmail,
             message: trimmedMessage,
-            source: "Hoops Highlights AI Settings",
+            source: "Hoops Clips Settings",
             appVersion: "v1.0",
             exportTheme: viewModel.selectedTheme.rawValue,
             exportQuality: viewModel.selectedQuality.rawValue,
