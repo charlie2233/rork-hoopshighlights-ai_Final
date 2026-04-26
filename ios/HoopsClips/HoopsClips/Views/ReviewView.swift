@@ -35,7 +35,7 @@ struct ReviewView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                AppTheme.darkBg.ignoresSafeArea()
+                HoopsMotionBackdrop(glowOpacity: 0.20)
 
                 if viewModel.clips.isEmpty {
                     emptyState
@@ -86,12 +86,11 @@ struct ReviewView: View {
     }
 
     private var emptyState: some View {
-        ContentUnavailableView {
-            Label("No Clips Yet", systemImage: "film.stack")
-        } description: {
-            Text("Import a video and run AI analysis to detect highlights")
-        }
-        .foregroundStyle(.white)
+        HoopsEmptyStateCard(
+            title: "No Clips Yet",
+            message: "Import a video and run analysis. Your best plays will land here ready to keep, discard, and fine-tune.",
+            icon: "film.stack.fill"
+        )
     }
 
     private var headerStats: some View {
@@ -526,7 +525,7 @@ struct ReviewView: View {
     private func clipDetailSheet(clip: Clip) -> some View {
         NavigationStack {
             ZStack {
-                AppTheme.darkBg.ignoresSafeArea()
+                HoopsMotionBackdrop(glowOpacity: 0.16)
 
                 ScrollView {
                     VStack(spacing: 20) {

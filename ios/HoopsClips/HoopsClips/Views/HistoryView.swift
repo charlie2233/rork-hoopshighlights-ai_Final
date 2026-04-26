@@ -9,7 +9,7 @@ struct HistoryView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                AppTheme.darkBg.ignoresSafeArea()
+                HoopsMotionBackdrop(glowOpacity: 0.18)
 
                 if viewModel.historyProjects.isEmpty {
                     emptyState
@@ -64,13 +64,11 @@ struct HistoryView: View {
     }
 
     private var emptyState: some View {
-        ContentUnavailableView {
-            Label("No Project History Yet", systemImage: "clock.arrow.circlepath")
-        } description: {
-            Text("Import a video and the app will keep the project, timeline, and saved export here.")
-        }
-        .foregroundStyle(.white)
-        .padding(.horizontal, 16)
+        HoopsEmptyStateCard(
+            title: "No Project History Yet",
+            message: "Import a video and Hoops Clips will keep the project, timeline, and saved export here.",
+            icon: "clock.arrow.circlepath"
+        )
     }
 
     private func projectSection(
@@ -202,7 +200,7 @@ private struct HistoryProjectDetailView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                AppTheme.darkBg.ignoresSafeArea()
+                HoopsMotionBackdrop(glowOpacity: 0.18)
 
                 ScrollView {
                     VStack(spacing: 16) {

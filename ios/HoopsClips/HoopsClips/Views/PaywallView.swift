@@ -16,10 +16,7 @@ struct PaywallView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                AppTheme.darkBg.ignoresSafeArea()
-                AppTheme.meshBackground
-                    .opacity(0.25)
-                    .ignoresSafeArea()
+                HoopsMotionBackdrop(glowOpacity: 0.26)
 
                 ScrollView {
                     VStack(spacing: 28) {
@@ -69,20 +66,7 @@ struct PaywallView: View {
 
     private var headerSection: some View {
         VStack(spacing: 16) {
-            ZStack {
-                Circle()
-                    .fill(AppTheme.accentPurple.opacity(0.12))
-                    .frame(width: 90, height: 90)
-                Image(systemName: "crown.fill")
-                    .font(.system(size: 40))
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [AppTheme.neonPurple, AppTheme.electricViolet],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
-            }
+            HoopsMotionHero(icon: "crown.fill", size: 188, accent: AppTheme.neonPurple, secondary: AppTheme.warningYellow)
 
             Text("Go Pro")
                 .font(.system(size: 32, weight: .bold))

@@ -41,10 +41,7 @@ struct ContentView: View {
 
     private var mainAppView: some View {
         ZStack {
-            AppTheme.darkBg.ignoresSafeArea()
-            AppTheme.meshBackground
-                .opacity(0.22)
-                .ignoresSafeArea()
+            HoopsMotionBackdrop(glowOpacity: 0.18, courtOpacity: 0.08)
 
             TabView(selection: $selectedTab) {
                 Tab(languageStore.text(.tabPlayer), systemImage: "play.circle.fill", value: 0) {

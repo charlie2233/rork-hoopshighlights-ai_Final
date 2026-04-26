@@ -19,7 +19,7 @@ struct VideoPlayerView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                AppTheme.darkBg.ignoresSafeArea()
+                HoopsMotionBackdrop()
 
                 ScrollView {
                     VStack(spacing: 24) {
@@ -144,7 +144,7 @@ struct VideoPlayerView: View {
         VStack(spacing: 32) {
             Spacer().frame(height: 40)
 
-            ImportHomeHero()
+            HoopsMotionHero()
 
             VStack(spacing: 12) {
                 Text(languageStore.text(.turnGamesTitle))
@@ -501,117 +501,5 @@ struct VideoPlayerView: View {
 
     private var analysisSectionSubtitle: String {
         languageStore.text(.aiAnalysisSubtitle)
-    }
-}
-
-private struct ImportHomeHero: View {
-    var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
-            let time = timeline.date.timeIntervalSinceReferenceDate
-            let nearRingX = CGFloat(sin(time * 0.92)) * 14
-            let nearRingY = CGFloat(cos(time * 0.78)) * 10
-            let farRingX = CGFloat(cos(time * 0.54)) * 20
-            let farRingY = CGFloat(sin(time * 0.68)) * 16
-            let ballLift = CGFloat(sin(time * 1.8)) * 5
-            let shimmer = CGFloat((sin(time * 1.4) + 1.0) / 2.0)
-
-            ZStack {
-                RadialGradient(
-                    colors: [
-                        AppTheme.neonPurple.opacity(0.28),
-                        AppTheme.accentPurple.opacity(0.08),
-                        .clear
-                    ],
-                    center: .center,
-                    startRadius: 8,
-                    endRadius: 118
-                )
-                .frame(width: 235, height: 235)
-                .blur(radius: 10)
-                .scaleEffect(0.96 + shimmer * 0.08)
-
-                Circle()
-                    .stroke(
-                        AngularGradient(
-                            colors: [
-                                AppTheme.neonPurple.opacity(0.05),
-                                AppTheme.neonPurple.opacity(0.44),
-                                AppTheme.warningYellow.opacity(0.26),
-                                AppTheme.neonPurple.opacity(0.05)
-                            ],
-                            center: .center
-                        ),
-                        style: StrokeStyle(lineWidth: 7, lineCap: .round, dash: [34, 18])
-                    )
-                    .frame(width: 178, height: 178)
-                    .rotationEffect(.degrees(time * 22))
-                    .offset(x: farRingX, y: farRingY)
-                    .blur(radius: 0.2)
-
-                Circle()
-                    .stroke(
-                        LinearGradient(
-                            colors: [
-                                AppTheme.accentPurple.opacity(0.08),
-                                AppTheme.neonPurple.opacity(0.48),
-                                AppTheme.accentPurple.opacity(0.12)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        style: StrokeStyle(lineWidth: 4, lineCap: .round, dash: [18, 11])
-                    )
-                    .frame(width: 138, height: 138)
-                    .rotationEffect(.degrees(-time * 34))
-                    .offset(x: nearRingX, y: nearRingY)
-
-                RoundedRectangle(cornerRadius: 26, style: .continuous)
-                    .stroke(AppTheme.softBorder.opacity(0.7), lineWidth: 1)
-                    .frame(width: 172, height: 118)
-                    .rotationEffect(.degrees(-8 + sin(time * 0.55) * 2))
-                    .offset(y: 8)
-
-                heroSpark(size: 8, opacity: 0.75, x: -78 + CGFloat(sin(time * 1.6)) * 7, y: -50 + CGFloat(cos(time * 1.2)) * 6)
-                heroSpark(size: 5, opacity: 0.58, x: 78 + CGFloat(cos(time * 1.4)) * 8, y: -28 + CGFloat(sin(time * 1.1)) * 7)
-                heroSpark(size: 6, opacity: 0.50, x: -56 + CGFloat(cos(time * 1.15)) * 7, y: 66 + CGFloat(sin(time * 1.5)) * 6)
-
-                ZStack {
-                    Circle()
-                        .fill(.white.opacity(0.08))
-                        .frame(width: 104, height: 104)
-                        .overlay(
-                            Circle()
-                                .stroke(AppTheme.neonPurple.opacity(0.36), lineWidth: 1)
-                        )
-                        .shadow(color: AppTheme.neonPurple.opacity(0.45), radius: 18, x: 0, y: 0)
-
-                    Image(systemName: "basketball.fill")
-                        .font(.system(size: 64, weight: .bold))
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: [
-                                    AppTheme.warningYellow,
-                                    AppTheme.neonPurple
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .rotationEffect(.degrees(sin(time * 0.9) * 5))
-                        .symbolEffect(.bounce, options: .repeating.speed(0.26), value: Int(time))
-                }
-                .offset(y: ballLift)
-            }
-            .frame(width: 240, height: 210)
-            .accessibilityHidden(true)
-        }
-    }
-
-    private func heroSpark(size: CGFloat, opacity: Double, x: CGFloat, y: CGFloat) -> some View {
-        Circle()
-            .fill(AppTheme.warningYellow.opacity(opacity))
-            .frame(width: size, height: size)
-            .shadow(color: AppTheme.warningYellow.opacity(0.45), radius: 8, x: 0, y: 0)
-            .offset(x: x, y: y)
     }
 }

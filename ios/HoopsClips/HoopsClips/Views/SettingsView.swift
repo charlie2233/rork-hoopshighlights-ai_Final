@@ -113,10 +113,7 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                AppTheme.darkBg.ignoresSafeArea()
-                AppTheme.meshBackground
-                    .opacity(0.14)
-                    .ignoresSafeArea()
+                HoopsMotionBackdrop(glowOpacity: 0.16, courtOpacity: 0.07)
 
                 ScrollView {
                     VStack(spacing: 16) {
@@ -677,7 +674,7 @@ struct SettingsView: View {
         @ViewBuilder content: () -> Content
     ) -> some View {
         ZStack {
-            AppTheme.darkBg.ignoresSafeArea()
+            HoopsMotionBackdrop(glowOpacity: 0.14, courtOpacity: 0.06)
 
             ScrollView {
                 VStack(spacing: 20) {

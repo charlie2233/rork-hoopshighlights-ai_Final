@@ -31,7 +31,7 @@ struct ExportView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                AppTheme.darkBg.ignoresSafeArea()
+                HoopsMotionBackdrop(glowOpacity: 0.20)
 
                 if viewModel.keptClips.isEmpty {
                     emptyState
@@ -109,12 +109,11 @@ struct ExportView: View {
     }
 
     private var emptyState: some View {
-        ContentUnavailableView {
-            Label("No Clips to Export", systemImage: "film.stack")
-        } description: {
-            Text("Keep some clips in the Review tab to create a highlight reel")
-        }
-        .foregroundStyle(.white)
+        HoopsEmptyStateCard(
+            title: "No Clips to Export",
+            message: "Keep a few moments in Review first. Then Hoops Clips can turn them into a share-ready highlight reel.",
+            icon: "square.and.arrow.up.fill"
+        )
     }
 
     private var summaryCard: some View {
@@ -1012,7 +1011,7 @@ struct ExportView: View {
     private func exportPreviewSheet(url: URL) -> some View {
         NavigationStack {
             ZStack {
-                AppTheme.darkBg.ignoresSafeArea()
+                HoopsMotionBackdrop(glowOpacity: 0.16)
 
                 if !isExportFileAvailable(url) {
                     ContentUnavailableView {

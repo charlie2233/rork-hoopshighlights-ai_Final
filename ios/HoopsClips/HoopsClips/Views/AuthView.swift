@@ -22,10 +22,7 @@ struct AuthView: View {
 
     var body: some View {
         ZStack {
-            AppTheme.darkBg.ignoresSafeArea()
-            AppTheme.meshBackground
-                .opacity(0.3)
-                .ignoresSafeArea()
+            HoopsMotionBackdrop(glowOpacity: 0.28)
 
             ScrollView {
                 VStack(spacing: 0) {
@@ -51,17 +48,7 @@ struct AuthView: View {
 
     private var heroSection: some View {
         VStack(spacing: 16) {
-            ZStack {
-                Circle()
-                    .fill(AppTheme.accentPurple.opacity(0.15))
-                    .frame(width: 100, height: 100)
-                Circle()
-                    .fill(AppTheme.accentPurple.opacity(0.08))
-                    .frame(width: 130, height: 130)
-                Image(systemName: "basketball.fill")
-                    .font(.system(size: 44))
-                    .foregroundStyle(AppTheme.neonPurple)
-            }
+            HoopsMotionHero(size: 198)
 
             VStack(spacing: 8) {
                 Text("Hoops Clips")

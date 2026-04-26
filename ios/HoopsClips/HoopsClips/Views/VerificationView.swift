@@ -27,8 +27,7 @@ struct VerificationView: View {
 
     var body: some View {
         ZStack {
-            AppTheme.darkBg.ignoresSafeArea()
-            AppTheme.meshBackground.opacity(0.3).ignoresSafeArea()
+            HoopsMotionBackdrop(glowOpacity: 0.24)
 
             ScrollView {
                 VStack(spacing: 24) {
@@ -53,14 +52,7 @@ struct VerificationView: View {
 
     private var headerSection: some View {
         VStack(spacing: 12) {
-            ZStack {
-                Circle()
-                    .fill(AppTheme.accentPurple.opacity(0.12))
-                    .frame(width: 80, height: 80)
-                Image(systemName: "checkmark.shield.fill")
-                    .font(.system(size: 36))
-                    .foregroundStyle(AppTheme.neonPurple)
-            }
+            HoopsMotionHero(icon: "checkmark.shield.fill", size: 172, accent: AppTheme.successGreen, secondary: AppTheme.neonPurple)
 
             Text(isAnonymous ? "Secure Your Account" : "Verify Your Identity")
                 .font(.title2.bold())
