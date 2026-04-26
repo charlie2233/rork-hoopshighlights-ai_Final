@@ -168,6 +168,7 @@ enum AppTextKey {
     case settingsVisionAudio
     case settingsUnlimited
     case settingsMonthly
+    case settingsAccountPlan
     case settingsSignedInWith
     case settingsWorkflowDetailSubtitle
     case settingsMembershipDetailSubtitle
@@ -424,6 +425,7 @@ extension AppLanguage {
         .settingsVisionAudio: "Vision + Audio",
         .settingsUnlimited: "Unlimited",
         .settingsMonthly: "Monthly",
+        .settingsAccountPlan: "Account & Plan",
         .settingsSignedInWith: "Signed in with",
         .settingsWorkflowDetailSubtitle: "Tune clip selection and analysis behavior for your footage.",
         .settingsMembershipDetailSubtitle: "See how you're signed in and manage access.",
@@ -644,6 +646,7 @@ extension AppLanguage {
         .settingsVisionAudio: "视觉 + 音频",
         .settingsUnlimited: "无限",
         .settingsMonthly: "月付",
+        .settingsAccountPlan: "账号与方案",
         .settingsSignedInWith: "登录方式",
         .settingsWorkflowDetailSubtitle: "根据你的素材调整片段选择和分析行为。",
         .settingsMembershipDetailSubtitle: "查看登录方式并管理访问权限。",
@@ -864,6 +867,7 @@ extension AppLanguage {
         .settingsVisionAudio: "Visión + audio",
         .settingsUnlimited: "Ilimitado",
         .settingsMonthly: "Mensual",
+        .settingsAccountPlan: "Cuenta y plan",
         .settingsSignedInWith: "Sesión iniciada con",
         .settingsWorkflowDetailSubtitle: "Ajusta la selección de clips y el análisis según tu video.",
         .settingsMembershipDetailSubtitle: "Revisa cómo iniciaste sesión y gestiona el acceso.",
@@ -1084,6 +1088,7 @@ extension AppLanguage {
         .settingsVisionAudio: "Vision + audio",
         .settingsUnlimited: "Illimité",
         .settingsMonthly: "Mensuel",
+        .settingsAccountPlan: "Compte et formule",
         .settingsSignedInWith: "Connecté avec",
         .settingsWorkflowDetailSubtitle: "Ajuste la sélection des clips et l'analyse selon ta vidéo.",
         .settingsMembershipDetailSubtitle: "Vois comment tu es connecté et gère l'accès.",

@@ -119,23 +119,21 @@ struct SettingsView: View {
                     .ignoresSafeArea()
 
                 ScrollView {
-                    VStack(spacing: 24) {
-                        AnyView(settingsHeroCard)
-                        AnyView(languageSettingsCard)
+                    VStack(spacing: 16) {
+                        accountPlanCard
+                        membershipHubLink
+                        languageSettingsCard
+                        workflowHubLink
+                        supportHubLink
+                        aboutHubLink
                         #if DEBUG
-                        AnyView(runtimeStatusCard)
+                        runtimeStatusCard
+                        settingsFootnote
                         #endif
-                        AnyView(workflowHubLink)
-                        AnyView(membershipHubLink)
-                        AnyView(accountQuickActionCard)
-                        AnyView(supportHubLink)
-                        AnyView(aboutHubLink)
-                        #if DEBUG
-                        AnyView(settingsFootnote)
-                        #endif
+                        signOutFooterCard
                     }
                     .padding(.horizontal, 16)
-                    .padding(.top, 8)
+                    .padding(.top, 6)
                     .padding(.bottom, 100)
                 }
             }
@@ -157,59 +155,64 @@ struct SettingsView: View {
         }
     }
 
-    private var settingsHeroCard: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .top, spacing: 14) {
+    private var accountPlanCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .center, spacing: 14) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(AppTheme.accentPurple.opacity(0.18))
-                        .frame(width: 62, height: 62)
-                    Image(systemName: "gearshape.2.fill")
-                        .font(.title2.weight(.bold))
+                    Circle()
+                        .fill(AppTheme.accentPurple.opacity(0.16))
+                        .frame(width: 52, height: 52)
+                    Image(systemName: authMethodIcon)
+                        .font(.title3.weight(.semibold))
                         .foregroundStyle(AppTheme.neonPurple)
                 }
 
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(languageStore.text(.controlRoom))
-                        .font(.title3.weight(.bold))
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(languageStore.text(.settingsAccountPlan))
+                        .font(.headline.weight(.semibold))
                         .foregroundStyle(.white)
-
-                    Text(languageStore.text(.controlRoomSubtitle))
+                    Text(accountDisplayName)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.white.opacity(0.88))
+                        .lineLimit(1)
+                    Text(accountDetailLine)
                         .font(.caption)
                         .foregroundStyle(AppTheme.subtleText)
-                        .fixedSize(horizontal: false, vertical: true)
+                        .lineLimit(1)
                 }
 
                 Spacer(minLength: 0)
             }
 
+            Divider().overlay(AppTheme.softBorder)
+
             HStack(spacing: 10) {
-                RorkMetricChip(
-                    icon: "person.crop.circle.fill",
-                    value: authService.currentUser?.displayName ?? authMethodLabel,
-                    label: languageStore.text(.account),
-                    tint: AppTheme.neonPurple
-                )
-                RorkMetricChip(
+                settingsInlineStat(
                     icon: subscriptionManager.isProUser ? "checkmark.seal.fill" : "sparkles",
                     value: subscriptionManager.isProUser ? "Pro" : "\(subscriptionManager.freeUsesRemaining)",
                     label: subscriptionManager.isProUser ? languageStore.text(.plan) : languageStore.text(.freeLeft),
                     tint: subscriptionManager.isProUser ? AppTheme.successGreen : AppTheme.warningYellow
                 )
+
+                settingsInlineStat(
+                    icon: "cpu.fill",
+                    value: languageStore.text(.settingsOnDevice),
+                    label: languageStore.text(.analysis),
+                    tint: AppTheme.successGreen
+                )
             }
         }
-        .padding(18)
-        .rorkCard(cornerRadius: 22, stroke: AppTheme.softBorder, glowOpacity: 0.08)
+        .padding(16)
+        .rorkCard(
+            cornerRadius: 20,
+            fill: AnyShapeStyle(AppTheme.surfaceBg.opacity(0.58)),
+            stroke: AppTheme.softBorder,
+            glowOpacity: 0.02
+        )
     }
 
     private var languageSettingsCard: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            RorkSectionHeader(
-                title: languageStore.text(.languageCardTitle),
-                icon: "globe",
-                subtitle: languageStore.text(.languageCardSubtitle)
-            )
-
+        VStack(alignment: .leading, spacing: 10) {
             Menu {
                 ForEach(AppLanguage.allCases) { language in
                     Button {
@@ -225,16 +228,16 @@ struct SettingsView: View {
             } label: {
                 HStack(spacing: 12) {
                     ZStack {
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        RoundedRectangle(cornerRadius: 11, style: .continuous)
                             .fill(AppTheme.accentPurple.opacity(0.14))
-                            .frame(width: 42, height: 42)
+                            .frame(width: 38, height: 38)
                         Image(systemName: "character.bubble.fill")
                             .foregroundStyle(AppTheme.neonPurple)
                     }
 
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(languageStore.text(.languageTitle))
-                            .font(.subheadline.weight(.semibold))
+                        Text(languageStore.text(.languageCardTitle))
+                            .font(.headline.weight(.semibold))
                             .foregroundStyle(.white)
                         Text("\(languageStore.text(.languageCurrent)): \(languageStore.selectedLanguage.nativeName)")
                             .font(.caption)
@@ -245,14 +248,8 @@ struct SettingsView: View {
 
                     Image(systemName: "chevron.up.chevron.down")
                         .font(.caption.weight(.bold))
-                        .foregroundStyle(AppTheme.neonPurple)
+                        .foregroundStyle(AppTheme.subtleText)
                 }
-                .padding(14)
-                .background(AppTheme.surfaceBg.opacity(0.55), in: .rect(cornerRadius: 16))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke(AppTheme.softBorder, lineWidth: 1)
-                )
             }
 
             Text(languageStore.text(.languageRestartNote))
@@ -261,7 +258,12 @@ struct SettingsView: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(16)
-        .rorkCard(cornerRadius: 18, stroke: AppTheme.softBorder, glowOpacity: 0.05)
+        .rorkCard(
+            cornerRadius: 18,
+            fill: AnyShapeStyle(AppTheme.surfaceBg.opacity(0.48)),
+            stroke: AppTheme.softBorder,
+            glowOpacity: 0.02
+        )
     }
 
     private var workflowHubLink: some View {
@@ -357,28 +359,14 @@ struct SettingsView: View {
 
     private var membershipHubLink: some View {
         settingsHubLink(
-            title: languageStore.text(.membershipAccount),
-            subtitle: languageStore.text(.membershipAccountSubtitle),
+            title: languageStore.text(.settingsSubscription),
+            subtitle: languageStore.text(.settingsMembershipDetailSubtitle),
             icon: "person.crop.circle.badge.checkmark",
             accent: AppTheme.successGreen,
             stats: membershipPreviewStats
         ) {
             membershipSettingsPage
         }
-    }
-
-    private var accountQuickActionCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            RorkSectionHeader(
-                title: languageStore.text(.accountQuickActions),
-                icon: "person.crop.circle.fill",
-                subtitle: "\(languageStore.text(.settingsSignedInWith)) \(authMethodLabel)"
-            )
-
-            signOutButton
-        }
-        .padding(16)
-        .rorkCard(cornerRadius: 18, stroke: AppTheme.softBorder, glowOpacity: 0.05)
     }
 
     private var supportHubLink: some View {
@@ -465,6 +453,50 @@ struct SettingsView: View {
         ]
     }
 
+    private var accountDisplayName: String {
+        if let name = authService.currentUser?.displayName, !name.isEmpty {
+            return name
+        }
+        return authMethodLabel
+    }
+
+    private var accountDetailLine: String {
+        if let email = authService.currentUser?.email, !email.isEmpty {
+            return email
+        }
+        return "\(languageStore.text(.settingsSignedInWith)) \(authMethodLabel)"
+    }
+
+    private func settingsInlineStat(icon: String, value: String, label: String, tint: Color) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(tint)
+                .frame(width: 16)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(value)
+                    .font(.caption.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                Text(label)
+                    .font(.caption2)
+                    .foregroundStyle(AppTheme.subtleText)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 9)
+        .frame(maxWidth: .infinity)
+        .background(AppTheme.cardBg.opacity(0.44), in: .rect(cornerRadius: 13))
+        .overlay(
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .stroke(AppTheme.softBorder, lineWidth: 1)
+        )
+    }
+
     private var settingsFootnote: some View {
         Text(languageStore.text(.settingsDeveloperFootnote))
             .font(.caption2)
@@ -478,6 +510,18 @@ struct SettingsView: View {
                 RoundedRectangle(cornerRadius: 14)
                     .stroke(AppTheme.softBorder, lineWidth: 1)
             )
+    }
+
+    private var signOutFooterCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(languageStore.text(.accountQuickActions))
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(AppTheme.subtleText)
+                .textCase(.uppercase)
+
+            signOutButton
+        }
+        .padding(.top, 18)
     }
 
     private var workflowSettingsPage: some View {
@@ -502,7 +546,6 @@ struct SettingsView: View {
         ) {
             accountSection
             subscriptionSection
-            signOutButton
         }
     }
 
@@ -579,53 +622,49 @@ struct SettingsView: View {
         @ViewBuilder destination: @escaping () -> Destination
     ) -> some View {
         NavigationLink(destination: destination()) {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack(spacing: 12) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .fill(accent.opacity(0.14))
-                            .frame(width: 42, height: 42)
-                        Image(systemName: icon)
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(accent)
-                    }
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .fill(accent.opacity(0.14))
+                        .frame(width: 38, height: 38)
+                    Image(systemName: icon)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(accent)
+                }
 
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(title)
-                            .font(.headline)
-                            .foregroundStyle(.white)
-                        Text(subtitle)
-                            .font(.caption)
-                            .foregroundStyle(AppTheme.subtleText)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-
-                    Spacer(minLength: 0)
-
-                    Image(systemName: "chevron.right")
-                        .font(.caption.weight(.bold))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(.white)
+                    Text(subtitle)
+                        .font(.caption)
                         .foregroundStyle(AppTheme.subtleText)
+                        .lineLimit(2)
                 }
 
-                if !stats.isEmpty {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 10) {
-                            ForEach(stats) { stat in
-                                RorkMetricChip(
-                                    icon: stat.icon,
-                                    value: stat.value,
-                                    label: stat.label,
-                                    tint: stat.tint
-                                )
-                                .frame(minWidth: 120)
-                            }
-                        }
-                    }
-                    .contentMargins(.horizontal, 0)
+                Spacer(minLength: 10)
+
+                if let stat = stats.first {
+                    Text(stat.value)
+                        .font(.caption.weight(.semibold).monospacedDigit())
+                        .foregroundStyle(stat.tint)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 5)
+                        .background(stat.tint.opacity(0.10), in: .capsule)
                 }
+
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(AppTheme.subtleText)
             }
             .padding(16)
-            .rorkCard(cornerRadius: 18, stroke: accent.opacity(0.18), glow: accent, glowOpacity: 0.05)
+            .rorkCard(
+                cornerRadius: 18,
+                fill: AnyShapeStyle(AppTheme.surfaceBg.opacity(0.48)),
+                stroke: AppTheme.softBorder,
+                glow: accent,
+                glowOpacity: 0.02
+            )
         }
         .buttonStyle(.plain)
     }
