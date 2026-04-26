@@ -6,6 +6,7 @@ struct VideoPlayerView: View {
     @Bindable var viewModel: HighlightsViewModel
     @Environment(SubscriptionManager.self) private var subscriptionManager
     @Environment(AuthService.self) private var authService
+    @Environment(AppLanguageStore.self) private var languageStore
     @State private var player: AVPlayer?
     @State private var showingFilePicker = false
     @State private var selectedPhotoItem: PhotosPickerItem?
@@ -36,7 +37,7 @@ struct VideoPlayerView: View {
                     .padding(.bottom, 100)
                 }
             }
-            .navigationTitle("Hoops AI")
+            .navigationTitle(languageStore.text(.playerTitle))
             .navigationBarTitleDisplayMode(.large)
             .toolbarBackground(AppTheme.darkBg, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
@@ -54,11 +55,11 @@ struct VideoPlayerView: View {
                     }
                 }
             }
-            .confirmationDialog("Import Video", isPresented: $showSourcePicker) {
-                Button("Photo Library") {
+            .confirmationDialog(languageStore.text(.importVideo), isPresented: $showSourcePicker) {
+                Button(languageStore.text(.photoLibrary)) {
                     viewModel.showingVideoPicker = true
                 }
-                Button("Files") {
+                Button(languageStore.text(.files)) {
                     showingFilePicker = true
                 }
             }
@@ -88,22 +89,22 @@ struct VideoPlayerView: View {
             .sheet(isPresented: $showingPaywall) {
                 PaywallView(subscriptionManager: subscriptionManager, authService: authService)
             }
-            .alert("No Highlights Found", isPresented: $showingNoClipsAlert) {
+            .alert(languageStore.text(.noHighlightsFound), isPresented: $showingNoClipsAlert) {
                 Button("OK", role: .cancel) { }
             } message: {
                 if viewModel.isCloudFallbackOffered {
-                    Text("Analysis finished without finding enough confident highlights in this clip.")
+                    Text(languageStore.text(.noHighlightsMessage))
                 } else {
-                    Text("AI couldn't detect enough confident highlights in this video.")
+                    Text(languageStore.text(.noHighlightsAlternateMessage))
                 }
             }
-            .alert("Pro Required for Longer Videos", isPresented: $showingDurationLimitAlert) {
-                Button("Not Now", role: .cancel) { }
-                Button("Go Pro") {
+            .alert(languageStore.text(.proRequiredTitle), isPresented: $showingDurationLimitAlert) {
+                Button(languageStore.text(.notNow), role: .cancel) { }
+                Button(languageStore.text(.goPro)) {
                     showingPaywall = true
                 }
             } message: {
-                Text("Free tier can analyze videos up to \(formatDuration(AppConstants.nonProMaxAnalysisDuration)). This video is \(formatDuration(viewModel.videoDuration)).")
+                Text("\(languageStore.text(.proRequiredMessagePrefix)) \(formatDuration(AppConstants.nonProMaxAnalysisDuration)). \(languageStore.text(.proRequiredMessageMiddle)) \(formatDuration(viewModel.videoDuration)).")
             }
         }
     }
@@ -149,11 +150,11 @@ struct VideoPlayerView: View {
             .onAppear { pulseAnimation = true }
 
             VStack(spacing: 12) {
-                Text("Turn Games Into Hoops Clips")
+                Text(languageStore.text(.turnGamesTitle))
                     .font(.title2.bold())
                     .foregroundStyle(.white)
 
-                Text("Find your best plays, trim the dead time,\nand build a share-ready reel in minutes.")
+                Text(languageStore.text(.turnGamesSubtitle))
                     .font(.subheadline)
                     .foregroundStyle(AppTheme.subtleText)
                     .multilineTextAlignment(.center)
@@ -166,7 +167,7 @@ struct VideoPlayerView: View {
                 HStack(spacing: 12) {
                     Image(systemName: "plus.circle.fill")
                         .font(.title3)
-                    Text("Select Video")
+                    Text(languageStore.text(.selectVideo))
                         .font(.headline)
                 }
                 .foregroundStyle(.white)
@@ -180,9 +181,9 @@ struct VideoPlayerView: View {
             )
 
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                featurePill(icon: "sparkles", text: "Smart Highlights")
-                featurePill(icon: "bolt.fill", text: "Fast Reels")
-                featurePill(icon: "film.stack.fill", text: "Auto Trim")
+                featurePill(icon: "sparkles", text: languageStore.text(.smartHighlights))
+                featurePill(icon: "bolt.fill", text: languageStore.text(.fastReels))
+                featurePill(icon: "film.stack.fill", text: languageStore.text(.autoTrim))
                 featurePill(icon: "basketball.fill", text: "Hoops Clips")
             }
         }
@@ -216,9 +217,9 @@ struct VideoPlayerView: View {
     private var videoSection: some View {
         VStack(spacing: 16) {
             RorkSectionHeader(
-                title: "Source Video",
+                title: languageStore.text(.sourceVideo),
                 icon: "video.fill",
-                subtitle: viewModel.isVideoLoaded ? "Loaded and ready for AI analysis" : nil
+                subtitle: viewModel.isVideoLoaded ? languageStore.text(.sourceVideoSubtitle) : nil
             )
 
             if let player = player {
@@ -241,7 +242,7 @@ struct VideoPlayerView: View {
                 RorkMetricChip(
                     icon: "clock.fill",
                     value: formatDuration(viewModel.videoDuration),
-                    label: "Duration",
+                    label: languageStore.text(.duration),
                     tint: AppTheme.warningYellow
                 )
 
@@ -249,7 +250,7 @@ struct VideoPlayerView: View {
                     RorkMetricChip(
                         icon: "doc.fill",
                         value: url.pathExtension.uppercased().isEmpty ? "VIDEO" : url.pathExtension.uppercased(),
-                        label: "Format",
+                        label: languageStore.text(.format),
                         tint: AppTheme.neonPurple
                     )
                 }
@@ -276,7 +277,7 @@ struct VideoPlayerView: View {
     private var analysisSection: some View {
         VStack(spacing: 16) {
             RorkSectionHeader(
-                title: "AI Analysis",
+                title: languageStore.text(.aiAnalysis),
                 icon: "brain.head.profile.fill",
                 subtitle: analysisSectionSubtitle
             )
@@ -295,7 +296,7 @@ struct VideoPlayerView: View {
                             .foregroundStyle(AppTheme.warningYellow)
                         Spacer()
                         if subscriptionManager.freeUsesRemaining == 0 && subscriptionManager.isProUser == false {
-                            Button("Go Pro") { showingPaywall = true }
+                            Button(languageStore.text(.goPro)) { showingPaywall = true }
                                 .font(.caption.bold())
                                 .foregroundStyle(AppTheme.neonPurple)
                         }
@@ -321,7 +322,7 @@ struct VideoPlayerView: View {
                         Image(systemName: "brain.head.profile.fill")
                             .font(.title3)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("Analyze with AI")
+                            Text(languageStore.text(.analyzeWithAI))
                                 .font(.headline)
                             Text(analysisButtonSubtitle)
                                 .font(.caption)
@@ -375,16 +376,16 @@ struct VideoPlayerView: View {
             HStack {
                 Image(systemName: "checkmark.circle.fill")
                     .foregroundStyle(AppTheme.successGreen)
-                Text("Analysis Complete")
+                Text(languageStore.text(.analysisComplete))
                     .font(.headline)
                     .foregroundStyle(.white)
                 Spacer()
             }
 
             HStack(spacing: 16) {
-                statBadge(value: "\(viewModel.clips.count)", label: "Clips Found", color: AppTheme.neonPurple)
-                statBadge(value: "\(viewModel.keptClips.count)", label: "Kept", color: AppTheme.successGreen)
-                statBadge(value: formatDuration(viewModel.keptClips.reduce(0) { $0 + $1.duration }), label: "Duration", color: AppTheme.warningYellow)
+                statBadge(value: "\(viewModel.clips.count)", label: languageStore.text(.clipsFound), color: AppTheme.neonPurple)
+                statBadge(value: "\(viewModel.keptClips.count)", label: languageStore.text(.kept), color: AppTheme.successGreen)
+                statBadge(value: formatDuration(viewModel.keptClips.reduce(0) { $0 + $1.duration }), label: languageStore.text(.duration), color: AppTheme.warningYellow)
             }
         }
         .padding(16)
@@ -408,7 +409,7 @@ struct VideoPlayerView: View {
             Image(systemName: "timer")
                 .foregroundStyle(AppTheme.subtleText)
             let estimatedSeconds = Int(max(viewModel.videoDuration * 0.42, 12))
-            Text("Estimated: ~\(estimatedSeconds)s analysis")
+            Text("\(languageStore.text(.estimated)): ~\(estimatedSeconds)s \(languageStore.text(.analysis))")
                 .font(.caption)
                 .foregroundStyle(AppTheme.subtleText)
             Spacer()
@@ -421,22 +422,22 @@ struct VideoPlayerView: View {
     private var projectOverviewCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             RorkSectionHeader(
-                title: "Project Snapshot",
+                title: languageStore.text(.projectSnapshot),
                 icon: "sparkles",
-                subtitle: "Quick context before review and export"
+                subtitle: languageStore.text(.projectSnapshotSubtitle)
             )
 
             HStack(spacing: 10) {
                 RorkMetricChip(
                     icon: "film.stack.fill",
                     value: "\(viewModel.clips.count)",
-                    label: "Detected",
+                    label: languageStore.text(.detected),
                     tint: AppTheme.neonPurple
                 )
                 RorkMetricChip(
                     icon: "checkmark.circle.fill",
                     value: "\(viewModel.keptClips.count)",
-                    label: "Kept",
+                    label: languageStore.text(.kept),
                     tint: AppTheme.successGreen
                 )
             }
@@ -453,38 +454,41 @@ struct VideoPlayerView: View {
 
     private var analysisBannerText: String {
         if requiresProForCurrentVideo {
-            return "Free tier supports up to \(formatDuration(AppConstants.nonProMaxAnalysisDuration)). Upgrade to analyze longer games."
+            return "\(languageStore.text(.freeTierLimitPrefix)) \(formatDuration(AppConstants.nonProMaxAnalysisDuration)). \(languageStore.text(.freeTierLimitSuffix))"
         }
         if let remaining = viewModel.cloudQuotaRemaining {
             if remaining > 0 {
-                return "\(remaining) free analysis\(remaining == 1 ? "" : "es") remaining today."
+                let suffix = remaining == 1
+                    ? languageStore.text(.freeAnalysisRemainingSingular)
+                    : languageStore.text(.freeAnalysisRemainingPlural)
+                return "\(remaining) \(suffix)"
             }
-            return "You've used today's free analyses. Upgrade for unlimited access."
+            return languageStore.text(.dailyAnalysesUsed)
         }
-        return "Ready to find your best clips."
+        return languageStore.text(.readyToFind)
     }
 
     private var analysisProgressTitle: String {
         let status = viewModel.analysisService.statusMessage.lowercased()
         if status.contains("upload") {
-            return "Uploading..."
+            return languageStore.text(.uploading)
         }
         if status.contains("queued") {
-            return "Queued..."
+            return languageStore.text(.queued)
         }
         if status.contains("device") {
-            return "Analyzing..."
+            return languageStore.text(.analyzing)
         }
         if status.contains("local analysis") {
-            return "Analyzing..."
+            return languageStore.text(.analyzing)
         }
         if status.contains("finalizing") {
-            return "Finalizing..."
+            return languageStore.text(.finalizing)
         }
         if status.contains("refining") {
-            return "Refining..."
+            return languageStore.text(.refining)
         }
-        return "Analyzing..."
+        return languageStore.text(.analyzing)
     }
 
     private var requiresProForCurrentVideo: Bool {
@@ -493,12 +497,12 @@ struct VideoPlayerView: View {
 
     private var analysisButtonSubtitle: String {
         if requiresProForCurrentVideo {
-            return "Upgrade to analyze videos longer than \(formatDuration(AppConstants.nonProMaxAnalysisDuration))"
+            return "\(languageStore.text(.analysisButtonUpgradePrefix)) \(formatDuration(AppConstants.nonProMaxAnalysisDuration))"
         }
-        return "Find highlight clips from this video"
+        return languageStore.text(.analysisButtonSubtitle)
     }
 
     private var analysisSectionSubtitle: String {
-        "Find the best plays, trim the noise, and build a reel fast."
+        languageStore.text(.aiAnalysisSubtitle)
     }
 }

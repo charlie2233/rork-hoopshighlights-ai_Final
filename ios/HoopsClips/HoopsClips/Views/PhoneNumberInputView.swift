@@ -112,6 +112,7 @@ struct PhoneNumberInputView: View {
     let title: String
     @Binding var selectedRegion: PhoneRegion
     @Binding var nationalNumber: String
+    @Environment(AppLanguageStore.self) private var languageStore
 
     var normalizedNumber: String {
         PhoneNumberFormatter.normalizedNumber(from: nationalNumber, region: selectedRegion)
@@ -128,7 +129,7 @@ struct PhoneNumberInputView: View {
                 .foregroundStyle(AppTheme.subtleText)
 
             HStack(spacing: 10) {
-                Picker("Region", selection: $selectedRegion) {
+                Picker(languageStore.text(.region), selection: $selectedRegion) {
                     ForEach(PhoneRegion.supported) { region in
                         Text(region.fullLabel)
                             .tag(region)
@@ -157,7 +158,7 @@ struct PhoneNumberInputView: View {
             }
 
             if !normalizedNumber.isEmpty {
-                Text("Will send to \(normalizedNumber)")
+                Text("\(languageStore.text(.willSendTo)) \(normalizedNumber)")
                     .font(.caption2.monospacedDigit())
                     .foregroundStyle(AppTheme.subtleText)
             }

@@ -5,6 +5,7 @@ struct SettingsView: View {
     @Bindable var viewModel: HighlightsViewModel
     @Bindable var authService: AuthService
     @Bindable var subscriptionManager: SubscriptionManager
+    @Environment(AppLanguageStore.self) private var languageStore
     @State private var showingResetAlert = false
     @State private var showingPaywall = false
     @State private var showingAdvancedSettings = false
@@ -110,6 +111,7 @@ struct SettingsView: View {
                 ScrollView {
                     VStack(spacing: 24) {
                         AnyView(settingsHeroCard)
+                        AnyView(languageSettingsCard)
                         #if DEBUG
                         AnyView(runtimeStatusCard)
                         #endif
@@ -127,7 +129,7 @@ struct SettingsView: View {
                     .padding(.bottom, 100)
                 }
             }
-            .navigationTitle("Settings")
+            .navigationTitle(languageStore.text(.settingsTitle))
             .navigationBarTitleDisplayMode(.large)
             .toolbarBackground(AppTheme.darkBg, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
@@ -158,11 +160,11 @@ struct SettingsView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Control Room")
+                    Text(languageStore.text(.controlRoom))
                         .font(.title3.weight(.bold))
                         .foregroundStyle(.white)
 
-                    Text("Manage your account, tune AI defaults, and jump into focused setup screens instead of one long settings list.")
+                    Text(languageStore.text(.controlRoomSubtitle))
                         .font(.caption)
                         .foregroundStyle(AppTheme.subtleText)
                         .fixedSize(horizontal: false, vertical: true)
@@ -175,13 +177,13 @@ struct SettingsView: View {
                 RorkMetricChip(
                     icon: "person.crop.circle.fill",
                     value: authService.currentUser?.displayName ?? authMethodLabel,
-                    label: "Account",
+                    label: languageStore.text(.account),
                     tint: AppTheme.neonPurple
                 )
                 RorkMetricChip(
                     icon: subscriptionManager.isProUser ? "checkmark.seal.fill" : "sparkles",
                     value: subscriptionManager.isProUser ? "Pro" : "\(subscriptionManager.freeUsesRemaining)",
-                    label: subscriptionManager.isProUser ? "Plan" : "Free Left",
+                    label: subscriptionManager.isProUser ? languageStore.text(.plan) : languageStore.text(.freeLeft),
                     tint: subscriptionManager.isProUser ? AppTheme.successGreen : AppTheme.warningYellow
                 )
             }
@@ -190,13 +192,13 @@ struct SettingsView: View {
                 RorkMetricChip(
                     icon: "clock.badge.checkmark.fill",
                     value: formattedTargetDuration(viewModel.settings.targetHighlightDuration),
-                    label: "Target Reel",
+                    label: languageStore.text(.targetReel),
                     tint: AppTheme.warningYellow
                 )
                 RorkMetricChip(
                     icon: "square.stack.3d.up.fill",
                     value: viewModel.selectedFormat.rawValue,
-                    label: "Export",
+                    label: languageStore.text(.export),
                     tint: AppTheme.neonPurple
                 )
             }
@@ -205,10 +207,72 @@ struct SettingsView: View {
         .rorkCard(cornerRadius: 22, stroke: AppTheme.softBorder, glowOpacity: 0.08)
     }
 
+    private var languageSettingsCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            RorkSectionHeader(
+                title: languageStore.text(.languageCardTitle),
+                icon: "globe",
+                subtitle: languageStore.text(.languageCardSubtitle)
+            )
+
+            Menu {
+                ForEach(AppLanguage.allCases) { language in
+                    Button {
+                        languageStore.selectedLanguage = language
+                    } label: {
+                        if languageStore.selectedLanguage == language {
+                            Label(language.nativeName, systemImage: "checkmark")
+                        } else {
+                            Text(language.nativeName)
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 12) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(AppTheme.accentPurple.opacity(0.14))
+                            .frame(width: 42, height: 42)
+                        Image(systemName: "character.bubble.fill")
+                            .foregroundStyle(AppTheme.neonPurple)
+                    }
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(languageStore.text(.languageTitle))
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.white)
+                        Text("\(languageStore.text(.languageCurrent)): \(languageStore.selectedLanguage.nativeName)")
+                            .font(.caption)
+                            .foregroundStyle(AppTheme.subtleText)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(AppTheme.neonPurple)
+                }
+                .padding(14)
+                .background(AppTheme.surfaceBg.opacity(0.55), in: .rect(cornerRadius: 16))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(AppTheme.softBorder, lineWidth: 1)
+                )
+            }
+
+            Text(languageStore.text(.languageRestartNote))
+                .font(.caption2)
+                .foregroundStyle(AppTheme.subtleText)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(16)
+        .rorkCard(cornerRadius: 18, stroke: AppTheme.softBorder, glowOpacity: 0.05)
+    }
+
     private var workflowHubLink: some View {
         settingsHubLink(
-            title: "Workflow Defaults",
-            subtitle: "Clip duration, confidence, AI weighting, and reel-shaping rules.",
+            title: languageStore.text(.workflowDefaults),
+            subtitle: languageStore.text(.workflowDefaultsSubtitle),
             icon: "waveform.and.magnifyingglass",
             accent: AppTheme.neonPurple,
             stats: [
@@ -298,8 +362,8 @@ struct SettingsView: View {
 
     private var membershipHubLink: some View {
         settingsHubLink(
-            title: "Membership & Account",
-            subtitle: "Identity, subscription status, upgrade controls, and sign out.",
+            title: languageStore.text(.membershipAccount),
+            subtitle: languageStore.text(.membershipAccountSubtitle),
             icon: "person.crop.circle.badge.checkmark",
             accent: AppTheme.successGreen,
             stats: membershipPreviewStats
@@ -311,7 +375,7 @@ struct SettingsView: View {
     private var accountQuickActionCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             RorkSectionHeader(
-                title: "Account Quick Actions",
+                title: languageStore.text(.accountQuickActions),
                 icon: "person.crop.circle.fill",
                 subtitle: "Signed in with \(authMethodLabel)"
             )
@@ -324,8 +388,8 @@ struct SettingsView: View {
 
     private var supportHubLink: some View {
         settingsHubLink(
-            title: "Support Center",
-            subtitle: "Send feedback, report bugs, and browse quick answers.",
+            title: languageStore.text(.supportCenter),
+            subtitle: languageStore.text(.supportCenterSubtitle),
             icon: "bubble.left.and.exclamationmark.bubble.right.fill",
             accent: AppTheme.warningYellow,
             stats: [
@@ -349,8 +413,8 @@ struct SettingsView: View {
 
     private var aboutHubLink: some View {
         settingsHubLink(
-            title: "About & Privacy",
-            subtitle: "How the app works, what is saved on device, and reset controls.",
+            title: languageStore.text(.aboutPrivacy),
+            subtitle: languageStore.text(.aboutPrivacySubtitle),
             icon: "lock.doc.fill",
             accent: AppTheme.neonPurple,
             stats: [
@@ -378,13 +442,13 @@ struct SettingsView: View {
                 SettingsPreviewStat(
                     icon: "checkmark.seal.fill",
                     value: "Pro",
-                    label: "Plan",
+                    label: languageStore.text(.plan),
                     tint: AppTheme.successGreen
                 ),
                 SettingsPreviewStat(
                     icon: "infinity",
                     value: "Unlimited",
-                    label: "Analysis",
+                    label: languageStore.text(.analysis),
                     tint: AppTheme.neonPurple
                 )
             ]
@@ -394,7 +458,7 @@ struct SettingsView: View {
             SettingsPreviewStat(
                 icon: AppConstants.cloudAnalysisEnabled ? "sparkles" : "cpu.fill",
                 value: "\(subscriptionManager.freeUsesRemaining)",
-                label: AppConstants.cloudAnalysisEnabled ? "Free Left" : "On Device",
+                label: AppConstants.cloudAnalysisEnabled ? languageStore.text(.freeLeft) : "On Device",
                 tint: subscriptionManager.freeUsesRemaining > 0 ? AppTheme.warningYellow : AppTheme.dangerRed
             ),
             SettingsPreviewStat(
@@ -423,7 +487,7 @@ struct SettingsView: View {
 
     private var workflowSettingsPage: some View {
         settingsDetailPage(
-            title: "Workflow Defaults",
+            title: languageStore.text(.workflowDefaults),
             subtitle: "Tune clip selection and analysis behavior for your footage.",
             icon: "waveform.and.magnifyingglass",
             accent: AppTheme.neonPurple
@@ -436,7 +500,7 @@ struct SettingsView: View {
 
     private var membershipSettingsPage: some View {
         settingsDetailPage(
-            title: "Membership & Account",
+            title: languageStore.text(.membershipAccount),
             subtitle: "See how you’re signed in and manage access.",
             icon: "person.crop.circle.badge.checkmark",
             accent: AppTheme.successGreen
@@ -449,7 +513,7 @@ struct SettingsView: View {
 
     private var supportSettingsPage: some View {
         settingsDetailPage(
-            title: "Support Center",
+            title: languageStore.text(.supportCenter),
             subtitle: "Feedback, bug reports, and setup help in one place.",
             icon: "bubble.left.and.exclamationmark.bubble.right.fill",
             accent: AppTheme.warningYellow
@@ -461,7 +525,7 @@ struct SettingsView: View {
 
     private var aboutSettingsPage: some View {
         settingsDetailPage(
-            title: "About & Privacy",
+            title: languageStore.text(.aboutPrivacy),
             subtitle: "Core app details, storage behavior, and device-local history notes.",
             icon: "lock.doc.fill",
             accent: AppTheme.neonPurple
@@ -1382,7 +1446,7 @@ struct SettingsView: View {
                 .foregroundStyle(AppTheme.dangerRed)
 
                 HStack {
-                    Text("Restore all AI tuning values to the original Hoops Clips defaults.")
+                    Text(languageStore.text(.resetDefaultsDescription))
                         .font(.caption2)
                         .foregroundStyle(AppTheme.subtleText)
                     Spacer()

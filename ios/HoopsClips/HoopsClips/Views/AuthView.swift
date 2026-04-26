@@ -4,6 +4,7 @@ import GoogleSignIn
 
 struct AuthView: View {
     @Bindable var authService: AuthService
+    @Environment(AppLanguageStore.self) private var languageStore
     @State private var authMode: AuthMode = .welcome
     @State private var email = ""
     @State private var password = ""
@@ -38,7 +39,7 @@ struct AuthView: View {
                 .padding(.bottom, 40)
             }
         }
-        .alert("Sign In Error", isPresented: $showError) {
+        .alert(languageStore.text(.signInError), isPresented: $showError) {
             Button("OK") { }
         } message: {
             Text(authService.errorMessage ?? "Something went wrong.")
@@ -68,7 +69,7 @@ struct AuthView: View {
                     .foregroundStyle(.white)
             }
 
-            Text("Turn basketball videos into share-ready highlight reels.\nSign in to start clipping.")
+            Text(languageStore.text(.authTagline))
                 .font(.subheadline)
                 .foregroundStyle(AppTheme.subtleText)
                 .multilineTextAlignment(.center)
@@ -105,7 +106,7 @@ struct AuthView: View {
                 HStack(spacing: 12) {
                     Image(systemName: "g.circle.fill")
                         .font(.title2)
-                    Text("Continue with Google")
+                    Text(languageStore.text(.continueWithGoogle))
                         .font(.body.weight(.semibold))
                 }
                 .foregroundStyle(.white)
@@ -118,7 +119,7 @@ struct AuthView: View {
                 Rectangle()
                     .fill(AppTheme.softBorder)
                     .frame(height: 1)
-                Text("or")
+                Text(languageStore.text(.or))
                     .font(.caption)
                     .foregroundStyle(AppTheme.subtleText)
                 Rectangle()
@@ -133,7 +134,7 @@ struct AuthView: View {
                 HStack(spacing: 12) {
                     Image(systemName: "envelope.fill")
                         .font(.title3)
-                    Text("Continue with Email")
+                    Text(languageStore.text(.continueWithEmail))
                         .font(.body.weight(.semibold))
                 }
                 .foregroundStyle(.white)
@@ -152,7 +153,7 @@ struct AuthView: View {
                 HStack(spacing: 12) {
                     Image(systemName: "phone.fill")
                         .font(.title3)
-                    Text("Continue with Phone")
+                    Text(languageStore.text(.continueWithPhone))
                         .font(.body.weight(.semibold))
                 }
                 .foregroundStyle(.white)
@@ -171,7 +172,7 @@ struct AuthView: View {
                 HStack(spacing: 12) {
                     Image(systemName: "person.fill.questionmark")
                         .font(.title3)
-                    Text("Continue as Guest")
+                    Text(languageStore.text(.continueAsGuest))
                         .font(.body.weight(.semibold))
                 }
                 .foregroundStyle(AppTheme.subtleText)
@@ -194,28 +195,28 @@ struct AuthView: View {
         if let termsURL = AppConstants.termsOfServiceURL,
            let privacyURL = AppConstants.privacyPolicyURL {
             VStack(spacing: 4) {
-                Text("By signing in, you agree to our")
+                Text(languageStore.text(.legalPrefix))
                     .font(.caption2)
                     .foregroundStyle(AppTheme.subtleText)
 
                 ViewThatFits(in: .vertical) {
                     HStack(spacing: 4) {
-                        legalLink(title: "Terms of Service", url: termsURL)
-                        Text("and")
+                        legalLink(title: languageStore.text(.legalTerms), url: termsURL)
+                        Text(languageStore.text(.legalAnd))
                             .font(.caption2)
                             .foregroundStyle(AppTheme.subtleText)
-                        legalLink(title: "Privacy Policy", url: privacyURL)
+                        legalLink(title: languageStore.text(.legalPrivacy), url: privacyURL)
                     }
 
                     VStack(spacing: 4) {
-                        legalLink(title: "Terms of Service", url: termsURL)
-                        legalLink(title: "Privacy Policy", url: privacyURL)
+                        legalLink(title: languageStore.text(.legalTerms), url: termsURL)
+                        legalLink(title: languageStore.text(.legalPrivacy), url: privacyURL)
                     }
                 }
                 .multilineTextAlignment(.center)
             }
         } else {
-            Text("By signing in, you agree to our Terms of Service and Privacy Policy.")
+            Text(languageStore.text(.legalFallback))
                 .font(.caption2)
                 .foregroundStyle(AppTheme.subtleText)
                 .multilineTextAlignment(.center)
@@ -234,7 +235,7 @@ struct AuthView: View {
     private var emailForm: some View {
         VStack(spacing: 16) {
             VStack(alignment: .leading, spacing: 8) {
-                Text("Email")
+                Text(languageStore.text(.email))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(AppTheme.subtleText)
                 TextField("you@example.com", text: $email)
@@ -248,10 +249,10 @@ struct AuthView: View {
             }
 
             VStack(alignment: .leading, spacing: 8) {
-                Text("Password")
+                Text(languageStore.text(.password))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(AppTheme.subtleText)
-                SecureField("Min 6 characters", text: $password)
+                SecureField(languageStore.text(.passwordPlaceholder), text: $password)
                     .foregroundStyle(.white)
                     .padding(14)
                     .background(AppTheme.surfaceBg.opacity(0.55), in: .rect(cornerRadius: 12))
@@ -265,7 +266,7 @@ struct AuthView: View {
                     if authService.isLoading {
                         ProgressView().tint(.white).controlSize(.small)
                     }
-                    Text(authService.isLoading ? "Signing in..." : "Sign In")
+                    Text(authService.isLoading ? languageStore.text(.signingIn) : languageStore.text(.signIn))
                         .font(.body.weight(.bold))
                 }
                 .foregroundStyle(.white)
@@ -282,7 +283,7 @@ struct AuthView: View {
     private var phoneForm: some View {
         VStack(spacing: 16) {
             PhoneNumberInputView(
-                title: "Phone Number",
+                title: languageStore.text(.phoneNumber),
                 selectedRegion: $selectedPhoneRegion,
                 nationalNumber: $phoneNumber
             )
@@ -292,7 +293,7 @@ struct AuthView: View {
                     authService.sendPhoneVerificationCode(to: normalizedPhoneNumber)
                     withAnimation(.snappy) { codeSent = true }
                 } label: {
-                    Text("Send Code")
+                    Text(languageStore.text(.sendCode))
                         .font(.body.weight(.bold))
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
@@ -305,7 +306,7 @@ struct AuthView: View {
                 codeInfoBanner(destination: normalizedPhoneNumber)
 
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Verification Code")
+                    Text(languageStore.text(.verificationCode))
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(AppTheme.subtleText)
                     TextField("123456", text: $verificationCode)
@@ -323,7 +324,7 @@ struct AuthView: View {
                         if authService.isLoading {
                             ProgressView().tint(.white).controlSize(.small)
                         }
-                        Text(authService.isLoading ? "Verifying..." : "Verify & Sign In")
+                        Text(authService.isLoading ? languageStore.text(.verifying) : languageStore.text(.verifyAndSignIn))
                             .font(.body.weight(.bold))
                     }
                     .foregroundStyle(.white)
@@ -336,7 +337,7 @@ struct AuthView: View {
                 Button {
                     authService.sendPhoneVerificationCode(to: normalizedPhoneNumber)
                 } label: {
-                    Text("Resend Code")
+                    Text(languageStore.text(.resendCode))
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(AppTheme.neonPurple)
                 }
@@ -359,13 +360,13 @@ struct AuthView: View {
             Image(systemName: "info.circle.fill")
                 .foregroundStyle(AppTheme.neonPurple)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Verification code sent")
+                Text(languageStore.text(.codeSent))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.white)
                 Text("Code: \(authService.phoneVerificationCode ?? "------")")
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(AppTheme.neonPurple)
-                Text("Demo mode — in production, codes are sent via SMS/email")
+                Text(languageStore.text(.demoCodeNote))
                     .font(.caption2)
                     .foregroundStyle(AppTheme.subtleText)
             }
@@ -387,7 +388,7 @@ struct AuthView: View {
             HStack(spacing: 6) {
                 Image(systemName: "chevron.left")
                     .font(.caption.bold())
-                Text("Back to sign in options")
+                Text(languageStore.text(.backToSignIn))
                     .font(.subheadline)
             }
             .foregroundStyle(AppTheme.neonPurple)

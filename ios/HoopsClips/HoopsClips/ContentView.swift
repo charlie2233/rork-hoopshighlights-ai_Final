@@ -4,6 +4,7 @@ struct ContentView: View {
     @State private var viewModel = HighlightsViewModel()
     @State private var authService = AuthService()
     @State private var subscriptionManager = SubscriptionManager()
+    @State private var languageStore = AppLanguageStore()
     @State private var selectedTab = 0
     @State private var showingPaywall = false
 
@@ -29,6 +30,8 @@ struct ContentView: View {
                 await subscriptionManager.checkSubscriptionStatus()
             }
         }
+        .environment(languageStore)
+        .environment(\.locale, languageStore.selectedLanguage.locale)
     }
 
     private var mainAppView: some View {
@@ -39,23 +42,23 @@ struct ContentView: View {
                 .ignoresSafeArea()
 
             TabView(selection: $selectedTab) {
-                Tab("Player", systemImage: "play.circle.fill", value: 0) {
+                Tab(languageStore.text(.tabPlayer), systemImage: "play.circle.fill", value: 0) {
                     VideoPlayerView(viewModel: viewModel)
                         .environment(subscriptionManager)
                         .environment(authService)
                 }
-                Tab("Review", systemImage: "film.stack.fill", value: 1) {
+                Tab(languageStore.text(.tabReview), systemImage: "film.stack.fill", value: 1) {
                     ReviewView(viewModel: viewModel)
                 }
-                Tab("Export", systemImage: "square.and.arrow.up.fill", value: 2) {
+                Tab(languageStore.text(.tabExport), systemImage: "square.and.arrow.up.fill", value: 2) {
                     ExportView(viewModel: viewModel)
                         .environment(subscriptionManager)
                         .environment(authService)
                 }
-                Tab("History", systemImage: "clock.arrow.circlepath", value: 3) {
+                Tab(languageStore.text(.tabHistory), systemImage: "clock.arrow.circlepath", value: 3) {
                     HistoryView(viewModel: viewModel)
                 }
-                Tab("Settings", systemImage: "gearshape.fill", value: 4) {
+                Tab(languageStore.text(.tabSettings), systemImage: "gearshape.fill", value: 4) {
                     SettingsView(viewModel: viewModel, authService: authService, subscriptionManager: subscriptionManager)
                 }
             }
