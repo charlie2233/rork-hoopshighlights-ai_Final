@@ -2,7 +2,8 @@
 
 ## Current status
 - Launch posture: public app launch with cloud gated.
-- Report state: blocked pending production secret population and a trusted physical iPhone connected to this Mac.
+- Report state: blocked pending local secret mirror materialization and a trusted physical iPhone connected to this Mac.
+- Latest GitHub preflight evidence: `Release Secrets Preflight` run `24947020335` passed on 2026-04-26 for commit `9335cdd`, verifying production secret presence, Release build settings, cloud-disabled launch posture, Release simulator build, and built Info.plist wiring.
 
 ## Automated validation completed from this branch
 - iOS launch-gating unit tests: passed via `LaunchRuntimeConfigTests`.
@@ -42,7 +43,7 @@
 | Legal links open | pending |  |
 
 ## Blockers
-- GitHub `production` environment has the real legal-link URLs populated, but it still needs real secrets for signing, Google, RevenueCat, and telemetry.
-- Local `LocalSecrets.xcconfig` has not been materialized on this Mac because the operator-held Release values are not available in the current shell.
-- The only visible physical iPhone is currently offline, so no true Release-device smoke has been executed yet.
+- GitHub `production` environment secrets and legal-link variables passed the Release preflight on 2026-04-26.
+- Local `LocalSecrets.xcconfig` has not been materialized on this Mac because GitHub secrets are write-only and the operator-held Release values are not available in the current shell.
+- The only visible physical iPhone is currently unavailable (`charlie`'s iPhone, iPhone 15 Pro), so no true Release-device smoke has been executed yet.
 - External crash-reporting client is not linked in this branch; launch telemetry currently relies on unified logs, with DSN config surfaced for future enablement.
