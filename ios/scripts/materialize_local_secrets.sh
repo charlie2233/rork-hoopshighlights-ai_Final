@@ -28,7 +28,7 @@ fi
 
 xcconfig_escape() {
   local value="$1"
-  value="${value//'//'/'/$()/'}"
+  value="${value//\/\///\$()/}"
   printf '%s' "$value"
 }
 

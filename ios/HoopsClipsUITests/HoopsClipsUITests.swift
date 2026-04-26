@@ -33,11 +33,16 @@ final class HoopsClipsUITests: XCTestCase {
 
     @MainActor
     func testSettingsLaunchStatusOpensForGuestSession() throws {
+        XCUIDevice.shared.orientation = .portrait
+
         let app = XCUIApplication()
         app.launch()
 
         let guestButton = app.buttons["Continue as Guest"]
         if guestButton.waitForExistence(timeout: 5) {
+            while !guestButton.isHittable && app.scrollViews.firstMatch.exists {
+                app.scrollViews.firstMatch.swipeUp()
+            }
             guestButton.tap()
         }
 
@@ -46,7 +51,7 @@ final class HoopsClipsUITests: XCTestCase {
         settingsTab.tap()
 
         XCTAssertTrue(app.staticTexts["Launch Status"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["On-device only"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Analysis Path"].waitForExistence(timeout: 5))
     }
 
     @MainActor
