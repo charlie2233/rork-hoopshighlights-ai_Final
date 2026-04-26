@@ -6,6 +6,7 @@ struct PaywallView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var offerings: Offerings?
     @State private var isLoadingOfferings = false
+    @State private var offeringsLoadMessage: String?
 
     var body: some View {
         NavigationStack {
@@ -190,13 +191,19 @@ struct PaywallView: View {
                     Text("Unable to load subscription options.")
                         .font(.subheadline)
                         .foregroundStyle(AppTheme.subtleText)
+                    if let offeringsLoadMessage {
+                        Text(offeringsLoadMessage)
+                            .font(.caption2)
+                            .foregroundStyle(AppTheme.subtleText)
+                            .multilineTextAlignment(.center)
+                    }
                     Button("Retry") {
                         Task { await loadOfferings() }
                     }
                     .font(.subheadline.bold())
                     .foregroundStyle(AppTheme.neonPurple)
                 }
-                .frame(height: 80)
+                .frame(minHeight: 104)
             }
 
             Text("Cancel anytime. Subscription auto-renews monthly.")
@@ -224,10 +231,22 @@ struct PaywallView: View {
         }
 
         isLoadingOfferings = true
+        offeringsLoadMessage = nil
         do {
-            offerings = try await Purchases.shared.offerings()
+            let loadedOfferings = try await Purchases.shared.offerings()
+            offerings = loadedOfferings
+
+            if loadedOfferings.current == nil {
+                offeringsLoadMessage = "No current RevenueCat offering is configured."
+                LaunchTelemetry.shared.recordConfigurationIssue("RevenueCat offerings loaded without a current offering.")
+            } else if loadedOfferings.current?.availablePackages.isEmpty == true {
+                offeringsLoadMessage = "The current RevenueCat offering has no available packages."
+                LaunchTelemetry.shared.recordConfigurationIssue("RevenueCat current offering loaded with no available packages.")
+            }
         } catch {
             offerings = nil
+            offeringsLoadMessage = "RevenueCat returned: \(error.localizedDescription)"
+            LaunchTelemetry.shared.recordConfigurationIssue("RevenueCat offerings failed: \(error.localizedDescription)")
         }
         isLoadingOfferings = false
     }
