@@ -110,13 +110,13 @@ struct SettingsView: View {
 
                 ScrollView {
                     VStack(spacing: 24) {
-                        settingsHeroCard
-                        runtimeStatusCard
-                        workflowHubLink
-                        membershipHubLink
-                        supportHubLink
-                        aboutHubLink
-                        settingsFootnote
+                        AnyView(settingsHeroCard)
+                        AnyView(runtimeStatusCard)
+                        AnyView(workflowHubLink)
+                        AnyView(membershipHubLink)
+                        AnyView(supportHubLink)
+                        AnyView(aboutHubLink)
+                        AnyView(settingsFootnote)
                     }
                     .padding(.horizontal, 16)
                     .padding(.top, 8)

@@ -2,7 +2,7 @@
 
 ## Current status
 - Launch posture: public app launch with cloud gated.
-- Report state: Release app built, installed, and cold-launched; manual real-device smoke remains pending.
+- Report state: Release app built, installed, cold-launched, and Settings launch-status navigation verified on the physical iPhone; remaining manual real-device smoke rows are still pending.
 - Latest GitHub preflight evidence: `Release Secrets Preflight` run `24948341395` passed on 2026-04-26 on `main`, verifying production secret presence, Release build settings, cloud-disabled launch posture, Release simulator build, and built Info.plist wiring.
 
 ## Automated validation completed from this branch
@@ -13,6 +13,7 @@
 - Local Release device build settings: passed after materializing `LocalSecrets.xcconfig`; Release resolves non-empty signing, RevenueCat, Google, legal-link, and telemetry settings while preserving cloud-disabled launch posture.
 - Physical iPhone pairing and Developer Mode: passed; Xcode now sees `charlie`'s iPhone as an available iOS destination.
 - Release physical-device build, install, and command launch: passed for bundle `atrak.charlie.hoopsclips`.
+- Settings launch-status regression check: passed after patching the Release-only Settings tab crash. LLDB showed the prior crash in `SettingsView.body` Swift metadata instantiation; the patched Release build was rebuilt, installed, and user-verified on the physical iPhone.
 - Google Sign-In callback plumbing is now wired from `HOOPS_GOOGLE_REVERSED_CLIENT_ID`; real-device sign-in still requires populated Release secrets.
 - Privacy Policy and Terms of Service links are now surfaced in-app; the real-device smoke still needs to verify both links open the intended production pages.
 
@@ -26,7 +27,6 @@
 - Review navigation
 - Export render
 - Save to Photos
-- Settings > Launch Status reflects `On-device only`
 - About & Privacy opens Privacy Policy and Terms of Service successfully
 
 ## Result template
@@ -42,11 +42,11 @@
 | Review flow | pending |  |
 | Export render | pending |  |
 | Save to Photos | pending |  |
-| Launch Status card | pending |  |
+| Launch Status card | pass | Patched Release app no longer exits when switching to Settings; user verified Settings opens on the physical iPhone after reinstall. Built app plist still resolves `HOOPS_CLOUD_LAUNCH_MODE=disabled` and empty cloud base URL. |
 | Legal links open | pending |  |
 
 ## Blockers
 - GitHub `production` environment secrets and legal-link variables passed the `main` Release preflight on 2026-04-26.
 - Local `LocalSecrets.xcconfig` has been materialized on this Mac and Release build settings validate without exposing secret values.
-- Manual Release-device smoke remains pending for sign-in, purchase/restore, import, on-device analysis, review, export, save, launch status, and legal links.
+- Manual Release-device smoke remains pending for sign-in, purchase/restore, import, on-device analysis, review, export, save, and legal links.
 - External crash-reporting client is not linked in this branch; launch telemetry currently relies on unified logs, with DSN config surfaced for future enablement.

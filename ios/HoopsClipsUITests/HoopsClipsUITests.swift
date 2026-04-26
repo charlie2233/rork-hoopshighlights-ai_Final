@@ -32,6 +32,24 @@ final class HoopsClipsUITests: XCTestCase {
     }
 
     @MainActor
+    func testSettingsLaunchStatusOpensForGuestSession() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        let guestButton = app.buttons["Continue as Guest"]
+        if guestButton.waitForExistence(timeout: 5) {
+            guestButton.tap()
+        }
+
+        let settingsTab = app.tabBars.buttons["Settings"]
+        XCTAssertTrue(settingsTab.waitForExistence(timeout: 5), "Settings tab should be available after authentication.")
+        settingsTab.tap()
+
+        XCTAssertTrue(app.staticTexts["Launch Status"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["On-device only"].waitForExistence(timeout: 5))
+    }
+
+    @MainActor
     func testLaunchPerformance() throws {
         // This measures how long it takes to launch your application.
         measure(metrics: [XCTApplicationLaunchMetric()]) {
