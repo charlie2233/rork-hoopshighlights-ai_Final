@@ -8,6 +8,11 @@ struct ContentView: View {
     @State private var selectedTab = 0
     @State private var showingPaywall = false
 
+    private let firstTabIndex = 0
+    private let lastTabIndex = 4
+    private let tabSwipeThreshold: CGFloat = 70
+    private let tabSwipeVerticalTolerance: CGFloat = 1.25
+
     private var needsVerification: Bool {
         guard authService.isAuthenticated else { return false }
         let hasPendingEmail = authService.pendingEmailVerification != nil
@@ -68,8 +73,31 @@ struct ContentView: View {
             .toolbarColorScheme(.dark, for: .tabBar)
         }
         .preferredColorScheme(.dark)
+        .simultaneousGesture(tabSwipeGesture)
         .sheet(isPresented: $showingPaywall) {
             PaywallView(subscriptionManager: subscriptionManager, authService: authService)
+        }
+    }
+
+    private var tabSwipeGesture: some Gesture {
+        DragGesture(minimumDistance: 35, coordinateSpace: .local)
+            .onEnded(handleTabSwipe)
+    }
+
+    private func handleTabSwipe(_ value: DragGesture.Value) {
+        let horizontalDistance = value.translation.width
+        let verticalDistance = value.translation.height
+        let isHorizontalSwipe = abs(horizontalDistance) >= tabSwipeThreshold
+            && abs(horizontalDistance) > abs(verticalDistance) * tabSwipeVerticalTolerance
+
+        guard isHorizontalSwipe else { return }
+
+        let nextTab = selectedTab + (horizontalDistance < 0 ? 1 : -1)
+        let boundedTab = min(max(nextTab, firstTabIndex), lastTabIndex)
+        guard boundedTab != selectedTab else { return }
+
+        withAnimation(.easeOut(duration: 0.2)) {
+            selectedTab = boundedTab
         }
     }
 }
