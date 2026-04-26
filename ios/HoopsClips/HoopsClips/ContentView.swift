@@ -42,6 +42,7 @@ struct ContentView: View {
                 Tab("Player", systemImage: "play.circle.fill", value: 0) {
                     VideoPlayerView(viewModel: viewModel)
                         .environment(subscriptionManager)
+                        .environment(authService)
                 }
                 Tab("Review", systemImage: "film.stack.fill", value: 1) {
                     ReviewView(viewModel: viewModel)
@@ -49,6 +50,7 @@ struct ContentView: View {
                 Tab("Export", systemImage: "square.and.arrow.up.fill", value: 2) {
                     ExportView(viewModel: viewModel)
                         .environment(subscriptionManager)
+                        .environment(authService)
                 }
                 Tab("History", systemImage: "clock.arrow.circlepath", value: 3) {
                     HistoryView(viewModel: viewModel)
@@ -64,7 +66,7 @@ struct ContentView: View {
         }
         .preferredColorScheme(.dark)
         .sheet(isPresented: $showingPaywall) {
-            PaywallView(subscriptionManager: subscriptionManager)
+            PaywallView(subscriptionManager: subscriptionManager, authService: authService)
         }
     }
 }

@@ -128,7 +128,7 @@ struct SettingsView: View {
             .toolbarBackground(AppTheme.darkBg, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .sheet(isPresented: $showingPaywall) {
-                PaywallView(subscriptionManager: subscriptionManager)
+                PaywallView(subscriptionManager: subscriptionManager, authService: authService)
             }
             .alert("Reset Settings?", isPresented: $showingResetAlert) {
                 Button("Reset", role: .destructive) {
@@ -1259,12 +1259,16 @@ struct SettingsView: View {
         }
     }
 
+    private var membershipRequiresAccountSignIn: Bool {
+        authService.currentUser?.authMethod == .anonymous
+    }
+
     private var subscriptionSection: some View {
         VStack(alignment: .leading, spacing: 14) {
             RorkSectionHeader(
                 title: "Subscription",
                 icon: "crown.fill",
-                subtitle: subscriptionManager.isProUser ? "You have unlimited access" : "Free tier"
+                subtitle: subscriptionManager.isProUser ? "You have unlimited access" : (membershipRequiresAccountSignIn ? "Sign in required" : "Free tier")
             )
 
             if subscriptionManager.isProUser {
@@ -1304,7 +1308,7 @@ struct SettingsView: View {
                     HStack(spacing: 10) {
                         Image(systemName: "crown.fill")
                             .font(.subheadline)
-                        Text("Upgrade to Pro")
+                        Text(membershipRequiresAccountSignIn ? "Sign In to Upgrade" : "Upgrade to Pro")
                             .font(.subheadline.bold())
                         Spacer()
                         Image(systemName: "chevron.right")

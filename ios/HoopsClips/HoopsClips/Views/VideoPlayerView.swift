@@ -5,6 +5,7 @@ import PhotosUI
 struct VideoPlayerView: View {
     @Bindable var viewModel: HighlightsViewModel
     @Environment(SubscriptionManager.self) private var subscriptionManager
+    @Environment(AuthService.self) private var authService
     @State private var player: AVPlayer?
     @State private var showingFilePicker = false
     @State private var selectedPhotoItem: PhotosPickerItem?
@@ -85,7 +86,7 @@ struct VideoPlayerView: View {
                 syncPlayer(with: newValue)
             }
             .sheet(isPresented: $showingPaywall) {
-                PaywallView(subscriptionManager: subscriptionManager)
+                PaywallView(subscriptionManager: subscriptionManager, authService: authService)
             }
             .alert("No Highlights Found", isPresented: $showingNoClipsAlert) {
                 Button("OK", role: .cancel) { }

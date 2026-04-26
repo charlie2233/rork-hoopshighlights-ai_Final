@@ -9,6 +9,7 @@ struct ExportView: View {
     }
 
     @Environment(SubscriptionManager.self) private var subscriptionManager
+    @Environment(AuthService.self) private var authService
     @Bindable var viewModel: HighlightsViewModel
     @State private var exportTrigger = 0
     @State private var saveTrigger = 0
@@ -57,7 +58,7 @@ struct ExportView: View {
             .toolbarBackground(AppTheme.darkBg, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .sheet(isPresented: $showingPaywall) {
-                PaywallView(subscriptionManager: subscriptionManager)
+                PaywallView(subscriptionManager: subscriptionManager, authService: authService)
             }
             .sheet(isPresented: $showSystemShareSheet, onDismiss: clearShareSelection) {
                 if let shareURL {

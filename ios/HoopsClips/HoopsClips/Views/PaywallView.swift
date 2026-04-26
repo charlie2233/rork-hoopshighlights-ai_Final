@@ -3,10 +3,15 @@ import RevenueCat
 
 struct PaywallView: View {
     @Bindable var subscriptionManager: SubscriptionManager
+    @Bindable var authService: AuthService
     @Environment(\.dismiss) private var dismiss
     @State private var offerings: Offerings?
     @State private var isLoadingOfferings = false
     @State private var offeringsLoadMessage: String?
+
+    private var requiresSignedInAccount: Bool {
+        authService.currentUser?.authMethod == .anonymous
+    }
 
     var body: some View {
         NavigationStack {
@@ -41,7 +46,11 @@ struct PaywallView: View {
                 }
             }
             .task {
-                if subscriptionManager.billingConfigured {
+                if requiresSignedInAccount {
+                    offerings = nil
+                    offeringsLoadMessage = nil
+                    isLoadingOfferings = false
+                } else if subscriptionManager.billingConfigured {
                     await loadOfferings()
                 } else {
                     isLoadingOfferings = false
@@ -128,7 +137,9 @@ struct PaywallView: View {
 
     private var pricingSection: some View {
         VStack(spacing: 14) {
-            if isLoadingOfferings {
+            if requiresSignedInAccount {
+                accountRequiredSection
+            } else if isLoadingOfferings {
                 ProgressView()
                     .tint(AppTheme.neonPurple)
                     .frame(height: 60)
@@ -206,24 +217,79 @@ struct PaywallView: View {
                 .frame(minHeight: 104)
             }
 
-            Text("Cancel anytime. Subscription auto-renews monthly.")
+            Text(requiresSignedInAccount ? "Memberships stay attached to your signed-in account." : "Cancel anytime. Subscription auto-renews monthly.")
                 .font(.caption2)
                 .foregroundStyle(AppTheme.subtleText)
                 .multilineTextAlignment(.center)
         }
     }
 
+    private var accountRequiredSection: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "person.crop.circle.badge.exclamationmark")
+                .font(.title2)
+                .foregroundStyle(AppTheme.warningYellow)
+
+            Text("Sign in to get a membership.")
+                .font(.headline)
+                .foregroundStyle(.white)
+
+            Text("Memberships are tied to your Hoops Clips account. Sign in with Google, Apple, email, or phone before upgrading.")
+                .font(.subheadline)
+                .foregroundStyle(AppTheme.subtleText)
+                .multilineTextAlignment(.center)
+                .lineSpacing(3)
+
+            Button {
+                authService.signOut()
+                dismiss()
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "person.crop.circle.fill.badge.plus")
+                    Text("Sign In to Upgrade")
+                        .font(.subheadline.bold())
+                }
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .frame(height: 48)
+                .background(AppTheme.purpleGradient, in: .rect(cornerRadius: 14))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14)
+                        .stroke(AppTheme.neonPurple.opacity(0.35), lineWidth: 1)
+                )
+            }
+        }
+        .padding(16)
+        .rorkCard(cornerRadius: 18, stroke: AppTheme.softBorder, glowOpacity: 0.05)
+    }
+
     private var restoreSection: some View {
-        Button {
-            Task { await subscriptionManager.restorePurchases() }
-        } label: {
-            Text("Restore Purchases")
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(AppTheme.neonPurple)
+        Group {
+            if requiresSignedInAccount {
+                Text("Already Pro? Sign in first, then restore purchases.")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(AppTheme.subtleText)
+                    .multilineTextAlignment(.center)
+            } else {
+                Button {
+                    Task { await subscriptionManager.restorePurchases() }
+                } label: {
+                    Text("Restore Purchases")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(AppTheme.neonPurple)
+                }
+            }
         }
     }
 
     private func loadOfferings() async {
+        guard !requiresSignedInAccount else {
+            offerings = nil
+            offeringsLoadMessage = nil
+            isLoadingOfferings = false
+            return
+        }
+
         guard subscriptionManager.billingConfigured else {
             offerings = nil
             isLoadingOfferings = false
