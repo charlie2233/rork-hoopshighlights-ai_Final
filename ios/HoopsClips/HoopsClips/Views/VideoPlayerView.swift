@@ -45,9 +45,7 @@ struct VideoPlayerView: View {
                 if viewModel.isVideoLoaded {
                     ToolbarItem(placement: .topBarTrailing) {
                         Button {
-                            viewModel.resetProject()
-                            player = nil
-                            analysisStarted = false
+                            returnToImportHome()
                         } label: {
                             Image(systemName: "xmark.circle.fill")
                                 .foregroundStyle(AppTheme.subtleText)
@@ -85,6 +83,11 @@ struct VideoPlayerView: View {
             }
             .onChange(of: viewModel.videoURL) { _, newValue in
                 syncPlayer(with: newValue)
+            }
+            .onChange(of: viewModel.isVideoLoaded) { _, isVideoLoaded in
+                if !isVideoLoaded {
+                    restartImportHomeAnimation()
+                }
             }
             .sheet(isPresented: $showingPaywall) {
                 PaywallView(subscriptionManager: subscriptionManager, authService: authService)
@@ -125,6 +128,28 @@ struct VideoPlayerView: View {
         player = AVPlayer(url: url)
     }
 
+    private func returnToImportHome() {
+        viewModel.resetProject()
+        player = nil
+        selectedPhotoItem = nil
+        showSourcePicker = false
+        showingFilePicker = false
+        viewModel.showingVideoPicker = false
+        showingPaywall = false
+        showingNoClipsAlert = false
+        showingDurationLimitAlert = false
+        analysisStarted = false
+        restartImportHomeAnimation()
+    }
+
+    private func restartImportHomeAnimation() {
+        pulseAnimation = false
+        Task { @MainActor in
+            await Task.yield()
+            pulseAnimation = true
+        }
+    }
+
     private var importSection: some View {
         VStack(spacing: 32) {
             Spacer().frame(height: 40)
@@ -147,7 +172,9 @@ struct VideoPlayerView: View {
                     .foregroundStyle(AppTheme.neonPurple)
                     .symbolEffect(.bounce, options: .repeating.speed(0.3), value: pulseAnimation)
             }
-            .onAppear { pulseAnimation = true }
+            .onAppear {
+                restartImportHomeAnimation()
+            }
 
             VStack(spacing: 12) {
                 Text(languageStore.text(.turnGamesTitle))
