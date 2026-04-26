@@ -6,7 +6,6 @@ struct SettingsView: View {
     @Bindable var authService: AuthService
     @Bindable var subscriptionManager: SubscriptionManager
     @State private var showingResetAlert = false
-    @State private var showingSignOutAlert = false
     @State private var showingPaywall = false
     @State private var showingAdvancedSettings = false
     @State private var feedbackType: FeedbackType = .suggestion
@@ -114,6 +113,7 @@ struct SettingsView: View {
                         AnyView(runtimeStatusCard)
                         AnyView(workflowHubLink)
                         AnyView(membershipHubLink)
+                        AnyView(accountQuickActionCard)
                         AnyView(supportHubLink)
                         AnyView(aboutHubLink)
                         AnyView(settingsFootnote)
@@ -129,12 +129,6 @@ struct SettingsView: View {
             .toolbarColorScheme(.dark, for: .navigationBar)
             .sheet(isPresented: $showingPaywall) {
                 PaywallView(subscriptionManager: subscriptionManager)
-            }
-            .alert("Sign Out?", isPresented: $showingSignOutAlert) {
-                Button("Sign Out", role: .destructive) { authService.signOut() }
-                Button("Cancel", role: .cancel) { }
-            } message: {
-                Text("You'll need to sign in again to use the app.")
             }
             .alert("Reset Settings?", isPresented: $showingResetAlert) {
                 Button("Reset", role: .destructive) {
@@ -308,6 +302,20 @@ struct SettingsView: View {
         ) {
             membershipSettingsPage
         }
+    }
+
+    private var accountQuickActionCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            RorkSectionHeader(
+                title: "Account Quick Actions",
+                icon: "person.crop.circle.fill",
+                subtitle: "Signed in with \(authMethodLabel)"
+            )
+
+            signOutButton
+        }
+        .padding(16)
+        .rorkCard(cornerRadius: 18, stroke: AppTheme.softBorder, glowOpacity: 0.05)
     }
 
     private var supportHubLink: some View {
@@ -1318,7 +1326,7 @@ struct SettingsView: View {
 
     private var signOutButton: some View {
         Button {
-            showingSignOutAlert = true
+            authService.signOut()
         } label: {
             HStack {
                 Image(systemName: "rectangle.portrait.and.arrow.right")
@@ -1329,13 +1337,13 @@ struct SettingsView: View {
                     .font(.caption.bold())
             }
             .font(.subheadline)
-            .foregroundStyle(AppTheme.subtleText)
+            .foregroundStyle(AppTheme.dangerRed)
             .frame(maxWidth: .infinity)
             .padding(14)
-            .background(AppTheme.surfaceBg.opacity(0.5), in: .rect(cornerRadius: 12))
+            .background(AppTheme.dangerRed.opacity(0.10), in: .rect(cornerRadius: 12))
             .overlay(
                 RoundedRectangle(cornerRadius: 12)
-                    .stroke(AppTheme.softBorder, lineWidth: 1)
+                    .stroke(AppTheme.dangerRed.opacity(0.28), lineWidth: 1)
             )
         }
     }
