@@ -34,7 +34,7 @@
 | --- | --- | --- |
 | Cold launch | pass | Release app installed and launched on paired iPhone via `devicectl` for bundle `atrak.charlie.hoopsclips`. |
 | Google sign-in | pending |  |
-| RevenueCat purchase | fail | Paywall opened on the physical iPhone but showed `Unable to load subscription options`; no sandbox purchase could start. Next run should capture the patched RevenueCat diagnostic and verify the App Store Connect product, RevenueCat entitlement `pro`, current offering, and package are wired for bundle `atrak.charlie.hoopsclips`. |
+| RevenueCat purchase | fail | Paywall opened on the physical iPhone but showed `Unable to load subscription options`; the patched diagnostic reported RevenueCat's configuration error. No sandbox purchase could start. Verify the App Store Connect product, RevenueCat entitlement `pro`, current offering, and package are wired for bundle `atrak.charlie.hoopsclips`. |
 | RevenueCat restore | blocked | Blocked by the same RevenueCat offering/package availability issue until subscription options load. |
 | Photos import | pending |  |
 | Files import | pending |  |
