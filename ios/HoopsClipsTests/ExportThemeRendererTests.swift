@@ -43,6 +43,12 @@ struct ExportThemeRendererTests {
     }
 
     @Test
+    func brandedOutroIsNonProOnly() {
+        #expect(isApproximatelyEqual(brandedOutroDuration(isProUser: false), 2.0))
+        #expect(isApproximatelyEqual(brandedOutroDuration(isProUser: true), 0.0))
+    }
+
+    @Test
     func labelVisibilityAlphaMatchesFadeCurve() {
         let duration = 0.9
         #expect(isApproximatelyEqual(labelVisibilityAlpha(at: -0.1, displayDuration: duration), 0))

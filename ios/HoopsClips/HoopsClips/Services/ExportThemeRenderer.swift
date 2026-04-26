@@ -506,6 +506,7 @@ internal final class ExportThemeRenderer {
         segments: [ExportTimelineSegment],
         theme: ExportTheme,
         quality: ExportQuality,
+        brandedOutroStartTime: Double? = nil,
         postProcessing: ExportPostProcessingOptions
     ) async throws -> AVMutableVideoComposition {
         let naturalSize = try await sourceVideoTrack.load(.naturalSize)
@@ -531,6 +532,7 @@ internal final class ExportThemeRenderer {
                             profile: profile,
                             segments: segments,
                             labelCache: labelCache,
+                            brandedOutroStartTime: brandedOutroStartTime,
                             postProcessing: postProcessing
                         )
                         request.finish(with: output, context: nil)
@@ -669,7 +671,7 @@ internal final class ExportThemeRenderer {
     ) throws -> CIImage {
         let size = geometry.renderSize
         let format = UIGraphicsImageRendererFormat.default()
-        format.opaque = false
+        format.opaque = true
         let renderer = UIGraphicsImageRenderer(size: size, format: format)
 
         let titleFontSize: CGFloat = switch scaleBucket {
@@ -682,42 +684,31 @@ internal final class ExportThemeRenderer {
         case 1080: 18
         default: 22
         }
-        let chipFontSize: CGFloat = switch scaleBucket {
-        case 720: 13
-        case 1080: 15
-        default: 18
-        }
 
         let titleAttrs: [NSAttributedString.Key: Any] = [
-            .font: UIFont.systemFont(ofSize: titleFontSize, weight: .bold),
+            .font: UIFont.systemFont(ofSize: titleFontSize, weight: .heavy),
             .foregroundColor: UIColor.white
         ]
         let subtitleAttrs: [NSAttributedString.Key: Any] = [
             .font: UIFont.systemFont(ofSize: subtitleFontSize, weight: .medium),
             .foregroundColor: UIColor.white.withAlphaComponent(0.78)
         ]
-        let chipAttrs: [NSAttributedString.Key: Any] = [
-            .font: UIFont.systemFont(ofSize: chipFontSize, weight: .semibold),
-            .foregroundColor: UIColor.white.withAlphaComponent(0.95)
-        ]
 
-        let title = NSAttributedString(string: "Made with Hoops Clips", attributes: titleAttrs)
-        let subtitle = NSAttributedString(string: "AI highlight reel", attributes: subtitleAttrs)
-        let chip = NSAttributedString(string: "Rork MAX Export", attributes: chipAttrs)
+        let title = NSAttributedString(string: "Hoops Clips", attributes: titleAttrs)
+        let subtitle = NSAttributedString(string: "Made with Hoops Clips", attributes: subtitleAttrs)
 
         let image = renderer.image { ctx in
             let bounds = CGRect(origin: .zero, size: size)
             let cg = ctx.cgContext
 
-            let darkBackground = UIBezierPath(roundedRect: bounds, cornerRadius: 0)
-            UIColor(white: 0.01, alpha: 0.58).setFill()
-            darkBackground.fill()
+            UIColor.black.setFill()
+            cg.fill(bounds)
 
             let accentTop = UIColor(
                 red: CGFloat(profile.labelStyle.borderColor.x),
                 green: CGFloat(profile.labelStyle.borderColor.y),
                 blue: CGFloat(profile.labelStyle.borderColor.z),
-                alpha: 0.22
+                alpha: 0.24
             )
             let accentBottom = UIColor(
                 red: CGFloat(profile.labelStyle.textColor.x),
@@ -739,59 +730,48 @@ internal final class ExportThemeRenderer {
                 )
             }
 
-            let glowWidth = min(bounds.width * 0.52, 420)
-            let glowHeight = min(bounds.height * 0.18, 140)
+            let iconSize = min(bounds.width, bounds.height) * 0.18
+            let iconRect = CGRect(
+                x: bounds.midX - iconSize / 2,
+                y: bounds.midY - iconSize - titleFontSize * 0.62,
+                width: iconSize,
+                height: iconSize
+            )
+
+            let glowWidth = iconSize * 1.85
+            let glowHeight = iconSize * 1.85
             let glowRect = CGRect(
                 x: bounds.midX - glowWidth / 2,
-                y: bounds.midY - glowHeight / 2 - titleFontSize * 0.65,
+                y: iconRect.midY - glowHeight / 2,
                 width: glowWidth,
                 height: glowHeight
             )
-            let glowPath = UIBezierPath(roundedRect: glowRect, cornerRadius: glowHeight / 2)
             UIColor(
                 red: CGFloat(profile.labelStyle.borderColor.x),
                 green: CGFloat(profile.labelStyle.borderColor.y),
                 blue: CGFloat(profile.labelStyle.borderColor.z),
-                alpha: 0.14
+                alpha: 0.16
             ).setFill()
-            glowPath.fill()
+            UIBezierPath(ovalIn: glowRect).fill()
 
-            let chipPaddingX: CGFloat = 14
-            let chipPaddingY: CGFloat = 8
-            let chipSize = chip.size()
-            let chipRect = CGRect(
-                x: bounds.midX - (chipSize.width + chipPaddingX * 2) / 2,
-                y: bounds.midY - titleFontSize - 42,
-                width: chipSize.width + chipPaddingX * 2,
-                height: chipSize.height + chipPaddingY * 2
-            )
-            let chipPath = UIBezierPath(roundedRect: chipRect, cornerRadius: chipRect.height / 2)
-            UIColor(
-                red: CGFloat(profile.labelStyle.backgroundColor.x),
-                green: CGFloat(profile.labelStyle.backgroundColor.y),
-                blue: CGFloat(profile.labelStyle.backgroundColor.z),
-                alpha: 0.70
-            ).setFill()
-            chipPath.fill()
-            UIColor(
-                red: CGFloat(profile.labelStyle.borderColor.x),
-                green: CGFloat(profile.labelStyle.borderColor.y),
-                blue: CGFloat(profile.labelStyle.borderColor.z),
-                alpha: 0.34
-            ).setStroke()
-            chipPath.lineWidth = 1.2
-            chipPath.stroke()
+            drawHoopsClipsIcon(in: iconRect, profile: profile, context: cg)
 
-            chip.draw(in: chipRect.insetBy(dx: chipPaddingX, dy: chipPaddingY))
+            UIColor.white.withAlphaComponent(0.12).setStroke()
+            let iconOutline = UIBezierPath(roundedRect: iconRect, cornerRadius: iconSize * 0.22)
+            iconOutline.lineWidth = max(1.0, iconSize * 0.012)
+            iconOutline.stroke()
+
+            cg.setShadow(offset: CGSize(width: 0, height: 6), blur: 14, color: UIColor.black.withAlphaComponent(0.35).cgColor)
 
             let titleSize = title.size()
             let titleRect = CGRect(
                 x: bounds.midX - titleSize.width / 2,
-                y: bounds.midY - titleSize.height / 2 - 6,
+                y: iconRect.maxY + 18,
                 width: titleSize.width,
                 height: titleSize.height
             )
             title.draw(in: titleRect)
+            cg.setShadow(offset: .zero, blur: 0, color: nil)
 
             let subtitleSize = subtitle.size()
             let subtitleRect = CGRect(
@@ -809,6 +789,61 @@ internal final class ExportThemeRenderer {
         return CIImage(cgImage: cgImage)
     }
 
+    @MainActor
+    private func drawHoopsClipsIcon(
+        in rect: CGRect,
+        profile: ExportThemeProfile,
+        context cg: CGContext
+    ) {
+        if let appIcon = UIImage(named: "AppIcon") ?? UIImage(named: "icon") {
+            cg.saveGState()
+            UIBezierPath(roundedRect: rect, cornerRadius: rect.width * 0.22).addClip()
+            appIcon.draw(in: rect)
+            cg.restoreGState()
+            return
+        }
+
+        let iconPath = UIBezierPath(roundedRect: rect, cornerRadius: rect.width * 0.22)
+        UIColor(white: 0.04, alpha: 1).setFill()
+        iconPath.fill()
+
+        let accent = UIColor(
+            red: CGFloat(profile.labelStyle.borderColor.x),
+            green: CGFloat(profile.labelStyle.borderColor.y),
+            blue: CGFloat(profile.labelStyle.borderColor.z),
+            alpha: 1
+        )
+        accent.setStroke()
+
+        let ballRect = rect.insetBy(dx: rect.width * 0.24, dy: rect.height * 0.24)
+        let ballPath = UIBezierPath(ovalIn: ballRect)
+        ballPath.lineWidth = max(2, rect.width * 0.035)
+        ballPath.stroke()
+
+        let vertical = UIBezierPath()
+        vertical.move(to: CGPoint(x: ballRect.midX, y: ballRect.minY))
+        vertical.addLine(to: CGPoint(x: ballRect.midX, y: ballRect.maxY))
+        vertical.lineWidth = ballPath.lineWidth * 0.8
+        vertical.stroke()
+
+        let horizontal = UIBezierPath()
+        horizontal.move(to: CGPoint(x: ballRect.minX, y: ballRect.midY))
+        horizontal.addLine(to: CGPoint(x: ballRect.maxX, y: ballRect.midY))
+        horizontal.lineWidth = ballPath.lineWidth * 0.8
+        horizontal.stroke()
+
+        let clipRect = CGRect(
+            x: rect.minX + rect.width * 0.58,
+            y: rect.minY + rect.height * 0.22,
+            width: rect.width * 0.18,
+            height: rect.height * 0.56
+        )
+        let clipPath = UIBezierPath(roundedRect: clipRect, cornerRadius: clipRect.width * 0.5)
+        clipPath.lineWidth = max(2, rect.width * 0.032)
+        UIColor.white.withAlphaComponent(0.92).setStroke()
+        clipPath.stroke()
+    }
+
     private nonisolated static func renderThemedFrame(
         sourceImage: CIImage,
         compositionTime: Double,
@@ -816,9 +851,21 @@ internal final class ExportThemeRenderer {
         profile: ExportThemeProfile,
         segments: [ExportTimelineSegment],
         labelCache: ClipLabelOverlayCache,
+        brandedOutroStartTime: Double?,
         postProcessing: ExportPostProcessingOptions
     ) -> CIImage {
-        let extent = sourceImage.extent
+        let sourceExtent = sourceImage.extent
+        let extent = sourceExtent.isEmpty || sourceExtent.isInfinite ? geometry.renderExtent : sourceExtent
+
+        if let brandedOutroStartTime, compositionTime >= brandedOutroStartTime {
+            return renderBrandedOutroFrame(
+                extent: extent,
+                compositionTime: compositionTime,
+                outroStartTime: brandedOutroStartTime,
+                labelCache: labelCache
+            )
+        }
+
         let frameContext = makeFrameContext(
             at: compositionTime,
             segments: segments,
@@ -850,14 +897,6 @@ internal final class ExportThemeRenderer {
                 labelCache: labelCache
             )
         }
-
-        image = applyEndSlateIfNeeded(
-            to: image,
-            extent: extent,
-            compositionTime: compositionTime,
-            totalDuration: segments.last?.outputEndTime ?? 0,
-            labelCache: labelCache
-        )
 
         return image.cropped(to: extent)
     }
@@ -1125,24 +1164,17 @@ nonisolated private func applyWatermarkIfNeeded(
     return positioned.composited(over: image)
 }
 
-nonisolated private func applyEndSlateIfNeeded(
-    to image: CIImage,
+nonisolated private func renderBrandedOutroFrame(
     extent: CGRect,
     compositionTime: Double,
-    totalDuration: Double,
+    outroStartTime: Double,
     labelCache: ClipLabelOverlayCache
 ) -> CIImage {
-    guard totalDuration > 0 else { return image }
-
-    let window = min(1.45, max(0.6, totalDuration))
-    let start = max(0, totalDuration - window)
-    guard compositionTime >= start else { return image }
-
-    let local = compositionTime - start
-    let fadeIn = min(1, max(0, local / 0.30))
-    let maxAlpha = 0.95
-    let alpha = maxAlpha * fadeIn
-    guard alpha > 0.01 else { return image }
+    let black = CIImage(color: .black).cropped(to: extent)
+    let local = max(0, compositionTime - outroStartTime)
+    let fadeIn = min(1, max(0, local / 0.22))
+    let alpha = 0.98 * fadeIn
+    guard alpha > 0.01 else { return black }
 
     let overlay = labelCache.endSlate()
     let overlayExtent = overlay.extent
@@ -1151,7 +1183,7 @@ nonisolated private func applyEndSlateIfNeeded(
             translationX: extent.minX - overlayExtent.minX,
             y: extent.minY - overlayExtent.minY
         ))
-    return positioned.composited(over: image)
+    return positioned.composited(over: black).cropped(to: extent)
 }
 
 nonisolated private func applyingAlpha(to image: CIImage, alpha: Double) -> CIImage {

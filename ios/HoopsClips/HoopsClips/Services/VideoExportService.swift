@@ -133,6 +133,20 @@ final class VideoExportService {
                 statusMessage = "Adding clip \(index + 1) of \(timelineSegments.count)..."
             }
 
+            let brandedOutroStartTime: Double?
+            let outroDurationSeconds = brandedOutroDuration(isProUser: isProUser)
+            if outroDurationSeconds > 0 {
+                statusMessage = "Adding Hoops Clips outro..."
+                brandedOutroStartTime = CMTimeGetSeconds(insertTime)
+                let outroDuration = CMTime(seconds: outroDurationSeconds, preferredTimescale: 600)
+                let outroRange = CMTimeRange(start: insertTime, duration: outroDuration)
+                videoTrack.insertEmptyTimeRange(outroRange)
+                audioTrack.insertEmptyTimeRange(outroRange)
+                insertTime = insertTime + outroDuration
+            } else {
+                brandedOutroStartTime = nil
+            }
+
             var audioMix: AVMutableAudioMix?
             
             var effectiveMusicURL: URL?
@@ -241,6 +255,7 @@ final class VideoExportService {
                     segments: timelineSegments,
                     theme: theme,
                     quality: quality,
+                    brandedOutroStartTime: brandedOutroStartTime,
                     postProcessing: postProcessing
                 )
                 exportSession.videoComposition = themedComposition
@@ -350,6 +365,11 @@ final class VideoExportService {
 
 internal let exportSlowMotionSourceWindowDuration = 1.5
 internal let exportSlowMotionPlaybackRate = 0.5
+internal let nonProExportOutroDuration = 2.0
+
+internal func brandedOutroDuration(isProUser: Bool) -> Double {
+    isProUser ? 0 : nonProExportOutroDuration
+}
 
 internal func shouldApplyExportSlowMotion(to clip: Clip, options: ExportPostProcessingOptions) -> Bool {
     if clip.isSlowMotionEnabled {
