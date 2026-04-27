@@ -21,7 +21,9 @@ The service receives a validated `EditPlan`, downloads the source video from ren
 - `HOOPS_UPLOAD_ROOT`: local temp/source/output root
 - `HOOPS_RENDER_STORAGE_PROVIDER`: `local` or `r2`
 - `HOOPS_RENDER_DOWNLOAD_TTL_SECONDS`: default `900`
-- `HOOPS_R2_BUCKET`
+- `HOOPS_R2_BUCKET`: legacy single-bucket fallback
+- `HOOPS_R2_SOURCE_BUCKET`: source-video bucket, usually `hoopsclips-uploads-staging`
+- `HOOPS_R2_OUTPUT_BUCKET`: render-output bucket, usually `hoopsclips-results-staging`
 - `HOOPS_R2_ENDPOINT_URL`
 - `HOOPS_R2_ACCESS_KEY_ID`
 - `HOOPS_R2_SECRET_ACCESS_KEY`
@@ -53,6 +55,47 @@ ios/backend/.venv/bin/python services/editing/scripts/live_render_smoke.py \
   --upload-root /tmp/hoopclips-editing-smoke
 ```
 
+## Deploy Preflight
+
+Run this before a live staging deploy. It checks GCP auth, Artifact Registry, required Secret Manager entries, the R2 endpoint, and Wrangler auth without printing secret values.
+
+```bash
+cd /Users/hanfei/rork-hoopshighlights-ai_Final
+ios/backend/.venv/bin/python services/editing/scripts/deploy_preflight.py
+```
+
+Expected first-time blockers are missing Secret Manager values and missing Cloudflare auth. Create the missing secrets from an operator-held source; do not paste secret values into logs.
+
+## Cloud Deploy
+
+Once preflight is green:
+
+```bash
+cd /Users/hanfei/rork-hoopshighlights-ai_Final
+gcloud builds submit . \
+  --project=hoopsclips-9d38f \
+  --config=services/editing/cloudbuild.yaml
+```
+
+The staging deploy uses:
+
+- Artifact Registry repo: `hoopsclips`
+- Cloud Run service: `hoopclips-editing-staging`
+- Source bucket: `hoopsclips-uploads-staging`
+- Output bucket: `hoopsclips-results-staging`
+- R2 endpoint: `https://78fb4442e6e37b2c46d7e539c6e79172.r2.cloudflarestorage.com`
+
+After deploy, set the Worker secrets so the active control plane can call Cloud Run:
+
+```bash
+cd /Users/hanfei/rork-hoopshighlights-ai_Final/services/control-plane
+printf '%s' "$EDITING_BASE_URL" | npx wrangler secret put EDITING_BASE_URL --env staging
+printf '%s' "$EDITING_SHARED_SECRET" | npx wrangler secret put EDITING_SHARED_SECRET --env staging
+npx wrangler deploy --env staging
+```
+
+`EDITING_SHARED_SECRET` must match `HOOPS_EDITING_SERVICE_SECRET` on Cloud Run.
+
 ## Cloud Smoke
 
 Configure the deployed Cloud Run service with R2 and `HOOPS_EDITING_SERVICE_SECRET`, then run:
@@ -61,13 +104,23 @@ Configure the deployed Cloud Run service with R2 and `HOOPS_EDITING_SERVICE_SECR
 PYTHONPATH=services/editing:ios/backend \
 HOOPS_RENDER_STORAGE_PROVIDER=r2 \
 HOOPS_EDITING_SERVICE_SECRET=... \
-HOOPS_R2_BUCKET=... \
+HOOPS_R2_SOURCE_BUCKET=hoopsclips-uploads-staging \
+HOOPS_R2_OUTPUT_BUCKET=hoopsclips-results-staging \
 HOOPS_R2_ENDPOINT_URL=... \
 HOOPS_R2_ACCESS_KEY_ID=... \
 HOOPS_R2_SECRET_ACCESS_KEY=... \
 ios/backend/.venv/bin/python services/editing/scripts/live_render_smoke.py \
   --base-url https://YOUR-EDITING-SERVICE \
   --render-storage-provider r2
+```
+
+After the Worker is deployed with editing secrets, run the Worker-path smoke:
+
+```bash
+PYTHONPATH=services/editing:ios/backend \
+WORKER_BASE_URL=https://YOUR-WORKER \
+HOOPS_SMOKE_SOURCE_OBJECT_KEY=uploads/YOUR_JOB/source.mp4 \
+ios/backend/.venv/bin/python services/editing/scripts/worker_render_smoke.py
 ```
 
 Do not expose `HOOPS_EDITING_SERVICE_SECRET` or R2 credentials to iOS.

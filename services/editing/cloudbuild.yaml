@@ -1,9 +1,10 @@
 substitutions:
   _SERVICE_NAME: hoopclips-editing-staging
   _REGION: us-central1
-  _ARTIFACT_REPO: hoopclips
-  _R2_BUCKET: hoopclips-renders-staging
-  _R2_ENDPOINT_URL: ""
+  _ARTIFACT_REPO: hoopsclips
+  _R2_SOURCE_BUCKET: hoopsclips-uploads-staging
+  _R2_OUTPUT_BUCKET: hoopsclips-results-staging
+  _R2_ENDPOINT_URL: https://78fb4442e6e37b2c46d7e539c6e79172.r2.cloudflarestorage.com
 
 steps:
   - name: gcr.io/cloud-builders/docker
@@ -40,7 +41,7 @@ steps:
       - --timeout
       - "900"
       - --set-env-vars
-      - HOOPS_ENVIRONMENT=staging,HOOPS_RENDER_STORAGE_PROVIDER=r2,HOOPS_R2_BUCKET=${_R2_BUCKET},HOOPS_R2_ENDPOINT_URL=${_R2_ENDPOINT_URL},HOOPS_GIT_SHA=$SHORT_SHA,HOOPS_BACKEND_MODEL_VERSION=editing-cloud-v1
+      - HOOPS_ENVIRONMENT=staging,HOOPS_RENDER_STORAGE_PROVIDER=r2,HOOPS_R2_BUCKET=${_R2_OUTPUT_BUCKET},HOOPS_R2_SOURCE_BUCKET=${_R2_SOURCE_BUCKET},HOOPS_R2_OUTPUT_BUCKET=${_R2_OUTPUT_BUCKET},HOOPS_R2_ENDPOINT_URL=${_R2_ENDPOINT_URL},HOOPS_GIT_SHA=$SHORT_SHA,HOOPS_BACKEND_MODEL_VERSION=editing-cloud-v1
       - --set-secrets
       - HOOPS_EDITING_SERVICE_SECRET=HOOPS_EDITING_SERVICE_SECRET:latest,HOOPS_R2_ACCESS_KEY_ID=HOOPS_R2_ACCESS_KEY_ID:latest,HOOPS_R2_SECRET_ACCESS_KEY=HOOPS_R2_SECRET_ACCESS_KEY:latest
 

@@ -97,7 +97,7 @@ def main() -> int:
         headers,
     )
     download_file(download["downloadUrl"], final_path)
-    media = probe_media(final_path)
+    media = probe_media(final_path, expected_aspect_ratio=edit_job.plan.aspectRatio, expected_duration_seconds=status.get("durationSeconds"))
     print(
         json.dumps(
             {
@@ -183,7 +183,7 @@ def upload_to_r2(object_key: str, source_path: Path) -> None:
         raise SmokeError("boto3 is required for R2 smoke source upload", {}) from error
 
     required = {
-        "HOOPS_R2_BUCKET": os.getenv("HOOPS_R2_BUCKET"),
+        "HOOPS_R2_BUCKET": os.getenv("HOOPS_R2_SOURCE_BUCKET") or os.getenv("HOOPS_R2_BUCKET"),
         "HOOPS_R2_ENDPOINT_URL": os.getenv("HOOPS_R2_ENDPOINT_URL"),
         "HOOPS_R2_ACCESS_KEY_ID": os.getenv("HOOPS_R2_ACCESS_KEY_ID"),
         "HOOPS_R2_SECRET_ACCESS_KEY": os.getenv("HOOPS_R2_SECRET_ACCESS_KEY"),
@@ -226,7 +226,7 @@ def download_file(url: str, destination: Path) -> None:
         raise SmokeError("downloaded render output is empty", {"path": str(destination)})
 
 
-def probe_media(path: Path) -> Dict[str, Any]:
+def probe_media(path: Path, expected_aspect_ratio: str, expected_duration_seconds: Optional[float]) -> Dict[str, Any]:
     run(["ffmpeg", "-v", "error", "-i", str(path), "-f", "null", "-"], capture=True)
     result = run(
         [
@@ -234,7 +234,7 @@ def probe_media(path: Path) -> Dict[str, Any]:
             "-v",
             "error",
             "-show_entries",
-            "format=format_name,duration,size:stream=index,codec_type,codec_name,width,height,pix_fmt",
+            "format=format_name,duration,size:stream=index,codec_type,codec_name,width,height,pix_fmt,r_frame_rate",
             "-of",
             "json",
             str(path),
@@ -243,11 +243,38 @@ def probe_media(path: Path) -> Dict[str, Any]:
     )
     payload = json.loads(result.stdout)
     streams = payload.get("streams", [])
-    if not any(stream.get("codec_type") == "video" for stream in streams):
+    video_stream = next((stream for stream in streams if stream.get("codec_type") == "video"), None)
+    audio_stream = next((stream for stream in streams if stream.get("codec_type") == "audio"), None)
+    if not video_stream:
         raise SmokeError("rendered MP4 has no video stream", payload)
-    if not any(stream.get("codec_type") == "audio" for stream in streams):
+    if not audio_stream:
         raise SmokeError("rendered MP4 has no audio stream", payload)
+    if "mp4" not in str(payload.get("format", {}).get("format_name", "")):
+        raise SmokeError("rendered output is not an MP4 container", payload)
+    if video_stream.get("codec_name") != "h264":
+        raise SmokeError("rendered video stream is not h264", payload)
+    if audio_stream.get("codec_name") != "aac":
+        raise SmokeError("rendered audio stream is not aac", payload)
+    expected_size = {"9:16": (720, 1280), "16:9": (1280, 720)}.get(expected_aspect_ratio)
+    if expected_size and (video_stream.get("width"), video_stream.get("height")) != expected_size:
+        raise SmokeError(
+            "rendered output resolution does not match expected aspect ratio",
+            {"expected": expected_size, "actual": [video_stream.get("width"), video_stream.get("height")], "media": payload},
+        )
+    duration = _float_or_none(payload.get("format", {}).get("duration"))
+    if expected_duration_seconds is not None and duration is not None and abs(duration - float(expected_duration_seconds)) > 0.75:
+        raise SmokeError(
+            "rendered output duration does not match render status",
+            {"expectedDurationSeconds": expected_duration_seconds, "actualDurationSeconds": duration},
+        )
     return payload
+
+
+def _float_or_none(value: object) -> Optional[float]:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def safe_key_parts(object_key: str) -> list[str]:

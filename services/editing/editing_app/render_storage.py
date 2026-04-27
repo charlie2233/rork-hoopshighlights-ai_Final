@@ -49,7 +49,7 @@ class RenderStorage:
     def source_exists(self, object_key: str) -> bool:
         if self._provider == "r2":
             try:
-                response = self._r2_client().head_object(Bucket=self._required_env("HOOPS_R2_BUCKET"), Key=object_key)
+                response = self._r2_client().head_object(Bucket=self._source_bucket(), Key=object_key)
             except Exception:
                 return False
             return int(response.get("ContentLength") or 0) > 0
@@ -61,7 +61,7 @@ class RenderStorage:
             temp_dir = Path(tempfile.mkdtemp(prefix="hoopclips-edit-source-", dir=str(self._settings.upload_root)))
             local_path = temp_dir / Path(object_key).name
             try:
-                self._r2_client().download_file(self._required_env("HOOPS_R2_BUCKET"), object_key, str(local_path))
+                self._r2_client().download_file(self._source_bucket(), object_key, str(local_path))
             except Exception as error:
                 raise EditingServiceError(400, "source_missing", "Source video object was not found.") from error
             return MaterializedSource(local_path=local_path, cleanup_after_use=True)
@@ -73,7 +73,7 @@ class RenderStorage:
     def put_json(self, object_key: str, payload: str) -> None:
         if self._provider == "r2":
             self._r2_client().put_object(
-                Bucket=self._required_env("HOOPS_R2_BUCKET"),
+                Bucket=self._output_bucket(),
                 Key=object_key,
                 Body=payload.encode("utf-8"),
                 ContentType="application/json",
@@ -90,11 +90,11 @@ class RenderStorage:
             client = self._r2_client()
             client.upload_file(
                 str(source_path),
-                self._required_env("HOOPS_R2_BUCKET"),
+                self._output_bucket(),
                 object_key,
                 ExtraArgs={"ContentType": content_type},
             )
-            head = client.head_object(Bucket=self._required_env("HOOPS_R2_BUCKET"), Key=object_key)
+            head = client.head_object(Bucket=self._output_bucket(), Key=object_key)
             if int(head.get("ContentLength") or 0) <= 0:
                 raise EditingServiceError(500, "render_upload_unverified", "Uploaded render object could not be verified.")
             return
@@ -106,7 +106,7 @@ class RenderStorage:
         if self._provider == "r2":
             url = self._r2_client().generate_presigned_url(
                 "get_object",
-                Params={"Bucket": self._required_env("HOOPS_R2_BUCKET"), "Key": object_key},
+                Params={"Bucket": self._output_bucket(), "Key": object_key},
                 ExpiresIn=self._settings.render_download_ttl_seconds,
             )
             return url, now_utc() + timedelta(seconds=self._settings.render_download_ttl_seconds)
@@ -120,8 +120,13 @@ class RenderStorage:
         provider_ready = True
         r2_config = None
         if self._provider == "r2":
+            legacy_bucket = bool(self._env("HOOPS_R2_BUCKET", ""))
+            source_bucket = bool(self._env("HOOPS_R2_SOURCE_BUCKET", "")) or legacy_bucket
+            output_bucket = bool(self._env("HOOPS_R2_OUTPUT_BUCKET", "")) or legacy_bucket
             r2_config = {
-                "bucket": bool(self._env("HOOPS_R2_BUCKET", "")),
+                "bucket": legacy_bucket,
+                "sourceBucket": source_bucket,
+                "outputBucket": output_bucket,
                 "endpoint": bool(self._env("HOOPS_R2_ENDPOINT_URL", "")),
                 "accessKey": bool(self._env("HOOPS_R2_ACCESS_KEY_ID", "")),
                 "secretKey": bool(self._env("HOOPS_R2_SECRET_ACCESS_KEY", "")),
@@ -160,6 +165,12 @@ class RenderStorage:
         if not value:
             raise RuntimeError(f"{key} is required for R2 render storage.")
         return value
+
+    def _source_bucket(self) -> str:
+        return self._env("HOOPS_R2_SOURCE_BUCKET", "") or self._required_env("HOOPS_R2_BUCKET")
+
+    def _output_bucket(self) -> str:
+        return self._env("HOOPS_R2_OUTPUT_BUCKET", "") or self._required_env("HOOPS_R2_BUCKET")
 
     def _upload_root_writable(self) -> bool:
         try:
