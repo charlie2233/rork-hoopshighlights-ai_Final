@@ -96,6 +96,7 @@ struct RorkSectionHeader: View {
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(AppTheme.neonPurple)
             }
+            .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
@@ -125,6 +126,7 @@ struct RorkMetricChip: View {
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(tint)
                 .frame(width: 18)
+                .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(value)
@@ -144,165 +146,216 @@ struct RorkMetricChip: View {
             Capsule()
                 .stroke(AppTheme.softBorder, lineWidth: 1)
         )
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(label)
+        .accessibilityValue(value)
     }
 }
 
 struct HoopsMotionBackdrop: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var glowOpacity: Double = 0.24
     var courtOpacity: Double = 0.10
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 24.0)) { timeline in
-            let time = timeline.date.timeIntervalSinceReferenceDate
-            let leadX = CGFloat(sin(time * 0.22)) * 54
-            let leadY = CGFloat(cos(time * 0.18)) * 42
-            let trailX = CGFloat(cos(time * 0.16)) * 48
-            let trailY = CGFloat(sin(time * 0.20)) * 38
-            let shimmer = (sin(time * 0.7) + 1.0) / 2.0
-
-            ZStack {
-                AppTheme.darkBg
-
-                AppTheme.meshBackground
-                    .opacity(0.18 + shimmer * 0.04)
-
-                Circle()
-                    .fill(AppTheme.neonPurple.opacity(glowOpacity))
-                    .frame(width: 220, height: 220)
-                    .blur(radius: 58)
-                    .offset(x: -120 + leadX, y: -275 + leadY)
-
-                Circle()
-                    .fill(AppTheme.warningYellow.opacity(glowOpacity * 0.34))
-                    .frame(width: 180, height: 180)
-                    .blur(radius: 62)
-                    .offset(x: 150 + trailX, y: 80 + trailY)
-
-                Circle()
-                    .stroke(AppTheme.neonPurple.opacity(courtOpacity), lineWidth: 1)
-                    .frame(width: 360, height: 360)
-                    .offset(x: -170 + trailX * 0.35, y: 210 + leadY * 0.25)
-
-                VStack(spacing: 54) {
-                    ForEach(0..<5, id: \.self) { index in
-                        RoundedRectangle(cornerRadius: 999, style: .continuous)
-                            .fill(Color.white.opacity(courtOpacity * 0.42))
-                            .frame(width: 270, height: 1)
-                            .rotationEffect(.degrees(-18))
-                            .offset(x: CGFloat(index - 2) * 34 + leadX * 0.06)
-                    }
+        Group {
+            if reduceMotion {
+                backdropContent(time: 0, isAnimated: false)
+            } else {
+                TimelineView(.animation(minimumInterval: 1.0 / 24.0)) { timeline in
+                    backdropContent(time: timeline.date.timeIntervalSinceReferenceDate, isAnimated: true)
                 }
-                .offset(y: -10 + trailY * 0.08)
             }
-            .ignoresSafeArea()
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
         }
+    }
+
+    private func backdropContent(time: TimeInterval, isAnimated: Bool) -> some View {
+        let leadX = isAnimated ? CGFloat(sin(time * 0.22)) * 54 : 0
+        let leadY = isAnimated ? CGFloat(cos(time * 0.18)) * 42 : 0
+        let trailX = isAnimated ? CGFloat(cos(time * 0.16)) * 48 : 0
+        let trailY = isAnimated ? CGFloat(sin(time * 0.20)) * 38 : 0
+        let shimmer = isAnimated ? (sin(time * 0.7) + 1.0) / 2.0 : 0.5
+
+        return ZStack {
+            AppTheme.darkBg
+
+            AppTheme.meshBackground
+                .opacity(0.18 + shimmer * 0.04)
+
+            Circle()
+                .fill(AppTheme.neonPurple.opacity(glowOpacity))
+                .frame(width: 220, height: 220)
+                .blur(radius: 58)
+                .offset(x: -120 + leadX, y: -275 + leadY)
+
+            Circle()
+                .fill(AppTheme.warningYellow.opacity(glowOpacity * 0.34))
+                .frame(width: 180, height: 180)
+                .blur(radius: 62)
+                .offset(x: 150 + trailX, y: 80 + trailY)
+
+            Circle()
+                .stroke(AppTheme.neonPurple.opacity(courtOpacity), lineWidth: 1)
+                .frame(width: 360, height: 360)
+                .offset(x: -170 + trailX * 0.35, y: 210 + leadY * 0.25)
+
+            VStack(spacing: 54) {
+                ForEach(0..<5, id: \.self) { index in
+                    RoundedRectangle(cornerRadius: 999, style: .continuous)
+                        .fill(Color.white.opacity(courtOpacity * 0.42))
+                        .frame(width: 270, height: 1)
+                        .rotationEffect(.degrees(-18))
+                        .offset(x: CGFloat(index - 2) * 34 + leadX * 0.06)
+                }
+            }
+            .offset(y: -10 + trailY * 0.08)
+        }
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }
 
 struct HoopsMotionHero: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var icon: String = "basketball.fill"
     var size: CGFloat = 240
     var accent: Color = AppTheme.neonPurple
     var secondary: Color = AppTheme.warningYellow
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
-            let time = timeline.date.timeIntervalSinceReferenceDate
-            let nearRingX = CGFloat(sin(time * 0.92)) * size * 0.058
-            let nearRingY = CGFloat(cos(time * 0.78)) * size * 0.042
-            let farRingX = CGFloat(cos(time * 0.54)) * size * 0.083
-            let farRingY = CGFloat(sin(time * 0.68)) * size * 0.067
-            let iconLift = CGFloat(sin(time * 1.8)) * size * 0.021
-            let shimmer = CGFloat((sin(time * 1.4) + 1.0) / 2.0)
+        Group {
+            if reduceMotion {
+                heroContent(time: 0, isAnimated: false)
+            } else {
+                TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
+                    heroContent(time: timeline.date.timeIntervalSinceReferenceDate, isAnimated: true)
+                }
+            }
+        }
+    }
+
+    private func heroContent(time: TimeInterval, isAnimated: Bool) -> some View {
+        let nearRingX = isAnimated ? CGFloat(sin(time * 0.92)) * size * 0.058 : 0
+        let nearRingY = isAnimated ? CGFloat(cos(time * 0.78)) * size * 0.042 : 0
+        let farRingX = isAnimated ? CGFloat(cos(time * 0.54)) * size * 0.083 : 0
+        let farRingY = isAnimated ? CGFloat(sin(time * 0.68)) * size * 0.067 : 0
+        let iconLift = isAnimated ? CGFloat(sin(time * 1.8)) * size * 0.021 : 0
+        let shimmer = isAnimated ? CGFloat((sin(time * 1.4) + 1.0) / 2.0) : 0.5
+        let farRingRotation = isAnimated ? time * 22 : 0
+        let nearRingRotation = isAnimated ? -time * 34 : 0
+        let frameRotation = isAnimated ? -8 + sin(time * 0.55) * 2 : -8
+
+        return ZStack {
+            RadialGradient(
+                colors: [
+                    accent.opacity(0.28),
+                    AppTheme.accentPurple.opacity(0.08),
+                    .clear
+                ],
+                center: .center,
+                startRadius: 8,
+                endRadius: size * 0.49
+            )
+            .frame(width: size * 0.98, height: size * 0.98)
+            .blur(radius: 10)
+            .scaleEffect(0.96 + shimmer * 0.08)
+
+            Circle()
+                .stroke(
+                    AngularGradient(
+                        colors: [
+                            accent.opacity(0.05),
+                            accent.opacity(0.44),
+                            secondary.opacity(0.26),
+                            accent.opacity(0.05)
+                        ],
+                        center: .center
+                    ),
+                    style: StrokeStyle(lineWidth: 7, lineCap: .round, dash: [34, 18])
+                )
+                .frame(width: size * 0.74, height: size * 0.74)
+                .rotationEffect(.degrees(farRingRotation))
+                .offset(x: farRingX, y: farRingY)
+                .blur(radius: 0.2)
+
+            Circle()
+                .stroke(
+                    LinearGradient(
+                        colors: [
+                            AppTheme.accentPurple.opacity(0.08),
+                            accent.opacity(0.48),
+                            AppTheme.accentPurple.opacity(0.12)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    style: StrokeStyle(lineWidth: 4, lineCap: .round, dash: [18, 11])
+                )
+                .frame(width: size * 0.58, height: size * 0.58)
+                .rotationEffect(.degrees(nearRingRotation))
+                .offset(x: nearRingX, y: nearRingY)
+
+            RoundedRectangle(cornerRadius: 26, style: .continuous)
+                .stroke(AppTheme.softBorder.opacity(0.7), lineWidth: 1)
+                .frame(width: size * 0.72, height: size * 0.49)
+                .rotationEffect(.degrees(frameRotation))
+                .offset(y: size * 0.033)
+
+            heroSpark(size: size * 0.033, opacity: 0.75, x: -size * 0.325 + sparkOffset(time: time, rate: 1.6, amount: 7, isAnimated: isAnimated), y: -size * 0.208 + sparkOffset(time: time, rate: 1.2, amount: 6, isAnimated: isAnimated, usesCosine: true))
+            heroSpark(size: size * 0.021, opacity: 0.58, x: size * 0.325 + sparkOffset(time: time, rate: 1.4, amount: 8, isAnimated: isAnimated, usesCosine: true), y: -size * 0.117 + sparkOffset(time: time, rate: 1.1, amount: 7, isAnimated: isAnimated))
+            heroSpark(size: size * 0.025, opacity: 0.50, x: -size * 0.233 + sparkOffset(time: time, rate: 1.15, amount: 7, isAnimated: isAnimated, usesCosine: true), y: size * 0.275 + sparkOffset(time: time, rate: 1.5, amount: 6, isAnimated: isAnimated))
 
             ZStack {
-                RadialGradient(
-                    colors: [
-                        accent.opacity(0.28),
-                        AppTheme.accentPurple.opacity(0.08),
-                        .clear
-                    ],
-                    center: .center,
-                    startRadius: 8,
-                    endRadius: size * 0.49
-                )
-                .frame(width: size * 0.98, height: size * 0.98)
-                .blur(radius: 10)
-                .scaleEffect(0.96 + shimmer * 0.08)
-
                 Circle()
-                    .stroke(
-                        AngularGradient(
-                            colors: [
-                                accent.opacity(0.05),
-                                accent.opacity(0.44),
-                                secondary.opacity(0.26),
-                                accent.opacity(0.05)
-                            ],
-                            center: .center
-                        ),
-                        style: StrokeStyle(lineWidth: 7, lineCap: .round, dash: [34, 18])
+                    .fill(.white.opacity(0.08))
+                    .frame(width: size * 0.43, height: size * 0.43)
+                    .overlay(
+                        Circle()
+                            .stroke(accent.opacity(0.36), lineWidth: 1)
                     )
-                    .frame(width: size * 0.74, height: size * 0.74)
-                    .rotationEffect(.degrees(time * 22))
-                    .offset(x: farRingX, y: farRingY)
-                    .blur(radius: 0.2)
+                    .shadow(color: accent.opacity(0.45), radius: 18, x: 0, y: 0)
 
-                Circle()
-                    .stroke(
-                        LinearGradient(
-                            colors: [
-                                AppTheme.accentPurple.opacity(0.08),
-                                accent.opacity(0.48),
-                                AppTheme.accentPurple.opacity(0.12)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        style: StrokeStyle(lineWidth: 4, lineCap: .round, dash: [18, 11])
-                    )
-                    .frame(width: size * 0.58, height: size * 0.58)
-                    .rotationEffect(.degrees(-time * 34))
-                    .offset(x: nearRingX, y: nearRingY)
-
-                RoundedRectangle(cornerRadius: 26, style: .continuous)
-                    .stroke(AppTheme.softBorder.opacity(0.7), lineWidth: 1)
-                    .frame(width: size * 0.72, height: size * 0.49)
-                    .rotationEffect(.degrees(-8 + sin(time * 0.55) * 2))
-                    .offset(y: size * 0.033)
-
-                heroSpark(size: size * 0.033, opacity: 0.75, x: -size * 0.325 + CGFloat(sin(time * 1.6)) * 7, y: -size * 0.208 + CGFloat(cos(time * 1.2)) * 6)
-                heroSpark(size: size * 0.021, opacity: 0.58, x: size * 0.325 + CGFloat(cos(time * 1.4)) * 8, y: -size * 0.117 + CGFloat(sin(time * 1.1)) * 7)
-                heroSpark(size: size * 0.025, opacity: 0.50, x: -size * 0.233 + CGFloat(cos(time * 1.15)) * 7, y: size * 0.275 + CGFloat(sin(time * 1.5)) * 6)
-
-                ZStack {
-                    Circle()
-                        .fill(.white.opacity(0.08))
-                        .frame(width: size * 0.43, height: size * 0.43)
-                        .overlay(
-                            Circle()
-                                .stroke(accent.opacity(0.36), lineWidth: 1)
-                        )
-                        .shadow(color: accent.opacity(0.45), radius: 18, x: 0, y: 0)
-
-                    Image(systemName: icon)
-                        .font(.system(size: size * 0.267, weight: .bold))
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: [secondary, accent],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .rotationEffect(.degrees(sin(time * 0.9) * 5))
-                        .symbolEffect(.bounce, options: .repeating.speed(0.26), value: Int(time))
-                }
-                .offset(y: iconLift)
+                heroIcon(time: time, isAnimated: isAnimated)
             }
-            .frame(width: size, height: size * 0.875)
-            .accessibilityHidden(true)
+            .offset(y: iconLift)
+        }
+        .frame(width: size, height: size * 0.875)
+        .accessibilityHidden(true)
+    }
+
+    private func sparkOffset(time: TimeInterval, rate: Double, amount: CGFloat, isAnimated: Bool, usesCosine: Bool = false) -> CGFloat {
+        guard isAnimated else { return 0 }
+        let value = usesCosine ? cos(time * rate) : sin(time * rate)
+        return CGFloat(value) * amount
+    }
+
+    @ViewBuilder
+    private func heroIcon(time: TimeInterval, isAnimated: Bool) -> some View {
+        let rotation = isAnimated ? sin(time * 0.9) * 5 : 0
+        if isAnimated {
+            Image(systemName: icon)
+                .font(.system(size: size * 0.267, weight: .bold))
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [secondary, accent],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .rotationEffect(.degrees(rotation))
+                .symbolEffect(.bounce, options: .repeating.speed(0.26), value: Int(time))
+        } else {
+            Image(systemName: icon)
+                .font(.system(size: size * 0.267, weight: .bold))
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [secondary, accent],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .rotationEffect(.degrees(rotation))
         }
     }
 

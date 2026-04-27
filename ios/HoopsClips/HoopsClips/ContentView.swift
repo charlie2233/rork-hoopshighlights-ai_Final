@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct ContentView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var viewModel = HighlightsViewModel()
     @State private var authService = AuthService()
     @State private var subscriptionManager = SubscriptionManager()
@@ -111,6 +112,11 @@ struct ContentView: View {
         let nextTab = selectedTab + (horizontalDistance < 0 ? 1 : -1)
         let boundedTab = min(max(nextTab, firstTabIndex), lastTabIndex)
         guard boundedTab != selectedTab else { return }
+
+        guard !reduceMotion else {
+            selectedTab = boundedTab
+            return
+        }
 
         withAnimation(.easeOut(duration: 0.2)) {
             selectedTab = boundedTab

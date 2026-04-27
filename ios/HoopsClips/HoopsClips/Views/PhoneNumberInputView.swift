@@ -138,11 +138,17 @@ struct PhoneNumberInputView: View {
                 .pickerStyle(.menu)
                 .tint(AppTheme.neonPurple)
                 .frame(minWidth: 116, alignment: .leading)
+                .accessibilityLabel(languageStore.text(.region))
+                .accessibilityValue(selectedRegion.fullLabel)
+                .accessibilityHint("Choose the country or region for this phone number.")
 
                 TextField(phonePlaceholder, text: $nationalNumber)
                     .keyboardType(.phonePad)
                     .textContentType(.telephoneNumber)
                     .foregroundStyle(.white)
+                    .accessibilityLabel(title)
+                    .accessibilityValue(normalizedNumber.isEmpty ? nationalNumber : normalizedNumber)
+                    .accessibilityHint("Enter the phone number without the country code.")
             }
             .padding(14)
             .background(AppTheme.surfaceBg.opacity(0.55), in: .rect(cornerRadius: 12))

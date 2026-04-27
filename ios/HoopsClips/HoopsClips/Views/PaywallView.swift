@@ -49,6 +49,8 @@ struct PaywallView: View {
                             .font(.title3)
                             .foregroundStyle(AppTheme.subtleText)
                     }
+                    .accessibilityLabel("Close Premium")
+                    .accessibilityHint("Dismisses the membership screen.")
                 }
             }
             .task {
@@ -73,6 +75,16 @@ struct PaywallView: View {
                 Button("OK") { subscriptionManager.errorMessage = nil }
             } message: {
                 Text(subscriptionManager.errorMessage ?? "")
+            }
+            .onChange(of: isLoadingOfferings) { _, isLoading in
+                if isLoading {
+                    HoopsAccessibility.announce("Loading subscription options.")
+                }
+            }
+            .onChange(of: subscriptionManager.isLoading) { _, isLoading in
+                if isLoading {
+                    HoopsAccessibility.announce("Processing subscription.")
+                }
             }
         }
     }
@@ -144,6 +156,7 @@ struct PaywallView: View {
                 ProgressView()
                     .tint(AppTheme.neonPurple)
                     .frame(height: 60)
+                    .accessibilityLabel("Loading subscription options")
             } else if isScreenshotMode {
                 premiumPlanCard(
                     priceText: "$9.99/month",
@@ -251,12 +264,16 @@ struct PaywallView: View {
             HStack(spacing: 8) {
                 if isProcessing {
                     ProgressView().tint(.white).controlSize(.small)
+                        .accessibilityLabel("Processing subscription")
                 }
                 Text(buttonTitle)
                     .font(.title3.bold())
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
             }
             .frame(maxWidth: .infinity)
-            .frame(height: isScreenshotMode ? 50 : 56)
+            .frame(minHeight: isScreenshotMode ? 50 : 56)
+            .padding(.vertical, 2)
             .background(
                 LinearGradient(
                     colors: [AppTheme.accentPurple, AppTheme.deepPurple],
@@ -274,6 +291,9 @@ struct PaywallView: View {
                 .stroke(AppTheme.neonPurple.opacity(0.38), lineWidth: 1.5)
         )
         .shadow(color: AppTheme.neonPurple.opacity(0.25), radius: 14, y: 7)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Premium Monthly")
+        .accessibilityValue("\(priceText). \(buttonTitle)")
     }
 
     private var accountRequiredSection: some View {
@@ -300,16 +320,20 @@ struct PaywallView: View {
                     Image(systemName: "person.crop.circle.fill.badge.plus")
                     Text("Sign In to Upgrade")
                         .font(.subheadline.bold())
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
                 }
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
-                .frame(height: 48)
+                .frame(minHeight: 48)
+                .padding(.vertical, 2)
                 .background(AppTheme.purpleGradient, in: .rect(cornerRadius: 14))
                 .overlay(
                     RoundedRectangle(cornerRadius: 14)
                         .stroke(AppTheme.neonPurple.opacity(0.35), lineWidth: 1)
                 )
             }
+            .accessibilityHint("Returns to the sign-in screen so membership can attach to your account.")
         }
         .padding(16)
         .rorkCard(cornerRadius: 18, stroke: AppTheme.softBorder, glowOpacity: 0.05)

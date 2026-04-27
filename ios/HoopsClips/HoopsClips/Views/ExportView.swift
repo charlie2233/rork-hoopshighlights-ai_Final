@@ -10,6 +10,7 @@ struct ExportView: View {
 
     @Environment(SubscriptionManager.self) private var subscriptionManager
     @Environment(AuthService.self) private var authService
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Bindable var viewModel: HighlightsViewModel
     @State private var exportTrigger = 0
     @State private var saveTrigger = 0
@@ -28,6 +29,7 @@ struct ExportView: View {
     @State private var selectedShareCategory: QuickShareCategory?
     @State private var shareErrorMessage: String?
     @State private var showFileImporter = false
+    @State private var lastExportAnnouncementPercent = -1
 
     var body: some View {
         NavigationStack {
@@ -119,6 +121,23 @@ struct ExportView: View {
                 configureExpandedExportPreviewPlayer(for: newValue)
                 showExportPreviewSheet = true
                 lastAutoPresentedExportURL = newValue
+                HoopsAccessibility.announce("Export complete. Preview is ready.")
+            }
+            .onChange(of: viewModel.exportService.statusMessage) { _, message in
+                guard viewModel.exportService.isExporting else { return }
+                HoopsAccessibility.announce(message)
+            }
+            .onChange(of: viewModel.exportService.exportProgress) { _, progress in
+                announceExportProgress(progress)
+            }
+            .onChange(of: viewModel.showingSaveSuccess) { _, isShowing in
+                if isShowing {
+                    HoopsAccessibility.announce("Highlight reel saved to Photos.")
+                }
+            }
+            .onChange(of: shareErrorMessage) { _, message in
+                guard let message else { return }
+                HoopsAccessibility.announce(message)
             }
             .onDisappear {
                 pausePreviewPlayers()
@@ -253,7 +272,7 @@ struct ExportView: View {
                             showingPaywall = true
                             return
                         }
-                        withAnimation(.snappy) { viewModel.selectedTheme = theme }
+                        HoopsAccessibility.animate(reduceMotion: reduceMotion) { viewModel.selectedTheme = theme }
                     } label: {
                         VStack(spacing: 8) {
                             HStack(spacing: 4) {
@@ -302,6 +321,10 @@ struct ExportView: View {
                         }
                         .opacity(isLocked && viewModel.selectedTheme != theme ? 0.88 : 1)
                     }
+                    .accessibilityLabel(theme.rawValue)
+                    .accessibilityValue(optionAccessibilityValue(isSelected: viewModel.selectedTheme == theme, isLocked: isLocked))
+                    .accessibilityHint(isLocked ? "Requires Pro. Opens the paywall." : "Sets the export theme.")
+                    .hoopsSelectedState(viewModel.selectedTheme == theme)
                 }
             }
 
@@ -344,7 +367,7 @@ struct ExportView: View {
                                 if track == .custom {
                                     showFileImporter = true
                                 } else {
-                                    withAnimation(.snappy) { viewModel.selectedMusic = track }
+                                    HoopsAccessibility.animate(reduceMotion: reduceMotion) { viewModel.selectedMusic = track }
                                 }
                             } label: {
                                 HStack(spacing: 8) {
@@ -384,6 +407,10 @@ struct ExportView: View {
                                 )
                                 .opacity(isLocked && !isSelected ? 0.9 : 1)
                             }
+                            .accessibilityLabel(track.rawValue)
+                            .accessibilityValue(optionAccessibilityValue(isSelected: isSelected, isLocked: isLocked))
+                            .accessibilityHint(musicAccessibilityHint(for: track, isLocked: isLocked))
+                            .hoopsSelectedState(isSelected)
                             
                             if track != .none && track != .custom && !isLocked {
                                 Button {
@@ -395,6 +422,8 @@ struct ExportView: View {
                                         .foregroundStyle(isSelected ? .white : AppTheme.accentPurple)
                                         .background(Circle().fill(AppTheme.cardBg))
                                 }
+                                .accessibilityLabel(musicPreviewManager.currentTrack == track && musicPreviewManager.isPlaying ? "Stop \(track.rawValue) preview" : "Preview \(track.rawValue)")
+                                .accessibilityHint("Plays a short sample of this music track.")
                                 .offset(x: 8, y: -8)
                             }
                         }
@@ -415,7 +444,7 @@ struct ExportView: View {
                         viewModel.selectCustomAudio(url: url)
                     }
                 case .failure(let error):
-                    print("File selection failed: \(error.localizedDescription)")
+                    shareErrorMessage = "Could not select custom audio: \(error.localizedDescription)"
                 }
             }
 
@@ -446,7 +475,7 @@ struct ExportView: View {
             HStack(spacing: 10) {
                 ForEach(ExportQuality.allCases) { quality in
                     Button {
-                        withAnimation(.snappy) { viewModel.selectedQuality = quality }
+                        HoopsAccessibility.animate(reduceMotion: reduceMotion) { viewModel.selectedQuality = quality }
                     } label: {
                         VStack(spacing: 4) {
                             Text(quality.rawValue)
@@ -471,6 +500,10 @@ struct ExportView: View {
                                 )
                         )
                     }
+                    .accessibilityLabel(quality.rawValue)
+                    .accessibilityValue(viewModel.selectedQuality == quality ? "Selected" : "Not selected")
+                    .accessibilityHint("Sets export render quality.")
+                    .hoopsSelectedState(viewModel.selectedQuality == quality)
                 }
             }
         }
@@ -489,7 +522,7 @@ struct ExportView: View {
             HStack(spacing: 10) {
                 ForEach(ExportFileFormat.allCases) { format in
                     Button {
-                        withAnimation(.snappy) { viewModel.selectedFormat = format }
+                        HoopsAccessibility.animate(reduceMotion: reduceMotion) { viewModel.selectedFormat = format }
                     } label: {
                         VStack(alignment: .leading, spacing: 6) {
                             HStack(spacing: 8) {
@@ -524,6 +557,10 @@ struct ExportView: View {
                                 )
                         )
                     }
+                    .accessibilityLabel(format.rawValue)
+                    .accessibilityValue(viewModel.selectedFormat == format ? "Selected" : "Not selected")
+                    .accessibilityHint(format.description)
+                    .hoopsSelectedState(viewModel.selectedFormat == format)
                 }
             }
         }
@@ -601,11 +638,15 @@ struct ExportView: View {
                         Group {
                             if let exportPreviewPlayer {
                                 VideoPlayer(player: exportPreviewPlayer)
+                                    .accessibilityLabel("Export preview")
+                                    .accessibilityValue(exportedURL.lastPathComponent)
+                                    .accessibilityHint("Use playback controls to review the exported highlight reel.")
                             } else {
                                 ProgressView()
                                     .tint(AppTheme.neonPurple)
                                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                                     .background(AppTheme.surfaceBg)
+                                    .accessibilityLabel("Loading export preview")
                             }
                         }
                         .frame(height: 220)
@@ -645,6 +686,8 @@ struct ExportView: View {
                             }
                             .buttonStyle(.plain)
                             .padding(10)
+                            .accessibilityLabel("Expand export preview")
+                            .accessibilityHint("Opens a larger preview of the latest exported reel.")
                         }
 
                         Text("Your latest export opens in review first. You can reopen it here anytime.")
@@ -682,7 +725,7 @@ struct ExportView: View {
                                 Text(exportedURL.lastPathComponent)
                                     .font(.caption2.monospaced())
                                     .foregroundStyle(Color.white.opacity(0.72))
-                                    .lineLimit(1)
+                                    .lineLimit(2)
                             }
                             Spacer()
                             Image(systemName: "bolt.fill")
@@ -702,6 +745,9 @@ struct ExportView: View {
                     .disabled(!exportAvailable)
                     .opacity(exportAvailable ? 1.0 : 0.5)
                     .sensoryFeedback(.impact(weight: .light), trigger: shareTrigger)
+                    .accessibilityLabel("Open In or Share")
+                    .accessibilityValue(exportAvailable ? exportedURL.lastPathComponent : "Export unavailable")
+                    .accessibilityHint("Opens the system share sheet for editing apps, social apps, AirDrop, and Files.")
 
                     Button {
                         saveTrigger += 1
@@ -726,6 +772,9 @@ struct ExportView: View {
                     .disabled(!exportAvailable)
                     .opacity(exportAvailable ? 1.0 : 0.5)
                     .sensoryFeedback(.impact(weight: .light), trigger: saveTrigger)
+                    .accessibilityLabel("Save to Photos")
+                    .accessibilityValue(exportAvailable ? "Ready" : "Export unavailable")
+                    .accessibilityHint("Saves the latest exported reel to your photo library.")
                 }
 
                 VStack(alignment: .leading, spacing: 10) {
@@ -754,14 +803,14 @@ struct ExportView: View {
                                             .font(.caption.weight(.semibold))
                                         Text(shortcut.displayName)
                                             .font(.caption.bold())
-                                            .lineLimit(1)
+                                            .lineLimit(2)
                                     }
                                     .foregroundStyle(.white)
 
                                     Text(shortcut.statusText)
                                         .font(.caption2.weight(.medium))
                                         .foregroundStyle(shortcut.isInstalled ? AppTheme.successGreen : AppTheme.subtleText)
-                                        .lineLimit(1)
+                                        .lineLimit(2)
                                 }
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(.horizontal, 10)
@@ -785,6 +834,9 @@ struct ExportView: View {
                             .buttonStyle(.plain)
                             .disabled(!exportAvailable)
                             .opacity(exportAvailable ? 1.0 : 0.5)
+                            .accessibilityLabel("Edit in \(shortcut.displayName)")
+                            .accessibilityValue(shortcut.statusText)
+                            .accessibilityHint("Opens the share sheet so you can choose this editor or another video app.")
                         }
                     }
 
@@ -819,14 +871,14 @@ struct ExportView: View {
                                             .font(.caption.weight(.semibold))
                                         Text(shortcut.displayName)
                                             .font(.caption.bold())
-                                            .lineLimit(1)
+                                            .lineLimit(2)
                                     }
                                     .foregroundStyle(.white)
 
                                     Text(shortcut.statusText)
                                         .font(.caption2.weight(.medium))
                                         .foregroundStyle(shortcut.isInstalled ? AppTheme.successGreen : AppTheme.subtleText)
-                                        .lineLimit(1)
+                                        .lineLimit(2)
                                 }
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(.horizontal, 10)
@@ -850,6 +902,9 @@ struct ExportView: View {
                             .buttonStyle(.plain)
                             .disabled(!exportAvailable)
                             .opacity(exportAvailable ? 1.0 : 0.5)
+                            .accessibilityLabel("Share to \(shortcut.displayName)")
+                            .accessibilityValue(shortcut.statusText)
+                            .accessibilityHint("Opens the share sheet so you can choose this social app or another destination.")
                         }
                     }
 
@@ -870,6 +925,8 @@ struct ExportView: View {
                     ProgressView(value: viewModel.exportService.exportProgress)
                         .tint(AppTheme.accentPurple)
                         .scaleEffect(y: 2)
+                        .accessibilityLabel("Export progress")
+                        .accessibilityValue("\(Int(viewModel.exportService.exportProgress * 100)) percent")
 
                     Text(viewModel.exportService.statusMessage)
                         .font(.caption)
@@ -877,6 +934,9 @@ struct ExportView: View {
                 }
                 .padding(16)
                 .rorkCard(cornerRadius: 16, stroke: AppTheme.accentPurple.opacity(0.2))
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Exporting highlight reel")
+                .accessibilityValue("\(Int(viewModel.exportService.exportProgress * 100)) percent. \(viewModel.exportService.statusMessage)")
             } else {
                 Button {
                     exportTrigger += 1
@@ -910,6 +970,9 @@ struct ExportView: View {
                         .stroke(AppTheme.neonPurple.opacity(0.25), lineWidth: 1)
                 )
                 .sensoryFeedback(.impact(weight: .heavy), trigger: exportTrigger)
+                .accessibilityLabel(hasLockedSelections ? "Unlock Pro to export" : "Export highlight reel")
+                .accessibilityValue("\(viewModel.selectedTheme.rawValue), \(viewModel.selectedQuality.rawValue), \(viewModel.selectedFormat.rawValue)")
+                .accessibilityHint(hasLockedSelections ? "Selected options include Pro-only features and will open the paywall." : "Creates a video from kept clips.")
             }
         }
     }
@@ -966,6 +1029,21 @@ struct ExportView: View {
         isLocked ? "\(title) • Pro" : title
     }
 
+    private func optionAccessibilityValue(isSelected: Bool, isLocked: Bool) -> String {
+        switch (isSelected, isLocked) {
+        case (true, true): return "Selected, locked"
+        case (true, false): return "Selected"
+        case (false, true): return "Locked"
+        case (false, false): return "Not selected"
+        }
+    }
+
+    private func musicAccessibilityHint(for track: MusicTrack, isLocked: Bool) -> String {
+        if isLocked { return "Requires Pro. Opens the paywall." }
+        if track == .custom { return "Opens Files to choose custom audio." }
+        return "Sets the export music track."
+    }
+
     private func presentShareSheet(
         for url: URL,
         preferredTarget: String? = nil,
@@ -983,6 +1061,19 @@ struct ExportView: View {
         shareURL = nil
         selectedShareTargetHint = nil
         selectedShareCategory = nil
+    }
+
+    private func announceExportProgress(_ progress: Double) {
+        guard viewModel.exportService.isExporting else {
+            lastExportAnnouncementPercent = -1
+            return
+        }
+
+        let percent = Int((progress * 100).rounded())
+        let bucket = (percent / 25) * 25
+        guard bucket >= 25, bucket <= 100, bucket != lastExportAnnouncementPercent else { return }
+        lastExportAnnouncementPercent = bucket
+        HoopsAccessibility.announce("Export \(bucket) percent complete.")
     }
 
     private func refreshEditorShortcuts() {
@@ -1083,12 +1174,16 @@ struct ExportView: View {
                                 RoundedRectangle(cornerRadius: 16)
                                     .stroke(AppTheme.accentPurple.opacity(0.28), lineWidth: 1)
                             )
+                            .accessibilityLabel("Expanded export preview")
+                            .accessibilityValue(url.lastPathComponent)
+                            .accessibilityHint("Use playback controls to review the exported highlight reel.")
                     }
                     .padding(16)
                 } else {
                     ProgressView()
                         .tint(AppTheme.neonPurple)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .accessibilityLabel("Loading export preview")
                 }
             }
             .navigationTitle("Review Reel")

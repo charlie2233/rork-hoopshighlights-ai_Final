@@ -36,6 +36,7 @@
 - Support Center is reachable and shows launch status accurately.
 - About & Privacy opens the Privacy Policy and Terms of Service URLs from the shipped app.
 - Launch telemetry writes unified logs in Release, and staged DSN config is visible in Settings when present.
+- Accessibility smoke passes on a physical iPhone for VoiceOver, largest text size, Reduce Motion, and normal mode. Use `ios/docs/checklists/release-accessibility-smoke-checklist.md` and record results in the release smoke report.
 
 ## Explicit no-go items for public cloud cutover
 - Do not enable public cloud analysis while `ios/backend` is internal-only.
@@ -44,6 +45,7 @@
 
 ## Required artifacts
 - Update `ios/docs/reports/release-device-smoke-report.md` with the latest device smoke result.
+- Keep the accessibility smoke checklist current at `ios/docs/checklists/release-accessibility-smoke-checklist.md`.
 - Keep launch-day notes in `ios/docs/runbooks/public-launch-cloud-gated.md`.
 - Keep the Premium subscription policy current at `ios/docs/legal/hoopsclips-premium-subscription-policy.md`.
 - Use `ios/docs/app-store/app-review-sign-in.md` for App Store Connect review credentials and notes.

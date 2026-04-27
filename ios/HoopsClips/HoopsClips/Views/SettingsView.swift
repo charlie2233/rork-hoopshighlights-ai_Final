@@ -6,6 +6,7 @@ struct SettingsView: View {
     @Bindable var authService: AuthService
     @Bindable var subscriptionManager: SubscriptionManager
     @Environment(AppLanguageStore.self) private var languageStore
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showingResetAlert = false
     @State private var showingPaywall = false
     @State private var showingAdvancedSettings = false
@@ -838,6 +839,8 @@ struct SettingsView: View {
                 }
                 Slider(value: $viewModel.settings.minClipDuration, in: 1.0...5.0, step: 0.5)
                     .tint(AppTheme.accentPurple)
+                    .accessibilityLabel(languageStore.text(.settingsMinimum))
+                    .accessibilityValue(formattedSeconds(viewModel.settings.minClipDuration, fractionalDigits: 1))
                 Text(languageStore.text(.settingsShortestClipHelp))
                     .font(.caption2)
                     .foregroundStyle(AppTheme.subtleText)
@@ -857,6 +860,8 @@ struct SettingsView: View {
                 }
                 Slider(value: $viewModel.settings.maxClipDuration, in: 5.0...30.0, step: 1.0)
                     .tint(AppTheme.accentPurple)
+                    .accessibilityLabel(languageStore.text(.settingsMaximum))
+                    .accessibilityValue(formattedSeconds(viewModel.settings.maxClipDuration, fractionalDigits: 0))
                 Text(languageStore.text(.settingsLongestClipHelp))
                     .font(.caption2)
                     .foregroundStyle(AppTheme.subtleText)
@@ -876,6 +881,8 @@ struct SettingsView: View {
                 }
                 Slider(value: $viewModel.settings.targetHighlightDuration, in: 15.0...180.0, step: 5.0)
                     .tint(AppTheme.accentPurple)
+                    .accessibilityLabel(languageStore.text(.settingsTargetHighlight))
+                    .accessibilityValue(formattedTargetDuration(viewModel.settings.targetHighlightDuration))
                 Text(languageStore.text(.settingsTargetHighlightHelp))
                     .font(.caption2)
                     .foregroundStyle(AppTheme.subtleText)
@@ -961,6 +968,8 @@ struct SettingsView: View {
                 }
                 Slider(value: $viewModel.settings.confidenceThreshold, in: 0.1...0.9, step: 0.05)
                     .tint(AppTheme.accentPurple)
+                    .accessibilityLabel(languageStore.text(.settingsConfidenceThreshold))
+                    .accessibilityValue("\(Int(viewModel.settings.confidenceThreshold * 100)) percent")
                 Text(languageStore.text(.settingsLowerConfidenceHelp))
                     .font(.caption2)
                     .foregroundStyle(AppTheme.subtleText)
@@ -999,6 +1008,8 @@ struct SettingsView: View {
                 }
                 Slider(value: $viewModel.settings.clipPadding, in: 0.5...3.0, step: 0.5)
                     .tint(AppTheme.accentPurple)
+                    .accessibilityLabel(languageStore.text(.settingsClipPadding))
+                    .accessibilityValue(formattedSeconds(viewModel.settings.clipPadding, fractionalDigits: 1))
                 Text(languageStore.text(.settingsClipPaddingHelp))
                     .font(.caption2)
                     .foregroundStyle(AppTheme.subtleText)
@@ -1041,6 +1052,8 @@ struct SettingsView: View {
                 }
                 Slider(value: $viewModel.settings.framesSampledPerSecond, in: 1.0...10.0, step: 1.0)
                     .tint(AppTheme.accentPurple)
+                    .accessibilityLabel(languageStore.text(.settingsFramesPerSecond))
+                    .accessibilityValue(formattedFrameRate(viewModel.settings.framesSampledPerSecond))
                 Text(languageStore.text(.settingsPerformanceHelp))
                     .font(.caption2)
                     .foregroundStyle(AppTheme.subtleText)
@@ -1114,7 +1127,7 @@ struct SettingsView: View {
                     HStack(spacing: 8) {
                         ForEach(FeedbackType.allCases) { type in
                             Button {
-                                withAnimation(.snappy) { feedbackType = type }
+                                HoopsAccessibility.animate(reduceMotion: reduceMotion) { feedbackType = type }
                             } label: {
                                 HStack(spacing: 8) {
                                     Image(systemName: type.icon)
@@ -1600,6 +1613,8 @@ struct SettingsView: View {
             }
             Slider(value: value, in: 0...1.0, step: 0.05)
                 .tint(color)
+                .accessibilityLabel(label)
+                .accessibilityValue("\(Int(value.wrappedValue * 100)) percent")
         }
     }
 

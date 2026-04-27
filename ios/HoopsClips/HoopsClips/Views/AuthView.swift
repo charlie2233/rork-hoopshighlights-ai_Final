@@ -5,6 +5,7 @@ import GoogleSignIn
 struct AuthView: View {
     @Bindable var authService: AuthService
     @Environment(AppLanguageStore.self) private var languageStore
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var authMode: AuthMode = .welcome
     @State private var email = ""
     @State private var password = ""
@@ -42,7 +43,15 @@ struct AuthView: View {
             Text(authService.errorMessage ?? "Something went wrong.")
         }
         .onChange(of: authService.errorMessage) { _, newValue in
-            if newValue != nil { showError = true }
+            if let newValue {
+                showError = true
+                HoopsAccessibility.announce(newValue)
+            }
+        }
+        .onChange(of: authService.isLoading) { _, isLoading in
+            if isLoading {
+                HoopsAccessibility.announce(languageStore.text(.signingIn))
+            }
         }
     }
 
@@ -84,8 +93,9 @@ struct AuthView: View {
                 authService.signInWithApple(result: result)
             }
             .signInWithAppleButtonStyle(.white)
-            .frame(height: 52)
+            .frame(minHeight: 52)
             .clipShape(.rect(cornerRadius: 14))
+            .accessibilityHint("Signs in with your Apple ID.")
 
             Button {
                 signInWithGoogle()
@@ -95,12 +105,16 @@ struct AuthView: View {
                         .font(.title2)
                     Text(languageStore.text(.continueWithGoogle))
                         .font(.body.weight(.semibold))
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
                 }
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
-                .frame(height: 52)
+                .frame(minHeight: 52)
+                .padding(.vertical, 2)
                 .background(Color(red: 0.26, green: 0.52, blue: 0.96), in: .rect(cornerRadius: 14))
             }
+            .accessibilityHint("Opens Google Sign-In.")
 
             HStack(spacing: 12) {
                 Rectangle()
@@ -116,17 +130,20 @@ struct AuthView: View {
             .padding(.vertical, 4)
 
             Button {
-                withAnimation(.snappy) { authMode = .email }
+                HoopsAccessibility.animate(reduceMotion: reduceMotion) { authMode = .email }
             } label: {
                 HStack(spacing: 12) {
                     Image(systemName: "envelope.fill")
                         .font(.title3)
                     Text(languageStore.text(.continueWithEmail))
                         .font(.body.weight(.semibold))
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
                 }
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
-                .frame(height: 52)
+                .frame(minHeight: 52)
+                .padding(.vertical, 2)
                 .background(AppTheme.surfaceBg, in: .rect(cornerRadius: 14))
                 .overlay(
                     RoundedRectangle(cornerRadius: 14)
@@ -135,17 +152,20 @@ struct AuthView: View {
             }
 
             Button {
-                withAnimation(.snappy) { authMode = .phone }
+                HoopsAccessibility.animate(reduceMotion: reduceMotion) { authMode = .phone }
             } label: {
                 HStack(spacing: 12) {
                     Image(systemName: "phone.fill")
                         .font(.title3)
                     Text(languageStore.text(.continueWithPhone))
                         .font(.body.weight(.semibold))
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
                 }
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
-                .frame(height: 52)
+                .frame(minHeight: 52)
+                .padding(.vertical, 2)
                 .background(AppTheme.surfaceBg, in: .rect(cornerRadius: 14))
                 .overlay(
                     RoundedRectangle(cornerRadius: 14)
@@ -161,10 +181,13 @@ struct AuthView: View {
                         .font(.title3)
                     Text(languageStore.text(.continueAsGuest))
                         .font(.body.weight(.semibold))
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
                 }
                 .foregroundStyle(AppTheme.subtleText)
                 .frame(maxWidth: .infinity)
-                .frame(height: 52)
+                .frame(minHeight: 52)
+                .padding(.vertical, 2)
                 .background(AppTheme.surfaceBg.opacity(0.4), in: .rect(cornerRadius: 14))
                 .overlay(
                     RoundedRectangle(cornerRadius: 14)
@@ -252,16 +275,22 @@ struct AuthView: View {
                 HStack(spacing: 8) {
                     if authService.isLoading {
                         ProgressView().tint(.white).controlSize(.small)
+                            .accessibilityLabel(languageStore.text(.signingIn))
                     }
                     Text(authService.isLoading ? languageStore.text(.signingIn) : languageStore.text(.signIn))
                         .font(.body.weight(.bold))
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
                 }
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
-                .frame(height: 52)
+                .frame(minHeight: 52)
+                .padding(.vertical, 2)
                 .background(AppTheme.purpleGradient, in: .rect(cornerRadius: 14))
             }
             .disabled(authService.isLoading)
+            .accessibilityLabel(authService.isLoading ? languageStore.text(.signingIn) : languageStore.text(.signIn))
+            .accessibilityValue(authService.isLoading ? "In progress" : "Ready")
 
             backButton
         }
@@ -278,17 +307,21 @@ struct AuthView: View {
             if !codeSent {
                 Button {
                     authService.sendPhoneVerificationCode(to: normalizedPhoneNumber)
-                    withAnimation(.snappy) { codeSent = true }
+                    HoopsAccessibility.animate(reduceMotion: reduceMotion) { codeSent = true }
                 } label: {
                     Text(languageStore.text(.sendCode))
                         .font(.body.weight(.bold))
                         .foregroundStyle(.white)
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
                         .frame(maxWidth: .infinity)
-                        .frame(height: 52)
+                        .frame(minHeight: 52)
+                        .padding(.vertical, 2)
                         .background(AppTheme.purpleGradient, in: .rect(cornerRadius: 14))
                 }
                 .disabled(!isPhoneNumberReady)
                 .opacity(isPhoneNumberReady ? 1 : 0.5)
+                .accessibilityValue(isPhoneNumberReady ? "Ready" : "Enter a valid phone number")
             } else {
                 codeInfoBanner(destination: normalizedPhoneNumber)
 
@@ -310,16 +343,22 @@ struct AuthView: View {
                     HStack(spacing: 8) {
                         if authService.isLoading {
                             ProgressView().tint(.white).controlSize(.small)
+                                .accessibilityLabel(languageStore.text(.verifying))
                         }
                         Text(authService.isLoading ? languageStore.text(.verifying) : languageStore.text(.verifyAndSignIn))
                             .font(.body.weight(.bold))
+                            .multilineTextAlignment(.center)
+                            .lineLimit(2)
                     }
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
-                    .frame(height: 52)
+                    .frame(minHeight: 52)
+                    .padding(.vertical, 2)
                     .background(AppTheme.purpleGradient, in: .rect(cornerRadius: 14))
                 }
                 .disabled(authService.isLoading)
+                .accessibilityLabel(authService.isLoading ? languageStore.text(.verifying) : languageStore.text(.verifyAndSignIn))
+                .accessibilityValue(authService.isLoading ? "In progress" : "Ready")
 
                 Button {
                     authService.sendPhoneVerificationCode(to: normalizedPhoneNumber)
@@ -366,7 +405,7 @@ struct AuthView: View {
 
     private var backButton: some View {
         Button {
-            withAnimation(.snappy) {
+            HoopsAccessibility.animate(reduceMotion: reduceMotion) {
                 authMode = .welcome
                 codeSent = false
                 verificationCode = ""

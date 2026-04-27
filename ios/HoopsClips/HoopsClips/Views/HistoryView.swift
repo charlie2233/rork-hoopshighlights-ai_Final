@@ -388,6 +388,9 @@ private struct HistoryProjectDetailView: View {
                         RoundedRectangle(cornerRadius: 16)
                             .stroke(AppTheme.softBorder, lineWidth: 1)
                     )
+                    .accessibilityLabel("Project video preview")
+                    .accessibilityValue(previewTitle ?? "Saved project media")
+                    .accessibilityHint("Use playback controls to preview this saved project.")
 
                 if let previewTitle {
                     Text(previewTitle)

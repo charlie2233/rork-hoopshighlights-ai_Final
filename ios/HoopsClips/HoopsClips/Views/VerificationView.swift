@@ -2,6 +2,7 @@ import SwiftUI
 
 struct VerificationView: View {
     @Bindable var authService: AuthService
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var emailCode = ""
     @State private var phoneCode = ""
     @State private var linkEmail = ""
@@ -46,6 +47,11 @@ struct VerificationView: View {
         .overlay {
             if showSuccess {
                 successOverlay
+            }
+        }
+        .onChange(of: showSuccess) { _, isShowing in
+            if isShowing {
+                HoopsAccessibility.announce("Verification complete.")
             }
         }
     }
@@ -124,10 +130,10 @@ struct VerificationView: View {
 
                 Button {
                     if authService.verifyEmail(code: emailCode) {
-                        withAnimation(.spring(duration: 0.4)) { showSuccess = true }
+                        HoopsAccessibility.animate(reduceMotion: reduceMotion, .spring(duration: 0.4)) { showSuccess = true }
                         Task {
                             try? await Task.sleep(for: .seconds(1.5))
-                            withAnimation { showSuccess = false }
+                            HoopsAccessibility.animate(reduceMotion: reduceMotion) { showSuccess = false }
                         }
                     }
                 } label: {
@@ -193,10 +199,10 @@ struct VerificationView: View {
 
                 Button {
                     if authService.verifyPhone(code: phoneCode) {
-                        withAnimation(.spring(duration: 0.4)) { showSuccess = true }
+                        HoopsAccessibility.animate(reduceMotion: reduceMotion, .spring(duration: 0.4)) { showSuccess = true }
                         Task {
                             try? await Task.sleep(for: .seconds(1.5))
-                            withAnimation { showSuccess = false }
+                            HoopsAccessibility.animate(reduceMotion: reduceMotion) { showSuccess = false }
                         }
                     }
                 } label: {
@@ -219,20 +225,24 @@ struct VerificationView: View {
         VStack(spacing: 14) {
             if !showLinkEmail {
                 Button {
-                    withAnimation(.snappy) { showLinkEmail = true }
+                    HoopsAccessibility.animate(reduceMotion: reduceMotion) { showLinkEmail = true }
                 } label: {
                     HStack(spacing: 12) {
                         Image(systemName: "envelope.fill")
                             .font(.title3)
-                        Text("Link Email Address")
-                            .font(.body.weight(.semibold))
-                    }
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 52)
+                    Text("Link Email Address")
+                        .font(.body.weight(.semibold))
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
+                }
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                    .frame(minHeight: 52)
+                    .padding(.vertical, 2)
                     .background(AppTheme.surfaceBg, in: .rect(cornerRadius: 14))
                     .overlay(RoundedRectangle(cornerRadius: 14).stroke(AppTheme.cardBorder, lineWidth: 1))
                 }
+                .accessibilityHint("Adds an email address to secure this guest account.")
             } else {
                 VStack(spacing: 12) {
                     TextField("you@example.com", text: $linkEmail)
@@ -252,7 +262,8 @@ struct VerificationView: View {
                             .font(.subheadline.weight(.bold))
                             .foregroundStyle(.white)
                             .frame(maxWidth: .infinity)
-                            .frame(height: 44)
+                            .frame(minHeight: 44)
+                            .padding(.vertical, 2)
                             .background(AppTheme.purpleGradient, in: .rect(cornerRadius: 12))
                     }
                     .disabled(linkEmail.isEmpty)
@@ -262,20 +273,24 @@ struct VerificationView: View {
 
             if !showLinkPhone {
                 Button {
-                    withAnimation(.snappy) { showLinkPhone = true }
+                    HoopsAccessibility.animate(reduceMotion: reduceMotion) { showLinkPhone = true }
                 } label: {
                     HStack(spacing: 12) {
                         Image(systemName: "phone.fill")
                             .font(.title3)
-                        Text("Link Phone Number")
-                            .font(.body.weight(.semibold))
-                    }
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 52)
+                    Text("Link Phone Number")
+                        .font(.body.weight(.semibold))
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
+                }
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                    .frame(minHeight: 52)
+                    .padding(.vertical, 2)
                     .background(AppTheme.surfaceBg, in: .rect(cornerRadius: 14))
                     .overlay(RoundedRectangle(cornerRadius: 14).stroke(AppTheme.cardBorder, lineWidth: 1))
                 }
+                .accessibilityHint("Adds a phone number to secure this guest account.")
             } else {
                 VStack(spacing: 12) {
                     PhoneNumberInputView(
@@ -292,7 +307,8 @@ struct VerificationView: View {
                             .font(.subheadline.weight(.bold))
                             .foregroundStyle(.white)
                             .frame(maxWidth: .infinity)
-                            .frame(height: 44)
+                            .frame(minHeight: 44)
+                            .padding(.vertical, 2)
                             .background(AppTheme.purpleGradient, in: .rect(cornerRadius: 12))
                     }
                     .disabled(!linkPhoneIsReady)
@@ -336,5 +352,7 @@ struct VerificationView: View {
         .padding(40)
         .background(.ultraThinMaterial, in: .rect(cornerRadius: 24))
         .transition(.scale.combined(with: .opacity))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Verified")
     }
 }

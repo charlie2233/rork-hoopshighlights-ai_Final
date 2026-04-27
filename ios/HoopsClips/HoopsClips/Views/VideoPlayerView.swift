@@ -8,6 +8,7 @@ struct VideoPlayerView: View {
     @Environment(SubscriptionManager.self) private var subscriptionManager
     @Environment(AuthService.self) private var authService
     @Environment(AppLanguageStore.self) private var languageStore
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var player: AVPlayer?
     @State private var showingFilePicker = false
     @State private var selectedPhotoItem: PhotosPickerItem?
@@ -20,6 +21,7 @@ struct VideoPlayerView: View {
     @State private var activeImportID: UUID?
     @State private var importTask: Task<Void, Never>?
     @State private var importErrorMessage: String?
+    @State private var lastAnalysisAnnouncementPercent = -1
 
     private let videoImportTimeoutNanoseconds: UInt64 = 90 * 1_000_000_000
 
@@ -56,6 +58,8 @@ struct VideoPlayerView: View {
                             Image(systemName: "xmark.circle.fill")
                                 .foregroundStyle(AppTheme.subtleText)
                         }
+                        .accessibilityLabel("Close current video")
+                        .accessibilityHint("Returns to the import screen and clears this project.")
                     }
                 }
             }
@@ -89,7 +93,24 @@ struct VideoPlayerView: View {
             .onChange(of: viewModel.isVideoLoaded) { _, isVideoLoaded in
                 if !isVideoLoaded {
                     analysisStarted = false
+                    lastAnalysisAnnouncementPercent = -1
+                } else {
+                    HoopsAccessibility.announce("Video imported. Choose a target highlight length, then start analysis.")
                 }
+            }
+            .onChange(of: isImportingVideo) { _, isImporting in
+                HoopsAccessibility.announce(isImporting ? languageStore.text(.preparingVideo) : "Video import finished.")
+            }
+            .onChange(of: viewModel.analysisService.statusMessage) { _, message in
+                guard viewModel.analysisService.isAnalyzing else { return }
+                HoopsAccessibility.announce(message)
+            }
+            .onChange(of: viewModel.analysisService.progress) { _, progress in
+                announceAnalysisProgress(progress)
+            }
+            .onChange(of: viewModel.clips.count) { _, clipCount in
+                guard clipCount > 0 else { return }
+                HoopsAccessibility.announce("\(clipCount) clips found. Review is ready.")
             }
             .sheet(isPresented: $showingPaywall) {
                 PaywallView(subscriptionManager: subscriptionManager, authService: authService)
@@ -282,6 +303,9 @@ struct VideoPlayerView: View {
             )
             .disabled(isImportingVideo)
             .opacity(isImportingVideo ? 0.82 : 1)
+            .accessibilityLabel(isImportingVideo ? languageStore.text(.preparingVideo) : languageStore.text(.selectVideo))
+            .accessibilityHint("Opens choices for importing a basketball video from Photos or Files.")
+            .accessibilityValue(isImportingVideo ? "In progress" : "Ready")
 
             if isImportingVideo {
                 Button {
@@ -299,6 +323,8 @@ struct VideoPlayerView: View {
                         )
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(languageStore.text(.cancelImport))
+                .accessibilityHint("Stops the current video import.")
             }
 
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
@@ -351,6 +377,8 @@ struct VideoPlayerView: View {
                         RoundedRectangle(cornerRadius: 16)
                             .stroke(AppTheme.accentPurple.opacity(0.3), lineWidth: 1)
                     )
+                    .accessibilityLabel("Source video preview")
+                    .accessibilityHint("Use playback controls to review the imported video.")
             } else if let thumbnail = viewModel.videoThumbnail {
                 Image(decorative: thumbnail, scale: 1.0)
                     .resizable()
@@ -507,6 +535,9 @@ struct VideoPlayerView: View {
 
             Slider(value: $viewModel.settings.targetHighlightDuration, in: 15.0...180.0, step: 5.0)
                 .tint(AppTheme.warningYellow)
+                .accessibilityLabel(languageStore.text(.settingsTargetHighlight))
+                .accessibilityValue(formattedTargetDuration(viewModel.settings.targetHighlightDuration))
+                .accessibilityHint("Sets the target length for the highlight reel before analysis.")
         }
         .padding(14)
         .rorkCard(
@@ -522,7 +553,7 @@ struct VideoPlayerView: View {
         let isSelected = abs(viewModel.settings.targetHighlightDuration - duration) < 0.1
 
         return Button {
-            withAnimation(.snappy(duration: 0.18)) {
+            HoopsAccessibility.animate(reduceMotion: reduceMotion, .snappy(duration: 0.18)) {
                 viewModel.settings.targetHighlightDuration = duration
             }
         } label: {
@@ -542,6 +573,8 @@ struct VideoPlayerView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Set target highlight length to \(formattedTargetDuration(duration))")
+        .accessibilityValue(isSelected ? "Selected" : "Not selected")
+        .hoopsSelectedState(isSelected)
     }
 
     private var analysisProgressView: some View {
@@ -562,6 +595,8 @@ struct VideoPlayerView: View {
             ProgressView(value: viewModel.analysisService.progress)
                 .tint(AppTheme.accentPurple)
                 .scaleEffect(y: 2)
+                .accessibilityLabel(analysisProgressTitle)
+                .accessibilityValue("\(Int(viewModel.analysisService.progress * 100)) percent")
 
             Text(viewModel.analysisService.statusMessage)
                 .font(.caption)
@@ -569,6 +604,9 @@ struct VideoPlayerView: View {
         }
         .padding(16)
         .rorkCard(cornerRadius: 16, stroke: AppTheme.accentPurple.opacity(0.2))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(analysisProgressTitle)
+        .accessibilityValue("\(Int(viewModel.analysisService.progress * 100)) percent. \(viewModel.analysisService.statusMessage)")
     }
 
     private var analysisCompleteView: some View {
@@ -717,6 +755,19 @@ struct VideoPlayerView: View {
 
     private var analysisSectionSubtitle: String {
         languageStore.text(.aiAnalysisSubtitle)
+    }
+
+    private func announceAnalysisProgress(_ progress: Double) {
+        guard viewModel.analysisService.isAnalyzing else {
+            lastAnalysisAnnouncementPercent = -1
+            return
+        }
+
+        let percent = Int((progress * 100).rounded())
+        let bucket = (percent / 25) * 25
+        guard bucket >= 25, bucket <= 100, bucket != lastAnalysisAnnouncementPercent else { return }
+        lastAnalysisAnnouncementPercent = bucket
+        HoopsAccessibility.announce("Analysis \(bucket) percent complete.")
     }
 }
 

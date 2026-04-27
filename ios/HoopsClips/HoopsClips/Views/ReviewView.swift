@@ -3,6 +3,7 @@ import AVKit
 
 struct ReviewView: View {
     @Bindable var viewModel: HighlightsViewModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var selectedClip: Clip?
     @State private var clipPlayer: AVPlayer?
     @State private var clipLoopObserverToken: NSObjectProtocol?
@@ -76,6 +77,8 @@ struct ReviewView: View {
                             Image(systemName: "ellipsis.circle.fill")
                                 .foregroundStyle(AppTheme.neonPurple)
                         }
+                        .accessibilityLabel("More review actions")
+                        .accessibilityHint("Keep all, discard all, or change sorting.")
                     }
                 }
             }
@@ -157,6 +160,8 @@ struct ReviewView: View {
             ProgressView(value: progress)
                 .tint(AppTheme.neonPurple)
                 .scaleEffect(y: 1.8)
+                .accessibilityLabel("Review progress")
+                .accessibilityValue("\(viewModel.keptClips.count) of \(viewModel.clips.count) clips kept")
 
             HStack(spacing: 8) {
                 RorkMetricChip(
@@ -194,7 +199,7 @@ struct ReviewView: View {
                 tint: AppTheme.successGreen,
                 isDisabled: highConfidencePendingCount == 0
             ) {
-                withAnimation(.snappy) {
+                HoopsAccessibility.animate(reduceMotion: reduceMotion) {
                     viewModel.keepHighConfidenceClips()
                 }
             }
@@ -206,7 +211,7 @@ struct ReviewView: View {
                 tint: AppTheme.dangerRed,
                 isDisabled: lowConfidenceKeptCount == 0
             ) {
-                withAnimation(.snappy) {
+                HoopsAccessibility.animate(reduceMotion: reduceMotion) {
                     viewModel.discardLowConfidenceClips()
                 }
             }
@@ -261,13 +266,16 @@ struct ReviewView: View {
         }
         .buttonStyle(.plain)
         .disabled(isDisabled)
+        .accessibilityLabel(title)
+        .accessibilityValue(isDisabled ? "Unavailable. \(subtitle)" : subtitle)
+        .accessibilityHint(isDisabled ? "No matching clips for this action." : "Applies this action to matching clips.")
     }
 
     private var filterBar: some View {
         HStack(spacing: 8) {
             ForEach(FilterOption.allCases, id: \.self) { option in
                 Button {
-                    withAnimation(.snappy) { filterOption = option }
+                    HoopsAccessibility.animate(reduceMotion: reduceMotion) { filterOption = option }
                 } label: {
                     Text(option.rawValue)
                         .font(.subheadline.weight(.medium))
@@ -279,6 +287,10 @@ struct ReviewView: View {
                             in: .capsule
                         )
                 }
+                .accessibilityLabel("\(option.rawValue) clips")
+                .accessibilityValue(filterOption == option ? "Selected" : "Not selected")
+                .accessibilityHint("Filters the review list.")
+                .hoopsSelectedState(filterOption == option)
             }
             Spacer()
         }
@@ -344,6 +356,10 @@ struct ReviewView: View {
                 .padding(12)
             }
             .buttonStyle(.plain)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(clipAccessibilityLabel(clip))
+            .accessibilityValue(clipAccessibilityValue(clip))
+            .accessibilityHint("Opens clip detail preview.")
 
             if expandedClipID == clip.id {
                 clipScoreBreakdown(clip: clip)
@@ -361,10 +377,13 @@ struct ReviewView: View {
                         .foregroundStyle(AppTheme.subtleText)
                         .padding(8)
                 }
+                .accessibilityLabel(expandedClipID == clip.id ? "Hide score details" : "Show score details")
+                .accessibilityValue("Combined score \(Int(clip.combinedScore * 100)) percent")
+                .accessibilityHint("Shows audio, motion, visual, and combined score breakdown.")
 
                 if clip.action == .dunk {
                     Button {
-                        withAnimation(.snappy) {
+                        HoopsAccessibility.animate(reduceMotion: reduceMotion) {
                             viewModel.toggleSlowMotion(clip)
                         }
                     } label: {
@@ -377,12 +396,16 @@ struct ReviewView: View {
                                 in: .circle
                             )
                     }
+                    .accessibilityLabel(clip.isSlowMotionEnabled ? "Disable slow motion" : "Enable slow motion")
+                    .accessibilityValue(clip.isSlowMotionEnabled ? "Selected" : "Not selected")
+                    .accessibilityHint("Applies slow motion to this dunk clip in the exported reel.")
+                    .hoopsSelectedState(clip.isSlowMotionEnabled)
                 }
 
                 Spacer()
 
                 Button {
-                    withAnimation(.snappy) {
+                    HoopsAccessibility.animate(reduceMotion: reduceMotion) {
                         viewModel.toggleClip(clip)
                         if clip.isKept {
                             discardTrigger += 1
@@ -407,6 +430,10 @@ struct ReviewView: View {
                 }
                 .sensoryFeedback(.impact(weight: .light), trigger: keepTrigger)
                 .sensoryFeedback(.impact(weight: .light), trigger: discardTrigger)
+                .accessibilityLabel(clip.isKept ? "Discard clip" : "Keep clip")
+                .accessibilityValue(clip.isKept ? "Kept" : "Discarded")
+                .accessibilityHint("Toggles whether this clip is included in the export.")
+                .hoopsSelectedState(clip.isKept)
             }
             .padding(.horizontal, 12)
             .padding(.bottom, 8)
@@ -468,6 +495,8 @@ struct ReviewView: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 4)
             .background(color.opacity(0.15), in: .capsule)
+            .accessibilityLabel("Confidence")
+            .accessibilityValue("\(Int(value * 100)) percent, \(level.rawValue)")
     }
 
     private func actionColor(for action: HighlightAction) -> Color {
@@ -537,6 +566,9 @@ struct ReviewView: View {
                                     RoundedRectangle(cornerRadius: 16)
                                         .stroke(AppTheme.accentPurple.opacity(0.3), lineWidth: 1)
                                 )
+                                .accessibilityLabel("Clip preview")
+                                .accessibilityValue("\(clip.label), \(clip.formattedStartTime) to \(clip.formattedEndTime)")
+                                .accessibilityHint("Loops the selected highlight clip.")
                         } else {
                             ContentUnavailableView {
                                 Label("Clip Preview Unavailable", systemImage: "video.slash.fill")
@@ -616,5 +648,14 @@ struct ReviewView: View {
         .onDisappear {
             teardownClipPlayer()
         }
+    }
+
+    private func clipAccessibilityLabel(_ clip: Clip) -> String {
+        "\(clip.label), \(clip.formattedStartTime) to \(clip.formattedEndTime)"
+    }
+
+    private func clipAccessibilityValue(_ clip: Clip) -> String {
+        let keepState = clip.isKept ? "Kept" : "Discarded"
+        return "\(keepState). Confidence \(Int(clip.confidence * 100)) percent. Duration \(clip.formattedDuration)."
     }
 }
