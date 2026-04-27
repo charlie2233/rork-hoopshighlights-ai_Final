@@ -330,6 +330,16 @@ struct SettingsView: View {
                 .settingsPreviewStatCard()
 
                 SettingsPreviewStat(
+                    icon: "person.text.rectangle.fill",
+                    value: AppConstants.emailPasswordAuthConfigured ? "Ready" : "Missing",
+                    label: "Email Auth",
+                    tint: AppConstants.emailPasswordAuthConfigured ? AppTheme.successGreen : AppTheme.dangerRed
+                )
+                .settingsPreviewStatCard()
+            }
+
+            HStack(spacing: 10) {
+                SettingsPreviewStat(
                     icon: "exclamationmark.bubble.fill",
                     value: LaunchTelemetry.shared.supportStatusLabel,
                     label: "Telemetry",

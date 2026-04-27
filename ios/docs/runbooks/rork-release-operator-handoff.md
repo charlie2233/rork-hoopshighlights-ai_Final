@@ -23,6 +23,7 @@ Rork must provide or confirm these production values before the Release smoke ca
 - `HOOPS_REVENUECAT_API_KEY`
 - `HOOPS_GOOGLE_CLIENT_ID`
 - `HOOPS_GOOGLE_REVERSED_CLIENT_ID`
+- `HOOPS_FIREBASE_AUTH_API_KEY`
 - `HOOPS_SENTRY_DSN`
 
 Rork also needs:
@@ -40,6 +41,7 @@ gh secret set HOOPS_DEVELOPMENT_TEAM -e production -b "$HOOPS_DEVELOPMENT_TEAM"
 gh secret set HOOPS_REVENUECAT_API_KEY -e production -b "$HOOPS_REVENUECAT_API_KEY"
 gh secret set HOOPS_GOOGLE_CLIENT_ID -e production -b "$HOOPS_GOOGLE_CLIENT_ID"
 gh secret set HOOPS_GOOGLE_REVERSED_CLIENT_ID -e production -b "$HOOPS_GOOGLE_REVERSED_CLIENT_ID"
+gh secret set HOOPS_FIREBASE_AUTH_API_KEY -e production -b "$HOOPS_FIREBASE_AUTH_API_KEY"
 gh secret set HOOPS_SENTRY_DSN -e production -b "$HOOPS_SENTRY_DSN"
 
 gh variable list -e production
@@ -67,6 +69,7 @@ export HOOPS_DEVELOPMENT_TEAM="..."
 export HOOPS_REVENUECAT_API_KEY="..."
 export HOOPS_GOOGLE_CLIENT_ID="..."
 export HOOPS_GOOGLE_REVERSED_CLIENT_ID="..."
+export HOOPS_FIREBASE_AUTH_API_KEY="..."
 export HOOPS_SENTRY_DSN="..."
 export HOOPS_PRIVACY_POLICY_URL="https://rork.com/privacy"
 export HOOPS_TERMS_OF_SERVICE_URL="https://rork.com/terms"

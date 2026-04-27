@@ -22,6 +22,14 @@ enum AppConstants {
         runtimeConfig.googleReversedClientID
     }
 
+    static var firebaseAuthAPIKey: String {
+        runtimeConfig.firebaseAuthAPIKey
+    }
+
+    static var emailPasswordAuthConfigured: Bool {
+        runtimeConfig.emailPasswordAuthConfigured
+    }
+
     static var privacyPolicyURL: URL? {
         runtimeConfig.resolvedPrivacyPolicyURL
     }

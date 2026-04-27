@@ -39,6 +39,8 @@
 	<string>$(HOOPS_GOOGLE_CLIENT_ID)</string>
 	<key>HOOPSGoogleReversedClientID</key>
 	<string>$(HOOPS_GOOGLE_REVERSED_CLIENT_ID)</string>
+	<key>HOOPSFirebaseAuthAPIKey</key>
+	<string>$(HOOPS_FIREBASE_AUTH_API_KEY)</string>
 	<key>HOOPSPrivacyPolicyURL</key>
 	<string>$(HOOPS_PRIVACY_POLICY_URL)</string>
 	<key>HOOPSRevenueCatAPIKey</key>

@@ -11,6 +11,7 @@ Cloud analysis and backend moderation remain internal-only until the production 
 - Release bundle ID: `atrak.charlie.hoopsclips`.
 - Release cloud mode: `HOOPS_CLOUD_LAUNCH_MODE = disabled`.
 - Release cloud base URL: empty.
+- Release email/password auth: Firebase Auth via `HOOPS_FIREBASE_AUTH_API_KEY`.
 - Phase 4h: labeling-only; no retrain, smoke, medium batch, or threshold changes until confirmed labels land.
 
 ## Latest Verified State
@@ -33,6 +34,8 @@ Known launch blocker: the remaining human real-device smoke still needs to compl
 - `ios/backend/` - internal cloud-analysis backend scaffold; not public launch-critical.
 - `ios/docs/checklists/public-launch-cloud-gated.md` - public launch checklist.
 - `ios/docs/runbooks/public-launch-cloud-gated.md` - launch-day support and fallback runbook.
+- `ios/docs/runbooks/firebase-auth-setup.md` - Firebase email/password auth setup.
+- `ios/docs/app-store/app-review-sign-in.md` - App Review sign-in notes template.
 - `ios/docs/reports/release-device-smoke-report.md` - real-device smoke evidence report.
 - `.github/workflows/release-secrets-preflight.yml` - manual Release config/build preflight.
 
@@ -118,7 +121,8 @@ gh run watch "$run_id" --exit-status
 
 Before App Store submission:
 
-- Confirm GitHub `production` secrets are present for signing, RevenueCat, Google, and telemetry.
+- Confirm GitHub `production` secrets are present for signing, RevenueCat, Google, Firebase auth, and telemetry.
+- Confirm Firebase Authentication has Email/Password enabled and the App Review account works in Release.
 - Confirm `HOOPS_PRIVACY_POLICY_URL` and `HOOPS_TERMS_OF_SERVICE_URL` resolve in the Release build.
 - Confirm Release Settings shows `Analysis Path = On-device only`.
 - Complete the real-device smoke and update `ios/docs/reports/release-device-smoke-report.md`.

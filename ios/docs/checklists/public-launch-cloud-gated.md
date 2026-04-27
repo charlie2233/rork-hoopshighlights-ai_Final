@@ -12,6 +12,7 @@
   - `HOOPS_REVENUECAT_API_KEY`
   - `HOOPS_GOOGLE_CLIENT_ID`
   - `HOOPS_GOOGLE_REVERSED_CLIENT_ID`
+  - `HOOPS_FIREBASE_AUTH_API_KEY`
   - `HOOPS_SENTRY_DSN`
 - Fill GitHub `production` environment variables and the same local mirror with:
   - `HOOPS_PRIVACY_POLICY_URL`
@@ -24,6 +25,7 @@
 ## Required validation before launch
 - Release app installs and signs successfully on a real device.
 - Google sign-in succeeds in Release.
+- Firebase-backed email/password sign-in succeeds in Release with the App Review account.
 - RevenueCat offerings load and purchase/restore paths work in Release.
 - RevenueCat purchase/restore uses an Apple sandbox tester account, not a live purchase.
 - App Store subscription metadata and review notes match `ios/docs/legal/hoopsclips-premium-subscription-policy.md`.
@@ -45,3 +47,4 @@
 - Keep launch-day notes in `ios/docs/runbooks/public-launch-cloud-gated.md`.
 - Keep the Premium subscription policy current at `ios/docs/legal/hoopsclips-premium-subscription-policy.md`.
 - Use `ios/docs/app-store/app-review-sign-in.md` for App Store Connect review credentials and notes.
+- Use `ios/docs/runbooks/firebase-auth-setup.md` to configure real email/password auth.

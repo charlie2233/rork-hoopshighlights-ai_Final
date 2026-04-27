@@ -28,6 +28,7 @@ struct AppRuntimeConfig {
     let revenueCatAPIKey: String
     let googleClientID: String
     let googleReversedClientID: String
+    let firebaseAuthAPIKey: String
     let privacyPolicyURL: String
     let termsOfServiceURL: String
     let cloudAnalysisBaseURL: String
@@ -39,6 +40,7 @@ struct AppRuntimeConfig {
         revenueCatAPIKey: String,
         googleClientID: String,
         googleReversedClientID: String,
+        firebaseAuthAPIKey: String,
         privacyPolicyURL: String,
         termsOfServiceURL: String,
         cloudAnalysisBaseURL: String,
@@ -49,6 +51,7 @@ struct AppRuntimeConfig {
         self.revenueCatAPIKey = revenueCatAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
         self.googleClientID = googleClientID.trimmingCharacters(in: .whitespacesAndNewlines)
         self.googleReversedClientID = googleReversedClientID.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.firebaseAuthAPIKey = firebaseAuthAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
         self.privacyPolicyURL = privacyPolicyURL.trimmingCharacters(in: .whitespacesAndNewlines)
         self.termsOfServiceURL = termsOfServiceURL.trimmingCharacters(in: .whitespacesAndNewlines)
         self.cloudAnalysisBaseURL = cloudAnalysisBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -62,6 +65,7 @@ struct AppRuntimeConfig {
             revenueCatAPIKey: bundle.string(for: "HOOPSRevenueCatAPIKey") ?? "",
             googleClientID: bundle.string(for: "HOOPSGoogleClientID") ?? "",
             googleReversedClientID: bundle.string(for: "HOOPSGoogleReversedClientID") ?? "",
+            firebaseAuthAPIKey: bundle.string(for: "HOOPSFirebaseAuthAPIKey") ?? "",
             privacyPolicyURL: bundle.string(for: "HOOPSPrivacyPolicyURL") ?? "",
             termsOfServiceURL: bundle.string(for: "HOOPSTermsOfServiceURL") ?? "",
             cloudAnalysisBaseURL: bundle.string(for: "HOOPSCloudAnalysisBaseURL") ?? "",
@@ -82,6 +86,10 @@ struct AppRuntimeConfig {
 
     var googleSignInConfigured: Bool {
         !googleClientID.isEmpty && !googleReversedClientID.isEmpty
+    }
+
+    var emailPasswordAuthConfigured: Bool {
+        !firebaseAuthAPIKey.isEmpty
     }
 
     var resolvedPrivacyPolicyURL: URL? {
@@ -138,6 +146,9 @@ struct AppRuntimeConfig {
         }
         if googleReversedClientID.isEmpty {
             missing.append("HOOPSGoogleReversedClientID")
+        }
+        if firebaseAuthAPIKey.isEmpty {
+            missing.append("HOOPSFirebaseAuthAPIKey")
         }
         if resolvedPrivacyPolicyURL == nil {
             missing.append("HOOPSPrivacyPolicyURL")

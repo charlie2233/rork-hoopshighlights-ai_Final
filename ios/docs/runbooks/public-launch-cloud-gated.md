@@ -16,13 +16,13 @@
   - export, history, and review to continue working locally
 
 ## Launch-day checks
-1. Populate the existing GitHub `production` environment secrets with `HOOPS_DEVELOPMENT_TEAM`, `HOOPS_REVENUECAT_API_KEY`, `HOOPS_GOOGLE_CLIENT_ID`, `HOOPS_GOOGLE_REVERSED_CLIENT_ID`, and `HOOPS_SENTRY_DSN`.
+1. Populate the existing GitHub `production` environment secrets with `HOOPS_DEVELOPMENT_TEAM`, `HOOPS_REVENUECAT_API_KEY`, `HOOPS_GOOGLE_CLIENT_ID`, `HOOPS_GOOGLE_REVERSED_CLIENT_ID`, `HOOPS_FIREBASE_AUTH_API_KEY`, and `HOOPS_SENTRY_DSN`.
 2. Populate the existing GitHub `production` environment variables with `HOOPS_PRIVACY_POLICY_URL` and `HOOPS_TERMS_OF_SERVICE_URL`.
 3. Run the `Release Secrets Preflight` workflow and require it to pass before the device smoke starts.
 4. On the smoke Mac, export those same operator-held values and run `./ios/scripts/materialize_local_secrets.sh`.
-5. Verify Release config values are present for team, Google sign-in, RevenueCat, legal links, and telemetry settings.
+5. Verify Release config values are present for team, Google sign-in, Firebase email auth, RevenueCat, legal links, and telemetry settings.
 6. Verify the app shows `On-device only` in Settings > Launch Status.
-7. Confirm `Google Sign-In = Ready`, `RevenueCat = Ready`, `Legal Links = Ready`, and `Telemetry = DSN staged`.
+7. Confirm `Google Sign-In = Ready`, `Email Auth = Ready`, `RevenueCat = Ready`, `Legal Links = Ready`, and `Telemetry = DSN staged`.
 8. Open both links from Settings > About & Privacy and confirm they resolve to the intended production pages.
 9. Import one short basketball clip from Photos.
 10. Import one short basketball clip from Files.
@@ -39,6 +39,12 @@
 - Check both `HOOPS_GOOGLE_CLIENT_ID` and `HOOPS_GOOGLE_REVERSED_CLIENT_ID` for the Release build.
 - Capture the unified log stream from the launch device.
 - Keep guest and email/phone fallback options available while fixing config.
+
+### Email/password sign-in fails
+- Check `HOOPS_FIREBASE_AUTH_API_KEY` in both GitHub `production` and the local mirrored xcconfig.
+- Confirm Firebase Authentication has Email/Password enabled for the HoopsClips Firebase project.
+- Confirm the App Review account can sign in twice, either after reinstall or on a second device.
+- Use `ios/docs/runbooks/firebase-auth-setup.md` for setup steps.
 
 ### Legal links fail to open
 - Check `HOOPS_PRIVACY_POLICY_URL` and `HOOPS_TERMS_OF_SERVICE_URL` in both GitHub `production` and the local mirrored xcconfig.

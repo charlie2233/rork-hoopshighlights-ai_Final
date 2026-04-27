@@ -44,8 +44,10 @@ final class AuthService {
     var pendingPhoneVerification: String?
 
     private let userDefaultsKey = "hoops_auth_user"
+    private let emailAuthClient: FirebaseEmailAuthClient
 
-    init() {
+    init(emailAuthClient: FirebaseEmailAuthClient? = nil) {
+        self.emailAuthClient = emailAuthClient ?? FirebaseEmailAuthClient(apiKey: AppConstants.firebaseAuthAPIKey)
         loadPersistedUser()
     }
 
@@ -116,12 +118,34 @@ final class AuthService {
             return
         }
 
-        try? await Task.sleep(for: .milliseconds(800))
+        if emailAuthClient.isConfigured {
+            do {
+                let session = try await emailAuthClient.signInOrCreateAccount(email: email, password: password)
+                let user = AuthUser(
+                    id: session.userID,
+                    displayName: nil,
+                    email: session.email,
+                    authMethod: .email,
+                    isEmailVerified: true
+                )
+                setUser(user)
+            } catch let authError as FirebaseEmailAuthError {
+                errorMessage = authError.localizedDescription
+            } catch {
+                errorMessage = "Email sign-in failed. Please try again."
+            }
+            return
+        }
 
+        guard AppConstants.runtimeConfig.isDebug else {
+            errorMessage = "Email sign-in is not configured for this build."
+            return
+        }
+
+        try? await Task.sleep(for: .milliseconds(800))
         let userId = email.lowercased().data(using: .utf8)?.base64EncodedString() ?? UUID().uuidString
         let user = AuthUser(id: userId, displayName: nil, email: email, authMethod: .email, isEmailVerified: false)
         setUser(user)
-
         pendingEmailVerification = email
         sendEmailVerificationCode(to: email)
     }

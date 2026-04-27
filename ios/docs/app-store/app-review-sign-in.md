@@ -7,7 +7,7 @@ Use these notes for App Store Connect > App Review Information > Sign-In Informa
 - Username: `appreview@hoopsclips.app`
 - Password: use a strong review-only password entered directly in App Store Connect
 
-Do not commit the real App Review password to the repo. The current HoopsClips email sign-in path creates the local app user on first sign-in and accepts any non-empty email with a password of at least 6 characters.
+Do not commit the real App Review password to the repo. HoopsClips uses Firebase Authentication for Release email/password sign-in when `HOOPS_FIREBASE_AUTH_API_KEY` is configured. Before submitting, sign in once with this account in the Release app so the Firebase user is materialized and visible in Firebase Authentication.
 
 ## Reviewer Instructions
 
@@ -19,7 +19,7 @@ Please use the provided test account to sign in.
 Username: appreview@hoopsclips.app
 Password: <APP_REVIEW_PASSWORD>
 
-After email sign-in, the app shows an in-app demo verification code. Enter that displayed 6-digit code to complete verification.
+Email/password sign-in is backed by Firebase Authentication in the Release build.
 
 The public release build uses on-device video analysis only. Cloud ML is intentionally disabled for this launch.
 
@@ -37,6 +37,6 @@ Suggested review path:
 No external hardware, cloud dashboard, or admin access is required.
 ```
 
-## Why No Server-Side Account Setup Is Needed
+## Backend Account Requirement
 
-HoopsClips currently uses local app auth for email sign-in. There is no production user database row to pre-create for the App Review account. The reviewer account is materialized on the review device when Apple signs in with the provided email and password.
+`HOOPS_FIREBASE_AUTH_API_KEY` must be configured before public submission. If the Firebase account does not already exist, the app creates it on first email sign-in. For safest App Review behavior, create it once yourself before submitting.
