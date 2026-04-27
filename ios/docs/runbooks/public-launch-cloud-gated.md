@@ -42,7 +42,7 @@
 
 ### Email/password sign-in fails
 - Check `HOOPS_FIREBASE_AUTH_API_KEY` in both GitHub `production` and the local mirrored xcconfig.
-- Confirm Firebase Authentication has Email/Password enabled for the HoopsClips Firebase project.
+- Confirm Firebase Authentication has Email/Password enabled for the hoopclips Firebase project.
 - Confirm the App Review account can sign in twice, either after reinstall or on a second device.
 - Use `ios/docs/runbooks/firebase-auth-setup.md` for setup steps.
 

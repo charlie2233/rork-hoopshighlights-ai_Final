@@ -1,6 +1,6 @@
-# Firebase Auth Setup for HoopsClips
+# Firebase Auth Setup for hoopclips
 
-HoopsClips uses Firebase Authentication REST APIs for real email/password accounts in Release builds. This keeps App Review credentials real without adding a Firebase SDK dependency to the iOS target.
+hoopclips uses Firebase Authentication REST APIs for real email/password accounts in Release builds. This keeps App Review credentials real without adding a Firebase SDK dependency to the iOS target.
 
 ## Why Firebase Auth
 
@@ -10,7 +10,7 @@ HoopsClips uses Firebase Authentication REST APIs for real email/password accoun
 
 ## Firebase Console Steps
 
-1. Open Firebase Console and create or select the HoopsClips project.
+1. Open Firebase Console and create or select the hoopclips project.
 2. Add an iOS app with bundle ID `atrak.charlie.hoopsclips`.
 3. Open **Authentication**.
 4. Open **Sign-in method**.

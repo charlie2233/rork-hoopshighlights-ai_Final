@@ -146,12 +146,12 @@ struct VideoPlayerView: View {
                     return await viewModel.loadVideo(url: tempURL)
                 }
 
-                importErrorMessage = "Hoops Clips could not access that video from Photos. Try saving it to Files and importing from there."
+                importErrorMessage = "hoopclips could not access that video from Photos. Try saving it to Files and importing from there."
                 return false
             } catch is CancellationError {
                 return false
             } catch {
-                importErrorMessage = "Hoops Clips could not import that video: \(error.localizedDescription)"
+                importErrorMessage = "hoopclips could not import that video: \(error.localizedDescription)"
                 return false
             }
         }
@@ -176,7 +176,7 @@ struct VideoPlayerView: View {
 
                 await MainActor.run {
                     guard activeImportID == importID, isImportingVideo else { return }
-                    importErrorMessage = "Hoops Clips is still waiting for that video. Try a shorter local clip, or save it to Files and import it again."
+                    importErrorMessage = "hoopclips is still waiting for that video. Try a shorter local clip, or save it to Files and import it again."
                     importTask?.cancel()
                     clearImportState()
                 }
@@ -189,7 +189,7 @@ struct VideoPlayerView: View {
 
             clearImportState()
             if importErrorMessage == nil && (!didLoadVideo || !viewModel.isVideoLoaded) {
-                importErrorMessage = "Hoops Clips could not read that video. Try importing it from Files or choose another clip."
+                importErrorMessage = "hoopclips could not read that video. Try importing it from Files or choose another clip."
             }
         }
 
@@ -305,7 +305,7 @@ struct VideoPlayerView: View {
                 featurePill(icon: "sparkles", text: languageStore.text(.smartHighlights))
                 featurePill(icon: "bolt.fill", text: languageStore.text(.fastReels))
                 featurePill(icon: "film.stack.fill", text: languageStore.text(.autoTrim))
-                featurePill(icon: "basketball.fill", text: "Hoops Clips")
+                featurePill(icon: "basketball.fill", text: "hoopclips")
             }
         }
         .padding(18)

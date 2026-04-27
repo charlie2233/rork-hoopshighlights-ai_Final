@@ -4,6 +4,8 @@
 <dict>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleDisplayName</key>
+	<string>hoopclips</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -66,9 +68,9 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>Allow Hoops Highlights AI to save exported highlight reels back to your photo library.</string>
+	<string>Allow hoopclips to save exported highlight reels back to your photo library.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Allow Hoops Highlights AI to import and save basketball highlight videos using your photo library.</string>
+	<string>Allow hoopclips to import and save basketball highlight videos using your photo library.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

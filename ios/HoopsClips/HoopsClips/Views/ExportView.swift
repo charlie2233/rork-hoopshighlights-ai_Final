@@ -126,7 +126,7 @@ struct ExportView: View {
     private var emptyState: some View {
         HoopsEmptyStateCard(
             title: "No Clips to Export",
-            message: "Keep a few moments in Review first. Then Hoops Clips can turn them into a share-ready highlight reel.",
+            message: "Keep a few moments in Review first. Then hoopclips can turn them into a share-ready highlight reel.",
             icon: "square.and.arrow.up.fill"
         )
     }
