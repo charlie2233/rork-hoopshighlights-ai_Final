@@ -31,6 +31,7 @@
 13. Run the paywall, purchase with an Apple sandbox tester, then restore purchases with the same sandbox account.
 14. Export and save to Photos.
 15. Submit one support message from Settings > Support Center.
+16. Confirm App Store subscription metadata, review notes, and paywall copy match `ios/docs/legal/hoopsclips-premium-subscription-policy.md`.
 
 ## Failure handling
 ### Google sign-in fails
@@ -47,6 +48,12 @@
 - Check `HOOPS_REVENUECAT_API_KEY`.
 - Confirm the paywall loads and capture the unified log stream if it does not.
 - Do not ship a Release build that silently disables purchases.
+
+### Subscription disclosure is unclear
+- Check that the paywall shows the subscription name, price, billing period, renewal behavior, Premium benefits, and Restore Purchases.
+- Check that App Store Connect metadata points to the current Privacy Policy and Terms of Service.
+- Keep the subscription copy aligned with `ios/docs/legal/hoopsclips-premium-subscription-policy.md`.
+- Do not submit if subscription price, duration, renewal, or cancellation language conflicts across the paywall, App Store metadata, and support docs.
 
 ### Import fails
 - Re-test Photos and Files separately.

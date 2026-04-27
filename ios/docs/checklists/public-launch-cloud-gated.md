@@ -26,6 +26,7 @@
 - Google sign-in succeeds in Release.
 - RevenueCat offerings load and purchase/restore paths work in Release.
 - RevenueCat purchase/restore uses an Apple sandbox tester account, not a live purchase.
+- App Store subscription metadata and review notes match `ios/docs/legal/hoopsclips-premium-subscription-policy.md`.
 - Video import works from Photos and Files.
 - On-device analysis completes without cloud fallback.
 - Review and export flows complete successfully.
@@ -42,3 +43,4 @@
 ## Required artifacts
 - Update `ios/docs/reports/release-device-smoke-report.md` with the latest device smoke result.
 - Keep launch-day notes in `ios/docs/runbooks/public-launch-cloud-gated.md`.
+- Keep the Premium subscription policy current at `ios/docs/legal/hoopsclips-premium-subscription-policy.md`.
