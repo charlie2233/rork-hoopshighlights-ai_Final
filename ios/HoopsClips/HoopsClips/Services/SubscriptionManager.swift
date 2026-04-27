@@ -63,10 +63,19 @@ final class SubscriptionManager {
 
         do {
             let result = try await Purchases.shared.purchase(package: package)
+            if result.userCancelled {
+                return false
+            }
+
             if result.customerInfo.entitlements[entitlementID]?.isActive == true {
                 isProUser = true
                 return true
             }
+
+            LaunchTelemetry.shared.recordConfigurationIssue(
+                "Purchase returned without active \(entitlementID) entitlement for product \(package.storeProduct.productIdentifier)."
+            )
+            errorMessage = "Purchase finished, but Pro access was not activated. Tap Restore Purchases once, then contact support if it still does not unlock."
             return false
         } catch {
             if (error as NSError).code == RevenueCat.ErrorCode.purchaseCancelledError.rawValue { return false }
