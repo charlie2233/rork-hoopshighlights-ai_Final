@@ -32,6 +32,7 @@
 14. Export and save to Photos.
 15. Submit one support message from Settings > Support Center.
 16. Confirm App Store subscription metadata, review notes, and paywall copy match `ios/docs/legal/hoopsclips-premium-subscription-policy.md`.
+17. Fill App Store Connect sign-in information from `ios/docs/app-store/app-review-sign-in.md` without committing the real password.
 
 ## Failure handling
 ### Google sign-in fails

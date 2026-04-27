@@ -44,3 +44,4 @@
 - Update `ios/docs/reports/release-device-smoke-report.md` with the latest device smoke result.
 - Keep launch-day notes in `ios/docs/runbooks/public-launch-cloud-gated.md`.
 - Keep the Premium subscription policy current at `ios/docs/legal/hoopsclips-premium-subscription-policy.md`.
+- Use `ios/docs/app-store/app-review-sign-in.md` for App Store Connect review credentials and notes.
