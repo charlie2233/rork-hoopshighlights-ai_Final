@@ -13,8 +13,11 @@ This service keeps the existing iOS cloud-analysis API contract stable while swa
 - `GET /v1/edit-jobs/{editJobId}`
 - `GET /v1/edit-jobs/{editJobId}/plan`
 - `POST /v1/edit-jobs/{editJobId}/revise`
+- `POST /v1/edit-jobs/{editJobId}/render`
+- `GET /v1/edit-jobs/{editJobId}/render-status`
+- `GET /v1/edit-jobs/{editJobId}/download-url`
 
-The edit-job routes are planning-only in this phase. They create and revise validated `EditPlan` JSON but do not render video yet.
+The edit-job routes create and revise validated `EditPlan` JSON, then render a validated plan into an MP4 with backend-owned FFmpeg templates. The current render state is local/in-process and internal-only; durable production queue/state work is still required before public cloud cutover.
 
 ## Runtime modes
 ### Local
@@ -93,6 +96,16 @@ Then you can selectively install dependencies into isolated virtualenvs:
 - `HOOPS_MAX_FILE_SIZE_BYTES`: max video size for v1 (default `524288000`)
 - `HOOPS_BACKEND_MODEL_VERSION`: version string exposed in diagnostics (default `cloud-v1`)
 - `HOOPS_USE_GEMINI_RELABELING`: reserved flag; current scaffold keeps deterministic labels
+- `HOOPS_RENDER_STORAGE_PROVIDER`: `local` or `r2` (default `local`)
+- `HOOPS_RENDER_DOWNLOAD_TTL_SECONDS`: signed/local render download URL TTL (default `900`)
+- `HOOPS_MAX_RENDER_COMPLEXITY_UNITS`: max estimated render complexity before rejecting render (default `600`)
+- `HOOPS_FFMPEG_BINARY`: FFmpeg executable path (default `ffmpeg`)
+- `HOOPS_FFPROBE_BINARY`: ffprobe executable path (default `ffprobe`)
+- `HOOPS_R2_BUCKET`: R2 bucket for render outputs when render storage provider is `r2`
+- `HOOPS_R2_ENDPOINT_URL`: R2 S3-compatible endpoint URL
+- `HOOPS_R2_ACCESS_KEY_ID`: R2 access key ID
+- `HOOPS_R2_SECRET_ACCESS_KEY`: R2 secret access key
+- `HOOPS_R2_REGION`: R2 region (default `auto`)
 
 ## Processing semantics
 - The pipeline still normalizes clips the same way and preserves the current client schema.
@@ -123,7 +136,7 @@ Before production cutover, verify:
 - `installId` is not a sufficient public auth boundary. Do not re-enable `/v1/analysis/*` in managed mode until there is a real identity and authorization model.
 - Do not add public `/v1/edit-jobs/*` or render-job access until authn/authz, storage, observability, render reliability, and Phase 4h gates are ready.
 
-## AI Edit Agent planning layer
+## AI Edit Agent planning and render layer
 
 Implemented planning routes:
 
@@ -132,13 +145,41 @@ Implemented planning routes:
 - `GET /v1/edit-jobs/{editJobId}/plan`
 - `POST /v1/edit-jobs/{editJobId}/revise`
 
-Planned render routes:
+Implemented render routes:
 
 - `POST /v1/edit-jobs/{editJobId}/render`
 - `GET /v1/edit-jobs/{editJobId}/render-status`
 - `GET /v1/edit-jobs/{editJobId}/download-url`
 
-The planning layer outputs strict `EditPlan` JSON from compact analyzed clip metadata and validates the plan deterministically before render. FFmpeg should be the first production renderer; Remotion, Canva, Cloudinary, and Revideo are template/asset/preview tools, not iOS render engines.
+The planning layer outputs strict `EditPlan` JSON from compact analyzed clip metadata and validates the plan deterministically before render. The render layer converts the structured plan into backend-owned FFmpeg command templates; the plan and LLM never carry raw FFmpeg commands.
+
+Current renderer support:
+
+- trim selected source ranges
+- split slow-motion ranges
+- concatenate normalized clips
+- crop to `9:16` or `16:9`
+- add caption/watermark overlays when FFmpeg supports `drawtext`, with safe box overlays as a fallback
+- add the free-user Hoopclips outro
+- mix bundled CC0 music with game audio when a mapped music asset exists
+- encode final MP4
+- write `plan.json`, `render_log.json`, and `final.mp4`
+- return a local or R2 presigned-style download URL
+
+Current render output keys:
+
+- `edits/{editJobId}/plan.json`
+- `edits/{editJobId}/render_jobs/{renderJobId}/render_log.json`
+- `edits/{editJobId}/render_jobs/{renderJobId}/final.mp4`
+
+Remaining before public cloud cutover:
+
+- durable render job store
+- real queue-backed render worker
+- production authz beyond `installId`
+- production observability and trace propagation
+- production R2 credentials/environment validation
+- renderer retry/timeout policy
 
 ## Current tier behavior
 - Free tier is enforced in the iOS client: videos longer than 15 minutes require Pro before analysis starts.

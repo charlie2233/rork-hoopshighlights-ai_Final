@@ -222,6 +222,7 @@ class CreateEditJobRequest(APIModel):
     videoId: str = Field(min_length=1, max_length=120)
     analysisJobId: str = Field(min_length=1, max_length=120)
     installId: str = Field(min_length=8, max_length=128)
+    sourceObjectKey: Optional[str] = Field(default=None, max_length=512)
     preset: PresetId = "personal_highlight"
     theme: Optional[str] = Field(default=None, max_length=80)
     targetDurationSeconds: int = Field(gt=0, le=180)
@@ -647,6 +648,8 @@ def validate_edit_plan(
         add("theme", "invalid_theme", "EditPlan theme is not registered.")
     if plan.audio.musicTrackId not in LICENSED_MUSIC_TRACKS:
         add("audio.musicTrackId", "unlicensed_music", "Music track is not licensed or available.")
+    if plan.audio.musicTrackId == "none" and plan.audio.musicVolume > 0:
+        add("audio.musicVolume", "invalid_music_volume", "musicVolume must be zero when no music track is selected.")
     if not plan.clips:
         add("clips", "empty_clip_list", "EditPlan must include at least one clip.")
 
@@ -673,6 +676,8 @@ def validate_edit_plan(
                     add(f"{field_prefix}.effects[{effect_index}]", "slow_motion_missing_bounds", "Slow motion requires source bounds.")
                 elif effect.sourceStart < clip.sourceStart or effect.sourceEnd > clip.sourceEnd or effect.sourceEnd <= effect.sourceStart:
                     add(f"{field_prefix}.effects[{effect_index}]", "slow_motion_out_of_bounds", "Slow motion range must stay inside clip source bounds.")
+                if effect.speed is not None and not 0.5 <= effect.speed <= 1.0:
+                    add(f"{field_prefix}.effects[{effect_index}].speed", "invalid_slow_motion_speed", "Slow motion speed must be between 0.5x and 1.0x.")
 
     planned_duration = plan.intro.durationSeconds + plan.outro.durationSeconds + sum(clip.timeline_duration for clip in plan.clips)
     if planned_duration > plan.targetDurationSeconds + MAX_DURATION_OVERRUN_SECONDS:
@@ -681,8 +686,12 @@ def validate_edit_plan(
     if plan_tier == "free":
         if not plan.watermark.enabled:
             add("watermark.enabled", "missing_free_watermark", "Free plans must include the Hoopclips watermark.")
+        if plan.watermark.position not in {"bottom_right", "bottom_left", "top_right", "top_left"}:
+            add("watermark.position", "invalid_watermark_position", "Watermark position is not supported.")
         if not plan.outro.enabled:
             add("outro.enabled", "missing_free_outro", "Free plans must include the Hoopclips outro.")
+        if plan.outro.durationSeconds <= 0:
+            add("outro.durationSeconds", "missing_free_outro", "Free plans must include a non-empty Hoopclips outro.")
 
     return errors
 

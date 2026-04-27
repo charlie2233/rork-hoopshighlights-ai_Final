@@ -60,15 +60,30 @@ The follow-up Phase Edit 1 branch adds a backend-only planning layer:
 
 The planning routes are still hidden when `HOOPS_PUBLIC_API_ENABLED=false`, matching the current cloud-gated launch posture.
 
+## Backend Pieces Implemented In Phase Edit 2
+
+The `codex/phase-edit2-cloud-ffmpeg-renderer` branch adds the first backend render path:
+
+- `POST /v1/edit-jobs/{id}/render`
+- `GET /v1/edit-jobs/{id}/render-status`
+- `GET /v1/edit-jobs/{id}/download-url`
+- backend-owned `FfmpegRenderer`
+- local render output storage for tests
+- R2-compatible render storage path for future production
+- render validation for source existence, plan validity, slow-motion speed, free watermark/outro, music assets, and estimated cost
+- generated `plan.json`, `render_log.json`, and `final.mp4`
+- Docker image FFmpeg install
+- render tests with synthetic source video and `ffprobe` assertions
+
+The render routes are still hidden when `HOOPS_PUBLIC_API_ENABLED=false`, and the current render state is in-process memory for local/internal proof only.
+
 ## Missing Backend Pieces
 
-- `/v1/edit-jobs/{id}/render`
-- `/v1/edit-jobs/{id}/render-status`
-- `/v1/edit-jobs/{id}/download-url`
-- FFmpeg cloud renderer
-- render logs
-- final MP4 storage and signed download URL
 - cloud-first iOS client flow for plan/status/render/download
+- durable render job store
+- queue-backed render worker
+- production R2 environment validation
+- authenticated production cloud cutover
 
 ## Current iOS State
 
@@ -95,21 +110,19 @@ This branch reframes them as temporary cloud-gated fallback / release-safety pos
 
 ## Recommended Next Branch
 
-After `codex/phase-edit1-cloud-edit-plan-agent` lands, continue with `codex/phase-edit2-ai-edit-client-ui` for the iOS cloud-edit client surface, or `codex/phase-edit3-cloud-ffmpeg-renderer` if backend render infrastructure should be built first.
+After `codex/phase-edit2-cloud-ffmpeg-renderer` lands, continue with `codex/phase-edit3-ai-edit-client-ui` for the iOS cloud-edit client surface.
 
-Definition of done for the next backend render branch:
+Definition of done for the next iOS branch:
 
-- add `/v1/edit-jobs/{id}/render`
-- add `/v1/edit-jobs/{id}/render-status`
-- add `/v1/edit-jobs/{id}/download-url`
-- render FFmpeg output from validated `EditPlan`
-- store preview/final MP4 plus render logs
-- return signed download URLs
+- add a small "Create AI Edit" entrypoint
+- send selected clips, source object key, preset, target length, aspect ratio, and plan tier to the backend
+- show render status
+- preview/download/share the returned MP4
 - keep iOS as preview/download/share client only
 
 ## Explicit Stop Rules
 
-- Do not implement cloud rendering until the planning layer is validated.
+- Do not expand renderer effects before the current FFmpeg render path is stable.
 - Do not add new iOS-owned production analysis or rendering.
 - Do not make cloud ML or cloud rendering public.
 - Do not touch Phase 4h retraining or thresholds.

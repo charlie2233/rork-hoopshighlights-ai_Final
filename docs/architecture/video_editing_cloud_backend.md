@@ -93,12 +93,36 @@ videos/{videoId}/source.mp4
 analysis/{analysisJobId}/clips.json
 edits/{editJobId}/edit_context.json
 edits/{editJobId}/edit_plan.json
-edits/{editJobId}/preview.mp4
-edits/{editJobId}/final.mp4
-edits/{editJobId}/render_log.json
+edits/{editJobId}/plan.json
+edits/{editJobId}/render_jobs/{renderJobId}/preview.mp4
+edits/{editJobId}/render_jobs/{renderJobId}/final.mp4
+edits/{editJobId}/render_jobs/{renderJobId}/render_log.json
 ```
 
 Storage provider can be R2 or GCS depending on the deployment lane, but the logical object layout should stay stable.
+
+## Renderer V1
+
+Renderer V1 is backend-owned FFmpeg. It accepts only validated `EditPlan` JSON and source media from storage. It never accepts raw FFmpeg commands from the LLM or the client.
+
+Current V1 operations:
+
+- trim
+- concat
+- crop to `9:16` or `16:9`
+- slow-motion subranges
+- caption/watermark overlays
+- free-user Hoopclips outro
+- music/game-audio mix
+- H.264/AAC MP4 encode
+- render log emission
+- local/R2-compatible output storage
+
+Current limitations:
+
+- render jobs are local/in-process state until a durable queue/store is added
+- advanced transitions and beat sync are deferred
+- Remotion/Canva/Revideo are still template/asset/future-editor tools, not core render engines
 
 ## EditPlan Contract
 

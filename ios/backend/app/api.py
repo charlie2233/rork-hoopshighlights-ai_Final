@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import timedelta
+import os
+from pathlib import Path
+import tempfile
 from uuid import uuid4
 from typing import Dict, Optional
 
-from fastapi import APIRouter, Header, Request, Response
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, BackgroundTasks, Header, Query, Request, Response
+from fastapi.responses import FileResponse, JSONResponse
 from starlette.concurrency import run_in_threadpool
 
 from .config import Settings, get_settings
@@ -28,8 +32,20 @@ from .models import (
     PipelineError,
     StartCloudAnalysisJobRequest,
     StartCloudAnalysisJobResponse,
+    now_utc,
 )
 from .pipeline import run_analysis
+from .render_storage import RenderStorage
+from .renderers.ffmpeg_renderer import FfmpegRenderer
+from .rendering import (
+    DownloadUrlResponse,
+    RenderJobResponse,
+    StartRenderRequest,
+    StoredRenderJob,
+    new_render_job,
+    render_log_payload,
+    validate_render_request,
+)
 from .storage import GCSStorageProvider, LocalStorageProvider, StorageProvider
 from .task_dispatcher import CloudTasksDispatcher, InlineTaskDispatcher, TaskDispatcher
 
@@ -40,6 +56,7 @@ class BackendRuntime:
     job_store: JobStore
     storage: StorageProvider
     dispatcher: TaskDispatcher
+    render_storage: RenderStorage
 
 
 def create_router(settings: Optional[Settings] = None) -> APIRouter:
@@ -47,6 +64,8 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
     router = APIRouter()
     runtime: Optional[BackendRuntime] = None
     edit_jobs: Dict[str, StoredEditJob] = {}
+    render_jobs: Dict[str, StoredRenderJob] = {}
+    render_jobs_by_edit_id: Dict[str, str] = {}
 
     def _error_response(error: APIError) -> JSONResponse:
         return JSONResponse(
@@ -70,6 +89,26 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
         if job is None:
             raise APIError(status_code=404, error_code="edit_job_not_found", error_message="Cloud edit job was not found.")
         return job
+
+    def _require_render_job(render_job_id: str) -> StoredRenderJob:
+        job = render_jobs.get(render_job_id)
+        if job is None:
+            raise APIError(status_code=404, error_code="render_job_not_found", error_message="Cloud render job was not found.")
+        return job
+
+    def _require_edit_owner(job: StoredEditJob, install_id: Optional[str]) -> None:
+        if not install_id or job.install_id != install_id:
+            raise APIError(403, "install_mismatch", "Install ID does not own this edit job.")
+
+    def _request_install_id(query_install_id: Optional[str], header_install_id: Optional[str]) -> Optional[str]:
+        return query_install_id or header_install_id
+
+    def _now():
+        return now_utc()
+
+    def _download_url_expires_at():
+        ttl_seconds = int(os.getenv("HOOPS_RENDER_DOWNLOAD_TTL_SECONDS", "900"))
+        return now_utc() + timedelta(seconds=ttl_seconds)
 
     async def _process_job(job_id: str) -> None:
         assert runtime is not None
@@ -110,6 +149,78 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
             except Exception:
                 pass
 
+    def _mark_render_failed(
+        render_job: StoredRenderJob,
+        reason: str,
+        validation_errors: Optional[list] = None,
+    ) -> None:
+        assert runtime is not None
+        render_job.status = "failed"
+        render_job.failure_reason = reason
+        render_job.validation_errors = validation_errors or []
+        render_job.updated_at = _now()
+        render_job.render_log_object_key = "edits/{edit_job_id}/render_jobs/{render_job_id}/render_log.json".format(
+            edit_job_id=render_job.edit_job_id,
+            render_job_id=render_job.render_job_id,
+        )
+        try:
+            runtime.render_storage.put_json(
+                render_job.render_log_object_key,
+                render_log_payload(
+                    render_job,
+                    "failed",
+                    {
+                        "failureReason": reason,
+                        "validationErrors": [error.model_dump() for error in render_job.validation_errors],
+                    },
+                ),
+            )
+        except Exception:
+            pass
+
+    def _run_render_job(edit_job_id: str, render_job_id: str) -> None:
+        assert runtime is not None
+        edit_job = _require_edit_job(edit_job_id)
+        render_job = _require_render_job(render_job_id)
+        source = None
+        try:
+            render_job.status = "rendering"
+            render_job.updated_at = _now()
+            source = runtime.render_storage.materialize_source(edit_job.request.sourceObjectKey)
+            with tempfile.TemporaryDirectory(prefix="hoops-render-", dir=str(resolved_settings.upload_root)) as temp_dir:
+                result = FfmpegRenderer().render(edit_job.plan, source.local_path, Path(temp_dir))
+                plan_key = f"edits/{edit_job_id}/plan.json"
+                output_key = f"edits/{edit_job_id}/render_jobs/{render_job_id}/final.mp4"
+                log_key = f"edits/{edit_job_id}/render_jobs/{render_job_id}/render_log.json"
+                runtime.render_storage.put_json(plan_key, edit_job.plan.model_dump_json(indent=2))
+                runtime.render_storage.put_file(output_key, result.output_path, "video/mp4")
+                render_job.status = "rendered"
+                render_job.output_object_key = output_key
+                render_job.render_log_object_key = log_key
+                render_job.duration_seconds = result.duration_seconds
+                render_job.updated_at = _now()
+                runtime.render_storage.put_json(
+                    log_key,
+                    render_log_payload(
+                        render_job,
+                        "rendered",
+                        {
+                            "outputObjectKey": output_key,
+                            "durationSeconds": result.duration_seconds,
+                            "aspectRatio": edit_job.plan.aspectRatio,
+                            "clipCount": len(edit_job.plan.clips),
+                            "ffmpeg": result.render_log,
+                        },
+                    ),
+                )
+        except APIError as error:
+            _mark_render_failed(render_job, error.error_code)
+        except Exception:
+            _mark_render_failed(render_job, "render_failed")
+        finally:
+            if source is not None:
+                source.cleanup()
+
     def _create_runtime() -> BackendRuntime:
         if resolved_settings.is_local:
             job_store = InMemoryJobStore(resolved_settings)
@@ -124,6 +235,7 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
             job_store=job_store,
             storage=storage,
             dispatcher=dispatcher,
+            render_storage=RenderStorage(resolved_settings),
         )
 
     runtime = _create_runtime()
@@ -289,6 +401,110 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
                 raise APIError(400, first_error.code, first_error.message)
             edit_jobs[edit_job_id] = revised
             return revised.to_plan_response()
+        except APIError as error:
+            return _error_response(error)
+
+    @router.post(
+        "/v1/edit-jobs/{edit_job_id}/render",
+        response_model=RenderJobResponse,
+        responses={403: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+    )
+    async def render_edit_job(edit_job_id: str, request: StartRenderRequest, background_tasks: BackgroundTasks):
+        assert runtime is not None
+        try:
+            _require_public_api_enabled()
+            edit_job = _require_edit_job(edit_job_id)
+            _require_edit_owner(edit_job, request.installId)
+
+            existing_render_id = render_jobs_by_edit_id.get(edit_job_id)
+            if existing_render_id:
+                existing = _require_render_job(existing_render_id)
+                if existing.status in {"render_requested", "rendering", "rendered"}:
+                    return existing.to_response(edit_job.plan.version)
+
+            render_job_id = "render_" + uuid4().hex
+            trace_id = "trace_" + uuid4().hex
+            render_job = new_render_job(edit_job, render_job_id, trace_id)
+            render_jobs[render_job_id] = render_job
+            render_jobs_by_edit_id[edit_job_id] = render_job_id
+
+            source_exists = runtime.render_storage.source_exists(edit_job.request.sourceObjectKey)
+            validation_errors = validate_render_request(edit_job, source_exists)
+            if validation_errors:
+                _mark_render_failed(render_job, "invalid_edit_plan", validation_errors)
+                return render_job.to_response(edit_job.plan.version)
+
+            background_tasks.add_task(_run_render_job, edit_job_id, render_job_id)
+            return render_job.to_response(edit_job.plan.version)
+        except APIError as error:
+            return _error_response(error)
+
+    @router.get(
+        "/v1/edit-jobs/{edit_job_id}/render-status",
+        response_model=RenderJobResponse,
+        responses={403: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+    )
+    async def get_render_status(
+        edit_job_id: str,
+        installId: Optional[str] = Query(default=None),
+        x_hoops_install_id: Optional[str] = Header(default=None),
+    ):
+        try:
+            _require_public_api_enabled()
+            edit_job = _require_edit_job(edit_job_id)
+            _require_edit_owner(edit_job, _request_install_id(installId, x_hoops_install_id))
+            render_job_id = render_jobs_by_edit_id.get(edit_job_id)
+            if not render_job_id:
+                raise APIError(404, "render_job_not_found", "Cloud render job was not found.")
+            return _require_render_job(render_job_id).to_response(edit_job.plan.version)
+        except APIError as error:
+            return _error_response(error)
+
+    @router.get(
+        "/v1/edit-jobs/{edit_job_id}/download-url",
+        response_model=DownloadUrlResponse,
+        responses={403: {"model": ErrorResponse}, 404: {"model": ErrorResponse}, 409: {"model": ErrorResponse}},
+    )
+    async def get_render_download_url(
+        edit_job_id: str,
+        installId: Optional[str] = Query(default=None),
+        x_hoops_install_id: Optional[str] = Header(default=None),
+    ):
+        assert runtime is not None
+        try:
+            _require_public_api_enabled()
+            edit_job = _require_edit_job(edit_job_id)
+            _require_edit_owner(edit_job, _request_install_id(installId, x_hoops_install_id))
+            render_job_id = render_jobs_by_edit_id.get(edit_job_id)
+            if not render_job_id:
+                raise APIError(404, "render_job_not_found", "Cloud render job was not found.")
+            render_job = _require_render_job(render_job_id)
+            if render_job.status != "rendered" or not render_job.output_object_key:
+                raise APIError(409, "render_not_ready", "Render output is not ready for download yet.")
+            return DownloadUrlResponse(
+                editJobId=edit_job_id,
+                renderJobId=render_job_id,
+                downloadUrl=runtime.render_storage.presigned_get_url(render_job.output_object_key, token=render_job_id),
+                outputObjectKey=render_job.output_object_key,
+                expiresAt=_download_url_expires_at(),
+            )
+        except APIError as error:
+            return _error_response(error)
+
+    @router.get(
+        "/v1/internal/render-downloads/{render_job_id}/final.mp4",
+        responses={403: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+    )
+    async def download_local_render(render_job_id: str):
+        assert runtime is not None
+        try:
+            render_job = _require_render_job(render_job_id)
+            if render_job.status != "rendered" or not render_job.output_object_key:
+                raise APIError(404, "render_output_not_found", "Render output was not found.")
+            output_path = runtime.render_storage.local_path_for_object(render_job.output_object_key)
+            if not output_path.exists():
+                raise APIError(404, "render_output_not_found", "Render output was not found.")
+            return FileResponse(output_path, media_type="video/mp4", filename="Hoopclips.mp4")
         except APIError as error:
             return _error_response(error)
 
