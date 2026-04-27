@@ -2,8 +2,8 @@
 
 ## Current status
 - Launch posture: public app launch with cloud gated.
-- Report state: Release app built, installed, cold-launched, and Settings launch-status navigation verified on the physical iPhone; remaining manual real-device smoke rows are still pending.
-- Latest GitHub preflight evidence: `Release Secrets Preflight` run `24948341395` passed on 2026-04-26 on `main`, verifying production secret presence, Release build settings, cloud-disabled launch posture, Release simulator build, and built Info.plist wiring.
+- Report state: Current `main` Release app built, installed, and cold-launched on the physical iPhone on 2026-04-27 09:39 PDT; Settings launch-status navigation was already verified on the physical iPhone. Remaining manual real-device smoke rows are still pending.
+- Latest GitHub preflight evidence: `Release Secrets Preflight` run `25004048712` passed on 2026-04-27 on `main`, verifying production secret presence, Release build settings, cloud-disabled launch posture, Release simulator build, and built Info.plist wiring.
 
 ## Automated validation completed from this branch
 - iOS launch-gating unit tests: passed via `LaunchRuntimeConfigTests`.
@@ -12,7 +12,8 @@
 - Release simulator artifact wiring: passed with an explicit app plist. Verified that Release resolves `HOOPS_CLOUD_LAUNCH_MODE = disabled`, an empty cloud base URL, the Google callback URL scheme, the legal-link URLs, and the staged billing/telemetry keys when injected.
 - Local Release device build settings: passed after materializing `LocalSecrets.xcconfig`; Release resolves non-empty signing, RevenueCat, Google, legal-link, and telemetry settings while preserving cloud-disabled launch posture.
 - Physical iPhone pairing and Developer Mode: passed; Xcode now sees `charlie`'s iPhone as an available iOS destination.
-- Release physical-device build, install, and command launch: passed for bundle `atrak.charlie.hoopsclips`.
+- Firebase Email/Password backend auth: passed via real Firebase project `hoopsclips-9d38f`; App Review account sign-in was verified through Firebase Auth, with credentials stored only in ignored local secrets.
+- Release physical-device build, install, and command launch: refreshed on 2026-04-27 for current `main`; passed for bundle `atrak.charlie.hoopsclips` on `charlie`'s iPhone after the device was unlocked.
 - Settings launch-status regression check: passed after patching the Release-only Settings tab crash. LLDB showed the prior crash in `SettingsView.body` Swift metadata instantiation; the patched Release build was rebuilt, installed, and user-verified on the physical iPhone.
 - Google Sign-In callback plumbing is wired from `HOOPS_GOOGLE_REVERSED_CLIENT_ID`; real-device sign-in passed with the populated Release config.
 - Privacy Policy and Terms of Service links are now surfaced in-app; the real-device smoke still needs to verify both links open the intended production pages.
@@ -31,7 +32,7 @@
 ## Result template
 | Check | Result | Notes |
 | --- | --- | --- |
-| Cold launch | pass | Release app installed and launched on paired iPhone via `devicectl` for bundle `atrak.charlie.hoopsclips`. |
+| Cold launch | pass | Current `main` Release app built, installed, and launched on paired iPhone via `devicectl` at 2026-04-27 09:39 PDT for bundle `atrak.charlie.hoopsclips`; installed bundle reports version `1.0.0` build `1`. |
 | Google sign-in | pass | User verified Google Sign-In completes on the physical iPhone using the Release build and production Google config. |
 | RevenueCat purchase | fail | Paywall opened on the physical iPhone but showed `Unable to load subscription options`; the patched diagnostic reported RevenueCat's configuration error. No sandbox purchase could start. Verify the App Store Connect product, RevenueCat entitlement `pro`, current offering, and package are wired for bundle `atrak.charlie.hoopsclips`. |
 | RevenueCat restore | blocked | Blocked by the same RevenueCat offering/package availability issue until subscription options load. |
@@ -45,7 +46,7 @@
 | Legal links open | pending |  |
 
 ## Blockers
-- GitHub `production` environment secrets and legal-link variables passed the `main` Release preflight on 2026-04-26.
+- GitHub `production` environment secrets, legal-link variables, and Firebase auth key passed the `main` Release preflight on 2026-04-27.
 - Local `LocalSecrets.xcconfig` has been materialized on this Mac and Release build settings validate without exposing secret values.
 - Manual Release-device smoke remains pending for purchase/restore, import, on-device analysis, review, export, save, and legal links.
 - External crash-reporting client is not linked in this branch; launch telemetry currently relies on unified logs, with DSN config surfaced for future enablement.
