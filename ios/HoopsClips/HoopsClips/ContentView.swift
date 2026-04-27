@@ -20,15 +20,23 @@ struct ContentView: View {
         return hasPendingEmail || hasPendingPhone
     }
 
+    #if DEBUG
+    private var isPaywallScreenshotMode: Bool {
+        ProcessInfo.processInfo.arguments.contains("--hoops-paywall-screenshot")
+    }
+    #endif
+
     var body: some View {
         Group {
-            if !authService.isAuthenticated {
-                AuthView(authService: authService)
-            } else if needsVerification {
-                VerificationView(authService: authService)
+            #if DEBUG
+            if isPaywallScreenshotMode {
+                PaywallView(subscriptionManager: subscriptionManager, authService: authService)
             } else {
-                mainAppView
+                authenticatedContent
             }
+            #else
+            authenticatedContent
+            #endif
         }
         .task {
             if authService.isAuthenticated {
@@ -37,6 +45,17 @@ struct ContentView: View {
         }
         .environment(languageStore)
         .environment(\.locale, languageStore.selectedLanguage.locale)
+    }
+
+    @ViewBuilder
+    private var authenticatedContent: some View {
+        if !authService.isAuthenticated {
+            AuthView(authService: authService)
+        } else if needsVerification {
+            VerificationView(authService: authService)
+        } else {
+            mainAppView
+        }
     }
 
     private var mainAppView: some View {

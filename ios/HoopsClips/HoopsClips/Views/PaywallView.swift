@@ -9,8 +9,17 @@ struct PaywallView: View {
     @State private var isLoadingOfferings = false
     @State private var offeringsLoadMessage: String?
 
+    #if DEBUG
+    private var isScreenshotMode: Bool {
+        ProcessInfo.processInfo.arguments.contains("--hoops-paywall-screenshot")
+    }
+    #else
+    private var isScreenshotMode: Bool { false }
+    #endif
+
     private var requiresSignedInAccount: Bool {
-        authService.currentUser?.authMethod == .anonymous
+        if isScreenshotMode { return false }
+        return authService.currentUser?.authMethod == .anonymous
     }
 
     var body: some View {
@@ -19,13 +28,13 @@ struct PaywallView: View {
                 HoopsMotionBackdrop(glowOpacity: 0.26)
 
                 ScrollView {
-                    VStack(spacing: 28) {
-                        Spacer().frame(height: 20)
+                    VStack(spacing: isScreenshotMode ? 16 : 28) {
+                        Spacer().frame(height: isScreenshotMode ? 0 : 20)
                         headerSection
                         featuresSection
                         pricingSection
                         restoreSection
-                        Spacer().frame(height: 40)
+                        Spacer().frame(height: isScreenshotMode ? 12 : 40)
                     }
                     .padding(.horizontal, 24)
                 }
@@ -43,7 +52,11 @@ struct PaywallView: View {
                 }
             }
             .task {
-                if requiresSignedInAccount {
+                if isScreenshotMode {
+                    offerings = nil
+                    offeringsLoadMessage = nil
+                    isLoadingOfferings = false
+                } else if requiresSignedInAccount {
                     offerings = nil
                     offeringsLoadMessage = nil
                     isLoadingOfferings = false
@@ -65,14 +78,19 @@ struct PaywallView: View {
     }
 
     private var headerSection: some View {
-        VStack(spacing: 16) {
-            HoopsMotionHero(icon: "crown.fill", size: 188, accent: AppTheme.neonPurple, secondary: AppTheme.warningYellow)
+        VStack(spacing: isScreenshotMode ? 10 : 16) {
+            HoopsMotionHero(
+                icon: "crown.fill",
+                size: isScreenshotMode ? 118 : 188,
+                accent: AppTheme.neonPurple,
+                secondary: AppTheme.warningYellow
+            )
 
-            Text("Go Pro")
-                .font(.system(size: 32, weight: .bold))
+            Text("HoopsClips Premium")
+                .font(.system(size: isScreenshotMode ? 28 : 32, weight: .bold))
                 .foregroundStyle(.white)
 
-            Text("Unlimited highlight analysis and exports.\nYou've used \(max(AppConstants.cloudAnalysisDailyQuota - subscriptionManager.freeUsesRemaining, 0)) of \(AppConstants.cloudAnalysisDailyQuota) free analyses.")
+            Text("Create more basketball highlights with premium review tools, clean exports, and no daily analysis cap.")
                 .font(.subheadline)
                 .foregroundStyle(AppTheme.subtleText)
                 .multilineTextAlignment(.center)
@@ -81,13 +99,12 @@ struct PaywallView: View {
     }
 
     private var featuresSection: some View {
-        VStack(spacing: 12) {
-            featureRow(icon: "infinity", title: "Unlimited Analyses", subtitle: "No caps on highlight generation")
-            featureRow(icon: "bolt.fill", title: "Long-Game Access", subtitle: "Analyze longer games without the free-tier cap")
-            featureRow(icon: "film.stack.fill", title: "Unlimited Exports", subtitle: "Export all your highlights freely")
-            featureRow(icon: "wand.and.stars", title: "Clean Pro Exports", subtitle: "Export without the Hoops Clips end card")
+        VStack(spacing: isScreenshotMode ? 10 : 12) {
+            featureRow(icon: "infinity", title: "Unlimited clip analysis", subtitle: "Analyze every game, practice, and pickup run")
+            featureRow(icon: "bolt.fill", title: "Faster highlight review", subtitle: "Move from clips to keepers with fewer limits")
+            featureRow(icon: "film.stack.fill", title: "Export premium clips", subtitle: "Create social-ready reels without the end card")
         }
-        .padding(16)
+        .padding(isScreenshotMode ? 14 : 16)
         .rorkCard(cornerRadius: 18, stroke: AppTheme.softBorder, glowOpacity: 0.06)
     }
 
@@ -127,6 +144,12 @@ struct PaywallView: View {
                 ProgressView()
                     .tint(AppTheme.neonPurple)
                     .frame(height: 60)
+            } else if isScreenshotMode {
+                premiumPlanCard(
+                    priceText: "$9.99/month",
+                    buttonTitle: "Start Premium",
+                    isProcessing: false
+                ) { }
             } else if !subscriptionManager.billingConfigured {
                 VStack(spacing: 8) {
                     Image(systemName: "creditcard.trianglebadge.exclamationmark")
@@ -148,34 +171,11 @@ struct PaywallView: View {
                         if success { dismiss() }
                     }
                 } label: {
-                    VStack(spacing: 4) {
-                        HStack(spacing: 8) {
-                            if subscriptionManager.isLoading {
-                                ProgressView().tint(.white).controlSize(.small)
-                            }
-                            Text(subscriptionManager.isLoading ? "Processing..." : "Subscribe Now")
-                                .font(.title3.bold())
-                        }
-                        Text("\(package.storeProduct.localizedPriceString)/month")
-                            .font(.subheadline)
-                            .opacity(0.85)
-                    }
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 64)
-                    .background(
-                        LinearGradient(
-                            colors: [AppTheme.accentPurple, AppTheme.deepPurple],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        in: .rect(cornerRadius: 16)
+                    premiumPlanCardContent(
+                        priceText: "\(package.storeProduct.localizedPriceString)/month",
+                        buttonTitle: subscriptionManager.isLoading ? "Processing..." : "Start Premium",
+                        isProcessing: subscriptionManager.isLoading
                     )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 16)
-                            .stroke(AppTheme.neonPurple.opacity(0.4), lineWidth: 1.5)
-                    )
-                    .shadow(color: AppTheme.neonPurple.opacity(0.3), radius: 12, y: 6)
                 }
                 .disabled(subscriptionManager.isLoading)
             } else {
@@ -206,6 +206,74 @@ struct PaywallView: View {
                 .foregroundStyle(AppTheme.subtleText)
                 .multilineTextAlignment(.center)
         }
+    }
+
+    private func premiumPlanCard(
+        priceText: String,
+        buttonTitle: String,
+        isProcessing: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            premiumPlanCardContent(
+                priceText: priceText,
+                buttonTitle: buttonTitle,
+                isProcessing: isProcessing
+            )
+        }
+        .disabled(isProcessing)
+    }
+
+    private func premiumPlanCardContent(
+        priceText: String,
+        buttonTitle: String,
+        isProcessing: Bool
+    ) -> some View {
+        VStack(spacing: 14) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Premium Monthly")
+                        .font(.headline.weight(.semibold))
+                    Text(priceText)
+                        .font(.title3.weight(.bold))
+                }
+
+                Spacer()
+
+                Text("Best value")
+                    .font(.caption.weight(.bold))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(AppTheme.warningYellow.opacity(0.16), in: .capsule)
+                    .foregroundStyle(AppTheme.warningYellow)
+            }
+
+            HStack(spacing: 8) {
+                if isProcessing {
+                    ProgressView().tint(.white).controlSize(.small)
+                }
+                Text(buttonTitle)
+                    .font(.title3.bold())
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: isScreenshotMode ? 50 : 56)
+            .background(
+                LinearGradient(
+                    colors: [AppTheme.accentPurple, AppTheme.deepPurple],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ),
+                in: .rect(cornerRadius: 16)
+            )
+        }
+        .foregroundStyle(.white)
+        .padding(isScreenshotMode ? 14 : 16)
+        .background(AppTheme.cardBg.opacity(0.86), in: RoundedRectangle(cornerRadius: 20))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20)
+                .stroke(AppTheme.neonPurple.opacity(0.38), lineWidth: 1.5)
+        )
+        .shadow(color: AppTheme.neonPurple.opacity(0.25), radius: 14, y: 7)
     }
 
     private var accountRequiredSection: some View {
