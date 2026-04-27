@@ -1,8 +1,9 @@
 # Public Launch Checklist: Cloud Gated
 
 ## Launch posture
-- Public App Store build uses on-device Vision/CoreML + audio analysis as the supported path.
-- Cloud analysis stays internal-only until authenticated rollout, dashboard alignment, and Phase 4h gates are green.
+- Hoopclips target architecture is cloud-backend video analysis, AI edit planning, and cloud rendering.
+- The current public App Store build keeps cloud disabled and uses the local/on-device path as a temporary launch-safe fallback.
+- Cloud analysis, cloud edit planning, and cloud rendering stay internal-only until authenticated rollout, storage/render reliability, dashboard alignment, observability, and Phase 4h gates are green.
 
 ## Release config
 - GitHub Actions `production` environment is the source of truth for Release secrets and required Release URLs.
@@ -30,7 +31,7 @@
 - RevenueCat purchase/restore uses an Apple sandbox tester account, not a live purchase.
 - App Store subscription metadata and review notes match `ios/docs/legal/hoopsclips-premium-subscription-policy.md`.
 - Video import works from Photos and Files.
-- On-device analysis completes without cloud fallback.
+- Temporary local/on-device fallback analysis completes without attempting public cloud fallback.
 - Review and export flows complete successfully.
 - Save to Photos works.
 - Support Center is reachable and shows launch status accurately.
@@ -39,8 +40,9 @@
 - Accessibility smoke passes on a physical iPhone for VoiceOver, largest text size, Reduce Motion, and normal mode. Use `ios/docs/checklists/release-accessibility-smoke-checklist.md` and record results in the release smoke report.
 
 ## Explicit no-go items for public cloud cutover
-- Do not enable public cloud analysis while `ios/backend` is internal-only.
+- Do not enable public cloud analysis, edit planning, or rendering while `ios/backend` is internal-only.
 - Do not re-enable `/v1/analysis/*` in managed mode without real authn/authz.
+- Do not add iOS-owned production video rendering as a substitute for the cloud renderer.
 - Do not treat Phase 4h as ready while the human-truth gate is still locked.
 
 ## Required artifacts

@@ -1,13 +1,14 @@
 # Hoopclips
 
-Hoopclips is an iOS app that turns basketball videos into share-ready highlight reels. The public launch path is on-device only: video import, Vision/CoreML analysis, review, export, and save all run locally on the phone.
+Hoopclips is a cloud-first AI video editing product for basketball clips. The target product is HoopClips AI Edit Agent: users upload video from iOS, choose an edit style, review generated clips/edit plans, request a cloud render, preview the finished MP4, then download, save, share, or open the export in editors such as CapCut, iMovie, Adobe, Files, or Photos.
 
-Cloud analysis and backend moderation remain internal-only until the production cloud gates and Phase 4h data-truth gate are cleared.
+Cloud analysis, AI edit planning, and final rendering are the intended production architecture. The current public release posture keeps cloud disabled as a safety gate until production auth, storage, observability, render reliability, and Phase 4h data-truth gates are cleared.
 
 ## Current Launch Posture
 
-- Public GA path: iOS app with local/on-device analysis.
-- Cloud ML path: gated off for public launch.
+- Current public-safe fallback: iOS app with local import, review, export, save, and on-device analysis while cloud gates stay locked.
+- Target GA architecture: cloud analysis, cloud EditPlan generation, cloud rendering, and iOS as the control surface.
+- Cloud ML/rendering path: gated off for public launch until the cutover rules below are satisfied.
 - Release bundle ID: `atrak.charlie.hoopsclips`.
 - Release cloud mode: `HOOPS_CLOUD_LAUNCH_MODE = disabled`.
 - Release cloud base URL: empty.
@@ -31,7 +32,10 @@ Known launch blocker: the remaining human real-device smoke still needs to compl
 ## Repo Layout
 
 - `ios/HoopsClips/` - SwiftUI iOS app, tests, configuration, and app resources.
-- `ios/backend/` - internal cloud-analysis backend scaffold; not public launch-critical.
+- `ios/backend/` - internal cloud-analysis backend scaffold and future cloud editing service home.
+- `docs/architecture/video_editing_cloud_backend.md` - cloud-first HoopClips AI Edit Agent architecture.
+- `docs/video_editing_repo_audit.md` - current repo audit for the cloud editing pivot.
+- `skills/hoopclips-ai-edit-agent/SKILL.md` - repo-local Codex skill for cloud-backend edit-agent work.
 - `ios/docs/checklists/public-launch-cloud-gated.md` - public launch checklist.
 - `ios/docs/runbooks/public-launch-cloud-gated.md` - launch-day support and fallback runbook.
 - `ios/docs/runbooks/firebase-auth-setup.md` - Firebase email/password auth setup.
@@ -124,16 +128,17 @@ Before App Store submission:
 - Confirm GitHub `production` secrets are present for signing, RevenueCat, Google, Firebase auth, and telemetry.
 - Confirm Firebase Authentication has Email/Password enabled and the App Review account works in Release.
 - Confirm `HOOPS_PRIVACY_POLICY_URL` and `HOOPS_TERMS_OF_SERVICE_URL` resolve in the Release build.
-- Confirm Release Settings shows `Analysis Path = On-device only`.
+- Confirm Release Settings shows cloud is disabled for the current fallback launch.
 - Complete the real-device smoke and update `ios/docs/reports/release-device-smoke-report.md`.
 - Fix RevenueCat product/offering/package wiring if subscription options still fail to load.
-- Keep cloud ML disabled for public users.
+- Keep cloud ML and cloud rendering disabled for public users until the cloud cutover rules pass.
 
 ## Cloud Cutover Rules
 
-Do not make cloud ML public until all of these are true:
+Do not make cloud ML or cloud rendering public until all of these are true:
 
 - Production Worker/backend/dashboard contracts are hardened.
+- Public authn/authz, storage, queues, render jobs, error reporting, and trace propagation are production-ready.
 - Phase 4h reviewed labels are imported and the confirmed-label gate unlocks.
 - Acceptor retrain happens in a dedicated branch.
 - Replay passes before smoke.

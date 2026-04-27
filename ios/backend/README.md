@@ -1,6 +1,6 @@
 # Hoops AI Cloud Analysis Backend
 
-This service keeps the existing iOS cloud-analysis API contract stable while swapping the backend internals by environment.
+This service keeps the existing iOS cloud-analysis API contract stable while swapping the backend internals by environment. It is also the natural home for the next HoopClips AI Edit Agent backend work: EditContext creation, EditPlan generation, deterministic plan validation, cloud rendering jobs, and final MP4 storage.
 
 ## What is implemented
 - `POST /v1/analysis/jobs`
@@ -111,9 +111,25 @@ Before production cutover, verify:
 - the GCS bucket `charlie-hoops-ai-analysis-temp` exists
 
 ## Launch posture
-- Public App Store launch should treat this backend as internal-only.
-- The iOS app should ship on the on-device analysis path until cloud authn/authz and rollout gates are ready.
+- Public App Store launch should treat this backend as internal-only until cloud cutover gates clear.
+- Hoopclips target architecture is cloud analysis, cloud edit planning, and cloud rendering with iOS as the control surface.
+- The current iOS on-device path is a temporary launch-safe fallback, not the production editing architecture.
 - `installId` is not a sufficient public auth boundary. Do not re-enable `/v1/analysis/*` in managed mode until there is a real identity and authorization model.
+- Do not add public `/v1/edit-jobs/*` or render-job access until authn/authz, storage, observability, render reliability, and Phase 4h gates are ready.
+
+## Next backend layer: AI Edit Agent
+
+Planned edit-job routes:
+
+- `POST /v1/edit-jobs`
+- `GET /v1/edit-jobs/{editJobId}`
+- `GET /v1/edit-jobs/{editJobId}/plan`
+- `POST /v1/edit-jobs/{editJobId}/revise`
+- `POST /v1/edit-jobs/{editJobId}/render`
+- `GET /v1/edit-jobs/{editJobId}/render-status`
+- `GET /v1/edit-jobs/{editJobId}/download-url`
+
+The agent should output strict `EditPlan` JSON from compact analyzed clip metadata. The backend must validate the plan deterministically before render. FFmpeg should be the first production renderer; Remotion, Canva, Cloudinary, and Revideo are template/asset/preview tools, not iOS render engines.
 
 ## Current tier behavior
 - Free tier is enforced in the iOS client: videos longer than 15 minutes require Pro before analysis starts.

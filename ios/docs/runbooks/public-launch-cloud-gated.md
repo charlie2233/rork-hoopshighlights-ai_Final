@@ -1,14 +1,16 @@
 # Runbook: Public Launch With Cloud Gated
 
 ## Scope
-- Public launch path: on-device analysis only.
-- Internal-only path: cloud backend and any future dashboard moderation flows.
+- Target product path: cloud backend owns video analysis, AI edit planning, and final rendering.
+- Current fallback launch path: cloud disabled, with local/on-device analysis only while cloud gates remain locked.
+- Internal-only path: cloud backend, AI edit agent, cloud rendering, and any future dashboard moderation flows.
 - GitHub Actions `production` environment is the source of truth for Release secrets and required legal-link URLs; the local ignored xcconfig is only a smoke-machine mirror.
 - Rork release operations should start from `ios/docs/runbooks/rork-release-operator-handoff.md`.
 
 ## What the app should do
 - Release builds should default to `HOOPS_CLOUD_LAUNCH_MODE = disabled`.
 - When cloud is disabled, analysis starts on-device immediately instead of entering the cloud path and falling back later.
+- This is a temporary release-safety posture, not the long-term Hoopclips AI Edit Agent architecture.
 - Support staff should expect:
   - no cloud upload
   - no cloud polling
@@ -81,5 +83,7 @@
 
 ## Out of scope until cloud cutover
 - Public `/v1/analysis/*` backend access
+- Public `/v1/edit-jobs/*` backend access
+- Cloud FFmpeg rendering for public users
 - Dashboard/admin reliance during public launch
 - Phase 4h medium-batch promotion
