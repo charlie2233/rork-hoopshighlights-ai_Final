@@ -64,8 +64,11 @@ struct ExportView: View {
             .sheet(isPresented: $showSystemShareSheet, onDismiss: clearShareSelection) {
                 if let shareURL {
                     SystemShareSheet(
-                        items: SystemShareSheet.videoItems(for: shareURL, title: "Hoops Highlight Reel"),
-                        subject: "Hoops Highlight Reel",
+                        items: SystemShareSheet.videoItems(
+                            for: shareURL,
+                            title: shareSheetTitle
+                        ),
+                        subject: shareSheetTitle,
                         completion: { _, _, _, error in
                             guard let error else { return }
                             Task { @MainActor in
@@ -323,7 +326,7 @@ struct ExportView: View {
             RorkSectionHeader(
                 title: "Music",
                 icon: "music.note",
-                subtitle: "Choose soundtrack mood for the final cut"
+                subtitle: "Choose from built-in loops or bring your own audio"
             )
 
             ScrollView(.horizontal, showsIndicators: false) {
@@ -422,6 +425,11 @@ struct ExportView: View {
                     .foregroundStyle(AppTheme.warningYellow)
                     .padding(.leading, 4)
             }
+
+            Text(viewModel.selectedMusic.description)
+                .font(.caption2)
+                .foregroundStyle(AppTheme.subtleText)
+                .padding(.leading, 4)
         }
         .padding(16)
         .rorkCard(cornerRadius: 16, stroke: AppTheme.softBorder, glowOpacity: 0.05)
@@ -725,13 +733,13 @@ struct ExportView: View {
                         Image(systemName: "sparkles.rectangle.stack.fill")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(AppTheme.warningYellow)
-                        Text("Send to editor")
+                        Text("Edit in another app")
                             .font(.caption.bold())
                             .foregroundStyle(.white)
                         Spacer()
                     }
 
-                    HStack(spacing: 10) {
+                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
                         ForEach(editorShortcuts) { shortcut in
                             Button {
                                 presentShareSheet(
@@ -923,9 +931,9 @@ struct ExportView: View {
 
     private var editorShareHelperText: String {
         if selectedShareCategory == .editor, let selectedShareTargetHint {
-            return "Choose \(selectedShareTargetHint) in the share sheet to continue editing."
+            return "Choose \(selectedShareTargetHint) in the share sheet to continue editing this exported reel."
         }
-        return "Pick Adobe, CapCut, or iMovie in the share sheet to continue editing."
+        return "Exports use standard video files, so Adobe apps, CapCut, iMovie, VN, LumaFusion, Splice, and other editors can pick them up from the share sheet."
     }
 
     private var socialShareHelperText: String {
@@ -933,6 +941,17 @@ struct ExportView: View {
             return "Choose \(selectedShareTargetHint) in the share sheet to post."
         }
         return "Pick your social app in the share sheet to post, or save to Photos first."
+    }
+
+    private var shareSheetTitle: String {
+        switch selectedShareCategory {
+        case .editor:
+            return "Edit Hoopclips Reel"
+        case .social:
+            return "Hoopclips Highlight Reel"
+        case nil:
+            return "Hoopclips Highlight Reel"
+        }
     }
 
     private func isThemeLocked(_ theme: ExportTheme) -> Bool {

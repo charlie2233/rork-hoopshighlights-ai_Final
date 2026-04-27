@@ -46,9 +46,15 @@ nonisolated enum ExportTheme: String, CaseIterable, Codable, Sendable, Identifia
 nonisolated enum MusicTrack: String, CaseIterable, Codable, Sendable, Identifiable {
     case none = "No Music"
     case energetic = "Energetic"
+    case arenaBounce = "Arena Bounce"
+    case fastBreak = "Fast Break"
     case dramatic = "Dramatic"
     case lofi = "Lo-Fi"
+    case halftimeFunk = "Halftime Funk"
+    case clutchTime = "Clutch Time"
     case trap = "Trap Beat"
+    case retroArcade = "Retro Arcade"
+    case victoryLap = "Victory Lap"
     case orchestral = "Orchestral"
     case custom = "Custom Audio"
 
@@ -58,9 +64,15 @@ nonisolated enum MusicTrack: String, CaseIterable, Codable, Sendable, Identifiab
         switch self {
         case .none: return "speaker.slash.fill"
         case .energetic: return "bolt.heart.fill"
+        case .arenaBounce: return "basketball.fill"
+        case .fastBreak: return "hare.fill"
         case .dramatic: return "music.note.list"
         case .lofi: return "headphones"
+        case .halftimeFunk: return "figure.dance"
+        case .clutchTime: return "timer"
         case .trap: return "waveform"
+        case .retroArcade: return "gamecontroller.fill"
+        case .victoryLap: return "trophy.fill"
         case .orchestral: return "music.quarternote.3"
         case .custom: return "doc.badge.plus"
         }
@@ -68,10 +80,28 @@ nonisolated enum MusicTrack: String, CaseIterable, Codable, Sendable, Identifiab
 
     var requiresPro: Bool {
         switch self {
-        case .dramatic, .trap, .orchestral, .custom:
+        case .dramatic, .halftimeFunk, .clutchTime, .trap, .retroArcade, .victoryLap, .orchestral, .custom:
             return true
-        case .none, .energetic, .lofi:
+        case .none, .energetic, .arenaBounce, .fastBreak, .lofi:
             return false
+        }
+    }
+
+    var description: String {
+        switch self {
+        case .none: return "Keep the original clip audio only"
+        case .energetic: return "Bright, clean tempo for quick recaps"
+        case .arenaBounce: return "Crowd-ready bounce with a simple game-day pulse"
+        case .fastBreak: return "Fast tempo for transition buckets and quick cuts"
+        case .dramatic: return "Big build for cinematic moments"
+        case .lofi: return "Chill warmup feel for smooth edits"
+        case .halftimeFunk: return "Groovy halftime rhythm for mixtape cuts"
+        case .clutchTime: return "Darker tension for close-game moments"
+        case .trap: return "Bass-forward beat for hype reels"
+        case .retroArcade: return "Playful arcade synth for fun edits"
+        case .victoryLap: return "Upbeat finish for trophy-style reels"
+        case .orchestral: return "Epic soundtrack for dramatic reels"
+        case .custom: return "Use an audio file from Files"
         }
     }
 
@@ -79,9 +109,15 @@ nonisolated enum MusicTrack: String, CaseIterable, Codable, Sendable, Identifiab
         switch self {
         case .none, .custom: return nil
         case .energetic: return "energetic.mp3"
+        case .arenaBounce: return "arena_bounce.m4a"
+        case .fastBreak: return "fast_break.m4a"
         case .dramatic: return "dramatic.mp3"
         case .lofi: return "lofi.mp3"
+        case .halftimeFunk: return "halftime_funk.m4a"
+        case .clutchTime: return "clutch_time.m4a"
         case .trap: return "trap.mp3"
+        case .retroArcade: return "retro_arcade.m4a"
+        case .victoryLap: return "victory_lap.m4a"
         case .orchestral: return "orchestral.mp3"
         }
     }

@@ -183,6 +183,44 @@ struct HoopsClipsTests {
         ]))
     }
 
+    @Test func testEditorShortcutsCoverCommonEditingTargets() {
+        let shortcutIDs = Set(EditorAppSupport.defaultShortcuts.map(\.id))
+
+        #expect(shortcutIDs.isSuperset(of: [
+            "adobe",
+            "capcut",
+            "imovie",
+            "vn",
+            "lumafusion",
+            "splice",
+            "final-cut-camera"
+        ]))
+    }
+
+    @Test func testBundledMusicTracksHaveUniqueFilenames() {
+        let filenames = MusicTrack.allCases.compactMap(\.filename)
+
+        #expect(MusicTrack.allCases.count >= 12)
+        #expect(filenames.count == Set(filenames).count)
+        #expect(filenames.contains("arena_bounce.m4a"))
+        #expect(filenames.contains("fast_break.m4a"))
+        #expect(filenames.contains("halftime_funk.m4a"))
+        #expect(filenames.contains("clutch_time.m4a"))
+        #expect(filenames.contains("retro_arcade.m4a"))
+        #expect(filenames.contains("victory_lap.m4a"))
+
+        for filename in filenames {
+            let splitName = (filename as NSString).deletingPathExtension
+            let splitExtension = (filename as NSString).pathExtension
+            let resourceURL = Bundle.main.url(forResource: filename, withExtension: nil)
+                ?? Bundle.main.url(forResource: filename, withExtension: nil, subdirectory: "Resources/Audio")
+                ?? Bundle.main.url(forResource: splitName, withExtension: splitExtension)
+                ?? Bundle.main.url(forResource: splitName, withExtension: splitExtension, subdirectory: "Resources/Audio")
+
+            #expect(resourceURL != nil, "Missing bundled audio resource: \(filename)")
+        }
+    }
+
     @Test func testCloudClipMappingPreservesCloudMetadata() {
         let cloudClip = CloudClip(
             startTime: 12.5,

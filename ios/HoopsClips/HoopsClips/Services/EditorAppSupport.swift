@@ -44,7 +44,7 @@ enum EditorAppSupport {
     static let defaultShortcuts: [EditorAppShortcut] = [
         EditorAppShortcut(
             id: "adobe",
-            displayName: "Adobe",
+            displayName: "Adobe Apps",
             iconSystemName: "sparkles.tv",
             detectionScheme: nil,
             installState: .unknown
@@ -61,6 +61,34 @@ enum EditorAppSupport {
             displayName: "iMovie",
             iconSystemName: "film",
             detectionScheme: "imovie",
+            installState: .unknown
+        ),
+        EditorAppShortcut(
+            id: "vn",
+            displayName: "VN",
+            iconSystemName: "slider.horizontal.3",
+            detectionScheme: nil,
+            installState: .unknown
+        ),
+        EditorAppShortcut(
+            id: "lumafusion",
+            displayName: "LumaFusion",
+            iconSystemName: "timeline.selection",
+            detectionScheme: nil,
+            installState: .unknown
+        ),
+        EditorAppShortcut(
+            id: "splice",
+            displayName: "Splice",
+            iconSystemName: "rectangle.3.group.fill",
+            detectionScheme: nil,
+            installState: .unknown
+        ),
+        EditorAppShortcut(
+            id: "final-cut-camera",
+            displayName: "Final Cut",
+            iconSystemName: "camera.filters",
+            detectionScheme: nil,
             installState: .unknown
         ),
     ]
