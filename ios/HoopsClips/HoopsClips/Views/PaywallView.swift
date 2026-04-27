@@ -86,7 +86,7 @@ struct PaywallView: View {
                 secondary: AppTheme.warningYellow
             )
 
-            Text("hoopclips Premium")
+            Text("Hoopclips Premium")
                 .font(.system(size: isScreenshotMode ? 28 : 32, weight: .bold))
                 .foregroundStyle(.white)
 
@@ -286,7 +286,7 @@ struct PaywallView: View {
                 .font(.headline)
                 .foregroundStyle(.white)
 
-            Text("Memberships are tied to your hoopclips account. Sign in with Google, Apple, email, or phone before upgrading.")
+            Text("Memberships are tied to your Hoopclips account. Sign in with Google, Apple, email, or phone before upgrading.")
                 .font(.subheadline)
                 .foregroundStyle(AppTheme.subtleText)
                 .multilineTextAlignment(.center)

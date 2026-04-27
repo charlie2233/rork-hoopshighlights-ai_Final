@@ -136,7 +136,7 @@ final class VideoExportService {
             let brandedOutroStartTime: Double?
             let outroDurationSeconds = brandedOutroDuration(isProUser: isProUser)
             if outroDurationSeconds > 0 {
-                statusMessage = "Adding hoopclips outro..."
+                statusMessage = "Adding Hoopclips outro..."
                 brandedOutroStartTime = CMTimeGetSeconds(insertTime)
                 let outroDuration = CMTime(seconds: outroDurationSeconds, preferredTimescale: 600)
                 let outroRange = CMTimeRange(start: insertTime, duration: outroDuration)

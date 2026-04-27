@@ -1,6 +1,6 @@
-# hoopclips
+# Hoopclips
 
-hoopclips is an iOS app that turns basketball videos into share-ready highlight reels. The public launch path is on-device only: video import, Vision/CoreML analysis, review, export, and save all run locally on the phone.
+Hoopclips is an iOS app that turns basketball videos into share-ready highlight reels. The public launch path is on-device only: video import, Vision/CoreML analysis, review, export, and save all run locally on the phone.
 
 Cloud analysis and backend moderation remain internal-only until the production cloud gates and Phase 4h data-truth gate are cleared.
 

@@ -1,7 +1,7 @@
 # Rork Release Operator Handoff
 
 ## Current release posture
-- Product name for handoff: hoopclips.
+- Product name for handoff: Hoopclips.
 - Release source: `main` on `https://github.com/charlie2233/rork-hoopshighlights-ai_Final`.
 - Public App Store path: on-device analysis only.
 - Cloud ML path: gated/internal until Phase 4h confirmed-label gates clear.

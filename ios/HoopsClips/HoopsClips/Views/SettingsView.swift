@@ -1052,7 +1052,7 @@ struct SettingsView: View {
         settingsCard(title: languageStore.text(.settingsAbout), icon: "info.circle.fill") {
             VStack(spacing: 12) {
                 HStack {
-                    Text("hoopclips")
+                    Text("Hoopclips")
                         .font(.headline)
                         .foregroundStyle(.white)
                     Spacer()
@@ -1661,7 +1661,7 @@ struct SettingsView: View {
             category: feedbackType.rawValue,
             email: optionalEmail,
             message: trimmedMessage,
-            source: "hoopclips Settings",
+            source: "Hoopclips Settings",
             appVersion: "v1.0",
             exportTheme: viewModel.selectedTheme.rawValue,
             exportQuality: viewModel.selectedQuality.rawValue,
