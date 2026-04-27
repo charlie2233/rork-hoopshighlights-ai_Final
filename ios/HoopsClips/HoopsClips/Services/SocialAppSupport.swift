@@ -57,6 +57,34 @@ enum SocialAppSupport {
             detectionScheme: "youtube",
             installState: .unknown
         ),
+        SocialAppShortcut(
+            id: "snapchat",
+            displayName: "Snapchat",
+            iconSystemName: "camera.aperture",
+            detectionScheme: "snapchat",
+            installState: .unknown
+        ),
+        SocialAppShortcut(
+            id: "whatsapp",
+            displayName: "WhatsApp",
+            iconSystemName: "phone.bubble",
+            detectionScheme: "whatsapp",
+            installState: .unknown
+        ),
+        SocialAppShortcut(
+            id: "facebook",
+            displayName: "Facebook",
+            iconSystemName: "person.2.circle",
+            detectionScheme: "fb",
+            installState: .unknown
+        ),
+        SocialAppShortcut(
+            id: "x",
+            displayName: "X",
+            iconSystemName: "xmark",
+            detectionScheme: "twitter",
+            installState: .unknown
+        ),
     ]
 
     @MainActor

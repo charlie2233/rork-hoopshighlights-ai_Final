@@ -52,9 +52,13 @@
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
 		<string>capcut</string>
+		<string>fb</string>
 		<string>instagram</string>
 		<string>imovie</string>
+		<string>snapchat</string>
 		<string>tiktok</string>
+		<string>twitter</string>
+		<string>whatsapp</string>
 		<string>youtube</string>
 	</array>
 	<key>LSRequiresIPhoneOS</key>

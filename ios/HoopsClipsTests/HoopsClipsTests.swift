@@ -169,6 +169,20 @@ struct HoopsClipsTests {
         #expect(winner == "Dunk")
     }
 
+    @Test func testSocialShortcutsCoverCommonShareTargets() {
+        let shortcutIDs = Set(SocialAppSupport.defaultShortcuts.map(\.id))
+
+        #expect(shortcutIDs.isSuperset(of: [
+            "instagram",
+            "tiktok",
+            "youtube",
+            "snapchat",
+            "whatsapp",
+            "facebook",
+            "x"
+        ]))
+    }
+
     @Test func testCloudClipMappingPreservesCloudMetadata() {
         let cloudClip = CloudClip(
             startTime: 12.5,

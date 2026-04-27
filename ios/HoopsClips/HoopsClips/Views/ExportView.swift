@@ -26,6 +26,7 @@ struct ExportView: View {
     @State private var lastAutoPresentedExportURL: URL?
     @State private var selectedShareTargetHint: String?
     @State private var selectedShareCategory: QuickShareCategory?
+    @State private var shareErrorMessage: String?
     @State private var showFileImporter = false
 
     var body: some View {
@@ -63,8 +64,14 @@ struct ExportView: View {
             .sheet(isPresented: $showSystemShareSheet, onDismiss: clearShareSelection) {
                 if let shareURL {
                     SystemShareSheet(
-                        items: [shareURL],
-                        subject: "Hoops Highlight Reel"
+                        items: SystemShareSheet.videoItems(for: shareURL, title: "Hoops Highlight Reel"),
+                        subject: "Hoops Highlight Reel",
+                        completion: { _, _, _, error in
+                            guard let error else { return }
+                            Task { @MainActor in
+                                shareErrorMessage = "Could not open the share sheet: \(error.localizedDescription)"
+                            }
+                        }
                     )
                 } else {
                     EmptyView()
@@ -81,6 +88,14 @@ struct ExportView: View {
                 Button("OK", role: .cancel) { }
             } message: {
                 Text("Highlight reel saved to your photo library.")
+            }
+            .alert("Share Failed", isPresented: Binding(
+                get: { shareErrorMessage != nil },
+                set: { if !$0 { shareErrorMessage = nil } }
+            )) {
+                Button("OK", role: .cancel) { shareErrorMessage = nil }
+            } message: {
+                Text(shareErrorMessage ?? "Try saving to Photos, then share from your camera roll.")
             }
             .onAppear {
                 refreshEditorShortcuts()
@@ -781,7 +796,7 @@ struct ExportView: View {
                         Spacer()
                     }
 
-                    HStack(spacing: 10) {
+                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
                         ForEach(socialShortcuts) { shortcut in
                             Button {
                                 presentShareSheet(
@@ -917,7 +932,7 @@ struct ExportView: View {
         if selectedShareCategory == .social, let selectedShareTargetHint {
             return "Choose \(selectedShareTargetHint) in the share sheet to post."
         }
-        return "Pick Instagram, TikTok, or YouTube in the share sheet to post."
+        return "Pick your social app in the share sheet to post, or save to Photos first."
     }
 
     private func isThemeLocked(_ theme: ExportTheme) -> Bool {
