@@ -2,13 +2,22 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from uuid import uuid4
-from typing import Optional
+from typing import Dict, Optional
 
 from fastapi import APIRouter, Header, Request, Response
 from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 
 from .config import Settings, get_settings
+from .editing import (
+    CreateEditJobRequest,
+    EditJobResponse,
+    EditPlanResponse,
+    ReviseEditJobRequest,
+    StoredEditJob,
+    build_edit_job,
+    revise_edit_job,
+)
 from .job_store import FirestoreJobStore, InMemoryJobStore, JobStore
 from .models import (
     APIError,
@@ -37,6 +46,7 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
     resolved_settings = settings or get_settings()
     router = APIRouter()
     runtime: Optional[BackendRuntime] = None
+    edit_jobs: Dict[str, StoredEditJob] = {}
 
     def _error_response(error: APIError) -> JSONResponse:
         return JSONResponse(
@@ -53,6 +63,12 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
         job = await runtime.job_store.get_job(job_id)
         if job is None:
             raise APIError(status_code=404, error_code="job_not_found", error_message="Cloud analysis job was not found.")
+        return job
+
+    def _require_edit_job(edit_job_id: str) -> StoredEditJob:
+        job = edit_jobs.get(edit_job_id)
+        if job is None:
+            raise APIError(status_code=404, error_code="edit_job_not_found", error_message="Cloud edit job was not found.")
         return job
 
     async def _process_job(job_id: str) -> None:
@@ -213,6 +229,66 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
             await runtime.job_store.mark_expired(job_id)
             runtime.storage.cleanup(job)
             return Response(status_code=204)
+        except APIError as error:
+            return _error_response(error)
+
+    @router.post(
+        "/v1/edit-jobs",
+        response_model=EditJobResponse,
+        responses={400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+    )
+    async def create_edit_job(request: CreateEditJobRequest):
+        try:
+            _require_public_api_enabled()
+            edit_job_id = "edit_" + uuid4().hex
+            job = build_edit_job(request, edit_job_id)
+            if job.validation_errors:
+                first_error = job.validation_errors[0]
+                raise APIError(400, first_error.code, first_error.message)
+            edit_jobs[edit_job_id] = job
+            return job.to_response()
+        except APIError as error:
+            return _error_response(error)
+
+    @router.get(
+        "/v1/edit-jobs/{edit_job_id}",
+        response_model=EditJobResponse,
+        responses={404: {"model": ErrorResponse}},
+    )
+    async def get_edit_job(edit_job_id: str):
+        try:
+            _require_public_api_enabled()
+            return _require_edit_job(edit_job_id).to_response()
+        except APIError as error:
+            return _error_response(error)
+
+    @router.get(
+        "/v1/edit-jobs/{edit_job_id}/plan",
+        response_model=EditPlanResponse,
+        responses={404: {"model": ErrorResponse}},
+    )
+    async def get_edit_job_plan(edit_job_id: str):
+        try:
+            _require_public_api_enabled()
+            return _require_edit_job(edit_job_id).to_plan_response()
+        except APIError as error:
+            return _error_response(error)
+
+    @router.post(
+        "/v1/edit-jobs/{edit_job_id}/revise",
+        response_model=EditPlanResponse,
+        responses={400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+    )
+    async def revise_edit_job_plan(edit_job_id: str, request: ReviseEditJobRequest):
+        try:
+            _require_public_api_enabled()
+            job = _require_edit_job(edit_job_id)
+            revised = revise_edit_job(job, request)
+            if revised.validation_errors:
+                first_error = revised.validation_errors[0]
+                raise APIError(400, first_error.code, first_error.message)
+            edit_jobs[edit_job_id] = revised
+            return revised.to_plan_response()
         except APIError as error:
             return _error_response(error)
 

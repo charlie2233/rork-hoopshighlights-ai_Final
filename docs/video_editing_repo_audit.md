@@ -43,17 +43,25 @@ Current model behavior:
 - `HOOPS_USE_GEMINI_RELABELING` is reserved/stubbed
 - there is no production EditPlan agent or cloud render path yet
 
+## Backend Pieces Implemented After Audit
+
+The follow-up Phase Edit 1 branch adds a backend-only planning layer:
+
+- compact edit-job request as the first `EditContext` surface
+- `EditPlan` and `EditPlanClip` models
+- `EditPreset` registry for `personal_highlight`, `full_game_highlight`, `coach_review`, `fast_break_mix`, and `best_five`
+- deterministic `validate_edit_plan`
+- deterministic `repair_edit_plan`
+- in-process edit-job state for local/internal planning
+- `POST /v1/edit-jobs`
+- `GET /v1/edit-jobs/{id}`
+- `GET /v1/edit-jobs/{id}/plan`
+- `POST /v1/edit-jobs/{id}/revise`
+
+The planning routes are still hidden when `HOOPS_PUBLIC_API_ENABLED=false`, matching the current cloud-gated launch posture.
+
 ## Missing Backend Pieces
 
-- `EditContext` model
-- `EditPlan` model
-- `EditPlanClip` model
-- `EditPreset` and `EditTheme` registries
-- deterministic `EditPlanValidator`
-- edit-job state model
-- `/v1/edit-jobs` API
-- `/v1/edit-jobs/{id}/plan`
-- `/v1/edit-jobs/{id}/revise`
 - `/v1/edit-jobs/{id}/render`
 - `/v1/edit-jobs/{id}/render-status`
 - `/v1/edit-jobs/{id}/download-url`
@@ -87,20 +95,21 @@ This branch reframes them as temporary cloud-gated fallback / release-safety pos
 
 ## Recommended Next Branch
 
-Create `codex/phase-edit1-cloud-edit-plan-agent` after this audit lands.
+After `codex/phase-edit1-cloud-edit-plan-agent` lands, continue with `codex/phase-edit2-ai-edit-client-ui` for the iOS cloud-edit client surface, or `codex/phase-edit3-cloud-ffmpeg-renderer` if backend render infrastructure should be built first.
 
-Definition of done for the next branch:
+Definition of done for the next backend render branch:
 
-- add backend `EditContext`, `EditPlan`, `EditPlanClip`, `EditPreset`, and `EditTheme`
-- add deterministic `EditPlanValidator`
-- add preset registry for `personal_highlight`, `full_game_highlight`, `coach_review`, `fast_break_mix`, and `best_five`
-- add pure planning tools for ranking, duplicate removal, target-duration fitting, captions, slow motion, watermark/outro, validation, repair, and render-cost estimation
-- add edit-job planning endpoints but no renderer yet
-- add backend tests for presets, duration fitting, duplicate removal, free-user watermark/outro, minimum clip duration, slow-motion bounds, and invalid plan repair
+- add `/v1/edit-jobs/{id}/render`
+- add `/v1/edit-jobs/{id}/render-status`
+- add `/v1/edit-jobs/{id}/download-url`
+- render FFmpeg output from validated `EditPlan`
+- store preview/final MP4 plus render logs
+- return signed download URLs
+- keep iOS as preview/download/share client only
 
 ## Explicit Stop Rules
 
-- Do not implement cloud rendering in this audit branch.
+- Do not implement cloud rendering until the planning layer is validated.
 - Do not add new iOS-owned production analysis or rendering.
 - Do not make cloud ML or cloud rendering public.
 - Do not touch Phase 4h retraining or thresholds.

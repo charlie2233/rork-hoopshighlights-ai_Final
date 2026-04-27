@@ -9,6 +9,12 @@ This service keeps the existing iOS cloud-analysis API contract stable while swa
 - `DELETE /v1/analysis/jobs/{jobId}`
 - `POST /v1/internal/process/{jobId}` for internal task execution
 - `PUT /v1/internal/uploads/{jobId}` only when local upload emulation is enabled
+- `POST /v1/edit-jobs` for local/internal EditPlan creation from analyzed clip metadata
+- `GET /v1/edit-jobs/{editJobId}`
+- `GET /v1/edit-jobs/{editJobId}/plan`
+- `POST /v1/edit-jobs/{editJobId}/revise`
+
+The edit-job routes are planning-only in this phase. They create and revise validated `EditPlan` JSON but do not render video yet.
 
 ## Runtime modes
 ### Local
@@ -117,19 +123,22 @@ Before production cutover, verify:
 - `installId` is not a sufficient public auth boundary. Do not re-enable `/v1/analysis/*` in managed mode until there is a real identity and authorization model.
 - Do not add public `/v1/edit-jobs/*` or render-job access until authn/authz, storage, observability, render reliability, and Phase 4h gates are ready.
 
-## Next backend layer: AI Edit Agent
+## AI Edit Agent planning layer
 
-Planned edit-job routes:
+Implemented planning routes:
 
 - `POST /v1/edit-jobs`
 - `GET /v1/edit-jobs/{editJobId}`
 - `GET /v1/edit-jobs/{editJobId}/plan`
 - `POST /v1/edit-jobs/{editJobId}/revise`
+
+Planned render routes:
+
 - `POST /v1/edit-jobs/{editJobId}/render`
 - `GET /v1/edit-jobs/{editJobId}/render-status`
 - `GET /v1/edit-jobs/{editJobId}/download-url`
 
-The agent should output strict `EditPlan` JSON from compact analyzed clip metadata. The backend must validate the plan deterministically before render. FFmpeg should be the first production renderer; Remotion, Canva, Cloudinary, and Revideo are template/asset/preview tools, not iOS render engines.
+The planning layer outputs strict `EditPlan` JSON from compact analyzed clip metadata and validates the plan deterministically before render. FFmpeg should be the first production renderer; Remotion, Canva, Cloudinary, and Revideo are template/asset/preview tools, not iOS render engines.
 
 ## Current tier behavior
 - Free tier is enforced in the iOS client: videos longer than 15 minutes require Pro before analysis starts.
