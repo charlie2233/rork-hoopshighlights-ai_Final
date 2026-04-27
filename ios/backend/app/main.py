@@ -6,6 +6,8 @@ from fastapi import FastAPI
 
 from .api import create_router
 from .config import Settings, get_settings
+from .render_storage import RenderStorage
+from .renderers.ffmpeg_renderer import ffmpeg_diagnostics
 
 
 def create_app(settings: Optional[Settings] = None) -> FastAPI:
@@ -26,6 +28,33 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         return {
             "status": "ok",
             "service": resolved_settings.service_name,
+        }
+
+    @app.get("/readyz")
+    async def readyz() -> Dict[str, object]:
+        ffmpeg = ffmpeg_diagnostics()
+        storage = RenderStorage(resolved_settings).diagnostics()
+        ready = (
+            bool(ffmpeg["ffmpegAvailable"])
+            and bool(ffmpeg["ffprobeAvailable"])
+            and bool(storage["providerReady"])
+            and bool(storage["uploadRootWritable"])
+        )
+        return {
+            "status": "ok" if ready else "degraded",
+            "service": resolved_settings.service_name,
+            "environment": resolved_settings.environment,
+            "ffmpeg": ffmpeg,
+            "renderStorage": storage,
+        }
+
+    @app.get("/version")
+    async def version() -> Dict[str, object]:
+        return {
+            "service": resolved_settings.service_name,
+            "backendModelVersion": resolved_settings.backend_model_version,
+            "environment": resolved_settings.environment,
+            "ffmpeg": ffmpeg_diagnostics(),
         }
 
     return app

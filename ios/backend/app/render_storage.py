@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 import shutil
 import tempfile
-from typing import Optional
+from typing import Dict, Optional
 
 from .config import Settings
 from .models import APIError, MaterializedSource
@@ -20,6 +20,8 @@ class RenderStorage:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
         self._provider = self._env("HOOPS_RENDER_STORAGE_PROVIDER", "local").strip().lower()
+        if self._provider not in {"local", "r2"}:
+            raise RuntimeError("HOOPS_RENDER_STORAGE_PROVIDER must be either 'local' or 'r2'.")
         self._download_ttl_seconds = int(self._env("HOOPS_RENDER_DOWNLOAD_TTL_SECONDS", "900"))
 
     @property
@@ -90,6 +92,28 @@ class RenderStorage:
     def local_path_for_object(self, object_key: str) -> Path:
         return self._local_object_path(object_key)
 
+    def diagnostics(self) -> Dict[str, object]:
+        upload_root = self._settings.upload_root
+        upload_root.mkdir(parents=True, exist_ok=True)
+        provider_ready = True
+        r2_config = None
+        if self._provider == "r2":
+            required = {
+                "bucket": bool(self._env("HOOPS_R2_BUCKET", "")),
+                "endpoint": bool(self._env("HOOPS_R2_ENDPOINT_URL", "")),
+                "accessKey": bool(self._env("HOOPS_R2_ACCESS_KEY_ID", "")),
+                "secretKey": bool(self._env("HOOPS_R2_SECRET_ACCESS_KEY", "")),
+            }
+            provider_ready = all(required.values())
+            r2_config = required
+        return {
+            "provider": self._provider,
+            "providerReady": provider_ready,
+            "downloadTtlSeconds": self._download_ttl_seconds,
+            "uploadRootWritable": self._upload_root_writable(),
+            "r2Config": r2_config,
+        }
+
     def _materialize_r2_source(self, object_key: str) -> MaterializedSource:
         client = self._r2_client()
         temp_dir = Path(tempfile.mkdtemp(prefix="hoops-render-source-", dir=str(self._settings.upload_root)))
@@ -122,6 +146,14 @@ class RenderStorage:
             aws_secret_access_key=self._required_env("HOOPS_R2_SECRET_ACCESS_KEY"),
             region_name=self._env("HOOPS_R2_REGION", "auto"),
         )
+
+    def _upload_root_writable(self) -> bool:
+        try:
+            self._settings.upload_root.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(prefix=".hoops-render-ready-", dir=str(self._settings.upload_root), delete=True):
+                return True
+        except Exception:
+            return False
 
     def _local_object_path(self, object_key: str) -> Path:
         safe_parts = [part for part in Path(object_key).parts if part not in {"", ".", ".."}]

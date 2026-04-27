@@ -143,12 +143,22 @@ class RenderJobTests(unittest.TestCase):
         self.assertTrue(output_path.exists())
         self.assertGreater(output_path.stat().st_size, 0)
         self.assertEqual(self._probe_dimensions(output_path), (720, 1280))
+        media_payload = self._probe_media(output_path)
+        self.assertTrue(any(stream["codec_type"] == "video" and stream["codec_name"] == "h264" for stream in media_payload["streams"]))
+        self.assertTrue(any(stream["codec_type"] == "audio" and stream["codec_name"] == "aac" for stream in media_payload["streams"]))
 
         log_path = self._temp_dir / status_payload["renderLogObjectKey"]
         self.assertTrue(log_path.exists())
         log_payload = json.loads(log_path.read_text(encoding="utf-8"))
         self.assertEqual(log_payload["status"], "rendered")
+        self.assertEqual(log_payload["traceId"], status_payload["traceId"])
+        self.assertEqual(log_payload["outputObjectKey"], status_payload["outputObjectKey"])
         self.assertEqual(log_payload["clipCount"], 2)
+        self.assertEqual(log_payload["ffmpeg"]["rendererVersion"], "ffmpeg-renderer-v1")
+        self.assertGreater(log_payload["ffmpeg"]["segmentCount"], log_payload["clipCount"])
+        self.assertTrue(any("setpts=" in command for command in log_payload["ffmpeg"]["commands"]))
+        self.assertTrue(any("atempo=" in command for command in log_payload["ffmpeg"]["commands"]))
+        self.assertAlmostEqual(float(media_payload["format"]["duration"]), status_payload["durationSeconds"], delta=0.25)
 
         download_response = client.get(f"/v1/edit-jobs/{edit_job_id}/download-url", params={"installId": "install-123"})
         self.assertEqual(download_response.status_code, 200)
@@ -175,6 +185,17 @@ class RenderJobTests(unittest.TestCase):
         self.assertEqual(status_payload["status"], "rendered")
         self.assertEqual(self._probe_dimensions(self._temp_dir / status_payload["outputObjectKey"]), (1280, 720))
 
+    def test_download_url_unavailable_before_render(self) -> None:
+        client = TestClient(create_app(self._settings()))
+        create_response = client.post("/v1/edit-jobs", json=self._request_payload(aspectRatio="9:16"))
+        self.assertEqual(create_response.status_code, 200)
+        edit_job_id = create_response.json()["editJobId"]
+
+        download_response = client.get(f"/v1/edit-jobs/{edit_job_id}/download-url", params={"installId": "install-123"})
+
+        self.assertEqual(download_response.status_code, 404)
+        self.assertEqual(download_response.json()["errorCode"], "render_job_not_found")
+
     def test_render_request_without_source_fails_before_renderer(self) -> None:
         client = TestClient(create_app(self._settings()))
         payload = self._request_payload()
@@ -190,6 +211,32 @@ class RenderJobTests(unittest.TestCase):
         self.assertEqual(payload["status"], "failed")
         self.assertEqual(payload["failureReason"], "invalid_edit_plan")
         self.assertTrue(any(error["code"] == "source_missing" for error in payload["validationErrors"]))
+
+    @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "ffmpeg and ffprobe are required")
+    def test_render_failure_records_failure_reason_and_log(self) -> None:
+        invalid_source_key = "sources/not_a_video.mp4"
+        invalid_source_path = self._temp_dir / invalid_source_key
+        invalid_source_path.parent.mkdir(parents=True, exist_ok=True)
+        invalid_source_path.write_text("this is not a playable mp4", encoding="utf-8")
+        client = TestClient(create_app(self._settings()))
+        create_response = client.post(
+            "/v1/edit-jobs",
+            json=self._request_payload(sourceObjectKey=invalid_source_key, aspectRatio="9:16"),
+        )
+        self.assertEqual(create_response.status_code, 200)
+        edit_job_id = create_response.json()["editJobId"]
+
+        render_response = client.post(f"/v1/edit-jobs/{edit_job_id}/render", json={"installId": "install-123"})
+        self.assertEqual(render_response.status_code, 200)
+        status_payload = client.get(f"/v1/edit-jobs/{edit_job_id}/render-status", params={"installId": "install-123"}).json()
+
+        self.assertEqual(status_payload["status"], "failed")
+        self.assertEqual(status_payload["failureReason"], "ffmpeg_render_failed")
+        log_path = self._temp_dir / status_payload["renderLogObjectKey"]
+        self.assertTrue(log_path.exists())
+        log_payload = json.loads(log_path.read_text(encoding="utf-8"))
+        self.assertEqual(log_payload["status"], "failed")
+        self.assertEqual(log_payload["failureReason"], "ffmpeg_render_failed")
 
     def test_render_validator_rejects_missing_free_watermark_and_bad_slow_motion(self) -> None:
         request = CreateEditJobRequest(**self._request_payload())
@@ -227,6 +274,21 @@ class RenderJobTests(unittest.TestCase):
         result = subprocess.run(command, check=True, capture_output=True, text=True)
         stream = json.loads(result.stdout)["streams"][0]
         return int(stream["width"]), int(stream["height"])
+
+    def _probe_media(self, path: Path) -> dict:
+        subprocess.run(["ffmpeg", "-v", "error", "-i", str(path), "-f", "null", "-"], check=True, capture_output=True, text=True)
+        command = [
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration,size,format_name:stream=codec_type,codec_name,width,height,pix_fmt",
+            "-of",
+            "json",
+            str(path),
+        ]
+        result = subprocess.run(command, check=True, capture_output=True, text=True)
+        return json.loads(result.stdout)
 
 
 if __name__ == "__main__":

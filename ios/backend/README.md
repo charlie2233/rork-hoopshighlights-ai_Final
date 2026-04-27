@@ -8,6 +8,8 @@ This service keeps the existing iOS cloud-analysis API contract stable while swa
 - `GET /v1/analysis/jobs/{jobId}`
 - `DELETE /v1/analysis/jobs/{jobId}`
 - `POST /v1/internal/process/{jobId}` for internal task execution
+- `GET /readyz` for FFmpeg/render-storage readiness
+- `GET /version` for backend and renderer version diagnostics
 - `PUT /v1/internal/uploads/{jobId}` only when local upload emulation is enabled
 - `POST /v1/edit-jobs` for local/internal EditPlan creation from analyzed clip metadata
 - `GET /v1/edit-jobs/{editJobId}`
@@ -128,6 +130,33 @@ Before production cutover, verify:
 - the `analysis-jobs` queue exists in `us-central1`
 - the Cloud Run service account can access Firestore, Cloud Storage, and Cloud Tasks
 - the GCS bucket `charlie-hoops-ai-analysis-temp` exists
+
+## Live render smoke
+
+`scripts/live_render_smoke.py` is the canonical Phase Edit2b smoke helper. It checks `/readyz`, creates or reuses a small source MP4, creates an edit job, starts render, polls render status, downloads the final MP4, and verifies playback with FFmpeg/FFprobe.
+
+Local/internal smoke:
+
+```bash
+cd /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend
+export HOOPS_ENVIRONMENT=local
+export HOOPS_PUBLIC_API_ENABLED=true
+export HOOPS_RENDER_STORAGE_PROVIDER=local
+export HOOPS_UPLOAD_ROOT=/tmp/hoopclips-render-smoke
+uvicorn app.main:app --host 127.0.0.1 --port 8080
+```
+
+In another terminal:
+
+```bash
+cd /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend
+python scripts/live_render_smoke.py \
+  --base-url http://127.0.0.1:8080 \
+  --render-storage-provider local \
+  --upload-root /tmp/hoopclips-render-smoke
+```
+
+For R2/deployed smoke, configure `HOOPS_RENDER_STORAGE_PROVIDER=r2` and the `HOOPS_R2_*` variables locally before running the same script against the internal backend URL. The script can upload a synthetic source MP4 to R2 when no `--source-object-key` is provided. Keep returned presigned URLs out of logs and tickets; treat them as temporary bearer tokens.
 
 ## Launch posture
 - Public App Store launch should treat this backend as internal-only until cloud cutover gates clear.

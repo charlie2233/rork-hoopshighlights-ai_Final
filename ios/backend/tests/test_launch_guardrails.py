@@ -82,6 +82,24 @@ class LaunchGuardrailTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 404)
 
+    def test_readyz_reports_ffmpeg_and_render_storage_without_secrets(self) -> None:
+        app = create_app(self._managed_settings(public_api_enabled=True))
+        client = TestClient(app)
+
+        response = client.get("/readyz")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertIn(payload["status"], {"ok", "degraded"})
+        self.assertEqual(payload["service"], "hoops-ai-api")
+        self.assertIn("ffmpegAvailable", payload["ffmpeg"])
+        self.assertIn("ffprobeAvailable", payload["ffmpeg"])
+        self.assertIn("drawtextAvailable", payload["ffmpeg"])
+        self.assertEqual(payload["renderStorage"]["provider"], "local")
+        self.assertTrue(payload["renderStorage"]["providerReady"])
+        self.assertTrue(payload["renderStorage"]["uploadRootWritable"])
+        self.assertNotIn("secret", repr(payload).lower())
+
 
 if __name__ == "__main__":
     unittest.main()

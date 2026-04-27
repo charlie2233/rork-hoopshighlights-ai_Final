@@ -15,6 +15,38 @@ from ..models import APIError
 RENDERER_VERSION = "ffmpeg-renderer-v1"
 
 
+def ffmpeg_diagnostics(ffmpeg_binary: Optional[str] = None, ffprobe_binary: Optional[str] = None) -> Dict[str, object]:
+    ffmpeg = ffmpeg_binary or os.getenv("HOOPS_FFMPEG_BINARY", "ffmpeg")
+    ffprobe = ffprobe_binary or os.getenv("HOOPS_FFPROBE_BINARY", "ffprobe")
+    ffmpeg_available, ffmpeg_version = _version_probe(ffmpeg)
+    ffprobe_available, ffprobe_version = _version_probe(ffprobe)
+    return {
+        "renderer": "cloud_ffmpeg",
+        "rendererVersion": RENDERER_VERSION,
+        "ffmpegAvailable": ffmpeg_available,
+        "ffprobeAvailable": ffprobe_available,
+        "drawtextAvailable": _drawtext_probe(ffmpeg) if ffmpeg_available else False,
+        "ffmpegVersion": ffmpeg_version,
+        "ffprobeVersion": ffprobe_version,
+    }
+
+
+def _version_probe(binary: str) -> Tuple[bool, Optional[str]]:
+    try:
+        result = subprocess.run([binary, "-version"], check=True, capture_output=True, text=True, timeout=5)
+    except Exception:
+        return False, None
+    return True, (result.stdout.splitlines() or [None])[0]
+
+
+def _drawtext_probe(ffmpeg_binary: str) -> bool:
+    try:
+        result = subprocess.run([ffmpeg_binary, "-hide_banner", "-filters"], check=True, capture_output=True, text=True, timeout=5)
+    except Exception:
+        return False
+    return " drawtext " in result.stdout or " drawtext" in result.stdout
+
+
 @dataclass(frozen=True)
 class FfmpegRenderResult:
     output_path: Path
@@ -385,11 +417,7 @@ class FfmpegRenderer:
             return False
 
     def _detect_drawtext(self) -> bool:
-        try:
-            result = subprocess.run([self._ffmpeg, "-hide_banner", "-filters"], check=True, capture_output=True, text=True)
-            return " drawtext " in result.stdout or " drawtext" in result.stdout
-        except Exception:
-            return False
+        return _drawtext_probe(self._ffmpeg)
 
     def _probe_duration(self, path: Path) -> float:
         command = [
