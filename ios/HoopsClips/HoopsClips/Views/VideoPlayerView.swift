@@ -17,7 +17,11 @@ struct VideoPlayerView: View {
     @State private var showingNoClipsAlert = false
     @State private var showingDurationLimitAlert = false
     @State private var isImportingVideo = false
+    @State private var activeImportID: UUID?
+    @State private var importTask: Task<Void, Never>?
     @State private var importErrorMessage: String?
+
+    private let videoImportTimeoutNanoseconds: UInt64 = 90 * 1_000_000_000
 
     var body: some View {
         NavigationStack {
@@ -119,44 +123,88 @@ struct VideoPlayerView: View {
     }
 
     private func importVideo(from url: URL) {
-        guard !isImportingVideo else { return }
-        isImportingVideo = true
-        importErrorMessage = nil
-
-        Task {
+        beginVideoImport {
             await viewModel.loadVideo(url: url)
-            isImportingVideo = false
-            if !viewModel.isVideoLoaded {
-                importErrorMessage = "Hoops Clips could not read that video. Try importing it from Files or choose another clip."
-            }
         }
     }
 
     private func importVideo(from item: PhotosPickerItem) {
+        beginVideoImport {
+            do {
+                try Task.checkCancellation()
+
+                if let importedVideo = try await item.loadTransferable(type: ImportedVideoFile.self) {
+                    try Task.checkCancellation()
+                    return await viewModel.loadVideo(url: importedVideo.url)
+                }
+
+                if let data = try await item.loadTransferable(type: Data.self) {
+                    try Task.checkCancellation()
+                    let tempURL = URL.temporaryDirectory.appending(path: "imported_video_\(UUID().uuidString).mov")
+                    try data.write(to: tempURL, options: .atomic)
+                    try Task.checkCancellation()
+                    return await viewModel.loadVideo(url: tempURL)
+                }
+
+                importErrorMessage = "Hoops Clips could not access that video from Photos. Try saving it to Files and importing from there."
+                return false
+            } catch is CancellationError {
+                return false
+            } catch {
+                importErrorMessage = "Hoops Clips could not import that video: \(error.localizedDescription)"
+                return false
+            }
+        }
+    }
+
+    private func beginVideoImport(_ operation: @escaping () async -> Bool) {
         guard !isImportingVideo else { return }
+        importTask?.cancel()
+
+        let importID = UUID()
+        activeImportID = importID
         isImportingVideo = true
         importErrorMessage = nil
 
-        Task {
-            do {
-                if let importedVideo = try await item.loadTransferable(type: ImportedVideoFile.self) {
-                    await viewModel.loadVideo(url: importedVideo.url)
-                } else if let data = try await item.loadTransferable(type: Data.self) {
-                    let tempURL = URL.temporaryDirectory.appending(path: "imported_video_\(UUID().uuidString).mov")
-                    try data.write(to: tempURL, options: .atomic)
-                    await viewModel.loadVideo(url: tempURL)
-                } else {
-                    importErrorMessage = "Hoops Clips could not access that video from Photos. Try saving it to Files and importing from there."
+        let task = Task { @MainActor in
+            let timeoutTask = Task {
+                do {
+                    try await Task.sleep(nanoseconds: videoImportTimeoutNanoseconds)
+                } catch {
+                    return
                 }
-            } catch {
-                importErrorMessage = "Hoops Clips could not import that video: \(error.localizedDescription)"
+
+                await MainActor.run {
+                    guard activeImportID == importID, isImportingVideo else { return }
+                    importErrorMessage = "Hoops Clips is still waiting for that video. Try a shorter local clip, or save it to Files and import it again."
+                    importTask?.cancel()
+                    clearImportState()
+                }
             }
 
-            isImportingVideo = false
-            if importErrorMessage == nil && !viewModel.isVideoLoaded {
+            let didLoadVideo = await operation()
+            timeoutTask.cancel()
+
+            guard activeImportID == importID else { return }
+
+            clearImportState()
+            if importErrorMessage == nil && (!didLoadVideo || !viewModel.isVideoLoaded) {
                 importErrorMessage = "Hoops Clips could not read that video. Try importing it from Files or choose another clip."
             }
         }
+
+        importTask = task
+    }
+
+    private func cancelActiveImport() {
+        importTask?.cancel()
+        clearImportState()
+    }
+
+    private func clearImportState() {
+        isImportingVideo = false
+        activeImportID = nil
+        importTask = nil
     }
 
     private func syncPlayer(with url: URL?) {
@@ -186,7 +234,7 @@ struct VideoPlayerView: View {
         showingNoClipsAlert = false
         showingDurationLimitAlert = false
         analysisStarted = false
-        isImportingVideo = false
+        cancelActiveImport()
         importErrorMessage = nil
     }
 
@@ -220,7 +268,7 @@ struct VideoPlayerView: View {
                         Image(systemName: "plus.circle.fill")
                             .font(.title3)
                     }
-                    Text(isImportingVideo ? "Preparing video..." : languageStore.text(.selectVideo))
+                    Text(isImportingVideo ? languageStore.text(.preparingVideo) : languageStore.text(.selectVideo))
                         .font(.headline)
                 }
                 .foregroundStyle(.white)
@@ -234,6 +282,24 @@ struct VideoPlayerView: View {
             )
             .disabled(isImportingVideo)
             .opacity(isImportingVideo ? 0.82 : 1)
+
+            if isImportingVideo {
+                Button {
+                    cancelActiveImport()
+                } label: {
+                    Text(languageStore.text(.cancelImport))
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(AppTheme.subtleText)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(AppTheme.surfaceBg.opacity(0.7), in: .capsule)
+                        .overlay(
+                            Capsule()
+                                .stroke(AppTheme.softBorder, lineWidth: 1)
+                        )
+                }
+                .buttonStyle(.plain)
+            }
 
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                 featurePill(icon: "sparkles", text: languageStore.text(.smartHighlights))

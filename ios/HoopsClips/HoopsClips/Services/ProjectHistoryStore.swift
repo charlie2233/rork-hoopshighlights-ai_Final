@@ -85,16 +85,20 @@ final class ProjectHistoryStore {
         try fileManager.createDirectory(at: projectDirectoryURL, withIntermediateDirectories: true)
 
         do {
+            try Task.checkCancellation()
             let sourceExtension = preferredExtension(for: sourceURL.pathExtension, fallback: "mov")
             let persistedSourceURL = projectDirectoryURL.appending(path: "source.\(sourceExtension)", directoryHint: .notDirectory)
             try copyReplacingItem(at: sourceURL, to: persistedSourceURL)
+            try Task.checkCancellation()
 
             let asset = AVURLAsset(url: persistedSourceURL)
             let duration = try await asset.load(.duration)
             let durationSeconds = CMTimeGetSeconds(duration)
+            try Task.checkCancellation()
 
             let thumbnailURL = projectDirectoryURL.appending(path: "thumbnail.jpg", directoryHint: .notDirectory)
             try await writeThumbnail(for: asset, to: thumbnailURL)
+            try Task.checkCancellation()
 
             let filename = sourceURL.lastPathComponent
             let basename = (filename as NSString).deletingPathExtension

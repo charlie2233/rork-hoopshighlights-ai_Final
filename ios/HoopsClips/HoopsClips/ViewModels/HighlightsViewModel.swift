@@ -121,19 +121,26 @@ final class HighlightsViewModel {
         restoreCurrentProjectIfAvailable()
     }
 
-    func loadVideo(url: URL) async {
+    @discardableResult
+    func loadVideo(url: URL) async -> Bool {
         let accessing = url.startAccessingSecurityScopedResource()
         defer { if accessing { url.stopAccessingSecurityScopedResource() } }
 
         persistCurrentProject()
 
         do {
+            try Task.checkCancellation()
             let project = try await projectStore.createProjectFromImportedVideo(sourceURL: url.standardizedFileURL)
+            try Task.checkCancellation()
             insertProject(project, makeCurrent: true)
             applyPersistedProject(project)
             persistCurrentProject(reason: .imported, message: "Imported \(project.sourceFilename)")
+            return true
+        } catch is CancellationError {
+            return false
         } catch {
             print("Failed to load video: \(error.localizedDescription)")
+            return false
         }
     }
 

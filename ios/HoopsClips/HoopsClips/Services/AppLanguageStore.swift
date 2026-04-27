@@ -109,6 +109,8 @@ enum AppTextKey {
     case turnGamesTitle
     case turnGamesSubtitle
     case selectVideo
+    case preparingVideo
+    case cancelImport
     case smartHighlights
     case fastReels
     case autoTrim
@@ -366,6 +368,8 @@ extension AppLanguage {
         .turnGamesTitle: "Turn Games Into Hoops Clips",
         .turnGamesSubtitle: "Find your best plays, trim the dead time,\nand build a share-ready reel in minutes.",
         .selectVideo: "Select Video",
+        .preparingVideo: "Preparing video...",
+        .cancelImport: "Cancel import",
         .smartHighlights: "Smart Highlights",
         .fastReels: "Fast Reels",
         .autoTrim: "Auto Trim",
@@ -587,6 +591,8 @@ extension AppLanguage {
         .turnGamesTitle: "把比赛变成 Hoops Clips",
         .turnGamesSubtitle: "找到最佳瞬间，剪掉空白时间，\n几分钟内生成可分享集锦。",
         .selectVideo: "选择视频",
+        .preparingVideo: "正在准备视频...",
+        .cancelImport: "取消导入",
         .smartHighlights: "智能高光",
         .fastReels: "快速集锦",
         .autoTrim: "自动剪辑",
@@ -808,6 +814,8 @@ extension AppLanguage {
         .turnGamesTitle: "Convierte partidos en Hoops Clips",
         .turnGamesSubtitle: "Encuentra tus mejores jugadas, corta los tiempos muertos\ny crea un reel listo para compartir.",
         .selectVideo: "Seleccionar video",
+        .preparingVideo: "Preparando video...",
+        .cancelImport: "Cancelar importación",
         .smartHighlights: "Highlights inteligentes",
         .fastReels: "Reels rápidos",
         .autoTrim: "Auto recorte",
@@ -1029,6 +1037,8 @@ extension AppLanguage {
         .turnGamesTitle: "Transforme les matchs en Hoops Clips",
         .turnGamesSubtitle: "Trouve tes meilleures actions, coupe les temps morts\net crée un reel prêt à partager.",
         .selectVideo: "Choisir une vidéo",
+        .preparingVideo: "Préparation de la vidéo...",
+        .cancelImport: "Annuler l'import",
         .smartHighlights: "Highlights intelligents",
         .fastReels: "Reels rapides",
         .autoTrim: "Auto découpe",
