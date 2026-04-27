@@ -8,4 +8,6 @@ node_modules
 services/control-plane/node_modules
 services/control-plane/.wrangler
 services/inference/.venv
+backend/.external/
+backend/.venvs/
 **/__pycache__/

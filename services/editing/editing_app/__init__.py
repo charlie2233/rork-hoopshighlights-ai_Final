@@ -1,0 +1,1 @@
+"""HoopClips cloud editing service."""

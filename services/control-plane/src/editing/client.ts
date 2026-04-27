@@ -1,0 +1,103 @@
+import type { Env } from "../env";
+import type { EditingDownloadUrlResponse, EditingRenderJobResponse, StartEditRenderRequest } from "../types";
+
+export async function createEditingRenderJob(
+  env: Env,
+  editJobId: string,
+  requestId: string,
+  payload: StartEditRenderRequest
+): Promise<Response> {
+  if (!env.EDITING_BASE_URL) {
+    return editingUnavailable(requestId, "Editing service is not configured.");
+  }
+  const response = await fetch(`${env.EDITING_BASE_URL.replace(/\/+$/, "")}/v1/edit-jobs/${encodeURIComponent(editJobId)}/render`, {
+    method: "POST",
+    headers: editingHeaders(env, requestId),
+    body: JSON.stringify({
+      installId: payload.installId,
+      sourceObjectKey: payload.sourceObjectKey,
+      planTier: payload.planTier ?? "free",
+      editPlan: payload.editPlan,
+      sourceClips: payload.sourceClips ?? []
+    })
+  });
+  return proxyEditingJsonResponse(response, requestId);
+}
+
+export async function getEditingRenderJob(
+  env: Env,
+  editJobId: string,
+  requestId: string,
+  installId: string | null
+): Promise<Response> {
+  if (!env.EDITING_BASE_URL) {
+    return editingUnavailable(requestId, "Editing service is not configured.");
+  }
+  const url = new URL(`${env.EDITING_BASE_URL.replace(/\/+$/, "")}/v1/edit-jobs/${encodeURIComponent(editJobId)}/render-status`);
+  if (installId) {
+    url.searchParams.set("installId", installId);
+  }
+  return proxyEditingJsonResponse(await fetch(url, { headers: editingHeaders(env, requestId, installId) }), requestId);
+}
+
+export async function getEditingDownloadUrl(
+  env: Env,
+  editJobId: string,
+  requestId: string,
+  installId: string | null
+): Promise<Response> {
+  if (!env.EDITING_BASE_URL) {
+    return editingUnavailable(requestId, "Editing service is not configured.");
+  }
+  const url = new URL(`${env.EDITING_BASE_URL.replace(/\/+$/, "")}/v1/edit-jobs/${encodeURIComponent(editJobId)}/download-url`);
+  if (installId) {
+    url.searchParams.set("installId", installId);
+  }
+  return proxyEditingJsonResponse(await fetch(url, { headers: editingHeaders(env, requestId, installId) }), requestId);
+}
+
+function editingHeaders(env: Env, requestId: string, installId?: string | null): Headers {
+  const headers = new Headers({
+    "content-type": "application/json",
+    "x-request-id": requestId,
+    "x-trace-id": requestId
+  });
+  if (env.EDITING_SHARED_SECRET) {
+    headers.set("x-hoops-editing-secret", env.EDITING_SHARED_SECRET);
+  }
+  if (installId) {
+    headers.set("x-hoops-install-id", installId);
+  }
+  return headers;
+}
+
+async function proxyEditingJsonResponse(response: Response, requestId: string): Promise<Response> {
+  const payload = (await response.json().catch(() => ({ errorCode: "editing_bad_response", errorMessage: "Editing service returned a non-JSON response." }))) as
+    | EditingRenderJobResponse
+    | EditingDownloadUrlResponse
+    | Record<string, unknown>;
+  return Response.json(
+    {
+      requestId,
+      ...payload
+    },
+    {
+      status: response.status,
+      headers: {
+        "x-request-id": requestId
+      }
+    }
+  );
+}
+
+function editingUnavailable(requestId: string, message: string): Response {
+  return Response.json(
+    {
+      requestId,
+      errorCode: "editing_service_unconfigured",
+      errorMessage: message,
+      failureReason: message
+    },
+    { status: 503, headers: { "x-request-id": requestId } }
+  );
+}
