@@ -342,6 +342,8 @@ struct VideoPlayerView: View {
             } else if !viewModel.clips.isEmpty {
                 analysisCompleteView
             } else {
+                targetHighlightLengthControl
+
                 if !subscriptionManager.isProUser || viewModel.cloudQuotaRemaining != nil {
                     HStack(spacing: 8) {
                         Image(systemName: "sparkles")
@@ -397,6 +399,83 @@ struct VideoPlayerView: View {
         }
         .padding(16)
         .rorkCard(cornerRadius: 18, stroke: AppTheme.softBorder)
+    }
+
+    private var targetHighlightLengthControl: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 10) {
+                ZStack {
+                    Circle()
+                        .fill(AppTheme.warningYellow.opacity(0.14))
+                        .frame(width: 34, height: 34)
+                    Image(systemName: "timer.circle.fill")
+                        .font(.headline)
+                        .foregroundStyle(AppTheme.warningYellow)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(languageStore.text(.settingsTargetHighlight))
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.white)
+                    Text(languageStore.text(.settingsTargetHighlightHelp))
+                        .font(.caption2)
+                        .foregroundStyle(AppTheme.subtleText)
+                        .lineLimit(2)
+                }
+
+                Spacer(minLength: 0)
+
+                Text(formattedTargetDuration(viewModel.settings.targetHighlightDuration))
+                    .font(.subheadline.weight(.bold).monospacedDigit())
+                    .foregroundStyle(AppTheme.warningYellow)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(AppTheme.warningYellow.opacity(0.12), in: .capsule)
+            }
+
+            HStack(spacing: 8) {
+                ForEach([30.0, 45.0, 60.0, 90.0], id: \.self) { preset in
+                    targetDurationPresetButton(preset)
+                }
+            }
+
+            Slider(value: $viewModel.settings.targetHighlightDuration, in: 15.0...180.0, step: 5.0)
+                .tint(AppTheme.warningYellow)
+        }
+        .padding(14)
+        .rorkCard(
+            cornerRadius: 16,
+            fill: AnyShapeStyle(AppTheme.surfaceBg.opacity(0.68)),
+            stroke: AppTheme.warningYellow.opacity(0.18),
+            glow: AppTheme.warningYellow,
+            glowOpacity: 0.04
+        )
+    }
+
+    private func targetDurationPresetButton(_ duration: Double) -> some View {
+        let isSelected = abs(viewModel.settings.targetHighlightDuration - duration) < 0.1
+
+        return Button {
+            withAnimation(.snappy(duration: 0.18)) {
+                viewModel.settings.targetHighlightDuration = duration
+            }
+        } label: {
+            Text(formattedTargetDuration(duration))
+                .font(.caption.weight(.semibold).monospacedDigit())
+                .foregroundStyle(isSelected ? AppTheme.darkBg : AppTheme.warningYellow)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+                .background(
+                    isSelected ? AppTheme.warningYellow : AppTheme.warningYellow.opacity(0.10),
+                    in: .capsule
+                )
+                .overlay(
+                    Capsule()
+                        .stroke(AppTheme.warningYellow.opacity(isSelected ? 0 : 0.28), lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Set target highlight length to \(formattedTargetDuration(duration))")
     }
 
     private var analysisProgressView: some View {
@@ -505,6 +584,19 @@ struct VideoPlayerView: View {
         let mins = Int(seconds) / 60
         let secs = Int(seconds) % 60
         return String(format: "%d:%02d", mins, secs)
+    }
+
+    private func formattedTargetDuration(_ seconds: Double) -> String {
+        if seconds < 60 {
+            return "\(Int(seconds))s"
+        }
+
+        let minutes = Int(seconds) / 60
+        let remainingSeconds = Int(seconds) % 60
+        if remainingSeconds == 0 {
+            return "\(minutes)m"
+        }
+        return "\(minutes)m \(remainingSeconds)s"
     }
 
     private var analysisBannerText: String {
