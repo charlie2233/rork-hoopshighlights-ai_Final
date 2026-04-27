@@ -200,12 +200,17 @@ struct HoopsClipsTests {
     @Test func testBundledMusicTracksHaveUniqueFilenames() {
         let filenames = MusicTrack.allCases.compactMap(\.filename)
 
-        #expect(MusicTrack.allCases.count >= 12)
+        #expect(MusicTrack.allCases.count >= 17)
         #expect(filenames.count == Set(filenames).count)
         #expect(filenames.contains("arena_bounce.m4a"))
         #expect(filenames.contains("fast_break.m4a"))
         #expect(filenames.contains("halftime_funk.m4a"))
         #expect(filenames.contains("clutch_time.m4a"))
+        #expect(filenames.contains("real_lofi_court.m4a"))
+        #expect(filenames.contains("real_upbeat_warmup.m4a"))
+        #expect(filenames.contains("real_the_rush.m4a"))
+        #expect(filenames.contains("real_hiphop_theme.m4a"))
+        #expect(filenames.contains("real_atmospheric_drive.m4a"))
         #expect(filenames.contains("retro_arcade.m4a"))
         #expect(filenames.contains("victory_lap.m4a"))
 

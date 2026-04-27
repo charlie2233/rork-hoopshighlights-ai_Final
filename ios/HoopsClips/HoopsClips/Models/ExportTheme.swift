@@ -50,9 +50,14 @@ nonisolated enum MusicTrack: String, CaseIterable, Codable, Sendable, Identifiab
     case fastBreak = "Fast Break"
     case dramatic = "Dramatic"
     case lofi = "Lo-Fi"
+    case realLofiCourt = "Lofi Court"
+    case realUpbeatWarmup = "Upbeat Warmup"
     case halftimeFunk = "Halftime Funk"
     case clutchTime = "Clutch Time"
     case trap = "Trap Beat"
+    case realTheRush = "The Rush"
+    case realHipHopTheme = "Hip-Hop Theme"
+    case realAtmosphericDrive = "Atmospheric Drive"
     case retroArcade = "Retro Arcade"
     case victoryLap = "Victory Lap"
     case orchestral = "Orchestral"
@@ -68,9 +73,14 @@ nonisolated enum MusicTrack: String, CaseIterable, Codable, Sendable, Identifiab
         case .fastBreak: return "hare.fill"
         case .dramatic: return "music.note.list"
         case .lofi: return "headphones"
+        case .realLofiCourt: return "moon.stars.fill"
+        case .realUpbeatWarmup: return "sun.max.fill"
         case .halftimeFunk: return "figure.dance"
         case .clutchTime: return "timer"
         case .trap: return "waveform"
+        case .realTheRush: return "bolt.fill"
+        case .realHipHopTheme: return "music.mic"
+        case .realAtmosphericDrive: return "sparkles"
         case .retroArcade: return "gamecontroller.fill"
         case .victoryLap: return "trophy.fill"
         case .orchestral: return "music.quarternote.3"
@@ -80,9 +90,9 @@ nonisolated enum MusicTrack: String, CaseIterable, Codable, Sendable, Identifiab
 
     var requiresPro: Bool {
         switch self {
-        case .dramatic, .halftimeFunk, .clutchTime, .trap, .retroArcade, .victoryLap, .orchestral, .custom:
+        case .dramatic, .halftimeFunk, .clutchTime, .trap, .realTheRush, .realHipHopTheme, .realAtmosphericDrive, .retroArcade, .victoryLap, .orchestral, .custom:
             return true
-        case .none, .energetic, .arenaBounce, .fastBreak, .lofi:
+        case .none, .energetic, .arenaBounce, .fastBreak, .lofi, .realLofiCourt, .realUpbeatWarmup:
             return false
         }
     }
@@ -95,9 +105,14 @@ nonisolated enum MusicTrack: String, CaseIterable, Codable, Sendable, Identifiab
         case .fastBreak: return "Fast tempo for transition buckets and quick cuts"
         case .dramatic: return "Big build for cinematic moments"
         case .lofi: return "Chill warmup feel for smooth edits"
+        case .realLofiCourt: return "Real CC0 lofi loop for smooth court edits"
+        case .realUpbeatWarmup: return "Real CC0 upbeat loop for quick highlight warmups"
         case .halftimeFunk: return "Groovy halftime rhythm for mixtape cuts"
         case .clutchTime: return "Darker tension for close-game moments"
         case .trap: return "Bass-forward beat for hype reels"
+        case .realTheRush: return "Real CC0 action track for high-energy reels"
+        case .realHipHopTheme: return "Real CC0 instrumental hip-hop with a classic pulse"
+        case .realAtmosphericDrive: return "Real CC0 electronic drive for cinematic exports"
         case .retroArcade: return "Playful arcade synth for fun edits"
         case .victoryLap: return "Upbeat finish for trophy-style reels"
         case .orchestral: return "Epic soundtrack for dramatic reels"
@@ -113,9 +128,14 @@ nonisolated enum MusicTrack: String, CaseIterable, Codable, Sendable, Identifiab
         case .fastBreak: return "fast_break.m4a"
         case .dramatic: return "dramatic.mp3"
         case .lofi: return "lofi.mp3"
+        case .realLofiCourt: return "real_lofi_court.m4a"
+        case .realUpbeatWarmup: return "real_upbeat_warmup.m4a"
         case .halftimeFunk: return "halftime_funk.m4a"
         case .clutchTime: return "clutch_time.m4a"
         case .trap: return "trap.mp3"
+        case .realTheRush: return "real_the_rush.m4a"
+        case .realHipHopTheme: return "real_hiphop_theme.m4a"
+        case .realAtmosphericDrive: return "real_atmospheric_drive.m4a"
         case .retroArcade: return "retro_arcade.m4a"
         case .victoryLap: return "victory_lap.m4a"
         case .orchestral: return "orchestral.mp3"
