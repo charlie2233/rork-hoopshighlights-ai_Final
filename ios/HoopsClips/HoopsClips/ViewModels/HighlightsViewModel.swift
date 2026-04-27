@@ -341,6 +341,20 @@ final class HighlightsViewModel {
         }
     }
 
+    func clearProjectHistory() {
+        do {
+            try projectStore.deleteAllProjects()
+            projectLibrary = .empty
+        } catch {
+            print("Failed to clear project history: \(error.localizedDescription)")
+            projectLibrary = .empty
+            saveProjectLibrary()
+        }
+
+        currentProjectID = nil
+        clearLiveProjectState()
+    }
+
     func projectSourceURL(for project: PersistedProjectRecord) -> URL? {
         projectStore.existingURL(for: project.sourceRelativePath)
     }

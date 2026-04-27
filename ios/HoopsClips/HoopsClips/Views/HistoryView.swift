@@ -5,6 +5,9 @@ import UIKit
 struct HistoryView: View {
     @Bindable var viewModel: HighlightsViewModel
     @State private var selectedProject: PersistedProjectRecord?
+    @State private var projectPendingDeletion: PersistedProjectRecord?
+    @State private var showingDeleteProjectConfirmation = false
+    @State private var showingClearHistoryConfirmation = false
 
     var body: some View {
         NavigationStack {
@@ -44,6 +47,16 @@ struct HistoryView: View {
             .navigationBarTitleDisplayMode(.large)
             .toolbarBackground(AppTheme.darkBg, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    if !viewModel.historyProjects.isEmpty {
+                        Button("Clear") {
+                            showingClearHistoryConfirmation = true
+                        }
+                        .foregroundStyle(AppTheme.dangerRed)
+                    }
+                }
+            }
             .sheet(item: $selectedProject) { project in
                 HistoryProjectDetailView(
                     project: project,
@@ -59,6 +72,29 @@ struct HistoryView: View {
                         viewModel.deleteProject(id: project.id)
                     }
                 )
+            }
+            .alert("Delete this project?", isPresented: $showingDeleteProjectConfirmation, presenting: projectPendingDeletion) { project in
+                Button("Delete Project", role: .destructive) {
+                    viewModel.deleteProject(id: project.id)
+                    if selectedProject?.id == project.id {
+                        selectedProject = nil
+                    }
+                    projectPendingDeletion = nil
+                }
+                Button("Cancel", role: .cancel) {
+                    projectPendingDeletion = nil
+                }
+            } message: { project in
+                Text("This removes \"\(project.displayTitle)\" and its saved files from this device.")
+            }
+            .alert("Clear all history?", isPresented: $showingClearHistoryConfirmation) {
+                Button("Clear History", role: .destructive) {
+                    selectedProject = nil
+                    viewModel.clearProjectHistory()
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This deletes every saved Hoopclips project, including saved source videos, exports, thumbnails, and custom audio stored in history.")
             }
         }
     }
@@ -85,12 +121,37 @@ struct HistoryView: View {
             )
 
             ForEach(projects) { project in
-                Button {
-                    selectedProject = project
-                } label: {
-                    historyRow(for: project)
+                HStack(spacing: 10) {
+                    Button {
+                        selectedProject = project
+                    } label: {
+                        historyRow(for: project)
+                    }
+                    .buttonStyle(.plain)
+
+                    Button(role: .destructive) {
+                        requestDelete(project)
+                    } label: {
+                        Image(systemName: "trash.fill")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(AppTheme.dangerRed)
+                            .frame(width: 40, height: 56)
+                            .background(AppTheme.dangerRed.opacity(0.12), in: RoundedRectangle(cornerRadius: 14))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14)
+                                    .stroke(AppTheme.dangerRed.opacity(0.35), lineWidth: 1)
+                            )
+                            .accessibilityLabel("Delete \(project.displayTitle)")
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
+                .contextMenu {
+                    Button(role: .destructive) {
+                        requestDelete(project)
+                    } label: {
+                        Label("Delete Project", systemImage: "trash")
+                    }
+                }
             }
         }
         .padding(16)
@@ -181,6 +242,11 @@ struct HistoryView: View {
         .padding(.vertical, 4)
         .background(AppTheme.cardBg, in: Capsule())
     }
+
+    private func requestDelete(_ project: PersistedProjectRecord) {
+        projectPendingDeletion = project
+        showingDeleteProjectConfirmation = true
+    }
 }
 
 private struct HistoryProjectDetailView: View {
@@ -196,6 +262,7 @@ private struct HistoryProjectDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var previewPlayer: AVPlayer?
     @State private var previewTitle: String?
+    @State private var showingDeleteConfirmation = false
 
     var body: some View {
         NavigationStack {
@@ -230,6 +297,15 @@ private struct HistoryProjectDetailView: View {
         .onDisappear {
             previewPlayer?.pause()
             previewPlayer = nil
+        }
+        .alert("Delete this project?", isPresented: $showingDeleteConfirmation) {
+            Button("Delete Project", role: .destructive) {
+                onDeleteProject()
+                dismiss()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes \"\(project.displayTitle)\" and its saved files from this device.")
         }
     }
 
@@ -395,8 +471,7 @@ private struct HistoryProjectDetailView: View {
             .opacity(latestExportURL == nil ? 0.5 : 1.0)
 
             Button(role: .destructive) {
-                onDeleteProject()
-                dismiss()
+                showingDeleteConfirmation = true
             } label: {
                 actionLabel(
                     title: "Delete Project",

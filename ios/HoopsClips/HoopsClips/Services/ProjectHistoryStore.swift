@@ -216,6 +216,13 @@ final class ProjectHistoryStore {
         }
     }
 
+    func deleteAllProjects() throws {
+        if fileManager.fileExists(atPath: libraryRootURL.path) {
+            try fileManager.removeItem(at: libraryRootURL)
+        }
+        try saveLibrary(.empty)
+    }
+
     func url(for relativePath: String?) -> URL? {
         guard let relativePath, !relativePath.isEmpty else { return nil }
         return libraryRootURL.appending(path: relativePath, directoryHint: .notDirectory)
