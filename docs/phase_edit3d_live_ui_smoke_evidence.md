@@ -1,46 +1,37 @@
 # Phase Edit3d Live UI Smoke Evidence
 
-Date: April 28, 2026
+## Goal
 
-Branch: `codex/phase-edit3d-live-ui-smoke-evidence`
-
-## Summary
-
-The existing DEBUG UI smoke harness successfully proved the live iOS AI Edit path from the Review fixture through cloud render completion, native preview, and system share sheet.
-
-Proof chain:
+Run the existing DEBUG UI smoke harness for the iOS AI Edit Agent and document whether the live path reaches:
 
 ```text
 Review fixture
 -> Make Highlight Reel
--> Personal Highlight, 30s
--> live cloud render request
--> render status reaches rendered
--> MP4 preview appears
--> Share/Open In sheet appears
+-> Personal Highlight
+-> 30s target
+-> cloud render
+-> MP4 preview
+-> share sheet
 ```
 
-The passing run used the active staging Worker URL configured by the harness:
+The iOS app remains client-only. No local AI analysis, edit planning, video composition, or production rendering was added in this phase.
+
+## Branch
 
 ```text
-https://hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev
+codex/phase-edit3d-live-ui-smoke-evidence
+base commit: 753066e Add AI edit UI smoke harness
 ```
 
-No full presigned download URLs were logged.
+## Simulator
 
-## Environment
+```text
+Device: iPhone 17
+UDID: A46E2157-77ED-42CE-959D-65C068681A47
+Runtime: iOS 26.0.1
+```
 
-- Simulator: iPhone 17
-- Simulator UDID: `A46E2157-77ED-42CE-959D-65C068681A47`
-- Runtime: iOS 26.0.1
-- Result bundle for the passing live UI smoke:
-  `/tmp/hoopsclips-phase-edit3d-live-ui-20260428-101557.xcresult`
-- Result bundle for the supplemental render-status capture:
-  `/tmp/hoopsclips-phase-edit3d-live-ui-with-status-20260428-102303.xcresult`
-
-## Commands
-
-Simulator stabilization:
+Clean boot sequence was run:
 
 ```bash
 xcrun simctl shutdown all
@@ -49,90 +40,227 @@ xcrun simctl boot A46E2157-77ED-42CE-959D-65C068681A47
 xcrun simctl bootstatus A46E2157-77ED-42CE-959D-65C068681A47 -b
 ```
 
-Build validation:
+## Build Validation
+
+Passed:
 
 ```bash
 git diff --check
-xcodebuild -project ios/HoopsClips.xcodeproj -scheme HoopsClips -configuration Debug -destination 'generic/platform=iOS Simulator' build CODE_SIGNING_ALLOWED=NO
-xcodebuild -project ios/HoopsClips.xcodeproj -scheme HoopsClips -configuration Debug -destination 'generic/platform=iOS Simulator' build-for-testing CODE_SIGNING_ALLOWED=NO
 ```
 
-Focused live UI smoke:
+Passed:
+
+```bash
+xcodebuild build \
+  -project ios/HoopsClips.xcodeproj \
+  -scheme HoopsClips \
+  -configuration Debug \
+  -destination 'generic/platform=iOS Simulator' \
+  CODE_SIGNING_ALLOWED=NO
+```
+
+Passed:
+
+```bash
+xcodebuild build-for-testing \
+  -project ios/HoopsClips.xcodeproj \
+  -scheme HoopsClips \
+  -configuration Debug \
+  -destination 'platform=iOS Simulator,id=A46E2157-77ED-42CE-959D-65C068681A47' \
+  -derivedDataPath /tmp/hoopsclips-phase-edit3d-bft-derived \
+  OTHER_SWIFT_FLAGS='$(inherited) -D HOOPS_ENABLE_UI_SMOKE' \
+  CODE_SIGNING_ALLOWED=NO
+```
+
+## Fresh Worker Render Proof
+
+The existing Worker/backend smoke produced a playable cloud-rendered MP4 from a fresh staging source object.
+
+Important note: the first shell pipeline returned nonzero because `tee` was pointed at a file inside an output directory before the script created that directory. The script itself printed a passing JSON result and produced the rendered MP4.
+
+```text
+status: pass
+workerUrl: https://hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev
+sourceObjectKey: uploads/9939c51d8993440fb6f5c7ea23f80885/source.mp4
+editJobId: edit_5aca2a9fb5144e6ea6ae54e9696400e5
+renderJobId: render_f33f182f85f8456d81067c70e31cecb3
+outputObjectKey: edits/edit_5aca2a9fb5144e6ea6ae54e9696400e5/render_jobs/render_f33f182f85f8456d81067c70e31cecb3/final.mp4
+renderLogObjectKey: edits/edit_5aca2a9fb5144e6ea6ae54e9696400e5/render_jobs/render_f33f182f85f8456d81067c70e31cecb3/render_log.json
+downloadedPath: /private/tmp/hoopclips-phase-edit3d-worker-smoke/final.mp4
+media: 720x1280 H.264/AAC MP4, duration 14.422005s
+```
+
+## UI-Shaped Backend Contract Proof
+
+To separate backend behavior from the simulator runner, a UI-shaped backend request was run outside the app with:
+
+- Personal Highlight
+- 30 second target
+- 9:16 aspect ratio
+- free tier
+- two UUID-style source clips
+- the same staging source object used by the UI smoke
+
+It reached `rendered`.
+
+```text
+sourceObjectKey: uploads/9939c51d8993440fb6f5c7ea23f80885/source.mp4
+editJobId: edit_6229d152c86a4c49aa77a46890d60b87
+renderJobId: render_d5c6f96ae6ce4bc4b552fa546fb671b3
+status: rendered
+durationSeconds: 14.422
+outputObjectKey: edits/edit_6229d152c86a4c49aa77a46890d60b87/render_jobs/render_d5c6f96ae6ce4bc4b552fa546fb671b3/final.mp4
+renderLogObjectKey: edits/edit_6229d152c86a4c49aa77a46890d60b87/render_jobs/render_d5c6f96ae6ce4bc4b552fa546fb671b3/render_log.json
+failureReason: null
+```
+
+No presigned download URL was logged.
+
+## Live UI Smoke Attempt 1
+
+Command:
 
 ```bash
 xcodebuild test \
   -project ios/HoopsClips.xcodeproj \
   -scheme HoopsClips \
   -configuration Debug \
-  -destination "platform=iOS Simulator,id=A46E2157-77ED-42CE-959D-65C068681A47" \
+  -destination 'platform=iOS Simulator,id=A46E2157-77ED-42CE-959D-65C068681A47' \
   -only-testing:HoopsClipsUITests/HoopsClipsUITests/testLiveAIEditClientSmokeFlow \
   -parallel-testing-enabled NO \
   -derivedDataPath /tmp/hoopsclips-phase-edit3d-live-ui-derived \
-  -resultBundlePath /tmp/hoopsclips-phase-edit3d-live-ui-20260428-101557.xcresult \
+  -resultBundlePath /tmp/hoopsclips-phase-edit3d-live-ui.xcresult \
   OTHER_SWIFT_FLAGS='$(inherited) -D HOOPS_ENABLE_UI_SMOKE' \
   CODE_SIGNING_ALLOWED=NO
 ```
 
-## Validation Results
-
-- `git diff --check`: passed
-- Debug simulator build: passed
-- Debug `build-for-testing`: passed
-- Focused live UI smoke: passed
-- Live UI smoke result: `1` test passed, `0` failed, `0` skipped
-
-The focused UI smoke confirmed:
-
-- Review fixture appeared.
-- `Make Highlight Reel` was visible and tappable.
-- `Personal Highlight` style was visible.
-- `30s` target duration was selected.
-- Render was requested through the live UI.
-- Render status reached `rendered`.
-- Native MP4 preview appeared.
-- System share sheet opened with the downloaded MP4 handoff.
-
-## Evidence
-
-Review fixture:
-
-![Review fixture](phase_edit3d_live_ui_smoke_evidence_assets/phase_edit3d_review_fixture.png)
-
-Style picker:
-
-![Style picker](phase_edit3d_live_ui_smoke_evidence_assets/phase_edit3d_style_picker.png)
-
-Render status:
-
-![Render status](phase_edit3d_live_ui_smoke_evidence_assets/phase_edit3d_render_status.png)
-
-Rendered MP4 preview:
-
-![Rendered MP4 preview](phase_edit3d_live_ui_smoke_evidence_assets/phase_edit3d_preview.png)
-
-System share sheet:
-
-![System share sheet](phase_edit3d_live_ui_smoke_evidence_assets/phase_edit3d_share_sheet.png)
-
-## Run Notes
-
-The canonical passing result bundle captured Review, style picker, rendered preview, and share sheet screenshots. A supplemental follow-up run captured the in-progress render-status screenshot while the UI was in the `Queued` state. That follow-up run later ended with an XCTest runner signal-kill before preview/share, so it is not counted as the passing proof run.
-
-The passing proof remains the first focused live UI smoke result:
+Result:
 
 ```text
-result: Passed
-passedTests: 1
-failedTests: 0
-skippedTests: 0
+Failed: Test crashed with signal kill.
+Result bundle: /tmp/hoopsclips-phase-edit3d-live-ui.xcresult
 ```
 
-The smoke harness does not currently surface `editJobId`, `renderJobId`, final object key, or render log key to XCTest logs. Those values were therefore not recorded here. No full presigned download URL was logged.
+Evidence captured before the runner died:
 
-## Safety Checks
+```text
+/tmp/phase_edit3d_live_ui_attachments/0C3907EF-8EA8-416D-A777-1D640E71E487.png
+  suggested name: 01 Review Make Highlight Reel
 
-- No backend/rendering code was changed.
-- No iOS video rendering or local composition was introduced.
-- The iOS path remains preview/download/share only.
-- The share path uses the system share sheet for the downloaded MP4 handoff, not raw presigned URL sharing.
-- Unrelated root Xcode project folders were left untouched.
+/tmp/phase_edit3d_live_ui_attachments/66310A73-6EDB-4AEE-BFE4-05C949B480C1.png
+  suggested name: 02 AI Edit Style Picker
+```
+
+Observed progress:
+
+```text
+Review fixture appeared: yes
+Make Highlight Reel button visible and tapped: yes
+Personal Highlight selected: yes
+30s duration selected: yes
+render requested: yes
+render status reached rendered: no
+preview appeared: no
+share sheet appeared: no
+```
+
+## Live UI Smoke Attempt 2
+
+The test was retried with Xcode test timeouts disabled:
+
+```bash
+xcodebuild test \
+  -project ios/HoopsClips.xcodeproj \
+  -scheme HoopsClips \
+  -configuration Debug \
+  -destination 'platform=iOS Simulator,id=A46E2157-77ED-42CE-959D-65C068681A47' \
+  -only-testing:HoopsClipsUITests/HoopsClipsUITests/testLiveAIEditClientSmokeFlow \
+  -parallel-testing-enabled NO \
+  -derivedDataPath /tmp/hoopsclips-phase-edit3d-live-ui-derived \
+  -resultBundlePath /tmp/hoopsclips-phase-edit3d-live-ui-retry.xcresult \
+  -test-timeouts-enabled NO \
+  OTHER_SWIFT_FLAGS='$(inherited) -D HOOPS_ENABLE_UI_SMOKE' \
+  CODE_SIGNING_ALLOWED=NO
+```
+
+Result:
+
+```text
+Failed: Test crashed with signal term.
+Runner log included: [XPCErrors] [C:1] Error received: Connection interrupted.
+Result bundle: /tmp/hoopsclips-phase-edit3d-live-ui-retry.xcresult
+```
+
+Evidence captured before the runner died:
+
+```text
+/tmp/phase_edit3d_live_ui_retry_attachments/C0915682-84FC-48EC-8359-5303ECF37D92.png
+  suggested name: 01 Review Make Highlight Reel
+
+/tmp/phase_edit3d_live_ui_retry_attachments/3498A91F-A579-4ACF-B31E-4F7D4003F4F2.png
+  suggested name: 02 AI Edit Style Picker
+
+/tmp/phase_edit3d_live_ui_retry_attachments/B1D8743A-AB4C-421F-B311-3FF96D2BDD83.png
+  suggested name: 03 AI Edit Render Status
+```
+
+Additional simulator screenshots:
+
+```text
+/tmp/phase_edit3d_after_retry.png
+/tmp/phase_edit3d_30s_after_retry.png
+```
+
+Observed progress:
+
+```text
+Review fixture appeared: yes
+Make Highlight Reel button visible and tapped: yes
+Personal Highlight selected: yes
+30s duration selected: yes
+render requested: yes
+visible status before runner failure: Queued
+render status reached rendered: no
+preview appeared: no
+share sheet appeared: no
+```
+
+## Current Interpretation
+
+The backend and the UI-shaped payload are capable of rendering through the active Worker path. The remaining live UI proof is blocked by the simulator/XCTest connection dying before the app reaches preview/share.
+
+This phase did not prove preview/share through the live UI. It did prove:
+
+- app launch in smoke mode
+- Review fixture seeding
+- AI Edit sheet presentation
+- Personal Highlight and 30s selection
+- render request initiation
+- render status UI entering `Queued`
+- backend render correctness with the same source object and UI-shaped request
+
+## Remaining Blocker
+
+The full live UI path is still blocked at:
+
+```text
+XCTest runner / simulator connection dies while the AI Edit UI is polling render status.
+```
+
+Observed failure signatures:
+
+```text
+Test crashed with signal kill
+Test crashed with signal term
+[XPCErrors] [C:1] Error received: Connection interrupted.
+```
+
+The next debugging step should be narrow: add DEBUG-only diagnostics that expose the current `editJobId`, `renderJobId`, last poll status, and last poll error to the UI smoke evidence without logging presigned URLs. That will distinguish:
+
+- app poll loop not issuing status requests
+- status requests hanging
+- status responses staying queued
+- app task cancellation when the XCTest runner dies
+- real backend delay
+
+Do not start revision commands until this live UI proof reaches preview/share or this blocker is explicitly accepted.
