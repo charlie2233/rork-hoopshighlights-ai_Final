@@ -725,23 +725,21 @@ final class HighlightsViewModel {
 
     #if DEBUG
     private static var isAIEditLiveSmokeEnabled: Bool {
-        ProcessInfo.processInfo.arguments.contains("--hoops-ai-edit-live-smoke")
+        AIEditUISmokeConfig.isEnabled
     }
 
     private static func applyAIEditLiveSmokeRuntimeOverrides() {
         guard isAIEditLiveSmokeEnabled else { return }
 
-        let environment = ProcessInfo.processInfo.environment
-        let workerURL = environment["HOOPS_SMOKE_WORKER_URL"]?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        if let workerURL, !workerURL.isEmpty {
-            UserDefaults.standard.set(workerURL, forKey: "hoops.cloudAnalysisBaseURL")
-            UserDefaults.standard.set(workerURL, forKey: "hoops.cloudEditBaseURL")
+        if let analysisURL = AIEditUISmokeConfig.cloudAnalysisBaseURL {
+            UserDefaults.standard.set(analysisURL, forKey: "hoops.cloudAnalysisBaseURL")
         }
 
-        let installID = environment["HOOPS_SMOKE_INSTALL_ID"]?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        if let installID, !installID.isEmpty {
+        if let editURL = AIEditUISmokeConfig.cloudEditBaseURL {
+            UserDefaults.standard.set(editURL, forKey: "hoops.cloudEditBaseURL")
+        }
+
+        if let installID = AIEditUISmokeConfig.installID {
             UserDefaults.standard.set(installID, forKey: "hoopsclips.installID.v1")
         }
     }
@@ -749,10 +747,8 @@ final class HighlightsViewModel {
     private func applyAIEditLiveSmokeProjectIfNeeded() {
         guard Self.isAIEditLiveSmokeEnabled else { return }
 
-        let environment = ProcessInfo.processInfo.environment
-        let sourceObjectKey = environment["HOOPS_SMOKE_SOURCE_OBJECT_KEY"]?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let sourceObjectKey, !sourceObjectKey.isEmpty else { return }
+        let fixture = AIEditUISmokeConfig.fixture
+        guard let resolvedSourceObjectKey = AIEditUISmokeConfig.sourceObjectKey else { return }
 
         currentProjectID = nil
         videoURL = nil
@@ -760,8 +756,8 @@ final class HighlightsViewModel {
         videoThumbnail = nil
         isVideoLoaded = false
         analysisMode = .cloud
-        cloudAnalysisJobID = "phase-edit3b-live-smoke-analysis"
-        cloudEditSourceObjectKey = sourceObjectKey
+        cloudAnalysisJobID = "phase-edit3c-\(fixture.rawValue)-analysis"
+        cloudEditSourceObjectKey = resolvedSourceObjectKey
         lastAnalysisStatusSummary = "Found 2 highlights"
         lastAnalyzedAt = Date()
         cloudQuotaRemaining = nil

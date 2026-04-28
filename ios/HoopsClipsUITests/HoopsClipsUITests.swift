@@ -56,47 +56,52 @@ final class HoopsClipsUITests: XCTestCase {
 
     @MainActor
     func testLiveAIEditClientSmokeFlow() throws {
-        let sourceObjectKey = ProcessInfo.processInfo.environment["HOOPS_SMOKE_SOURCE_OBJECT_KEY"]
-            ?? "uploads/25a101ba8d234fd98094bd112276161f/source.mp4"
-        let workerURL = ProcessInfo.processInfo.environment["HOOPS_SMOKE_WORKER_URL"]
-            ?? "https://hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev"
-        let installID = ProcessInfo.processInfo.environment["HOOPS_SMOKE_INSTALL_ID"]
-            ?? "phase-edit3b-live-ui-smoke"
+        try skipUnlessAIEditUISmokeIsEnabled()
+        executionTimeAllowance = 600
 
-        XCUIDevice.shared.orientation = .portrait
+        let smokeConfig = loadAIEditUISmokeConfig()
+        let app = launchAIEditSmokeApp(
+            fixture: "staging_render_ready",
+            sourceObjectKey: smokeConfig.sourceObjectKey,
+            workerURL: smokeConfig.workerURL,
+            installID: smokeConfig.installID
+        )
 
-        let app = XCUIApplication()
-        app.launchArguments = ["--hoops-ai-edit-live-smoke"]
-        app.launchEnvironment["HOOPS_SMOKE_SOURCE_OBJECT_KEY"] = sourceObjectKey
-        app.launchEnvironment["HOOPS_SMOKE_WORKER_URL"] = workerURL
-        app.launchEnvironment["HOOPS_SMOKE_INSTALL_ID"] = installID
-        app.launch()
+        openAIEditSheet(from: app)
 
-        let reviewTab = app.tabBars.buttons["Review"]
-        XCTAssertTrue(reviewTab.waitForExistence(timeout: 10), "Review tab should be available in the smoke guest session.")
-        reviewTab.tap()
-
-        XCTAssertTrue(app.staticTexts["Make Highlight Reel"].waitForExistence(timeout: 10))
-        let entryButton = app.buttons["review.createAIEditButton"]
-        XCTAssertTrue(entryButton.waitForExistence(timeout: 10))
-        XCTAssertTrue(entryButton.isEnabled, "AI edit entry should be enabled for smoke-seeded cloud clips.")
-        attachScreenshot(named: "01 Review Make Highlight Reel", app: app)
-        entryButton.tap()
-
-        XCTAssertTrue(app.navigationBars["AI Edit"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.staticTexts["Personal Highlight"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.buttons["30 seconds"].firstMatch.exists)
+        XCTAssertTrue(app.buttons["edit.style.personalHighlightButton"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["edit.duration.30sButton"].firstMatch.exists)
         attachScreenshot(named: "02 AI Edit Style Picker", app: app)
 
-        app.buttons["aiEdit.createRenderButton"].tap()
-        XCTAssertTrue(waitForRenderedState(in: app, timeout: 180), "Cloud render should reach Rendered through the live Worker path.")
+        app.buttons["edit.render.startButton"].tap()
+        XCTAssertTrue(waitForRenderedState(in: app, timeout: 300), "Cloud render should reach Rendered through the live Worker path.")
+        XCTAssertTrue(app.descendants(matching: .any)["edit.preview.player"].waitForExistence(timeout: 20))
         attachScreenshot(named: "03 AI Edit Rendered Preview", app: app)
 
-        let shareButton = app.buttons["aiEdit.shareButton"]
+        let shareButton = app.buttons["edit.share.button"]
         XCTAssertTrue(shareButton.waitForExistence(timeout: 20))
         shareButton.tap()
         XCTAssertTrue(waitForSystemShareSurface(in: app, timeout: 60), "System share sheet should open with the downloaded MP4 file.")
         attachScreenshot(named: "04 AI Edit Share Sheet", app: app)
+    }
+
+    @MainActor
+    func testAIEditFailureFixtureShowsFailureReason() throws {
+        try skipUnlessAIEditUISmokeIsEnabled()
+
+        let smokeConfig = loadAIEditUISmokeConfig()
+        let app = launchAIEditSmokeApp(
+            fixture: "failing_render",
+            sourceObjectKey: nil,
+            workerURL: smokeConfig.workerURL,
+            installID: "phase-edit3c-failure-ui-smoke"
+        )
+        openAIEditSheet(from: app)
+
+        app.buttons["edit.render.startButton"].tap()
+        let failureReason = app.staticTexts["edit.failure.reasonLabel"]
+        XCTAssertTrue(failureReason.waitForExistence(timeout: 10), "Failed render fixture should show a user-facing failure reason.")
+        attachScreenshot(named: "AI Edit Failure Fixture", app: app)
     }
 
     @MainActor
@@ -110,17 +115,25 @@ final class HoopsClipsUITests: XCTestCase {
     @MainActor
     private func waitForRenderedState(in app: XCUIApplication, timeout: TimeInterval) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
+        let statusLabel = app.descendants(matching: .any)["edit.status.label"]
+        var lastStatus = "<missing>"
         while Date() < deadline {
-            if app.staticTexts["Rendered"].exists {
+            if statusLabel.exists {
+                lastStatus = (statusLabel.value as? String) ?? statusLabel.label
+            }
+            if lastStatus == "Rendered" {
                 return true
             }
-            if app.staticTexts["Failed"].exists {
+            if lastStatus == "Failed" {
                 attachScreenshot(named: "AI Edit Failed", app: app)
-                XCTFail(app.staticTexts.containing(NSPredicate(format: "label CONTAINS[c] %@", "failed")).firstMatch.label)
+                let failureReason = app.staticTexts["edit.failure.reasonLabel"].firstMatch
+                XCTFail(failureReason.exists ? failureReason.label : "AI edit failed before rendering.")
                 return false
             }
             RunLoop.current.run(until: Date().addingTimeInterval(2))
         }
+        attachScreenshot(named: "AI Edit Render Timeout", app: app)
+        XCTFail("Timed out waiting for Rendered status. Last status: \(lastStatus)")
         return false
     }
 
@@ -139,10 +152,87 @@ final class HoopsClipsUITests: XCTestCase {
     }
 
     @MainActor
+    private func launchAIEditSmokeApp(
+        fixture: String,
+        sourceObjectKey: String?,
+        workerURL: String,
+        installID: String
+    ) -> XCUIApplication {
+        XCUIDevice.shared.orientation = .portrait
+
+        let app = XCUIApplication()
+        app.launchArguments = ["--hoops-ai-edit-live-smoke"]
+        app.launchEnvironment["HOOPS_UI_SMOKE_MODE"] = "1"
+        app.launchEnvironment["HOOPS_AI_EDIT_TEST_FIXTURE"] = fixture
+        app.launchEnvironment["HOOPS_CLOUD_ANALYSIS_BASE_URL"] = workerURL
+        app.launchEnvironment["HOOPS_CLOUD_EDIT_BASE_URL"] = workerURL
+        app.launchEnvironment["HOOPS_SMOKE_WORKER_URL"] = workerURL
+        app.launchEnvironment["HOOPS_SMOKE_INSTALL_ID"] = installID
+        if let sourceObjectKey {
+            app.launchEnvironment["HOOPS_SMOKE_SOURCE_OBJECT_KEY"] = sourceObjectKey
+        }
+        app.launch()
+        return app
+    }
+
+    private func skipUnlessAIEditUISmokeIsEnabled() throws {
+        #if HOOPS_ENABLE_UI_SMOKE
+        return
+        #else
+        throw XCTSkip("Skipped by default. Rebuild this test with OTHER_SWIFT_FLAGS='$(inherited) -D HOOPS_ENABLE_UI_SMOKE' to run AI Edit UI smoke.")
+        #endif
+    }
+
+    private func loadAIEditUISmokeConfig() -> AIEditUISmokeConfig {
+        let environment = ProcessInfo.processInfo.environment
+        let configPath = environment["HOOPS_UI_SMOKE_CONFIG_PATH"] ?? "/tmp/hoopsclips-ai-edit-ui-smoke.json"
+        let fileConfig: AIEditUISmokeConfig?
+        if let data = try? Data(contentsOf: URL(fileURLWithPath: configPath)) {
+            fileConfig = try? JSONDecoder().decode(AIEditUISmokeConfig.self, from: data)
+        } else {
+            fileConfig = nil
+        }
+
+        return AIEditUISmokeConfig(
+            workerURL: environment["HOOPS_SMOKE_WORKER_URL"]
+                ?? fileConfig?.workerURL
+                ?? "https://hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev",
+            sourceObjectKey: environment["HOOPS_SMOKE_SOURCE_OBJECT_KEY"]
+                ?? fileConfig?.sourceObjectKey
+                ?? "uploads/25a101ba8d234fd98094bd112276161f/source.mp4",
+            installID: environment["HOOPS_SMOKE_INSTALL_ID"]
+                ?? fileConfig?.installID
+                ?? "phase-edit3c-live-ui-smoke"
+        )
+    }
+
+    @MainActor
+    private func openAIEditSheet(from app: XCUIApplication) {
+        let reviewTab = app.tabBars.buttons["Review"]
+        XCTAssertTrue(reviewTab.waitForExistence(timeout: 10), "Review tab should be available in the smoke guest session.")
+        reviewTab.tap()
+
+        XCTAssertTrue(app.staticTexts["Make Highlight Reel"].waitForExistence(timeout: 10))
+        let entryButton = app.buttons["review.makeHighlightReelButton"]
+        XCTAssertTrue(entryButton.waitForExistence(timeout: 10))
+        XCTAssertTrue(entryButton.isEnabled, "AI edit entry should be enabled for smoke-seeded cloud clips.")
+        attachScreenshot(named: "01 Review Make Highlight Reel", app: app)
+        entryButton.tap()
+
+        XCTAssertTrue(app.navigationBars["AI Edit"].waitForExistence(timeout: 10))
+    }
+
+    @MainActor
     private func attachScreenshot(named name: String, app: XCUIApplication) {
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)
+    }
+
+    private struct AIEditUISmokeConfig: Decodable {
+        var workerURL: String
+        var sourceObjectKey: String?
+        var installID: String
     }
 }

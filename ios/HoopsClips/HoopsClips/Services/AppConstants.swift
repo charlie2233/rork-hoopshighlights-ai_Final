@@ -59,11 +59,11 @@ enum AppConstants {
     }
 
     static var cloudAnalysisEnabled: Bool {
-        runtimeConfig.allowsCloudAnalysisRequests
+        runtimeConfig.allowsCloudAnalysisRequests || (runtimeConfig.isDebug && !cloudAnalysisBaseURL.isEmpty)
     }
 
     static var cloudEditEnabled: Bool {
-        runtimeConfig.allowsCloudEditRequests
+        runtimeConfig.allowsCloudEditRequests || (runtimeConfig.isDebug && !cloudEditBaseURL.isEmpty)
     }
 
     static var cloudLaunchStatusLabel: String {

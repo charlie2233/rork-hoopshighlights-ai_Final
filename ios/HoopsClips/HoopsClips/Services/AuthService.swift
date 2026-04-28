@@ -49,7 +49,7 @@ final class AuthService {
     init(emailAuthClient: FirebaseEmailAuthClient? = nil) {
         self.emailAuthClient = emailAuthClient ?? FirebaseEmailAuthClient(apiKey: AppConstants.firebaseAuthAPIKey)
         #if DEBUG
-        if Self.isAIEditLiveSmokeEnabled {
+        if AIEditUISmokeConfig.isEnabled {
             setUser(Self.aiEditLiveSmokeUser)
             return
         }
@@ -299,12 +299,68 @@ final class AuthService {
     }
 
     #if DEBUG
-    private static var isAIEditLiveSmokeEnabled: Bool {
-        ProcessInfo.processInfo.arguments.contains("--hoops-ai-edit-live-smoke")
-    }
-
     private static var aiEditLiveSmokeUser: AuthUser {
-        AuthUser(id: "phase-edit3b-live-smoke", displayName: "Smoke Guest", authMethod: .anonymous)
+        AuthUser(id: "phase-edit3c-ui-smoke", displayName: "Smoke Guest", authMethod: .anonymous)
     }
     #endif
 }
+
+#if DEBUG
+enum AIEditUITestFixture: String {
+    case stagingRenderReady = "staging_render_ready"
+    case failingRender = "failing_render"
+}
+
+enum AIEditUISmokeConfig {
+    static var isEnabled: Bool {
+        ProcessInfo.processInfo.arguments.contains("--hoops-ai-edit-live-smoke")
+            || truthy(environment["HOOPS_UI_SMOKE_MODE"])
+    }
+
+    static var fixture: AIEditUITestFixture {
+        let rawFixture = trimmed(environment["HOOPS_AI_EDIT_TEST_FIXTURE"]) ?? ""
+        return AIEditUITestFixture(rawValue: rawFixture) ?? .stagingRenderReady
+    }
+
+    static var sourceObjectKey: String? {
+        trimmed(environment["HOOPS_SMOKE_SOURCE_OBJECT_KEY"])
+            ?? sourceObjectKey(for: fixture)
+    }
+
+    static var cloudAnalysisBaseURL: String? {
+        trimmed(environment["HOOPS_CLOUD_ANALYSIS_BASE_URL"])
+            ?? trimmed(environment["HOOPS_SMOKE_WORKER_URL"])
+    }
+
+    static var cloudEditBaseURL: String? {
+        trimmed(environment["HOOPS_CLOUD_EDIT_BASE_URL"])
+            ?? trimmed(environment["HOOPS_SMOKE_WORKER_URL"])
+            ?? trimmed(environment["HOOPS_CLOUD_ANALYSIS_BASE_URL"])
+    }
+
+    static var installID: String? {
+        trimmed(environment["HOOPS_SMOKE_INSTALL_ID"])
+    }
+
+    private static var environment: [String: String] {
+        ProcessInfo.processInfo.environment
+    }
+
+    private static func sourceObjectKey(for fixture: AIEditUITestFixture) -> String? {
+        switch fixture {
+        case .stagingRenderReady, .failingRender:
+            return "uploads/25a101ba8d234fd98094bd112276161f/source.mp4"
+        }
+    }
+
+    private static func truthy(_ rawValue: String?) -> Bool {
+        guard let value = trimmed(rawValue)?.lowercased() else { return false }
+        return ["1", "true", "yes", "ai_edit", "ai_edit_live"].contains(value)
+    }
+
+    private static func trimmed(_ rawValue: String?) -> String? {
+        let value = rawValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return value.isEmpty ? nil : value
+    }
+}
+#endif

@@ -122,6 +122,7 @@ struct AIEditView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(preset.title)
+                .accessibilityIdentifier(styleAccessibilityIdentifier(for: preset))
                 .accessibilityValue(selectedPreset == preset ? "Selected" : "Not selected")
                 .accessibilityHint("Selects the AI edit style.")
             }
@@ -156,6 +157,7 @@ struct AIEditView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("\(duration) seconds")
+                    .accessibilityIdentifier(durationAccessibilityIdentifier(for: duration))
                     .accessibilityValue(selectedDuration == duration ? "Selected" : "Not selected")
                 }
             }
@@ -167,9 +169,13 @@ struct AIEditView: View {
     private var statusCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Label(phase.displayLabel, systemImage: statusIcon)
+                Image(systemName: statusIcon)
                     .font(.headline)
                     .foregroundStyle(statusColor)
+                Text(phase.displayLabel)
+                    .font(.headline)
+                    .foregroundStyle(statusColor)
+                    .accessibilityIdentifier("edit.status.label")
                 Spacer()
                 if isWorking {
                     ProgressView()
@@ -202,7 +208,6 @@ struct AIEditView: View {
         }
         .padding(14)
         .rorkCard(cornerRadius: 16, stroke: statusColor.opacity(0.24), glow: statusColor, glowOpacity: 0.05)
-        .accessibilityElement(children: .combine)
         .accessibilityLabel("AI edit status")
         .accessibilityValue(phase.displayLabel)
     }
@@ -220,6 +225,7 @@ struct AIEditView: View {
                     RoundedRectangle(cornerRadius: 18)
                         .stroke(AppTheme.accentPurple.opacity(0.28), lineWidth: 1)
                 }
+                .accessibilityIdentifier("edit.preview.player")
                 .accessibilityLabel("Rendered AI edit preview")
                 .accessibilityHint("Plays the cloud-rendered MP4.")
         }
@@ -229,6 +235,15 @@ struct AIEditView: View {
 
     private var actionCard: some View {
         VStack(spacing: 10) {
+            if let errorMessage {
+                Text(errorMessage)
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.dangerRed)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("edit.failure.reasonLabel")
+            }
+
             Button(action: startEdit) {
                 Label(downloadResponse == nil ? "Create AI Edit" : "Render Again", systemImage: "sparkles.tv.fill")
                     .font(.headline)
@@ -238,7 +253,7 @@ struct AIEditView: View {
             .buttonStyle(.borderedProminent)
             .tint(AppTheme.accentPurple)
             .disabled(isWorking || !viewModel.canRequestCloudEdit)
-            .accessibilityIdentifier("aiEdit.createRenderButton")
+            .accessibilityIdentifier("edit.render.startButton")
             .accessibilityHint("Requests a cloud edit plan and render.")
 
             if downloadResponse != nil {
@@ -251,7 +266,7 @@ struct AIEditView: View {
                 .buttonStyle(.bordered)
                 .tint(AppTheme.neonPurple)
                 .disabled(isPreparingShare)
-                .accessibilityIdentifier("aiEdit.shareButton")
+                .accessibilityIdentifier("edit.share.button")
                 .accessibilityHint("Downloads the rendered MP4 and opens the system share sheet.")
             }
         }
@@ -290,6 +305,21 @@ struct AIEditView: View {
             .background(AppTheme.cardBg.opacity(0.74), in: .capsule)
     }
 
+    private func styleAccessibilityIdentifier(for preset: CloudEditPreset) -> String {
+        switch preset {
+        case .personalHighlight:
+            return "edit.style.personalHighlightButton"
+        case .fullGameHighlight:
+            return "edit.style.fullGameHighlightButton"
+        case .coachReview:
+            return "edit.style.coachReviewButton"
+        }
+    }
+
+    private func durationAccessibilityIdentifier(for duration: Int) -> String {
+        "edit.duration.\(duration)sButton"
+    }
+
     private func startEdit() {
         guard !isWorking else { return }
         Task { await runEditFlow() }
@@ -312,6 +342,18 @@ struct AIEditView: View {
         defer { isWorking = false }
 
         do {
+            #if DEBUG
+            if Self.shouldSimulateRenderFailure {
+                phase = .rendering
+                HoopsAccessibility.announce("Rendering video.")
+                try? await Task.sleep(nanoseconds: 350_000_000)
+                throw CloudEditError.backend(
+                    code: "ui_smoke_render_failed",
+                    message: "Simulated cloud render failure for UI smoke."
+                )
+            }
+            #endif
+
             let request = try viewModel.createCloudEditRequest(
                 preset: selectedPreset,
                 targetDurationSeconds: selectedDuration,
@@ -409,4 +451,10 @@ struct AIEditView: View {
             errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
     }
+
+    #if DEBUG
+    private static var shouldSimulateRenderFailure: Bool {
+        AIEditUISmokeConfig.isEnabled && AIEditUISmokeConfig.fixture == .failingRender
+    }
+    #endif
 }
