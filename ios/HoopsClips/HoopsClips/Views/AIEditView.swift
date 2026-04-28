@@ -263,7 +263,7 @@ struct AIEditView: View {
             return "checkmark.seal.fill"
         case .failed, .cancelled:
             return "exclamationmark.triangle.fill"
-        case .planning, .planReady, .created, .queued, .rendering:
+        case .renderRequested, .planning, .planReady, .created, .queued, .rendering:
             return "cloud.fill"
         }
     }
@@ -274,7 +274,7 @@ struct AIEditView: View {
             return AppTheme.successGreen
         case .failed, .cancelled:
             return AppTheme.dangerRed
-        case .planning, .planReady, .created, .queued, .rendering:
+        case .renderRequested, .planning, .planReady, .created, .queued, .rendering:
             return AppTheme.neonPurple
         }
     }
@@ -373,13 +373,33 @@ struct AIEditView: View {
 
     @MainActor
     private func prepareShareSheet() async {
-        guard let downloadResponse else { return }
+        guard var downloadResponse else { return }
         isPreparingShare = true
         errorMessage = nil
         defer { isPreparingShare = false }
 
         do {
-            let temporaryURL = try await cloudEditService.downloadRenderedVideo(from: downloadResponse)
+            if downloadResponse.expiresAt <= Date().addingTimeInterval(30), let editJob {
+                downloadResponse = try await cloudEditService.fetchDownloadURL(
+                    editJobID: editJob.editJobId,
+                    installID: viewModel.installID
+                )
+                self.downloadResponse = downloadResponse
+            }
+            let temporaryURL: URL
+            do {
+                temporaryURL = try await cloudEditService.downloadRenderedVideo(from: downloadResponse)
+            } catch CloudEditError.downloadURLExpired {
+                guard let editJob else {
+                    throw CloudEditError.downloadURLExpired
+                }
+                let freshDownload = try await cloudEditService.fetchDownloadURL(
+                    editJobID: editJob.editJobId,
+                    installID: viewModel.installID
+                )
+                self.downloadResponse = freshDownload
+                temporaryURL = try await cloudEditService.downloadRenderedVideo(from: freshDownload)
+            }
             viewModel.attachCloudRenderedExport(from: temporaryURL)
             localShareURL = viewModel.exportService.exportedURL ?? temporaryURL
             showingShareSheet = true

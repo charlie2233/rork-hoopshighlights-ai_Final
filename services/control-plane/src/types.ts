@@ -340,7 +340,7 @@ export interface MetadataJobRecord extends ResponseEnvelope {
   updatedAt: string;
 }
 
-export type RenderStatus = "created" | "queued" | "rendering" | "rendered" | "failed" | "cancelled";
+export type RenderStatus = "render_requested" | "created" | "queued" | "rendering" | "rendered" | "failed" | "cancelled";
 
 export interface EditCandidateClip {
   id: string;

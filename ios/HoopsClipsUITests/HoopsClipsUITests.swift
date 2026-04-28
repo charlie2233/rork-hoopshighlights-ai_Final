@@ -55,10 +55,86 @@ final class HoopsClipsUITests: XCTestCase {
     }
 
     @MainActor
+    func testLiveAIEditClientSmokeFlow() throws {
+        guard ProcessInfo.processInfo.environment["HOOPS_RUN_LIVE_AI_EDIT_UI_SMOKE"] == "1" else {
+            throw XCTSkip("Set HOOPS_RUN_LIVE_AI_EDIT_UI_SMOKE=1 to run the live Worker -> Cloud Run -> R2 UI smoke.")
+        }
+
+        let sourceObjectKey = try XCTUnwrap(
+            ProcessInfo.processInfo.environment["HOOPS_SMOKE_SOURCE_OBJECT_KEY"],
+            "Live AI edit smoke needs an R2 source object key from the Worker smoke script."
+        )
+        let workerURL = ProcessInfo.processInfo.environment["HOOPS_SMOKE_WORKER_URL"]
+            ?? "https://hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev"
+        let installID = ProcessInfo.processInfo.environment["HOOPS_SMOKE_INSTALL_ID"]
+            ?? "phase-edit3b-live-ui-smoke"
+
+        XCUIDevice.shared.orientation = .portrait
+
+        let app = XCUIApplication()
+        app.launchArguments = ["--hoops-ai-edit-live-smoke"]
+        app.launchEnvironment["HOOPS_SMOKE_SOURCE_OBJECT_KEY"] = sourceObjectKey
+        app.launchEnvironment["HOOPS_SMOKE_WORKER_URL"] = workerURL
+        app.launchEnvironment["HOOPS_SMOKE_INSTALL_ID"] = installID
+        app.launch()
+
+        let reviewTab = app.tabBars.buttons["Review"]
+        XCTAssertTrue(reviewTab.waitForExistence(timeout: 10), "Review tab should be available in the smoke guest session.")
+        reviewTab.tap()
+
+        XCTAssertTrue(app.staticTexts["Make Highlight Reel"].waitForExistence(timeout: 10))
+        let entryButton = app.buttons["Create AI Edit"]
+        XCTAssertTrue(entryButton.waitForExistence(timeout: 10))
+        XCTAssertTrue(entryButton.isEnabled, "AI edit entry should be enabled for smoke-seeded cloud clips.")
+        attachScreenshot(named: "01 Review Make Highlight Reel", app: app)
+        entryButton.tap()
+
+        XCTAssertTrue(app.navigationBars["AI Edit"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Personal Highlight"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["30 seconds"].exists)
+        attachScreenshot(named: "02 AI Edit Style Picker", app: app)
+
+        app.buttons["Create AI Edit"].tap()
+        XCTAssertTrue(waitForRenderedState(in: app, timeout: 180), "Cloud render should reach Rendered through the live Worker path.")
+        attachScreenshot(named: "03 AI Edit Rendered Preview", app: app)
+
+        let shareButton = app.buttons["Download / Share / Open In"]
+        XCTAssertTrue(shareButton.waitForExistence(timeout: 20))
+        shareButton.tap()
+        XCTAssertTrue(app.sheets.firstMatch.waitForExistence(timeout: 60), "System share sheet should open with the downloaded MP4 file.")
+        attachScreenshot(named: "04 AI Edit Share Sheet", app: app)
+    }
+
+    @MainActor
     func testLaunchPerformance() throws {
         // This measures how long it takes to launch your application.
         measure(metrics: [XCTApplicationLaunchMetric()]) {
             XCUIApplication().launch()
         }
+    }
+
+    @MainActor
+    private func waitForRenderedState(in app: XCUIApplication, timeout: TimeInterval) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if app.staticTexts["Rendered"].exists {
+                return true
+            }
+            if app.staticTexts["Failed"].exists {
+                attachScreenshot(named: "AI Edit Failed", app: app)
+                XCTFail(app.staticTexts.containing(NSPredicate(format: "label CONTAINS[c] %@", "failed")).firstMatch.label)
+                return false
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(2))
+        }
+        return false
+    }
+
+    @MainActor
+    private func attachScreenshot(named name: String, app: XCUIApplication) {
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
     }
 }

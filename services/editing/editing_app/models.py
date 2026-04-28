@@ -17,7 +17,7 @@ class APIModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-RenderStatus = Literal["created", "queued", "rendering", "rendered", "failed", "cancelled"]
+RenderStatus = Literal["render_requested", "created", "queued", "rendering", "rendered", "failed", "cancelled"]
 
 
 class CreateRenderJobRequest(APIModel):

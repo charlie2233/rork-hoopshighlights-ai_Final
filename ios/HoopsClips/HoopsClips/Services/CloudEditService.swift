@@ -78,7 +78,7 @@ struct CloudEditService {
             switch status.status {
             case .rendered, .failed, .cancelled:
                 return status
-            case .planning, .planReady, .created, .queued, .rendering:
+            case .renderRequested, .planning, .planReady, .created, .queued, .rendering:
                 attempts += 1
                 if attempts >= 15 {
                     pollDelaySeconds = 5
@@ -107,7 +107,13 @@ struct CloudEditService {
         }
 
         let (temporaryURL, urlResponse) = try await session.download(from: url)
-        guard let http = urlResponse as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+        guard let http = urlResponse as? HTTPURLResponse else {
+            throw CloudEditError.network("The rendered video download failed.")
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            if [401, 403, 404, 410].contains(http.statusCode) {
+                throw CloudEditError.downloadURLExpired
+            }
             throw CloudEditError.network("The rendered video download failed.")
         }
 
@@ -116,6 +122,12 @@ struct CloudEditService {
             .appendingPathExtension("mp4")
         try? FileManager.default.removeItem(at: destination)
         try FileManager.default.moveItem(at: temporaryURL, to: destination)
+        let attributes = try FileManager.default.attributesOfItem(atPath: destination.path)
+        let fileSize = attributes[.size] as? NSNumber
+        guard (fileSize?.int64Value ?? 0) > 0 else {
+            try? FileManager.default.removeItem(at: destination)
+            throw CloudEditError.invalidResponse
+        }
         return destination
     }
 

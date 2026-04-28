@@ -62,6 +62,7 @@ enum CloudEditPlanTier: String, Codable, Sendable {
 }
 
 enum CloudEditRenderState: String, Codable, Sendable {
+    case renderRequested = "render_requested"
     case planning
     case planReady = "plan_ready"
     case created
@@ -73,6 +74,8 @@ enum CloudEditRenderState: String, Codable, Sendable {
 
     var displayLabel: String {
         switch self {
+        case .renderRequested:
+            return "Render requested"
         case .planning:
             return "Planning"
         case .planReady:
@@ -244,6 +247,7 @@ enum CloudEditError: Error, LocalizedError, Sendable {
     case notConfigured
     case invalidResponse
     case missingSourceObject
+    case downloadURLExpired
     case timedOut
     case backend(code: String, message: String)
     case network(String)
@@ -256,6 +260,8 @@ enum CloudEditError: Error, LocalizedError, Sendable {
             return "The editing service returned an invalid response."
         case .missingSourceObject:
             return "This project needs a cloud-uploaded source video before Hoopclips can render an AI edit."
+        case .downloadURLExpired:
+            return "The download link expired. Hoopclips is requesting a fresh one."
         case .timedOut:
             return "Cloud rendering took too long. Try again with a shorter edit."
         case .backend(_, let message):

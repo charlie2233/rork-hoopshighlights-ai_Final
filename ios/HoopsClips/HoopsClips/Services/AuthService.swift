@@ -48,6 +48,12 @@ final class AuthService {
 
     init(emailAuthClient: FirebaseEmailAuthClient? = nil) {
         self.emailAuthClient = emailAuthClient ?? FirebaseEmailAuthClient(apiKey: AppConstants.firebaseAuthAPIKey)
+        #if DEBUG
+        if Self.isAIEditLiveSmokeEnabled {
+            setUser(Self.aiEditLiveSmokeUser)
+            return
+        }
+        #endif
         loadPersistedUser()
     }
 
@@ -291,4 +297,14 @@ final class AuthService {
         currentUser = user
         return user
     }
+
+    #if DEBUG
+    private static var isAIEditLiveSmokeEnabled: Bool {
+        ProcessInfo.processInfo.arguments.contains("--hoops-ai-edit-live-smoke")
+    }
+
+    private static var aiEditLiveSmokeUser: AuthUser {
+        AuthUser(id: "phase-edit3b-live-smoke", displayName: "Smoke Guest", authMethod: .anonymous)
+    }
+    #endif
 }

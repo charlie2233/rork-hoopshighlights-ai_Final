@@ -114,6 +114,10 @@ final class HighlightsViewModel {
     }
 
     init() {
+        #if DEBUG
+        Self.applyAIEditLiveSmokeRuntimeOverrides()
+        #endif
+
         let existingInstallID = UserDefaults.standard.string(forKey: installIDDefaultsKey)
         let resolvedInstallID: String
         if let existingInstallID, !existingInstallID.isEmpty {
@@ -140,6 +144,10 @@ final class HighlightsViewModel {
 
         repairBrokenProjectReferences()
         restoreCurrentProjectIfAvailable()
+
+        #if DEBUG
+        applyAIEditLiveSmokeProjectIfNeeded()
+        #endif
     }
 
     @discardableResult
@@ -714,6 +722,89 @@ final class HighlightsViewModel {
         UIApplication.shared.endBackgroundTask(backgroundTaskID)
         backgroundTaskID = .invalid
     }
+
+    #if DEBUG
+    private static var isAIEditLiveSmokeEnabled: Bool {
+        ProcessInfo.processInfo.arguments.contains("--hoops-ai-edit-live-smoke")
+    }
+
+    private static func applyAIEditLiveSmokeRuntimeOverrides() {
+        guard isAIEditLiveSmokeEnabled else { return }
+
+        let environment = ProcessInfo.processInfo.environment
+        let workerURL = environment["HOOPS_SMOKE_WORKER_URL"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if let workerURL, !workerURL.isEmpty {
+            UserDefaults.standard.set(workerURL, forKey: "hoops.cloudAnalysisBaseURL")
+            UserDefaults.standard.set(workerURL, forKey: "hoops.cloudEditBaseURL")
+        }
+
+        let installID = environment["HOOPS_SMOKE_INSTALL_ID"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if let installID, !installID.isEmpty {
+            UserDefaults.standard.set(installID, forKey: "hoopsclips.installID.v1")
+        }
+    }
+
+    private func applyAIEditLiveSmokeProjectIfNeeded() {
+        guard Self.isAIEditLiveSmokeEnabled else { return }
+
+        let environment = ProcessInfo.processInfo.environment
+        let sourceObjectKey = environment["HOOPS_SMOKE_SOURCE_OBJECT_KEY"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let sourceObjectKey, !sourceObjectKey.isEmpty else { return }
+
+        currentProjectID = nil
+        videoURL = nil
+        videoDuration = 18
+        videoThumbnail = nil
+        isVideoLoaded = false
+        analysisMode = .cloud
+        cloudAnalysisJobID = "phase-edit3b-live-smoke-analysis"
+        cloudEditSourceObjectKey = sourceObjectKey
+        lastAnalysisStatusSummary = "Found 2 highlights"
+        lastAnalyzedAt = Date()
+        cloudQuotaRemaining = nil
+        isCloudFallbackOffered = false
+
+        analysisService.isAnalyzing = false
+        analysisService.progress = 1
+        analysisService.statusMessage = "Found 2 highlights"
+        analysisService.lastRunDiagnostics = nil
+        analysisService.clips = [
+            Clip(
+                startTime: 0,
+                endTime: 5,
+                action: .fastBreak,
+                confidence: 0.95,
+                isKept: true,
+                label: "Fast Break",
+                audioScore: 0.48,
+                visualScore: 0.95,
+                motionScore: 0.94,
+                combinedScore: 0.95,
+                playbackSpeed: 1,
+                isSlowMotionEnabled: true,
+                detectionMethod: .cloud
+            ),
+            Clip(
+                startTime: 8,
+                endTime: 13,
+                action: .madeShot,
+                confidence: 0.90,
+                isKept: true,
+                label: "Made Shot",
+                audioScore: 0.45,
+                visualScore: 0.90,
+                motionScore: 0.89,
+                combinedScore: 0.90,
+                playbackSpeed: 1,
+                isSlowMotionEnabled: false,
+                detectionMethod: .cloud
+            )
+        ]
+    }
+    #endif
 
     private func fallbackToLocalAnalysis(from error: CloudAnalysisError) async {
         let hardFailureCodes: Set<String> = ["unsupported_duration", "file_too_large"]
