@@ -73,14 +73,14 @@ services/editing tests: 7 passed
 services/control-plane editing proxy tests: 4 passed
 services/control-plane typecheck: passed
 iOS Debug simulator build: passed
-iOS HoopsClipsTests unit target: passed
+iOS Debug simulator build-for-testing: passed
 git diff --check: passed
 ```
 
 Remaining local simulator limitation:
 
 ```text
-Full-scheme xcodebuild test, including the UI test runner, hit a local simulator runner IPC failure:
+Full-scheme xcodebuild test-without-building, including the UI test runner, hit a local simulator runner IPC failure:
 NSMachErrorDomain Code=-308 "(ipc/mig) server died".
-The app unit target was rerun separately and passed.
+The app and test bundles compile, but the local simulator test runner did not complete in this environment.
 ```
