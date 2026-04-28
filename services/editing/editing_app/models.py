@@ -10,7 +10,7 @@ from .backend_imports import ensure_ios_backend_on_path
 
 ensure_ios_backend_on_path()
 
-from app.editing import CreateEditJobRequest, EditCandidateClip, EditPlan, EditPlanValidationIssue  # noqa: E402
+from app.editing import CreateEditJobRequest, EditCandidateClip, EditPlan, EditPlanValidationIssue, EditRevisionResponse  # noqa: E402
 
 
 class APIModel(BaseModel):
@@ -35,6 +35,10 @@ class StartEditJobRenderRequest(APIModel):
     planTier: Optional[Literal["free", "pro"]] = None
     editPlan: Optional[EditPlan] = None
     sourceClips: List[EditCandidateClip] = Field(default_factory=list, max_length=30)
+
+
+class StartEditRevisionRenderRequest(APIModel):
+    installId: str = Field(min_length=8, max_length=128)
 
 
 class RenderJobResponse(APIModel):
@@ -65,6 +69,11 @@ class ErrorResponse(APIModel):
     errorCode: str
     errorMessage: str
     failureReason: Optional[str] = None
+
+
+class EditRevisionListResponse(APIModel):
+    editJobId: str
+    revisions: List[EditRevisionResponse] = Field(default_factory=list)
 
 
 @dataclass

@@ -400,6 +400,7 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
                 first_error = revised.validation_errors[0]
                 raise APIError(400, first_error.code, first_error.message)
             edit_jobs[edit_job_id] = revised
+            render_jobs_by_edit_id.pop(edit_job_id, None)
             return revised.to_plan_response()
         except APIError as error:
             return _error_response(error)

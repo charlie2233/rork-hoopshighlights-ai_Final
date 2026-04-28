@@ -76,6 +76,8 @@ final class HoopsClipsUITests: XCTestCase {
         app.buttons["edit.render.startButton"].tap()
         XCTAssertTrue(waitForRenderedState(in: app, timeout: 300), "Cloud render should reach Rendered through the live Worker path.")
         XCTAssertTrue(app.descendants(matching: .any)["edit.preview.player"].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.descendants(matching: .any)["edit.revision.card"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["edit.revision.moreHypeButton"].exists)
         attachScreenshot(named: "03 AI Edit Rendered Preview", app: app)
 
         let shareButton = app.buttons["edit.share.button"]

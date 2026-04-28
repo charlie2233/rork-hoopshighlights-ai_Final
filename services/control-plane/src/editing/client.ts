@@ -5,6 +5,10 @@ import type {
   EditingRenderJobResponse,
   EditJobResponse,
   EditPlanResponse,
+  EditRevisionListResponse,
+  EditRevisionResponse,
+  ReviseEditJobRequest,
+  StartEditRevisionRenderRequest,
   StartEditRenderRequest
 } from "../types";
 
@@ -111,6 +115,79 @@ export async function getEditingDownloadUrl(
   return proxyEditingJsonResponse(await fetch(url, { headers: editingHeaders(env, requestId, installId) }), requestId);
 }
 
+export async function reviseEditingEditJob(
+  env: Env,
+  editJobId: string,
+  requestId: string,
+  payload: ReviseEditJobRequest
+): Promise<Response> {
+  if (!env.EDITING_BASE_URL) {
+    return editingUnavailable(requestId, "Editing service is not configured.");
+  }
+  const response = await fetch(`${env.EDITING_BASE_URL.replace(/\/+$/, "")}/v1/edit-jobs/${encodeURIComponent(editJobId)}/revise`, {
+    method: "POST",
+    headers: editingHeaders(env, requestId, payload.installId),
+    body: JSON.stringify(payload)
+  });
+  return proxyEditingJsonResponse(response, requestId);
+}
+
+export async function listEditingRevisions(
+  env: Env,
+  editJobId: string,
+  requestId: string,
+  installId: string | null
+): Promise<Response> {
+  if (!env.EDITING_BASE_URL) {
+    return editingUnavailable(requestId, "Editing service is not configured.");
+  }
+  const url = new URL(`${env.EDITING_BASE_URL.replace(/\/+$/, "")}/v1/edit-jobs/${encodeURIComponent(editJobId)}/revisions`);
+  if (installId) {
+    url.searchParams.set("installId", installId);
+  }
+  return proxyEditingJsonResponse(await fetch(url, { headers: editingHeaders(env, requestId, installId) }), requestId);
+}
+
+export async function getEditingRevision(
+  env: Env,
+  editJobId: string,
+  revisionId: string,
+  requestId: string,
+  installId: string | null
+): Promise<Response> {
+  if (!env.EDITING_BASE_URL) {
+    return editingUnavailable(requestId, "Editing service is not configured.");
+  }
+  const url = new URL(
+    `${env.EDITING_BASE_URL.replace(/\/+$/, "")}/v1/edit-jobs/${encodeURIComponent(editJobId)}/revisions/${encodeURIComponent(revisionId)}`
+  );
+  if (installId) {
+    url.searchParams.set("installId", installId);
+  }
+  return proxyEditingJsonResponse(await fetch(url, { headers: editingHeaders(env, requestId, installId) }), requestId);
+}
+
+export async function renderEditingRevision(
+  env: Env,
+  editJobId: string,
+  revisionId: string,
+  requestId: string,
+  payload: StartEditRevisionRenderRequest
+): Promise<Response> {
+  if (!env.EDITING_BASE_URL) {
+    return editingUnavailable(requestId, "Editing service is not configured.");
+  }
+  const response = await fetch(
+    `${env.EDITING_BASE_URL.replace(/\/+$/, "")}/v1/edit-jobs/${encodeURIComponent(editJobId)}/revisions/${encodeURIComponent(revisionId)}/render`,
+    {
+      method: "POST",
+      headers: editingHeaders(env, requestId, payload.installId),
+      body: JSON.stringify(payload)
+    }
+  );
+  return proxyEditingJsonResponse(response, requestId);
+}
+
 function editingHeaders(env: Env, requestId: string, installId?: string | null): Headers {
   const headers = new Headers({
     "content-type": "application/json",
@@ -132,6 +209,8 @@ async function proxyEditingJsonResponse(response: Response, requestId: string): 
     | EditingDownloadUrlResponse
     | EditJobResponse
     | EditPlanResponse
+    | EditRevisionResponse
+    | EditRevisionListResponse
     | Record<string, unknown>;
   return Response.json(
     {

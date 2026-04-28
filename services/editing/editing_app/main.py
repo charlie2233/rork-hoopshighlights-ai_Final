@@ -14,9 +14,11 @@ from .models import (
     CreateEditJobRequest,
     CreateRenderJobRequest,
     DownloadUrlResponse,
+    EditRevisionListResponse,
     ErrorResponse,
     RenderJobResponse,
     StartEditJobRenderRequest,
+    StartEditRevisionRenderRequest,
     StoredRenderJob,
     now_utc,
     render_log_payload,
@@ -25,7 +27,7 @@ from .render_storage import EditingServiceError, RenderStorage
 
 ensure_ios_backend_on_path()
 
-from app.editing import EditPlanValidationIssue, StoredEditJob, build_edit_job, validate_edit_plan  # noqa: E402
+from app.editing import EditPlanValidationIssue, EditRevisionResponse, ReviseEditJobRequest, StoredEditJob, build_edit_job, build_revision_response, validate_edit_plan  # noqa: E402
 from app.models import APIError  # noqa: E402
 from app.renderers.ffmpeg_renderer import FfmpegRenderer, ffmpeg_diagnostics  # noqa: E402
 
@@ -38,6 +40,8 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
     render_jobs_by_edit_id: Dict[str, str] = {}
     render_requests: Dict[str, CreateRenderJobRequest] = {}
     edit_jobs: Dict[str, StoredEditJob] = {}
+    edit_revisions: Dict[str, list[EditRevisionResponse]] = {}
+    edit_revisions_by_id: Dict[str, EditRevisionResponse] = {}
 
     def error_response(error: EditingServiceError) -> JSONResponse:
         return JSONResponse(
@@ -169,9 +173,9 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             "ffmpeg": ffmpeg_diagnostics(),
         }
 
-    def enqueue_render_job(request: CreateRenderJobRequest, background_tasks: BackgroundTasks) -> RenderJobResponse:
+    def enqueue_render_job(request: CreateRenderJobRequest, background_tasks: BackgroundTasks, force_new: bool = False) -> RenderJobResponse:
         existing_render_id = render_jobs_by_edit_id.get(request.editJobId)
-        if existing_render_id:
+        if existing_render_id and not force_new:
             existing = render_jobs[existing_render_id]
             if existing.status in {"queued", "rendering", "rendered"}:
                 return existing.to_response()
@@ -257,6 +261,95 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             job = require_edit_job(edit_job_id)
             require_edit_owner(job, installId or x_hoops_install_id)
             return job.to_plan_response()
+        except EditingServiceError as error:
+            return error_response(error)
+
+    @app.post("/v1/edit-jobs/{edit_job_id}/revise", response_model=EditRevisionResponse, responses={400: {"model": ErrorResponse}, 403: {"model": ErrorResponse}, 404: {"model": ErrorResponse}})
+    async def revise_edit_job_plan(
+        edit_job_id: str,
+        request: ReviseEditJobRequest,
+        x_hoops_install_id: Optional[str] = Header(default=None),
+        x_hoops_editing_secret: Optional[str] = Header(default=None),
+    ):
+        try:
+            require_secret(x_hoops_editing_secret)
+            job = require_edit_job(edit_job_id)
+            require_edit_owner(job, request.installId or x_hoops_install_id)
+            revision_id = "rev_" + uuid4().hex
+            revised_job, revision_response = build_revision_response(job, request, revision_id)
+            if not revision_response.validationResult.valid:
+                first_error = revision_response.validationResult.errors[0]
+                raise EditingServiceError(400, first_error.code, first_error.message)
+            edit_jobs[edit_job_id] = revised_job
+            edit_revisions.setdefault(edit_job_id, []).append(revision_response)
+            edit_revisions_by_id[revision_id] = revision_response
+            return revision_response
+        except EditingServiceError as error:
+            return error_response(error)
+
+    @app.get("/v1/edit-jobs/{edit_job_id}/revisions", response_model=EditRevisionListResponse, responses={403: {"model": ErrorResponse}, 404: {"model": ErrorResponse}})
+    async def list_edit_revisions(
+        edit_job_id: str,
+        installId: Optional[str] = Query(default=None),
+        x_hoops_install_id: Optional[str] = Header(default=None),
+        x_hoops_editing_secret: Optional[str] = Header(default=None),
+    ):
+        try:
+            require_secret(x_hoops_editing_secret)
+            job = require_edit_job(edit_job_id)
+            require_edit_owner(job, installId or x_hoops_install_id)
+            return EditRevisionListResponse(editJobId=edit_job_id, revisions=edit_revisions.get(edit_job_id, []))
+        except EditingServiceError as error:
+            return error_response(error)
+
+    @app.get("/v1/edit-jobs/{edit_job_id}/revisions/{revision_id}", response_model=EditRevisionResponse, responses={403: {"model": ErrorResponse}, 404: {"model": ErrorResponse}})
+    async def get_edit_revision(
+        edit_job_id: str,
+        revision_id: str,
+        installId: Optional[str] = Query(default=None),
+        x_hoops_install_id: Optional[str] = Header(default=None),
+        x_hoops_editing_secret: Optional[str] = Header(default=None),
+    ):
+        try:
+            require_secret(x_hoops_editing_secret)
+            job = require_edit_job(edit_job_id)
+            require_edit_owner(job, installId or x_hoops_install_id)
+            revision = edit_revisions_by_id.get(revision_id)
+            if revision is None or revision.editJobId != edit_job_id:
+                raise EditingServiceError(404, "revision_not_found", "Edit revision was not found.")
+            return revision
+        except EditingServiceError as error:
+            return error_response(error)
+
+    @app.post("/v1/edit-jobs/{edit_job_id}/revisions/{revision_id}/render", response_model=RenderJobResponse, responses={400: {"model": ErrorResponse}, 403: {"model": ErrorResponse}, 404: {"model": ErrorResponse}})
+    async def render_edit_revision(
+        edit_job_id: str,
+        revision_id: str,
+        request: StartEditRevisionRenderRequest,
+        background_tasks: BackgroundTasks,
+        x_hoops_editing_secret: Optional[str] = Header(default=None),
+    ):
+        try:
+            require_secret(x_hoops_editing_secret)
+            stored_edit_job = require_edit_job(edit_job_id)
+            require_edit_owner(stored_edit_job, request.installId)
+            revision = edit_revisions_by_id.get(revision_id)
+            if revision is None or revision.editJobId != edit_job_id:
+                raise EditingServiceError(404, "revision_not_found", "Edit revision was not found.")
+            if not stored_edit_job.request.sourceObjectKey:
+                raise EditingServiceError(400, "missing_source_object_key", "Revision render requires a source video object key.")
+            return enqueue_render_job(
+                CreateRenderJobRequest(
+                    editJobId=edit_job_id,
+                    installId=request.installId,
+                    sourceObjectKey=stored_edit_job.request.sourceObjectKey,
+                    planTier=stored_edit_job.request.planTier,
+                    editPlan=revision.revisedPlan,
+                    sourceClips=stored_edit_job.request.clips,
+                ),
+                background_tasks,
+                force_new=True,
+            )
         except EditingServiceError as error:
             return error_response(error)
 

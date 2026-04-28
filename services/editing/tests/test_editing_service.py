@@ -154,6 +154,49 @@ class EditingServiceTests(unittest.TestCase):
         self.assertEqual(plan_payload["plan"]["renderMode"], "cloud_ffmpeg")
         self.assertEqual(plan_payload["plan"]["aspectRatio"], "9:16")
 
+    def test_revise_edit_job_returns_patch_and_revised_plan(self) -> None:
+        client = TestClient(create_app(self._settings()))
+        edit_request = self._edit_request()
+        create_payload = client.post("/v1/edit-jobs", json=edit_request.model_dump()).json()
+
+        revise_response = client.post(
+            f"/v1/edit-jobs/{create_payload['editJobId']}/revise",
+            json={"installId": edit_request.installId, "command": "make_nba_style"},
+        )
+
+        self.assertEqual(revise_response.status_code, 200)
+        revision_payload = revise_response.json()
+        self.assertEqual(revision_payload["status"], "revision_ready")
+        self.assertEqual(revision_payload["command"], "make_nba_style")
+        self.assertEqual(revision_payload["patch"]["version"], "edit-plan-patch-v1")
+        self.assertTrue(revision_payload["patch"]["operations"])
+        self.assertEqual(revision_payload["revisedPlan"]["aspectRatio"], "16:9")
+        self.assertTrue(revision_payload["validationResult"]["valid"])
+
+        revisions_response = client.get(
+            f"/v1/edit-jobs/{create_payload['editJobId']}/revisions",
+            params={"installId": edit_request.installId},
+        )
+        self.assertEqual(revisions_response.status_code, 200)
+        self.assertEqual(len(revisions_response.json()["revisions"]), 1)
+
+    def test_revision_command_preserves_free_watermark_and_outro(self) -> None:
+        client = TestClient(create_app(self._settings()))
+        edit_request = self._edit_request()
+        create_payload = client.post("/v1/edit-jobs", json=edit_request.model_dump()).json()
+
+        revise_response = client.post(
+            f"/v1/edit-jobs/{create_payload['editJobId']}/revise",
+            json={"installId": edit_request.installId, "command": "use_original_audio"},
+        )
+
+        self.assertEqual(revise_response.status_code, 200)
+        plan = revise_response.json()["revisedPlan"]
+        self.assertEqual(plan["audio"]["musicTrackId"], "none")
+        self.assertEqual(plan["audio"]["musicVolume"], 0.0)
+        self.assertTrue(plan["watermark"]["enabled"])
+        self.assertTrue(plan["outro"]["enabled"])
+
     @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "ffmpeg and ffprobe are required")
     def test_render_job_writes_output_log_and_download_url(self) -> None:
         client = TestClient(create_app(self._settings()))
@@ -196,6 +239,35 @@ class EditingServiceTests(unittest.TestCase):
         render_payload = status_response.json()
         self.assertEqual(render_payload["status"], "rendered")
         self.assertEqual(render_payload["aspectRatio"], "9:16")
+
+    @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "ffmpeg and ffprobe are required")
+    def test_render_revision_produces_latest_download_url(self) -> None:
+        client = TestClient(create_app(self._settings()))
+        edit_request = self._edit_request()
+        create_payload = client.post("/v1/edit-jobs", json=edit_request.model_dump()).json()
+        revision_payload = client.post(
+            f"/v1/edit-jobs/{create_payload['editJobId']}/revise",
+            json={"installId": edit_request.installId, "command": "switch_format_widescreen"},
+        ).json()
+
+        render_response = client.post(
+            f"/v1/edit-jobs/{create_payload['editJobId']}/revisions/{revision_payload['revisionId']}/render",
+            json={"installId": edit_request.installId},
+        )
+
+        self.assertEqual(render_response.status_code, 200)
+        render_job_id = render_response.json()["renderJobId"]
+        status_response = client.get(f"/v1/render-jobs/{render_job_id}", params={"installId": edit_request.installId})
+        self.assertEqual(status_response.status_code, 200)
+        render_payload = status_response.json()
+        self.assertEqual(render_payload["status"], "rendered")
+        self.assertEqual(render_payload["aspectRatio"], "16:9")
+        download_response = client.get(
+            f"/v1/edit-jobs/{create_payload['editJobId']}/download-url",
+            params={"installId": edit_request.installId},
+        )
+        self.assertEqual(download_response.status_code, 200)
+        self.assertEqual(download_response.json()["renderJobId"], render_payload["renderJobId"])
 
     def test_invalid_plan_rejected_before_render(self) -> None:
         client = TestClient(create_app(self._settings()))

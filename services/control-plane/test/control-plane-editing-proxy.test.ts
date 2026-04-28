@@ -168,6 +168,113 @@ test("edit render route proxies to internal editing service with shared secret",
   }
 });
 
+test("edit revision routes proxy to internal editing service with shared secret", async () => {
+  const controlPlane = createControlPlaneHarness();
+  const originalFetch = globalThis.fetch.bind(globalThis);
+  const seen: Array<{ method: string; url: string; headers: Record<string, string>; body?: Record<string, unknown> }> = [];
+  globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const request = input instanceof Request ? input : new Request(input, init);
+    const url = new URL(request.url);
+    if (url.origin !== controlPlane.env.EDITING_BASE_URL) {
+      return originalFetch(input, init);
+    }
+    const body = request.method === "GET" ? undefined : ((await request.json()) as Record<string, unknown>);
+    seen.push({
+      method: request.method,
+      url: url.toString(),
+      headers: Object.fromEntries(request.headers.entries()),
+      body
+    });
+    if (url.pathname.endsWith("/render")) {
+      return Response.json({
+        editJobId: "edit_123",
+        renderJobId: "render_revision_123",
+        renderer: "cloud_ffmpeg",
+        rendererVersion: "ffmpeg-renderer-v1",
+        status: "queued",
+        aspectRatio: "9:16",
+        traceId: "trace_revision_render"
+      });
+    }
+    if (url.pathname.endsWith("/revisions")) {
+      return Response.json({ editJobId: "edit_123", revisions: [] });
+    }
+    return Response.json({
+      editJobId: "edit_123",
+      revisionId: "rev_123",
+      basePlanId: "edit_123",
+      newPlanId: "edit_123:rev_123",
+      command: "make_more_hype",
+      status: "revision_ready",
+      patch: { version: "edit-plan-patch-v1", operations: [] },
+      revisedPlan: { aspectRatio: "9:16" },
+      validationResult: { valid: true, errors: [] },
+      requiresRerender: true
+    });
+  };
+
+  try {
+    const reviseResponse = await invokePublicRoute(
+      controlPlane,
+      "POST",
+      "/v1/edit-jobs/edit_123/revise",
+      { installId: "install-local-001", command: "make_more_hype" },
+      { "x-trace-id": "trace-editing-revise" },
+      "trace-editing-revise"
+    );
+    const revisePayload = await parseJsonResponse<{ requestId: string; revisionId: string; status: string }>(reviseResponse);
+    assert.equal(reviseResponse.status, 200);
+    assert.equal(revisePayload.requestId, "trace-editing-revise");
+    assert.equal(revisePayload.revisionId, "rev_123");
+    assert.equal(revisePayload.status, "revision_ready");
+
+    const listResponse = await invokePublicRoute(
+      controlPlane,
+      "GET",
+      "/v1/edit-jobs/edit_123/revisions?installId=install-local-001",
+      undefined,
+      { "x-trace-id": "trace-editing-revisions" },
+      "trace-editing-revisions"
+    );
+    assert.equal(listResponse.status, 200);
+
+    const getResponse = await invokePublicRoute(
+      controlPlane,
+      "GET",
+      "/v1/edit-jobs/edit_123/revisions/rev_123?installId=install-local-001",
+      undefined,
+      { "x-trace-id": "trace-editing-revision-get" },
+      "trace-editing-revision-get"
+    );
+    assert.equal(getResponse.status, 200);
+
+    const renderResponse = await invokePublicRoute(
+      controlPlane,
+      "POST",
+      "/v1/edit-jobs/edit_123/revisions/rev_123/render",
+      { installId: "install-local-001" },
+      { "x-trace-id": "trace-editing-revision-render" },
+      "trace-editing-revision-render"
+    );
+    const renderPayload = await parseJsonResponse<{ requestId: string; renderJobId: string; status: string }>(renderResponse);
+    assert.equal(renderResponse.status, 200);
+    assert.equal(renderPayload.renderJobId, "render_revision_123");
+    assert.equal(renderPayload.status, "queued");
+
+    assert.equal(seen.length, 4);
+    assert.equal(seen[0]!.url, "http://editing.local/v1/edit-jobs/edit_123/revise");
+    assert.equal(seen[0]!.headers["x-hoops-editing-secret"], controlPlane.env.EDITING_SHARED_SECRET);
+    assert.equal(seen[0]!.headers["x-hoops-install-id"], "install-local-001");
+    assert.equal(seen[0]!.body?.command, "make_more_hype");
+    assert.equal(seen[1]!.url, "http://editing.local/v1/edit-jobs/edit_123/revisions?installId=install-local-001");
+    assert.equal(seen[2]!.url, "http://editing.local/v1/edit-jobs/edit_123/revisions/rev_123?installId=install-local-001");
+    assert.equal(seen[3]!.url, "http://editing.local/v1/edit-jobs/edit_123/revisions/rev_123/render");
+    assert.equal(seen[3]!.body?.installId, "install-local-001");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("edit render route fails closed when editing service is unconfigured", async () => {
   const controlPlane = createControlPlaneHarness({ EDITING_BASE_URL: "" });
 

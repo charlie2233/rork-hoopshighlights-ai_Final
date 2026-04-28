@@ -96,6 +96,89 @@ enum CloudEditRenderState: String, Codable, Sendable {
     }
 }
 
+enum CloudEditRevisionCommand: String, Codable, CaseIterable, Identifiable, Sendable {
+    case makeShorter = "make_shorter"
+    case makeLonger = "make_longer"
+    case makeMoreHype = "make_more_hype"
+    case makeNBAStyle = "make_nba_style"
+    case addMoreSlowMotion = "add_more_slow_motion"
+    case removeWeakClips = "remove_weak_clips"
+    case useOriginalAudio = "use_original_audio"
+    case switchFormatVertical = "switch_format_vertical"
+    case switchFormatWidescreen = "switch_format_widescreen"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .makeShorter:
+            return "Shorter"
+        case .makeLonger:
+            return "Longer"
+        case .makeMoreHype:
+            return "More Hype"
+        case .makeNBAStyle:
+            return "NBA Style"
+        case .addMoreSlowMotion:
+            return "More Slow-Mo"
+        case .removeWeakClips:
+            return "Remove Weak Clips"
+        case .useOriginalAudio:
+            return "Original Audio"
+        case .switchFormatVertical:
+            return "Vertical"
+        case .switchFormatWidescreen:
+            return "Widescreen"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .makeShorter:
+            return "minus.forwardslash.plus"
+        case .makeLonger:
+            return "plus.forwardslash.minus"
+        case .makeMoreHype:
+            return "bolt.fill"
+        case .makeNBAStyle:
+            return "sportscourt.fill"
+        case .addMoreSlowMotion:
+            return "slowmo"
+        case .removeWeakClips:
+            return "scissors"
+        case .useOriginalAudio:
+            return "waveform"
+        case .switchFormatVertical:
+            return "rectangle.portrait.fill"
+        case .switchFormatWidescreen:
+            return "rectangle.fill"
+        }
+    }
+
+    var accessibilityIdentifier: String {
+        switch self {
+        case .makeShorter:
+            return "edit.revision.quick.shorterButton"
+        case .makeLonger:
+            return "edit.revision.quick.longerButton"
+        case .makeMoreHype:
+            return "edit.revision.quick.moreHypeButton"
+        case .makeNBAStyle:
+            return "edit.revision.quick.nbaStyleButton"
+        case .addMoreSlowMotion:
+            return "edit.revision.quick.moreSlowMoButton"
+        case .removeWeakClips:
+            return "edit.revision.quick.removeWeakButton"
+        case .useOriginalAudio:
+            return "edit.revision.quick.originalAudioButton"
+        case .switchFormatVertical:
+            return "edit.revision.quick.verticalButton"
+        case .switchFormatWidescreen:
+            return "edit.revision.quick.widescreenButton"
+        }
+    }
+}
+
 struct CloudEditCandidateClip: Codable, Sendable {
     let id: String
     let start: Double
@@ -205,6 +288,48 @@ struct CloudEditRenderRequest: Codable, Sendable {
     let planTier: CloudEditPlanTier
     let editPlan: CloudEditPlanSummary
     let sourceClips: [CloudEditCandidateClip]
+}
+
+struct CloudEditRevisionRequest: Codable, Sendable {
+    let installId: String
+    let command: CloudEditRevisionCommand
+}
+
+struct CloudEditRevisionRenderRequest: Codable, Sendable {
+    let installId: String
+}
+
+struct CloudEditPlanPatch: Codable, Sendable {
+    let version: String
+    let baseEditPlanId: String
+    let revisionIntent: String
+    let summary: String
+    let operations: [CloudEditPlanPatchOperation]
+    let requiresRerender: Bool
+}
+
+struct CloudEditPlanPatchOperation: Codable, Sendable {
+    let op: String
+    let path: String
+    let reason: String?
+}
+
+struct CloudEditRevisionValidationResult: Codable, Sendable {
+    let valid: Bool
+    let errors: [CloudEditValidationIssue]
+}
+
+struct CloudEditRevisionResponse: Codable, Sendable {
+    let revisionId: String
+    let editJobId: String
+    let basePlanId: String
+    let newPlanId: String
+    let command: CloudEditRevisionCommand
+    let status: String
+    let patch: CloudEditPlanPatch
+    let revisedPlan: CloudEditPlanSummary
+    let validationResult: CloudEditRevisionValidationResult
+    let requiresRerender: Bool
 }
 
 struct CloudEditRenderStatusResponse: Codable, Sendable {

@@ -397,6 +397,46 @@ export interface StartEditRenderRequest {
   sourceClips?: EditCandidateClip[];
 }
 
+export type EditRevisionCommand =
+  | "make_shorter"
+  | "make_longer"
+  | "make_more_hype"
+  | "make_nba_style"
+  | "add_more_slow_motion"
+  | "remove_weak_clips"
+  | "use_original_audio"
+  | "switch_format_vertical"
+  | "switch_format_widescreen";
+
+export interface ReviseEditJobRequest {
+  installId: string;
+  command: EditRevisionCommand;
+  targetDurationSeconds?: number | null;
+  aspectRatio?: "9:16" | "16:9" | "source" | null;
+}
+
+export interface StartEditRevisionRenderRequest {
+  installId: string;
+}
+
+export interface EditRevisionResponse extends ResponseEnvelope {
+  revisionId: string;
+  editJobId: string;
+  basePlanId: string;
+  newPlanId: string;
+  command: EditRevisionCommand;
+  status: "revision_ready" | "revision_failed";
+  patch: Record<string, unknown>;
+  revisedPlan: Record<string, unknown>;
+  validationResult: Record<string, unknown>;
+  requiresRerender: boolean;
+}
+
+export interface EditRevisionListResponse extends ResponseEnvelope {
+  editJobId: string;
+  revisions: EditRevisionResponse[];
+}
+
 export interface EditingRenderJobResponse extends ResponseEnvelope {
   editJobId: string;
   renderJobId: string;

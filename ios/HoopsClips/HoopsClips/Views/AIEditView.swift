@@ -13,6 +13,8 @@ struct AIEditView: View {
     @State private var editPlan: CloudEditPlanSummary?
     @State private var renderStatus: CloudEditRenderStatusResponse?
     @State private var downloadResponse: CloudEditDownloadResponse?
+    @State private var revisionResponse: CloudEditRevisionResponse?
+    @State private var pendingRevisionCommand: CloudEditRevisionCommand?
     @State private var previewPlayer: AVPlayer?
     @State private var localShareURL: URL?
     @State private var errorMessage: String?
@@ -36,6 +38,10 @@ struct AIEditView: View {
 
                         if let previewPlayer {
                             previewCard(player: previewPlayer)
+                        }
+
+                        if editPlan != nil, downloadResponse != nil || revisionResponse != nil {
+                            revisionCard
                         }
 
                         actionCard
@@ -245,7 +251,7 @@ struct AIEditView: View {
             }
 
             Button(action: startEdit) {
-                Label(downloadResponse == nil ? "Create AI Edit" : "Render Again", systemImage: "sparkles.tv.fill")
+                Label(primaryActionTitle, systemImage: primaryActionIcon)
                     .font(.headline)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
@@ -253,7 +259,7 @@ struct AIEditView: View {
             .buttonStyle(.borderedProminent)
             .tint(AppTheme.accentPurple)
             .disabled(isWorking || !viewModel.canRequestCloudEdit)
-            .accessibilityIdentifier("edit.render.startButton")
+            .accessibilityIdentifier(revisionResponse != nil && downloadResponse == nil ? "edit.revision.renderButton" : "edit.render.startButton")
             .accessibilityHint("Requests a cloud edit plan and render.")
 
             if downloadResponse != nil {
@@ -272,6 +278,55 @@ struct AIEditView: View {
         }
         .padding(14)
         .rorkCard(cornerRadius: 16, stroke: AppTheme.softBorder, glowOpacity: 0.04)
+    }
+
+    private var revisionCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Revise Edit")
+                        .font(.headline)
+                        .foregroundStyle(.white)
+                    Text(revisionStatusText)
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.subtleText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+            }
+
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 132), spacing: 8)], spacing: 8) {
+                ForEach(revisionCommands) { command in
+                    Button {
+                        requestRevision(command)
+                    } label: {
+                        Label(command.title, systemImage: command.icon)
+                            .font(.caption.bold())
+                            .foregroundStyle(pendingRevisionCommand == command ? .white : AppTheme.subtleText)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 10)
+                            .background(pendingRevisionCommand == command ? AppTheme.accentPurple.opacity(0.92) : AppTheme.cardBg.opacity(0.78), in: .rect(cornerRadius: 12))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isWorking)
+                    .accessibilityIdentifier(command.accessibilityIdentifier)
+                    .accessibilityLabel(command.title)
+                    .accessibilityHint("Asks the cloud AI edit agent to revise the current edit plan.")
+                }
+            }
+
+            if let revisionResponse {
+                Text(revisionResponse.patch.summary)
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.warningYellow)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("edit.revision.summaryLabel")
+            }
+        }
+        .padding(14)
+        .rorkCard(cornerRadius: 16, stroke: AppTheme.neonPurple.opacity(0.18), glow: AppTheme.neonPurple, glowOpacity: 0.05)
+        .accessibilityIdentifier("edit.revision.card")
     }
 
     private var statusIcon: String {
@@ -294,6 +349,41 @@ struct AIEditView: View {
         case .renderRequested, .planning, .planReady, .created, .queued, .rendering:
             return AppTheme.neonPurple
         }
+    }
+
+    private var revisionCommands: [CloudEditRevisionCommand] {
+        [
+            .makeShorter,
+            .makeLonger,
+            .makeMoreHype,
+            .makeNBAStyle,
+            .addMoreSlowMotion,
+            .useOriginalAudio,
+            .removeWeakClips,
+            .switchFormatVertical,
+            .switchFormatWidescreen,
+        ]
+    }
+
+    private var primaryActionTitle: String {
+        if revisionResponse != nil, downloadResponse == nil {
+            return "Render Revision"
+        }
+        return downloadResponse == nil ? "Create AI Edit" : "Render Again"
+    }
+
+    private var primaryActionIcon: String {
+        revisionResponse != nil && downloadResponse == nil ? "arrow.triangle.2.circlepath.circle.fill" : "sparkles.tv.fill"
+    }
+
+    private var revisionStatusText: String {
+        if let pendingRevisionCommand, revisionResponse != nil, downloadResponse == nil {
+            return "\(pendingRevisionCommand.title) revision is ready. Render it to create a new MP4."
+        }
+        if let pendingRevisionCommand {
+            return "Last revision: \(pendingRevisionCommand.title). Pick another change or render again."
+        }
+        return "Ask Hoopclips to patch the edit plan, then render the revised MP4."
     }
 
     private func aiChip(icon: String, text: String) -> some View {
@@ -322,7 +412,16 @@ struct AIEditView: View {
 
     private func startEdit() {
         guard !isWorking else { return }
-        Task { await runEditFlow() }
+        if revisionResponse != nil, downloadResponse == nil {
+            Task { await runRevisionRenderFlow() }
+        } else {
+            Task { await runEditFlow() }
+        }
+    }
+
+    private func requestRevision(_ command: CloudEditRevisionCommand) {
+        guard !isWorking else { return }
+        Task { await runRevisionFlow(command) }
     }
 
     private func shareRenderedVideo() {
@@ -336,6 +435,8 @@ struct AIEditView: View {
         errorMessage = nil
         previewPlayer = nil
         downloadResponse = nil
+        revisionResponse = nil
+        pendingRevisionCommand = nil
         localShareURL = nil
         phase = .planning
         HoopsAccessibility.announce("Creating cloud AI edit plan.")
@@ -412,6 +513,95 @@ struct AIEditView: View {
             phase = .failed
             errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             HoopsAccessibility.announce("Cloud AI edit failed.")
+        }
+    }
+
+    @MainActor
+    private func runRevisionFlow(_ command: CloudEditRevisionCommand) async {
+        guard let editJob else {
+            errorMessage = "Create an AI edit first, then revise it."
+            return
+        }
+        isWorking = true
+        errorMessage = nil
+        phase = .planning
+        HoopsAccessibility.announce("Revising cloud AI edit.")
+        defer { isWorking = false }
+
+        do {
+            let revision = try await cloudEditService.requestRevision(
+                editJobID: editJob.editJobId,
+                installID: viewModel.installID,
+                command: command
+            )
+            revisionResponse = revision
+            pendingRevisionCommand = command
+            editPlan = revision.revisedPlan
+            renderStatus = nil
+            downloadResponse = nil
+            previewPlayer = nil
+            localShareURL = nil
+            phase = .planReady
+            HoopsAccessibility.announce("Revision ready. Render revision to create a new video.")
+        } catch {
+            phase = .failed
+            errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            HoopsAccessibility.announce("Cloud AI edit revision failed.")
+        }
+    }
+
+    @MainActor
+    private func runRevisionRenderFlow() async {
+        guard let editJob, let revisionResponse else {
+            await runEditFlow()
+            return
+        }
+        isWorking = true
+        errorMessage = nil
+        previewPlayer = nil
+        downloadResponse = nil
+        localShareURL = nil
+        phase = .renderRequested
+        HoopsAccessibility.announce("Rendering revised cloud AI edit.")
+        defer { isWorking = false }
+
+        do {
+            let requested = try await cloudEditService.requestRevisionRender(
+                editJobID: editJob.editJobId,
+                revisionID: revisionResponse.revisionId,
+                installID: viewModel.installID
+            )
+            renderStatus = requested
+            phase = requested.status
+
+            let finalStatus = try await cloudEditService.pollRenderStatus(
+                editJobID: editJob.editJobId,
+                installID: viewModel.installID
+            )
+            renderStatus = finalStatus
+            phase = finalStatus.status
+
+            guard finalStatus.status == .rendered else {
+                throw CloudEditError.backend(
+                    code: finalStatus.failureReason ?? "render_failed",
+                    message: finalStatus.failureReason ?? "Cloud revision rendering did not finish."
+                )
+            }
+
+            let download = try await cloudEditService.fetchDownloadURL(
+                editJobID: editJob.editJobId,
+                installID: viewModel.installID
+            )
+            downloadResponse = download
+            if let url = URL(string: download.downloadUrl) {
+                previewPlayer = AVPlayer(url: url)
+                previewPlayer?.play()
+            }
+            HoopsAccessibility.announce("Revised cloud AI edit rendered.")
+        } catch {
+            phase = .failed
+            errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            HoopsAccessibility.announce("Cloud revision render failed.")
         }
     }
 

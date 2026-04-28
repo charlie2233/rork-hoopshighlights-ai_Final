@@ -19,7 +19,11 @@ import {
   getEditingDownloadUrl,
   getEditingEditJob,
   getEditingEditPlan,
-  getEditingRenderJob
+  getEditingRenderJob,
+  getEditingRevision,
+  listEditingRevisions,
+  renderEditingRevision,
+  reviseEditingEditJob
 } from "../editing/client";
 import { createPresignedUploadTarget } from "../r2/presign";
 import { emptyResponse, jsonResponse, readJson } from "../utils/request-id";
@@ -48,6 +52,24 @@ export async function routePublicRequest(
   if (request.method === "POST" && route === "/edit-jobs") {
     const body = await readJson(request);
     return createEditingEditJob(env, requestId, body as never);
+  }
+
+  const editRevisionMatch = matchEditRevisionPath(route);
+  if (editRevisionMatch) {
+    if (request.method === "POST" && editRevisionMatch.kind === "revise") {
+      const body = await readJson(request);
+      return reviseEditingEditJob(env, editRevisionMatch.editJobId, requestId, body as never);
+    }
+    if (request.method === "GET" && editRevisionMatch.kind === "list") {
+      return listEditingRevisions(env, editRevisionMatch.editJobId, requestId, url.searchParams.get("installId"));
+    }
+    if (request.method === "GET" && editRevisionMatch.kind === "get" && editRevisionMatch.revisionId) {
+      return getEditingRevision(env, editRevisionMatch.editJobId, editRevisionMatch.revisionId, requestId, url.searchParams.get("installId"));
+    }
+    if (request.method === "POST" && editRevisionMatch.kind === "render" && editRevisionMatch.revisionId) {
+      const body = await readJson(request);
+      return renderEditingRevision(env, editRevisionMatch.editJobId, editRevisionMatch.revisionId, requestId, body as never);
+    }
   }
 
   const editRenderMatch = matchEditRenderPath(route);
@@ -612,6 +634,26 @@ function matchJobPath(pathname: string): { jobId: string; kind: "get" | "delete"
   }
 
   return { jobId: jobMatch[1]!, kind: "get" };
+}
+
+function matchEditRevisionPath(pathname: string): { editJobId: string; revisionId?: string; kind: "revise" | "list" | "get" | "render" } | null {
+  const reviseMatch = pathname.match(/^\/edit-jobs\/([^/]+)\/revise$/);
+  if (reviseMatch) {
+    return { editJobId: reviseMatch[1]!, kind: "revise" };
+  }
+  const renderMatch = pathname.match(/^\/edit-jobs\/([^/]+)\/revisions\/([^/]+)\/render$/);
+  if (renderMatch) {
+    return { editJobId: renderMatch[1]!, revisionId: renderMatch[2]!, kind: "render" };
+  }
+  const revisionMatch = pathname.match(/^\/edit-jobs\/([^/]+)\/revisions\/([^/]+)$/);
+  if (revisionMatch) {
+    return { editJobId: revisionMatch[1]!, revisionId: revisionMatch[2]!, kind: "get" };
+  }
+  const listMatch = pathname.match(/^\/edit-jobs\/([^/]+)\/revisions$/);
+  if (listMatch) {
+    return { editJobId: listMatch[1]!, kind: "list" };
+  }
+  return null;
 }
 
 function matchEditRenderPath(pathname: string): { editJobId: string; kind: "render" | "render-status" | "download-url" } | null {

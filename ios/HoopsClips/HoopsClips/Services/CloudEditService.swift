@@ -101,6 +101,45 @@ struct CloudEditService {
         return try decodeResponse(data: data, response: response, successType: CloudEditDownloadResponse.self)
     }
 
+    func requestRevision(
+        editJobID: String,
+        installID: String,
+        command: CloudEditRevisionCommand
+    ) async throws -> CloudEditRevisionResponse {
+        let baseURL = try configuredBaseURL()
+        var request = URLRequest(url: baseURL.appending(path: "v1/edit-jobs/\(editJobID)/revise"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Hoopclips-iOS/1.0", forHTTPHeaderField: "User-Agent")
+        request.setValue(UUID().uuidString, forHTTPHeaderField: "x-trace-id")
+        request.httpBody = try encoder.encode(
+            CloudEditRevisionRequest(
+                installId: installID,
+                command: command
+            )
+        )
+
+        let (data, response) = try await session.data(for: request)
+        return try decodeResponse(data: data, response: response, successType: CloudEditRevisionResponse.self)
+    }
+
+    func requestRevisionRender(
+        editJobID: String,
+        revisionID: String,
+        installID: String
+    ) async throws -> CloudEditRenderStatusResponse {
+        let baseURL = try configuredBaseURL()
+        var request = URLRequest(url: baseURL.appending(path: "v1/edit-jobs/\(editJobID)/revisions/\(revisionID)/render"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Hoopclips-iOS/1.0", forHTTPHeaderField: "User-Agent")
+        request.setValue(UUID().uuidString, forHTTPHeaderField: "x-trace-id")
+        request.httpBody = try encoder.encode(CloudEditRevisionRenderRequest(installId: installID))
+
+        let (data, response) = try await session.data(for: request)
+        return try decodeResponse(data: data, response: response, successType: CloudEditRenderStatusResponse.self)
+    }
+
     func downloadRenderedVideo(from response: CloudEditDownloadResponse) async throws -> URL {
         guard let url = URL(string: response.downloadUrl) else {
             throw CloudEditError.invalidResponse

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Dict, List, Literal, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Literal, Optional, Sequence, Tuple
 
 from pydantic import Field, model_validator
 
@@ -27,6 +27,8 @@ RevisionCommand = Literal[
     "remove_weak_clips",
     "add_more_slow_motion",
     "use_original_audio",
+    "switch_format_vertical",
+    "switch_format_widescreen",
     "export_vertical",
     "export_widescreen",
     "reduce_captions",
@@ -257,9 +259,27 @@ class EditContext(APIModel):
 
 
 class ReviseEditJobRequest(APIModel):
+    installId: Optional[str] = Field(default=None, min_length=8, max_length=128)
     command: RevisionCommand
+    freeText: Optional[str] = Field(default=None, max_length=240)
     targetDurationSeconds: Optional[int] = Field(default=None, gt=0, le=180)
     aspectRatio: Optional[AspectRatio] = None
+
+
+class EditPlanPatchOperation(APIModel):
+    op: Literal["add", "remove", "replace"]
+    path: str = Field(min_length=1, max_length=160)
+    value: Optional[Any] = None
+    reason: Optional[str] = Field(default=None, max_length=160)
+
+
+class EditPlanPatch(APIModel):
+    version: Literal["edit-plan-patch-v1"] = "edit-plan-patch-v1"
+    baseEditPlanId: str
+    revisionIntent: RevisionCommand
+    summary: str = Field(max_length=320)
+    operations: List[EditPlanPatchOperation] = Field(default_factory=list, max_length=80)
+    requiresRerender: bool = True
 
 
 class EditPlanAudio(APIModel):
@@ -356,6 +376,24 @@ class EditPlanResponse(APIModel):
     status: str
     plan: EditPlan
     validationErrors: List[EditPlanValidationIssue]
+
+
+class EditRevisionValidationResult(APIModel):
+    valid: bool
+    errors: List[EditPlanValidationIssue] = Field(default_factory=list)
+
+
+class EditRevisionResponse(APIModel):
+    revisionId: str
+    editJobId: str
+    basePlanId: str
+    newPlanId: str
+    command: RevisionCommand
+    status: Literal["revision_ready", "revision_failed"]
+    patch: EditPlanPatch
+    revisedPlan: EditPlan
+    validationResult: EditRevisionValidationResult
+    requiresRerender: bool = True
 
 
 @dataclass
@@ -739,6 +777,295 @@ def repair_edit_plan(plan: EditPlan, plan_tier: PlanTier) -> EditPlan:
     return EditPlan(**data)
 
 
+SAFE_PATCH_PATHS = {
+    "/targetDurationSeconds",
+    "/aspectRatio",
+    "/preset",
+    "/theme",
+    "/audio",
+    "/clips",
+    "/intro",
+    "/outro",
+    "/watermark",
+}
+
+
+def _revision_summary(command: RevisionCommand) -> str:
+    return {
+        "make_shorter": "Shorten the edit while keeping the strongest moments.",
+        "make_longer": "Add more context and usable moments while preserving the edit style.",
+        "make_more_hype": "Increase recruiting-reel energy with faster pacing, bold captions, and hype effects.",
+        "make_nba_style": "Switch to a cleaner recap style with widescreen framing and more game audio.",
+        "make_personal": "Switch back to a personal vertical highlight style.",
+        "add_more_slow_motion": "Add safe slow-motion moments around play centers.",
+        "remove_weak_clips": "Remove lower-scoring moments while preserving the strongest clips.",
+        "use_original_audio": "Use original game audio without music.",
+        "switch_format_vertical": "Switch the edit to vertical 9:16 framing.",
+        "switch_format_widescreen": "Switch the edit to widescreen 16:9 framing.",
+        "export_vertical": "Switch the edit to vertical 9:16 framing.",
+        "export_widescreen": "Switch the edit to widescreen 16:9 framing.",
+        "reduce_captions": "Reduce caption density.",
+        "show_more_full_play_context": "Use a more chronological coach-review style with longer context.",
+    }.get(command, "Revise the edit plan.")
+
+
+def _clip_score_lookup(source_clips: Sequence[EditCandidateClip]) -> Dict[str, float]:
+    return {clip.id: clip.planning_score for clip in source_clips}
+
+
+def _retime_clips(clips: List[Dict[str, Any]], intro_seconds: float) -> List[Dict[str, Any]]:
+    timeline_start = intro_seconds
+    retimed: List[Dict[str, Any]] = []
+    for clip in clips:
+        source_duration = max(0.0, float(clip["sourceEnd"]) - float(clip["sourceStart"]))
+        clip["timelineStart"] = round(timeline_start, 3)
+        timeline_end = timeline_start + source_duration
+        clip["timelineEnd"] = round(timeline_end, 3)
+        timeline_start = timeline_end
+        retimed.append(clip)
+    return retimed
+
+
+def _add_slow_motion_effect(clip: Dict[str, Any]) -> None:
+    effects = list(clip.get("effects") or [])
+    if any(effect.get("type") == "slow_motion" for effect in effects):
+        return
+    source_start = float(clip["sourceStart"])
+    source_end = float(clip["sourceEnd"])
+    event_center = min(max(float(clip["eventCenter"]), source_start), source_end)
+    slow_start = max(source_start, event_center - 0.55)
+    slow_end = min(source_end, event_center + 0.55)
+    if slow_end - slow_start < 0.5:
+        return
+    effects.append(
+        {
+            "type": "slow_motion",
+            "sourceStart": round(slow_start, 3),
+            "sourceEnd": round(slow_end, 3),
+            "speed": 0.5,
+        }
+    )
+    clip["effects"] = effects
+
+
+def _build_revised_edit_job(job: StoredEditJob, revision: ReviseEditJobRequest) -> StoredEditJob:
+    request_data = job.request.model_dump()
+    command = revision.command
+
+    if revision.targetDurationSeconds is not None:
+        request_data["targetDurationSeconds"] = revision.targetDurationSeconds
+    elif command == "make_shorter":
+        request_data["targetDurationSeconds"] = max(15, job.plan.targetDurationSeconds - 15)
+    elif command == "make_longer":
+        request_data["targetDurationSeconds"] = min(180, job.plan.targetDurationSeconds + 15)
+
+    if revision.aspectRatio is not None:
+        request_data["aspectRatio"] = revision.aspectRatio
+    elif command in {"export_vertical", "switch_format_vertical"}:
+        request_data["aspectRatio"] = "9:16"
+    elif command in {"export_widescreen", "switch_format_widescreen"}:
+        request_data["aspectRatio"] = "16:9"
+
+    if command in {"make_more_hype", "make_personal", "add_more_slow_motion"}:
+        request_data["preset"] = "personal_highlight"
+        request_data["aspectRatio"] = revision.aspectRatio or request_data.get("aspectRatio") or "9:16"
+    elif command == "make_nba_style":
+        request_data["preset"] = "full_game_highlight"
+        request_data["aspectRatio"] = "16:9"
+    elif command == "show_more_full_play_context":
+        request_data["preset"] = "coach_review"
+
+    revised_request = CreateEditJobRequest(**request_data)
+    revised = build_edit_job(revised_request, job.edit_job_id)
+    data = revised.plan.model_dump()
+
+    if command == "use_original_audio":
+        data["audio"] = {
+            "mode": "original_audio",
+            "musicTrackId": "none",
+            "musicVolume": 0.0,
+            "gameAudioVolume": 1.0,
+        }
+
+    if command == "make_more_hype":
+        data["theme"] = "hype_black_gold"
+        data["aspectRatio"] = "9:16"
+        data["audio"] = {
+            "mode": "music_plus_game_audio",
+            "musicTrackId": "hype_02",
+            "musicVolume": 0.88,
+            "gameAudioVolume": 0.2,
+        }
+        scores = _clip_score_lookup(revised.request.clips)
+        data["clips"] = sorted(data["clips"], key=lambda clip: scores.get(clip["clipId"], 0.0), reverse=True)
+        for clip in data["clips"][:2]:
+            caption = (clip.get("caption") or clip.get("label") or "HIGHLIGHT").upper()
+            clip["caption"] = (caption.rstrip("!") + "!")[:MAX_CAPTION_LENGTH]
+            punch_effects = [effect for effect in clip.get("effects", []) if effect.get("type") == "punch_zoom"]
+            if punch_effects:
+                punch_effects[0]["strength"] = 0.22
+            else:
+                clip.setdefault("effects", []).append(
+                    {
+                        "type": "punch_zoom",
+                        "at": round(float(clip["eventCenter"]), 3),
+                        "strength": 0.22,
+                    }
+                )
+            _add_slow_motion_effect(clip)
+        data["clips"] = _retime_clips(data["clips"], data["intro"]["durationSeconds"])
+
+    if command == "make_nba_style":
+        data["theme"] = "nba_clean"
+        data["aspectRatio"] = "16:9"
+        data["audio"] = {
+            "mode": "music_plus_game_audio",
+            "musicTrackId": "cinematic_01",
+            "musicVolume": 0.45,
+            "gameAudioVolume": 0.62,
+        }
+        data["clips"] = sorted(data["clips"], key=lambda clip: clip["sourceStart"])
+        for index, clip in enumerate(data["clips"]):
+            clip["cropMode"] = "center_action"
+            if index % 2 == 1:
+                clip["caption"] = ""
+            clip["effects"] = [effect for effect in clip.get("effects", []) if effect.get("type") != "punch_zoom"]
+        data["clips"] = _retime_clips(data["clips"], data["intro"]["durationSeconds"])
+
+    if command == "add_more_slow_motion":
+        for clip in data["clips"][:4]:
+            _add_slow_motion_effect(clip)
+
+    if command == "remove_weak_clips" and len(data["clips"]) > 1:
+        scores = _clip_score_lookup(revised.request.clips)
+        weakest_index = min(range(len(data["clips"])), key=lambda index: scores.get(data["clips"][index]["clipId"], 0.0))
+        data["clips"].pop(weakest_index)
+        data["clips"] = _retime_clips(data["clips"], data["intro"]["durationSeconds"])
+
+    if command == "reduce_captions":
+        for index, clip in enumerate(data["clips"]):
+            if index % 2 == 1:
+                clip["caption"] = ""
+
+    if command in {"export_vertical", "switch_format_vertical"}:
+        data["aspectRatio"] = "9:16"
+        for clip in data["clips"]:
+            clip["cropMode"] = "center_action"
+
+    if command in {"export_widescreen", "switch_format_widescreen"}:
+        data["aspectRatio"] = "16:9"
+        for clip in data["clips"]:
+            clip["cropMode"] = "center_action"
+
+    revised.plan = repair_edit_plan(EditPlan(**data), revised.request.planTier)
+    revised.validation_errors = validate_edit_plan(revised.plan, revised.request.clips, revised.request.planTier)
+    revised.status = "plan_ready" if not revised.validation_errors else "failed"
+
+    return StoredEditJob(
+        edit_job_id=job.edit_job_id,
+        install_id=job.install_id,
+        request=revised.request,
+        plan=revised.plan,
+        status=revised.status,
+        created_at=job.created_at,
+        updated_at=now_utc(),
+        validation_errors=revised.validation_errors,
+    )
+
+
+def _diff_edit_plans(base: EditPlan, revised: EditPlan, command: RevisionCommand) -> List[EditPlanPatchOperation]:
+    operations: List[EditPlanPatchOperation] = []
+    base_data = base.model_dump()
+    revised_data = revised.model_dump()
+    for path in [
+        "/targetDurationSeconds",
+        "/aspectRatio",
+        "/preset",
+        "/theme",
+        "/audio",
+        "/clips",
+        "/intro",
+        "/outro",
+        "/watermark",
+    ]:
+        key = path.removeprefix("/")
+        if base_data.get(key) != revised_data.get(key):
+            operations.append(
+                EditPlanPatchOperation(
+                    op="replace",
+                    path=path,
+                    value=revised_data[key],
+                    reason=_revision_summary(command),
+                )
+            )
+    return operations
+
+
+def build_edit_plan_patch(job: StoredEditJob, revision: ReviseEditJobRequest, revised_plan: EditPlan) -> EditPlanPatch:
+    return EditPlanPatch(
+        baseEditPlanId=job.edit_job_id,
+        revisionIntent=revision.command,
+        summary=_revision_summary(revision.command),
+        operations=_diff_edit_plans(job.plan, revised_plan, revision.command),
+        requiresRerender=True,
+    )
+
+
+def _apply_pointer_operation(data: Dict[str, Any], operation: EditPlanPatchOperation) -> None:
+    if operation.path not in SAFE_PATCH_PATHS:
+        raise ValueError(f"Unsupported EditPlanPatch path: {operation.path}")
+    key = operation.path.removeprefix("/")
+    if operation.op == "remove":
+        data.pop(key, None)
+        return
+    if operation.op in {"add", "replace"}:
+        data[key] = operation.value
+        return
+    raise ValueError(f"Unsupported EditPlanPatch operation: {operation.op}")
+
+
+def apply_edit_plan_patch(plan: EditPlan, patch: EditPlanPatch) -> EditPlan:
+    data = plan.model_dump()
+    for operation in patch.operations:
+        _apply_pointer_operation(data, operation)
+    return EditPlan(**data)
+
+
+def build_revision_response(
+    job: StoredEditJob,
+    revision: ReviseEditJobRequest,
+    revision_id: str,
+) -> Tuple[StoredEditJob, EditRevisionResponse]:
+    revised = _build_revised_edit_job(job, revision)
+    patch = build_edit_plan_patch(job, revision, revised.plan)
+    patched_plan = repair_edit_plan(apply_edit_plan_patch(job.plan, patch), revised.request.planTier)
+    errors = validate_edit_plan(patched_plan, revised.request.clips, revised.request.planTier)
+    if estimate_render_cost(patched_plan)["complexityUnits"] > 240:
+        errors.append(
+            EditPlanValidationIssue(
+                field="renderCost",
+                code="render_cost_too_high",
+                message="Revised EditPlan exceeds the configured render cost limit.",
+            )
+        )
+    revised.plan = patched_plan
+    revised.validation_errors = errors
+    revised.status = "plan_ready" if not errors else "failed"
+    response = EditRevisionResponse(
+        revisionId=revision_id,
+        editJobId=job.edit_job_id,
+        basePlanId=job.edit_job_id,
+        newPlanId=f"{job.edit_job_id}:{revision_id}",
+        command=revision.command,
+        status="revision_ready" if not errors else "revision_failed",
+        patch=patch,
+        revisedPlan=patched_plan,
+        validationResult=EditRevisionValidationResult(valid=not errors, errors=errors),
+        requiresRerender=True,
+    )
+    return revised, response
+
+
 def build_edit_job(request: CreateEditJobRequest, edit_job_id: str) -> StoredEditJob:
     plan = build_edit_plan(request, edit_job_id)
     plan = repair_edit_plan(plan, request.planTier)
@@ -756,61 +1083,4 @@ def build_edit_job(request: CreateEditJobRequest, edit_job_id: str) -> StoredEdi
 
 
 def revise_edit_job(job: StoredEditJob, revision: ReviseEditJobRequest) -> StoredEditJob:
-    request_data = job.request.model_dump()
-    command = revision.command
-
-    if revision.targetDurationSeconds is not None:
-        request_data["targetDurationSeconds"] = revision.targetDurationSeconds
-    elif command == "make_shorter":
-        request_data["targetDurationSeconds"] = max(15, job.plan.targetDurationSeconds - 15)
-    elif command == "make_longer":
-        request_data["targetDurationSeconds"] = min(180, job.plan.targetDurationSeconds + 15)
-
-    if revision.aspectRatio is not None:
-        request_data["aspectRatio"] = revision.aspectRatio
-    elif command == "export_vertical":
-        request_data["aspectRatio"] = "9:16"
-    elif command == "export_widescreen":
-        request_data["aspectRatio"] = "16:9"
-
-    if command in {"make_more_hype", "make_personal", "add_more_slow_motion"}:
-        request_data["preset"] = "personal_highlight"
-    elif command == "make_nba_style":
-        request_data["preset"] = "full_game_highlight"
-    elif command == "show_more_full_play_context":
-        request_data["preset"] = "coach_review"
-
-    revised_request = CreateEditJobRequest(**request_data)
-    revised = build_edit_job(revised_request, job.edit_job_id)
-
-    if command == "use_original_audio":
-        data = revised.plan.model_dump()
-        data["audio"] = {
-            "mode": "original_audio",
-            "musicTrackId": "none",
-            "musicVolume": 0.0,
-            "gameAudioVolume": 1.0,
-        }
-        revised.plan = repair_edit_plan(EditPlan(**data), revised.request.planTier)
-        revised.validation_errors = validate_edit_plan(revised.plan, revised.request.clips, revised.request.planTier)
-        revised.status = "plan_ready" if not revised.validation_errors else "failed"
-
-    if command == "reduce_captions":
-        data = revised.plan.model_dump()
-        for index, clip in enumerate(data["clips"]):
-            if index % 2 == 1:
-                clip["caption"] = ""
-        revised.plan = repair_edit_plan(EditPlan(**data), revised.request.planTier)
-        revised.validation_errors = validate_edit_plan(revised.plan, revised.request.clips, revised.request.planTier)
-        revised.status = "plan_ready" if not revised.validation_errors else "failed"
-
-    return StoredEditJob(
-        edit_job_id=job.edit_job_id,
-        install_id=job.install_id,
-        request=revised.request,
-        plan=revised.plan,
-        status=revised.status,
-        created_at=job.created_at,
-        updated_at=now_utc(),
-        validation_errors=revised.validation_errors,
-    )
+    return _build_revised_edit_job(job, revision)

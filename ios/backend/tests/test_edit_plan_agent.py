@@ -10,11 +10,17 @@ from fastapi.testclient import TestClient
 from app.config import Settings
 from app.editing import (
     CreateEditJobRequest,
+    EditPlanPatch,
+    EditPlanPatchOperation,
     EditPlan,
+    ReviseEditJobRequest,
+    apply_edit_plan_patch,
+    build_revision_response,
     build_edit_job,
     build_edit_plan,
     remove_duplicate_moments,
     repair_edit_plan,
+    revise_edit_job,
     validate_edit_plan,
 )
 from app.main import create_app
@@ -170,6 +176,56 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertTrue(repaired.watermark.enabled)
         self.assertTrue(repaired.outro.enabled)
         self.assertFalse(any(error.code.startswith("missing_free") for error in errors))
+
+    def test_revision_patch_rejects_unsafe_path(self) -> None:
+        request = CreateEditJobRequest(**_request_payload())
+        job = build_edit_job(request, "edit_patch_safety")
+        patch = EditPlanPatch(
+            baseEditPlanId=job.edit_job_id,
+            revisionIntent="make_more_hype",
+            summary="Unsafe path should be rejected.",
+            operations=[EditPlanPatchOperation(op="replace", path="/renderMode", value="local_avfoundation")],
+        )
+
+        with self.assertRaises(ValueError):
+            apply_edit_plan_patch(job.plan, patch)
+
+    def test_revision_commands_are_deterministic_patches(self) -> None:
+        request = CreateEditJobRequest(**_request_payload())
+        job = build_edit_job(request, "edit_revision_patch")
+
+        revised, response = build_revision_response(
+            job,
+            ReviseEditJobRequest(command="make_more_hype"),
+            "rev_test",
+        )
+
+        self.assertEqual(response.patch.version, "edit-plan-patch-v1")
+        self.assertEqual(response.command, "make_more_hype")
+        self.assertTrue(response.validationResult.valid)
+        self.assertEqual(revised.plan.aspectRatio, "9:16")
+        self.assertTrue(any(operation.path == "/clips" for operation in response.patch.operations))
+        self.assertTrue(any(effect.type == "slow_motion" for clip in revised.plan.clips for effect in clip.effects))
+
+    def test_remove_weak_clips_drops_lowest_scoring_plan_clip(self) -> None:
+        request = CreateEditJobRequest(**_request_payload())
+        job = build_edit_job(request, "edit_remove_weak")
+        original_clip_count = len(job.plan.clips)
+
+        revised = revise_edit_job(job, ReviseEditJobRequest(command="remove_weak_clips"))
+
+        self.assertLess(len(revised.plan.clips), original_clip_count)
+        self.assertNotIn("c5", [clip.clipId for clip in revised.plan.clips])
+
+    def test_use_original_audio_removes_music(self) -> None:
+        request = CreateEditJobRequest(**_request_payload())
+        job = build_edit_job(request, "edit_original_audio")
+
+        revised = revise_edit_job(job, ReviseEditJobRequest(command="use_original_audio"))
+
+        self.assertEqual(revised.plan.audio.musicTrackId, "none")
+        self.assertEqual(revised.plan.audio.musicVolume, 0.0)
+        self.assertEqual(revised.plan.audio.gameAudioVolume, 1.0)
 
     def test_edit_job_api_creates_and_revises_plan(self) -> None:
         app = create_app(self._settings())
