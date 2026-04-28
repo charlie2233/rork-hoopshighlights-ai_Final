@@ -16,7 +16,20 @@ Worker upload presign
 -> downloaded playable MP4
 ```
 
-The hands-on iOS simulator app build/install/launch also passed, but full UI import/analyze/tap-through was not completed because desktop click automation against Simulator failed in this environment.
+The iOS simulator UI smoke is also proven through the staged client flow:
+
+```text
+Review
+-> Create AI Edit
+-> Personal Highlight / 30s
+-> cloud edit plan
+-> cloud render
+-> rendered MP4 preview
+-> Download / Share / Open In
+-> system share surface
+```
+
+The UI smoke uses a DEBUG-only launch argument to seed an already analyzed cloud clip set from a staging R2 source object. It does not add iOS analysis, edit planning, or rendering.
 
 ## Deploy Evidence
 
@@ -101,41 +114,61 @@ iOS runtime: 26.0.1
 bundle id: atrak.charlie.hoopsclips
 ```
 
-Runtime overrides applied:
+Live UI test command:
 
 ```bash
-xcrun simctl spawn A46E2157-77ED-42CE-959D-65C068681A47 defaults write atrak.charlie.hoopsclips hoops.cloudAnalysisBaseURL -string 'https://hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev'
-xcrun simctl spawn A46E2157-77ED-42CE-959D-65C068681A47 defaults write atrak.charlie.hoopsclips hoops.cloudEditBaseURL -string 'https://hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev'
+xcodebuild test \
+  -project ios/HoopsClips.xcodeproj \
+  -scheme HoopsClips \
+  -configuration Debug \
+  -destination 'platform=iOS Simulator,id=A46E2157-77ED-42CE-959D-65C068681A47' \
+  -only-testing:HoopsClipsUITests/HoopsClipsUITests/testLiveAIEditClientSmokeFlow \
+  -parallel-testing-enabled NO \
+  -derivedDataPath /tmp/hoopsclips-edit3b-live-ui-derived-identifiers \
+  CODE_SIGNING_ALLOWED=NO
 ```
 
 Passed:
 
 ```text
-Debug simulator build: passed
-install to simulator: passed
-app launch: passed
-staging Worker host reachable from app logs: observed HTTP 200/304 network responses
-screenshot: /tmp/hoopclips-phase-edit3b-launch-2.png
+test: HoopsClipsUITests.testLiveAIEditClientSmokeFlow
+result: passed
+duration: 133.938 seconds
+xcresult: /tmp/hoopsclips-edit3b-live-ui-derived-identifiers/Logs/Test/Test-HoopsClips-2026.04.27_20-47-35--0700.xcresult
 ```
 
-Not completed:
+Verified UI sequence:
 
 ```text
-Full manual UI flow was not completed:
-Review -> Make Highlight Reel -> select Personal Highlight -> render -> preview -> share
+Review tab exists
+Make Highlight Reel card exists
+Create AI Edit entry button is enabled
+AI Edit sheet opens
+Personal Highlight style exists
+30 seconds target length exists
+Create render button requests the live Worker-backed cloud edit
+status reaches Rendered
+rendered preview appears
+Download / Share / Open In opens the system share surface
 ```
 
-Reason:
+Captured attachments in the xcresult:
 
 ```text
-Computer Use click events against Simulator returned:
-Apple event error -10005: noWindowsAvailable
-
-AppleScript System Events click returned:
-error -25200
+01 Review Make Highlight Reel
+02 AI Edit Style Picker
+03 AI Edit Rendered Preview
+04 AI Edit Share Sheet
 ```
 
-The source smoke video was added to the simulator Photos library, but importing it through the app requires working Simulator UI interaction or a manual tester.
+The share surface appears in XCTest as `ActivityListView` / `ShareSheet.RemoteContainerView`, not always as an `XCUIElementTypeSheet`.
+
+Known simulator runner note:
+
+```text
+One earlier run hit NSMachErrorDomain Code=-308 from Xcode's cloned simulator runner.
+The successful pass used -parallel-testing-enabled NO on the booted iPhone 17 simulator.
+```
 
 ## Client Hardening Added
 
@@ -148,13 +181,14 @@ AIEditView status icon/color handles render_requested.
 Share preparation refreshes near-expired download URLs.
 If a downloaded MP4 URL returns 401/403/404/410, the app fetches a fresh download URL and retries.
 Downloaded MP4 files are checked for non-zero size before sharing.
+Review and AI Edit buttons now have stable accessibility identifiers for reliable smoke automation.
 ```
 
 The app still shares the downloaded local MP4 file through `SystemShareSheet`, not the raw presigned URL.
 
-## Remaining Manual Gate
+## Optional Manual Follow-Up
 
-Run one manual or reliable UI-automation pass on Simulator or a real device:
+The live smoke proves the cloud edit client path from an already analyzed clip set. A separate manual product smoke should still cover the full user journey from a real imported video:
 
 ```text
 Import a video from Photos.
@@ -168,5 +202,3 @@ Confirm status reaches rendered.
 Confirm MP4 preview plays.
 Confirm Download / Share / Open In presents the share sheet.
 ```
-
-This is now a UI automation/access blocker, not a backend render blocker.

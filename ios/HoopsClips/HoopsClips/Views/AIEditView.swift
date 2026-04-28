@@ -238,6 +238,7 @@ struct AIEditView: View {
             .buttonStyle(.borderedProminent)
             .tint(AppTheme.accentPurple)
             .disabled(isWorking || !viewModel.canRequestCloudEdit)
+            .accessibilityIdentifier("aiEdit.createRenderButton")
             .accessibilityHint("Requests a cloud edit plan and render.")
 
             if downloadResponse != nil {
@@ -250,6 +251,7 @@ struct AIEditView: View {
                 .buttonStyle(.bordered)
                 .tint(AppTheme.neonPurple)
                 .disabled(isPreparingShare)
+                .accessibilityIdentifier("aiEdit.shareButton")
                 .accessibilityHint("Downloads the rendered MP4 and opens the system share sheet.")
             }
         }

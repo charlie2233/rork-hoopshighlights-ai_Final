@@ -56,14 +56,8 @@ final class HoopsClipsUITests: XCTestCase {
 
     @MainActor
     func testLiveAIEditClientSmokeFlow() throws {
-        guard ProcessInfo.processInfo.environment["HOOPS_RUN_LIVE_AI_EDIT_UI_SMOKE"] == "1" else {
-            throw XCTSkip("Set HOOPS_RUN_LIVE_AI_EDIT_UI_SMOKE=1 to run the live Worker -> Cloud Run -> R2 UI smoke.")
-        }
-
-        let sourceObjectKey = try XCTUnwrap(
-            ProcessInfo.processInfo.environment["HOOPS_SMOKE_SOURCE_OBJECT_KEY"],
-            "Live AI edit smoke needs an R2 source object key from the Worker smoke script."
-        )
+        let sourceObjectKey = ProcessInfo.processInfo.environment["HOOPS_SMOKE_SOURCE_OBJECT_KEY"]
+            ?? "uploads/25a101ba8d234fd98094bd112276161f/source.mp4"
         let workerURL = ProcessInfo.processInfo.environment["HOOPS_SMOKE_WORKER_URL"]
             ?? "https://hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev"
         let installID = ProcessInfo.processInfo.environment["HOOPS_SMOKE_INSTALL_ID"]
@@ -83,7 +77,7 @@ final class HoopsClipsUITests: XCTestCase {
         reviewTab.tap()
 
         XCTAssertTrue(app.staticTexts["Make Highlight Reel"].waitForExistence(timeout: 10))
-        let entryButton = app.buttons["Create AI Edit"]
+        let entryButton = app.buttons["review.createAIEditButton"]
         XCTAssertTrue(entryButton.waitForExistence(timeout: 10))
         XCTAssertTrue(entryButton.isEnabled, "AI edit entry should be enabled for smoke-seeded cloud clips.")
         attachScreenshot(named: "01 Review Make Highlight Reel", app: app)
@@ -91,17 +85,17 @@ final class HoopsClipsUITests: XCTestCase {
 
         XCTAssertTrue(app.navigationBars["AI Edit"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["Personal Highlight"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.buttons["30 seconds"].exists)
+        XCTAssertTrue(app.buttons["30 seconds"].firstMatch.exists)
         attachScreenshot(named: "02 AI Edit Style Picker", app: app)
 
-        app.buttons["Create AI Edit"].tap()
+        app.buttons["aiEdit.createRenderButton"].tap()
         XCTAssertTrue(waitForRenderedState(in: app, timeout: 180), "Cloud render should reach Rendered through the live Worker path.")
         attachScreenshot(named: "03 AI Edit Rendered Preview", app: app)
 
-        let shareButton = app.buttons["Download / Share / Open In"]
+        let shareButton = app.buttons["aiEdit.shareButton"]
         XCTAssertTrue(shareButton.waitForExistence(timeout: 20))
         shareButton.tap()
-        XCTAssertTrue(app.sheets.firstMatch.waitForExistence(timeout: 60), "System share sheet should open with the downloaded MP4 file.")
+        XCTAssertTrue(waitForSystemShareSurface(in: app, timeout: 60), "System share sheet should open with the downloaded MP4 file.")
         attachScreenshot(named: "04 AI Edit Share Sheet", app: app)
     }
 
@@ -126,6 +120,20 @@ final class HoopsClipsUITests: XCTestCase {
                 return false
             }
             RunLoop.current.run(until: Date().addingTimeInterval(2))
+        }
+        return false
+    }
+
+    @MainActor
+    private func waitForSystemShareSurface(in app: XCUIApplication, timeout: TimeInterval) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if app.sheets.firstMatch.exists ||
+                app.otherElements["ActivityListView"].exists ||
+                app.otherElements["ShareSheet.RemoteContainerView"].exists {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(1))
         }
         return false
     }

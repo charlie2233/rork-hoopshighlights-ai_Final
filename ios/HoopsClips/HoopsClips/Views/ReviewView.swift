@@ -267,6 +267,7 @@ struct ReviewView: View {
             .buttonStyle(.borderedProminent)
             .tint(AppTheme.accentPurple)
             .disabled(!viewModel.canRequestCloudEdit)
+            .accessibilityIdentifier("review.createAIEditButton")
             .accessibilityHint("Opens cloud AI edit style and target length controls.")
         }
         .padding(14)
