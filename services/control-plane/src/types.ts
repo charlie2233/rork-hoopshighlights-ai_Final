@@ -357,11 +357,43 @@ export interface EditCandidateClip {
   duplicateGroup?: string | null;
 }
 
+export interface CreateEditJobRequest {
+  videoId: string;
+  analysisJobId: string;
+  installId: string;
+  sourceObjectKey?: string | null;
+  preset: "personal_highlight" | "full_game_highlight" | "coach_review" | "fast_break_mix" | "best_five";
+  theme?: string | null;
+  targetDurationSeconds: number;
+  aspectRatio?: "9:16" | "16:9" | "source" | null;
+  planTier?: "free" | "pro";
+  clips: EditCandidateClip[];
+}
+
+export interface EditJobResponse extends ResponseEnvelope {
+  editJobId: string;
+  videoId: string;
+  analysisJobId: string;
+  status: string;
+  preset: string;
+  targetDurationSeconds: number;
+  aspectRatio: "9:16" | "16:9" | "source";
+  clipCount: number;
+  validationErrors?: Array<Record<string, unknown>>;
+}
+
+export interface EditPlanResponse extends ResponseEnvelope {
+  editJobId: string;
+  status: string;
+  plan: Record<string, unknown>;
+  validationErrors?: Array<Record<string, unknown>>;
+}
+
 export interface StartEditRenderRequest {
   installId: string;
-  sourceObjectKey: string;
+  sourceObjectKey?: string | null;
   planTier?: "free" | "pro";
-  editPlan: Record<string, unknown>;
+  editPlan?: Record<string, unknown>;
   sourceClips?: EditCandidateClip[];
 }
 

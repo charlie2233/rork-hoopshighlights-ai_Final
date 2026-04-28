@@ -3,6 +3,7 @@ import AVKit
 
 struct ReviewView: View {
     @Bindable var viewModel: HighlightsViewModel
+    @Environment(SubscriptionManager.self) private var subscriptionManager
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var selectedClip: Clip?
     @State private var clipPlayer: AVPlayer?
@@ -13,6 +14,7 @@ struct ReviewView: View {
     @State private var expandedClipID: UUID?
     @State private var keepTrigger = 0
     @State private var discardTrigger = 0
+    @State private var showingAIEdit = false
 
     private enum FilterOption: String, CaseIterable {
         case all = "All"
@@ -46,6 +48,7 @@ struct ReviewView: View {
                             headerStats
                             reviewProgressStrip
                             quickActionsBar
+                            aiEditEntryCard
                             filterBar
                             clipsList
                         }
@@ -84,6 +87,12 @@ struct ReviewView: View {
             }
             .sheet(item: $selectedClip, onDismiss: teardownClipPlayer) { clip in
                 clipDetailSheet(clip: clip)
+            }
+            .sheet(isPresented: $showingAIEdit) {
+                AIEditView(
+                    viewModel: viewModel,
+                    isProUser: subscriptionManager.isProUser
+                )
             }
         }
     }
@@ -222,6 +231,50 @@ struct ReviewView: View {
             fill: AnyShapeStyle(AppTheme.surfaceBg.opacity(0.55)),
             stroke: AppTheme.softBorder,
             glowOpacity: 0.04
+        )
+    }
+
+    private var aiEditEntryCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 12) {
+                Image(systemName: "wand.and.stars.inverse")
+                    .font(.title2)
+                    .foregroundStyle(AppTheme.warningYellow)
+                    .frame(width: 42, height: 42)
+                    .background(AppTheme.warningYellow.opacity(0.15), in: .circle)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Make Highlight Reel")
+                        .font(.headline)
+                        .foregroundStyle(.white)
+                    Text(viewModel.cloudEditUnavailableReason ?? "Send kept clips to the cloud AI edit agent for a finished MP4.")
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.subtleText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer()
+            }
+
+            Button {
+                showingAIEdit = true
+            } label: {
+                Label("Create AI Edit", systemImage: "sparkles.tv.fill")
+                    .font(.subheadline.bold())
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 11)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(AppTheme.accentPurple)
+            .disabled(!viewModel.canRequestCloudEdit)
+            .accessibilityHint("Opens cloud AI edit style and target length controls.")
+        }
+        .padding(14)
+        .rorkCard(
+            cornerRadius: 16,
+            stroke: viewModel.canRequestCloudEdit ? AppTheme.neonPurple.opacity(0.28) : AppTheme.softBorder,
+            glow: AppTheme.neonPurple,
+            glowOpacity: viewModel.canRequestCloudEdit ? 0.08 : 0.03
         )
     }
 

@@ -19,7 +19,7 @@ struct CloudAnalysisService {
         duration: Double,
         installID: String,
         appVersion: String = "v1.0",
-        analysisVersion: String = AppConstants.cloudAnalysisVersion,
+        analysisVersion: String = "v1",
         progress: @escaping @MainActor @Sendable (Double, String) -> Void
     ) async throws -> CloudAnalysisResult {
         guard let baseURL = configuredBaseURL() else {
@@ -50,6 +50,7 @@ struct CloudAnalysisService {
         return try await pollJob(
             baseURL: baseURL,
             jobID: job.jobId,
+            sourceObjectKey: job.sourceObjectKey,
             initialPollAfterSeconds: job.pollAfterSeconds,
             progress: progress
         )
@@ -139,6 +140,7 @@ struct CloudAnalysisService {
     private func pollJob(
         baseURL: URL,
         jobID: String,
+        sourceObjectKey: String?,
         initialPollAfterSeconds: Int,
         progress: @escaping @MainActor @Sendable (Double, String) -> Void
     ) async throws -> CloudAnalysisResult {
@@ -163,7 +165,7 @@ struct CloudAnalysisService {
                 guard let results = job.results else {
                     throw CloudAnalysisError.invalidResponse
                 }
-                return results
+                return results.withJobMetadata(analysisJobId: job.jobId, sourceObjectKey: job.sourceObjectKey ?? sourceObjectKey)
             case .failed:
                 throw CloudAnalysisError.backend(
                     code: job.errorCode ?? "analysis_failed",

@@ -35,6 +35,8 @@
 	<string>$(HOOPS_APP_ENV)</string>
 	<key>HOOPSCloudAnalysisBaseURL</key>
 	<string>$(HOOPS_CLOUD_ANALYSIS_BASE_URL)</string>
+	<key>HOOPSCloudEditBaseURL</key>
+	<string>$(HOOPS_CLOUD_EDIT_BASE_URL)</string>
 	<key>HOOPSCloudLaunchMode</key>
 	<string>$(HOOPS_CLOUD_LAUNCH_MODE)</string>
 	<key>HOOPSGoogleClientID</key>

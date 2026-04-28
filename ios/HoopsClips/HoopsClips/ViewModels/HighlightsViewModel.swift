@@ -60,6 +60,8 @@ final class HighlightsViewModel {
     var analysisMode: AnalysisExecutionMode = AppRuntimeConfig.shared.launchAnalysisMode
     var cloudQuotaRemaining: Int?
     var isCloudFallbackOffered = false
+    var cloudAnalysisJobID: String?
+    var cloudEditSourceObjectKey: String?
 
     var analysisModeDisplayName: String {
         switch analysisMode {
@@ -72,6 +74,25 @@ final class HighlightsViewModel {
 
     var launchModeSummary: String {
         AppConstants.cloudLaunchStatusLabel
+    }
+
+    var canRequestCloudEdit: Bool {
+        AppConstants.cloudEditEnabled
+            && cloudEditSourceObjectKey != nil
+            && !keptClips.isEmpty
+    }
+
+    var cloudEditUnavailableReason: String? {
+        if !AppConstants.cloudEditEnabled {
+            return "Cloud AI editing is not configured in this build."
+        }
+        if cloudEditSourceObjectKey == nil {
+            return "Run cloud analysis first so Hoopclips has the uploaded source video."
+        }
+        if keptClips.isEmpty {
+            return "Keep at least one clip before making an AI edit."
+        }
+        return nil
     }
 
     var historyProjects: [PersistedProjectRecord] {
@@ -171,6 +192,8 @@ final class HighlightsViewModel {
             }
             cloudQuotaRemaining = nil
             analysisService.applyCloudAnalysis(result, duration: videoDuration)
+            cloudAnalysisJobID = result.analysisJobId
+            cloudEditSourceObjectKey = result.sourceObjectKey
             applyDefaultRedundantClipSuppression()
             AnalysisNotificationService.shared.notifyAnalysisCompleted(
                 clipsCount: analysisService.clips.count,
@@ -194,6 +217,8 @@ final class HighlightsViewModel {
         analysisMode = .local
         isCloudFallbackOffered = false
         cloudQuotaRemaining = nil
+        cloudAnalysisJobID = nil
+        cloudEditSourceObjectKey = nil
         analysisService.beginExternalAnalysis(status: status)
         await analysisService.analyze(url: url, settings: settings)
         applyDefaultRedundantClipSuppression()
@@ -304,6 +329,68 @@ final class HighlightsViewModel {
         }
     }
 
+    func createCloudEditRequest(
+        preset: CloudEditPreset,
+        targetDurationSeconds: Int,
+        isProUser: Bool
+    ) throws -> CreateCloudEditJobRequest {
+        guard let sourceObjectKey = cloudEditSourceObjectKey else {
+            throw CloudEditError.missingSourceObject
+        }
+
+        let candidates = keptClips.prefix(30).map { clip in
+            let center = max(clip.startTime, min(clip.endTime, clip.startTime + (clip.duration / 2.0)))
+            return CloudEditCandidateClip(
+                id: clip.id.uuidString,
+                start: clip.startTime,
+                end: clip.endTime,
+                eventCenter: center,
+                label: clip.label,
+                confidence: clip.confidence,
+                excitement: clip.combinedScore,
+                watchability: max(clip.visualScore, clip.motionScore),
+                motionScore: clip.motionScore,
+                audioPeak: clip.audioScore,
+                combinedScore: clip.combinedScore,
+                duplicateGroup: nil
+            )
+        }
+
+        return CreateCloudEditJobRequest(
+            videoId: currentProjectID?.uuidString ?? "current_project",
+            analysisJobId: cloudAnalysisJobID ?? currentProjectID?.uuidString ?? "current_analysis",
+            installId: installID,
+            sourceObjectKey: sourceObjectKey,
+            preset: preset.rawValue,
+            targetDurationSeconds: targetDurationSeconds,
+            aspectRatio: preset.aspectRatio,
+            planTier: isProUser ? .pro : .free,
+            clips: Array(candidates)
+        )
+    }
+
+    func attachCloudRenderedExport(from temporaryURL: URL) {
+        guard let currentProjectID else {
+            exportService.exportedURL = temporaryURL
+            return
+        }
+
+        do {
+            let project = try projectStore.attachLatestExport(
+                for: currentProjectID,
+                from: temporaryURL,
+                preferredExtension: "mp4"
+            )
+            refreshProjectLibrarySnapshot()
+            exportService.exportedURL = projectStore.existingURL(for: project.latestExportRelativePath)
+            lastExportedAt = Date()
+            persistCurrentProject(reason: .exportCompleted, message: "Downloaded cloud AI edit")
+        } catch {
+            exportService.exportedURL = temporaryURL
+            print("Failed to persist cloud AI edit: \(error.localizedDescription)")
+        }
+    }
+
     func resetProject() {
         persistCurrentProject()
         currentProjectID = nil
@@ -410,6 +497,8 @@ final class HighlightsViewModel {
         project.exportPostProcessing = exportPostProcessing
         project.analysisMode = analysisMode
         project.analysisStatusSummary = lastAnalysisStatusSummary
+        project.cloudAnalysisJobID = cloudAnalysisJobID
+        project.cloudEditSourceObjectKey = cloudEditSourceObjectKey
         project.lastAnalyzedAt = lastAnalyzedAt
         project.lastExportedAt = lastExportedAt
 
@@ -475,6 +564,8 @@ final class HighlightsViewModel {
         customAudioURL = projectStore.existingURL(for: project.customAudioRelativePath)
 
         analysisMode = project.analysisMode ?? AppRuntimeConfig.shared.launchAnalysisMode
+        cloudAnalysisJobID = project.cloudAnalysisJobID
+        cloudEditSourceObjectKey = project.cloudEditSourceObjectKey
         lastAnalysisStatusSummary = project.analysisStatusSummary
         lastAnalyzedAt = project.lastAnalyzedAt
         lastExportedAt = project.lastExportedAt
@@ -515,6 +606,8 @@ final class HighlightsViewModel {
         cloudQuotaRemaining = nil
         isCloudFallbackOffered = false
         lastAnalysisStatusSummary = nil
+        cloudAnalysisJobID = nil
+        cloudEditSourceObjectKey = nil
         lastAnalyzedAt = nil
         lastExportedAt = nil
     }
@@ -624,6 +717,8 @@ final class HighlightsViewModel {
 
     private func fallbackToLocalAnalysis(from error: CloudAnalysisError) async {
         let hardFailureCodes: Set<String> = ["unsupported_duration", "file_too_large"]
+        cloudAnalysisJobID = nil
+        cloudEditSourceObjectKey = nil
         if case .notConfigured = error {
             analysisMode = .localFallback
             isCloudFallbackOffered = false

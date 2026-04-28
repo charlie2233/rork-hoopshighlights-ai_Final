@@ -132,6 +132,28 @@ class EditingServiceTests(unittest.TestCase):
         self.assertEqual(response.status_code, 401)
         self.assertEqual(response.json()["errorCode"], "invalid_editing_secret")
 
+    def test_create_edit_job_and_fetch_plan(self) -> None:
+        client = TestClient(create_app(self._settings()))
+        edit_request = self._edit_request()
+
+        create_response = client.post("/v1/edit-jobs", json=edit_request.model_dump())
+
+        self.assertEqual(create_response.status_code, 200)
+        create_payload = create_response.json()
+        self.assertEqual(create_payload["status"], "plan_ready")
+        self.assertEqual(create_payload["preset"], "personal_highlight")
+        self.assertEqual(create_payload["clipCount"], 2)
+
+        plan_response = client.get(
+            f"/v1/edit-jobs/{create_payload['editJobId']}/plan",
+            params={"installId": edit_request.installId},
+        )
+        self.assertEqual(plan_response.status_code, 200)
+        plan_payload = plan_response.json()
+        self.assertEqual(plan_payload["editJobId"], create_payload["editJobId"])
+        self.assertEqual(plan_payload["plan"]["renderMode"], "cloud_ffmpeg")
+        self.assertEqual(plan_payload["plan"]["aspectRatio"], "9:16")
+
     @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "ffmpeg and ffprobe are required")
     def test_render_job_writes_output_log_and_download_url(self) -> None:
         client = TestClient(create_app(self._settings()))
@@ -155,6 +177,25 @@ class EditingServiceTests(unittest.TestCase):
         download_response = client.get(f"/v1/render-jobs/{render_payload['renderJobId']}/download-url", params={"installId": "install-123"})
         self.assertEqual(download_response.status_code, 200)
         self.assertEqual(download_response.json()["contentType"], "video/mp4")
+
+    @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "ffmpeg and ffprobe are required")
+    def test_render_existing_edit_job_without_resending_plan(self) -> None:
+        client = TestClient(create_app(self._settings()))
+        edit_request = self._edit_request()
+        create_payload = client.post("/v1/edit-jobs", json=edit_request.model_dump()).json()
+
+        render_response = client.post(
+            f"/v1/edit-jobs/{create_payload['editJobId']}/render",
+            json={"installId": edit_request.installId},
+        )
+
+        self.assertEqual(render_response.status_code, 200)
+        render_job_id = render_response.json()["renderJobId"]
+        status_response = client.get(f"/v1/render-jobs/{render_job_id}", params={"installId": edit_request.installId})
+        self.assertEqual(status_response.status_code, 200)
+        render_payload = status_response.json()
+        self.assertEqual(render_payload["status"], "rendered")
+        self.assertEqual(render_payload["aspectRatio"], "9:16")
 
     def test_invalid_plan_rejected_before_render(self) -> None:
         client = TestClient(create_app(self._settings()))

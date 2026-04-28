@@ -62,6 +62,10 @@ enum AppConstants {
         runtimeConfig.allowsCloudAnalysisRequests
     }
 
+    static var cloudEditEnabled: Bool {
+        runtimeConfig.allowsCloudEditRequests
+    }
+
     static var cloudLaunchStatusLabel: String {
         runtimeConfig.cloudLaunchMode.supportLabel
     }
@@ -75,5 +79,16 @@ enum AppConstants {
             }
         }
         return runtimeConfig.resolvedCloudAnalysisBaseURL?.absoluteString ?? ""
+    }
+
+    static var cloudEditBaseURL: String {
+        if runtimeConfig.isDebug {
+            let defaultsOverride = UserDefaults.standard.string(forKey: "hoops.cloudEditBaseURL")?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if !defaultsOverride.isEmpty {
+                return defaultsOverride
+            }
+        }
+        return runtimeConfig.resolvedCloudEditBaseURL?.absoluteString ?? ""
     }
 }

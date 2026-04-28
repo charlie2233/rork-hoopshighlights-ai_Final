@@ -25,6 +25,32 @@ nonisolated struct CreateCloudAnalysisJobResponse: Codable, Sendable {
     let pollAfterSeconds: Int
     let quotaRemainingToday: Int
     let analysisMode: String
+    let sourceObjectKey: String?
+    let resultObjectKey: String?
+
+    init(
+        jobId: String,
+        uploadUrl: String,
+        uploadMethod: String,
+        uploadHeaders: [String: String],
+        expiresAt: Date,
+        pollAfterSeconds: Int,
+        quotaRemainingToday: Int,
+        analysisMode: String,
+        sourceObjectKey: String? = nil,
+        resultObjectKey: String? = nil
+    ) {
+        self.jobId = jobId
+        self.uploadUrl = uploadUrl
+        self.uploadMethod = uploadMethod
+        self.uploadHeaders = uploadHeaders
+        self.expiresAt = expiresAt
+        self.pollAfterSeconds = pollAfterSeconds
+        self.quotaRemainingToday = quotaRemainingToday
+        self.analysisMode = analysisMode
+        self.sourceObjectKey = sourceObjectKey
+        self.resultObjectKey = resultObjectKey
+    }
 }
 
 nonisolated struct StartCloudAnalysisJobRequest: Codable, Sendable {
@@ -45,12 +71,64 @@ nonisolated struct CloudAnalysisJobResponse: Codable, Sendable {
     let errorMessage: String?
     let analysisVersion: String
     let results: CloudAnalysisResult?
+    let sourceObjectKey: String?
+    let resultObjectKey: String?
+
+    init(
+        jobId: String,
+        status: String,
+        progress: Double,
+        stage: String,
+        errorCode: String?,
+        errorMessage: String?,
+        analysisVersion: String,
+        results: CloudAnalysisResult?,
+        sourceObjectKey: String? = nil,
+        resultObjectKey: String? = nil
+    ) {
+        self.jobId = jobId
+        self.status = status
+        self.progress = progress
+        self.stage = stage
+        self.errorCode = errorCode
+        self.errorMessage = errorMessage
+        self.analysisVersion = analysisVersion
+        self.results = results
+        self.sourceObjectKey = sourceObjectKey
+        self.resultObjectKey = resultObjectKey
+    }
 }
 
 nonisolated struct CloudAnalysisResult: Codable, Sendable {
+    let analysisJobId: String?
+    let sourceObjectKey: String?
     let clipCount: Int
     let clips: [CloudClip]
     let diagnostics: CloudDiagnostics
+
+    init(
+        analysisJobId: String? = nil,
+        sourceObjectKey: String? = nil,
+        clipCount: Int,
+        clips: [CloudClip],
+        diagnostics: CloudDiagnostics
+    ) {
+        self.analysisJobId = analysisJobId
+        self.sourceObjectKey = sourceObjectKey
+        self.clipCount = clipCount
+        self.clips = clips
+        self.diagnostics = diagnostics
+    }
+
+    func withJobMetadata(analysisJobId: String, sourceObjectKey: String?) -> CloudAnalysisResult {
+        CloudAnalysisResult(
+            analysisJobId: analysisJobId,
+            sourceObjectKey: sourceObjectKey ?? self.sourceObjectKey,
+            clipCount: clipCount,
+            clips: clips,
+            diagnostics: diagnostics
+        )
+    }
 }
 
 nonisolated struct CloudClip: Codable, Sendable {

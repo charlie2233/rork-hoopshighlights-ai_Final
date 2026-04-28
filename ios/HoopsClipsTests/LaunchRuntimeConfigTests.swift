@@ -62,6 +62,56 @@ struct LaunchRuntimeConfigTests {
         #expect(config.launchAnalysisMode == .cloud)
     }
 
+    @Test func testCloudEditEndpointIsOptionalAndRequiresSecureURLInProduction() {
+        let disabledConfig = AppRuntimeConfig(
+            environmentName: "production",
+            revenueCatAPIKey: "prod_key",
+            googleClientID: "google_client",
+            googleReversedClientID: "com.googleusercontent.apps.example",
+            firebaseAuthAPIKey: "firebase_key",
+            privacyPolicyURL: "https://example.com/privacy",
+            termsOfServiceURL: "https://example.com/terms",
+            cloudAnalysisBaseURL: "",
+            cloudEditBaseURL: "",
+            sentryDSN: "",
+            cloudLaunchMode: .disabled
+        )
+        #expect(disabledConfig.allowsCloudEditRequests == false)
+        #expect(disabledConfig.missingRequiredKeys.isEmpty)
+
+        let disabledWithEditURLConfig = AppRuntimeConfig(
+            environmentName: "production",
+            revenueCatAPIKey: "prod_key",
+            googleClientID: "google_client",
+            googleReversedClientID: "com.googleusercontent.apps.example",
+            firebaseAuthAPIKey: "firebase_key",
+            privacyPolicyURL: "https://example.com/privacy",
+            termsOfServiceURL: "https://example.com/terms",
+            cloudAnalysisBaseURL: "",
+            cloudEditBaseURL: "https://hoopsclips-control-plane-staging.example",
+            sentryDSN: "",
+            cloudLaunchMode: .disabled
+        )
+        #expect(disabledWithEditURLConfig.allowsCloudAnalysisRequests == false)
+        #expect(disabledWithEditURLConfig.allowsCloudEditRequests == false)
+
+        let enabledConfig = AppRuntimeConfig(
+            environmentName: "production",
+            revenueCatAPIKey: "prod_key",
+            googleClientID: "google_client",
+            googleReversedClientID: "com.googleusercontent.apps.example",
+            firebaseAuthAPIKey: "firebase_key",
+            privacyPolicyURL: "https://example.com/privacy",
+            termsOfServiceURL: "https://example.com/terms",
+            cloudAnalysisBaseURL: "https://api.hoopsclips.example",
+            cloudEditBaseURL: "https://hoopsclips-control-plane-staging.example",
+            sentryDSN: "",
+            cloudLaunchMode: .enabled
+        )
+        #expect(enabledConfig.allowsCloudAnalysisRequests)
+        #expect(enabledConfig.allowsCloudEditRequests)
+    }
+
     @Test func testProductionRequiresGoogleReversedClientIDForGoogleReadiness() {
         let config = AppRuntimeConfig(
             environmentName: "production",

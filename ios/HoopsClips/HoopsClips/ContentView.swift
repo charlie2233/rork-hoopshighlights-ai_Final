@@ -71,6 +71,7 @@ struct ContentView: View {
                 }
                 Tab(languageStore.text(.tabReview), systemImage: "film.stack.fill", value: 1) {
                     ReviewView(viewModel: viewModel)
+                        .environment(subscriptionManager)
                 }
                 Tab(languageStore.text(.tabExport), systemImage: "square.and.arrow.up.fill", value: 2) {
                     ExportView(viewModel: viewModel)

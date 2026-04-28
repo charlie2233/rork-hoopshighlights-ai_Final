@@ -3,4 +3,5 @@
 HOOPS_APP_ENV = debug
 HOOPS_REVENUECAT_API_KEY = test_bJcnJkVgFGDpzQgnknxyemoNcXP
 HOOPS_CLOUD_ANALYSIS_BASE_URL = http:/$()/127.0.0.1:8080
+HOOPS_CLOUD_EDIT_BASE_URL = https:/$()/hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev
 HOOPS_CLOUD_LAUNCH_MODE = enabled

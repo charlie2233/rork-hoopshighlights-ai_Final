@@ -32,6 +32,7 @@ struct AppRuntimeConfig {
     let privacyPolicyURL: String
     let termsOfServiceURL: String
     let cloudAnalysisBaseURL: String
+    let cloudEditBaseURL: String
     let sentryDSN: String
     let cloudLaunchMode: CloudLaunchMode
 
@@ -44,6 +45,7 @@ struct AppRuntimeConfig {
         privacyPolicyURL: String,
         termsOfServiceURL: String,
         cloudAnalysisBaseURL: String,
+        cloudEditBaseURL: String = "",
         sentryDSN: String,
         cloudLaunchMode: CloudLaunchMode
     ) {
@@ -55,6 +57,7 @@ struct AppRuntimeConfig {
         self.privacyPolicyURL = privacyPolicyURL.trimmingCharacters(in: .whitespacesAndNewlines)
         self.termsOfServiceURL = termsOfServiceURL.trimmingCharacters(in: .whitespacesAndNewlines)
         self.cloudAnalysisBaseURL = cloudAnalysisBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.cloudEditBaseURL = cloudEditBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
         self.sentryDSN = sentryDSN.trimmingCharacters(in: .whitespacesAndNewlines)
         self.cloudLaunchMode = cloudLaunchMode
     }
@@ -69,6 +72,7 @@ struct AppRuntimeConfig {
             privacyPolicyURL: bundle.string(for: "HOOPSPrivacyPolicyURL") ?? "",
             termsOfServiceURL: bundle.string(for: "HOOPSTermsOfServiceURL") ?? "",
             cloudAnalysisBaseURL: bundle.string(for: "HOOPSCloudAnalysisBaseURL") ?? "",
+            cloudEditBaseURL: bundle.string(for: "HOOPSCloudEditBaseURL") ?? "",
             sentryDSN: bundle.string(for: "HOOPSSentryDSN") ?? "",
             cloudLaunchMode: CloudLaunchMode(
                 rawValue: bundle.string(for: "HOOPSCloudLaunchMode") ?? CloudLaunchMode.disabled.rawValue
@@ -112,6 +116,14 @@ struct AppRuntimeConfig {
         return resolvedURL(from: cloudAnalysisBaseURL)
     }
 
+    var resolvedCloudEditBaseURL: URL? {
+        guard cloudLaunchMode.allowsCloudRequests, !cloudEditBaseURL.isEmpty else {
+            return nil
+        }
+
+        return resolvedURL(from: cloudEditBaseURL)
+    }
+
     private func resolvedURL(from rawValue: String) -> URL? {
         guard !rawValue.isEmpty else {
             return nil
@@ -128,6 +140,10 @@ struct AppRuntimeConfig {
 
     var allowsCloudAnalysisRequests: Bool {
         resolvedCloudAnalysisBaseURL != nil
+    }
+
+    var allowsCloudEditRequests: Bool {
+        resolvedCloudEditBaseURL != nil
     }
 
     var launchAnalysisMode: AnalysisExecutionMode {
@@ -158,6 +174,9 @@ struct AppRuntimeConfig {
         }
         if cloudLaunchMode.allowsCloudRequests && resolvedCloudAnalysisBaseURL == nil {
             missing.append("HOOPSCloudAnalysisBaseURL")
+        }
+        if cloudLaunchMode.allowsCloudRequests && !cloudEditBaseURL.isEmpty && resolvedCloudEditBaseURL == nil {
+            missing.append("HOOPSCloudEditBaseURL")
         }
         return missing
     }

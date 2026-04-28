@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import HoopsClips
 
+@Suite(.serialized)
 struct FirebaseEmailAuthClientTests {
     @Test func signInUsesFirebasePasswordEndpoint() async throws {
         var capturedMethod: String?

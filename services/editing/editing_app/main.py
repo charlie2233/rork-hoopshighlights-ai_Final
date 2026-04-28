@@ -11,6 +11,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from .backend_imports import ensure_ios_backend_on_path
 from .config import EditingSettings, get_settings
 from .models import (
+    CreateEditJobRequest,
     CreateRenderJobRequest,
     DownloadUrlResponse,
     ErrorResponse,
@@ -24,7 +25,7 @@ from .render_storage import EditingServiceError, RenderStorage
 
 ensure_ios_backend_on_path()
 
-from app.editing import EditPlanValidationIssue, validate_edit_plan  # noqa: E402
+from app.editing import EditPlanValidationIssue, StoredEditJob, build_edit_job, validate_edit_plan  # noqa: E402
 from app.models import APIError  # noqa: E402
 from app.renderers.ffmpeg_renderer import FfmpegRenderer, ffmpeg_diagnostics  # noqa: E402
 
@@ -36,6 +37,7 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
     render_jobs: Dict[str, StoredRenderJob] = {}
     render_jobs_by_edit_id: Dict[str, str] = {}
     render_requests: Dict[str, CreateRenderJobRequest] = {}
+    edit_jobs: Dict[str, StoredEditJob] = {}
 
     def error_response(error: EditingServiceError) -> JSONResponse:
         return JSONResponse(
@@ -53,6 +55,16 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
         if job is None:
             raise EditingServiceError(404, "render_job_not_found", "Render job was not found.")
         return job
+
+    def require_edit_job(edit_job_id: str) -> StoredEditJob:
+        job = edit_jobs.get(edit_job_id)
+        if job is None:
+            raise EditingServiceError(404, "edit_job_not_found", "Edit job was not found.")
+        return job
+
+    def require_edit_owner(job: StoredEditJob, install_id: Optional[str]) -> None:
+        if not install_id or install_id != job.install_id:
+            raise EditingServiceError(403, "install_mismatch", "Install ID does not own this edit job.")
 
     def require_owner(job: StoredRenderJob, install_id: Optional[str]) -> None:
         if not install_id or install_id != job.install_id:
@@ -201,6 +213,53 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
         background_tasks.add_task(run_render_job, render_job_id)
         return job.to_response()
 
+    @app.post("/v1/edit-jobs", responses={400: {"model": ErrorResponse}, 401: {"model": ErrorResponse}})
+    async def create_edit_job(
+        request: CreateEditJobRequest,
+        x_hoops_editing_secret: Optional[str] = Header(default=None),
+    ):
+        try:
+            require_secret(x_hoops_editing_secret)
+            edit_job_id = "edit_" + uuid4().hex
+            job = build_edit_job(request, edit_job_id)
+            if job.validation_errors:
+                first_error = job.validation_errors[0]
+                raise EditingServiceError(400, first_error.code, first_error.message)
+            edit_jobs[edit_job_id] = job
+            return job.to_response()
+        except EditingServiceError as error:
+            return error_response(error)
+
+    @app.get("/v1/edit-jobs/{edit_job_id}", responses={403: {"model": ErrorResponse}, 404: {"model": ErrorResponse}})
+    async def get_edit_job(
+        edit_job_id: str,
+        installId: Optional[str] = Query(default=None),
+        x_hoops_install_id: Optional[str] = Header(default=None),
+        x_hoops_editing_secret: Optional[str] = Header(default=None),
+    ):
+        try:
+            require_secret(x_hoops_editing_secret)
+            job = require_edit_job(edit_job_id)
+            require_edit_owner(job, installId or x_hoops_install_id)
+            return job.to_response()
+        except EditingServiceError as error:
+            return error_response(error)
+
+    @app.get("/v1/edit-jobs/{edit_job_id}/plan", responses={403: {"model": ErrorResponse}, 404: {"model": ErrorResponse}})
+    async def get_edit_job_plan(
+        edit_job_id: str,
+        installId: Optional[str] = Query(default=None),
+        x_hoops_install_id: Optional[str] = Header(default=None),
+        x_hoops_editing_secret: Optional[str] = Header(default=None),
+    ):
+        try:
+            require_secret(x_hoops_editing_secret)
+            job = require_edit_job(edit_job_id)
+            require_edit_owner(job, installId or x_hoops_install_id)
+            return job.to_plan_response()
+        except EditingServiceError as error:
+            return error_response(error)
+
     @app.post("/v1/render-jobs", response_model=RenderJobResponse, responses={401: {"model": ErrorResponse}})
     async def create_render_job(
         request: CreateRenderJobRequest,
@@ -222,14 +281,27 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
     ):
         try:
             require_secret(x_hoops_editing_secret)
+            stored_edit_job = edit_jobs.get(edit_job_id)
+            if stored_edit_job is not None:
+                require_edit_owner(stored_edit_job, request.installId)
+
+            edit_plan = request.editPlan or (stored_edit_job.plan if stored_edit_job is not None else None)
+            source_clips = request.sourceClips or (stored_edit_job.request.clips if stored_edit_job is not None else [])
+            source_object_key = request.sourceObjectKey or (stored_edit_job.request.sourceObjectKey if stored_edit_job is not None else None)
+            plan_tier = request.planTier or (stored_edit_job.request.planTier if stored_edit_job is not None else "free")
+            if edit_plan is None:
+                raise EditingServiceError(400, "missing_edit_plan", "Render request must include an EditPlan or reference a stored edit job.")
+            if not source_object_key:
+                raise EditingServiceError(400, "missing_source_object_key", "Render request must include a source video object key.")
+
             return enqueue_render_job(
                 CreateRenderJobRequest(
                     editJobId=edit_job_id,
                     installId=request.installId,
-                    sourceObjectKey=request.sourceObjectKey,
-                    planTier=request.planTier,
-                    editPlan=request.editPlan,
-                    sourceClips=request.sourceClips,
+                    sourceObjectKey=source_object_key,
+                    planTier=plan_tier,
+                    editPlan=edit_plan,
+                    sourceClips=source_clips,
                 ),
                 background_tasks,
             )

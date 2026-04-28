@@ -197,6 +197,15 @@ struct HoopsClipsTests {
         ]))
     }
 
+    @Test func testCloudEditPresetsExposeExpectedAspectRatiosAndDurations() {
+        #expect(CloudEditPreset.personalHighlight.aspectRatio == .vertical)
+        #expect(CloudEditPreset.personalHighlight.durationOptions == [15, 30, 45])
+        #expect(CloudEditPreset.fullGameHighlight.aspectRatio == .widescreen)
+        #expect(CloudEditPreset.fullGameHighlight.durationOptions == [60, 90, 120])
+        #expect(CloudEditPreset.coachReview.aspectRatio == .widescreen)
+        #expect(CloudEditPreset.coachReview.durationOptions == [60, 120, 180])
+    }
+
     @Test func testBundledMusicTracksHaveUniqueFilenames() {
         let filenames = MusicTrack.allCases.compactMap(\.filename)
 
@@ -418,6 +427,8 @@ struct HoopsClipsTests {
         await service.updateSettings(settings)
 
         let result = CloudAnalysisResult(
+            analysisJobId: "analysis_test",
+            sourceObjectKey: "uploads/test/source.mp4",
             clipCount: 3,
             clips: [
                 CloudClip(

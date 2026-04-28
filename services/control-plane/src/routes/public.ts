@@ -13,7 +13,14 @@ import type {
 } from "../types";
 import { bootstrapJob, deleteJobState, getJobSnapshot, updateJobState } from "../do/job-state-client";
 import { appendJobEvent } from "../db";
-import { createEditingRenderJob, getEditingDownloadUrl, getEditingRenderJob } from "../editing/client";
+import {
+  createEditingEditJob,
+  createEditingRenderJob,
+  getEditingDownloadUrl,
+  getEditingEditJob,
+  getEditingEditPlan,
+  getEditingRenderJob
+} from "../editing/client";
 import { createPresignedUploadTarget } from "../r2/presign";
 import { emptyResponse, jsonResponse, readJson } from "../utils/request-id";
 import { resolveRuntimeConfig } from "../env";
@@ -38,6 +45,11 @@ export async function routePublicRequest(
     return handleFinalizeJob(request, env, ctx, requestId, runtime.schemaVersion, url);
   }
 
+  if (request.method === "POST" && route === "/edit-jobs") {
+    const body = await readJson(request);
+    return createEditingEditJob(env, requestId, body as never);
+  }
+
   const editRenderMatch = matchEditRenderPath(route);
   if (editRenderMatch) {
     if (request.method === "POST" && editRenderMatch.kind === "render") {
@@ -49,6 +61,16 @@ export async function routePublicRequest(
     }
     if (request.method === "GET" && editRenderMatch.kind === "download-url") {
       return getEditingDownloadUrl(env, editRenderMatch.editJobId, requestId, url.searchParams.get("installId"));
+    }
+  }
+
+  const editJobMatch = matchEditJobPath(route);
+  if (editJobMatch) {
+    if (request.method === "GET" && editJobMatch.kind === "job") {
+      return getEditingEditJob(env, editJobMatch.editJobId, requestId, url.searchParams.get("installId"));
+    }
+    if (request.method === "GET" && editJobMatch.kind === "plan") {
+      return getEditingEditPlan(env, editJobMatch.editJobId, requestId, url.searchParams.get("installId"));
     }
   }
 
@@ -604,6 +626,18 @@ function matchEditRenderPath(pathname: string): { editJobId: string; kind: "rend
   const downloadMatch = pathname.match(/^\/edit-jobs\/([^/]+)\/download-url$/);
   if (downloadMatch) {
     return { editJobId: downloadMatch[1]!, kind: "download-url" };
+  }
+  return null;
+}
+
+function matchEditJobPath(pathname: string): { editJobId: string; kind: "job" | "plan" } | null {
+  const planMatch = pathname.match(/^\/edit-jobs\/([^/]+)\/plan$/);
+  if (planMatch) {
+    return { editJobId: planMatch[1]!, kind: "plan" };
+  }
+  const jobMatch = pathname.match(/^\/edit-jobs\/([^/]+)$/);
+  if (jobMatch) {
+    return { editJobId: jobMatch[1]!, kind: "job" };
   }
   return null;
 }

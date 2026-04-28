@@ -39,6 +39,8 @@ struct PersistedProjectRecord: Identifiable, Codable, Sendable {
     var lastExportedAt: Date?
     var analysisMode: AnalysisExecutionMode?
     var analysisStatusSummary: String?
+    var cloudAnalysisJobID: String?
+    var cloudEditSourceObjectKey: String?
     var totalClipCount: Int
     var keptClipCount: Int
     var clips: [Clip]
@@ -66,6 +68,8 @@ struct PersistedProjectRecord: Identifiable, Codable, Sendable {
         lastExportedAt: Date? = nil,
         analysisMode: AnalysisExecutionMode? = nil,
         analysisStatusSummary: String? = nil,
+        cloudAnalysisJobID: String? = nil,
+        cloudEditSourceObjectKey: String? = nil,
         totalClipCount: Int = 0,
         keptClipCount: Int = 0,
         clips: [Clip] = [],
@@ -92,6 +96,8 @@ struct PersistedProjectRecord: Identifiable, Codable, Sendable {
         self.lastExportedAt = lastExportedAt
         self.analysisMode = analysisMode
         self.analysisStatusSummary = analysisStatusSummary
+        self.cloudAnalysisJobID = cloudAnalysisJobID
+        self.cloudEditSourceObjectKey = cloudEditSourceObjectKey
         self.totalClipCount = totalClipCount
         self.keptClipCount = keptClipCount
         self.clips = clips
