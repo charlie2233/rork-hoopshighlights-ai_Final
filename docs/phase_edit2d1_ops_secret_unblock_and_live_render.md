@@ -2,15 +2,13 @@
 
 ## Verdict
 
-The canonical Cloud Run editing service is now deployed and direct Cloud Run -> R2 rendering is proven.
-
-The remaining blocker is the active Cloudflare Worker path:
+The full staging cloud editing path is proven:
 
 ```text
-active Worker -> hoopclips-editing-staging -> R2 final.mp4 -> presigned download URL
+active Worker -> hoopclips-editing-staging -> FFmpeg render -> R2 final.mp4 + render_log.json -> presigned download URL
 ```
 
-That path is still blocked because this machine does not have a usable Cloudflare token for Wrangler.
+This phase clears the backend proof gate for the AI Edit Agent renderer. Do not start public product cutover from this alone; this proves staging render plumbing, not production launch readiness.
 
 ## GCP Ops Completed
 
@@ -165,20 +163,111 @@ It appears to be the older `ios/backend` runtime or an older deploy shape. It re
 
 Do not point the Worker at `hoops-ai-editing-staging` for the canonical AI Edit Agent renderer.
 
-## Remaining Blocker
+## Worker Integration
 
-Worker deploy is still blocked:
+Cloudflare OAuth was restored locally:
 
 ```text
-CLOUDFLARE_API_TOKEN is not set
-wrangler whoami -> Failed to fetch auth token / Not logged in
+account: Charliehan112@gmail.com's Account
+accountId: 78fb4442e6e37b2c46d7e539c6e79172
 ```
 
-The active staging Worker also returns Cloudflare `error code: 1010` for direct unauthenticated curl probes from this environment, so a successful Worker-path render smoke must run from an allowed environment after Worker secrets are set.
+Set staging Worker secrets without printing values:
 
-## Next Commands
+```text
+EDITING_BASE_URL = https://hoopclips-editing-staging-npya43jiia-uc.a.run.app
+EDITING_SHARED_SECRET = same value as HOOPS_EDITING_SERVICE_SECRET
+```
 
-On a machine/session with Cloudflare auth:
+Redeployed:
+
+```text
+worker: hoopsclips-control-plane-staging
+url: https://hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev
+versionId: 36bf5630-0351-41aa-bccc-8c1250a26150
+```
+
+Note: Wrangler currently works through local OAuth. CI/automation still needs a dedicated `CLOUDFLARE_API_TOKEN`.
+
+Deploy preflight now passes with no blockers. It still warns that CI/automation needs `CLOUDFLARE_API_TOKEN` because this run used local Wrangler OAuth.
+
+Worker staging secret-name verification shows the required editing secrets are present:
+
+```text
+EDITING_BASE_URL
+EDITING_SHARED_SECRET
+```
+
+## Worker Render Smoke Evidence
+
+Worker-path smoke passed through:
+
+```text
+POST Worker /v1/edit-jobs/{editJobId}/render
+Worker proxy to Cloud Run editing service
+Cloud Run FFmpeg render
+R2 output writes
+GET Worker /v1/edit-jobs/{editJobId}/render-status
+GET Worker /v1/edit-jobs/{editJobId}/download-url
+download final.mp4
+ffmpeg decode
+ffprobe validation
+```
+
+Smoke IDs:
+
+```text
+workerUrl: https://hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev
+editJobId: edit_worker_smoke_1777332335
+renderJobId: render_3628699ea211496aac560b2d59bd0f79
+sourceObjectKey: sources/editing-smoke-1777331684.mp4
+outputObjectKey: edits/edit_worker_smoke_1777332335/render_jobs/render_3628699ea211496aac560b2d59bd0f79/final.mp4
+renderLogObjectKey: edits/edit_worker_smoke_1777332335/render_jobs/render_3628699ea211496aac560b2d59bd0f79/render_log.json
+```
+
+Downloaded MP4 proof:
+
+```json
+{
+  "duration": "14.422005",
+  "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+  "size": "348619",
+  "video": {
+    "codec_name": "h264",
+    "width": 720,
+    "height": 1280,
+    "pix_fmt": "yuv420p",
+    "r_frame_rate": "30/1"
+  },
+  "audio": {
+    "codec_name": "aac"
+  }
+}
+```
+
+R2 object HEAD proof:
+
+```json
+{
+  "bucket": "hoopsclips-results-staging",
+  "objects": [
+    {
+      "key": "edits/edit_worker_smoke_1777332335/render_jobs/render_3628699ea211496aac560b2d59bd0f79/final.mp4",
+      "contentLength": 348619,
+      "contentType": "video/mp4"
+    },
+    {
+      "key": "edits/edit_worker_smoke_1777332335/render_jobs/render_3628699ea211496aac560b2d59bd0f79/render_log.json",
+      "contentLength": 6885,
+      "contentType": "application/json"
+    }
+  ]
+}
+```
+
+## Follow-Up Commands
+
+For CI/automation, create an operator-held Cloudflare token and use:
 
 ```bash
 cd /Users/hanfei/rork-hoopshighlights-ai_Final/services/control-plane
@@ -193,17 +282,21 @@ gcloud secrets versions access latest --secret=HOOPS_EDITING_SERVICE_SECRET --pr
 npx wrangler deploy --env staging
 ```
 
-Then run Worker-path smoke using a real uploaded source key:
+Run Worker-path smoke:
 
 ```bash
 cd /Users/hanfei/rork-hoopshighlights-ai_Final
 PYTHONPATH=services/editing:ios/backend \
 WORKER_BASE_URL="https://hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev" \
-HOOPS_SMOKE_SOURCE_OBJECT_KEY="<existing uploads/... source object>" \
+HOOPS_SMOKE_SOURCE_OBJECT_KEY="<existing R2 source object key>" \
 uv run --with pydantic==2.10.4 --with fastapi==0.115.6 \
   python services/editing/scripts/worker_render_smoke.py
 ```
 
 ## Next Gate
 
-Do not start `phase-edit3-ai-edit-client-ui` until Worker-path smoke passes.
+`phase-edit3-ai-edit-client-ui` can now begin. Keep iOS as the client only:
+
+```text
+style/length selection -> request cloud render -> poll status -> preview/download/share final MP4
+```

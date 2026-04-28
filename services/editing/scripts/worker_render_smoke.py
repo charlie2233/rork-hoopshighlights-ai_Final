@@ -9,6 +9,7 @@ import sys
 import tempfile
 import time
 from typing import Any, Dict, Optional
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urljoin
 from urllib.request import Request, urlopen
 
@@ -118,9 +119,22 @@ def parse_args() -> argparse.Namespace:
 
 def request_json(method: str, base_url: str, path: str, payload: Optional[Dict[str, Any]] = None, trace_id: str = "") -> Dict[str, Any]:
     data = json.dumps(payload).encode("utf-8") if payload is not None else None
-    headers = {"Content-Type": "application/json", "x-trace-id": trace_id}
-    with urlopen(Request(urljoin(base_url, path), data=data, headers=headers, method=method), timeout=60) as response:
-        return json.loads(response.read().decode("utf-8"))
+    headers = {"Content-Type": "application/json", "User-Agent": "HoopClipsWorkerSmoke/1.0", "x-trace-id": trace_id}
+    try:
+        with urlopen(Request(urljoin(base_url, path), data=data, headers=headers, method=method), timeout=60) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except HTTPError as error:
+        body = error.read().decode("utf-8", errors="replace")
+        try:
+            parsed_body: object = json.loads(body)
+        except json.JSONDecodeError:
+            parsed_body = body[:1000]
+        raise SmokeError(
+            f"{method} {path} failed with HTTP {error.code}",
+            {"status": error.code, "body": parsed_body, "headers": dict(error.headers)},
+        ) from error
+    except URLError as error:
+        raise SmokeError(f"{method} {path} failed", {"reason": str(error)}) from error
 
 
 def _float_or_none(value: object) -> Optional[float]:

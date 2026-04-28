@@ -150,16 +150,25 @@ def main() -> int:
     if args.r2_source_bucket == args.r2_output_bucket:
         report["warnings"].append("R2 source and output buckets are the same; this works, but staging usually uses uploads for source and results for render output.")
 
-    if not os.getenv("CLOUDFLARE_API_TOKEN"):
-        check("cloudflare-api-token", False, "CLOUDFLARE_API_TOKEN is not set, so Wrangler cannot verify or deploy the active Worker.", blocker=True)
-    else:
-        whoami = run(["npx", "wrangler", "whoami"], cwd=control_plane_dir)
+    whoami = run(["npx", "wrangler", "whoami"], cwd=control_plane_dir)
+    if os.getenv("CLOUDFLARE_API_TOKEN"):
         check(
             "wrangler-auth",
             whoami.returncode == 0,
-            "Wrangler auth is valid." if whoami.returncode == 0 else "Wrangler auth failed with the provided Cloudflare token.",
+            "Wrangler auth is valid with CLOUDFLARE_API_TOKEN." if whoami.returncode == 0 else "Wrangler auth failed with the provided Cloudflare token.",
             blocker=True,
         )
+    else:
+        check(
+            "wrangler-auth",
+            whoami.returncode == 0,
+            "Wrangler auth is valid through local OAuth. Set CLOUDFLARE_API_TOKEN for CI automation."
+            if whoami.returncode == 0
+            else "CLOUDFLARE_API_TOKEN is not set and local Wrangler OAuth is not valid.",
+            blocker=True,
+        )
+        if whoami.returncode == 0:
+            report["warnings"].append("Wrangler deploy is using local OAuth; CI/automation still needs CLOUDFLARE_API_TOKEN.")
 
     missing_smoke_env = [key for key in SMOKE_ENV_KEYS if not os.getenv(key)]
     if missing_smoke_env:
