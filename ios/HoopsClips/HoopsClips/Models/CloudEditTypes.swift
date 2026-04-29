@@ -54,6 +54,39 @@ enum CloudEditAspectRatio: String, Codable, Sendable {
     case vertical = "9:16"
     case widescreen = "16:9"
     case source
+
+    var title: String {
+        switch self {
+        case .vertical:
+            return "Vertical"
+        case .widescreen:
+            return "Widescreen"
+        case .source:
+            return "Source"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .vertical:
+            return "9:16 social reel"
+        case .widescreen:
+            return "16:9 game recap"
+        case .source:
+            return "Use source framing"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .vertical:
+            return "rectangle.portrait.fill"
+        case .widescreen:
+            return "rectangle.fill"
+        case .source:
+            return "aspectratio.fill"
+        }
+    }
 }
 
 enum CloudEditPlanTier: String, Codable, Sendable {
@@ -158,23 +191,23 @@ enum CloudEditRevisionCommand: String, Codable, CaseIterable, Identifiable, Send
     var accessibilityIdentifier: String {
         switch self {
         case .makeShorter:
-            return "edit.revision.quick.shorterButton"
+            return "export.aiEdit.revision.shorter"
         case .makeLonger:
-            return "edit.revision.quick.longerButton"
+            return "export.aiEdit.revision.longer"
         case .makeMoreHype:
-            return "edit.revision.quick.moreHypeButton"
+            return "export.aiEdit.revision.moreHype"
         case .makeNBAStyle:
-            return "edit.revision.quick.nbaStyleButton"
+            return "export.aiEdit.revision.nbaStyle"
         case .addMoreSlowMotion:
-            return "edit.revision.quick.moreSlowMoButton"
+            return "export.aiEdit.revision.moreSlowMo"
         case .removeWeakClips:
-            return "edit.revision.quick.removeWeakButton"
+            return "export.aiEdit.revision.removeWeak"
         case .useOriginalAudio:
-            return "edit.revision.quick.originalAudioButton"
+            return "export.aiEdit.revision.originalAudio"
         case .switchFormatVertical:
-            return "edit.revision.quick.verticalButton"
+            return "export.aiEdit.revision.vertical"
         case .switchFormatWidescreen:
-            return "edit.revision.quick.widescreenButton"
+            return "export.aiEdit.revision.widescreen"
         }
     }
 }

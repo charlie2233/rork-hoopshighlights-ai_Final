@@ -1,12 +1,19 @@
 import AVKit
 import SwiftUI
 
+enum AIEditPresentation {
+    case sheet
+    case exportSection
+}
+
 struct AIEditView: View {
     @Bindable var viewModel: HighlightsViewModel
     let isProUser: Bool
+    var presentation: AIEditPresentation = .sheet
 
     @Environment(\.dismiss) private var dismiss
     @State private var selectedPreset: CloudEditPreset = .personalHighlight
+    @State private var selectedAspectRatio: CloudEditAspectRatio = CloudEditPreset.personalHighlight.aspectRatio
     @State private var selectedDuration = CloudEditPreset.personalHighlight.durationOptions[1]
     @State private var phase: CloudEditRenderState = .planning
     @State private var editJob: CloudEditJobResponse?
@@ -25,27 +32,35 @@ struct AIEditView: View {
     private let cloudEditService = CloudEditService()
 
     var body: some View {
+        Group {
+            switch presentation {
+            case .sheet:
+                sheetBody
+            case .exportSection:
+                workflowContent
+                    .accessibilityIdentifier("export.aiEdit.section")
+            }
+        }
+        .sheet(isPresented: $showingShareSheet) {
+            if let localShareURL {
+                SystemShareSheet(
+                    items: SystemShareSheet.videoItems(
+                        for: localShareURL,
+                        title: "Hoopclips AI Edit"
+                    ),
+                    subject: "Hoopclips AI Edit"
+                )
+            }
+        }
+    }
+
+    private var sheetBody: some View {
         NavigationStack {
             ZStack {
                 HoopsMotionBackdrop(glowOpacity: 0.18)
 
                 ScrollView {
-                    VStack(spacing: 18) {
-                        heroCard
-                        stylePicker
-                        durationPicker
-                        statusCard
-
-                        if let previewPlayer {
-                            previewCard(player: previewPlayer)
-                        }
-
-                        if editPlan != nil, downloadResponse != nil || revisionResponse != nil {
-                            revisionCard
-                        }
-
-                        actionCard
-                    }
+                    workflowContent
                     .padding(16)
                     .padding(.bottom, 32)
                 }
@@ -58,26 +73,36 @@ struct AIEditView: View {
                         .foregroundStyle(AppTheme.neonPurple)
                 }
             }
-            .sheet(isPresented: $showingShareSheet) {
-                if let localShareURL {
-                    SystemShareSheet(
-                        items: SystemShareSheet.videoItems(
-                            for: localShareURL,
-                            title: "Hoopclips AI Edit"
-                        ),
-                        subject: "Hoopclips AI Edit"
-                    )
-                }
+        }
+    }
+
+    private var workflowContent: some View {
+        VStack(spacing: 18) {
+            heroCard
+            stylePicker
+            formatPicker
+            durationPicker
+            statusCard
+
+            if let previewPlayer {
+                previewCard(player: previewPlayer)
             }
-            .onChange(of: selectedPreset) { _, preset in
-                selectedDuration = preset.durationOptions[min(1, preset.durationOptions.count - 1)]
+
+            if editPlan != nil, downloadResponse != nil || revisionResponse != nil {
+                revisionCard
             }
+
+            actionCard
+        }
+        .onChange(of: selectedPreset) { _, preset in
+            selectedAspectRatio = preset.aspectRatio
+            selectedDuration = preset.durationOptions[min(1, preset.durationOptions.count - 1)]
         }
     }
 
     private var heroCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label("Make Highlight Reel", systemImage: "wand.and.stars")
+            Label("AI Edit Agent", systemImage: "wand.and.stars")
                 .font(.title2.bold())
                 .foregroundStyle(.white)
 
@@ -87,7 +112,7 @@ struct AIEditView: View {
 
             HStack(spacing: 8) {
                 aiChip(icon: "film.stack.fill", text: "\(viewModel.keptClips.count) kept clips")
-                aiChip(icon: selectedPreset.aspectRatio == .vertical ? "rectangle.portrait.fill" : "rectangle.fill", text: selectedPreset.aspectRatio.rawValue)
+                aiChip(icon: selectedAspectRatio.icon, text: selectedAspectRatio.rawValue)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -172,6 +197,50 @@ struct AIEditView: View {
         .rorkCard(cornerRadius: 16, stroke: AppTheme.softBorder, glowOpacity: 0.04)
     }
 
+    private var formatPicker: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Target Format")
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                Spacer()
+                Text(selectedAspectRatio.rawValue)
+                    .font(.subheadline.monospacedDigit().bold())
+                    .foregroundStyle(AppTheme.warningYellow)
+            }
+
+            HStack(spacing: 8) {
+                ForEach([CloudEditAspectRatio.vertical, .widescreen], id: \.rawValue) { aspectRatio in
+                    Button {
+                        selectedAspectRatio = aspectRatio
+                    } label: {
+                        VStack(spacing: 6) {
+                            Image(systemName: aspectRatio.icon)
+                                .font(.headline)
+                            Text(aspectRatio.title)
+                                .font(.caption.bold())
+                            Text(aspectRatio.subtitle)
+                                .font(.caption2)
+                                .lineLimit(2)
+                                .multilineTextAlignment(.center)
+                        }
+                        .foregroundStyle(selectedAspectRatio == aspectRatio ? .white : AppTheme.subtleText)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(selectedAspectRatio == aspectRatio ? AppTheme.accentPurple : AppTheme.cardBg, in: .rect(cornerRadius: 12))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(aspectRatio.title)
+                    .accessibilityIdentifier(formatAccessibilityIdentifier(for: aspectRatio))
+                    .accessibilityValue(selectedAspectRatio == aspectRatio ? "Selected" : "Not selected")
+                    .accessibilityHint("Sets the AI edit output format.")
+                }
+            }
+        }
+        .padding(14)
+        .rorkCard(cornerRadius: 16, stroke: AppTheme.softBorder, glowOpacity: 0.04)
+    }
+
     private var statusCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
@@ -181,7 +250,7 @@ struct AIEditView: View {
                 Text(phase.displayLabel)
                     .font(.headline)
                     .foregroundStyle(statusColor)
-                    .accessibilityIdentifier("edit.status.label")
+                    .accessibilityIdentifier("export.aiEdit.statusLabel")
                 Spacer()
                 if isWorking {
                     ProgressView()
@@ -231,7 +300,7 @@ struct AIEditView: View {
                     RoundedRectangle(cornerRadius: 18)
                         .stroke(AppTheme.accentPurple.opacity(0.28), lineWidth: 1)
                 }
-                .accessibilityIdentifier("edit.preview.player")
+                .accessibilityIdentifier("export.aiEdit.preview")
                 .accessibilityLabel("Rendered AI edit preview")
                 .accessibilityHint("Plays the cloud-rendered MP4.")
         }
@@ -247,7 +316,7 @@ struct AIEditView: View {
                     .foregroundStyle(AppTheme.dangerRed)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityIdentifier("edit.failure.reasonLabel")
+                    .accessibilityIdentifier("export.aiEdit.failure.reasonLabel")
             }
 
             Button(action: startEdit) {
@@ -259,7 +328,7 @@ struct AIEditView: View {
             .buttonStyle(.borderedProminent)
             .tint(AppTheme.accentPurple)
             .disabled(isWorking || !viewModel.canRequestCloudEdit)
-            .accessibilityIdentifier(revisionResponse != nil && downloadResponse == nil ? "edit.revision.renderButton" : "edit.render.startButton")
+            .accessibilityIdentifier(revisionResponse != nil && downloadResponse == nil ? "export.aiEdit.renderRevisionButton" : "export.aiEdit.generateButton")
             .accessibilityHint("Requests a cloud edit plan and render.")
 
             if downloadResponse != nil {
@@ -272,7 +341,7 @@ struct AIEditView: View {
                 .buttonStyle(.bordered)
                 .tint(AppTheme.neonPurple)
                 .disabled(isPreparingShare)
-                .accessibilityIdentifier("edit.share.button")
+                .accessibilityIdentifier("export.aiEdit.shareButton")
                 .accessibilityHint("Downloads the rendered MP4 and opens the system share sheet.")
             }
         }
@@ -321,12 +390,12 @@ struct AIEditView: View {
                     .font(.caption)
                     .foregroundStyle(AppTheme.warningYellow)
                     .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityIdentifier("edit.revision.summaryLabel")
+                    .accessibilityIdentifier("export.aiEdit.revision.summaryLabel")
             }
         }
         .padding(14)
         .rorkCard(cornerRadius: 16, stroke: AppTheme.neonPurple.opacity(0.18), glow: AppTheme.neonPurple, glowOpacity: 0.05)
-        .accessibilityIdentifier("edit.revision.card")
+        .accessibilityIdentifier("export.aiEdit.revision.card")
     }
 
     private var statusIcon: String {
@@ -369,7 +438,7 @@ struct AIEditView: View {
         if revisionResponse != nil, downloadResponse == nil {
             return "Render Revision"
         }
-        return downloadResponse == nil ? "Create AI Edit" : "Render Again"
+        return downloadResponse == nil ? "Generate Highlight Reel" : "Render Again"
     }
 
     private var primaryActionIcon: String {
@@ -398,16 +467,27 @@ struct AIEditView: View {
     private func styleAccessibilityIdentifier(for preset: CloudEditPreset) -> String {
         switch preset {
         case .personalHighlight:
-            return "edit.style.personalHighlightButton"
+            return "export.aiEdit.style.personalHighlight"
         case .fullGameHighlight:
-            return "edit.style.fullGameHighlightButton"
+            return "export.aiEdit.style.fullGameHighlight"
         case .coachReview:
-            return "edit.style.coachReviewButton"
+            return "export.aiEdit.style.coachReview"
         }
     }
 
     private func durationAccessibilityIdentifier(for duration: Int) -> String {
-        "edit.duration.\(duration)sButton"
+        "export.aiEdit.length.\(duration)s"
+    }
+
+    private func formatAccessibilityIdentifier(for aspectRatio: CloudEditAspectRatio) -> String {
+        switch aspectRatio {
+        case .vertical:
+            return "export.aiEdit.format.vertical"
+        case .widescreen:
+            return "export.aiEdit.format.widescreen"
+        case .source:
+            return "export.aiEdit.format.source"
+        }
     }
 
     private func startEdit() {
@@ -458,6 +538,7 @@ struct AIEditView: View {
             let request = try viewModel.createCloudEditRequest(
                 preset: selectedPreset,
                 targetDurationSeconds: selectedDuration,
+                aspectRatio: selectedAspectRatio,
                 isProUser: isProUser
             )
             let job = try await cloudEditService.createEditJob(request)

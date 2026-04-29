@@ -3,7 +3,7 @@ import AVKit
 
 struct ReviewView: View {
     @Bindable var viewModel: HighlightsViewModel
-    @Environment(SubscriptionManager.self) private var subscriptionManager
+    @Binding var selectedTab: Int
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var selectedClip: Clip?
     @State private var clipPlayer: AVPlayer?
@@ -14,7 +14,6 @@ struct ReviewView: View {
     @State private var expandedClipID: UUID?
     @State private var keepTrigger = 0
     @State private var discardTrigger = 0
-    @State private var showingAIEdit = false
 
     private enum FilterOption: String, CaseIterable {
         case all = "All"
@@ -87,12 +86,6 @@ struct ReviewView: View {
             }
             .sheet(item: $selectedClip, onDismiss: teardownClipPlayer) { clip in
                 clipDetailSheet(clip: clip)
-            }
-            .sheet(isPresented: $showingAIEdit) {
-                AIEditView(
-                    viewModel: viewModel,
-                    isProUser: subscriptionManager.isProUser
-                )
             }
         }
     }
@@ -247,7 +240,7 @@ struct ReviewView: View {
                     Text("Make Highlight Reel")
                         .font(.headline)
                         .foregroundStyle(.white)
-                    Text(viewModel.cloudEditUnavailableReason ?? "Send kept clips to the cloud AI edit agent for a finished MP4.")
+                    Text(viewModel.cloudEditUnavailableReason ?? "Continue to Export to choose AI edit style, length, render, revise, and share.")
                         .font(.caption)
                         .foregroundStyle(AppTheme.subtleText)
                         .fixedSize(horizontal: false, vertical: true)
@@ -257,9 +250,9 @@ struct ReviewView: View {
             }
 
             Button {
-                showingAIEdit = true
+                openExport()
             } label: {
-                Label("Create AI Edit", systemImage: "sparkles.tv.fill")
+                Label("Continue to Export", systemImage: "square.and.arrow.up.fill")
                     .font(.subheadline.bold())
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 11)
@@ -267,8 +260,8 @@ struct ReviewView: View {
             .buttonStyle(.borderedProminent)
             .tint(AppTheme.accentPurple)
             .disabled(!viewModel.canRequestCloudEdit)
-            .accessibilityIdentifier("review.makeHighlightReelButton")
-            .accessibilityHint("Opens cloud AI edit style and target length controls.")
+            .accessibilityIdentifier("review.continueToExportButton")
+            .accessibilityHint("Opens Export with AI edit style, target length, render, preview, and share controls.")
         }
         .padding(14)
         .rorkCard(
@@ -277,6 +270,18 @@ struct ReviewView: View {
             glow: AppTheme.neonPurple,
             glowOpacity: viewModel.canRequestCloudEdit ? 0.08 : 0.03
         )
+    }
+
+    private func openExport() {
+        guard selectedTab != 2 else { return }
+        guard !reduceMotion else {
+            selectedTab = 2
+            return
+        }
+
+        withAnimation(.easeOut(duration: 0.2)) {
+            selectedTab = 2
+        }
     }
 
     private func reviewQuickActionButton(

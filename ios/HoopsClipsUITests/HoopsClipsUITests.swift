@@ -67,24 +67,31 @@ final class HoopsClipsUITests: XCTestCase {
             installID: smokeConfig.installID
         )
 
-        openAIEditSheet(from: app)
+        openAIEditExportFlow(from: app)
 
-        XCTAssertTrue(app.buttons["edit.style.personalHighlightButton"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.buttons["edit.duration.30sButton"].firstMatch.exists)
-        attachScreenshot(named: "02 AI Edit Style Picker", app: app)
+        XCTAssertTrue(app.buttons["export.aiEdit.style.personalHighlight"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["export.aiEdit.length.30s"].firstMatch.exists)
+        attachScreenshot(named: "02 Export AI Edit Style Picker", app: app)
 
-        app.buttons["edit.render.startButton"].tap()
+        tapWhenReady(app.buttons["export.aiEdit.generateButton"], in: app)
         XCTAssertTrue(waitForRenderedState(in: app, timeout: 300), "Cloud render should reach Rendered through the live Worker path.")
-        XCTAssertTrue(app.descendants(matching: .any)["edit.preview.player"].waitForExistence(timeout: 20))
-        XCTAssertTrue(app.descendants(matching: .any)["edit.revision.card"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.buttons["edit.revision.moreHypeButton"].exists)
-        attachScreenshot(named: "03 AI Edit Rendered Preview", app: app)
+        XCTAssertTrue(app.descendants(matching: .any)["export.aiEdit.preview"].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.descendants(matching: .any)["export.aiEdit.revision.card"].waitForExistence(timeout: 10))
+        attachScreenshot(named: "03 Export AI Edit Rendered Preview", app: app)
 
-        let shareButton = app.buttons["edit.share.button"]
+        tapWhenReady(app.buttons["export.aiEdit.revision.moreHype"], in: app)
+        let renderRevisionButton = app.buttons["export.aiEdit.renderRevisionButton"]
+        XCTAssertTrue(renderRevisionButton.waitForExistence(timeout: 60))
+        tapWhenReady(renderRevisionButton, in: app)
+        XCTAssertTrue(waitForRenderedState(in: app, timeout: 300), "Cloud revision render should reach Rendered through the live Worker path.")
+        XCTAssertTrue(app.descendants(matching: .any)["export.aiEdit.preview"].waitForExistence(timeout: 20))
+        attachScreenshot(named: "04 Export AI Edit Revised Preview", app: app)
+
+        let shareButton = app.buttons["export.aiEdit.shareButton"]
         XCTAssertTrue(shareButton.waitForExistence(timeout: 20))
-        shareButton.tap()
+        tapWhenReady(shareButton, in: app)
         XCTAssertTrue(waitForSystemShareSurface(in: app, timeout: 60), "System share sheet should open with the downloaded MP4 file.")
-        attachScreenshot(named: "04 AI Edit Share Sheet", app: app)
+        attachScreenshot(named: "05 Export AI Edit Share Sheet", app: app)
     }
 
     @MainActor
@@ -98,12 +105,12 @@ final class HoopsClipsUITests: XCTestCase {
             workerURL: smokeConfig.workerURL,
             installID: "phase-edit3c-failure-ui-smoke"
         )
-        openAIEditSheet(from: app)
+        openAIEditExportFlow(from: app)
 
-        app.buttons["edit.render.startButton"].tap()
-        let failureReason = app.staticTexts["edit.failure.reasonLabel"]
+        tapWhenReady(app.buttons["export.aiEdit.generateButton"], in: app)
+        let failureReason = app.staticTexts["export.aiEdit.failure.reasonLabel"]
         XCTAssertTrue(failureReason.waitForExistence(timeout: 10), "Failed render fixture should show a user-facing failure reason.")
-        attachScreenshot(named: "AI Edit Failure Fixture", app: app)
+        attachScreenshot(named: "Export AI Edit Failure Fixture", app: app)
     }
 
     @MainActor
@@ -117,7 +124,7 @@ final class HoopsClipsUITests: XCTestCase {
     @MainActor
     private func waitForRenderedState(in app: XCUIApplication, timeout: TimeInterval) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
-        let statusLabel = app.descendants(matching: .any)["edit.status.label"]
+        let statusLabel = app.descendants(matching: .any)["export.aiEdit.statusLabel"]
         var lastStatus = "<missing>"
         while Date() < deadline {
             if statusLabel.exists {
@@ -128,7 +135,7 @@ final class HoopsClipsUITests: XCTestCase {
             }
             if lastStatus == "Failed" {
                 attachScreenshot(named: "AI Edit Failed", app: app)
-                let failureReason = app.staticTexts["edit.failure.reasonLabel"].firstMatch
+                let failureReason = app.staticTexts["export.aiEdit.failure.reasonLabel"].firstMatch
                 XCTFail(failureReason.exists ? failureReason.label : "AI edit failed before rendering.")
                 return false
             }
@@ -209,19 +216,37 @@ final class HoopsClipsUITests: XCTestCase {
     }
 
     @MainActor
-    private func openAIEditSheet(from app: XCUIApplication) {
+    private func openAIEditExportFlow(from app: XCUIApplication) {
         let reviewTab = app.tabBars.buttons["Review"]
         XCTAssertTrue(reviewTab.waitForExistence(timeout: 10), "Review tab should be available in the smoke guest session.")
         reviewTab.tap()
 
         XCTAssertTrue(app.staticTexts["Make Highlight Reel"].waitForExistence(timeout: 10))
-        let entryButton = app.buttons["review.makeHighlightReelButton"]
+        let entryButton = app.buttons["review.continueToExportButton"]
         XCTAssertTrue(entryButton.waitForExistence(timeout: 10))
         XCTAssertTrue(entryButton.isEnabled, "AI edit entry should be enabled for smoke-seeded cloud clips.")
-        attachScreenshot(named: "01 Review Make Highlight Reel", app: app)
-        entryButton.tap()
+        attachScreenshot(named: "01 Review Continue To Export", app: app)
+        tapWhenReady(entryButton, in: app)
 
-        XCTAssertTrue(app.navigationBars["AI Edit"].waitForExistence(timeout: 10))
+        let exportTab = app.tabBars.buttons["Export"]
+        XCTAssertTrue(exportTab.waitForExistence(timeout: 10), "Export tab should be visible after routing from Review.")
+        XCTAssertTrue(app.descendants(matching: .any)["export.aiEdit.section"].waitForExistence(timeout: 10))
+        attachScreenshot(named: "02 Export AI Edit Agent", app: app)
+    }
+
+    @MainActor
+    private func tapWhenReady(_ element: XCUIElement, in app: XCUIApplication, timeout: TimeInterval = 20) {
+        XCTAssertTrue(element.waitForExistence(timeout: timeout))
+        let deadline = Date().addingTimeInterval(timeout)
+        while !element.isHittable && Date() < deadline {
+            app.swipeUp()
+            RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        }
+        if element.isHittable {
+            element.tap()
+        } else {
+            element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        }
     }
 
     @MainActor

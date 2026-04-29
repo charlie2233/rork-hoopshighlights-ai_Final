@@ -340,6 +340,7 @@ final class HighlightsViewModel {
     func createCloudEditRequest(
         preset: CloudEditPreset,
         targetDurationSeconds: Int,
+        aspectRatio: CloudEditAspectRatio? = nil,
         isProUser: Bool
     ) throws -> CreateCloudEditJobRequest {
         guard let sourceObjectKey = cloudEditSourceObjectKey else {
@@ -371,7 +372,7 @@ final class HighlightsViewModel {
             sourceObjectKey: sourceObjectKey,
             preset: preset.rawValue,
             targetDurationSeconds: targetDurationSeconds,
-            aspectRatio: preset.aspectRatio,
+            aspectRatio: aspectRatio ?? preset.aspectRatio,
             planTier: isProUser ? .pro : .free,
             clips: Array(candidates)
         )

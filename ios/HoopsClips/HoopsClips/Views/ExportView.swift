@@ -42,6 +42,7 @@ struct ExportView: View {
                     ScrollView {
                         VStack(spacing: 24) {
                             summaryCard
+                            aiEditAgentSection
                             themeSection
                             musicSection
                             qualitySection
@@ -254,6 +255,14 @@ struct ExportView: View {
         }
         .padding(16)
         .rorkCard(cornerRadius: 16, stroke: AppTheme.accentPurple.opacity(0.2))
+    }
+
+    private var aiEditAgentSection: some View {
+        AIEditView(
+            viewModel: viewModel,
+            isProUser: subscriptionManager.isProUser,
+            presentation: .exportSection
+        )
     }
 
     private var themeSection: some View {
