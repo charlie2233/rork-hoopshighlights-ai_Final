@@ -130,13 +130,14 @@ The Export-page AI Edit section now shows plan limits and clearer failure/retry 
 Passed:
 
 - `ios/backend/.venv/bin/python -m py_compile ios/backend/app/editing.py services/editing/editing_app/main.py services/editing/editing_app/models.py services/editing/editing_app/render_storage.py services/editing/scripts/template_pack_smoke.py`
-- `PYTHONPATH=ios/backend:services/editing ios/backend/.venv/bin/python -m unittest services.editing.tests.test_editing_service`
-- `PYTHONPATH=ios/backend ios/backend/.venv/bin/python -m unittest ios.backend.tests.test_edit_plan_agent ios.backend.tests.test_render_jobs -v`
+- `PYTHONPATH=ios/backend:services/editing ios/backend/.venv/bin/python -m unittest ios.backend.tests.test_edit_plan_agent services.editing.tests.test_editing_service`
 - `npm --prefix services/control-plane run typecheck`
 - `npx tsx --test services/control-plane/test/control-plane-editing-proxy.test.ts`
-- `xcodebuild -project ios/HoopsClips.xcodeproj -scheme HoopsClips -configuration Debug -destination 'generic/platform=iOS Simulator' build CODE_SIGNING_ALLOWED=NO`
-- `xcodebuild -project ios/HoopsClips.xcodeproj -scheme HoopsClips -configuration Debug -destination 'generic/platform=iOS Simulator' build-for-testing CODE_SIGNING_ALLOWED=NO`
+- `xcodebuild -project ios/HoopsClips.xcodeproj -scheme HoopsClips -configuration Debug -destination 'generic/platform=iOS Simulator' -derivedDataPath /tmp/hoopclips-phase6-dd-2 build CODE_SIGNING_ALLOWED=NO`
+- `xcodebuild -project ios/HoopsClips.xcodeproj -scheme HoopsClips -configuration Debug -destination 'generic/platform=iOS Simulator' -derivedDataPath /tmp/hoopclips-phase6-dd-2 build-for-testing CODE_SIGNING_ALLOWED=NO`
 - `git diff --check`
+
+Note: an earlier build attempt against `/tmp/hoopclips-phase6-dd` failed with Xcode's `build.db` lock error. The clean rerun with `/tmp/hoopclips-phase6-dd-2` passed.
 
 ## Live Smoke
 
