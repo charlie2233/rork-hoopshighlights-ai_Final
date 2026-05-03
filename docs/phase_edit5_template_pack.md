@@ -77,14 +77,15 @@ The iOS app sends the selected `templateId` with the cloud edit request and keep
 
 ## Validation
 
-Run for branch closeout:
+Branch closeout evidence:
 
-- `git diff --check`
-- `PYTHONPATH=services/editing:ios/backend ios/backend/.venv/bin/python -m unittest services.editing.tests.test_editing_service -v`
-- `PYTHONPATH=ios/backend ios/backend/.venv/bin/python -m unittest ios.backend.tests.test_edit_plan_agent ios.backend.tests.test_render_jobs -v`
-- `npm --prefix services/control-plane run typecheck`
-- `xcodebuild -project ios/HoopsClips.xcodeproj -scheme HoopsClips -configuration Debug -destination 'generic/platform=iOS Simulator' build CODE_SIGNING_ALLOWED=NO`
-- `xcodebuild -project ios/HoopsClips.xcodeproj -scheme HoopsClips -configuration Debug -destination 'generic/platform=iOS Simulator' build-for-testing CODE_SIGNING_ALLOWED=NO`
+- `git diff --check` passed.
+- `npm --prefix services/control-plane run typecheck` passed.
+- `PYTHONPATH=ios/backend:services/editing ios/backend/.venv/bin/python -m unittest ios.backend.tests.test_edit_plan_agent services.editing.tests.test_editing_service` passed, with 24 tests run.
+- `python -m pytest ...` was not used because `pytest` is not installed in the repo virtualenv; the backend coverage above was run through `unittest`.
+- `xcodebuild -project ios/HoopsClips.xcodeproj -scheme HoopsClips -configuration Debug -destination 'generic/platform=iOS Simulator' -derivedDataPath /tmp/hoopclips-phase5-dd build CODE_SIGNING_ALLOWED=NO` passed.
+- `xcodebuild -project ios/HoopsClips.xcodeproj -scheme HoopsClips -configuration Debug -destination 'generic/platform=iOS Simulator' -derivedDataPath /tmp/hoopclips-phase5-dd build-for-testing CODE_SIGNING_ALLOWED=NO` passed.
+- The first default-DerivedData Xcode build attempt failed with a build database lock, so validation used isolated DerivedData at `/tmp/hoopclips-phase5-dd`.
 
 ## Remaining Polish Ideas
 
