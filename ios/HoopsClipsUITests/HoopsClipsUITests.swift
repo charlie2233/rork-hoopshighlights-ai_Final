@@ -70,6 +70,8 @@ final class HoopsClipsUITests: XCTestCase {
         openAIEditExportFlow(from: app)
 
         XCTAssertTrue(app.buttons["export.aiEdit.style.personalHighlight"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["export.aiEdit.style.fullGameHighlight"].exists)
+        XCTAssertTrue(app.buttons["export.aiEdit.style.coachReview"].exists)
         XCTAssertTrue(app.buttons["export.aiEdit.length.30s"].firstMatch.exists)
         attachScreenshot(named: "02 Export AI Edit Style Picker", app: app)
 

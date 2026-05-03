@@ -241,12 +241,7 @@ def run_revision_case(args: argparse.Namespace, output_dir: Path, source_key: st
         "POST",
         args.worker_url,
         f"v1/edit-jobs/{edit_job_id}/revisions/{revision_id}/render",
-        {
-            "installId": args.install_id,
-            "sourceObjectKey": source_key,
-            "planTier": "free",
-            "sourceClips": smoke_clips(),
-        },
+        {"installId": args.install_id},
         trace_id=trace_id,
     )
     render_status = wait_for_render(args, edit_job_id, render_status, trace_id)
@@ -336,15 +331,26 @@ def wait_for_render(args: argparse.Namespace, edit_job_id: str, status: Dict[str
     deadline = time.time() + args.timeout_seconds
     while time.time() < deadline and status.get("status") not in {"rendered", "failed", "cancelled"}:
         time.sleep(args.poll_seconds)
-        status = request_json(
-            "GET",
-            args.worker_url,
-            f"v1/edit-jobs/{edit_job_id}/render-status?{urlencode({'installId': args.install_id})}",
-            trace_id=trace_id,
-        )
+        try:
+            status = request_json(
+                "GET",
+                args.worker_url,
+                f"v1/edit-jobs/{edit_job_id}/render-status?{urlencode({'installId': args.install_id})}",
+                trace_id=trace_id,
+            )
+        except SmokeError as error:
+            if is_transient_render_not_found(error):
+                status = {"status": "render_requested", "transientStatusError": error.payload}
+                continue
+            raise
     if status.get("status") != "rendered":
         raise SmokeError("render did not reach rendered", {"editJobId": edit_job_id, "renderStatus": status})
     return status
+
+
+def is_transient_render_not_found(error: SmokeError) -> bool:
+    body = error.payload.get("body") if isinstance(error.payload, dict) else None
+    return isinstance(body, dict) and body.get("errorCode") == "render_job_not_found"
 
 
 def load_render_log_and_heads(args: argparse.Namespace, render_log_key: str, output_object_key: str) -> Dict[str, Any]:
