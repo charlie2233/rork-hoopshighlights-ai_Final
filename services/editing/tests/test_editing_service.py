@@ -158,6 +158,20 @@ class EditingServiceTests(unittest.TestCase):
         self.assertEqual(plan_payload["plan"]["captionStyle"], "bold_hype")
         self.assertEqual(plan_payload["plan"]["aspectRatio"], "9:16")
 
+    def test_edit_job_error_routes_return_error_responses(self) -> None:
+        client = TestClient(create_app(self._settings()))
+
+        job_response = client.get("/v1/edit-jobs/edit_missing", params={"installId": "install-123"})
+        plan_response = client.get("/v1/edit-jobs/edit_missing/plan", params={"installId": "install-123"})
+        revisions_response = client.get("/v1/edit-jobs/edit_missing/revisions", params={"installId": "install-123"})
+
+        self.assertEqual(job_response.status_code, 404)
+        self.assertEqual(job_response.json()["errorCode"], "edit_job_not_found")
+        self.assertEqual(plan_response.status_code, 404)
+        self.assertEqual(plan_response.json()["errorCode"], "edit_job_not_found")
+        self.assertEqual(revisions_response.status_code, 404)
+        self.assertEqual(revisions_response.json()["errorCode"], "edit_job_not_found")
+
     def test_template_registry_loads_and_validates(self) -> None:
         validation = validate_template_registry()
 
