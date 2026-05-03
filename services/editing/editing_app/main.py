@@ -127,6 +127,21 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
         except Exception:
             pass
 
+    def emit_policy_failed(error: EditingServiceError, **fields: object) -> None:
+        if error.error_code in {
+            "active_render_limit",
+            "ai_edit_disabled",
+            "ai_edit_revision_disabled",
+            "ai_edit_template_pack_disabled",
+            "daily_render_limit",
+            "pro_exports_unavailable",
+            "render_duration_limit",
+            "render_retry_limit",
+            "revision_limit",
+            "source_video_too_long",
+        }:
+            emit_event("policy.failed", failureReason=error.error_code, **fields)
+
     def active_render_statuses() -> set[str]:
         return {"render_requested", "created", "queued", "rendering"}
 
@@ -418,6 +433,7 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             emit_event("edit_plan.created", editJobId=edit_job_id, templateId=job.plan.templateId, planTier=request.planTier)
             return job.to_response()
         except EditingServiceError as error:
+            emit_policy_failed(error, templateId=request.templateId, planTier=request.planTier)
             return error_response(error)
 
     @app.get("/v1/edit-jobs/{edit_job_id}", responses={403: {"model": ErrorResponse}, 404: {"model": ErrorResponse}})
@@ -433,6 +449,14 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             require_edit_owner(job, installId or x_hoops_install_id)
             return job.to_response()
         except EditingServiceError as error:
+            job = edit_jobs.get(edit_job_id)
+            emit_policy_failed(
+                error,
+                editJobId=edit_job_id,
+                command=request.command,
+                planTier=job.request.planTier if job else None,
+                templateId=job.plan.templateId if job else None,
+            )
             return error_response(error)
 
     @app.get("/v1/edit-jobs/{edit_job_id}/plan", responses={403: {"model": ErrorResponse}, 404: {"model": ErrorResponse}})
@@ -448,6 +472,14 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             require_edit_owner(job, installId or x_hoops_install_id)
             return job.to_plan_response()
         except EditingServiceError as error:
+            stored_edit_job = edit_jobs.get(edit_job_id)
+            emit_policy_failed(
+                error,
+                editJobId=edit_job_id,
+                revisionId=revision_id,
+                planTier=stored_edit_job.request.planTier if stored_edit_job else None,
+                templateId=stored_edit_job.plan.templateId if stored_edit_job else None,
+            )
             return error_response(error)
 
     @app.post("/v1/edit-jobs/{edit_job_id}/revise", response_model=EditRevisionResponse, responses={400: {"model": ErrorResponse}, 403: {"model": ErrorResponse}, 404: {"model": ErrorResponse}})
@@ -473,6 +505,7 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             emit_event("edit_revision.created", editJobId=edit_job_id, revisionId=revision_id, templateId=revision_response.revisedPlan.templateId, planTier=revised_job.request.planTier)
             return revision_response
         except EditingServiceError as error:
+            emit_policy_failed(error, editJobId=request.editJobId, templateId=request.editPlan.templateId, planTier=request.planTier)
             return error_response(error)
 
     @app.get("/v1/edit-jobs/{edit_job_id}/revisions", response_model=EditRevisionListResponse, responses={403: {"model": ErrorResponse}, 404: {"model": ErrorResponse}})
@@ -488,6 +521,12 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             require_edit_owner(job, installId or x_hoops_install_id)
             return EditRevisionListResponse(editJobId=edit_job_id, revisions=edit_revisions.get(edit_job_id, []))
         except EditingServiceError as error:
+            emit_policy_failed(
+                error,
+                editJobId=edit_job_id,
+                templateId=request.editPlan.templateId if request.editPlan else None,
+                planTier=request.planTier,
+            )
             return error_response(error)
 
     @app.get("/v1/edit-jobs/{edit_job_id}/revisions/{revision_id}", response_model=EditRevisionResponse, responses={403: {"model": ErrorResponse}, 404: {"model": ErrorResponse}})

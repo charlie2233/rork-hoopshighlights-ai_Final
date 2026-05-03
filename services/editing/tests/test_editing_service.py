@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from contextlib import redirect_stdout
+from io import StringIO
 from pathlib import Path
 import json
 import os
@@ -242,6 +244,23 @@ class EditingServiceTests(unittest.TestCase):
 
         self.assertEqual(rejected.status_code, 429)
         self.assertEqual(rejected.json()["errorCode"], "revision_limit")
+
+    def test_policy_rejection_emits_safe_policy_failed_event(self) -> None:
+        client = TestClient(create_app(self._settings()))
+        request = self._edit_request().model_copy(update={"targetDurationSeconds": 120, "templateId": "personal_highlight_v1"})
+        output = StringIO()
+
+        with redirect_stdout(output):
+            response = client.post("/v1/edit-jobs", json=request.model_dump())
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["errorCode"], "render_duration_limit")
+        events = [json.loads(line) for line in output.getvalue().splitlines() if line.startswith("{")]
+        policy_event = next(event for event in events if event.get("event") == "policy.failed")
+        self.assertEqual(policy_event["failureReason"], "render_duration_limit")
+        self.assertEqual(policy_event["planTier"], "free")
+        self.assertEqual(policy_event["templateId"], "personal_highlight_v1")
+        self.assertFalse(any("url" in key.lower() or "secret" in key.lower() for key in policy_event))
 
     @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "ffmpeg and ffprobe are required")
     def test_render_job_writes_output_log_and_download_url(self) -> None:
