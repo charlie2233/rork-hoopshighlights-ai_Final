@@ -297,3 +297,49 @@ test("edit render route fails closed when editing service is unconfigured", asyn
   assert.equal(response.status, 503);
   assert.equal(payload.errorCode, "editing_service_unconfigured");
 });
+
+
+test("edit render route proxies policy failures from editing service", async () => {
+  const controlPlane = createControlPlaneHarness();
+  const originalFetch = globalThis.fetch.bind(globalThis);
+  globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const request = input instanceof Request ? input : new Request(input, init);
+    const url = new URL(request.url);
+    if (url.origin !== controlPlane.env.EDITING_BASE_URL) {
+      return originalFetch(input, init);
+    }
+    return Response.json(
+      {
+        errorCode: "daily_render_limit",
+        errorMessage: "Daily AI edit render limit reached for this plan.",
+        failureReason: "Daily AI edit render limit reached for this plan."
+      },
+      { status: 429 }
+    );
+  };
+
+  try {
+    const response = await invokePublicRoute(
+      controlPlane,
+      "POST",
+      "/v1/edit-jobs/edit_123/render",
+      {
+        installId: "install-local-001",
+        sourceObjectKey: "uploads/job/source.mp4",
+        planTier: "free",
+        editPlan: { aspectRatio: "9:16" },
+        sourceClips: []
+      },
+      { "x-trace-id": "trace-editing-policy-failure" },
+      "trace-editing-policy-failure"
+    );
+    const payload = await parseJsonResponse<{ requestId: string; errorCode: string; failureReason: string }>(response);
+
+    assert.equal(response.status, 429);
+    assert.equal(payload.requestId, "trace-editing-policy-failure");
+    assert.equal(payload.errorCode, "daily_render_limit");
+    assert.match(payload.failureReason, /Daily AI edit render limit/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

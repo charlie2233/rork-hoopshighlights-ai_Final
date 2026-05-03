@@ -341,6 +341,7 @@ export interface MetadataJobRecord extends ResponseEnvelope {
 }
 
 export type RenderStatus = "render_requested" | "created" | "queued" | "rendering" | "rendered" | "failed" | "cancelled";
+export type EditPlanTier = "free" | "pro" | "internal" | "dev";
 
 export interface EditCandidateClip {
   id: string;
@@ -367,7 +368,7 @@ export interface CreateEditJobRequest {
   theme?: string | null;
   targetDurationSeconds: number;
   aspectRatio?: "9:16" | "16:9" | "source" | null;
-  planTier?: "free" | "pro";
+  planTier?: EditPlanTier;
   clips: EditCandidateClip[];
 }
 
@@ -394,7 +395,8 @@ export interface EditPlanResponse extends ResponseEnvelope {
 export interface StartEditRenderRequest {
   installId: string;
   sourceObjectKey?: string | null;
-  planTier?: "free" | "pro";
+  planTier?: EditPlanTier;
+  idempotencyKey?: string | null;
   editPlan?: Record<string, unknown>;
   sourceClips?: EditCandidateClip[];
 }
@@ -419,6 +421,7 @@ export interface ReviseEditJobRequest {
 
 export interface StartEditRevisionRenderRequest {
   installId: string;
+  idempotencyKey?: string | null;
 }
 
 export interface EditRevisionResponse extends ResponseEnvelope {
@@ -451,6 +454,11 @@ export interface EditingRenderJobResponse extends ResponseEnvelope {
   aspectRatio: string;
   traceId: string;
   validationErrors?: Array<Record<string, unknown>>;
+  planTier?: EditPlanTier;
+  policy?: Record<string, unknown>;
+  retryCount?: number;
+  outputBytes?: number | null;
+  retentionMetadata?: Record<string, unknown> | null;
 }
 
 export interface EditingDownloadUrlResponse {

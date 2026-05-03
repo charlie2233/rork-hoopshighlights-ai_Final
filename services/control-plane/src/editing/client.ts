@@ -77,7 +77,8 @@ export async function createEditingRenderJob(
       sourceObjectKey: payload.sourceObjectKey,
       planTier: payload.planTier ?? "free",
       editPlan: payload.editPlan,
-      sourceClips: payload.sourceClips ?? []
+      sourceClips: payload.sourceClips ?? [],
+      idempotencyKey: payload.idempotencyKey
     })
   });
   return proxyEditingJsonResponse(response, requestId);

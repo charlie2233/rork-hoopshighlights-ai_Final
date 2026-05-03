@@ -136,6 +136,50 @@ enum CloudEditAspectRatio: String, Codable, Sendable {
 enum CloudEditPlanTier: String, Codable, Sendable {
     case free
     case pro
+    case internalTier = "internal"
+    case dev
+}
+
+struct CloudEditPolicySummary: Codable, Sendable {
+    let planTier: CloudEditPlanTier
+    let displayName: String
+    let maxRenderSeconds: Int
+    let maxDailyRenders: Int
+    let maxActiveRenders: Int
+    let maxRevisionsPerEdit: Int
+    let maxOutputResolution: String
+    let watermarkRequired: Bool
+    let outroRequired: Bool
+    let premiumTemplatesAllowed: Bool
+    let renderRetentionDays: Int
+
+    static let freeDefault = CloudEditPolicySummary(
+        planTier: .free,
+        displayName: "Free",
+        maxRenderSeconds: 45,
+        maxDailyRenders: 3,
+        maxActiveRenders: 1,
+        maxRevisionsPerEdit: 3,
+        maxOutputResolution: "720p",
+        watermarkRequired: true,
+        outroRequired: true,
+        premiumTemplatesAllowed: false,
+        renderRetentionDays: 14
+    )
+
+    static let proDefault = CloudEditPolicySummary(
+        planTier: .pro,
+        displayName: "Pro",
+        maxRenderSeconds: 180,
+        maxDailyRenders: 25,
+        maxActiveRenders: 2,
+        maxRevisionsPerEdit: 10,
+        maxOutputResolution: "1080p",
+        watermarkRequired: false,
+        outroRequired: false,
+        premiumTemplatesAllowed: true,
+        renderRetentionDays: 60
+    )
 }
 
 enum CloudEditRenderState: String, Codable, Sendable {
@@ -152,21 +196,21 @@ enum CloudEditRenderState: String, Codable, Sendable {
     var displayLabel: String {
         switch self {
         case .renderRequested:
-            return "Render requested"
+            return "Starting your render"
         case .planning:
-            return "Planning"
+            return "Planning your edit"
         case .planReady:
-            return "Plan ready"
+            return "Edit plan ready"
         case .created:
             return "Created"
         case .queued:
-            return "Queued"
+            return "Almost ready"
         case .rendering:
-            return "Rendering"
+            return "Rendering your highlight reel"
         case .rendered:
-            return "Rendered"
+            return "Ready"
         case .failed:
-            return "Failed"
+            return "Render failed"
         case .cancelled:
             return "Cancelled"
         }
@@ -291,6 +335,8 @@ struct CloudEditJobResponse: Codable, Sendable {
     let status: String
     let preset: String
     let templateId: String?
+    let planTier: CloudEditPlanTier?
+    let policy: CloudEditPolicySummary?
     let targetDurationSeconds: Int
     let aspectRatio: CloudEditAspectRatio
     let clipCount: Int
@@ -301,6 +347,8 @@ struct CloudEditPlanResponse: Codable, Sendable {
     let editJobId: String
     let status: String
     let plan: CloudEditPlanSummary
+    let planTier: CloudEditPlanTier?
+    let policy: CloudEditPolicySummary?
     let validationErrors: [CloudEditValidationIssue]?
 }
 
@@ -371,6 +419,7 @@ struct CloudEditRenderRequest: Codable, Sendable {
     let planTier: CloudEditPlanTier
     let editPlan: CloudEditPlanSummary
     let sourceClips: [CloudEditCandidateClip]
+    let idempotencyKey: String?
 }
 
 struct CloudEditRevisionRequest: Codable, Sendable {
@@ -380,6 +429,19 @@ struct CloudEditRevisionRequest: Codable, Sendable {
 
 struct CloudEditRevisionRenderRequest: Codable, Sendable {
     let installId: String
+    let idempotencyKey: String?
+}
+
+struct CloudEditRetentionMetadata: Codable, Sendable {
+    let expiresAt: String
+    let retentionClass: String
+    let deleteEligible: Bool
+    let planTier: CloudEditPlanTier?
+    let editJobId: String
+    let renderJobId: String
+    let templateId: String?
+    let outputBytes: Int?
+    let durationSeconds: Double?
 }
 
 struct CloudEditPlanPatch: Codable, Sendable {
@@ -428,6 +490,11 @@ struct CloudEditRenderStatusResponse: Codable, Sendable {
     let traceId: String
     let failureReason: String?
     let validationErrors: [CloudEditValidationIssue]?
+    let planTier: CloudEditPlanTier?
+    let policy: CloudEditPolicySummary?
+    let retryCount: Int?
+    let outputBytes: Int?
+    let retentionMetadata: CloudEditRetentionMetadata?
 }
 
 struct CloudEditDownloadResponse: Codable, Sendable {
@@ -476,6 +543,35 @@ enum CloudEditError: Error, LocalizedError, Sendable {
             return message
         case .network(let description):
             return description
+        }
+    }
+
+    static func friendlyBackendMessage(code: String, fallback: String) -> String {
+        switch code {
+        case "video_too_long", "source_video_too_long":
+            return "That video is too long for this plan. Try a shorter source clip set."
+        case "render_cost_limit", "render_cost_too_high", "render_duration_limit":
+            return "That edit is over this plan’s render limit. Choose a shorter length or upgrade later."
+        case "daily_render_limit":
+            return "You’ve used today’s AI edit renders. Try again tomorrow."
+        case "active_render_limit":
+            return "Another AI edit is still rendering. Let that finish before starting another."
+        case "revision_limit":
+            return "This edit has reached the revision limit for your plan."
+        case "render_retry_limit":
+            return "This render has already been retried. Start a new edit if you want to try again."
+        case "storage_unavailable", "source_missing":
+            return "Cloud storage is not ready for this edit. Try again after the upload finishes."
+        case "download_url_expired":
+            return "The download link expired. Hoopclips is requesting a fresh one."
+        case "failed_timeout":
+            return "Rendering timed out. Try a shorter edit."
+        case "invalid_edit_plan":
+            return "Hoopclips could not validate that edit plan. Try a different template or shorter length."
+        case "template_asset_missing":
+            return "This template is missing a required asset. Try another template while we fix it."
+        default:
+            return fallback
         }
     }
 }

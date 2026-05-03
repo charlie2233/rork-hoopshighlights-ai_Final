@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import timedelta
+import json
 from pathlib import Path
 import shutil
 import tempfile
@@ -83,16 +84,19 @@ class RenderStorage:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(payload, encoding="utf-8")
 
-    def put_file(self, object_key: str, source_path: Path, content_type: str) -> None:
+    def put_file(self, object_key: str, source_path: Path, content_type: str, metadata: Optional[Dict[str, str]] = None) -> None:
         if not source_path.exists() or source_path.stat().st_size <= 0:
             raise EditingServiceError(500, "render_output_missing", "Renderer did not produce a usable output file.")
         if self._provider == "r2":
             client = self._r2_client()
+            extra_args = {"ContentType": content_type}
+            if metadata:
+                extra_args["Metadata"] = {key: str(value)[:1024] for key, value in metadata.items() if value is not None}
             client.upload_file(
                 str(source_path),
                 self._output_bucket(),
                 object_key,
-                ExtraArgs={"ContentType": content_type},
+                ExtraArgs=extra_args,
             )
             head = client.head_object(Bucket=self._output_bucket(), Key=object_key)
             if int(head.get("ContentLength") or 0) <= 0:
@@ -101,6 +105,9 @@ class RenderStorage:
         target = self._local_object_path(object_key)
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source_path, target)
+        if metadata:
+            metadata_path = target.with_suffix(target.suffix + ".metadata.json")
+            metadata_path.write_text(json.dumps(metadata, indent=2, sort_keys=True), encoding="utf-8")
 
     def presigned_get_url(self, object_key: str, token: str) -> tuple[str, object]:
         if self._provider == "r2":

@@ -10,7 +10,7 @@ from .backend_imports import ensure_ios_backend_on_path
 
 ensure_ios_backend_on_path()
 
-from app.editing import CreateEditJobRequest, EditCandidateClip, EditPlan, EditPlanValidationIssue, EditRevisionResponse  # noqa: E402
+from app.editing import CreateEditJobRequest, EditCandidateClip, EditPlan, EditPlanValidationIssue, EditRevisionResponse, PlanTier, policy_summary_for_client  # noqa: E402
 
 
 class APIModel(BaseModel):
@@ -24,21 +24,24 @@ class CreateRenderJobRequest(APIModel):
     editJobId: str = Field(min_length=1, max_length=128)
     installId: str = Field(min_length=8, max_length=128)
     sourceObjectKey: str = Field(min_length=1, max_length=512)
-    planTier: Literal["free", "pro"] = "free"
+    planTier: PlanTier = "free"
     editPlan: EditPlan
     sourceClips: List[EditCandidateClip] = Field(default_factory=list, max_length=30)
+    idempotencyKey: Optional[str] = Field(default=None, min_length=8, max_length=160)
 
 
 class StartEditJobRenderRequest(APIModel):
     installId: str = Field(min_length=8, max_length=128)
     sourceObjectKey: Optional[str] = Field(default=None, min_length=1, max_length=512)
-    planTier: Optional[Literal["free", "pro"]] = None
+    planTier: Optional[PlanTier] = None
     editPlan: Optional[EditPlan] = None
     sourceClips: List[EditCandidateClip] = Field(default_factory=list, max_length=30)
+    idempotencyKey: Optional[str] = Field(default=None, min_length=8, max_length=160)
 
 
 class StartEditRevisionRenderRequest(APIModel):
     installId: str = Field(min_length=8, max_length=128)
+    idempotencyKey: Optional[str] = Field(default=None, min_length=8, max_length=160)
 
 
 class RenderJobResponse(APIModel):
@@ -54,6 +57,11 @@ class RenderJobResponse(APIModel):
     traceId: str
     failureReason: Optional[str] = None
     validationErrors: List[EditPlanValidationIssue] = Field(default_factory=list)
+    planTier: PlanTier = "free"
+    policy: Dict[str, Any] = Field(default_factory=dict)
+    retryCount: int = 0
+    outputBytes: Optional[int] = None
+    retentionMetadata: Optional[Dict[str, Any]] = None
 
 
 class DownloadUrlResponse(APIModel):
@@ -91,6 +99,11 @@ class StoredRenderJob:
     duration_seconds: Optional[float] = None
     failure_reason: Optional[str] = None
     validation_errors: List[EditPlanValidationIssue] = field(default_factory=list)
+    plan_tier: PlanTier = "free"
+    retry_count: int = 0
+    idempotency_key: Optional[str] = None
+    output_bytes: Optional[int] = None
+    retention_metadata: Optional[Dict[str, Any]] = None
 
     def to_response(self) -> RenderJobResponse:
         return RenderJobResponse(
@@ -106,6 +119,11 @@ class StoredRenderJob:
             traceId=self.trace_id,
             failureReason=self.failure_reason,
             validationErrors=self.validation_errors,
+            planTier=self.plan_tier,
+            policy=policy_summary_for_client(self.plan_tier),
+            retryCount=self.retry_count,
+            outputBytes=self.output_bytes,
+            retentionMetadata=self.retention_metadata,
         )
 
 

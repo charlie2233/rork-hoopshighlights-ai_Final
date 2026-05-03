@@ -18,7 +18,7 @@ PresetId = Literal[
     "best_five",
 ]
 AspectRatio = Literal["9:16", "16:9", "source"]
-PlanTier = Literal["free", "pro"]
+PlanTier = Literal["free", "pro", "internal", "dev"]
 TemplateId = Literal["personal_highlight_v1", "full_game_highlight_v1", "coach_review_v1"]
 RevisionCommand = Literal[
     "make_shorter",
@@ -62,6 +62,134 @@ SUPPORTED_TEMPLATE_EFFECTS = {
     "speed_ramp",
     "subtle_replay",
 }
+
+
+class PlanTierPolicy(APIModel):
+    planTier: PlanTier
+    displayName: str
+    maxRenderSeconds: int = Field(gt=0, le=600)
+    maxDailyRenders: int = Field(gt=0, le=500)
+    maxActiveRenders: int = Field(gt=0, le=20)
+    maxRevisionsPerEdit: int = Field(ge=0, le=100)
+    maxOutputResolution: Literal["720p", "1080p"]
+    watermarkRequired: bool
+    outroRequired: bool
+    premiumTemplatesAllowed: bool
+    maxSourceVideoSeconds: int = Field(gt=0, le=7200)
+    renderRetentionDays: int = Field(gt=0, le=365)
+    failedRenderRetentionDays: int = Field(gt=0, le=90)
+    staleRenderTimeoutSeconds: int = Field(gt=0, le=7200)
+    maxRenderRetries: int = Field(ge=0, le=5)
+
+
+PLAN_TIER_POLICY_REGISTRY: Dict[str, PlanTierPolicy] = {
+    "free": PlanTierPolicy(
+        planTier="free",
+        displayName="Free",
+        maxRenderSeconds=45,
+        maxDailyRenders=3,
+        maxActiveRenders=1,
+        maxRevisionsPerEdit=3,
+        maxOutputResolution="720p",
+        watermarkRequired=True,
+        outroRequired=True,
+        premiumTemplatesAllowed=False,
+        maxSourceVideoSeconds=600,
+        renderRetentionDays=14,
+        failedRenderRetentionDays=7,
+        staleRenderTimeoutSeconds=900,
+        maxRenderRetries=1,
+    ),
+    "pro": PlanTierPolicy(
+        planTier="pro",
+        displayName="Pro",
+        maxRenderSeconds=180,
+        maxDailyRenders=25,
+        maxActiveRenders=2,
+        maxRevisionsPerEdit=10,
+        maxOutputResolution="1080p",
+        watermarkRequired=False,
+        outroRequired=False,
+        premiumTemplatesAllowed=True,
+        maxSourceVideoSeconds=1800,
+        renderRetentionDays=60,
+        failedRenderRetentionDays=14,
+        staleRenderTimeoutSeconds=1500,
+        maxRenderRetries=2,
+    ),
+    "internal": PlanTierPolicy(
+        planTier="internal",
+        displayName="Internal",
+        maxRenderSeconds=300,
+        maxDailyRenders=100,
+        maxActiveRenders=4,
+        maxRevisionsPerEdit=25,
+        maxOutputResolution="1080p",
+        watermarkRequired=False,
+        outroRequired=False,
+        premiumTemplatesAllowed=True,
+        maxSourceVideoSeconds=3600,
+        renderRetentionDays=7,
+        failedRenderRetentionDays=3,
+        staleRenderTimeoutSeconds=1800,
+        maxRenderRetries=3,
+    ),
+    "dev": PlanTierPolicy(
+        planTier="dev",
+        displayName="Development",
+        maxRenderSeconds=300,
+        maxDailyRenders=500,
+        maxActiveRenders=8,
+        maxRevisionsPerEdit=50,
+        maxOutputResolution="1080p",
+        watermarkRequired=False,
+        outroRequired=False,
+        premiumTemplatesAllowed=True,
+        maxSourceVideoSeconds=7200,
+        renderRetentionDays=3,
+        failedRenderRetentionDays=3,
+        staleRenderTimeoutSeconds=1800,
+        maxRenderRetries=0,
+    ),
+}
+
+
+class AIEditFeatureFlags(APIModel):
+    aiEditEnabled: bool = True
+    aiEditRevisionEnabled: bool = True
+    aiEditTemplatePackEnabled: bool = True
+    aiEditMaxDailyRenders: Optional[int] = None
+    aiEditFreeWatermarkRequired: bool = True
+    aiEditProExportsEnabled: bool = False
+
+
+def get_plan_tier_policy(plan_tier: str) -> PlanTierPolicy:
+    return PLAN_TIER_POLICY_REGISTRY.get(plan_tier, PLAN_TIER_POLICY_REGISTRY["free"])
+
+
+def policy_summary_for_client(plan_tier: str) -> Dict[str, object]:
+    policy = get_plan_tier_policy(plan_tier)
+    return {
+        "planTier": policy.planTier,
+        "displayName": policy.displayName,
+        "maxRenderSeconds": policy.maxRenderSeconds,
+        "maxDailyRenders": policy.maxDailyRenders,
+        "maxActiveRenders": policy.maxActiveRenders,
+        "maxRevisionsPerEdit": policy.maxRevisionsPerEdit,
+        "maxOutputResolution": policy.maxOutputResolution,
+        "watermarkRequired": policy.watermarkRequired,
+        "outroRequired": policy.outroRequired,
+        "premiumTemplatesAllowed": policy.premiumTemplatesAllowed,
+        "maxSourceVideoSeconds": policy.maxSourceVideoSeconds,
+        "renderRetentionDays": policy.renderRetentionDays,
+        "failedRenderRetentionDays": policy.failedRenderRetentionDays,
+        "staleRenderTimeoutSeconds": policy.staleRenderTimeoutSeconds,
+        "maxRenderRetries": policy.maxRenderRetries,
+    }
+
+
+def default_ai_edit_feature_flags() -> AIEditFeatureFlags:
+    return AIEditFeatureFlags()
 
 
 class EditCandidateClip(APIModel):
@@ -657,6 +785,8 @@ class EditJobResponse(APIModel):
     status: str
     preset: PresetId
     templateId: Optional[TemplateId] = None
+    planTier: PlanTier
+    policy: Dict[str, object]
     targetDurationSeconds: int
     aspectRatio: AspectRatio
     clipCount: int
@@ -667,6 +797,8 @@ class EditPlanResponse(APIModel):
     editJobId: str
     status: str
     plan: EditPlan
+    planTier: PlanTier
+    policy: Dict[str, object]
     validationErrors: List[EditPlanValidationIssue]
 
 
@@ -707,6 +839,8 @@ class StoredEditJob:
             status=self.status,
             preset=self.plan.preset,
             templateId=self.plan.templateId,
+            planTier=self.request.planTier,
+            policy=policy_summary_for_client(self.request.planTier),
             targetDurationSeconds=self.plan.targetDurationSeconds,
             aspectRatio=self.plan.aspectRatio,
             clipCount=len(self.plan.clips),
@@ -718,6 +852,8 @@ class StoredEditJob:
             editJobId=self.edit_job_id,
             status=self.status,
             plan=self.plan,
+            planTier=self.request.planTier,
+            policy=policy_summary_for_client(self.request.planTier),
             validationErrors=self.validation_errors,
         )
 
@@ -896,6 +1032,7 @@ def build_edit_plan(request: CreateEditJobRequest, edit_job_id: str) -> EditPlan
     context = build_edit_context(request)
     preset = PRESET_REGISTRY[request.preset]
     template = get_template_pack_for_plan(preset.presetId, request.templateId or preset.templateId)
+    policy = get_plan_tier_policy(request.planTier)
     preset = preset.model_copy(
         update={
             "defaultAspectRatio": template.defaultAspectRatio,
@@ -912,11 +1049,11 @@ def build_edit_plan(request: CreateEditJobRequest, edit_job_id: str) -> EditPlan
             "outroTemplateId": template.outroProfile.assetId,
         }
     )
-    target_duration = choose_template_target_length(request.targetDurationSeconds, template)
+    target_duration = min(choose_template_target_length(request.targetDurationSeconds, template), policy.maxRenderSeconds)
     aspect_ratio = request.aspectRatio or template.defaultAspectRatio
     theme = choose_theme(preset, request.theme)
     intro_duration = 1.2 if preset.presetId != "coach_review" else 0.0
-    outro_duration = template.outroProfile.durationSeconds if request.planTier == "free" else min(0.8, template.outroProfile.durationSeconds)
+    outro_duration = template.outroProfile.durationSeconds if policy.outroRequired else min(0.8, template.outroProfile.durationSeconds)
     usable_duration = max(MIN_PLAN_CLIP_SECONDS, target_duration - intro_duration - outro_duration)
     selected = fit_to_duration(context.clips, usable_duration, preset)
 
@@ -982,7 +1119,7 @@ def build_edit_plan(request: CreateEditJobRequest, edit_job_id: str) -> EditPlan
             assetId=template.outroProfile.assetId,
         ),
         watermark=EditPlanWatermark(
-            enabled=request.planTier == "free",
+            enabled=policy.watermarkRequired,
             position=template.watermarkProfile.position,
             assetId=template.watermarkProfile.assetId,
         ),
@@ -996,6 +1133,7 @@ def validate_edit_plan(
 ) -> List[EditPlanValidationIssue]:
     errors: List[EditPlanValidationIssue] = []
     source_by_id = {clip.id: clip for clip in source_clips}
+    policy = get_plan_tier_policy(plan_tier)
 
     def add(field: str, code: str, message: str) -> None:
         errors.append(EditPlanValidationIssue(field=field, code=code, message=message))
@@ -1024,14 +1162,20 @@ def validate_edit_plan(
             add("watermark.assetId", "template_watermark_asset_mismatch", "EditPlan watermark asset does not match the selected template.")
         if plan.outro.assetId and plan.outro.assetId != template.outroProfile.assetId:
             add("outro.assetId", "template_outro_asset_mismatch", "EditPlan outro asset does not match the selected template.")
-        if plan_tier == "free" and template.watermarkProfile.requiredForFree and not plan.watermark.enabled:
+        if policy.watermarkRequired and template.watermarkProfile.requiredForFree and not plan.watermark.enabled:
             add("watermark.enabled", "missing_free_watermark", "Selected template requires the free-user watermark.")
-        if plan_tier == "free" and template.watermarkProfile.requiredForFree and plan.watermark.assetId != template.watermarkProfile.assetId:
+        if policy.watermarkRequired and template.watermarkProfile.requiredForFree and plan.watermark.assetId != template.watermarkProfile.assetId:
             add("watermark.assetId", "missing_free_watermark_asset", "Selected template requires its registered free-user watermark asset.")
-        if plan_tier == "free" and template.outroProfile.requiredForFree and not plan.outro.enabled:
+        if policy.outroRequired and template.outroProfile.requiredForFree and not plan.outro.enabled:
             add("outro.enabled", "missing_free_outro", "Selected template requires the free-user outro.")
-        if plan_tier == "free" and template.outroProfile.requiredForFree and plan.outro.assetId != template.outroProfile.assetId:
+        if policy.outroRequired and template.outroProfile.requiredForFree and plan.outro.assetId != template.outroProfile.assetId:
             add("outro.assetId", "missing_free_outro_asset", "Selected template requires its registered free-user outro asset.")
+    if plan.targetDurationSeconds > policy.maxRenderSeconds:
+        add("targetDurationSeconds", "render_duration_limit", "EditPlan exceeds the plan tier render duration limit.")
+    if source_clips:
+        max_source_end = max(clip.end for clip in source_clips)
+        if max_source_end > policy.maxSourceVideoSeconds:
+            add("sourceClips", "source_duration_limit", "Source video exceeds the plan tier source duration limit.")
     if plan.audio.musicTrackId not in LICENSED_MUSIC_TRACKS:
         add("audio.musicTrackId", "unlicensed_music", "Music track is not licensed or available.")
     if plan.audio.musicTrackId == "none" and plan.audio.musicVolume > 0:
@@ -1070,12 +1214,15 @@ def validate_edit_plan(
     planned_duration = plan.intro.durationSeconds + plan.outro.durationSeconds + sum(clip.timeline_duration for clip in plan.clips)
     if planned_duration > plan.targetDurationSeconds + MAX_DURATION_OVERRUN_SECONDS:
         add("targetDurationSeconds", "duration_too_long", "EditPlan duration exceeds target tolerance.")
+    if planned_duration > policy.maxRenderSeconds + MAX_DURATION_OVERRUN_SECONDS:
+        add("renderCost", "render_cost_limit", "EditPlan exceeds the plan tier render cost limit.")
 
-    if plan_tier == "free":
+    if policy.watermarkRequired:
         if not plan.watermark.enabled:
             add("watermark.enabled", "missing_free_watermark", "Free plans must include the Hoopclips watermark.")
         if plan.watermark.position not in {"bottom_right", "bottom_left", "top_right", "top_left"}:
             add("watermark.position", "invalid_watermark_position", "Watermark position is not supported.")
+    if policy.outroRequired:
         if not plan.outro.enabled:
             add("outro.enabled", "missing_free_outro", "Free plans must include the Hoopclips outro.")
         if plan.outro.durationSeconds <= 0:
@@ -1102,16 +1249,19 @@ def estimate_render_cost(plan: EditPlan) -> Dict[str, float]:
 def repair_edit_plan(plan: EditPlan, plan_tier: PlanTier) -> EditPlan:
     data = plan.model_dump()
     template = get_template_pack_for_plan(plan.preset, plan.templateId)
+    policy = get_plan_tier_policy(plan_tier)
     data["templateId"] = template.templateId
     data["captionStyle"] = template.captionStyle.styleId
+    data["targetDurationSeconds"] = min(int(data["targetDurationSeconds"]), policy.maxRenderSeconds)
     if data.get("aspectRatio") not in template.allowedAspectRatios:
         data["aspectRatio"] = template.defaultAspectRatio
     if not data.get("theme") or data["theme"] not in THEME_REGISTRY:
         data["theme"] = template.themeId
-    if plan_tier == "free":
+    if policy.watermarkRequired:
         data["watermark"]["enabled"] = True
         data["watermark"]["position"] = data["watermark"].get("position") or template.watermarkProfile.position
         data["watermark"]["assetId"] = template.watermarkProfile.assetId
+    if policy.outroRequired:
         data["outro"]["enabled"] = True
         if data["outro"]["durationSeconds"] <= 0:
             data["outro"]["durationSeconds"] = template.outroProfile.durationSeconds
@@ -1412,7 +1562,8 @@ def build_revision_response(
     patch = build_edit_plan_patch(job, revision, revised.plan)
     patched_plan = repair_edit_plan(apply_edit_plan_patch(job.plan, patch), revised.request.planTier)
     errors = validate_edit_plan(patched_plan, revised.request.clips, revised.request.planTier)
-    if estimate_render_cost(patched_plan)["complexityUnits"] > 240:
+    policy = get_plan_tier_policy(revised.request.planTier)
+    if estimate_render_cost(patched_plan)["plannedDurationSeconds"] > policy.maxRenderSeconds + MAX_DURATION_OVERRUN_SECONDS:
         errors.append(
             EditPlanValidationIssue(
                 field="renderCost",

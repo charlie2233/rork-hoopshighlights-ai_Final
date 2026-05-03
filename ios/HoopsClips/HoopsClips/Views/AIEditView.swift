@@ -18,6 +18,7 @@ struct AIEditView: View {
     @State private var phase: CloudEditRenderState = .planning
     @State private var editJob: CloudEditJobResponse?
     @State private var editPlan: CloudEditPlanSummary?
+    @State private var policySummary: CloudEditPolicySummary?
     @State private var renderStatus: CloudEditRenderStatusResponse?
     @State private var downloadResponse: CloudEditDownloadResponse?
     @State private var revisionResponse: CloudEditRevisionResponse?
@@ -95,7 +96,7 @@ struct AIEditView: View {
         }
         .onChange(of: selectedPreset) { _, preset in
             selectedAspectRatio = preset.aspectRatio
-            selectedDuration = preset.durationOptions[min(1, preset.durationOptions.count - 1)]
+            selectedDuration = defaultDuration(for: preset)
         }
     }
 
@@ -113,7 +114,13 @@ struct AIEditView: View {
             HStack(spacing: 8) {
                 aiChip(icon: "film.stack.fill", text: "\(viewModel.keptClips.count) kept clips")
                 aiChip(icon: selectedAspectRatio.icon, text: selectedAspectRatio.rawValue)
+                aiChip(icon: "timer", text: "\(activePolicy.displayName): \(activePolicy.maxRenderSeconds)s max")
             }
+
+            Text(policyLimitText)
+                .font(.caption2)
+                .foregroundStyle(AppTheme.subtleText.opacity(0.92))
+                .accessibilityIdentifier("export.aiEdit.policy.limitLabel")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
@@ -195,21 +202,24 @@ struct AIEditView: View {
             }
 
             HStack(spacing: 8) {
-                ForEach(selectedPreset.durationOptions, id: \.self) { duration in
+                ForEach(displayedDurationOptions, id: \.self) { duration in
                     Button {
-                        selectedDuration = duration
+                        if duration <= activePolicy.maxRenderSeconds {
+                            selectedDuration = duration
+                        }
                     } label: {
                         Text("\(duration)s")
                             .font(.subheadline.bold())
-                            .foregroundStyle(selectedDuration == duration ? .white : AppTheme.subtleText)
+                            .foregroundStyle(duration > activePolicy.maxRenderSeconds ? AppTheme.subtleText.opacity(0.45) : (selectedDuration == duration ? .white : AppTheme.subtleText))
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 10)
-                            .background(selectedDuration == duration ? AppTheme.accentPurple : AppTheme.cardBg, in: .capsule)
+                            .background(selectedDuration == duration ? AppTheme.accentPurple : AppTheme.cardBg.opacity(duration > activePolicy.maxRenderSeconds ? 0.45 : 1), in: .capsule)
                     }
                     .buttonStyle(.plain)
+                    .disabled(duration > activePolicy.maxRenderSeconds)
                     .accessibilityLabel("\(duration) seconds")
                     .accessibilityIdentifier(durationAccessibilityIdentifier(for: duration))
-                    .accessibilityValue(selectedDuration == duration ? "Selected" : "Not selected")
+                    .accessibilityValue(duration > activePolicy.maxRenderSeconds ? "Unavailable on \(activePolicy.displayName)" : (selectedDuration == duration ? "Selected" : "Not selected"))
                 }
             }
         }
@@ -283,7 +293,7 @@ struct AIEditView: View {
                     .font(.caption)
                     .foregroundStyle(AppTheme.subtleText)
             } else {
-                Text(viewModel.cloudEditUnavailableReason ?? "Ready to request a cloud-rendered AI edit.")
+                Text(viewModel.cloudEditUnavailableReason ?? renderStateGuidance)
                     .font(.caption)
                     .foregroundStyle(AppTheme.subtleText)
             }
@@ -350,6 +360,20 @@ struct AIEditView: View {
             .disabled(isWorking || !viewModel.canRequestCloudEdit)
             .accessibilityIdentifier(revisionResponse != nil && downloadResponse == nil ? "export.aiEdit.renderRevisionButton" : "export.aiEdit.generateButton")
             .accessibilityHint("Requests a cloud edit plan and render.")
+
+            if phase == .failed {
+                Button(action: startEdit) {
+                    Label("Try Again", systemImage: "arrow.clockwise")
+                        .font(.caption.bold())
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                }
+                .buttonStyle(.bordered)
+                .tint(AppTheme.warningYellow)
+                .disabled(isWorking || !viewModel.canRequestCloudEdit)
+                .accessibilityIdentifier("export.aiEdit.retryButton")
+                .accessibilityHint("Retries the cloud render when the backend allows it.")
+            }
 
             if downloadResponse != nil {
                 Button(action: shareRenderedVideo) {
@@ -476,6 +500,48 @@ struct AIEditView: View {
         return "Ask Hoopclips to patch the edit plan, then render the revised MP4."
     }
 
+    private var activePolicy: CloudEditPolicySummary {
+        policySummary ?? (isProUser ? .proDefault : .freeDefault)
+    }
+
+    private var policyLimitText: String {
+        let policy = activePolicy
+        let watermark = policy.watermarkRequired || policy.outroRequired ? "watermark/outro included" : "no required watermark"
+        return "\(policy.displayName): \(policy.maxDailyRenders) AI edits/day, \(policy.maxRevisionsPerEdit) revisions/edit, \(policy.maxOutputResolution) max, \(watermark)."
+    }
+
+    private var renderStateGuidance: String {
+        switch phase {
+        case .planning:
+            return "Ready to request a cloud-rendered AI edit."
+        case .planReady:
+            return "Plan is ready. Hoopclips will render the MP4 in the cloud."
+        case .renderRequested, .created, .queued:
+            return "Your highlight reel is queued. Please keep Hoopclips open."
+        case .rendering:
+            return "Rendering your highlight reel in the cloud."
+        case .rendered:
+            return "Your MP4 is ready to preview and share."
+        case .failed:
+            return "Render failed. You can retry when the backend says it is safe."
+        case .cancelled:
+            return "Render was cancelled."
+        }
+    }
+
+    private func defaultDuration(for preset: CloudEditPreset) -> Int {
+        let available = preset.durationOptions.filter { $0 <= activePolicy.maxRenderSeconds }
+        return available.dropFirst().first ?? available.first ?? min(preset.durationOptions[0], activePolicy.maxRenderSeconds)
+    }
+
+    private var displayedDurationOptions: [Int] {
+        var options = selectedPreset.durationOptions
+        if !options.contains(selectedDuration) {
+            options.insert(selectedDuration, at: 0)
+        }
+        return options
+    }
+
     private func aiChip(icon: String, text: String) -> some View {
         Label(text, systemImage: icon)
             .font(.caption.bold())
@@ -564,13 +630,21 @@ struct AIEditView: View {
             )
             let job = try await cloudEditService.createEditJob(request)
             editJob = job
+            policySummary = job.policy ?? (request.planTier == .pro ? .proDefault : .freeDefault)
 
             let planResponse = try await cloudEditService.fetchEditPlan(
                 editJobID: job.editJobId,
                 installID: viewModel.installID
             )
             editPlan = planResponse.plan
+            policySummary = planResponse.policy ?? policySummary
             phase = .planReady
+            LaunchTelemetry.shared.recordAIEditEvent(
+                "edit_plan.created",
+                editJobID: job.editJobId,
+                templateID: planResponse.plan.templateId,
+                planTier: request.planTier.rawValue
+            )
             HoopsAccessibility.announce("Cloud AI edit plan ready. Rendering video.")
 
             guard let sourceObjectKey = viewModel.cloudEditSourceObjectKey else {
@@ -585,6 +659,7 @@ struct AIEditView: View {
                 sourceClips: request.clips
             )
             renderStatus = requested
+            policySummary = requested.policy ?? policySummary
             phase = requested.status
 
             let finalStatus = try await cloudEditService.pollRenderStatus(
@@ -592,12 +667,14 @@ struct AIEditView: View {
                 installID: viewModel.installID
             )
             renderStatus = finalStatus
+            policySummary = finalStatus.policy ?? policySummary
             phase = finalStatus.status
 
             guard finalStatus.status == .rendered else {
+                let code = finalStatus.failureReason ?? "render_failed"
                 throw CloudEditError.backend(
-                    code: finalStatus.failureReason ?? "render_failed",
-                    message: finalStatus.failureReason ?? "Cloud rendering did not finish."
+                    code: code,
+                    message: CloudEditError.friendlyBackendMessage(code: code, fallback: "Cloud rendering did not finish.")
                 )
             }
 
@@ -609,11 +686,19 @@ struct AIEditView: View {
             if let url = URL(string: download.downloadUrl) {
                 previewPlayer = AVPlayer(url: url)
                 previewPlayer?.play()
+                LaunchTelemetry.shared.recordAIEditEvent(
+                    "ios.preview.loaded",
+                    editJobID: job.editJobId,
+                    renderJobID: finalStatus.renderJobId,
+                    templateID: planResponse.plan.templateId,
+                    planTier: request.planTier.rawValue
+                )
             }
             HoopsAccessibility.announce("Cloud AI edit rendered.")
         } catch {
             phase = .failed
             errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            LaunchTelemetry.shared.recordAIEditEvent("render.failed", editJobID: editJob?.editJobId, templateID: editPlan?.templateId, failureReason: errorMessage)
             HoopsAccessibility.announce("Cloud AI edit failed.")
         }
     }
@@ -644,6 +729,13 @@ struct AIEditView: View {
             previewPlayer = nil
             localShareURL = nil
             phase = .planReady
+            LaunchTelemetry.shared.recordAIEditEvent(
+                "edit_revision.created",
+                editJobID: editJob.editJobId,
+                revisionID: revision.revisionId,
+                templateID: revision.revisedPlan.templateId,
+                planTier: policySummary?.planTier.rawValue
+            )
             HoopsAccessibility.announce("Revision ready. Render revision to create a new video.")
         } catch {
             phase = .failed
@@ -674,6 +766,7 @@ struct AIEditView: View {
                 installID: viewModel.installID
             )
             renderStatus = requested
+            policySummary = requested.policy ?? policySummary
             phase = requested.status
 
             let finalStatus = try await cloudEditService.pollRenderStatus(
@@ -681,12 +774,14 @@ struct AIEditView: View {
                 installID: viewModel.installID
             )
             renderStatus = finalStatus
+            policySummary = finalStatus.policy ?? policySummary
             phase = finalStatus.status
 
             guard finalStatus.status == .rendered else {
+                let code = finalStatus.failureReason ?? "render_failed"
                 throw CloudEditError.backend(
-                    code: finalStatus.failureReason ?? "render_failed",
-                    message: finalStatus.failureReason ?? "Cloud revision rendering did not finish."
+                    code: code,
+                    message: CloudEditError.friendlyBackendMessage(code: code, fallback: "Cloud revision rendering did not finish.")
                 )
             }
 
@@ -698,6 +793,14 @@ struct AIEditView: View {
             if let url = URL(string: download.downloadUrl) {
                 previewPlayer = AVPlayer(url: url)
                 previewPlayer?.play()
+                LaunchTelemetry.shared.recordAIEditEvent(
+                    "ios.preview.loaded",
+                    editJobID: editJob.editJobId,
+                    renderJobID: finalStatus.renderJobId,
+                    revisionID: revisionResponse.revisionId,
+                    templateID: revisionResponse.revisedPlan.templateId,
+                    planTier: policySummary?.planTier.rawValue
+                )
             }
             HoopsAccessibility.announce("Revised cloud AI edit rendered.")
         } catch {
@@ -716,11 +819,13 @@ struct AIEditView: View {
 
         do {
             if downloadResponse.expiresAt <= Date().addingTimeInterval(30), let editJob {
+                errorMessage = "Download URL expired, refreshing..."
                 downloadResponse = try await cloudEditService.fetchDownloadURL(
                     editJobID: editJob.editJobId,
                     installID: viewModel.installID
                 )
                 self.downloadResponse = downloadResponse
+                errorMessage = nil
             }
             let temporaryURL: URL
             do {
@@ -729,16 +834,26 @@ struct AIEditView: View {
                 guard let editJob else {
                     throw CloudEditError.downloadURLExpired
                 }
+                errorMessage = "Download URL expired, refreshing..."
                 let freshDownload = try await cloudEditService.fetchDownloadURL(
                     editJobID: editJob.editJobId,
                     installID: viewModel.installID
                 )
                 self.downloadResponse = freshDownload
                 temporaryURL = try await cloudEditService.downloadRenderedVideo(from: freshDownload)
+                errorMessage = nil
             }
             viewModel.attachCloudRenderedExport(from: temporaryURL)
             localShareURL = viewModel.exportService.exportedURL ?? temporaryURL
             showingShareSheet = true
+            LaunchTelemetry.shared.recordAIEditEvent(
+                "ios.share.opened",
+                editJobID: editJob?.editJobId,
+                renderJobID: downloadResponse.renderJobId,
+                revisionID: revisionResponse?.revisionId,
+                templateID: editPlan?.templateId,
+                planTier: policySummary?.planTier.rawValue
+            )
         } catch {
             errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }

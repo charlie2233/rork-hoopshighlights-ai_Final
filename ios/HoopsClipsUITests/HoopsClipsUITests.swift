@@ -72,7 +72,9 @@ final class HoopsClipsUITests: XCTestCase {
         XCTAssertTrue(app.buttons["export.aiEdit.style.personalHighlight"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.buttons["export.aiEdit.style.fullGameHighlight"].exists)
         XCTAssertTrue(app.buttons["export.aiEdit.style.coachReview"].exists)
+        XCTAssertTrue(app.staticTexts["export.aiEdit.policy.limitLabel"].exists)
         XCTAssertTrue(app.buttons["export.aiEdit.length.30s"].firstMatch.exists)
+        XCTAssertTrue(app.staticTexts["export.aiEdit.policy.limitLabel"].firstMatch.exists)
         attachScreenshot(named: "02 Export AI Edit Style Picker", app: app)
 
         tapWhenReady(app.buttons["export.aiEdit.generateButton"], in: app)
@@ -132,10 +134,10 @@ final class HoopsClipsUITests: XCTestCase {
             if statusLabel.exists {
                 lastStatus = (statusLabel.value as? String) ?? statusLabel.label
             }
-            if lastStatus == "Rendered" {
+            if lastStatus == "Rendered" || lastStatus == "Ready" {
                 return true
             }
-            if lastStatus == "Failed" {
+            if lastStatus == "Failed" || lastStatus == "Render failed" {
                 attachScreenshot(named: "AI Edit Failed", app: app)
                 let failureReason = app.staticTexts["export.aiEdit.failure.reasonLabel"].firstMatch
                 XCTFail(failureReason.exists ? failureReason.label : "AI edit failed before rendering.")

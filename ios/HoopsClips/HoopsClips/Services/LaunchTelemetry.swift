@@ -36,4 +36,18 @@ final class LaunchTelemetry {
             "Support trace source=\(source, privacy: .public) requestId=\(requestValue, privacy: .public) traceId=\(traceValue, privacy: .public)"
         )
     }
+
+    func recordAIEditEvent(
+        _ name: String,
+        editJobID: String? = nil,
+        renderJobID: String? = nil,
+        revisionID: String? = nil,
+        templateID: String? = nil,
+        planTier: String? = nil,
+        failureReason: String? = nil
+    ) {
+        logger.notice(
+            "AIEdit event=\(name, privacy: .public) editJobId=\(editJobID ?? "none", privacy: .public) renderJobId=\(renderJobID ?? "none", privacy: .public) revisionId=\(revisionID ?? "none", privacy: .public) templateId=\(templateID ?? "none", privacy: .public) planTier=\(planTier ?? "none", privacy: .public) failureReason=\(failureReason ?? "none", privacy: .public)"
+        )
+    }
 }

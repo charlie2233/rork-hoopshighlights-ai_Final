@@ -15,7 +15,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO_ROOT / "services" / "editing"))
 sys.path.insert(0, str(REPO_ROOT / "ios" / "backend"))
 
-from app.editing import CreateEditJobRequest, TEMPLATE_PACK_REGISTRY, build_edit_job, validate_template_registry  # noqa: E402
+from app.editing import CreateEditJobRequest, TEMPLATE_PACK_REGISTRY, build_edit_job, get_plan_tier_policy, validate_template_registry  # noqa: E402
 from editing_app.config import EditingSettings  # noqa: E402
 from editing_app.main import create_app  # noqa: E402
 
@@ -163,6 +163,21 @@ class EditingServiceTests(unittest.TestCase):
         self.assertTrue(all(not errors for errors in validation.values()))
         self.assertEqual(TEMPLATE_PACK_REGISTRY["personal_highlight_v1"].watermarkProfile.assetId, "hoopclips_app_icon_v1")
 
+    def test_plan_tier_policy_defaults_are_safe_without_statsig(self) -> None:
+        free_policy = get_plan_tier_policy("free")
+        pro_policy = get_plan_tier_policy("pro")
+        internal_policy = get_plan_tier_policy("internal")
+        dev_policy = get_plan_tier_policy("dev")
+
+        self.assertEqual(free_policy.maxDailyRenders, 3)
+        self.assertEqual(free_policy.maxRenderSeconds, 45)
+        self.assertTrue(free_policy.watermarkRequired)
+        self.assertTrue(free_policy.outroRequired)
+        self.assertFalse(free_policy.premiumTemplatesAllowed)
+        self.assertGreater(pro_policy.maxRenderSeconds, free_policy.maxRenderSeconds)
+        self.assertTrue(internal_policy.premiumTemplatesAllowed)
+        self.assertGreater(dev_policy.maxDailyRenders, internal_policy.maxDailyRenders)
+
     def test_revise_edit_job_returns_patch_and_revised_plan(self) -> None:
         client = TestClient(create_app(self._settings()))
         edit_request = self._edit_request()
@@ -208,6 +223,26 @@ class EditingServiceTests(unittest.TestCase):
         self.assertTrue(plan["watermark"]["enabled"])
         self.assertTrue(plan["outro"]["enabled"])
 
+    def test_revision_limit_enforced_for_free_plan(self) -> None:
+        client = TestClient(create_app(self._settings()))
+        edit_request = self._edit_request()
+        create_payload = client.post("/v1/edit-jobs", json=edit_request.model_dump()).json()
+
+        for _ in range(3):
+            response = client.post(
+                f"/v1/edit-jobs/{create_payload['editJobId']}/revise",
+                json={"installId": edit_request.installId, "command": "make_more_hype"},
+            )
+            self.assertEqual(response.status_code, 200)
+
+        rejected = client.post(
+            f"/v1/edit-jobs/{create_payload['editJobId']}/revise",
+            json={"installId": edit_request.installId, "command": "make_more_hype"},
+        )
+
+        self.assertEqual(rejected.status_code, 429)
+        self.assertEqual(rejected.json()["errorCode"], "revision_limit")
+
     @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "ffmpeg and ffprobe are required")
     def test_render_job_writes_output_log_and_download_url(self) -> None:
         client = TestClient(create_app(self._settings()))
@@ -222,12 +257,21 @@ class EditingServiceTests(unittest.TestCase):
         render_payload = status_response.json()
         self.assertEqual(render_payload["status"], "rendered")
         self.assertEqual(render_payload["aspectRatio"], "9:16")
+        self.assertEqual(render_payload["planTier"], "free")
+        self.assertEqual(render_payload["policy"]["maxDailyRenders"], 3)
+        self.assertGreater(render_payload["outputBytes"], 0)
+        self.assertEqual(render_payload["retentionMetadata"]["retentionClass"], "free_final_render")
         output_path = self._temp_dir / render_payload["outputObjectKey"]
         log_path = self._temp_dir / render_payload["renderLogObjectKey"]
+        metadata_path = output_path.with_suffix(output_path.suffix + ".metadata.json")
         self.assertTrue(output_path.exists())
         self.assertTrue(log_path.exists())
+        self.assertTrue(metadata_path.exists())
         render_log = json.loads(log_path.read_text(encoding="utf-8"))
         self.assertEqual(render_log["status"], "rendered")
+        self.assertEqual(render_log["planTier"], "free")
+        self.assertEqual(render_log["policy"]["maxRenderSeconds"], 45)
+        self.assertEqual(render_log["retentionMetadata"]["retentionClass"], "free_final_render")
         self.assertEqual(render_log["ffmpeg"]["templateId"], "personal_highlight_v1")
         self.assertEqual(render_log["ffmpeg"]["captionStyle"], "bold_hype")
         self.assertEqual(render_log["ffmpeg"]["templateSignature"]["templateVersion"], "v1")
@@ -299,6 +343,53 @@ class EditingServiceTests(unittest.TestCase):
         self.assertEqual(render_payload["status"], "failed")
         self.assertEqual(render_payload["failureReason"], "invalid_edit_plan")
         self.assertTrue(any(error["code"] == "missing_free_watermark" for error in render_payload["validationErrors"]))
+
+    def test_render_over_free_policy_duration_rejected_before_render(self) -> None:
+        client = TestClient(create_app(self._settings()))
+        payload = self._render_payload(self._edit_request())
+        payload["editPlan"]["targetDurationSeconds"] = 120
+
+        render_response = client.post("/v1/render-jobs", json=payload)
+
+        self.assertEqual(render_response.status_code, 200)
+        render_payload = render_response.json()
+        self.assertEqual(render_payload["status"], "failed")
+        self.assertEqual(render_payload["failureReason"], "invalid_edit_plan")
+        self.assertTrue(any(error["code"] == "render_duration_limit" for error in render_payload["validationErrors"]))
+
+    @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "ffmpeg and ffprobe are required")
+    def test_duplicate_render_request_is_idempotent(self) -> None:
+        client = TestClient(create_app(self._settings()))
+        payload = self._render_payload(self._edit_request())
+        payload["idempotencyKey"] = "idem-render-001"
+
+        first_response = client.post("/v1/render-jobs", json=payload)
+        second_response = client.post("/v1/render-jobs", json=payload)
+
+        self.assertEqual(first_response.status_code, 200)
+        self.assertEqual(second_response.status_code, 200)
+        self.assertEqual(first_response.json()["renderJobId"], second_response.json()["renderJobId"])
+
+    @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "ffmpeg and ffprobe are required")
+    def test_daily_render_limit_uses_feature_flag_default_override(self) -> None:
+        os.environ["HOOPS_AI_EDIT_MAX_DAILY_RENDERS"] = "1"
+        try:
+            client = TestClient(create_app(self._settings()))
+            first_payload = self._render_payload(self._edit_request())
+            second_request = self._edit_request(source_key=first_payload["sourceObjectKey"])
+            second_request = second_request.model_copy(update={"videoId": "video_render_456", "analysisJobId": "analysis_render_456"})
+            second_payload = self._render_payload(second_request)
+            second_payload["editJobId"] = "edit_service_test_2"
+            second_payload["editPlan"]["editJobId"] = "edit_service_test_2"
+
+            first_response = client.post("/v1/render-jobs", json=first_payload)
+            second_response = client.post("/v1/render-jobs", json=second_payload)
+
+            self.assertEqual(first_response.status_code, 200)
+            self.assertEqual(second_response.status_code, 429)
+            self.assertEqual(second_response.json()["errorCode"], "daily_render_limit")
+        finally:
+            os.environ.pop("HOOPS_AI_EDIT_MAX_DAILY_RENDERS", None)
 
     def test_download_url_unavailable_before_render_job_exists(self) -> None:
         client = TestClient(create_app(self._settings()))

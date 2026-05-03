@@ -58,7 +58,8 @@ struct CloudEditService {
                 sourceObjectKey: sourceObjectKey,
                 planTier: planTier,
                 editPlan: editPlan,
-                sourceClips: sourceClips
+                sourceClips: sourceClips,
+                idempotencyKey: "ios-render-\(editJobID)"
             )
         )
 
@@ -140,7 +141,12 @@ struct CloudEditService {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Hoopclips-iOS/1.0", forHTTPHeaderField: "User-Agent")
         request.setValue(UUID().uuidString, forHTTPHeaderField: "x-trace-id")
-        request.httpBody = try encoder.encode(CloudEditRevisionRenderRequest(installId: installID))
+        request.httpBody = try encoder.encode(
+            CloudEditRevisionRenderRequest(
+                installId: installID,
+                idempotencyKey: "ios-revision-render-\(revisionID)"
+            )
+        )
 
         let (data, response) = try await session.data(for: request)
         return try decodeResponse(data: data, response: response, successType: CloudEditRenderStatusResponse.self)
@@ -218,7 +224,10 @@ struct CloudEditService {
             let apiError = try? decoder.decode(CloudEditAPIError.self, from: data)
             throw CloudEditError.backend(
                 code: apiError?.errorCode ?? "http_\(http.statusCode)",
-                message: apiError?.failureReason ?? apiError?.errorMessage ?? "Cloud editing request failed."
+                message: CloudEditError.friendlyBackendMessage(
+                    code: apiError?.errorCode ?? "http_\(http.statusCode)",
+                    fallback: apiError?.failureReason ?? apiError?.errorMessage ?? "Cloud editing request failed."
+                )
             )
         }
 
