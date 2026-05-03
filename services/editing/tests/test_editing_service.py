@@ -230,6 +230,10 @@ class EditingServiceTests(unittest.TestCase):
         self.assertEqual(render_log["status"], "rendered")
         self.assertEqual(render_log["ffmpeg"]["templateId"], "personal_highlight_v1")
         self.assertEqual(render_log["ffmpeg"]["captionStyle"], "bold_hype")
+        self.assertEqual(render_log["ffmpeg"]["templateSignature"]["templateVersion"], "v1")
+        self.assertEqual(render_log["ffmpeg"]["templateSignature"]["effectProfile"], "hype_effects")
+        self.assertEqual(render_log["ffmpeg"]["templateSignature"]["audioProfile"], "hype")
+        self.assertEqual(render_log["ffmpeg"]["templateSignature"]["outroProfile"], "free_social_outro")
 
         download_response = client.get(f"/v1/render-jobs/{render_payload['renderJobId']}/download-url", params={"installId": "install-123"})
         self.assertEqual(download_response.status_code, 200)

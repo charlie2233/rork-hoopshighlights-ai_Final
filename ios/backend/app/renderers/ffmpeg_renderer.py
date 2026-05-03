@@ -122,6 +122,20 @@ class FfmpegRenderer:
         commands.append(final_command)
 
         duration = self._probe_duration(final_path)
+        template_signature = {
+            "templateId": template.templateId,
+            "templateVersion": _template_version(template.templateId),
+            "displayName": template.displayName,
+            "aspectRatio": plan.aspectRatio,
+            "captionStyle": template.captionStyle.styleId,
+            "captionDensity": template.captionStyle.density,
+            "effectProfile": template.effectProfile.profileId,
+            "slowMotionIntensity": template.effectProfile.slowMotionIntensity,
+            "audioProfile": template.audioProfile.profileId,
+            "musicTrackId": template.audioProfile.musicTrackId,
+            "outroProfile": template.outroProfile.profileId,
+            "watermarkProfile": template.watermarkProfile.profileId,
+        }
         return FfmpegRenderResult(
             output_path=final_path,
             duration_seconds=duration,
@@ -133,6 +147,7 @@ class FfmpegRenderer:
                 "aspectRatio": plan.aspectRatio,
                 "templateId": plan.templateId,
                 "captionStyle": template.captionStyle.styleId,
+                "templateSignature": template_signature,
                 "watermarkAssetId": plan.watermark.assetId or template.watermarkProfile.assetId,
                 "outroAssetId": plan.outro.assetId or template.outroProfile.assetId,
                 "clipCount": len(plan.clips),
@@ -499,3 +514,10 @@ def resolve_music_track_path(track_id: str) -> Optional[Path]:
         repo_root / "ios/HoopsClips/Resources/Audio" / filename,
     ]
     return next((path for path in candidates if path.exists()), None)
+
+
+def _template_version(template_id: str) -> str:
+    parts = template_id.rsplit("_", 1)
+    if len(parts) == 2 and parts[1].startswith("v"):
+        return parts[1]
+    return "v1"
