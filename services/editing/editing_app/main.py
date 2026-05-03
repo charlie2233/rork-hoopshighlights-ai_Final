@@ -505,7 +505,13 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             emit_event("edit_revision.created", editJobId=edit_job_id, revisionId=revision_id, templateId=revision_response.revisedPlan.templateId, planTier=revised_job.request.planTier)
             return revision_response
         except EditingServiceError as error:
-            emit_policy_failed(error, editJobId=request.editJobId, templateId=request.editPlan.templateId, planTier=request.planTier)
+            stored_edit_job = edit_jobs.get(edit_job_id)
+            emit_policy_failed(
+                error,
+                editJobId=edit_job_id,
+                planTier=stored_edit_job.request.planTier if stored_edit_job else None,
+                templateId=stored_edit_job.plan.templateId if stored_edit_job else None,
+            )
             return error_response(error)
 
     @app.get("/v1/edit-jobs/{edit_job_id}/revisions", response_model=EditRevisionListResponse, responses={403: {"model": ErrorResponse}, 404: {"model": ErrorResponse}})
