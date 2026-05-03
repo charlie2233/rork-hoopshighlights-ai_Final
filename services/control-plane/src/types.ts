@@ -444,6 +444,7 @@ export interface EditRevisionListResponse extends ResponseEnvelope {
 
 export interface EditingRenderJobResponse extends ResponseEnvelope {
   editJobId: string;
+  revisionId?: string | null;
   renderJobId: string;
   renderer: string;
   rendererVersion: string;

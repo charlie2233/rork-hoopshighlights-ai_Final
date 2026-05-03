@@ -22,6 +22,7 @@ RenderStatus = Literal["render_requested", "created", "queued", "rendering", "re
 
 class CreateRenderJobRequest(APIModel):
     editJobId: str = Field(min_length=1, max_length=128)
+    revisionId: Optional[str] = Field(default=None, min_length=1, max_length=128)
     installId: str = Field(min_length=8, max_length=128)
     sourceObjectKey: str = Field(min_length=1, max_length=512)
     planTier: PlanTier = "free"
@@ -46,6 +47,7 @@ class StartEditRevisionRenderRequest(APIModel):
 
 class RenderJobResponse(APIModel):
     editJobId: str
+    revisionId: Optional[str] = None
     renderJobId: str
     renderer: str
     rendererVersion: str
@@ -104,10 +106,12 @@ class StoredRenderJob:
     idempotency_key: Optional[str] = None
     output_bytes: Optional[int] = None
     retention_metadata: Optional[Dict[str, Any]] = None
+    revision_id: Optional[str] = None
 
     def to_response(self) -> RenderJobResponse:
         return RenderJobResponse(
             editJobId=self.edit_job_id,
+            revisionId=self.revision_id,
             renderJobId=self.render_job_id,
             renderer="cloud_ffmpeg",
             rendererVersion="ffmpeg-renderer-v1",
@@ -136,6 +140,7 @@ def render_log_payload(render_job: StoredRenderJob, status: str, extra: Dict[str
 
     payload: Dict[str, Any] = {
         "editJobId": render_job.edit_job_id,
+        "revisionId": render_job.revision_id,
         "renderJobId": render_job.render_job_id,
         "traceId": render_job.trace_id,
         "status": status,

@@ -199,6 +199,7 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             "deleteEligible": True,
             "planTier": request.planTier,
             "editJobId": job.edit_job_id,
+            "revisionId": request.revisionId,
             "renderJobId": job.render_job_id,
             "templateId": request.editPlan.templateId,
             "outputBytes": output_bytes,
@@ -368,6 +369,7 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             plan_tier=request.planTier,
             retry_count=(render_jobs[existing_render_id].retry_count + 1) if existing_render_id and existing_render_id in render_jobs else 0,
             idempotency_key=idempotency_key,
+            revision_id=request.revisionId,
         )
         render_jobs[render_job_id] = job
         render_jobs_by_edit_id[request.editJobId] = render_job_id
@@ -532,6 +534,7 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
                     planTier=stored_edit_job.request.planTier,
                     editPlan=revision.revisedPlan,
                     sourceClips=stored_edit_job.request.clips,
+                    revisionId=revision_id,
                     idempotencyKey=request.idempotencyKey or f"{edit_job_id}:{revision_id}:render",
                 ),
                 background_tasks,

@@ -323,7 +323,12 @@ class EditingServiceTests(unittest.TestCase):
         self.assertEqual(status_response.status_code, 200)
         render_payload = status_response.json()
         self.assertEqual(render_payload["status"], "rendered")
+        self.assertEqual(render_payload["revisionId"], revision_payload["revisionId"])
         self.assertEqual(render_payload["aspectRatio"], "16:9")
+        self.assertEqual(render_payload["retentionMetadata"]["revisionId"], revision_payload["revisionId"])
+        log_path = self._temp_dir / render_payload["renderLogObjectKey"]
+        render_log = json.loads(log_path.read_text(encoding="utf-8"))
+        self.assertEqual(render_log["revisionId"], revision_payload["revisionId"])
         download_response = client.get(
             f"/v1/edit-jobs/{create_payload['editJobId']}/download-url",
             params={"installId": edit_request.installId},

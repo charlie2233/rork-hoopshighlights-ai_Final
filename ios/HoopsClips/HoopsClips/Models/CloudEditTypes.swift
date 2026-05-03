@@ -479,6 +479,7 @@ struct CloudEditRevisionResponse: Codable, Sendable {
 
 struct CloudEditRenderStatusResponse: Codable, Sendable {
     let editJobId: String
+    let revisionId: String?
     let renderJobId: String
     let renderer: String
     let rendererVersion: String
