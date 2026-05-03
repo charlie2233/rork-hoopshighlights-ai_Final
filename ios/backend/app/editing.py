@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Sequence, Tuple
 
 from pydantic import Field, model_validator
@@ -18,6 +19,7 @@ PresetId = Literal[
 ]
 AspectRatio = Literal["9:16", "16:9", "source"]
 PlanTier = Literal["free", "pro"]
+TemplateId = Literal["personal_highlight_v1", "full_game_highlight_v1", "coach_review_v1"]
 RevisionCommand = Literal[
     "make_shorter",
     "make_longer",
@@ -41,6 +43,7 @@ RENDER_MODE = "cloud_ffmpeg"
 MIN_PLAN_CLIP_SECONDS = 2.0
 MAX_CAPTION_LENGTH = 24
 MAX_DURATION_OVERRUN_SECONDS = 6.0
+REPO_ROOT = Path(__file__).resolve().parents[3]
 
 LICENSED_MUSIC_TRACKS = {
     "hype_01",
@@ -48,6 +51,16 @@ LICENSED_MUSIC_TRACKS = {
     "cinematic_01",
     "clean_01",
     "none",
+}
+SUPPORTED_TEMPLATE_EFFECTS = {
+    "caption",
+    "clean_cut",
+    "impact_flash",
+    "lower_third",
+    "punch_zoom",
+    "slow_motion",
+    "speed_ramp",
+    "subtle_replay",
 }
 
 
@@ -93,6 +106,7 @@ class EditCandidateClip(APIModel):
 
 class EditPreset(APIModel):
     presetId: PresetId
+    templateId: TemplateId
     displayName: str
     defaultAspectRatio: AspectRatio
     durationOptions: List[int]
@@ -115,9 +129,191 @@ class EditTheme(APIModel):
     colorway: str
 
 
+class TemplateAsset(APIModel):
+    assetId: str = Field(min_length=1, max_length=80)
+    role: Literal["watermark", "outro", "lower_third", "title_card", "icon"]
+    path: str = Field(min_length=1, max_length=256)
+    contentType: str = Field(min_length=1, max_length=80)
+    required: bool = True
+
+
+class CaptionStyle(APIModel):
+    styleId: str = Field(min_length=1, max_length=80)
+    displayName: str
+    density: Literal["minimal", "clean", "hype"]
+    fontColor: str
+    boxColor: str
+    defaultFontSize: int = Field(gt=0, le=96)
+
+
+class AudioProfile(APIModel):
+    profileId: str = Field(min_length=1, max_length=80)
+    mode: str
+    musicTrackId: str
+    musicVolume: float = Field(ge=0.0, le=1.0)
+    gameAudioVolume: float = Field(ge=0.0, le=1.0)
+
+
+class EffectProfile(APIModel):
+    profileId: str = Field(min_length=1, max_length=80)
+    slowMotionIntensity: str
+    allowedEffects: List[str] = Field(default_factory=list, max_length=12)
+    maxSlowMotionClips: int = Field(ge=0, le=12)
+
+
+class OutroProfile(APIModel):
+    profileId: str = Field(min_length=1, max_length=80)
+    assetId: str = Field(min_length=1, max_length=80)
+    durationSeconds: float = Field(ge=0.0, le=8.0)
+    requiredForFree: bool
+
+
+class WatermarkProfile(APIModel):
+    profileId: str = Field(min_length=1, max_length=80)
+    assetId: str = Field(min_length=1, max_length=80)
+    position: str
+    requiredForFree: bool
+    displayText: str = Field(min_length=1, max_length=40)
+
+
+class ClipLengthProfile(APIModel):
+    minSeconds: float = Field(ge=MIN_PLAN_CLIP_SECONDS, le=20.0)
+    targetSeconds: float = Field(ge=MIN_PLAN_CLIP_SECONDS, le=20.0)
+    maxSeconds: float = Field(ge=MIN_PLAN_CLIP_SECONDS, le=20.0)
+
+    @model_validator(mode="after")
+    def validate_order(self) -> "ClipLengthProfile":
+        if not self.minSeconds <= self.targetSeconds <= self.maxSeconds:
+            raise ValueError("clip length target must be between min and max")
+        return self
+
+
+class TemplatePack(APIModel):
+    templateId: TemplateId
+    presetId: PresetId
+    displayName: str
+    description: str
+    bestFor: str
+    defaultAspectRatio: AspectRatio
+    allowedAspectRatios: List[AspectRatio]
+    targetDurations: List[int]
+    ordering: str
+    pacing: str
+    clipLength: ClipLengthProfile
+    themeId: str
+    captionStyle: CaptionStyle
+    audioProfile: AudioProfile
+    effectProfile: EffectProfile
+    outroProfile: OutroProfile
+    watermarkProfile: WatermarkProfile
+    assets: List[TemplateAsset] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_defaults(self) -> "TemplatePack":
+        if self.defaultAspectRatio not in self.allowedAspectRatios:
+            raise ValueError("defaultAspectRatio must be allowed by the template")
+        if not self.targetDurations:
+            raise ValueError("TemplatePack must expose at least one target duration")
+        return self
+
+
+TEMPLATE_PACK_REGISTRY: Dict[str, TemplatePack] = {
+    "personal_highlight_v1": TemplatePack(
+        templateId="personal_highlight_v1",
+        presetId="personal_highlight",
+        displayName="Personal Highlight",
+        description="Fast vertical hype reel with bold captions, slow motion, and music-forward pacing.",
+        bestFor="TikTok, Instagram, recruiting reels",
+        defaultAspectRatio="9:16",
+        allowedAspectRatios=["9:16", "16:9"],
+        targetDurations=[15, 30, 45],
+        ordering="best_first",
+        pacing="fast",
+        clipLength=ClipLengthProfile(minSeconds=3.5, targetSeconds=5.5, maxSeconds=7.0),
+        themeId="hype_black_gold",
+        captionStyle=CaptionStyle(styleId="bold_hype", displayName="Bold Hype", density="hype", fontColor="white", boxColor="black@0.62", defaultFontSize=48),
+        audioProfile=AudioProfile(profileId="hype", mode="music_plus_game_audio", musicTrackId="hype_01", musicVolume=0.82, gameAudioVolume=0.25),
+        effectProfile=EffectProfile(profileId="hype_effects", slowMotionIntensity="high", allowedEffects=["punch_zoom", "speed_ramp", "slow_motion"], maxSlowMotionClips=4),
+        outroProfile=OutroProfile(profileId="free_social_outro", assetId="personal_highlight_outro_free_v1", durationSeconds=2.0, requiredForFree=True),
+        watermarkProfile=WatermarkProfile(profileId="hoopclips_corner_mark", assetId="hoopclips_app_icon_v1", position="bottom_right", requiredForFree=True, displayText="Hoopclips"),
+        assets=[
+            TemplateAsset(assetId="hoopclips_app_icon_v1", role="watermark", path="services/editing/templates/personal_highlight/assets/watermark.json", contentType="application/json"),
+            TemplateAsset(assetId="personal_highlight_outro_free_v1", role="outro", path="services/editing/templates/personal_highlight/assets/outro_free.json", contentType="application/json"),
+        ],
+    ),
+    "full_game_highlight_v1": TemplatePack(
+        templateId="full_game_highlight_v1",
+        presetId="full_game_highlight",
+        displayName="Full Game Highlight",
+        description="Clean widescreen game recap with chronological flow, subtle effects, and stronger game audio.",
+        bestFor="recaps, YouTube, team sharing",
+        defaultAspectRatio="16:9",
+        allowedAspectRatios=["16:9", "9:16"],
+        targetDurations=[60, 90, 120],
+        ordering="chronological_with_best_moments_boosted",
+        pacing="medium",
+        clipLength=ClipLengthProfile(minSeconds=5.5, targetSeconds=6.5, maxSeconds=8.0),
+        themeId="nba_clean",
+        captionStyle=CaptionStyle(styleId="clean_scorebug", displayName="Clean Scorebug", density="clean", fontColor="white", boxColor="black@0.48", defaultFontSize=38),
+        audioProfile=AudioProfile(profileId="game_recap", mode="music_plus_game_audio", musicTrackId="cinematic_01", musicVolume=0.45, gameAudioVolume=0.62),
+        effectProfile=EffectProfile(profileId="subtle_recap", slowMotionIntensity="low_medium", allowedEffects=["clean_cut", "subtle_replay", "lower_third", "slow_motion"], maxSlowMotionClips=3),
+        outroProfile=OutroProfile(profileId="standard_recap_outro", assetId="full_game_outro_v1", durationSeconds=2.0, requiredForFree=True),
+        watermarkProfile=WatermarkProfile(profileId="hoopclips_clean_corner_mark", assetId="hoopclips_app_icon_v1", position="bottom_right", requiredForFree=True, displayText="Hoopclips"),
+        assets=[
+            TemplateAsset(assetId="hoopclips_app_icon_v1", role="watermark", path="services/editing/templates/full_game_highlight/assets/watermark.json", contentType="application/json"),
+            TemplateAsset(assetId="full_game_outro_v1", role="outro", path="services/editing/templates/full_game_highlight/assets/outro_standard.json", contentType="application/json"),
+            TemplateAsset(assetId="full_game_lower_third_v1", role="lower_third", path="services/editing/templates/full_game_highlight/assets/lower_third.json", contentType="application/json"),
+        ],
+    ),
+    "coach_review_v1": TemplatePack(
+        templateId="coach_review_v1",
+        presetId="coach_review",
+        displayName="Coach Review",
+        description="Simple chronological film-review cut with original audio, minimal captions, and restrained effects.",
+        bestFor="coaches, trainers, parent review",
+        defaultAspectRatio="source",
+        allowedAspectRatios=["source", "16:9"],
+        targetDurations=[60, 120, 180],
+        ordering="chronological",
+        pacing="slow",
+        clipLength=ClipLengthProfile(minSeconds=6.0, targetSeconds=8.0, maxSeconds=10.0),
+        themeId="coach_simple",
+        captionStyle=CaptionStyle(styleId="plain", displayName="Plain Labels", density="minimal", fontColor="white", boxColor="black@0.35", defaultFontSize=34),
+        audioProfile=AudioProfile(profileId="original_audio", mode="original_audio", musicTrackId="none", musicVolume=0.0, gameAudioVolume=1.0),
+        effectProfile=EffectProfile(profileId="minimal_review", slowMotionIntensity="manual_only", allowedEffects=["slow_motion"], maxSlowMotionClips=1),
+        outroProfile=OutroProfile(profileId="minimal_review_outro", assetId="coach_review_outro_v1", durationSeconds=1.5, requiredForFree=True),
+        watermarkProfile=WatermarkProfile(profileId="hoopclips_minimal_corner_mark", assetId="hoopclips_app_icon_v1", position="bottom_right", requiredForFree=True, displayText="Hoopclips"),
+        assets=[
+            TemplateAsset(assetId="hoopclips_app_icon_v1", role="watermark", path="services/editing/templates/coach_review/assets/watermark.json", contentType="application/json"),
+            TemplateAsset(assetId="coach_review_outro_v1", role="outro", path="services/editing/templates/coach_review/assets/outro_minimal.json", contentType="application/json"),
+        ],
+    ),
+}
+
+
+TEMPLATE_BY_PRESET: Dict[str, str] = {
+    template.presetId: template.templateId for template in TEMPLATE_PACK_REGISTRY.values()
+}
+
+
+def get_template_pack(template_id: Optional[str]) -> TemplatePack:
+    resolved_id = template_id or "personal_highlight_v1"
+    template = TEMPLATE_PACK_REGISTRY.get(resolved_id)
+    if template is None:
+        return TEMPLATE_PACK_REGISTRY["personal_highlight_v1"]
+    return template
+
+
+def get_template_pack_for_plan(preset_id: str, template_id: Optional[str] = None) -> TemplatePack:
+    if template_id and template_id in TEMPLATE_PACK_REGISTRY:
+        return TEMPLATE_PACK_REGISTRY[template_id]
+    return TEMPLATE_PACK_REGISTRY[TEMPLATE_BY_PRESET.get(preset_id, "personal_highlight_v1")]
+
+
 PRESET_REGISTRY: Dict[str, EditPreset] = {
     "personal_highlight": EditPreset(
         presetId="personal_highlight",
+        templateId="personal_highlight_v1",
         displayName="Personal Highlight",
         defaultAspectRatio="9:16",
         durationOptions=[15, 30, 45],
@@ -134,6 +330,7 @@ PRESET_REGISTRY: Dict[str, EditPreset] = {
     ),
     "full_game_highlight": EditPreset(
         presetId="full_game_highlight",
+        templateId="full_game_highlight_v1",
         displayName="Full Game Highlight",
         defaultAspectRatio="16:9",
         durationOptions=[60, 90, 120],
@@ -150,6 +347,7 @@ PRESET_REGISTRY: Dict[str, EditPreset] = {
     ),
     "coach_review": EditPreset(
         presetId="coach_review",
+        templateId="coach_review_v1",
         displayName="Coach Review",
         defaultAspectRatio="source",
         durationOptions=[60, 120, 180],
@@ -166,6 +364,7 @@ PRESET_REGISTRY: Dict[str, EditPreset] = {
     ),
     "fast_break_mix": EditPreset(
         presetId="fast_break_mix",
+        templateId="personal_highlight_v1",
         displayName="Fast Break Mix",
         defaultAspectRatio="9:16",
         durationOptions=[15, 30],
@@ -182,6 +381,7 @@ PRESET_REGISTRY: Dict[str, EditPreset] = {
     ),
     "best_five": EditPreset(
         presetId="best_five",
+        templateId="personal_highlight_v1",
         displayName="Best Five",
         defaultAspectRatio="9:16",
         durationOptions=[30, 45],
@@ -226,6 +426,7 @@ class CreateEditJobRequest(APIModel):
     installId: str = Field(min_length=8, max_length=128)
     sourceObjectKey: Optional[str] = Field(default=None, max_length=512)
     preset: PresetId = "personal_highlight"
+    templateId: Optional[TemplateId] = None
     theme: Optional[str] = Field(default=None, max_length=80)
     targetDurationSeconds: int = Field(gt=0, le=180)
     aspectRatio: Optional[AspectRatio] = None
@@ -235,6 +436,7 @@ class CreateEditJobRequest(APIModel):
 
 class EditUserIntent(APIModel):
     preset: PresetId
+    templateId: Optional[TemplateId] = None
     targetDurationSeconds: int
     aspectRatio: Optional[AspectRatio]
     planTier: PlanTier
@@ -254,6 +456,7 @@ class EditContext(APIModel):
     clipPoolSummary: EditClipPoolSummary
     clips: List[EditCandidateClip]
     availablePresets: List[str]
+    availableTemplates: List[str]
     availableThemes: List[str]
     availableMusicTracks: List[str]
 
@@ -329,11 +532,13 @@ class TimedTemplate(APIModel):
     enabled: bool
     durationSeconds: float = Field(ge=0.0)
     templateId: str
+    assetId: Optional[str] = None
 
 
 class EditPlanWatermark(APIModel):
     enabled: bool
     position: str
+    assetId: Optional[str] = None
 
 
 class EditPlan(APIModel):
@@ -342,7 +547,9 @@ class EditPlan(APIModel):
     videoId: str
     analysisJobId: str
     preset: PresetId
+    templateId: Optional[TemplateId] = None
     theme: str
+    captionStyle: Optional[str] = None
     targetDurationSeconds: int
     aspectRatio: AspectRatio
     renderMode: str = RENDER_MODE
@@ -352,11 +559,95 @@ class EditPlan(APIModel):
     outro: TimedTemplate
     watermark: EditPlanWatermark
 
+    @model_validator(mode="after")
+    def apply_template_defaults(self) -> "EditPlan":
+        template = get_template_pack_for_plan(self.preset, self.templateId)
+        self.templateId = template.templateId
+        if not self.captionStyle:
+            self.captionStyle = template.captionStyle.styleId
+        if not self.outro.assetId:
+            self.outro.assetId = template.outroProfile.assetId
+        if not self.watermark.assetId:
+            self.watermark.assetId = template.watermarkProfile.assetId
+        return self
+
 
 class EditPlanValidationIssue(APIModel):
     field: str
     code: str
     message: str
+
+
+def _repo_root() -> Path:
+    current = Path(__file__).resolve()
+    for parent in current.parents:
+        if (parent / "ios").exists() and (parent / "services").exists():
+            return parent
+    return Path.cwd()
+
+
+def _template_asset_exists(asset: TemplateAsset) -> bool:
+    if asset.path.startswith("builtin:"):
+        return True
+    return (_repo_root() / asset.path).exists()
+
+
+class TemplatePackValidator:
+    supported_aspect_ratios = {"9:16", "16:9", "source"}
+    supported_caption_styles = {"bold_hype", "clean_scorebug", "plain"}
+    supported_effects = {"punch_zoom", "speed_ramp", "impact_flash", "clean_cut", "subtle_replay", "lower_third", "slow_motion"}
+    supported_watermark_positions = {"bottom_right", "bottom_left", "top_right", "top_left"}
+
+    @classmethod
+    def validate(cls, template: TemplatePack) -> List[EditPlanValidationIssue]:
+        errors: List[EditPlanValidationIssue] = []
+
+        def add(field: str, code: str, message: str) -> None:
+            errors.append(EditPlanValidationIssue(field=field, code=code, message=message))
+
+        if template.themeId not in THEME_REGISTRY:
+            add("themeId", "invalid_template_theme", "Template references an unknown theme.")
+        if template.captionStyle.styleId not in cls.supported_caption_styles:
+            add("captionStyle", "invalid_caption_style", "Template references an unsupported caption style.")
+        if template.audioProfile.musicTrackId not in LICENSED_MUSIC_TRACKS:
+            add("audioProfile.musicTrackId", "unlicensed_music", "Template music track is not licensed.")
+        if template.defaultAspectRatio not in cls.supported_aspect_ratios:
+            add("defaultAspectRatio", "invalid_aspect_ratio", "Template default aspect ratio is unsupported.")
+        for index, aspect_ratio in enumerate(template.allowedAspectRatios):
+            if aspect_ratio not in cls.supported_aspect_ratios:
+                add(f"allowedAspectRatios[{index}]", "invalid_aspect_ratio", "Template allowed aspect ratio is unsupported.")
+        if any(duration <= 0 or duration > 180 for duration in template.targetDurations):
+            add("targetDurations", "invalid_target_duration", "Template target durations must be between 1 and 180 seconds.")
+        for effect in template.effectProfile.allowedEffects:
+            if effect not in cls.supported_effects:
+                add("effectProfile.allowedEffects", "unsupported_effect", "Template requested an unsupported effect.")
+        if template.watermarkProfile.position not in cls.supported_watermark_positions:
+            add("watermarkProfile.position", "invalid_watermark_position", "Template watermark position is unsupported.")
+        if template.watermarkProfile.requiredForFree and not template.watermarkProfile.assetId:
+            add("watermarkProfile.assetId", "missing_free_watermark", "Free templates must define a watermark asset.")
+        if template.outroProfile.requiredForFree and (not template.outroProfile.assetId or template.outroProfile.durationSeconds <= 0):
+            add("outroProfile.assetId", "missing_free_outro", "Free templates must define a non-empty outro asset.")
+
+        known_asset_ids = {asset.assetId for asset in template.assets}
+        for asset_id, field, code in [
+            (template.watermarkProfile.assetId, "watermarkProfile.assetId", "missing_free_watermark_asset"),
+            (template.outroProfile.assetId, "outroProfile.assetId", "missing_free_outro_asset"),
+        ]:
+            if asset_id not in known_asset_ids:
+                add(field, code, "Template required asset is not registered.")
+        for index, asset in enumerate(template.assets):
+            if asset.required and not _template_asset_exists(asset):
+                add(f"assets[{index}].path", "template_asset_missing", "Template asset file does not exist.")
+
+        return errors
+
+
+def validate_template_pack(template: TemplatePack) -> List[EditPlanValidationIssue]:
+    return TemplatePackValidator.validate(template)
+
+
+def validate_template_registry() -> Dict[str, List[EditPlanValidationIssue]]:
+    return {template_id: validate_template_pack(template) for template_id, template in TEMPLATE_PACK_REGISTRY.items()}
 
 
 class EditJobResponse(APIModel):
@@ -365,6 +656,7 @@ class EditJobResponse(APIModel):
     analysisJobId: str
     status: str
     preset: PresetId
+    templateId: Optional[TemplateId] = None
     targetDurationSeconds: int
     aspectRatio: AspectRatio
     clipCount: int
@@ -414,6 +706,7 @@ class StoredEditJob:
             analysisJobId=self.request.analysisJobId,
             status=self.status,
             preset=self.plan.preset,
+            templateId=self.plan.templateId,
             targetDurationSeconds=self.plan.targetDurationSeconds,
             aspectRatio=self.plan.aspectRatio,
             clipCount=len(self.plan.clips),
@@ -450,6 +743,7 @@ def build_edit_context(request: CreateEditJobRequest) -> EditContext:
         analysisJobId=request.analysisJobId,
         userIntent=EditUserIntent(
             preset=request.preset,
+            templateId=request.templateId,
             targetDurationSeconds=request.targetDurationSeconds,
             aspectRatio=request.aspectRatio,
             planTier=request.planTier,
@@ -457,6 +751,7 @@ def build_edit_context(request: CreateEditJobRequest) -> EditContext:
         clipPoolSummary=EditClipPoolSummary(**summarize_clip_pool(request.clips)),
         clips=request.clips,
         availablePresets=list(PRESET_REGISTRY.keys()),
+        availableTemplates=list(TEMPLATE_PACK_REGISTRY.keys()),
         availableThemes=list(THEME_REGISTRY.keys()),
         availableMusicTracks=sorted(LICENSED_MUSIC_TRACKS),
     )
@@ -505,6 +800,12 @@ def balance_clip_variety(clips: Sequence[EditCandidateClip], limit: int) -> List
 def choose_target_length(requested_seconds: int, preset: EditPreset) -> int:
     minimum = min(preset.durationOptions)
     maximum = max(preset.durationOptions)
+    return max(minimum, min(maximum, requested_seconds))
+
+
+def choose_template_target_length(requested_seconds: int, template: TemplatePack) -> int:
+    minimum = min(template.targetDurations)
+    maximum = max(template.targetDurations)
     return max(minimum, min(maximum, requested_seconds))
 
 
@@ -594,11 +895,28 @@ def add_slow_motion(clip: EditCandidateClip, source_start: float, source_end: fl
 def build_edit_plan(request: CreateEditJobRequest, edit_job_id: str) -> EditPlan:
     context = build_edit_context(request)
     preset = PRESET_REGISTRY[request.preset]
-    target_duration = choose_target_length(request.targetDurationSeconds, preset)
-    aspect_ratio = request.aspectRatio or preset.defaultAspectRatio
+    template = get_template_pack_for_plan(preset.presetId, request.templateId or preset.templateId)
+    preset = preset.model_copy(
+        update={
+            "defaultAspectRatio": template.defaultAspectRatio,
+            "durationOptions": template.targetDurations,
+            "ordering": template.ordering,
+            "pacing": template.pacing,
+            "clipLengthRangeSeconds": (template.clipLength.minSeconds, template.clipLength.maxSeconds),
+            "musicTrackId": template.audioProfile.musicTrackId,
+            "gameAudioVolume": template.audioProfile.gameAudioVolume,
+            "captionStyle": template.captionStyle.styleId,
+            "slowMotionIntensity": template.effectProfile.slowMotionIntensity,
+            "themeId": template.themeId,
+            "effects": [effect for effect in template.effectProfile.allowedEffects if effect != "slow_motion"],
+            "outroTemplateId": template.outroProfile.assetId,
+        }
+    )
+    target_duration = choose_template_target_length(request.targetDurationSeconds, template)
+    aspect_ratio = request.aspectRatio or template.defaultAspectRatio
     theme = choose_theme(preset, request.theme)
     intro_duration = 1.2 if preset.presetId != "coach_review" else 0.0
-    outro_duration = 2.0 if request.planTier == "free" else 0.8
+    outro_duration = template.outroProfile.durationSeconds if request.planTier == "free" else min(0.8, template.outroProfile.durationSeconds)
     usable_duration = max(MIN_PLAN_CLIP_SECONDS, target_duration - intro_duration - outro_duration)
     selected = fit_to_duration(context.clips, usable_duration, preset)
 
@@ -640,14 +958,16 @@ def build_edit_plan(request: CreateEditJobRequest, edit_job_id: str) -> EditPlan
         videoId=request.videoId,
         analysisJobId=request.analysisJobId,
         preset=preset.presetId,
+        templateId=template.templateId,
         theme=theme,
+        captionStyle=template.captionStyle.styleId,
         targetDurationSeconds=target_duration,
         aspectRatio=aspect_ratio,
         audio=EditPlanAudio(
-            mode="original_audio" if preset.musicTrackId == "none" else "music_plus_game_audio",
-            musicTrackId=preset.musicTrackId,
-            musicVolume=0.0 if preset.musicTrackId == "none" else 0.82,
-            gameAudioVolume=preset.gameAudioVolume,
+            mode=template.audioProfile.mode,
+            musicTrackId=template.audioProfile.musicTrackId,
+            musicVolume=template.audioProfile.musicVolume,
+            gameAudioVolume=template.audioProfile.gameAudioVolume,
         ),
         clips=plan_clips,
         intro=TimedTemplate(
@@ -658,11 +978,13 @@ def build_edit_plan(request: CreateEditJobRequest, edit_job_id: str) -> EditPlan
         outro=TimedTemplate(
             enabled=True,
             durationSeconds=outro_duration,
-            templateId=preset.outroTemplateId,
+            templateId=template.outroProfile.assetId,
+            assetId=template.outroProfile.assetId,
         ),
         watermark=EditPlanWatermark(
             enabled=request.planTier == "free",
-            position="bottom_right",
+            position=template.watermarkProfile.position,
+            assetId=template.watermarkProfile.assetId,
         ),
     )
 
@@ -684,6 +1006,32 @@ def validate_edit_plan(
         add("renderMode", "invalid_render_mode", "Only cloud_ffmpeg render mode is supported.")
     if plan.theme not in THEME_REGISTRY:
         add("theme", "invalid_theme", "EditPlan theme is not registered.")
+    template = TEMPLATE_PACK_REGISTRY.get(plan.templateId or "")
+    if template is None:
+        add("templateId", "invalid_template", "EditPlan template is not registered.")
+        template = get_template_pack_for_plan(plan.preset, None)
+    else:
+        template_errors = validate_template_pack(template)
+        for error in template_errors:
+            add(f"template.{error.field}", error.code, error.message)
+        if template.presetId != plan.preset and plan.preset not in {"fast_break_mix", "best_five"}:
+            add("templateId", "template_preset_mismatch", "EditPlan template does not match the selected preset.")
+        if plan.aspectRatio not in template.allowedAspectRatios:
+            add("aspectRatio", "template_aspect_ratio_unsupported", "EditPlan aspect ratio is not supported by the selected template.")
+        if plan.captionStyle and plan.captionStyle != template.captionStyle.styleId:
+            add("captionStyle", "template_caption_style_mismatch", "EditPlan caption style does not match the selected template.")
+        if plan.watermark.assetId and plan.watermark.assetId != template.watermarkProfile.assetId:
+            add("watermark.assetId", "template_watermark_asset_mismatch", "EditPlan watermark asset does not match the selected template.")
+        if plan.outro.assetId and plan.outro.assetId != template.outroProfile.assetId:
+            add("outro.assetId", "template_outro_asset_mismatch", "EditPlan outro asset does not match the selected template.")
+        if plan_tier == "free" and template.watermarkProfile.requiredForFree and not plan.watermark.enabled:
+            add("watermark.enabled", "missing_free_watermark", "Selected template requires the free-user watermark.")
+        if plan_tier == "free" and template.watermarkProfile.requiredForFree and plan.watermark.assetId != template.watermarkProfile.assetId:
+            add("watermark.assetId", "missing_free_watermark_asset", "Selected template requires its registered free-user watermark asset.")
+        if plan_tier == "free" and template.outroProfile.requiredForFree and not plan.outro.enabled:
+            add("outro.enabled", "missing_free_outro", "Selected template requires the free-user outro.")
+        if plan_tier == "free" and template.outroProfile.requiredForFree and plan.outro.assetId != template.outroProfile.assetId:
+            add("outro.assetId", "missing_free_outro_asset", "Selected template requires its registered free-user outro asset.")
     if plan.audio.musicTrackId not in LICENSED_MUSIC_TRACKS:
         add("audio.musicTrackId", "unlicensed_music", "Music track is not licensed or available.")
     if plan.audio.musicTrackId == "none" and plan.audio.musicVolume > 0:
@@ -709,6 +1057,8 @@ def validate_edit_plan(
         if len(clip.caption) > MAX_CAPTION_LENGTH:
             add(f"{field_prefix}.caption", "caption_too_long", "Caption is too long for the selected template.")
         for effect_index, effect in enumerate(clip.effects):
+            if effect.type not in template.effectProfile.allowedEffects:
+                add(f"{field_prefix}.effects[{effect_index}].type", "template_effect_unsupported", "Effect is not allowed by the selected template.")
             if effect.type == "slow_motion":
                 if effect.sourceStart is None or effect.sourceEnd is None:
                     add(f"{field_prefix}.effects[{effect_index}]", "slow_motion_missing_bounds", "Slow motion requires source bounds.")
@@ -751,19 +1101,30 @@ def estimate_render_cost(plan: EditPlan) -> Dict[str, float]:
 
 def repair_edit_plan(plan: EditPlan, plan_tier: PlanTier) -> EditPlan:
     data = plan.model_dump()
+    template = get_template_pack_for_plan(plan.preset, plan.templateId)
+    data["templateId"] = template.templateId
+    data["captionStyle"] = template.captionStyle.styleId
+    if data.get("aspectRatio") not in template.allowedAspectRatios:
+        data["aspectRatio"] = template.defaultAspectRatio
+    if not data.get("theme") or data["theme"] not in THEME_REGISTRY:
+        data["theme"] = template.themeId
     if plan_tier == "free":
         data["watermark"]["enabled"] = True
-        data["watermark"]["position"] = data["watermark"].get("position") or "bottom_right"
+        data["watermark"]["position"] = data["watermark"].get("position") or template.watermarkProfile.position
+        data["watermark"]["assetId"] = template.watermarkProfile.assetId
         data["outro"]["enabled"] = True
         if data["outro"]["durationSeconds"] <= 0:
-            data["outro"]["durationSeconds"] = 2.0
+            data["outro"]["durationSeconds"] = template.outroProfile.durationSeconds
         if not data["outro"]["templateId"] or data["outro"]["templateId"] == "none":
-            data["outro"]["templateId"] = "free_hoopclips_outro"
+            data["outro"]["templateId"] = template.outroProfile.assetId
+        data["outro"]["assetId"] = template.outroProfile.assetId
 
     for clip in data["clips"]:
         clip["caption"] = (clip.get("caption") or "")[:MAX_CAPTION_LENGTH]
         deduped_effects = []
         for effect in clip.get("effects", []):
+            if effect.get("type") not in template.effectProfile.allowedEffects:
+                continue
             if effect.get("type") == "slow_motion":
                 source_start = max(clip["sourceStart"], effect.get("sourceStart") or clip["sourceStart"])
                 source_end = min(clip["sourceEnd"], effect.get("sourceEnd") or clip["sourceEnd"])
@@ -781,7 +1142,9 @@ SAFE_PATCH_PATHS = {
     "/targetDurationSeconds",
     "/aspectRatio",
     "/preset",
+    "/templateId",
     "/theme",
+    "/captionStyle",
     "/audio",
     "/clips",
     "/intro",
@@ -868,12 +1231,15 @@ def _build_revised_edit_job(job: StoredEditJob, revision: ReviseEditJobRequest) 
 
     if command in {"make_more_hype", "make_personal", "add_more_slow_motion"}:
         request_data["preset"] = "personal_highlight"
+        request_data["templateId"] = "personal_highlight_v1"
         request_data["aspectRatio"] = revision.aspectRatio or request_data.get("aspectRatio") or "9:16"
     elif command == "make_nba_style":
         request_data["preset"] = "full_game_highlight"
+        request_data["templateId"] = "full_game_highlight_v1"
         request_data["aspectRatio"] = "16:9"
     elif command == "show_more_full_play_context":
         request_data["preset"] = "coach_review"
+        request_data["templateId"] = "coach_review_v1"
 
     revised_request = CreateEditJobRequest(**request_data)
     revised = build_edit_job(revised_request, job.edit_job_id)
@@ -889,6 +1255,8 @@ def _build_revised_edit_job(job: StoredEditJob, revision: ReviseEditJobRequest) 
 
     if command == "make_more_hype":
         data["theme"] = "hype_black_gold"
+        data["templateId"] = "personal_highlight_v1"
+        data["captionStyle"] = "bold_hype"
         data["aspectRatio"] = "9:16"
         data["audio"] = {
             "mode": "music_plus_game_audio",
@@ -917,6 +1285,8 @@ def _build_revised_edit_job(job: StoredEditJob, revision: ReviseEditJobRequest) 
 
     if command == "make_nba_style":
         data["theme"] = "nba_clean"
+        data["templateId"] = "full_game_highlight_v1"
+        data["captionStyle"] = "clean_scorebug"
         data["aspectRatio"] = "16:9"
         data["audio"] = {
             "mode": "music_plus_game_audio",
@@ -981,7 +1351,9 @@ def _diff_edit_plans(base: EditPlan, revised: EditPlan, command: RevisionCommand
         "/targetDurationSeconds",
         "/aspectRatio",
         "/preset",
+        "/templateId",
         "/theme",
+        "/captionStyle",
         "/audio",
         "/clips",
         "/intro",

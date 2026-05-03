@@ -1,0 +1,8 @@
+{
+  "assetId": "full_game_outro_v1",
+  "role": "outro",
+  "renderer": "ffmpeg_generated_card",
+  "title": "Hoopclips Game Recap",
+  "subtitle": "Clean recap powered by cloud AI",
+  "durationSeconds": 2.0
+}

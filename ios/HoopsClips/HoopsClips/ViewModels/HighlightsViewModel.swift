@@ -371,6 +371,7 @@ final class HighlightsViewModel {
             installId: installID,
             sourceObjectKey: sourceObjectKey,
             preset: preset.rawValue,
+            templateId: preset.templateID,
             targetDurationSeconds: targetDurationSeconds,
             aspectRatio: aspectRatio ?? preset.aspectRatio,
             planTier: isProUser ? .pro : .free,

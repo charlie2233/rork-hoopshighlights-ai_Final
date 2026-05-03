@@ -363,6 +363,7 @@ export interface CreateEditJobRequest {
   installId: string;
   sourceObjectKey?: string | null;
   preset: "personal_highlight" | "full_game_highlight" | "coach_review" | "fast_break_mix" | "best_five";
+  templateId?: "personal_highlight_v1" | "full_game_highlight_v1" | "coach_review_v1" | null;
   theme?: string | null;
   targetDurationSeconds: number;
   aspectRatio?: "9:16" | "16:9" | "source" | null;
@@ -376,6 +377,7 @@ export interface EditJobResponse extends ResponseEnvelope {
   analysisJobId: string;
   status: string;
   preset: string;
+  templateId?: string | null;
   targetDurationSeconds: number;
   aspectRatio: "9:16" | "16:9" | "source";
   clipCount: number;

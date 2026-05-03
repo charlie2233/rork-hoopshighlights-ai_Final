@@ -1,0 +1,13 @@
+{
+  "templateId": "coach_review_v1",
+  "displayName": "Coach Review",
+  "aspectRatio": "source",
+  "targetDurations": [60, 120, 180],
+  "ordering": "chronological",
+  "pacing": "slow",
+  "captionStyle": "plain",
+  "audioProfile": "original_audio",
+  "effectProfile": "minimal_review",
+  "watermarkAssetId": "hoopclips_app_icon_v1",
+  "outroAssetId": "coach_review_outro_v1"
+}

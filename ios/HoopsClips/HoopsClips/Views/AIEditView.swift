@@ -122,7 +122,7 @@ struct AIEditView: View {
 
     private var stylePicker: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Style")
+            Text("Template Pack")
                 .font(.headline)
                 .foregroundStyle(.white)
 
@@ -130,21 +130,41 @@ struct AIEditView: View {
                 Button {
                     selectedPreset = preset
                 } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: selectedPreset == preset ? "checkmark.circle.fill" : "circle")
-                            .foregroundStyle(selectedPreset == preset ? AppTheme.successGreen : AppTheme.subtleText)
+                    HStack(alignment: .top, spacing: 12) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(selectedPreset == preset ? AppTheme.accentPurple.opacity(0.32) : AppTheme.cardBg.opacity(0.86))
+                                .frame(width: 44, height: 44)
+                            Image(systemName: preset.icon)
+                                .font(.headline)
+                                .foregroundStyle(selectedPreset == preset ? AppTheme.warningYellow : AppTheme.neonPurple)
+                        }
                         VStack(alignment: .leading, spacing: 3) {
-                            Text(preset.title)
-                                .font(.subheadline.bold())
-                                .foregroundStyle(.white)
+                            HStack(spacing: 6) {
+                                Text(preset.title)
+                                    .font(.subheadline.bold())
+                                    .foregroundStyle(.white)
+                                if selectedPreset == preset {
+                                    Image(systemName: "checkmark.seal.fill")
+                                        .font(.caption)
+                                        .foregroundStyle(AppTheme.successGreen)
+                                }
+                            }
                             Text(preset.subtitle)
+                                .font(.caption.bold())
+                                .foregroundStyle(AppTheme.warningYellow)
+                            Text(preset.bestFor)
                                 .font(.caption)
                                 .foregroundStyle(AppTheme.subtleText)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Text(preset.styleSummary)
+                                .font(.caption2)
+                                .foregroundStyle(AppTheme.subtleText.opacity(0.92))
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                         Spacer()
                     }
-                    .padding(12)
+                    .padding(14)
                     .background(selectedPreset == preset ? AppTheme.accentPurple.opacity(0.18) : AppTheme.cardBg.opacity(0.72), in: .rect(cornerRadius: 14))
                     .overlay {
                         RoundedRectangle(cornerRadius: 14)

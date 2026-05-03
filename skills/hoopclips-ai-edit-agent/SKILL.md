@@ -18,16 +18,20 @@ The agent does not edit raw video directly. The renderer executes `EditPlan` det
 
 - Use compact `EditContext`.
 - Do not pass raw frames or full inference logs.
-- Use clip IDs, preset IDs, theme IDs, and music profile IDs.
+- Use clip IDs, template IDs, preset IDs, theme IDs, and music profile IDs.
 - Agent output must be strict JSON.
 - Revisions should be `EditPlan` patches.
 - Run deterministic validation before render.
 
-## Required Presets
+## Required Template Packs
 
-- `personal_highlight`
-- `full_game_highlight`
-- `coach_review`
+- `personal_highlight_v1`: fast vertical hype reel.
+- `full_game_highlight_v1`: clean widescreen game recap.
+- `coach_review_v1`: simple chronological film review.
+
+The selected `TemplatePack` controls pacing, clip length target, caption density, effect intensity, audio mix, aspect ratio, outro, watermark, and allowed assets.
+
+Templates affect the `EditPlan`; they do not bypass it. The renderer executes only validated `EditPlan` fields and registered template assets.
 
 ## Required Validation
 
@@ -41,6 +45,8 @@ Validation must catch:
 - slow-motion ranges outside clip bounds
 - total duration outside target tolerance
 - invalid aspect ratio
+- invalid template ID or template/preset mismatch
+- unsupported template assets or effects
 - invalid theme
 - unavailable or unlicensed music
 - missing free-user watermark/outro
@@ -77,6 +83,7 @@ Your job:
 - order clips
 - select target duration
 - choose style/theme
+- obey selected TemplatePack
 - choose captions
 - choose slow-motion moments
 - choose crop mode
@@ -87,13 +94,16 @@ Your job:
 Rules:
 - use only clip IDs provided in EditContext
 - obey selected preset
+- obey selected TemplatePack
 - respect target duration
 - avoid duplicate moments
 - preserve minimum clip duration
 - add slow motion only around eventCenter or safe source bounds
 - use captions sparingly
 - keep free-user outro and watermark enabled
-- use presetId/themeId/musicProfileId, not long prose
+- do not invent unsupported effects
+- do not choose assets outside the TemplatePack registry
+- use templateId/presetId/themeId/musicProfileId, not long prose
 - output strict JSON only
 - if invalid, repair the EditPlan and validate again
 ```

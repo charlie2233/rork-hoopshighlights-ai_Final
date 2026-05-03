@@ -1,0 +1,7 @@
+{
+  "assetId": "hoopclips_app_icon_v1",
+  "role": "watermark",
+  "renderer": "ffmpeg_drawtext",
+  "text": "Hoopclips",
+  "position": "bottom_right"
+}

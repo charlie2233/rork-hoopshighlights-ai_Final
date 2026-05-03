@@ -15,7 +15,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO_ROOT / "services" / "editing"))
 sys.path.insert(0, str(REPO_ROOT / "ios" / "backend"))
 
-from app.editing import CreateEditJobRequest, build_edit_job  # noqa: E402
+from app.editing import CreateEditJobRequest, TEMPLATE_PACK_REGISTRY, build_edit_job, validate_template_registry  # noqa: E402
 from editing_app.config import EditingSettings  # noqa: E402
 from editing_app.main import create_app  # noqa: E402
 
@@ -152,7 +152,16 @@ class EditingServiceTests(unittest.TestCase):
         plan_payload = plan_response.json()
         self.assertEqual(plan_payload["editJobId"], create_payload["editJobId"])
         self.assertEqual(plan_payload["plan"]["renderMode"], "cloud_ffmpeg")
+        self.assertEqual(plan_payload["plan"]["templateId"], "personal_highlight_v1")
+        self.assertEqual(plan_payload["plan"]["captionStyle"], "bold_hype")
         self.assertEqual(plan_payload["plan"]["aspectRatio"], "9:16")
+
+    def test_template_registry_loads_and_validates(self) -> None:
+        validation = validate_template_registry()
+
+        self.assertEqual(set(validation.keys()), {"personal_highlight_v1", "full_game_highlight_v1", "coach_review_v1"})
+        self.assertTrue(all(not errors for errors in validation.values()))
+        self.assertEqual(TEMPLATE_PACK_REGISTRY["personal_highlight_v1"].watermarkProfile.assetId, "hoopclips_app_icon_v1")
 
     def test_revise_edit_job_returns_patch_and_revised_plan(self) -> None:
         client = TestClient(create_app(self._settings()))
@@ -171,6 +180,8 @@ class EditingServiceTests(unittest.TestCase):
         self.assertEqual(revision_payload["patch"]["version"], "edit-plan-patch-v1")
         self.assertTrue(revision_payload["patch"]["operations"])
         self.assertEqual(revision_payload["revisedPlan"]["aspectRatio"], "16:9")
+        self.assertEqual(revision_payload["revisedPlan"]["templateId"], "full_game_highlight_v1")
+        self.assertEqual(revision_payload["revisedPlan"]["captionStyle"], "clean_scorebug")
         self.assertTrue(revision_payload["validationResult"]["valid"])
 
         revisions_response = client.get(
@@ -215,7 +226,10 @@ class EditingServiceTests(unittest.TestCase):
         log_path = self._temp_dir / render_payload["renderLogObjectKey"]
         self.assertTrue(output_path.exists())
         self.assertTrue(log_path.exists())
-        self.assertEqual(json.loads(log_path.read_text(encoding="utf-8"))["status"], "rendered")
+        render_log = json.loads(log_path.read_text(encoding="utf-8"))
+        self.assertEqual(render_log["status"], "rendered")
+        self.assertEqual(render_log["ffmpeg"]["templateId"], "personal_highlight_v1")
+        self.assertEqual(render_log["ffmpeg"]["captionStyle"], "bold_hype")
 
         download_response = client.get(f"/v1/render-jobs/{render_payload['renderJobId']}/download-url", params={"installId": "install-123"})
         self.assertEqual(download_response.status_code, 200)

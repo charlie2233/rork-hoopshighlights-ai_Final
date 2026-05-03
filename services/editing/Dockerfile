@@ -16,6 +16,7 @@ RUN pip install --no-cache-dir -r /tmp/requirements.txt
 COPY ios/backend/app ./ios/backend/app
 COPY ios/HoopsClips/HoopsClips/Resources/Audio ./ios/HoopsClips/HoopsClips/Resources/Audio
 COPY services/editing/editing_app ./services/editing/editing_app
+COPY services/editing/templates ./services/editing/templates
 
 EXPOSE 8080
 CMD ["uvicorn", "editing_app.main:app", "--host", "0.0.0.0", "--port", "8080"]

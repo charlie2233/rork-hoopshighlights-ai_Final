@@ -1,0 +1,13 @@
+{
+  "templateId": "personal_highlight_v1",
+  "displayName": "Personal Highlight",
+  "aspectRatio": "9:16",
+  "targetDurations": [15, 30, 45],
+  "ordering": "best_first",
+  "pacing": "fast",
+  "captionStyle": "bold_hype",
+  "audioProfile": "hype",
+  "effectProfile": "hype_effects",
+  "watermarkAssetId": "hoopclips_app_icon_v1",
+  "outroAssetId": "personal_highlight_outro_free_v1"
+}

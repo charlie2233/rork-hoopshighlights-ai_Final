@@ -7,6 +7,17 @@ enum CloudEditPreset: String, Codable, CaseIterable, Identifiable, Sendable {
 
     var id: String { rawValue }
 
+    var templateID: String {
+        switch self {
+        case .personalHighlight:
+            return "personal_highlight_v1"
+        case .fullGameHighlight:
+            return "full_game_highlight_v1"
+        case .coachReview:
+            return "coach_review_v1"
+        }
+    }
+
     var title: String {
         switch self {
         case .personalHighlight:
@@ -18,14 +29,47 @@ enum CloudEditPreset: String, Codable, CaseIterable, Identifiable, Sendable {
         }
     }
 
+    var icon: String {
+        switch self {
+        case .personalHighlight:
+            return "bolt.fill"
+        case .fullGameHighlight:
+            return "sportscourt.fill"
+        case .coachReview:
+            return "clipboard.fill"
+        }
+    }
+
     var subtitle: String {
         switch self {
         case .personalHighlight:
-            return "Vertical hype reel with captions, slow motion, and a Hoopclips outro."
+            return "Fast vertical hype reel"
         case .fullGameHighlight:
-            return "Widescreen recap with cleaner pacing and more game audio."
+            return "Clean game recap"
         case .coachReview:
-            return "Simple chronological review with minimal styling."
+            return "Simple chronological film review"
+        }
+    }
+
+    var bestFor: String {
+        switch self {
+        case .personalHighlight:
+            return "Best for TikTok, Instagram, and recruiting"
+        case .fullGameHighlight:
+            return "Best for recaps, YouTube, and team sharing"
+        case .coachReview:
+            return "Best for coaches, trainers, and parents"
+        }
+    }
+
+    var styleSummary: String {
+        switch self {
+        case .personalHighlight:
+            return "Best plays first, bold captions, slow motion, music-forward."
+        case .fullGameHighlight:
+            return "Game-flow order, cleaner captions, subtle effects, louder game audio."
+        case .coachReview:
+            return "Chronological, original audio, minimal captions, restrained effects."
         }
     }
 
@@ -233,6 +277,7 @@ struct CreateCloudEditJobRequest: Codable, Sendable {
     let installId: String
     let sourceObjectKey: String
     let preset: String
+    let templateId: String
     let targetDurationSeconds: Int
     let aspectRatio: CloudEditAspectRatio
     let planTier: CloudEditPlanTier
@@ -245,6 +290,7 @@ struct CloudEditJobResponse: Codable, Sendable {
     let analysisJobId: String
     let status: String
     let preset: String
+    let templateId: String?
     let targetDurationSeconds: Int
     let aspectRatio: CloudEditAspectRatio
     let clipCount: Int
@@ -264,7 +310,9 @@ struct CloudEditPlanSummary: Codable, Sendable {
     let videoId: String
     let analysisJobId: String
     let preset: String
+    let templateId: String?
     let theme: String
+    let captionStyle: String?
     let targetDurationSeconds: Int
     let aspectRatio: CloudEditAspectRatio
     let renderMode: String
@@ -308,11 +356,13 @@ struct CloudEditTimedTemplate: Codable, Sendable {
     let enabled: Bool
     let durationSeconds: Double
     let templateId: String
+    let assetId: String?
 }
 
 struct CloudEditWatermark: Codable, Sendable {
     let enabled: Bool
     let position: String
+    let assetId: String?
 }
 
 struct CloudEditRenderRequest: Codable, Sendable {

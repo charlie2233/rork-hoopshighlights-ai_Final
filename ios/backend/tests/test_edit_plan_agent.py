@@ -14,6 +14,7 @@ from app.editing import (
     EditPlanPatchOperation,
     EditPlan,
     ReviseEditJobRequest,
+    TEMPLATE_PACK_REGISTRY,
     apply_edit_plan_patch,
     build_revision_response,
     build_edit_job,
@@ -22,6 +23,8 @@ from app.editing import (
     repair_edit_plan,
     revise_edit_job,
     validate_edit_plan,
+    validate_template_pack,
+    validate_template_registry,
 )
 from app.main import create_app
 
@@ -126,7 +129,16 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertTrue(job.plan.watermark.enabled)
         self.assertTrue(job.plan.outro.enabled)
         self.assertEqual(job.plan.aspectRatio, "9:16")
+        self.assertEqual(job.plan.templateId, "personal_highlight_v1")
+        self.assertEqual(job.plan.captionStyle, "bold_hype")
         self.assertEqual(job.validation_errors, [])
+
+    def test_template_registry_has_three_valid_starter_packs(self) -> None:
+        validation = validate_template_registry()
+
+        self.assertEqual(set(validation.keys()), {"personal_highlight_v1", "full_game_highlight_v1", "coach_review_v1"})
+        self.assertTrue(all(not errors for errors in validation.values()))
+        self.assertEqual(TEMPLATE_PACK_REGISTRY["full_game_highlight_v1"].captionStyle.styleId, "clean_scorebug")
 
     def test_duplicate_groups_keep_only_best_clip(self) -> None:
         request = CreateEditJobRequest(**_request_payload())
@@ -143,8 +155,26 @@ class EditPlanAgentTests(unittest.TestCase):
         plan = build_edit_plan(request, "edit_full_game")
 
         self.assertEqual(plan.aspectRatio, "16:9")
+        self.assertEqual(plan.templateId, "full_game_highlight_v1")
+        self.assertEqual(plan.audio.gameAudioVolume, 0.62)
         starts = [clip.sourceStart for clip in plan.clips]
         self.assertEqual(starts, sorted(starts))
+
+    def test_invalid_template_rejects_missing_asset(self) -> None:
+        template = TEMPLATE_PACK_REGISTRY["personal_highlight_v1"].model_copy(
+            update={
+                "assets": [
+                    asset.model_copy(update={"path": "services/editing/templates/missing/nope.json"})
+                    if asset.assetId == "personal_highlight_outro_free_v1"
+                    else asset
+                    for asset in TEMPLATE_PACK_REGISTRY["personal_highlight_v1"].assets
+                ]
+            }
+        )
+
+        errors = validate_template_pack(template)
+
+        self.assertTrue(any(error.code == "template_asset_missing" for error in errors))
 
     def test_validator_rejects_slow_motion_outside_clip_bounds(self) -> None:
         request = CreateEditJobRequest(**_request_payload())
@@ -204,6 +234,7 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertEqual(response.command, "make_more_hype")
         self.assertTrue(response.validationResult.valid)
         self.assertEqual(revised.plan.aspectRatio, "9:16")
+        self.assertEqual(revised.plan.templateId, "personal_highlight_v1")
         self.assertTrue(any(operation.path == "/clips" for operation in response.patch.operations))
         self.assertTrue(any(effect.type == "slow_motion" for clip in revised.plan.clips for effect in clip.effects))
 

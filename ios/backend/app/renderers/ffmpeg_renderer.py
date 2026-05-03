@@ -8,7 +8,7 @@ import shlex
 import subprocess
 from typing import Dict, List, Optional, Sequence, Tuple
 
-from ..editing import EditPlan, EditPlanClip
+from ..editing import CaptionStyle, EditPlan, EditPlanClip, get_template_pack
 from ..models import APIError
 
 
@@ -66,6 +66,7 @@ class FfmpegRenderer:
         work_dir.mkdir(parents=True, exist_ok=True)
 
         width, height = self._target_dimensions(plan.aspectRatio)
+        template = get_template_pack(plan.templateId)
         segment_paths: List[Path] = []
         commands: List[List[str]] = []
         source_has_audio = self._source_has_audio(source_path)
@@ -84,6 +85,8 @@ class FfmpegRenderer:
                     speed=part[2],
                     width=width,
                     height=height,
+                    caption_style=template.captionStyle,
+                    watermark_text=template.watermarkProfile.displayText,
                     source_has_audio=source_has_audio,
                     watermark_enabled=plan.watermark.enabled,
                 )
@@ -93,7 +96,7 @@ class FfmpegRenderer:
 
         if plan.outro.enabled and plan.outro.durationSeconds > 0:
             outro_path = work_dir / "outro.mp4"
-            command = self._outro_command(outro_path, plan.outro.durationSeconds, width, height)
+            command = self._outro_command(outro_path, plan.outro.durationSeconds, width, height, template.displayName)
             self._run(command)
             commands.append(command)
             segment_paths.append(outro_path)
@@ -128,6 +131,10 @@ class FfmpegRenderer:
                 "source": str(source_path),
                 "output": str(final_path),
                 "aspectRatio": plan.aspectRatio,
+                "templateId": plan.templateId,
+                "captionStyle": template.captionStyle.styleId,
+                "watermarkAssetId": plan.watermark.assetId or template.watermarkProfile.assetId,
+                "outroAssetId": plan.outro.assetId or template.outroProfile.assetId,
                 "clipCount": len(plan.clips),
                 "segmentCount": len(segment_paths),
                 "durationSeconds": duration,
@@ -145,6 +152,8 @@ class FfmpegRenderer:
         speed: float,
         width: int,
         height: int,
+        caption_style: CaptionStyle,
+        watermark_text: str,
         source_has_audio: bool,
         watermark_enabled: bool,
     ) -> List[str]:
@@ -159,9 +168,9 @@ class FfmpegRenderer:
             "format=yuv420p",
         ]
         if clip.caption:
-            video_filters.append(self._text_overlay_filter(clip.caption, width, height, y="h-(text_h*3)"))
+            video_filters.append(self._caption_overlay_filter(clip.caption, width, height, caption_style))
         if watermark_enabled:
-            video_filters.append(self._text_overlay_filter("Hoopclips", width, height, x="w-text_w-28", y="h-text_h-24", size=28))
+            video_filters.append(self._text_overlay_filter(watermark_text, width, height, x="w-text_w-28", y="h-text_h-24", size=28))
 
         if source_has_audio:
             audio_filter = f"[0:a]atrim=start={start:.3f}:end={end:.3f},asetpts=PTS-STARTPTS"
@@ -226,11 +235,11 @@ class FfmpegRenderer:
             str(output_path),
         ]
 
-    def _outro_command(self, output_path: Path, duration: float, width: int, height: int) -> List[str]:
+    def _outro_command(self, output_path: Path, duration: float, width: int, height: int, template_name: str) -> List[str]:
         vf = ",".join(
             [
                 self._drawtext_filter("Hoopclips", width, height, y="(h-text_h)/2-28", size=58),
-                self._text_overlay_filter("AI-made basketball highlights", width, height, y="(h-text_h)/2+42", size=28),
+                self._text_overlay_filter(template_name, width, height, y="(h-text_h)/2+42", size=28),
                 "format=yuv420p",
             ]
         )
@@ -356,6 +365,22 @@ class FfmpegRenderer:
             parts.append((cursor, clip.sourceEnd, 1.0))
         return parts
 
+    def _caption_overlay_filter(self, text: str, width: int, height: int, caption_style: CaptionStyle) -> str:
+        y_position = "h-(text_h*3)"
+        if caption_style.density == "clean":
+            y_position = "h-(text_h*2.4)"
+        elif caption_style.density == "minimal":
+            y_position = "h-(text_h*2.1)"
+        return self._text_overlay_filter(
+            text,
+            width,
+            height,
+            y=y_position,
+            size=caption_style.defaultFontSize,
+            fontcolor=caption_style.fontColor,
+            boxcolor=caption_style.boxColor,
+        )
+
     def _text_overlay_filter(
         self,
         text: str,
@@ -364,6 +389,8 @@ class FfmpegRenderer:
         x: str = "(w-text_w)/2",
         y: str = "h-(text_h*3)",
         size: int = 44,
+        fontcolor: str = "white",
+        boxcolor: str = "black@0.55",
     ) -> str:
         if not self._has_drawtext:
             if x == "w-text_w-28":
@@ -373,9 +400,11 @@ class FfmpegRenderer:
             return "drawbox=x=(w-520)/2:y=h-150:w=520:h=84:color=black@0.55:t=fill"
         _ = width, height
         escaped = self._escape_drawtext(text)
-        return "drawtext=text='{text}':fontcolor=white:fontsize={size}:box=1:boxcolor=black@0.55:boxborderw=18:x={x}:y={y}".format(
+        return "drawtext=text='{text}':fontcolor={fontcolor}:fontsize={size}:box=1:boxcolor={boxcolor}:boxborderw=18:x={x}:y={y}".format(
             text=escaped,
+            fontcolor=fontcolor,
             size=size,
+            boxcolor=boxcolor,
             x=x,
             y=y,
         )
