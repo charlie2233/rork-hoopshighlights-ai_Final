@@ -84,6 +84,19 @@ class RenderStorage:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(payload, encoding="utf-8")
 
+    def get_json(self, object_key: str) -> Optional[Dict[str, object]]:
+        try:
+            if self._provider == "r2":
+                response = self._r2_client().get_object(Bucket=self._output_bucket(), Key=object_key)
+                body = response["Body"].read().decode("utf-8")
+                return json.loads(body)
+            path = self._local_object_path(object_key)
+            if not path.is_file():
+                return None
+            return json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            return None
+
     def put_file(self, object_key: str, source_path: Path, content_type: str, metadata: Optional[Dict[str, str]] = None) -> None:
         if not source_path.exists() or source_path.stat().st_size <= 0:
             raise EditingServiceError(500, "render_output_missing", "Renderer did not produce a usable output file.")

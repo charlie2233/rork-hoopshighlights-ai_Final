@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import redirect_stdout
+from datetime import timedelta
 from io import StringIO
 from pathlib import Path
 import json
@@ -20,6 +21,9 @@ sys.path.insert(0, str(REPO_ROOT / "ios" / "backend"))
 from app.editing import CreateEditJobRequest, TEMPLATE_PACK_REGISTRY, build_edit_job, get_plan_tier_policy, validate_template_registry  # noqa: E402
 from editing_app.config import EditingSettings  # noqa: E402
 from editing_app.main import create_app  # noqa: E402
+from editing_app.models import StoredRenderJob, now_utc  # noqa: E402
+from editing_app.render_state import DurableRenderStateStore  # noqa: E402
+from editing_app.render_storage import RenderStorage  # noqa: E402
 
 
 def _clip(clip_id: str, start: float, label: str, score: float) -> dict:
@@ -407,6 +411,59 @@ class EditingServiceTests(unittest.TestCase):
         self.assertEqual(first_response.status_code, 200)
         self.assertEqual(second_response.status_code, 200)
         self.assertEqual(first_response.json()["renderJobId"], second_response.json()["renderJobId"])
+
+    @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "ffmpeg and ffprobe are required")
+    def test_render_state_survives_app_reload_for_status_and_idempotency(self) -> None:
+        settings = self._settings()
+        client = TestClient(create_app(settings))
+        payload = self._render_payload(self._edit_request())
+        payload["idempotencyKey"] = "idem-render-reload-001"
+
+        first_response = client.post("/v1/render-jobs", json=payload)
+        self.assertEqual(first_response.status_code, 200)
+        render_job_id = first_response.json()["renderJobId"]
+
+        reloaded_client = TestClient(create_app(settings))
+        status_response = reloaded_client.get(f"/v1/render-jobs/{render_job_id}", params={"installId": "install-123"})
+        edit_status_response = reloaded_client.get(f"/v1/edit-jobs/{payload['editJobId']}/render-status", params={"installId": "install-123"})
+        duplicate_response = reloaded_client.post("/v1/render-jobs", json=payload)
+
+        self.assertEqual(status_response.status_code, 200)
+        self.assertEqual(status_response.json()["status"], "rendered")
+        self.assertTrue(status_response.json()["outputObjectKey"].endswith("/final.mp4"))
+        self.assertTrue(status_response.json()["renderLogObjectKey"].endswith("/render_log.json"))
+        self.assertEqual(edit_status_response.status_code, 200)
+        self.assertEqual(edit_status_response.json()["renderJobId"], render_job_id)
+        self.assertEqual(duplicate_response.status_code, 200)
+        self.assertEqual(duplicate_response.json()["renderJobId"], render_job_id)
+
+    def test_stale_render_state_transitions_to_failed_timeout_after_reload(self) -> None:
+        settings = self._settings()
+        old_time = now_utc() - timedelta(seconds=get_plan_tier_policy("free").staleRenderTimeoutSeconds + 5)
+        job = StoredRenderJob(
+            edit_job_id="edit_stale_state",
+            render_job_id="render_stale_state",
+            install_id="install-123",
+            trace_id="trace_stale_state",
+            status="rendering",
+            aspect_ratio="9:16",
+            created_at=old_time,
+            updated_at=old_time,
+            source_object_key="sources/synthetic_game.mp4",
+            plan_version="edit-plan-v1",
+            template_id="personal_highlight_v1",
+            plan_tier="free",
+            idempotency_key="idem-stale-state",
+        )
+        DurableRenderStateStore(RenderStorage(settings)).save_job(job)
+
+        response = TestClient(create_app(settings)).get("/v1/render-jobs/render_stale_state", params={"installId": "install-123"})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["status"], "failed_timeout")
+        self.assertEqual(payload["failureReason"], "failed_timeout")
+        self.assertEqual(payload["retentionMetadata"]["retentionClass"], "free_failed_render")
 
     @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "ffmpeg and ffprobe are required")
     def test_daily_render_limit_uses_feature_flag_default_override(self) -> None:

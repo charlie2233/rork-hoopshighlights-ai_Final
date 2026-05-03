@@ -483,6 +483,7 @@ struct CloudEditRenderStatusResponse: Codable, Sendable {
     let renderJobId: String
     let renderer: String
     let rendererVersion: String
+    let planVersion: String?
     let status: CloudEditRenderState
     let outputObjectKey: String?
     let renderLogObjectKey: String?

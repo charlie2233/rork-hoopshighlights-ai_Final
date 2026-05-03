@@ -340,7 +340,7 @@ export interface MetadataJobRecord extends ResponseEnvelope {
   updatedAt: string;
 }
 
-export type RenderStatus = "render_requested" | "created" | "queued" | "rendering" | "rendered" | "failed" | "cancelled";
+export type RenderStatus = "render_requested" | "created" | "queued" | "rendering" | "rendered" | "failed" | "failed_timeout" | "cancelled";
 export type EditPlanTier = "free" | "pro" | "internal" | "dev";
 
 export interface EditCandidateClip {
@@ -448,6 +448,7 @@ export interface EditingRenderJobResponse extends ResponseEnvelope {
   renderJobId: string;
   renderer: string;
   rendererVersion: string;
+  planVersion?: string | null;
   status: RenderStatus;
   outputObjectKey?: string | null;
   renderLogObjectKey?: string | null;
