@@ -18,6 +18,8 @@ No new templates, renderer architecture changes, local iOS rendering, or timelin
 - Phase6b commits before this documentation closeout:
   - `7e01911` - Track revision IDs in render metadata
   - `2470724` - Add live policy observability smoke
+  - `c15d168` - Emit policy failure observability events
+  - `0cb2e25` - Verify live AI edit policy smoke
 
 The revision ID patch was required by the live-smoke checklist. Before the patch, revision renders did not carry `revisionId` into render status, retention metadata, or `render_log.json`.
 
@@ -76,6 +78,16 @@ The service still deployed, routed 100 percent traffic to the new revision, and 
 - `providerReady=true`
 - `downloadTtlSeconds=900`
 - required R2 bucket/endpoint/access-key/secret-key config present
+
+Final closeout deployment after the revision-limit fix and documentation pass:
+
+- Cloud Build ID: `e8105faf-33e6-4336-82e4-a267d4d349bc`
+- Image: `us-central1-docker.pkg.dev/hoopsclips-9d38f/hoopsclips/hoopclips-editing-staging:0cb2e25`
+- Image digest: `sha256:04494e7226a58b04a269ed41a52d6222a1968bcbb4944beb061c024c03ee88cf`
+- Cloud Run revision: `hoopclips-editing-staging-00012-ndv`
+- Traffic: 100 percent to `hoopclips-editing-staging-00012-ndv`
+- `/version` gitSha: `0cb2e25`
+- `/readyz`: `status=ok`, `auth=configured`, `renderStorage.provider=r2`, `providerReady=true`
 
 ## Live Policy Smoke
 
@@ -209,6 +221,55 @@ Observed result:
 No render job was started for this over-limit request.
 
 The local backend regression test also verifies that this rejection emits a safe `policy.failed` event with `failureReason=render_duration_limit`, `planTier=free`, `templateId=personal_highlight_v1`, and no URL/secret fields. The live Cloud Run log query did not surface a `policy.failed` entry for this specific over-limit request, so a separate controlled failed-render probe was run to prove the live `render.failed` observability path.
+
+After deploying final commit `0cb2e25`, a focused live revision-limit probe created three free-tier revisions and verified that the fourth revision request was blocked before render:
+
+- editJobId: `edit_628f2ac1ac744e73856138d42404f954`
+- accepted revision count: `3`
+- rejected request status: `429`
+- errorCode: `revision_limit`
+- failureReason: `Revision limit reached for this edit.`
+
+Cloud Run logs for the final deploy included the expected safe events:
+
+```json
+[
+  {
+    "event": "edit_plan.created",
+    "editJobId": "edit_628f2ac1ac744e73856138d42404f954",
+    "templateId": "personal_highlight_v1",
+    "planTier": "free"
+  },
+  {
+    "event": "edit_revision.created",
+    "editJobId": "edit_628f2ac1ac744e73856138d42404f954",
+    "revisionId": "rev_15e7f2f05db447b3a33c18717cb438aa",
+    "templateId": "personal_highlight_v1",
+    "planTier": "free"
+  },
+  {
+    "event": "edit_revision.created",
+    "editJobId": "edit_628f2ac1ac744e73856138d42404f954",
+    "revisionId": "rev_71fb140f196a48b4a8c945832cd2a3d7",
+    "templateId": "personal_highlight_v1",
+    "planTier": "free"
+  },
+  {
+    "event": "edit_revision.created",
+    "editJobId": "edit_628f2ac1ac744e73856138d42404f954",
+    "revisionId": "rev_34b4e59ce7054c1ab43509003dd3dbe9",
+    "templateId": "personal_highlight_v1",
+    "planTier": "free"
+  },
+  {
+    "event": "policy.failed",
+    "editJobId": "edit_628f2ac1ac744e73856138d42404f954",
+    "failureReason": "revision_limit",
+    "templateId": "personal_highlight_v1",
+    "planTier": "free"
+  }
+]
+```
 
 ## Controlled Failed Render Probe
 
@@ -350,7 +411,7 @@ The first full `services.editing.tests.test_editing_service` run caught a real i
 ## Remaining Notes
 
 - Live normal free render, revision render, duplicate/idempotency, policy rejection, failed-render retention, and safe Cloud Run observability were verified.
-- `policy.failed` is verified by unit test, but was not visible in the live Cloud Run log query for the over-limit smoke. The live `render.failed` path was visible.
+- `policy.failed` is verified by unit test and by a final live revision-limit probe on deployed commit `0cb2e25`. The live `render.failed` path was also visible.
 - Persistent render quota/job state outside a single Cloud Run instance remains a beta-hardening item.
 - A non-destructive R2 cleanup dry run should be added in Phase Edit7 before any destructive cleanup job.
 - The full live policy smoke is too slow for routine PR CI. Keep it manual or nightly; use fast fixture/mocked checks in ordinary CI.
