@@ -41,6 +41,9 @@ steps:
       - "2"
       - --timeout
       - "900"
+      - --max-instances
+      - "1"
+      - --no-cpu-throttling
       - --set-env-vars
       - HOOPS_ENVIRONMENT=staging,HOOPS_RENDER_STORAGE_PROVIDER=r2,HOOPS_R2_BUCKET=${_R2_OUTPUT_BUCKET},HOOPS_R2_SOURCE_BUCKET=${_R2_SOURCE_BUCKET},HOOPS_R2_OUTPUT_BUCKET=${_R2_OUTPUT_BUCKET},HOOPS_R2_ENDPOINT_URL=${_R2_ENDPOINT_URL},HOOPS_GIT_SHA=${_IMAGE_TAG},HOOPS_BACKEND_MODEL_VERSION=editing-cloud-v1
       - --set-secrets

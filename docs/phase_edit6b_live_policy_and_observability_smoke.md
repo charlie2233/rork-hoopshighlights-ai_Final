@@ -21,10 +21,13 @@ No new templates, renderer architecture changes, local iOS rendering, or timelin
   - `c15d168` - Emit policy failure observability events
   - `0cb2e25` - Verify live AI edit policy smoke
   - `46d61ab` - Fix edit policy failure event fields
+  - `511c3b0` - Document final policy smoke evidence
 
 The revision ID patch was required by the live-smoke checklist. Before the patch, revision renders did not carry `revisionId` into render status, retention metadata, or `render_log.json`.
 
 The final policy observability patch was required by live verification. The first live smoke proved policy rejection, but the staging logs did not expose `policy.failed`; the final Cloud Run revision now emits it safely for policy/cost-control failures.
+
+The final smoke rerun exposed a staging Cloud Run config issue: the service used in-memory render job state while Cloud Run allowed multiple instances and request-based CPU. Normal render completed, but revision status polling could hit an instance without the render map and return `render_job_not_found`. The staging deploy config now pins the current background-task renderer to one instance and disables CPU throttling until a durable job store lands.
 
 ## Staging Deployment
 
@@ -87,6 +90,15 @@ Final runtime closeout deploy after the edit-job error-field cleanup:
 - `/version` gitSha: `46d61ab`
 - `/readyz`: `status=ok`, `auth=configured`, `renderStorage.provider=r2`, `providerReady=true`
 
+Final staging config update after the rerun exposed split in-memory render state:
+
+- Cloud Run revision: `hoopclips-editing-staging-00014-q89`
+- Traffic: 100 percent to `hoopclips-editing-staging-00014-q89`
+- `/version` gitSha: `46d61ab`
+- `autoscaling.knative.dev/maxScale=1`
+- `run.googleapis.com/cpu-throttling=false`
+- `services/editing/cloudbuild.yaml` now codifies `--max-instances 1` and `--no-cpu-throttling`
+
 Statsig API verification was not run because no Statsig server secret is configured locally. The deployed service safe-default feature flags were verified through `/version`.
 
 ## Live Policy Smoke Command
@@ -103,20 +115,20 @@ ios/backend/.venv/bin/python services/editing/scripts/policy_observability_smoke
 Summary artifact:
 
 ```text
-/private/var/folders/zd/0b3nmw551mdgk8ybwgcbt1380000gn/T/hoopclips-policy-smoke-7zfmllt2/policy_observability_smoke_summary.json
+/private/var/folders/zd/0b3nmw551mdgk8ybwgcbt1380000gn/T/hoopclips-policy-smoke-3v8z5086/policy_observability_smoke_summary.json
 ```
 
 The script intentionally does not print full presigned upload or download URLs.
 
 ## Normal Free Render
 
-- editJobId: `edit_5833853995ad459985265561afb76d55`
-- renderJobId: `render_bf29835522034606be68a0ed5eb6e289`
-- duplicate renderJobId: `render_bf29835522034606be68a0ed5eb6e289`
+- editJobId: `edit_aa16d33034df461893737a7e72e4406a`
+- renderJobId: `render_cce01e1ca70f4a4b898a8fbe263ba457`
+- duplicate renderJobId: `render_cce01e1ca70f4a4b898a8fbe263ba457`
 - duplicate behavior: `idempotent_existing_render_returned`
-- source object: `uploads/06669062f8a84877a6febc2d56a44a39/source.mp4`
-- final object: `edits/edit_5833853995ad459985265561afb76d55/render_jobs/render_bf29835522034606be68a0ed5eb6e289/final.mp4`
-- render log: `edits/edit_5833853995ad459985265561afb76d55/render_jobs/render_bf29835522034606be68a0ed5eb6e289/render_log.json`
+- source object: `uploads/9a5aac9c35c545ec8a8aaab1c1fbc454/source.mp4`
+- final object: `edits/edit_aa16d33034df461893737a7e72e4406a/render_jobs/render_cce01e1ca70f4a4b898a8fbe263ba457/final.mp4`
+- render log: `edits/edit_aa16d33034df461893737a7e72e4406a/render_jobs/render_cce01e1ca70f4a4b898a8fbe263ba457/render_log.json`
 - templateId: `personal_highlight_v1`
 - planTier: `free`
 
@@ -126,7 +138,7 @@ ffprobe summary:
 H.264/AAC MP4
 720x1280
 duration 18.422005s
-size 424357 bytes
+size 447584 bytes
 ```
 
 Policy evidence:
@@ -146,15 +158,15 @@ Retention metadata in status and render log:
 
 ```json
 {
-  "expiresAt": "2026-05-17T05:51:51.240984+00:00",
+  "expiresAt": "2026-05-17T06:15:48.293037+00:00",
   "retentionClass": "free_final_render",
   "deleteEligible": true,
   "planTier": "free",
-  "editJobId": "edit_5833853995ad459985265561afb76d55",
-  "renderJobId": "render_bf29835522034606be68a0ed5eb6e289",
+  "editJobId": "edit_aa16d33034df461893737a7e72e4406a",
+  "renderJobId": "render_cce01e1ca70f4a4b898a8fbe263ba457",
   "revisionId": null,
   "templateId": "personal_highlight_v1",
-  "outputBytes": 424357,
+  "outputBytes": 447584,
   "durationSeconds": 18.422
 }
 ```
@@ -172,11 +184,11 @@ Template/render log metadata included:
 
 The live smoke requested `make_more_hype`, validated the revised plan, and rendered the revision.
 
-- editJobId: `edit_5833853995ad459985265561afb76d55`
-- revisionId: `rev_7b0063d237c14da0b0e00693d06c1f61`
-- revised renderJobId: `render_a414d3f484ba4571a088663d12d31414`
-- revised final object: `edits/edit_5833853995ad459985265561afb76d55/render_jobs/render_a414d3f484ba4571a088663d12d31414/final.mp4`
-- revised render log: `edits/edit_5833853995ad459985265561afb76d55/render_jobs/render_a414d3f484ba4571a088663d12d31414/render_log.json`
+- editJobId: `edit_aa16d33034df461893737a7e72e4406a`
+- revisionId: `rev_58906db938564fda9cef627877f6014d`
+- revised renderJobId: `render_c58a1e0d6c4545e18b2b3e245df536e8`
+- revised final object: `edits/edit_aa16d33034df461893737a7e72e4406a/render_jobs/render_c58a1e0d6c4545e18b2b3e245df536e8/final.mp4`
+- revised render log: `edits/edit_aa16d33034df461893737a7e72e4406a/render_jobs/render_c58a1e0d6c4545e18b2b3e245df536e8/render_log.json`
 - validationResult: `valid=true`, `errors=[]`
 
 ffprobe summary:
@@ -185,24 +197,24 @@ ffprobe summary:
 H.264/AAC MP4
 720x1280
 duration 18.422005s
-size 438255 bytes
+size 440194 bytes
 ```
 
 Revision metadata was present in both status and render log:
 
 ```json
 {
-  "revisionId": "rev_7b0063d237c14da0b0e00693d06c1f61",
+  "revisionId": "rev_58906db938564fda9cef627877f6014d",
   "retentionMetadata": {
-    "expiresAt": "2026-05-17T05:53:53.069748+00:00",
+    "expiresAt": "2026-05-17T06:16:05.338725+00:00",
     "retentionClass": "free_final_render",
     "deleteEligible": true,
     "planTier": "free",
-    "editJobId": "edit_5833853995ad459985265561afb76d55",
-    "renderJobId": "render_a414d3f484ba4571a088663d12d31414",
-    "revisionId": "rev_7b0063d237c14da0b0e00693d06c1f61",
+    "editJobId": "edit_aa16d33034df461893737a7e72e4406a",
+    "renderJobId": "render_c58a1e0d6c4545e18b2b3e245df536e8",
+    "revisionId": "rev_58906db938564fda9cef627877f6014d",
     "templateId": "personal_highlight_v1",
-    "outputBytes": 438255,
+    "outputBytes": 440194,
     "durationSeconds": 18.422
   }
 }
@@ -231,7 +243,7 @@ Observed result:
 
 No render job was started for this over-limit request.
 
-A final Cloud Run log query on revision `hoopclips-editing-staging-00011-ktq` confirmed the safe policy failure event:
+A final Cloud Run log query on revision `hoopclips-editing-staging-00014-q89` confirmed the safe policy failure event:
 
 ```json
 {
@@ -246,7 +258,7 @@ No URL, secret, R2 credential, or presigned URL fields were present in the `poli
 
 ## Observability Evidence
 
-Cloud Run logs for `edit_5833853995ad459985265561afb76d55` contained these safe structured events:
+Cloud Run logs for `edit_aa16d33034df461893737a7e72e4406a` contained these safe structured events:
 
 ```text
 edit_plan.created
@@ -333,6 +345,7 @@ Passed:
 - `cd services/control-plane && npx tsx --test test/control-plane-editing-proxy.test.ts`
 - `xcodebuild -project ios/HoopsClips.xcodeproj -scheme HoopsClips -configuration Debug -destination 'generic/platform=iOS Simulator' build CODE_SIGNING_ALLOWED=NO -derivedDataPath /tmp/hoopclips-phase6b-build`
 - `xcodebuild -project ios/HoopsClips.xcodeproj -scheme HoopsClips -configuration Debug -destination 'generic/platform=iOS Simulator' build-for-testing CODE_SIGNING_ALLOWED=NO -derivedDataPath /tmp/hoopclips-phase6b-build-for-testing`
+- `PYTHONPATH=services/editing/scripts ios/backend/.venv/bin/python services/editing/scripts/policy_observability_smoke.py --worker-url https://hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev --editing-url https://hoopclips-editing-staging-npya43jiia-uc.a.run.app`
 
 The backend suite also caught and covered a real exception-path bug during closeout: some edit-job GET error handlers referenced request-only fields that do not exist on GET routes. The final patch now emits safe policy metadata using stored edit-job fields when available, and missing edit-job GET/plan/revisions routes return proper `edit_job_not_found` responses.
 
@@ -344,6 +357,7 @@ After the final error-field cleanup, these focused checks also passed:
 ## Remaining Notes
 
 - Live normal free render, revision render, duplicate/idempotency, policy rejection, retention metadata, and safe Cloud Run observability were verified.
+- The staging renderer is intentionally pinned to one Cloud Run instance with CPU always allocated while render state is in memory. Durable render job storage remains a beta-hardening item before scaling beyond one instance.
 - Persistent render quota/job state outside a single Cloud Run instance remains a beta-hardening item.
 - A non-destructive R2 cleanup dry run should be added in Phase Edit7 before any destructive cleanup job.
 - The full live policy smoke is too slow for routine PR CI. Keep it manual or nightly; use fast fixture/mocked checks in ordinary CI.
