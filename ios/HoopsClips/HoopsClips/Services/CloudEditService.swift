@@ -74,7 +74,13 @@ struct CloudEditService {
 
         while DispatchTime.now().uptimeNanoseconds - start < timeoutNanos {
             try await Task.sleep(nanoseconds: pollDelaySeconds * 1_000_000_000)
-            let status = try await fetchRenderStatus(editJobID: editJobID, installID: installID)
+            let status: CloudEditRenderStatusResponse
+            do {
+                status = try await fetchRenderStatus(editJobID: editJobID, installID: installID)
+            } catch CloudEditError.backend(let code, _) where code == "render_job_not_found" && attempts < 5 {
+                attempts += 1
+                continue
+            }
             switch status.status {
             case .rendered, .failed, .cancelled:
                 return status

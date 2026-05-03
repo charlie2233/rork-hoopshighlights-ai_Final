@@ -38,7 +38,6 @@ struct AIEditView: View {
                 sheetBody
             case .exportSection:
                 workflowContent
-                    .accessibilityIdentifier("export.aiEdit.section")
             }
         }
         .sheet(isPresented: $showingShareSheet) {
@@ -105,6 +104,7 @@ struct AIEditView: View {
             Label("AI Edit Agent", systemImage: "wand.and.stars")
                 .font(.title2.bold())
                 .foregroundStyle(.white)
+                .accessibilityIdentifier("export.aiEdit.section")
 
             Text("Hoopclips will ask the cloud AI edit agent to plan and render a finished MP4 from your kept clips.")
                 .font(.subheadline)
@@ -356,6 +356,7 @@ struct AIEditView: View {
                     Text("Revise Edit")
                         .font(.headline)
                         .foregroundStyle(.white)
+                        .accessibilityIdentifier("export.aiEdit.revision.card")
                     Text(revisionStatusText)
                         .font(.caption)
                         .foregroundStyle(AppTheme.subtleText)
@@ -379,6 +380,7 @@ struct AIEditView: View {
                     }
                     .buttonStyle(.plain)
                     .disabled(isWorking)
+                    .accessibilityElement(children: .ignore)
                     .accessibilityIdentifier(command.accessibilityIdentifier)
                     .accessibilityLabel(command.title)
                     .accessibilityHint("Asks the cloud AI edit agent to revise the current edit plan.")
@@ -395,7 +397,6 @@ struct AIEditView: View {
         }
         .padding(14)
         .rorkCard(cornerRadius: 16, stroke: AppTheme.neonPurple.opacity(0.18), glow: AppTheme.neonPurple, glowOpacity: 0.05)
-        .accessibilityIdentifier("export.aiEdit.revision.card")
     }
 
     private var statusIcon: String {

@@ -79,7 +79,7 @@ final class HoopsClipsUITests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["export.aiEdit.revision.card"].waitForExistence(timeout: 10))
         attachScreenshot(named: "03 Export AI Edit Rendered Preview", app: app)
 
-        tapWhenReady(app.buttons["export.aiEdit.revision.moreHype"], in: app)
+        tapWhenReady(app.descendants(matching: .any)["export.aiEdit.revision.moreHype"], in: app)
         let renderRevisionButton = app.buttons["export.aiEdit.renderRevisionButton"]
         XCTAssertTrue(renderRevisionButton.waitForExistence(timeout: 60))
         tapWhenReady(renderRevisionButton, in: app)
@@ -236,10 +236,14 @@ final class HoopsClipsUITests: XCTestCase {
 
     @MainActor
     private func tapWhenReady(_ element: XCUIElement, in app: XCUIApplication, timeout: TimeInterval = 20) {
-        XCTAssertTrue(element.waitForExistence(timeout: timeout))
         let deadline = Date().addingTimeInterval(timeout)
+        while !element.exists && Date() < deadline {
+            scrollTowardBottom(in: app)
+            RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        }
+        XCTAssertTrue(element.exists)
         while !element.isHittable && Date() < deadline {
-            app.swipeUp()
+            scrollTowardBottom(in: app)
             RunLoop.current.run(until: Date().addingTimeInterval(0.5))
         }
         if element.isHittable {
@@ -247,6 +251,13 @@ final class HoopsClipsUITests: XCTestCase {
         } else {
             element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         }
+    }
+
+    @MainActor
+    private func scrollTowardBottom(in app: XCUIApplication) {
+        let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.72))
+        let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.24))
+        start.press(forDuration: 0.05, thenDragTo: end)
     }
 
     @MainActor

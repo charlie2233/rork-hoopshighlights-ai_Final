@@ -1,0 +1,62 @@
+[
+  {
+    "attachments" : [
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "A46E2157-77ED-42CE-959D-65C068681A47",
+        "deviceName" : "iPhone 17",
+        "exportedFileName" : "07B44314-6C1A-4D4F-8D3D-4BACB9D00B65.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "05 Export AI Edit Share Sheet_0_8BFC80F9-6B43-4009-AD68-09D0EE3A3BEA.png",
+        "timestamp" : 1777770484.004
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "A46E2157-77ED-42CE-959D-65C068681A47",
+        "deviceName" : "iPhone 17",
+        "exportedFileName" : "5EF09E0D-96E4-47D1-A866-033E56696FAA.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "04 Export AI Edit Revised Preview_0_5908AEFC-2BB6-4661-853A-B7A0757B3E6A.png",
+        "timestamp" : 1777770466.371
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "A46E2157-77ED-42CE-959D-65C068681A47",
+        "deviceName" : "iPhone 17",
+        "exportedFileName" : "9F411931-AE38-441A-9957-CEB3B98F03DB.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "03 Export AI Edit Rendered Preview_0_BA2F2023-00AD-4324-8790-13C392893B72.png",
+        "timestamp" : 1777770299.252
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "A46E2157-77ED-42CE-959D-65C068681A47",
+        "deviceName" : "iPhone 17",
+        "exportedFileName" : "B44C5408-B0E6-43F1-B2C2-99C8AEAAA73B.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "02 Export AI Edit Style Picker_0_F067CC26-6AF6-466C-B96A-92BCC3310332.png",
+        "timestamp" : 1777770089.252
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "A46E2157-77ED-42CE-959D-65C068681A47",
+        "deviceName" : "iPhone 17",
+        "exportedFileName" : "E0375B06-26F8-4DB9-BD5D-62F98C1B670C.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "02 Export AI Edit Agent_0_D3DFBDEB-7283-4ABA-97BF-D3674C7C40B3.png",
+        "timestamp" : 1777770087.406
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "A46E2157-77ED-42CE-959D-65C068681A47",
+        "deviceName" : "iPhone 17",
+        "exportedFileName" : "C30B56F4-8058-46BB-B7B5-3B9E17DD1615.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "01 Review Continue To Export_0_A0053D4B-6171-4D18-BBD4-85A5ECD800F2.png",
+        "timestamp" : 1777770080.814
+      }
+    ],
+    "testIdentifier" : "HoopsClipsUITests/testLiveAIEditClientSmokeFlow()",
+    "testIdentifierURL" : "test://com.apple.xcode/HoopsClips/HoopsClipsUITests/HoopsClipsUITests/testLiveAIEditClientSmokeFlow"
+  }
+]
