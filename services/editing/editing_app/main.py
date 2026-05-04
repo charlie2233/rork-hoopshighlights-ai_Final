@@ -502,7 +502,6 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
                 job.expires_at = parse_datetime(retention_metadata.get("expiresAt"))
                 job.heartbeat_at = now_utc()
                 job.updated_at = now_utc()
-                persist_job_with_lease(job, lease_token)
                 storage.put_json(
                     log_key,
                     render_log_payload(
@@ -522,6 +521,7 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
                         },
                     ),
                 )
+                persist_job_with_lease(job, lease_token)
                 emit_event(
                     "render.completed",
                     editJobId=job.edit_job_id,

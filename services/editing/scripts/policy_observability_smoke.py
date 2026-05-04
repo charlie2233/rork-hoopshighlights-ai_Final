@@ -64,6 +64,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--trace-id-prefix", default=os.getenv("HOOPS_SMOKE_TRACE_ID", "phase-edit6b-policy-smoke"))
     parser.add_argument("--r2-output-bucket", default=os.getenv("HOOPS_R2_OUTPUT_BUCKET") or os.getenv("HOOPS_R2_BUCKET") or "hoopsclips-results-staging")
     parser.add_argument("--wrangler-cwd", default=os.getenv("HOOPS_WRANGLER_CWD", "services/control-plane"))
+    parser.add_argument("--r2-endpoint-url", default=os.getenv("HOOPS_R2_ENDPOINT_URL"))
+    parser.add_argument("--r2-access-key-id", default=os.getenv("HOOPS_R2_ACCESS_KEY_ID"))
+    parser.add_argument("--r2-secret-access-key", default=os.getenv("HOOPS_R2_SECRET_ACCESS_KEY"))
     return parser.parse_args()
 
 
@@ -301,6 +304,22 @@ def assert_render_log_metadata(render_log: Dict[str, Any], expected_template_id:
 
 
 def fetch_render_log(args: argparse.Namespace, render_log_key: str) -> Dict[str, Any]:
+    if args.r2_endpoint_url and args.r2_access_key_id and args.r2_secret_access_key:
+        try:
+            import boto3
+        except ImportError as error:
+            raise SmokeError("boto3 is required to verify R2 render logs", {}) from error
+
+        client = boto3.client(
+            "s3",
+            endpoint_url=args.r2_endpoint_url,
+            aws_access_key_id=args.r2_access_key_id,
+            aws_secret_access_key=args.r2_secret_access_key,
+            region_name=os.getenv("HOOPS_R2_REGION", "auto"),
+        )
+        log_body = client.get_object(Bucket=args.r2_output_bucket, Key=render_log_key)["Body"].read().decode("utf-8")
+        return json.loads(log_body)
+
     command = [
         "npx",
         "wrangler",
