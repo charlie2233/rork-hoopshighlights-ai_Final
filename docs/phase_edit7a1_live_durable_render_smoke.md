@@ -74,6 +74,8 @@ renderStorage.provider: r2
 renderStorage.providerReady: true
 ```
 
+`/healthz` still returns the previously observed Cloud Run frontend 404 in staging, so `/readyz` and `/version` remain the reliable deployed-service checks for this service.
+
 Active Worker:
 
 ```text
