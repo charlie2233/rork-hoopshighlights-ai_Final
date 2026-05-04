@@ -115,6 +115,11 @@ class StoredRenderJob:
     completed_at: Optional[datetime] = None
     expires_at: Optional[datetime] = None
     renderer_version: str = "ffmpeg-renderer-v1"
+    lease_owner: Optional[str] = None
+    lease_token: Optional[str] = None
+    lease_acquired_at: Optional[datetime] = None
+    lease_expires_at: Optional[datetime] = None
+    heartbeat_at: Optional[datetime] = None
 
     def to_response(self) -> RenderJobResponse:
         return RenderJobResponse(
@@ -168,6 +173,11 @@ class StoredRenderJob:
             "aspectRatio": self.aspect_ratio,
             "retentionMetadata": self.retention_metadata,
             "validationErrors": [error.model_dump() for error in self.validation_errors],
+            "leaseOwner": self.lease_owner,
+            "leaseToken": self.lease_token,
+            "leaseAcquiredAt": self.lease_acquired_at.isoformat() if self.lease_acquired_at else None,
+            "leaseExpiresAt": self.lease_expires_at.isoformat() if self.lease_expires_at else None,
+            "heartbeatAt": self.heartbeat_at.isoformat() if self.heartbeat_at else None,
         }
 
     @classmethod
@@ -199,6 +209,11 @@ class StoredRenderJob:
             completed_at=parse_datetime(payload.get("completedAt")),
             expires_at=parse_datetime(payload.get("expiresAt")),
             renderer_version=str(payload.get("rendererVersion") or "ffmpeg-renderer-v1"),
+            lease_owner=payload.get("leaseOwner"),
+            lease_token=payload.get("leaseToken"),
+            lease_acquired_at=parse_datetime(payload.get("leaseAcquiredAt")),
+            lease_expires_at=parse_datetime(payload.get("leaseExpiresAt")),
+            heartbeat_at=parse_datetime(payload.get("heartbeatAt")),
         )
 
 

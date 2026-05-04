@@ -2,14 +2,18 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import timedelta
+import hashlib
 import json
 from pathlib import Path
 import shutil
 import tempfile
-from typing import Dict, Optional
+import threading
+from typing import Dict, List, Optional, Tuple
 
 from .config import EditingSettings
 from .models import now_utc
+
+_LOCAL_CONDITIONAL_WRITE_LOCK = threading.Lock()
 
 
 class EditingServiceError(Exception):
@@ -84,18 +88,70 @@ class RenderStorage:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(payload, encoding="utf-8")
 
+    def put_json_if_absent(self, object_key: str, payload: str) -> bool:
+        if self._provider == "r2":
+            try:
+                self._r2_client().put_object(
+                    Bucket=self._output_bucket(),
+                    Key=object_key,
+                    Body=payload.encode("utf-8"),
+                    ContentType="application/json",
+                    IfNoneMatch="*",
+                )
+                return True
+            except Exception as error:
+                if self._is_precondition_failure(error):
+                    return False
+                raise
+        path = self._local_object_path(object_key)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with _LOCAL_CONDITIONAL_WRITE_LOCK:
+            if path.exists():
+                return False
+            path.write_text(payload, encoding="utf-8")
+            return True
+
+    def put_json_if_match(self, object_key: str, payload: str, etag: str) -> bool:
+        if not etag:
+            return False
+        if self._provider == "r2":
+            try:
+                self._r2_client().put_object(
+                    Bucket=self._output_bucket(),
+                    Key=object_key,
+                    Body=payload.encode("utf-8"),
+                    ContentType="application/json",
+                    IfMatch=etag,
+                )
+                return True
+            except Exception as error:
+                if self._is_precondition_failure(error):
+                    return False
+                raise
+        path = self._local_object_path(object_key)
+        with _LOCAL_CONDITIONAL_WRITE_LOCK:
+            if not path.is_file() or self._local_etag(path) != etag:
+                return False
+            path.write_text(payload, encoding="utf-8")
+            return True
+
     def get_json(self, object_key: str) -> Optional[Dict[str, object]]:
+        payload, _etag = self.get_json_with_etag(object_key)
+        return payload
+
+    def get_json_with_etag(self, object_key: str) -> Tuple[Optional[Dict[str, object]], Optional[str]]:
         try:
             if self._provider == "r2":
                 response = self._r2_client().get_object(Bucket=self._output_bucket(), Key=object_key)
                 body = response["Body"].read().decode("utf-8")
-                return json.loads(body)
+                etag = str(response.get("ETag") or "").strip('"')
+                return json.loads(body), etag
             path = self._local_object_path(object_key)
             if not path.is_file():
-                return None
-            return json.loads(path.read_text(encoding="utf-8"))
+                return None, None
+            return json.loads(path.read_text(encoding="utf-8")), self._local_etag(path)
         except Exception:
-            return None
+            return None, None
 
     def put_file(self, object_key: str, source_path: Path, content_type: str, metadata: Optional[Dict[str, str]] = None) -> None:
         if not source_path.exists() or source_path.stat().st_size <= 0:
@@ -136,6 +192,45 @@ class RenderStorage:
     def local_path_for_object(self, object_key: str) -> Path:
         return self._local_object_path(object_key)
 
+    def list_object_keys(self, prefix: str) -> List[str]:
+        if self._provider == "r2":
+            client = self._r2_client()
+            keys: List[str] = []
+            continuation_token: Optional[str] = None
+            while True:
+                kwargs = {"Bucket": self._output_bucket(), "Prefix": prefix}
+                if continuation_token:
+                    kwargs["ContinuationToken"] = continuation_token
+                response = client.list_objects_v2(**kwargs)
+                for item in response.get("Contents", []):
+                    key = item.get("Key")
+                    if isinstance(key, str):
+                        keys.append(key)
+                if not response.get("IsTruncated"):
+                    return keys
+                continuation_token = response.get("NextContinuationToken")
+        root = self._local_object_path(prefix)
+        if root.is_file():
+            return [prefix]
+        if not root.exists():
+            return []
+        keys: List[str] = []
+        for path in root.rglob("*"):
+            if path.is_file() and not path.name.endswith(".metadata.json"):
+                keys.append(str(path.relative_to(self._settings.upload_root)))
+        return sorted(keys)
+
+    def delete_object(self, object_key: str) -> None:
+        if self._provider == "r2":
+            self._r2_client().delete_object(Bucket=self._output_bucket(), Key=object_key)
+            return
+        path = self._local_object_path(object_key)
+        if path.exists():
+            path.unlink()
+        metadata_path = path.with_suffix(path.suffix + ".metadata.json")
+        if metadata_path.exists():
+            metadata_path.unlink()
+
     def diagnostics(self) -> Dict[str, object]:
         provider_ready = True
         r2_config = None
@@ -174,11 +269,25 @@ class RenderStorage:
             region_name=self._env("HOOPS_R2_REGION", "auto"),
         )
 
+    @staticmethod
+    def _is_precondition_failure(error: Exception) -> bool:
+        response = getattr(error, "response", None)
+        if not isinstance(response, dict):
+            return False
+        error_payload = response.get("Error")
+        code = error_payload.get("Code") if isinstance(error_payload, dict) else None
+        status = response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+        return str(code) in {"PreconditionFailed", "ConditionalRequestConflict", "412", "409"} or status in {409, 412}
+
     def _local_object_path(self, object_key: str) -> Path:
         safe_parts = [part for part in Path(object_key).parts if part not in {"", ".", ".."}]
         if not safe_parts:
             raise EditingServiceError(400, "invalid_object_key", "Object key is empty.")
         return self._settings.upload_root.joinpath(*safe_parts)
+
+    @staticmethod
+    def _local_etag(path: Path) -> str:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
 
     def _required_env(self, key: str) -> str:
         value = self._env(key, "")

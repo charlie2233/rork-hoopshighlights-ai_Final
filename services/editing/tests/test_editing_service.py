@@ -24,6 +24,7 @@ from editing_app.main import create_app  # noqa: E402
 from editing_app.models import StoredRenderJob, now_utc  # noqa: E402
 from editing_app.render_state import DurableRenderStateStore  # noqa: E402
 from editing_app.render_storage import RenderStorage  # noqa: E402
+from editing_app.retention_cleanup import run_cleanup  # noqa: E402
 
 
 def _clip(clip_id: str, start: float, label: str, score: float) -> dict:
@@ -263,6 +264,138 @@ class EditingServiceTests(unittest.TestCase):
         self.assertEqual(rejected.status_code, 429)
         self.assertEqual(rejected.json()["errorCode"], "revision_limit")
 
+    def test_revision_definition_and_revised_plan_survive_app_reload(self) -> None:
+        settings = self._settings()
+        client = TestClient(create_app(settings))
+        edit_request = self._edit_request()
+        create_payload = client.post("/v1/edit-jobs", json=edit_request.model_dump()).json()
+
+        revision_payload = client.post(
+            f"/v1/edit-jobs/{create_payload['editJobId']}/revise",
+            json={"installId": edit_request.installId, "command": "make_more_hype"},
+        ).json()
+
+        reloaded_client = TestClient(create_app(settings))
+        list_response = reloaded_client.get(
+            f"/v1/edit-jobs/{create_payload['editJobId']}/revisions",
+            params={"installId": edit_request.installId},
+        )
+        get_response = reloaded_client.get(
+            f"/v1/edit-jobs/{create_payload['editJobId']}/revisions/{revision_payload['revisionId']}",
+            params={"installId": edit_request.installId},
+        )
+
+        self.assertEqual(list_response.status_code, 200)
+        self.assertEqual(len(list_response.json()["revisions"]), 1)
+        self.assertEqual(get_response.status_code, 200)
+        self.assertEqual(get_response.json()["revisionId"], revision_payload["revisionId"])
+        self.assertEqual(get_response.json()["newPlanId"], revision_payload["newPlanId"])
+        self.assertTrue((self._temp_dir / f"edits/{create_payload['editJobId']}/revisions/{revision_payload['revisionId']}.json").exists())
+        self.assertTrue((self._temp_dir / f"edits/{create_payload['editJobId']}/plans/{revision_payload['newPlanId']}.json").exists())
+
+    def test_render_lease_prevents_double_execution_and_stale_overwrite(self) -> None:
+        settings = self._settings()
+        store = DurableRenderStateStore(RenderStorage(settings))
+        created_at = now_utc()
+        job = StoredRenderJob(
+            edit_job_id="edit_lease_state",
+            render_job_id="render_lease_state",
+            install_id="install-123",
+            trace_id="trace_lease_state",
+            status="queued",
+            aspect_ratio="9:16",
+            created_at=created_at,
+            updated_at=created_at,
+            source_object_key="sources/synthetic_game.mp4",
+            plan_version="edit-plan-v1",
+            template_id="personal_highlight_v1",
+            plan_tier="free",
+            idempotency_key="idem-lease-state",
+        )
+        store.save_job(job)
+
+        first = store.acquire_render_lease("render_lease_state", "instance-a", "lease-a", created_at, ttl_seconds=300)
+        second = store.acquire_render_lease("render_lease_state", "instance-b", "lease-b", created_at, ttl_seconds=300)
+
+        self.assertIsNotNone(first)
+        self.assertIsNone(second)
+        leased = store.load_job("render_lease_state")
+        self.assertIsNotNone(leased)
+        assert leased is not None
+        stale_completion = leased
+        stale_completion.status = "rendered"
+        stale_completion.output_object_key = "edits/edit_lease_state/render_jobs/render_lease_state/final.mp4"
+        stale_completion.render_log_object_key = "edits/edit_lease_state/render_jobs/render_lease_state/render_log.json"
+        self.assertFalse(store.save_job_if_lease(stale_completion, "wrong-lease"))
+
+        expired = store.load_job("render_lease_state")
+        self.assertIsNotNone(expired)
+        assert expired is not None
+        expired.lease_expires_at = created_at - timedelta(seconds=1)
+        store.save_job(expired)
+        reclaimed = store.acquire_render_lease("render_lease_state", "instance-b", "lease-b", created_at, ttl_seconds=300)
+        self.assertIsNotNone(reclaimed)
+        assert reclaimed is not None
+        self.assertEqual(reclaimed.lease_owner, "instance-b")
+        self.assertEqual(reclaimed.lease_token, "lease-b")
+
+        stale_completion.lease_token = "lease-a"
+        stale_completion.status = "rendered"
+        self.assertFalse(store.save_job_if_lease(stale_completion, "lease-a"))
+        self.assertEqual(store.load_job("render_lease_state").status, "rendering")  # type: ignore[union-attr]
+
+    def test_retention_cleanup_dry_run_lists_expired_delete_eligible_artifacts(self) -> None:
+        settings = self._settings()
+        storage = RenderStorage(settings)
+        store = DurableRenderStateStore(storage)
+        expired_at = now_utc() - timedelta(days=1)
+        job = StoredRenderJob(
+            edit_job_id="edit_cleanup_state",
+            render_job_id="render_cleanup_state",
+            install_id="install-123",
+            trace_id="trace_cleanup_state",
+            status="rendered",
+            aspect_ratio="9:16",
+            created_at=expired_at - timedelta(days=1),
+            updated_at=expired_at,
+            output_object_key="edits/edit_cleanup_state/render_jobs/render_cleanup_state/final.mp4",
+            render_log_object_key="edits/edit_cleanup_state/render_jobs/render_cleanup_state/render_log.json",
+            source_object_key="sources/synthetic_game.mp4",
+            plan_version="edit-plan-v1",
+            template_id="personal_highlight_v1",
+            plan_tier="free",
+            expires_at=expired_at,
+            output_bytes=1234,
+            duration_seconds=15.0,
+            retention_metadata={
+                "expiresAt": expired_at.isoformat(),
+                "retentionClass": "free_final_render",
+                "deleteEligible": True,
+                "planTier": "free",
+                "editJobId": "edit_cleanup_state",
+                "renderJobId": "render_cleanup_state",
+                "templateId": "personal_highlight_v1",
+                "outputBytes": 1234,
+                "durationSeconds": 15.0,
+            },
+        )
+        store.save_job(job)
+        output_path = self._temp_dir / job.output_object_key
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_bytes(b"mp4")
+        storage.put_json(job.render_log_object_key or "", "{}")
+
+        report = run_cleanup(storage, store, execute=False, now=now_utc())
+
+        self.assertEqual(report["mode"], "dry-run")
+        self.assertEqual(report["candidateCount"], 1)
+        candidate = report["candidates"][0]
+        self.assertEqual(candidate["renderJobId"], "render_cleanup_state")
+        self.assertIn(job.output_object_key, candidate["objectKeys"])
+        self.assertIn(job.render_log_object_key, candidate["objectKeys"])
+        self.assertIn("render_state/render_jobs/render_cleanup_state.json", candidate["objectKeys"])
+        self.assertTrue(output_path.exists())
+
     def test_policy_rejection_emits_safe_policy_failed_event(self) -> None:
         client = TestClient(create_app(self._settings()))
         request = self._edit_request().model_copy(update={"targetDurationSeconds": 120, "templateId": "personal_highlight_v1"})
@@ -372,6 +505,41 @@ class EditingServiceTests(unittest.TestCase):
         )
         self.assertEqual(download_response.status_code, 200)
         self.assertEqual(download_response.json()["renderJobId"], render_payload["renderJobId"])
+
+    @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "ffmpeg and ffprobe are required")
+    def test_render_revision_after_reload_uses_persisted_revised_plan(self) -> None:
+        settings = self._settings()
+        client = TestClient(create_app(settings))
+        edit_request = self._edit_request()
+        create_payload = client.post("/v1/edit-jobs", json=edit_request.model_dump()).json()
+        revision_payload = client.post(
+            f"/v1/edit-jobs/{create_payload['editJobId']}/revise",
+            json={"installId": edit_request.installId, "command": "switch_format_widescreen"},
+        ).json()
+
+        reloaded_client = TestClient(create_app(settings))
+        render_response = reloaded_client.post(
+            f"/v1/edit-jobs/{create_payload['editJobId']}/revisions/{revision_payload['revisionId']}/render",
+            json={"installId": edit_request.installId},
+        )
+
+        self.assertEqual(render_response.status_code, 200)
+        status_response = reloaded_client.get(
+            f"/v1/render-jobs/{render_response.json()['renderJobId']}",
+            params={"installId": edit_request.installId},
+        )
+        self.assertEqual(status_response.status_code, 200)
+        render_payload = status_response.json()
+        self.assertEqual(render_payload["status"], "rendered")
+        self.assertEqual(render_payload["revisionId"], revision_payload["revisionId"])
+        self.assertEqual(render_payload["aspectRatio"], "16:9")
+        durable_state = DurableRenderStateStore(RenderStorage(settings)).load_job(render_payload["renderJobId"])
+        self.assertIsNotNone(durable_state)
+        assert durable_state is not None
+        self.assertEqual(durable_state.revision_id, revision_payload["revisionId"])
+        self.assertEqual(durable_state.status, "rendered")
+        self.assertIsNotNone(durable_state.lease_token)
+        self.assertNotIn("leaseToken", render_payload)
 
     def test_invalid_plan_rejected_before_render(self) -> None:
         client = TestClient(create_app(self._settings()))

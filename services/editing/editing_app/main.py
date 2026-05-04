@@ -33,6 +33,7 @@ ensure_ios_backend_on_path()
 
 from app.editing import (  # noqa: E402
     AIEditFeatureFlags,
+    EditPlan,
     EditPlanValidationIssue,
     EditRevisionResponse,
     ReviseEditJobRequest,
@@ -85,6 +86,7 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
     edit_revisions: Dict[str, list[EditRevisionResponse]] = {}
     edit_revisions_by_id: Dict[str, EditRevisionResponse] = {}
     feature_flags = resolve_feature_flags()
+    instance_id = f"editing_{uuid4().hex[:12]}"
 
     def error_response(error: EditingServiceError) -> JSONResponse:
         return JSONResponse(
@@ -107,6 +109,12 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
     def persist_job(job: StoredRenderJob) -> None:
         cache_job(job)
         render_state_store.save_job(job)
+
+    def persist_job_with_lease(job: StoredRenderJob, lease_token: str) -> None:
+        if not render_state_store.save_job_if_lease(job, lease_token):
+            emit_event("render.lease_conflict", editJobId=job.edit_job_id, renderJobId=job.render_job_id, leaseOwner=job.lease_owner)
+            raise EditingServiceError(409, "render_lease_lost", "Render lease was lost before state could be updated.")
+        cache_job(job)
 
     def load_job(render_job_id: str) -> Optional[StoredRenderJob]:
         job = render_jobs.get(render_job_id)
@@ -145,11 +153,131 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             raise EditingServiceError(404, "render_job_not_found", "Render job was not found.")
         return job
 
-    def require_edit_job(edit_job_id: str) -> StoredEditJob:
+    def edit_job_to_durable_payload(job: StoredEditJob) -> dict[str, object]:
+        return {
+            "version": "edit-job-state-v1",
+            "editJobId": job.edit_job_id,
+            "installId": job.install_id,
+            "status": job.status,
+            "createdAt": job.created_at.isoformat(),
+            "updatedAt": job.updated_at.isoformat(),
+            "request": job.request.model_dump(mode="json"),
+            "plan": job.plan.model_dump(mode="json"),
+            "validationErrors": [error.model_dump(mode="json") for error in job.validation_errors],
+        }
+
+    def edit_job_from_durable_payload(payload: dict[str, object]) -> StoredEditJob:
+        request = CreateEditJobRequest(**payload["request"])  # type: ignore[arg-type]
+        plan = EditPlan(**payload["plan"])  # type: ignore[arg-type]
+        return StoredEditJob(
+            edit_job_id=str(payload["editJobId"]),
+            install_id=str(payload.get("installId") or request.installId),
+            request=request,
+            plan=plan,
+            status=str(payload.get("status") or "plan_ready"),
+            created_at=parse_datetime(payload.get("createdAt")) or now_utc(),
+            updated_at=parse_datetime(payload.get("updatedAt")) or now_utc(),
+            validation_errors=[EditPlanValidationIssue(**error) for error in payload.get("validationErrors", [])],  # type: ignore[arg-type]
+        )
+
+    def cache_edit_job(job: StoredEditJob) -> StoredEditJob:
+        edit_jobs[job.edit_job_id] = job
+        return job
+
+    def persist_edit_job(job: StoredEditJob, plan_id: Optional[str] = None) -> None:
+        cache_edit_job(job)
+        render_state_store.save_edit_job_payload(job.edit_job_id, edit_job_to_durable_payload(job))
+        if plan_id:
+            render_state_store.save_edit_plan_payload(job.edit_job_id, plan_id, job.plan.model_dump(mode="json"))
+
+    def load_edit_job(edit_job_id: str) -> Optional[StoredEditJob]:
         job = edit_jobs.get(edit_job_id)
+        if job is not None:
+            return job
+        payload = render_state_store.load_edit_job_payload(edit_job_id)
+        if payload is None:
+            return None
+        try:
+            return cache_edit_job(edit_job_from_durable_payload(payload))
+        except Exception:
+            return None
+
+    def require_edit_job(edit_job_id: str) -> StoredEditJob:
+        job = load_edit_job(edit_job_id)
         if job is None:
             raise EditingServiceError(404, "edit_job_not_found", "Edit job was not found.")
         return job
+
+    def revision_to_durable_payload(revision: EditRevisionResponse, render_job_id: Optional[str] = None) -> dict[str, object]:
+        existing = render_state_store.load_revision_payload(revision.editJobId, revision.revisionId)
+        created_at = existing.get("createdAt") if isinstance(existing, dict) else now_utc().isoformat()
+        existing_render_job_id = existing.get("renderJobId") if isinstance(existing, dict) else None
+        return {
+            "version": "edit-revision-state-v1",
+            "revisionId": revision.revisionId,
+            "editJobId": revision.editJobId,
+            "basePlanId": revision.basePlanId,
+            "revisedPlanId": revision.newPlanId,
+            "revisionIntent": revision.command,
+            "patch": revision.patch.model_dump(mode="json"),
+            "validationResult": revision.validationResult.model_dump(mode="json"),
+            "status": revision.status,
+            "createdAt": created_at,
+            "updatedAt": now_utc().isoformat(),
+            "renderJobId": render_job_id or (existing_render_job_id if isinstance(existing_render_job_id, str) else None),
+            "revision": revision.model_dump(mode="json"),
+        }
+
+    def revision_from_durable_payload(payload: dict[str, object]) -> Optional[EditRevisionResponse]:
+        revision_payload = payload.get("revision")
+        if isinstance(revision_payload, dict):
+            try:
+                return EditRevisionResponse(**revision_payload)
+            except Exception:
+                return None
+        try:
+            return EditRevisionResponse(**payload)
+        except Exception:
+            return None
+
+    def persist_revision(revision: EditRevisionResponse, revised_job: StoredEditJob, render_job_id: Optional[str] = None) -> None:
+        edit_revisions.setdefault(revision.editJobId, [])
+        if not any(existing.revisionId == revision.revisionId for existing in edit_revisions[revision.editJobId]):
+            edit_revisions[revision.editJobId].append(revision)
+        edit_revisions_by_id[revision.revisionId] = revision
+        render_state_store.save_revision_payload(revision.editJobId, revision.revisionId, revision_to_durable_payload(revision, render_job_id))
+        render_state_store.save_edit_plan_payload(revision.editJobId, revision.newPlanId, revision.revisedPlan.model_dump(mode="json"))
+        persist_edit_job(revised_job)
+
+    def load_revisions(edit_job_id: str) -> list[EditRevisionResponse]:
+        cached = edit_revisions.get(edit_job_id)
+        if cached is not None:
+            return cached
+        revisions: list[EditRevisionResponse] = []
+        for payload in render_state_store.load_revision_payloads(edit_job_id):
+            revision = revision_from_durable_payload(payload)
+            if revision is None:
+                continue
+            revisions.append(revision)
+            edit_revisions_by_id[revision.revisionId] = revision
+        edit_revisions[edit_job_id] = revisions
+        return revisions
+
+    def load_revision(edit_job_id: str, revision_id: str) -> Optional[EditRevisionResponse]:
+        revision = edit_revisions_by_id.get(revision_id)
+        if revision is not None and revision.editJobId == edit_job_id:
+            return revision
+        payload = render_state_store.load_revision_payload(edit_job_id, revision_id)
+        if payload is None:
+            return None
+        revision = revision_from_durable_payload(payload)
+        if revision is None:
+            return None
+        edit_revisions_by_id[revision.revisionId] = revision
+        edit_revisions.setdefault(edit_job_id, [])
+        if not any(existing.revisionId == revision.revisionId for existing in edit_revisions[edit_job_id]):
+            edit_revisions[edit_job_id].append(revision)
+        return revision
 
     def require_edit_owner(job: StoredEditJob, install_id: Optional[str]) -> None:
         if not install_id or install_id != job.install_id:
@@ -188,7 +316,7 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             emit_event("policy.failed", failureReason=error.error_code, **fields)
 
     def stored_edit_job_event_fields(edit_job_id: str, **extra_fields: object) -> dict[str, object]:
-        job = edit_jobs.get(edit_job_id)
+        job = load_edit_job(edit_job_id)
         fields: dict[str, object] = {"editJobId": edit_job_id, **extra_fields}
         if job is not None:
             fields.update(planTier=job.request.planTier, templateId=job.plan.templateId)
@@ -204,7 +332,8 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
         if job.status not in active_render_statuses():
             return
         timeout_seconds = effective_policy(job.plan_tier).staleRenderTimeoutSeconds
-        if (now_utc() - job.updated_at).total_seconds() > timeout_seconds:
+        lease_expired = bool(job.lease_expires_at and job.lease_expires_at <= now_utc())
+        if lease_expired or (now_utc() - job.updated_at).total_seconds() > timeout_seconds:
             mark_failed(job, "failed_timeout")
 
     def mark_stale_renders() -> None:
@@ -268,7 +397,7 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             raise EditingServiceError(403, "ai_edit_revision_disabled", "AI Edit revisions are temporarily unavailable.")
         job = require_edit_job(edit_job_id)
         policy = effective_policy(job.request.planTier)
-        if len(edit_revisions.get(edit_job_id, [])) >= policy.maxRevisionsPerEdit:
+        if len(load_revisions(edit_job_id)) >= policy.maxRevisionsPerEdit:
             raise EditingServiceError(429, "revision_limit", "Revision limit reached for this edit.")
         if request.targetDurationSeconds is not None and request.targetDurationSeconds > policy.maxRenderSeconds:
             raise EditingServiceError(400, "render_duration_limit", "Requested revision length exceeds this plan's render limit.")
@@ -292,7 +421,7 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             "durationSeconds": duration_seconds,
         }
 
-    def mark_failed(job: StoredRenderJob, reason: str, validation_errors: Optional[list] = None) -> None:
+    def mark_failed(job: StoredRenderJob, reason: str, validation_errors: Optional[list] = None, lease_token: Optional[str] = None) -> None:
         job.status = "failed_timeout" if reason == "failed_timeout" else "failed"
         job.failure_reason = reason
         job.validation_errors = validation_errors or []
@@ -303,6 +432,13 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
         job.expires_at = parse_datetime(job.retention_metadata.get("expiresAt") if job.retention_metadata else None)
         job.updated_at = now_utc()
         emit_event("render.failed", editJobId=job.edit_job_id, renderJobId=job.render_job_id, planTier=job.plan_tier, failureReason=reason)
+        if lease_token:
+            try:
+                persist_job_with_lease(job, lease_token)
+            except EditingServiceError:
+                return
+        else:
+            persist_job(job)
         try:
             storage.put_json(
                 job.render_log_object_key,
@@ -320,22 +456,31 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             )
         except Exception:
             pass
-        persist_job(job)
+
+    def acquire_render_lease(render_job_id: str) -> tuple[StoredRenderJob, str]:
+        now = now_utc()
+        ttl_seconds = max(30, effective_policy(require_job(render_job_id).plan_tier).staleRenderTimeoutSeconds)
+        lease_token = "lease_" + uuid4().hex
+        leased_job = render_state_store.acquire_render_lease(render_job_id, instance_id, lease_token, now, ttl_seconds)
+        if leased_job is None:
+            emit_event("render.lease_conflict", renderJobId=render_job_id, leaseOwner=instance_id)
+            raise EditingServiceError(409, "render_lease_active", "Render job already has an active execution lease.")
+        cache_job(leased_job)
+        emit_event("render.lease_acquired", editJobId=leased_job.edit_job_id, renderJobId=leased_job.render_job_id, leaseOwner=instance_id)
+        return leased_job, lease_token
 
     def run_render_job(render_job_id: str) -> None:
         job = require_job(render_job_id)
         request = render_requests[render_job_id]
         source = None
+        lease_token: Optional[str] = None
         try:
-            job.status = "rendering"
-            job.started_at = job.started_at or now_utc()
-            job.updated_at = now_utc()
-            persist_job(job)
+            job, lease_token = acquire_render_lease(render_job_id)
             emit_event("render.started", editJobId=job.edit_job_id, renderJobId=job.render_job_id, templateId=request.editPlan.templateId, planTier=request.planTier)
             source = storage.materialize_source(request.sourceObjectKey)
             with tempfile.TemporaryDirectory(prefix="hoopclips-edit-render-", dir=str(resolved_settings.upload_root)) as temp_dir:
                 result = FfmpegRenderer().render(request.editPlan, source.local_path, Path(temp_dir))
-                plan_key = f"edits/{request.editJobId}/plan.json"
+                plan_key = f"edits/{request.editJobId}/plans/{request.editPlan.editJobId}.json"
                 output_key = f"edits/{request.editJobId}/render_jobs/{render_job_id}/final.mp4"
                 log_key = f"edits/{request.editJobId}/render_jobs/{render_job_id}/render_log.json"
                 output_bytes = result.output_path.stat().st_size
@@ -355,8 +500,9 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
                 job.retention_metadata = retention_metadata
                 job.completed_at = now_utc()
                 job.expires_at = parse_datetime(retention_metadata.get("expiresAt"))
+                job.heartbeat_at = now_utc()
                 job.updated_at = now_utc()
-                persist_job(job)
+                persist_job_with_lease(job, lease_token)
                 storage.put_json(
                     log_key,
                     render_log_payload(
@@ -387,11 +533,12 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
                     outputBytes=output_bytes,
                 )
         except APIError as error:
-            mark_failed(job, error.error_code)
+            mark_failed(job, error.error_code, lease_token=lease_token)
         except EditingServiceError as error:
-            mark_failed(job, error.error_code)
+            if error.error_code != "render_lease_active":
+                mark_failed(job, error.error_code, lease_token=lease_token)
         except Exception:
-            mark_failed(job, "render_failed")
+            mark_failed(job, "render_failed", lease_token=lease_token)
         finally:
             if source is not None:
                 source.cleanup()
@@ -467,6 +614,12 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             idempotency_key=idempotency_key,
             revision_id=request.revisionId,
         )
+        if not render_state_store.reserve_idempotency_key(job):
+            existing_after_reservation = load_idempotent_render_job(idempotency_key)
+            if existing_after_reservation is not None:
+                mark_stale_job(existing_after_reservation)
+                return existing_after_reservation.to_response()
+            raise EditingServiceError(409, "render_idempotency_conflict", "A render already reserved this idempotency key.")
         persist_job(job)
         render_requests[render_job_id] = request
 
@@ -508,7 +661,7 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             if job.validation_errors:
                 first_error = job.validation_errors[0]
                 raise EditingServiceError(400, first_error.code, first_error.message)
-            edit_jobs[edit_job_id] = job
+            persist_edit_job(job, plan_id=edit_job_id)
             emit_event("edit_plan.created", editJobId=edit_job_id, templateId=job.plan.templateId, planTier=request.planTier)
             return job.to_response()
         except EditingServiceError as error:
@@ -564,9 +717,7 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             if not revision_response.validationResult.valid:
                 first_error = revision_response.validationResult.errors[0]
                 raise EditingServiceError(400, first_error.code, first_error.message)
-            edit_jobs[edit_job_id] = revised_job
-            edit_revisions.setdefault(edit_job_id, []).append(revision_response)
-            edit_revisions_by_id[revision_id] = revision_response
+            persist_revision(revision_response, revised_job)
             emit_event("edit_revision.created", editJobId=edit_job_id, revisionId=revision_id, templateId=revision_response.revisedPlan.templateId, planTier=revised_job.request.planTier)
             return revision_response
         except EditingServiceError as error:
@@ -584,7 +735,7 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             require_secret(x_hoops_editing_secret)
             job = require_edit_job(edit_job_id)
             require_edit_owner(job, installId or x_hoops_install_id)
-            return EditRevisionListResponse(editJobId=edit_job_id, revisions=edit_revisions.get(edit_job_id, []))
+            return EditRevisionListResponse(editJobId=edit_job_id, revisions=load_revisions(edit_job_id))
         except EditingServiceError as error:
             emit_policy_failed(error, **stored_edit_job_event_fields(edit_job_id))
             return error_response(error)
@@ -601,7 +752,7 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             require_secret(x_hoops_editing_secret)
             job = require_edit_job(edit_job_id)
             require_edit_owner(job, installId or x_hoops_install_id)
-            revision = edit_revisions_by_id.get(revision_id)
+            revision = load_revision(edit_job_id, revision_id)
             if revision is None or revision.editJobId != edit_job_id:
                 raise EditingServiceError(404, "revision_not_found", "Edit revision was not found.")
             return revision
@@ -620,12 +771,12 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             require_secret(x_hoops_editing_secret)
             stored_edit_job = require_edit_job(edit_job_id)
             require_edit_owner(stored_edit_job, request.installId)
-            revision = edit_revisions_by_id.get(revision_id)
+            revision = load_revision(edit_job_id, revision_id)
             if revision is None or revision.editJobId != edit_job_id:
                 raise EditingServiceError(404, "revision_not_found", "Edit revision was not found.")
             if not stored_edit_job.request.sourceObjectKey:
                 raise EditingServiceError(400, "missing_source_object_key", "Revision render requires a source video object key.")
-            return enqueue_render_job(
+            render_response = enqueue_render_job(
                 CreateRenderJobRequest(
                     editJobId=edit_job_id,
                     installId=request.installId,
@@ -639,6 +790,8 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
                 background_tasks,
                 force_new=True,
             )
+            persist_revision(revision, stored_edit_job, render_response.renderJobId)
+            return render_response
         except EditingServiceError as error:
             return error_response(error)
 
@@ -663,7 +816,7 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
     ):
         try:
             require_secret(x_hoops_editing_secret)
-            stored_edit_job = edit_jobs.get(edit_job_id)
+            stored_edit_job = load_edit_job(edit_job_id)
             if stored_edit_job is not None:
                 require_edit_owner(stored_edit_job, request.installId)
 
