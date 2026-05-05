@@ -191,6 +191,7 @@ enum CloudEditRenderState: String, Codable, Sendable {
     case rendering
     case rendered
     case failed
+    case failedTimeout = "failed_timeout"
     case cancelled
 
     var displayLabel: String {
@@ -211,6 +212,8 @@ enum CloudEditRenderState: String, Codable, Sendable {
             return "Ready"
         case .failed:
             return "Render failed"
+        case .failedTimeout:
+            return "Render timed out"
         case .cancelled:
             return "Cancelled"
         }
@@ -568,6 +571,16 @@ enum CloudEditError: Error, LocalizedError, Sendable {
             return "The download link expired. Hoopclips is requesting a fresh one."
         case "failed_timeout":
             return "Rendering timed out. Try a shorter edit."
+        case "render_failed":
+            return "Cloud rendering failed. Try again in a moment."
+        case "render_not_ready":
+            return "Your video is still rendering. Try again when it is ready."
+        case "render_lease_active":
+            return "That AI edit is already rendering. Hoopclips will keep checking the existing job."
+        case "render_lease_lost":
+            return "The render worker lost its lock. Try again in a moment."
+        case "download_url_refresh_failed":
+            return "Hoopclips could not refresh the download link. Try again in a moment."
         case "invalid_edit_plan":
             return "Hoopclips could not validate that edit plan. Try a different template or shorter length."
         case "template_asset_missing":

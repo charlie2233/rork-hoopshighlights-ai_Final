@@ -83,7 +83,7 @@ struct CloudEditService {
                 continue
             }
             switch status.status {
-            case .rendered, .failed, .cancelled:
+            case .rendered, .failed, .failedTimeout, .cancelled:
                 return status
             case .renderRequested, .planning, .planReady, .created, .queued, .rendering:
                 attempts += 1

@@ -18,6 +18,8 @@ class CleanupCandidate:
     retention_class: str
     expires_at: datetime
     object_keys: List[str]
+    output_bytes: int | None
+    duration_seconds: float | None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -27,6 +29,8 @@ class CleanupCandidate:
             "retentionClass": self.retention_class,
             "expiresAt": self.expires_at.isoformat(),
             "objectKeys": self.object_keys,
+            "outputBytes": self.output_bytes,
+            "durationSeconds": self.duration_seconds,
         }
 
 
@@ -70,6 +74,25 @@ def cleanup_candidate_for_job(
     ]
     if not object_keys:
         return None
+    output_bytes = job.output_bytes
+    if output_bytes is None:
+        raw_output_bytes = metadata.get("outputBytes")
+        if isinstance(raw_output_bytes, int):
+            output_bytes = raw_output_bytes
+        elif isinstance(raw_output_bytes, float):
+            output_bytes = int(raw_output_bytes)
+        elif isinstance(raw_output_bytes, str) and raw_output_bytes.isdigit():
+            output_bytes = int(raw_output_bytes)
+    duration_seconds = job.duration_seconds
+    if duration_seconds is None:
+        raw_duration_seconds = metadata.get("durationSeconds")
+        if isinstance(raw_duration_seconds, (int, float)):
+            duration_seconds = float(raw_duration_seconds)
+        elif isinstance(raw_duration_seconds, str):
+            try:
+                duration_seconds = float(raw_duration_seconds)
+            except ValueError:
+                duration_seconds = None
     return CleanupCandidate(
         render_job_id=job.render_job_id,
         edit_job_id=job.edit_job_id,
@@ -77,6 +100,8 @@ def cleanup_candidate_for_job(
         retention_class=retention_class,
         expires_at=expires_at,
         object_keys=object_keys,
+        output_bytes=output_bytes,
+        duration_seconds=duration_seconds,
     )
 
 
@@ -98,6 +123,8 @@ def run_cleanup(
     return {
         "mode": "execute" if execute else "dry-run",
         "candidateCount": len(candidates),
+        "objectKeyCount": sum(len(candidate.object_keys) for candidate in candidates),
+        "estimatedOutputBytes": sum(candidate.output_bytes or 0 for candidate in candidates),
         "candidates": [candidate.to_dict() for candidate in candidates],
         "deletedObjectKeys": deleted_keys,
     }

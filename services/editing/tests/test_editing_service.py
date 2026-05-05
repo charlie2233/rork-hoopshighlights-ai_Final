@@ -389,8 +389,12 @@ class EditingServiceTests(unittest.TestCase):
 
         self.assertEqual(report["mode"], "dry-run")
         self.assertEqual(report["candidateCount"], 1)
+        self.assertEqual(report["objectKeyCount"], 3)
+        self.assertEqual(report["estimatedOutputBytes"], 1234)
         candidate = report["candidates"][0]
         self.assertEqual(candidate["renderJobId"], "render_cleanup_state")
+        self.assertEqual(candidate["outputBytes"], 1234)
+        self.assertEqual(candidate["durationSeconds"], 15.0)
         self.assertIn(job.output_object_key, candidate["objectKeys"])
         self.assertIn(job.render_log_object_key, candidate["objectKeys"])
         self.assertIn("render_state/render_jobs/render_cleanup_state.json", candidate["objectKeys"])

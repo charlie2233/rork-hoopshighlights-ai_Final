@@ -447,7 +447,7 @@ struct AIEditView: View {
         switch phase {
         case .rendered:
             return "checkmark.seal.fill"
-        case .failed, .cancelled:
+        case .failed, .failedTimeout, .cancelled:
             return "exclamationmark.triangle.fill"
         case .renderRequested, .planning, .planReady, .created, .queued, .rendering:
             return "cloud.fill"
@@ -458,7 +458,7 @@ struct AIEditView: View {
         switch phase {
         case .rendered:
             return AppTheme.successGreen
-        case .failed, .cancelled:
+        case .failed, .failedTimeout, .cancelled:
             return AppTheme.dangerRed
         case .renderRequested, .planning, .planReady, .created, .queued, .rendering:
             return AppTheme.neonPurple
@@ -524,6 +524,8 @@ struct AIEditView: View {
             return "Your MP4 is ready to preview and share."
         case .failed:
             return "Render failed. You can retry when the backend says it is safe."
+        case .failedTimeout:
+            return "Rendering timed out. Try a shorter edit or retry when the backend is ready."
         case .cancelled:
             return "Render was cancelled."
         }
@@ -855,7 +857,18 @@ struct AIEditView: View {
                 planTier: policySummary?.planTier.rawValue
             )
         } catch {
-            errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            let failureDescription = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            errorMessage = "Could not prepare the MP4 for sharing. Try again in a moment."
+            LaunchTelemetry.shared.recordAIEditEvent(
+                "ios.share.failed",
+                editJobID: editJob?.editJobId,
+                renderJobID: downloadResponse.renderJobId,
+                revisionID: revisionResponse?.revisionId,
+                templateID: editPlan?.templateId,
+                planTier: policySummary?.planTier.rawValue,
+                failureReason: failureDescription
+            )
+            HoopsAccessibility.announce("Could not open sharing for this render.")
         }
     }
 
