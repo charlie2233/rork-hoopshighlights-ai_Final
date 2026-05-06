@@ -47,6 +47,29 @@ jobs:
             exit 1
           fi
 
+      - name: Print CI credential scope checklist
+        run: |
+          set -euo pipefail
+          cat <<'CHECKLIST'
+          CLOUDFLARE_API_TOKEN requirements:
+            - Store as GitHub Actions environment secret: staging / CLOUDFLARE_API_TOKEN
+            - Scope to the HoopClips Cloudflare account
+            - Workers Scripts: Edit
+            - Account Settings: Read
+            - D1: Edit, when running migrations
+            - R2: Edit, when deploy preflight verifies bucket bindings or artifacts
+            - Rotate from Cloudflare dashboard and update the GitHub environment secret
+
+          GCP deploy identity requirements:
+            - Workload Identity Provider configured in GCP_WORKLOAD_IDENTITY_PROVIDER
+            - Deploy service account configured in GCP_DEPLOY_SERVICE_ACCOUNT
+            - Cloud Run Admin
+            - Artifact Registry Writer
+            - Cloud Build submit permissions
+            - Secret Manager Secret Accessor for deploy-time checks
+            - Service Account User for the Cloud Run runtime service account, if required
+          CHECKLIST
+
       - name: Print deploy command checklist
         run: |
           set -euo pipefail
@@ -66,4 +89,8 @@ jobs:
               --project="$GCP_PROJECT_ID" \
               --region="$GCP_REGION" \
               --to-revisions <previous-revision>=100
+
+          Worker rollback:
+            cd services/control-plane
+            npx wrangler rollback --env staging
           CHECKLIST

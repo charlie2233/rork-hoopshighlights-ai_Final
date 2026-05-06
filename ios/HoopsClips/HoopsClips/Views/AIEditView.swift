@@ -107,7 +107,7 @@ struct AIEditView: View {
                 .foregroundStyle(.white)
                 .accessibilityIdentifier("export.aiEdit.section")
 
-            Text("Hoopclips will ask the cloud AI edit agent to plan and render a finished MP4 from your kept clips.")
+            Text("Hoopclips uploads the selected source to cloud services, creates the edit there, and stores the finished MP4 temporarily for preview and sharing.")
                 .font(.subheadline)
                 .foregroundStyle(AppTheme.subtleText)
 
