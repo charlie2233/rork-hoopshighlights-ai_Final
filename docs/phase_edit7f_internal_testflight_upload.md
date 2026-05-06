@@ -1,4 +1,4 @@
-# Phase Edit7f Internal TestFlight Upload Prep
+# Phase Edit7f Internal TestFlight Upload
 
 Date: 2026-05-06
 
@@ -61,7 +61,7 @@ An internal staging TestFlight archive must be explicitly built with staging clo
 | --- | --- | --- | --- |
 | Bundle identifier | `atrak.charlie.hoopsclips` | `atrak.charlie.hoopsclips` unless App Store Connect differs | verify ASC app record |
 | Marketing version | `1.0.0` | `1.0.0` | unchanged |
-| Build number | `2` | `2` after this branch | incremented from `1` |
+| Build number | `3` | `3` after this branch | incremented from `1`; build `2` was uploaded as a cloud-disabled packaging proof |
 | Apple team | `K99RADPB9G` | `K99RADPB9G` unless ASC differs | local build settings verified |
 | Release cloud launch mode | explicit staging override required | disabled by default | safe |
 | Staging Worker URL | `https://hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev` | not applicable | latest RC smoke passed |
@@ -154,7 +154,7 @@ Resolved local build settings:
 | Bundle ID | `atrak.charlie.hoopsclips` |
 | Marketing version | `1.0.0` |
 | Previous build number | `1` |
-| New build number | `2` |
+| New build number | `3` |
 | Signing style | Automatic |
 | Development team | `K99RADPB9G` |
 | Export options | `ios/exportOptions.testflight-internal.plist` |
@@ -163,18 +163,26 @@ Resolved local build settings:
 Local credential audit:
 
 ```text
-codesigning identities: Apple Development only
-Apple Distribution identity: not found locally
+codesigning identities: one valid local code-signing identity
+installed provisioning profiles: none found locally
 App Store Connect API key/env: not found locally
+Xcode/App Store Connect account state: sufficient for local xcodebuild upload
 Fastlane config: not present
 Cloudflare/GCP deploy env vars: not found locally
 ```
 
-Current upload blocker:
+Upload result:
 
 ```text
-Archive compile can be validated locally.
-Signed export/upload is blocked until Apple Distribution signing and App Store Connect upload credentials are available.
+Build 3 was archived with explicit staging backend overrides and uploaded to App Store Connect.
+The uploaded package entered App Store Connect processing.
+```
+
+Automation note:
+
+```text
+The successful upload used local Xcode/App Store Connect account state.
+CI upload automation still needs explicit App Store Connect API key secrets if adopted later.
 ```
 
 Do not commit signing certificates, private keys, app-specific passwords, issuer IDs, API keys, or CI tokens.
@@ -202,14 +210,30 @@ xcodebuild archive \
   -scheme HoopsClips \
   -configuration Release \
   -destination 'generic/platform=iOS' \
-  -archivePath /tmp/HoopsClips-AIEdit-InternalStaging-1.0.0-2.xcarchive \
+  -archivePath /tmp/HoopsClips-AIEdit-InternalStaging.xcarchive \
   CODE_SIGNING_ALLOWED=NO \
   HOOPS_CLOUD_LAUNCH_MODE=enabled \
   HOOPS_CLOUD_EDIT_BASE_URL=https://hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev \
   HOOPS_CLOUD_ANALYSIS_BASE_URL=https://hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev
 ```
 
-Signed upload command after credentials are installed:
+Signed internal staging archive command used for build `3`:
+
+```bash
+xcodebuild archive \
+  -project ios/HoopsClips.xcodeproj \
+  -scheme HoopsClips \
+  -configuration Release \
+  -destination 'generic/platform=iOS' \
+  -archivePath /tmp/HoopsClips-AIEdit-InternalStaging.xcarchive \
+  -derivedDataPath /tmp/hoopclips-phase7f-staging-archive-derived \
+  -allowProvisioningUpdates \
+  HOOPS_CLOUD_LAUNCH_MODE=enabled \
+  HOOPS_CLOUD_EDIT_BASE_URL=https://hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev \
+  HOOPS_CLOUD_ANALYSIS_BASE_URL=https://hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev
+```
+
+Signed export/upload command:
 
 ```bash
 xcodebuild -exportArchive \
@@ -219,6 +243,16 @@ xcodebuild -exportArchive \
 ```
 
 Use Xcode Organizer or Transporter if App Store Connect authentication is easier locally. Do not use Fastlane unless the project intentionally adopts it later.
+
+Actual local upload command used for build `3`:
+
+```bash
+xcodebuild -exportArchive \
+  -archivePath /tmp/HoopsClips-AIEdit-InternalStaging.xcarchive \
+  -exportPath /tmp/HoopsClips-AIEdit-InternalStaging \
+  -exportOptionsPlist ios/exportOptions.testflight-internal.plist \
+  -allowProvisioningUpdates
+```
 
 ## Feature Flag Safety
 
@@ -316,14 +350,16 @@ git diff --check: passed
 plutil -lint iOS plist files: passed
 iOS Release simulator build: passed
 iOS build-for-testing: passed
-unsigned iOS archive compile with explicit staging overrides: passed
-archive Info.plist verification: passed
+unsigned iOS archive compile with clean DerivedData: passed after retry
+signed iOS archive with explicit staging overrides: passed
+staging archive Info.plist verification: passed
+xcodebuild export/upload to App Store Connect: passed
 ```
 
 Archive path:
 
 ```text
-/tmp/HoopsClips-AIEdit-InternalStaging-1.0.0-2.xcarchive
+/tmp/HoopsClips-AIEdit-InternalStaging.xcarchive
 ```
 
 Archive Info.plist verification:
@@ -331,7 +367,7 @@ Archive Info.plist verification:
 ```text
 bundle identifier: atrak.charlie.hoopsclips
 marketing version: 1.0.0
-build number: 2
+build number: 3
 HOOPSCloudLaunchMode: enabled
 HOOPSCloudEditBaseURL: https://hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev
 HOOPSCloudAnalysisBaseURL: https://hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev
@@ -342,16 +378,19 @@ Backend services are not changed in this branch, so services/editing tests and s
 Final upload status:
 
 ```text
-Upload not attempted.
-Signed export/upload remains blocked by missing Apple Distribution signing and App Store Connect upload credentials.
+Build 2: uploaded as a safe cloud-disabled Release packaging proof.
+Build 3: uploaded as the intended internal staging AI Edit candidate.
+App Store Connect output: "Upload succeeded. Uploaded HoopsClips. ** EXPORT SUCCEEDED **"
+TestFlight processing and post-install smoke are not verified in this branch.
 ```
 
 ## Remaining Blockers
 
 ```text
-1. Apple Distribution signing/App Store Connect upload credentials are not available locally.
-2. CLOUDFLARE_API_TOKEN still needs to be installed in CI for Worker deploy automation.
-3. Production backend config values remain placeholders until cutover approval.
-4. R2 render log body access remains operator-credential-only.
-5. Real TestFlight install smoke cannot run until upload and processing succeed.
+1. Confirm App Store Connect processing completes for build 3.
+2. Run post-install internal TestFlight smoke from the checklist.
+3. CLOUDFLARE_API_TOKEN still needs to be installed in CI for Worker deploy automation.
+4. Production backend config values remain placeholders until cutover approval.
+5. R2 render log body access remains operator-credential-only.
+6. CI upload automation still needs explicit App Store Connect API key secrets if manual/Xcode-account upload is not enough.
 ```
