@@ -369,7 +369,7 @@ Results:
 
 | Check | Result | Notes |
 | --- | --- | --- |
-| `git diff --check` | passed | no whitespace errors before final doc update |
+| `git diff --check` | passed | no whitespace errors after final doc update |
 | Export options / app plist lint | passed | `ios/exportOptions.testflight-internal.example.plist` and `ios/HoopsClips/App-Info.plist` are valid plists |
 | `services.editing.tests.test_editing_service` | passed | 24 unittest cases |
 | Control-plane typecheck | passed | `npm --prefix services/control-plane run typecheck` |
