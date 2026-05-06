@@ -318,6 +318,73 @@ No full presigned URLs were printed.
 Worker deployment version lookup remains blocked by missing CLOUDFLARE_API_TOKEN/local Wrangler auth.
 ```
 
+Fresh RC smoke rerun on 2026-05-06:
+
+```text
+status: pass
+workerUrl: https://hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev
+editingUrl: https://hoopclips-editing-staging-npya43jiia-uc.a.run.app
+sourceObjectKey: uploads/dc21751d644a4e4b9676e3e9b0525780/source.mp4
+editJobId: edit_caf79ea7c9c34e3e96e4032818a4e645
+baseRenderJobId: render_95210e7c55ac4c68a9c80c050922ca9c
+revisionId: rev_1f3d2694b1714403b2a3f57df0f799c5
+revisionRenderJobId: render_8a94b0188e7445a39eed6215ecde2798
+summaryPath: /private/tmp/hoopclips-phase7d-rc-smoke-rerun/template_pack_smoke_summary.json
+```
+
+Fresh object keys:
+
+```text
+base final: edits/edit_caf79ea7c9c34e3e96e4032818a4e645/render_jobs/render_95210e7c55ac4c68a9c80c050922ca9c/final.mp4
+base render log: edits/edit_caf79ea7c9c34e3e96e4032818a4e645/render_jobs/render_95210e7c55ac4c68a9c80c050922ca9c/render_log.json
+revision final: edits/edit_caf79ea7c9c34e3e96e4032818a4e645/render_jobs/render_8a94b0188e7445a39eed6215ecde2798/final.mp4
+revision render log: edits/edit_caf79ea7c9c34e3e96e4032818a4e645/render_jobs/render_8a94b0188e7445a39eed6215ecde2798/render_log.json
+```
+
+Fresh base ffprobe summary:
+
+```json
+{
+  "format": {
+    "duration": "16.222005",
+    "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+    "size": "379466"
+  },
+  "video": {
+    "codec_name": "h264",
+    "width": 720,
+    "height": 1280,
+    "pix_fmt": "yuv420p",
+    "r_frame_rate": "30/1"
+  },
+  "audio": {
+    "codec_name": "aac"
+  }
+}
+```
+
+Fresh revision ffprobe summary:
+
+```json
+{
+  "format": {
+    "duration": "16.222005",
+    "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+    "size": "374403"
+  },
+  "video": {
+    "codec_name": "h264",
+    "width": 720,
+    "height": 1280,
+    "pix_fmt": "yuv420p",
+    "r_frame_rate": "30/1"
+  },
+  "audio": {
+    "codec_name": "aac"
+  }
+}
+```
+
 ## TestFlight Build Checklist
 
 Resolved local release settings:
