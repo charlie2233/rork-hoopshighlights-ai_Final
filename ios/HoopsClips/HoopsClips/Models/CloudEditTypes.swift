@@ -197,19 +197,19 @@ enum CloudEditRenderState: String, Codable, Sendable {
     var displayLabel: String {
         switch self {
         case .renderRequested:
-            return "Starting your render"
+            return "HoopClips is starting your edit"
         case .planning:
-            return "Planning your edit"
+            return "Building your AI edit"
         case .planReady:
-            return "Edit plan ready"
+            return "Applying your style"
         case .created:
-            return "Created"
+            return "Preparing cloud edit"
         case .queued:
-            return "Almost ready"
+            return "Waiting for cloud editing"
         case .rendering:
             return "Rendering your highlight reel"
         case .rendered:
-            return "Ready"
+            return "Your reel is ready"
         case .failed:
             return "Render failed"
         case .failedTimeout:
@@ -218,6 +218,53 @@ enum CloudEditRenderState: String, Codable, Sendable {
             return "Cancelled"
         }
     }
+}
+
+enum CloudEditWorkStepStatus: String, Codable, Sendable {
+    case pending
+    case running
+    case complete
+    case failed
+}
+
+struct CloudEditWorkStep: Codable, Identifiable, Sendable {
+    let stepId: String
+    let title: String
+    let detail: String?
+    let status: CloudEditWorkStepStatus
+    let startedAt: String?
+    let completedAt: String?
+
+    var id: String { stepId }
+}
+
+struct CloudEditWorkTimeline: Codable, Sendable {
+    let editJobId: String
+    let revisionId: String?
+    let renderJobId: String?
+    let status: CloudEditRenderState
+    let generatedAt: String?
+    let steps: [CloudEditWorkStep]
+}
+
+struct CloudEditWorkReceipt: Codable, Sendable {
+    let editJobId: String
+    let revisionId: String?
+    let renderJobId: String?
+    let selectedClipCount: Int?
+    let candidateClipCount: Int?
+    let templateId: String?
+    let templateName: String?
+    let slowMotionMomentCount: Int
+    let outputDurationSeconds: Double?
+    let outputResolution: String?
+    let aspectRatio: CloudEditAspectRatio?
+    let watermarkIncluded: Bool?
+    let outroIncluded: Bool?
+    let storageExpiresAt: String?
+    let planTier: CloudEditPlanTier?
+    let priorityQueue: Bool
+    let summaryRows: [String]
 }
 
 enum CloudEditRevisionCommand: String, Codable, CaseIterable, Identifiable, Sendable {
@@ -500,6 +547,8 @@ struct CloudEditRenderStatusResponse: Codable, Sendable {
     let retryCount: Int?
     let outputBytes: Int?
     let retentionMetadata: CloudEditRetentionMetadata?
+    let workTimeline: CloudEditWorkTimeline?
+    let workReceipt: CloudEditWorkReceipt?
 }
 
 struct CloudEditDownloadResponse: Codable, Sendable {

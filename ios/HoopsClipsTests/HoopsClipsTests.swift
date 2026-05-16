@@ -309,6 +309,104 @@ struct HoopsClipsTests {
         #expect(response.results?.diagnostics.backendModelVersion == "cloud-v1")
     }
 
+    @Test func testCloudEditRenderStatusDecodesAIWorkTimelineAndReceipt() throws {
+        let payload = """
+        {
+          "editJobId": "edit_123",
+          "revisionId": "rev_456",
+          "renderJobId": "render_789",
+          "renderer": "cloud_ffmpeg",
+          "rendererVersion": "ffmpeg-renderer-v1",
+          "planVersion": "edit-plan-v1",
+          "status": "rendered",
+          "outputObjectKey": "edits/edit_123/render_jobs/render_789/final.mp4",
+          "renderLogObjectKey": "edits/edit_123/render_jobs/render_789/render_log.json",
+          "durationSeconds": 15.4,
+          "aspectRatio": "9:16",
+          "traceId": "trace_123",
+          "failureReason": null,
+          "validationErrors": [],
+          "planTier": "free",
+          "policy": {
+            "planTier": "free",
+            "displayName": "Free",
+            "maxRenderSeconds": 45,
+            "maxDailyRenders": 3,
+            "maxActiveRenders": 1,
+            "maxRevisionsPerEdit": 3,
+            "maxOutputResolution": "720p",
+            "watermarkRequired": true,
+            "outroRequired": true,
+            "premiumTemplatesAllowed": false,
+            "renderRetentionDays": 14
+          },
+          "retryCount": 0,
+          "outputBytes": 123456,
+          "retentionMetadata": {
+            "expiresAt": "2026-05-31T00:00:00Z",
+            "retentionClass": "free_final_render",
+            "deleteEligible": true,
+            "planTier": "free",
+            "editJobId": "edit_123",
+            "renderJobId": "render_789",
+            "templateId": "personal_highlight_v1",
+            "outputBytes": 123456,
+            "durationSeconds": 15.4
+          },
+          "workTimeline": {
+            "editJobId": "edit_123",
+            "revisionId": "rev_456",
+            "renderJobId": "render_789",
+            "status": "rendered",
+            "generatedAt": "2026-05-16T00:00:00Z",
+            "steps": [
+              {
+                "stepId": "selecting_best_clips",
+                "title": "Selecting strongest clips",
+                "detail": "Selected 2 clips from 3 candidates.",
+                "status": "complete",
+                "startedAt": null,
+                "completedAt": null
+              }
+            ]
+          },
+          "workReceipt": {
+            "editJobId": "edit_123",
+            "revisionId": "rev_456",
+            "renderJobId": "render_789",
+            "selectedClipCount": 2,
+            "candidateClipCount": 3,
+            "templateId": "personal_highlight_v1",
+            "templateName": "Personal Highlight",
+            "slowMotionMomentCount": 1,
+            "outputDurationSeconds": 15.4,
+            "outputResolution": "720p",
+            "aspectRatio": "9:16",
+            "watermarkIncluded": true,
+            "outroIncluded": true,
+            "storageExpiresAt": "2026-05-31T00:00:00Z",
+            "planTier": "free",
+            "priorityQueue": false,
+            "summaryRows": [
+              "Selected 2 clips from 3 candidates.",
+              "Applied Personal Highlight template."
+            ]
+          }
+        }
+        """
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let response = try decoder.decode(CloudEditRenderStatusResponse.self, from: Data(payload.utf8))
+
+        #expect(response.status == .rendered)
+        #expect(response.workTimeline?.steps.first?.stepId == "selecting_best_clips")
+        #expect(response.workTimeline?.steps.first?.status == .complete)
+        #expect(response.workReceipt?.selectedClipCount == 2)
+        #expect(response.workReceipt?.templateName == "Personal Highlight")
+        #expect(response.workReceipt?.summaryRows.count == 2)
+    }
+
     @Test func testAudioFallbackSplitsContinuousSignalIntoBoundedClips() async {
         let service = await VideoAnalysisService()
         let peaks = [Double](repeating: 1.0, count: 600)

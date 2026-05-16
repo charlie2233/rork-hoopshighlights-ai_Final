@@ -10,7 +10,7 @@ from .backend_imports import ensure_ios_backend_on_path
 
 ensure_ios_backend_on_path()
 
-from app.editing import CreateEditJobRequest, EditCandidateClip, EditPlan, EditPlanValidationIssue, EditRevisionResponse, PlanTier, policy_summary_for_client  # noqa: E402
+from app.editing import CreateEditJobRequest, EditCandidateClip, EditPlan, EditPlanValidationIssue, EditRevisionResponse, PlanTier, get_plan_tier_policy, get_template_pack, policy_summary_for_client  # noqa: E402
 
 
 class APIModel(BaseModel):
@@ -18,6 +18,7 @@ class APIModel(BaseModel):
 
 
 RenderStatus = Literal["render_requested", "created", "queued", "rendering", "rendered", "failed", "failed_timeout", "cancelled"]
+AIWorkStepStatus = Literal["pending", "running", "complete", "failed"]
 
 
 class CreateRenderJobRequest(APIModel):
@@ -45,6 +46,44 @@ class StartEditRevisionRenderRequest(APIModel):
     idempotencyKey: Optional[str] = Field(default=None, min_length=8, max_length=160)
 
 
+class AIWorkStep(APIModel):
+    stepId: str
+    title: str
+    detail: Optional[str] = None
+    status: AIWorkStepStatus
+    startedAt: Optional[datetime] = None
+    completedAt: Optional[datetime] = None
+
+
+class AIWorkTimeline(APIModel):
+    editJobId: str
+    revisionId: Optional[str] = None
+    renderJobId: Optional[str] = None
+    status: RenderStatus
+    generatedAt: datetime
+    steps: List[AIWorkStep]
+
+
+class AIWorkReceipt(APIModel):
+    editJobId: str
+    revisionId: Optional[str] = None
+    renderJobId: Optional[str] = None
+    selectedClipCount: Optional[int] = None
+    candidateClipCount: Optional[int] = None
+    templateId: Optional[str] = None
+    templateName: Optional[str] = None
+    slowMotionMomentCount: int = 0
+    outputDurationSeconds: Optional[float] = None
+    outputResolution: Optional[str] = None
+    aspectRatio: Optional[str] = None
+    watermarkIncluded: Optional[bool] = None
+    outroIncluded: Optional[bool] = None
+    storageExpiresAt: Optional[datetime] = None
+    planTier: PlanTier = "free"
+    priorityQueue: bool = False
+    summaryRows: List[str] = Field(default_factory=list)
+
+
 class RenderJobResponse(APIModel):
     editJobId: str
     revisionId: Optional[str] = None
@@ -65,6 +104,8 @@ class RenderJobResponse(APIModel):
     retryCount: int = 0
     outputBytes: Optional[int] = None
     retentionMetadata: Optional[Dict[str, Any]] = None
+    workTimeline: Optional[AIWorkTimeline] = None
+    workReceipt: Optional[AIWorkReceipt] = None
 
 
 class DownloadUrlResponse(APIModel):
@@ -121,7 +162,11 @@ class StoredRenderJob:
     lease_expires_at: Optional[datetime] = None
     heartbeat_at: Optional[datetime] = None
 
-    def to_response(self) -> RenderJobResponse:
+    def to_response(
+        self,
+        work_timeline: Optional[AIWorkTimeline] = None,
+        work_receipt: Optional[AIWorkReceipt] = None,
+    ) -> RenderJobResponse:
         return RenderJobResponse(
             editJobId=self.edit_job_id,
             revisionId=self.revision_id,
@@ -142,6 +187,8 @@ class StoredRenderJob:
             retryCount=self.retry_count,
             outputBytes=self.output_bytes,
             retentionMetadata=self.retention_metadata,
+            workTimeline=work_timeline,
+            workReceipt=work_receipt,
         )
 
     def to_durable_dict(self) -> Dict[str, Any]:
@@ -231,6 +278,202 @@ def parse_datetime(value: object) -> Optional[datetime]:
     if parsed.tzinfo is None:
         return parsed.replace(tzinfo=timezone.utc)
     return parsed
+
+
+def _clip_count_label(count: Optional[int], singular: str, plural: str) -> Optional[str]:
+    if count is None:
+        return None
+    return f"{count} {singular if count == 1 else plural}"
+
+
+def _slow_motion_moment_count(edit_plan: Optional[EditPlan]) -> int:
+    if edit_plan is None:
+        return 0
+    return sum(1 for clip in edit_plan.clips for effect in clip.effects if effect.type == "slow_motion")
+
+
+def _duplicate_group_count(source_clips: Optional[List[EditCandidateClip]]) -> Optional[int]:
+    if source_clips is None:
+        return None
+    return len({clip.duplicateGroup for clip in source_clips if clip.duplicateGroup})
+
+
+def _step_status_for_render(render_status: RenderStatus) -> AIWorkStepStatus:
+    if render_status == "rendered":
+        return "complete"
+    if render_status in {"failed", "failed_timeout", "cancelled"}:
+        return "failed"
+    return "running"
+
+
+def _finalize_status_for_render(render_job: StoredRenderJob) -> AIWorkStepStatus:
+    if render_job.status == "rendered" and render_job.output_object_key:
+        return "complete"
+    if render_job.status in {"failed", "failed_timeout", "cancelled"}:
+        return "failed"
+    return "pending"
+
+
+def build_ai_work_timeline(
+    render_job: StoredRenderJob,
+    edit_plan: Optional[EditPlan] = None,
+    source_clips: Optional[List[EditCandidateClip]] = None,
+) -> AIWorkTimeline:
+    candidate_count = len(source_clips) if source_clips is not None else None
+    selected_count = len(edit_plan.clips) if edit_plan is not None else None
+    duplicate_groups = _duplicate_group_count(source_clips)
+    slow_motion_count = _slow_motion_moment_count(edit_plan)
+    template = get_template_pack(edit_plan.templateId if edit_plan is not None else render_job.template_id)
+    plan_ready_status: AIWorkStepStatus = "complete" if edit_plan is not None else ("failed" if render_job.status in {"failed", "failed_timeout", "cancelled"} else "pending")
+    branding_detail = None
+    if edit_plan is not None:
+        branding_parts = []
+        branding_parts.append("watermark included" if edit_plan.watermark.enabled else "watermark not included")
+        branding_parts.append("outro included" if edit_plan.outro.enabled else "outro not included")
+        branding_detail = ", ".join(branding_parts).capitalize() + "."
+
+    steps = [
+        AIWorkStep(
+            stepId="video_uploaded",
+            title="Uploaded game video",
+            detail="Cloud source is ready for editing." if render_job.source_object_key else None,
+            status="complete" if render_job.source_object_key else plan_ready_status,
+            startedAt=render_job.created_at,
+            completedAt=render_job.created_at if render_job.source_object_key else None,
+        ),
+        AIWorkStep(
+            stepId="finding_highlights",
+            title="Finding your best plays",
+            detail=f"Reviewed {_clip_count_label(candidate_count, 'candidate clip', 'candidate clips')}." if candidate_count is not None else None,
+            status=plan_ready_status,
+            startedAt=render_job.created_at if edit_plan is not None else None,
+            completedAt=render_job.created_at if edit_plan is not None else None,
+        ),
+        AIWorkStep(
+            stepId="selecting_best_clips",
+            title="Selecting strongest clips",
+            detail=f"Selected {selected_count} clips from {candidate_count} candidates." if selected_count is not None and candidate_count is not None else (_clip_count_label(selected_count, "selected clip", "selected clips") if selected_count is not None else None),
+            status=plan_ready_status,
+            startedAt=render_job.created_at if edit_plan is not None else None,
+            completedAt=render_job.created_at if edit_plan is not None else None,
+        ),
+        AIWorkStep(
+            stepId="removing_duplicates",
+            title="Checking duplicate plays",
+            detail=f"Checked {duplicate_groups} duplicate groups." if duplicate_groups is not None else None,
+            status=plan_ready_status,
+            startedAt=render_job.created_at if edit_plan is not None else None,
+            completedAt=render_job.created_at if edit_plan is not None else None,
+        ),
+        AIWorkStep(
+            stepId="applying_template",
+            title=f"Applying {template.displayName} style",
+            detail=f"Template: {template.displayName}.",
+            status=plan_ready_status,
+            startedAt=render_job.created_at if edit_plan is not None else None,
+            completedAt=render_job.created_at if edit_plan is not None else None,
+        ),
+        AIWorkStep(
+            stepId="adding_slow_motion",
+            title="Adding slow motion",
+            detail=f"Slow-motion moments: {slow_motion_count}.",
+            status=plan_ready_status,
+            startedAt=render_job.created_at if edit_plan is not None else None,
+            completedAt=render_job.created_at if edit_plan is not None else None,
+        ),
+        AIWorkStep(
+            stepId="adding_watermark_outro",
+            title="Adding HoopClips branding",
+            detail=branding_detail,
+            status=plan_ready_status,
+            startedAt=render_job.created_at if edit_plan is not None else None,
+            completedAt=render_job.created_at if edit_plan is not None else None,
+        ),
+        AIWorkStep(
+            stepId="rendering_mp4",
+            title="Rendering final MP4",
+            detail="Cloud renderer is creating the MP4.",
+            status=_step_status_for_render(render_job.status),
+            startedAt=render_job.started_at or render_job.created_at,
+            completedAt=render_job.completed_at if render_job.status == "rendered" else None,
+        ),
+        AIWorkStep(
+            stepId="finalizing_download",
+            title="Finalizing your MP4",
+            detail="Final MP4 is stored for preview and sharing." if render_job.output_object_key else None,
+            status=_finalize_status_for_render(render_job),
+            startedAt=render_job.completed_at if render_job.output_object_key else None,
+            completedAt=render_job.completed_at if render_job.output_object_key else None,
+        ),
+    ]
+    return AIWorkTimeline(
+        editJobId=render_job.edit_job_id,
+        revisionId=render_job.revision_id,
+        renderJobId=render_job.render_job_id,
+        status=render_job.status,
+        generatedAt=now_utc(),
+        steps=steps,
+    )
+
+
+def build_ai_work_receipt(
+    render_job: StoredRenderJob,
+    edit_plan: Optional[EditPlan] = None,
+    source_clips: Optional[List[EditCandidateClip]] = None,
+) -> AIWorkReceipt:
+    candidate_count = len(source_clips) if source_clips is not None else None
+    selected_count = len(edit_plan.clips) if edit_plan is not None else None
+    slow_motion_count = _slow_motion_moment_count(edit_plan)
+    template = get_template_pack(edit_plan.templateId if edit_plan is not None else render_job.template_id)
+    policy = get_plan_tier_policy(render_job.plan_tier)
+    storage_expires_at = parse_datetime(render_job.retention_metadata.get("expiresAt") if render_job.retention_metadata else None) or render_job.expires_at
+    watermark_included = edit_plan.watermark.enabled if edit_plan is not None else None
+    outro_included = edit_plan.outro.enabled if edit_plan is not None else None
+    summary_rows: List[str] = []
+    if selected_count is not None and candidate_count is not None:
+        summary_rows.append(f"Selected {selected_count} clips from {candidate_count} candidates.")
+    elif selected_count is not None:
+        summary_rows.append(f"Selected {selected_count} clips.")
+    summary_rows.append(f"Applied {template.displayName} template.")
+    summary_rows.append(f"Added {slow_motion_count} slow-motion moments.")
+    if render_job.duration_seconds is not None:
+        summary_rows.append(f"Rendered {round(render_job.duration_seconds, 1)}s MP4.")
+    summary_rows.append(f"Export limit: {policy.maxOutputResolution}.")
+    if watermark_included is not None or outro_included is not None:
+        summary_rows.append(
+            "Branding: "
+            + ", ".join(
+                part
+                for part in [
+                    "watermark included" if watermark_included else ("watermark removed" if watermark_included is not None else None),
+                    "outro included" if outro_included else ("outro removed" if outro_included is not None else None),
+                ]
+                if part
+            )
+            + "."
+        )
+    if storage_expires_at is not None:
+        summary_rows.append(f"Stored until {storage_expires_at.isoformat()}.")
+
+    return AIWorkReceipt(
+        editJobId=render_job.edit_job_id,
+        revisionId=render_job.revision_id,
+        renderJobId=render_job.render_job_id,
+        selectedClipCount=selected_count,
+        candidateClipCount=candidate_count,
+        templateId=template.templateId,
+        templateName=template.displayName,
+        slowMotionMomentCount=slow_motion_count,
+        outputDurationSeconds=render_job.duration_seconds,
+        outputResolution=policy.maxOutputResolution,
+        aspectRatio=render_job.aspect_ratio,
+        watermarkIncluded=watermark_included,
+        outroIncluded=outro_included,
+        storageExpiresAt=storage_expires_at,
+        planTier=render_job.plan_tier,
+        priorityQueue=render_job.plan_tier in {"pro", "internal", "dev"},
+        summaryRows=summary_rows,
+    )
 
 
 def render_log_payload(render_job: StoredRenderJob, status: str, extra: Dict[str, Any]) -> str:

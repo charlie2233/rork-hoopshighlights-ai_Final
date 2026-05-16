@@ -83,9 +83,14 @@ struct AIEditView: View {
             formatPicker
             durationPicker
             statusCard
+            aiWorkTimelineCard
 
             if let previewPlayer {
                 previewCard(player: previewPlayer)
+            }
+
+            if let receipt = activeWorkReceipt {
+                aiWorkReceiptCard(receipt)
             }
 
             if editPlan != nil, downloadResponse != nil || revisionResponse != nil {
@@ -107,7 +112,7 @@ struct AIEditView: View {
                 .foregroundStyle(.white)
                 .accessibilityIdentifier("export.aiEdit.section")
 
-            Text("Hoopclips uploads the selected source to cloud services, creates the edit there, and stores the finished MP4 temporarily for preview and sharing.")
+            Text("HoopClips edits in the cloud: it finds your best plays, builds the edit plan, renders the MP4, and stores the result temporarily for preview and sharing.")
                 .font(.subheadline)
                 .foregroundStyle(AppTheme.subtleText)
 
@@ -121,6 +126,12 @@ struct AIEditView: View {
                 .font(.caption2)
                 .foregroundStyle(AppTheme.subtleText.opacity(0.92))
                 .accessibilityIdentifier("export.aiEdit.policy.limitLabel")
+
+            Text("You can leave the app - HoopClips will keep editing in the cloud. Come back anytime to preview your finished reel.")
+                .font(.caption.bold())
+                .foregroundStyle(AppTheme.warningYellow)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("export.aiEdit.backgroundRender.message")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
@@ -317,6 +328,92 @@ struct AIEditView: View {
         .accessibilityValue(phase.displayLabel)
     }
 
+    private var aiWorkTimelineCard: some View {
+        let timeline = activeWorkTimeline
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Label("AI Work Timeline", systemImage: "sparkles.rectangle.stack.fill")
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                Spacer()
+                if activePolicy.planTier != .free {
+                    Text("Priority")
+                        .font(.caption2.bold())
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(AppTheme.successGreen.opacity(0.7), in: .capsule)
+                }
+            }
+
+            Text("Each step reflects real clip, plan, template, and render status from the cloud edit pipeline.")
+                .font(.caption)
+                .foregroundStyle(AppTheme.subtleText)
+                .fixedSize(horizontal: false, vertical: true)
+
+            VStack(alignment: .leading, spacing: 9) {
+                ForEach(timeline.steps) { step in
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: workStepIcon(for: step.status))
+                            .font(.caption.bold())
+                            .foregroundStyle(workStepColor(for: step.status))
+                            .frame(width: 18)
+                            .padding(.top, 2)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(step.title)
+                                .font(.caption.bold())
+                                .foregroundStyle(.white)
+                            if let detail = step.detail, !detail.isEmpty {
+                                Text(detail)
+                                    .font(.caption2)
+                                    .foregroundStyle(AppTheme.subtleText)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("export.aiEdit.timeline.\(step.stepId)")
+                }
+            }
+        }
+        .padding(14)
+        .rorkCard(cornerRadius: 16, stroke: AppTheme.neonPurple.opacity(0.16), glow: AppTheme.neonPurple, glowOpacity: 0.05)
+        .accessibilityIdentifier("export.aiEdit.timeline")
+    }
+
+    private func aiWorkReceiptCard(_ receipt: CloudEditWorkReceipt) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Label("AI Work Receipt", systemImage: "checklist.checked")
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                Spacer()
+                if receipt.priorityQueue {
+                    Text("Pro/Internal")
+                        .font(.caption2.bold())
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(AppTheme.successGreen.opacity(0.7), in: .capsule)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 7) {
+                ForEach(receiptRows(for: receipt), id: \.self) { row in
+                    Label(row, systemImage: "checkmark.circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.subtleText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+        .padding(14)
+        .rorkCard(cornerRadius: 16, stroke: AppTheme.successGreen.opacity(0.2), glow: AppTheme.successGreen, glowOpacity: 0.05)
+        .accessibilityIdentifier("export.aiEdit.receipt")
+    }
+
     private func previewCard(player: AVPlayer) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Preview")
@@ -465,6 +562,239 @@ struct AIEditView: View {
         }
     }
 
+    private var activeWorkTimeline: CloudEditWorkTimeline {
+        if let serverTimeline = renderStatus?.workTimeline {
+            return serverTimeline
+        }
+
+        let planReady = editPlan != nil
+        let renderJobID = renderStatus?.renderJobId
+        let editJobID = editJob?.editJobId ?? editPlan?.editJobId ?? "pending"
+        let failed = phase == .failed || phase == .failedTimeout || phase == .cancelled
+        let templateName = selectedPreset.title
+        let selectedClipCount = editPlan?.clips.count
+        let candidateClipCount = viewModel.keptClips.count
+        let slowMotionCount = editPlan.map(slowMotionMomentCount(in:)) ?? 0
+        let brandingDetail = editPlan.map { plan in
+            "\(plan.watermark.enabled ? "Watermark included" : "Watermark not included"), \(plan.outro.enabled ? "outro included" : "outro not included")."
+        }
+
+        return CloudEditWorkTimeline(
+            editJobId: editJobID,
+            revisionId: revisionResponse?.revisionId,
+            renderJobId: renderJobID,
+            status: phase,
+            generatedAt: nil,
+            steps: [
+                CloudEditWorkStep(
+                    stepId: "video_uploaded",
+                    title: "Uploaded game video",
+                    detail: viewModel.cloudEditSourceObjectKey == nil ? nil : "Cloud source is ready for editing.",
+                    status: viewModel.cloudEditSourceObjectKey == nil ? (failed ? .failed : .pending) : .complete,
+                    startedAt: nil,
+                    completedAt: nil
+                ),
+                CloudEditWorkStep(
+                    stepId: "finding_highlights",
+                    title: "Finding your best plays",
+                    detail: "Reviewed \(candidateClipCount) candidate clips.",
+                    status: candidateClipCount > 0 ? .complete : (isWorking ? .running : .pending),
+                    startedAt: nil,
+                    completedAt: nil
+                ),
+                CloudEditWorkStep(
+                    stepId: "selecting_best_clips",
+                    title: "Selecting strongest clips",
+                    detail: selectedClipCount.map { "Selected \($0) clips from \(candidateClipCount) candidates." },
+                    status: planReady ? .complete : (isWorking ? .running : (failed ? .failed : .pending)),
+                    startedAt: nil,
+                    completedAt: nil
+                ),
+                CloudEditWorkStep(
+                    stepId: "removing_duplicates",
+                    title: "Checking duplicate plays",
+                    detail: "Kept clips are reviewed before the edit plan is rendered.",
+                    status: planReady ? .complete : (failed ? .failed : .pending),
+                    startedAt: nil,
+                    completedAt: nil
+                ),
+                CloudEditWorkStep(
+                    stepId: "applying_template",
+                    title: "Applying \(templateName) style",
+                    detail: "Template: \(templateName).",
+                    status: planReady ? .complete : (failed ? .failed : .pending),
+                    startedAt: nil,
+                    completedAt: nil
+                ),
+                CloudEditWorkStep(
+                    stepId: "adding_slow_motion",
+                    title: "Adding slow motion",
+                    detail: "Slow-motion moments: \(slowMotionCount).",
+                    status: planReady ? .complete : (failed ? .failed : .pending),
+                    startedAt: nil,
+                    completedAt: nil
+                ),
+                CloudEditWorkStep(
+                    stepId: "adding_watermark_outro",
+                    title: "Adding HoopClips branding",
+                    detail: brandingDetail,
+                    status: planReady ? .complete : (failed ? .failed : .pending),
+                    startedAt: nil,
+                    completedAt: nil
+                ),
+                CloudEditWorkStep(
+                    stepId: "rendering_mp4",
+                    title: "Rendering final MP4",
+                    detail: phase == .rendered ? "Cloud renderer finished the MP4." : "Cloud renderer is creating the MP4.",
+                    status: renderingStepStatus,
+                    startedAt: nil,
+                    completedAt: nil
+                ),
+                CloudEditWorkStep(
+                    stepId: "finalizing_download",
+                    title: "Finalizing your MP4",
+                    detail: downloadResponse == nil ? nil : "Download is ready for preview and sharing.",
+                    status: finalizingStepStatus,
+                    startedAt: nil,
+                    completedAt: nil
+                ),
+            ]
+        )
+    }
+
+    private var activeWorkReceipt: CloudEditWorkReceipt? {
+        if let serverReceipt = renderStatus?.workReceipt {
+            return serverReceipt
+        }
+        guard phase == .rendered || downloadResponse != nil else { return nil }
+        guard let editPlan else { return nil }
+        let policy = activePolicy
+        let slowMotionCount = slowMotionMomentCount(in: editPlan)
+        let outputDuration = renderStatus?.durationSeconds
+        let storageExpiresAt = renderStatus?.retentionMetadata?.expiresAt
+        let selectedClipCount = editPlan.clips.count
+        let candidateClipCount = viewModel.keptClips.count
+        var rows = [
+            "Selected \(selectedClipCount) clips from \(candidateClipCount) candidates.",
+            "Applied \(selectedPreset.title) template.",
+            "Added \(slowMotionCount) slow-motion moments.",
+            "Export limit: \(policy.maxOutputResolution).",
+            "Branding: \(editPlan.watermark.enabled ? "watermark included" : "watermark removed"), \(editPlan.outro.enabled ? "outro included" : "outro removed").",
+        ]
+        if let outputDuration {
+            rows.insert("Rendered \(Clip.formatTime(outputDuration)) MP4.", at: 3)
+        }
+        if let storageExpiresAt {
+            rows.append("Stored until \(storageExpiresAt).")
+        }
+
+        return CloudEditWorkReceipt(
+            editJobId: editJob?.editJobId ?? editPlan.editJobId,
+            revisionId: revisionResponse?.revisionId,
+            renderJobId: renderStatus?.renderJobId,
+            selectedClipCount: selectedClipCount,
+            candidateClipCount: candidateClipCount,
+            templateId: editPlan.templateId,
+            templateName: selectedPreset.title,
+            slowMotionMomentCount: slowMotionCount,
+            outputDurationSeconds: outputDuration,
+            outputResolution: policy.maxOutputResolution,
+            aspectRatio: editPlan.aspectRatio,
+            watermarkIncluded: editPlan.watermark.enabled,
+            outroIncluded: editPlan.outro.enabled,
+            storageExpiresAt: storageExpiresAt,
+            planTier: policy.planTier,
+            priorityQueue: policy.planTier != .free,
+            summaryRows: rows
+        )
+    }
+
+    private var renderingStepStatus: CloudEditWorkStepStatus {
+        switch phase {
+        case .rendered:
+            return .complete
+        case .failed, .failedTimeout, .cancelled:
+            return .failed
+        case .renderRequested, .created, .queued, .rendering:
+            return .running
+        case .planning, .planReady:
+            return .pending
+        }
+    }
+
+    private var finalizingStepStatus: CloudEditWorkStepStatus {
+        if downloadResponse != nil {
+            return .complete
+        }
+        switch phase {
+        case .rendered:
+            return .running
+        case .failed, .failedTimeout, .cancelled:
+            return .failed
+        case .renderRequested, .planning, .planReady, .created, .queued, .rendering:
+            return .pending
+        }
+    }
+
+    private func slowMotionMomentCount(in plan: CloudEditPlanSummary) -> Int {
+        plan.clips.reduce(0) { count, clip in
+            count + clip.effects.filter { $0.type == "slow_motion" }.count
+        }
+    }
+
+    private func workStepIcon(for status: CloudEditWorkStepStatus) -> String {
+        switch status {
+        case .pending:
+            return "circle"
+        case .running:
+            return "sparkles"
+        case .complete:
+            return "checkmark.circle.fill"
+        case .failed:
+            return "xmark.octagon.fill"
+        }
+    }
+
+    private func workStepColor(for status: CloudEditWorkStepStatus) -> Color {
+        switch status {
+        case .pending:
+            return AppTheme.subtleText.opacity(0.55)
+        case .running:
+            return AppTheme.warningYellow
+        case .complete:
+            return AppTheme.successGreen
+        case .failed:
+            return AppTheme.dangerRed
+        }
+    }
+
+    private func receiptRows(for receipt: CloudEditWorkReceipt) -> [String] {
+        if !receipt.summaryRows.isEmpty {
+            return receipt.summaryRows
+        }
+        var rows: [String] = []
+        if let selected = receipt.selectedClipCount, let candidates = receipt.candidateClipCount {
+            rows.append("Selected \(selected) clips from \(candidates) candidates.")
+        }
+        if let templateName = receipt.templateName {
+            rows.append("Applied \(templateName) template.")
+        }
+        rows.append("Added \(receipt.slowMotionMomentCount) slow-motion moments.")
+        if let duration = receipt.outputDurationSeconds {
+            rows.append("Rendered \(Clip.formatTime(duration)) MP4.")
+        }
+        if let outputResolution = receipt.outputResolution {
+            rows.append("Export limit: \(outputResolution).")
+        }
+        if let watermark = receipt.watermarkIncluded, let outro = receipt.outroIncluded {
+            rows.append("Branding: \(watermark ? "watermark included" : "watermark removed"), \(outro ? "outro included" : "outro removed").")
+        }
+        if let storageExpiresAt = receipt.storageExpiresAt {
+            rows.append("Stored until \(storageExpiresAt).")
+        }
+        return rows
+    }
+
     private var revisionCommands: [CloudEditRevisionCommand] {
         [
             .makeShorter,
@@ -513,13 +843,13 @@ struct AIEditView: View {
     private var renderStateGuidance: String {
         switch phase {
         case .planning:
-            return "Ready to request a cloud-rendered AI edit."
+            return "Ready to ask HoopClips to build your AI edit in the cloud."
         case .planReady:
-            return "Plan is ready. Hoopclips will render the MP4 in the cloud."
+            return "HoopClips picked clips and applied your style. Next step is the cloud MP4 render."
         case .renderRequested, .created, .queued:
-            return "Your highlight reel is queued. Please keep Hoopclips open."
+            return "Your highlight reel is queued. You can leave the app - HoopClips keeps editing in the cloud."
         case .rendering:
-            return "Rendering your highlight reel in the cloud."
+            return "Rendering your highlight reel in the cloud. Come back anytime to check the finished MP4."
         case .rendered:
             return "Your MP4 is ready to preview and share."
         case .failed:
@@ -608,14 +938,14 @@ struct AIEditView: View {
         pendingRevisionCommand = nil
         localShareURL = nil
         phase = .planning
-        HoopsAccessibility.announce("Creating cloud AI edit plan.")
+        HoopsAccessibility.announce("HoopClips is finding your best plays.")
         defer { isWorking = false }
 
         do {
             #if DEBUG
             if Self.shouldSimulateRenderFailure {
                 phase = .rendering
-                HoopsAccessibility.announce("Rendering video.")
+                HoopsAccessibility.announce("Rendering your highlight reel in the cloud.")
                 try? await Task.sleep(nanoseconds: 350_000_000)
                 throw CloudEditError.backend(
                     code: "ui_smoke_render_failed",
@@ -647,7 +977,7 @@ struct AIEditView: View {
                 templateID: planResponse.plan.templateId,
                 planTier: request.planTier.rawValue
             )
-            HoopsAccessibility.announce("Cloud AI edit plan ready. Rendering video.")
+            HoopsAccessibility.announce("HoopClips built the edit plan and is rendering your highlight reel.")
 
             guard let sourceObjectKey = viewModel.cloudEditSourceObjectKey else {
                 throw CloudEditError.missingSourceObject
@@ -696,7 +1026,7 @@ struct AIEditView: View {
                     planTier: request.planTier.rawValue
                 )
             }
-            HoopsAccessibility.announce("Cloud AI edit rendered.")
+            HoopsAccessibility.announce("Your HoopClips AI edit is ready.")
         } catch {
             phase = .failed
             errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
@@ -714,7 +1044,7 @@ struct AIEditView: View {
         isWorking = true
         errorMessage = nil
         phase = .planning
-        HoopsAccessibility.announce("Revising cloud AI edit.")
+        HoopsAccessibility.announce("HoopClips is revising your AI edit.")
         defer { isWorking = false }
 
         do {
@@ -738,7 +1068,7 @@ struct AIEditView: View {
                 templateID: revision.revisedPlan.templateId,
                 planTier: policySummary?.planTier.rawValue
             )
-            HoopsAccessibility.announce("Revision ready. Render revision to create a new video.")
+            HoopsAccessibility.announce("Revision ready. Render it to create a new MP4.")
         } catch {
             phase = .failed
             errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
@@ -758,7 +1088,7 @@ struct AIEditView: View {
         downloadResponse = nil
         localShareURL = nil
         phase = .renderRequested
-        HoopsAccessibility.announce("Rendering revised cloud AI edit.")
+        HoopsAccessibility.announce("Rendering your revised highlight reel in the cloud.")
         defer { isWorking = false }
 
         do {
@@ -804,7 +1134,7 @@ struct AIEditView: View {
                     planTier: policySummary?.planTier.rawValue
                 )
             }
-            HoopsAccessibility.announce("Revised cloud AI edit rendered.")
+            HoopsAccessibility.announce("Your revised HoopClips AI edit is ready.")
         } catch {
             phase = .failed
             errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription

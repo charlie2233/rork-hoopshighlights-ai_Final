@@ -13,6 +13,8 @@ from fastapi.responses import FileResponse, JSONResponse
 from .backend_imports import ensure_ios_backend_on_path
 from .config import EditingSettings, get_settings
 from .models import (
+    AIWorkReceipt,
+    AIWorkTimeline,
     CreateEditJobRequest,
     CreateRenderJobRequest,
     DownloadUrlResponse,
@@ -22,6 +24,8 @@ from .models import (
     StartEditJobRenderRequest,
     StartEditRevisionRenderRequest,
     StoredRenderJob,
+    build_ai_work_receipt,
+    build_ai_work_timeline,
     now_utc,
     parse_datetime,
     render_log_payload,
@@ -315,6 +319,52 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
         }:
             emit_event("policy.failed", failureReason=error.error_code, **fields)
 
+    def request_for_render_job(job: StoredRenderJob) -> Optional[CreateRenderJobRequest]:
+        request = render_requests.get(job.render_job_id)
+        if request is not None:
+            return request
+        edit_job = load_edit_job(job.edit_job_id)
+        if edit_job is None:
+            return None
+        if not edit_job.request.sourceObjectKey:
+            return None
+        plan = edit_job.plan
+        if job.revision_id:
+            revision = load_revision(job.edit_job_id, job.revision_id)
+            if revision is not None:
+                plan = revision.revisedPlan
+        return CreateRenderJobRequest(
+            editJobId=job.edit_job_id,
+            revisionId=job.revision_id,
+            installId=job.install_id,
+            sourceObjectKey=job.source_object_key or edit_job.request.sourceObjectKey,
+            planTier=job.plan_tier,
+            editPlan=plan,
+            sourceClips=edit_job.request.clips,
+            idempotencyKey=job.idempotency_key,
+        )
+
+    def work_timeline_for_render_job(job: StoredRenderJob, request: Optional[CreateRenderJobRequest] = None) -> AIWorkTimeline:
+        resolved_request = request or request_for_render_job(job)
+        return build_ai_work_timeline(
+            job,
+            resolved_request.editPlan if resolved_request is not None else None,
+            resolved_request.sourceClips if resolved_request is not None else None,
+        )
+
+    def work_receipt_for_render_job(job: StoredRenderJob, request: Optional[CreateRenderJobRequest] = None) -> AIWorkReceipt:
+        resolved_request = request or request_for_render_job(job)
+        return build_ai_work_receipt(
+            job,
+            resolved_request.editPlan if resolved_request is not None else None,
+            resolved_request.sourceClips if resolved_request is not None else None,
+        )
+
+    def render_job_response(job: StoredRenderJob, request: Optional[CreateRenderJobRequest] = None) -> RenderJobResponse:
+        timeline = work_timeline_for_render_job(job, request)
+        receipt = work_receipt_for_render_job(job, request) if job.status == "rendered" else None
+        return job.to_response(work_timeline=timeline, work_receipt=receipt)
+
     def stored_edit_job_event_fields(edit_job_id: str, **extra_fields: object) -> dict[str, object]:
         job = load_edit_job(edit_job_id)
         fields: dict[str, object] = {"editJobId": edit_job_id, **extra_fields}
@@ -440,6 +490,7 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
         else:
             persist_job(job)
         try:
+            work_timeline = work_timeline_for_render_job(job, request)
             storage.put_json(
                 job.render_log_object_key,
                 render_log_payload(
@@ -451,6 +502,7 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
                         "policy": policy_summary_for_client(job.plan_tier),
                         "retentionMetadata": job.retention_metadata,
                         "validationErrors": [error.model_dump() for error in job.validation_errors],
+                        "workTimeline": work_timeline.model_dump(mode="json"),
                     },
                 ),
             )
@@ -502,6 +554,8 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
                 job.expires_at = parse_datetime(retention_metadata.get("expiresAt"))
                 job.heartbeat_at = now_utc()
                 job.updated_at = now_utc()
+                work_timeline = work_timeline_for_render_job(job, request)
+                work_receipt = work_receipt_for_render_job(job, request)
                 storage.put_json(
                     log_key,
                     render_log_payload(
@@ -517,6 +571,8 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
                             "policy": policy_summary_for_client(request.planTier),
                             "renderCost": estimate_render_cost(request.editPlan),
                             "retentionMetadata": retention_metadata,
+                            "workTimeline": work_timeline.model_dump(mode="json"),
+                            "workReceipt": work_receipt.model_dump(mode="json"),
                             "ffmpeg": result.render_log,
                         },
                     ),
@@ -585,12 +641,12 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
         if existing_by_key is not None:
             mark_stale_job(existing_by_key)
             if is_returnable_existing(existing_by_key):
-                return existing_by_key.to_response()
+                return render_job_response(existing_by_key, request)
         existing = load_latest_render_job(request.editJobId)
         if existing is not None and not force_new:
             mark_stale_job(existing)
             if is_returnable_existing(existing):
-                return existing.to_response()
+                return render_job_response(existing, request)
             if existing.status in {"failed", "failed_timeout"} and existing.retry_count >= get_plan_tier_policy(request.planTier).maxRenderRetries:
                 raise EditingServiceError(429, "render_retry_limit", "Render retry limit reached for this edit.")
 
@@ -618,7 +674,7 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             existing_after_reservation = load_idempotent_render_job(idempotency_key)
             if existing_after_reservation is not None:
                 mark_stale_job(existing_after_reservation)
-                return existing_after_reservation.to_response()
+                return render_job_response(existing_after_reservation, request)
             raise EditingServiceError(409, "render_idempotency_conflict", "A render already reserved this idempotency key.")
         persist_job(job)
         render_requests[render_job_id] = request
@@ -641,12 +697,12 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             )
         if validation_errors:
             mark_failed(job, "invalid_edit_plan", validation_errors)
-            return job.to_response()
+            return render_job_response(job, request)
 
         record_render_quota_usage(job)
         emit_event("render.requested", editJobId=job.edit_job_id, renderJobId=job.render_job_id, templateId=request.editPlan.templateId, planTier=request.planTier)
         background_tasks.add_task(run_render_job, render_job_id)
-        return job.to_response()
+        return render_job_response(job, request)
 
     @app.post("/v1/edit-jobs", responses={400: {"model": ErrorResponse}, 401: {"model": ErrorResponse}})
     async def create_edit_job(
@@ -857,7 +913,7 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             job = require_job(render_job_id)
             mark_stale_job(job)
             require_owner(job, installId or x_hoops_install_id)
-            return job.to_response()
+            return render_job_response(job)
         except EditingServiceError as error:
             return error_response(error)
 
@@ -876,7 +932,7 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
                 raise EditingServiceError(404, "render_job_not_found", "Render job was not found.")
             mark_stale_job(job)
             require_owner(job, installId or x_hoops_install_id)
-            return job.to_response()
+            return render_job_response(job)
         except EditingServiceError as error:
             return error_response(error)
 

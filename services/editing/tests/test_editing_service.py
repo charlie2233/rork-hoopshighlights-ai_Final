@@ -435,6 +435,30 @@ class EditingServiceTests(unittest.TestCase):
         self.assertEqual(render_payload["policy"]["maxDailyRenders"], 3)
         self.assertGreater(render_payload["outputBytes"], 0)
         self.assertEqual(render_payload["retentionMetadata"]["retentionClass"], "free_final_render")
+        self.assertEqual(render_payload["workTimeline"]["renderJobId"], render_job_id)
+        self.assertEqual(render_payload["workTimeline"]["status"], "rendered")
+        step_ids = [step["stepId"] for step in render_payload["workTimeline"]["steps"]]
+        self.assertEqual(
+            step_ids,
+            [
+                "video_uploaded",
+                "finding_highlights",
+                "selecting_best_clips",
+                "removing_duplicates",
+                "applying_template",
+                "adding_slow_motion",
+                "adding_watermark_outro",
+                "rendering_mp4",
+                "finalizing_download",
+            ],
+        )
+        self.assertTrue(all(step["status"] in {"complete", "running", "pending", "failed"} for step in render_payload["workTimeline"]["steps"]))
+        self.assertEqual(render_payload["workReceipt"]["selectedClipCount"], 2)
+        self.assertEqual(render_payload["workReceipt"]["candidateClipCount"], 2)
+        self.assertEqual(render_payload["workReceipt"]["templateId"], "personal_highlight_v1")
+        self.assertEqual(render_payload["workReceipt"]["outputResolution"], "720p")
+        self.assertTrue(render_payload["workReceipt"]["watermarkIncluded"])
+        self.assertTrue(render_payload["workReceipt"]["outroIncluded"])
         output_path = self._temp_dir / render_payload["outputObjectKey"]
         log_path = self._temp_dir / render_payload["renderLogObjectKey"]
         metadata_path = output_path.with_suffix(output_path.suffix + ".metadata.json")
@@ -452,6 +476,8 @@ class EditingServiceTests(unittest.TestCase):
         self.assertEqual(render_log["ffmpeg"]["templateSignature"]["effectProfile"], "hype_effects")
         self.assertEqual(render_log["ffmpeg"]["templateSignature"]["audioProfile"], "hype")
         self.assertEqual(render_log["ffmpeg"]["templateSignature"]["outroProfile"], "free_social_outro")
+        self.assertEqual(render_log["workTimeline"]["steps"][0]["stepId"], "video_uploaded")
+        self.assertEqual(render_log["workReceipt"]["candidateClipCount"], 2)
 
         download_response = client.get(f"/v1/render-jobs/{render_payload['renderJobId']}/download-url", params={"installId": "install-123"})
         self.assertEqual(download_response.status_code, 200)
