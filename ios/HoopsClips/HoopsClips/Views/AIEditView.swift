@@ -6,6 +6,20 @@ enum AIEditPresentation {
     case exportSection
 }
 
+private enum AIEditProInfoSheet: Identifiable {
+    case benefits
+    case template(CloudEditProTemplatePlaceholder)
+
+    var id: String {
+        switch self {
+        case .benefits:
+            return "benefits"
+        case .template(let template):
+            return template.id
+        }
+    }
+}
+
 struct AIEditView: View {
     @Bindable var viewModel: HighlightsViewModel
     let isProUser: Bool
@@ -29,8 +43,10 @@ struct AIEditView: View {
     @State private var isWorking = false
     @State private var isPreparingShare = false
     @State private var showingShareSheet = false
+    @State private var proInfoSheet: AIEditProInfoSheet?
 
     private let cloudEditService = CloudEditService()
+    private let proUXFlags = CloudEditProUXFlags.safeDefault
 
     var body: some View {
         Group {
@@ -46,10 +62,18 @@ struct AIEditView: View {
                 SystemShareSheet(
                     items: SystemShareSheet.videoItems(
                         for: localShareURL,
-                        title: "Hoopclips AI Edit"
+                        title: "HoopClips AI Edit"
                     ),
-                    subject: "Hoopclips AI Edit"
+                    subject: "HoopClips AI Edit"
                 )
+            }
+        }
+        .sheet(item: $proInfoSheet) { sheet in
+            switch sheet {
+            case .benefits:
+                proBenefitsSheet
+            case .template(let template):
+                proTemplateInfoSheet(for: template)
             }
         }
     }
@@ -79,6 +103,10 @@ struct AIEditView: View {
     private var workflowContent: some View {
         VStack(spacing: 18) {
             heroCard
+            planTierCard
+            if activePolicy.planTier.isFree, proUXFlags.proUpsellEnabled {
+                proValueCard
+            }
             stylePicker
             formatPicker
             durationPicker
@@ -138,6 +166,113 @@ struct AIEditView: View {
         .rorkCard(cornerRadius: 18, stroke: AppTheme.accentPurple.opacity(0.22), glow: AppTheme.neonPurple, glowOpacity: 0.10)
     }
 
+    private var planTierCard: some View {
+        let policy = activePolicy
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 10) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(policy.planTier.isFree ? AppTheme.cardBg.opacity(0.9) : AppTheme.successGreen.opacity(0.24))
+                        .frame(width: 44, height: 44)
+                    Image(systemName: policy.planTier.isFree ? "person.crop.circle.badge.clock" : "bolt.badge.checkmark.fill")
+                        .font(.headline)
+                        .foregroundStyle(policy.planTier.isFree ? AppTheme.warningYellow : AppTheme.successGreen)
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Current plan: \(policy.displayName)")
+                        .font(.headline)
+                        .foregroundStyle(.white)
+                        .accessibilityIdentifier("export.aiEdit.plan.current")
+                    Text(policy.queueTitle)
+                        .font(.caption.bold())
+                        .foregroundStyle(AppTheme.warningYellow)
+                        .accessibilityIdentifier("export.aiEdit.queue.label")
+                    Text(policy.queueDetail)
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.subtleText)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("export.aiEdit.queue.message")
+                }
+                Spacer()
+            }
+
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 8)], spacing: 8) {
+                ForEach(policy.planLimitRows, id: \.self) { row in
+                    Label(row, systemImage: "checkmark.circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.subtleText)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(10)
+                        .background(AppTheme.cardBg.opacity(0.62), in: .rect(cornerRadius: 12))
+                }
+            }
+
+            if proUXFlags.cloudLockerEnabled {
+                Label("My AI Edits: rendered videos expire in \(policy.renderRetentionDays) days on \(policy.displayName).", systemImage: "externaldrive.fill")
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.subtleText)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("export.aiEdit.cloudLocker.summary")
+            }
+        }
+        .padding(14)
+        .rorkCard(cornerRadius: 16, stroke: AppTheme.warningYellow.opacity(0.18), glow: AppTheme.warningYellow, glowOpacity: 0.04)
+        .accessibilityIdentifier("export.aiEdit.plan.card")
+    }
+
+    private var proValueCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 10) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(AppTheme.neonPurple.opacity(0.2))
+                        .frame(width: 44, height: 44)
+                    Image(systemName: "crown.fill")
+                        .font(.headline)
+                        .foregroundStyle(AppTheme.warningYellow)
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Upgrade to Pro")
+                        .font(.headline)
+                        .foregroundStyle(.white)
+                    Text("Priority rendering, cleaner exports, longer videos, and more revisions.")
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.subtleText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+            }
+
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 138), spacing: 8)], spacing: 8) {
+                ForEach(CloudEditPolicySummary.proValueRows, id: \.self) { row in
+                    Label(row, systemImage: "sparkles")
+                        .font(.caption2.bold())
+                        .foregroundStyle(.white.opacity(0.9))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 8)
+                        .background(AppTheme.accentPurple.opacity(0.22), in: .capsule)
+                }
+            }
+
+            Button {
+                proInfoSheet = .benefits
+            } label: {
+                Label("See Pro benefits", systemImage: "info.circle.fill")
+                    .font(.caption.bold())
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+            }
+            .buttonStyle(.bordered)
+            .tint(AppTheme.warningYellow)
+            .accessibilityIdentifier("export.aiEdit.pro.infoButton")
+        }
+        .padding(14)
+        .rorkCard(cornerRadius: 16, stroke: AppTheme.neonPurple.opacity(0.2), glow: AppTheme.neonPurple, glowOpacity: 0.06)
+        .accessibilityIdentifier("export.aiEdit.pro.valueCard")
+    }
+
     private var stylePicker: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Template Pack")
@@ -162,6 +297,12 @@ struct AIEditView: View {
                                 Text(preset.title)
                                     .font(.subheadline.bold())
                                     .foregroundStyle(.white)
+                                Text("Free")
+                                    .font(.caption2.bold())
+                                    .foregroundStyle(AppTheme.successGreen)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 3)
+                                    .background(AppTheme.successGreen.opacity(0.16), in: .capsule)
                                 if selectedPreset == preset {
                                     Image(systemName: "checkmark.seal.fill")
                                         .font(.caption)
@@ -194,6 +335,63 @@ struct AIEditView: View {
                 .accessibilityIdentifier(styleAccessibilityIdentifier(for: preset))
                 .accessibilityValue(selectedPreset == preset ? "Selected" : "Not selected")
                 .accessibilityHint("Selects the AI edit style.")
+            }
+
+            if proUXFlags.proTemplatesEnabled {
+                ForEach(CloudEditProTemplatePlaceholder.allCases) { template in
+                    Button {
+                        proInfoSheet = .template(template)
+                    } label: {
+                        HStack(alignment: .top, spacing: 12) {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(AppTheme.cardBg.opacity(0.62))
+                                    .frame(width: 44, height: 44)
+                                Image(systemName: template.icon)
+                                    .font(.headline)
+                                    .foregroundStyle(AppTheme.subtleText)
+                            }
+                            VStack(alignment: .leading, spacing: 3) {
+                                HStack(spacing: 6) {
+                                    Text(template.title)
+                                        .font(.subheadline.bold())
+                                        .foregroundStyle(.white)
+                                    Text("Pro")
+                                        .font(.caption2.bold())
+                                        .foregroundStyle(.white)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 3)
+                                        .background(AppTheme.warningYellow.opacity(0.5), in: .capsule)
+                                    Image(systemName: "lock.fill")
+                                        .font(.caption2.bold())
+                                        .foregroundStyle(AppTheme.warningYellow)
+                                }
+                                Text(template.subtitle)
+                                    .font(.caption.bold())
+                                    .foregroundStyle(AppTheme.warningYellow)
+                                Text(template.bestFor)
+                                    .font(.caption)
+                                    .foregroundStyle(AppTheme.subtleText)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                Text(template.styleSummary)
+                                    .font(.caption2)
+                                    .foregroundStyle(AppTheme.subtleText.opacity(0.92))
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            Spacer()
+                        }
+                        .padding(14)
+                        .background(AppTheme.cardBg.opacity(0.45), in: .rect(cornerRadius: 14))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 14)
+                                .stroke(AppTheme.warningYellow.opacity(0.18), lineWidth: 1)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("\(template.title), locked Pro template")
+                    .accessibilityIdentifier(template.accessibilityIdentifier)
+                    .accessibilityHint("Shows Pro information without changing the current render template.")
+                }
             }
         }
         .padding(14)
@@ -384,21 +582,26 @@ struct AIEditView: View {
     }
 
     private func aiWorkReceiptCard(_ receipt: CloudEditWorkReceipt) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+        let receiptPlanTier = receipt.planTier ?? activePolicy.planTier
+        let includesBranding = (receipt.watermarkIncluded ?? activePolicy.watermarkRequired) || (receipt.outroIncluded ?? activePolicy.outroRequired)
+        return VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Label("AI Work Receipt", systemImage: "checklist.checked")
+                Label(receiptPlanTier.isFree ? "AI Work Receipt" : "Pro Edit Breakdown", systemImage: "checklist.checked")
                     .font(.headline)
                     .foregroundStyle(.white)
                 Spacer()
-                if receipt.priorityQueue {
-                    Text("Pro/Internal")
-                        .font(.caption2.bold())
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(AppTheme.successGreen.opacity(0.7), in: .capsule)
-                }
+                Text(receiptPlanTier.isFree ? "Free" : "Pro/Internal")
+                    .font(.caption2.bold())
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background((receiptPlanTier.isFree ? AppTheme.cardBg : AppTheme.successGreen.opacity(0.7)), in: .capsule)
             }
+
+            Text(receiptPlanSummary(for: receipt))
+                .font(.caption)
+                .foregroundStyle(AppTheme.subtleText)
+                .fixedSize(horizontal: false, vertical: true)
 
             VStack(alignment: .leading, spacing: 7) {
                 ForEach(receiptRows(for: receipt), id: \.self) { row in
@@ -407,6 +610,27 @@ struct AIEditView: View {
                         .foregroundStyle(AppTheme.subtleText)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+            }
+
+            if receiptPlanTier.isFree, includesBranding, proUXFlags.proUpsellEnabled {
+                Button {
+                    proInfoSheet = .benefits
+                } label: {
+                    Label("Free export includes HoopClips branding. Upgrade later to remove watermark/outro.", systemImage: "crown.fill")
+                        .font(.caption2.bold())
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(10)
+                        .background(AppTheme.accentPurple.opacity(0.25), in: .rect(cornerRadius: 12))
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("export.aiEdit.receipt.proUpsell")
+            }
+
+            if !receiptPlanTier.isFree {
+                Label("Clean export: no required watermark/outro when policy allows.", systemImage: "sparkles")
+                    .font(.caption.bold())
+                    .foregroundStyle(AppTheme.successGreen)
             }
         }
         .padding(14)
@@ -433,6 +657,100 @@ struct AIEditView: View {
         }
         .padding(14)
         .rorkCard(cornerRadius: 16, stroke: AppTheme.softBorder, glowOpacity: 0.04)
+    }
+
+    private var proBenefitsSheet: some View {
+        NavigationStack {
+            ZStack {
+                HoopsMotionBackdrop(glowOpacity: 0.12)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        Label("HoopClips Pro", systemImage: "crown.fill")
+                            .font(.title2.bold())
+                            .foregroundStyle(.white)
+
+                        Text("Pro is planned as a faster, cleaner cloud editing tier. Payments are not implemented in this build, so this is an informational preview only.")
+                            .font(.subheadline)
+                            .foregroundStyle(AppTheme.subtleText)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        VStack(alignment: .leading, spacing: 10) {
+                            ForEach(CloudEditPolicySummary.proValueRows, id: \.self) { row in
+                                Label(row, systemImage: "checkmark.seal.fill")
+                                    .font(.subheadline.bold())
+                                    .foregroundStyle(.white)
+                            }
+                        }
+                        .padding(14)
+                        .background(AppTheme.cardBg.opacity(0.72), in: .rect(cornerRadius: 16))
+
+                        Text("Free still works: it uses the standard queue, includes HoopClips branding, and stores rendered videos temporarily.")
+                            .font(.caption)
+                            .foregroundStyle(AppTheme.warningYellow)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(18)
+                }
+            }
+            .navigationTitle("Pro Benefits")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Close") { proInfoSheet = nil }
+                }
+            }
+        }
+        .accessibilityIdentifier("export.aiEdit.pro.benefitsSheet")
+    }
+
+    private func proTemplateInfoSheet(for template: CloudEditProTemplatePlaceholder) -> some View {
+        NavigationStack {
+            ZStack {
+                HoopsMotionBackdrop(glowOpacity: 0.12)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        Label(template.title, systemImage: template.icon)
+                            .font(.title2.bold())
+                            .foregroundStyle(.white)
+
+                        Text(template.subtitle)
+                            .font(.headline)
+                            .foregroundStyle(AppTheme.warningYellow)
+
+                        Text(template.bestFor)
+                            .font(.subheadline)
+                            .foregroundStyle(AppTheme.subtleText)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        Text(template.styleSummary)
+                            .font(.subheadline)
+                            .foregroundStyle(AppTheme.subtleText)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Available with Pro")
+                                .font(.headline)
+                                .foregroundStyle(.white)
+                            Text("This branch only adds honest Pro placeholders and policy-aware UX. It does not enable payments or unsupported Pro rendering.")
+                                .font(.caption)
+                                .foregroundStyle(AppTheme.subtleText)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .padding(14)
+                        .background(AppTheme.cardBg.opacity(0.72), in: .rect(cornerRadius: 16))
+                    }
+                    .padding(18)
+                }
+            }
+            .navigationTitle("Pro Template")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Close") { proInfoSheet = nil }
+                }
+            }
+        }
+        .accessibilityIdentifier("export.aiEdit.pro.templateSheet")
     }
 
     private var actionCard: some View {
@@ -675,17 +993,22 @@ struct AIEditView: View {
         let selectedClipCount = editPlan.clips.count
         let candidateClipCount = viewModel.keptClips.count
         var rows = [
+            "Rendered with \(policy.displayName) plan limits.",
+            "\(policy.queueTitle): \(policy.queueDetail)",
             "Selected \(selectedClipCount) clips from \(candidateClipCount) candidates.",
             "Applied \(selectedPreset.title) template.",
             "Added \(slowMotionCount) slow-motion moments.",
             "Export limit: \(policy.maxOutputResolution).",
             "Branding: \(editPlan.watermark.enabled ? "watermark included" : "watermark removed"), \(editPlan.outro.enabled ? "outro included" : "outro removed").",
+            "Revision limit: \(policy.maxRevisionsPerEdit) per edit.",
         ]
         if let outputDuration {
-            rows.insert("Rendered \(Clip.formatTime(outputDuration)) MP4.", at: 3)
+            rows.insert("Rendered \(Clip.formatTime(outputDuration)) MP4.", at: 5)
         }
         if let storageExpiresAt {
             rows.append("Stored until \(storageExpiresAt).")
+        } else {
+            rows.append(policy.retentionSummary + ".")
         }
 
         return CloudEditWorkReceipt(
@@ -768,29 +1091,38 @@ struct AIEditView: View {
         }
     }
 
-    private func receiptRows(for receipt: CloudEditWorkReceipt) -> [String] {
-        if !receipt.summaryRows.isEmpty {
-            return receipt.summaryRows
+    private func receiptPlanSummary(for receipt: CloudEditWorkReceipt) -> String {
+        let policy = activePolicy
+        let tier = receipt.planTier ?? policy.planTier
+        if tier.isFree {
+            return "Rendered with Free plan limits: \(policy.maxOutputResolution), standard queue, and \(policy.brandingSummary.lowercased())."
         }
-        var rows: [String] = []
+        return "Rendered with priority cloud editing when available, \(policy.maxOutputResolution), and \(policy.brandingSummary.lowercased())."
+    }
+
+    private func receiptRows(for receipt: CloudEditWorkReceipt) -> [String] {
+        var rows: [String] = receipt.summaryRows
         if let selected = receipt.selectedClipCount, let candidates = receipt.candidateClipCount {
-            rows.append("Selected \(selected) clips from \(candidates) candidates.")
+            rows.appendIfMissing("Selected \(selected) clips from \(candidates) candidates.")
         }
         if let templateName = receipt.templateName {
-            rows.append("Applied \(templateName) template.")
+            rows.appendIfMissing("Applied \(templateName) template.")
         }
-        rows.append("Added \(receipt.slowMotionMomentCount) slow-motion moments.")
+        rows.appendIfMissing("Added \(receipt.slowMotionMomentCount) slow-motion moments.")
         if let duration = receipt.outputDurationSeconds {
-            rows.append("Rendered \(Clip.formatTime(duration)) MP4.")
+            rows.appendIfMissing("Rendered \(Clip.formatTime(duration)) MP4.")
         }
         if let outputResolution = receipt.outputResolution {
-            rows.append("Export limit: \(outputResolution).")
+            rows.appendIfMissing("Export limit: \(outputResolution).")
         }
         if let watermark = receipt.watermarkIncluded, let outro = receipt.outroIncluded {
-            rows.append("Branding: \(watermark ? "watermark included" : "watermark removed"), \(outro ? "outro included" : "outro removed").")
+            rows.appendIfMissing("Branding: \(watermark ? "watermark included" : "watermark removed"), \(outro ? "outro included" : "outro removed").")
         }
         if let storageExpiresAt = receipt.storageExpiresAt {
-            rows.append("Stored until \(storageExpiresAt).")
+            rows.appendIfMissing("Stored until \(storageExpiresAt).")
+        }
+        if let planTier = receipt.planTier {
+            rows.appendIfMissing(planTier.isFree ? "Rendered on the standard queue." : "Priority queue enabled when available.")
         }
         return rows
     }
@@ -827,7 +1159,7 @@ struct AIEditView: View {
         if let pendingRevisionCommand {
             return "Last revision: \(pendingRevisionCommand.title). Pick another change or render again."
         }
-        return "Ask Hoopclips to patch the edit plan, then render the revised MP4."
+        return "Ask HoopClips to patch the edit plan, then render the revised MP4."
     }
 
     private var activePolicy: CloudEditPolicySummary {
@@ -1207,4 +1539,11 @@ struct AIEditView: View {
         AIEditUISmokeConfig.isEnabled && AIEditUISmokeConfig.fixture == .failingRender
     }
     #endif
+}
+
+private extension Array where Element == String {
+    mutating func appendIfMissing(_ value: String) {
+        guard !contains(value) else { return }
+        append(value)
+    }
 }

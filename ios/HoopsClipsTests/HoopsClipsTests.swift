@@ -206,6 +206,44 @@ struct HoopsClipsTests {
         #expect(CloudEditPreset.coachReview.durationOptions == [60, 120, 180])
     }
 
+    @Test func testCloudEditPolicySummaryExposesFreemiumCopy() {
+        let free = CloudEditPolicySummary.freeDefault
+        let pro = CloudEditPolicySummary.proDefault
+
+        #expect(free.planTier.isFree)
+        #expect(!pro.planTier.isFree)
+        #expect(free.queueTitle == "Standard render queue")
+        #expect(pro.queueTitle == "Priority render")
+        #expect(free.brandingSummary.contains("watermark/outro"))
+        #expect(pro.brandingSummary.contains("Clean export"))
+        #expect(free.planLimitRows.contains("720p max export"))
+        #expect(pro.planLimitRows.contains("1080p max export"))
+        #expect(free.retentionSummary == "Videos stored for 14 days")
+        #expect(pro.retentionSummary == "Videos stored for 60 days")
+    }
+
+    @Test func testCloudEditProPlaceholdersAreLockedAndDistinct() {
+        let placeholders = CloudEditProTemplatePlaceholder.allCases
+        let identifiers = placeholders.map(\.accessibilityIdentifier)
+
+        #expect(placeholders.count == 4)
+        #expect(Set(identifiers).count == placeholders.count)
+        #expect(placeholders.map(\.title).contains("Recruiting Reel Pro"))
+        #expect(placeholders.map(\.title).contains("Cinematic Mixtape Pro"))
+        #expect(placeholders.map(\.title).contains("NBA Recap Pro"))
+        #expect(placeholders.map(\.title).contains("Team Highlight Pro"))
+        #expect(placeholders.allSatisfy { $0.accessibilityIdentifier.hasPrefix("export.aiEdit.template.") })
+    }
+
+    @Test func testCloudEditProUXFlagsDefaultToVisibleButNonPaymentUX() {
+        let flags = CloudEditProUXFlags.safeDefault
+
+        #expect(flags.proUpsellEnabled)
+        #expect(flags.proTemplatesEnabled)
+        #expect(flags.priorityQueueEnabled)
+        #expect(flags.cloudLockerEnabled)
+    }
+
     @Test func testBundledMusicTracksHaveUniqueFilenames() {
         let filenames = MusicTrack.allCases.compactMap(\.filename)
 

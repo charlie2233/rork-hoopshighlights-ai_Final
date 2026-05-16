@@ -94,6 +94,93 @@ enum CloudEditPreset: String, Codable, CaseIterable, Identifiable, Sendable {
     }
 }
 
+enum CloudEditProTemplatePlaceholder: String, CaseIterable, Identifiable, Sendable {
+    case recruitingReelPro = "recruiting_reel_pro"
+    case cinematicMixtapePro = "cinematic_mixtape_pro"
+    case nbaRecapPro = "nba_recap_pro"
+    case teamHighlightPro = "team_highlight_pro"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .recruitingReelPro:
+            return "Recruiting Reel Pro"
+        case .cinematicMixtapePro:
+            return "Cinematic Mixtape Pro"
+        case .nbaRecapPro:
+            return "NBA Recap Pro"
+        case .teamHighlightPro:
+            return "Team Highlight Pro"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .recruitingReelPro:
+            return "person.crop.rectangle.stack.fill"
+        case .cinematicMixtapePro:
+            return "camera.filters"
+        case .nbaRecapPro:
+            return "sportscourt.fill"
+        case .teamHighlightPro:
+            return "person.3.sequence.fill"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .recruitingReelPro:
+            return "Recruiting-ready player story"
+        case .cinematicMixtapePro:
+            return "Premium social mixtape"
+        case .nbaRecapPro:
+            return "Broadcast-style game recap"
+        case .teamHighlightPro:
+            return "Team-first highlight package"
+        }
+    }
+
+    var bestFor: String {
+        switch self {
+        case .recruitingReelPro:
+            return "Best for coaches, scouts, and player profiles"
+        case .cinematicMixtapePro:
+            return "Best for polished Instagram and TikTok edits"
+        case .nbaRecapPro:
+            return "Best for clean YouTube or team recap videos"
+        case .teamHighlightPro:
+            return "Best for parents, teams, and season moments"
+        }
+    }
+
+    var styleSummary: String {
+        switch self {
+        case .recruitingReelPro:
+            return "Priority queue, cleaner export, longer player-focused breakdown."
+        case .cinematicMixtapePro:
+            return "Premium pacing, stronger title cards, clean 1080p export."
+        case .nbaRecapPro:
+            return "Broadcast-inspired captions, recap pacing, no required branding."
+        case .teamHighlightPro:
+            return "More clips, team-friendly structure, longer cloud storage."
+        }
+    }
+
+    var accessibilityIdentifier: String {
+        switch self {
+        case .recruitingReelPro:
+            return "export.aiEdit.template.recruitingReelPro.locked"
+        case .cinematicMixtapePro:
+            return "export.aiEdit.template.cinematicMixtapePro.locked"
+        case .nbaRecapPro:
+            return "export.aiEdit.template.nbaRecapPro.locked"
+        case .teamHighlightPro:
+            return "export.aiEdit.template.teamHighlightPro.locked"
+        }
+    }
+}
+
 enum CloudEditAspectRatio: String, Codable, Sendable {
     case vertical = "9:16"
     case widescreen = "16:9"
@@ -138,6 +225,14 @@ enum CloudEditPlanTier: String, Codable, Sendable {
     case pro
     case internalTier = "internal"
     case dev
+
+    var isFree: Bool {
+        self == .free
+    }
+
+    var usesPriorityQueue: Bool {
+        self != .free
+    }
 }
 
 struct CloudEditPolicySummary: Codable, Sendable {
@@ -179,6 +274,62 @@ struct CloudEditPolicySummary: Codable, Sendable {
         outroRequired: false,
         premiumTemplatesAllowed: true,
         renderRetentionDays: 60
+    )
+
+    var queueTitle: String {
+        planTier.usesPriorityQueue ? "Priority render" : "Standard render queue"
+    }
+
+    var queueDetail: String {
+        planTier.usesPriorityQueue
+            ? "Faster cloud editing when priority capacity is available."
+            : "HoopClips keeps editing in the cloud. Pro gets priority rendering."
+    }
+
+    var brandingSummary: String {
+        watermarkRequired || outroRequired
+            ? "HoopClips watermark/outro included"
+            : "Clean export: no required watermark or outro"
+    }
+
+    var retentionSummary: String {
+        "Videos stored for \(renderRetentionDays) days"
+    }
+
+    var planLimitRows: [String] {
+        [
+            queueTitle,
+            "\(maxOutputResolution) max export",
+            brandingSummary,
+            "\(maxDailyRenders) AI edits/day",
+            "\(maxRevisionsPerEdit) revisions/edit",
+            retentionSummary
+        ]
+    }
+
+    static let proValueRows = [
+        "Priority rendering",
+        "1080p clean exports",
+        "No required watermark",
+        "No required HoopClips outro",
+        "Longer videos",
+        "More revisions",
+        "Longer cloud storage",
+        "Pro template packs"
+    ]
+}
+
+struct CloudEditProUXFlags: Sendable {
+    let proUpsellEnabled: Bool
+    let proTemplatesEnabled: Bool
+    let priorityQueueEnabled: Bool
+    let cloudLockerEnabled: Bool
+
+    static let safeDefault = CloudEditProUXFlags(
+        proUpsellEnabled: true,
+        proTemplatesEnabled: true,
+        priorityQueueEnabled: true,
+        cloudLockerEnabled: true
     )
 }
 
@@ -588,9 +739,9 @@ enum CloudEditError: Error, LocalizedError, Sendable {
         case .invalidResponse:
             return "The editing service returned an invalid response."
         case .missingSourceObject:
-            return "This project needs a cloud-uploaded source video before Hoopclips can render an AI edit."
+            return "This project needs a cloud-uploaded source video before HoopClips can render an AI edit."
         case .downloadURLExpired:
-            return "The download link expired. Hoopclips is requesting a fresh one."
+            return "The download link expired. HoopClips is requesting a fresh one."
         case .timedOut:
             return "Cloud rendering took too long. Try again with a shorter edit."
         case .backend(_, let message):
@@ -617,7 +768,7 @@ enum CloudEditError: Error, LocalizedError, Sendable {
         case "storage_unavailable", "source_missing":
             return "Cloud storage is not ready for this edit. Try again after the upload finishes."
         case "download_url_expired":
-            return "The download link expired. Hoopclips is requesting a fresh one."
+            return "The download link expired. HoopClips is requesting a fresh one."
         case "failed_timeout":
             return "Rendering timed out. Try a shorter edit."
         case "render_failed":
@@ -625,13 +776,13 @@ enum CloudEditError: Error, LocalizedError, Sendable {
         case "render_not_ready":
             return "Your video is still rendering. Try again when it is ready."
         case "render_lease_active":
-            return "That AI edit is already rendering. Hoopclips will keep checking the existing job."
+            return "That AI edit is already rendering. HoopClips will keep checking the existing job."
         case "render_lease_lost":
             return "The render worker lost its lock. Try again in a moment."
         case "download_url_refresh_failed":
-            return "Hoopclips could not refresh the download link. Try again in a moment."
+            return "HoopClips could not refresh the download link. Try again in a moment."
         case "invalid_edit_plan":
-            return "Hoopclips could not validate that edit plan. Try a different template or shorter length."
+            return "HoopClips could not validate that edit plan. Try a different template or shorter length."
         case "template_asset_missing":
             return "This template is missing a required asset. Try another template while we fix it."
         default:
