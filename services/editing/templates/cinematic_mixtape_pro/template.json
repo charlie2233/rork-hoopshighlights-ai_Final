@@ -1,0 +1,14 @@
+{
+  "templateId": "cinematic_mixtape_pro_v1",
+  "displayName": "Cinematic Mixtape Pro",
+  "aspectRatio": "9:16",
+  "targetDurations": [30, 45, 60, 90],
+  "ordering": "best_first",
+  "pacing": "fast_cinematic",
+  "captionStyle": "cinematic_hype",
+  "audioProfile": "cinematic_mixtape",
+  "effectProfile": "cinematic_mixtape_effects",
+  "premiumOnly": true,
+  "watermarkAssetId": "hoopclips_pro_clean_mark_v1",
+  "outroAssetId": "cinematic_mixtape_pro_outro_v1"
+}

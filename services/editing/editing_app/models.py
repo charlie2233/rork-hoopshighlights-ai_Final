@@ -27,6 +27,7 @@ class CreateRenderJobRequest(APIModel):
     installId: str = Field(min_length=8, max_length=128)
     sourceObjectKey: str = Field(min_length=1, max_length=512)
     planTier: PlanTier = "free"
+    revenueCatAppUserID: Optional[str] = Field(default=None, min_length=1, max_length=160)
     editPlan: EditPlan
     sourceClips: List[EditCandidateClip] = Field(default_factory=list, max_length=30)
     idempotencyKey: Optional[str] = Field(default=None, min_length=8, max_length=160)
@@ -36,6 +37,7 @@ class StartEditJobRenderRequest(APIModel):
     installId: str = Field(min_length=8, max_length=128)
     sourceObjectKey: Optional[str] = Field(default=None, min_length=1, max_length=512)
     planTier: Optional[PlanTier] = None
+    revenueCatAppUserID: Optional[str] = Field(default=None, min_length=1, max_length=160)
     editPlan: Optional[EditPlan] = None
     sourceClips: List[EditCandidateClip] = Field(default_factory=list, max_length=30)
     idempotencyKey: Optional[str] = Field(default=None, min_length=8, max_length=160)
@@ -91,6 +93,7 @@ class RenderJobResponse(APIModel):
     renderer: str
     rendererVersion: str
     planVersion: Optional[str] = None
+    templateId: Optional[str] = None
     status: RenderStatus
     outputObjectKey: Optional[str] = None
     renderLogObjectKey: Optional[str] = None
@@ -174,6 +177,7 @@ class StoredRenderJob:
             renderer="cloud_ffmpeg",
             rendererVersion=self.renderer_version,
             planVersion=self.plan_version,
+            templateId=self.template_id,
             status=self.status,
             outputObjectKey=self.output_object_key,
             renderLogObjectKey=self.render_log_object_key,

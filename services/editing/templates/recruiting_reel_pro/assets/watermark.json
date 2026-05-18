@@ -1,0 +1,8 @@
+{
+  "assetId": "hoopclips_pro_clean_mark_v1",
+  "role": "watermark",
+  "renderer": "ffmpeg_drawtext",
+  "text": "HoopClips Pro",
+  "position": "bottom_right",
+  "requiredForPro": false
+}

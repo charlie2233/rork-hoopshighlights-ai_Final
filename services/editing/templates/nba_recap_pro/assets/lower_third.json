@@ -1,0 +1,6 @@
+{
+  "assetId": "nba_recap_pro_lower_third_v1",
+  "role": "lower_third",
+  "renderer": "future_overlay",
+  "textStyle": "broadcast_scorebug"
+}

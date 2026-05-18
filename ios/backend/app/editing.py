@@ -19,7 +19,15 @@ PresetId = Literal[
 ]
 AspectRatio = Literal["9:16", "16:9", "source"]
 PlanTier = Literal["free", "pro", "internal", "dev"]
-TemplateId = Literal["personal_highlight_v1", "full_game_highlight_v1", "coach_review_v1"]
+TemplateId = Literal[
+    "personal_highlight_v1",
+    "full_game_highlight_v1",
+    "coach_review_v1",
+    "recruiting_reel_pro_v1",
+    "cinematic_mixtape_pro_v1",
+    "nba_recap_pro_v1",
+    "team_highlight_pro_v1",
+]
 RevisionCommand = Literal[
     "make_shorter",
     "make_longer",
@@ -335,6 +343,7 @@ class TemplatePack(APIModel):
     outroProfile: OutroProfile
     watermarkProfile: WatermarkProfile
     assets: List[TemplateAsset] = Field(default_factory=list)
+    premiumOnly: bool = False
 
     @model_validator(mode="after")
     def validate_defaults(self) -> "TemplatePack":
@@ -415,6 +424,108 @@ TEMPLATE_PACK_REGISTRY: Dict[str, TemplatePack] = {
             TemplateAsset(assetId="hoopclips_app_icon_v1", role="watermark", path="services/editing/templates/coach_review/assets/watermark.json", contentType="application/json"),
             TemplateAsset(assetId="coach_review_outro_v1", role="outro", path="services/editing/templates/coach_review/assets/outro_minimal.json", contentType="application/json"),
         ],
+    ),
+    "recruiting_reel_pro_v1": TemplatePack(
+        templateId="recruiting_reel_pro_v1",
+        presetId="personal_highlight",
+        displayName="Recruiting Reel Pro",
+        description="Player-focused recruiting story with clean hype captions, longer context, and Pro clean export rules.",
+        bestFor="coaches, scouts, player profiles",
+        defaultAspectRatio="9:16",
+        allowedAspectRatios=["9:16", "16:9"],
+        targetDurations=[45, 60, 90, 120],
+        ordering="best_first",
+        pacing="medium_fast",
+        clipLength=ClipLengthProfile(minSeconds=4.5, targetSeconds=6.5, maxSeconds=8.5),
+        themeId="recruiting_clean",
+        captionStyle=CaptionStyle(styleId="recruiting_clean_hype", displayName="Recruiting Clean Hype", density="hype", fontColor="white", boxColor="black@0.52", defaultFontSize=44),
+        audioProfile=AudioProfile(profileId="recruiting_clean", mode="music_plus_game_audio", musicTrackId="clean_01", musicVolume=0.58, gameAudioVolume=0.48),
+        effectProfile=EffectProfile(profileId="recruiting_focus", slowMotionIntensity="medium", allowedEffects=["clean_cut", "slow_motion", "punch_zoom"], maxSlowMotionClips=5),
+        outroProfile=OutroProfile(profileId="pro_clean_no_outro", assetId="recruiting_reel_pro_outro_v1", durationSeconds=0.0, requiredForFree=False),
+        watermarkProfile=WatermarkProfile(profileId="pro_clean_no_watermark", assetId="hoopclips_pro_clean_mark_v1", position="bottom_right", requiredForFree=False, displayText="HoopClips Pro"),
+        assets=[
+            TemplateAsset(assetId="hoopclips_pro_clean_mark_v1", role="watermark", path="services/editing/templates/recruiting_reel_pro/assets/watermark.json", contentType="application/json"),
+            TemplateAsset(assetId="recruiting_reel_pro_title_v1", role="title_card", path="services/editing/templates/recruiting_reel_pro/assets/title_card.json", contentType="application/json"),
+            TemplateAsset(assetId="recruiting_reel_pro_outro_v1", role="outro", path="services/editing/templates/recruiting_reel_pro/assets/outro_clean.json", contentType="application/json"),
+        ],
+        premiumOnly=True,
+    ),
+    "cinematic_mixtape_pro_v1": TemplatePack(
+        templateId="cinematic_mixtape_pro_v1",
+        presetId="personal_highlight",
+        displayName="Cinematic Mixtape Pro",
+        description="Premium social mixtape with stronger cinematic pacing, bold moments, and clean Pro export rules.",
+        bestFor="polished Instagram, TikTok, player mixtapes",
+        defaultAspectRatio="9:16",
+        allowedAspectRatios=["9:16", "16:9"],
+        targetDurations=[30, 45, 60, 90],
+        ordering="best_first",
+        pacing="fast_cinematic",
+        clipLength=ClipLengthProfile(minSeconds=3.5, targetSeconds=5.5, maxSeconds=7.5),
+        themeId="cinematic_mixtape",
+        captionStyle=CaptionStyle(styleId="cinematic_hype", displayName="Cinematic Hype", density="hype", fontColor="white", boxColor="black@0.58", defaultFontSize=50),
+        audioProfile=AudioProfile(profileId="cinematic_mixtape", mode="music_plus_game_audio", musicTrackId="cinematic_01", musicVolume=0.82, gameAudioVolume=0.28),
+        effectProfile=EffectProfile(profileId="cinematic_mixtape_effects", slowMotionIntensity="high", allowedEffects=["punch_zoom", "speed_ramp", "slow_motion"], maxSlowMotionClips=6),
+        outroProfile=OutroProfile(profileId="pro_clean_no_outro", assetId="cinematic_mixtape_pro_outro_v1", durationSeconds=0.0, requiredForFree=False),
+        watermarkProfile=WatermarkProfile(profileId="pro_clean_no_watermark", assetId="hoopclips_pro_clean_mark_v1", position="bottom_right", requiredForFree=False, displayText="HoopClips Pro"),
+        assets=[
+            TemplateAsset(assetId="hoopclips_pro_clean_mark_v1", role="watermark", path="services/editing/templates/cinematic_mixtape_pro/assets/watermark.json", contentType="application/json"),
+            TemplateAsset(assetId="cinematic_mixtape_pro_title_v1", role="title_card", path="services/editing/templates/cinematic_mixtape_pro/assets/title_card.json", contentType="application/json"),
+            TemplateAsset(assetId="cinematic_mixtape_pro_outro_v1", role="outro", path="services/editing/templates/cinematic_mixtape_pro/assets/outro_clean.json", contentType="application/json"),
+        ],
+        premiumOnly=True,
+    ),
+    "nba_recap_pro_v1": TemplatePack(
+        templateId="nba_recap_pro_v1",
+        presetId="full_game_highlight",
+        displayName="NBA Recap Pro",
+        description="Broadcast-inspired game recap with clean scorebug captions, game-flow order, and Pro clean export rules.",
+        bestFor="team recaps, YouTube, broadcast-style game stories",
+        defaultAspectRatio="16:9",
+        allowedAspectRatios=["16:9", "9:16"],
+        targetDurations=[90, 120, 180],
+        ordering="chronological_with_best_moments_boosted",
+        pacing="medium_broadcast",
+        clipLength=ClipLengthProfile(minSeconds=5.5, targetSeconds=7.5, maxSeconds=9.5),
+        themeId="broadcast_recap",
+        captionStyle=CaptionStyle(styleId="broadcast_scorebug", displayName="Broadcast Scorebug", density="clean", fontColor="white", boxColor="black@0.45", defaultFontSize=38),
+        audioProfile=AudioProfile(profileId="broadcast_recap", mode="music_plus_game_audio", musicTrackId="cinematic_01", musicVolume=0.36, gameAudioVolume=0.72),
+        effectProfile=EffectProfile(profileId="broadcast_recap_effects", slowMotionIntensity="low_medium", allowedEffects=["clean_cut", "subtle_replay", "lower_third", "slow_motion"], maxSlowMotionClips=4),
+        outroProfile=OutroProfile(profileId="pro_clean_no_outro", assetId="nba_recap_pro_outro_v1", durationSeconds=0.0, requiredForFree=False),
+        watermarkProfile=WatermarkProfile(profileId="pro_clean_no_watermark", assetId="hoopclips_pro_clean_mark_v1", position="bottom_right", requiredForFree=False, displayText="HoopClips Pro"),
+        assets=[
+            TemplateAsset(assetId="hoopclips_pro_clean_mark_v1", role="watermark", path="services/editing/templates/nba_recap_pro/assets/watermark.json", contentType="application/json"),
+            TemplateAsset(assetId="nba_recap_pro_title_v1", role="title_card", path="services/editing/templates/nba_recap_pro/assets/title_card.json", contentType="application/json"),
+            TemplateAsset(assetId="nba_recap_pro_outro_v1", role="outro", path="services/editing/templates/nba_recap_pro/assets/outro_clean.json", contentType="application/json"),
+            TemplateAsset(assetId="nba_recap_pro_lower_third_v1", role="lower_third", path="services/editing/templates/nba_recap_pro/assets/lower_third.json", contentType="application/json"),
+        ],
+        premiumOnly=True,
+    ),
+    "team_highlight_pro_v1": TemplatePack(
+        templateId="team_highlight_pro_v1",
+        presetId="full_game_highlight",
+        displayName="Team Highlight Pro",
+        description="Team-first highlight package with balanced game flow, clean captions, and longer Pro export rules.",
+        bestFor="parents, teams, season moments",
+        defaultAspectRatio="16:9",
+        allowedAspectRatios=["16:9", "9:16"],
+        targetDurations=[90, 120, 180],
+        ordering="chronological_with_best_moments_boosted",
+        pacing="medium_team",
+        clipLength=ClipLengthProfile(minSeconds=5.0, targetSeconds=7.0, maxSeconds=9.0),
+        themeId="team_package",
+        captionStyle=CaptionStyle(styleId="team_clean", displayName="Team Clean", density="clean", fontColor="white", boxColor="black@0.42", defaultFontSize=38),
+        audioProfile=AudioProfile(profileId="team_package", mode="music_plus_game_audio", musicTrackId="clean_01", musicVolume=0.42, gameAudioVolume=0.68),
+        effectProfile=EffectProfile(profileId="team_package_effects", slowMotionIntensity="medium", allowedEffects=["clean_cut", "subtle_replay", "lower_third", "slow_motion"], maxSlowMotionClips=5),
+        outroProfile=OutroProfile(profileId="pro_clean_no_outro", assetId="team_highlight_pro_outro_v1", durationSeconds=0.0, requiredForFree=False),
+        watermarkProfile=WatermarkProfile(profileId="pro_clean_no_watermark", assetId="hoopclips_pro_clean_mark_v1", position="bottom_right", requiredForFree=False, displayText="HoopClips Pro"),
+        assets=[
+            TemplateAsset(assetId="hoopclips_pro_clean_mark_v1", role="watermark", path="services/editing/templates/team_highlight_pro/assets/watermark.json", contentType="application/json"),
+            TemplateAsset(assetId="team_highlight_pro_title_v1", role="title_card", path="services/editing/templates/team_highlight_pro/assets/title_card.json", contentType="application/json"),
+            TemplateAsset(assetId="team_highlight_pro_outro_v1", role="outro", path="services/editing/templates/team_highlight_pro/assets/outro_clean.json", contentType="application/json"),
+            TemplateAsset(assetId="team_highlight_pro_lower_third_v1", role="lower_third", path="services/editing/templates/team_highlight_pro/assets/lower_third.json", contentType="application/json"),
+        ],
+        premiumOnly=True,
     ),
 }
 
@@ -545,6 +656,30 @@ THEME_REGISTRY: Dict[str, EditTheme] = {
         captionStyle="plain",
         colorway="graphite",
     ),
+    "recruiting_clean": EditTheme(
+        themeId="recruiting_clean",
+        displayName="Recruiting Clean",
+        captionStyle="recruiting_clean_hype",
+        colorway="black_gold_clean",
+    ),
+    "cinematic_mixtape": EditTheme(
+        themeId="cinematic_mixtape",
+        displayName="Cinematic Mixtape",
+        captionStyle="cinematic_hype",
+        colorway="midnight_gold",
+    ),
+    "broadcast_recap": EditTheme(
+        themeId="broadcast_recap",
+        displayName="Broadcast Recap",
+        captionStyle="broadcast_scorebug",
+        colorway="navy_gold",
+    ),
+    "team_package": EditTheme(
+        themeId="team_package",
+        displayName="Team Package",
+        captionStyle="team_clean",
+        colorway="graphite_gold",
+    ),
 }
 
 
@@ -559,6 +694,7 @@ class CreateEditJobRequest(APIModel):
     targetDurationSeconds: int = Field(gt=0, le=180)
     aspectRatio: Optional[AspectRatio] = None
     planTier: PlanTier = "free"
+    revenueCatAppUserID: Optional[str] = Field(default=None, min_length=1, max_length=160)
     clips: List[EditCandidateClip] = Field(min_length=1, max_length=30)
 
 
@@ -722,7 +858,15 @@ def _template_asset_exists(asset: TemplateAsset) -> bool:
 
 class TemplatePackValidator:
     supported_aspect_ratios = {"9:16", "16:9", "source"}
-    supported_caption_styles = {"bold_hype", "clean_scorebug", "plain"}
+    supported_caption_styles = {
+        "bold_hype",
+        "clean_scorebug",
+        "plain",
+        "recruiting_clean_hype",
+        "cinematic_hype",
+        "broadcast_scorebug",
+        "team_clean",
+    }
     supported_effects = {"punch_zoom", "speed_ramp", "impact_flash", "clean_cut", "subtle_replay", "lower_third", "slow_motion"}
     supported_watermark_positions = {"bottom_right", "bottom_left", "top_right", "top_left"}
 
@@ -1054,6 +1198,7 @@ def build_edit_plan(request: CreateEditJobRequest, edit_job_id: str) -> EditPlan
     theme = choose_theme(preset, request.theme)
     intro_duration = 1.2 if preset.presetId != "coach_review" else 0.0
     outro_duration = template.outroProfile.durationSeconds if policy.outroRequired else min(0.8, template.outroProfile.durationSeconds)
+    outro_enabled = outro_duration > 0
     usable_duration = max(MIN_PLAN_CLIP_SECONDS, target_duration - intro_duration - outro_duration)
     selected = fit_to_duration(context.clips, usable_duration, preset)
 
@@ -1113,10 +1258,10 @@ def build_edit_plan(request: CreateEditJobRequest, edit_job_id: str) -> EditPlan
             templateId="quick_flash_title" if intro_duration > 0.0 else "none",
         ),
         outro=TimedTemplate(
-            enabled=True,
+            enabled=outro_enabled,
             durationSeconds=outro_duration,
-            templateId=template.outroProfile.assetId,
-            assetId=template.outroProfile.assetId,
+            templateId=template.outroProfile.assetId if outro_enabled else "none",
+            assetId=template.outroProfile.assetId if outro_enabled else None,
         ),
         watermark=EditPlanWatermark(
             enabled=policy.watermarkRequired,
@@ -1152,6 +1297,8 @@ def validate_edit_plan(
         template_errors = validate_template_pack(template)
         for error in template_errors:
             add(f"template.{error.field}", error.code, error.message)
+        if template.premiumOnly and not policy.premiumTemplatesAllowed:
+            add("templateId", "premium_template_required", "Selected template requires HoopClips Pro.")
         if template.presetId != plan.preset and plan.preset not in {"fast_break_mix", "best_five"}:
             add("templateId", "template_preset_mismatch", "EditPlan template does not match the selected preset.")
         if plan.aspectRatio not in template.allowedAspectRatios:
@@ -1364,6 +1511,8 @@ def _add_slow_motion_effect(clip: Dict[str, Any]) -> None:
 def _build_revised_edit_job(job: StoredEditJob, revision: ReviseEditJobRequest) -> StoredEditJob:
     request_data = job.request.model_dump()
     command = revision.command
+    current_template = get_template_pack_for_plan(job.plan.preset, job.plan.templateId)
+    premium_templates_allowed = get_plan_tier_policy(job.request.planTier).premiumTemplatesAllowed
 
     if revision.targetDurationSeconds is not None:
         request_data["targetDurationSeconds"] = revision.targetDurationSeconds
@@ -1379,13 +1528,17 @@ def _build_revised_edit_job(job: StoredEditJob, revision: ReviseEditJobRequest) 
     elif command in {"export_widescreen", "switch_format_widescreen"}:
         request_data["aspectRatio"] = "16:9"
 
-    if command in {"make_more_hype", "make_personal", "add_more_slow_motion"}:
+    if command in {"make_more_hype", "add_more_slow_motion"} and not current_template.premiumOnly:
+        request_data["preset"] = "personal_highlight"
+        request_data["templateId"] = "personal_highlight_v1"
+        request_data["aspectRatio"] = revision.aspectRatio or request_data.get("aspectRatio") or "9:16"
+    elif command == "make_personal":
         request_data["preset"] = "personal_highlight"
         request_data["templateId"] = "personal_highlight_v1"
         request_data["aspectRatio"] = revision.aspectRatio or request_data.get("aspectRatio") or "9:16"
     elif command == "make_nba_style":
         request_data["preset"] = "full_game_highlight"
-        request_data["templateId"] = "full_game_highlight_v1"
+        request_data["templateId"] = "nba_recap_pro_v1" if premium_templates_allowed else "full_game_highlight_v1"
         request_data["aspectRatio"] = "16:9"
     elif command == "show_more_full_play_context":
         request_data["preset"] = "coach_review"
@@ -1404,15 +1557,16 @@ def _build_revised_edit_job(job: StoredEditJob, revision: ReviseEditJobRequest) 
         }
 
     if command == "make_more_hype":
-        data["theme"] = "hype_black_gold"
-        data["templateId"] = "personal_highlight_v1"
-        data["captionStyle"] = "bold_hype"
-        data["aspectRatio"] = "9:16"
+        revised_template = get_template_pack_for_plan(revised.plan.preset, revised.plan.templateId)
+        data["theme"] = revised_template.themeId
+        data["templateId"] = revised_template.templateId
+        data["captionStyle"] = revised_template.captionStyle.styleId
+        data["aspectRatio"] = revised_template.defaultAspectRatio if not revised_template.premiumOnly else data["aspectRatio"]
         data["audio"] = {
             "mode": "music_plus_game_audio",
-            "musicTrackId": "hype_02",
-            "musicVolume": 0.88,
-            "gameAudioVolume": 0.2,
+            "musicTrackId": data.get("audio", {}).get("musicTrackId") if revised_template.premiumOnly else "hype_02",
+            "musicVolume": min(0.9, float(data.get("audio", {}).get("musicVolume", revised_template.audioProfile.musicVolume)) + 0.08),
+            "gameAudioVolume": max(0.2, float(data.get("audio", {}).get("gameAudioVolume", revised_template.audioProfile.gameAudioVolume)) - 0.04),
         }
         scores = _clip_score_lookup(revised.request.clips)
         data["clips"] = sorted(data["clips"], key=lambda clip: scores.get(clip["clipId"], 0.0), reverse=True)
@@ -1434,15 +1588,16 @@ def _build_revised_edit_job(job: StoredEditJob, revision: ReviseEditJobRequest) 
         data["clips"] = _retime_clips(data["clips"], data["intro"]["durationSeconds"])
 
     if command == "make_nba_style":
-        data["theme"] = "nba_clean"
-        data["templateId"] = "full_game_highlight_v1"
-        data["captionStyle"] = "clean_scorebug"
+        nba_template = get_template_pack_for_plan("full_game_highlight", data.get("templateId"))
+        data["theme"] = nba_template.themeId
+        data["templateId"] = nba_template.templateId
+        data["captionStyle"] = nba_template.captionStyle.styleId
         data["aspectRatio"] = "16:9"
         data["audio"] = {
-            "mode": "music_plus_game_audio",
-            "musicTrackId": "cinematic_01",
-            "musicVolume": 0.45,
-            "gameAudioVolume": 0.62,
+            "mode": nba_template.audioProfile.mode,
+            "musicTrackId": nba_template.audioProfile.musicTrackId,
+            "musicVolume": nba_template.audioProfile.musicVolume,
+            "gameAudioVolume": nba_template.audioProfile.gameAudioVolume,
         }
         data["clips"] = sorted(data["clips"], key=lambda clip: clip["sourceStart"])
         for index, clip in enumerate(data["clips"]):

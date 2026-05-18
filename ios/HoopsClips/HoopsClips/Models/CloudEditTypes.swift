@@ -94,13 +94,23 @@ enum CloudEditPreset: String, Codable, CaseIterable, Identifiable, Sendable {
     }
 }
 
-enum CloudEditProTemplatePlaceholder: String, CaseIterable, Identifiable, Sendable {
-    case recruitingReelPro = "recruiting_reel_pro"
-    case cinematicMixtapePro = "cinematic_mixtape_pro"
-    case nbaRecapPro = "nba_recap_pro"
-    case teamHighlightPro = "team_highlight_pro"
+enum CloudEditProTemplate: String, CaseIterable, Identifiable, Sendable {
+    case recruitingReelPro = "recruiting_reel_pro_v1"
+    case cinematicMixtapePro = "cinematic_mixtape_pro_v1"
+    case nbaRecapPro = "nba_recap_pro_v1"
+    case teamHighlightPro = "team_highlight_pro_v1"
 
     var id: String { rawValue }
+    var templateID: String { rawValue }
+
+    var preset: CloudEditPreset {
+        switch self {
+        case .recruitingReelPro, .cinematicMixtapePro:
+            return .personalHighlight
+        case .nbaRecapPro, .teamHighlightPro:
+            return .fullGameHighlight
+        }
+    }
 
     var title: String {
         switch self {
@@ -177,6 +187,26 @@ enum CloudEditProTemplatePlaceholder: String, CaseIterable, Identifiable, Sendab
             return "export.aiEdit.proTemplate.nbaRecap"
         case .teamHighlightPro:
             return "export.aiEdit.proTemplate.teamHighlight"
+        }
+    }
+
+    var aspectRatio: CloudEditAspectRatio {
+        switch self {
+        case .recruitingReelPro, .cinematicMixtapePro:
+            return .vertical
+        case .nbaRecapPro, .teamHighlightPro:
+            return .widescreen
+        }
+    }
+
+    var durationOptions: [Int] {
+        switch self {
+        case .recruitingReelPro:
+            return [45, 60, 90, 120]
+        case .cinematicMixtapePro:
+            return [30, 45, 60, 90]
+        case .nbaRecapPro, .teamHighlightPro:
+            return [90, 120, 180]
         }
     }
 }
@@ -526,6 +556,7 @@ struct CreateCloudEditJobRequest: Codable, Sendable {
     let targetDurationSeconds: Int
     let aspectRatio: CloudEditAspectRatio
     let planTier: CloudEditPlanTier
+    let revenueCatAppUserID: String?
     let clips: [CloudEditCandidateClip]
 }
 
@@ -618,6 +649,7 @@ struct CloudEditRenderRequest: Codable, Sendable {
     let installId: String
     let sourceObjectKey: String
     let planTier: CloudEditPlanTier
+    let revenueCatAppUserID: String?
     let editPlan: CloudEditPlanSummary
     let sourceClips: [CloudEditCandidateClip]
     let idempotencyKey: String?
@@ -685,6 +717,7 @@ struct CloudEditRenderStatusResponse: Codable, Sendable {
     let renderer: String
     let rendererVersion: String
     let planVersion: String?
+    let templateId: String?
     let status: CloudEditRenderState
     let outputObjectKey: String?
     let renderLogObjectKey: String?
@@ -763,6 +796,12 @@ enum CloudEditError: Error, LocalizedError, Sendable {
             return "Another AI edit is still rendering. Let that finish before starting another."
         case "revision_limit":
             return "This edit has reached the revision limit for your plan."
+        case "premium_template_required", "pro_entitlement_required":
+            return "That template requires HoopClips Pro. Upgrade or choose a Free template."
+        case "pro_entitlement_unverified", "revenuecat_verifier_unavailable":
+            return "HoopClips could not verify your Pro access. Try again in a moment."
+        case "revenuecat_verifier_unconfigured", "pro_exports_unavailable":
+            return "Pro AI exports are not enabled in this environment yet."
         case "render_retry_limit":
             return "This render has already been retried. Start a new edit if you want to try again."
         case "storage_unavailable", "source_missing":

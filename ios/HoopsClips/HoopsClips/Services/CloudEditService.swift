@@ -43,6 +43,7 @@ struct CloudEditService {
         installID: String,
         sourceObjectKey: String,
         planTier: CloudEditPlanTier,
+        revenueCatAppUserID: String?,
         editPlan: CloudEditPlanSummary,
         sourceClips: [CloudEditCandidateClip]
     ) async throws -> CloudEditRenderStatusResponse {
@@ -57,6 +58,7 @@ struct CloudEditService {
                 installId: installID,
                 sourceObjectKey: sourceObjectKey,
                 planTier: planTier,
+                revenueCatAppUserID: revenueCatAppUserID,
                 editPlan: editPlan,
                 sourceClips: sourceClips,
                 idempotencyKey: "ios-render-\(editJobID)"

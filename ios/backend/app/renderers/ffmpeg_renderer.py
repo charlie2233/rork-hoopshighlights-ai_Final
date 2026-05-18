@@ -135,6 +135,7 @@ class FfmpegRenderer:
             "musicTrackId": template.audioProfile.musicTrackId,
             "outroProfile": template.outroProfile.profileId,
             "watermarkProfile": template.watermarkProfile.profileId,
+            "premiumOnly": template.premiumOnly,
         }
         return FfmpegRenderResult(
             output_path=final_path,

@@ -8,7 +8,7 @@ enum AIEditPresentation {
 
 private enum AIEditProInfoSheet: Identifiable {
     case benefits
-    case template(CloudEditProTemplatePlaceholder)
+    case template(CloudEditProTemplate)
 
     var id: String {
         switch self {
@@ -23,11 +23,13 @@ private enum AIEditProInfoSheet: Identifiable {
 struct AIEditView: View {
     @Bindable var viewModel: HighlightsViewModel
     let isProUser: Bool
+    var revenueCatAppUserID: String? = nil
     var presentation: AIEditPresentation = .sheet
     var onRequestProUpgrade: (() -> Void)?
 
     @Environment(\.dismiss) private var dismiss
     @State private var selectedPreset: CloudEditPreset = .personalHighlight
+    @State private var selectedProTemplate: CloudEditProTemplate?
     @State private var selectedAspectRatio: CloudEditAspectRatio = CloudEditPreset.personalHighlight.aspectRatio
     @State private var selectedDuration = CloudEditPreset.personalHighlight.durationOptions[1]
     @State private var phase: CloudEditRenderState = .planning
@@ -127,10 +129,6 @@ struct AIEditView: View {
             }
 
             actionCard
-        }
-        .onChange(of: selectedPreset) { _, preset in
-            selectedAspectRatio = preset.aspectRatio
-            selectedDuration = defaultDuration(for: preset)
         }
     }
 
@@ -298,16 +296,16 @@ struct AIEditView: View {
 
             ForEach(CloudEditPreset.allCases) { preset in
                 Button {
-                    selectedPreset = preset
+                    selectFreePreset(preset)
                 } label: {
                     HStack(alignment: .top, spacing: 12) {
                         ZStack {
                             RoundedRectangle(cornerRadius: 12)
-                                .fill(selectedPreset == preset ? AppTheme.accentPurple.opacity(0.32) : AppTheme.cardBg.opacity(0.86))
+                                .fill(selectedProTemplate == nil && selectedPreset == preset ? AppTheme.accentPurple.opacity(0.32) : AppTheme.cardBg.opacity(0.86))
                                 .frame(width: 44, height: 44)
                             Image(systemName: preset.icon)
                                 .font(.headline)
-                                .foregroundStyle(selectedPreset == preset ? AppTheme.warningYellow : AppTheme.neonPurple)
+                                .foregroundStyle(selectedProTemplate == nil && selectedPreset == preset ? AppTheme.warningYellow : AppTheme.neonPurple)
                         }
                         VStack(alignment: .leading, spacing: 3) {
                             HStack(spacing: 6) {
@@ -320,7 +318,7 @@ struct AIEditView: View {
                                     .padding(.horizontal, 6)
                                     .padding(.vertical, 3)
                                     .background(AppTheme.successGreen.opacity(0.16), in: .capsule)
-                                if selectedPreset == preset {
+                                if selectedProTemplate == nil && selectedPreset == preset {
                                     Image(systemName: "checkmark.seal.fill")
                                         .font(.caption)
                                         .foregroundStyle(AppTheme.successGreen)
@@ -341,32 +339,36 @@ struct AIEditView: View {
                         Spacer()
                     }
                     .padding(14)
-                    .background(selectedPreset == preset ? AppTheme.accentPurple.opacity(0.18) : AppTheme.cardBg.opacity(0.72), in: .rect(cornerRadius: 14))
+                    .background(selectedProTemplate == nil && selectedPreset == preset ? AppTheme.accentPurple.opacity(0.18) : AppTheme.cardBg.opacity(0.72), in: .rect(cornerRadius: 14))
                     .overlay {
                         RoundedRectangle(cornerRadius: 14)
-                            .stroke(selectedPreset == preset ? AppTheme.neonPurple.opacity(0.35) : AppTheme.softBorder, lineWidth: 1)
+                            .stroke(selectedProTemplate == nil && selectedPreset == preset ? AppTheme.neonPurple.opacity(0.35) : AppTheme.softBorder, lineWidth: 1)
                     }
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(preset.title)
                 .accessibilityIdentifier(styleAccessibilityIdentifier(for: preset))
-                .accessibilityValue(selectedPreset == preset ? "Selected" : "Not selected")
+                .accessibilityValue(selectedProTemplate == nil && selectedPreset == preset ? "Selected" : "Not selected")
                 .accessibilityHint("Selects the AI edit style.")
             }
 
             if proUXFlags.proTemplatesEnabled {
-                ForEach(CloudEditProTemplatePlaceholder.allCases) { template in
+                ForEach(CloudEditProTemplate.allCases) { template in
                     Button {
-                        proInfoSheet = .template(template)
+                        if isProUser {
+                            selectProTemplate(template)
+                        } else {
+                            proInfoSheet = .template(template)
+                        }
                     } label: {
                         HStack(alignment: .top, spacing: 12) {
                             ZStack {
                                 RoundedRectangle(cornerRadius: 12)
-                                    .fill(AppTheme.cardBg.opacity(0.62))
+                                    .fill(selectedProTemplate == template ? AppTheme.warningYellow.opacity(0.24) : AppTheme.cardBg.opacity(0.62))
                                     .frame(width: 44, height: 44)
                                 Image(systemName: template.icon)
                                     .font(.headline)
-                                    .foregroundStyle(AppTheme.subtleText)
+                                    .foregroundStyle(selectedProTemplate == template ? AppTheme.warningYellow : AppTheme.subtleText)
                             }
                             VStack(alignment: .leading, spacing: 3) {
                                 HStack(spacing: 6) {
@@ -379,7 +381,7 @@ struct AIEditView: View {
                                         .padding(.horizontal, 6)
                                         .padding(.vertical, 3)
                                         .background(AppTheme.warningYellow.opacity(0.5), in: .capsule)
-                                    Image(systemName: "lock.fill")
+                                    Image(systemName: isProUser ? "checkmark.seal.fill" : "lock.fill")
                                         .font(.caption2.bold())
                                         .foregroundStyle(AppTheme.warningYellow)
                                 }
@@ -398,16 +400,17 @@ struct AIEditView: View {
                             Spacer()
                         }
                         .padding(14)
-                        .background(AppTheme.cardBg.opacity(0.45), in: .rect(cornerRadius: 14))
+                        .background(selectedProTemplate == template ? AppTheme.warningYellow.opacity(0.12) : AppTheme.cardBg.opacity(0.45), in: .rect(cornerRadius: 14))
                         .overlay {
                             RoundedRectangle(cornerRadius: 14)
-                                .stroke(AppTheme.warningYellow.opacity(0.18), lineWidth: 1)
+                                .stroke(selectedProTemplate == template ? AppTheme.warningYellow.opacity(0.36) : AppTheme.warningYellow.opacity(0.18), lineWidth: 1)
                         }
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("\(template.title), locked Pro template")
+                    .accessibilityLabel(isProUser ? template.title : "\(template.title), locked Pro template")
                     .accessibilityIdentifier(template.accessibilityIdentifier)
-                    .accessibilityHint("Shows Pro information without changing the current render template.")
+                    .accessibilityValue(selectedProTemplate == template ? "Selected" : (isProUser ? "Not selected" : "Locked"))
+                    .accessibilityHint(isProUser ? "Selects this Pro AI edit template." : "Shows Pro information without changing the current render template.")
                 }
             }
         }
@@ -739,7 +742,7 @@ struct AIEditView: View {
         .accessibilityIdentifier("export.aiEdit.proInfoSheet")
     }
 
-    private func proTemplateInfoSheet(for template: CloudEditProTemplatePlaceholder) -> some View {
+    private func proTemplateInfoSheet(for template: CloudEditProTemplate) -> some View {
         NavigationStack {
             ZStack {
                 HoopsMotionBackdrop(glowOpacity: 0.12)
@@ -768,7 +771,7 @@ struct AIEditView: View {
                             Text("Available with Pro")
                                 .font(.headline)
                                 .foregroundStyle(.white)
-                            Text("This template is gated behind the Pro entitlement. Upgrade uses App Store in-app purchase via RevenueCat when subscription offerings are configured.")
+                            Text("This template renders in the cloud after an active Pro entitlement is verified. Upgrade uses App Store in-app purchase via RevenueCat when subscription offerings are configured.")
                                 .font(.caption)
                                 .foregroundStyle(AppTheme.subtleText)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -948,7 +951,7 @@ struct AIEditView: View {
         let renderJobID = renderStatus?.renderJobId
         let editJobID = editJob?.editJobId ?? editPlan?.editJobId ?? "pending"
         let failed = phase == .failed || phase == .failedTimeout || phase == .cancelled
-        let templateName = selectedPreset.title
+        let templateName = selectedTemplateTitle
         let selectedClipCount = editPlan?.clips.count
         let candidateClipCount = viewModel.keptClips.count
         let slowMotionCount = editPlan.map(slowMotionMomentCount(in:)) ?? 0
@@ -1055,7 +1058,7 @@ struct AIEditView: View {
             "Rendered with \(policy.displayName) plan limits.",
             "\(policy.queueTitle): \(policy.queueDetail)",
             "Selected \(selectedClipCount) clips from \(candidateClipCount) candidates.",
-            "Applied \(selectedPreset.title) template.",
+            "Applied \(selectedTemplateTitle) template.",
             "Added \(slowMotionCount) slow-motion moments.",
             "Export limit: \(policy.maxOutputResolution).",
             "Branding: \(editPlan.watermark.enabled ? "watermark included" : "watermark removed"), \(editPlan.outro.enabled ? "outro included" : "outro removed").",
@@ -1077,7 +1080,7 @@ struct AIEditView: View {
             selectedClipCount: selectedClipCount,
             candidateClipCount: candidateClipCount,
             templateId: editPlan.templateId,
-            templateName: selectedPreset.title,
+            templateName: selectedTemplateTitle,
             slowMotionMomentCount: slowMotionCount,
             outputDurationSeconds: outputDuration,
             outputResolution: policy.maxOutputResolution,
@@ -1225,6 +1228,14 @@ struct AIEditView: View {
         policySummary ?? (isProUser ? .proDefault : .freeDefault)
     }
 
+    private var selectedTemplateID: String {
+        selectedProTemplate?.templateID ?? selectedPreset.templateID
+    }
+
+    private var selectedTemplateTitle: String {
+        selectedProTemplate?.title ?? selectedPreset.title
+    }
+
     private var policyLimitText: String {
         let policy = activePolicy
         let watermark = policy.watermarkRequired || policy.outroRequired ? "watermark/outro included" : "no required watermark"
@@ -1252,13 +1263,27 @@ struct AIEditView: View {
         }
     }
 
-    private func defaultDuration(for preset: CloudEditPreset) -> Int {
-        let available = preset.durationOptions.filter { $0 <= activePolicy.maxRenderSeconds }
-        return available.dropFirst().first ?? available.first ?? min(preset.durationOptions[0], activePolicy.maxRenderSeconds)
+    private func selectFreePreset(_ preset: CloudEditPreset) {
+        selectedProTemplate = nil
+        selectedPreset = preset
+        selectedAspectRatio = preset.aspectRatio
+        selectedDuration = defaultDuration(options: preset.durationOptions)
+    }
+
+    private func selectProTemplate(_ template: CloudEditProTemplate) {
+        selectedProTemplate = template
+        selectedPreset = template.preset
+        selectedAspectRatio = template.aspectRatio
+        selectedDuration = defaultDuration(options: template.durationOptions)
+    }
+
+    private func defaultDuration(options: [Int]) -> Int {
+        let available = options.filter { $0 <= activePolicy.maxRenderSeconds }
+        return available.dropFirst().first ?? available.first ?? min(options[0], activePolicy.maxRenderSeconds)
     }
 
     private var displayedDurationOptions: [Int] {
-        var options = selectedPreset.durationOptions
+        var options = selectedProTemplate?.durationOptions ?? selectedPreset.durationOptions
         if !options.contains(selectedDuration) {
             options.insert(selectedDuration, at: 0)
         }
@@ -1302,6 +1327,10 @@ struct AIEditView: View {
 
     private func startEdit() {
         guard !isWorking else { return }
+        if let selectedProTemplate, !isProUser {
+            proInfoSheet = .template(selectedProTemplate)
+            return
+        }
         if revisionResponse != nil, downloadResponse == nil {
             Task { await runRevisionRenderFlow() }
         } else {
@@ -1347,9 +1376,11 @@ struct AIEditView: View {
 
             let request = try viewModel.createCloudEditRequest(
                 preset: selectedPreset,
+                templateID: selectedTemplateID,
                 targetDurationSeconds: selectedDuration,
                 aspectRatio: selectedAspectRatio,
-                isProUser: isProUser
+                isProUser: isProUser,
+                revenueCatAppUserID: revenueCatAppUserID
             )
             let job = try await cloudEditService.createEditJob(request)
             editJob = job
@@ -1378,6 +1409,7 @@ struct AIEditView: View {
                 installID: viewModel.installID,
                 sourceObjectKey: sourceObjectKey,
                 planTier: request.planTier,
+                revenueCatAppUserID: revenueCatAppUserID,
                 editPlan: planResponse.plan,
                 sourceClips: request.clips
             )

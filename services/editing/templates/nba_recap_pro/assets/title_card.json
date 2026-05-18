@@ -1,0 +1,7 @@
+{
+  "assetId": "nba_recap_pro_title_v1",
+  "role": "title_card",
+  "renderer": "ffmpeg_generated_card",
+  "title": "NBA Recap Pro",
+  "subtitle": "Broadcast-style game recap"
+}

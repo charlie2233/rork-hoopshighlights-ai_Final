@@ -111,6 +111,66 @@ test("edit plan route proxies to internal editing service with install id", asyn
   }
 });
 
+test("edit job creation accepts and forwards premium template identity fields", async () => {
+  const controlPlane = createControlPlaneHarness();
+  const originalFetch = globalThis.fetch.bind(globalThis);
+  const seen: Array<Record<string, unknown>> = [];
+  globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const request = input instanceof Request ? input : new Request(input, init);
+    const url = new URL(request.url);
+    if (url.origin !== controlPlane.env.EDITING_BASE_URL) {
+      return originalFetch(input, init);
+    }
+    seen.push((await request.json()) as Record<string, unknown>);
+    return Response.json({
+      editJobId: "edit_pro_123",
+      videoId: "video_123",
+      analysisJobId: "analysis_123",
+      status: "plan_ready",
+      preset: "personal_highlight",
+      templateId: "cinematic_mixtape_pro_v1",
+      planTier: "pro",
+      targetDurationSeconds: 45,
+      aspectRatio: "9:16",
+      clipCount: 2,
+      validationErrors: []
+    });
+  };
+
+  try {
+    const response = await invokePublicRoute(
+      controlPlane,
+      "POST",
+      "/v1/edit-jobs",
+      {
+        videoId: "video_123",
+        analysisJobId: "analysis_123",
+        installId: "install-local-001",
+        sourceObjectKey: "uploads/job/source.mp4",
+        preset: "personal_highlight",
+        templateId: "cinematic_mixtape_pro_v1",
+        targetDurationSeconds: 45,
+        aspectRatio: "9:16",
+        planTier: "pro",
+        revenueCatAppUserID: "hoops_email_hash",
+        clips: []
+      },
+      { "x-trace-id": "trace-editing-pro-template" },
+      "trace-editing-pro-template"
+    );
+    const payload = await parseJsonResponse<{ requestId: string; editJobId: string; templateId: string }>(response);
+
+    assert.equal(response.status, 200);
+    assert.equal(payload.requestId, "trace-editing-pro-template");
+    assert.equal(payload.editJobId, "edit_pro_123");
+    assert.equal(payload.templateId, "cinematic_mixtape_pro_v1");
+    assert.equal(seen[0]!.templateId, "cinematic_mixtape_pro_v1");
+    assert.equal(seen[0]!.revenueCatAppUserID, "hoops_email_hash");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("edit render route proxies to internal editing service with shared secret", async () => {
   const controlPlane = createControlPlaneHarness();
   const originalFetch = globalThis.fetch.bind(globalThis);

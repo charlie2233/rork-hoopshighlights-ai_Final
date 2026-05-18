@@ -222,21 +222,25 @@ struct HoopsClipsTests {
         #expect(pro.retentionSummary == "Videos stored for 60 days")
     }
 
-    @Test func testCloudEditProPlaceholdersAreLockedAndDistinct() {
-        let placeholders = CloudEditProTemplatePlaceholder.allCases
-        let identifiers = placeholders.map(\.accessibilityIdentifier)
+    @Test func testCloudEditProTemplatesAreRealAndDistinct() {
+        let templates = CloudEditProTemplate.allCases
+        let identifiers = templates.map(\.accessibilityIdentifier)
 
-        #expect(placeholders.count == 4)
-        #expect(Set(identifiers).count == placeholders.count)
-        #expect(placeholders.map(\.title).contains("Recruiting Reel Pro"))
-        #expect(placeholders.map(\.title).contains("Cinematic Mixtape Pro"))
-        #expect(placeholders.map(\.title).contains("NBA Recap Pro"))
-        #expect(placeholders.map(\.title).contains("Team Highlight Pro"))
-        #expect(placeholders.allSatisfy { $0.accessibilityIdentifier.hasPrefix("export.aiEdit.proTemplate.") })
+        #expect(templates.count == 4)
+        #expect(Set(identifiers).count == templates.count)
+        #expect(templates.map(\.title).contains("Recruiting Reel Pro"))
+        #expect(templates.map(\.title).contains("Cinematic Mixtape Pro"))
+        #expect(templates.map(\.title).contains("NBA Recap Pro"))
+        #expect(templates.map(\.title).contains("Team Highlight Pro"))
+        #expect(templates.allSatisfy { $0.accessibilityIdentifier.hasPrefix("export.aiEdit.proTemplate.") })
         #expect(identifiers.contains("export.aiEdit.proTemplate.recruitingReel"))
         #expect(identifiers.contains("export.aiEdit.proTemplate.cinematicMixtape"))
         #expect(identifiers.contains("export.aiEdit.proTemplate.nbaRecap"))
         #expect(identifiers.contains("export.aiEdit.proTemplate.teamHighlight"))
+        #expect(CloudEditProTemplate.recruitingReelPro.templateID == "recruiting_reel_pro_v1")
+        #expect(CloudEditProTemplate.cinematicMixtapePro.templateID == "cinematic_mixtape_pro_v1")
+        #expect(CloudEditProTemplate.nbaRecapPro.preset == .fullGameHighlight)
+        #expect(CloudEditProTemplate.teamHighlightPro.durationOptions == [90, 120, 180])
     }
 
     @Test func testCloudEditProUXFlagsDefaultToVisibleButNonPaymentUX() {

@@ -1,0 +1,14 @@
+{
+  "templateId": "recruiting_reel_pro_v1",
+  "displayName": "Recruiting Reel Pro",
+  "aspectRatio": "9:16",
+  "targetDurations": [45, 60, 90, 120],
+  "ordering": "best_first",
+  "pacing": "medium_fast",
+  "captionStyle": "recruiting_clean_hype",
+  "audioProfile": "recruiting_clean",
+  "effectProfile": "recruiting_focus",
+  "premiumOnly": true,
+  "watermarkAssetId": "hoopclips_pro_clean_mark_v1",
+  "outroAssetId": "recruiting_reel_pro_outro_v1"
+}

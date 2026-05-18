@@ -76,6 +76,7 @@ export async function createEditingRenderJob(
       installId: payload.installId,
       sourceObjectKey: payload.sourceObjectKey,
       planTier: payload.planTier ?? "free",
+      revenueCatAppUserID: payload.revenueCatAppUserID,
       editPlan: payload.editPlan,
       sourceClips: payload.sourceClips ?? [],
       idempotencyKey: payload.idempotencyKey

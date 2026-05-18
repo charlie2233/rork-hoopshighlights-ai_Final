@@ -180,9 +180,113 @@ class EditingServiceTests(unittest.TestCase):
     def test_template_registry_loads_and_validates(self) -> None:
         validation = validate_template_registry()
 
-        self.assertEqual(set(validation.keys()), {"personal_highlight_v1", "full_game_highlight_v1", "coach_review_v1"})
+        self.assertEqual(
+            set(validation.keys()),
+            {
+                "personal_highlight_v1",
+                "full_game_highlight_v1",
+                "coach_review_v1",
+                "recruiting_reel_pro_v1",
+                "cinematic_mixtape_pro_v1",
+                "nba_recap_pro_v1",
+                "team_highlight_pro_v1",
+            },
+        )
         self.assertTrue(all(not errors for errors in validation.values()))
         self.assertEqual(TEMPLATE_PACK_REGISTRY["personal_highlight_v1"].watermarkProfile.assetId, "hoopclips_app_icon_v1")
+        self.assertTrue(TEMPLATE_PACK_REGISTRY["recruiting_reel_pro_v1"].premiumOnly)
+
+    def test_free_user_cannot_create_premium_template_edit_job(self) -> None:
+        client = TestClient(create_app(self._settings()))
+        request = self._edit_request().model_copy(update={"templateId": "cinematic_mixtape_pro_v1", "targetDurationSeconds": 30})
+
+        response = client.post("/v1/edit-jobs", json=request.model_dump())
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()["errorCode"], "premium_template_required")
+
+    def test_pro_premium_template_requires_revenuecat_verifier(self) -> None:
+        previous_exports = os.environ.get("HOOPS_AI_EDIT_PRO_EXPORTS_ENABLED")
+        previous_key = os.environ.get("HOOPS_REVENUECAT_REST_API_KEY")
+        os.environ["HOOPS_AI_EDIT_PRO_EXPORTS_ENABLED"] = "true"
+        os.environ.pop("HOOPS_REVENUECAT_REST_API_KEY", None)
+        try:
+            client = TestClient(create_app(self._settings()))
+            request = self._edit_request().model_copy(
+                update={
+                    "templateId": "recruiting_reel_pro_v1",
+                    "targetDurationSeconds": 60,
+                    "planTier": "pro",
+                    "revenueCatAppUserID": "hoops_email_test",
+                }
+            )
+
+            response = client.post("/v1/edit-jobs", json=request.model_dump())
+
+            self.assertEqual(response.status_code, 503)
+            self.assertEqual(response.json()["errorCode"], "revenuecat_verifier_unconfigured")
+        finally:
+            if previous_exports is None:
+                os.environ.pop("HOOPS_AI_EDIT_PRO_EXPORTS_ENABLED", None)
+            else:
+                os.environ["HOOPS_AI_EDIT_PRO_EXPORTS_ENABLED"] = previous_exports
+            if previous_key is None:
+                os.environ.pop("HOOPS_REVENUECAT_REST_API_KEY", None)
+            else:
+                os.environ["HOOPS_REVENUECAT_REST_API_KEY"] = previous_key
+
+    def test_internal_plan_can_create_premium_template_edit_job(self) -> None:
+        client = TestClient(create_app(self._settings()))
+        request = self._edit_request().model_copy(
+            update={
+                "preset": "personal_highlight",
+                "templateId": "cinematic_mixtape_pro_v1",
+                "targetDurationSeconds": 45,
+                "planTier": "internal",
+            }
+        )
+
+        response = client.post("/v1/edit-jobs", json=request.model_dump())
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["templateId"], "cinematic_mixtape_pro_v1")
+        self.assertEqual(payload["planTier"], "internal")
+
+    def test_renderer_writes_premium_template_signature(self) -> None:
+        client = TestClient(create_app(self._settings()))
+        edit_request = self._edit_request().model_copy(
+            update={
+                "preset": "personal_highlight",
+                "templateId": "cinematic_mixtape_pro_v1",
+                "targetDurationSeconds": 30,
+                "planTier": "internal",
+            }
+        )
+        payload = self._render_payload(edit_request)
+        payload["planTier"] = "internal"
+
+        response = client.post("/v1/render-jobs", json=payload)
+
+        self.assertEqual(response.status_code, 200)
+        render_job_id = response.json()["renderJobId"]
+        status_response = client.get(f"/v1/render-jobs/{render_job_id}", params={"installId": edit_request.installId})
+        self.assertEqual(status_response.status_code, 200)
+        render_payload = status_response.json()
+        self.assertEqual(render_payload["status"], "rendered")
+        self.assertEqual(render_payload["templateId"], "cinematic_mixtape_pro_v1")
+        render_log_key = render_payload["renderLogObjectKey"]
+        log_path = self._temp_dir / render_log_key
+        self.assertTrue(log_path.exists())
+        render_log = json.loads(log_path.read_text(encoding="utf-8"))
+        signature = render_log["ffmpeg"]["templateSignature"]
+        self.assertEqual(render_log["ffmpeg"]["templateId"], "cinematic_mixtape_pro_v1")
+        self.assertEqual(signature["templateId"], "cinematic_mixtape_pro_v1")
+        self.assertEqual(signature["captionStyle"], "cinematic_hype")
+        self.assertEqual(signature["effectProfile"], "cinematic_mixtape_effects")
+        self.assertEqual(signature["audioProfile"], "cinematic_mixtape")
+        self.assertEqual(signature["outroProfile"], "pro_clean_no_outro")
+        self.assertTrue(signature["premiumOnly"])
 
     def test_plan_tier_policy_defaults_are_safe_without_statsig(self) -> None:
         free_policy = get_plan_tier_policy("free")

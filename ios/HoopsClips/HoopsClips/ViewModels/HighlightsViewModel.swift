@@ -339,9 +339,11 @@ final class HighlightsViewModel {
 
     func createCloudEditRequest(
         preset: CloudEditPreset,
+        templateID: String? = nil,
         targetDurationSeconds: Int,
         aspectRatio: CloudEditAspectRatio? = nil,
-        isProUser: Bool
+        isProUser: Bool,
+        revenueCatAppUserID: String? = nil
     ) throws -> CreateCloudEditJobRequest {
         guard let sourceObjectKey = cloudEditSourceObjectKey else {
             throw CloudEditError.missingSourceObject
@@ -371,10 +373,11 @@ final class HighlightsViewModel {
             installId: installID,
             sourceObjectKey: sourceObjectKey,
             preset: preset.rawValue,
-            templateId: preset.templateID,
+            templateId: templateID ?? preset.templateID,
             targetDurationSeconds: targetDurationSeconds,
             aspectRatio: aspectRatio ?? preset.aspectRatio,
             planTier: isProUser ? .pro : .free,
+            revenueCatAppUserID: revenueCatAppUserID,
             clips: Array(candidates)
         )
     }

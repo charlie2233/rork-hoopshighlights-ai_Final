@@ -29,6 +29,7 @@ class TemplateCase:
     outro_profile: str
     expected_width: int
     expected_height: int
+    plan_tier: str = "free"
 
 
 TEMPLATE_CASES: Dict[str, TemplateCase] = {
@@ -68,7 +69,61 @@ TEMPLATE_CASES: Dict[str, TemplateCase] = {
         expected_width=1280,
         expected_height=720,
     ),
+    "recruiting_reel_pro_v1": TemplateCase(
+        template_id="recruiting_reel_pro_v1",
+        preset="personal_highlight",
+        target_duration_seconds=60,
+        aspect_ratio="9:16",
+        caption_style="recruiting_clean_hype",
+        effect_profile="recruiting_focus",
+        audio_profile="recruiting_clean",
+        outro_profile="pro_clean_no_outro",
+        expected_width=720,
+        expected_height=1280,
+        plan_tier="internal",
+    ),
+    "cinematic_mixtape_pro_v1": TemplateCase(
+        template_id="cinematic_mixtape_pro_v1",
+        preset="personal_highlight",
+        target_duration_seconds=45,
+        aspect_ratio="9:16",
+        caption_style="cinematic_hype",
+        effect_profile="cinematic_mixtape_effects",
+        audio_profile="cinematic_mixtape",
+        outro_profile="pro_clean_no_outro",
+        expected_width=720,
+        expected_height=1280,
+        plan_tier="internal",
+    ),
+    "nba_recap_pro_v1": TemplateCase(
+        template_id="nba_recap_pro_v1",
+        preset="full_game_highlight",
+        target_duration_seconds=120,
+        aspect_ratio="16:9",
+        caption_style="broadcast_scorebug",
+        effect_profile="broadcast_recap_effects",
+        audio_profile="broadcast_recap",
+        outro_profile="pro_clean_no_outro",
+        expected_width=1280,
+        expected_height=720,
+        plan_tier="internal",
+    ),
+    "team_highlight_pro_v1": TemplateCase(
+        template_id="team_highlight_pro_v1",
+        preset="full_game_highlight",
+        target_duration_seconds=120,
+        aspect_ratio="16:9",
+        caption_style="team_clean",
+        effect_profile="team_package_effects",
+        audio_profile="team_package",
+        outro_profile="pro_clean_no_outro",
+        expected_width=1280,
+        expected_height=720,
+        plan_tier="internal",
+    ),
 }
+
+DEFAULT_TEMPLATE_CASES = ["coach_review_v1", "full_game_highlight_v1", "personal_highlight_v1"]
 
 
 def main() -> int:
@@ -117,7 +172,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--timeout-seconds", type=int, default=int(os.getenv("HOOPS_SMOKE_TIMEOUT_SECONDS", "360")))
     parser.add_argument("--poll-seconds", type=float, default=float(os.getenv("HOOPS_SMOKE_POLL_SECONDS", "2")))
     parser.add_argument("--trace-id-prefix", default=os.getenv("HOOPS_SMOKE_TRACE_ID", "phase-edit5b-template-pack-smoke"))
-    parser.add_argument("--templates", nargs="+", choices=sorted(TEMPLATE_CASES), default=sorted(TEMPLATE_CASES))
+    parser.add_argument("--templates", nargs="+", choices=sorted(TEMPLATE_CASES), default=DEFAULT_TEMPLATE_CASES)
     parser.add_argument("--skip-revision", action="store_true")
     parser.add_argument("--r2-output-bucket", default=os.getenv("HOOPS_R2_OUTPUT_BUCKET") or os.getenv("HOOPS_R2_BUCKET") or "hoopsclips-results-staging")
     parser.add_argument("--r2-endpoint-url", default=os.getenv("HOOPS_R2_ENDPOINT_URL"))
@@ -146,7 +201,7 @@ def run_template_case(args: argparse.Namespace, output_dir: Path, source_key: st
             "templateId": case.template_id,
             "targetDurationSeconds": case.target_duration_seconds,
             "aspectRatio": case.aspect_ratio,
-            "planTier": "free",
+            "planTier": case.plan_tier,
             "clips": clips,
         },
         trace_id=trace_id,
@@ -171,7 +226,7 @@ def run_template_case(args: argparse.Namespace, output_dir: Path, source_key: st
         {
             "installId": args.install_id,
             "sourceObjectKey": source_key,
-            "planTier": "free",
+            "planTier": case.plan_tier,
             "editPlan": plan,
             "sourceClips": clips,
         },

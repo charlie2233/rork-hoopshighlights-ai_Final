@@ -133,12 +133,79 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertEqual(job.plan.captionStyle, "bold_hype")
         self.assertEqual(job.validation_errors, [])
 
-    def test_template_registry_has_three_valid_starter_packs(self) -> None:
+    def test_template_registry_has_base_and_pro_packs(self) -> None:
         validation = validate_template_registry()
 
-        self.assertEqual(set(validation.keys()), {"personal_highlight_v1", "full_game_highlight_v1", "coach_review_v1"})
+        self.assertEqual(
+            set(validation.keys()),
+            {
+                "personal_highlight_v1",
+                "full_game_highlight_v1",
+                "coach_review_v1",
+                "recruiting_reel_pro_v1",
+                "cinematic_mixtape_pro_v1",
+                "nba_recap_pro_v1",
+                "team_highlight_pro_v1",
+            },
+        )
         self.assertTrue(all(not errors for errors in validation.values()))
         self.assertEqual(TEMPLATE_PACK_REGISTRY["full_game_highlight_v1"].captionStyle.styleId, "clean_scorebug")
+        self.assertTrue(TEMPLATE_PACK_REGISTRY["cinematic_mixtape_pro_v1"].premiumOnly)
+
+    def test_free_plan_rejects_premium_template_pack(self) -> None:
+        request = CreateEditJobRequest(**_request_payload(templateId="cinematic_mixtape_pro_v1", targetDurationSeconds=30))
+
+        job = build_edit_job(request, "edit_free_premium")
+
+        self.assertEqual(job.status, "failed")
+        self.assertTrue(any(error.code == "premium_template_required" for error in job.validation_errors))
+
+    def test_internal_plan_can_build_all_pro_templates_as_clean_exports(self) -> None:
+        cases = [
+            ("personal_highlight", "recruiting_reel_pro_v1", 60, "9:16", "recruiting_clean_hype"),
+            ("personal_highlight", "cinematic_mixtape_pro_v1", 45, "9:16", "cinematic_hype"),
+            ("full_game_highlight", "nba_recap_pro_v1", 120, "16:9", "broadcast_scorebug"),
+            ("full_game_highlight", "team_highlight_pro_v1", 120, "16:9", "team_clean"),
+        ]
+
+        for preset, template_id, duration, aspect_ratio, caption_style in cases:
+            with self.subTest(template_id=template_id):
+                request = CreateEditJobRequest(
+                    **_request_payload(
+                        preset=preset,
+                        templateId=template_id,
+                        targetDurationSeconds=duration,
+                        aspectRatio=aspect_ratio,
+                        planTier="internal",
+                    )
+                )
+
+                job = build_edit_job(request, f"edit_{template_id}")
+
+                self.assertEqual(job.status, "plan_ready")
+                self.assertEqual(job.validation_errors, [])
+                self.assertEqual(job.plan.templateId, template_id)
+                self.assertEqual(job.plan.captionStyle, caption_style)
+                self.assertEqual(job.plan.aspectRatio, aspect_ratio)
+                self.assertFalse(job.plan.watermark.enabled)
+                self.assertFalse(job.plan.outro.enabled)
+
+    def test_more_hype_revision_preserves_premium_template(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                preset="personal_highlight",
+                templateId="cinematic_mixtape_pro_v1",
+                targetDurationSeconds=45,
+                planTier="internal",
+            )
+        )
+        job = build_edit_job(request, "edit_premium_revision")
+
+        revised, response = build_revision_response(job, ReviseEditJobRequest(command="make_more_hype"), "rev_premium")
+
+        self.assertEqual(revised.plan.templateId, "cinematic_mixtape_pro_v1")
+        self.assertEqual(response.revisedPlan.templateId, "cinematic_mixtape_pro_v1")
+        self.assertTrue(response.validationResult.valid)
 
     def test_duplicate_groups_keep_only_best_clip(self) -> None:
         request = CreateEditJobRequest(**_request_payload())

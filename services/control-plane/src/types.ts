@@ -364,11 +364,20 @@ export interface CreateEditJobRequest {
   installId: string;
   sourceObjectKey?: string | null;
   preset: "personal_highlight" | "full_game_highlight" | "coach_review" | "fast_break_mix" | "best_five";
-  templateId?: "personal_highlight_v1" | "full_game_highlight_v1" | "coach_review_v1" | null;
+  templateId?:
+    | "personal_highlight_v1"
+    | "full_game_highlight_v1"
+    | "coach_review_v1"
+    | "recruiting_reel_pro_v1"
+    | "cinematic_mixtape_pro_v1"
+    | "nba_recap_pro_v1"
+    | "team_highlight_pro_v1"
+    | null;
   theme?: string | null;
   targetDurationSeconds: number;
   aspectRatio?: "9:16" | "16:9" | "source" | null;
   planTier?: EditPlanTier;
+  revenueCatAppUserID?: string | null;
   clips: EditCandidateClip[];
 }
 
@@ -396,6 +405,7 @@ export interface StartEditRenderRequest {
   installId: string;
   sourceObjectKey?: string | null;
   planTier?: EditPlanTier;
+  revenueCatAppUserID?: string | null;
   idempotencyKey?: string | null;
   editPlan?: Record<string, unknown>;
   sourceClips?: EditCandidateClip[];
@@ -449,6 +459,7 @@ export interface EditingRenderJobResponse extends ResponseEnvelope {
   renderer: string;
   rendererVersion: string;
   planVersion?: string | null;
+  templateId?: string | null;
   status: RenderStatus;
   outputObjectKey?: string | null;
   renderLogObjectKey?: string | null;

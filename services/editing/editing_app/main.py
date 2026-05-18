@@ -2,9 +2,13 @@ from __future__ import annotations
 
 from datetime import timedelta
 import json
+import os
 from pathlib import Path
 import tempfile
 from typing import Any, Dict, Optional
+from urllib.error import HTTPError, URLError
+from urllib.parse import quote
+from urllib.request import Request, urlopen
 from uuid import uuid4
 
 from fastapi import BackgroundTasks, FastAPI, Header, Query, Response
@@ -47,6 +51,7 @@ from app.editing import (  # noqa: E402
     default_ai_edit_feature_flags,
     estimate_render_cost,
     get_plan_tier_policy,
+    get_template_pack,
     policy_summary_for_client,
     validate_edit_plan,
 )
@@ -339,6 +344,7 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             installId=job.install_id,
             sourceObjectKey=job.source_object_key or edit_job.request.sourceObjectKey,
             planTier=job.plan_tier,
+            revenueCatAppUserID=edit_job.request.revenueCatAppUserID,
             editPlan=plan,
             sourceClips=edit_job.request.clips,
             idempotencyKey=job.idempotency_key,
@@ -404,6 +410,73 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             policy = policy.model_copy(update={"watermarkRequired": False})
         return policy
 
+    def revenuecat_rest_api_key() -> Optional[str]:
+        return os.getenv("HOOPS_REVENUECAT_REST_API_KEY") or os.getenv("REVENUECAT_REST_API_KEY")
+
+    def revenuecat_entitlement_id() -> str:
+        return os.getenv("HOOPS_REVENUECAT_PRO_ENTITLEMENT_ID", "pro").strip() or "pro"
+
+    def revenuecat_api_base_url() -> str:
+        base_url = os.getenv("HOOPS_REVENUECAT_API_BASE_URL", "https://api.revenuecat.com").rstrip("/")
+        return base_url.removesuffix("/v1")
+
+    def verify_revenuecat_pro_entitlement(app_user_id: Optional[str]) -> None:
+        if not app_user_id:
+            raise EditingServiceError(403, "pro_entitlement_required", "Pro templates require an active HoopClips Pro entitlement.")
+
+        api_key = revenuecat_rest_api_key()
+        if not api_key:
+            raise EditingServiceError(503, "revenuecat_verifier_unconfigured", "Pro entitlement verification is not configured.")
+
+        entitlement_id = revenuecat_entitlement_id()
+        url = f"{revenuecat_api_base_url()}/v1/subscribers/{quote(app_user_id, safe='')}"
+        request = Request(
+            url,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+                "User-Agent": "HoopClipsEditingService/1.0",
+            },
+        )
+        try:
+            with urlopen(request, timeout=8) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+        except HTTPError as error:
+            raise EditingServiceError(403, "pro_entitlement_unverified", "HoopClips could not verify an active Pro entitlement.") from error
+        except (URLError, TimeoutError, OSError, json.JSONDecodeError) as error:
+            raise EditingServiceError(503, "revenuecat_verifier_unavailable", "Pro entitlement verification is temporarily unavailable.") from error
+
+        entitlement = payload.get("subscriber", {}).get("entitlements", {}).get(entitlement_id)
+        if not isinstance(entitlement, dict):
+            raise EditingServiceError(403, "pro_entitlement_required", "Pro templates require an active HoopClips Pro entitlement.")
+        expires_date = entitlement.get("expires_date")
+        grace_period_expires_date = entitlement.get("grace_period_expires_date")
+        if not _revenuecat_expiration_is_active(expires_date, grace_period_expires_date):
+            raise EditingServiceError(403, "pro_entitlement_required", "Pro templates require an active HoopClips Pro entitlement.")
+
+    def _revenuecat_expiration_is_active(expires_date: object, grace_period_expires_date: object) -> bool:
+        if expires_date is None:
+            return True
+        for value in (expires_date, grace_period_expires_date):
+            if not isinstance(value, str) or not value:
+                continue
+            parsed = parse_datetime(value)
+            if parsed is not None and parsed > now_utc():
+                return True
+        return False
+
+    def enforce_template_policy(template_id: Optional[str], plan_tier: str, revenuecat_app_user_id: Optional[str]) -> None:
+        template = get_template_pack(template_id)
+        if not template.premiumOnly:
+            return
+        policy = effective_policy(plan_tier)
+        if not policy.premiumTemplatesAllowed:
+            raise EditingServiceError(403, "premium_template_required", "Selected template requires HoopClips Pro.")
+        if plan_tier == "pro":
+            if not feature_flags.aiEditProExportsEnabled:
+                raise EditingServiceError(403, "pro_exports_unavailable", "Pro AI exports are not enabled yet.")
+            verify_revenuecat_pro_entitlement(revenuecat_app_user_id)
+
     def enforce_render_quota(request: CreateRenderJobRequest) -> None:
         policy = effective_policy(request.planTier)
         install_jobs = render_state_store.load_jobs_for_install(request.installId)
@@ -433,6 +506,7 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             raise EditingServiceError(403, "ai_edit_disabled", "AI Edit is temporarily unavailable.")
         if request.templateId and not feature_flags.aiEditTemplatePackEnabled:
             raise EditingServiceError(403, "ai_edit_template_pack_disabled", "AI Edit templates are temporarily unavailable.")
+        enforce_template_policy(request.templateId, request.planTier, request.revenueCatAppUserID)
         if request.planTier == "pro" and not feature_flags.aiEditProExportsEnabled:
             raise EditingServiceError(403, "pro_exports_unavailable", "Pro AI exports are not enabled yet.")
         policy = effective_policy(request.planTier)
@@ -636,6 +710,7 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
 
     def enqueue_render_job(request: CreateRenderJobRequest, background_tasks: BackgroundTasks, force_new: bool = False) -> RenderJobResponse:
         mark_stale_renders()
+        enforce_template_policy(request.editPlan.templateId, request.planTier, request.revenueCatAppUserID)
         idempotency_key = request.idempotencyKey or f"{request.installId}:{request.editJobId}:{request.editPlan.editJobId}:{request.editPlan.templateId}:{len(request.editPlan.clips)}"
         existing_by_key = load_idempotent_render_job(idempotency_key)
         if existing_by_key is not None:
@@ -838,6 +913,7 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
                     installId=request.installId,
                     sourceObjectKey=stored_edit_job.request.sourceObjectKey,
                     planTier=stored_edit_job.request.planTier,
+                    revenueCatAppUserID=stored_edit_job.request.revenueCatAppUserID,
                     editPlan=revision.revisedPlan,
                     sourceClips=stored_edit_job.request.clips,
                     revisionId=revision_id,
@@ -891,6 +967,7 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
                     installId=request.installId,
                     sourceObjectKey=source_object_key,
                     planTier=plan_tier,
+                    revenueCatAppUserID=request.revenueCatAppUserID or (stored_edit_job.request.revenueCatAppUserID if stored_edit_job is not None else None),
                     editPlan=edit_plan,
                     sourceClips=source_clips,
                     idempotencyKey=request.idempotencyKey,
