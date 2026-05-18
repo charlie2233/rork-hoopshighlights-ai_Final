@@ -261,7 +261,8 @@ struct ExportView: View {
         AIEditView(
             viewModel: viewModel,
             isProUser: subscriptionManager.isProUser,
-            presentation: .exportSection
+            presentation: .exportSection,
+            onRequestProUpgrade: { showingPaywall = true }
         )
     }
 

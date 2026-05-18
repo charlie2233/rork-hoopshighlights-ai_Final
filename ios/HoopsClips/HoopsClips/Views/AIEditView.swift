@@ -24,6 +24,7 @@ struct AIEditView: View {
     @Bindable var viewModel: HighlightsViewModel
     let isProUser: Bool
     var presentation: AIEditPresentation = .sheet
+    var onRequestProUpgrade: (() -> Void)?
 
     @Environment(\.dismiss) private var dismiss
     @State private var selectedPreset: CloudEditPreset = .personalHighlight
@@ -256,17 +257,33 @@ struct AIEditView: View {
                 }
             }
 
-            Button {
-                proInfoSheet = .benefits
-            } label: {
-                Label("See Pro benefits", systemImage: "info.circle.fill")
-                    .font(.caption.bold())
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 10)
+            VStack(spacing: 8) {
+                if onRequestProUpgrade != nil {
+                    Button {
+                        requestProUpgrade()
+                    } label: {
+                        Label("Upgrade with App Store", systemImage: "crown.fill")
+                            .font(.caption.bold())
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(AppTheme.warningYellow)
+                    .accessibilityIdentifier("export.aiEdit.pro.upgradeButton")
+                }
+
+                Button {
+                    proInfoSheet = .benefits
+                } label: {
+                    Label("See Pro benefits", systemImage: "info.circle.fill")
+                        .font(.caption.bold())
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                }
+                .buttonStyle(.bordered)
+                .tint(AppTheme.warningYellow)
+                .accessibilityIdentifier("export.aiEdit.pro.infoButton")
             }
-            .buttonStyle(.bordered)
-            .tint(AppTheme.warningYellow)
-            .accessibilityIdentifier("export.aiEdit.pro.infoButton")
         }
         .padding(14)
         .rorkCard(cornerRadius: 16, stroke: AppTheme.neonPurple.opacity(0.2), glow: AppTheme.neonPurple, glowOpacity: 0.06)
@@ -614,9 +631,13 @@ struct AIEditView: View {
 
             if receiptPlanTier.isFree, includesBranding, proUXFlags.proUpsellEnabled {
                 Button {
-                    proInfoSheet = .benefits
+                    if onRequestProUpgrade != nil {
+                        requestProUpgrade()
+                    } else {
+                        proInfoSheet = .benefits
+                    }
                 } label: {
-                    Label("Free export includes HoopClips branding. Upgrade later to remove watermark/outro.", systemImage: "crown.fill")
+                    Label("Free export includes HoopClips branding. Upgrade to remove watermark/outro.", systemImage: "crown.fill")
                         .font(.caption2.bold())
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -670,7 +691,7 @@ struct AIEditView: View {
                             .foregroundStyle(.white)
                             .accessibilityIdentifier("export.aiEdit.proInfoSheet")
 
-                        Text("Pro is planned as a faster, cleaner cloud editing tier. Payments are not implemented in this build, so this is an informational preview only.")
+                        Text("Pro unlocks the faster, cleaner cloud editing tier. Subscriptions are purchased through App Store in-app purchase via RevenueCat when this build is configured with a live offering.")
                             .font(.subheadline)
                             .foregroundStyle(AppTheme.subtleText)
                             .fixedSize(horizontal: false, vertical: true)
@@ -689,6 +710,20 @@ struct AIEditView: View {
                             .font(.caption)
                             .foregroundStyle(AppTheme.warningYellow)
                             .fixedSize(horizontal: false, vertical: true)
+
+                        if onRequestProUpgrade != nil {
+                            Button {
+                                requestProUpgrade()
+                            } label: {
+                                Label("Upgrade with App Store", systemImage: "crown.fill")
+                                    .font(.headline)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 12)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(AppTheme.warningYellow)
+                            .accessibilityIdentifier("export.aiEdit.proInfoSheet.upgradeButton")
+                        }
                     }
                     .padding(18)
                 }
@@ -733,13 +768,27 @@ struct AIEditView: View {
                             Text("Available with Pro")
                                 .font(.headline)
                                 .foregroundStyle(.white)
-                            Text("This branch only adds honest Pro placeholders and policy-aware UX. It does not enable payments or unsupported Pro rendering.")
+                            Text("This template is gated behind the Pro entitlement. Upgrade uses App Store in-app purchase via RevenueCat when subscription offerings are configured.")
                                 .font(.caption)
                                 .foregroundStyle(AppTheme.subtleText)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                         .padding(14)
                         .background(AppTheme.cardBg.opacity(0.72), in: .rect(cornerRadius: 16))
+
+                        if onRequestProUpgrade != nil {
+                            Button {
+                                requestProUpgrade()
+                            } label: {
+                                Label("Upgrade with App Store", systemImage: "crown.fill")
+                                    .font(.headline)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 12)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(AppTheme.warningYellow)
+                            .accessibilityIdentifier("export.aiEdit.proInfoSheet.upgradeButton")
+                        }
                     }
                     .padding(18)
                 }
@@ -753,6 +802,14 @@ struct AIEditView: View {
             }
         }
         .accessibilityIdentifier("export.aiEdit.proInfoSheet")
+    }
+
+    private func requestProUpgrade() {
+        proInfoSheet = nil
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(180))
+            onRequestProUpgrade?()
+        }
     }
 
     private var actionCard: some View {

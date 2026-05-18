@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 import RevenueCat
 
 @Observable
@@ -8,6 +9,8 @@ final class SubscriptionManager {
     var freeUsesRemaining: Int = AppConstants.cloudAnalysisDailyQuota
     var isLoading = false
     var errorMessage: String?
+    var revenueCatAppUserID: String?
+    var lastCustomerInfoUpdatedAt: Date?
 
     private let freeUsesKey = "hoops_free_uses_remaining"
     private let entitlementID = "pro"
@@ -27,8 +30,44 @@ final class SubscriptionManager {
         "Subscriptions are unavailable in this build."
     }
 
+    var proEntitlementID: String {
+        entitlementID
+    }
+
     var canAnalyze: Bool {
         isProUser || freeUsesRemaining > 0
+    }
+
+    func syncAuthenticatedUser(_ user: AuthUser?) async {
+        guard billingConfigured else {
+            isProUser = false
+            revenueCatAppUserID = nil
+            return
+        }
+
+        guard let user, user.authMethod != .anonymous else {
+            await resetRevenueCatForSignedOutUser()
+            return
+        }
+
+        guard let appUserID = revenueCatUserID(for: user) else {
+            isProUser = false
+            LaunchTelemetry.shared.recordConfigurationIssue("RevenueCat sync skipped because the app user ID was empty.")
+            return
+        }
+
+        if revenueCatAppUserID == appUserID {
+            await checkSubscriptionStatus()
+            return
+        }
+
+        do {
+            let result = try await Purchases.shared.logIn(appUserID)
+            updateEntitlementState(from: result.customerInfo)
+        } catch {
+            isProUser = false
+            LaunchTelemetry.shared.recordConfigurationIssue("RevenueCat login failed: \(error.localizedDescription)")
+        }
     }
 
     func checkSubscriptionStatus() async {
@@ -39,9 +78,10 @@ final class SubscriptionManager {
 
         do {
             let customerInfo = try await Purchases.shared.customerInfo()
-            isProUser = customerInfo.entitlements[entitlementID]?.isActive == true
+            updateEntitlementState(from: customerInfo)
         } catch {
             isProUser = false
+            LaunchTelemetry.shared.recordConfigurationIssue("RevenueCat customer info refresh failed: \(error.localizedDescription)")
         }
     }
 
@@ -67,8 +107,8 @@ final class SubscriptionManager {
                 return false
             }
 
-            if result.customerInfo.entitlements[entitlementID]?.isActive == true {
-                isProUser = true
+            updateEntitlementState(from: result.customerInfo)
+            if isProUser {
                 return true
             }
 
@@ -97,7 +137,7 @@ final class SubscriptionManager {
 
         do {
             let customerInfo = try await Purchases.shared.restorePurchases()
-            isProUser = customerInfo.entitlements[entitlementID]?.isActive == true
+            updateEntitlementState(from: customerInfo)
             if !isProUser {
                 errorMessage = "No active subscription found."
             }
@@ -105,5 +145,43 @@ final class SubscriptionManager {
             LaunchTelemetry.shared.recordConfigurationIssue("Restore purchases failed: \(error.localizedDescription)")
             errorMessage = "We couldn't restore purchases. Please try again."
         }
+    }
+
+    private func updateEntitlementState(from customerInfo: CustomerInfo) {
+        isProUser = customerInfo.entitlements[entitlementID]?.isActive == true
+        revenueCatAppUserID = Purchases.shared.appUserID
+        lastCustomerInfoUpdatedAt = Date()
+    }
+
+    private func resetRevenueCatForSignedOutUser() async {
+        guard billingConfigured else {
+            isProUser = false
+            revenueCatAppUserID = nil
+            return
+        }
+
+        guard revenueCatAppUserID != nil else {
+            isProUser = false
+            return
+        }
+
+        do {
+            _ = try await Purchases.shared.logOut()
+        } catch {
+            LaunchTelemetry.shared.recordConfigurationIssue("RevenueCat logout failed: \(error.localizedDescription)")
+        }
+
+        isProUser = false
+        revenueCatAppUserID = nil
+        lastCustomerInfoUpdatedAt = Date()
+    }
+
+    private func revenueCatUserID(for user: AuthUser) -> String? {
+        let trimmedID = user.id.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedID.isEmpty else { return nil }
+
+        let digest = SHA256.hash(data: Data(trimmedID.utf8))
+        let hexDigest = digest.map { String(format: "%02x", $0) }.joined()
+        return "hoops_\(user.authMethod.rawValue)_\(hexDigest)"
     }
 }

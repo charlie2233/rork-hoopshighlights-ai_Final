@@ -21,6 +21,11 @@ struct ContentView: View {
         return hasPendingEmail || hasPendingPhone
     }
 
+    private var revenueCatSyncKey: String {
+        guard let user = authService.currentUser else { return "signed-out" }
+        return "\(user.authMethod.rawValue):\(user.id)"
+    }
+
     #if DEBUG
     private var isPaywallScreenshotMode: Bool {
         ProcessInfo.processInfo.arguments.contains("--hoops-paywall-screenshot")
@@ -40,8 +45,11 @@ struct ContentView: View {
             #endif
         }
         .task {
-            if authService.isAuthenticated {
-                await subscriptionManager.checkSubscriptionStatus()
+            await subscriptionManager.syncAuthenticatedUser(authService.currentUser)
+        }
+        .onChange(of: revenueCatSyncKey) { _, _ in
+            Task {
+                await subscriptionManager.syncAuthenticatedUser(authService.currentUser)
             }
         }
         .environment(languageStore)

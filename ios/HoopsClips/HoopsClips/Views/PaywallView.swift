@@ -63,6 +63,7 @@ struct PaywallView: View {
                     offeringsLoadMessage = nil
                     isLoadingOfferings = false
                 } else if subscriptionManager.billingConfigured {
+                    await subscriptionManager.syncAuthenticatedUser(authService.currentUser)
                     await loadOfferings()
                 } else {
                     isLoadingOfferings = false
@@ -98,11 +99,11 @@ struct PaywallView: View {
                 secondary: AppTheme.warningYellow
             )
 
-            Text("Hoopclips Premium")
+            Text("HoopClips Pro")
                 .font(.system(size: isScreenshotMode ? 28 : 32, weight: .bold))
                 .foregroundStyle(.white)
 
-            Text("Create more basketball highlights with premium review tools, clean exports, and no daily analysis cap.")
+            Text("Unlock priority cloud AI editing, cleaner exports, longer videos, more revisions, and Pro template access as it rolls out.")
                 .font(.subheadline)
                 .foregroundStyle(AppTheme.subtleText)
                 .multilineTextAlignment(.center)
@@ -112,9 +113,10 @@ struct PaywallView: View {
 
     private var featuresSection: some View {
         VStack(spacing: isScreenshotMode ? 10 : 12) {
-            featureRow(icon: "infinity", title: "Unlimited clip analysis", subtitle: "Analyze every game, practice, and pickup run")
-            featureRow(icon: "bolt.fill", title: "Faster highlight review", subtitle: "Move from clips to keepers with fewer limits")
-            featureRow(icon: "film.stack.fill", title: "Export premium clips", subtitle: "Create social-ready reels without the end card")
+            featureRow(icon: "bolt.fill", title: "Priority cloud AI Edit", subtitle: "Move through the Pro render queue when capacity is available")
+            featureRow(icon: "sparkles.tv.fill", title: "1080p clean exports", subtitle: "Remove required HoopClips watermark and outro when policy allows")
+            featureRow(icon: "film.stack.fill", title: "More revisions and storage", subtitle: "Create longer edits, revise more, and keep cloud renders longer")
+            featureRow(icon: "rectangle.stack.badge.play.fill", title: "Pro template packs", subtitle: "Unlock premium styles like Recruiting Reel and Cinematic Mixtape as they launch")
         }
         .padding(isScreenshotMode ? 14 : 16)
         .rorkCard(cornerRadius: 18, stroke: AppTheme.softBorder, glowOpacity: 0.06)
@@ -160,7 +162,7 @@ struct PaywallView: View {
             } else if isScreenshotMode {
                 premiumPlanCard(
                     priceText: "$9.99/month",
-                    buttonTitle: "Start Premium",
+                    buttonTitle: "Start Pro",
                     isProcessing: false
                 ) { }
             } else if !subscriptionManager.billingConfigured {
@@ -186,11 +188,12 @@ struct PaywallView: View {
                 } label: {
                     premiumPlanCardContent(
                         priceText: "\(package.storeProduct.localizedPriceString)/month",
-                        buttonTitle: subscriptionManager.isLoading ? "Processing..." : "Start Premium",
+                        buttonTitle: subscriptionManager.isLoading ? "Processing..." : "Start Pro",
                         isProcessing: subscriptionManager.isLoading
                     )
                 }
                 .disabled(subscriptionManager.isLoading)
+                .accessibilityIdentifier("paywall.premium.startButton")
             } else {
                 VStack(spacing: 8) {
                     Image(systemName: "exclamationmark.triangle")
@@ -210,6 +213,7 @@ struct PaywallView: View {
                     }
                     .font(.subheadline.bold())
                     .foregroundStyle(AppTheme.neonPurple)
+                    .accessibilityIdentifier("paywall.offerings.retryButton")
                 }
                 .frame(minHeight: 104)
             }
@@ -235,6 +239,7 @@ struct PaywallView: View {
             )
         }
         .disabled(isProcessing)
+        .accessibilityIdentifier("paywall.premium.startButton")
     }
 
     private func premiumPlanCardContent(
@@ -245,7 +250,7 @@ struct PaywallView: View {
         VStack(spacing: 14) {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Premium Monthly")
+                    Text("Pro Monthly")
                         .font(.headline.weight(.semibold))
                     Text(priceText)
                         .font(.title3.weight(.bold))
@@ -292,7 +297,7 @@ struct PaywallView: View {
         )
         .shadow(color: AppTheme.neonPurple.opacity(0.25), radius: 14, y: 7)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Premium Monthly")
+        .accessibilityLabel("Pro Monthly")
         .accessibilityValue("\(priceText). \(buttonTitle)")
     }
 
@@ -354,6 +359,7 @@ struct PaywallView: View {
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(AppTheme.neonPurple)
                 }
+                .accessibilityIdentifier("paywall.restorePurchases")
             }
         }
     }
