@@ -170,13 +170,13 @@ enum CloudEditProTemplatePlaceholder: String, CaseIterable, Identifiable, Sendab
     var accessibilityIdentifier: String {
         switch self {
         case .recruitingReelPro:
-            return "export.aiEdit.template.recruitingReelPro.locked"
+            return "export.aiEdit.proTemplate.recruitingReel"
         case .cinematicMixtapePro:
-            return "export.aiEdit.template.cinematicMixtapePro.locked"
+            return "export.aiEdit.proTemplate.cinematicMixtape"
         case .nbaRecapPro:
-            return "export.aiEdit.template.nbaRecapPro.locked"
+            return "export.aiEdit.proTemplate.nbaRecap"
         case .teamHighlightPro:
-            return "export.aiEdit.template.teamHighlightPro.locked"
+            return "export.aiEdit.proTemplate.teamHighlight"
         }
     }
 }

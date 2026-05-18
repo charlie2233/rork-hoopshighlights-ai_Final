@@ -232,7 +232,11 @@ struct HoopsClipsTests {
         #expect(placeholders.map(\.title).contains("Cinematic Mixtape Pro"))
         #expect(placeholders.map(\.title).contains("NBA Recap Pro"))
         #expect(placeholders.map(\.title).contains("Team Highlight Pro"))
-        #expect(placeholders.allSatisfy { $0.accessibilityIdentifier.hasPrefix("export.aiEdit.template.") })
+        #expect(placeholders.allSatisfy { $0.accessibilityIdentifier.hasPrefix("export.aiEdit.proTemplate.") })
+        #expect(identifiers.contains("export.aiEdit.proTemplate.recruitingReel"))
+        #expect(identifiers.contains("export.aiEdit.proTemplate.cinematicMixtape"))
+        #expect(identifiers.contains("export.aiEdit.proTemplate.nbaRecap"))
+        #expect(identifiers.contains("export.aiEdit.proTemplate.teamHighlight"))
     }
 
     @Test func testCloudEditProUXFlagsDefaultToVisibleButNonPaymentUX() {

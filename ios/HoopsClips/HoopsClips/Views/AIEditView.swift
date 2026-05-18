@@ -218,7 +218,7 @@ struct AIEditView: View {
         }
         .padding(14)
         .rorkCard(cornerRadius: 16, stroke: AppTheme.warningYellow.opacity(0.18), glow: AppTheme.warningYellow, glowOpacity: 0.04)
-        .accessibilityIdentifier("export.aiEdit.plan.card")
+        .accessibilityIdentifier("export.aiEdit.planCard.\(policy.planTier.isFree ? "free" : "pro")")
     }
 
     private var proValueCard: some View {
@@ -270,7 +270,7 @@ struct AIEditView: View {
         }
         .padding(14)
         .rorkCard(cornerRadius: 16, stroke: AppTheme.neonPurple.opacity(0.2), glow: AppTheme.neonPurple, glowOpacity: 0.06)
-        .accessibilityIdentifier("export.aiEdit.pro.valueCard")
+        .accessibilityIdentifier("export.aiEdit.proValueCard")
     }
 
     private var stylePicker: some View {
@@ -624,7 +624,7 @@ struct AIEditView: View {
                         .background(AppTheme.accentPurple.opacity(0.25), in: .rect(cornerRadius: 12))
                 }
                 .buttonStyle(.plain)
-                .accessibilityIdentifier("export.aiEdit.receipt.proUpsell")
+                .accessibilityIdentifier("export.aiEdit.watermarkUpsell")
             }
 
             if !receiptPlanTier.isFree {
@@ -635,7 +635,7 @@ struct AIEditView: View {
         }
         .padding(14)
         .rorkCard(cornerRadius: 16, stroke: AppTheme.successGreen.opacity(0.2), glow: AppTheme.successGreen, glowOpacity: 0.05)
-        .accessibilityIdentifier("export.aiEdit.receipt")
+        .accessibilityIdentifier("export.aiEdit.workReceipt")
     }
 
     private func previewCard(player: AVPlayer) -> some View {
@@ -668,6 +668,7 @@ struct AIEditView: View {
                         Label("HoopClips Pro", systemImage: "crown.fill")
                             .font(.title2.bold())
                             .foregroundStyle(.white)
+                            .accessibilityIdentifier("export.aiEdit.proInfoSheet")
 
                         Text("Pro is planned as a faster, cleaner cloud editing tier. Payments are not implemented in this build, so this is an informational preview only.")
                             .font(.subheadline)
@@ -700,7 +701,7 @@ struct AIEditView: View {
                 }
             }
         }
-        .accessibilityIdentifier("export.aiEdit.pro.benefitsSheet")
+        .accessibilityIdentifier("export.aiEdit.proInfoSheet")
     }
 
     private func proTemplateInfoSheet(for template: CloudEditProTemplatePlaceholder) -> some View {
@@ -712,6 +713,7 @@ struct AIEditView: View {
                         Label(template.title, systemImage: template.icon)
                             .font(.title2.bold())
                             .foregroundStyle(.white)
+                            .accessibilityIdentifier("export.aiEdit.proInfoSheet")
 
                         Text(template.subtitle)
                             .font(.headline)
@@ -750,7 +752,7 @@ struct AIEditView: View {
                 }
             }
         }
-        .accessibilityIdentifier("export.aiEdit.pro.templateSheet")
+        .accessibilityIdentifier("export.aiEdit.proInfoSheet")
     }
 
     private var actionCard: some View {

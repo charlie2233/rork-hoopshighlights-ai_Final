@@ -73,9 +73,9 @@ final class HoopsClipsUITests: XCTestCase {
         XCTAssertTrue(app.buttons["export.aiEdit.style.fullGameHighlight"].exists)
         XCTAssertTrue(app.buttons["export.aiEdit.style.coachReview"].exists)
         XCTAssertTrue(app.staticTexts["export.aiEdit.policy.limitLabel"].exists)
-        XCTAssertTrue(app.descendants(matching: .any)["export.aiEdit.plan.card"].exists)
-        XCTAssertTrue(app.descendants(matching: .any)["export.aiEdit.pro.valueCard"].exists)
-        XCTAssertTrue(app.buttons["export.aiEdit.template.recruitingReelPro.locked"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["export.aiEdit.planCard.free"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["export.aiEdit.proValueCard"].exists)
+        XCTAssertTrue(app.buttons["export.aiEdit.proTemplate.recruitingReel"].exists)
         XCTAssertTrue(app.buttons["export.aiEdit.length.30s"].firstMatch.exists)
         XCTAssertTrue(app.staticTexts["export.aiEdit.policy.limitLabel"].firstMatch.exists)
         XCTAssertTrue(app.descendants(matching: .any)["export.aiEdit.timeline"].waitForExistence(timeout: 10))
@@ -84,7 +84,7 @@ final class HoopsClipsUITests: XCTestCase {
         tapWhenReady(app.buttons["export.aiEdit.generateButton"], in: app)
         XCTAssertTrue(waitForRenderedState(in: app, timeout: 300), "Cloud render should reach Rendered through the live Worker path.")
         XCTAssertTrue(app.descendants(matching: .any)["export.aiEdit.preview"].waitForExistence(timeout: 20))
-        XCTAssertTrue(app.descendants(matching: .any)["export.aiEdit.receipt"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.descendants(matching: .any)["export.aiEdit.workReceipt"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.descendants(matching: .any)["export.aiEdit.revision.card"].waitForExistence(timeout: 10))
         attachScreenshot(named: "03 Export AI Edit Rendered Preview", app: app)
 
@@ -101,6 +101,33 @@ final class HoopsClipsUITests: XCTestCase {
         tapWhenReady(shareButton, in: app)
         XCTAssertTrue(waitForSystemShareSurface(in: app, timeout: 60), "System share sheet should open with the downloaded MP4 file.")
         attachScreenshot(named: "05 Export AI Edit Share Sheet", app: app)
+    }
+
+    @MainActor
+    func testAIEditFreemiumProUXSmoke() throws {
+        try skipUnlessAIEditUISmokeIsEnabled()
+
+        let smokeConfig = loadAIEditUISmokeConfig()
+        let app = launchAIEditSmokeApp(
+            fixture: "staging_render_ready",
+            sourceObjectKey: smokeConfig.sourceObjectKey,
+            workerURL: smokeConfig.workerURL,
+            installID: "phase-ux2b-freemium-pro-ui-smoke"
+        )
+        openAIEditExportFlow(from: app)
+
+        XCTAssertTrue(app.descendants(matching: .any)["export.aiEdit.planCard.free"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.descendants(matching: .any)["export.aiEdit.proValueCard"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["export.aiEdit.cloudLocker.summary"].exists)
+        attachScreenshot(named: "UX2B Free Plan And Pro Value Cards", app: app)
+
+        let lockedTemplate = app.buttons["export.aiEdit.proTemplate.recruitingReel"]
+        tapWhenReady(lockedTemplate, in: app)
+        XCTAssertTrue(app.descendants(matching: .any)["export.aiEdit.proInfoSheet"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["Buy"].exists)
+        XCTAssertFalse(app.buttons["Subscribe"].exists)
+        XCTAssertFalse(app.buttons["Render Revision"].exists)
+        attachScreenshot(named: "UX2B Locked Pro Template Info Sheet", app: app)
     }
 
     @MainActor
