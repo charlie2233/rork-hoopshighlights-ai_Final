@@ -21,7 +21,8 @@ def main() -> int:
     output_dir = Path(args.output_dir or tempfile.mkdtemp(prefix="hoopclips-ios-ai-edit-smoke-")).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
     source_path = output_dir / "source.mp4"
-    final_path = output_dir / "final.mp4"
+    initial_path = output_dir / "initial.mp4"
+    revised_path = output_dir / "revised-more-hype.mp4"
 
     create_source(source_path)
     version = request_json("GET", args.worker_url, "v1/editing/version", trace_id=args.trace_id)
@@ -73,19 +74,10 @@ def main() -> int:
         },
         trace_id=args.trace_id,
     )
-
-    deadline = time.time() + args.timeout_seconds
-    while time.time() < deadline and render_status.get("status") not in {"rendered", "failed", "cancelled"}:
-        time.sleep(args.poll_seconds)
-        render_status = request_json(
-            "GET",
-            args.worker_url,
-            f"v1/edit-jobs/{edit_job_id}/render-status?{urlencode({'installId': args.install_id})}",
-            trace_id=args.trace_id,
-        )
+    render_status = wait_for_render(args, edit_job_id, render_status)
 
     if render_status.get("status") != "rendered":
-        raise SmokeError("Worker render did not reach rendered", {"editJobId": edit_job_id, "renderStatus": render_status})
+        raise SmokeError("Worker render did not reach rendered", {"editJobId": edit_job_id, "renderStatus": sanitize_for_log(render_status)})
 
     download = request_json(
         "GET",
@@ -93,11 +85,79 @@ def main() -> int:
         f"v1/edit-jobs/{edit_job_id}/download-url?{urlencode({'installId': args.install_id})}",
         trace_id=args.trace_id,
     )
-    download_file(str(download["downloadUrl"]), final_path)
-    media = probe_media(
-        final_path,
+    download_file(str(download["downloadUrl"]), initial_path)
+    initial_media = probe_media(
+        initial_path,
         expected_aspect_ratio=str(plan_response["plan"].get("aspectRatio", "9:16")),
         expected_duration_seconds=_float_or_none(render_status.get("durationSeconds")),
+    )
+
+    revision = request_json(
+        "POST",
+        args.worker_url,
+        f"v1/edit-jobs/{edit_job_id}/revise",
+        {
+            "installId": args.install_id,
+            "command": "make_more_hype",
+        },
+        trace_id=args.trace_id,
+    )
+    revision_id = str(revision["revisionId"])
+    revision_render_status = request_json(
+        "POST",
+        args.worker_url,
+        f"v1/edit-jobs/{edit_job_id}/revisions/{revision_id}/render",
+        {
+            "installId": args.install_id,
+            "idempotencyKey": f"ios-smoke-revision-{revision_id}",
+        },
+        trace_id=args.trace_id,
+    )
+    expected_revision_render_id = _string_or_none(revision_render_status.get("renderJobId"))
+    revision_render_status = wait_for_render(
+        args,
+        edit_job_id,
+        revision_render_status,
+        expected_render_job_id=expected_revision_render_id,
+        expected_revision_id=revision_id,
+    )
+    if revision_render_status.get("status") != "rendered" or not render_status_matches(
+        revision_render_status,
+        expected_revision_render_id,
+        revision_id,
+    ):
+        raise SmokeError(
+            "Worker revision render did not reach rendered",
+            {
+                "editJobId": edit_job_id,
+                "revisionId": revision_id,
+                "renderStatus": sanitize_for_log(revision_render_status),
+            },
+        )
+
+    revised_download = request_json(
+        "GET",
+        args.worker_url,
+        f"v1/edit-jobs/{edit_job_id}/download-url?{urlencode({'installId': args.install_id})}",
+        trace_id=args.trace_id,
+    )
+    expected_revision_render_id = _string_or_none(revision_render_status.get("renderJobId"))
+    if expected_revision_render_id and revised_download.get("renderJobId") != expected_revision_render_id:
+        raise SmokeError(
+            "Worker latest download did not point at the revised render",
+            {
+                "editJobId": edit_job_id,
+                "revisionId": revision_id,
+                "expectedRenderJobId": expected_revision_render_id,
+                "downloadRenderJobId": revised_download.get("renderJobId"),
+            },
+        )
+    revised_plan = revision.get("revisedPlan") if isinstance(revision.get("revisedPlan"), dict) else {}
+    download_file(str(revised_download["downloadUrl"]), revised_path)
+    revised_media = probe_media(
+        revised_path,
+        expected_aspect_ratio=str(revised_plan.get("aspectRatio") or plan_response["plan"].get("aspectRatio", "9:16")),
+        expected_duration_seconds=_float_or_none(revision_render_status.get("durationSeconds")),
     )
     print(
         json.dumps(
@@ -105,13 +165,16 @@ def main() -> int:
                 "status": "pass",
                 "workerUrl": args.worker_url,
                 "editJobId": edit_job_id,
-                "renderJobId": render_status.get("renderJobId"),
-                "sourceObjectKey": source_key,
-                "outputObjectKey": download.get("outputObjectKey"),
-                "renderLogObjectKey": render_status.get("renderLogObjectKey"),
-                "downloadedPath": str(final_path),
                 "featureFlags": safe_feature_flags(flags),
-                "media": media,
+                "initialRender": summarize_render(render_status, download, initial_path, initial_media),
+                "moreHypeRevision": {
+                    "revisionId": revision_id,
+                    "command": revision.get("command"),
+                    "status": revision.get("status"),
+                    "requiresRerender": revision.get("requiresRerender"),
+                    "render": summarize_render(revision_render_status, revised_download, revised_path, revised_media),
+                    "revisedPlan": summarize_plan(revised_plan),
+                },
             },
             indent=2,
             sort_keys=True,
@@ -159,6 +222,40 @@ def upload_source_to_worker(args: argparse.Namespace, source_path: Path) -> str:
     return str(response["sourceObjectKey"])
 
 
+def wait_for_render(
+    args: argparse.Namespace,
+    edit_job_id: str,
+    render_status: Dict[str, Any],
+    expected_render_job_id: Optional[str] = None,
+    expected_revision_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    deadline = time.time() + args.timeout_seconds
+    while time.time() < deadline:
+        if render_status_matches(render_status, expected_render_job_id, expected_revision_id) and render_status.get("status") in {
+            "rendered",
+            "failed",
+            "failed_timeout",
+            "cancelled",
+        }:
+            return render_status
+        time.sleep(args.poll_seconds)
+        render_status = request_json(
+            "GET",
+            args.worker_url,
+            f"v1/edit-jobs/{edit_job_id}/render-status?{urlencode({'installId': args.install_id})}",
+            trace_id=args.trace_id,
+        )
+    return render_status
+
+
+def render_status_matches(render_status: Dict[str, Any], expected_render_job_id: Optional[str], expected_revision_id: Optional[str]) -> bool:
+    if expected_render_job_id and render_status.get("renderJobId") != expected_render_job_id:
+        return False
+    if expected_revision_id and render_status.get("revisionId") != expected_revision_id:
+        return False
+    return True
+
+
 def clip(clip_id: str, start: float, label: str, score: float) -> Dict[str, Any]:
     return {
         "id": clip_id,
@@ -195,7 +292,7 @@ def request_json(
             parsed_body = body[:1000]
         raise SmokeError(
             f"{method} {path} failed with HTTP {error.code}",
-            {"status": error.code, "body": parsed_body},
+            {"status": error.code, "body": sanitize_for_log(parsed_body)},
         ) from error
     except URLError as error:
         raise SmokeError(f"{method} {path} failed", {"reason": str(error)}) from error
@@ -206,6 +303,51 @@ def _float_or_none(value: object) -> Optional[float]:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _string_or_none(value: object) -> Optional[str]:
+    return value if isinstance(value, str) and value else None
+
+
+def summarize_render(render_status: Dict[str, Any], download: Dict[str, Any], path: Path, media: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "renderJobId": render_status.get("renderJobId"),
+        "revisionId": render_status.get("revisionId"),
+        "status": render_status.get("status"),
+        "durationSeconds": render_status.get("durationSeconds"),
+        "downloadRenderJobId": download.get("renderJobId"),
+        "downloadedPath": str(path),
+        "media": media,
+    }
+
+
+def summarize_plan(plan: Dict[str, Any]) -> Dict[str, Any]:
+    timeline = plan.get("timeline") if isinstance(plan.get("timeline"), list) else []
+    return {
+        "planId": plan.get("planId"),
+        "templateId": plan.get("templateId"),
+        "aspectRatio": plan.get("aspectRatio"),
+        "targetDurationSeconds": plan.get("targetDurationSeconds"),
+        "selectedClipCount": len(timeline),
+    }
+
+
+def sanitize_for_log(value: object) -> object:
+    if isinstance(value, dict):
+        sanitized: Dict[str, object] = {}
+        for key, nested in value.items():
+            key_text = str(key)
+            lower_key = key_text.lower()
+            if "url" in lower_key or "objectkey" in lower_key or "secret" in lower_key or "credential" in lower_key:
+                sanitized[key_text] = "[redacted]"
+            else:
+                sanitized[key_text] = sanitize_for_log(nested)
+        return sanitized
+    if isinstance(value, list):
+        return [sanitize_for_log(item) for item in value]
+    if isinstance(value, str) and value.startswith("http") and ("X-Amz-" in value or "Signature=" in value):
+        return "[redacted]"
+    return value
 
 
 def safe_feature_flags(flags: Dict[str, Any]) -> Dict[str, Any]:
@@ -226,5 +368,5 @@ if __name__ == "__main__":
     try:
         raise SystemExit(main())
     except SmokeError as error:
-        print(json.dumps({"status": "fail", "error": str(error), "details": error.payload}, indent=2, sort_keys=True), file=sys.stderr)
+        print(json.dumps({"status": "fail", "error": str(error), "details": sanitize_for_log(error.payload)}, indent=2, sort_keys=True), file=sys.stderr)
         raise SystemExit(1)
