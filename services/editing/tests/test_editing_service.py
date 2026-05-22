@@ -372,6 +372,119 @@ class EditingServiceTests(unittest.TestCase):
         self.assertTrue(internal_policy.premiumTemplatesAllowed)
         self.assertGreater(dev_policy.maxDailyRenders, internal_policy.maxDailyRenders)
 
+    def test_version_reports_live_render_kill_switch(self) -> None:
+        previous = os.environ.get("HOOPS_AI_EDIT_LIVE_RENDER_ENABLED")
+        os.environ["HOOPS_AI_EDIT_LIVE_RENDER_ENABLED"] = "false"
+        try:
+            client = TestClient(create_app(self._settings()))
+
+            response = client.get("/version")
+
+            self.assertEqual(response.status_code, 200)
+            flags = response.json()["featureFlags"]
+            self.assertTrue(flags["aiEditEnabled"])
+            self.assertFalse(flags["aiEditLiveRenderEnabled"])
+            self.assertTrue(flags["aiEditRevisionEnabled"])
+            self.assertTrue(flags["aiEditTemplatePackEnabled"])
+        finally:
+            if previous is None:
+                os.environ.pop("HOOPS_AI_EDIT_LIVE_RENDER_ENABLED", None)
+            else:
+                os.environ["HOOPS_AI_EDIT_LIVE_RENDER_ENABLED"] = previous
+
+    def test_live_render_kill_switch_rejects_render_without_local_fallback(self) -> None:
+        previous = os.environ.get("HOOPS_AI_EDIT_LIVE_RENDER_ENABLED")
+        os.environ["HOOPS_AI_EDIT_LIVE_RENDER_ENABLED"] = "false"
+        try:
+            client = TestClient(create_app(self._settings()))
+            payload = self._render_payload(self._edit_request())
+
+            response = client.post("/v1/render-jobs", json=payload)
+
+            self.assertEqual(response.status_code, 403)
+            self.assertEqual(response.json()["errorCode"], "ai_edit_live_render_disabled")
+            self.assertFalse((self._temp_dir / "render_state").exists())
+        finally:
+            if previous is None:
+                os.environ.pop("HOOPS_AI_EDIT_LIVE_RENDER_ENABLED", None)
+            else:
+                os.environ["HOOPS_AI_EDIT_LIVE_RENDER_ENABLED"] = previous
+
+    def test_live_render_kill_switch_rejects_revision_render(self) -> None:
+        previous = os.environ.get("HOOPS_AI_EDIT_LIVE_RENDER_ENABLED")
+        os.environ["HOOPS_AI_EDIT_LIVE_RENDER_ENABLED"] = "true"
+        try:
+            client = TestClient(create_app(self._settings()))
+            edit_request = self._edit_request()
+            create_payload = client.post("/v1/edit-jobs", json=edit_request.model_dump()).json()
+            revision_payload = client.post(
+                f"/v1/edit-jobs/{create_payload['editJobId']}/revise",
+                json={"installId": edit_request.installId, "command": "make_more_hype"},
+            ).json()
+
+            os.environ["HOOPS_AI_EDIT_LIVE_RENDER_ENABLED"] = "false"
+            disabled_client = TestClient(create_app(self._settings()))
+            render_response = disabled_client.post(
+                f"/v1/edit-jobs/{create_payload['editJobId']}/revisions/{revision_payload['revisionId']}/render",
+                json={"installId": edit_request.installId},
+            )
+
+            self.assertEqual(render_response.status_code, 403)
+            self.assertEqual(render_response.json()["errorCode"], "ai_edit_live_render_disabled")
+        finally:
+            if previous is None:
+                os.environ.pop("HOOPS_AI_EDIT_LIVE_RENDER_ENABLED", None)
+            else:
+                os.environ["HOOPS_AI_EDIT_LIVE_RENDER_ENABLED"] = previous
+
+    def test_live_render_kill_switch_rejects_stored_edit_render_route(self) -> None:
+        previous = os.environ.get("HOOPS_AI_EDIT_LIVE_RENDER_ENABLED")
+        os.environ["HOOPS_AI_EDIT_LIVE_RENDER_ENABLED"] = "true"
+        try:
+            client = TestClient(create_app(self._settings()))
+            edit_request = self._edit_request()
+            create_payload = client.post("/v1/edit-jobs", json=edit_request.model_dump()).json()
+
+            os.environ["HOOPS_AI_EDIT_LIVE_RENDER_ENABLED"] = "false"
+            disabled_client = TestClient(create_app(self._settings()))
+            render_response = disabled_client.post(
+                f"/v1/edit-jobs/{create_payload['editJobId']}/render",
+                json={"installId": edit_request.installId},
+            )
+
+            self.assertEqual(render_response.status_code, 403)
+            self.assertEqual(render_response.json()["errorCode"], "ai_edit_live_render_disabled")
+        finally:
+            if previous is None:
+                os.environ.pop("HOOPS_AI_EDIT_LIVE_RENDER_ENABLED", None)
+            else:
+                os.environ["HOOPS_AI_EDIT_LIVE_RENDER_ENABLED"] = previous
+
+    def test_live_render_kill_switch_emits_safe_policy_failed_event(self) -> None:
+        previous = os.environ.get("HOOPS_AI_EDIT_LIVE_RENDER_ENABLED")
+        os.environ["HOOPS_AI_EDIT_LIVE_RENDER_ENABLED"] = "false"
+        try:
+            client = TestClient(create_app(self._settings()))
+            payload = self._render_payload(self._edit_request())
+            output = StringIO()
+
+            with redirect_stdout(output):
+                response = client.post("/v1/render-jobs", json=payload)
+
+            self.assertEqual(response.status_code, 403)
+            self.assertEqual(response.json()["errorCode"], "ai_edit_live_render_disabled")
+            events = [json.loads(line) for line in output.getvalue().splitlines() if line.startswith("{")]
+            policy_event = next(event for event in events if event.get("event") == "policy.failed")
+            self.assertEqual(policy_event["failureReason"], "ai_edit_live_render_disabled")
+            self.assertEqual(policy_event["planTier"], "free")
+            self.assertEqual(policy_event["templateId"], "personal_highlight_v1")
+            self.assertFalse(any("url" in key.lower() or "secret" in key.lower() for key in policy_event))
+        finally:
+            if previous is None:
+                os.environ.pop("HOOPS_AI_EDIT_LIVE_RENDER_ENABLED", None)
+            else:
+                os.environ["HOOPS_AI_EDIT_LIVE_RENDER_ENABLED"] = previous
+
     def test_revise_edit_job_returns_patch_and_revised_plan(self) -> None:
         client = TestClient(create_app(self._settings()))
         edit_request = self._edit_request()

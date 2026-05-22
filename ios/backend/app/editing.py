@@ -164,6 +164,7 @@ PLAN_TIER_POLICY_REGISTRY: Dict[str, PlanTierPolicy] = {
 
 class AIEditFeatureFlags(APIModel):
     aiEditEnabled: bool = True
+    aiEditLiveRenderEnabled: bool = True
     aiEditRevisionEnabled: bool = True
     aiEditTemplatePackEnabled: bool = True
     aiEditMaxDailyRenders: Optional[int] = None

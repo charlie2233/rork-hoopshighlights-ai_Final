@@ -30,6 +30,12 @@ The service receives a validated `EditPlan`, downloads the source video from ren
 - `HOOPS_R2_REGION`: default `auto`
 - `HOOPS_GIT_SHA`
 - `HOOPS_BACKEND_MODEL_VERSION`
+- `HOOPS_AI_EDIT_ENABLED`: kill switch for AI Edit planning, default `true`
+- `HOOPS_AI_EDIT_LIVE_RENDER_ENABLED`: kill switch for live render enqueue, default `true`
+- `HOOPS_AI_EDIT_REVISION_ENABLED`: kill switch for AI Edit revisions, default `true`
+- `HOOPS_AI_EDIT_TEMPLATE_PACK_ENABLED`: kill switch for template-backed planning, default `true`
+
+The `/version` endpoint reports the resolved non-secret feature-flag snapshot. Use it to verify staging rollout state without exposing R2 credentials, service secrets, or presigned URLs.
 
 ## Local Smoke
 

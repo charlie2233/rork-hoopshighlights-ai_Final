@@ -75,6 +75,7 @@ def resolve_feature_flags() -> AIEditFeatureFlags:
     defaults = default_ai_edit_feature_flags()
     return AIEditFeatureFlags(
         aiEditEnabled=flag("HOOPS_AI_EDIT_ENABLED", defaults.aiEditEnabled),
+        aiEditLiveRenderEnabled=flag("HOOPS_AI_EDIT_LIVE_RENDER_ENABLED", defaults.aiEditLiveRenderEnabled),
         aiEditRevisionEnabled=flag("HOOPS_AI_EDIT_REVISION_ENABLED", defaults.aiEditRevisionEnabled),
         aiEditTemplatePackEnabled=flag("HOOPS_AI_EDIT_TEMPLATE_PACK_ENABLED", defaults.aiEditTemplatePackEnabled),
         aiEditMaxDailyRenders=parsed_max_daily,
@@ -320,6 +321,7 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
         if error.error_code in {
             "active_render_limit",
             "ai_edit_disabled",
+            "ai_edit_live_render_disabled",
             "ai_edit_revision_disabled",
             "ai_edit_template_pack_disabled",
             "daily_render_limit",
@@ -538,6 +540,10 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             raise EditingServiceError(400, "source_video_too_long", "Source video exceeds the plan tier source duration limit.")
         if request.targetDurationSeconds > policy.maxRenderSeconds:
             raise EditingServiceError(400, "render_duration_limit", "Requested AI edit length exceeds this plan's render limit.")
+
+    def validate_live_render_policy() -> None:
+        if not feature_flags.aiEditLiveRenderEnabled:
+            raise EditingServiceError(403, "ai_edit_live_render_disabled", "AI Edit rendering is temporarily unavailable.")
 
     def maybe_apply_gpt_highlight_rerank(request: CreateEditJobRequest) -> CreateEditJobRequest:
         if not feature_flags.gptHighlightRerankerEnabled:
@@ -766,6 +772,7 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
 
     def enqueue_render_job(request: CreateRenderJobRequest, background_tasks: BackgroundTasks, force_new: bool = False) -> RenderJobResponse:
         mark_stale_renders()
+        validate_live_render_policy()
         enforce_template_policy(request.editPlan.templateId, request.planTier, request.revenueCatAppUserID)
         idempotency_key = request.idempotencyKey or f"{request.installId}:{request.editJobId}:{request.editPlan.editJobId}:{request.editPlan.templateId}:{len(request.editPlan.clips)}"
         existing_by_key = load_idempotent_render_job(idempotency_key)
@@ -983,6 +990,7 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             persist_revision(revision, stored_edit_job, render_response.renderJobId)
             return render_response
         except EditingServiceError as error:
+            emit_policy_failed(error, **stored_edit_job_event_fields(edit_job_id, revisionId=revision_id))
             return error_response(error)
 
     @app.post("/v1/render-jobs", response_model=RenderJobResponse, responses={401: {"model": ErrorResponse}})
@@ -995,6 +1003,7 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             require_secret(x_hoops_editing_secret)
             return enqueue_render_job(request, background_tasks)
         except EditingServiceError as error:
+            emit_policy_failed(error, editJobId=request.editJobId, templateId=request.editPlan.templateId, planTier=request.planTier)
             return error_response(error)
 
     @app.post("/v1/edit-jobs/{edit_job_id}/render", response_model=RenderJobResponse, responses={401: {"model": ErrorResponse}})
@@ -1035,6 +1044,7 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
                 force_new=request.forceNew,
             )
         except EditingServiceError as error:
+            emit_policy_failed(error, **stored_edit_job_event_fields(edit_job_id))
             return error_response(error)
 
     @app.get("/v1/render-jobs", response_model=RenderJobListResponse, responses={400: {"model": ErrorResponse}, 401: {"model": ErrorResponse}})
