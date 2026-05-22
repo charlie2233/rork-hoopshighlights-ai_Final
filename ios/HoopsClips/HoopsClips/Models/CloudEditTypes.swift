@@ -792,7 +792,7 @@ struct CloudEditDownloadResponse: Codable, Sendable {
     let editJobId: String
     let renderJobId: String
     let downloadUrl: String
-    let outputObjectKey: String
+    let outputObjectKey: String?
     let contentType: String
     let expiresAt: Date
 }
@@ -867,6 +867,8 @@ enum CloudEditError: Error, LocalizedError, Sendable {
             return "Cloud rendering failed. Try again in a moment."
         case "render_not_ready":
             return "Your video is still rendering. Try again when it is ready."
+        case "render_expired":
+            return "That cloud render expired. Request a fresh cloud render from My AI Edits."
         case "render_lease_active":
             return "That AI edit is already rendering. HoopClips will keep checking the existing job."
         case "render_lease_lost":

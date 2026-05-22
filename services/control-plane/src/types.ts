@@ -481,11 +481,17 @@ export interface EditingRenderJobResponse extends ResponseEnvelope {
   retentionMetadata?: Record<string, unknown> | null;
 }
 
+export interface EditingRenderJobListResponse extends ResponseEnvelope {
+  installId: string;
+  generatedAt: string;
+  renders: EditingRenderJobResponse[];
+}
+
 export interface EditingDownloadUrlResponse {
   editJobId: string;
   renderJobId: string;
   downloadUrl: string;
-  outputObjectKey: string;
+  outputObjectKey?: string;
   contentType: "video/mp4";
   expiresAt: string;
 }

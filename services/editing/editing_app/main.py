@@ -408,6 +408,18 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
         for job in list(render_jobs.values()):
             mark_stale_job(job)
 
+    def render_expires_at(job: StoredRenderJob):
+        metadata = job.retention_metadata or {}
+        return job.expires_at or parse_datetime(metadata.get("expiresAt"))
+
+    def require_downloadable_output(job: StoredRenderJob) -> str:
+        if job.status != "rendered" or not job.output_object_key:
+            raise EditingServiceError(409, "render_not_ready", "Render output is not ready for download yet.")
+        expires_at = render_expires_at(job)
+        if expires_at is not None and expires_at <= now_utc():
+            raise EditingServiceError(410, "render_expired", "Render output expired. Request a fresh cloud render from My AI Edits.")
+        return job.output_object_key
+
     def load_render_history_for_install(install_id: str, limit: int) -> list[StoredRenderJob]:
         jobs_by_id: dict[str, StoredRenderJob] = {}
         for job in render_state_store.load_jobs_for_install(install_id):
@@ -1106,7 +1118,7 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
         except EditingServiceError as error:
             return error_response(error)
 
-    @app.get("/v1/render-jobs/{render_job_id}/download-url", response_model=DownloadUrlResponse, responses={403: {"model": ErrorResponse}, 404: {"model": ErrorResponse}, 409: {"model": ErrorResponse}})
+    @app.get("/v1/render-jobs/{render_job_id}/download-url", response_model=DownloadUrlResponse, responses={403: {"model": ErrorResponse}, 404: {"model": ErrorResponse}, 409: {"model": ErrorResponse}, 410: {"model": ErrorResponse}})
     async def get_download_url(
         render_job_id: str,
         installId: Optional[str] = Query(default=None),
@@ -1119,21 +1131,20 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             job = require_job(render_job_id)
             mark_stale_job(job)
             require_owner(job, installId or x_hoops_install_id)
-            if job.status != "rendered" or not job.output_object_key:
-                raise EditingServiceError(409, "render_not_ready", "Render output is not ready for download yet.")
-            download_url, expires_at = storage.presigned_get_url(job.output_object_key, job.render_job_id)
+            output_object_key = require_downloadable_output(job)
+            download_url, expires_at = storage.presigned_get_url(output_object_key, job.render_job_id)
             emit_event("download_url.created", editJobId=job.edit_job_id, renderJobId=job.render_job_id, planTier=job.plan_tier)
             return DownloadUrlResponse(
                 editJobId=job.edit_job_id,
                 renderJobId=job.render_job_id,
                 downloadUrl=download_url,
-                outputObjectKey=job.output_object_key,
+                outputObjectKey=output_object_key,
                 expiresAt=expires_at,
             )
         except EditingServiceError as error:
             return error_response(error)
 
-    @app.get("/v1/edit-jobs/{edit_job_id}/download-url", response_model=DownloadUrlResponse, responses={403: {"model": ErrorResponse}, 404: {"model": ErrorResponse}, 409: {"model": ErrorResponse}})
+    @app.get("/v1/edit-jobs/{edit_job_id}/download-url", response_model=DownloadUrlResponse, responses={403: {"model": ErrorResponse}, 404: {"model": ErrorResponse}, 409: {"model": ErrorResponse}, 410: {"model": ErrorResponse}})
     async def get_edit_download_url(
         edit_job_id: str,
         installId: Optional[str] = Query(default=None),
@@ -1148,15 +1159,14 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
                 raise EditingServiceError(404, "render_job_not_found", "Render job was not found.")
             mark_stale_job(job)
             require_owner(job, installId or x_hoops_install_id)
-            if job.status != "rendered" or not job.output_object_key:
-                raise EditingServiceError(409, "render_not_ready", "Render output is not ready for download yet.")
-            download_url, expires_at = storage.presigned_get_url(job.output_object_key, job.render_job_id)
+            output_object_key = require_downloadable_output(job)
+            download_url, expires_at = storage.presigned_get_url(output_object_key, job.render_job_id)
             emit_event("download_url.created", editJobId=job.edit_job_id, renderJobId=job.render_job_id, planTier=job.plan_tier)
             return DownloadUrlResponse(
                 editJobId=job.edit_job_id,
                 renderJobId=job.render_job_id,
                 downloadUrl=download_url,
-                outputObjectKey=job.output_object_key,
+                outputObjectKey=output_object_key,
                 expiresAt=expires_at,
             )
         except EditingServiceError as error:
@@ -1166,9 +1176,12 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
     async def download_local_render(render_job_id: str):
         try:
             job = require_job(render_job_id)
-            if job.status != "rendered" or not job.output_object_key:
+            if storage.provider != "local":
                 raise EditingServiceError(404, "render_output_not_found", "Render output was not found.")
-            output_path = storage.local_path_for_object(job.output_object_key)
+            output_object_key = require_downloadable_output(job)
+            if job.status != "rendered" or not output_object_key:
+                raise EditingServiceError(404, "render_output_not_found", "Render output was not found.")
+            output_path = storage.local_path_for_object(output_object_key)
             if not output_path.exists():
                 raise EditingServiceError(404, "render_output_not_found", "Render output was not found.")
             return FileResponse(output_path, media_type="video/mp4", filename="Hoopclips.mp4")

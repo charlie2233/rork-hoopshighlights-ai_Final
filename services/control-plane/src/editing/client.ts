@@ -2,6 +2,7 @@ import type { Env } from "../env";
 import type {
   CreateEditJobRequest,
   EditingDownloadUrlResponse,
+  EditingRenderJobListResponse,
   EditingRenderJobResponse,
   EditingVersionResponse,
   EditJobResponse,
@@ -128,6 +129,41 @@ export async function getEditingDownloadUrl(
   return proxyEditingJsonResponse(await fetch(url, { headers: editingHeaders(env, requestId, installId) }), requestId);
 }
 
+export async function listEditingRenderJobs(
+  env: Env,
+  requestId: string,
+  installId: string | null,
+  limit: string | null
+): Promise<Response> {
+  if (!env.EDITING_BASE_URL) {
+    return editingUnavailable(requestId, "Editing service is not configured.");
+  }
+  const url = new URL(`${env.EDITING_BASE_URL.replace(/\/+$/, "")}/v1/render-jobs`);
+  if (installId) {
+    url.searchParams.set("installId", installId);
+  }
+  if (limit) {
+    url.searchParams.set("limit", limit);
+  }
+  return proxyEditingJsonResponse(await fetch(url, { headers: editingHeaders(env, requestId, installId) }), requestId);
+}
+
+export async function getEditingRenderDownloadUrl(
+  env: Env,
+  renderJobId: string,
+  requestId: string,
+  installId: string | null
+): Promise<Response> {
+  if (!env.EDITING_BASE_URL) {
+    return editingUnavailable(requestId, "Editing service is not configured.");
+  }
+  const url = new URL(`${env.EDITING_BASE_URL.replace(/\/+$/, "")}/v1/render-jobs/${encodeURIComponent(renderJobId)}/download-url`);
+  if (installId) {
+    url.searchParams.set("installId", installId);
+  }
+  return proxyEditingJsonResponse(await fetch(url, { headers: editingHeaders(env, requestId, installId) }), requestId);
+}
+
 export async function reviseEditingEditJob(
   env: Env,
   editJobId: string,
@@ -219,6 +255,7 @@ function editingHeaders(env: Env, requestId: string, installId?: string | null):
 async function proxyEditingJsonResponse(response: Response, requestId: string): Promise<Response> {
   const payload = (await response.json().catch(() => ({ errorCode: "editing_bad_response", errorMessage: "Editing service returned a non-JSON response." }))) as
     | EditingRenderJobResponse
+    | EditingRenderJobListResponse
     | EditingDownloadUrlResponse
     | EditingVersionResponse
     | EditJobResponse
@@ -226,10 +263,11 @@ async function proxyEditingJsonResponse(response: Response, requestId: string): 
     | EditRevisionResponse
     | EditRevisionListResponse
     | Record<string, unknown>;
+  const safePayload = redactStorageInternals(payload) as Record<string, unknown>;
   return Response.json(
     {
       requestId,
-      ...payload
+      ...safePayload
     },
     {
       status: response.status,
@@ -238,6 +276,23 @@ async function proxyEditingJsonResponse(response: Response, requestId: string): 
       }
     }
   );
+}
+
+function redactStorageInternals(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => redactStorageInternals(item));
+  }
+  if (!value || typeof value !== "object") {
+    return value;
+  }
+  const redacted: Record<string, unknown> = {};
+  for (const [key, child] of Object.entries(value)) {
+    if (key === "outputObjectKey" || key === "renderLogObjectKey") {
+      continue;
+    }
+    redacted[key] = redactStorageInternals(child);
+  }
+  return redacted;
 }
 
 function editingUnavailable(requestId: string, message: string): Response {

@@ -686,6 +686,58 @@ class EditingServiceTests(unittest.TestCase):
         self.assertIn("render_state/render_jobs/render_cleanup_state.json", candidate["objectKeys"])
         self.assertTrue(output_path.exists())
 
+    def test_retention_cleanup_execute_deletes_expired_delete_eligible_artifacts(self) -> None:
+        settings = self._settings()
+        storage = RenderStorage(settings)
+        store = DurableRenderStateStore(storage)
+        expired_at = now_utc() - timedelta(days=1)
+        job = StoredRenderJob(
+            edit_job_id="edit_cleanup_execute",
+            render_job_id="render_cleanup_execute",
+            install_id="install-123",
+            trace_id="trace_cleanup_execute",
+            status="rendered",
+            aspect_ratio="9:16",
+            created_at=expired_at - timedelta(days=1),
+            updated_at=expired_at,
+            output_object_key="edits/edit_cleanup_execute/render_jobs/render_cleanup_execute/final.mp4",
+            render_log_object_key="edits/edit_cleanup_execute/render_jobs/render_cleanup_execute/render_log.json",
+            source_object_key="sources/synthetic_game.mp4",
+            plan_version="edit-plan-v1",
+            template_id="personal_highlight_v1",
+            plan_tier="free",
+            expires_at=expired_at,
+            output_bytes=1234,
+            duration_seconds=15.0,
+            retention_metadata={
+                "expiresAt": expired_at.isoformat(),
+                "retentionClass": "free_final_render",
+                "deleteEligible": True,
+                "planTier": "free",
+                "editJobId": "edit_cleanup_execute",
+                "renderJobId": "render_cleanup_execute",
+                "templateId": "personal_highlight_v1",
+                "outputBytes": 1234,
+                "durationSeconds": 15.0,
+            },
+        )
+        store.save_job(job)
+        output_path = self._temp_dir / job.output_object_key
+        state_path = self._temp_dir / "render_state/render_jobs/render_cleanup_execute.json"
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_bytes(b"mp4")
+        storage.put_json(job.render_log_object_key or "", "{}")
+
+        report = run_cleanup(storage, store, execute=True, now=now_utc())
+
+        self.assertEqual(report["mode"], "execute")
+        self.assertEqual(report["candidateCount"], 1)
+        self.assertEqual(report["objectKeyCount"], 3)
+        self.assertEqual(set(report["deletedObjectKeys"]), set(report["candidates"][0]["objectKeys"]))
+        self.assertFalse(output_path.exists())
+        self.assertFalse((self._temp_dir / (job.render_log_object_key or "")).exists())
+        self.assertFalse(state_path.exists())
+
     def test_policy_rejection_emits_safe_policy_failed_event(self) -> None:
         client = TestClient(create_app(self._settings()))
         request = self._edit_request().model_copy(update={"targetDurationSeconds": 120, "templateId": "personal_highlight_v1"})
@@ -876,6 +928,12 @@ class EditingServiceTests(unittest.TestCase):
         )
         self.assertEqual(rerender_response.status_code, 200)
         self.assertNotEqual(rerender_response.json()["renderJobId"], render_job_id)
+        latest_download_response = client.get(
+            f"/v1/edit-jobs/{create_payload['editJobId']}/download-url",
+            params={"installId": edit_request.installId},
+        )
+        self.assertEqual(latest_download_response.status_code, 200)
+        self.assertEqual(latest_download_response.json()["renderJobId"], rerender_response.json()["renderJobId"])
 
         history_response = client.get("/v1/render-jobs", params={"installId": edit_request.installId, "limit": 10})
         self.assertEqual(history_response.status_code, 200)
@@ -1074,6 +1132,82 @@ class EditingServiceTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 404)
         self.assertEqual(response.json()["errorCode"], "render_job_not_found")
+
+    def test_download_url_requires_owner_rendered_output_and_unexpired_retention(self) -> None:
+        settings = self._settings()
+        store = DurableRenderStateStore(RenderStorage(settings))
+        future = now_utc() + timedelta(days=1)
+        expired = now_utc() - timedelta(seconds=1)
+        store.save_job(
+            StoredRenderJob(
+                edit_job_id="edit_download_ready",
+                render_job_id="render_download_ready",
+                install_id="install-123",
+                trace_id="trace_download_ready",
+                status="rendered",
+                aspect_ratio="9:16",
+                created_at=now_utc() - timedelta(minutes=2),
+                updated_at=now_utc() - timedelta(minutes=1),
+                output_object_key="edits/edit_download_ready/render_jobs/render_download_ready/final.mp4",
+                plan_version="edit-plan-v1",
+                template_id="personal_highlight_v1",
+                plan_tier="free",
+                expires_at=future,
+            )
+        )
+        store.save_job(
+            StoredRenderJob(
+                edit_job_id="edit_download_queued",
+                render_job_id="render_download_queued",
+                install_id="install-123",
+                trace_id="trace_download_queued",
+                status="queued",
+                aspect_ratio="9:16",
+                created_at=now_utc() - timedelta(minutes=2),
+                updated_at=now_utc() - timedelta(minutes=1),
+                output_object_key=None,
+                plan_version="edit-plan-v1",
+                template_id="personal_highlight_v1",
+                plan_tier="free",
+            )
+        )
+        store.save_job(
+            StoredRenderJob(
+                edit_job_id="edit_download_expired",
+                render_job_id="render_download_expired",
+                install_id="install-123",
+                trace_id="trace_download_expired",
+                status="rendered",
+                aspect_ratio="9:16",
+                created_at=now_utc() - timedelta(days=2),
+                updated_at=now_utc() - timedelta(days=1),
+                output_object_key="edits/edit_download_expired/render_jobs/render_download_expired/final.mp4",
+                plan_version="edit-plan-v1",
+                template_id="personal_highlight_v1",
+                plan_tier="free",
+                retention_metadata={
+                    "expiresAt": expired.isoformat(),
+                    "retentionClass": "free_final_render",
+                    "deleteEligible": True,
+                },
+            )
+        )
+        client = TestClient(create_app(settings))
+
+        owner_response = client.get("/v1/render-jobs/render_download_ready/download-url", params={"installId": "install-other"})
+        ready_response = client.get("/v1/render-jobs/render_download_ready/download-url", params={"installId": "install-123"})
+        queued_response = client.get("/v1/render-jobs/render_download_queued/download-url", params={"installId": "install-123"})
+        expired_response = client.get("/v1/render-jobs/render_download_expired/download-url", params={"installId": "install-123"})
+
+        self.assertEqual(owner_response.status_code, 403)
+        self.assertEqual(owner_response.json()["errorCode"], "install_mismatch")
+        self.assertEqual(ready_response.status_code, 200)
+        self.assertEqual(ready_response.json()["renderJobId"], "render_download_ready")
+        self.assertNotIn("leaseToken", json.dumps(ready_response.json()))
+        self.assertEqual(queued_response.status_code, 409)
+        self.assertEqual(queued_response.json()["errorCode"], "render_not_ready")
+        self.assertEqual(expired_response.status_code, 410)
+        self.assertEqual(expired_response.json()["errorCode"], "render_expired")
 
 
 if __name__ == "__main__":
