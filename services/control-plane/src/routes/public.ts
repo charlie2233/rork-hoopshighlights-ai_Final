@@ -16,6 +16,7 @@ import { appendJobEvent } from "../db";
 import {
   createEditingEditJob,
   createEditingRenderJob,
+  getEditingVersion,
   getEditingDownloadUrl,
   getEditingEditJob,
   getEditingEditPlan,
@@ -40,6 +41,10 @@ export async function routePublicRequest(
   const runtime = resolveRuntimeConfig(env);
   const route = normalizePublicPath(url.pathname);
   const isLegacyPresign = request.method === "POST" && url.pathname === "/v1/analysis/jobs";
+
+  if (request.method === "GET" && route === "/editing/version") {
+    return getEditingVersion(env, requestId);
+  }
 
   if (request.method === "POST" && (route === "/uploads/presign" || isLegacyPresign)) {
     return handlePresign(request, env, requestId, runtime.schemaVersion, url);

@@ -3,6 +3,7 @@ import type {
   CreateEditJobRequest,
   EditingDownloadUrlResponse,
   EditingRenderJobResponse,
+  EditingVersionResponse,
   EditJobResponse,
   EditPlanResponse,
   EditRevisionListResponse,
@@ -11,6 +12,16 @@ import type {
   StartEditRevisionRenderRequest,
   StartEditRenderRequest
 } from "../types";
+
+export async function getEditingVersion(env: Env, requestId: string): Promise<Response> {
+  if (!env.EDITING_BASE_URL) {
+    return editingUnavailable(requestId, "Editing service is not configured.");
+  }
+  const response = await fetch(`${env.EDITING_BASE_URL.replace(/\/+$/, "")}/version`, {
+    headers: editingHeaders(env, requestId)
+  });
+  return proxyEditingJsonResponse(response, requestId);
+}
 
 export async function createEditingEditJob(
   env: Env,
@@ -209,6 +220,7 @@ async function proxyEditingJsonResponse(response: Response, requestId: string): 
   const payload = (await response.json().catch(() => ({ errorCode: "editing_bad_response", errorMessage: "Editing service returned a non-JSON response." }))) as
     | EditingRenderJobResponse
     | EditingDownloadUrlResponse
+    | EditingVersionResponse
     | EditJobResponse
     | EditPlanResponse
     | EditRevisionResponse

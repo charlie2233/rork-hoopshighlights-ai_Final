@@ -452,6 +452,13 @@ export interface EditRevisionListResponse extends ResponseEnvelope {
   revisions: EditRevisionResponse[];
 }
 
+export interface EditingVersionResponse extends ResponseEnvelope {
+  service?: string;
+  backendModelVersion?: string;
+  gitSha?: string;
+  featureFlags?: Record<string, unknown>;
+}
+
 export interface EditingRenderJobResponse extends ResponseEnvelope {
   editJobId: string;
   revisionId?: string | null;

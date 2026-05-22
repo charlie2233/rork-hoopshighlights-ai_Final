@@ -13,6 +13,14 @@ struct CloudEditService {
         encoder.dateEncodingStrategy = .iso8601
     }
 
+    func fetchVersion() async throws -> CloudEditVersionResponse {
+        let baseURL = try configuredBaseURL()
+        let url = baseURL.appending(path: "v1/editing/version")
+
+        let (data, response) = try await session.data(for: signedClientRequest(url: url))
+        return try decodeResponse(data: data, response: response, successType: CloudEditVersionResponse.self)
+    }
+
     func createEditJob(_ requestBody: CreateCloudEditJobRequest) async throws -> CloudEditJobResponse {
         let baseURL = try configuredBaseURL()
         var request = URLRequest(url: baseURL.appending(path: "v1/edit-jobs"))

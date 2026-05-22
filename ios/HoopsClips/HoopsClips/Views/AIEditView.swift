@@ -40,6 +40,8 @@ struct AIEditView: View {
     @State private var downloadResponse: CloudEditDownloadResponse?
     @State private var revisionResponse: CloudEditRevisionResponse?
     @State private var pendingRevisionCommand: CloudEditRevisionCommand?
+    @State private var serviceVersion: CloudEditVersionResponse?
+    @State private var serviceStatusErrorMessage: String?
     @State private var renderHistory: [CloudEditRenderStatusResponse] = []
     @State private var previewPlayer: AVPlayer?
     @State private var localShareURL: URL?
@@ -84,6 +86,7 @@ struct AIEditView: View {
             }
         }
         .task(id: viewModel.installID) {
+            await refreshCloudEditVersion()
             await refreshRenderHistory()
         }
     }
@@ -543,6 +546,14 @@ struct AIEditView: View {
                     .foregroundStyle(AppTheme.subtleText)
             }
 
+            if let serviceStatusMessage {
+                Label(serviceStatusMessage, systemImage: serviceStatusIcon)
+                    .font(.caption)
+                    .foregroundStyle(serviceStatusColor)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("export.aiEdit.serviceStatus")
+            }
+
             if let errorMessage {
                 Text(errorMessage)
                     .font(.caption)
@@ -964,9 +975,9 @@ struct AIEditView: View {
             }
             .buttonStyle(.borderedProminent)
             .tint(AppTheme.accentPurple)
-            .disabled(isWorking || !viewModel.canRequestCloudEdit)
+            .disabled(primaryActionDisabled)
             .accessibilityIdentifier(revisionResponse != nil && downloadResponse == nil ? "export.aiEdit.renderRevisionButton" : "export.aiEdit.generateButton")
-            .accessibilityHint("Requests a cloud edit plan and render.")
+            .accessibilityHint(primaryActionHint)
 
             if phase == .failed {
                 Button(action: startEdit) {
@@ -977,7 +988,7 @@ struct AIEditView: View {
                 }
                 .buttonStyle(.bordered)
                 .tint(AppTheme.warningYellow)
-                .disabled(isWorking || !viewModel.canRequestCloudEdit)
+                .disabled(primaryActionDisabled)
                 .accessibilityIdentifier("export.aiEdit.retryButton")
                 .accessibilityHint("Retries the cloud render when the backend allows it.")
             }
@@ -1030,7 +1041,7 @@ struct AIEditView: View {
                             .background(pendingRevisionCommand == command ? AppTheme.accentPurple.opacity(0.92) : AppTheme.cardBg.opacity(0.78), in: .rect(cornerRadius: 12))
                     }
                     .buttonStyle(.plain)
-                    .disabled(isWorking)
+                    .disabled(isWorking || !aiEditRevisionsAvailable)
                     .accessibilityElement(children: .ignore)
                     .accessibilityIdentifier(command.accessibilityIdentifier)
                     .accessibilityLabel(command.title)
@@ -1404,12 +1415,70 @@ struct AIEditView: View {
     }
 
     private func canRerenderLockerRender(_ render: CloudEditRenderStatusResponse) -> Bool {
+        guard aiEditLiveRenderingAvailable else { return false }
         switch render.status {
         case .renderRequested, .created, .queued, .rendering:
             return false
         case .planning, .planReady, .rendered, .failed, .failedTimeout, .cancelled:
             return true
         }
+    }
+
+    private var aiEditPlanningAvailable: Bool {
+        serviceVersion?.featureFlags?.allowsEditPlanning ?? true
+    }
+
+    private var aiEditLiveRenderingAvailable: Bool {
+        serviceVersion?.featureFlags?.allowsLiveRendering ?? true
+    }
+
+    private var aiEditRevisionsAvailable: Bool {
+        serviceVersion?.featureFlags?.allowsRevisions ?? true
+    }
+
+    private var cloudEditActionBlockedMessage: String? {
+        if !aiEditPlanningAvailable {
+            return CloudEditError.friendlyBackendMessage(
+                code: "ai_edit_disabled",
+                fallback: "Cloud AI editing is temporarily paused."
+            )
+        }
+        if !aiEditLiveRenderingAvailable {
+            return CloudEditError.friendlyBackendMessage(
+                code: "ai_edit_live_render_disabled",
+                fallback: "Cloud rendering is temporarily paused."
+            )
+        }
+        return nil
+    }
+
+    private var primaryActionDisabled: Bool {
+        isWorking || !viewModel.canRequestCloudEdit || cloudEditActionBlockedMessage != nil
+    }
+
+    private var primaryActionHint: String {
+        cloudEditActionBlockedMessage ?? "Requests a cloud edit plan and render."
+    }
+
+    private var serviceStatusMessage: String? {
+        if let cloudEditActionBlockedMessage {
+            return cloudEditActionBlockedMessage
+        }
+        if !aiEditRevisionsAvailable {
+            return "AI edit revisions are temporarily paused by the cloud backend."
+        }
+        if let serviceStatusErrorMessage {
+            return serviceStatusErrorMessage
+        }
+        return nil
+    }
+
+    private var serviceStatusIcon: String {
+        cloudEditActionBlockedMessage == nil && serviceStatusErrorMessage == nil ? "pause.circle" : "exclamationmark.triangle.fill"
+    }
+
+    private var serviceStatusColor: Color {
+        cloudEditActionBlockedMessage == nil && serviceStatusErrorMessage == nil ? AppTheme.warningYellow : AppTheme.dangerRed
     }
 
     private var revisionCommands: [CloudEditRevisionCommand] {
@@ -1427,6 +1496,12 @@ struct AIEditView: View {
     }
 
     private var primaryActionTitle: String {
+        if !aiEditPlanningAvailable {
+            return "AI Edit Paused"
+        }
+        if !aiEditLiveRenderingAvailable {
+            return "Cloud Rendering Paused"
+        }
         if revisionResponse != nil, downloadResponse == nil {
             return "Render Revision"
         }
@@ -1434,7 +1509,10 @@ struct AIEditView: View {
     }
 
     private var primaryActionIcon: String {
-        revisionResponse != nil && downloadResponse == nil ? "arrow.triangle.2.circlepath.circle.fill" : "sparkles.tv.fill"
+        if cloudEditActionBlockedMessage != nil {
+            return "pause.circle.fill"
+        }
+        return revisionResponse != nil && downloadResponse == nil ? "arrow.triangle.2.circlepath.circle.fill" : "sparkles.tv.fill"
     }
 
     private var revisionStatusText: String {
@@ -1550,6 +1628,12 @@ struct AIEditView: View {
 
     private func startEdit() {
         guard !isWorking else { return }
+        if let cloudEditActionBlockedMessage {
+            errorMessage = cloudEditActionBlockedMessage
+            phase = .failed
+            HoopsAccessibility.announce("Cloud AI editing is paused.")
+            return
+        }
         if let selectedProTemplate, !isProUser {
             proInfoSheet = .template(selectedProTemplate)
             return
@@ -1563,12 +1647,41 @@ struct AIEditView: View {
 
     private func requestRevision(_ command: CloudEditRevisionCommand) {
         guard !isWorking else { return }
+        guard aiEditRevisionsAvailable else {
+            errorMessage = CloudEditError.friendlyBackendMessage(
+                code: "ai_edit_revision_disabled",
+                fallback: "AI edit revisions are temporarily paused."
+            )
+            HoopsAccessibility.announce("AI edit revisions are paused.")
+            return
+        }
         Task { await runRevisionFlow(command) }
     }
 
     private func shareRenderedVideo() {
         guard !isPreparingShare else { return }
         Task { await prepareShareSheet() }
+    }
+
+    @MainActor
+    private func refreshCloudEditVersion(showError: Bool = false) async {
+        guard AppConstants.cloudEditEnabled else {
+            serviceVersion = nil
+            serviceStatusErrorMessage = nil
+            return
+        }
+
+        do {
+            serviceVersion = try await cloudEditService.fetchVersion()
+            serviceStatusErrorMessage = nil
+        } catch CloudEditError.notConfigured {
+            serviceVersion = nil
+            serviceStatusErrorMessage = nil
+        } catch {
+            if showError {
+                serviceStatusErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            }
+        }
     }
 
     @MainActor

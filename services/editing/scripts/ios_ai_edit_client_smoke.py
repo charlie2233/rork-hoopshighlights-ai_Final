@@ -24,6 +24,13 @@ def main() -> int:
     final_path = output_dir / "final.mp4"
 
     create_source(source_path)
+    version = request_json("GET", args.worker_url, "v1/editing/version", trace_id=args.trace_id)
+    flags = version.get("featureFlags") if isinstance(version.get("featureFlags"), dict) else {}
+    if flags.get("aiEditEnabled") is False:
+        raise SmokeError("AI Edit planning is disabled by the staging backend", {"featureFlags": safe_feature_flags(flags)})
+    if flags.get("aiEditLiveRenderEnabled") is False:
+        raise SmokeError("AI Edit live rendering is disabled by the staging backend", {"featureFlags": safe_feature_flags(flags)})
+
     source_key = upload_source_to_worker(args, source_path)
     clips = [
         clip("c1", 0.0, "Fast Break", 0.95),
@@ -103,6 +110,7 @@ def main() -> int:
                 "outputObjectKey": download.get("outputObjectKey"),
                 "renderLogObjectKey": render_status.get("renderLogObjectKey"),
                 "downloadedPath": str(final_path),
+                "featureFlags": safe_feature_flags(flags),
                 "media": media,
             },
             indent=2,
@@ -198,6 +206,20 @@ def _float_or_none(value: object) -> Optional[float]:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def safe_feature_flags(flags: Dict[str, Any]) -> Dict[str, Any]:
+    allowed = {
+        "aiEditEnabled",
+        "aiEditLiveRenderEnabled",
+        "aiEditRevisionEnabled",
+        "aiEditTemplatePackEnabled",
+        "aiEditMaxDailyRenders",
+        "aiEditFreeWatermarkRequired",
+        "aiEditProExportsEnabled",
+        "gptHighlightRerankerEnabled",
+    }
+    return {key: flags[key] for key in sorted(allowed) if key in flags}
 
 
 if __name__ == "__main__":

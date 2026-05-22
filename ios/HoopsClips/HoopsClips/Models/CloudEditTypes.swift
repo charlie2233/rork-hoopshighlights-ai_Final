@@ -363,6 +363,40 @@ struct CloudEditProUXFlags: Sendable {
     )
 }
 
+struct CloudEditVersionResponse: Codable, Sendable {
+    let service: String?
+    let backendModelVersion: String?
+    let gitSha: String?
+    let featureFlags: CloudEditFeatureFlags?
+}
+
+struct CloudEditFeatureFlags: Codable, Sendable {
+    let aiEditEnabled: Bool?
+    let aiEditLiveRenderEnabled: Bool?
+    let aiEditRevisionEnabled: Bool?
+    let aiEditTemplatePackEnabled: Bool?
+    let aiEditMaxDailyRenders: Int?
+    let aiEditFreeWatermarkRequired: Bool?
+    let aiEditProExportsEnabled: Bool?
+    let gptHighlightRerankerEnabled: Bool?
+
+    var allowsEditPlanning: Bool {
+        aiEditEnabled ?? true
+    }
+
+    var allowsLiveRendering: Bool {
+        aiEditLiveRenderEnabled ?? true
+    }
+
+    var allowsRevisions: Bool {
+        aiEditRevisionEnabled ?? true
+    }
+
+    var allowsTemplatePacks: Bool {
+        aiEditTemplatePackEnabled ?? true
+    }
+}
+
 enum CloudEditRenderState: String, Codable, Sendable {
     case renderRequested = "render_requested"
     case planning
@@ -839,6 +873,14 @@ enum CloudEditError: Error, LocalizedError, Sendable {
             return "The render worker lost its lock. Try again in a moment."
         case "download_url_refresh_failed":
             return "HoopClips could not refresh the download link. Try again in a moment."
+        case "ai_edit_disabled":
+            return "Cloud AI editing is temporarily paused. Try again after HoopClips re-enables editing."
+        case "ai_edit_live_render_disabled":
+            return "Cloud rendering is temporarily paused. HoopClips will not run a local render fallback."
+        case "ai_edit_revision_disabled":
+            return "AI edit revisions are temporarily paused. Your current render is still safe to preview and share."
+        case "ai_edit_template_pack_disabled":
+            return "Template packs are temporarily paused. Try again after HoopClips re-enables cloud templates."
         case "invalid_edit_plan":
             return "HoopClips could not validate that edit plan. Try a different template or shorter length."
         case "template_asset_missing":

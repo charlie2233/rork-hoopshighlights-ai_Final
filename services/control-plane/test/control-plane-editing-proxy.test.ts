@@ -4,6 +4,78 @@ import harness from "../../../scripts/control-plane-harness";
 
 const { createControlPlaneHarness, invokePublicRoute, parseJsonResponse } = harness;
 
+test("editing version route proxies safe feature flags from internal editing service", async () => {
+  const controlPlane = createControlPlaneHarness();
+  const originalFetch = globalThis.fetch.bind(globalThis);
+  const seen: Array<{ url: string; headers: Record<string, string> }> = [];
+  globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const request = input instanceof Request ? input : new Request(input, init);
+    const url = new URL(request.url);
+    if (url.origin !== controlPlane.env.EDITING_BASE_URL) {
+      return originalFetch(input, init);
+    }
+    seen.push({
+      url: url.toString(),
+      headers: Object.fromEntries(request.headers.entries())
+    });
+    return Response.json({
+      service: "hoopclips-editing",
+      backendModelVersion: "editing-cloud-v1",
+      gitSha: "test-sha",
+      featureFlags: {
+        aiEditEnabled: true,
+        aiEditLiveRenderEnabled: false,
+        aiEditRevisionEnabled: true,
+        aiEditTemplatePackEnabled: true
+      }
+    });
+  };
+
+  try {
+    const response = await invokePublicRoute(
+      controlPlane,
+      "GET",
+      "/v1/editing/version",
+      undefined,
+      { "x-trace-id": "trace-editing-version" },
+      "trace-editing-version"
+    );
+    const payload = await parseJsonResponse<{
+      requestId: string;
+      service: string;
+      featureFlags: { aiEditLiveRenderEnabled: boolean };
+    }>(response);
+
+    assert.equal(response.status, 200);
+    assert.equal(payload.requestId, "trace-editing-version");
+    assert.equal(payload.service, "hoopclips-editing");
+    assert.equal(payload.featureFlags.aiEditLiveRenderEnabled, false);
+    assert.equal(seen.length, 1);
+    assert.equal(seen[0]!.url, "http://editing.local/version");
+    assert.equal(seen[0]!.headers["x-hoops-editing-secret"], controlPlane.env.EDITING_SHARED_SECRET);
+    assert.equal(seen[0]!.headers["x-request-id"], "trace-editing-version");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("editing version route fails closed when editing service is unconfigured", async () => {
+  const controlPlane = createControlPlaneHarness({ EDITING_BASE_URL: "" });
+
+  const response = await invokePublicRoute(
+    controlPlane,
+    "GET",
+    "/v1/editing/version",
+    undefined,
+    {},
+    "trace-editing-version-unconfigured"
+  );
+  const payload = await parseJsonResponse<{ errorCode: string }>(response);
+
+  assert.equal(response.status, 503);
+  assert.equal(payload.errorCode, "editing_service_unconfigured");
+});
+
 test("edit job creation proxies to internal editing service with shared secret", async () => {
   const controlPlane = createControlPlaneHarness();
   const originalFetch = globalThis.fetch.bind(globalThis);

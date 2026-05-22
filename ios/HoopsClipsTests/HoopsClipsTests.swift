@@ -252,6 +252,43 @@ struct HoopsClipsTests {
         #expect(flags.cloudLockerEnabled)
     }
 
+    @Test func testCloudEditVersionFlagsDecodeLiveRenderKillSwitch() throws {
+        let payload = """
+        {
+          "service": "hoopclips-editing",
+          "backendModelVersion": "editing-cloud-v1",
+          "gitSha": "test-sha",
+          "featureFlags": {
+            "aiEditEnabled": true,
+            "aiEditLiveRenderEnabled": false,
+            "aiEditRevisionEnabled": true,
+            "aiEditTemplatePackEnabled": true,
+            "aiEditMaxDailyRenders": 3,
+            "aiEditFreeWatermarkRequired": true,
+            "aiEditProExportsEnabled": false,
+            "gptHighlightRerankerEnabled": true
+          }
+        }
+        """.data(using: .utf8)!
+
+        let response = try JSONDecoder().decode(CloudEditVersionResponse.self, from: payload)
+
+        #expect(response.service == "hoopclips-editing")
+        #expect(response.featureFlags?.allowsEditPlanning == true)
+        #expect(response.featureFlags?.allowsLiveRendering == false)
+        #expect(response.featureFlags?.allowsRevisions == true)
+        #expect(response.featureFlags?.allowsTemplatePacks == true)
+        #expect(response.featureFlags?.aiEditMaxDailyRenders == 3)
+        #expect(response.featureFlags?.gptHighlightRerankerEnabled == true)
+    }
+
+    @Test func testCloudEditKillSwitchErrorsHaveFriendlyMessages() {
+        #expect(CloudEditError.friendlyBackendMessage(code: "ai_edit_disabled", fallback: "fallback").contains("paused"))
+        #expect(CloudEditError.friendlyBackendMessage(code: "ai_edit_live_render_disabled", fallback: "fallback").contains("local render fallback"))
+        #expect(CloudEditError.friendlyBackendMessage(code: "ai_edit_revision_disabled", fallback: "fallback").contains("revisions"))
+        #expect(CloudEditError.friendlyBackendMessage(code: "ai_edit_template_pack_disabled", fallback: "fallback").contains("Template packs"))
+    }
+
     @Test func testBundledMusicTracksHaveUniqueFilenames() {
         let filenames = MusicTrack.allCases.compactMap(\.filename)
 
