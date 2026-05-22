@@ -16,6 +16,7 @@ from fastapi.responses import FileResponse, JSONResponse
 
 from .backend_imports import ensure_ios_backend_on_path
 from .config import EditingSettings, get_settings
+from .gpt_reranker import GPTHighlightRerankerSettings, rerank_edit_request_with_gpt
 from .models import (
     AIWorkReceipt,
     AIWorkTimeline,
@@ -78,6 +79,10 @@ def resolve_feature_flags() -> AIEditFeatureFlags:
         aiEditMaxDailyRenders=parsed_max_daily,
         aiEditFreeWatermarkRequired=flag("HOOPS_AI_EDIT_FREE_WATERMARK_REQUIRED", defaults.aiEditFreeWatermarkRequired),
         aiEditProExportsEnabled=flag("HOOPS_AI_EDIT_PRO_EXPORTS_ENABLED", defaults.aiEditProExportsEnabled),
+        gptHighlightRerankerEnabled=flag(
+            "HOOPS_GPT_HIGHLIGHT_RERANKER_ENABLED",
+            flag("HOOPS_GPT_HIGHLIGHT_RERANK_ENABLED", defaults.gptHighlightRerankerEnabled),
+        ),
     )
 
 
@@ -95,6 +100,7 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
     edit_revisions: Dict[str, list[EditRevisionResponse]] = {}
     edit_revisions_by_id: Dict[str, EditRevisionResponse] = {}
     feature_flags = resolve_feature_flags()
+    gpt_reranker_settings = GPTHighlightRerankerSettings.from_env()
     instance_id = f"editing_{uuid4().hex[:12]}"
 
     def error_response(error: EditingServiceError) -> JSONResponse:
@@ -356,6 +362,7 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             job,
             resolved_request.editPlan if resolved_request is not None else None,
             resolved_request.sourceClips if resolved_request is not None else None,
+            resolved_request.gptRerankSummary if resolved_request is not None else None,
         )
 
     def work_receipt_for_render_job(job: StoredRenderJob, request: Optional[CreateRenderJobRequest] = None) -> AIWorkReceipt:
@@ -364,6 +371,7 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             job,
             resolved_request.editPlan if resolved_request is not None else None,
             resolved_request.sourceClips if resolved_request is not None else None,
+            resolved_request.gptRerankSummary if resolved_request is not None else None,
         )
 
     def render_job_response(job: StoredRenderJob, request: Optional[CreateRenderJobRequest] = None) -> RenderJobResponse:
@@ -515,6 +523,38 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             raise EditingServiceError(400, "source_video_too_long", "Source video exceeds the plan tier source duration limit.")
         if request.targetDurationSeconds > policy.maxRenderSeconds:
             raise EditingServiceError(400, "render_duration_limit", "Requested AI edit length exceeds this plan's render limit.")
+
+    def maybe_apply_gpt_highlight_rerank(request: CreateEditJobRequest) -> CreateEditJobRequest:
+        if not feature_flags.gptHighlightRerankerEnabled:
+            return request
+        if not request.sourceObjectKey:
+            return rerank_edit_request_with_gpt(request, Path("__missing_source__"), gpt_reranker_settings)
+        if not gpt_reranker_settings.configured:
+            return rerank_edit_request_with_gpt(request, Path("__missing_key__"), gpt_reranker_settings)
+
+        source = None
+        try:
+            source = storage.materialize_source(request.sourceObjectKey)
+            reranked = rerank_edit_request_with_gpt(request, source.local_path, gpt_reranker_settings)
+        except EditingServiceError:
+            reranked = rerank_edit_request_with_gpt(request, Path("__missing_source__"), gpt_reranker_settings)
+        finally:
+            if source is not None:
+                source.cleanup()
+
+        summary = reranked.gptRerankSummary
+        if summary is not None:
+            event_name = "gpt_highlight_rerank.applied" if summary.status == "applied" else "gpt_highlight_rerank.fallback"
+            emit_event(
+                event_name,
+                sampledClipCount=summary.sampledClipCount,
+                sampledFrameCount=summary.sampledFrameCount,
+                returnedDecisionCount=summary.returnedDecisionCount,
+                keptClipCount=len(summary.keptClipIds),
+                rejectedClipCount=len(summary.rejectedClipIds),
+                fallbackReason=summary.fallbackReason,
+            )
+        return reranked
 
     def validate_revision_policy(edit_job_id: str, request: ReviseEditJobRequest) -> None:
         if not feature_flags.aiEditRevisionEnabled:
@@ -706,6 +746,7 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             "gitSha": resolved_settings.git_sha,
             "ffmpeg": ffmpeg_diagnostics(),
             "featureFlags": feature_flags.model_dump(),
+            "gptHighlightReranker": gpt_reranker_settings.public_status(),
         }
 
     def enqueue_render_job(request: CreateRenderJobRequest, background_tasks: BackgroundTasks, force_new: bool = False) -> RenderJobResponse:
@@ -788,12 +829,13 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             require_secret(x_hoops_editing_secret)
             validate_create_request_policy(request)
             edit_job_id = "edit_" + uuid4().hex
-            job = build_edit_job(request, edit_job_id)
+            effective_request = maybe_apply_gpt_highlight_rerank(request)
+            job = build_edit_job(effective_request, edit_job_id)
             if job.validation_errors:
                 first_error = job.validation_errors[0]
                 raise EditingServiceError(400, first_error.code, first_error.message)
             persist_edit_job(job, plan_id=edit_job_id)
-            emit_event("edit_plan.created", editJobId=edit_job_id, templateId=job.plan.templateId, planTier=request.planTier)
+            emit_event("edit_plan.created", editJobId=edit_job_id, templateId=job.plan.templateId, planTier=effective_request.planTier)
             return job.to_response()
         except EditingServiceError as error:
             emit_policy_failed(error, templateId=request.templateId, planTier=request.planTier)
@@ -916,6 +958,7 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
                     revenueCatAppUserID=stored_edit_job.request.revenueCatAppUserID,
                     editPlan=revision.revisedPlan,
                     sourceClips=stored_edit_job.request.clips,
+                    gptRerankSummary=stored_edit_job.request.gptRerankSummary,
                     revisionId=revision_id,
                     idempotencyKey=request.idempotencyKey or f"{edit_job_id}:{revision_id}:render",
                 ),
@@ -970,6 +1013,7 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
                     revenueCatAppUserID=request.revenueCatAppUserID or (stored_edit_job.request.revenueCatAppUserID if stored_edit_job is not None else None),
                     editPlan=edit_plan,
                     sourceClips=source_clips,
+                    gptRerankSummary=stored_edit_job.request.gptRerankSummary if stored_edit_job is not None else None,
                     idempotencyKey=request.idempotencyKey,
                 ),
                 background_tasks,

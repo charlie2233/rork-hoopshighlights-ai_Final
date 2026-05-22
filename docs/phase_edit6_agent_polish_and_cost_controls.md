@@ -39,10 +39,11 @@ The branch adds safe feature flag placeholders in the editing service. These are
 | `ai_edit_max_daily_renders` | `HOOPS_AI_EDIT_MAX_DAILY_RENDERS` | policy default |
 | `ai_edit_free_watermark_required` | `HOOPS_AI_EDIT_FREE_WATERMARK_REQUIRED` | `true` |
 | `ai_edit_pro_exports_enabled` | `HOOPS_AI_EDIT_PRO_EXPORTS_ENABLED` | `false` |
+| `gpt_highlight_reranker_enabled` | `HOOPS_GPT_HIGHLIGHT_RERANKER_ENABLED` | `false` |
 
 `pro` exports are intentionally gated as a placeholder until product/billing decisions are final.
 
-The editing service `/version` response includes the resolved safe feature flag snapshot so staging can verify rollout configuration without exposing secrets.
+The editing service `/version` response includes the resolved safe feature flag snapshot so staging can verify rollout configuration without exposing secrets. GPT highlight reranking also exposes a safe public config summary (`enabled`, `configured`, model name when enabled, and sampling caps), but never API keys, sampled frames, source URLs, or presigned URLs.
 
 ## Render Queue Safety
 

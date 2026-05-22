@@ -169,6 +169,7 @@ class AIEditFeatureFlags(APIModel):
     aiEditMaxDailyRenders: Optional[int] = None
     aiEditFreeWatermarkRequired: bool = True
     aiEditProExportsEnabled: bool = False
+    gptHighlightRerankerEnabled: bool = False
 
 
 def get_plan_tier_policy(plan_tier: str) -> PlanTierPolicy:
@@ -213,6 +214,15 @@ class EditCandidateClip(APIModel):
     audioPeak: float = Field(default=0.0, ge=0.0, le=1.0)
     combinedScore: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     duplicateGroup: Optional[str] = Field(default=None, max_length=80)
+    captionHint: Optional[str] = Field(default=None, max_length=MAX_CAPTION_LENGTH)
+    gptHighlightScore: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    gptWatchabilityScore: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    gptReason: Optional[str] = Field(default=None, max_length=180)
+    suggestedSlowMotion: Optional[bool] = None
+    suggestedSlowMotionCenter: Optional[float] = Field(default=None, ge=0.0)
+    suggestedCaptionMoment: Optional[float] = Field(default=None, ge=0.0)
+    suggestedCropFocus: Optional[str] = Field(default=None, max_length=80)
+    rerankSource: Optional[str] = Field(default=None, max_length=80)
 
     @model_validator(mode="after")
     def validate_bounds(self) -> "EditCandidateClip":
@@ -228,6 +238,16 @@ class EditCandidateClip(APIModel):
 
     @property
     def planning_score(self) -> float:
+        if self.gptHighlightScore is not None:
+            base = self.combinedScore if self.combinedScore is not None else (
+                (self.confidence * 0.25)
+                + (self.excitement * 0.3)
+                + (self.watchability * 0.2)
+                + (self.motionScore * 0.15)
+                + (self.audioPeak * 0.1)
+            )
+            watchability = self.gptWatchabilityScore if self.gptWatchabilityScore is not None else self.watchability
+            return round((self.gptHighlightScore * 0.58) + (watchability * 0.22) + (base * 0.2), 4)
         if self.combinedScore is not None:
             return self.combinedScore
         return round(
@@ -696,6 +716,39 @@ class CreateEditJobRequest(APIModel):
     planTier: PlanTier = "free"
     revenueCatAppUserID: Optional[str] = Field(default=None, min_length=1, max_length=160)
     clips: List[EditCandidateClip] = Field(min_length=1, max_length=30)
+    gptRerankSummary: Optional["GPTHighlightRerankSummary"] = None
+
+
+class GPTHighlightSuggestedEdit(APIModel):
+    slowMotion: bool = False
+    slowMotionCenter: Optional[float] = Field(default=None, ge=0.0)
+    captionMoment: Optional[float] = Field(default=None, ge=0.0)
+    cropFocus: str = Field(default="center_action", max_length=80)
+    extendBeforeSeconds: float = Field(default=0.0, ge=0.0, le=3.0)
+    extendAfterSeconds: float = Field(default=0.0, ge=0.0, le=3.0)
+
+
+class GPTHighlightClipDecision(APIModel):
+    clipId: str = Field(min_length=1, max_length=80)
+    keep: bool
+    highlightScore: float = Field(ge=0.0, le=1.0)
+    watchabilityScore: float = Field(ge=0.0, le=1.0)
+    basketballEvent: str = Field(min_length=1, max_length=80)
+    outcome: Literal["made", "missed", "blocked", "unclear", "not_basketball"]
+    caption: str = Field(max_length=MAX_CAPTION_LENGTH)
+    reason: str = Field(min_length=1, max_length=180)
+    suggestedEdit: GPTHighlightSuggestedEdit
+
+
+class GPTHighlightRerankSummary(APIModel):
+    status: Literal["disabled", "applied", "fallback"]
+    model: Optional[str] = Field(default=None, max_length=120)
+    sampledClipCount: int = Field(default=0, ge=0)
+    sampledFrameCount: int = Field(default=0, ge=0)
+    returnedDecisionCount: int = Field(default=0, ge=0)
+    keptClipIds: List[str] = Field(default_factory=list, max_length=30)
+    rejectedClipIds: List[str] = Field(default_factory=list, max_length=30)
+    fallbackReason: Optional[str] = Field(default=None, max_length=120)
 
 
 class EditUserIntent(APIModel):
@@ -1139,6 +1192,12 @@ def _caption_for(label: str, preset: EditPreset) -> str:
     return label.upper()[:MAX_CAPTION_LENGTH]
 
 
+def _caption_for_clip(clip: EditCandidateClip, preset: EditPreset) -> str:
+    if clip.captionHint:
+        return clip.captionHint[:MAX_CAPTION_LENGTH]
+    return _caption_for(clip.label, preset)
+
+
 def add_caption(label: str, preset: EditPreset) -> str:
     return _caption_for(label, preset)
 
@@ -1162,6 +1221,21 @@ def _effects_for(clip: EditCandidateClip, source_start: float, source_end: float
                     sourceStart=round(slow_start, 3),
                     sourceEnd=round(slow_end, 3),
                     speed=speed,
+                )
+            )
+
+    if clip.suggestedSlowMotion and not any(effect.type == "slow_motion" for effect in effects):
+        suggested_center = clip.suggestedSlowMotionCenter if clip.suggestedSlowMotionCenter is not None else event_center
+        slow_center = min(max(suggested_center, source_start), source_end)
+        slow_start = max(source_start, slow_center - 0.55)
+        slow_end = min(source_end, slow_center + 0.55)
+        if slow_end - slow_start >= 0.5:
+            effects.append(
+                EditPlanEffect(
+                    type="slow_motion",
+                    sourceStart=round(slow_start, 3),
+                    sourceEnd=round(slow_end, 3),
+                    speed=0.55,
                 )
             )
 
@@ -1228,8 +1302,8 @@ def build_edit_plan(request: CreateEditJobRequest, edit_job_id: str) -> EditPlan
                 timelineStart=round(timeline_start, 3),
                 timelineEnd=round(timeline_end, 3),
                 label=clip.label,
-                caption=_caption_for(clip.label, preset),
-                cropMode="center_action" if aspect_ratio != "source" else "source",
+                caption=_caption_for_clip(clip, preset),
+                cropMode=(clip.suggestedCropFocus or "center_action") if aspect_ratio != "source" else "source",
                 effects=_effects_for(clip, source_start, source_end, preset),
             )
         )
@@ -1376,6 +1450,93 @@ def validate_edit_plan(
             add("outro.durationSeconds", "missing_free_outro", "Free plans must include a non-empty Hoopclips outro.")
 
     return errors
+
+
+def apply_gpt_highlight_rerank(
+    request: CreateEditJobRequest,
+    decisions: Sequence[GPTHighlightClipDecision],
+    model: Optional[str],
+    sampled_clip_count: int,
+    sampled_frame_count: int,
+) -> CreateEditJobRequest:
+    source_by_id = {clip.id: clip for clip in request.clips}
+    valid_decisions: Dict[str, GPTHighlightClipDecision] = {
+        decision.clipId: decision for decision in decisions if decision.clipId in source_by_id
+    }
+    if not valid_decisions:
+        summary = GPTHighlightRerankSummary(
+            status="fallback",
+            model=model,
+            sampledClipCount=sampled_clip_count,
+            sampledFrameCount=sampled_frame_count,
+            returnedDecisionCount=len(decisions),
+            fallbackReason="no_valid_decisions",
+        )
+        return request.model_copy(update={"gptRerankSummary": summary})
+
+    kept: List[EditCandidateClip] = []
+    rejected_clip_ids: List[str] = []
+    for clip in request.clips:
+        decision = valid_decisions.get(clip.id)
+        if decision is None:
+            kept.append(clip)
+            continue
+        if not decision.keep:
+            rejected_clip_ids.append(clip.id)
+            continue
+        event_label = decision.basketballEvent.strip() or clip.label
+        if decision.outcome != "unclear" and decision.outcome != "not_basketball":
+            event_label = f"{event_label} ({decision.outcome})"
+        suggested = decision.suggestedEdit
+        updated = clip.model_copy(
+            update={
+                "label": event_label[:80],
+                "captionHint": decision.caption[:MAX_CAPTION_LENGTH],
+                "combinedScore": round((clip.planning_score * 0.25) + (decision.highlightScore * 0.55) + (decision.watchabilityScore * 0.2), 4),
+                "gptHighlightScore": decision.highlightScore,
+                "gptWatchabilityScore": decision.watchabilityScore,
+                "gptReason": decision.reason,
+                "suggestedSlowMotion": suggested.slowMotion,
+                "suggestedSlowMotionCenter": suggested.slowMotionCenter,
+                "suggestedCaptionMoment": suggested.captionMoment,
+                "suggestedCropFocus": suggested.cropFocus,
+                "rerankSource": "gpt_highlight_reranker",
+            }
+        )
+        kept.append(updated)
+
+    if not kept:
+        summary = GPTHighlightRerankSummary(
+            status="fallback",
+            model=model,
+            sampledClipCount=sampled_clip_count,
+            sampledFrameCount=sampled_frame_count,
+            returnedDecisionCount=len(valid_decisions),
+            fallbackReason="all_clips_rejected",
+        )
+        return request.model_copy(update={"gptRerankSummary": summary})
+
+    kept_by_duplicate: Dict[str, EditCandidateClip] = {}
+    deduped: List[EditCandidateClip] = []
+    for clip in rank_clips(kept):
+        if not clip.duplicateGroup:
+            deduped.append(clip)
+            continue
+        current = kept_by_duplicate.get(clip.duplicateGroup)
+        if current is None or clip.planning_score > current.planning_score:
+            kept_by_duplicate[clip.duplicateGroup] = clip
+    deduped.extend(kept_by_duplicate.values())
+    reranked = rank_clips(deduped)
+    summary = GPTHighlightRerankSummary(
+        status="applied",
+        model=model,
+        sampledClipCount=sampled_clip_count,
+        sampledFrameCount=sampled_frame_count,
+        returnedDecisionCount=len(valid_decisions),
+        keptClipIds=[clip.id for clip in reranked if clip.id in valid_decisions],
+        rejectedClipIds=rejected_clip_ids,
+    )
+    return request.model_copy(update={"clips": reranked, "gptRerankSummary": summary})
 
 
 def add_outro_watermark(plan: EditPlan, plan_tier: PlanTier) -> EditPlan:

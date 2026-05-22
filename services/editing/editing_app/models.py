@@ -10,7 +10,7 @@ from .backend_imports import ensure_ios_backend_on_path
 
 ensure_ios_backend_on_path()
 
-from app.editing import CreateEditJobRequest, EditCandidateClip, EditPlan, EditPlanValidationIssue, EditRevisionResponse, PlanTier, get_plan_tier_policy, get_template_pack, policy_summary_for_client  # noqa: E402
+from app.editing import CreateEditJobRequest, EditCandidateClip, EditPlan, EditPlanValidationIssue, EditRevisionResponse, GPTHighlightRerankSummary, PlanTier, get_plan_tier_policy, get_template_pack, policy_summary_for_client  # noqa: E402
 
 
 class APIModel(BaseModel):
@@ -30,6 +30,7 @@ class CreateRenderJobRequest(APIModel):
     revenueCatAppUserID: Optional[str] = Field(default=None, min_length=1, max_length=160)
     editPlan: EditPlan
     sourceClips: List[EditCandidateClip] = Field(default_factory=list, max_length=30)
+    gptRerankSummary: Optional[GPTHighlightRerankSummary] = None
     idempotencyKey: Optional[str] = Field(default=None, min_length=8, max_length=160)
 
 
@@ -83,6 +84,13 @@ class AIWorkReceipt(APIModel):
     storageExpiresAt: Optional[datetime] = None
     planTier: PlanTier = "free"
     priorityQueue: bool = False
+    gptRerankApplied: bool = False
+    gptRerankModel: Optional[str] = None
+    gptRerankSampledClipCount: Optional[int] = None
+    gptRerankSampledFrameCount: Optional[int] = None
+    gptRerankKeptClipCount: Optional[int] = None
+    gptRerankRejectedClipCount: Optional[int] = None
+    gptRerankFallbackReason: Optional[str] = None
     summaryRows: List[str] = Field(default_factory=list)
 
 
@@ -322,6 +330,7 @@ def build_ai_work_timeline(
     render_job: StoredRenderJob,
     edit_plan: Optional[EditPlan] = None,
     source_clips: Optional[List[EditCandidateClip]] = None,
+    gpt_rerank_summary: Optional[GPTHighlightRerankSummary] = None,
 ) -> AIWorkTimeline:
     candidate_count = len(source_clips) if source_clips is not None else None
     selected_count = len(edit_plan.clips) if edit_plan is not None else None
@@ -336,6 +345,10 @@ def build_ai_work_timeline(
         branding_parts.append("outro included" if edit_plan.outro.enabled else "outro not included")
         branding_detail = ", ".join(branding_parts).capitalize() + "."
 
+    finding_detail = f"Reviewed {_clip_count_label(candidate_count, 'candidate clip', 'candidate clips')}." if candidate_count is not None else None
+    if gpt_rerank_summary is not None and gpt_rerank_summary.status == "applied":
+        finding_detail = f"GPT reranked {gpt_rerank_summary.sampledClipCount} candidate clips from {gpt_rerank_summary.sampledFrameCount} sampled keyframes."
+
     steps = [
         AIWorkStep(
             stepId="video_uploaded",
@@ -348,7 +361,7 @@ def build_ai_work_timeline(
         AIWorkStep(
             stepId="finding_highlights",
             title="Finding your best plays",
-            detail=f"Reviewed {_clip_count_label(candidate_count, 'candidate clip', 'candidate clips')}." if candidate_count is not None else None,
+            detail=finding_detail,
             status=plan_ready_status,
             startedAt=render_job.created_at if edit_plan is not None else None,
             completedAt=render_job.created_at if edit_plan is not None else None,
@@ -424,6 +437,7 @@ def build_ai_work_receipt(
     render_job: StoredRenderJob,
     edit_plan: Optional[EditPlan] = None,
     source_clips: Optional[List[EditCandidateClip]] = None,
+    gpt_rerank_summary: Optional[GPTHighlightRerankSummary] = None,
 ) -> AIWorkReceipt:
     candidate_count = len(source_clips) if source_clips is not None else None
     selected_count = len(edit_plan.clips) if edit_plan is not None else None
@@ -438,6 +452,13 @@ def build_ai_work_receipt(
         summary_rows.append(f"Selected {selected_count} clips from {candidate_count} candidates.")
     elif selected_count is not None:
         summary_rows.append(f"Selected {selected_count} clips.")
+    if gpt_rerank_summary is not None:
+        if gpt_rerank_summary.status == "applied":
+            summary_rows.append(
+                f"GPT reranked {gpt_rerank_summary.sampledClipCount} clips from {gpt_rerank_summary.sampledFrameCount} keyframes."
+            )
+        elif gpt_rerank_summary.status == "fallback" and gpt_rerank_summary.fallbackReason:
+            summary_rows.append(f"GPT rerank fallback: {gpt_rerank_summary.fallbackReason}.")
     summary_rows.append(f"Applied {template.displayName} template.")
     summary_rows.append(f"Added {slow_motion_count} slow-motion moments.")
     if render_job.duration_seconds is not None:
@@ -476,6 +497,13 @@ def build_ai_work_receipt(
         storageExpiresAt=storage_expires_at,
         planTier=render_job.plan_tier,
         priorityQueue=render_job.plan_tier in {"pro", "internal", "dev"},
+        gptRerankApplied=gpt_rerank_summary.status == "applied" if gpt_rerank_summary is not None else False,
+        gptRerankModel=gpt_rerank_summary.model if gpt_rerank_summary is not None else None,
+        gptRerankSampledClipCount=gpt_rerank_summary.sampledClipCount if gpt_rerank_summary is not None else None,
+        gptRerankSampledFrameCount=gpt_rerank_summary.sampledFrameCount if gpt_rerank_summary is not None else None,
+        gptRerankKeptClipCount=len(gpt_rerank_summary.keptClipIds) if gpt_rerank_summary is not None else None,
+        gptRerankRejectedClipCount=len(gpt_rerank_summary.rejectedClipIds) if gpt_rerank_summary is not None else None,
+        gptRerankFallbackReason=gpt_rerank_summary.fallbackReason if gpt_rerank_summary is not None else None,
         summaryRows=summary_rows,
     )
 

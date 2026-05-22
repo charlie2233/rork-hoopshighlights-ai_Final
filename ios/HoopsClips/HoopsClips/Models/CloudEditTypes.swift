@@ -445,6 +445,13 @@ struct CloudEditWorkReceipt: Codable, Sendable {
     let storageExpiresAt: String?
     let planTier: CloudEditPlanTier?
     let priorityQueue: Bool
+    let gptRerankApplied: Bool?
+    let gptRerankModel: String?
+    let gptRerankSampledClipCount: Int?
+    let gptRerankSampledFrameCount: Int?
+    let gptRerankKeptClipCount: Int?
+    let gptRerankRejectedClipCount: Int?
+    let gptRerankFallbackReason: String?
     let summaryRows: [String]
 }
 

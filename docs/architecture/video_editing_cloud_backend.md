@@ -197,7 +197,9 @@ The agent receives compact clip metadata, not raw video.
 - Limit input to the top 20-30 clips for the selected job.
 - Use clip IDs, preset IDs, theme IDs, and music profile IDs.
 - Use numeric scores from the backend.
-- Do not include raw frames, full inference logs, or huge transcript/audio payloads.
+- Do not include full video files, full inference logs, full transcript/audio payloads, secrets, or full presigned URLs.
+- Optional GPT highlight reranking may send sampled keyframes from existing candidate clip windows only. Free jobs are capped to 8 clips and 3 frames per clip; Pro/internal jobs can sample 20-30 clips and 5-8 frames per clip.
+- GPT reranking can adjust ranking scores, captions, watchability/event metadata, and safe edit suggestions, but it must not invent clip IDs, replace exact timestamps, run CV/tracking, invoke FFmpeg, or render video.
 - Store preset and theme details in backend registries.
 - Use patches for revisions.
 - Allow one repair pass after validation failure, not endless loops.

@@ -1090,6 +1090,13 @@ struct AIEditView: View {
             storageExpiresAt: storageExpiresAt,
             planTier: policy.planTier,
             priorityQueue: policy.planTier != .free,
+            gptRerankApplied: nil,
+            gptRerankModel: nil,
+            gptRerankSampledClipCount: nil,
+            gptRerankSampledFrameCount: nil,
+            gptRerankKeptClipCount: nil,
+            gptRerankRejectedClipCount: nil,
+            gptRerankFallbackReason: nil,
             summaryRows: rows
         )
     }

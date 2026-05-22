@@ -98,6 +98,7 @@ The completed receipt includes:
 selected clips from candidates
 template name and ID
 slow-motion moment count
+optional GPT rerank sampled clip/keyframe counts and fallback reason
 output duration
 output resolution policy
 watermark/outro status

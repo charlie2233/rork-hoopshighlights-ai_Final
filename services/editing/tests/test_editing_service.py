@@ -18,7 +18,8 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO_ROOT / "services" / "editing"))
 sys.path.insert(0, str(REPO_ROOT / "ios" / "backend"))
 
-from app.editing import CreateEditJobRequest, TEMPLATE_PACK_REGISTRY, build_edit_job, get_plan_tier_policy, validate_template_registry  # noqa: E402
+from app.editing import CreateEditJobRequest, GPTHighlightClipDecision, GPTHighlightSuggestedEdit, TEMPLATE_PACK_REGISTRY, apply_gpt_highlight_rerank, build_edit_job, get_plan_tier_policy, validate_template_registry  # noqa: E402
+import editing_app.main as editing_main  # noqa: E402
 from editing_app.config import EditingSettings  # noqa: E402
 from editing_app.main import create_app  # noqa: E402
 from editing_app.models import StoredRenderJob, now_utc  # noqa: E402
@@ -582,10 +583,88 @@ class EditingServiceTests(unittest.TestCase):
         self.assertEqual(render_log["ffmpeg"]["templateSignature"]["outroProfile"], "free_social_outro")
         self.assertEqual(render_log["workTimeline"]["steps"][0]["stepId"], "video_uploaded")
         self.assertEqual(render_log["workReceipt"]["candidateClipCount"], 2)
+        self.assertFalse(render_log["workReceipt"]["gptRerankApplied"])
 
         download_response = client.get(f"/v1/render-jobs/{render_payload['renderJobId']}/download-url", params={"installId": "install-123"})
         self.assertEqual(download_response.status_code, 200)
         self.assertEqual(download_response.json()["contentType"], "video/mp4")
+
+    @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "ffmpeg and ffprobe are required")
+    def test_gpt_highlight_rerank_summary_feeds_render_receipt(self) -> None:
+        original_reranker = editing_main.rerank_edit_request_with_gpt
+        old_enabled = os.environ.get("HOOPS_GPT_HIGHLIGHT_RERANKER_ENABLED")
+        old_key = os.environ.get("HOOPS_OPENAI_API_KEY")
+
+        def fake_reranker(request, source_path, settings):
+            decisions = [
+                GPTHighlightClipDecision(
+                    clipId="c2",
+                    keep=True,
+                    highlightScore=0.99,
+                    watchabilityScore=0.95,
+                    basketballEvent="Made Shot",
+                    outcome="made",
+                    caption="BUCKET",
+                    reason="Clean shot outcome and watchable finish.",
+                    suggestedEdit=GPTHighlightSuggestedEdit(
+                        slowMotion=True,
+                        slowMotionCenter=10.4,
+                        captionMoment=10.4,
+                        cropFocus="shooter",
+                        extendBeforeSeconds=0.3,
+                        extendAfterSeconds=0.5,
+                    ),
+                ),
+                GPTHighlightClipDecision(
+                    clipId="c1",
+                    keep=False,
+                    highlightScore=0.2,
+                    watchabilityScore=0.3,
+                    basketballEvent="Unclear",
+                    outcome="unclear",
+                    caption="SKIP",
+                    reason="Less clear than the made shot.",
+                    suggestedEdit=GPTHighlightSuggestedEdit(),
+                ),
+            ]
+            return apply_gpt_highlight_rerank(request, decisions, "gpt-test", 2, 6)
+
+        try:
+            os.environ["HOOPS_GPT_HIGHLIGHT_RERANKER_ENABLED"] = "true"
+            os.environ["HOOPS_OPENAI_API_KEY"] = "test-key"
+            editing_main.rerank_edit_request_with_gpt = fake_reranker
+            client = TestClient(editing_main.create_app(self._settings()))
+            edit_request = self._edit_request()
+            create_payload = client.post("/v1/edit-jobs", json=edit_request.model_dump()).json()
+
+            render_response = client.post(
+                f"/v1/edit-jobs/{create_payload['editJobId']}/render",
+                json={"installId": edit_request.installId},
+            )
+
+            self.assertEqual(render_response.status_code, 200)
+            render_job_id = render_response.json()["renderJobId"]
+            status_response = client.get(f"/v1/render-jobs/{render_job_id}", params={"installId": edit_request.installId})
+            self.assertEqual(status_response.status_code, 200)
+            render_payload = status_response.json()
+            self.assertEqual(render_payload["status"], "rendered")
+            self.assertTrue(render_payload["workReceipt"]["gptRerankApplied"])
+            self.assertEqual(render_payload["workReceipt"]["gptRerankModel"], "gpt-test")
+            self.assertEqual(render_payload["workReceipt"]["gptRerankSampledClipCount"], 2)
+            self.assertEqual(render_payload["workReceipt"]["gptRerankSampledFrameCount"], 6)
+            self.assertEqual(render_payload["workReceipt"]["gptRerankKeptClipCount"], 1)
+            self.assertEqual(render_payload["workReceipt"]["gptRerankRejectedClipCount"], 1)
+            self.assertIn("GPT reranked 2 clips from 6 keyframes.", render_payload["workReceipt"]["summaryRows"])
+        finally:
+            editing_main.rerank_edit_request_with_gpt = original_reranker
+            if old_enabled is None:
+                os.environ.pop("HOOPS_GPT_HIGHLIGHT_RERANKER_ENABLED", None)
+            else:
+                os.environ["HOOPS_GPT_HIGHLIGHT_RERANKER_ENABLED"] = old_enabled
+            if old_key is None:
+                os.environ.pop("HOOPS_OPENAI_API_KEY", None)
+            else:
+                os.environ["HOOPS_OPENAI_API_KEY"] = old_key
 
     @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "ffmpeg and ffprobe are required")
     def test_render_existing_edit_job_without_resending_plan(self) -> None:

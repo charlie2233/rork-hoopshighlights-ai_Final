@@ -13,8 +13,11 @@ from app.editing import (
     EditPlanPatch,
     EditPlanPatchOperation,
     EditPlan,
+    GPTHighlightClipDecision,
+    GPTHighlightSuggestedEdit,
     ReviseEditJobRequest,
     TEMPLATE_PACK_REGISTRY,
+    apply_gpt_highlight_rerank,
     apply_edit_plan_patch,
     build_revision_response,
     build_edit_job,
@@ -215,6 +218,62 @@ class EditPlanAgentTests(unittest.TestCase):
         grouped = [clip for clip in clips if clip.duplicateGroup == "g1"]
         self.assertEqual(len(grouped), 1)
         self.assertEqual(grouped[0].id, "c1")
+
+    def test_gpt_highlight_rerank_uses_existing_clip_ids_only(self) -> None:
+        request = CreateEditJobRequest(**_request_payload())
+        decisions = [
+            GPTHighlightClipDecision(
+                clipId="c3",
+                keep=True,
+                highlightScore=0.98,
+                watchabilityScore=0.96,
+                basketballEvent="Dunk",
+                outcome="made",
+                caption="BIG FINISH",
+                reason="Clear finish and strong watchability.",
+                suggestedEdit=GPTHighlightSuggestedEdit(
+                    slowMotion=True,
+                    slowMotionCenter=15.4,
+                    captionMoment=15.4,
+                    cropFocus="rim",
+                    extendBeforeSeconds=0.4,
+                    extendAfterSeconds=0.6,
+                ),
+            ),
+            GPTHighlightClipDecision(
+                clipId="c999",
+                keep=True,
+                highlightScore=1.0,
+                watchabilityScore=1.0,
+                basketballEvent="Invented clip",
+                outcome="unclear",
+                caption="NOPE",
+                reason="Should be ignored because it is not in the candidate pool.",
+                suggestedEdit=GPTHighlightSuggestedEdit(),
+            ),
+            GPTHighlightClipDecision(
+                clipId="c1",
+                keep=False,
+                highlightScore=0.1,
+                watchabilityScore=0.2,
+                basketballEvent="Boring duplicate",
+                outcome="unclear",
+                caption="SKIP",
+                reason="Duplicate was less clear.",
+                suggestedEdit=GPTHighlightSuggestedEdit(),
+            ),
+        ]
+
+        reranked = apply_gpt_highlight_rerank(request, decisions, "gpt-test", 3, 9)
+        plan = build_edit_plan(reranked, "edit_gpt_reranked")
+
+        self.assertEqual(reranked.gptRerankSummary.status, "applied")
+        self.assertIn("c3", reranked.gptRerankSummary.keptClipIds)
+        self.assertIn("c1", reranked.gptRerankSummary.rejectedClipIds)
+        self.assertNotIn("c999", [clip.id for clip in reranked.clips])
+        self.assertEqual(plan.clips[0].clipId, "c3")
+        self.assertEqual(plan.clips[0].caption, "BIG FINISH")
+        self.assertTrue(any(effect.type == "slow_motion" for effect in plan.clips[0].effects))
 
     def test_full_game_highlight_uses_widescreen_and_chronological_selection(self) -> None:
         request = CreateEditJobRequest(**_request_payload(preset="full_game_highlight", targetDurationSeconds=60))
