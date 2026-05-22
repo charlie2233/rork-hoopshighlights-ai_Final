@@ -29,6 +29,10 @@ REQUIRED_AI_EDIT_SUBSTITUTIONS = {
     "_AI_EDIT_TEMPLATE_PACK_ENABLED": "true",
 }
 
+REQUIRED_GPT_RERANK_SUBSTITUTIONS = {
+    "_GPT_HIGHLIGHT_RERANKER_ENABLED": "false",
+}
+
 REQUIRED_DEPLOY_INPUTS = {
     "CLOUDFLARE_API_TOKEN",
     "GCP_WORKLOAD_IDENTITY_PROVIDER",
@@ -218,6 +222,12 @@ def check_editing_cloudbuild(repo_root: Path, collector: Collector) -> None:
         else:
             collector.fail("editing ai edit substitution", rel(path, repo_root), f"{key} must be explicit and default true for internal beta.")
 
+    for key, expected in REQUIRED_GPT_RERANK_SUBSTITUTIONS.items():
+        if substitutions.get(key) == expected:
+            collector.pass_("editing gpt reranker substitution", rel(path, repo_root), f"{key} is explicit and disabled by default.")
+        else:
+            collector.fail("editing gpt reranker substitution", rel(path, repo_root), f"{key} must be explicit and default false until live OpenAI/staging smoke is proven.")
+
     env_line = find_arg_value_after(text, "--set-env-vars")
     if env_line and "HOOPS_ENVIRONMENT=staging" in env_line and "HOOPS_RENDER_STORAGE_PROVIDER=r2" in env_line:
         collector.pass_("editing cloud env", rel(path, repo_root), "Cloud Run deploy sets staging R2 render environment.")
@@ -238,6 +248,18 @@ def check_editing_cloudbuild(repo_root: Path, collector: Collector) -> None:
         collector.fail("editing ai edit env mapping", rel(path, repo_root), f"Missing env mappings: {', '.join(missing_env_mappings)}.")
     else:
         collector.pass_("editing ai edit env mapping", rel(path, repo_root), "AI Edit kill switches map into Cloud Run env.")
+
+    if env_line and "HOOPS_GPT_HIGHLIGHT_RERANKER_ENABLED=${_GPT_HIGHLIGHT_RERANKER_ENABLED}" in env_line:
+        collector.pass_("editing gpt reranker env mapping", rel(path, repo_root), "GPT highlight reranker launch switch maps into Cloud Run env.")
+    else:
+        collector.fail("editing gpt reranker env mapping", rel(path, repo_root), "Cloud Run deploy must map the GPT highlight reranker launch switch.")
+
+    if "HOOPS_OPENAI_API_KEY" not in text and substitutions.get("_GPT_HIGHLIGHT_RERANKER_ENABLED") != "true":
+        collector.pass_("openai secret gate", rel(path, repo_root), "OpenAI key is not required while GPT reranker defaults disabled.")
+    elif "HOOPS_OPENAI_API_KEY" in text:
+        collector.warn("openai secret gate", rel(path, repo_root), "OpenAI key secret name is configured; verify no secret value is printed during deploy.")
+    else:
+        collector.fail("openai secret gate", rel(path, repo_root), "GPT reranker is enabled but no OpenAI key secret name is configured.")
 
     secret_line = find_arg_value_after(text, "--set-secrets")
     missing_secret_names = [

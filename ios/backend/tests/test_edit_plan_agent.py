@@ -275,6 +275,58 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertEqual(plan.clips[0].caption, "BIG FINISH")
         self.assertTrue(any(effect.type == "slow_motion" for effect in plan.clips[0].effects))
 
+    def test_gpt_highlight_rerank_clamps_hints_and_biases_source_window(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=12,
+                clips=[
+                    {
+                        "id": "c_window",
+                        "start": 0.0,
+                        "end": 20.0,
+                        "eventCenter": 10.0,
+                        "label": "Made Shot",
+                        "confidence": 0.8,
+                        "excitement": 0.8,
+                        "watchability": 0.8,
+                        "motionScore": 0.8,
+                        "audioPeak": 0.4,
+                        "combinedScore": 0.8,
+                    }
+                ],
+            )
+        )
+        decisions = [
+            GPTHighlightClipDecision(
+                clipId="c_window",
+                keep=True,
+                highlightScore=0.95,
+                watchabilityScore=0.9,
+                basketballEvent="Made Shot",
+                outcome="made",
+                caption="CLEAN HIT",
+                reason="Clear make with usable framing.",
+                suggestedEdit=GPTHighlightSuggestedEdit(
+                    slowMotion=True,
+                    slowMotionCenter=999.0,
+                    captionMoment=999.0,
+                    cropFocus="shooter",
+                    extendBeforeSeconds=3.0,
+                    extendAfterSeconds=0.0,
+                ),
+            )
+        ]
+
+        reranked = apply_gpt_highlight_rerank(request, decisions, "gpt-test", 1, 3)
+        plan = build_edit_plan(reranked, "edit_gpt_window")
+
+        clip = reranked.clips[0]
+        self.assertEqual(clip.suggestedSlowMotionCenter, 20.0)
+        self.assertEqual(clip.suggestedCaptionMoment, 20.0)
+        self.assertEqual(clip.suggestedExtendBeforeSeconds, 3.0)
+        self.assertLess(plan.clips[0].sourceStart, 6.5)
+        self.assertEqual(plan.clips[0].sourceStart, 5.0)
+
     def test_full_game_highlight_uses_widescreen_and_chronological_selection(self) -> None:
         request = CreateEditJobRequest(**_request_payload(preset="full_game_highlight", targetDurationSeconds=60))
 

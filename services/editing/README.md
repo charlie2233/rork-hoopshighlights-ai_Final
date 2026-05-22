@@ -34,8 +34,15 @@ The service receives a validated `EditPlan`, downloads the source video from ren
 - `HOOPS_AI_EDIT_LIVE_RENDER_ENABLED`: kill switch for live render enqueue, default `true`
 - `HOOPS_AI_EDIT_REVISION_ENABLED`: kill switch for AI Edit revisions, default `true`
 - `HOOPS_AI_EDIT_TEMPLATE_PACK_ENABLED`: kill switch for template-backed planning, default `true`
+- `HOOPS_GPT_HIGHLIGHT_RERANKER_ENABLED`: kill switch for GPT highlight reranking, default `false`
+- `HOOPS_OPENAI_API_KEY`: OpenAI key required only when GPT highlight reranking is enabled
+- `HOOPS_GPT_HIGHLIGHT_RERANK_MODEL`: vision-capable reranker model, default `gpt-4.1-mini`
+- `HOOPS_GPT_HIGHLIGHT_RERANK_FREE_MAX_CLIPS`: Free cap, clamped to `1...8`
+- `HOOPS_GPT_HIGHLIGHT_RERANK_FREE_FRAMES_PER_CLIP`: Free frames per clip, fixed at `3`
+- `HOOPS_GPT_HIGHLIGHT_RERANK_PAID_MAX_CLIPS`: Pro/internal cap, clamped to `20...30`
+- `HOOPS_GPT_HIGHLIGHT_RERANK_PAID_FRAMES_PER_CLIP`: Pro/internal frames per clip, clamped to `5...8`
 
-The `/version` endpoint reports the resolved non-secret feature-flag snapshot. Use it to verify staging rollout state without exposing R2 credentials, service secrets, or presigned URLs.
+The `/version` endpoint reports the resolved non-secret feature-flag snapshot and GPT reranker sampling caps. Use it to verify staging rollout state without exposing R2 credentials, service secrets, OpenAI keys, sampled frames, or presigned URLs. GPT reranker OpenAI requests are built with `store=false`.
 
 ## Local Smoke
 

@@ -26,6 +26,7 @@ from app.editing import (  # noqa: E402
 
 
 ResponseClient = Callable[[Dict[str, Any], str, str, float], Dict[str, Any]]
+ALLOWED_IMAGE_DETAIL_LEVELS = {"low", "high", "original", "auto"}
 
 
 @dataclass(frozen=True)
@@ -61,7 +62,7 @@ class GPTHighlightRerankerSettings:
             frame_width=_env_int("HOOPS_GPT_HIGHLIGHT_RERANK_FRAME_WIDTH", 512, 256, 768),
             jpeg_quality=_env_int("HOOPS_GPT_HIGHLIGHT_RERANK_JPEG_QUALITY", 5, 2, 12),
             max_image_bytes=_env_int("HOOPS_GPT_HIGHLIGHT_RERANK_MAX_IMAGE_BYTES", 180_000, 40_000, 500_000),
-            image_detail=os.getenv("HOOPS_GPT_HIGHLIGHT_RERANK_IMAGE_DETAIL", "low").strip().lower() or "low",
+            image_detail=_env_image_detail("HOOPS_GPT_HIGHLIGHT_RERANK_IMAGE_DETAIL", "low"),
         )
 
     @property
@@ -291,6 +292,7 @@ def _build_openai_payload(
 
     return {
         "model": settings.model,
+        "store": False,
         "instructions": (
             "You are HoopClips GPT Highlight Reranker. Judge basketball highlight worthiness, watchability, event clarity, "
             "outcome sanity, boring/duplicate rejection, concise captions, story order, and safe edit suggestions. "
@@ -408,6 +410,11 @@ def _env_float(name: str, default: float, minimum: float, maximum: float) -> flo
     except ValueError:
         return default
     return max(minimum, min(maximum, parsed))
+
+
+def _env_image_detail(name: str, default: str) -> str:
+    value = os.getenv(name, default).strip().lower() or default
+    return value if value in ALLOWED_IMAGE_DETAIL_LEVELS else default
 
 
 def _safe_id(value: str) -> str:

@@ -223,6 +223,8 @@ class EditCandidateClip(APIModel):
     suggestedSlowMotionCenter: Optional[float] = Field(default=None, ge=0.0)
     suggestedCaptionMoment: Optional[float] = Field(default=None, ge=0.0)
     suggestedCropFocus: Optional[str] = Field(default=None, max_length=80)
+    suggestedExtendBeforeSeconds: float = Field(default=0.0, ge=0.0, le=3.0)
+    suggestedExtendAfterSeconds: float = Field(default=0.0, ge=0.0, le=3.0)
     rerankSource: Optional[str] = Field(default=None, max_length=80)
 
     @model_validator(mode="after")
@@ -1247,6 +1249,14 @@ def add_slow_motion(clip: EditCandidateClip, source_start: float, source_end: fl
     return [effect for effect in _effects_for(clip, source_start, source_end, preset) if effect.type == "slow_motion"]
 
 
+def _source_window_start_for_clip(clip: EditCandidateClip, source_duration: float) -> float:
+    extend_before = clip.suggestedExtendBeforeSeconds or 0.0
+    extend_after = clip.suggestedExtendAfterSeconds or 0.0
+    extension_bias = (extend_after - extend_before) * 0.5
+    source_start = clip.eventCenter - (source_duration / 2.0) + extension_bias
+    return max(clip.start, min(source_start, clip.end - source_duration))
+
+
 def build_edit_plan(request: CreateEditJobRequest, edit_job_id: str) -> EditPlan:
     context = build_edit_context(request)
     preset = PRESET_REGISTRY[request.preset]
@@ -1288,7 +1298,7 @@ def build_edit_plan(request: CreateEditJobRequest, edit_job_id: str) -> EditPlan
         source_duration = min(max_clip_seconds, clip.duration, remaining)
         if source_duration < min(min_clip_seconds, MIN_PLAN_CLIP_SECONDS):
             continue
-        source_start = max(clip.start, clip.eventCenter - (source_duration / 2.0))
+        source_start = _source_window_start_for_clip(clip, source_duration)
         source_end = source_start + source_duration
         if source_end > clip.end:
             source_end = clip.end
@@ -1489,6 +1499,8 @@ def apply_gpt_highlight_rerank(
         if decision.outcome != "unclear" and decision.outcome != "not_basketball":
             event_label = f"{event_label} ({decision.outcome})"
         suggested = decision.suggestedEdit
+        suggested_slow_motion_center = _clamp_optional_clip_second(suggested.slowMotionCenter, clip)
+        suggested_caption_moment = _clamp_optional_clip_second(suggested.captionMoment, clip)
         updated = clip.model_copy(
             update={
                 "label": event_label[:80],
@@ -1498,9 +1510,11 @@ def apply_gpt_highlight_rerank(
                 "gptWatchabilityScore": decision.watchabilityScore,
                 "gptReason": decision.reason,
                 "suggestedSlowMotion": suggested.slowMotion,
-                "suggestedSlowMotionCenter": suggested.slowMotionCenter,
-                "suggestedCaptionMoment": suggested.captionMoment,
+                "suggestedSlowMotionCenter": suggested_slow_motion_center,
+                "suggestedCaptionMoment": suggested_caption_moment,
                 "suggestedCropFocus": suggested.cropFocus,
+                "suggestedExtendBeforeSeconds": suggested.extendBeforeSeconds,
+                "suggestedExtendAfterSeconds": suggested.extendAfterSeconds,
                 "rerankSource": "gpt_highlight_reranker",
             }
         )
@@ -1538,6 +1552,12 @@ def apply_gpt_highlight_rerank(
         rejectedClipIds=rejected_clip_ids,
     )
     return request.model_copy(update={"clips": reranked, "gptRerankSummary": summary})
+
+
+def _clamp_optional_clip_second(value: Optional[float], clip: EditCandidateClip) -> Optional[float]:
+    if value is None:
+        return None
+    return round(min(max(value, clip.start), clip.end), 3)
 
 
 def add_outro_watermark(plan: EditPlan, plan_tier: PlanTier) -> EditPlan:
