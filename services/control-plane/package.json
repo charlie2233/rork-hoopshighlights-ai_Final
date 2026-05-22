@@ -5,6 +5,10 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
+    "deploy:staging": "wrangler deploy --env staging --keep-vars",
+    "deploy:staging:dry-run": "wrangler deploy --env staging --dry-run",
+    "deployments:staging": "wrangler deployments list --env staging",
+    "rollback:staging": "wrangler rollback --env staging --yes",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "cf:typegen": "wrangler types"
   },

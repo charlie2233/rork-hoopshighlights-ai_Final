@@ -63,6 +63,8 @@ Required env/secret inputs:
 - `CONTROL_PLANE_SHARED_SECRET`
 - `INFERENCE_BASE_URL`
 - `INFERENCE_SHARED_SECRET`
+- `EDITING_BASE_URL`
+- `EDITING_SHARED_SECRET`
 - `PROCESSING_TIMEOUT_SECONDS`
 - `MAX_INFERENCE_ATTEMPTS`
 - `R2_ACCOUNT_ID`
@@ -74,8 +76,26 @@ For the exact local/staging variable mapping and Wrangler secret commands, see [
 ## Staging deploy
 
 1. Create or verify the Cloudflare resources with [`docs/staging_smoke_runbook.md`](../../docs/staging_smoke_runbook.md).
-2. Run `npx wrangler deploy --env staging` from `services/control-plane`.
-3. Use the printed staging Worker URL with a real sample MP4 file, for example `npx tsx scripts/control-plane-happy-path.ts --base-url https://<staging-worker-url> --file /tmp/hoopsclips-staging-sample.mp4 --trace-id staging-smoke-001`.
+2. Validate the Worker bundle and staging bindings without deploying:
+
+```bash
+npm --prefix services/control-plane run deploy:staging:dry-run
+```
+
+3. Deploy staging with a preserved dashboard-var posture:
+
+```bash
+npm --prefix services/control-plane run deploy:staging -- --message "staging deploy <git-sha>"
+```
+
+4. List rollback targets before rollback:
+
+```bash
+npm --prefix services/control-plane run deployments:staging
+npm --prefix services/control-plane run rollback:staging -- <version-id> --message "rollback <git-sha>"
+```
+
+5. Use the printed staging Worker URL with a real sample MP4 file, for example `npx tsx scripts/control-plane-happy-path.ts --base-url https://<staging-worker-url> --file /tmp/hoopsclips-staging-sample.mp4 --trace-id staging-smoke-001`.
 
 ## Migration notes
 
