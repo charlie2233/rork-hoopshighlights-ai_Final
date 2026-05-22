@@ -31,7 +31,10 @@ npx tsx --test services/control-plane/test/control-plane-status-transitions.test
 npx tsx --test services/control-plane/test/control-plane-failure-path.test.ts
 npx tsx --test services/control-plane/test/control-plane-duplicate-callback.test.ts
 npx tsx --test services/control-plane/test/control-plane-dlq.test.ts
+python3 scripts/launch_backend_config_preflight.py
 ```
+
+The launch preflight is static and no-secret. It verifies staging/backend config contracts and reports remaining production-cutover gates without printing credentials or presigned URLs.
 
 The phase-1b verification path now uses the staging route shape end to end:
 
