@@ -178,6 +178,74 @@ class EditingServiceTests(unittest.TestCase):
         self.assertEqual(revisions_response.status_code, 404)
         self.assertEqual(revisions_response.json()["errorCode"], "edit_job_not_found")
 
+    def test_render_history_lists_install_scoped_metadata_without_presigned_urls(self) -> None:
+        settings = self._settings()
+        store = DurableRenderStateStore(RenderStorage(settings))
+        expires_at = now_utc() + timedelta(days=7)
+        store.save_job(
+            StoredRenderJob(
+                edit_job_id="edit_history_1",
+                render_job_id="render_history_1",
+                install_id="install-123",
+                trace_id="trace_history_1",
+                status="rendered",
+                aspect_ratio="9:16",
+                created_at=now_utc() - timedelta(minutes=10),
+                updated_at=now_utc() - timedelta(minutes=5),
+                source_object_key="sources/synthetic_game.mp4",
+                output_object_key="edits/edit_history_1/render_jobs/render_history_1/final.mp4",
+                render_log_object_key="edits/edit_history_1/render_jobs/render_history_1/render_log.json",
+                plan_version="edit-plan-v1",
+                template_id="personal_highlight_v1",
+                duration_seconds=14.5,
+                plan_tier="free",
+                output_bytes=12345,
+                retention_metadata={
+                    "expiresAt": expires_at.isoformat(),
+                    "retentionClass": "free_final_render",
+                    "deleteEligible": False,
+                    "planTier": "free",
+                    "editJobId": "edit_history_1",
+                    "renderJobId": "render_history_1",
+                    "templateId": "personal_highlight_v1",
+                    "outputBytes": 12345,
+                    "durationSeconds": 14.5,
+                },
+            )
+        )
+        store.save_job(
+            StoredRenderJob(
+                edit_job_id="edit_history_other",
+                render_job_id="render_history_other",
+                install_id="install-other",
+                trace_id="trace_history_other",
+                status="rendered",
+                aspect_ratio="9:16",
+                created_at=now_utc() - timedelta(minutes=8),
+                updated_at=now_utc() - timedelta(minutes=4),
+                output_object_key="edits/edit_history_other/render_jobs/render_history_other/final.mp4",
+                plan_version="edit-plan-v1",
+                template_id="personal_highlight_v1",
+                plan_tier="free",
+            )
+        )
+        client = TestClient(create_app(settings))
+
+        response = client.get("/v1/render-jobs", params={"installId": "install-123", "limit": 10})
+        missing_response = client.get("/v1/render-jobs")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["installId"], "install-123")
+        self.assertEqual([render["renderJobId"] for render in payload["renders"]], ["render_history_1"])
+        self.assertEqual(payload["renders"][0]["retentionMetadata"]["expiresAt"], expires_at.isoformat())
+        serialized = json.dumps(payload)
+        self.assertNotIn("downloadUrl", serialized)
+        self.assertNotIn("leaseToken", serialized)
+        self.assertNotIn("render_history_other", serialized)
+        self.assertEqual(missing_response.status_code, 400)
+        self.assertEqual(missing_response.json()["errorCode"], "missing_install_id")
+
     def test_template_registry_loads_and_validates(self) -> None:
         validation = validate_template_registry()
 
@@ -684,6 +752,25 @@ class EditingServiceTests(unittest.TestCase):
         render_payload = status_response.json()
         self.assertEqual(render_payload["status"], "rendered")
         self.assertEqual(render_payload["aspectRatio"], "9:16")
+
+        rerender_response = client.post(
+            f"/v1/edit-jobs/{create_payload['editJobId']}/render",
+            json={
+                "installId": edit_request.installId,
+                "forceNew": True,
+                "idempotencyKey": "ios-locker-rerender-001",
+            },
+        )
+        self.assertEqual(rerender_response.status_code, 200)
+        self.assertNotEqual(rerender_response.json()["renderJobId"], render_job_id)
+
+        history_response = client.get("/v1/render-jobs", params={"installId": edit_request.installId, "limit": 10})
+        self.assertEqual(history_response.status_code, 200)
+        history_payload = history_response.json()
+        history_ids = [render["renderJobId"] for render in history_payload["renders"]]
+        self.assertIn(render_job_id, history_ids)
+        self.assertIn(rerender_response.json()["renderJobId"], history_ids)
+        self.assertNotIn("downloadUrl", json.dumps(history_payload))
 
     @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "ffmpeg and ffprobe are required")
     def test_render_revision_produces_latest_download_url(self) -> None:

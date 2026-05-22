@@ -98,9 +98,55 @@ struct CloudEditService {
         throw CloudEditError.timedOut
     }
 
+    func fetchRenderHistory(installID: String, limit: Int = 20) async throws -> CloudEditRenderHistoryResponse {
+        let baseURL = try configuredBaseURL()
+        var components = URLComponents(url: baseURL.appending(path: "v1/render-jobs"), resolvingAgainstBaseURL: false)
+        components?.queryItems = [
+            URLQueryItem(name: "installId", value: installID),
+            URLQueryItem(name: "limit", value: String(limit))
+        ]
+        guard let url = components?.url else {
+            throw CloudEditError.invalidResponse
+        }
+
+        let (data, response) = try await session.data(for: signedClientRequest(url: url))
+        return try decodeResponse(data: data, response: response, successType: CloudEditRenderHistoryResponse.self)
+    }
+
+    func requestStoredRender(editJobID: String, installID: String) async throws -> CloudEditRenderStatusResponse {
+        let baseURL = try configuredBaseURL()
+        var request = URLRequest(url: baseURL.appending(path: "v1/edit-jobs/\(editJobID)/render"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Hoopclips-iOS/1.0", forHTTPHeaderField: "User-Agent")
+        request.setValue(UUID().uuidString, forHTTPHeaderField: "x-trace-id")
+        request.httpBody = try encoder.encode(
+            CloudEditStoredRenderRequest(
+                installId: installID,
+                idempotencyKey: "ios-locker-rerender-\(UUID().uuidString)",
+                forceNew: true
+            )
+        )
+
+        let (data, response) = try await session.data(for: request)
+        return try decodeResponse(data: data, response: response, successType: CloudEditRenderStatusResponse.self)
+    }
+
     func fetchDownloadURL(editJobID: String, installID: String) async throws -> CloudEditDownloadResponse {
         let baseURL = try configuredBaseURL()
         var components = URLComponents(url: baseURL.appending(path: "v1/edit-jobs/\(editJobID)/download-url"), resolvingAgainstBaseURL: false)
+        components?.queryItems = [URLQueryItem(name: "installId", value: installID)]
+        guard let url = components?.url else {
+            throw CloudEditError.invalidResponse
+        }
+
+        let (data, response) = try await session.data(for: signedClientRequest(url: url))
+        return try decodeResponse(data: data, response: response, successType: CloudEditDownloadResponse.self)
+    }
+
+    func fetchDownloadURL(renderJobID: String, installID: String) async throws -> CloudEditDownloadResponse {
+        let baseURL = try configuredBaseURL()
+        var components = URLComponents(url: baseURL.appending(path: "v1/render-jobs/\(renderJobID)/download-url"), resolvingAgainstBaseURL: false)
         components?.queryItems = [URLQueryItem(name: "installId", value: installID)]
         guard let url = components?.url else {
             throw CloudEditError.invalidResponse

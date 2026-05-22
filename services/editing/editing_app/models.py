@@ -42,6 +42,7 @@ class StartEditJobRenderRequest(APIModel):
     editPlan: Optional[EditPlan] = None
     sourceClips: List[EditCandidateClip] = Field(default_factory=list, max_length=30)
     idempotencyKey: Optional[str] = Field(default=None, min_length=8, max_length=160)
+    forceNew: bool = False
 
 
 class StartEditRevisionRenderRequest(APIModel):
@@ -126,6 +127,12 @@ class DownloadUrlResponse(APIModel):
     outputObjectKey: str
     contentType: str = "video/mp4"
     expiresAt: datetime
+
+
+class RenderJobListResponse(APIModel):
+    installId: str
+    generatedAt: datetime
+    renders: List[RenderJobResponse] = Field(default_factory=list)
 
 
 class ErrorResponse(APIModel):

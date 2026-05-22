@@ -25,6 +25,7 @@ from .models import (
     DownloadUrlResponse,
     EditRevisionListResponse,
     ErrorResponse,
+    RenderJobListResponse,
     RenderJobResponse,
     StartEditJobRenderRequest,
     StartEditRevisionRenderRequest,
@@ -353,6 +354,7 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             revenueCatAppUserID=edit_job.request.revenueCatAppUserID,
             editPlan=plan,
             sourceClips=edit_job.request.clips,
+            gptRerankSummary=edit_job.request.gptRerankSummary,
             idempotencyKey=job.idempotency_key,
         )
 
@@ -403,6 +405,19 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
     def mark_stale_renders() -> None:
         for job in list(render_jobs.values()):
             mark_stale_job(job)
+
+    def load_render_history_for_install(install_id: str, limit: int) -> list[StoredRenderJob]:
+        jobs_by_id: dict[str, StoredRenderJob] = {}
+        for job in render_state_store.load_jobs_for_install(install_id):
+            jobs_by_id[job.render_job_id] = cache_job(job)
+        for job in render_jobs.values():
+            if job.install_id == install_id:
+                jobs_by_id[job.render_job_id] = job
+        jobs = list(jobs_by_id.values())
+        for job in jobs:
+            mark_stale_job(job)
+        jobs.sort(key=lambda job: job.updated_at or job.created_at, reverse=True)
+        return jobs[:limit]
 
     def prune_daily_render_counts(install_id: str) -> None:
         cutoff = now_utc() - timedelta(days=1)
@@ -1017,6 +1032,30 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
                     idempotencyKey=request.idempotencyKey,
                 ),
                 background_tasks,
+                force_new=request.forceNew,
+            )
+        except EditingServiceError as error:
+            return error_response(error)
+
+    @app.get("/v1/render-jobs", response_model=RenderJobListResponse, responses={400: {"model": ErrorResponse}, 401: {"model": ErrorResponse}})
+    async def list_render_jobs(
+        installId: Optional[str] = Query(default=None),
+        limit: int = Query(default=20, ge=1, le=50),
+        x_hoops_install_id: Optional[str] = Header(default=None),
+        x_hoops_editing_secret: Optional[str] = Header(default=None),
+    ):
+        try:
+            require_secret(x_hoops_editing_secret)
+            install_id = installId or x_hoops_install_id
+            if not install_id:
+                raise EditingServiceError(400, "missing_install_id", "Install ID is required to list render history.")
+            mark_stale_renders()
+            jobs = load_render_history_for_install(install_id, limit)
+            emit_event("render_history.listed", renderCount=len(jobs), limit=limit)
+            return RenderJobListResponse(
+                installId=install_id,
+                generatedAt=now_utc(),
+                renders=[render_job_response(job) for job in jobs],
             )
         except EditingServiceError as error:
             return error_response(error)

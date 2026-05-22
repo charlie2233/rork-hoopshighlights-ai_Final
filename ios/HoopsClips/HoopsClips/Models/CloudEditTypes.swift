@@ -662,6 +662,12 @@ struct CloudEditRenderRequest: Codable, Sendable {
     let idempotencyKey: String?
 }
 
+struct CloudEditStoredRenderRequest: Codable, Sendable {
+    let installId: String
+    let idempotencyKey: String?
+    let forceNew: Bool
+}
+
 struct CloudEditRevisionRequest: Codable, Sendable {
     let installId: String
     let command: CloudEditRevisionCommand
@@ -740,6 +746,12 @@ struct CloudEditRenderStatusResponse: Codable, Sendable {
     let retentionMetadata: CloudEditRetentionMetadata?
     let workTimeline: CloudEditWorkTimeline?
     let workReceipt: CloudEditWorkReceipt?
+}
+
+struct CloudEditRenderHistoryResponse: Codable, Sendable {
+    let installId: String
+    let generatedAt: String?
+    let renders: [CloudEditRenderStatusResponse]
 }
 
 struct CloudEditDownloadResponse: Codable, Sendable {

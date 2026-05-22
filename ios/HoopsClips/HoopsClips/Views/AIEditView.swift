@@ -40,11 +40,15 @@ struct AIEditView: View {
     @State private var downloadResponse: CloudEditDownloadResponse?
     @State private var revisionResponse: CloudEditRevisionResponse?
     @State private var pendingRevisionCommand: CloudEditRevisionCommand?
+    @State private var renderHistory: [CloudEditRenderStatusResponse] = []
     @State private var previewPlayer: AVPlayer?
     @State private var localShareURL: URL?
     @State private var errorMessage: String?
+    @State private var lockerErrorMessage: String?
     @State private var isWorking = false
     @State private var isPreparingShare = false
+    @State private var isLoadingRenderHistory = false
+    @State private var lockerBusyRenderJobID: String?
     @State private var showingShareSheet = false
     @State private var proInfoSheet: AIEditProInfoSheet?
 
@@ -78,6 +82,9 @@ struct AIEditView: View {
             case .template(let template):
                 proTemplateInfoSheet(for: template)
             }
+        }
+        .task(id: viewModel.installID) {
+            await refreshRenderHistory()
         }
     }
 
@@ -115,6 +122,9 @@ struct AIEditView: View {
             durationPicker
             statusCard
             aiWorkTimelineCard
+            if proUXFlags.cloudLockerEnabled {
+                cloudLockerCard
+            }
 
             if let previewPlayer {
                 previewCard(player: previewPlayer)
@@ -599,6 +609,126 @@ struct AIEditView: View {
         .padding(14)
         .rorkCard(cornerRadius: 16, stroke: AppTheme.neonPurple.opacity(0.16), glow: AppTheme.neonPurple, glowOpacity: 0.05)
         .accessibilityIdentifier("export.aiEdit.timeline")
+    }
+
+    private var cloudLockerCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Label("My AI Edits", systemImage: "externaldrive.fill")
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                Spacer()
+                Button {
+                    Task { await refreshRenderHistory(showError: true) }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.caption.bold())
+                        .frame(width: 30, height: 30)
+                }
+                .buttonStyle(.bordered)
+                .tint(AppTheme.neonPurple)
+                .disabled(isLoadingRenderHistory)
+                .accessibilityIdentifier("export.aiEdit.cloudLocker.refreshButton")
+                .accessibilityLabel("Refresh My AI Edits")
+            }
+
+            if isLoadingRenderHistory && renderHistory.isEmpty {
+                HStack(spacing: 10) {
+                    ProgressView()
+                        .tint(AppTheme.neonPurple)
+                    Text("Loading latest renders")
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.subtleText)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(12)
+                .background(AppTheme.cardBg.opacity(0.62), in: .rect(cornerRadius: 12))
+            } else if renderHistory.isEmpty {
+                Label("Finished cloud renders will appear here after the first AI edit.", systemImage: "tray")
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.subtleText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(12)
+                    .background(AppTheme.cardBg.opacity(0.62), in: .rect(cornerRadius: 12))
+                    .accessibilityIdentifier("export.aiEdit.cloudLocker.empty")
+            } else {
+                VStack(spacing: 10) {
+                    ForEach(Array(renderHistory.prefix(5)), id: \.renderJobId) { render in
+                        cloudLockerRenderRow(render)
+                    }
+                }
+            }
+
+            if let lockerErrorMessage {
+                Text(lockerErrorMessage)
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.dangerRed)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("export.aiEdit.cloudLocker.error")
+            }
+        }
+        .padding(14)
+        .rorkCard(cornerRadius: 16, stroke: AppTheme.neonPurple.opacity(0.16), glow: AppTheme.neonPurple, glowOpacity: 0.04)
+        .accessibilityIdentifier("export.aiEdit.cloudLocker")
+    }
+
+    private func cloudLockerRenderRow(_ render: CloudEditRenderStatusResponse) -> some View {
+        let isBusy = lockerBusyRenderJobID == render.renderJobId
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 10) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(templateDisplayName(for: render.templateId))
+                        .font(.subheadline.bold())
+                        .foregroundStyle(.white)
+                        .lineLimit(2)
+                    Text(lockerRenderSubtitle(for: render))
+                        .font(.caption2)
+                        .foregroundStyle(AppTheme.subtleText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 8)
+                Text(lockerStatusTitle(for: render.status))
+                    .font(.caption2.bold())
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(lockerStatusColor(for: render.status).opacity(0.72), in: .capsule)
+            }
+
+            HStack(spacing: 8) {
+                if render.status == .rendered {
+                    Button {
+                        Task { await redownloadLockerRender(render) }
+                    } label: {
+                        Label(isBusy && isPreparingShare ? "Preparing..." : "Download / Share", systemImage: "square.and.arrow.up.fill")
+                            .font(.caption.bold())
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(AppTheme.accentPurple)
+                    .disabled(isWorking || isPreparingShare || lockerBusyRenderJobID != nil)
+                    .accessibilityIdentifier("export.aiEdit.cloudLocker.download.\(render.renderJobId)")
+                }
+
+                Button {
+                    Task { await rerenderLockerEdit(render) }
+                } label: {
+                    Label(isBusy && isWorking ? "Rendering..." : "Re-render", systemImage: "arrow.triangle.2.circlepath")
+                        .font(.caption.bold())
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .tint(AppTheme.warningYellow)
+                .disabled(isPreparingShare || isWorking || lockerBusyRenderJobID != nil || !canRerenderLockerRender(render))
+                .accessibilityIdentifier("export.aiEdit.cloudLocker.rerender.\(render.renderJobId)")
+            }
+        }
+        .padding(12)
+        .background(AppTheme.cardBg.opacity(0.68), in: .rect(cornerRadius: 12))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(AppTheme.softBorder, lineWidth: 1)
+        }
     }
 
     private func aiWorkReceiptCard(_ receipt: CloudEditWorkReceipt) -> some View {
@@ -1196,6 +1326,92 @@ struct AIEditView: View {
         return rows
     }
 
+    private func templateDisplayName(for templateID: String?) -> String {
+        guard let templateID else { return "AI Edit" }
+        if let preset = CloudEditPreset.allCases.first(where: { $0.templateID == templateID }) {
+            return preset.title
+        }
+        if let template = CloudEditProTemplate.allCases.first(where: { $0.templateID == templateID }) {
+            return template.title
+        }
+        return templateID
+            .replacingOccurrences(of: "_", with: " ")
+            .capitalized
+    }
+
+    private func lockerRenderSubtitle(for render: CloudEditRenderStatusResponse) -> String {
+        var parts: [String] = []
+        if let duration = render.durationSeconds {
+            parts.append(Clip.formatTime(duration))
+        }
+        parts.append(render.aspectRatio.rawValue)
+        if let expiresAt = render.retentionMetadata?.expiresAt ?? render.workReceipt?.storageExpiresAt {
+            parts.append("Expires \(formattedLockerDate(expiresAt))")
+        } else {
+            let policy = render.policy ?? activePolicy
+            parts.append(policy.retentionSummary)
+        }
+        if render.revisionId != nil {
+            parts.append("Revised")
+        }
+        return parts.joined(separator: " - ")
+    }
+
+    private func formattedLockerDate(_ rawValue: String) -> String {
+        let normalized = rawValue.replacingOccurrences(of: "+00:00", with: "Z")
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let date = formatter.date(from: normalized) ?? {
+            formatter.formatOptions = [.withInternetDateTime]
+            return formatter.date(from: normalized)
+        }()
+        if let date {
+            return date.formatted(date: .abbreviated, time: .shortened)
+        }
+        return String(rawValue.replacingOccurrences(of: "T", with: " ").prefix(16))
+    }
+
+    private func lockerStatusTitle(for status: CloudEditRenderState) -> String {
+        switch status {
+        case .rendered:
+            return "Ready"
+        case .failed:
+            return "Failed"
+        case .failedTimeout:
+            return "Timed out"
+        case .cancelled:
+            return "Cancelled"
+        case .rendering:
+            return "Rendering"
+        case .queued:
+            return "Queued"
+        case .renderRequested, .created:
+            return "Requested"
+        case .planning, .planReady:
+            return "Planning"
+        }
+    }
+
+    private func lockerStatusColor(for status: CloudEditRenderState) -> Color {
+        switch status {
+        case .rendered:
+            return AppTheme.successGreen
+        case .failed, .failedTimeout, .cancelled:
+            return AppTheme.dangerRed
+        case .renderRequested, .planning, .planReady, .created, .queued, .rendering:
+            return AppTheme.neonPurple
+        }
+    }
+
+    private func canRerenderLockerRender(_ render: CloudEditRenderStatusResponse) -> Bool {
+        switch render.status {
+        case .renderRequested, .created, .queued, .rendering:
+            return false
+        case .planning, .planReady, .rendered, .failed, .failedTimeout, .cancelled:
+            return true
+        }
+    }
+
     private var revisionCommands: [CloudEditRevisionCommand] {
         [
             .makeShorter,
@@ -1356,9 +1572,166 @@ struct AIEditView: View {
     }
 
     @MainActor
+    private func refreshRenderHistory(showError: Bool = false) async {
+        guard proUXFlags.cloudLockerEnabled, AppConstants.cloudEditEnabled else { return }
+        guard !isLoadingRenderHistory else { return }
+        isLoadingRenderHistory = true
+        if showError {
+            lockerErrorMessage = nil
+        }
+        defer { isLoadingRenderHistory = false }
+
+        do {
+            let history = try await cloudEditService.fetchRenderHistory(
+                installID: viewModel.installID,
+                limit: 20
+            )
+            renderHistory = history.renders
+            lockerErrorMessage = nil
+        } catch {
+            if showError {
+                lockerErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            }
+        }
+    }
+
+    @MainActor
+    private func redownloadLockerRender(_ render: CloudEditRenderStatusResponse) async {
+        guard !isPreparingShare else { return }
+        lockerBusyRenderJobID = render.renderJobId
+        isPreparingShare = true
+        lockerErrorMessage = nil
+        defer {
+            isPreparingShare = false
+            lockerBusyRenderJobID = nil
+        }
+
+        do {
+            var download = try await cloudEditService.fetchDownloadURL(
+                renderJobID: render.renderJobId,
+                installID: viewModel.installID
+            )
+            let temporaryURL: URL
+            do {
+                temporaryURL = try await cloudEditService.downloadRenderedVideo(from: download)
+            } catch CloudEditError.downloadURLExpired {
+                download = try await cloudEditService.fetchDownloadURL(
+                    renderJobID: render.renderJobId,
+                    installID: viewModel.installID
+                )
+                temporaryURL = try await cloudEditService.downloadRenderedVideo(from: download)
+            }
+            downloadResponse = download
+            renderStatus = render
+            policySummary = render.policy ?? policySummary
+            phase = render.status
+            viewModel.attachCloudRenderedExport(from: temporaryURL)
+            localShareURL = viewModel.exportService.exportedURL ?? temporaryURL
+            previewPlayer = AVPlayer(url: localShareURL ?? temporaryURL)
+            showingShareSheet = true
+            LaunchTelemetry.shared.recordAIEditEvent(
+                "ios.cloud_locker.downloaded",
+                editJobID: render.editJobId,
+                renderJobID: render.renderJobId,
+                revisionID: render.revisionId,
+                templateID: render.templateId,
+                planTier: render.planTier?.rawValue
+            )
+        } catch {
+            lockerErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            HoopsAccessibility.announce("Could not download that cloud render.")
+        }
+    }
+
+    @MainActor
+    private func rerenderLockerEdit(_ render: CloudEditRenderStatusResponse) async {
+        guard !isWorking, canRerenderLockerRender(render) else { return }
+        lockerBusyRenderJobID = render.renderJobId
+        isWorking = true
+        errorMessage = nil
+        lockerErrorMessage = nil
+        previewPlayer = nil
+        downloadResponse = nil
+        localShareURL = nil
+        phase = .renderRequested
+        HoopsAccessibility.announce("Requesting a fresh cloud render.")
+        defer {
+            isWorking = false
+            lockerBusyRenderJobID = nil
+        }
+
+        do {
+            let requested = try await cloudEditService.requestStoredRender(
+                editJobID: render.editJobId,
+                installID: viewModel.installID
+            )
+            renderStatus = requested
+            policySummary = requested.policy ?? policySummary
+            phase = requested.status
+
+            let finalStatus: CloudEditRenderStatusResponse
+            if requested.status == .rendered {
+                finalStatus = requested
+            } else {
+                finalStatus = try await cloudEditService.pollRenderStatus(
+                    editJobID: render.editJobId,
+                    installID: viewModel.installID
+                )
+            }
+            renderStatus = finalStatus
+            policySummary = finalStatus.policy ?? policySummary
+            phase = finalStatus.status
+
+            guard finalStatus.status == .rendered else {
+                let code = finalStatus.failureReason ?? "render_failed"
+                throw CloudEditError.backend(
+                    code: code,
+                    message: CloudEditError.friendlyBackendMessage(code: code, fallback: "Cloud re-rendering did not finish.")
+                )
+            }
+
+            let download = try await cloudEditService.fetchDownloadURL(
+                renderJobID: finalStatus.renderJobId,
+                installID: viewModel.installID
+            )
+            downloadResponse = download
+            if let url = URL(string: download.downloadUrl) {
+                previewPlayer = AVPlayer(url: url)
+                previewPlayer?.play()
+            }
+            await refreshRenderHistory()
+            LaunchTelemetry.shared.recordAIEditEvent(
+                "ios.cloud_locker.rerendered",
+                editJobID: finalStatus.editJobId,
+                renderJobID: finalStatus.renderJobId,
+                revisionID: finalStatus.revisionId,
+                templateID: finalStatus.templateId,
+                planTier: finalStatus.planTier?.rawValue
+            )
+            HoopsAccessibility.announce("Fresh cloud render is ready.")
+        } catch {
+            phase = .failed
+            let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            lockerErrorMessage = message
+            errorMessage = message
+            LaunchTelemetry.shared.recordAIEditEvent(
+                "ios.cloud_locker.rerender_failed",
+                editJobID: render.editJobId,
+                renderJobID: render.renderJobId,
+                revisionID: render.revisionId,
+                templateID: render.templateId,
+                planTier: render.planTier?.rawValue,
+                failureReason: message
+            )
+            HoopsAccessibility.announce("Cloud re-render failed.")
+        }
+    }
+
+    @MainActor
     private func runEditFlow() async {
         isWorking = true
         errorMessage = nil
+        lockerErrorMessage = nil
         previewPlayer = nil
         downloadResponse = nil
         revisionResponse = nil
@@ -1457,6 +1830,7 @@ struct AIEditView: View {
                 )
             }
             HoopsAccessibility.announce("Your HoopClips AI edit is ready.")
+            await refreshRenderHistory()
         } catch {
             phase = .failed
             errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
@@ -1473,6 +1847,7 @@ struct AIEditView: View {
         }
         isWorking = true
         errorMessage = nil
+        lockerErrorMessage = nil
         phase = .planning
         HoopsAccessibility.announce("HoopClips is revising your AI edit.")
         defer { isWorking = false }
@@ -1514,6 +1889,7 @@ struct AIEditView: View {
         }
         isWorking = true
         errorMessage = nil
+        lockerErrorMessage = nil
         previewPlayer = nil
         downloadResponse = nil
         localShareURL = nil
@@ -1565,6 +1941,7 @@ struct AIEditView: View {
                 )
             }
             HoopsAccessibility.announce("Your revised HoopClips AI edit is ready.")
+            await refreshRenderHistory()
         } catch {
             phase = .failed
             errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
@@ -1577,6 +1954,7 @@ struct AIEditView: View {
         guard var downloadResponse else { return }
         isPreparingShare = true
         errorMessage = nil
+        lockerErrorMessage = nil
         defer { isPreparingShare = false }
 
         do {
