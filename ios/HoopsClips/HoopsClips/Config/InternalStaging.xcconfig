@@ -1,0 +1,10 @@
+// Explicit opt-in override for internal TestFlight builds that exercise the
+// staging cloud backend. Use with `xcodebuild -configuration Release -xcconfig`.
+//
+// Intentionally do not include Release.xcconfig here: xcodebuild prints values
+// from the -xcconfig file, and Release.xcconfig can include local secret values.
+// The selected Release configuration still loads the project release settings.
+HOOPS_APP_ENV = internal_staging
+HOOPS_CLOUD_LAUNCH_MODE = internal_only
+HOOPS_CLOUD_ANALYSIS_BASE_URL = https:/$()/hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev
+HOOPS_CLOUD_EDIT_BASE_URL = https:/$()/hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev
