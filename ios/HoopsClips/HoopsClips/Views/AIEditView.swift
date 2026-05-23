@@ -256,18 +256,6 @@ struct AIEditView: View {
                 Spacer()
             }
 
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 138), spacing: 8)], spacing: 8) {
-                ForEach(CloudEditPolicySummary.proValueRows, id: \.self) { row in
-                    Label(row, systemImage: "sparkles")
-                        .font(.caption2.bold())
-                        .foregroundStyle(.white.opacity(0.9))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 8)
-                        .background(AppTheme.accentPurple.opacity(0.22), in: .capsule)
-                }
-            }
-
             VStack(spacing: 8) {
                 if onRequestProUpgrade != nil {
                     Button {
@@ -280,6 +268,8 @@ struct AIEditView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(AppTheme.warningYellow)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("Upgrade with App Store")
                     .accessibilityIdentifier("export.aiEdit.pro.upgradeButton")
                 }
 
@@ -294,6 +284,18 @@ struct AIEditView: View {
                 .buttonStyle(.bordered)
                 .tint(AppTheme.warningYellow)
                 .accessibilityIdentifier("export.aiEdit.pro.infoButton")
+            }
+
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 138), spacing: 8)], spacing: 8) {
+                ForEach(CloudEditPolicySummary.proValueRows, id: \.self) { row in
+                    Label(row, systemImage: "sparkles")
+                        .font(.caption2.bold())
+                        .foregroundStyle(.white.opacity(0.9))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 8)
+                        .background(AppTheme.accentPurple.opacity(0.22), in: .capsule)
+                }
             }
         }
         .padding(14)
@@ -585,7 +587,7 @@ struct AIEditView: View {
                 }
             }
 
-            Text("Each step reflects real clip, plan, template, and render status from the cloud edit pipeline.")
+            Text("Rows update from cloud render status; pending steps remain a checklist until the server reports progress.")
                 .font(.caption)
                 .foregroundStyle(AppTheme.subtleText)
                 .fixedSize(horizontal: false, vertical: true)

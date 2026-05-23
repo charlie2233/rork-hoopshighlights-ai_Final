@@ -2,9 +2,16 @@
 
 ## Branch
 
-- Branch: `codex/phase-ux2b-freemium-pro-ui-smoke`
-- Base commit: `c6d294a` (`codex/phase-ux2-freemium-pro-experience`)
-- Scope: verify Free/Pro AI Edit UX evidence, stable accessibility IDs, and no-payment placeholder behavior.
+- Branch: `codex/phase-ux2b-freemium-pro-ui-hardening`
+- Base commit: `25dfd91` (`Harden TestFlight smoke readiness`)
+- Scope: tighten Free/Pro AI Edit UI smoke coverage, keep Pro template locks honest, and remove timeline wording that could overstate backend progress before cloud render status exists.
+
+## Current Product State
+
+- The iOS app has RevenueCat/App Store upgrade surfaces when configured.
+- This branch does not add subscription purchase mechanics, local rendering, local analysis, or unsupported Pro render behavior.
+- Locked Pro templates remain informational gates; tapping them must not start rendering or create a revision job.
+- AI Edit work status must come from cloud render state when available. Pending client-side checklist rows are labeled as a checklist until the server reports progress.
 
 ## Validation Commands
 
@@ -12,85 +19,68 @@
 git diff --check
 ```
 
-Passed.
+Result: passed.
 
 ```sh
 xcodebuild -project ios/HoopsClips.xcodeproj \
   -scheme HoopsClips \
   -configuration Debug \
   -destination 'generic/platform=iOS Simulator' \
-  -derivedDataPath /tmp/hoopclips-ux2b-dd \
-  build CODE_SIGNING_ALLOWED=NO
+  -derivedDataPath /tmp/hoopclips-ux2b-hardening-final-dd \
+  build CODE_SIGNING_ALLOWED=NO \
+  -skipPackagePluginValidation
 ```
 
-Passed: `/tmp/hoopclips-ux2b-build.log` ended with `** BUILD SUCCEEDED **`.
+Result: passed. `/tmp/hoopclips-ux2b-hardening-final-debug-build.log` ended with `** BUILD SUCCEEDED **`.
 
 ```sh
 xcodebuild -project ios/HoopsClips.xcodeproj \
   -scheme HoopsClips \
   -configuration Debug \
   -destination 'generic/platform=iOS Simulator' \
-  -derivedDataPath /tmp/hoopclips-ux2b-dd \
-  build-for-testing CODE_SIGNING_ALLOWED=NO
+  -derivedDataPath /tmp/hoopclips-ux2b-hardening-final-bft-dd \
+  build-for-testing CODE_SIGNING_ALLOWED=NO \
+  -skipPackagePluginValidation
 ```
 
-Passed after the final accessibility patch: `/tmp/hoopclips-ux2b-bft-3.log` ended with `** TEST BUILD SUCCEEDED **`.
-
-## Simulator Setup
+Result: passed. `/tmp/hoopclips-ux2b-hardening-final-bft.log` ended with `** TEST BUILD SUCCEEDED **`.
 
 ```sh
-xcrun simctl shutdown all || true
-xcrun simctl erase all
-xcrun simctl boot A46E2157-77ED-42CE-959D-65C068681A47
-xcrun simctl bootstatus A46E2157-77ED-42CE-959D-65C068681A47 -b
+xcodebuild test -project ios/HoopsClips.xcodeproj \
+  -scheme HoopsClips \
+  -configuration Debug \
+  -destination 'platform=iOS Simulator,id=7ECBD8FA-B0A2-4C3B-9A5C-EB73D19B99F2' \
+  -derivedDataPath /tmp/hoopclips-ux2b-hardening-flag9-dd \
+  -resultBundlePath /tmp/hoopclips-ux2b-hardening-ui-smoke-flag9.xcresult \
+  -only-testing:HoopsClipsUITests/HoopsClipsUITests/testAIEditFreemiumProUXSmoke \
+  OTHER_SWIFT_FLAGS='$(inherited) -D HOOPS_ENABLE_UI_SMOKE' \
+  -skipPackagePluginValidation
 ```
 
-Result: iPhone 17 simulator booted and reached terminal boot status.
+Result: passed. `xcresulttool get test-results summary` reported `result: Passed`, `passedTests: 1`, `failedTests: 0`, `skippedTests: 0`.
 
-## UI Evidence
+The run kept two screenshot attachments in the xcresult:
 
-Manual simulator launch used the existing DEBUG smoke fixture:
+- `UX2B Free Plan And Pro Value Cards`
+- `UX2B Locked Pro Template Info Sheet`
 
-```sh
-env \
-  SIMCTL_CHILD_HOOPS_UI_SMOKE_MODE=1 \
-  SIMCTL_CHILD_HOOPS_AI_EDIT_TEST_FIXTURE=staging_render_ready \
-  SIMCTL_CHILD_HOOPS_CLOUD_ANALYSIS_BASE_URL=https://hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev \
-  SIMCTL_CHILD_HOOPS_CLOUD_EDIT_BASE_URL=https://hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev \
-  SIMCTL_CHILD_HOOPS_SMOKE_WORKER_URL=https://hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev \
-  SIMCTL_CHILD_HOOPS_SMOKE_INSTALL_ID=phase-ux2b-manual-sim-smoke \
-  SIMCTL_CHILD_HOOPS_SMOKE_SOURCE_OBJECT_KEY=uploads/25a101ba8d234fd98094bd112276161f/source.mp4 \
-  xcrun simctl launch --terminate-running-process \
-  --stdout=/tmp/hoopclips-ux2b-manual-stdout.log \
-  --stderr=/tmp/hoopclips-ux2b-manual-stderr.log \
-  A46E2157-77ED-42CE-959D-65C068681A47 \
-  atrak.charlie.hoopsclips --hoops-ai-edit-live-smoke
-```
+## UI Smoke Coverage
 
-Screenshots:
-
-- Player launch smoke: `docs/phase_ux2b_artifacts/01_manual_launch.jpg`
-- Export AI Edit top section: `docs/phase_ux2b_artifacts/02_export_ai_edit_top.jpg`
-- Free plan retention copy and Pro value card: `docs/phase_ux2b_artifacts/03_free_plan_pro_value.jpg`
-- Pro template placeholders: `docs/phase_ux2b_artifacts/06_template_pack_mid.jpg`
-- Locked Pro template info sheet: `docs/phase_ux2b_artifacts/07_pro_template_info_sheet.jpg`
-
-## What Free Users See
-
-Verified in the Export AI Edit UI and accessibility hierarchy:
+The focused `testAIEditFreemiumProUXSmoke` now asserts the Free plan card and exact Free limits:
 
 - `Current plan: Free`
 - `Standard render queue`
-- `HoopClips keeps editing in the cloud. Pro gets priority rendering.`
-- `Free: 3 AI edits/day, 3 revisions/edit, 720p max, watermark/outro included.`
+- `720p max export`
+- `HoopClips watermark/outro included`
+- `3 AI edits/day`
+- `3 revisions/edit`
+- `Videos stored for 14 days`
 - `My AI Edits: rendered videos expire in 14 days on Free.`
-- Background render copy: `You can leave the app - HoopClips will keep editing in the cloud. Come back anytime to preview your finished reel.`
 
-## What Pro Placeholder Shows
+It also asserts the Pro value card, the App Store upgrade CTA, the Pro benefits CTA, and current Pro upgrade rows:
 
-Verified in the Export AI Edit UI:
-
-- `Upgrade to Pro`
+- `Upgrade with App Store`
+- `See Pro benefits`
 - `Priority rendering`
 - `1080p clean exports`
 - `No required watermark`
@@ -100,72 +90,36 @@ Verified in the Export AI Edit UI:
 - `Longer cloud storage`
 - `Pro template packs`
 
-Locked template placeholders are visible and marked Pro:
+Locked template coverage now checks all four Pro template IDs:
 
-- `Recruiting Reel Pro`
-- `Cinematic Mixtape Pro`
-- `NBA Recap Pro`
-- `Team Highlight Pro`
-
-Tapping `Recruiting Reel Pro` opens an informational Pro Template sheet. The sheet states that this build only adds honest Pro placeholders and policy-aware UX, and that it does not enable payments or unsupported Pro rendering.
-
-## Accessibility IDs
-
-Added or verified stable identifiers:
-
-- `export.aiEdit.planCard.free`
-- `export.aiEdit.proValueCard`
 - `export.aiEdit.proTemplate.recruitingReel`
 - `export.aiEdit.proTemplate.cinematicMixtape`
 - `export.aiEdit.proTemplate.nbaRecap`
 - `export.aiEdit.proTemplate.teamHighlight`
-- `export.aiEdit.proInfoSheet`
-- `export.aiEdit.workReceipt`
-- `export.aiEdit.watermarkUpsell`
 
-The sheet-level SwiftUI identifier did not appear as a standalone node in the simulator hierarchy, so the same `export.aiEdit.proInfoSheet` identifier is also applied to visible sheet content.
+Tapping the Team Highlight locked template must open `export.aiEdit.proInfoSheet`, show `Upgrade with App Store`, and not expose `Buy`, `Subscribe`, `Render Revision`, `export.aiEdit.renderRevisionButton`, or `export.aiEdit.preview`.
 
-## Behavior Checks
+The smoke also asserts that the locked-template path does not show static text containing `thinking` or `ETA`, then closes the sheet without starting a render.
 
-- Locked Pro template tap opened the Pro info sheet.
-- Locked Pro template did not start a render.
-- No Buy or Subscribe UI is present in the Pro template sheet.
-- No payment implementation was added.
-- No local analysis or local rendering was added.
-- No fake ETA was added.
-- No artificial normal-render wait was added.
-- Manual launch stdout/stderr did not print presigned URLs.
+## Changed Files
 
-## XCTest Runner Limitation
+- `ios/HoopsClips/HoopsClips/Views/AIEditView.swift`
+  - Moved the Pro value card CTAs above the chip grid so Free users see the upgrade and benefit actions before the dense Pro value list.
+  - Reworded the work timeline footer so fallback checklist rows are not presented as live cloud progress before `renderStatus?.workTimeline` is available.
+- `ios/HoopsClipsUITests/HoopsClipsUITests.swift`
+  - Expanded UX2b coverage for exact Free limits, Pro value copy, App Store upgrade labels, all locked Pro templates, no render/preview leakage from a locked template sheet, and no `thinking`/`ETA` copy.
+  - Hardened scroll helpers for nested Export scroll views by targeting the largest visible scroll view and searching both directions.
 
-Focused XCTest command:
+## Architecture Checks
 
-```sh
-xcodebuild test -project ios/HoopsClips.xcodeproj \
-  -scheme HoopsClips \
-  -configuration Debug \
-  -destination 'id=A46E2157-77ED-42CE-959D-65C068681A47' \
-  -derivedDataPath /tmp/hoopclips-ux2b-dd \
-  -resultBundlePath /tmp/hoopclips-ux2b-freemium-ui-smoke.xcresult \
-  -only-testing:HoopsClipsUITests/HoopsClipsUITests/testAIEditFreemiumProUXSmoke \
-  CODE_SIGNING_ALLOWED=NO \
-  OTHER_SWIFT_FLAGS='$(inherited) -D HOOPS_ENABLE_UI_SMOKE'
-```
-
-Result: failed before test execution. The simulator denied launching the UI test runner:
-
-```text
-FBSOpenApplicationServiceErrorDomain Code=1
-Simulator device failed to launch atrak.charlie.hoopsclips.uitests.xctrunner.
-FBProcessExit Code=64
-RBSRequestErrorDomain Code=5
-The request was denied by service delegate (SBMainWorkspace).
-```
-
-Retry without `CODE_SIGNING_ALLOWED=NO` produced the same runner launch failure. This is a simulator/XCTest runner launch issue, not evidence of a product failure, because the app builds, build-for-testing succeeds, the app launches manually, and manual UI evidence confirms the UX2 Free/Pro surfaces.
+- No iOS video analysis added.
+- No iOS rendering, composition, or export pipeline added.
+- No Remotion or Canva path added to iOS.
+- No secrets, R2 credentials, or presigned URLs were added to logs or documentation.
+- No fake backend work, fake waits, or fake ETA copy was added.
 
 ## Remaining Blockers
 
-- Full focused XCTest screenshot attachments were not produced because the simulator denied launching `HoopsClipsUITests-Runner.app`.
-- AI Work Receipt screenshot was not rerun live in this branch to avoid turning UX2b into another cloud-render smoke. The existing live AI Edit flow remains covered by prior RC/live-smoke evidence, and this branch only changed UI identifiers and placeholder UX surfaces.
-- Legacy non-AI export options still show existing Pro-gated export controls; UX2b only verifies the AI Edit Pro template placeholders and plan-tier UX.
+- Full installed-device TestFlight UX2b smoke is still required on a trusted iPhone after the app is installed from TestFlight.
+- Live watermark/outro upsell verification still depends on a completed cloud AI Edit work receipt; this branch only hardens the static Free/Pro UX smoke path.
+- Cloud Locker render-history download/re-render coverage remains the separate UX4 phase; this UX2b run only verifies the Free retention copy in the plan card.

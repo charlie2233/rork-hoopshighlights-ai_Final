@@ -116,18 +116,66 @@ final class HoopsClipsUITests: XCTestCase {
         )
         openAIEditExportFlow(from: app)
 
-        XCTAssertTrue(app.descendants(matching: .any)["export.aiEdit.planCard.free"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.descendants(matching: .any)["export.aiEdit.proValueCard"].exists)
-        XCTAssertTrue(app.descendants(matching: .any)["export.aiEdit.cloudLocker.summary"].exists)
+        assertElementEventuallyExists(app.descendants(matching: .any)["export.aiEdit.planCard.free"], in: app)
+        assertStaticTextEventuallyExists("Current plan: Free", in: app)
+        for text in [
+            "Standard render queue",
+            "720p max export",
+            "HoopClips watermark/outro included",
+            "3 AI edits/day",
+            "3 revisions/edit",
+            "Videos stored for 14 days",
+            "My AI Edits: rendered videos expire in 14 days on Free."
+        ] {
+            assertStaticTextEventuallyExists(text, in: app)
+        }
+
+        assertElementEventuallyExists(app.descendants(matching: .any)["export.aiEdit.proValueCard"], in: app)
+        let proCardUpgradeButton = app.buttons["Upgrade with App Store"]
+        assertElementEventuallyExists(proCardUpgradeButton, in: app)
+        XCTAssertEqual(proCardUpgradeButton.label, "Upgrade with App Store")
+        let proInfoButton = app.buttons["See Pro benefits"]
+        assertElementEventuallyExists(proInfoButton, in: app)
+        XCTAssertEqual(proInfoButton.label, "See Pro benefits")
+        for text in [
+            "Priority rendering",
+            "1080p clean exports",
+            "No required watermark",
+            "No required HoopClips outro",
+            "Longer videos",
+            "More revisions",
+            "Longer cloud storage",
+            "Pro template packs"
+        ] {
+            assertStaticTextEventuallyExists(text, in: app)
+        }
         attachScreenshot(named: "UX2B Free Plan And Pro Value Cards", app: app)
 
-        let lockedTemplate = app.buttons["export.aiEdit.proTemplate.recruitingReel"]
+        for identifier in [
+            "export.aiEdit.proTemplate.recruitingReel",
+            "export.aiEdit.proTemplate.cinematicMixtape",
+            "export.aiEdit.proTemplate.nbaRecap",
+            "export.aiEdit.proTemplate.teamHighlight"
+        ] {
+            assertElementEventuallyExists(app.buttons[identifier], in: app)
+        }
+
+        let lockedTemplate = app.buttons["export.aiEdit.proTemplate.teamHighlight"]
         tapWhenReady(lockedTemplate, in: app)
-        XCTAssertTrue(app.descendants(matching: .any)["export.aiEdit.proInfoSheet"].waitForExistence(timeout: 10))
+        assertElementEventuallyExists(app.descendants(matching: .any)["export.aiEdit.proInfoSheet"], in: app)
+        let sheetUpgradeButton = app.buttons["export.aiEdit.proInfoSheet.upgradeButton"]
+        assertElementEventuallyExists(sheetUpgradeButton, in: app)
+        XCTAssertEqual(sheetUpgradeButton.label, "Upgrade with App Store")
         XCTAssertFalse(app.buttons["Buy"].exists)
         XCTAssertFalse(app.buttons["Subscribe"].exists)
         XCTAssertFalse(app.buttons["Render Revision"].exists)
+        XCTAssertFalse(app.buttons["export.aiEdit.renderRevisionButton"].exists)
+        XCTAssertFalse(app.descendants(matching: .any)["export.aiEdit.preview"].exists)
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", "thinking")).firstMatch.exists)
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", "ETA")).firstMatch.exists)
         attachScreenshot(named: "UX2B Locked Pro Template Info Sheet", app: app)
+
+        tapWhenReady(app.buttons["Close"].firstMatch, in: app)
     }
 
     @MainActor
@@ -273,13 +321,17 @@ final class HoopsClipsUITests: XCTestCase {
     @MainActor
     private func tapWhenReady(_ element: XCUIElement, in app: XCUIApplication, timeout: TimeInterval = 20) {
         let deadline = Date().addingTimeInterval(timeout)
+        var scrollAttempt = 0
         while !element.exists && Date() < deadline {
-            scrollTowardBottom(in: app)
+            scrollThroughContent(in: app, attempt: scrollAttempt)
+            scrollAttempt += 1
             RunLoop.current.run(until: Date().addingTimeInterval(0.5))
         }
         XCTAssertTrue(element.exists)
+        scrollAttempt = 0
         while !element.isHittable && Date() < deadline {
-            scrollTowardBottom(in: app)
+            scrollThroughContent(in: app, attempt: scrollAttempt)
+            scrollAttempt += 1
             RunLoop.current.run(until: Date().addingTimeInterval(0.5))
         }
         if element.isHittable {
@@ -291,9 +343,69 @@ final class HoopsClipsUITests: XCTestCase {
 
     @MainActor
     private func scrollTowardBottom(in app: XCUIApplication) {
-        let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.72))
-        let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.24))
+        if let scrollView = largestScrollView(in: app) {
+            scrollView.swipeUp()
+            return
+        }
+        let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.66))
+        let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.14))
         start.press(forDuration: 0.05, thenDragTo: end)
+    }
+
+    @MainActor
+    private func scrollTowardTop(in app: XCUIApplication) {
+        if let scrollView = largestScrollView(in: app) {
+            scrollView.swipeDown()
+            return
+        }
+        let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.14))
+        let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.66))
+        start.press(forDuration: 0.05, thenDragTo: end)
+    }
+
+    @MainActor
+    private func largestScrollView(in app: XCUIApplication) -> XCUIElement? {
+        app.scrollViews.allElementsBoundByIndex
+            .filter { $0.exists && $0.frame.height > 300 }
+            .max { $0.frame.height < $1.frame.height }
+    }
+
+    @MainActor
+    private func scrollThroughContent(in app: XCUIApplication, attempt: Int) {
+        if attempt % 6 < 4 {
+            scrollTowardBottom(in: app)
+        } else {
+            scrollTowardTop(in: app)
+        }
+    }
+
+    @MainActor
+    private func assertStaticTextEventuallyExists(
+        _ text: String,
+        in app: XCUIApplication,
+        timeout: TimeInterval = 10,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        assertElementEventuallyExists(app.staticTexts[text], in: app, timeout: timeout, file: file, line: line)
+    }
+
+    @MainActor
+    private func assertElementEventuallyExists(
+        _ element: XCUIElement,
+        in app: XCUIApplication,
+        timeout: TimeInterval = 10,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let deadline = Date().addingTimeInterval(timeout)
+        var scrollAttempt = 0
+        while !element.exists && Date() < deadline {
+            scrollThroughContent(in: app, attempt: scrollAttempt)
+            scrollAttempt += 1
+            RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        }
+        XCTAssertTrue(element.exists, "Expected UI element to exist: \(element)", file: file, line: line)
     }
 
     @MainActor
