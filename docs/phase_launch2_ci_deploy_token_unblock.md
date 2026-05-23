@@ -167,3 +167,48 @@ Then run `Cloud Edit Deploy Preflight` from Actions:
 - No real Worker deploy or rollback job ID exists from this branch because the token is absent.
 - The workflow will not be runnable from GitHub Actions until this workflow file exists on the default branch.
 - `services/control-plane/wrangler.jsonc` defines `env.staging`; production Worker config remains a placeholder/top-level config and is not safe for production deploy.
+
+## 2026-05-23 Refresh
+
+Branch: `codex/phase-launch2-ci-deploy-token-unblock-readiness`
+
+The deploy blocker is still current. This refresh did not print secret values and did not run a live deploy or rollback.
+
+Commands run:
+
+```sh
+gh workflow list --repo charlie2233/rork-hoopshighlights-ai_Final --all
+gh api 'repos/charlie2233/rork-hoopshighlights-ai_Final/contents/.github/workflows/cloud-edit-deploy-preflight.yml?ref=main'
+gh api repos/charlie2233/rork-hoopshighlights-ai_Final/environments --jq '.environments[].name'
+gh secret list --repo charlie2233/rork-hoopshighlights-ai_Final --env staging --json name,updatedAt --jq '.[] | .name'
+gh variable list --repo charlie2233/rork-hoopshighlights-ai_Final --env staging --json name,updatedAt --jq '.[] | .name'
+npm --prefix services/control-plane exec -- wrangler --version
+npm --prefix services/control-plane run deploy:staging:dry-run
+npm --prefix services/control-plane exec -- wrangler whoami
+npm --prefix services/control-plane run typecheck
+python3 services/editing/scripts/deploy_preflight.py --json | tee /tmp/hoopclips-launch2-deploy-preflight-refresh.json
+ruby -e 'require "yaml"; YAML.load_file(".github/workflows/cloud-edit-deploy-preflight.yml"); puts "workflow yaml parses"'
+```
+
+Results:
+
+- GitHub Actions default branch still lists only `Release Secrets Preflight`.
+- `cloud-edit-deploy-preflight.yml` still returns `HTTP 404` on `main`, so `workflow_dispatch` cannot be run from Actions yet.
+- GitHub environments still include `production` and `staging`.
+- GitHub `staging` environment secret-name list returned no names.
+- GitHub `staging` environment variable-name list returned no names.
+- Local deploy env vars were missing: `CLOUDFLARE_API_TOKEN`, `GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_DEPLOY_SERVICE_ACCOUNT`, `GCP_PROJECT_ID`, and `GCP_REGION`.
+- Wrangler version: `4.78.0`; latest notice printed `4.94.0` available.
+- `npm --prefix services/control-plane run deploy:staging:dry-run`: passed and showed staging bindings only, with no deploy.
+- `npm --prefix services/control-plane exec -- wrangler whoami`: failed with `Not logged in`.
+- `npm --prefix services/control-plane run typecheck`: passed.
+- `deploy_preflight.py --json`: `status=blocked`; GCP project, Artifact Registry, required Secret Manager entries, Cloud Run service, and R2 endpoint checks passed; only `wrangler-auth` failed because `CLOUDFLARE_API_TOKEN` is not set and local Wrangler OAuth is not valid.
+- Workflow YAML parse: passed.
+
+Current unblock sequence:
+
+1. Merge or publish `.github/workflows/cloud-edit-deploy-preflight.yml` to `main`.
+2. Add the five required `staging` environment inputs in GitHub Actions without printing values.
+3. Run `Cloud Edit Deploy Preflight` with `operation=preflight`.
+4. Run `operation=deploy` to prove Wrangler edit scope.
+5. Capture the previous Worker version ID and run `operation=rollback` to prove rollback scope.
