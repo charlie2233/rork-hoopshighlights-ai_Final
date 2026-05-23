@@ -38,8 +38,17 @@ test("queue callback failures write a dead-letter record and fail the job", asyn
   assert.equal(drained, 1);
   assert.equal(harness.state.inferenceDispatches[0]?.jobStatus, "queued");
   assert.equal(harness.state.jobs.get(createJson.jobId)?.status, "failed");
-  assert.equal(typeof harness.state.jobs.get(createJson.jobId)?.failureReason, "string");
+  const failureReason = harness.state.jobs.get(createJson.jobId)?.failureReason ?? "";
+  assert.match(failureReason, /External inference dispatch failed with status 502/);
+  assert.doesNotMatch(failureReason, /callback_unreachable/);
   assert.equal(harness.state.deadLetterMessages.length, 1);
   assert.equal(harness.state.deadLetterMessages[0]?.jobId, createJson.jobId);
   assert.equal(harness.state.deadLetterMessages[0]?.failureReason, harness.state.jobs.get(createJson.jobId)?.failureReason);
+
+  const persistedFailureText = JSON.stringify({
+    job: harness.state.jobs.get(createJson.jobId),
+    events: harness.state.events.filter((event) => event.jobId === createJson.jobId),
+    deadLetter: harness.state.deadLetterMessages[0]
+  });
+  assert.doesNotMatch(persistedFailureText, /callback_unreachable/);
 });

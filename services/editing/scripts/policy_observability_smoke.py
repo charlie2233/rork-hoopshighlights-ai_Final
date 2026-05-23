@@ -13,7 +13,7 @@ from typing import Any, Dict, Optional
 from urllib.error import HTTPError
 from urllib.parse import urlencode
 
-from live_render_smoke import SmokeError, create_source, download_file, probe_media
+from live_render_smoke import SmokeError, create_source, download_file, probe_media, sanitize_for_log
 from template_pack_smoke import (
     TEMPLATE_CASES,
     assert_equal,
@@ -394,5 +394,5 @@ if __name__ == "__main__":
         raise SystemExit(main())
     except (SmokeError, HTTPError) as error:
         details = getattr(error, "payload", {})
-        print(json.dumps({"status": "fail", "error": str(error), "details": details}, indent=2, sort_keys=True), file=sys.stderr)
+        print(json.dumps({"status": "fail", "error": str(error), "details": sanitize_for_log(details)}, indent=2, sort_keys=True), file=sys.stderr)
         raise SystemExit(1)

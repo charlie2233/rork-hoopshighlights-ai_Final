@@ -95,8 +95,7 @@ export async function handleQueueBatch(batch: MessageBatch<QueueJobMessage>, env
       });
 
       if (!response.ok) {
-        const bodyText = await response.text().catch(() => "");
-        throw new Error(`External inference dispatch failed with status ${response.status}${bodyText ? `: ${bodyText}` : ""}`);
+        throw new Error(`External inference dispatch failed with status ${response.status}.`);
       }
 
       await appendJobEvent(env.DB, {

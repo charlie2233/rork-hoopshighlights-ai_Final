@@ -274,3 +274,33 @@ Results:
 - `deploy_preflight.py --json`: `status=blocked` only because `CLOUDFLARE_API_TOKEN` is not set and local Wrangler OAuth is not valid; GCP CLI, project, Artifact Registry, required Secret Manager entries, Cloud Run editing service, and R2 endpoint checks passed.
 
 No secret values, R2 credentials, or presigned URLs were printed or committed.
+
+## 2026-05-23 Redaction Hardening Refresh
+
+Branch: `codex/phase-launch2-ci-deploy-token-unblock-readiness`
+
+Code-side privacy hardening completed after the submission-readiness audit found an in-hand log-risk gap.
+
+Changes:
+
+- Control-plane queue dispatch failures no longer persist or log raw external inference response bodies.
+- The DLQ regression test now proves the simulated upstream `callback_unreachable` response body is not stored in job state, job events, or the dead-letter message.
+- Editing smoke scripts now sanitize failure payloads before printing keys or values that look like URLs, object keys, secrets, credentials, tokens, authorization headers, or signed URL signatures.
+
+Fresh validation:
+
+```sh
+npm --prefix services/control-plane run typecheck
+npm --prefix services/control-plane test
+python3 -m py_compile services/editing/scripts/live_render_smoke.py services/editing/scripts/template_pack_smoke.py services/editing/scripts/policy_observability_smoke.py
+git diff --check
+```
+
+Results:
+
+- Control-plane typecheck: passed.
+- Control-plane tests: 20 passed, 0 failed.
+- Smoke script Python compile: passed.
+- `git diff --check`: passed.
+
+No secret values, R2 credentials, or presigned URLs were printed or committed.

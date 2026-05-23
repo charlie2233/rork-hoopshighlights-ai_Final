@@ -14,7 +14,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urljoin
 from urllib.request import Request, urlopen
 
-from live_render_smoke import SmokeError, create_source, download_file, probe_media
+from live_render_smoke import SmokeError, create_source, download_file, probe_media, sanitize_for_log
 
 
 @dataclass(frozen=True)
@@ -554,5 +554,5 @@ if __name__ == "__main__":
     try:
         raise SystemExit(main())
     except SmokeError as error:
-        print(json.dumps({"status": "fail", "error": str(error), "details": error.payload}, indent=2, sort_keys=True), file=sys.stderr)
+        print(json.dumps({"status": "fail", "error": str(error), "details": sanitize_for_log(error.payload)}, indent=2, sort_keys=True), file=sys.stderr)
         raise SystemExit(1)
