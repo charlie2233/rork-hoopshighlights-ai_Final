@@ -78,10 +78,15 @@ test("structured teacher metadata stays additive in the callback contract", asyn
       shotSubtype: null,
       isUncertain: true,
       temporal_event_detector_shot_specialist_used: true,
+      temporal_event_detector_shot_head_invoked: true,
       temporal_event_detector_shot_specialist_abstained: true,
+      temporal_event_detector_family_gate_open: false,
+      temporal_event_detector_family_gate_rejection_reason: "proposal_rejected",
       metadata: {
         temporal_event_detector_proposal_accepted: false,
         temporal_event_detector_proposal_acceptance_score: 0.41,
+        temporal_event_detector_proposal_acceptance_probability: 0.31,
+        temporal_event_detector_proposal_acceptance_energy: 0.18,
         temporal_event_detector_proposal_rejector_label: "dead_ball",
         temporal_event_detector_proposal_ranker_label: "secondary",
         temporal_event_detector_proposal_acceptor_label: "reject"
@@ -127,18 +132,15 @@ test("structured teacher metadata stays additive in the callback contract", asyn
   assert.equal(jobJson.failureReason, null);
   assert.equal(jobJson.results?.clipCount, 1);
   assert.equal(jobJson.results?.clips[0]?.label, "made_shot");
-  assert.equal(
-    (jobJson.results?.clips?.[0] as Record<string, unknown> | undefined)?.runtimeFusionTemporalShadow !== undefined,
-    true
-  );
-  assert.equal(
-    ((jobJson.results?.clips?.[0] as Record<string, unknown> | undefined)?.runtimeFusionTemporalShadow as Record<string, unknown>)
-      ?.temporal_event_detector_shot_specialist_abstained,
-    true
-  );
-  assert.equal(
-    ((jobJson.results?.clips?.[0] as Record<string, unknown> | undefined)?.runtimeFusionTemporalShadow as Record<string, unknown>)
-      ?.label,
-    "Shot Attempt"
-  );
+  const clipResult = jobJson.results?.clips?.[0] as Record<string, unknown> | undefined;
+  const shadow = clipResult?.runtimeFusionTemporalShadow as Record<string, unknown> | undefined;
+  const shadowMetadata = shadow?.metadata as Record<string, unknown> | undefined;
+
+  assert.equal(shadow !== undefined, true);
+  assert.equal(shadow?.temporal_event_detector_shot_specialist_abstained, true);
+  assert.equal(shadow?.temporal_event_detector_shot_head_invoked, true);
+  assert.equal(shadow?.temporal_event_detector_family_gate_rejection_reason, "proposal_rejected");
+  assert.equal(shadowMetadata?.temporal_event_detector_proposal_acceptance_probability, 0.31);
+  assert.equal(shadowMetadata?.temporal_event_detector_proposal_acceptance_energy, 0.18);
+  assert.equal(shadow?.label, "Shot Attempt");
 });
