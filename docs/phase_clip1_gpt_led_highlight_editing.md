@@ -74,7 +74,7 @@ Clip decisions use strict JSON:
 
 `planEdit` lets GPT propose final ordering, pacing, captions, and slow-motion moments. The backend accepts only existing clip IDs and clamps or rejects unsafe edits during EditPlan validation.
 
-Revision commands such as More Hype, NBA Style, and Shorter can use GPT-produced `EditPlanPatch` JSON when enabled. The backend rejects unsupported patch paths and any patch text containing FFmpeg commands before repair and validation.
+Revision commands such as More Hype, NBA Style, and Shorter can use GPT-produced `EditPlanPatch` JSON when enabled. The backend gives GPT the selected template's Agent Template Cookbook context, then rejects unsupported patch paths and any patch text containing FFmpeg commands before repair and validation.
 
 ## Feature Flags
 

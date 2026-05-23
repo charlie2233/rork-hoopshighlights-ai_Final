@@ -391,6 +391,12 @@ def _build_revision_patch_payload(
     revision: ReviseEditJobRequest,
     settings: GPTHighlightRerankerSettings,
 ) -> Dict[str, Any]:
+    template = get_template_pack_for_plan(job.request.preset, job.plan.templateId or job.request.templateId)
+    agent_template_context = build_agent_editing_context(
+        template.templateId,
+        summarize_clip_pool(job.request.clips),
+        job.request.clips,
+    )
     compact_context = {
         "task": "Create an EditPlanPatch JSON for this HoopClips revision command. Use only existing clip IDs and safe patch paths.",
         "revision": {
@@ -400,7 +406,8 @@ def _build_revision_patch_payload(
             "aspectRatio": revision.aspectRatio,
         },
         "planTier": job.request.planTier,
-        "templateId": job.plan.templateId,
+        "templateId": template.templateId,
+        "agentTemplateCookbook": agent_template_context,
         "currentPlan": job.plan.model_dump(mode="json"),
         "candidateClips": [
             {

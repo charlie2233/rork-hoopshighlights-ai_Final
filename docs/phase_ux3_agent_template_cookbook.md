@@ -58,6 +58,8 @@ Each cookbook JSON lives in `services/editing/templates/agent_cookbook/` and val
 
 The existing GPT-led highlight reranker now includes `agentTemplateCookbook` in its structured prompt payload. This adds strategy context to the existing candidate/keyframe payload without adding a new GPT call.
 
+GPT Edit Cool revision patch requests also include the same `agentTemplateCookbook` payload, so commands like More Hype, NBA Style, and Shorter can apply the selected template's director rules while still returning validated `EditPlanPatch` JSON only.
+
 The payload still uses:
 
 - Existing candidate clips only.

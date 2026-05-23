@@ -9,12 +9,13 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO_ROOT / "services" / "editing"))
 sys.path.insert(0, str(REPO_ROOT / "ios" / "backend"))
 
-from app.editing import CreateEditJobRequest
+from app.editing import CreateEditJobRequest, ReviseEditJobRequest, build_edit_job
 import editing_app.gpt_reranker as gpt_reranker
 from editing_app.gpt_reranker import (
     GPTHighlightRerankerSettings,
     SampledFrame,
     _build_openai_payload,
+    _build_revision_patch_payload,
 )
 
 
@@ -122,6 +123,34 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertEqual(compact_input["templateContext"]["templateId"], "full_game_highlight_v1")
         self.assertEqual(compact_input["agentTemplateCookbook"]["templateId"], "full_game_highlight_v1")
         self.assertEqual(compact_input["clips"][0]["templateId"], "full_game_highlight_v1")
+
+    def test_revision_patch_payload_uses_agent_template_cookbook(self) -> None:
+        settings = GPTHighlightRerankerSettings.from_env()
+        request = _request("internal").model_copy(
+            update={
+                "templateId": "cinematic_mixtape_pro_v1",
+                "targetDurationSeconds": 45,
+            }
+        )
+        job = build_edit_job(request, "edit_revision_payload")
+
+        payload = _build_revision_patch_payload(job, ReviseEditJobRequest(command="make_more_hype"), settings)
+        compact_input = json.loads(payload["input"][0]["content"][0]["text"])
+        agent_cookbook = compact_input["agentTemplateCookbook"]
+
+        self.assertIs(payload["store"], False)
+        self.assertEqual(payload["text"]["format"]["type"], "json_schema")
+        self.assertTrue(payload["text"]["format"]["strict"])
+        self.assertEqual(compact_input["templateId"], "cinematic_mixtape_pro_v1")
+        self.assertEqual(agent_cookbook["templateId"], "cinematic_mixtape_pro_v1")
+        self.assertEqual(agent_cookbook["templateCookbookRules"]["captionRules"]["tone"], "dramatic_hype")
+        self.assertEqual(agent_cookbook["templateCookbookRules"]["orderingRules"]["closer"], "high_energy_finish")
+        self.assertEqual(compact_input["candidateClips"][0]["clipId"], "c0")
+        serialized = json.dumps(payload)
+        self.assertNotIn("sourceObjectKey", serialized)
+        self.assertNotIn("uploads/source.mp4", serialized)
+        self.assertNotIn("downloadUrl", serialized)
+        self.assertNotIn("https://", serialized)
 
     def test_schema_matches_highlight_decision_contract(self) -> None:
         settings = GPTHighlightRerankerSettings.from_env()
