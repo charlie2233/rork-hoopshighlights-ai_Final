@@ -5,7 +5,7 @@ Branch: `codex/phase-launch5-ios-kill-switch-status`
 
 ## Scope
 
-- Added a public Worker proxy for the editing service `/version` response at `GET /v1/editing/version`.
+- Added source support for a public Worker proxy of the editing service `/version` response at `GET /v1/editing/version`.
 - Updated the iOS AI Edit client to fetch the proxied backend feature flags before render actions.
 - Added an installed-app UI state for backend-paused AI Edit, live render, and revision kill switches.
 - Updated the iOS-facing smoke script to fail before upload/render when staging reports AI Edit or live rendering disabled.
@@ -13,7 +13,7 @@ Branch: `codex/phase-launch5-ios-kill-switch-status`
 
 ## Runtime Behavior
 
-The iOS app still uses the Worker as its cloud edit base URL. The Worker now proxies the editing service version endpoint without exposing secrets:
+The iOS app still uses the Worker as its cloud edit base URL. After this Worker source is deployed, the Worker proxies the editing service version endpoint without exposing secrets:
 
 ```text
 GET /v1/editing/version -> editing service GET /version
@@ -111,6 +111,16 @@ git diff --check: passed
 changed-line ASCII scan: passed
 changed-line secret/presigned URL scan: only expected local test URL and secret header/key names
 ```
+
+## 2026-05-23 Live Staging Refresh
+
+The source route and local proxy tests exist, but the live staging Worker still returned `404` for:
+
+```text
+GET https://hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev/v1/editing/version
+```
+
+Treat this phase as implemented in source but not yet proven live on staging. The installed app cannot rely on live kill-switch state until the staging Worker is refreshed and the route returns the editing service `/version` payload through the Worker.
 
 ## Remaining Blockers
 

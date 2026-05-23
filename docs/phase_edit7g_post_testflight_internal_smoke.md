@@ -165,6 +165,8 @@ Result:
 
 This is the expected response for a fake edit job and confirms the staging Worker recognizes/proxies the revision route.
 
+Later launch audit note: `GET /v1/editing/version` still returned `404` on the deployed staging Worker on 2026-05-23. Installed smoke remains blocked until the Worker is refreshed and that route returns the editing service `/version` payload through the Worker.
+
 ### Inference service cost-control state
 
 Fresh GCP check:
@@ -211,7 +213,7 @@ Current status:
 | Import/upload sample video | blocked | requires installed app/device |
 | Cloud analysis | not run in this phase | requires installed app/device for user-flow proof |
 | Review clips | blocked | requires installed app/device |
-| Export AI Edit render | not run in this phase | backend is healthy, but installed-app flow blocked |
+| Export AI Edit render | not run in this phase | direct backend is reachable, but installed-app flow and Worker version-route proof are blocked |
 | More Hype revision | not run in this phase | route probe passed for fake job |
 | Preview/share | blocked | requires installed app/device |
 
@@ -271,7 +273,7 @@ NO-GO for claiming post-install TestFlight proof.
 Reason:
 
 ```text
-The uploaded build may be correct, and staging backend is healthy, but the installed TestFlight app has not been run from a physical device in this phase.
+The uploaded build may be correct, and direct staging backend checks have passed historically, but the installed TestFlight app has not been run from a physical device in this phase and the deployed Worker still needs the `/v1/editing/version` refresh.
 ```
 
 Recommended next action:

@@ -127,7 +127,7 @@ Local build output was redirected and then removed after verification so local s
 
 - Real post-install TestFlight smoke still needs an online trusted iPhone with build `3` or the next internal staging build installed.
 - GitHub `staging` environment still needs `CLOUDFLARE_API_TOKEN`, GCP Workload Identity, deploy service account, project, and region inputs before CI can prove real Worker deploy/rollback.
-- The cloud deploy workflow is still unavailable on GitHub Actions until the workflow branch stack lands on the default branch.
+- Cloud deploy workflow pull_request checks are visible on PR #3, but manual/default-branch dispatch is unavailable until the workflow branch stack lands on `main`.
 - Production Worker, Cloud Run, R2, D1, Sentry, Statsig, RevenueCat, Google, and rollback gates remain blocked for external/public cutover.
 - The documented Statsig kill-switch names are not yet wired to a single runtime flag source of truth; current behavior is split across backend env/defaults and iOS URL/launch-mode availability.
 - The legacy local export button remains visible in the non-AI-Edit Export surface. That is allowed as a launch-safe fallback, but post-install smoke evidence must explicitly use the AI Edit Agent cloud path.

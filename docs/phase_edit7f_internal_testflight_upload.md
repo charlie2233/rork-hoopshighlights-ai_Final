@@ -40,7 +40,7 @@ Production cutover remains blocked until production Worker, Cloud Run, R2, Sentr
 
 | Lane | Backend | Decision | Status |
 | --- | --- | --- | --- |
-| Internal TestFlight, AI Edit enabled | staging | recommended | ready after signed archive/upload credentials |
+| Internal TestFlight, AI Edit enabled | staging | recommended first internal lane | historical build 3 upload candidate; installed smoke and staging Worker refresh still required |
 | Internal TestFlight, cloud-disabled packaging proof | none | allowed | safe Release default |
 | External TestFlight | production | blocked | production placeholders remain |
 | App Store/public | production | blocked | out of scope |
@@ -64,7 +64,7 @@ An internal staging TestFlight archive must be explicitly built with staging clo
 | Build number | `3` | `3` after this branch | incremented from `1`; build `2` was uploaded as a cloud-disabled packaging proof |
 | Apple team | `K99RADPB9G` | `K99RADPB9G` unless ASC differs | local build settings verified |
 | Release cloud launch mode | explicit staging override required | disabled by default | safe |
-| Staging Worker URL | `https://hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev` | not applicable | latest RC smoke passed |
+| Staging Worker URL | `https://hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev` | not applicable | historical RC smoke passed; current `/v1/editing/version` route still needs Worker refresh |
 | Production Worker URL | not required | placeholder | blocked |
 | Staging Cloud Run editing URL | `https://hoopclips-editing-staging-npya43jiia-uc.a.run.app` | not applicable | latest RC smoke passed |
 | Production Cloud Run editing URL | not required | placeholder | blocked |
@@ -176,6 +176,14 @@ Upload result:
 ```text
 Build 3 was archived with explicit staging backend overrides and uploaded to App Store Connect.
 The uploaded package entered App Store Connect processing.
+```
+
+2026-05-23 current-state note:
+
+```text
+Treat the build 3 upload as historical upload evidence, not current installed TestFlight proof.
+Fresh TestFlight availability and the post-install smoke flow have not been independently verified in this environment.
+The staging Worker also still needs a refresh before the app can read live `/v1/editing/version` kill-switch state.
 ```
 
 Automation note:
@@ -379,7 +387,7 @@ Final upload status:
 
 ```text
 Build 2: uploaded as a safe cloud-disabled Release packaging proof.
-Build 3: uploaded as the intended internal staging AI Edit candidate.
+Build 3: uploaded as the historical intended internal staging AI Edit candidate; not current installed-smoke proof.
 App Store Connect output: "Upload succeeded. Uploaded HoopsClips. ** EXPORT SUCCEEDED **"
 TestFlight processing and post-install smoke are not verified in this branch.
 ```
@@ -389,8 +397,9 @@ TestFlight processing and post-install smoke are not verified in this branch.
 ```text
 1. Confirm App Store Connect processing completes for build 3.
 2. Run post-install internal TestFlight smoke from the checklist.
-3. CLOUDFLARE_API_TOKEN still needs to be installed in CI for Worker deploy automation.
-4. Production backend config values remain placeholders until cutover approval.
-5. R2 render log body access remains operator-credential-only.
-6. CI upload automation still needs explicit App Store Connect API key secrets if manual/Xcode-account upload is not enough.
+3. Refresh the staging Worker so `/v1/editing/version` is live before relying on backend kill-switch state inside the installed app.
+4. CLOUDFLARE_API_TOKEN still needs to be installed in CI for Worker deploy automation.
+5. Production backend config values remain placeholders until cutover approval.
+6. R2 render log body access remains operator-credential-only.
+7. CI upload automation still needs explicit App Store Connect API key secrets if manual/Xcode-account upload is not enough.
 ```

@@ -61,12 +61,12 @@ Do not silently change Release defaults.
 
 | Gate | Internal staging TestFlight | External/production TestFlight |
 | --- | --- | --- |
-| AI Edit product loop | go, latest RC smoke passed | go after production smoke |
-| Staging Worker URL | go | not applicable |
+| AI Edit product loop | historical RC smoke passed; installed TestFlight proof and Worker `/v1/editing/version` refresh still required | go after production smoke |
+| Staging Worker URL | historical RC smoke passed; current `/v1/editing/version` refresh still required | not applicable |
 | Production Worker URL | not required | blocked, placeholder |
-| Staging Cloud Run editing | go, current service healthy | not applicable |
+| Staging Cloud Run editing | historical RC smoke passed; refresh live version after deploy | not applicable |
 | Production Cloud Run editing | not required | blocked, placeholder |
-| Staging R2 buckets | go | not applicable |
+| Staging R2 buckets | historical RC smoke passed; object-key evidence is operator-only | not applicable |
 | Production R2 buckets | not required | blocked, placeholder |
 | CI Worker deploy | blocked until `CLOUDFLARE_API_TOKEN` is installed | blocked |
 | iOS release signing secrets | verify in release preflight | required |
@@ -314,23 +314,25 @@ An admin/operator render-log endpoint can be considered later, but is out of sco
 
 ## Final Smoke Evidence
 
+This is historical RC smoke evidence. Storage object-key fields below are intentionally redacted in this launch-readiness reconciliation pass; use operator logs or R2/audit tooling for exact object-key lookup when needed.
+
 Latest full Worker-path RC smoke:
 
 ```text
 source: Phase Edit7d
 status: pass
-Worker -> Cloud Run editing -> R2 object keys -> download URL -> ffprobe
+Worker -> Cloud Run editing -> redacted R2 object-key evidence -> download URL -> ffprobe
 Worker URL: https://hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev
 Cloud Run editing URL: https://hoopclips-editing-staging-npya43jiia-uc.a.run.app
-sourceObjectKey: uploads/dc21751d644a4e4b9676e3e9b0525780/source.mp4
+sourceObjectKey: uploads/<redacted>/source.mp4
 base editJobId: edit_caf79ea7c9c34e3e96e4032818a4e645
 base renderJobId: render_95210e7c55ac4c68a9c80c050922ca9c
-base outputObjectKey: edits/edit_caf79ea7c9c34e3e96e4032818a4e645/render_jobs/render_95210e7c55ac4c68a9c80c050922ca9c/final.mp4
-base renderLogObjectKey: edits/edit_caf79ea7c9c34e3e96e4032818a4e645/render_jobs/render_95210e7c55ac4c68a9c80c050922ca9c/render_log.json
+base outputObjectKey: edits/<redacted>/render_jobs/<redacted>/final.mp4
+base renderLogObjectKey: edits/<redacted>/render_jobs/<redacted>/render_log.json
 revisionId: rev_1f3d2694b1714403b2a3f57df0f799c5
 revision renderJobId: render_8a94b0188e7445a39eed6215ecde2798
-revision outputObjectKey: edits/edit_caf79ea7c9c34e3e96e4032818a4e645/render_jobs/render_8a94b0188e7445a39eed6215ecde2798/final.mp4
-revision renderLogObjectKey: edits/edit_caf79ea7c9c34e3e96e4032818a4e645/render_jobs/render_8a94b0188e7445a39eed6215ecde2798/render_log.json
+revision outputObjectKey: edits/<redacted>/render_jobs/<redacted>/final.mp4
+revision renderLogObjectKey: edits/<redacted>/render_jobs/<redacted>/render_log.json
 base ffprobe: duration 16.222005s, size 379466 bytes, H.264 720x1280 yuv420p 30fps, AAC
 revision ffprobe: duration 16.222005s, size 374403 bytes, H.264 720x1280 yuv420p 30fps, AAC
 summaryPath: /private/tmp/hoopclips-phase7d-rc-smoke-rerun/template_pack_smoke_summary.json
@@ -344,7 +346,7 @@ This branch did not rerun the full live render because it does not change render
 - Internal staging TestFlight requires explicit staging-enabled build settings or a future dedicated build configuration.
 - `CLOUDFLARE_API_TOKEN` is still required for CI Worker deploy automation.
 - Production Worker, Cloud Run editing, R2, D1, Statsig, and backend Sentry values remain placeholders.
-- R2 render log bodies require operator credentials; object keys are available.
+- R2 render log bodies require operator credentials; object keys are operator-only evidence and should not be pasted into docs, tickets, or user-facing support.
 - Cloud Run remains `max-instances=1` until controlled scaling smoke is approved.
 - Cleanup execute mode should remain disabled until retention policy is reviewed.
 - Actual App Store Connect upload credentials are not configured in this repo.

@@ -61,7 +61,9 @@ Result: `[]`.
 gh run list --repo charlie2233/rork-hoopshighlights-ai_Final --workflow cloud-edit-deploy-preflight.yml --limit 5
 ```
 
-Result: GitHub returned `HTTP 404: workflow cloud-edit-deploy-preflight.yml not found on the default branch`.
+Result then: GitHub returned `HTTP 404: workflow cloud-edit-deploy-preflight.yml not found on the default branch`.
+
+2026-05-23 refresh: a pull_request run for `Cloud Edit Deploy Preflight` is visible on PR #3, but the workflow file still 404s on `main`, so default-branch `workflow_dispatch` remains unavailable until the workflow branch stack lands.
 
 ## Required Fix
 

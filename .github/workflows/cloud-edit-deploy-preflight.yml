@@ -6,6 +6,7 @@ on:
       - .github/workflows/cloud-edit-deploy-preflight.yml
       - services/control-plane/**
       - services/editing/cloudbuild.yaml
+      - services/editing/scripts/deploy_preflight.py
   workflow_dispatch:
     inputs:
       operation:

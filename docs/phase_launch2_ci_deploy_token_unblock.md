@@ -192,8 +192,8 @@ ruby -e 'require "yaml"; YAML.load_file(".github/workflows/cloud-edit-deploy-pre
 
 Results:
 
-- GitHub Actions default branch still lists only `Release Secrets Preflight`.
-- `cloud-edit-deploy-preflight.yml` still returns `HTTP 404` on `main`, so `workflow_dispatch` cannot be run from Actions yet.
+- GitHub's workflow registry now surfaces `Cloud Edit Deploy Preflight` from PR activity, but `cloud-edit-deploy-preflight.yml` still returns `HTTP 404` on `main`, so default-branch `workflow_dispatch` cannot be run from Actions yet.
+- PR #3 run `26327853230` proved the PR-safe `Worker typecheck and dry run` job; `Verify cloud edit deploy secrets` was skipped because the run was not a manual dispatch.
 - GitHub environments still include `production` and `staging`.
 - GitHub `staging` environment secret-name list returned no names.
 - GitHub `staging` environment variable-name list returned no names.
@@ -205,10 +205,22 @@ Results:
 - `deploy_preflight.py --json`: `status=blocked`; GCP project, Artifact Registry, required Secret Manager entries, Cloud Run service, and R2 endpoint checks passed; only `wrangler-auth` failed because `CLOUDFLARE_API_TOKEN` is not set and local Wrangler OAuth is not valid.
 - Workflow YAML parse: passed.
 
+No-secret deploy evidence ledger:
+
+| Item | Current evidence | Launch meaning |
+| --- | --- | --- |
+| PR dry-run run ID | `26327853230` | proves typecheck and staging Worker dry-run only |
+| GitHub `staging` input names | no secret or variable names observed | operator inputs still required |
+| Cloud Build ID | not captured | no editing Cloud Run deploy proof from this branch |
+| Cloud Run revision | not captured for this branch | deployed editing service may be older than current source |
+| Worker version ID | not captured | no Worker deploy proof from this branch |
+| Worker rollback run ID | not captured | rollback scope not proven |
+
 Current unblock sequence:
 
 1. Merge or publish `.github/workflows/cloud-edit-deploy-preflight.yml` to `main`.
 2. Add the five required `staging` environment inputs in GitHub Actions without printing values.
 3. Run `Cloud Edit Deploy Preflight` with `operation=preflight`.
-4. Run `operation=deploy` to prove Wrangler edit scope.
-5. Capture the previous Worker version ID and run `operation=rollback` to prove rollback scope.
+4. Deploy the editing Cloud Run service separately with `--substitutions=_IMAGE_TAG=<git-sha>` when backend source needs to go live.
+5. Run `operation=deploy` to prove Wrangler edit scope and refresh the staging Worker.
+6. Capture the previous Worker version ID and run `operation=rollback` to prove rollback scope.

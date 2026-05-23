@@ -91,9 +91,11 @@ Once preflight is green:
 
 ```bash
 cd /Users/hanfei/rork-hoopshighlights-ai_Final
+IMAGE_TAG="$(git rev-parse --short HEAD)"
 gcloud builds submit . \
   --project=hoopsclips-9d38f \
-  --config=services/editing/cloudbuild.yaml
+  --config=services/editing/cloudbuild.yaml \
+  --substitutions=_IMAGE_TAG="$IMAGE_TAG"
 ```
 
 The staging deploy uses:
@@ -110,28 +112,33 @@ After deploy, set the Worker secrets so the active control plane can call Cloud 
 cd /Users/hanfei/rork-hoopshighlights-ai_Final/services/control-plane
 printf '%s' "$EDITING_BASE_URL" | npx wrangler secret put EDITING_BASE_URL --env staging
 printf '%s' "$EDITING_SHARED_SECRET" | npx wrangler secret put EDITING_SHARED_SECRET --env staging
-npx wrangler deploy --env staging
+npx wrangler deploy --env staging --keep-vars
 ```
+
+Load secret values from an operator-held environment before running these commands. Do not paste secret values directly into shell history, docs, tickets, or chat.
 
 `EDITING_SHARED_SECRET` must match `HOOPS_EDITING_SERVICE_SECRET` on Cloud Run.
 
 ## Cloud Smoke
 
-Configure the deployed Cloud Run service with R2 and `HOOPS_EDITING_SERVICE_SECRET`, then run:
+Configure the deployed Cloud Run service with R2 and `HOOPS_EDITING_SERVICE_SECRET`, then load required smoke credentials from an operator-held environment before running:
 
 ```bash
+# Required pre-exported secret env vars:
+# HOOPS_EDITING_SERVICE_SECRET
+# HOOPS_R2_ENDPOINT_URL
+# HOOPS_R2_ACCESS_KEY_ID
+# HOOPS_R2_SECRET_ACCESS_KEY
 PYTHONPATH=services/editing:ios/backend \
 HOOPS_RENDER_STORAGE_PROVIDER=r2 \
-HOOPS_EDITING_SERVICE_SECRET=... \
 HOOPS_R2_SOURCE_BUCKET=hoopsclips-uploads-staging \
 HOOPS_R2_OUTPUT_BUCKET=hoopsclips-results-staging \
-HOOPS_R2_ENDPOINT_URL=... \
-HOOPS_R2_ACCESS_KEY_ID=... \
-HOOPS_R2_SECRET_ACCESS_KEY=... \
 ios/backend/.venv/bin/python services/editing/scripts/live_render_smoke.py \
   --base-url https://YOUR-EDITING-SERVICE \
   --render-storage-provider r2
 ```
+
+Do not place secret values inline in this smoke command; inline assignments can be retained in shell history.
 
 After the Worker is deployed with editing secrets, run the Worker-path smoke:
 
