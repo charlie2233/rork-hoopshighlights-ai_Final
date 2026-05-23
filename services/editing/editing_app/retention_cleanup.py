@@ -69,6 +69,7 @@ def cleanup_candidate_for_job(
             job.output_object_key,
             job.render_log_object_key,
             f"render_state/render_jobs/{job.render_job_id}.json",
+            DurableRenderStateStore.idempotency_index_key(job.idempotency_key) if job.idempotency_key else None,
         ]
         if key
     ]

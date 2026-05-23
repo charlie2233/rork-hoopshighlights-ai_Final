@@ -269,6 +269,10 @@ class DurableRenderStateStore:
         return f"render_state/idempotency/{cls._hash(idempotency_key)}.json"
 
     @classmethod
+    def idempotency_index_key(cls, idempotency_key: str) -> str:
+        return cls._idempotency_key(idempotency_key)
+
+    @classmethod
     def _install_key(cls, install_id: str) -> str:
         return f"render_state/installs/{cls._hash(install_id)}.json"
 

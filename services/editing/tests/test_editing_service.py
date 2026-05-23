@@ -706,6 +706,7 @@ class EditingServiceTests(unittest.TestCase):
             plan_version="edit-plan-v1",
             template_id="personal_highlight_v1",
             plan_tier="free",
+            idempotency_key="idem-cleanup-execute",
             expires_at=expired_at,
             output_bytes=1234,
             duration_seconds=15.0,
@@ -724,19 +725,22 @@ class EditingServiceTests(unittest.TestCase):
         store.save_job(job)
         output_path = self._temp_dir / job.output_object_key
         state_path = self._temp_dir / "render_state/render_jobs/render_cleanup_execute.json"
+        idempotency_path = self._temp_dir / store.idempotency_index_key("idem-cleanup-execute")
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_bytes(b"mp4")
         storage.put_json(job.render_log_object_key or "", "{}")
+        self.assertTrue(idempotency_path.exists())
 
         report = run_cleanup(storage, store, execute=True, now=now_utc())
 
         self.assertEqual(report["mode"], "execute")
         self.assertEqual(report["candidateCount"], 1)
-        self.assertEqual(report["objectKeyCount"], 3)
+        self.assertEqual(report["objectKeyCount"], 4)
         self.assertEqual(set(report["deletedObjectKeys"]), set(report["candidates"][0]["objectKeys"]))
         self.assertFalse(output_path.exists())
         self.assertFalse((self._temp_dir / (job.render_log_object_key or "")).exists())
         self.assertFalse(state_path.exists())
+        self.assertFalse(idempotency_path.exists())
 
     def test_policy_rejection_emits_safe_policy_failed_event(self) -> None:
         client = TestClient(create_app(self._settings()))
@@ -930,12 +934,22 @@ class EditingServiceTests(unittest.TestCase):
         )
         self.assertEqual(rerender_response.status_code, 200)
         self.assertNotEqual(rerender_response.json()["renderJobId"], render_job_id)
+        rerender_without_key_response = client.post(
+            f"/v1/edit-jobs/{create_payload['editJobId']}/render",
+            json={
+                "installId": edit_request.installId,
+                "forceNew": True,
+            },
+        )
+        self.assertEqual(rerender_without_key_response.status_code, 200)
+        self.assertNotEqual(rerender_without_key_response.json()["renderJobId"], render_job_id)
+        self.assertNotEqual(rerender_without_key_response.json()["renderJobId"], rerender_response.json()["renderJobId"])
         latest_download_response = client.get(
             f"/v1/edit-jobs/{create_payload['editJobId']}/download-url",
             params={"installId": edit_request.installId},
         )
         self.assertEqual(latest_download_response.status_code, 200)
-        self.assertEqual(latest_download_response.json()["renderJobId"], rerender_response.json()["renderJobId"])
+        self.assertEqual(latest_download_response.json()["renderJobId"], rerender_without_key_response.json()["renderJobId"])
 
         history_response = client.get("/v1/render-jobs", params={"installId": edit_request.installId, "limit": 10})
         self.assertEqual(history_response.status_code, 200)
@@ -943,6 +957,7 @@ class EditingServiceTests(unittest.TestCase):
         history_ids = [render["renderJobId"] for render in history_payload["renders"]]
         self.assertIn(render_job_id, history_ids)
         self.assertIn(rerender_response.json()["renderJobId"], history_ids)
+        self.assertIn(rerender_without_key_response.json()["renderJobId"], history_ids)
         self.assertNotIn("downloadUrl", json.dumps(history_payload))
 
     @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "ffmpeg and ffprobe are required")

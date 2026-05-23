@@ -795,7 +795,13 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
         mark_stale_renders()
         validate_live_render_policy()
         enforce_template_policy(request.editPlan.templateId, request.planTier, request.revenueCatAppUserID)
-        idempotency_key = request.idempotencyKey or f"{request.installId}:{request.editJobId}:{request.editPlan.editJobId}:{request.editPlan.templateId}:{len(request.editPlan.clips)}"
+        default_idempotency_key = f"{request.installId}:{request.editJobId}:{request.editPlan.editJobId}:{request.editPlan.templateId}:{len(request.editPlan.clips)}"
+        if request.idempotencyKey:
+            idempotency_key = request.idempotencyKey
+        elif force_new:
+            idempotency_key = f"{default_idempotency_key}:force:{uuid4().hex}"
+        else:
+            idempotency_key = default_idempotency_key
         existing_by_key = load_idempotent_render_job(idempotency_key)
         if existing_by_key is not None:
             mark_stale_job(existing_by_key)

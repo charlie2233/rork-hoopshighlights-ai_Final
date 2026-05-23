@@ -687,6 +687,7 @@ struct AIEditView: View {
 
     private func cloudLockerRenderRow(_ render: CloudEditRenderStatusResponse) -> some View {
         let isBusy = lockerBusyRenderJobID == render.renderJobId
+        let isExpired = isLockerRenderExpired(render)
         return VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top, spacing: 10) {
                 VStack(alignment: .leading, spacing: 3) {
@@ -700,12 +701,12 @@ struct AIEditView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 8)
-                Text(lockerStatusTitle(for: render.status))
+                Text(isExpired ? "Expired" : lockerStatusTitle(for: render.status))
                     .font(.caption2.bold())
                     .foregroundStyle(.white)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
-                    .background(lockerStatusColor(for: render.status).opacity(0.72), in: .capsule)
+                    .background((isExpired ? AppTheme.dangerRed : lockerStatusColor(for: render.status)).opacity(0.72), in: .capsule)
             }
 
             HStack(spacing: 8) {
@@ -713,20 +714,23 @@ struct AIEditView: View {
                     Button {
                         Task { await redownloadLockerRender(render) }
                     } label: {
-                        Label(isBusy && isPreparingShare ? "Preparing..." : "Download / Share", systemImage: "square.and.arrow.up.fill")
+                        Label(
+                            isExpired ? "Expired" : (isBusy && isPreparingShare ? "Preparing Share" : "Download / Share"),
+                            systemImage: isExpired ? "exclamationmark.triangle.fill" : "square.and.arrow.up.fill"
+                        )
                             .font(.caption.bold())
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(AppTheme.accentPurple)
-                    .disabled(isWorking || isPreparingShare || lockerBusyRenderJobID != nil)
+                    .disabled(isExpired || isWorking || isPreparingShare || lockerBusyRenderJobID != nil)
                     .accessibilityIdentifier("export.aiEdit.cloudLocker.download.\(render.renderJobId)")
                 }
 
                 Button {
                     Task { await rerenderLockerEdit(render) }
                 } label: {
-                    Label(isBusy && isWorking ? "Rendering..." : "Re-render", systemImage: "arrow.triangle.2.circlepath")
+                    Label(isBusy && isWorking ? "Rendering" : "Re-render", systemImage: "arrow.triangle.2.circlepath")
                         .font(.caption.bold())
                         .frame(maxWidth: .infinity)
                 }
@@ -997,7 +1001,7 @@ struct AIEditView: View {
 
             if downloadResponse != nil {
                 Button(action: shareRenderedVideo) {
-                    Label(isPreparingShare ? "Preparing MP4..." : "Download / Share / Open In", systemImage: "square.and.arrow.up.fill")
+                    Label(isPreparingShare ? "Preparing MP4" : "Download / Share / Open In", systemImage: "square.and.arrow.up.fill")
                         .font(.headline)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
@@ -1370,18 +1374,31 @@ struct AIEditView: View {
         return parts.joined(separator: " - ")
     }
 
+    private func isLockerRenderExpired(_ render: CloudEditRenderStatusResponse, now: Date = Date()) -> Bool {
+        guard let expirationDate = lockerExpirationDate(for: render) else { return false }
+        return expirationDate <= now
+    }
+
+    private func lockerExpirationDate(for render: CloudEditRenderStatusResponse) -> Date? {
+        guard let rawValue = render.retentionMetadata?.expiresAt ?? render.workReceipt?.storageExpiresAt else { return nil }
+        return parsedLockerDate(rawValue)
+    }
+
     private func formattedLockerDate(_ rawValue: String) -> String {
-        let normalized = rawValue.replacingOccurrences(of: "+00:00", with: "Z")
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        let date = formatter.date(from: normalized) ?? {
-            formatter.formatOptions = [.withInternetDateTime]
-            return formatter.date(from: normalized)
-        }()
-        if let date {
+        if let date = parsedLockerDate(rawValue) {
             return date.formatted(date: .abbreviated, time: .shortened)
         }
         return String(rawValue.replacingOccurrences(of: "T", with: " ").prefix(16))
+    }
+
+    private func parsedLockerDate(_ rawValue: String) -> Date? {
+        let normalized = rawValue.replacingOccurrences(of: "+00:00", with: "Z")
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.date(from: normalized) ?? {
+            formatter.formatOptions = [.withInternetDateTime]
+            return formatter.date(from: normalized)
+        }()
     }
 
     private func lockerStatusTitle(for status: CloudEditRenderState) -> String {
@@ -1712,7 +1729,7 @@ struct AIEditView: View {
 
     @MainActor
     private func redownloadLockerRender(_ render: CloudEditRenderStatusResponse) async {
-        guard !isPreparingShare else { return }
+        guard !isPreparingShare, !isLockerRenderExpired(render) else { return }
         lockerBusyRenderJobID = render.renderJobId
         isPreparingShare = true
         lockerErrorMessage = nil
@@ -1722,27 +1739,15 @@ struct AIEditView: View {
         }
 
         do {
-            var download = try await cloudEditService.fetchDownloadURL(
+            let download = try await cloudEditService.fetchDownloadURL(
                 renderJobID: render.renderJobId,
                 installID: viewModel.installID
             )
-            let temporaryURL: URL
-            do {
-                temporaryURL = try await cloudEditService.downloadRenderedVideo(from: download)
-            } catch CloudEditError.downloadURLExpired {
-                download = try await cloudEditService.fetchDownloadURL(
-                    renderJobID: render.renderJobId,
-                    installID: viewModel.installID
-                )
-                temporaryURL = try await cloudEditService.downloadRenderedVideo(from: download)
-            }
             downloadResponse = download
             renderStatus = render
             policySummary = render.policy ?? policySummary
             phase = render.status
-            viewModel.attachCloudRenderedExport(from: temporaryURL)
-            localShareURL = viewModel.exportService.exportedURL ?? temporaryURL
-            previewPlayer = AVPlayer(url: localShareURL ?? temporaryURL)
+            try await attachDownloadedCloudPreview(from: download)
             showingShareSheet = true
             LaunchTelemetry.shared.recordAIEditEvent(
                 "ios.cloud_locker.downloaded",
@@ -1810,10 +1815,7 @@ struct AIEditView: View {
                 installID: viewModel.installID
             )
             downloadResponse = download
-            if let url = URL(string: download.downloadUrl) {
-                previewPlayer = AVPlayer(url: url)
-                previewPlayer?.play()
-            }
+            try await attachDownloadedCloudPreview(from: download)
             await refreshRenderHistory()
             LaunchTelemetry.shared.recordAIEditEvent(
                 "ios.cloud_locker.rerendered",
@@ -1933,17 +1935,14 @@ struct AIEditView: View {
                 installID: viewModel.installID
             )
             downloadResponse = download
-            if let url = URL(string: download.downloadUrl) {
-                previewPlayer = AVPlayer(url: url)
-                previewPlayer?.play()
-                LaunchTelemetry.shared.recordAIEditEvent(
-                    "ios.preview.loaded",
-                    editJobID: job.editJobId,
-                    renderJobID: finalStatus.renderJobId,
-                    templateID: planResponse.plan.templateId,
-                    planTier: request.planTier.rawValue
-                )
-            }
+            try await attachDownloadedCloudPreview(from: download)
+            LaunchTelemetry.shared.recordAIEditEvent(
+                "ios.preview.loaded",
+                editJobID: job.editJobId,
+                renderJobID: finalStatus.renderJobId,
+                templateID: planResponse.plan.templateId,
+                planTier: request.planTier.rawValue
+            )
             HoopsAccessibility.announce("Your HoopClips AI edit is ready.")
             await refreshRenderHistory()
         } catch {
@@ -2043,18 +2042,15 @@ struct AIEditView: View {
                 installID: viewModel.installID
             )
             downloadResponse = download
-            if let url = URL(string: download.downloadUrl) {
-                previewPlayer = AVPlayer(url: url)
-                previewPlayer?.play()
-                LaunchTelemetry.shared.recordAIEditEvent(
-                    "ios.preview.loaded",
-                    editJobID: editJob.editJobId,
-                    renderJobID: finalStatus.renderJobId,
-                    revisionID: revisionResponse.revisionId,
-                    templateID: revisionResponse.revisedPlan.templateId,
-                    planTier: policySummary?.planTier.rawValue
-                )
-            }
+            try await attachDownloadedCloudPreview(from: download)
+            LaunchTelemetry.shared.recordAIEditEvent(
+                "ios.preview.loaded",
+                editJobID: editJob.editJobId,
+                renderJobID: finalStatus.renderJobId,
+                revisionID: revisionResponse.revisionId,
+                templateID: revisionResponse.revisedPlan.templateId,
+                planTier: policySummary?.planTier.rawValue
+            )
             HoopsAccessibility.announce("Your revised HoopClips AI edit is ready.")
             await refreshRenderHistory()
         } catch {
@@ -2062,6 +2058,31 @@ struct AIEditView: View {
             errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             HoopsAccessibility.announce("Cloud revision render failed.")
         }
+    }
+
+    @MainActor
+    private func refreshDownloadURL(for download: CloudEditDownloadResponse) async throws -> CloudEditDownloadResponse {
+        try await cloudEditService.fetchDownloadURL(
+            renderJobID: download.renderJobId,
+            installID: viewModel.installID
+        )
+    }
+
+    @MainActor
+    private func attachDownloadedCloudPreview(from download: CloudEditDownloadResponse) async throws {
+        var activeDownload = download
+        let temporaryURL: URL
+        do {
+            temporaryURL = try await cloudEditService.downloadRenderedVideo(from: activeDownload)
+        } catch CloudEditError.downloadURLExpired {
+            activeDownload = try await refreshDownloadURL(for: activeDownload)
+            downloadResponse = activeDownload
+            temporaryURL = try await cloudEditService.downloadRenderedVideo(from: activeDownload)
+        }
+        viewModel.attachCloudRenderedExport(from: temporaryURL)
+        localShareURL = viewModel.exportService.exportedURL ?? temporaryURL
+        previewPlayer = AVPlayer(url: localShareURL ?? temporaryURL)
+        previewPlayer?.play()
     }
 
     @MainActor
@@ -2073,12 +2094,9 @@ struct AIEditView: View {
         defer { isPreparingShare = false }
 
         do {
-            if downloadResponse.expiresAt <= Date().addingTimeInterval(30), let editJob {
-                errorMessage = "Download URL expired, refreshing..."
-                downloadResponse = try await cloudEditService.fetchDownloadURL(
-                    editJobID: editJob.editJobId,
-                    installID: viewModel.installID
-                )
+            if downloadResponse.expiresAt <= Date().addingTimeInterval(30) {
+                errorMessage = "Refreshing download link"
+                downloadResponse = try await refreshDownloadURL(for: downloadResponse)
                 self.downloadResponse = downloadResponse
                 errorMessage = nil
             }
@@ -2086,14 +2104,8 @@ struct AIEditView: View {
             do {
                 temporaryURL = try await cloudEditService.downloadRenderedVideo(from: downloadResponse)
             } catch CloudEditError.downloadURLExpired {
-                guard let editJob else {
-                    throw CloudEditError.downloadURLExpired
-                }
-                errorMessage = "Download URL expired, refreshing..."
-                let freshDownload = try await cloudEditService.fetchDownloadURL(
-                    editJobID: editJob.editJobId,
-                    installID: viewModel.installID
-                )
+                errorMessage = "Refreshing download link"
+                let freshDownload = try await refreshDownloadURL(for: downloadResponse)
                 self.downloadResponse = freshDownload
                 temporaryURL = try await cloudEditService.downloadRenderedVideo(from: freshDownload)
                 errorMessage = nil
