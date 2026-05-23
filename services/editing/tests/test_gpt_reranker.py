@@ -68,6 +68,7 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         user_content = payload["input"][0]["content"]
         compact_input = json.loads(user_content[0]["text"])
         compact_clip = compact_input["clips"][0]
+        agent_cookbook = compact_input["agentTemplateCookbook"]
         image_items = [item for item in user_content if item["type"] == "input_image"]
 
         self.assertIs(payload["store"], False)
@@ -94,12 +95,33 @@ class GPTHighlightRerankerTests(unittest.TestCase):
             },
         )
         self.assertEqual(compact_clip["sampledKeyframes"], [{"role": "start", "time": 0.0}])
+        self.assertEqual(agent_cookbook["templateId"], "personal_highlight_v1")
+        self.assertIn("templateCookbookRules", agent_cookbook)
+        self.assertEqual(agent_cookbook["templateCookbookRules"]["captionRules"]["tone"], "hype")
+        self.assertEqual(agent_cookbook["candidateClips"][0]["clipId"], "c0")
         self.assertEqual(len(image_items), 1)
         self.assertTrue(image_items[0]["image_url"].startswith("data:image/jpeg;base64,"))
         self.assertNotIn("c999", json.dumps(payload))
         self.assertNotIn("sourceObjectKey", str(payload))
         self.assertNotIn("uploads/source.mp4", str(payload))
         self.assertNotIn("https://", str(payload))
+
+    def test_payload_resolves_preset_default_template_for_agent_cookbook(self) -> None:
+        settings = GPTHighlightRerankerSettings.from_env()
+        request = _request().model_copy(update={"preset": "full_game_highlight", "templateId": None, "targetDurationSeconds": 60})
+        frame = SampledFrame(
+            clip_id="c0",
+            role="start",
+            time_seconds=0.0,
+            data_url="data:image/jpeg;base64,ZmFrZQ==",
+        )
+
+        payload = _build_openai_payload(request, request.clips[:1], [frame], settings)
+        compact_input = json.loads(payload["input"][0]["content"][0]["text"])
+
+        self.assertEqual(compact_input["templateContext"]["templateId"], "full_game_highlight_v1")
+        self.assertEqual(compact_input["agentTemplateCookbook"]["templateId"], "full_game_highlight_v1")
+        self.assertEqual(compact_input["clips"][0]["templateId"], "full_game_highlight_v1")
 
     def test_schema_matches_highlight_decision_contract(self) -> None:
         settings = GPTHighlightRerankerSettings.from_env()

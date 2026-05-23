@@ -1,0 +1,74 @@
+{
+  "templateId": "full_game_highlight_v1",
+  "agentStyleIntent": "Create a clean 16:9 game recap that preserves flow while boosting the best moments.",
+  "selectionRules": {
+    "prefer": [
+      "made shots",
+      "transition plays",
+      "defensive stops",
+      "late-game moments",
+      "clips that explain game flow"
+    ],
+    "prioritize": [
+      "chronological story",
+      "clear outcome",
+      "offense and defense mix",
+      "usable game audio"
+    ]
+  },
+  "rejectionRules": {
+    "reject": [
+      "isolated chaos without outcome",
+      "dead ball",
+      "duplicates",
+      "clips too short to understand game context",
+      "meme-style moments"
+    ]
+  },
+  "orderingRules": {
+    "strategy": "chronological_with_best_moments_boosted",
+    "opener": "early_clear_score_or_defensive_stop",
+    "peak": "highest_game_swing_moment",
+    "closer": "late_or_high_energy_bucket"
+  },
+  "captionRules": {
+    "density": "clean",
+    "tone": "recap",
+    "examples": ["Fast break finish", "Corner jumper", "Big stop"],
+    "maxCaptionLength": 24
+  },
+  "effectRules": {
+    "slowMotionIntensity": "low_medium",
+    "punchZoom": false,
+    "speedRamp": false,
+    "lowerThird": true,
+    "maxSlowMoMoments": 3
+  },
+  "audioRules": {
+    "musicProfile": "game_recap",
+    "gameAudioVolume": 0.62,
+    "musicVolume": 0.45
+  },
+  "targetDurationRules": {
+    "defaultAspectRatio": "16:9",
+    "targetDurations": [60, 90, 120],
+    "minClipDuration": 5.5,
+    "maxClipDuration": 8.0
+  },
+  "cropRules": {
+    "defaultFocus": "center_action",
+    "allowedFocus": ["center_action", "ball", "rim", "team"]
+  },
+  "storyRules": {
+    "storyArc": "game_flow_recap",
+    "notes": [
+      "Prefer story clarity over pure flash.",
+      "Keep enough lead-in and finish to understand each play.",
+      "Use restrained captions and effects."
+    ]
+  },
+  "planTier": "free",
+  "enabledForFree": true,
+  "enabledForPro": true,
+  "enabledForInternal": true
+}

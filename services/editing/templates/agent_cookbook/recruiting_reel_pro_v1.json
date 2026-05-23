@@ -1,0 +1,75 @@
+{
+  "templateId": "recruiting_reel_pro_v1",
+  "agentStyleIntent": "Create a player showcase reel that feels ready to send to coaches and scouts.",
+  "selectionRules": {
+    "prefer": [
+      "clear individual skill",
+      "ball handling into finish",
+      "made shots with visible mechanics",
+      "defensive stops",
+      "rebounds or steals that show effort",
+      "clips with action visible from start to finish"
+    ],
+    "prioritize": [
+      "skill clarity",
+      "complete action",
+      "strong individual plays",
+      "professional tone"
+    ]
+  },
+  "rejectionRules": {
+    "reject": [
+      "unclear team chaos",
+      "ordinary transitions",
+      "clips where player contribution is hidden",
+      "duplicates",
+      "celebration without play context"
+    ]
+  },
+  "orderingRules": {
+    "strategy": "best_first_skill_showcase",
+    "opener": "clearest_top_skill_play",
+    "peak": "best_finish_or_defensive_stop",
+    "closer": "strong_complete_play"
+  },
+  "captionRules": {
+    "density": "medium",
+    "tone": "recruiting_clean",
+    "examples": ["STRONG FINISH", "DEFENSIVE STOP", "TOUGH TAKE"],
+    "maxCaptionLength": 24
+  },
+  "effectRules": {
+    "slowMotionIntensity": "medium",
+    "punchZoom": true,
+    "speedRamp": false,
+    "lowerThird": false,
+    "maxSlowMoMoments": 5
+  },
+  "audioRules": {
+    "musicProfile": "recruiting_clean",
+    "gameAudioVolume": 0.48,
+    "musicVolume": 0.58
+  },
+  "targetDurationRules": {
+    "defaultAspectRatio": "9:16",
+    "targetDurations": [45, 60, 90, 120],
+    "minClipDuration": 4.5,
+    "maxClipDuration": 8.5
+  },
+  "cropRules": {
+    "defaultFocus": "center_action",
+    "allowedFocus": ["center_action", "ball", "rim", "shooter"]
+  },
+  "storyRules": {
+    "storyArc": "player_showcase_best_first",
+    "notes": [
+      "Show complete skill, not just the outcome.",
+      "Keep more context than a social hype reel.",
+      "Use formal captions that describe the play."
+    ]
+  },
+  "planTier": "pro",
+  "enabledForFree": false,
+  "enabledForPro": true,
+  "enabledForInternal": true
+}

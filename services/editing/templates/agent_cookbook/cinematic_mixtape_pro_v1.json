@@ -1,0 +1,76 @@
+{
+  "templateId": "cinematic_mixtape_pro_v1",
+  "agentStyleIntent": "Create a high-energy vertical basketball mixtape with dramatic pacing and a strong opener and closer.",
+  "selectionRules": {
+    "prefer": [
+      "visual drama",
+      "clean finishes",
+      "dunks",
+      "tough layups",
+      "blocks",
+      "emotion or crowd energy",
+      "fast breaks"
+    ],
+    "prioritize": [
+      "top 5 to 8 clips",
+      "high motion energy",
+      "clear outcome",
+      "social impact"
+    ]
+  },
+  "rejectionRules": {
+    "reject": [
+      "boring setup",
+      "unclear camera movement",
+      "dead ball",
+      "duplicates",
+      "clips without visible outcome"
+    ]
+  },
+  "orderingRules": {
+    "strategy": "best_first_with_peak_middle_and_strong_closer",
+    "opener": "one_of_top_2_clips",
+    "peak": "most_dramatic_clip",
+    "closer": "high_energy_finish"
+  },
+  "captionRules": {
+    "density": "high",
+    "tone": "dramatic_hype",
+    "examples": ["COLD.", "BUILT DIFFERENT", "LOCKED IN"],
+    "maxCaptionLength": 24
+  },
+  "effectRules": {
+    "slowMotionIntensity": "high",
+    "punchZoom": true,
+    "speedRamp": true,
+    "lowerThird": false,
+    "maxSlowMoMoments": 6
+  },
+  "audioRules": {
+    "musicProfile": "cinematic_mixtape",
+    "gameAudioVolume": 0.28,
+    "musicVolume": 0.82
+  },
+  "targetDurationRules": {
+    "defaultAspectRatio": "9:16",
+    "targetDurations": [30, 45, 60, 90],
+    "minClipDuration": 3.5,
+    "maxClipDuration": 7.5
+  },
+  "cropRules": {
+    "defaultFocus": "center_action",
+    "allowedFocus": ["center_action", "ball", "rim", "shooter"]
+  },
+  "storyRules": {
+    "storyArc": "cinematic_hype_arc",
+    "notes": [
+      "Open immediately with a top-tier moment.",
+      "Use aggressive slow motion only around visible payoff.",
+      "Close with the highest energy finish available."
+    ]
+  },
+  "planTier": "pro",
+  "enabledForFree": false,
+  "enabledForPro": true,
+  "enabledForInternal": true
+}

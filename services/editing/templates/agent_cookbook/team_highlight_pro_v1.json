@@ -1,0 +1,75 @@
+{
+  "templateId": "team_highlight_pro_v1",
+  "agentStyleIntent": "Create a team-first highlight package with balanced players, actions, offense, and defense.",
+  "selectionRules": {
+    "prefer": [
+      "varied players",
+      "assisted baskets",
+      "team defense",
+      "transition offense",
+      "rebounds and hustle plays",
+      "clear shared team moments"
+    ],
+    "prioritize": [
+      "team variety",
+      "offense and defense balance",
+      "chronological shape",
+      "shareable clean tone"
+    ]
+  },
+  "rejectionRules": {
+    "reject": [
+      "one-player domination unless requested",
+      "duplicates",
+      "dead ball",
+      "unclear team context",
+      "clips without visible outcome"
+    ]
+  },
+  "orderingRules": {
+    "strategy": "balanced_team_story",
+    "opener": "clear_team_identity_play",
+    "peak": "best_team_or_transition_play",
+    "closer": "high_energy_team_finish"
+  },
+  "captionRules": {
+    "density": "clean",
+    "tone": "team",
+    "examples": ["Team bucket", "Big stop", "Fast break"],
+    "maxCaptionLength": 24
+  },
+  "effectRules": {
+    "slowMotionIntensity": "medium",
+    "punchZoom": false,
+    "speedRamp": false,
+    "lowerThird": true,
+    "maxSlowMoMoments": 5
+  },
+  "audioRules": {
+    "musicProfile": "team_package",
+    "gameAudioVolume": 0.68,
+    "musicVolume": 0.42
+  },
+  "targetDurationRules": {
+    "defaultAspectRatio": "16:9",
+    "targetDurations": [90, 120, 180],
+    "minClipDuration": 5.0,
+    "maxClipDuration": 9.0
+  },
+  "cropRules": {
+    "defaultFocus": "team",
+    "allowedFocus": ["team", "center_action", "ball", "rim"]
+  },
+  "storyRules": {
+    "storyArc": "balanced_team_package",
+    "notes": [
+      "Maximize variety and team identity.",
+      "Balance offense, defense, and transition.",
+      "Avoid over-indexing on one player unless the request says so."
+    ]
+  },
+  "planTier": "pro",
+  "enabledForFree": false,
+  "enabledForPro": true,
+  "enabledForInternal": true
+}

@@ -1,0 +1,75 @@
+{
+  "templateId": "personal_highlight_v1",
+  "agentStyleIntent": "Create a fast vertical personal basketball hype reel with the clearest best plays first.",
+  "selectionRules": {
+    "prefer": [
+      "clear made shots",
+      "fast breaks",
+      "tough finishes",
+      "blocks",
+      "steals leading to offense",
+      "visible player action from start to finish"
+    ],
+    "prioritize": [
+      "top individual plays",
+      "clean outcome",
+      "high motion energy",
+      "strong watchability"
+    ]
+  },
+  "rejectionRules": {
+    "reject": [
+      "dead ball",
+      "unclear outcome",
+      "duplicate moments",
+      "shaky unusable camera",
+      "ordinary setup with no payoff"
+    ]
+  },
+  "orderingRules": {
+    "strategy": "best_first_with_peak_middle",
+    "opener": "one_of_top_2_clips",
+    "peak": "highest_highlight_score",
+    "closer": "made_finish_or_defensive_stop"
+  },
+  "captionRules": {
+    "density": "medium_high",
+    "tone": "hype",
+    "examples": ["BUCKET", "TOUGH FINISH", "LOCKED IN"],
+    "maxCaptionLength": 24
+  },
+  "effectRules": {
+    "slowMotionIntensity": "high",
+    "punchZoom": true,
+    "speedRamp": true,
+    "lowerThird": false,
+    "maxSlowMoMoments": 4
+  },
+  "audioRules": {
+    "musicProfile": "hype",
+    "gameAudioVolume": 0.25,
+    "musicVolume": 0.82
+  },
+  "targetDurationRules": {
+    "defaultAspectRatio": "9:16",
+    "targetDurations": [15, 30, 45],
+    "minClipDuration": 3.5,
+    "maxClipDuration": 7.0
+  },
+  "cropRules": {
+    "defaultFocus": "center_action",
+    "allowedFocus": ["center_action", "ball", "rim", "shooter"]
+  },
+  "storyRules": {
+    "storyArc": "hype_reel_best_first",
+    "notes": [
+      "Open with instant energy.",
+      "Keep only moments with a clear basketball payoff.",
+      "Use captions as quick hype labels, not explanations."
+    ]
+  },
+  "planTier": "free",
+  "enabledForFree": true,
+  "enabledForPro": true,
+  "enabledForInternal": true
+}

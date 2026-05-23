@@ -1863,7 +1863,6 @@ struct AIEditView: View {
             if Self.shouldSimulateRenderFailure {
                 phase = .rendering
                 HoopsAccessibility.announce("Rendering your highlight reel in the cloud.")
-                try? await Task.sleep(nanoseconds: 350_000_000)
                 throw CloudEditError.backend(
                     code: "ui_smoke_render_failed",
                     message: "Simulated cloud render failure for UI smoke."

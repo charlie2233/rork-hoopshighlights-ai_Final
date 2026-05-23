@@ -1,0 +1,74 @@
+{
+  "templateId": "coach_review_v1",
+  "agentStyleIntent": "Create a chronological film-review cut with original audio, minimal captions, and full-play context.",
+  "selectionRules": {
+    "prefer": [
+      "plays with clear teaching value",
+      "complete possessions",
+      "defensive rotations",
+      "shots with visible setup and outcome",
+      "transition decisions"
+    ],
+    "prioritize": [
+      "chronological order",
+      "context over hype",
+      "original audio",
+      "clear court visibility"
+    ]
+  },
+  "rejectionRules": {
+    "reject": [
+      "flashy but unclear clips",
+      "dead ball",
+      "duplicates",
+      "clips without enough setup",
+      "heavy camera shake"
+    ]
+  },
+  "orderingRules": {
+    "strategy": "strict_chronological",
+    "opener": "first_teachable_play",
+    "peak": "clearest_teaching_moment",
+    "closer": "last_complete_play"
+  },
+  "captionRules": {
+    "density": "minimal",
+    "tone": "coach",
+    "examples": ["Good cut", "Help defense", "Shot quality"],
+    "maxCaptionLength": 24
+  },
+  "effectRules": {
+    "slowMotionIntensity": "manual_only",
+    "punchZoom": false,
+    "speedRamp": false,
+    "lowerThird": false,
+    "maxSlowMoMoments": 1
+  },
+  "audioRules": {
+    "musicProfile": "original_audio",
+    "gameAudioVolume": 1.0,
+    "musicVolume": 0.0
+  },
+  "targetDurationRules": {
+    "defaultAspectRatio": "source",
+    "targetDurations": [60, 120, 180],
+    "minClipDuration": 6.0,
+    "maxClipDuration": 10.0
+  },
+  "cropRules": {
+    "defaultFocus": "source",
+    "allowedFocus": ["source", "center_action", "team", "ball"]
+  },
+  "storyRules": {
+    "storyArc": "film_review_chronological",
+    "notes": [
+      "Avoid hype edits.",
+      "Keep full-play context whenever possible.",
+      "Prefer factual captions over dramatic labels."
+    ]
+  },
+  "planTier": "free",
+  "enabledForFree": true,
+  "enabledForPro": true,
+  "enabledForInternal": true
+}

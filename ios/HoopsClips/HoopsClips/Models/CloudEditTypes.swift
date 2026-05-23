@@ -167,13 +167,13 @@ enum CloudEditProTemplate: String, CaseIterable, Identifiable, Sendable {
     var styleSummary: String {
         switch self {
         case .recruitingReelPro:
-            return "Priority queue, cleaner export, longer player-focused breakdown."
+            return "Skill clarity, strong individual plays, cleaner recruiting captions."
         case .cinematicMixtapePro:
-            return "Premium pacing, stronger title cards, clean 1080p export."
+            return "Top social plays, dramatic captions, aggressive slow motion."
         case .nbaRecapPro:
-            return "Broadcast-inspired captions, recap pacing, no required branding."
+            return "Chronological game story, clean lower thirds, game-audio priority."
         case .teamHighlightPro:
-            return "More clips, team-friendly structure, longer cloud storage."
+            return "Balanced players, offense-defense variety, team-style captions."
         }
     }
 

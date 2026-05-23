@@ -1,0 +1,75 @@
+{
+  "templateId": "nba_recap_pro_v1",
+  "agentStyleIntent": "Create a broadcast-inspired full-game recap that tells the story of the game.",
+  "selectionRules": {
+    "prefer": [
+      "game-swinging makes",
+      "fast break finishes",
+      "corner jumpers",
+      "defensive stops",
+      "late-game buckets",
+      "clips with strong game audio"
+    ],
+    "prioritize": [
+      "game narrative",
+      "chronological flow",
+      "clean broadcast tone",
+      "longer context"
+    ]
+  },
+  "rejectionRules": {
+    "reject": [
+      "meme captions",
+      "isolated flashy clips that hurt story flow",
+      "unclear outcome",
+      "duplicates",
+      "dead ball"
+    ]
+  },
+  "orderingRules": {
+    "strategy": "chronological_with_best_moments_boosted",
+    "opener": "early_story_setting_play",
+    "peak": "highest_leverage_or_flash_moment",
+    "closer": "late_game_or_best_finish"
+  },
+  "captionRules": {
+    "density": "clean",
+    "tone": "broadcast",
+    "examples": ["Fast break finish", "Corner jumper", "Late-game bucket"],
+    "maxCaptionLength": 24
+  },
+  "effectRules": {
+    "slowMotionIntensity": "low_medium",
+    "punchZoom": false,
+    "speedRamp": false,
+    "lowerThird": true,
+    "maxSlowMoMoments": 4
+  },
+  "audioRules": {
+    "musicProfile": "broadcast_recap",
+    "gameAudioVolume": 0.72,
+    "musicVolume": 0.36
+  },
+  "targetDurationRules": {
+    "defaultAspectRatio": "16:9",
+    "targetDurations": [90, 120, 180],
+    "minClipDuration": 5.5,
+    "maxClipDuration": 9.5
+  },
+  "cropRules": {
+    "defaultFocus": "team",
+    "allowedFocus": ["team", "center_action", "ball", "rim"]
+  },
+  "storyRules": {
+    "storyArc": "broadcast_game_story",
+    "notes": [
+      "Tell the story of the game, not only the flashiest plays.",
+      "Use longer clips and more game audio.",
+      "Keep captions factual and lower-third friendly."
+    ]
+  },
+  "planTier": "pro",
+  "enabledForFree": false,
+  "enabledForPro": true,
+  "enabledForInternal": true
+}

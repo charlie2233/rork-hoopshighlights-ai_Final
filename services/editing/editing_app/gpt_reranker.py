@@ -25,7 +25,10 @@ from app.editing import (  # noqa: E402
     ReviseEditJobRequest,
     StoredEditJob,
     apply_gpt_highlight_rerank,
+    build_agent_editing_context,
+    get_template_pack_for_plan,
     rank_clips,
+    summarize_clip_pool,
     validate_edit_plan_patch,
 )
 
@@ -312,13 +315,19 @@ def _build_openai_payload(
 ) -> Dict[str, Any]:
     sampled_clip_ids = {clip.id for clip in sampled_clips}
     candidate_frames = [frame for frame in sampled_frames if frame.clip_id in sampled_clip_ids]
+    template = get_template_pack_for_plan(request.preset, request.templateId)
     template_context = {
         "preset": request.preset,
-        "templateId": request.templateId,
+        "templateId": template.templateId,
         "targetDurationSeconds": request.targetDurationSeconds,
         "aspectRatio": request.aspectRatio,
         "planTier": request.planTier,
     }
+    agent_template_context = build_agent_editing_context(
+        template.templateId,
+        summarize_clip_pool(sampled_clips),
+        sampled_clips,
+    )
     compact_clips = [
         {
             "clipId": clip.id,
@@ -332,7 +341,7 @@ def _build_openai_payload(
             "confidence": clip.confidence,
             "watchabilityScore": clip.watchability,
             "duplicateGroup": clip.duplicateGroup,
-            "templateId": request.templateId or template_context["templateId"],
+            "templateId": template.templateId,
             "planTier": request.planTier,
             "sampledKeyframes": [
                 {"role": frame.role, "time": frame.time_seconds}
@@ -349,6 +358,7 @@ def _build_openai_payload(
                 {
                     "task": "Rerank existing HoopClips basketball highlight candidates. Use only these clip IDs. Do not invent clips or exact timestamps.",
                     "templateContext": template_context,
+                    "agentTemplateCookbook": agent_template_context,
                     "clips": compact_clips,
                     "planEdit": "After selecting clips, propose final ordering, pacing, captions, and slow-motion moments as planEdit JSON.",
                 },

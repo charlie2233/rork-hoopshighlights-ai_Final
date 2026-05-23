@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 
 from app.config import Settings
 from app.editing import (
+    AGENT_TEMPLATE_COOKBOOK_REGISTRY,
     CreateEditJobRequest,
     EditPlanPatch,
     EditPlanPatchOperation,
@@ -22,12 +23,15 @@ from app.editing import (
     TEMPLATE_PACK_REGISTRY,
     apply_gpt_highlight_rerank,
     apply_edit_plan_patch,
+    build_agent_editing_context,
     build_revision_response,
     build_edit_job,
     build_edit_plan,
+    get_template_pack_for_plan,
     remove_duplicate_moments,
     repair_edit_plan,
     revise_edit_job,
+    validate_agent_template_cookbook_registry,
     validate_edit_plan,
     validate_edit_plan_patch,
     validate_template_pack,
@@ -158,6 +162,46 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertTrue(all(not errors for errors in validation.values()))
         self.assertEqual(TEMPLATE_PACK_REGISTRY["full_game_highlight_v1"].captionStyle.styleId, "clean_scorebug")
         self.assertTrue(TEMPLATE_PACK_REGISTRY["cinematic_mixtape_pro_v1"].premiumOnly)
+
+    def test_agent_template_cookbook_registry_matches_template_packs(self) -> None:
+        validation = validate_agent_template_cookbook_registry()
+
+        self.assertEqual(set(validation.keys()), set(TEMPLATE_PACK_REGISTRY.keys()))
+        self.assertEqual(set(AGENT_TEMPLATE_COOKBOOK_REGISTRY.keys()), set(TEMPLATE_PACK_REGISTRY.keys()))
+        self.assertTrue(all(not errors for errors in validation.values()))
+        self.assertFalse(AGENT_TEMPLATE_COOKBOOK_REGISTRY["recruiting_reel_pro_v1"].enabledForFree)
+        self.assertTrue(AGENT_TEMPLATE_COOKBOOK_REGISTRY["personal_highlight_v1"].enabledForFree)
+        self.assertIn("clear individual skill", AGENT_TEMPLATE_COOKBOOK_REGISTRY["recruiting_reel_pro_v1"].selectionRules.prefer)
+
+    def test_default_template_lookup_does_not_promote_free_presets_to_pro_templates(self) -> None:
+        self.assertEqual(get_template_pack_for_plan("personal_highlight").templateId, "personal_highlight_v1")
+        self.assertEqual(get_template_pack_for_plan("full_game_highlight").templateId, "full_game_highlight_v1")
+        self.assertEqual(get_template_pack_for_plan("coach_review").templateId, "coach_review_v1")
+
+    def test_agent_editing_context_is_compact_and_template_specific(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                templateId="cinematic_mixtape_pro_v1",
+                targetDurationSeconds=45,
+                planTier="internal",
+            )
+        )
+
+        context = build_agent_editing_context(
+            request.templateId,
+            {"clipCount": len(request.clips), "totalCandidateDuration": 35.0, "topLabels": ["Dunk"], "duplicateGroups": 1},
+            request.clips,
+        )
+
+        self.assertEqual(context["templateId"], "cinematic_mixtape_pro_v1")
+        self.assertEqual(context["rendererTemplateDefaults"]["captionStyle"], "cinematic_hype")
+        self.assertEqual(context["templateCookbookRules"]["orderingRules"]["opener"], "one_of_top_2_clips")
+        self.assertIn("COLD.", context["templateCookbookRules"]["captionRules"]["examples"])
+        self.assertEqual(context["candidateClips"][0]["clipId"], "c1")
+        serialized = str(context)
+        self.assertNotIn("sourceObjectKey", serialized)
+        self.assertNotIn("downloadUrl", serialized)
+        self.assertNotIn("presigned", serialized.lower())
 
     def test_free_plan_rejects_premium_template_pack(self) -> None:
         request = CreateEditJobRequest(**_request_payload(templateId="cinematic_mixtape_pro_v1", targetDurationSeconds=30))

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+import json
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Sequence, Tuple
 
@@ -383,6 +384,93 @@ class TemplatePack(APIModel):
         return self
 
 
+AgentCropFocus = Literal["center_action", "ball", "rim", "shooter", "team", "source"]
+
+
+class AgentSelectionRules(APIModel):
+    prefer: List[str] = Field(default_factory=list, max_length=20)
+    prioritize: List[str] = Field(default_factory=list, max_length=12)
+
+
+class AgentRejectionRules(APIModel):
+    reject: List[str] = Field(default_factory=list, max_length=20)
+
+
+class AgentOrderingRules(APIModel):
+    strategy: str = Field(min_length=1, max_length=80)
+    opener: str = Field(min_length=1, max_length=80)
+    peak: str = Field(min_length=1, max_length=80)
+    closer: str = Field(min_length=1, max_length=80)
+
+
+class AgentCaptionRules(APIModel):
+    density: Literal["minimal", "clean", "medium", "medium_high", "high"]
+    tone: str = Field(min_length=1, max_length=80)
+    examples: List[str] = Field(default_factory=list, max_length=12)
+    maxCaptionLength: int = Field(default=MAX_CAPTION_LENGTH, gt=0, le=MAX_CAPTION_LENGTH)
+
+
+class AgentEffectRules(APIModel):
+    slowMotionIntensity: str = Field(min_length=1, max_length=40)
+    punchZoom: bool = False
+    speedRamp: bool = False
+    lowerThird: bool = False
+    maxSlowMoMoments: int = Field(ge=0, le=12)
+
+
+class AgentAudioRules(APIModel):
+    musicProfile: str = Field(min_length=1, max_length=80)
+    gameAudioVolume: float = Field(ge=0.0, le=1.0)
+    musicVolume: float = Field(ge=0.0, le=1.0)
+
+
+class AgentTargetDurationRules(APIModel):
+    defaultAspectRatio: AspectRatio
+    targetDurations: List[int] = Field(min_length=1, max_length=8)
+    minClipDuration: float = Field(ge=MIN_PLAN_CLIP_SECONDS, le=20.0)
+    maxClipDuration: float = Field(ge=MIN_PLAN_CLIP_SECONDS, le=20.0)
+
+    @model_validator(mode="after")
+    def validate_clip_window(self) -> "AgentTargetDurationRules":
+        if self.maxClipDuration < self.minClipDuration:
+            raise ValueError("maxClipDuration must be >= minClipDuration")
+        return self
+
+
+class AgentCropRules(APIModel):
+    defaultFocus: AgentCropFocus = "center_action"
+    allowedFocus: List[AgentCropFocus] = Field(default_factory=list, max_length=8)
+
+    @model_validator(mode="after")
+    def validate_default_focus(self) -> "AgentCropRules":
+        if self.defaultFocus not in self.allowedFocus:
+            raise ValueError("defaultFocus must be present in allowedFocus")
+        return self
+
+
+class AgentStoryRules(APIModel):
+    storyArc: str = Field(min_length=1, max_length=80)
+    notes: List[str] = Field(default_factory=list, max_length=12)
+
+
+class AgentTemplateCookbook(APIModel):
+    templateId: TemplateId
+    agentStyleIntent: str = Field(min_length=1, max_length=240)
+    selectionRules: AgentSelectionRules
+    rejectionRules: AgentRejectionRules
+    orderingRules: AgentOrderingRules
+    captionRules: AgentCaptionRules
+    effectRules: AgentEffectRules
+    audioRules: AgentAudioRules
+    targetDurationRules: AgentTargetDurationRules
+    cropRules: AgentCropRules
+    storyRules: AgentStoryRules
+    planTier: PlanTier
+    enabledForFree: bool
+    enabledForPro: bool
+    enabledForInternal: bool
+
+
 TEMPLATE_PACK_REGISTRY: Dict[str, TemplatePack] = {
     "personal_highlight_v1": TemplatePack(
         templateId="personal_highlight_v1",
@@ -560,8 +648,67 @@ TEMPLATE_PACK_REGISTRY: Dict[str, TemplatePack] = {
 
 
 TEMPLATE_BY_PRESET: Dict[str, str] = {
-    template.presetId: template.templateId for template in TEMPLATE_PACK_REGISTRY.values()
+    "personal_highlight": "personal_highlight_v1",
+    "full_game_highlight": "full_game_highlight_v1",
+    "coach_review": "coach_review_v1",
+    "fast_break_mix": "personal_highlight_v1",
+    "best_five": "personal_highlight_v1",
 }
+
+AGENT_COOKBOOK_DIR = REPO_ROOT / "services" / "editing" / "templates" / "agent_cookbook"
+
+
+def _load_agent_template_cookbooks() -> Dict[str, AgentTemplateCookbook]:
+    registry: Dict[str, AgentTemplateCookbook] = {}
+    if not AGENT_COOKBOOK_DIR.exists():
+        return registry
+    for path in sorted(AGENT_COOKBOOK_DIR.glob("*.json")):
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        cookbook = AgentTemplateCookbook(**payload)
+        registry[cookbook.templateId] = cookbook
+    return registry
+
+
+AGENT_TEMPLATE_COOKBOOK_REGISTRY: Dict[str, AgentTemplateCookbook] = _load_agent_template_cookbooks()
+
+
+def get_agent_template_cookbook(template_id: Optional[str]) -> AgentTemplateCookbook:
+    template = get_template_pack(template_id)
+    cookbook = AGENT_TEMPLATE_COOKBOOK_REGISTRY.get(template.templateId)
+    if cookbook is not None:
+        return cookbook
+    return AgentTemplateCookbook(
+        templateId=template.templateId,
+        agentStyleIntent=template.description,
+        selectionRules=AgentSelectionRules(prefer=[template.bestFor], prioritize=[template.ordering]),
+        rejectionRules=AgentRejectionRules(reject=["unclear outcome", "dead ball", "duplicate moments"]),
+        orderingRules=AgentOrderingRules(strategy=template.ordering, opener="highest_confidence_clip", peak="highest_highlight_score", closer="strong_clear_outcome"),
+        captionRules=AgentCaptionRules(density="clean", tone=template.captionStyle.displayName, examples=[]),
+        effectRules=AgentEffectRules(
+            slowMotionIntensity=template.effectProfile.slowMotionIntensity,
+            punchZoom="punch_zoom" in template.effectProfile.allowedEffects,
+            speedRamp="speed_ramp" in template.effectProfile.allowedEffects,
+            lowerThird="lower_third" in template.effectProfile.allowedEffects,
+            maxSlowMoMoments=template.effectProfile.maxSlowMotionClips,
+        ),
+        audioRules=AgentAudioRules(
+            musicProfile=template.audioProfile.profileId,
+            gameAudioVolume=template.audioProfile.gameAudioVolume,
+            musicVolume=template.audioProfile.musicVolume,
+        ),
+        targetDurationRules=AgentTargetDurationRules(
+            defaultAspectRatio=template.defaultAspectRatio,
+            targetDurations=template.targetDurations,
+            minClipDuration=template.clipLength.minSeconds,
+            maxClipDuration=template.clipLength.maxSeconds,
+        ),
+        cropRules=AgentCropRules(defaultFocus="center_action", allowedFocus=["center_action", "ball", "rim", "shooter", "team", "source"]),
+        storyRules=AgentStoryRules(storyArc=template.ordering, notes=[template.description]),
+        planTier="pro" if template.premiumOnly else "free",
+        enabledForFree=not template.premiumOnly,
+        enabledForPro=True,
+        enabledForInternal=True,
+    )
 
 
 def get_template_pack(template_id: Optional[str]) -> TemplatePack:
@@ -1011,6 +1158,93 @@ def validate_template_registry() -> Dict[str, List[EditPlanValidationIssue]]:
     return {template_id: validate_template_pack(template) for template_id, template in TEMPLATE_PACK_REGISTRY.items()}
 
 
+class AgentTemplateCookbookValidator:
+    @classmethod
+    def validate(cls, cookbook: AgentTemplateCookbook) -> List[EditPlanValidationIssue]:
+        errors: List[EditPlanValidationIssue] = []
+
+        def add(field: str, code: str, message: str) -> None:
+            errors.append(EditPlanValidationIssue(field=field, code=code, message=message))
+
+        template = TEMPLATE_PACK_REGISTRY.get(cookbook.templateId)
+        if template is None:
+            add("templateId", "missing_template_pack", "Cookbook references an unknown TemplatePack.")
+            return errors
+
+        if template.premiumOnly and cookbook.enabledForFree:
+            add("enabledForFree", "premium_cookbook_unlocked_for_free", "Premium cookbook templates must be locked for Free.")
+        if not template.premiumOnly and not cookbook.enabledForFree:
+            add("enabledForFree", "free_template_locked", "Base cookbook templates must remain available for Free.")
+        if template.premiumOnly and cookbook.planTier == "free":
+            add("planTier", "premium_cookbook_free_tier", "Premium cookbook templates must not declare Free as their primary tier.")
+        if not cookbook.enabledForPro or not cookbook.enabledForInternal:
+            add("planTier", "cookbook_not_available_to_paid_or_internal", "Cookbook templates must be available to Pro and internal plans.")
+
+        if cookbook.targetDurationRules.defaultAspectRatio not in template.allowedAspectRatios:
+            add("targetDurationRules.defaultAspectRatio", "invalid_aspect_ratio", "Cookbook default aspect ratio must be allowed by the TemplatePack.")
+        unsupported_durations = set(cookbook.targetDurationRules.targetDurations) - set(template.targetDurations)
+        if unsupported_durations:
+            add("targetDurationRules.targetDurations", "unsupported_target_duration", "Cookbook target durations must be supported by the TemplatePack.")
+        if cookbook.targetDurationRules.minClipDuration < template.clipLength.minSeconds:
+            add("targetDurationRules.minClipDuration", "clip_duration_too_short", "Cookbook minimum clip duration must respect TemplatePack bounds.")
+        if cookbook.targetDurationRules.maxClipDuration > template.clipLength.maxSeconds:
+            add("targetDurationRules.maxClipDuration", "clip_duration_too_long", "Cookbook maximum clip duration must respect TemplatePack bounds.")
+
+        if template.captionStyle.styleId not in TemplatePackValidator.supported_caption_styles:
+            add("captionRules", "unsupported_caption_style", "Cookbook must map to a renderer-supported caption style.")
+        for index, example in enumerate(cookbook.captionRules.examples):
+            if len(example) > cookbook.captionRules.maxCaptionLength:
+                add(f"captionRules.examples[{index}]", "caption_too_long", "Cookbook caption examples must fit the backend caption limit.")
+
+        if cookbook.effectRules.punchZoom and "punch_zoom" not in template.effectProfile.allowedEffects:
+            add("effectRules.punchZoom", "unsupported_effect", "Cookbook requested punch zoom but TemplatePack does not allow it.")
+        if cookbook.effectRules.speedRamp and "speed_ramp" not in template.effectProfile.allowedEffects:
+            add("effectRules.speedRamp", "unsupported_effect", "Cookbook requested speed ramp but TemplatePack does not allow it.")
+        if cookbook.effectRules.lowerThird and "lower_third" not in template.effectProfile.allowedEffects:
+            add("effectRules.lowerThird", "unsupported_effect", "Cookbook requested lower-third treatment but TemplatePack does not allow it.")
+        if cookbook.effectRules.maxSlowMoMoments > template.effectProfile.maxSlowMotionClips:
+            add("effectRules.maxSlowMoMoments", "too_many_slow_mo_moments", "Cookbook slow-motion cap must not exceed TemplatePack render policy.")
+
+        if cookbook.audioRules.musicProfile != template.audioProfile.profileId:
+            add("audioRules.musicProfile", "audio_profile_mismatch", "Cookbook audio profile must match the TemplatePack audio profile.")
+        if cookbook.audioRules.gameAudioVolume != template.audioProfile.gameAudioVolume:
+            add("audioRules.gameAudioVolume", "audio_volume_mismatch", "Cookbook game audio volume must match TemplatePack defaults.")
+        if cookbook.audioRules.musicVolume != template.audioProfile.musicVolume:
+            add("audioRules.musicVolume", "audio_volume_mismatch", "Cookbook music volume must match TemplatePack defaults.")
+
+        return errors
+
+
+def validate_agent_template_cookbook(cookbook: AgentTemplateCookbook) -> List[EditPlanValidationIssue]:
+    return AgentTemplateCookbookValidator.validate(cookbook)
+
+
+def validate_agent_template_cookbook_registry() -> Dict[str, List[EditPlanValidationIssue]]:
+    validation: Dict[str, List[EditPlanValidationIssue]] = {
+        template_id: validate_agent_template_cookbook(cookbook)
+        for template_id, cookbook in AGENT_TEMPLATE_COOKBOOK_REGISTRY.items()
+    }
+    for template_id in TEMPLATE_PACK_REGISTRY:
+        if template_id not in AGENT_TEMPLATE_COOKBOOK_REGISTRY:
+            validation[template_id] = [
+                EditPlanValidationIssue(
+                    field="templateId",
+                    code="missing_agent_cookbook",
+                    message="Every TemplatePack must have a matching AgentTemplateCookbook.",
+                )
+            ]
+    for template_id in AGENT_TEMPLATE_COOKBOOK_REGISTRY:
+        if template_id not in TEMPLATE_PACK_REGISTRY:
+            validation.setdefault(template_id, []).append(
+                EditPlanValidationIssue(
+                    field="templateId",
+                    code="orphan_agent_cookbook",
+                    message="AgentTemplateCookbook must match a TemplatePack.",
+                )
+            )
+    return validation
+
+
 class EditJobResponse(APIModel):
     editJobId: str
     videoId: str
@@ -1103,6 +1337,83 @@ def summarize_clip_pool(clips: Sequence[EditCandidateClip]) -> Dict[str, object]
         "totalCandidateDuration": round(sum(clip.duration for clip in clips), 2),
         "topLabels": [label for label, _ in sorted(labels.items(), key=lambda item: item[1], reverse=True)[:5]],
         "duplicateGroups": len(duplicate_groups),
+    }
+
+
+def _clip_pool_summary_payload(clip_pool_summary: object) -> Dict[str, object]:
+    if isinstance(clip_pool_summary, EditClipPoolSummary):
+        return clip_pool_summary.model_dump(mode="json")
+    if isinstance(clip_pool_summary, dict):
+        return {
+            "clipCount": int(clip_pool_summary.get("clipCount", 0)),
+            "totalCandidateDuration": float(clip_pool_summary.get("totalCandidateDuration", 0.0)),
+            "topLabels": list(clip_pool_summary.get("topLabels", []))[:5],
+            "duplicateGroups": int(clip_pool_summary.get("duplicateGroups", 0)),
+        }
+    return {"clipCount": 0, "totalCandidateDuration": 0.0, "topLabels": [], "duplicateGroups": 0}
+
+
+def _compact_agent_candidate_clip(clip: EditCandidateClip) -> Dict[str, object]:
+    return {
+        "clipId": clip.id,
+        "start": round(clip.start, 3),
+        "end": round(clip.end, 3),
+        "duration": round(clip.duration, 3),
+        "eventCenter": round(clip.eventCenter, 3),
+        "existingLabel": clip.label,
+        "confidence": clip.confidence,
+        "motionScore": clip.motionScore,
+        "audioPeak": clip.audioPeak,
+        "watchabilityScore": clip.watchability,
+        "duplicateGroup": clip.duplicateGroup,
+    }
+
+
+def build_agent_editing_context(
+    templateId: Optional[str],
+    clipPoolSummary: object,
+    candidateClips: Sequence[EditCandidateClip],
+) -> Dict[str, object]:
+    template = get_template_pack(templateId)
+    cookbook = get_agent_template_cookbook(template.templateId)
+    return {
+        "templateId": template.templateId,
+        "agentStyleIntent": cookbook.agentStyleIntent,
+        "planTier": cookbook.planTier,
+        "enabledForFree": cookbook.enabledForFree,
+        "enabledForPro": cookbook.enabledForPro,
+        "enabledForInternal": cookbook.enabledForInternal,
+        "templateCookbookRules": {
+            "selectionRules": cookbook.selectionRules.model_dump(mode="json"),
+            "rejectionRules": cookbook.rejectionRules.model_dump(mode="json"),
+            "orderingRules": cookbook.orderingRules.model_dump(mode="json"),
+            "captionRules": cookbook.captionRules.model_dump(mode="json"),
+            "effectRules": cookbook.effectRules.model_dump(mode="json"),
+            "audioRules": cookbook.audioRules.model_dump(mode="json"),
+            "targetDurationRules": cookbook.targetDurationRules.model_dump(mode="json"),
+            "cropRules": cookbook.cropRules.model_dump(mode="json"),
+            "storyRules": cookbook.storyRules.model_dump(mode="json"),
+        },
+        "rendererTemplateDefaults": {
+            "displayName": template.displayName,
+            "defaultAspectRatio": template.defaultAspectRatio,
+            "allowedAspectRatios": template.allowedAspectRatios,
+            "targetDurations": template.targetDurations,
+            "captionStyle": template.captionStyle.styleId,
+            "captionDensity": template.captionStyle.density,
+            "allowedEffects": template.effectProfile.allowedEffects,
+            "maxSlowMotionClips": template.effectProfile.maxSlowMotionClips,
+            "slowMotionIntensity": template.effectProfile.slowMotionIntensity,
+            "audioProfile": template.audioProfile.profileId,
+            "clipLength": {
+                "minSeconds": template.clipLength.minSeconds,
+                "targetSeconds": template.clipLength.targetSeconds,
+                "maxSeconds": template.clipLength.maxSeconds,
+            },
+            "premiumOnly": template.premiumOnly,
+        },
+        "clipPoolSummary": _clip_pool_summary_payload(clipPoolSummary),
+        "candidateClips": [_compact_agent_candidate_clip(clip) for clip in rank_clips(candidateClips)[:30]],
     }
 
 
