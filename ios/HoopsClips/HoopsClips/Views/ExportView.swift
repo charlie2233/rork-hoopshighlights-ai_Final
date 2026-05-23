@@ -949,21 +949,26 @@ struct ExportView: View {
                 .accessibilityLabel("Exporting highlight reel")
                 .accessibilityValue("\(Int(viewModel.exportService.exportProgress * 100)) percent. \(viewModel.exportService.statusMessage)")
             } else {
+                let cloudRenderRequired = AppConstants.requiresCloudVideoPipeline
                 Button {
                     exportTrigger += 1
                     if hasLockedSelections {
                         showingPaywall = true
                         return
                     }
+                    if cloudRenderRequired {
+                        viewModel.exportService.markUnavailable("Cloud rendering is required for this build. Use AI Edit to render, preview, download, or share.")
+                        return
+                    }
                     Task { await viewModel.exportHighlights(isProUser: subscriptionManager.isProUser) }
                 } label: {
                     HStack(spacing: 12) {
-                        Image(systemName: hasLockedSelections ? "lock.fill" : "square.and.arrow.up.fill")
+                        Image(systemName: exportButtonIcon(isCloudRequired: cloudRenderRequired))
                             .font(.title3)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(hasLockedSelections ? "Unlock Pro to Export" : "Export Highlight Reel")
+                            Text(exportButtonTitle(isCloudRequired: cloudRenderRequired))
                                 .font(.headline)
-                            Text("\(viewModel.selectedTheme.rawValue) • \(viewModel.selectedQuality.rawValue) • \(viewModel.selectedFormat.rawValue)")
+                            Text(exportButtonSubtitle(isCloudRequired: cloudRenderRequired))
                                 .font(.caption)
                                 .opacity(0.72)
                                 .lineLimit(1)
@@ -981,9 +986,9 @@ struct ExportView: View {
                         .stroke(AppTheme.neonPurple.opacity(0.25), lineWidth: 1)
                 )
                 .sensoryFeedback(.impact(weight: .heavy), trigger: exportTrigger)
-                .accessibilityLabel(hasLockedSelections ? "Unlock Pro to export" : "Export highlight reel")
+                .accessibilityLabel(exportButtonAccessibilityLabel(isCloudRequired: cloudRenderRequired))
                 .accessibilityValue("\(viewModel.selectedTheme.rawValue), \(viewModel.selectedQuality.rawValue), \(viewModel.selectedFormat.rawValue)")
-                .accessibilityHint(hasLockedSelections ? "Selected options include Pro-only features and will open the paywall." : "Creates a video from kept clips.")
+                .accessibilityHint(exportButtonAccessibilityHint(isCloudRequired: cloudRenderRequired))
             }
         }
     }
@@ -1001,6 +1006,44 @@ struct ExportView: View {
             startPoint: .topLeading,
             endPoint: .bottomTrailing
         )
+    }
+
+    private func exportButtonIcon(isCloudRequired: Bool) -> String {
+        if hasLockedSelections {
+            return "lock.fill"
+        }
+        return isCloudRequired ? "sparkles.tv.fill" : "square.and.arrow.up.fill"
+    }
+
+    private func exportButtonTitle(isCloudRequired: Bool) -> String {
+        if hasLockedSelections {
+            return "Unlock Pro to Export"
+        }
+        return isCloudRequired ? "Use AI Edit to Render" : "Export Highlight Reel"
+    }
+
+    private func exportButtonSubtitle(isCloudRequired: Bool) -> String {
+        if isCloudRequired {
+            return "Cloud rendering handles final MP4 output"
+        }
+        return "\(viewModel.selectedTheme.rawValue) • \(viewModel.selectedQuality.rawValue) • \(viewModel.selectedFormat.rawValue)"
+    }
+
+    private func exportButtonAccessibilityLabel(isCloudRequired: Bool) -> String {
+        if hasLockedSelections {
+            return "Unlock Pro to export"
+        }
+        return isCloudRequired ? "Use AI Edit to render" : "Export highlight reel"
+    }
+
+    private func exportButtonAccessibilityHint(isCloudRequired: Bool) -> String {
+        if hasLockedSelections {
+            return "Selected options include Pro-only features and will open the paywall."
+        }
+        if isCloudRequired {
+            return "Cloud rendering is required for this build. Use AI Edit to render, preview, download, or share."
+        }
+        return "Creates a video from kept clips."
     }
 
     private var editorShareHelperText: String {

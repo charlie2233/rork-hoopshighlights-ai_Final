@@ -488,7 +488,11 @@ struct VideoPlayerView: View {
                 }
                 .sensoryFeedback(.impact(weight: .medium), trigger: analysisStarted)
 
-                estimatedTimeView
+                if AppConstants.requiresCloudVideoPipeline {
+                    cloudAnalysisPathView
+                } else {
+                    estimatedTimeView
+                }
             }
         }
         .padding(16)
@@ -648,6 +652,20 @@ struct VideoPlayerView: View {
                 .foregroundStyle(AppTheme.subtleText)
             let estimatedSeconds = Int(max(viewModel.videoDuration * 0.42, 12))
             Text("\(languageStore.text(.estimated)): ~\(estimatedSeconds)s \(languageStore.text(.analysis))")
+                .font(.caption)
+                .foregroundStyle(AppTheme.subtleText)
+            Spacer()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .rorkCard(cornerRadius: 12, fill: AnyShapeStyle(AppTheme.surfaceBg.opacity(0.65)), stroke: AppTheme.softBorder, glowOpacity: 0.03)
+    }
+
+    private var cloudAnalysisPathView: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "cloud.fill")
+                .foregroundStyle(AppTheme.subtleText)
+            Text("Cloud analysis runs in HoopClips backend for this build.")
                 .font(.caption)
                 .foregroundStyle(AppTheme.subtleText)
             Spacer()
