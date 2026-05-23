@@ -12,9 +12,10 @@ on:
       operation:
         description: "Staging operation to run after preflight."
         required: true
-        default: preflight
+        default: codecheck
         type: choice
         options:
+          - codecheck
           - preflight
           - deploy
           - rollback
@@ -55,7 +56,7 @@ jobs:
   deploy-preflight:
     name: Verify cloud edit deploy secrets
     needs: worker-dry-run
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && inputs.operation != 'codecheck'
     runs-on: ubuntu-latest
     environment: staging
     env:

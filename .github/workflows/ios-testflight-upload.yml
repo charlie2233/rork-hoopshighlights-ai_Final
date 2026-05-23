@@ -1,14 +1,23 @@
 name: iOS Internal TestFlight Upload
 
 on:
+  pull_request:
+    paths:
+      - .github/workflows/ios-testflight-upload.yml
+      - ios/HoopsClips.xcodeproj/**
+      - ios/HoopsClips/HoopsClips/**
+      - ios/exportOptions.testflight-internal.plist
+      - ios/scripts/materialize_local_secrets.sh
+      - ios/scripts/verify_internal_staging_config.sh
   workflow_dispatch:
     inputs:
       operation:
         description: "Internal TestFlight operation to run."
         required: true
-        default: preflight
+        default: codecheck
         type: choice
         options:
+          - codecheck
           - preflight
           - archive
           - upload
@@ -17,8 +26,47 @@ permissions:
   contents: read
 
 jobs:
+  internal-staging-codecheck:
+    name: No-secret internal staging codecheck
+    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.operation == 'codecheck')
+    runs-on: macos-26
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Print Xcode version
+        run: xcodebuild -version
+
+      - name: Verify internal staging build settings without signing
+        run: bash ios/scripts/verify_internal_staging_config.sh
+
+      - name: Validate internal TestFlight export options
+        run: plutil -lint ios/exportOptions.testflight-internal.plist
+
+      - name: Build Debug tests without signing
+        run: |
+          set -euo pipefail
+          xcodebuild build-for-testing \
+            -project ios/HoopsClips.xcodeproj \
+            -scheme HoopsClips \
+            -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/hoopclips-codecheck-derived" \
+            CODE_SIGNING_ALLOWED=NO \
+            -skipPackagePluginValidation
+
+      - name: Print codecheck summary
+        run: |
+          set -euo pipefail
+          cat <<'SUMMARY'
+          No-secret codecheck completed.
+          This proves internal staging build settings, export-options syntax, and unsigned Debug test compilation only.
+          It does not create a signed archive, upload to App Store Connect, or prove installed TestFlight smoke.
+          SUMMARY
+
   internal-testflight:
     name: Build internal staging TestFlight archive
+    if: github.event_name == 'workflow_dispatch' && inputs.operation != 'codecheck'
     runs-on: macos-26
     environment: staging
     env:
