@@ -340,3 +340,34 @@ Submission blockers still open:
 - GitHub `staging` environment still needs deploy inputs before the manual deploy/rollback workflow can prove Wrangler scope.
 - No live Worker deploy job ID, Worker version ID, rollback job ID, or Cloud Run image/revision ID exists for this source.
 - Installed TestFlight physical-device smoke remains unproven from this environment.
+
+## 2026-05-23 Current PR Evidence
+
+Commit: `309f2c860f2ad1f8d495ccbe23199cce72a97c26`
+
+GitHub Actions:
+
+- PR #3: `https://github.com/charlie2233/rork-hoopshighlights-ai_Final/pull/3`
+- Run ID: `26341526621`
+- Workflow: `Cloud Edit Deploy Preflight`
+- `Worker typecheck and dry run`: passed
+- `Verify cloud edit deploy secrets`: skipped on `pull_request`, as expected
+- PR merge state after the run: `CLEAN`
+
+External blocker refresh:
+
+```sh
+curl -sS -D /tmp/hoopclips-worker-version-refresh.headers -o /tmp/hoopclips-worker-version-refresh.json -w '%{http_code}' https://hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev/v1/editing/version
+curl -sS -D /tmp/hoopclips-editing-version-refresh.headers -o /tmp/hoopclips-editing-version-refresh.json -w '%{http_code}' https://hoopclips-editing-staging-npya43jiia-uc.a.run.app/version
+gh secret list --repo charlie2233/rork-hoopshighlights-ai_Final --env staging --json name,updatedAt --jq '.[] | .name'
+gh variable list --repo charlie2233/rork-hoopshighlights-ai_Final --env staging --json name,updatedAt --jq '.[] | .name'
+```
+
+Results:
+
+- Staging Worker `/v1/editing/version`: `404`, `Route not found.`
+- Direct editing Cloud Run `/version`: `200`, with `aiEditEnabled`, `aiEditRevisionEnabled`, and `aiEditTemplatePackEnabled` true; `aiEditProExportsEnabled` false.
+- GitHub `staging` secret-name list: empty.
+- GitHub `staging` variable-name list: empty.
+
+Submission decision: do not submit to App Store/TestFlight from this state.
