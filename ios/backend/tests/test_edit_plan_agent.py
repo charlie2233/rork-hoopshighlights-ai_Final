@@ -264,16 +264,61 @@ class EditPlanAgentTests(unittest.TestCase):
             ),
         ]
 
-        reranked = apply_gpt_highlight_rerank(request, decisions, "gpt-test", 3, 9)
+        reranked = apply_gpt_highlight_rerank(request, decisions, "gpt-test", 3, 9, story_order=["c3", "c999", "c1"])
         plan = build_edit_plan(reranked, "edit_gpt_reranked")
 
         self.assertEqual(reranked.gptRerankSummary.status, "applied")
         self.assertIn("c3", reranked.gptRerankSummary.keptClipIds)
         self.assertIn("c1", reranked.gptRerankSummary.rejectedClipIds)
+        self.assertEqual(reranked.gptRerankSummary.storyOrderClipIds, ["c3"])
         self.assertNotIn("c999", [clip.id for clip in reranked.clips])
         self.assertEqual(plan.clips[0].clipId, "c3")
         self.assertEqual(plan.clips[0].caption, "BIG FINISH")
         self.assertTrue(any(effect.type == "slow_motion" for effect in plan.clips[0].effects))
+
+    def test_gpt_highlight_story_order_feeds_best_first_edit_plan(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                clips=[
+                    _clip("c1", 0.0, "Fast Break", 0.99),
+                    _clip("c2", 10.0, "Made Shot", 0.92),
+                    _clip("c3", 20.0, "Dunk", 0.75),
+                ]
+            )
+        )
+        decisions = [
+            GPTHighlightClipDecision(
+                clipId=clip_id,
+                keep=True,
+                highlightScore=score,
+                watchabilityScore=score,
+                basketballEvent="Highlight",
+                outcome="made",
+                caption=caption,
+                reason="Clear candidate.",
+                suggestedEdit=GPTHighlightSuggestedEdit(),
+            )
+            for clip_id, score, caption in [
+                ("c1", 0.99, "FIRST"),
+                ("c2", 0.92, "SECOND"),
+                ("c3", 0.75, "THIRD"),
+            ]
+        ]
+
+        reranked = apply_gpt_highlight_rerank(
+            request,
+            decisions,
+            "gpt-test",
+            sampled_clip_count=3,
+            sampled_frame_count=9,
+            story_order=["c3", "c2", "c999"],
+        )
+        plan = build_edit_plan(reranked, "edit_gpt_story_order")
+
+        self.assertEqual([clip.id for clip in reranked.clips[:2]], ["c3", "c2"])
+        self.assertEqual(reranked.gptRerankSummary.storyOrderClipIds, ["c3", "c2"])
+        self.assertEqual([clip.clipId for clip in plan.clips[:2]], ["c3", "c2"])
+        self.assertEqual(plan.clips[0].caption, "THIRD")
 
     def test_gpt_highlight_rerank_clamps_hints_and_biases_source_window(self) -> None:
         request = CreateEditJobRequest(

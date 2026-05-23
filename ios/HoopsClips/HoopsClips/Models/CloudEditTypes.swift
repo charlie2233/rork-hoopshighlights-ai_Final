@@ -485,6 +485,7 @@ struct CloudEditWorkReceipt: Codable, Sendable {
     let gptRerankSampledFrameCount: Int?
     let gptRerankKeptClipCount: Int?
     let gptRerankRejectedClipCount: Int?
+    let gptRerankStoryOrderClipIds: [String]?
     let gptRerankFallbackReason: String?
     let summaryRows: [String]
 }

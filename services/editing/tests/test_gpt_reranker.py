@@ -267,6 +267,71 @@ class GPTHighlightRerankerTests(unittest.TestCase):
 
         self.assertEqual(observed_calls, [(8, 3), (24, 5)])
 
+    def test_model_story_order_is_applied_to_reranked_request(self) -> None:
+        settings = GPTHighlightRerankerSettings(
+            enabled=True,
+            api_key="unit-test-key",
+            model="gpt-test",
+            endpoint="https://api.openai.test/v1/responses",
+            timeout_seconds=1.0,
+            max_output_tokens=512,
+            free_max_clips=8,
+            paid_max_clips=24,
+            free_frames_per_clip=3,
+            paid_frames_per_clip=5,
+            frame_width=512,
+            jpeg_quality=5,
+            max_image_bytes=180_000,
+            image_detail="low",
+        )
+        original_extract = gpt_reranker._extract_candidate_keyframes
+
+        def fake_extract(source_path, clips, frames_per_clip, rerank_settings):
+            return [
+                SampledFrame(
+                    clip_id=clip.id,
+                    role="event_center",
+                    time_seconds=clip.eventCenter,
+                    data_url="data:image/jpeg;base64,ZmFrZQ==",
+                )
+                for clip in clips[:3]
+            ]
+
+        def fake_response_client(payload, api_key, endpoint, timeout_seconds):
+            clip_ids = [clip["clipId"] for clip in json.loads(payload["input"][0]["content"][0]["text"])["clips"][:3]]
+            decisions = [
+                {
+                    "clipId": clip_id,
+                    "keep": True,
+                    "highlightScore": 0.8,
+                    "watchabilityScore": 0.8,
+                    "basketballEvent": "Made Shot",
+                    "outcome": "made",
+                    "caption": clip_id.upper(),
+                    "reason": "Clear outcome.",
+                    "suggestedEdit": {
+                        "slowMotion": False,
+                        "slowMotionCenter": None,
+                        "captionMoment": None,
+                        "cropFocus": "center_action",
+                        "extendBeforeSeconds": 0,
+                        "extendAfterSeconds": 0,
+                    },
+                }
+                for clip_id in clip_ids
+            ]
+            return {"output_text": json.dumps({"decisions": decisions, "storyOrder": [clip_ids[2], clip_ids[0]], "summary": "ok"})}
+
+        try:
+            gpt_reranker._extract_candidate_keyframes = fake_extract
+            with tempfile.NamedTemporaryFile(suffix=".mp4") as source:
+                reranked = gpt_reranker.rerank_edit_request_with_gpt(_request("free", 4), Path(source.name), settings, fake_response_client)
+        finally:
+            gpt_reranker._extract_candidate_keyframes = original_extract
+
+        self.assertEqual([clip.id for clip in reranked.clips[:2]], ["c2", "c0"])
+        self.assertEqual(reranked.gptRerankSummary.storyOrderClipIds, ["c2", "c0"])
+
 
 if __name__ == "__main__":
     unittest.main()
