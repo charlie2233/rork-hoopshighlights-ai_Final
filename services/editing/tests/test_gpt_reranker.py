@@ -125,6 +125,25 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertEqual(compact_input["agentTemplateCookbook"]["templateId"], "full_game_highlight_v1")
         self.assertEqual(compact_input["clips"][0]["templateId"], "full_game_highlight_v1")
 
+    def test_payload_includes_bounded_user_creative_direction(self) -> None:
+        settings = GPTHighlightRerankerSettings.from_env()
+        request = _request().model_copy(update={"userPrompt": "Make it more hype and focus on defense."})
+        frame = SampledFrame(
+            clip_id="c0",
+            role="start",
+            time_seconds=0.0,
+            data_url="data:image/jpeg;base64,ZmFrZQ==",
+        )
+
+        payload = _build_openai_payload(request, request.clips[:1], [frame], settings)
+        compact_input = json.loads(payload["input"][0]["content"][0]["text"])
+
+        self.assertEqual(compact_input["userCreativeDirection"], "Make it more hype and focus on defense.")
+        self.assertEqual(compact_input["templateContext"]["userCreativeDirection"], "Make it more hype and focus on defense.")
+        self.assertIn("Honor userCreativeDirection", payload["instructions"])
+        self.assertNotIn("sourceObjectKey", str(payload))
+        self.assertNotIn("uploads/source.mp4", str(payload))
+
     def test_revision_patch_payload_uses_agent_template_cookbook(self) -> None:
         settings = GPTHighlightRerankerSettings.from_env()
         request = _request("internal").model_copy(

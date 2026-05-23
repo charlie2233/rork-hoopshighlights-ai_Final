@@ -348,7 +348,8 @@ final class HighlightsViewModel {
         targetDurationSeconds: Int,
         aspectRatio: CloudEditAspectRatio? = nil,
         isProUser: Bool,
-        revenueCatAppUserID: String? = nil
+        revenueCatAppUserID: String? = nil,
+        userPrompt: String? = nil
     ) throws -> CreateCloudEditJobRequest {
         guard let sourceObjectKey = cloudEditSourceObjectKey else {
             throw CloudEditError.missingSourceObject
@@ -383,6 +384,7 @@ final class HighlightsViewModel {
             aspectRatio: aspectRatio ?? preset.aspectRatio,
             planTier: isProUser ? .pro : .free,
             revenueCatAppUserID: revenueCatAppUserID,
+            userPrompt: userPrompt,
             clips: Array(candidates)
         )
     }

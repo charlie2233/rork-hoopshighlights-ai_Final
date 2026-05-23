@@ -378,6 +378,7 @@ export interface CreateEditJobRequest {
   aspectRatio?: "9:16" | "16:9" | "source" | null;
   planTier?: EditPlanTier;
   revenueCatAppUserID?: string | null;
+  userPrompt?: string | null;
   clips: EditCandidateClip[];
 }
 

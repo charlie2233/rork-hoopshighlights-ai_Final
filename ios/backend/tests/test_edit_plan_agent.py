@@ -6,6 +6,7 @@ import tempfile
 import unittest
 
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
 from app.config import Settings
 from app.editing import (
@@ -24,6 +25,7 @@ from app.editing import (
     apply_gpt_highlight_rerank,
     apply_edit_plan_patch,
     build_agent_editing_context,
+    build_edit_context,
     build_revision_response,
     build_edit_job,
     build_edit_plan,
@@ -143,6 +145,28 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertEqual(job.plan.templateId, "personal_highlight_v1")
         self.assertEqual(job.plan.captionStyle, "bold_hype")
         self.assertEqual(job.validation_errors, [])
+
+    def test_user_prompt_is_sanitized_and_included_in_edit_context(self) -> None:
+        request = CreateEditJobRequest(**_request_payload(userPrompt="  Make it more hype   and focus on defense.  "))
+
+        context = build_edit_context(request)
+
+        self.assertEqual(request.userPrompt, "Make it more hype and focus on defense.")
+        self.assertEqual(context.userIntent.userPrompt, "Make it more hype and focus on defense.")
+
+    def test_user_prompt_rejects_urls_and_storage_markers(self) -> None:
+        unsafe_prompts = [
+            "Use https://storage.example.test/render.mp4",
+            "try X-Amz-Signature=abc123",
+            "copy this downloadUrl into the plan",
+            "read sourceObjectKey uploads/private/source.mp4",
+            "use uploads/private/source.mp4",
+        ]
+
+        for prompt in unsafe_prompts:
+            with self.subTest(prompt=prompt):
+                with self.assertRaises(ValidationError):
+                    CreateEditJobRequest(**_request_payload(userPrompt=prompt))
 
     def test_template_registry_has_base_and_pro_packs(self) -> None:
         validation = validate_template_registry()

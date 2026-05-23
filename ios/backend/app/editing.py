@@ -7,7 +7,7 @@ from pathlib import Path
 import re
 from typing import Any, Dict, List, Literal, Optional, Sequence, Tuple
 
-from pydantic import Field, ValidationError, model_validator
+from pydantic import Field, ValidationError, field_validator, model_validator
 
 from .models import APIModel, now_utc
 
@@ -872,8 +872,33 @@ class CreateEditJobRequest(APIModel):
     aspectRatio: Optional[AspectRatio] = None
     planTier: PlanTier = "free"
     revenueCatAppUserID: Optional[str] = Field(default=None, min_length=1, max_length=160)
+    userPrompt: Optional[str] = Field(default=None, max_length=240)
     clips: List[EditCandidateClip] = Field(min_length=1, max_length=30)
     gptRerankSummary: Optional["GPTHighlightRerankSummary"] = None
+
+    @field_validator("userPrompt")
+    @classmethod
+    def sanitize_user_prompt(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        trimmed = " ".join(value.strip().split())
+        if not trimmed:
+            return None
+        lowered = trimmed.lower()
+        forbidden_markers = (
+            "http://",
+            "https://",
+            "x-amz-",
+            "sourceobjectkey",
+            "downloadurl",
+            "renderlogobjectkey",
+            "uploads/",
+            "renders/",
+            "edits/",
+        )
+        if any(marker in lowered for marker in forbidden_markers):
+            raise ValueError("userPrompt must not contain URLs, presigned URL markers, or storage keys.")
+        return trimmed
 
 
 class GPTHighlightSuggestedEdit(APIModel):
@@ -938,6 +963,7 @@ class EditUserIntent(APIModel):
     targetDurationSeconds: int
     aspectRatio: Optional[AspectRatio]
     planTier: PlanTier
+    userPrompt: Optional[str] = None
 
 
 class EditClipPoolSummary(APIModel):
@@ -1428,6 +1454,7 @@ def build_edit_context(request: CreateEditJobRequest) -> EditContext:
             targetDurationSeconds=request.targetDurationSeconds,
             aspectRatio=request.aspectRatio,
             planTier=request.planTier,
+            userPrompt=request.userPrompt,
         ),
         clipPoolSummary=EditClipPoolSummary(**summarize_clip_pool(request.clips)),
         clips=request.clips,

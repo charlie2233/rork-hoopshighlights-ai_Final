@@ -598,6 +598,7 @@ struct CreateCloudEditJobRequest: Codable, Sendable {
     let aspectRatio: CloudEditAspectRatio
     let planTier: CloudEditPlanTier
     let revenueCatAppUserID: String?
+    let userPrompt: String?
     let clips: [CloudEditCandidateClip]
 }
 

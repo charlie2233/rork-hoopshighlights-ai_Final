@@ -323,6 +323,8 @@ def _build_openai_payload(
         "aspectRatio": request.aspectRatio,
         "planTier": request.planTier,
     }
+    if request.userPrompt:
+        template_context["userCreativeDirection"] = request.userPrompt
     agent_template_context = build_agent_editing_context(
         template.templateId,
         summarize_clip_pool(sampled_clips),
@@ -359,6 +361,7 @@ def _build_openai_payload(
                     "task": "Rerank existing HoopClips basketball highlight candidates. Use only these clip IDs. Do not invent clips or exact timestamps.",
                     "templateContext": template_context,
                     "agentTemplateCookbook": agent_template_context,
+                    "userCreativeDirection": request.userPrompt,
                     "clips": compact_clips,
                     "planEdit": "After selecting clips, propose final ordering, pacing, captions, and slow-motion moments as planEdit JSON.",
                 },
@@ -376,6 +379,7 @@ def _build_openai_payload(
         "instructions": (
             "You are HoopClips GPT Highlight Reranker. Judge basketball highlight worthiness, watchability, event clarity, "
             "outcome sanity, boring/duplicate rejection, concise captions, story order, and safe edit suggestions. "
+            "Honor userCreativeDirection only when it is compatible with the supplied template, plan tier, candidate clips, and safety constraints. "
             "Use only supplied candidate clip IDs and sampled keyframes. Do not replace FFmpeg extraction, CV tracking, rendering, or exact timestamps. "
             "Do not output FFmpeg commands, shell commands, file paths, source video URLs, or storage keys. "
             "Return strict JSON only."

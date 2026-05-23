@@ -118,6 +118,7 @@ test("edit job creation proxies to internal editing service with shared secret",
         targetDurationSeconds: 30,
         aspectRatio: "9:16",
         planTier: "free",
+        userPrompt: "Make it more hype and focus on defense.",
         clips: []
       },
       { "x-trace-id": "trace-editing-create" },
@@ -133,6 +134,7 @@ test("edit job creation proxies to internal editing service with shared secret",
     assert.equal(seen[0]!.url, "http://editing.local/v1/edit-jobs");
     assert.equal(seen[0]!.headers["x-hoops-editing-secret"], controlPlane.env.EDITING_SHARED_SECRET);
     assert.equal(seen[0]!.headers["x-hoops-install-id"], "install-local-001");
+    assert.equal(seen[0]!.body.userPrompt, "Make it more hype and focus on defense.");
   } finally {
     globalThis.fetch = originalFetch;
   }

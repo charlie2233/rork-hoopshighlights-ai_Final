@@ -225,6 +225,44 @@ struct HoopsClipsTests {
         #expect(pro.retentionSummary == "Videos stored for 60 days")
     }
 
+    @Test func testCloudEditRequestEncodesOptionalUserPrompt() throws {
+        let request = CreateCloudEditJobRequest(
+            videoId: "video_123",
+            analysisJobId: "analysis_123",
+            installId: "install-123",
+            sourceObjectKey: "uploads/source.mp4",
+            preset: CloudEditPreset.personalHighlight.rawValue,
+            templateId: CloudEditPreset.personalHighlight.templateID,
+            targetDurationSeconds: 30,
+            aspectRatio: .vertical,
+            planTier: .free,
+            revenueCatAppUserID: nil,
+            userPrompt: "Make it more hype and focus on defense.",
+            clips: [
+                CloudEditCandidateClip(
+                    id: "clip_1",
+                    start: 0,
+                    end: 6,
+                    eventCenter: 3,
+                    label: "Fast Break",
+                    confidence: 0.9,
+                    excitement: 0.9,
+                    watchability: 0.88,
+                    motionScore: 0.87,
+                    audioPeak: 0.5,
+                    combinedScore: 0.9,
+                    duplicateGroup: nil
+                )
+            ]
+        )
+
+        let data = try JSONEncoder().encode(request)
+        let payload = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+
+        #expect(payload["userPrompt"] as? String == "Make it more hype and focus on defense.")
+        #expect(payload["sourceObjectKey"] as? String == "uploads/source.mp4")
+    }
+
     @Test func testCloudEditProTemplatesAreRealAndDistinct() {
         let templates = CloudEditProTemplate.allCases
         let identifiers = templates.map(\.accessibilityIdentifier)

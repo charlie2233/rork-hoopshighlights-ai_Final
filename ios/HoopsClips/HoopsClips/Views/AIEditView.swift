@@ -47,6 +47,7 @@ struct AIEditView: View {
     @State private var localShareURL: URL?
     @State private var errorMessage: String?
     @State private var lockerErrorMessage: String?
+    @State private var userEditPrompt = ""
     @State private var isWorking = false
     @State private var isPreparingShare = false
     @State private var isLoadingRenderHistory = false
@@ -56,6 +57,7 @@ struct AIEditView: View {
 
     private let cloudEditService = CloudEditService()
     private let proUXFlags = CloudEditProUXFlags.safeDefault
+    private static let maxUserPromptCharacters = 240
 
     var body: some View {
         Group {
@@ -123,6 +125,7 @@ struct AIEditView: View {
             stylePicker
             formatPicker
             durationPicker
+            promptCard
             statusCard
             aiWorkTimelineCard
             if proUXFlags.cloudLockerEnabled {
@@ -508,6 +511,51 @@ struct AIEditView: View {
                     .accessibilityIdentifier(formatAccessibilityIdentifier(for: aspectRatio))
                     .accessibilityValue(selectedAspectRatio == aspectRatio ? "Selected" : "Not selected")
                     .accessibilityHint("Sets the AI edit output format.")
+                }
+            }
+        }
+        .padding(14)
+        .rorkCard(cornerRadius: 16, stroke: AppTheme.softBorder, glowOpacity: 0.04)
+    }
+
+    private var promptCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Label("Edit Direction", systemImage: "text.bubble.fill")
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                Spacer()
+                Text("\(userEditPrompt.count)/\(Self.maxUserPromptCharacters)")
+                    .font(.caption2.monospacedDigit().bold())
+                    .foregroundStyle(userEditPrompt.count >= Self.maxUserPromptCharacters ? AppTheme.warningYellow : AppTheme.subtleText)
+            }
+
+            ZStack(alignment: .topLeading) {
+                TextEditor(text: $userEditPrompt)
+                    .font(.subheadline)
+                    .foregroundStyle(.white)
+                    .scrollContentBackground(.hidden)
+                    .frame(minHeight: 86)
+                    .padding(10)
+                    .background(AppTheme.cardBg.opacity(0.72), in: .rect(cornerRadius: 12))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(AppTheme.softBorder, lineWidth: 1)
+                    }
+                    .accessibilityIdentifier("export.aiEdit.userPrompt")
+                    .onChange(of: userEditPrompt) { _, newValue in
+                        if newValue.count > Self.maxUserPromptCharacters {
+                            userEditPrompt = String(newValue.prefix(Self.maxUserPromptCharacters))
+                        }
+                    }
+
+                if userEditPrompt.isEmpty {
+                    Text("Focus on defense, make it more hype, or keep the game story clean.")
+                        .font(.subheadline)
+                        .foregroundStyle(AppTheme.subtleText.opacity(0.68))
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 18)
+                        .allowsHitTesting(false)
                 }
             }
         }
@@ -1556,6 +1604,12 @@ struct AIEditView: View {
         selectedProTemplate?.title ?? selectedPreset.title
     }
 
+    private var sanitizedUserEditPrompt: String? {
+        let trimmed = userEditPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        return String(trimmed.prefix(Self.maxUserPromptCharacters))
+    }
+
     private var policyLimitText: String {
         let policy = activePolicy
         let watermark = policy.watermarkRequired || policy.outroRequired ? "watermark/outro included" : "no required watermark"
@@ -1876,7 +1930,8 @@ struct AIEditView: View {
                 targetDurationSeconds: selectedDuration,
                 aspectRatio: selectedAspectRatio,
                 isProUser: isProUser,
-                revenueCatAppUserID: revenueCatAppUserID
+                revenueCatAppUserID: revenueCatAppUserID,
+                userPrompt: sanitizedUserEditPrompt
             )
             let job = try await cloudEditService.createEditJob(request)
             editJob = job
