@@ -173,6 +173,38 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertTrue(AGENT_TEMPLATE_COOKBOOK_REGISTRY["personal_highlight_v1"].enabledForFree)
         self.assertIn("clear individual skill", AGENT_TEMPLATE_COOKBOOK_REGISTRY["recruiting_reel_pro_v1"].selectionRules.prefer)
 
+    def test_pro_agent_cookbooks_preserve_director_briefs(self) -> None:
+        recruiting = AGENT_TEMPLATE_COOKBOOK_REGISTRY["recruiting_reel_pro_v1"]
+        cinematic = AGENT_TEMPLATE_COOKBOOK_REGISTRY["cinematic_mixtape_pro_v1"]
+        nba = AGENT_TEMPLATE_COOKBOOK_REGISTRY["nba_recap_pro_v1"]
+        team = AGENT_TEMPLATE_COOKBOOK_REGISTRY["team_highlight_pro_v1"]
+
+        self.assertEqual(
+            (recruiting.enabledForFree, recruiting.enabledForPro, recruiting.enabledForInternal),
+            (False, True, True),
+        )
+        self.assertIn("clear individual skill", recruiting.selectionRules.prefer)
+        self.assertIn("unclear team chaos", recruiting.rejectionRules.reject)
+        self.assertIn("TOUGH TAKE", recruiting.captionRules.examples)
+        self.assertEqual(recruiting.orderingRules.strategy, "best_first_skill_showcase")
+
+        self.assertIn("top 5 to 8 clips", cinematic.selectionRules.prioritize)
+        self.assertEqual(cinematic.orderingRules.opener, "one_of_top_2_clips")
+        self.assertEqual(cinematic.orderingRules.closer, "high_energy_finish")
+        self.assertTrue(cinematic.effectRules.punchZoom)
+        self.assertTrue(cinematic.effectRules.speedRamp)
+
+        self.assertEqual(nba.targetDurationRules.defaultAspectRatio, "16:9")
+        self.assertIn("game narrative", nba.selectionRules.prioritize)
+        self.assertIn("meme captions", nba.rejectionRules.reject)
+        self.assertTrue(nba.effectRules.lowerThird)
+        self.assertGreater(nba.audioRules.gameAudioVolume, nba.audioRules.musicVolume)
+
+        self.assertIn("team variety", team.selectionRules.prioritize)
+        self.assertIn("offense and defense balance", team.selectionRules.prioritize)
+        self.assertIn("one-player domination unless requested", team.rejectionRules.reject)
+        self.assertEqual(team.cropRules.defaultFocus, "team")
+
     def test_default_template_lookup_does_not_promote_free_presets_to_pro_templates(self) -> None:
         self.assertEqual(get_template_pack_for_plan("personal_highlight").templateId, "personal_highlight_v1")
         self.assertEqual(get_template_pack_for_plan("full_game_highlight").templateId, "full_game_highlight_v1")

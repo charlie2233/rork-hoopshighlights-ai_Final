@@ -99,10 +99,24 @@ xcodebuild -project ios/HoopsClips.xcodeproj -scheme HoopsClips -configuration D
 
 Results:
 
-- `37` iOS backend tests passed.
-- `45` editing-service tests passed.
+- `38` iOS backend tests passed, including direct coverage that the four Pro cookbooks preserve the director briefs.
+- `46` editing-service tests passed.
 - Debug simulator build passed.
 - Build-for-testing passed with existing Swift 6 actor-isolation warnings in test code.
+
+Refresh on 2026-05-23:
+
+- `git diff --check` passed.
+- `python3 -m py_compile ios/backend/app/editing.py services/editing/editing_app/gpt_reranker.py scripts/submission_readiness_preflight.py` passed.
+- `PYTHONPATH=ios/backend /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest discover ios/backend/tests -v` passed: `38` tests.
+- `PYTHONPATH=services/editing:ios/backend /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest discover services/editing/tests -v` passed: `46` tests.
+- `npm test -- --test-reporter=spec` and `npm run typecheck` passed in `services/control-plane`: `20` tests plus TypeScript typecheck.
+- `python3 -m unittest scripts.test_submission_readiness_preflight scripts.test_launch_backend_config_preflight -v` passed: `9` tests.
+- `bash ios/scripts/verify_internal_staging_config.sh` passed.
+- `python3 scripts/submission_readiness_preflight.py` stayed **NO-GO** as expected while this branch had tracked changes and the known launch blockers remained.
+- Build iOS Apps simulator Debug build passed.
+- `xcodebuild build-for-testing -project ios/HoopsClips.xcodeproj -scheme HoopsClips -configuration Debug -destination 'platform=iOS Simulator,id=7ECBD8FA-B0A2-4C3B-9A5C-EB73D19B99F2' -derivedDataPath /tmp/hoopclips-ux3-cookbook-mcp-dd CODE_SIGNING_ALLOWED=NO -hideShellScriptEnvironment` passed.
+- Build iOS Apps `test_sim` exceeded the 120-second tool timeout while running all UI/unit targets; a bounded `xcodebuild test-without-building ... -only-testing:HoopsClipsTests` run completed with `TEST EXECUTE SUCCEEDED`.
 
 ## Launch Recommendations
 
