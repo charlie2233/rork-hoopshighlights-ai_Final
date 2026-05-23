@@ -43,12 +43,12 @@ Results before commit:
 - `xcrun devicectl list devices`: `charlie的iPhone` was detected as `unavailable` (`iPhone 15 Pro`).
 - `xcodebuild -showdestinations`: no physical iPhone destination was available; simulator destinations were available.
 - Submission preflight with uncommitted changes: `17 pass`, `0 warn`, `13 fail`.
+- Submission preflight after the diagnostics commit: `18 pass`, `0 warn`, `12 fail`.
 
 ## Current Launch Blockers
 
-The new diagnostics prove the wired phone is not yet available for installed smoke testing. The remaining submission blockers are:
+The new diagnostics prove the wired phone is not yet available for installed smoke testing. The remaining submission blockers after commit are:
 
-- local tracked changes until this branch is committed
 - missing local `HOOPS_DEVELOPMENT_TEAM`
 - no `.xcarchive` or `.ipa` upload artifact
 - connected iPhone detected but unavailable/offline
