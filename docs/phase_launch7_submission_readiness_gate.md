@@ -19,7 +19,7 @@ It does not submit a build, deploy the Worker, render video, analyze video, read
 - Added a bundle-id conflict check for the Rork release handoff.
 - Reconciled the Rork release handoff to the iOS project/export bundle ID: `atrak.charlie.hoopsclips`.
 - Added upload artifact detection for `.xcarchive` or `.ipa`.
-- Added deploy input presence checks without printing values.
+- Added deploy input presence checks against local env and GitHub `staging` environment name lists without printing values.
 - Added blocker-doc checks so known no-go launch evidence fails the preflight until refreshed.
 
 ## Current Result
@@ -36,7 +36,7 @@ pass=18 warn=2 fail=6
 Failures:
 
 - Live staging Worker `GET /v1/editing/version` returned `404`.
-- Required deploy input names are absent in the local environment: `CLOUDFLARE_API_TOKEN`, `GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_DEPLOY_SERVICE_ACCOUNT`, `GCP_PROJECT_ID`, and `GCP_REGION`.
+- Required deploy input names are absent locally and were not listed in the GitHub `staging` environment: `CLOUDFLARE_API_TOKEN`, `GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_DEPLOY_SERVICE_ACCOUNT`, `GCP_PROJECT_ID`, and `GCP_REGION`.
 - Existing launch docs still record the missing installed TestFlight smoke.
 - Existing launch docs still record the staging Worker version-route blocker.
 - Existing launch docs still record missing Cloudflare deploy credential proof.
@@ -133,6 +133,38 @@ HOOPSCloudEditBaseURL: https://hoopsclips-control-plane-staging.charliehan-lifep
 
 No export, upload, App Store Connect submission, or TestFlight submission was attempted.
 
+## Deploy Credential Evidence
+
+Local deploy input presence check:
+
+```bash
+env | rg '^(CLOUDFLARE|CF_|GCP_|GOOGLE|WRANGLER)' | sed -E 's/=.*/=present/' || true
+```
+
+Result: no matching deploy variables were present.
+
+Cloudflare CLI auth check:
+
+```bash
+npm --prefix services/control-plane exec -- wrangler whoami --json
+```
+
+Result:
+
+```text
+Failed to fetch auth token: 400 Bad Request
+Not logged in.
+```
+
+GitHub staging environment name checks:
+
+```bash
+gh secret list --env staging
+gh variable list --env staging
+```
+
+Result: both returned no configured names. No values were printed.
+
 ## Passing Evidence
 
 Focused submission preflight tests:
@@ -144,7 +176,7 @@ python3 -m unittest scripts.test_submission_readiness_preflight -v
 Result:
 
 ```text
-Ran 4 tests in 0.006s
+Ran 7 tests in 0.017s
 OK
 ```
 

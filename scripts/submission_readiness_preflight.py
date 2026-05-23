@@ -32,6 +32,15 @@ REQUIRED_FEATURE_FLAGS = (
     "aiEditRevisionEnabled",
     "aiEditTemplatePackEnabled",
 )
+REQUIRED_DEPLOY_SECRET_INPUTS = (
+    "CLOUDFLARE_API_TOKEN",
+    "GCP_WORKLOAD_IDENTITY_PROVIDER",
+    "GCP_DEPLOY_SERVICE_ACCOUNT",
+)
+REQUIRED_DEPLOY_VARIABLE_INPUTS = (
+    "GCP_PROJECT_ID",
+    "GCP_REGION",
+)
 BLOCKER_DOCS = (
     (
         "docs/phase_edit7g_post_testflight_internal_smoke.md",
@@ -338,18 +347,41 @@ def check_live_worker_version(worker_base_url: str, collector: Collector, *, ski
 
 
 def check_ci_deploy_inputs(collector: Collector) -> None:
-    required = (
-        "CLOUDFLARE_API_TOKEN",
-        "GCP_WORKLOAD_IDENTITY_PROVIDER",
-        "GCP_DEPLOY_SERVICE_ACCOUNT",
-        "GCP_PROJECT_ID",
-        "GCP_REGION",
-    )
-    missing = [name for name in required if not os.getenv(name)]
+    required = (*REQUIRED_DEPLOY_SECRET_INPUTS, *REQUIRED_DEPLOY_VARIABLE_INPUTS)
+    github_secret_names = github_environment_names("secret")
+    github_variable_names = github_environment_names("variable")
+    github_names = github_secret_names | github_variable_names
+    missing = [name for name in required if not os.getenv(name) and name not in github_names]
     if missing:
-        collector.fail("cloud deploy inputs", "environment", f"Missing required deploy input name(s): {', '.join(missing)}.")
+        collector.fail(
+            "cloud deploy inputs",
+            "environment",
+            f"Missing required deploy input name(s): {', '.join(missing)}.",
+        )
     else:
-        collector.pass_("cloud deploy inputs", "environment", "Required deploy input names are present without printing values.")
+        collector.pass_("cloud deploy inputs", "environment", "Required deploy input names are present locally or in the GitHub staging environment without printing values.")
+
+
+def github_environment_names(kind: str) -> set[str]:
+    if kind == "secret":
+        args = ["gh", "secret", "list", "--env", "staging", "--json", "name"]
+    elif kind == "variable":
+        args = ["gh", "variable", "list", "--env", "staging", "--json", "name"]
+    else:
+        return set()
+    try:
+        result = subprocess.run(args, check=False, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+    except OSError:
+        return set()
+    if result.returncode != 0:
+        return set()
+    try:
+        payload = json.loads(result.stdout or "[]")
+    except json.JSONDecodeError:
+        return set()
+    if not isinstance(payload, list):
+        return set()
+    return {str(item.get("name")) for item in payload if isinstance(item, dict) and item.get("name")}
 
 
 def check_blocker_docs(repo_root: Path, collector: Collector) -> None:

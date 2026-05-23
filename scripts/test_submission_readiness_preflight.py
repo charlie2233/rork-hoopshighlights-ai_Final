@@ -12,6 +12,7 @@ from scripts.submission_readiness_preflight import (
     EXPECTED_IOS_BUNDLE_ID,
     check_bundle_id_references,
     check_blocker_docs,
+    check_ci_deploy_inputs,
     has_failures,
     redacted_endpoint_label,
     run_checks,
@@ -80,6 +81,20 @@ class SubmissionReadinessPreflightTests(unittest.TestCase):
             check_bundle_id_references(repo_root, collector)
 
             self.assertTrue(has_failures(collector.findings))
+
+    def test_deploy_inputs_can_come_from_github_environment_names(self) -> None:
+        def fake_github_names(kind: str) -> set[str]:
+            if kind == "secret":
+                return {"CLOUDFLARE_API_TOKEN", "GCP_WORKLOAD_IDENTITY_PROVIDER", "GCP_DEPLOY_SERVICE_ACCOUNT"}
+            if kind == "variable":
+                return {"GCP_PROJECT_ID", "GCP_REGION"}
+            return set()
+
+        collector = Collector()
+        with patch.dict(os.environ, {}, clear=True), patch("scripts.submission_readiness_preflight.github_environment_names", side_effect=fake_github_names):
+            check_ci_deploy_inputs(collector)
+
+        self.assertFalse(has_failures(collector.findings))
 
     def test_endpoint_label_omits_scheme_and_query(self) -> None:
         label = redacted_endpoint_label("https://example.test/v1/editing/version?token=secret")
