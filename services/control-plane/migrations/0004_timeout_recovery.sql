@@ -1,0 +1,3 @@
+ALTER TABLE jobs ADD COLUMN accepted_at TEXT;
+ALTER TABLE jobs ADD COLUMN processing_started_at TEXT;
+ALTER TABLE jobs ADD COLUMN attempt_count INTEGER NOT NULL DEFAULT 0;
