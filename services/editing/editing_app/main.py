@@ -46,6 +46,7 @@ from app.editing import (  # noqa: E402
     EditPlan,
     EditPlanValidationIssue,
     EditRevisionResponse,
+    GPTHighlightRerankSummary,
     ReviseEditJobRequest,
     StoredEditJob,
     build_edit_job,
@@ -559,7 +560,15 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
 
     def maybe_apply_gpt_highlight_rerank(request: CreateEditJobRequest) -> CreateEditJobRequest:
         if not feature_flags.gptHighlightRerankerEnabled:
-            return request
+            return request.model_copy(
+                update={
+                    "gptRerankSummary": GPTHighlightRerankSummary(
+                        status="disabled",
+                        model=gpt_reranker_settings.model,
+                        fallbackReason="feature_flag_disabled",
+                    )
+                }
+            )
         if not request.sourceObjectKey:
             return rerank_edit_request_with_gpt(request, Path("__missing_source__"), gpt_reranker_settings)
         if not gpt_reranker_settings.configured:

@@ -917,6 +917,8 @@ class EditingServiceTests(unittest.TestCase):
         render_payload = status_response.json()
         self.assertEqual(render_payload["status"], "rendered")
         self.assertEqual(render_payload["aspectRatio"], "9:16")
+        self.assertFalse(render_payload["workReceipt"]["gptRerankApplied"])
+        self.assertEqual(render_payload["workReceipt"]["gptRerankFallbackReason"], "feature_flag_disabled")
 
         rerender_response = client.post(
             f"/v1/edit-jobs/{create_payload['editJobId']}/render",

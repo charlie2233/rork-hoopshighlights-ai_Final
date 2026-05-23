@@ -413,7 +413,10 @@ def check_literal_secret_values(repo_root: Path, collector: Collector) -> None:
         repo_root / ".github/workflows/cloud-edit-deploy-preflight.yml",
         repo_root / "services/control-plane/wrangler.jsonc",
         repo_root / "services/editing/cloudbuild.yaml",
+        repo_root / "services/editing/README.md",
+        repo_root / "services/editing/editing_app/gpt_reranker.py",
         *sorted((repo_root / "docs").glob("phase_launch*.md")),
+        *sorted((repo_root / "docs").glob("phase_clip1_gpt*.md")),
     ]
     suspicious: list[str] = []
     pattern = re.compile(r"(?i)(secret|token|access[_-]?key|api[_-]?key)\s*[:=]\s*['\"]?([A-Za-z0-9_./+=-]{20,})")

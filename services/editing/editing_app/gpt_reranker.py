@@ -184,8 +184,9 @@ def _extract_candidate_keyframes(
 def _sample_times_for_clip(clip: EditCandidateClip, frames_per_clip: int) -> List[tuple[str, float]]:
     finish = max(clip.start, clip.end - 0.05)
     base = [("start", clip.start), ("event_center", clip.eventCenter), ("finish", finish)]
+    base_samples = _clamp_sample_times(base, clip)
     if frames_per_clip <= 3:
-        return _dedupe_sample_times(base, clip)
+        return base_samples
 
     duration = max(0.001, finish - clip.start)
     extra_count = max(0, frames_per_clip - 3)
@@ -196,12 +197,25 @@ def _sample_times_for_clip(clip: EditCandidateClip, frames_per_clip: int) -> Lis
         if abs(second - clip.eventCenter) < 0.2:
             continue
         extras.append((f"context_{index + 1}", second))
-    return _dedupe_sample_times([base[0], *extras, base[1], base[2]], clip)[:frames_per_clip]
+    reserved_buckets = {round(second, 1) for _, second in base_samples}
+    context_samples = _dedupe_sample_times(extras, clip, reserved_buckets)
+    return [base_samples[0], *context_samples, base_samples[1], base_samples[2]][:frames_per_clip]
 
 
-def _dedupe_sample_times(samples: Sequence[tuple[str, float]], clip: EditCandidateClip) -> List[tuple[str, float]]:
+def _clamp_sample_times(samples: Sequence[tuple[str, float]], clip: EditCandidateClip) -> List[tuple[str, float]]:
+    return [
+        (role, round(min(max(second, clip.start), max(clip.start, clip.end - 0.05)), 3))
+        for role, second in samples
+    ]
+
+
+def _dedupe_sample_times(
+    samples: Sequence[tuple[str, float]],
+    clip: EditCandidateClip,
+    reserved_buckets: Optional[set[float]] = None,
+) -> List[tuple[str, float]]:
     deduped: List[tuple[str, float]] = []
-    seen: set[float] = set()
+    seen: set[float] = set(reserved_buckets or set())
     for role, second in samples:
         clamped = round(min(max(second, clip.start), max(clip.start, clip.end - 0.05)), 3)
         bucket = round(clamped, 1)
@@ -245,6 +259,8 @@ def _build_openai_payload(
     sampled_frames: Sequence[SampledFrame],
     settings: GPTHighlightRerankerSettings,
 ) -> Dict[str, Any]:
+    sampled_clip_ids = {clip.id for clip in sampled_clips}
+    candidate_frames = [frame for frame in sampled_frames if frame.clip_id in sampled_clip_ids]
     template_context = {
         "preset": request.preset,
         "templateId": request.templateId,
@@ -267,7 +283,7 @@ def _build_openai_payload(
             "templateContext": template_context,
             "sampledFrames": [
                 {"role": frame.role, "time": frame.time_seconds}
-                for frame in sampled_frames
+                for frame in candidate_frames
                 if frame.clip_id == clip.id
             ],
         }
@@ -286,7 +302,7 @@ def _build_openai_payload(
             ),
         }
     ]
-    for frame in sampled_frames:
+    for frame in candidate_frames:
         content.append({"type": "input_text", "text": f"clipId={frame.clip_id}; frameRole={frame.role}; time={frame.time_seconds}"})
         content.append({"type": "input_image", "image_url": frame.data_url, "detail": settings.image_detail})
 

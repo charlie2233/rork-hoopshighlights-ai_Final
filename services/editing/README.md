@@ -41,8 +41,14 @@ The service receives a validated `EditPlan`, downloads the source video from ren
 - `HOOPS_GPT_HIGHLIGHT_RERANK_FREE_FRAMES_PER_CLIP`: Free frames per clip, fixed at `3`
 - `HOOPS_GPT_HIGHLIGHT_RERANK_PAID_MAX_CLIPS`: Pro/internal cap, clamped to `20...30`
 - `HOOPS_GPT_HIGHLIGHT_RERANK_PAID_FRAMES_PER_CLIP`: Pro/internal frames per clip, clamped to `5...8`
+- `HOOPS_GPT_HIGHLIGHT_RERANK_TIMEOUT_SECONDS`: OpenAI request timeout, clamped to `1...60`
+- `HOOPS_GPT_HIGHLIGHT_RERANK_MAX_OUTPUT_TOKENS`: Structured-output budget, clamped to `256...6000`
+- `HOOPS_GPT_HIGHLIGHT_RERANK_FRAME_WIDTH`: sampled keyframe width, clamped to `256...768`
+- `HOOPS_GPT_HIGHLIGHT_RERANK_JPEG_QUALITY`: FFmpeg JPEG quality, clamped to `2...12`
+- `HOOPS_GPT_HIGHLIGHT_RERANK_MAX_IMAGE_BYTES`: per-frame payload cap, clamped to `40000...500000`
+- `HOOPS_GPT_HIGHLIGHT_RERANK_IMAGE_DETAIL`: OpenAI image detail, one of `low`, `high`, `original`, or `auto`; defaults to `low`
 
-The `/version` endpoint reports the resolved non-secret feature-flag snapshot and GPT reranker sampling caps. Use it to verify staging rollout state without exposing R2 credentials, service secrets, OpenAI keys, sampled frames, or presigned URLs. GPT reranker OpenAI requests are built with `store=false`.
+The `/version` endpoint reports the resolved non-secret feature-flag snapshot and GPT reranker sampling caps. It intentionally does not expose all cost knobs. Use it to verify staging rollout state without exposing R2 credentials, service secrets, OpenAI keys, sampled frames, or presigned URLs. GPT reranker OpenAI requests are built with `store=false`.
 
 ## Local Smoke
 
