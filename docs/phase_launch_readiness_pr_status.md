@@ -40,7 +40,8 @@ Results:
 - Local branch before this doc: `codex/phase-launch2-ci-deploy-token-unblock-readiness`.
 - `origin/main` is an ancestor of the launch-readiness stack.
 - `git diff --check origin/main...HEAD`: passed.
-- Draft PR #3 was created successfully and was observed as `MERGEABLE` / `UNSTABLE`.
+- Draft PR #3 was created successfully. It was initially observed as `MERGEABLE` / `UNSTABLE`, then refreshed after checks as `MERGEABLE` / `CLEAN`.
+- PR #3 `Cloud Edit Deploy Preflight` status checks: `Worker typecheck and dry run` succeeded; `Verify cloud edit deploy secrets` was skipped.
 - PR #2 was observed as `CONFLICTING` / `DIRTY`.
 - PR #3 is based on current `origin/main`; PR #2 is stale from an older `main` base and is missing current `main` history.
 - A dry merge-tree probe of current launch stack plus PR #2 reported conflicts in:
