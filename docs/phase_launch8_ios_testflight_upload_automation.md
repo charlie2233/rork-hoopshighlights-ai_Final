@@ -247,11 +247,12 @@ Manual workflow dispatch validation:
 
 ```bash
 gh workflow run "iOS Internal TestFlight Upload" --ref main -f operation=preflight
+gh run watch 26343988998 --exit-status
 ```
 
 Initial result after first push: rejected before scheduling because `runner.temp` was used in job-level `env`, where the `runner` context is unavailable. The workflow was fixed to set those paths from `$RUNNER_TEMP` in a shell step.
 
-No workflow dispatch, App Store Connect export/upload, TestFlight processing, or installed-app smoke was run in this branch.
+Result after fix: run `26343988998` scheduled on `main`, checked out the repo, printed Xcode version, set temporary build paths, and failed at `Assert required inputs are present` with the expected missing staging input names. No App Store Connect key was materialized, no signed archive was built, no export/upload was attempted, and no TestFlight processing or installed-app smoke was run.
 
 ## Submission Decision
 
