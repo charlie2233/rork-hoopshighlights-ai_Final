@@ -73,7 +73,7 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertIs(payload["store"], False)
         self.assertEqual(payload["text"]["format"]["type"], "json_schema")
         self.assertTrue(payload["text"]["format"]["strict"])
-        self.assertEqual(payload["text"]["format"]["schema"]["required"], ["decisions", "storyOrder", "summary"])
+        self.assertEqual(payload["text"]["format"]["schema"]["required"], ["decisions", "storyOrder", "planEdit", "summary"])
         self.assertEqual(
             set(compact_clip),
             {
@@ -81,17 +81,19 @@ class GPTHighlightRerankerTests(unittest.TestCase):
                 "start",
                 "end",
                 "duration",
+                "eventCenter",
                 "existingLabel",
                 "motionScore",
                 "audioPeak",
                 "confidence",
-                "watchability",
+                "watchabilityScore",
                 "duplicateGroup",
-                "templateContext",
-                "sampledFrames",
+                "templateId",
+                "planTier",
+                "sampledKeyframes",
             },
         )
-        self.assertEqual(compact_clip["sampledFrames"], [{"role": "start", "time": 0.0}])
+        self.assertEqual(compact_clip["sampledKeyframes"], [{"role": "start", "time": 0.0}])
         self.assertEqual(len(image_items), 1)
         self.assertTrue(image_items[0]["image_url"].startswith("data:image/jpeg;base64,"))
         self.assertNotIn("c999", json.dumps(payload))
@@ -119,12 +121,14 @@ class GPTHighlightRerankerTests(unittest.TestCase):
             [
                 "clipId",
                 "keep",
+                "rejectReason",
                 "highlightScore",
                 "watchabilityScore",
                 "basketballEvent",
                 "outcome",
                 "caption",
                 "reason",
+                "storyRole",
                 "suggestedEdit",
             ],
         )
@@ -148,10 +152,10 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         free_samples = gpt_reranker._sample_times_for_clip(clip, 3)
         pro_samples = gpt_reranker._sample_times_for_clip(clip, 5)
 
-        self.assertEqual(free_samples, [("start", 0.0), ("event_center", 3.0), ("finish", 5.95)])
+        self.assertEqual(free_samples, [("start", 0.0), ("eventCenter", 3.0), ("finish", 5.95)])
         self.assertEqual(len(pro_samples), 5)
         self.assertIn("start", [role for role, _ in pro_samples])
-        self.assertIn("event_center", [role for role, _ in pro_samples])
+        self.assertIn("eventCenter", [role for role, _ in pro_samples])
         self.assertIn("finish", [role for role, _ in pro_samples])
 
     def test_sampling_preserves_required_roles_for_short_clips(self) -> None:
@@ -167,7 +171,7 @@ class GPTHighlightRerankerTests(unittest.TestCase):
 
         samples = gpt_reranker._sample_times_for_clip(request.clips[0], 3)
 
-        self.assertEqual([role for role, _ in samples], ["start", "event_center", "finish"])
+        self.assertEqual([role for role, _ in samples], ["start", "eventCenter", "finish"])
 
     def test_image_detail_env_falls_back_to_low_for_unknown_values(self) -> None:
         old_value = os.environ.get("HOOPS_GPT_HIGHLIGHT_RERANK_IMAGE_DETAIL")
@@ -238,12 +242,14 @@ class GPTHighlightRerankerTests(unittest.TestCase):
                 {
                     "clipId": clip_id,
                     "keep": True,
+                    "rejectReason": None,
                     "highlightScore": 0.9,
                     "watchabilityScore": 0.8,
                     "basketballEvent": "Made Shot",
                     "outcome": "made",
                     "caption": "BUCKET",
                     "reason": "Clear outcome.",
+                    "storyRole": "filler",
                     "suggestedEdit": {
                         "slowMotion": False,
                         "slowMotionCenter": None,
@@ -255,7 +261,22 @@ class GPTHighlightRerankerTests(unittest.TestCase):
                 }
                 for clip_id in observed_clip_ids
             ]
-            return {"output_text": json.dumps({"decisions": decisions, "storyOrder": observed_clip_ids, "summary": "ok"})}
+            return {
+                "output_text": json.dumps(
+                    {
+                        "decisions": decisions,
+                        "storyOrder": observed_clip_ids,
+                        "planEdit": {
+                            "orderedClipIds": observed_clip_ids,
+                            "pacing": "fast",
+                            "captions": [],
+                            "slowMotionMoments": [],
+                            "summary": "ok",
+                        },
+                        "summary": "ok",
+                    }
+                )
+            }
 
         try:
             gpt_reranker._extract_candidate_keyframes = fake_extract

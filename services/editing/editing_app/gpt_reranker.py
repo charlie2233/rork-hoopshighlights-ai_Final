@@ -17,11 +17,16 @@ ensure_ios_backend_on_path()
 
 from app.editing import (  # noqa: E402
     CreateEditJobRequest,
+    EditPlanPatch,
     EditCandidateClip,
     GPTHighlightClipDecision,
+    GPTPlanEdit,
     GPTHighlightRerankSummary,
+    ReviseEditJobRequest,
+    StoredEditJob,
     apply_gpt_highlight_rerank,
     rank_clips,
+    validate_edit_plan_patch,
 )
 
 
@@ -45,24 +50,32 @@ class GPTHighlightRerankerSettings:
     jpeg_quality: int
     max_image_bytes: int
     image_detail: str
+    plan_edit_enabled: bool = False
+    revision_enabled: bool = False
 
     @classmethod
     def from_env(cls) -> "GPTHighlightRerankerSettings":
         return cls(
-            enabled=_env_flag("HOOPS_GPT_HIGHLIGHT_RERANKER_ENABLED") or _env_flag("HOOPS_GPT_HIGHLIGHT_RERANK_ENABLED"),
+            enabled=(
+                _env_flag("HOOPS_AI_CLIP_GPT_EDITOR_ENABLED")
+                or _env_flag("HOOPS_GPT_HIGHLIGHT_RERANKER_ENABLED")
+                or _env_flag("HOOPS_GPT_HIGHLIGHT_RERANK_ENABLED")
+            ),
             api_key=os.getenv("HOOPS_OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY") or None,
-            model=os.getenv("HOOPS_GPT_HIGHLIGHT_RERANK_MODEL", "gpt-4.1-mini"),
-            endpoint=os.getenv("HOOPS_GPT_HIGHLIGHT_RERANK_ENDPOINT", "https://api.openai.com/v1/responses"),
-            timeout_seconds=_env_float("HOOPS_GPT_HIGHLIGHT_RERANK_TIMEOUT_SECONDS", 18.0, 1.0, 60.0),
-            max_output_tokens=_env_int("HOOPS_GPT_HIGHLIGHT_RERANK_MAX_OUTPUT_TOKENS", 2200, 256, 6000),
-            free_max_clips=_env_int("HOOPS_GPT_HIGHLIGHT_RERANK_FREE_MAX_CLIPS", 8, 1, 8),
-            paid_max_clips=_env_int("HOOPS_GPT_HIGHLIGHT_RERANK_PAID_MAX_CLIPS", 24, 20, 30),
-            free_frames_per_clip=_env_int("HOOPS_GPT_HIGHLIGHT_RERANK_FREE_FRAMES_PER_CLIP", 3, 3, 3),
-            paid_frames_per_clip=_env_int("HOOPS_GPT_HIGHLIGHT_RERANK_PAID_FRAMES_PER_CLIP", 5, 5, 8),
+            model=os.getenv("HOOPS_AI_CLIP_GPT_MODEL", os.getenv("HOOPS_GPT_HIGHLIGHT_RERANK_MODEL", "gpt-4.1-mini")),
+            endpoint=os.getenv("HOOPS_AI_CLIP_GPT_ENDPOINT", os.getenv("HOOPS_GPT_HIGHLIGHT_RERANK_ENDPOINT", "https://api.openai.com/v1/responses")),
+            timeout_seconds=_env_float("HOOPS_AI_CLIP_GPT_TIMEOUT_SECONDS", _env_float("HOOPS_GPT_HIGHLIGHT_RERANK_TIMEOUT_SECONDS", 18.0, 1.0, 60.0), 1.0, 60.0),
+            max_output_tokens=_env_int("HOOPS_AI_CLIP_GPT_MAX_OUTPUT_TOKENS", _env_int("HOOPS_GPT_HIGHLIGHT_RERANK_MAX_OUTPUT_TOKENS", 2200, 256, 6000), 256, 6000),
+            free_max_clips=_env_int("HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_FREE", _env_int("HOOPS_GPT_HIGHLIGHT_RERANK_FREE_MAX_CLIPS", 8, 1, 8), 1, 8),
+            paid_max_clips=_env_int("HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_PRO", _env_int("HOOPS_GPT_HIGHLIGHT_RERANK_PAID_MAX_CLIPS", 24, 20, 30), 20, 30),
+            free_frames_per_clip=_env_int("HOOPS_AI_CLIP_GPT_KEYFRAMES_PER_CLIP", _env_int("HOOPS_GPT_HIGHLIGHT_RERANK_FREE_FRAMES_PER_CLIP", 3, 3, 3), 3, 8),
+            paid_frames_per_clip=_env_int("HOOPS_AI_CLIP_GPT_KEYFRAMES_PER_CLIP", _env_int("HOOPS_GPT_HIGHLIGHT_RERANK_PAID_FRAMES_PER_CLIP", 5, 5, 8), 3, 8),
             frame_width=_env_int("HOOPS_GPT_HIGHLIGHT_RERANK_FRAME_WIDTH", 512, 256, 768),
             jpeg_quality=_env_int("HOOPS_GPT_HIGHLIGHT_RERANK_JPEG_QUALITY", 5, 2, 12),
             max_image_bytes=_env_int("HOOPS_GPT_HIGHLIGHT_RERANK_MAX_IMAGE_BYTES", 180_000, 40_000, 500_000),
-            image_detail=_env_image_detail("HOOPS_GPT_HIGHLIGHT_RERANK_IMAGE_DETAIL", "low"),
+            image_detail=_env_image_detail("HOOPS_AI_CLIP_GPT_IMAGE_DETAIL", _env_image_detail("HOOPS_GPT_HIGHLIGHT_RERANK_IMAGE_DETAIL", "low")),
+            plan_edit_enabled=_env_flag("HOOPS_AI_CLIP_GPT_PLAN_EDIT_ENABLED"),
+            revision_enabled=_env_flag("HOOPS_AI_CLIP_GPT_REVISION_ENABLED"),
         )
 
     @property
@@ -83,6 +96,14 @@ class GPTHighlightRerankerSettings:
             "paidMaxClips": self.paid_max_clips,
             "freeFramesPerClip": self.free_frames_per_clip,
             "paidFramesPerClip": self.paid_frames_per_clip,
+            "aiClipGptMaxCandidatesFree": self.free_max_clips,
+            "aiClipGptMaxCandidatesPro": self.paid_max_clips,
+            "aiClipGptKeyframesPerClip": {
+                "free": self.free_frames_per_clip,
+                "pro": self.paid_frames_per_clip,
+            },
+            "aiClipGptPlanEditEnabled": self.plan_edit_enabled,
+            "aiClipGptRevisionEnabled": self.revision_enabled,
         }
 
 
@@ -122,6 +143,7 @@ def rerank_edit_request_with_gpt(
         decisions = [GPTHighlightClipDecision(**item) for item in output.get("decisions", [])]
         raw_story_order = output.get("storyOrder", [])
         story_order = [str(item) for item in raw_story_order if isinstance(item, str)] if isinstance(raw_story_order, list) else []
+        plan_edit = GPTPlanEdit(**output["planEdit"]) if settings.plan_edit_enabled and isinstance(output.get("planEdit"), dict) else None
     except (HTTPError, URLError, TimeoutError, OSError, ValueError, json.JSONDecodeError, TypeError) as error:
         reason = "openai_unavailable"
         if isinstance(error, HTTPError):
@@ -135,7 +157,32 @@ def rerank_edit_request_with_gpt(
         sampled_clip_count=len(sampled_clips),
         sampled_frame_count=len(sampled_frames),
         story_order=story_order,
+        plan_edit=plan_edit,
     )
+
+
+def request_gpt_edit_plan_patch(
+    job: StoredEditJob,
+    revision: ReviseEditJobRequest,
+    settings: GPTHighlightRerankerSettings,
+    response_client: ResponseClient = None,
+) -> Optional[EditPlanPatch]:
+    if not settings.revision_enabled or not settings.configured:
+        return None
+    payload = _build_revision_patch_payload(job, revision, settings)
+    try:
+        client = response_client or _default_responses_client
+        response_payload = client(payload, settings.api_key or "", settings.endpoint, settings.timeout_seconds)
+        output_text = _extract_output_text(response_payload)
+        patch = EditPlanPatch(**json.loads(output_text))
+        if patch.revisionIntent != revision.command or patch.baseEditPlanId != job.edit_job_id:
+            return None
+        patched_plan, errors = validate_edit_plan_patch(job.plan, patch, job.request.clips, job.request.planTier)
+        if patched_plan is None or errors:
+            return None
+        return patch
+    except (HTTPError, URLError, TimeoutError, OSError, ValueError, json.JSONDecodeError, TypeError):
+        return None
 
 
 def _with_fallback(
@@ -186,7 +233,7 @@ def _extract_candidate_keyframes(
 
 def _sample_times_for_clip(clip: EditCandidateClip, frames_per_clip: int) -> List[tuple[str, float]]:
     finish = max(clip.start, clip.end - 0.05)
-    base = [("start", clip.start), ("event_center", clip.eventCenter), ("finish", finish)]
+    base = [("start", clip.start), ("eventCenter", clip.eventCenter), ("finish", finish)]
     base_samples = _clamp_sample_times(base, clip)
     if frames_per_clip <= 3:
         return base_samples
@@ -199,7 +246,8 @@ def _sample_times_for_clip(clip: EditCandidateClip, frames_per_clip: int) -> Lis
         second = clip.start + (duration * fraction)
         if abs(second - clip.eventCenter) < 0.2:
             continue
-        extras.append((f"context_{index + 1}", second))
+        role = "action" if index == 0 else "rim" if index == 1 else f"context_{index + 1}"
+        extras.append((role, second))
     reserved_buckets = {round(second, 1) for _, second in base_samples}
     context_samples = _dedupe_sample_times(extras, clip, reserved_buckets)
     return [base_samples[0], *context_samples, base_samples[1], base_samples[2]][:frames_per_clip]
@@ -277,14 +325,16 @@ def _build_openai_payload(
             "start": round(clip.start, 3),
             "end": round(clip.end, 3),
             "duration": round(clip.duration, 3),
+            "eventCenter": round(clip.eventCenter, 3),
             "existingLabel": clip.label,
             "motionScore": clip.motionScore,
             "audioPeak": clip.audioPeak,
             "confidence": clip.confidence,
-            "watchability": clip.watchability,
+            "watchabilityScore": clip.watchability,
             "duplicateGroup": clip.duplicateGroup,
-            "templateContext": template_context,
-            "sampledFrames": [
+            "templateId": request.templateId or template_context["templateId"],
+            "planTier": request.planTier,
+            "sampledKeyframes": [
                 {"role": frame.role, "time": frame.time_seconds}
                 for frame in candidate_frames
                 if frame.clip_id == clip.id
@@ -300,6 +350,7 @@ def _build_openai_payload(
                     "task": "Rerank existing HoopClips basketball highlight candidates. Use only these clip IDs. Do not invent clips or exact timestamps.",
                     "templateContext": template_context,
                     "clips": compact_clips,
+                    "planEdit": "After selecting clips, propose final ordering, pacing, captions, and slow-motion moments as planEdit JSON.",
                 },
                 separators=(",", ":"),
             ),
@@ -316,11 +367,57 @@ def _build_openai_payload(
             "You are HoopClips GPT Highlight Reranker. Judge basketball highlight worthiness, watchability, event clarity, "
             "outcome sanity, boring/duplicate rejection, concise captions, story order, and safe edit suggestions. "
             "Use only supplied candidate clip IDs and sampled keyframes. Do not replace FFmpeg extraction, CV tracking, rendering, or exact timestamps. "
+            "Do not output FFmpeg commands, shell commands, file paths, source video URLs, or storage keys. "
             "Return strict JSON only."
         ),
         "input": [{"role": "user", "content": content}],
         "text": {"format": {"type": "json_schema", "name": "hoopclips_gpt_highlight_rerank", "strict": True, "schema": _response_schema()}},
         "max_output_tokens": settings.max_output_tokens,
+    }
+
+
+def _build_revision_patch_payload(
+    job: StoredEditJob,
+    revision: ReviseEditJobRequest,
+    settings: GPTHighlightRerankerSettings,
+) -> Dict[str, Any]:
+    compact_context = {
+        "task": "Create an EditPlanPatch JSON for this HoopClips revision command. Use only existing clip IDs and safe patch paths.",
+        "revision": {
+            "command": revision.command,
+            "freeText": revision.freeText,
+            "targetDurationSeconds": revision.targetDurationSeconds,
+            "aspectRatio": revision.aspectRatio,
+        },
+        "planTier": job.request.planTier,
+        "templateId": job.plan.templateId,
+        "currentPlan": job.plan.model_dump(mode="json"),
+        "candidateClips": [
+            {
+                "clipId": clip.id,
+                "start": round(clip.start, 3),
+                "end": round(clip.end, 3),
+                "eventCenter": round(clip.eventCenter, 3),
+                "label": clip.label,
+                "confidence": clip.confidence,
+                "motionScore": clip.motionScore,
+                "watchabilityScore": clip.watchability,
+                "duplicateGroup": clip.duplicateGroup,
+            }
+            for clip in job.request.clips
+        ],
+    }
+    return {
+        "model": settings.model,
+        "store": False,
+        "instructions": (
+            "You are HoopClips GPT Edit Cool. Return an EditPlanPatch JSON only. "
+            "Do not output free-form prose. Do not generate FFmpeg commands, shell commands, render instructions, file paths, URLs, or storage keys. "
+            "Use only provided clip IDs and safe patch paths; the backend will validate and repair before rendering."
+        ),
+        "input": [{"role": "user", "content": [{"type": "input_text", "text": json.dumps(compact_context, separators=(",", ":"))}]}],
+        "text": {"format": {"type": "json_schema", "name": "hoopclips_gpt_edit_plan_patch", "strict": True, "schema": _edit_plan_patch_schema()}},
+        "max_output_tokens": min(settings.max_output_tokens, 3000),
     }
 
 
@@ -344,25 +441,67 @@ def _response_schema() -> Dict[str, Any]:
         "properties": {
             "clipId": {"type": "string"},
             "keep": {"type": "boolean"},
+            "rejectReason": {"anyOf": [{"type": "string", "maxLength": 160}, {"type": "null"}]},
             "highlightScore": {"type": "number", "minimum": 0, "maximum": 1},
             "watchabilityScore": {"type": "number", "minimum": 0, "maximum": 1},
             "basketballEvent": {"type": "string"},
             "outcome": {"type": "string", "enum": ["made", "missed", "blocked", "unclear", "not_basketball"]},
             "caption": {"type": "string", "maxLength": 24},
             "reason": {"type": "string"},
+            "storyRole": {"type": "string", "enum": ["opener", "peak", "filler", "closer"]},
             "suggestedEdit": suggested_edit,
         },
         "required": [
             "clipId",
             "keep",
+            "rejectReason",
             "highlightScore",
             "watchabilityScore",
             "basketballEvent",
             "outcome",
             "caption",
             "reason",
+            "storyRole",
             "suggestedEdit",
         ],
+    }
+    plan_edit = {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "orderedClipIds": {"type": "array", "items": {"type": "string"}, "maxItems": 30},
+            "pacing": {"type": "string", "enum": ["fast", "balanced", "cinematic", "chronological", "coach_review"]},
+            "captions": {
+                "type": "array",
+                "maxItems": 30,
+                "items": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {
+                        "clipId": {"type": "string"},
+                        "caption": {"type": "string", "maxLength": 24},
+                        "captionMoment": {"anyOf": [{"type": "number"}, {"type": "null"}]},
+                    },
+                    "required": ["clipId", "caption", "captionMoment"],
+                },
+            },
+            "slowMotionMoments": {
+                "type": "array",
+                "maxItems": 30,
+                "items": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {
+                        "clipId": {"type": "string"},
+                        "center": {"type": "number"},
+                        "speed": {"type": "number", "minimum": 0.5, "maximum": 1},
+                    },
+                    "required": ["clipId", "center", "speed"],
+                },
+            },
+            "summary": {"anyOf": [{"type": "string", "maxLength": 240}, {"type": "null"}]},
+        },
+        "required": ["orderedClipIds", "pacing", "captions", "slowMotionMoments", "summary"],
     }
     return {
         "type": "object",
@@ -370,9 +509,84 @@ def _response_schema() -> Dict[str, Any]:
         "properties": {
             "decisions": {"type": "array", "items": decision},
             "storyOrder": {"type": "array", "items": {"type": "string"}},
+            "planEdit": plan_edit,
             "summary": {"type": "string"},
         },
-        "required": ["decisions", "storyOrder", "summary"],
+        "required": ["decisions", "storyOrder", "planEdit", "summary"],
+    }
+
+
+def _json_value_schema() -> Dict[str, Any]:
+    return {
+        "anyOf": [
+            {"type": "string"},
+            {"type": "number"},
+            {"type": "integer"},
+            {"type": "boolean"},
+            {"type": "null"},
+            {"type": "array"},
+            {"type": "object"},
+        ]
+    }
+
+
+def _edit_plan_patch_schema() -> Dict[str, Any]:
+    operation = {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "op": {"type": "string", "enum": ["add", "remove", "replace"]},
+            "path": {
+                "type": "string",
+                "enum": [
+                    "/targetDurationSeconds",
+                    "/aspectRatio",
+                    "/preset",
+                    "/templateId",
+                    "/theme",
+                    "/captionStyle",
+                    "/audio",
+                    "/clips",
+                    "/intro",
+                    "/outro",
+                    "/watermark",
+                ],
+            },
+            "value": _json_value_schema(),
+            "reason": {"anyOf": [{"type": "string", "maxLength": 160}, {"type": "null"}]},
+        },
+        "required": ["op", "path", "value", "reason"],
+    }
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "version": {"type": "string", "enum": ["edit-plan-patch-v1"]},
+            "baseEditPlanId": {"type": "string"},
+            "revisionIntent": {
+                "type": "string",
+                "enum": [
+                    "make_shorter",
+                    "make_longer",
+                    "make_more_hype",
+                    "make_nba_style",
+                    "make_personal",
+                    "remove_weak_clips",
+                    "add_more_slow_motion",
+                    "use_original_audio",
+                    "switch_format_vertical",
+                    "switch_format_widescreen",
+                    "export_vertical",
+                    "export_widescreen",
+                    "reduce_captions",
+                    "show_more_full_play_context",
+                ],
+            },
+            "summary": {"type": "string", "maxLength": 320},
+            "operations": {"type": "array", "items": operation, "maxItems": 80},
+            "requiresRerender": {"type": "boolean"},
+        },
+        "required": ["version", "baseEditPlanId", "revisionIntent", "summary", "operations", "requiresRerender"],
     }
 
 

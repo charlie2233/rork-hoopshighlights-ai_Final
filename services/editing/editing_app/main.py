@@ -16,7 +16,7 @@ from fastapi.responses import FileResponse, JSONResponse
 
 from .backend_imports import ensure_ios_backend_on_path
 from .config import EditingSettings, get_settings
-from .gpt_reranker import GPTHighlightRerankerSettings, rerank_edit_request_with_gpt
+from .gpt_reranker import GPTHighlightRerankerSettings, request_gpt_edit_plan_patch, rerank_edit_request_with_gpt
 from .models import (
     AIWorkReceipt,
     AIWorkTimeline,
@@ -74,6 +74,13 @@ def resolve_feature_flags() -> AIEditFeatureFlags:
     max_daily = os.getenv("HOOPS_AI_EDIT_MAX_DAILY_RENDERS")
     parsed_max_daily = int(max_daily) if max_daily and max_daily.isdigit() else None
     defaults = default_ai_edit_feature_flags()
+    gpt_editor_enabled = flag(
+        "HOOPS_AI_CLIP_GPT_EDITOR_ENABLED",
+        flag(
+            "HOOPS_GPT_HIGHLIGHT_RERANKER_ENABLED",
+            flag("HOOPS_GPT_HIGHLIGHT_RERANK_ENABLED", defaults.aiClipGptEditorEnabled),
+        ),
+    )
     return AIEditFeatureFlags(
         aiEditEnabled=flag("HOOPS_AI_EDIT_ENABLED", defaults.aiEditEnabled),
         aiEditLiveRenderEnabled=flag("HOOPS_AI_EDIT_LIVE_RENDER_ENABLED", defaults.aiEditLiveRenderEnabled),
@@ -82,10 +89,10 @@ def resolve_feature_flags() -> AIEditFeatureFlags:
         aiEditMaxDailyRenders=parsed_max_daily,
         aiEditFreeWatermarkRequired=flag("HOOPS_AI_EDIT_FREE_WATERMARK_REQUIRED", defaults.aiEditFreeWatermarkRequired),
         aiEditProExportsEnabled=flag("HOOPS_AI_EDIT_PRO_EXPORTS_ENABLED", defaults.aiEditProExportsEnabled),
-        gptHighlightRerankerEnabled=flag(
-            "HOOPS_GPT_HIGHLIGHT_RERANKER_ENABLED",
-            flag("HOOPS_GPT_HIGHLIGHT_RERANK_ENABLED", defaults.gptHighlightRerankerEnabled),
-        ),
+        aiClipGptEditorEnabled=gpt_editor_enabled,
+        aiClipGptPlanEditEnabled=flag("HOOPS_AI_CLIP_GPT_PLAN_EDIT_ENABLED", defaults.aiClipGptPlanEditEnabled),
+        aiClipGptRevisionEnabled=flag("HOOPS_AI_CLIP_GPT_REVISION_ENABLED", defaults.aiClipGptRevisionEnabled),
+        gptHighlightRerankerEnabled=gpt_editor_enabled,
     )
 
 
@@ -935,7 +942,10 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             require_edit_owner(job, request.installId or x_hoops_install_id)
             validate_revision_policy(edit_job_id, request)
             revision_id = "rev_" + uuid4().hex
-            revised_job, revision_response = build_revision_response(job, request, revision_id)
+            proposed_patch = None
+            if feature_flags.aiClipGptRevisionEnabled:
+                proposed_patch = request_gpt_edit_plan_patch(job, request, gpt_reranker_settings)
+            revised_job, revision_response = build_revision_response(job, request, revision_id, proposed_patch=proposed_patch)
             if not revision_response.validationResult.valid:
                 first_error = revision_response.validationResult.errors[0]
                 raise EditingServiceError(400, first_error.code, first_error.message)

@@ -34,6 +34,12 @@ The service receives a validated `EditPlan`, downloads the source video from ren
 - `HOOPS_AI_EDIT_LIVE_RENDER_ENABLED`: kill switch for live render enqueue, default `true`
 - `HOOPS_AI_EDIT_REVISION_ENABLED`: kill switch for AI Edit revisions, default `true`
 - `HOOPS_AI_EDIT_TEMPLATE_PACK_ENABLED`: kill switch for template-backed planning, default `true`
+- `HOOPS_AI_CLIP_GPT_EDITOR_ENABLED`: kill switch for GPT-led highlight editing, default `false`
+- `HOOPS_AI_CLIP_GPT_PLAN_EDIT_ENABLED`: allows GPT `planEdit` ordering/caption/slow-motion directives to affect EditPlan inputs, default `false`
+- `HOOPS_AI_CLIP_GPT_REVISION_ENABLED`: launch switch for GPT-produced `EditPlanPatch` revision flows, default `false`
+- `HOOPS_AI_CLIP_GPT_KEYFRAMES_PER_CLIP`: shared keyframe cap per clip, clamped to `3...8`; Free should stay at `3`
+- `HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_FREE`: Free candidate cap, clamped to `1...8`
+- `HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_PRO`: Pro/internal candidate cap, clamped to `20...30`
 - `HOOPS_GPT_HIGHLIGHT_RERANKER_ENABLED`: kill switch for GPT highlight reranking, default `false`
 - `HOOPS_OPENAI_API_KEY`: OpenAI key required only when GPT highlight reranking is enabled
 - `HOOPS_GPT_HIGHLIGHT_RERANK_MODEL`: vision-capable reranker model, default `gpt-4.1-mini`

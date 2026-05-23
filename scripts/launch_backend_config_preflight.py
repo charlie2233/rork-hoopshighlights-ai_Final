@@ -30,6 +30,12 @@ REQUIRED_AI_EDIT_SUBSTITUTIONS = {
 }
 
 REQUIRED_GPT_RERANK_SUBSTITUTIONS = {
+    "_AI_CLIP_GPT_EDITOR_ENABLED": "false",
+    "_AI_CLIP_GPT_PLAN_EDIT_ENABLED": "false",
+    "_AI_CLIP_GPT_REVISION_ENABLED": "false",
+    "_AI_CLIP_GPT_KEYFRAMES_PER_CLIP": "3",
+    "_AI_CLIP_GPT_MAX_CANDIDATES_FREE": "8",
+    "_AI_CLIP_GPT_MAX_CANDIDATES_PRO": "24",
     "_GPT_HIGHLIGHT_RERANKER_ENABLED": "false",
 }
 
@@ -241,6 +247,12 @@ def check_editing_cloudbuild(repo_root: Path, collector: Collector) -> None:
             "HOOPS_AI_EDIT_LIVE_RENDER_ENABLED=${_AI_EDIT_LIVE_RENDER_ENABLED}",
             "HOOPS_AI_EDIT_REVISION_ENABLED=${_AI_EDIT_REVISION_ENABLED}",
             "HOOPS_AI_EDIT_TEMPLATE_PACK_ENABLED=${_AI_EDIT_TEMPLATE_PACK_ENABLED}",
+            "HOOPS_AI_CLIP_GPT_EDITOR_ENABLED=${_AI_CLIP_GPT_EDITOR_ENABLED}",
+            "HOOPS_AI_CLIP_GPT_PLAN_EDIT_ENABLED=${_AI_CLIP_GPT_PLAN_EDIT_ENABLED}",
+            "HOOPS_AI_CLIP_GPT_REVISION_ENABLED=${_AI_CLIP_GPT_REVISION_ENABLED}",
+            "HOOPS_AI_CLIP_GPT_KEYFRAMES_PER_CLIP=${_AI_CLIP_GPT_KEYFRAMES_PER_CLIP}",
+            "HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_FREE=${_AI_CLIP_GPT_MAX_CANDIDATES_FREE}",
+            "HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_PRO=${_AI_CLIP_GPT_MAX_CANDIDATES_PRO}",
         )
         if not env_line or name not in env_line
     ]
@@ -254,8 +266,9 @@ def check_editing_cloudbuild(repo_root: Path, collector: Collector) -> None:
     else:
         collector.fail("editing gpt reranker env mapping", rel(path, repo_root), "Cloud Run deploy must map the GPT highlight reranker launch switch.")
 
-    if "HOOPS_OPENAI_API_KEY" not in text and substitutions.get("_GPT_HIGHLIGHT_RERANKER_ENABLED") != "true":
-        collector.pass_("openai secret gate", rel(path, repo_root), "OpenAI key is not required while GPT reranker defaults disabled.")
+    gpt_enabled = substitutions.get("_AI_CLIP_GPT_EDITOR_ENABLED") == "true" or substitutions.get("_GPT_HIGHLIGHT_RERANKER_ENABLED") == "true"
+    if "HOOPS_OPENAI_API_KEY" not in text and not gpt_enabled:
+        collector.pass_("openai secret gate", rel(path, repo_root), "OpenAI key is not required while GPT clip editor defaults disabled.")
     elif "HOOPS_OPENAI_API_KEY" in text:
         collector.warn("openai secret gate", rel(path, repo_root), "OpenAI key secret name is configured; verify no secret value is printed during deploy.")
     else:

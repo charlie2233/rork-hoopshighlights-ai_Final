@@ -14,6 +14,9 @@ from app.editing import (
     EditPlanPatchOperation,
     EditPlan,
     GPTHighlightClipDecision,
+    GPTPlanEdit,
+    GPTPlanEditCaption,
+    GPTPlanEditSlowMotionMoment,
     GPTHighlightSuggestedEdit,
     ReviseEditJobRequest,
     TEMPLATE_PACK_REGISTRY,
@@ -26,6 +29,7 @@ from app.editing import (
     repair_edit_plan,
     revise_edit_job,
     validate_edit_plan,
+    validate_edit_plan_patch,
     validate_template_pack,
     validate_template_registry,
 )
@@ -313,6 +317,53 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertEqual([clip.clipId for clip in plan.clips[:3]], ["c4", "c3", "c1"])
         self.assertNotIn("c999", [clip.clipId for clip in plan.clips])
 
+    def test_gpt_plan_edit_controls_order_captions_and_slow_motion(self) -> None:
+        request = CreateEditJobRequest(**_request_payload(targetDurationSeconds=45))
+        decisions = [
+            GPTHighlightClipDecision(
+                clipId=clip_id,
+                keep=True,
+                highlightScore=score,
+                watchabilityScore=0.9,
+                basketballEvent=label,
+                outcome="made",
+                caption=caption,
+                reason="Clear event from an existing candidate clip.",
+                storyRole=story_role,
+                suggestedEdit=GPTHighlightSuggestedEdit(),
+            )
+            for clip_id, score, label, caption, story_role in [
+                ("c1", 0.88, "Fast Break", "RUNOUT", "opener"),
+                ("c3", 0.96, "Dunk", "BIG FINISH", "peak"),
+                ("c4", 0.92, "Made Shot", "BUCKET", "closer"),
+            ]
+        ]
+
+        reranked = apply_gpt_highlight_rerank(
+            request,
+            decisions,
+            "gpt-test",
+            3,
+            12,
+            plan_edit=GPTPlanEdit(
+                orderedClipIds=["c4", "c1", "c3"],
+                pacing="fast",
+                captions=[GPTPlanEditCaption(clipId="c1", caption="RUNOUT!", captionMoment=3.2)],
+                slowMotionMoments=[GPTPlanEditSlowMotionMoment(clipId="c3", center=15.1, speed=0.55)],
+                summary="Open with the make, then speed, then peak.",
+            ),
+        )
+        plan = build_edit_plan(reranked, "edit_gpt_plan_edit")
+
+        self.assertTrue(reranked.gptRerankSummary.planEditApplied)
+        self.assertEqual(reranked.gptRerankSummary.storyOrderClipIds, ["c4", "c1", "c3"])
+        self.assertEqual([clip.clipId for clip in plan.clips[:3]], ["c4", "c1", "c3"])
+        c1 = next(clip for clip in plan.clips if clip.clipId == "c1")
+        c3 = next(clip for clip in plan.clips if clip.clipId == "c3")
+        self.assertEqual(c1.caption, "RUNOUT!")
+        self.assertEqual(c1.captionMoment, 3.2)
+        self.assertTrue(any(effect.type == "slow_motion" for effect in c3.effects))
+
     def test_gpt_highlight_rerank_clamps_hints_and_biases_source_window(self) -> None:
         request = CreateEditJobRequest(
             **_request_payload(
@@ -437,6 +488,21 @@ class EditPlanAgentTests(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             apply_edit_plan_patch(job.plan, patch)
+
+    def test_gpt_patch_validator_rejects_ffmpeg_commands(self) -> None:
+        request = CreateEditJobRequest(**_request_payload())
+        job = build_edit_job(request, "edit_patch_no_ffmpeg")
+        patch = EditPlanPatch(
+            baseEditPlanId=job.edit_job_id,
+            revisionIntent="make_more_hype",
+            summary="ffmpeg -i source.mp4 output.mp4",
+            operations=[EditPlanPatchOperation(op="replace", path="/theme", value="classic")],
+        )
+
+        patched, errors = validate_edit_plan_patch(job.plan, patch, job.request.clips, job.request.planTier)
+
+        self.assertIsNone(patched)
+        self.assertTrue(any(error.code == "invalid_gpt_patch" for error in errors))
 
     def test_revision_commands_are_deterministic_patches(self) -> None:
         request = CreateEditJobRequest(**_request_payload())

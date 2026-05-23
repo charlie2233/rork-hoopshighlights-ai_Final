@@ -5,7 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Sequence, Tuple
 
-from pydantic import Field, model_validator
+from pydantic import Field, ValidationError, model_validator
 
 from .models import APIModel, now_utc
 
@@ -28,6 +28,7 @@ TemplateId = Literal[
     "nba_recap_pro_v1",
     "team_highlight_pro_v1",
 ]
+StoryRole = Literal["opener", "peak", "filler", "closer"]
 RevisionCommand = Literal[
     "make_shorter",
     "make_longer",
@@ -170,6 +171,9 @@ class AIEditFeatureFlags(APIModel):
     aiEditMaxDailyRenders: Optional[int] = None
     aiEditFreeWatermarkRequired: bool = True
     aiEditProExportsEnabled: bool = False
+    aiClipGptEditorEnabled: bool = False
+    aiClipGptPlanEditEnabled: bool = False
+    aiClipGptRevisionEnabled: bool = False
     gptHighlightRerankerEnabled: bool = False
 
 
@@ -226,6 +230,7 @@ class EditCandidateClip(APIModel):
     suggestedExtendBeforeSeconds: float = Field(default=0.0, ge=0.0, le=3.0)
     suggestedExtendAfterSeconds: float = Field(default=0.0, ge=0.0, le=3.0)
     gptStoryOrderIndex: Optional[int] = Field(default=None, ge=0)
+    gptStoryRole: Optional[StoryRole] = None
     rerankSource: Optional[str] = Field(default=None, max_length=80)
 
     @model_validator(mode="after")
@@ -735,13 +740,35 @@ class GPTHighlightSuggestedEdit(APIModel):
 class GPTHighlightClipDecision(APIModel):
     clipId: str = Field(min_length=1, max_length=80)
     keep: bool
+    rejectReason: Optional[str] = Field(default=None, max_length=160)
     highlightScore: float = Field(ge=0.0, le=1.0)
     watchabilityScore: float = Field(ge=0.0, le=1.0)
     basketballEvent: str = Field(min_length=1, max_length=80)
     outcome: Literal["made", "missed", "blocked", "unclear", "not_basketball"]
     caption: str = Field(max_length=MAX_CAPTION_LENGTH)
     reason: str = Field(min_length=1, max_length=180)
+    storyRole: StoryRole = "filler"
     suggestedEdit: GPTHighlightSuggestedEdit
+
+
+class GPTPlanEditCaption(APIModel):
+    clipId: str = Field(min_length=1, max_length=80)
+    caption: str = Field(max_length=MAX_CAPTION_LENGTH)
+    captionMoment: Optional[float] = Field(default=None, ge=0.0)
+
+
+class GPTPlanEditSlowMotionMoment(APIModel):
+    clipId: str = Field(min_length=1, max_length=80)
+    center: float = Field(ge=0.0)
+    speed: float = Field(default=0.55, ge=0.5, le=1.0)
+
+
+class GPTPlanEdit(APIModel):
+    orderedClipIds: List[str] = Field(default_factory=list, max_length=30)
+    pacing: Literal["fast", "balanced", "cinematic", "chronological", "coach_review"] = "balanced"
+    captions: List[GPTPlanEditCaption] = Field(default_factory=list, max_length=30)
+    slowMotionMoments: List[GPTPlanEditSlowMotionMoment] = Field(default_factory=list, max_length=30)
+    summary: Optional[str] = Field(default=None, max_length=240)
 
 
 class GPTHighlightRerankSummary(APIModel):
@@ -753,6 +780,7 @@ class GPTHighlightRerankSummary(APIModel):
     keptClipIds: List[str] = Field(default_factory=list, max_length=30)
     rejectedClipIds: List[str] = Field(default_factory=list, max_length=30)
     storyOrderClipIds: List[str] = Field(default_factory=list, max_length=30)
+    planEditApplied: bool = False
     fallbackReason: Optional[str] = Field(default=None, max_length=120)
 
 
@@ -1123,6 +1151,13 @@ def remove_duplicate_moments(clips: Sequence[EditCandidateClip]) -> List[EditCan
 def order_by_gpt_story_order(clips: Sequence[EditCandidateClip]) -> List[EditCandidateClip]:
     ordered = [clip for clip in clips if clip.gptStoryOrderIndex is not None]
     if not ordered:
+        role_order = {"opener": 0, "peak": 1, "filler": 2, "closer": 3}
+        role_tagged = [clip for clip in clips if clip.gptStoryRole is not None]
+        if role_tagged:
+            return sorted(
+                clips,
+                key=lambda clip: (role_order.get(clip.gptStoryRole or "filler", 2), -clip.planning_score, clip.start),
+            )
         return list(clips)
     unordered = [clip for clip in clips if clip.gptStoryOrderIndex is None]
     ordered.sort(key=lambda clip: (clip.gptStoryOrderIndex or 0, -clip.planning_score, clip.start))
@@ -1490,6 +1525,7 @@ def apply_gpt_highlight_rerank(
     sampled_clip_count: int,
     sampled_frame_count: int,
     story_order: Optional[Sequence[str]] = None,
+    plan_edit: Optional[GPTPlanEdit] = None,
 ) -> CreateEditJobRequest:
     source_by_id = {clip.id: clip for clip in request.clips}
     valid_decisions: Dict[str, GPTHighlightClipDecision] = {
@@ -1497,11 +1533,16 @@ def apply_gpt_highlight_rerank(
     }
     valid_story_order: List[str] = []
     seen_story_ids = set()
-    for clip_id in story_order or []:
-        if clip_id in source_by_id and clip_id in valid_decisions and clip_id not in seen_story_ids:
+    requested_story_order = plan_edit.orderedClipIds if plan_edit and plan_edit.orderedClipIds else list(story_order or [])
+    for clip_id in requested_story_order:
+        decision = valid_decisions.get(clip_id)
+        if clip_id in source_by_id and decision is not None and decision.keep and clip_id not in seen_story_ids:
             valid_story_order.append(clip_id)
             seen_story_ids.add(clip_id)
     story_index_by_id = {clip_id: index for index, clip_id in enumerate(valid_story_order)}
+    plan_captions_by_id = {item.clipId: item for item in plan_edit.captions} if plan_edit else {}
+    plan_slow_motion_by_id = {item.clipId: item for item in plan_edit.slowMotionMoments} if plan_edit else {}
+    plan_edit_applied = bool(plan_edit and (valid_story_order or plan_captions_by_id or plan_slow_motion_by_id))
 
     if not valid_decisions:
         summary = GPTHighlightRerankSummary(
@@ -1528,23 +1569,31 @@ def apply_gpt_highlight_rerank(
         if decision.outcome != "unclear" and decision.outcome != "not_basketball":
             event_label = f"{event_label} ({decision.outcome})"
         suggested = decision.suggestedEdit
-        suggested_slow_motion_center = _clamp_optional_clip_second(suggested.slowMotionCenter, clip)
-        suggested_caption_moment = _clamp_optional_clip_second(suggested.captionMoment, clip)
+        plan_caption = plan_captions_by_id.get(clip.id)
+        plan_slow_motion = plan_slow_motion_by_id.get(clip.id)
+        caption = plan_caption.caption if plan_caption is not None else decision.caption
+        caption_moment = plan_caption.captionMoment if plan_caption is not None else suggested.captionMoment
+        suggested_slow_motion_center = _clamp_optional_clip_second(
+            plan_slow_motion.center if plan_slow_motion is not None else suggested.slowMotionCenter,
+            clip,
+        )
+        suggested_caption_moment = _clamp_optional_clip_second(caption_moment, clip)
         updated = clip.model_copy(
             update={
                 "label": event_label[:80],
-                "captionHint": decision.caption[:MAX_CAPTION_LENGTH],
+                "captionHint": caption[:MAX_CAPTION_LENGTH],
                 "combinedScore": round((clip.planning_score * 0.25) + (decision.highlightScore * 0.55) + (decision.watchabilityScore * 0.2), 4),
                 "gptHighlightScore": decision.highlightScore,
                 "gptWatchabilityScore": decision.watchabilityScore,
                 "gptReason": decision.reason,
-                "suggestedSlowMotion": suggested.slowMotion,
+                "suggestedSlowMotion": bool(suggested.slowMotion or plan_slow_motion is not None),
                 "suggestedSlowMotionCenter": suggested_slow_motion_center,
                 "suggestedCaptionMoment": suggested_caption_moment,
                 "suggestedCropFocus": suggested.cropFocus,
                 "suggestedExtendBeforeSeconds": suggested.extendBeforeSeconds,
                 "suggestedExtendAfterSeconds": suggested.extendAfterSeconds,
                 "gptStoryOrderIndex": story_index_by_id.get(clip.id),
+                "gptStoryRole": decision.storyRole,
                 "rerankSource": "gpt_highlight_reranker",
             }
         )
@@ -1559,6 +1608,7 @@ def apply_gpt_highlight_rerank(
             returnedDecisionCount=len(valid_decisions),
             fallbackReason="all_clips_rejected",
             storyOrderClipIds=valid_story_order,
+            planEditApplied=plan_edit_applied,
         )
         return request.model_copy(update={"gptRerankSummary": summary})
 
@@ -1582,6 +1632,7 @@ def apply_gpt_highlight_rerank(
         keptClipIds=[clip.id for clip in reranked if clip.id in valid_decisions],
         rejectedClipIds=rejected_clip_ids,
         storyOrderClipIds=[clip_id for clip_id in valid_story_order if clip_id in {clip.id for clip in reranked}],
+        planEditApplied=plan_edit_applied,
     )
     return request.model_copy(update={"clips": reranked, "gptRerankSummary": summary})
 
@@ -1915,31 +1966,93 @@ def _apply_pointer_operation(data: Dict[str, Any], operation: EditPlanPatchOpera
     raise ValueError(f"Unsupported EditPlanPatch operation: {operation.op}")
 
 
+def _contains_forbidden_render_command(value: Any) -> bool:
+    if isinstance(value, str):
+        return "ffmpeg" in value.lower()
+    if isinstance(value, dict):
+        return any(_contains_forbidden_render_command(item) for item in value.values())
+    if isinstance(value, list):
+        return any(_contains_forbidden_render_command(item) for item in value)
+    return False
+
+
 def apply_edit_plan_patch(plan: EditPlan, patch: EditPlanPatch) -> EditPlan:
+    if _contains_forbidden_render_command(patch.model_dump()):
+        raise ValueError("EditPlanPatch must not contain FFmpeg commands.")
     data = plan.model_dump()
     for operation in patch.operations:
         _apply_pointer_operation(data, operation)
     return EditPlan(**data)
 
 
-def build_revision_response(
-    job: StoredEditJob,
-    revision: ReviseEditJobRequest,
-    revision_id: str,
-) -> Tuple[StoredEditJob, EditRevisionResponse]:
-    revised = _build_revised_edit_job(job, revision)
-    patch = build_edit_plan_patch(job, revision, revised.plan)
-    patched_plan = repair_edit_plan(apply_edit_plan_patch(job.plan, patch), revised.request.planTier)
-    errors = validate_edit_plan(patched_plan, revised.request.clips, revised.request.planTier)
-    policy = get_plan_tier_policy(revised.request.planTier)
-    if estimate_render_cost(patched_plan)["plannedDurationSeconds"] > policy.maxRenderSeconds + MAX_DURATION_OVERRUN_SECONDS:
+def validate_edit_plan_patch(
+    plan: EditPlan,
+    patch: EditPlanPatch,
+    source_clips: Sequence[EditCandidateClip],
+    plan_tier: PlanTier,
+) -> Tuple[Optional[EditPlan], List[EditPlanValidationIssue]]:
+    try:
+        patched = repair_edit_plan(apply_edit_plan_patch(plan, patch), plan_tier)
+    except (TypeError, ValueError, ValidationError) as error:
+        return None, [
+            EditPlanValidationIssue(
+                field="patch",
+                code="invalid_gpt_patch",
+                message=str(error),
+            )
+        ]
+    errors = validate_edit_plan(patched, source_clips, plan_tier)
+    policy = get_plan_tier_policy(plan_tier)
+    if estimate_render_cost(patched)["plannedDurationSeconds"] > policy.maxRenderSeconds + MAX_DURATION_OVERRUN_SECONDS:
         errors.append(
             EditPlanValidationIssue(
                 field="renderCost",
                 code="render_cost_too_high",
-                message="Revised EditPlan exceeds the configured render cost limit.",
+                message="Patched EditPlan exceeds the configured render cost limit.",
             )
         )
+    return patched, errors
+
+
+def build_revision_response(
+    job: StoredEditJob,
+    revision: ReviseEditJobRequest,
+    revision_id: str,
+    proposed_patch: Optional[EditPlanPatch] = None,
+) -> Tuple[StoredEditJob, EditRevisionResponse]:
+    if proposed_patch is not None:
+        patched_plan, errors = validate_edit_plan_patch(job.plan, proposed_patch, job.request.clips, job.request.planTier)
+        if patched_plan is None:
+            patched_plan = job.plan
+        revised = StoredEditJob(
+            edit_job_id=job.edit_job_id,
+            install_id=job.install_id,
+            request=job.request,
+            plan=patched_plan,
+            status="plan_ready" if not errors else "failed",
+            created_at=job.created_at,
+            updated_at=now_utc(),
+            validation_errors=errors,
+        )
+        response = EditRevisionResponse(
+            revisionId=revision_id,
+            editJobId=job.edit_job_id,
+            basePlanId=job.edit_job_id,
+            newPlanId=f"{job.edit_job_id}:{revision_id}",
+            command=revision.command,
+            status="revision_ready" if not errors else "revision_failed",
+            patch=proposed_patch,
+            revisedPlan=patched_plan,
+            validationResult=EditRevisionValidationResult(valid=not errors, errors=errors),
+            requiresRerender=True,
+        )
+        return revised, response
+
+    revised = _build_revised_edit_job(job, revision)
+    patch = build_edit_plan_patch(job, revision, revised.plan)
+    patched_plan, errors = validate_edit_plan_patch(job.plan, patch, revised.request.clips, revised.request.planTier)
+    if patched_plan is None:
+        patched_plan = revised.plan
     revised.plan = patched_plan
     revised.validation_errors = errors
     revised.status = "plan_ready" if not errors else "failed"
