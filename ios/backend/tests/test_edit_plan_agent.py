@@ -26,6 +26,7 @@ from app.editing import (
     apply_edit_plan_patch,
     build_agent_editing_context,
     build_edit_context,
+    derive_user_prompt_intent,
     build_revision_response,
     build_edit_job,
     build_edit_plan,
@@ -146,13 +147,35 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertEqual(job.plan.captionStyle, "bold_hype")
         self.assertEqual(job.validation_errors, [])
 
-    def test_user_prompt_is_sanitized_and_included_in_edit_context(self) -> None:
+    def test_user_prompt_is_sanitized_and_mapped_to_structured_edit_intent(self) -> None:
         request = CreateEditJobRequest(**_request_payload(userPrompt="  Make it more hype   and focus on defense.  "))
 
         context = build_edit_context(request)
 
         self.assertEqual(request.userPrompt, "Make it more hype and focus on defense.")
-        self.assertEqual(context.userIntent.userPrompt, "Make it more hype and focus on defense.")
+        self.assertIsNotNone(context.userIntent.userPromptIntent)
+        intent = context.userIntent.userPromptIntent
+        assert intent is not None
+        self.assertIn("more_hype", intent.styleIntents)
+        self.assertIn("defense_focus", intent.styleIntents)
+        self.assertIn("defense", intent.focusAreas)
+        self.assertEqual(intent.tone, "hype")
+        self.assertEqual(intent.pacing, "fast")
+        self.assertEqual(intent.effectIntensity, "high")
+        self.assertNotIn("Make it more hype", context.model_dump_json())
+
+    def test_user_prompt_intent_is_policy_gated_and_structured_only(self) -> None:
+        free_intent = derive_user_prompt_intent("make it NBA recap 30s vertical mixtape", "free")
+        pro_intent = derive_user_prompt_intent("make it NBA recap 30s vertical mixtape", "pro")
+
+        assert free_intent is not None
+        assert pro_intent is not None
+        self.assertIn("nba_recap", free_intent.styleIntents)
+        self.assertIn("vertical_mixtape", free_intent.styleIntents)
+        self.assertEqual(free_intent.requestedDurationSeconds, 30)
+        self.assertEqual(free_intent.requestedAspectRatio, "9:16")
+        self.assertIsNone(free_intent.templateHint)
+        self.assertEqual(pro_intent.templateHint, "nba_recap_pro_v1")
 
     def test_user_prompt_rejects_urls_and_storage_markers(self) -> None:
         unsafe_prompts = [
@@ -161,6 +184,8 @@ class EditPlanAgentTests(unittest.TestCase):
             "copy this downloadUrl into the plan",
             "read sourceObjectKey uploads/private/source.mp4",
             "use uploads/private/source.mp4",
+            "run ffmpeg -i source.mp4",
+            "use a shell command for the renderer",
         ]
 
         for prompt in unsafe_prompts:

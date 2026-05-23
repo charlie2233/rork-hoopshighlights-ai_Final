@@ -26,6 +26,7 @@ from app.editing import (  # noqa: E402
     StoredEditJob,
     apply_gpt_highlight_rerank,
     build_agent_editing_context,
+    derive_user_prompt_intent,
     get_template_pack_for_plan,
     rank_clips,
     summarize_clip_pool,
@@ -323,8 +324,9 @@ def _build_openai_payload(
         "aspectRatio": request.aspectRatio,
         "planTier": request.planTier,
     }
-    if request.userPrompt:
-        template_context["userCreativeDirection"] = request.userPrompt
+    user_edit_intent = derive_user_prompt_intent(request.userPrompt, request.planTier)
+    if user_edit_intent is not None:
+        template_context["userEditIntent"] = user_edit_intent.model_dump(mode="json")
     agent_template_context = build_agent_editing_context(
         template.templateId,
         summarize_clip_pool(sampled_clips),
@@ -361,7 +363,7 @@ def _build_openai_payload(
                     "task": "Rerank existing HoopClips basketball highlight candidates. Use only these clip IDs. Do not invent clips or exact timestamps.",
                     "templateContext": template_context,
                     "agentTemplateCookbook": agent_template_context,
-                    "userCreativeDirection": request.userPrompt,
+                    "userEditIntent": user_edit_intent.model_dump(mode="json") if user_edit_intent is not None else None,
                     "clips": compact_clips,
                     "planEdit": "After selecting clips, propose final ordering, pacing, captions, and slow-motion moments as planEdit JSON.",
                 },
@@ -379,7 +381,7 @@ def _build_openai_payload(
         "instructions": (
             "You are HoopClips GPT Highlight Reranker. Judge basketball highlight worthiness, watchability, event clarity, "
             "outcome sanity, boring/duplicate rejection, concise captions, story order, and safe edit suggestions. "
-            "Honor userCreativeDirection only when it is compatible with the supplied template, plan tier, candidate clips, and safety constraints. "
+            "Honor userEditIntent only when it is compatible with the supplied template, plan tier, candidate clips, and safety constraints. "
             "Use only supplied candidate clip IDs and sampled keyframes. Do not replace FFmpeg extraction, CV tracking, rendering, or exact timestamps. "
             "Do not output FFmpeg commands, shell commands, file paths, source video URLs, or storage keys. "
             "Return strict JSON only."

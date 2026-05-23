@@ -9,20 +9,20 @@ Add an optional Export AI Edit text box so users can give the cloud editor creat
 - iOS collects a short `userPrompt` and sends it with `CreateEditJobRequest`.
 - The control plane treats `userPrompt` as ordinary JSON request metadata and forwards it to the editing service.
 - The editing service owns validation, sanitization, GPT context construction, edit planning, patching, and rendering.
-- GPT receives the prompt only as bounded creative direction alongside template cookbook rules and existing candidate clip metadata.
+- GPT receives only a deterministic `userEditIntent` derived from the prompt alongside template cookbook rules and existing candidate clip metadata.
 - The prompt cannot include URLs, presigned URL markers, or storage-key field names.
 
 ## Safety Rules
 
 - The prompt never gives GPT permission to invent clips, exact timestamps, FFmpeg commands, shell commands, storage paths, or render instructions.
-- GPT can only use the prompt when compatible with template rules, plan-tier policy, candidate clips, and backend validators.
+- GPT can only use the structured intent when compatible with template rules, plan-tier policy, candidate clips, and backend validators.
 - If GPT is disabled or unavailable, existing deterministic fallback behavior still works.
 
 ## Validation
 
 - iOS request model includes optional `userPrompt`.
 - Backend request model trims whitespace, clamps length through schema, and rejects URL/storage markers.
-- GPT reranker payload includes `userCreativeDirection` without source video, presigned URLs, or storage keys.
+- GPT reranker payload includes structured `userEditIntent` without raw prompt text, source video, presigned URLs, or storage keys.
 
 ## Evidence
 

@@ -125,7 +125,7 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertEqual(compact_input["agentTemplateCookbook"]["templateId"], "full_game_highlight_v1")
         self.assertEqual(compact_input["clips"][0]["templateId"], "full_game_highlight_v1")
 
-    def test_payload_includes_bounded_user_creative_direction(self) -> None:
+    def test_payload_includes_structured_user_edit_intent_without_raw_prompt(self) -> None:
         settings = GPTHighlightRerankerSettings.from_env()
         request = _request().model_copy(update={"userPrompt": "Make it more hype and focus on defense."})
         frame = SampledFrame(
@@ -137,10 +137,16 @@ class GPTHighlightRerankerTests(unittest.TestCase):
 
         payload = _build_openai_payload(request, request.clips[:1], [frame], settings)
         compact_input = json.loads(payload["input"][0]["content"][0]["text"])
+        intent = compact_input["userEditIntent"]
 
-        self.assertEqual(compact_input["userCreativeDirection"], "Make it more hype and focus on defense.")
-        self.assertEqual(compact_input["templateContext"]["userCreativeDirection"], "Make it more hype and focus on defense.")
-        self.assertIn("Honor userCreativeDirection", payload["instructions"])
+        self.assertIn("more_hype", intent["styleIntents"])
+        self.assertIn("defense_focus", intent["styleIntents"])
+        self.assertIn("defense", intent["focusAreas"])
+        self.assertEqual(intent["tone"], "hype")
+        self.assertEqual(compact_input["templateContext"]["userEditIntent"], intent)
+        self.assertIn("Honor userEditIntent", payload["instructions"])
+        self.assertNotIn("Make it more hype", json.dumps(payload))
+        self.assertNotIn("userCreativeDirection", json.dumps(payload))
         self.assertNotIn("sourceObjectKey", str(payload))
         self.assertNotIn("uploads/source.mp4", str(payload))
 

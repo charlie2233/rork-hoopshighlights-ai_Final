@@ -31,6 +31,34 @@ TemplateId = Literal[
     "team_highlight_pro_v1",
 ]
 StoryRole = Literal["opener", "peak", "filler", "closer"]
+UserPromptStyleIntent = Literal[
+    "more_hype",
+    "nba_recap",
+    "defense_focus",
+    "vertical_mixtape",
+    "recruiting_reel",
+    "coach_review",
+    "clean_game_story",
+    "shorter",
+    "longer",
+    "original_audio",
+    "general_direction",
+]
+UserPromptFocusArea = Literal[
+    "defense",
+    "finishes",
+    "shooting",
+    "transition",
+    "team_story",
+    "player_showcase",
+    "clarity",
+    "game_flow",
+    "energy",
+]
+UserPromptTone = Literal["hype", "broadcast_clean", "coach_clean", "cinematic", "formal", "balanced"]
+UserPromptPacing = Literal["fast", "balanced", "cinematic", "chronological", "coach_review"]
+UserPromptEffectIntensity = Literal["low", "medium", "high"]
+UserPromptAudioPreference = Literal["music_forward", "game_audio", "balanced"]
 RevisionCommand = Literal[
     "make_shorter",
     "make_longer",
@@ -889,6 +917,16 @@ class CreateEditJobRequest(APIModel):
             "http://",
             "https://",
             "x-amz-",
+            "ffmpeg",
+            "ffprobe",
+            "avfoundation",
+            "shell command",
+            "bash ",
+            "sh -c",
+            "python -c",
+            "python3 -c",
+            "subprocess",
+            "os.system",
             "sourceobjectkey",
             "downloadurl",
             "renderlogobjectkey",
@@ -897,7 +935,7 @@ class CreateEditJobRequest(APIModel):
             "edits/",
         )
         if any(marker in lowered for marker in forbidden_markers):
-            raise ValueError("userPrompt must not contain URLs, presigned URL markers, or storage keys.")
+            raise ValueError("userPrompt must not contain render commands, URLs, presigned URL markers, or storage keys.")
         return trimmed
 
 
@@ -957,13 +995,164 @@ class GPTHighlightRerankSummary(APIModel):
     fallbackReason: Optional[str] = Field(default=None, max_length=120)
 
 
+class EditUserPromptIntent(APIModel):
+    source: Literal["user_prompt"] = "user_prompt"
+    styleIntents: List[UserPromptStyleIntent] = Field(default_factory=list, max_length=8)
+    focusAreas: List[UserPromptFocusArea] = Field(default_factory=list, max_length=8)
+    tone: Optional[UserPromptTone] = None
+    pacing: Optional[UserPromptPacing] = None
+    requestedAspectRatio: Optional[AspectRatio] = None
+    requestedDurationSeconds: Optional[int] = Field(default=None, gt=0, le=180)
+    templateHint: Optional[TemplateId] = None
+    effectIntensity: Optional[UserPromptEffectIntensity] = None
+    audioPreference: Optional[UserPromptAudioPreference] = None
+    structuredSummary: List[str] = Field(default_factory=list, max_length=12)
+
+
+def derive_user_prompt_intent(user_prompt: Optional[str], plan_tier: PlanTier = "free") -> Optional[EditUserPromptIntent]:
+    if not user_prompt:
+        return None
+
+    text = user_prompt.strip().lower()
+    if not text:
+        return None
+
+    style_intents: List[UserPromptStyleIntent] = []
+    focus_areas: List[UserPromptFocusArea] = []
+    structured_summary: List[str] = []
+    tone: Optional[UserPromptTone] = None
+    pacing: Optional[UserPromptPacing] = None
+    requested_aspect_ratio: Optional[AspectRatio] = None
+    requested_duration_seconds: Optional[int] = None
+    template_hint: Optional[TemplateId] = None
+    effect_intensity: Optional[UserPromptEffectIntensity] = None
+    audio_preference: Optional[UserPromptAudioPreference] = None
+
+    def add_unique(items: List[Any], value: Any) -> None:
+        if value not in items:
+            items.append(value)
+
+    def allow_template(template_id: TemplateId) -> Optional[TemplateId]:
+        template = TEMPLATE_PACK_REGISTRY.get(template_id)
+        if template is None:
+            return None
+        if template.premiumOnly and not get_plan_tier_policy(plan_tier).premiumTemplatesAllowed:
+            return None
+        return template_id
+
+    duration_match = re.search(r"\b(15|30|45|60|90|120|180)\s*(?:s|sec|secs|second|seconds)\b", text)
+    if duration_match:
+        requested_duration_seconds = int(duration_match.group(1))
+        structured_summary.append(f"target_duration_{requested_duration_seconds}s")
+
+    if any(term in text for term in ("9:16", "vertical", "portrait", "tiktok", "reel", "shorts")):
+        requested_aspect_ratio = "9:16"
+        add_unique(style_intents, "vertical_mixtape")
+        structured_summary.append("vertical_format")
+    if any(term in text for term in ("16:9", "widescreen", "youtube", "landscape")):
+        requested_aspect_ratio = "16:9"
+        structured_summary.append("widescreen_format")
+
+    if any(term in text for term in ("nba", "broadcast", "recap")):
+        add_unique(style_intents, "nba_recap")
+        add_unique(focus_areas, "game_flow")
+        tone = tone or "broadcast_clean"
+        pacing = pacing or "chronological"
+        template_hint = template_hint or allow_template("nba_recap_pro_v1")
+        structured_summary.append("nba_recap_style")
+    if any(term in text for term in ("hype", "more energy", "energy", "intense", "viral")):
+        add_unique(style_intents, "more_hype")
+        add_unique(focus_areas, "energy")
+        tone = "hype"
+        pacing = pacing or "fast"
+        effect_intensity = "high"
+        structured_summary.append("increase_hype")
+    if any(term in text for term in ("defense", "defence", "block", "steal", "stop", "lockdown", "contest")):
+        add_unique(style_intents, "defense_focus")
+        add_unique(focus_areas, "defense")
+        tone = tone or "hype"
+        structured_summary.append("defense_focus")
+    if any(term in text for term in ("mixtape", "cinematic", "cold", "built different", "vibe")):
+        add_unique(style_intents, "vertical_mixtape")
+        add_unique(focus_areas, "energy")
+        tone = "cinematic" if "cinematic" in text else (tone or "hype")
+        pacing = pacing or "cinematic"
+        effect_intensity = "high"
+        template_hint = template_hint or allow_template("cinematic_mixtape_pro_v1")
+        structured_summary.append("mixtape_style")
+    if any(term in text for term in ("recruit", "showcase", "send to coach", "college coach")):
+        add_unique(style_intents, "recruiting_reel")
+        add_unique(focus_areas, "player_showcase")
+        add_unique(focus_areas, "clarity")
+        tone = "formal"
+        pacing = pacing or "balanced"
+        template_hint = template_hint or allow_template("recruiting_reel_pro_v1")
+        structured_summary.append("recruiting_showcase")
+    if any(term in text for term in ("coach review", "film review", "coach tape", "breakdown")):
+        add_unique(style_intents, "coach_review")
+        add_unique(focus_areas, "clarity")
+        add_unique(focus_areas, "game_flow")
+        tone = "coach_clean"
+        pacing = "coach_review"
+        effect_intensity = "low"
+        template_hint = template_hint or "coach_review_v1"
+        structured_summary.append("coach_review")
+    if any(term in text for term in ("clean story", "game story", "story", "flow", "chronological")):
+        add_unique(style_intents, "clean_game_story")
+        add_unique(focus_areas, "game_flow")
+        tone = tone or "balanced"
+        pacing = "chronological"
+        structured_summary.append("clean_game_story")
+    if any(term in text for term in ("shorter", "trim", "tight")):
+        add_unique(style_intents, "shorter")
+        pacing = pacing or "fast"
+        structured_summary.append("shorter_edit")
+    if any(term in text for term in ("longer", "more context", "full play", "show the play")):
+        add_unique(style_intents, "longer")
+        add_unique(focus_areas, "game_flow")
+        structured_summary.append("more_context")
+    if any(term in text for term in ("original audio", "game audio", "court audio")):
+        add_unique(style_intents, "original_audio")
+        audio_preference = "game_audio"
+        structured_summary.append("game_audio_priority")
+    if any(term in text for term in ("music", "beat", "song")) and audio_preference is None:
+        audio_preference = "music_forward"
+        structured_summary.append("music_forward")
+    if any(term in text for term in ("finish", "layup", "dunk", "rim")):
+        add_unique(focus_areas, "finishes")
+    if any(term in text for term in ("shoot", "shot", "jumper", "three", "3pt", "corner")):
+        add_unique(focus_areas, "shooting")
+    if any(term in text for term in ("fast break", "transition")):
+        add_unique(focus_areas, "transition")
+    if any(term in text for term in ("team", "everyone", "balanced players")):
+        add_unique(focus_areas, "team_story")
+        template_hint = template_hint or allow_template("team_highlight_pro_v1")
+
+    if not style_intents and not focus_areas and not structured_summary:
+        add_unique(style_intents, "general_direction")
+        structured_summary.append("general_editor_direction")
+
+    return EditUserPromptIntent(
+        styleIntents=style_intents,
+        focusAreas=focus_areas,
+        tone=tone,
+        pacing=pacing,
+        requestedAspectRatio=requested_aspect_ratio,
+        requestedDurationSeconds=requested_duration_seconds,
+        templateHint=template_hint,
+        effectIntensity=effect_intensity,
+        audioPreference=audio_preference,
+        structuredSummary=structured_summary,
+    )
+
+
 class EditUserIntent(APIModel):
     preset: PresetId
     templateId: Optional[TemplateId] = None
     targetDurationSeconds: int
     aspectRatio: Optional[AspectRatio]
     planTier: PlanTier
-    userPrompt: Optional[str] = None
+    userPromptIntent: Optional[EditUserPromptIntent] = None
 
 
 class EditClipPoolSummary(APIModel):
@@ -1454,7 +1643,7 @@ def build_edit_context(request: CreateEditJobRequest) -> EditContext:
             targetDurationSeconds=request.targetDurationSeconds,
             aspectRatio=request.aspectRatio,
             planTier=request.planTier,
-            userPrompt=request.userPrompt,
+            userPromptIntent=derive_user_prompt_intent(request.userPrompt, request.planTier),
         ),
         clipPoolSummary=EditClipPoolSummary(**summarize_clip_pool(request.clips)),
         clips=request.clips,
