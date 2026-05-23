@@ -273,7 +273,45 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertNotIn("c999", [clip.id for clip in reranked.clips])
         self.assertEqual(plan.clips[0].clipId, "c3")
         self.assertEqual(plan.clips[0].caption, "BIG FINISH")
+        self.assertEqual(plan.clips[0].captionMoment, 15.4)
+        self.assertEqual(plan.clips[0].cropMode, "rim")
         self.assertTrue(any(effect.type == "slow_motion" for effect in plan.clips[0].effects))
+
+    def test_gpt_highlight_rerank_applies_story_order_to_edit_plan(self) -> None:
+        request = CreateEditJobRequest(**_request_payload(targetDurationSeconds=45))
+        decisions = [
+            GPTHighlightClipDecision(
+                clipId=clip_id,
+                keep=True,
+                highlightScore=score,
+                watchabilityScore=0.9,
+                basketballEvent=label,
+                outcome="made",
+                caption=caption,
+                reason="Clear event from an existing candidate clip.",
+                suggestedEdit=GPTHighlightSuggestedEdit(),
+            )
+            for clip_id, score, label, caption in [
+                ("c1", 0.88, "Fast Break", "RUNOUT"),
+                ("c3", 0.96, "Dunk", "BIG FINISH"),
+                ("c4", 0.92, "Made Shot", "BUCKET"),
+            ]
+        ]
+
+        reranked = apply_gpt_highlight_rerank(
+            request,
+            decisions,
+            "gpt-test",
+            4,
+            12,
+            story_order=["c4", "c3", "c999", "c1"],
+        )
+        plan = build_edit_plan(reranked, "edit_gpt_story_order")
+
+        self.assertEqual(reranked.gptRerankSummary.storyOrderClipIds, ["c4", "c3", "c1"])
+        self.assertEqual([clip.gptStoryOrderIndex for clip in reranked.clips if clip.id in {"c1", "c3", "c4"}], [0, 1, 2])
+        self.assertEqual([clip.clipId for clip in plan.clips[:3]], ["c4", "c3", "c1"])
+        self.assertNotIn("c999", [clip.clipId for clip in plan.clips])
 
     def test_gpt_highlight_rerank_clamps_hints_and_biases_source_window(self) -> None:
         request = CreateEditJobRequest(
@@ -324,6 +362,8 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertEqual(clip.suggestedSlowMotionCenter, 20.0)
         self.assertEqual(clip.suggestedCaptionMoment, 20.0)
         self.assertEqual(clip.suggestedExtendBeforeSeconds, 3.0)
+        self.assertEqual(plan.clips[0].captionMoment, plan.clips[0].sourceEnd)
+        self.assertEqual(plan.clips[0].cropMode, "shooter")
         self.assertLess(plan.clips[0].sourceStart, 6.5)
         self.assertEqual(plan.clips[0].sourceStart, 5.0)
 

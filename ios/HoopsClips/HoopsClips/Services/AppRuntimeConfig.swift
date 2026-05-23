@@ -146,8 +146,12 @@ struct AppRuntimeConfig {
         resolvedCloudEditBaseURL != nil
     }
 
+    var requiresCloudVideoPipeline: Bool {
+        !isDebug && cloudLaunchMode.allowsCloudRequests
+    }
+
     var launchAnalysisMode: AnalysisExecutionMode {
-        allowsCloudAnalysisRequests ? .cloud : .local
+        requiresCloudVideoPipeline || allowsCloudAnalysisRequests ? .cloud : .local
     }
 
     var missingRequiredKeys: [String] {

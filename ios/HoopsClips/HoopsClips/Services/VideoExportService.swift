@@ -10,6 +10,13 @@ final class VideoExportService {
     var statusMessage = ""
     var exportedURL: URL?
 
+    func markUnavailable(_ message: String) {
+        isExporting = false
+        exportProgress = 0.0
+        exportedURL = nil
+        statusMessage = message
+    }
+
     func exportHighlights(
         sourceURL: URL,
         clips: [Clip],

@@ -169,3 +169,31 @@ Result: matches are limited to script field names and redaction test literals; n
 - Real installed-TestFlight smoke is still blocked by missing online physical device access from this environment.
 - Full Worker-mediated AI Edit smoke is blocked until staging Worker deploy includes `GET /v1/editing/version`.
 - CI deploy/rollback remains blocked by missing GitHub staging environment secrets/variables and workflow availability on the default branch.
+
+## 2026-05-23 Cloud-Only iOS Guard Refresh
+
+Branch: `codex/phase-launch2-ci-deploy-token-unblock-readiness`
+
+Launch-readiness audit found that cloud-enabled internal/release builds could still downgrade into local iOS analysis or local AVFoundation export when cloud config was missing or a cloud call failed. That is not acceptable for the cloud-first launch rules.
+
+Changes:
+
+- Internal/release cloud launch modes now expose `requiresCloudVideoPipeline` and force `.cloud` analysis mode even when the URL is missing or invalid, so the app fails visibly instead of silently doing local analysis.
+- `HighlightsViewModel` no longer falls back to local analysis when `requiresCloudVideoPipeline` is true.
+- `exportHighlights` no longer starts local AVFoundation export when `requiresCloudVideoPipeline` is true; users are directed to AI Edit cloud rendering, preview, download, and share.
+- Debug/local-disabled builds can still use existing local development paths.
+
+Fresh validation:
+
+```sh
+XcodeBuildMCP test_sim -only-testing:HoopsClipsTests/LaunchRuntimeConfigTests CODE_SIGNING_ALLOWED=NO -hideShellScriptEnvironment
+XcodeBuildMCP test_sim -only-testing:HoopsClipsTests CODE_SIGNING_ALLOWED=NO -hideShellScriptEnvironment
+xcodebuild -project ios/HoopsClips.xcodeproj -scheme HoopsClips -configuration Debug -destination 'platform=iOS Simulator,id=7ECBD8FA-B0A2-4C3B-9A5C-EB73D19B99F2' -derivedDataPath /tmp/hoopclips-launch2-gpt-cloudguard-bft-dd CODE_SIGNING_ALLOWED=NO -hideShellScriptEnvironment build-for-testing
+```
+
+Results:
+
+- Focused launch runtime tests: 9 passed, 0 failed.
+- Full `HoopsClipsTests` simulator suite: 56 passed, 0 failed. Result bundle: `/Users/hanfei/Library/Developer/XcodeBuildMCP/workspaces/rork-hoopshighlights-ai_Final-b63ced5e161c/result-bundles/test_sim_2026-05-23T19-24-04-481Z_pid51963_2269640f.xcresult`.
+- `build-for-testing`: `** TEST BUILD SUCCEEDED **`.
+- Existing Swift warnings remain in legacy local analysis and CloudAnalysis progress code paths; this refresh did not make them worse.

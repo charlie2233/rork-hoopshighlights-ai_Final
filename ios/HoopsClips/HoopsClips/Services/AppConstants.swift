@@ -58,8 +58,12 @@ enum AppConstants {
         runtimeConfig.cloudLaunchMode
     }
 
+    static var requiresCloudVideoPipeline: Bool {
+        runtimeConfig.requiresCloudVideoPipeline
+    }
+
     static var cloudAnalysisEnabled: Bool {
-        runtimeConfig.allowsCloudAnalysisRequests || (runtimeConfig.isDebug && !cloudAnalysisBaseURL.isEmpty)
+        runtimeConfig.requiresCloudVideoPipeline || runtimeConfig.allowsCloudAnalysisRequests || (runtimeConfig.isDebug && !cloudAnalysisBaseURL.isEmpty)
     }
 
     static var cloudEditEnabled: Bool {

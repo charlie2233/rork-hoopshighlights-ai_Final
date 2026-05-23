@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import HoopsClips
 
@@ -40,7 +41,8 @@ struct LaunchRuntimeConfigTests {
 
         #expect(config.missingRequiredKeys.contains("HOOPSCloudAnalysisBaseURL"))
         #expect(config.allowsCloudAnalysisRequests == false)
-        #expect(config.launchAnalysisMode == .local)
+        #expect(config.requiresCloudVideoPipeline)
+        #expect(config.launchAnalysisMode == .cloud)
     }
 
     @Test func testProductionEnabledCloudLaunchModeUsesCloudWhenSecureURLExists() {
@@ -59,7 +61,56 @@ struct LaunchRuntimeConfigTests {
 
         #expect(config.missingRequiredKeys.isEmpty)
         #expect(config.allowsCloudAnalysisRequests)
+        #expect(config.requiresCloudVideoPipeline)
         #expect(config.launchAnalysisMode == .cloud)
+    }
+
+    @Test func testInternalStagingCloudLaunchModeDoesNotDowngradeToLocalWhenURLIsMissing() {
+        let missingURLConfig = AppRuntimeConfig(
+            environmentName: "internal_staging",
+            revenueCatAPIKey: "",
+            googleClientID: "",
+            googleReversedClientID: "",
+            firebaseAuthAPIKey: "",
+            privacyPolicyURL: "https://example.com/privacy",
+            termsOfServiceURL: "https://example.com/terms",
+            cloudAnalysisBaseURL: "",
+            sentryDSN: "",
+            cloudLaunchMode: .internalOnly
+        )
+        #expect(missingURLConfig.allowsCloudAnalysisRequests == false)
+        #expect(missingURLConfig.requiresCloudVideoPipeline)
+        #expect(missingURLConfig.launchAnalysisMode == .cloud)
+
+        let invalidURLConfig = AppRuntimeConfig(
+            environmentName: "internal_staging",
+            revenueCatAPIKey: "",
+            googleClientID: "",
+            googleReversedClientID: "",
+            firebaseAuthAPIKey: "",
+            privacyPolicyURL: "https://example.com/privacy",
+            termsOfServiceURL: "https://example.com/terms",
+            cloudAnalysisBaseURL: "http://127.0.0.1:8080",
+            sentryDSN: "",
+            cloudLaunchMode: .internalOnly
+        )
+        #expect(invalidURLConfig.allowsCloudAnalysisRequests == false)
+        #expect(invalidURLConfig.requiresCloudVideoPipeline)
+        #expect(invalidURLConfig.launchAnalysisMode == .cloud)
+    }
+
+    @Test @MainActor func testVideoExportServiceUnavailableStateClearsLocalExport() {
+        let service = VideoExportService()
+        service.isExporting = true
+        service.exportProgress = 0.5
+        service.exportedURL = URL(fileURLWithPath: "/tmp/local-export.mp4")
+
+        service.markUnavailable("Cloud rendering is required for this build.")
+
+        #expect(service.isExporting == false)
+        #expect(service.exportProgress == 0.0)
+        #expect(service.exportedURL == nil)
+        #expect(service.statusMessage == "Cloud rendering is required for this build.")
     }
 
     @Test func testCloudEditEndpointIsOptionalAndRequiresSecureURLInProduction() {

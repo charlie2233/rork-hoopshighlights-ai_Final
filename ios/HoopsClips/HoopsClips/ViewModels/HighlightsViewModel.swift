@@ -295,6 +295,11 @@ final class HighlightsViewModel {
 
     func exportHighlights(isProUser: Bool) async {
         guard let url = videoURL else { return }
+        guard !AppConstants.requiresCloudVideoPipeline else {
+            exportService.markUnavailable("Cloud rendering is required for this build. Use AI Edit to render, preview, download, or share.")
+            return
+        }
+
         await exportService.exportHighlights(
             sourceURL: url,
             clips: keptClips,
@@ -811,6 +816,15 @@ final class HighlightsViewModel {
         let hardFailureCodes: Set<String> = ["unsupported_duration", "file_too_large"]
         cloudAnalysisJobID = nil
         cloudEditSourceObjectKey = nil
+        if AppConstants.requiresCloudVideoPipeline {
+            let message = "Cloud analysis is required for this build. \(error.localizedDescription)"
+            analysisMode = .cloud
+            isCloudFallbackOffered = false
+            analysisService.finishExternalAnalysis(with: message)
+            recordAnalysisFailure(message: message)
+            return
+        }
+
         if case .notConfigured = error {
             analysisMode = .localFallback
             isCloudFallbackOffered = false

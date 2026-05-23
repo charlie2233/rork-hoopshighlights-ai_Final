@@ -126,3 +126,36 @@ System `python3 -m unittest ...` failed before test import because global Python
 - Live staging reranker smoke was not run because the branch has not been deployed and no OpenAI/Cloudflare/GCP production credentials should be inferred or logged from this environment.
 - `services/inference` is not tracked source in this checkout; the reranker is integrated into the currently tracked editing service path.
 - Production launch remains gated by the existing auth, storage, observability, render reliability, and Phase 4h confirmed-label gate.
+
+## 2026-05-23 Story Order and Edit Hint Refresh
+
+Branch: `codex/phase-launch2-ci-deploy-token-unblock-readiness`
+
+Follow-up audit found that the GPT structured output already returned story-order intent, but the deterministic edit-plan builder did not yet consume it. This refresh wires GPT story order through the cloud-owned edit-planning path without letting GPT invent clips, exact timestamps, FFmpeg operations, or render output.
+
+Changes:
+
+- `storyOrder` from the OpenAI Structured Outputs response is filtered to existing candidate clip IDs only, deduped, and ignored for unknown or rejected clips.
+- Non-chronological template plans can order selected clips by GPT story order; chronological/full-game templates still sort by source time.
+- GPT `captionMoment` and `cropFocus` suggestions now feed the `EditPlan` metadata after source-bound clamping.
+- AI Work Receipt includes `gptRerankStoryOrderClipIds` for machine-readable audit metadata while the human summary reports only the count, not raw IDs.
+
+Fresh validation:
+
+```sh
+PYTHONPATH=ios/backend:services/editing ios/backend/.venv/bin/python -m unittest ios.backend.tests.test_edit_plan_agent.EditPlanAgentTests.test_gpt_highlight_rerank_uses_existing_clip_ids_only ios.backend.tests.test_edit_plan_agent.EditPlanAgentTests.test_gpt_highlight_rerank_applies_story_order_to_edit_plan ios.backend.tests.test_edit_plan_agent.EditPlanAgentTests.test_gpt_highlight_rerank_clamps_hints_and_biases_source_window -v
+PYTHONPATH=ios/backend:services/editing ios/backend/.venv/bin/python -m unittest services.editing.tests.test_gpt_reranker -v
+PYTHONPATH=ios/backend:services/editing ios/backend/.venv/bin/python -m unittest services.editing.tests.test_editing_service.EditingServiceTests.test_gpt_highlight_rerank_summary_feeds_render_receipt -v
+PYTHONPATH=ios/backend:services/editing ios/backend/.venv/bin/python -m unittest ios.backend.tests.test_edit_plan_agent ios.backend.tests.test_render_jobs ios.backend.tests.test_launch_guardrails ios.backend.tests.test_external_providers ios.backend.tests.test_local_adapters services.editing.tests.test_gpt_reranker services.editing.tests.test_editing_service -v
+python3 -m py_compile ios/backend/app/editing.py services/editing/editing_app/gpt_reranker.py services/editing/editing_app/models.py
+git diff --check
+```
+
+Results:
+
+- Focused GPT/edit-plan tests: 3 passed, 0 failed.
+- GPT reranker tests: 7 passed, 0 failed.
+- Focused editing-service receipt/render test: passed.
+- Broad backend/editing suite: 76 passed, 0 failed.
+- Python compile: passed.
+- `git diff --check`: passed.

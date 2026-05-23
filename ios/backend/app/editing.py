@@ -225,6 +225,7 @@ class EditCandidateClip(APIModel):
     suggestedCropFocus: Optional[str] = Field(default=None, max_length=80)
     suggestedExtendBeforeSeconds: float = Field(default=0.0, ge=0.0, le=3.0)
     suggestedExtendAfterSeconds: float = Field(default=0.0, ge=0.0, le=3.0)
+    gptStoryOrderIndex: Optional[int] = Field(default=None, ge=0)
     rerankSource: Optional[str] = Field(default=None, max_length=80)
 
     @model_validator(mode="after")
@@ -751,6 +752,7 @@ class GPTHighlightRerankSummary(APIModel):
     returnedDecisionCount: int = Field(default=0, ge=0)
     keptClipIds: List[str] = Field(default_factory=list, max_length=30)
     rejectedClipIds: List[str] = Field(default_factory=list, max_length=30)
+    storyOrderClipIds: List[str] = Field(default_factory=list, max_length=30)
     fallbackReason: Optional[str] = Field(default=None, max_length=120)
 
 
@@ -830,6 +832,7 @@ class EditPlanClip(APIModel):
     timelineEnd: float = Field(gt=0.0)
     label: str
     caption: str = Field(max_length=MAX_CAPTION_LENGTH)
+    captionMoment: Optional[float] = Field(default=None, ge=0.0)
     cropMode: str
     effects: List[EditPlanEffect] = Field(default_factory=list)
 
@@ -841,6 +844,8 @@ class EditPlanClip(APIModel):
             raise ValueError("timelineEnd must be after timelineStart")
         if not self.sourceStart <= self.eventCenter <= self.sourceEnd:
             raise ValueError("eventCenter must be inside source bounds")
+        if self.captionMoment is not None and not self.sourceStart <= self.captionMoment <= self.sourceEnd:
+            raise ValueError("captionMoment must be inside source bounds")
         return self
 
     @property
@@ -1115,6 +1120,15 @@ def remove_duplicate_moments(clips: Sequence[EditCandidateClip]) -> List[EditCan
     return rank_clips(unique)
 
 
+def order_by_gpt_story_order(clips: Sequence[EditCandidateClip]) -> List[EditCandidateClip]:
+    ordered = [clip for clip in clips if clip.gptStoryOrderIndex is not None]
+    if not ordered:
+        return list(clips)
+    unordered = [clip for clip in clips if clip.gptStoryOrderIndex is None]
+    ordered.sort(key=lambda clip: (clip.gptStoryOrderIndex or 0, -clip.planning_score, clip.start))
+    return ordered + unordered
+
+
 def balance_clip_variety(clips: Sequence[EditCandidateClip], limit: int) -> List[EditCandidateClip]:
     chosen: List[EditCandidateClip] = []
     seen_labels = set()
@@ -1170,6 +1184,8 @@ def select_best_clips(
 
     if preset.ordering.startswith("chronological"):
         selected.sort(key=lambda clip: clip.start)
+    else:
+        selected = order_by_gpt_story_order(selected)
 
     return selected
 
@@ -1304,6 +1320,9 @@ def build_edit_plan(request: CreateEditJobRequest, edit_job_id: str) -> EditPlan
             source_end = clip.end
             source_start = max(clip.start, source_end - source_duration)
         timeline_end = timeline_start + (source_end - source_start)
+        caption_moment = None
+        if clip.suggestedCaptionMoment is not None:
+            caption_moment = round(min(max(clip.suggestedCaptionMoment, source_start), source_end), 3)
         plan_clips.append(
             EditPlanClip(
                 clipId=clip.id,
@@ -1314,6 +1333,7 @@ def build_edit_plan(request: CreateEditJobRequest, edit_job_id: str) -> EditPlan
                 timelineEnd=round(timeline_end, 3),
                 label=clip.label,
                 caption=_caption_for_clip(clip, preset),
+                captionMoment=caption_moment,
                 cropMode=(clip.suggestedCropFocus or "center_action") if aspect_ratio != "source" else "source",
                 effects=_effects_for(clip, source_start, source_end, preset),
             )
@@ -1469,11 +1489,20 @@ def apply_gpt_highlight_rerank(
     model: Optional[str],
     sampled_clip_count: int,
     sampled_frame_count: int,
+    story_order: Optional[Sequence[str]] = None,
 ) -> CreateEditJobRequest:
     source_by_id = {clip.id: clip for clip in request.clips}
     valid_decisions: Dict[str, GPTHighlightClipDecision] = {
         decision.clipId: decision for decision in decisions if decision.clipId in source_by_id
     }
+    valid_story_order: List[str] = []
+    seen_story_ids = set()
+    for clip_id in story_order or []:
+        if clip_id in source_by_id and clip_id in valid_decisions and clip_id not in seen_story_ids:
+            valid_story_order.append(clip_id)
+            seen_story_ids.add(clip_id)
+    story_index_by_id = {clip_id: index for index, clip_id in enumerate(valid_story_order)}
+
     if not valid_decisions:
         summary = GPTHighlightRerankSummary(
             status="fallback",
@@ -1515,6 +1544,7 @@ def apply_gpt_highlight_rerank(
                 "suggestedCropFocus": suggested.cropFocus,
                 "suggestedExtendBeforeSeconds": suggested.extendBeforeSeconds,
                 "suggestedExtendAfterSeconds": suggested.extendAfterSeconds,
+                "gptStoryOrderIndex": story_index_by_id.get(clip.id),
                 "rerankSource": "gpt_highlight_reranker",
             }
         )
@@ -1528,6 +1558,7 @@ def apply_gpt_highlight_rerank(
             sampledFrameCount=sampled_frame_count,
             returnedDecisionCount=len(valid_decisions),
             fallbackReason="all_clips_rejected",
+            storyOrderClipIds=valid_story_order,
         )
         return request.model_copy(update={"gptRerankSummary": summary})
 
@@ -1541,7 +1572,7 @@ def apply_gpt_highlight_rerank(
         if current is None or clip.planning_score > current.planning_score:
             kept_by_duplicate[clip.duplicateGroup] = clip
     deduped.extend(kept_by_duplicate.values())
-    reranked = rank_clips(deduped)
+    reranked = order_by_gpt_story_order(rank_clips(deduped))
     summary = GPTHighlightRerankSummary(
         status="applied",
         model=model,
@@ -1550,6 +1581,7 @@ def apply_gpt_highlight_rerank(
         returnedDecisionCount=len(valid_decisions),
         keptClipIds=[clip.id for clip in reranked if clip.id in valid_decisions],
         rejectedClipIds=rejected_clip_ids,
+        storyOrderClipIds=[clip_id for clip_id in valid_story_order if clip_id in {clip.id for clip in reranked}],
     )
     return request.model_copy(update={"clips": reranked, "gptRerankSummary": summary})
 

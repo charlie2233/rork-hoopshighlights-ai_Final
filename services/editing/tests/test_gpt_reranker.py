@@ -260,12 +260,16 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         try:
             gpt_reranker._extract_candidate_keyframes = fake_extract
             with tempfile.NamedTemporaryFile(suffix=".mp4") as source:
-                gpt_reranker.rerank_edit_request_with_gpt(_request("free", 12), Path(source.name), settings, fake_response_client)
-                gpt_reranker.rerank_edit_request_with_gpt(_request("pro", 30), Path(source.name), settings, fake_response_client)
+                free_result = gpt_reranker.rerank_edit_request_with_gpt(_request("free", 12), Path(source.name), settings, fake_response_client)
+                pro_result = gpt_reranker.rerank_edit_request_with_gpt(_request("pro", 30), Path(source.name), settings, fake_response_client)
         finally:
             gpt_reranker._extract_candidate_keyframes = original_extract
 
         self.assertEqual(observed_calls, [(8, 3), (24, 5)])
+        self.assertEqual(len(free_result.gptRerankSummary.storyOrderClipIds), 8)
+        self.assertEqual(len(pro_result.gptRerankSummary.storyOrderClipIds), 24)
+        self.assertTrue(set(free_result.gptRerankSummary.storyOrderClipIds).issubset({clip.id for clip in free_result.clips}))
+        self.assertTrue(set(pro_result.gptRerankSummary.storyOrderClipIds).issubset({clip.id for clip in pro_result.clips}))
 
 
 if __name__ == "__main__":

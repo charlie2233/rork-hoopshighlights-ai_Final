@@ -304,3 +304,39 @@ Results:
 - `git diff --check`: passed.
 
 No secret values, R2 credentials, or presigned URLs were printed or committed.
+
+## 2026-05-23 Submission Readiness Refresh
+
+Branch: `codex/phase-launch2-ci-deploy-token-unblock-readiness`
+
+The latest review added two readiness hardenings that are prerequisites for internal TestFlight confidence but still do not complete App Store/TestFlight submission:
+
+- GPT reranker story order and edit hints now flow into the deterministic cloud edit plan and AI Work Receipt.
+- iOS internal/release cloud launch modes no longer silently downgrade to local video analysis or local AVFoundation export when the cloud path is required.
+
+Fresh validation:
+
+```sh
+PYTHONPATH=ios/backend:services/editing ios/backend/.venv/bin/python -m unittest ios.backend.tests.test_edit_plan_agent ios.backend.tests.test_render_jobs ios.backend.tests.test_launch_guardrails ios.backend.tests.test_external_providers ios.backend.tests.test_local_adapters services.editing.tests.test_gpt_reranker services.editing.tests.test_editing_service -v
+python3 -m py_compile ios/backend/app/editing.py services/editing/editing_app/gpt_reranker.py services/editing/editing_app/models.py
+python3 scripts/launch_backend_config_preflight.py
+XcodeBuildMCP test_sim -only-testing:HoopsClipsTests CODE_SIGNING_ALLOWED=NO -hideShellScriptEnvironment
+xcodebuild -project ios/HoopsClips.xcodeproj -scheme HoopsClips -configuration Debug -destination 'platform=iOS Simulator,id=7ECBD8FA-B0A2-4C3B-9A5C-EB73D19B99F2' -derivedDataPath /tmp/hoopclips-launch2-gpt-cloudguard-bft-dd CODE_SIGNING_ALLOWED=NO -hideShellScriptEnvironment build-for-testing
+git diff --check
+```
+
+Results:
+
+- Broad backend/editing suite: 76 passed, 0 failed.
+- Python compile: passed.
+- Backend launch config preflight: `pass=57 warn=12 fail=0`.
+- Full `HoopsClipsTests` simulator suite: 56 passed, 0 failed.
+- iOS `build-for-testing`: `** TEST BUILD SUCCEEDED **`.
+- `git diff --check`: passed.
+
+Submission blockers still open:
+
+- Live staging Worker `/v1/editing/version` remains stale until a new Worker deploy is proven.
+- GitHub `staging` environment still needs deploy inputs before the manual deploy/rollback workflow can prove Wrangler scope.
+- No live Worker deploy job ID, Worker version ID, rollback job ID, or Cloud Run image/revision ID exists for this source.
+- Installed TestFlight physical-device smoke remains unproven from this environment.
