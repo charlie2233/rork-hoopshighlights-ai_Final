@@ -12,29 +12,27 @@ This package is the Cloudflare control plane scaffold for HoopsClips.
 - Queue orchestration to the external inference service
 - R2 presign abstraction
 
-## Happy Path
-
-The runnable happy path is documented in [`docs/control_plane_happy_path.md`](../../docs/control_plane_happy_path.md).
-The live staging deploy and smoke flow are documented in [`docs/staging_smoke_runbook.md`](../../docs/staging_smoke_runbook.md).
-
-Quick local check:
+## Local Checks
 
 ```bash
-npm --prefix services/control-plane install
-npx tsx scripts/control-plane-happy-path.ts
+npm --prefix services/control-plane ci
+npm --prefix services/control-plane run typecheck
+npm --prefix services/control-plane test
+npm --prefix services/control-plane run deploy:staging:dry-run
 ```
 
 Focused checks:
 
 ```bash
-npx tsx --test services/control-plane/test/control-plane-status-transitions.test.ts
-npx tsx --test services/control-plane/test/control-plane-failure-path.test.ts
-npx tsx --test services/control-plane/test/control-plane-duplicate-callback.test.ts
-npx tsx --test services/control-plane/test/control-plane-dlq.test.ts
+npm --prefix services/control-plane exec -- tsx --test services/control-plane/test/control-plane-editing-proxy.test.ts
+npm --prefix services/control-plane exec -- tsx --test services/control-plane/test/control-plane-status-transitions.test.ts
+npm --prefix services/control-plane exec -- tsx --test services/control-plane/test/control-plane-failure-path.test.ts
+npm --prefix services/control-plane exec -- tsx --test services/control-plane/test/control-plane-duplicate-callback.test.ts
+npm --prefix services/control-plane exec -- tsx --test services/control-plane/test/control-plane-dlq.test.ts
 python3 scripts/launch_backend_config_preflight.py
 ```
 
-The launch preflight is static and no-secret. It verifies staging/backend config contracts and reports remaining production-cutover gates without printing credentials or presigned URLs.
+The workflow dry-run and launch preflight are static and no-secret. They validate staging Worker bindings and backend config contracts without deploying, printing credentials, or printing presigned URLs. See [`docs/phase_launch2_ci_deploy_token_unblock.md`](../../docs/phase_launch2_ci_deploy_token_unblock.md) and [`docs/phase_launch2_main_deploy_workflow_handoff.md`](../../docs/phase_launch2_main_deploy_workflow_handoff.md) for current deploy-token evidence.
 
 The phase-1b verification path now uses the staging route shape end to end:
 
@@ -78,7 +76,7 @@ For the exact local/staging variable mapping and Wrangler secret commands, see [
 
 ## Staging deploy
 
-1. Create or verify the Cloudflare resources with [`docs/staging_smoke_runbook.md`](../../docs/staging_smoke_runbook.md).
+1. Create or verify Cloudflare resources using the phase launch evidence docs.
 2. Validate the Worker bundle and staging bindings without deploying:
 
 ```bash
@@ -98,7 +96,7 @@ npm --prefix services/control-plane run deployments:staging
 npm --prefix services/control-plane run rollback:staging -- <version-id> --message "rollback <git-sha>"
 ```
 
-5. Use the printed staging Worker URL with a real sample MP4 file, for example `npx tsx scripts/control-plane-happy-path.ts --base-url https://<staging-worker-url> --file /tmp/hoopsclips-staging-sample.mp4 --trace-id staging-smoke-001`.
+5. Use the printed staging Worker URL with a real sample MP4 file through the launch smoke path documented in the phase launch evidence docs.
 
 ## Migration notes
 

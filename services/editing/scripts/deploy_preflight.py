@@ -74,7 +74,7 @@ def main() -> int:
     if not active_account:
         check("gcloud-auth", False, "No active gcloud account is configured.", blocker=True)
     else:
-        check("gcloud-auth", True, f"Active gcloud account is {active_account}.")
+        check("gcloud-auth", True, "Active gcloud account is configured.")
 
     if project and shutil.which("gcloud"):
         artifact = run(

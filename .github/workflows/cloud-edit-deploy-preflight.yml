@@ -41,10 +41,13 @@ jobs:
           node-version: "22"
 
       - name: Install control-plane dependencies
-        run: npm --prefix services/control-plane install
+        run: npm --prefix services/control-plane ci
 
       - name: Typecheck control plane
         run: npm --prefix services/control-plane run typecheck
+
+      - name: Test control plane routing
+        run: npm --prefix services/control-plane test
 
       - name: Validate staging Worker bundle and bindings
         run: npm --prefix services/control-plane run deploy:staging:dry-run
@@ -74,7 +77,7 @@ jobs:
           node-version: "22"
 
       - name: Install control-plane dependencies
-        run: npm --prefix services/control-plane install
+        run: npm --prefix services/control-plane ci
 
       - name: Assert cloud deploy inputs are present
         run: |

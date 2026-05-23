@@ -225,3 +225,52 @@ Current unblock sequence:
 4. Deploy the editing Cloud Run service separately with `--substitutions=_IMAGE_TAG=<git-sha>` when backend source needs to go live.
 5. Run `operation=deploy` to prove Wrangler edit scope and refresh the staging Worker.
 6. Capture the previous Worker version ID and run `operation=rollback` to prove rollback scope.
+
+## 2026-05-23 Main Handoff Merge Refresh
+
+Branch: `codex/phase-launch2-ci-deploy-token-unblock-readiness`
+
+PR #8 published the deploy workflow handoff to `main` as commit `fe35d0618190ce150383fb5a0fc968ee1517b517`. The default-branch manual dispatch was then run with `operation=preflight`.
+
+Default-branch evidence:
+
+- GitHub Actions run ID: `26339989518`
+- Head SHA: `fe35d0618190ce150383fb5a0fc968ee1517b517`
+- `Worker typecheck and dry run`: passed
+- `Verify cloud edit deploy secrets`: failed at the expected missing-input gate
+- Missing input names: `CLOUDFLARE_API_TOKEN`, `GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_DEPLOY_SERVICE_ACCOUNT`, `GCP_PROJECT_ID`, `GCP_REGION`
+- Live staging `/v1/editing/version` still returned route-not-found, so no staging Worker deploy was proven
+
+This branch was merged forward with `origin/main` after that handoff. Conflict resolution kept the default-branch workflow hardening:
+
+- `npm ci` instead of `npm install` in the deploy workflow
+- control-plane tests in the Worker dry-run job
+- `services/control-plane/package-lock.json`
+- Wrangler `4.94.0`
+- deploy preflight gcloud account redaction
+
+Fresh local validation after conflict resolution:
+
+```sh
+git fetch origin --prune
+git merge origin/main
+npm --prefix services/control-plane ci
+npm --prefix services/control-plane run typecheck
+npm --prefix services/control-plane test
+npm --prefix services/control-plane run deploy:staging:dry-run
+npm --prefix services/control-plane audit --audit-level=moderate
+python3 -m py_compile services/editing/scripts/deploy_preflight.py
+python3 services/editing/scripts/deploy_preflight.py --json
+```
+
+Results:
+
+- `npm ci`: passed with 0 vulnerabilities.
+- `npm --prefix services/control-plane run typecheck`: passed.
+- `npm --prefix services/control-plane test`: 20 passed, 0 failed.
+- `npm --prefix services/control-plane run deploy:staging:dry-run`: passed with staging bindings only and no deploy.
+- `npm --prefix services/control-plane audit --audit-level=moderate`: passed with 0 vulnerabilities.
+- `python3 -m py_compile services/editing/scripts/deploy_preflight.py`: passed.
+- `deploy_preflight.py --json`: `status=blocked` only because `CLOUDFLARE_API_TOKEN` is not set and local Wrangler OAuth is not valid; GCP CLI, project, Artifact Registry, required Secret Manager entries, Cloud Run editing service, and R2 endpoint checks passed.
+
+No secret values, R2 credentials, or presigned URLs were printed or committed.
