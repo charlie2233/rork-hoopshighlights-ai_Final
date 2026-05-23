@@ -111,6 +111,58 @@ struct CloudEditServiceTests {
         }
     }
 
+    @Test func testLockerRerenderUsesRevisionEndpointForRevisionRows() async throws {
+        try await withCloudEditBaseURL {
+            let service = CloudEditService(session: makeSession { request in
+                #expect(request.httpMethod == "POST")
+                #expect(request.url?.path == "/v1/edit-jobs/edit_123/revisions/rev_more_hype/render")
+                let payload = try jsonObject(from: try requestBodyData(from: request))
+                #expect(payload["installId"] as? String == "install_test")
+                #expect((payload["idempotencyKey"] as? String)?.hasPrefix("ios-revision-rerender-rev_more_hype-") == true)
+                #expect(payload["sourceObjectKey"] == nil)
+                #expect(payload["editPlan"] == nil)
+                #expect(payload["sourceClips"] == nil)
+
+                return try jsonResponse(
+                    for: request,
+                    body: renderStatusJSON(editJobId: "edit_123", revisionId: "rev_more_hype", renderJobId: "render_revision_fresh")
+                )
+            })
+
+            let status = try await service.requestLockerRerender(
+                render: makeRenderStatus(editJobID: "edit_123", revisionID: "rev_more_hype", renderJobID: "render_revision_old"),
+                installID: "install_test"
+            )
+            #expect(status.revisionId == "rev_more_hype")
+            #expect(status.renderJobId == "render_revision_fresh")
+        }
+    }
+
+    @Test func testLockerRerenderUsesBaseEndpointForBaseRows() async throws {
+        try await withCloudEditBaseURL {
+            let service = CloudEditService(session: makeSession { request in
+                #expect(request.httpMethod == "POST")
+                #expect(request.url?.path == "/v1/edit-jobs/edit_123/render")
+                let payload = try jsonObject(from: try requestBodyData(from: request))
+                #expect(payload["installId"] as? String == "install_test")
+                #expect(payload["forceNew"] as? Bool == true)
+                #expect((payload["idempotencyKey"] as? String)?.hasPrefix("ios-locker-rerender-") == true)
+                #expect(payload["sourceObjectKey"] == nil)
+                #expect(payload["editPlan"] == nil)
+                #expect(payload["sourceClips"] == nil)
+
+                return try jsonResponse(for: request, body: renderStatusJSON(editJobId: "edit_123", renderJobId: "render_base_fresh"))
+            })
+
+            let status = try await service.requestLockerRerender(
+                render: makeRenderStatus(editJobID: "edit_123", revisionID: nil, renderJobID: "render_base_old"),
+                installID: "install_test"
+            )
+            #expect(status.revisionId == nil)
+            #expect(status.renderJobId == "render_base_fresh")
+        }
+    }
+
     @Test func testRequestRevisionRenderUsesRevisionEndpointAndIdempotencyKey() async throws {
         try await withCloudEditBaseURL {
             let service = CloudEditService(session: makeSession { request in
@@ -248,6 +300,37 @@ struct CloudEditServiceTests {
           "workReceipt": null
         }
         """
+    }
+
+    private func makeRenderStatus(
+        editJobID: String,
+        revisionID: String?,
+        renderJobID: String
+    ) -> CloudEditRenderStatusResponse {
+        CloudEditRenderStatusResponse(
+            editJobId: editJobID,
+            revisionId: revisionID,
+            renderJobId: renderJobID,
+            renderer: "cloud-renderer",
+            rendererVersion: "test",
+            planVersion: nil,
+            templateId: "personal_highlight_v1",
+            status: .rendered,
+            outputObjectKey: nil,
+            renderLogObjectKey: nil,
+            durationSeconds: 30.0,
+            aspectRatio: .vertical,
+            traceId: "trace_test",
+            failureReason: nil,
+            validationErrors: nil,
+            planTier: .free,
+            policy: nil,
+            retryCount: 0,
+            outputBytes: 123456,
+            retentionMetadata: nil,
+            workTimeline: nil,
+            workReceipt: nil
+        )
     }
 }
 

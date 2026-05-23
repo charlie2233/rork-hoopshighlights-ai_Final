@@ -140,6 +140,19 @@ struct CloudEditService {
         return try decodeResponse(data: data, response: response, successType: CloudEditRenderStatusResponse.self)
     }
 
+    func requestLockerRerender(render: CloudEditRenderStatusResponse, installID: String) async throws -> CloudEditRenderStatusResponse {
+        if let revisionID = render.revisionId, !revisionID.isEmpty {
+            return try await requestRevisionRender(
+                editJobID: render.editJobId,
+                revisionID: revisionID,
+                installID: installID,
+                forceNew: true
+            )
+        }
+
+        return try await requestStoredRender(editJobID: render.editJobId, installID: installID)
+    }
+
     func fetchDownloadURL(editJobID: String, installID: String) async throws -> CloudEditDownloadResponse {
         let baseURL = try configuredBaseURL()
         var components = URLComponents(url: baseURL.appending(path: "v1/edit-jobs/\(editJobID)/download-url"), resolvingAgainstBaseURL: false)
@@ -189,7 +202,8 @@ struct CloudEditService {
     func requestRevisionRender(
         editJobID: String,
         revisionID: String,
-        installID: String
+        installID: String,
+        forceNew: Bool = false
     ) async throws -> CloudEditRenderStatusResponse {
         let baseURL = try configuredBaseURL()
         var request = URLRequest(url: baseURL.appending(path: "v1/edit-jobs/\(editJobID)/revisions/\(revisionID)/render"))
@@ -197,10 +211,16 @@ struct CloudEditService {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Hoopclips-iOS/1.0", forHTTPHeaderField: "User-Agent")
         request.setValue(UUID().uuidString, forHTTPHeaderField: "x-trace-id")
+        let idempotencyKey: String
+        if forceNew {
+            idempotencyKey = "ios-revision-rerender-\(revisionID)-\(UUID().uuidString)"
+        } else {
+            idempotencyKey = "ios-revision-render-\(revisionID)"
+        }
         request.httpBody = try encoder.encode(
             CloudEditRevisionRenderRequest(
                 installId: installID,
-                idempotencyKey: "ios-revision-render-\(revisionID)"
+                idempotencyKey: idempotencyKey
             )
         )
 

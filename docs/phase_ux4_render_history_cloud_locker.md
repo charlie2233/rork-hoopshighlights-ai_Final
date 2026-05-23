@@ -15,7 +15,7 @@ Branch: `codex/phase-ux4-render-history-cloud-locker`
 - New endpoint: `GET /v1/render-jobs?installId=<install>&limit=<n>`.
 - Response is scoped by install ID and returns render metadata only. It does not include presigned download URLs.
 - Existing download URL endpoint remains the only path that mints a short-lived URL: `GET /v1/render-jobs/{renderJobId}/download-url`.
-- Stored-edit re-render uses `POST /v1/edit-jobs/{editJobId}/render` with `forceNew: true`; normal render requests remain idempotent.
+- Stored base-edit re-render uses `POST /v1/edit-jobs/{editJobId}/render` with `forceNew: true`; normal render requests remain idempotent. Follow-up UX4b routes revised Locker rows through `POST /v1/edit-jobs/{editJobId}/revisions/{revisionId}/render`.
 - GPT rerank receipt reconstruction now carries the stored `gptRerankSummary` when render state is reloaded.
 
 Synthetic test evidence:
@@ -32,7 +32,8 @@ Synthetic test evidence:
 
 - `CloudEditService.fetchRenderHistory(installID:limit:)` reads backend render history.
 - `CloudEditService.fetchDownloadURL(renderJobID:installID:)` asks the backend for a fresh short-lived URL per locker item.
-- `CloudEditService.requestStoredRender(editJobID:installID:)` sends a cloud re-render request with `forceNew: true`.
+- `CloudEditService.requestStoredRender(editJobID:installID:)` sends a base cloud re-render request with `forceNew: true`.
+- `CloudEditService.requestLockerRerender(render:installID:)` routes revised rows through the revision render endpoint so the selected revised plan is re-rendered.
 - `AIEditView` now shows a My AI Edits card with latest render status, template name, duration/aspect ratio, expiration, Download / Share, Re-render, and refresh controls.
 - Download / Share downloads the rendered MP4 through the existing service path, attaches it to the export service, and opens the iOS share sheet.
 
