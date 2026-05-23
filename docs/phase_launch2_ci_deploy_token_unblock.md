@@ -371,3 +371,54 @@ Results:
 - GitHub `staging` variable-name list: empty.
 
 Submission decision: do not submit to App Store/TestFlight from this state.
+
+## 2026-05-23 Default-Branch Dispatch Refresh
+
+Branch: `codex/phase-launch2-ci-deploy-token-live-refresh`
+
+After `main` was fast-forwarded to `b71f9f7`, the Cloud Edit Deploy Preflight workflow became available on the default branch. This removes the older "workflow file missing from main" blocker, but deploy and rollback are still blocked by missing staging environment inputs.
+
+Commands run:
+
+```sh
+gh workflow list --repo charlie2233/rork-hoopshighlights-ai_Final --all
+gh api 'repos/charlie2233/rork-hoopshighlights-ai_Final/contents/.github/workflows/cloud-edit-deploy-preflight.yml?ref=main' --jq '.name + " " + .sha'
+gh secret list --repo charlie2233/rork-hoopshighlights-ai_Final --env staging --json name,updatedAt --jq '.[] | [.name,.updatedAt] | @tsv'
+gh variable list --repo charlie2233/rork-hoopshighlights-ai_Final --env staging --json name,updatedAt --jq '.[] | [.name,.updatedAt] | @tsv'
+gh workflow run 'Cloud Edit Deploy Preflight' --repo charlie2233/rork-hoopshighlights-ai_Final --ref main -f operation=preflight
+gh run watch 26342828803 --repo charlie2233/rork-hoopshighlights-ai_Final --exit-status
+gh run view 26342828803 --repo charlie2233/rork-hoopshighlights-ai_Final --json status,conclusion,createdAt,updatedAt,headSha,headBranch,event,jobs
+curl -sS -o /tmp/hoopclips-worker-version-main-refresh.json -w '%{http_code}' https://hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev/v1/editing/version
+npm --prefix services/control-plane ci
+npm --prefix services/control-plane run typecheck
+npm --prefix services/control-plane test
+npm --prefix services/control-plane run deploy:staging:dry-run
+python3 scripts/launch_backend_config_preflight.py --repo-root . --json
+```
+
+Results:
+
+- `Cloud Edit Deploy Preflight`: active on `main`.
+- Workflow file lookup on `main`: found `cloud-edit-deploy-preflight.yml` at SHA `01beec6b79d11b54a0fe20ad4cc2b2a649b763fd`.
+- GitHub `staging` secret-name list: empty.
+- GitHub `staging` variable-name list: empty.
+- Manual default-branch preflight run ID: `26342828803`.
+- Run `26342828803` head: `main` at `b71f9f7ac16981c35c81b6d0ca6e4aecdac3a0ac`.
+- Job `Worker typecheck and dry run` (`77547710709`): passed.
+- Job `Verify cloud edit deploy secrets` (`77547736154`): failed at `Assert cloud deploy inputs are present`.
+- Missing input names reported by the workflow: `CLOUDFLARE_API_TOKEN`, `GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_DEPLOY_SERVICE_ACCOUNT`, `GCP_PROJECT_ID`, and `GCP_REGION`.
+- Staging Worker `/v1/editing/version`: still `404`, `Route not found.`
+- `npm --prefix services/control-plane ci`: passed, 0 vulnerabilities.
+- Local control-plane typecheck: passed.
+- Local control-plane tests: 20 passed, 0 failed.
+- Local staging Worker dry-run: passed with staging bindings only and no deploy.
+- Backend config preflight: pass, 63 passing checks, 12 warnings, 0 failures.
+
+Updated blocker state:
+
+- Resolved: the deploy workflow is now active and dispatchable from `main`.
+- Still blocked: GitHub `staging` environment lacks required Cloudflare/GCP inputs, so no live Worker deploy, Worker version ID, deploy run, or rollback run exists.
+- Still blocked: staging Worker `/v1/editing/version` remains stale until a real deploy runs.
+- Still blocked: installed TestFlight physical-device smoke remains unproven.
+
+No deploy or rollback was attempted because the preflight failed before authentication. No secret values, R2 credentials, storage object keys, or presigned URLs were printed or committed.
