@@ -879,7 +879,7 @@ enum CloudEditError: Error, LocalizedError, Sendable {
         case "ai_edit_disabled":
             return "Cloud AI editing is temporarily paused. Try again after HoopClips re-enables editing."
         case "ai_edit_live_render_disabled":
-            return "Cloud rendering is temporarily paused. HoopClips will not run a local render fallback."
+            return "Cloud rendering is temporarily paused. HoopClips will keep AI edits in the cloud and retry when rendering is re-enabled."
         case "ai_edit_revision_disabled":
             return "AI edit revisions are temporarily paused. Your current render is still safe to preview and share."
         case "ai_edit_template_pack_disabled":

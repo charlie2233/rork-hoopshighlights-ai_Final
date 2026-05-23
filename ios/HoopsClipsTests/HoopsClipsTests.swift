@@ -325,7 +325,11 @@ struct HoopsClipsTests {
 
     @Test func testCloudEditKillSwitchErrorsHaveFriendlyMessages() {
         #expect(CloudEditError.friendlyBackendMessage(code: "ai_edit_disabled", fallback: "fallback").contains("paused"))
-        #expect(CloudEditError.friendlyBackendMessage(code: "ai_edit_live_render_disabled", fallback: "fallback").contains("local render fallback"))
+        let liveRenderDisabled = CloudEditError.friendlyBackendMessage(code: "ai_edit_live_render_disabled", fallback: "fallback")
+        #expect(liveRenderDisabled.contains("temporarily paused"))
+        #expect(liveRenderDisabled.contains("cloud"))
+        #expect(!liveRenderDisabled.localizedCaseInsensitiveContains("local render"))
+        #expect(!liveRenderDisabled.localizedCaseInsensitiveContains("fallback"))
         #expect(CloudEditError.friendlyBackendMessage(code: "ai_edit_revision_disabled", fallback: "fallback").contains("revisions"))
         #expect(CloudEditError.friendlyBackendMessage(code: "ai_edit_template_pack_disabled", fallback: "fallback").contains("Template packs"))
     }
