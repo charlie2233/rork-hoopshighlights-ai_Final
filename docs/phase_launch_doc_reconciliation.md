@@ -34,7 +34,7 @@ gh api repos/actions/setup-node/releases/latest --jq '{tag_name, name, published
 Observed results:
 
 - PR #3, `codex/phase-launch2-ci-deploy-token-unblock-readiness`, is draft, `MERGEABLE`, and `CLEAN`.
-- PR #3 `Worker typecheck and dry run` passed on run `26329394365`; `Verify cloud edit deploy secrets` was skipped because the workflow was not a manual dispatch.
+- PR #3 `Worker typecheck and dry run` passed on run `26329438289` after the v6 action update; `Verify cloud edit deploy secrets` was skipped because the workflow was not a manual dispatch.
 - PR #2, `codex/phase4h-calibrated-acceptance-gate-unblocking`, is draft, `CONFLICTING`, and `DIRTY`.
 - Live staging Worker `GET /v1/editing/version` returned `404`, so live iOS kill-switch state remains unproven through the Worker.
 - `.github/workflows/cloud-edit-deploy-preflight.yml` still returned `404` from `main`, so the manual deploy/rollback workflow is not runnable from the default branch yet.
@@ -76,7 +76,7 @@ Observed results:
 
 | Item | Current evidence | Launch meaning |
 | --- | --- | --- |
-| PR dry-run run ID | `26327853230` | proves typecheck and staging Worker dry-run only |
+| PR dry-run run ID | `26329438289` | proves typecheck and staging Worker dry-run only |
 | GitHub `staging` input names | no secret or variable names observed | operator inputs still required |
 | Cloud Build ID | not captured | no editing Cloud Run deploy proof from this branch |
 | Cloud Run revision | not captured for this branch | deployed editing service may be older than current source |
@@ -119,6 +119,7 @@ Results:
 - Editing deploy preflight script compile: passed.
 - XcodeBuildMCP Debug simulator build/run: passed.
 - iOS `build-for-testing`: passed with `** TEST BUILD SUCCEEDED **`.
+- PR #3 GitHub Actions run `26329438289`: passed `Worker typecheck and dry run`; deploy-secret verification was skipped because the run was a pull request, not `workflow_dispatch`.
 
 ## Not Changed
 

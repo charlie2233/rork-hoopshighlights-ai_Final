@@ -194,7 +194,7 @@ Results:
 
 - GitHub's workflow registry now surfaces `Cloud Edit Deploy Preflight` from PR activity, but `cloud-edit-deploy-preflight.yml` still returns `HTTP 404` on `main`, so default-branch `workflow_dispatch` cannot be run from Actions yet.
 - PR #3 run `26327853230` proved the PR-safe `Worker typecheck and dry run` job; `Verify cloud edit deploy secrets` was skipped because the run was not a manual dispatch.
-- After the launch doc reconciliation fast-forward, PR #3 run `26329394365` also proved the PR-safe `Worker typecheck and dry run` job on commit `1201a02`; `Verify cloud edit deploy secrets` was skipped because the run was not a manual dispatch.
+- After the launch doc reconciliation and v6 action fast-forward, PR #3 run `26329438289` also proved the PR-safe `Worker typecheck and dry run` job on commit `480dd20`; `Verify cloud edit deploy secrets` was skipped because the run was not a manual dispatch.
 - GitHub environments still include `production` and `staging`.
 - GitHub `staging` environment secret-name list returned no names.
 - GitHub `staging` environment variable-name list returned no names.
@@ -210,7 +210,7 @@ No-secret deploy evidence ledger:
 
 | Item | Current evidence | Launch meaning |
 | --- | --- | --- |
-| PR dry-run run ID | `26329394365` | proves typecheck and staging Worker dry-run only |
+| PR dry-run run ID | `26329438289` | proves typecheck and staging Worker dry-run only |
 | GitHub `staging` input names | no secret or variable names observed | operator inputs still required |
 | Cloud Build ID | not captured | no editing Cloud Run deploy proof from this branch |
 | Cloud Run revision | not captured for this branch | deployed editing service may be older than current source |
