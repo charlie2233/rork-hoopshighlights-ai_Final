@@ -25,6 +25,8 @@ from scripts.launch_backend_config_preflight import summarize as summarize_backe
 VERSION_ROUTE = "/v1/editing/version"
 DEFAULT_WORKER_BASE_URL = "https://hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev"
 EXPECTED_IOS_BUNDLE_ID = "atrak.charlie.hoopsclips"
+EXPECTED_IOS_MARKETING_VERSION = "1.0.0"
+EXPECTED_IOS_BUILD_NUMBER = "4"
 KNOWN_CONFLICTING_BUNDLE_IDS = ("app.rork.hoopshighlights-ai",)
 REQUIRED_FEATURE_FLAGS = (
     "aiEditEnabled",
@@ -40,6 +42,31 @@ REQUIRED_DEPLOY_SECRET_INPUTS = (
 REQUIRED_DEPLOY_VARIABLE_INPUTS = (
     "GCP_PROJECT_ID",
     "GCP_REGION",
+)
+REQUIRED_IOS_UPLOAD_SECRET_INPUTS = (
+    "HOOPS_DEVELOPMENT_TEAM",
+    "HOOPS_REVENUECAT_API_KEY",
+    "HOOPS_GOOGLE_CLIENT_ID",
+    "HOOPS_GOOGLE_REVERSED_CLIENT_ID",
+    "HOOPS_FIREBASE_AUTH_API_KEY",
+    "HOOPS_SENTRY_DSN",
+    "APP_STORE_CONNECT_KEY_ID",
+    "APP_STORE_CONNECT_ISSUER_ID",
+    "APP_STORE_CONNECT_API_KEY_BASE64",
+)
+REQUIRED_IOS_UPLOAD_VARIABLE_INPUTS = (
+    "HOOPS_PRIVACY_POLICY_URL",
+    "HOOPS_TERMS_OF_SERVICE_URL",
+)
+REQUIRED_IOS_UPLOAD_WORKFLOW_SNIPPETS = (
+    "environment: staging",
+    "ios/scripts/materialize_local_secrets.sh",
+    "ios/scripts/verify_internal_staging_config.sh",
+    "ios/HoopsClips/HoopsClips/Config/InternalStaging.xcconfig",
+    "xcodebuild archive",
+    "xcodebuild -exportArchive",
+    "-authenticationKeyPath",
+    "ios/exportOptions.testflight-internal.plist",
 )
 BLOCKER_DOCS = (
     (
@@ -153,6 +180,7 @@ def run_checks(
     check_ci_deploy_inputs(collector)
     check_blocker_docs(repo_root, collector)
     check_submission_automation(repo_root, collector)
+    check_ios_upload_inputs(collector)
     return collector.findings
 
 
@@ -217,8 +245,8 @@ def check_ios_signing(repo_root: Path, collector: Collector) -> None:
 
     for needle, label in (
         (f'PRODUCT_BUNDLE_IDENTIFIER = "{EXPECTED_IOS_BUNDLE_ID}";', f"bundle id {EXPECTED_IOS_BUNDLE_ID}"),
-        ("MARKETING_VERSION = 1.0.0;", "marketing version 1.0.0"),
-        ("CURRENT_PROJECT_VERSION = 3;", "build number 3"),
+        (f"MARKETING_VERSION = {EXPECTED_IOS_MARKETING_VERSION};", f"marketing version {EXPECTED_IOS_MARKETING_VERSION}"),
+        (f"CURRENT_PROJECT_VERSION = {EXPECTED_IOS_BUILD_NUMBER};", f"build number {EXPECTED_IOS_BUILD_NUMBER}"),
         ("CODE_SIGN_STYLE = Automatic;", "automatic signing"),
         ('DEVELOPMENT_TEAM = "$(HOOPS_DEVELOPMENT_TEAM)";', "team resolved from HOOPS_DEVELOPMENT_TEAM"),
     ):
@@ -296,13 +324,54 @@ def check_upload_artifact(repo_root: Path, collector: Collector, archive_path: P
         candidates = default_upload_artifact_candidates(repo_root)
 
     existing = [path for path in candidates if path.exists()]
-    valid = [path for path in existing if path.suffix in {".ipa", ".xcarchive"} or path.name.endswith(".xcarchive")]
+    valid: list[Path] = []
+    metadata_failures: list[tuple[Path, str]] = []
+    for path in existing:
+        if is_xcarchive_path(path):
+            failure = archive_metadata_failure(path)
+            if failure:
+                metadata_failures.append((path, failure))
+            else:
+                valid.append(path)
+        elif path.suffix == ".ipa":
+            valid.append(path)
+
     if valid:
         collector.pass_("upload artifact", "repo", f"{len(valid)} upload artifact candidate(s) found.")
+    elif metadata_failures:
+        failure_path, failure_detail = metadata_failures[0]
+        collector.fail("upload artifact", rel(failure_path, repo_root), failure_detail)
     elif archive_path is not None:
         collector.fail("upload artifact", rel(archive_path, repo_root), "Requested archive/IPA path does not exist.")
     else:
         collector.fail("upload artifact", "repo", "No .xcarchive or .ipa upload artifact found under the expected build output locations.")
+
+
+def is_xcarchive_path(path: Path) -> bool:
+    return path.name.endswith(".xcarchive")
+
+
+def archive_metadata_failure(path: Path) -> str | None:
+    info_path = path / "Info.plist"
+    try:
+        with info_path.open("rb") as handle:
+            plist = plistlib.load(handle)
+    except (FileNotFoundError, OSError, plistlib.InvalidFileException):
+        return "Archive metadata Info.plist is missing or unreadable."
+
+    application_properties = plist.get("ApplicationProperties")
+    if not isinstance(application_properties, dict):
+        return "Archive metadata is missing ApplicationProperties."
+
+    expectations = {
+        "CFBundleIdentifier": EXPECTED_IOS_BUNDLE_ID,
+        "CFBundleShortVersionString": EXPECTED_IOS_MARKETING_VERSION,
+        "CFBundleVersion": EXPECTED_IOS_BUILD_NUMBER,
+    }
+    for key, expected in expectations.items():
+        if application_properties.get(key) != expected:
+            return f"Archive {key} does not match expected upload metadata."
+    return None
 
 
 def check_live_worker_version(worker_base_url: str, collector: Collector, *, skip_live: bool, timeout_seconds: float) -> None:
@@ -400,12 +469,29 @@ def check_blocker_docs(repo_root: Path, collector: Collector) -> None:
 def check_submission_automation(repo_root: Path, collector: Collector) -> None:
     archive_workflow = repo_root / ".github/workflows/ios-testflight-upload.yml"
     fastlane_dir = repo_root / "fastlane"
-    if archive_workflow.exists():
-        collector.pass_("submission automation", rel(archive_workflow, repo_root), "iOS upload workflow exists.")
+    text = read_text(archive_workflow)
+    if text is not None:
+        missing_snippets = [snippet for snippet in REQUIRED_IOS_UPLOAD_WORKFLOW_SNIPPETS if snippet not in text]
+        if missing_snippets:
+            collector.fail("submission automation", rel(archive_workflow, repo_root), f"iOS upload workflow is missing required snippet(s): {', '.join(missing_snippets)}.")
+        else:
+            collector.pass_("submission automation", rel(archive_workflow, repo_root), "iOS upload workflow archives internal staging and uploads only through explicit workflow_dispatch.")
     elif fastlane_dir.exists():
         collector.pass_("submission automation", rel(fastlane_dir, repo_root), "fastlane directory exists.")
     else:
         collector.warn("submission automation", "repo", "No dedicated iOS upload workflow or fastlane lane found; submission likely requires manual Xcode/App Store Connect steps.")
+
+
+def check_ios_upload_inputs(collector: Collector) -> None:
+    required = (*REQUIRED_IOS_UPLOAD_SECRET_INPUTS, *REQUIRED_IOS_UPLOAD_VARIABLE_INPUTS)
+    github_secret_names = github_environment_names("secret")
+    github_variable_names = github_environment_names("variable")
+    github_names = github_secret_names | github_variable_names
+    missing = [name for name in required if not os.getenv(name) and name not in github_names]
+    if missing:
+        collector.fail("ios upload inputs", "environment", f"Missing required iOS upload input name(s): {', '.join(missing)}.")
+    else:
+        collector.pass_("ios upload inputs", "environment", "Required iOS upload input names are present locally or in the GitHub staging environment without printing values.")
 
 
 def worker_base_url_from_internal_staging(repo_root: Path) -> str | None:
