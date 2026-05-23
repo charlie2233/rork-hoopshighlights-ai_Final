@@ -226,6 +226,7 @@ class EditCandidateClip(APIModel):
     suggestedExtendBeforeSeconds: float = Field(default=0.0, ge=0.0, le=3.0)
     suggestedExtendAfterSeconds: float = Field(default=0.0, ge=0.0, le=3.0)
     rerankSource: Optional[str] = Field(default=None, max_length=80)
+    gptStoryOrderIndex: Optional[int] = Field(default=None, ge=0, le=29)
 
     @model_validator(mode="after")
     def validate_bounds(self) -> "EditCandidateClip":
@@ -751,6 +752,7 @@ class GPTHighlightRerankSummary(APIModel):
     returnedDecisionCount: int = Field(default=0, ge=0)
     keptClipIds: List[str] = Field(default_factory=list, max_length=30)
     rejectedClipIds: List[str] = Field(default_factory=list, max_length=30)
+    storyOrderClipIds: List[str] = Field(default_factory=list, max_length=30)
     fallbackReason: Optional[str] = Field(default=None, max_length=120)
 
 
@@ -1096,7 +1098,14 @@ def build_edit_context(request: CreateEditJobRequest) -> EditContext:
 def rank_clips(clips: Sequence[EditCandidateClip]) -> List[EditCandidateClip]:
     return sorted(
         clips,
-        key=lambda clip: (clip.planning_score, clip.watchability, clip.excitement, -clip.start),
+        key=lambda clip: (
+            clip.gptStoryOrderIndex is not None,
+            -(clip.gptStoryOrderIndex or 0),
+            clip.planning_score,
+            clip.watchability,
+            clip.excitement,
+            -clip.start,
+        ),
         reverse=True,
     )
 
@@ -1469,11 +1478,17 @@ def apply_gpt_highlight_rerank(
     model: Optional[str],
     sampled_clip_count: int,
     sampled_frame_count: int,
+    story_order: Optional[Sequence[str]] = None,
 ) -> CreateEditJobRequest:
     source_by_id = {clip.id: clip for clip in request.clips}
     valid_decisions: Dict[str, GPTHighlightClipDecision] = {
         decision.clipId: decision for decision in decisions if decision.clipId in source_by_id
     }
+    story_order_index_by_id: Dict[str, int] = {}
+    for clip_id in story_order or []:
+        if clip_id in valid_decisions and clip_id not in story_order_index_by_id:
+            story_order_index_by_id[clip_id] = len(story_order_index_by_id)
+
     if not valid_decisions:
         summary = GPTHighlightRerankSummary(
             status="fallback",
@@ -1516,6 +1531,7 @@ def apply_gpt_highlight_rerank(
                 "suggestedExtendBeforeSeconds": suggested.extendBeforeSeconds,
                 "suggestedExtendAfterSeconds": suggested.extendAfterSeconds,
                 "rerankSource": "gpt_highlight_reranker",
+                "gptStoryOrderIndex": story_order_index_by_id.get(clip.id),
             }
         )
         kept.append(updated)
@@ -1550,6 +1566,7 @@ def apply_gpt_highlight_rerank(
         returnedDecisionCount=len(valid_decisions),
         keptClipIds=[clip.id for clip in reranked if clip.id in valid_decisions],
         rejectedClipIds=rejected_clip_ids,
+        storyOrderClipIds=[clip.id for clip in reranked if clip.gptStoryOrderIndex is not None],
     )
     return request.model_copy(update={"clips": reranked, "gptRerankSummary": summary})
 

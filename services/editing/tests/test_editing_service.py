@@ -864,7 +864,7 @@ class EditingServiceTests(unittest.TestCase):
                     suggestedEdit=GPTHighlightSuggestedEdit(),
                 ),
             ]
-            return apply_gpt_highlight_rerank(request, decisions, "gpt-test", 2, 6)
+            return apply_gpt_highlight_rerank(request, decisions, "gpt-test", 2, 6, story_order=["c2", "c1"])
 
         try:
             os.environ["HOOPS_GPT_HIGHLIGHT_RERANKER_ENABLED"] = "true"
@@ -891,7 +891,9 @@ class EditingServiceTests(unittest.TestCase):
             self.assertEqual(render_payload["workReceipt"]["gptRerankSampledFrameCount"], 6)
             self.assertEqual(render_payload["workReceipt"]["gptRerankKeptClipCount"], 1)
             self.assertEqual(render_payload["workReceipt"]["gptRerankRejectedClipCount"], 1)
+            self.assertEqual(render_payload["workReceipt"]["gptRerankStoryOrderClipIds"], ["c2"])
             self.assertIn("GPT reranked 2 clips from 6 keyframes.", render_payload["workReceipt"]["summaryRows"])
+            self.assertIn("Applied GPT story order for 1 clips.", render_payload["workReceipt"]["summaryRows"])
         finally:
             editing_main.rerank_edit_request_with_gpt = original_reranker
             if old_enabled is None:

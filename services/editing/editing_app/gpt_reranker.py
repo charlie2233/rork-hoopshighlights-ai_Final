@@ -120,6 +120,7 @@ def rerank_edit_request_with_gpt(
         output_text = _extract_output_text(response_payload)
         output = json.loads(output_text)
         decisions = [GPTHighlightClipDecision(**item) for item in output.get("decisions", [])]
+        story_order = [item for item in output.get("storyOrder", []) if isinstance(item, str)]
     except (HTTPError, URLError, TimeoutError, OSError, ValueError, json.JSONDecodeError, TypeError) as error:
         reason = "openai_unavailable"
         if isinstance(error, HTTPError):
@@ -132,6 +133,7 @@ def rerank_edit_request_with_gpt(
         model=settings.model,
         sampled_clip_count=len(sampled_clips),
         sampled_frame_count=len(sampled_frames),
+        story_order=story_order,
     )
 
 

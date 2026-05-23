@@ -91,6 +91,7 @@ class AIWorkReceipt(APIModel):
     gptRerankSampledFrameCount: Optional[int] = None
     gptRerankKeptClipCount: Optional[int] = None
     gptRerankRejectedClipCount: Optional[int] = None
+    gptRerankStoryOrderClipIds: Optional[List[str]] = None
     gptRerankFallbackReason: Optional[str] = None
     summaryRows: List[str] = Field(default_factory=list)
 
@@ -464,6 +465,8 @@ def build_ai_work_receipt(
             summary_rows.append(
                 f"GPT reranked {gpt_rerank_summary.sampledClipCount} clips from {gpt_rerank_summary.sampledFrameCount} keyframes."
             )
+            if gpt_rerank_summary.storyOrderClipIds:
+                summary_rows.append(f"Applied GPT story order for {len(gpt_rerank_summary.storyOrderClipIds)} clips.")
         elif gpt_rerank_summary.status == "fallback" and gpt_rerank_summary.fallbackReason:
             summary_rows.append(f"GPT rerank fallback: {gpt_rerank_summary.fallbackReason}.")
     summary_rows.append(f"Applied {template.displayName} template.")
@@ -510,6 +513,7 @@ def build_ai_work_receipt(
         gptRerankSampledFrameCount=gpt_rerank_summary.sampledFrameCount if gpt_rerank_summary is not None else None,
         gptRerankKeptClipCount=len(gpt_rerank_summary.keptClipIds) if gpt_rerank_summary is not None else None,
         gptRerankRejectedClipCount=len(gpt_rerank_summary.rejectedClipIds) if gpt_rerank_summary is not None else None,
+        gptRerankStoryOrderClipIds=gpt_rerank_summary.storyOrderClipIds if gpt_rerank_summary is not None else None,
         gptRerankFallbackReason=gpt_rerank_summary.fallbackReason if gpt_rerank_summary is not None else None,
         summaryRows=summary_rows,
     )

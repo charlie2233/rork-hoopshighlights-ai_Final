@@ -1243,6 +1243,7 @@ struct AIEditView: View {
             gptRerankSampledFrameCount: nil,
             gptRerankKeptClipCount: nil,
             gptRerankRejectedClipCount: nil,
+            gptRerankStoryOrderClipIds: nil,
             gptRerankFallbackReason: nil,
             summaryRows: rows
         )
