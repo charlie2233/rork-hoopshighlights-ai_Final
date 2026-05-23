@@ -34,9 +34,6 @@ jobs:
       APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
       APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
       APP_STORE_CONNECT_API_KEY_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_BASE64 }}
-      ARCHIVE_PATH: ${{ runner.temp }}/HoopsClips-InternalStaging.xcarchive
-      EXPORT_PATH: ${{ runner.temp }}/HoopsClips-TestFlight-Export
-      DERIVED_DATA_PATH: ${{ runner.temp }}/hoopclips-internal-staging-derived
 
     steps:
       - name: Check out repository
@@ -44,6 +41,15 @@ jobs:
 
       - name: Print Xcode version
         run: xcodebuild -version
+
+      - name: Set temporary build paths
+        run: |
+          set -euo pipefail
+          {
+            echo "ARCHIVE_PATH=$RUNNER_TEMP/HoopsClips-InternalStaging.xcarchive"
+            echo "EXPORT_PATH=$RUNNER_TEMP/HoopsClips-TestFlight-Export"
+            echo "DERIVED_DATA_PATH=$RUNNER_TEMP/hoopclips-internal-staging-derived"
+          } >> "$GITHUB_ENV"
 
       - name: Assert required inputs are present
         run: |

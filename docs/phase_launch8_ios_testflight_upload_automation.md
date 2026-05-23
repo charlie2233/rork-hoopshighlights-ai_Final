@@ -20,6 +20,7 @@ The workflow keeps the cloud-first product boundary intact: iOS packages and upl
 - The workflow uses `ios/scripts/materialize_local_secrets.sh` and `ios/scripts/verify_internal_staging_config.sh`.
 - The workflow requires App Store Connect API key inputs and passes them to `xcodebuild` through `-authenticationKeyPath`, `-authenticationKeyID`, and `-authenticationKeyIssuerID`.
 - The workflow removes the temporary `.p8` key file in an `always()` cleanup step.
+- Temporary archive/export/derived-data paths are written from `$RUNNER_TEMP` inside a shell step because GitHub does not allow the `runner` context in job-level `env`.
 - Bumped the next iOS build number from `3` to `4` so the next internal TestFlight upload does not reuse the historical build `3`.
 - The submission preflight now validates `.xcarchive` metadata for bundle ID, marketing version, and build number instead of treating any archive directory as upload-ready.
 - Updated `scripts/submission_readiness_preflight.py` so the submission gate verifies:
@@ -205,7 +206,7 @@ RUBY
 Result:
 
 ```text
-checked 10 run blocks
+checked 11 run blocks
 ```
 
 Python syntax check:
@@ -241,6 +242,14 @@ live worker version route: fail HTTP 404
 cloud deploy inputs: fail missing staging input names
 ios upload inputs: fail missing staging input names
 ```
+
+Manual workflow dispatch validation:
+
+```bash
+gh workflow run "iOS Internal TestFlight Upload" --ref main -f operation=preflight
+```
+
+Initial result after first push: rejected before scheduling because `runner.temp` was used in job-level `env`, where the `runner` context is unavailable. The workflow was fixed to set those paths from `$RUNNER_TEMP` in a shell step.
 
 No workflow dispatch, App Store Connect export/upload, TestFlight processing, or installed-app smoke was run in this branch.
 
