@@ -5,6 +5,7 @@ import argparse
 import json
 import os
 import plistlib
+import re
 import subprocess
 import sys
 from dataclasses import asdict, dataclass
@@ -68,6 +69,10 @@ REQUIRED_IOS_UPLOAD_WORKFLOW_SNIPPETS = (
     "-authenticationKeyPath",
     "ios/exportOptions.testflight-internal.plist",
 )
+REQUIRED_MAIN_WORKFLOWS = (
+    "Cloud Edit Deploy Preflight",
+    "iOS Internal TestFlight Upload",
+)
 BLOCKER_DOCS = (
     (
         "docs/phase_edit7g_post_testflight_internal_smoke.md",
@@ -91,6 +96,7 @@ BLOCKER_DOCS = (
     ),
 )
 PLACEHOLDER_VALUES = {"", "YOUR_TEAM_ID", "$(HOOPS_DEVELOPMENT_TEAM)"}
+UUID_RE = re.compile(r"^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$")
 
 
 @dataclass(frozen=True)
@@ -175,9 +181,11 @@ def run_checks(
     check_export_options(repo_root, collector)
     check_bundle_id_references(repo_root, collector)
     check_upload_artifact(repo_root, collector, archive_path)
+    check_connected_ios_device(collector)
     resolved_worker_base_url = worker_base_url or worker_base_url_from_internal_staging(repo_root) or DEFAULT_WORKER_BASE_URL
     check_live_worker_version(resolved_worker_base_url, collector, skip_live=skip_live, timeout_seconds=timeout_seconds)
     check_ci_deploy_inputs(collector)
+    check_github_workflow_runs(collector)
     check_blocker_docs(repo_root, collector)
     check_submission_automation(repo_root, collector)
     check_ios_upload_inputs(collector)
@@ -347,6 +355,62 @@ def check_upload_artifact(repo_root: Path, collector: Collector, archive_path: P
         collector.fail("upload artifact", "repo", "No .xcarchive or .ipa upload artifact found under the expected build output locations.")
 
 
+def check_connected_ios_device(collector: Collector) -> None:
+    try:
+        result = subprocess.run(
+            ["xcrun", "devicectl", "list", "devices"],
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=20,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        collector.warn("connected ios device", "xcrun devicectl", "Could not inspect connected iOS devices.")
+        return
+    if result.returncode != 0:
+        collector.warn("connected ios device", "xcrun devicectl", "devicectl did not return connected device state.")
+        return
+
+    devices = parse_devicectl_devices(result.stdout)
+    available_iphones = [device for device in devices if device["model"].startswith("iPhone") and device["state"].lower() == "available"]
+    unavailable_iphones = [device for device in devices if device["model"].startswith("iPhone") and device["state"].lower() != "available"]
+    if available_iphones:
+        collector.pass_("connected ios device", "xcrun devicectl", f"{len(available_iphones)} available iPhone device(s) detected for TestFlight smoke.")
+    elif unavailable_iphones:
+        states = ", ".join(sorted({device["state"] for device in unavailable_iphones}))
+        collector.fail("connected ios device", "xcrun devicectl", f"iPhone device(s) detected but unavailable for install/smoke testing: {states}.")
+    else:
+        collector.fail("connected ios device", "xcrun devicectl", "No available physical iPhone detected for installed TestFlight smoke.")
+
+
+def parse_devicectl_devices(output: str) -> list[dict[str, str]]:
+    devices: list[dict[str, str]] = []
+    for raw_line in output.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("Name ") or line.startswith("----"):
+            continue
+        parts = line.split()
+        identifier_index = next((index for index, part in enumerate(parts) if UUID_RE.match(part)), None)
+        if identifier_index is None or len(parts) <= identifier_index + 2:
+            continue
+        state = parts[identifier_index + 1]
+        model = " ".join(parts[identifier_index + 2 :])
+        identifier = parts[identifier_index]
+        hostname = parts[identifier_index - 1] if identifier_index >= 1 else ""
+        name = " ".join(parts[: max(0, identifier_index - 1)])
+        devices.append(
+            {
+                "name": name,
+                "hostname": hostname,
+                "identifier": identifier,
+                "state": state,
+                "model": model,
+            }
+        )
+    return devices
+
+
 def is_xcarchive_path(path: Path) -> bool:
     return path.name.endswith(".xcarchive")
 
@@ -429,6 +493,57 @@ def check_ci_deploy_inputs(collector: Collector) -> None:
         )
     else:
         collector.pass_("cloud deploy inputs", "environment", "Required deploy input names are present locally or in the GitHub staging environment without printing values.")
+
+
+def check_github_workflow_runs(collector: Collector) -> None:
+    try:
+        result = subprocess.run(
+            [
+                "gh",
+                "run",
+                "list",
+                "--repo",
+                "charlie2233/rork-hoopshighlights-ai_Final",
+                "--branch",
+                "main",
+                "--limit",
+                "20",
+                "--json",
+                "workflowName,status,conclusion,createdAt,headSha,event",
+            ],
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=20,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        collector.warn("github workflow status", "GitHub Actions", "Could not inspect latest main-branch workflow runs.")
+        return
+    if result.returncode != 0:
+        collector.warn("github workflow status", "GitHub Actions", "gh run list did not return workflow state.")
+        return
+    try:
+        runs = json.loads(result.stdout or "[]")
+    except json.JSONDecodeError:
+        collector.warn("github workflow status", "GitHub Actions", "gh run list returned invalid JSON.")
+        return
+    if not isinstance(runs, list):
+        collector.warn("github workflow status", "GitHub Actions", "gh run list returned an unexpected payload.")
+        return
+
+    for workflow_name in REQUIRED_MAIN_WORKFLOWS:
+        latest = next((run for run in runs if isinstance(run, dict) and run.get("workflowName") == workflow_name), None)
+        if latest is None:
+            collector.fail("github workflow status", workflow_name, "No recent main-branch workflow run was found.")
+            continue
+        status = str(latest.get("status") or "unknown")
+        conclusion = str(latest.get("conclusion") or "unknown")
+        created_at = str(latest.get("createdAt") or "unknown")
+        if status == "completed" and conclusion == "success":
+            collector.pass_("github workflow status", workflow_name, f"Latest main-branch run completed successfully at {created_at}.")
+        else:
+            collector.fail("github workflow status", workflow_name, f"Latest main-branch run status={status} conclusion={conclusion} at {created_at}.")
 
 
 def github_environment_names(kind: str) -> set[str]:

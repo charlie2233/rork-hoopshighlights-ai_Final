@@ -1,4 +1,5 @@
 import os
+import json
 import plistlib
 import tempfile
 import unittest
@@ -18,8 +19,11 @@ from scripts.submission_readiness_preflight import (
     check_bundle_id_references,
     check_blocker_docs,
     check_ci_deploy_inputs,
+    check_connected_ios_device,
+    check_github_workflow_runs,
     check_ios_upload_inputs,
     has_failures,
+    parse_devicectl_devices,
     redacted_endpoint_label,
     run_checks,
 )
@@ -43,6 +47,20 @@ class SubmissionReadinessPreflightTests(unittest.TestCase):
                     "live worker feature flags",
                     "staging-worker/v1/editing/version",
                     "Worker returned non-secret AI Edit kill-switch state.",
+                ),
+            ), patch(
+                "scripts.submission_readiness_preflight.check_connected_ios_device",
+                side_effect=lambda collector: collector.pass_(
+                    "connected ios device",
+                    "xcrun devicectl",
+                    "1 available iPhone device(s) detected for TestFlight smoke.",
+                ),
+            ), patch(
+                "scripts.submission_readiness_preflight.check_github_workflow_runs",
+                side_effect=lambda collector: collector.pass_(
+                    "github workflow status",
+                    "GitHub Actions",
+                    "Required main-branch workflow runs are green.",
                 ),
             ), patch.dict(
                 os.environ,
@@ -89,6 +107,63 @@ class SubmissionReadinessPreflightTests(unittest.TestCase):
             check_bundle_id_references(repo_root, collector)
 
             self.assertTrue(has_failures(collector.findings))
+
+    def test_parse_devicectl_devices_preserves_state_and_model(self) -> None:
+        output = """
+Name             Hostname                           Identifier                             State         Model
+--------------   --------------------------------   ------------------------------------   -----------   --------------------------
+charlie的iPhone   charliedeiPhone.coredevice.local   E5786BB6-0095-5509-8B85-110C0B5CE6D3   unavailable   iPhone 15 Pro (iPhone16,1)
+"""
+
+        devices = parse_devicectl_devices(output)
+
+        self.assertEqual(len(devices), 1)
+        self.assertEqual(devices[0]["state"], "unavailable")
+        self.assertEqual(devices[0]["model"], "iPhone 15 Pro (iPhone16,1)")
+
+    def test_connected_ios_device_fails_when_detected_iphone_is_unavailable(self) -> None:
+        output = """
+Name             Hostname                           Identifier                             State         Model
+--------------   --------------------------------   ------------------------------------   -----------   --------------------------
+charlie的iPhone   charliedeiPhone.coredevice.local   E5786BB6-0095-5509-8B85-110C0B5CE6D3   unavailable   iPhone 15 Pro (iPhone16,1)
+"""
+        collector = Collector()
+
+        with patch(
+            "scripts.submission_readiness_preflight.subprocess.run",
+            return_value=SimpleNamespace(returncode=0, stdout=output),
+        ):
+            check_connected_ios_device(collector)
+
+        self.assertTrue(has_failures(collector.findings))
+        self.assertIn("unavailable", collector.findings[0].detail)
+
+    def test_github_workflow_runs_fail_when_latest_required_runs_failed(self) -> None:
+        payload = [
+            {
+                "workflowName": "iOS Internal TestFlight Upload",
+                "status": "completed",
+                "conclusion": "failure",
+                "createdAt": "2026-05-23T21:27:18Z",
+            },
+            {
+                "workflowName": "Cloud Edit Deploy Preflight",
+                "status": "completed",
+                "conclusion": "failure",
+                "createdAt": "2026-05-23T20:31:19Z",
+            },
+        ]
+        collector = Collector()
+
+        with patch(
+            "scripts.submission_readiness_preflight.subprocess.run",
+            return_value=SimpleNamespace(returncode=0, stdout=json.dumps(payload)),
+        ):
+            check_github_workflow_runs(collector)
+
+        failures = [finding for finding in collector.findings if finding.status == "fail"]
+        self.assertEqual(len(failures), 2)
+        self.assertTrue(all("conclusion=failure" in finding.detail for finding in failures))
 
     def test_deploy_inputs_can_come_from_github_environment_names(self) -> None:
         def fake_github_names(kind: str) -> set[str]:
