@@ -177,7 +177,7 @@ def get_settings() -> Settings:
         hoopcut_python_bin=hoopcut_python_bin,
         autohighlight_repo_path=autohighlight_repo_path,
         autohighlight_python_bin=autohighlight_python_bin,
-        daily_quota=int(os.getenv("HOOPS_DAILY_QUOTA", "5")),
+        daily_quota=int(os.getenv("HOOPS_DAILY_QUOTA", "3")),
         rolling_quota_hours=int(os.getenv("HOOPS_ROLLING_QUOTA_HOURS", "24")),
         default_poll_after_seconds=int(os.getenv("HOOPS_POLL_AFTER_SECONDS", "2")),
         job_ttl_seconds=int(os.getenv("HOOPS_JOB_TTL_SECONDS", "3600")),

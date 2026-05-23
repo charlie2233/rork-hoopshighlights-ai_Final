@@ -36,7 +36,7 @@ class LocalAdapterTests(unittest.IsolatedAsyncioTestCase):
             hoopcut_python_bin=None,
             autohighlight_repo_path=None,
             autohighlight_python_bin=None,
-            daily_quota=5,
+            daily_quota=3,
             rolling_quota_hours=24,
             default_poll_after_seconds=2,
             job_ttl_seconds=3600,
@@ -57,8 +57,6 @@ class LocalAdapterTests(unittest.IsolatedAsyncioTestCase):
         shutil.rmtree(self._temp_dir, ignore_errors=True)
 
     async def test_reserve_quota_tracks_rolling_window(self) -> None:
-        self.assertEqual(await self.store.reserve_quota("install-123456"), 4)
-        self.assertEqual(await self.store.reserve_quota("install-123456"), 3)
         self.assertEqual(await self.store.reserve_quota("install-123456"), 2)
         self.assertEqual(await self.store.reserve_quota("install-123456"), 1)
         self.assertEqual(await self.store.reserve_quota("install-123456"), 0)

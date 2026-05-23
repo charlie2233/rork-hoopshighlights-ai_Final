@@ -113,7 +113,7 @@ class EditPlanAgentTests(unittest.TestCase):
             hoopcut_python_bin=None,
             autohighlight_repo_path=None,
             autohighlight_python_bin=None,
-            daily_quota=5,
+            daily_quota=3,
             rolling_quota_hours=24,
             default_poll_after_seconds=2,
             job_ttl_seconds=3600,

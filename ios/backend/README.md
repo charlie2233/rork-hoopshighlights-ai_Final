@@ -93,7 +93,7 @@ Then you can selectively install dependencies into isolated virtualenvs:
 - `HOOPS_HOOPCUT_PYTHON`: Python executable for the HoopCut virtualenv
 - `HOOPS_AUTOHIGHLIGHT_REPO_PATH`: explicit autohighlight checkout path
 - `HOOPS_AUTOHIGHLIGHT_PYTHON`: Python executable for the autohighlight virtualenv
-- `HOOPS_DAILY_QUOTA`: per-install rolling quota (default `5`)
+- `HOOPS_DAILY_QUOTA`: per-install rolling quota (default `3`)
 - `HOOPS_MAX_DURATION_SECONDS`: max backend video duration (default `1800`)
 - `HOOPS_MAX_FILE_SIZE_BYTES`: max video size for v1 (default `524288000`)
 - `HOOPS_BACKEND_MODEL_VERSION`: version string exposed in diagnostics (default `cloud-v1`)

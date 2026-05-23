@@ -17,7 +17,7 @@ final class SubscriptionManager {
 
     init() {
         let storedUses = UserDefaults.standard.object(forKey: freeUsesKey) as? Int
-        let initialUses = max(storedUses ?? 0, AppConstants.cloudAnalysisDailyQuota)
+        let initialUses = min(max(storedUses ?? AppConstants.cloudAnalysisDailyQuota, 0), AppConstants.cloudAnalysisDailyQuota)
         freeUsesRemaining = initialUses
         UserDefaults.standard.set(initialUses, forKey: freeUsesKey)
     }

@@ -33,6 +33,8 @@ import { emptyResponse, jsonResponse, readJson } from "../utils/request-id";
 import { resolveRuntimeConfig } from "../env";
 import { recoverStaleProcessingJob } from "../recovery";
 
+const DEFAULT_FREE_DAILY_QUOTA = 3;
+
 export async function routePublicRequest(
   request: Request,
   env: Env,
@@ -211,7 +213,7 @@ async function handlePresign(
       reviewState: "unreviewed",
       reviewerNotes: null,
       promotedToTrainingSet: false,
-      quotaRemainingToday: 5
+      quotaRemainingToday: DEFAULT_FREE_DAILY_QUOTA
     };
 
     const bootstrap = await bootstrapJob(env, record);
@@ -258,7 +260,7 @@ async function handlePresign(
       status: "upload_pending",
       analysisMode: "cloud",
       pollAfterSeconds: resolveRuntimeConfig(env).defaultPollAfterSeconds,
-      quotaRemainingToday: pendingJob.quotaRemainingToday ?? record.quotaRemainingToday ?? 5
+      quotaRemainingToday: pendingJob.quotaRemainingToday ?? record.quotaRemainingToday ?? DEFAULT_FREE_DAILY_QUOTA
     };
     console.info(
       JSON.stringify({
