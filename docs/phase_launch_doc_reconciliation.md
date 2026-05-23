@@ -27,12 +27,14 @@ npm --prefix services/control-plane exec -- wrangler deployments --help
 npm --prefix services/control-plane exec -- wrangler rollback --help
 npm --prefix services/control-plane exec -- wrangler secret list --help
 npm --prefix services/control-plane exec -- wrangler deploy --help
+gh api repos/actions/checkout/releases/latest --jq '{tag_name, name, published_at}'
+gh api repos/actions/setup-node/releases/latest --jq '{tag_name, name, published_at}'
 ```
 
 Observed results:
 
 - PR #3, `codex/phase-launch2-ci-deploy-token-unblock-readiness`, is draft, `MERGEABLE`, and `CLEAN`.
-- PR #3 `Worker typecheck and dry run` passed; `Verify cloud edit deploy secrets` was skipped because the workflow was not a manual dispatch.
+- PR #3 `Worker typecheck and dry run` passed on run `26329394365`; `Verify cloud edit deploy secrets` was skipped because the workflow was not a manual dispatch.
 - PR #2, `codex/phase4h-calibrated-acceptance-gate-unblocking`, is draft, `CONFLICTING`, and `DIRTY`.
 - Live staging Worker `GET /v1/editing/version` returned `404`, so live iOS kill-switch state remains unproven through the Worker.
 - `.github/workflows/cloud-edit-deploy-preflight.yml` still returned `404` from `main`, so the manual deploy/rollback workflow is not runnable from the default branch yet.
@@ -40,6 +42,8 @@ Observed results:
 - Historical docs still contain older real storage object-key evidence in several smoke reports. This branch redacts only the current launch-decision Phase Edit7e summary and records the broader scan as future cleanup.
 - The Cloud Edit Deploy Preflight workflow did not run for editing deploy preflight script changes before this branch because the PR path filter watched `services/editing/cloudbuild.yaml` but not `services/editing/scripts/deploy_preflight.py`.
 - The editing service deploy README omitted `_IMAGE_TAG`, which would make operator Cloud Build deploys fall back to the default `manual` tag.
+- The PR dry-run emitted a GitHub Actions Node.js 20 deprecation annotation for `actions/checkout@v4` and `actions/setup-node@v4`.
+- GitHub API reported current official releases `actions/checkout@v6.0.2` and `actions/setup-node@v6.4.0`.
 
 ## Files Reconciled
 
@@ -61,6 +65,9 @@ Observed results:
   - Clarified that PR workflow checks are visible, but default-branch manual dispatch remains unavailable until the workflow stack lands on `main`.
 - `.github/workflows/cloud-edit-deploy-preflight.yml`
   - Added `services/editing/scripts/deploy_preflight.py` to PR path filters so deploy-preflight script changes trigger the PR-safe typecheck/dry-run job.
+  - Updated `actions/checkout` and `actions/setup-node` to v6 major tags to remove the Node.js 20 action-runtime deprecation warning on future runs.
+- `.github/workflows/release-secrets-preflight.yml`
+  - Updated `actions/checkout` to the v6 major tag for the same GitHub Actions runtime warning.
 - `services/editing/README.md`
   - Added an explicit `_IMAGE_TAG` substitution to the Cloud Build command.
   - Added `--keep-vars` to the staging Worker deploy command and warned operators not to paste secret values into shell history or docs.
