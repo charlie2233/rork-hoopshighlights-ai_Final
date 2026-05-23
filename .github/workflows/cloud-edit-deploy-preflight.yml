@@ -1,0 +1,249 @@
+name: Cloud Edit Deploy Preflight
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/cloud-edit-deploy-preflight.yml
+      - services/control-plane/**
+      - services/editing/cloudbuild.yaml
+      - services/editing/scripts/deploy_preflight.py
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: "Staging operation to run after preflight."
+        required: true
+        default: preflight
+        type: choice
+        options:
+          - preflight
+          - deploy
+          - rollback
+      rollback_version_id:
+        description: "Required only when operation=rollback. Worker version ID to roll back to."
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  worker-dry-run:
+    name: Worker typecheck and dry run
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - name: Install control-plane dependencies
+        run: npm --prefix services/control-plane ci
+
+      - name: Typecheck control plane
+        run: npm --prefix services/control-plane run typecheck
+
+      - name: Test control plane routing
+        run: npm --prefix services/control-plane test
+
+      - name: Validate staging Worker bundle and bindings
+        run: npm --prefix services/control-plane run deploy:staging:dry-run
+
+  deploy-preflight:
+    name: Verify cloud edit deploy secrets
+    needs: worker-dry-run
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment: staging
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_DEPLOY_SERVICE_ACCOUNT: ${{ secrets.GCP_DEPLOY_SERVICE_ACCOUNT }}
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_REGION: ${{ vars.GCP_REGION }}
+      DEPLOY_OPERATION: ${{ inputs.operation }}
+      ROLLBACK_VERSION_ID: ${{ inputs.rollback_version_id }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - name: Install control-plane dependencies
+        run: npm --prefix services/control-plane ci
+
+      - name: Assert cloud deploy inputs are present
+        run: |
+          set -euo pipefail
+          required=(
+            CLOUDFLARE_API_TOKEN
+            GCP_WORKLOAD_IDENTITY_PROVIDER
+            GCP_DEPLOY_SERVICE_ACCOUNT
+            GCP_PROJECT_ID
+            GCP_REGION
+          )
+
+          missing=()
+          for key in "${required[@]}"; do
+            if [[ -z "${!key:-}" ]]; then
+              missing+=("$key")
+            else
+              echo "$key=present"
+            fi
+          done
+
+          if (( ${#missing[@]} > 0 )); then
+            echo "::error::Missing cloud edit deploy inputs: ${missing[*]}"
+            exit 1
+          fi
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Verify editing deploy preflight
+        run: |
+          set -euo pipefail
+          if ! python3 services/editing/scripts/deploy_preflight.py \
+            --project "$GCP_PROJECT_ID" \
+            --region "$GCP_REGION" \
+            --require-cloud-run-service \
+            --json >/tmp/editing-deploy-preflight.json; then
+            cat /tmp/editing-deploy-preflight.json
+            exit 1
+          fi
+          echo "editing deploy preflight succeeded"
+
+      - name: Verify Wrangler token authentication
+        working-directory: services/control-plane
+        run: |
+          set -euo pipefail
+          npx wrangler whoami --json >/tmp/wrangler-whoami.json
+          echo "wrangler whoami authenticated"
+
+      - name: Verify staging Worker secret names
+        working-directory: services/control-plane
+        run: |
+          set -euo pipefail
+          npx wrangler secret list --env staging --format json >/tmp/wrangler-secrets.json
+          required=(
+            ADMIN_API_TOKEN
+            CONTROL_PLANE_BASE_URL
+            CONTROL_PLANE_SHARED_SECRET
+            INFERENCE_BASE_URL
+            INFERENCE_SHARED_SECRET
+            EDITING_BASE_URL
+            EDITING_SHARED_SECRET
+            R2_ACCESS_KEY_ID
+            R2_SECRET_ACCESS_KEY
+          )
+          missing=()
+          for key in "${required[@]}"; do
+            if jq -e --arg key "$key" 'any(.[]; .name == $key)' /tmp/wrangler-secrets.json >/dev/null; then
+              echo "$key=present"
+            else
+              missing+=("$key")
+            fi
+          done
+          if (( ${#missing[@]} > 0 )); then
+            echo "::error::Missing staging Worker secrets: ${missing[*]}"
+            exit 1
+          fi
+
+      - name: Verify staging deployment read scope
+        working-directory: services/control-plane
+        run: |
+          set -euo pipefail
+          npx wrangler deployments list --env staging --json >/tmp/wrangler-deployments.json
+          echo "wrangler deployments list succeeded"
+
+      - name: Verify staging deploy dry run with CI token
+        run: npm --prefix services/control-plane run deploy:staging:dry-run
+
+      - name: Deploy staging Worker
+        if: inputs.operation == 'deploy'
+        working-directory: services/control-plane
+        run: |
+          set -euo pipefail
+          npx wrangler deploy \
+            --env staging \
+            --keep-vars \
+            --message "GitHub Actions staging deploy ${GITHUB_SHA}"
+          npx wrangler deployments status --env staging
+
+      - name: Roll back staging Worker
+        if: inputs.operation == 'rollback'
+        working-directory: services/control-plane
+        run: |
+          set -euo pipefail
+          if [[ -z "${ROLLBACK_VERSION_ID:-}" ]]; then
+            echo "::error::rollback_version_id is required when operation=rollback"
+            exit 1
+          fi
+          npx wrangler rollback "${ROLLBACK_VERSION_ID}" \
+            --env staging \
+            --yes \
+            --message "GitHub Actions staging rollback ${GITHUB_SHA}"
+          npx wrangler deployments status --env staging
+
+      - name: Print CI credential scope checklist
+        run: |
+          set -euo pipefail
+          cat <<'CHECKLIST'
+          CLOUDFLARE_API_TOKEN requirements:
+            - Store as GitHub Actions environment secret: staging / CLOUDFLARE_API_TOKEN
+            - Scope to the HoopClips Cloudflare account
+            - Workers Scripts: Edit
+            - Account Settings: Read
+            - Workers Tail: Read, optional for log streaming smoke
+            - D1: Edit, when running migrations
+            - R2: Edit, when deploy preflight verifies bucket bindings or artifacts
+            - Rotate from Cloudflare dashboard and update the GitHub environment secret
+
+          GCP deploy identity requirements:
+            - Workload Identity Provider configured in GCP_WORKLOAD_IDENTITY_PROVIDER
+            - Deploy service account configured in GCP_DEPLOY_SERVICE_ACCOUNT
+            - Cloud Run Admin
+            - Artifact Registry Writer
+            - Cloud Build submit permissions
+            - Secret Manager Secret Accessor for deploy-time checks
+            - Service Account User for the Cloud Run runtime service account, if required
+          CHECKLIST
+
+      - name: Print deploy command checklist
+        run: |
+          set -euo pipefail
+          cat <<'CHECKLIST'
+          Staging Worker deploy:
+            cd services/control-plane
+            npx wrangler deploy --env staging --keep-vars --message "staging deploy <git-sha>"
+
+          Staging editing service deploy:
+            gcloud builds submit . \
+              --project="$GCP_PROJECT_ID" \
+              --config=services/editing/cloudbuild.yaml \
+              --substitutions=_IMAGE_TAG="$GITHUB_SHA"
+
+          Cloud Run rollback:
+            gcloud run services update-traffic hoopclips-editing-staging \
+              --project="$GCP_PROJECT_ID" \
+              --region="$GCP_REGION" \
+              --to-revisions <previous-revision>=100
+
+          Worker rollback:
+            cd services/control-plane
+            npx wrangler deployments list --env staging
+            npx wrangler rollback <version-id> --env staging --yes --message "rollback <git-sha>"
+          CHECKLIST
