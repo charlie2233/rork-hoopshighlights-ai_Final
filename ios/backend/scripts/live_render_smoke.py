@@ -249,6 +249,35 @@ def require_binary(binary: str) -> None:
     run([binary, "-version"], capture=True)
 
 
+def sanitize_for_log(value: object) -> object:
+    if isinstance(value, dict):
+        sanitized: Dict[str, object] = {}
+        for key, nested in value.items():
+            key_text = str(key)
+            lower_key = key_text.lower()
+            if (
+                "url" in lower_key
+                or "objectkey" in lower_key
+                or "secret" in lower_key
+                or "credential" in lower_key
+                or "token" in lower_key
+                or "authorization" in lower_key
+            ):
+                sanitized[key_text] = "[redacted]"
+            else:
+                sanitized[key_text] = sanitize_for_log(nested)
+        return sanitized
+    if isinstance(value, list):
+        return [sanitize_for_log(item) for item in value]
+    if isinstance(value, str):
+        lower_value = value.lower()
+        if value.startswith("http") and ("x-amz-" in lower_value or "signature=" in lower_value):
+            return "[redacted]"
+        if "x-amz-signature=" in lower_value or "x-amz-credential=" in lower_value:
+            return "[redacted]"
+    return value
+
+
 def run(command: list[str], capture: bool = False) -> subprocess.CompletedProcess[str]:
     try:
         return subprocess.run(command, check=True, capture_output=True, text=True) if capture else subprocess.run(command, check=True)
@@ -268,5 +297,5 @@ if __name__ == "__main__":
     try:
         raise SystemExit(main())
     except SmokeError as error:
-        print(json.dumps({"status": "fail", "error": str(error), "details": error.payload}, indent=2, sort_keys=True), file=sys.stderr)
+        print(json.dumps({"status": "fail", "error": str(error), "details": sanitize_for_log(error.payload)}, indent=2, sort_keys=True), file=sys.stderr)
         raise SystemExit(1)
