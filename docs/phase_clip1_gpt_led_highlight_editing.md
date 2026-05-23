@@ -149,6 +149,9 @@ PYTHONPATH=ios/backend:services/editing /tmp/hoopclips-ios-backend-venv/bin/pyth
 PYTHONPATH=ios/backend /tmp/hoopclips-ios-backend-venv/bin/python -m unittest discover ios/backend/tests
 PYTHONPATH=ios/backend:services/editing /tmp/hoopclips-ios-backend-venv/bin/python -m unittest discover services/editing/tests
 git diff --check
+Build iOS Apps plugin: build_sim HoopsClips Debug iPhone 17 Pro, CODE_SIGNING_ALLOWED=NO
+Build iOS Apps plugin: test_sim HoopsClips Debug iPhone 17 Pro, CODE_SIGNING_ALLOWED=NO
+python3 scripts/submission_readiness_preflight.py
 ```
 
 Results:
@@ -158,6 +161,9 @@ Results:
 - `ios/backend/tests` discovery: 43 tests passed.
 - `services/editing/tests` discovery: 51 tests passed, including local FFmpeg render/revision/download-history coverage.
 - `git diff --check`: passed.
+- Build iOS Apps `build_sim`: succeeded in 11.207s with no warnings or errors. Build log: `/Users/hanfei/Library/Developer/XcodeBuildMCP/workspaces/rork-hoopshighlights-ai_Final-b63ced5e161c/logs/build_sim_2026-05-23T23-27-42-521Z_pid81785_f13c550b.log`.
+- Build iOS Apps `test_sim`: plugin call timed out at 120s, but the xcresult completed and summarized as passed: 68 total tests, 65 passed, 3 skipped, 0 failed. Result bundle: `/Users/hanfei/Library/Developer/XcodeBuildMCP/workspaces/rork-hoopshighlights-ai_Final-b63ced5e161c/result-bundles/test_sim_2026-05-23T23-27-57-543Z_pid81785_f867f3d4.xcresult`.
+- Submission readiness preflight after commit: 18 pass, 0 warn, 9 fail.
 
 ## Launch Recommendations
 
@@ -168,3 +174,13 @@ Keep all GPT clip-editor flags disabled in production until staging proves:
 3. A live cloud render smoke proves sampled keyframes, GPT selection, EditPlan validation, render, preview, revision patch, revised render, and download.
 4. Logs contain no R2 credentials, full presigned URLs, source video URLs, or raw model payloads.
 5. iOS remains a control surface only.
+
+Current submission blockers from `scripts/submission_readiness_preflight.py`:
+
+- `HOOPS_DEVELOPMENT_TEAM` is missing or placeholder in local signing config.
+- No `.xcarchive` or `.ipa` upload artifact exists under expected build output locations.
+- Staging Worker `/v1/editing/version` returns HTTP 404.
+- Required deploy inputs are missing from the environment: `CLOUDFLARE_API_TOKEN`, `GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_DEPLOY_SERVICE_ACCOUNT`, `GCP_PROJECT_ID`, `GCP_REGION`.
+- Installed TestFlight post-install smoke remains unproven.
+- Worker-mediated editing version route and live iOS kill-switch state are not proven.
+- Required iOS upload inputs are missing: `HOOPS_DEVELOPMENT_TEAM`, RevenueCat, Google/Firebase, Sentry, App Store Connect API key, privacy policy URL, and terms URL.
