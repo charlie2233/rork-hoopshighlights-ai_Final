@@ -28,7 +28,7 @@ Rork must provide or confirm these production values before the Release smoke ca
 
 Rork also needs:
 
-- Apple Developer/App Store Connect access for the bundle ID `app.rork.hoopshighlights-ai`
+- Apple Developer/App Store Connect access for the bundle ID `atrak.charlie.hoopsclips`
 - a signing-capable Mac with the Apple team available in Xcode
 - a trusted physical iPhone for the Release-device smoke
 - Apple sandbox tester access for purchase and restore validation

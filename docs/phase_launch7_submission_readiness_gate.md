@@ -16,7 +16,8 @@ It does not submit a build, deploy the Worker, render video, analyze video, read
 - Reused the existing static backend/config gate from `scripts/launch_backend_config_preflight.py`.
 - Added live staging Worker `/v1/editing/version` verification.
 - Added iOS signing/export checks for bundle id, version, build, automatic signing, development team presence, and internal TestFlight export options.
-- Added a bundle-id conflict check for the Rork release handoff, because the iOS project/export options use `atrak.charlie.hoopsclips` while the handoff still references `app.rork.hoopshighlights-ai`.
+- Added a bundle-id conflict check for the Rork release handoff.
+- Reconciled the Rork release handoff to the iOS project/export bundle ID: `atrak.charlie.hoopsclips`.
 - Added upload artifact detection for `.xcarchive` or `.ipa`.
 - Added deploy input presence checks without printing values.
 - Added blocker-doc checks so known no-go launch evidence fails the preflight until refreshed.
@@ -29,13 +30,12 @@ HoopClips is **NO-GO for App Store/TestFlight submission** from this machine.
 
 ```text
 HoopClips submission readiness preflight
-pass=16 warn=3 fail=8
+pass=17 warn=2 fail=7
 ```
 
 Failures:
 
 - No `.xcarchive` or `.ipa` upload artifact was found under expected build output locations.
-- The Rork release handoff references a bundle ID that does not match the iOS project/export options.
 - Live staging Worker `GET /v1/editing/version` returned `404`.
 - Required deploy input names are absent in the local environment: `CLOUDFLARE_API_TOKEN`, `GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_DEPLOY_SERVICE_ACCOUNT`, `GCP_PROJECT_ID`, and `GCP_REGION`.
 - Existing launch docs still record the missing installed TestFlight smoke.
@@ -47,6 +47,10 @@ Warnings:
 
 - Unrelated root Xcode folders are present and must not be staged: `HoopsClips.xcodeproj/`, `HoopsHighlightsAI.xcodeproj/`.
 - No dedicated iOS upload workflow or fastlane lane exists; submission likely still needs manual Xcode/App Store Connect steps.
+
+Cleared in this follow-up commit:
+
+- Rork release handoff bundle ID now matches the iOS project and export options: `atrak.charlie.hoopsclips`.
 
 ## Live Worker Evidence
 
@@ -79,7 +83,7 @@ python3 -m unittest scripts.test_submission_readiness_preflight -v
 Result:
 
 ```text
-Ran 3 tests in 0.005s
+Ran 4 tests in 0.006s
 OK
 ```
 
