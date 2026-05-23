@@ -14,10 +14,12 @@ Cloud remains the owner for analysis, clipping enhancement, model evaluation, an
 
 - Current launch stack head before this branch: `ebd0e34d40037ca72e9b965a7f4f1757a6a400ae`.
 - PR #2 head inspected: `4f319182c569d232b5c1e68dff4ecee3cc51cee4`.
+- Draft PR #4: `codex/phase4h-inference-guardrails-integration` into `codex/phase-launch2-ci-deploy-token-unblock-readiness`.
 - The true Phase 4h slice is the delta after `origin/codex/phase4g-proposal-conditioned-shot-head-and-hierarchical-promotion`.
 - That slice is inference/eval focused: temporal event detector runtime, temporal encoder raw logits, shadow-eval guardrails, temporal detector training loss controls, tests, and docs.
 - A wholesale merge reported conflicts in launch-owned `ios/**`, `services/control-plane/**`, `.gitignore`, `AGENTS.md`, and `ios/backend/**`.
 - The launch branch does not currently track `services/inference`; only ignored local inference leftovers exist on disk. Importing all of PR #2's inference tree would add 161 files and about 7.6 MB, including model artifacts.
+- GitHub Actions run `26337948161`: Worker typecheck and dry run passed. Deploy-secret verification was skipped because this was a pull request run, not a `workflow_dispatch` run.
 
 ## Change
 
