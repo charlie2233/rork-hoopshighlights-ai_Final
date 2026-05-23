@@ -36,6 +36,7 @@ from app.editing import (  # noqa: E402
 
 ResponseClient = Callable[[Dict[str, Any], str, str, float], Dict[str, Any]]
 ALLOWED_IMAGE_DETAIL_LEVELS = {"low", "high", "original", "auto"}
+REQUIRED_KEYFRAME_ROLES = {"start", "eventCenter", "finish"}
 
 
 @dataclass(frozen=True)
@@ -137,6 +138,8 @@ def rerank_edit_request_with_gpt(
     sampled_frames = _extract_candidate_keyframes(source_path, sampled_clips, frames_per_clip, settings)
     if not sampled_frames:
         return _with_fallback(request, "fallback", settings.model, "keyframe_extraction_failed", len(sampled_clips), 0)
+    if _missing_required_keyframes(sampled_clips, sampled_frames):
+        return _with_fallback(request, "fallback", settings.model, "keyframe_extraction_incomplete", len(sampled_clips), len(sampled_frames))
 
     payload = _build_openai_payload(request, sampled_clips, sampled_frames, settings)
     try:
@@ -153,6 +156,11 @@ def rerank_edit_request_with_gpt(
         if isinstance(error, HTTPError):
             reason = f"openai_http_{error.code}"
         return _with_fallback(request, "fallback", settings.model, reason, len(sampled_clips), len(sampled_frames))
+
+    sampled_clip_ids = {clip.id for clip in sampled_clips}
+    valid_decision_ids = {decision.clipId for decision in decisions if decision.clipId in sampled_clip_ids}
+    if valid_decision_ids != sampled_clip_ids:
+        return _with_fallback(request, "fallback", settings.model, "incomplete_gpt_decisions", len(sampled_clips), len(sampled_frames))
 
     return apply_gpt_highlight_rerank(
         request,
@@ -233,6 +241,21 @@ def _extract_candidate_keyframes(
                     )
                 )
     return frames
+
+
+def _missing_required_keyframes(
+    clips: Sequence[EditCandidateClip],
+    frames: Sequence[SampledFrame],
+) -> Dict[str, List[str]]:
+    roles_by_clip_id: Dict[str, set[str]] = {clip.id: set() for clip in clips}
+    for frame in frames:
+        if frame.clip_id in roles_by_clip_id:
+            roles_by_clip_id[frame.clip_id].add(frame.role)
+    return {
+        clip_id: sorted(REQUIRED_KEYFRAME_ROLES - roles)
+        for clip_id, roles in roles_by_clip_id.items()
+        if not REQUIRED_KEYFRAME_ROLES.issubset(roles)
+    }
 
 
 def _sample_times_for_clip(clip: EditCandidateClip, frames_per_clip: int) -> List[tuple[str, float]]:
@@ -540,6 +563,83 @@ def _response_schema() -> Dict[str, Any]:
 
 
 def _json_value_schema() -> Dict[str, Any]:
+    nullable_number = {"anyOf": [{"type": "number"}, {"type": "null"}]}
+    nullable_string = {"anyOf": [{"type": "string"}, {"type": "null"}]}
+    edit_plan_effect = {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "type": {"type": "string"},
+            "at": nullable_number,
+            "sourceStart": nullable_number,
+            "sourceEnd": nullable_number,
+            "speed": nullable_number,
+            "strength": nullable_number,
+        },
+        "required": ["type", "at", "sourceStart", "sourceEnd", "speed", "strength"],
+    }
+    edit_plan_clip = {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "clipId": {"type": "string"},
+            "sourceStart": {"type": "number"},
+            "sourceEnd": {"type": "number"},
+            "eventCenter": {"type": "number"},
+            "timelineStart": {"type": "number"},
+            "timelineEnd": {"type": "number"},
+            "label": {"type": "string"},
+            "caption": {"type": "string", "maxLength": 24},
+            "captionMoment": nullable_number,
+            "cropMode": {"type": "string"},
+            "effects": {"type": "array", "items": edit_plan_effect},
+        },
+        "required": [
+            "clipId",
+            "sourceStart",
+            "sourceEnd",
+            "eventCenter",
+            "timelineStart",
+            "timelineEnd",
+            "label",
+            "caption",
+            "captionMoment",
+            "cropMode",
+            "effects",
+        ],
+    }
+    edit_plan_audio = {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "mode": {"type": "string"},
+            "musicTrackId": {"type": "string"},
+            "musicVolume": {"type": "number"},
+            "gameAudioVolume": {"type": "number"},
+        },
+        "required": ["mode", "musicTrackId", "musicVolume", "gameAudioVolume"],
+    }
+    timed_template = {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "enabled": {"type": "boolean"},
+            "durationSeconds": {"type": "number"},
+            "templateId": {"type": "string"},
+            "assetId": nullable_string,
+        },
+        "required": ["enabled", "durationSeconds", "templateId", "assetId"],
+    }
+    edit_plan_watermark = {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "enabled": {"type": "boolean"},
+            "position": {"type": "string"},
+            "assetId": nullable_string,
+        },
+        "required": ["enabled", "position", "assetId"],
+    }
     return {
         "anyOf": [
             {"type": "string"},
@@ -547,8 +647,10 @@ def _json_value_schema() -> Dict[str, Any]:
             {"type": "integer"},
             {"type": "boolean"},
             {"type": "null"},
-            {"type": "array"},
-            {"type": "object"},
+            edit_plan_audio,
+            {"type": "array", "items": edit_plan_clip, "maxItems": 80},
+            timed_template,
+            edit_plan_watermark,
         ]
     }
 

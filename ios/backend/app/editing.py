@@ -2085,10 +2085,11 @@ def apply_gpt_highlight_rerank(
 
     kept: List[EditCandidateClip] = []
     rejected_clip_ids: List[str] = []
+    missing_decision_clip_ids: List[str] = []
     for clip in request.clips:
         decision = valid_decisions.get(clip.id)
         if decision is None:
-            kept.append(clip)
+            missing_decision_clip_ids.append(clip.id)
             continue
         if not decision.keep:
             rejected_clip_ids.append(clip.id)
@@ -2158,7 +2159,7 @@ def apply_gpt_highlight_rerank(
         sampledFrameCount=sampled_frame_count,
         returnedDecisionCount=len(valid_decisions),
         keptClipIds=[clip.id for clip in reranked if clip.id in valid_decisions],
-        rejectedClipIds=rejected_clip_ids,
+        rejectedClipIds=(rejected_clip_ids + missing_decision_clip_ids)[:30],
         storyOrderClipIds=[clip_id for clip_id in valid_story_order if clip_id in {clip.id for clip in reranked}],
         planEditApplied=plan_edit_applied,
     )

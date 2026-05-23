@@ -268,6 +268,28 @@ class GPTHighlightRerankerTests(unittest.TestCase):
             ],
         )
 
+    def test_revision_patch_schema_is_strict_for_all_objects(self) -> None:
+        settings = GPTHighlightRerankerSettings.from_env()
+        request = _request()
+        job = build_edit_job(request, "edit_schema_strictness")
+
+        payload = _build_revision_patch_payload(job, ReviseEditJobRequest(command="make_more_hype"), settings)
+        schema = payload["text"]["format"]["schema"]
+
+        def assert_strict_objects(node: object) -> None:
+            if isinstance(node, dict):
+                if node.get("type") == "object":
+                    self.assertIs(node.get("additionalProperties"), False)
+                    properties = node.get("properties", {})
+                    self.assertEqual(set(node.get("required", [])), set(properties.keys()))
+                for value in node.values():
+                    assert_strict_objects(value)
+            elif isinstance(node, list):
+                for value in node:
+                    assert_strict_objects(value)
+
+        assert_strict_objects(schema)
+
     def test_sampling_includes_start_event_center_and_finish_roles(self) -> None:
         request = _request()
         clip = request.clips[0]
@@ -314,6 +336,128 @@ class GPTHighlightRerankerTests(unittest.TestCase):
             else:
                 os.environ["HOOPS_GPT_HIGHLIGHT_RERANK_IMAGE_DETAIL"] = old_value
 
+    def test_incomplete_keyframes_fall_back_before_openai_call(self) -> None:
+        settings = GPTHighlightRerankerSettings(
+            enabled=True,
+            api_key="unit-test-key",
+            model="gpt-test",
+            endpoint="https://api.openai.test/v1/responses",
+            timeout_seconds=1.0,
+            max_output_tokens=512,
+            free_max_clips=2,
+            paid_max_clips=24,
+            free_frames_per_clip=3,
+            paid_frames_per_clip=5,
+            frame_width=512,
+            jpeg_quality=5,
+            max_image_bytes=180_000,
+            image_detail="low",
+        )
+        original_extract = gpt_reranker._extract_candidate_keyframes
+        openai_call_count = 0
+
+        def fake_extract(source_path, clips, frames_per_clip, rerank_settings):
+            return [
+                SampledFrame(clip_id=clips[0].id, role="start", time_seconds=clips[0].start, data_url="data:image/jpeg;base64,ZmFrZQ=="),
+                SampledFrame(clip_id=clips[0].id, role="eventCenter", time_seconds=clips[0].eventCenter, data_url="data:image/jpeg;base64,ZmFrZQ=="),
+                SampledFrame(clip_id=clips[0].id, role="finish", time_seconds=clips[0].end, data_url="data:image/jpeg;base64,ZmFrZQ=="),
+                SampledFrame(clip_id=clips[1].id, role="start", time_seconds=clips[1].start, data_url="data:image/jpeg;base64,ZmFrZQ=="),
+                SampledFrame(clip_id=clips[1].id, role="eventCenter", time_seconds=clips[1].eventCenter, data_url="data:image/jpeg;base64,ZmFrZQ=="),
+            ]
+
+        def fake_response_client(payload, api_key, endpoint, timeout_seconds):
+            nonlocal openai_call_count
+            openai_call_count += 1
+            return {"output_text": "{}"}
+
+        try:
+            gpt_reranker._extract_candidate_keyframes = fake_extract
+            with tempfile.NamedTemporaryFile(suffix=".mp4") as source:
+                result = gpt_reranker.rerank_edit_request_with_gpt(_request("free", 2), Path(source.name), settings, fake_response_client)
+        finally:
+            gpt_reranker._extract_candidate_keyframes = original_extract
+
+        self.assertEqual(openai_call_count, 0)
+        self.assertEqual(result.gptRerankSummary.status, "fallback")
+        self.assertEqual(result.gptRerankSummary.fallbackReason, "keyframe_extraction_incomplete")
+
+    def test_incomplete_gpt_decisions_fall_back(self) -> None:
+        settings = GPTHighlightRerankerSettings(
+            enabled=True,
+            api_key="unit-test-key",
+            model="gpt-test",
+            endpoint="https://api.openai.test/v1/responses",
+            timeout_seconds=1.0,
+            max_output_tokens=512,
+            free_max_clips=2,
+            paid_max_clips=24,
+            free_frames_per_clip=3,
+            paid_frames_per_clip=5,
+            frame_width=512,
+            jpeg_quality=5,
+            max_image_bytes=180_000,
+            image_detail="low",
+        )
+        original_extract = gpt_reranker._extract_candidate_keyframes
+        observed_clip_ids: list[str] = []
+
+        def fake_extract(source_path, clips, frames_per_clip, rerank_settings):
+            observed_clip_ids[:] = [clip.id for clip in clips]
+            frames = []
+            for clip in clips:
+                for role, second in gpt_reranker._sample_times_for_clip(clip, frames_per_clip):
+                    frames.append(SampledFrame(clip_id=clip.id, role=role, time_seconds=second, data_url="data:image/jpeg;base64,ZmFrZQ=="))
+            return frames
+
+        def fake_response_client(payload, api_key, endpoint, timeout_seconds):
+            return {
+                "output_text": json.dumps(
+                    {
+                        "decisions": [
+                            {
+                                "clipId": observed_clip_ids[0],
+                                "keep": True,
+                                "rejectReason": None,
+                                "highlightScore": 0.9,
+                                "watchabilityScore": 0.8,
+                                "basketballEvent": "Made Shot",
+                                "outcome": "made",
+                                "caption": "BUCKET",
+                                "reason": "Clear outcome.",
+                                "storyRole": "filler",
+                                "suggestedEdit": {
+                                    "slowMotion": False,
+                                    "slowMotionCenter": None,
+                                    "captionMoment": None,
+                                    "cropFocus": "center_action",
+                                    "extendBeforeSeconds": 0,
+                                    "extendAfterSeconds": 0,
+                                },
+                            }
+                        ],
+                        "storyOrder": [observed_clip_ids[0]],
+                        "planEdit": {
+                            "orderedClipIds": [observed_clip_ids[0]],
+                            "pacing": "fast",
+                            "captions": [],
+                            "slowMotionMoments": [],
+                            "summary": "ok",
+                        },
+                        "summary": "ok",
+                    }
+                )
+            }
+
+        try:
+            gpt_reranker._extract_candidate_keyframes = fake_extract
+            with tempfile.NamedTemporaryFile(suffix=".mp4") as source:
+                result = gpt_reranker.rerank_edit_request_with_gpt(_request("free", 2), Path(source.name), settings, fake_response_client)
+        finally:
+            gpt_reranker._extract_candidate_keyframes = original_extract
+
+        self.assertEqual(result.gptRerankSummary.status, "fallback")
+        self.assertEqual(result.gptRerankSummary.fallbackReason, "incomplete_gpt_decisions")
+
     def test_free_and_pro_sampling_limits(self) -> None:
         settings = GPTHighlightRerankerSettings.from_env()
 
@@ -349,12 +493,12 @@ class GPTHighlightRerankerTests(unittest.TestCase):
             observed_clip_ids[:] = [clip.id for clip in clips]
             frames = []
             for clip in clips:
-                for index in range(frames_per_clip):
+                for role, second in gpt_reranker._sample_times_for_clip(clip, frames_per_clip):
                     frames.append(
                         SampledFrame(
                             clip_id=clip.id,
-                            role=f"context_{index}",
-                            time_seconds=clip.start + index,
+                            role=role,
+                            time_seconds=second,
                             data_url="data:image/jpeg;base64,ZmFrZQ==",
                         )
                     )

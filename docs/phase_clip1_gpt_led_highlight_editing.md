@@ -101,6 +101,13 @@ Cost is intentionally not the primary constraint for this phase, but the rollout
 
 If GPT is disabled, missing an API key, missing source video, fails keyframe extraction, returns invalid JSON, rejects every clip, or proposes an invalid patch, the backend falls back to deterministic candidate ranking and EditPlan generation. The AI Work Receipt records disabled/fallback/applied status, sampled clip/frame counts, story-order IDs, and whether GPT plan edit was applied.
 
+The 2026-05-23 quality-gate update tightens the applied path:
+
+- Every sampled clip must have `start`, `eventCenter`, and `finish` keyframes before the OpenAI request is sent. Partial extraction now falls back with `keyframe_extraction_incomplete`.
+- Every sampled clip must receive a valid GPT decision. Incomplete GPT output now falls back with `incomplete_gpt_decisions`.
+- Applied GPT reranks no longer carry unjudged clips into the final candidate list. GPT-selected clips are the only applied clips, and an all-rejected result still falls back deterministically.
+- GPT revision patch schemas no longer expose loose arbitrary `object` or `array` values. Patch values are constrained to typed primitives or known EditPlan shapes, with `additionalProperties: false` on every object, matching OpenAI Structured Outputs strict-mode requirements: https://platform.openai.com/docs/guides/structured-outputs
+
 ## Validation
 
 Validation must pass before rendering:
@@ -129,26 +136,27 @@ Focused tests cover:
 - GPT story order and `planEdit` ordering used by EditPlan
 - invalid GPT patch rejection
 - no FFmpeg commands accepted from GPT patch payloads
+- partial keyframe extraction falls back before the OpenAI call
+- incomplete GPT decisions fall back instead of applying partial output
+- unjudged clips are not kept in an applied GPT rerank
+- revision patch schema is strict for all objects
 
 Commands run:
 
 ```bash
-python3 -m py_compile ios/backend/app/editing.py services/editing/editing_app/gpt_reranker.py services/editing/editing_app/main.py services/editing/editing_app/models.py scripts/launch_backend_config_preflight.py
-PYTHONPATH=services/editing:ios/backend /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest services.editing.tests.test_gpt_reranker -v
-PYTHONPATH=ios/backend /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest ios.backend.tests.test_edit_plan_agent -v
-PYTHONPATH=services/editing:ios/backend /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest services.editing.tests.test_editing_service -v
-python3 scripts/launch_backend_config_preflight.py --repo-root . --json
-PYTHONPATH=. /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest scripts.test_launch_backend_config_preflight -v
+python3 -m py_compile ios/backend/app/editing.py services/editing/editing_app/gpt_reranker.py
+PYTHONPATH=ios/backend:services/editing /tmp/hoopclips-ios-backend-venv/bin/python -m unittest ios.backend.tests.test_edit_plan_agent services.editing.tests.test_gpt_reranker
+PYTHONPATH=ios/backend /tmp/hoopclips-ios-backend-venv/bin/python -m unittest discover ios/backend/tests
+PYTHONPATH=ios/backend:services/editing /tmp/hoopclips-ios-backend-venv/bin/python -m unittest discover services/editing/tests
 git diff --check
 ```
 
 Results:
 
-- `test_gpt_reranker`: 7 tests passed.
-- `test_edit_plan_agent`: 21 tests passed.
-- `test_editing_service`: 37 tests passed, including local FFmpeg render/revision/download-history coverage.
-- `test_launch_backend_config_preflight`: 2 tests passed.
-- Backend config preflight: pass, 63 checks passing, 12 warnings, 0 failures.
+- Python compile: passed.
+- Focused edit-plan/reranker suites: 44 tests passed.
+- `ios/backend/tests` discovery: 43 tests passed.
+- `services/editing/tests` discovery: 51 tests passed, including local FFmpeg render/revision/download-history coverage.
 - `git diff --check`: passed.
 
 ## Launch Recommendations

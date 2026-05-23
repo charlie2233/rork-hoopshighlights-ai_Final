@@ -406,6 +406,30 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertEqual(plan.clips[0].cropMode, "rim")
         self.assertTrue(any(effect.type == "slow_motion" for effect in plan.clips[0].effects))
 
+    def test_gpt_highlight_rerank_drops_unjudged_candidates(self) -> None:
+        request = CreateEditJobRequest(**_request_payload(targetDurationSeconds=30))
+        decisions = [
+            GPTHighlightClipDecision(
+                clipId="c3",
+                keep=True,
+                highlightScore=0.98,
+                watchabilityScore=0.95,
+                basketballEvent="Dunk",
+                outcome="made",
+                caption="BIG FINISH",
+                reason="Clear finish and outcome.",
+                suggestedEdit=GPTHighlightSuggestedEdit(),
+            )
+        ]
+
+        reranked = apply_gpt_highlight_rerank(request, decisions, "gpt-test", 5, 15)
+
+        self.assertEqual(reranked.gptRerankSummary.status, "applied")
+        self.assertEqual([clip.id for clip in reranked.clips], ["c3"])
+        self.assertEqual(reranked.gptRerankSummary.keptClipIds, ["c3"])
+        self.assertIn("c1", reranked.gptRerankSummary.rejectedClipIds)
+        self.assertIn("c5", reranked.gptRerankSummary.rejectedClipIds)
+
     def test_gpt_highlight_rerank_applies_story_order_to_edit_plan(self) -> None:
         request = CreateEditJobRequest(**_request_payload(targetDurationSeconds=45))
         decisions = [
