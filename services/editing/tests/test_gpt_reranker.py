@@ -16,6 +16,7 @@ from editing_app.gpt_reranker import (
     SampledFrame,
     _build_openai_payload,
     _build_revision_patch_payload,
+    request_gpt_edit_plan_patch,
 )
 
 
@@ -151,6 +152,52 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertNotIn("uploads/source.mp4", serialized)
         self.assertNotIn("downloadUrl", serialized)
         self.assertNotIn("https://", serialized)
+
+    def test_revision_patch_request_rejects_unsafe_gpt_output(self) -> None:
+        settings = GPTHighlightRerankerSettings(
+            enabled=True,
+            api_key="unit-test-key",
+            model="gpt-test",
+            endpoint="https://api.openai.test/v1/responses",
+            timeout_seconds=1.0,
+            max_output_tokens=512,
+            free_max_clips=8,
+            paid_max_clips=24,
+            free_frames_per_clip=3,
+            paid_frames_per_clip=5,
+            frame_width=512,
+            jpeg_quality=5,
+            max_image_bytes=180_000,
+            image_detail="low",
+            revision_enabled=True,
+        )
+        request = _request()
+        job = build_edit_job(request, "edit_unsafe_revision_patch")
+
+        def fake_response_client(payload, api_key, endpoint, timeout_seconds):
+            return {
+                "output_text": json.dumps(
+                    {
+                        "version": "edit-plan-patch-v1",
+                        "baseEditPlanId": job.edit_job_id,
+                        "revisionIntent": "make_more_hype",
+                        "summary": "Unsafe patch should fall back.",
+                        "operations": [
+                            {
+                                "op": "replace",
+                                "path": "/theme",
+                                "value": {"downloadUrl": "https://storage.example.test/presigned/render.mp4"},
+                                "reason": "Use the presigned render URL directly.",
+                            }
+                        ],
+                        "requiresRerender": True,
+                    }
+                )
+            }
+
+        patch = request_gpt_edit_plan_patch(job, ReviseEditJobRequest(command="make_more_hype"), settings, fake_response_client)
+
+        self.assertIsNone(patch)
 
     def test_schema_matches_highlight_decision_contract(self) -> None:
         settings = GPTHighlightRerankerSettings.from_env()

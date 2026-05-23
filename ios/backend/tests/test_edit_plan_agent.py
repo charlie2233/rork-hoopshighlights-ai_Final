@@ -580,6 +580,36 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertIsNone(patched)
         self.assertTrue(any(error.code == "invalid_gpt_patch" for error in errors))
 
+    def test_gpt_patch_validator_rejects_local_render_urls_and_storage_keys(self) -> None:
+        request = CreateEditJobRequest(**_request_payload())
+        job = build_edit_job(request, "edit_patch_no_storage_leaks")
+        unsafe_values = [
+            "render locally with AVFoundation",
+            "bash -lc render.sh",
+            "python -c 'render locally'",
+            "os.system('curl https://example.test')",
+            "https://storage.example.test/presigned/render.mp4",
+            "uploads/private/source.mp4",
+            "X-Amz-Signature=abc123",
+            "downloadUrl",
+            {"caption": "use renderLogObjectKey renders/private/log.json"},
+            {"downloadUrl": "redacted"},
+        ]
+
+        for index, unsafe_value in enumerate(unsafe_values):
+            with self.subTest(index=index):
+                patch = EditPlanPatch(
+                    baseEditPlanId=job.edit_job_id,
+                    revisionIntent="make_more_hype",
+                    summary="Unsafe GPT patch should be rejected.",
+                    operations=[EditPlanPatchOperation(op="replace", path="/theme", value=unsafe_value)],
+                )
+
+                patched, errors = validate_edit_plan_patch(job.plan, patch, job.request.clips, job.request.planTier)
+
+                self.assertIsNone(patched)
+                self.assertTrue(any(error.code == "invalid_gpt_patch" for error in errors))
+
     def test_revision_commands_are_deterministic_patches(self) -> None:
         request = CreateEditJobRequest(**_request_payload())
         job = build_edit_job(request, "edit_revision_patch")

@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 import json
 from pathlib import Path
+import re
 from typing import Any, Dict, List, Literal, Optional, Sequence, Tuple
 
 from pydantic import Field, ValidationError, model_validator
@@ -2277,19 +2278,56 @@ def _apply_pointer_operation(data: Dict[str, Any], operation: EditPlanPatchOpera
     raise ValueError(f"Unsupported EditPlanPatch operation: {operation.op}")
 
 
-def _contains_forbidden_render_command(value: Any) -> bool:
+FORBIDDEN_GPT_PATCH_PATTERNS = [
+    re.compile(pattern, re.IGNORECASE)
+    for pattern in [
+        r"\bffmpeg\b",
+        r"\bffprobe\b",
+        r"\bavfoundation\b",
+        r"\blocal_avfoundation\b",
+        r"\brender\s+locally\b",
+        r"\blocal\s+render(?:ing)?\b",
+        r"\bon[-\s]?device\s+(?:edit(?:ing)?|render(?:ing)?|export)\b",
+        r"\bshell\s+command\b",
+        r"\bbash\s+-?[a-z]*\b",
+        r"\bsh\s+-c\b",
+        r"\bpython3?\s+-c\b",
+        r"\bcurl\s+",
+        r"\bsubprocess\b",
+        r"\bos\.system\b",
+        r"\bhttps?://",
+        r"\bfile://",
+        r"\bdata:video/",
+        r"\bs3://",
+        r"\bgs://",
+        r"\br2://",
+        r"\bpresigned\b",
+        r"\bdownloadUrl\b",
+        r"\bsourceObjectKey\b",
+        r"\boutputObjectKey\b",
+        r"\brenderLogObjectKey\b",
+        r"\brenderStorage\b",
+        r"\b(?:aws|r2)[_-]?(?:access|secret|token|credential|signature)",
+        r"\bx-amz-(?:signature|credential|security-token)\b",
+        r"\b(?:uploads|renders|render_logs)/[A-Za-z0-9._~/-]+",
+        r"\.mp4\b",
+    ]
+]
+
+
+def _contains_forbidden_gpt_patch_content(value: Any) -> bool:
     if isinstance(value, str):
-        return "ffmpeg" in value.lower()
+        return any(pattern.search(value) for pattern in FORBIDDEN_GPT_PATCH_PATTERNS)
     if isinstance(value, dict):
-        return any(_contains_forbidden_render_command(item) for item in value.values())
+        return any(_contains_forbidden_gpt_patch_content(item) for pair in value.items() for item in pair)
     if isinstance(value, list):
-        return any(_contains_forbidden_render_command(item) for item in value)
+        return any(_contains_forbidden_gpt_patch_content(item) for item in value)
     return False
 
 
 def apply_edit_plan_patch(plan: EditPlan, patch: EditPlanPatch) -> EditPlan:
-    if _contains_forbidden_render_command(patch.model_dump()):
-        raise ValueError("EditPlanPatch must not contain FFmpeg commands.")
+    if _contains_forbidden_gpt_patch_content(patch.model_dump()):
+        raise ValueError("EditPlanPatch must not contain render commands, local-render instructions, URLs, or storage keys.")
     data = plan.model_dump()
     for operation in patch.operations:
         _apply_pointer_operation(data, operation)
