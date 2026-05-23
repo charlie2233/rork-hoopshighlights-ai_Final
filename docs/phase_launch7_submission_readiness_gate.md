@@ -26,16 +26,15 @@ It does not submit a build, deploy the Worker, render video, analyze video, read
 
 HoopClips is **NO-GO for App Store/TestFlight submission** from this machine.
 
-`python3 scripts/submission_readiness_preflight.py` result:
+After the follow-up signed archive proof, `python3 scripts/submission_readiness_preflight.py --archive-path /tmp/HoopsClips-Launch7-InternalStaging.xcarchive` result:
 
 ```text
 HoopClips submission readiness preflight
-pass=17 warn=2 fail=7
+pass=18 warn=2 fail=6
 ```
 
 Failures:
 
-- No `.xcarchive` or `.ipa` upload artifact was found under expected build output locations.
 - Live staging Worker `GET /v1/editing/version` returned `404`.
 - Required deploy input names are absent in the local environment: `CLOUDFLARE_API_TOKEN`, `GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_DEPLOY_SERVICE_ACCOUNT`, `GCP_PROJECT_ID`, and `GCP_REGION`.
 - Existing launch docs still record the missing installed TestFlight smoke.
@@ -51,6 +50,9 @@ Warnings:
 Cleared in this follow-up commit:
 
 - Rork release handoff bundle ID now matches the iOS project and export options: `atrak.charlie.hoopsclips`.
+- Current internal-staging `.xcarchive` exists at `/tmp/HoopsClips-Launch7-InternalStaging.xcarchive`.
+
+If the archive path is omitted, the preflight remains conservative and reports no retained upload artifact under repo-local build output locations.
 
 ## Live Worker Evidence
 
@@ -71,6 +73,65 @@ Response body:
 ```json
 {"requestId":"515d1363-8f81-4265-a622-da6399631e23","errorCode":"not_found","errorMessage":"Route not found.","failureReason":"Route not found."}
 ```
+
+## Archive Evidence
+
+Internal staging config verification:
+
+```bash
+bash ios/scripts/verify_internal_staging_config.sh
+```
+
+Result:
+
+```text
+HOOPS_APP_ENV=expected
+HOOPS_CLOUD_LAUNCH_MODE=expected
+HOOPS_CLOUD_ANALYSIS_BASE_URL=expected
+HOOPS_CLOUD_EDIT_BASE_URL=expected
+PRODUCT_BUNDLE_IDENTIFIER=expected
+MARKETING_VERSION=expected
+CURRENT_PROJECT_VERSION=expected
+INFOPLIST_FILE=expected
+Internal staging Release config is explicit and cloud-enabled for staging only.
+```
+
+Signed archive command:
+
+```bash
+xcodebuild archive -quiet \
+  -project ios/HoopsClips.xcodeproj \
+  -scheme HoopsClips \
+  -configuration Release \
+  -destination 'generic/platform=iOS' \
+  -archivePath /tmp/HoopsClips-Launch7-InternalStaging.xcarchive \
+  -derivedDataPath /tmp/hoopclips-launch7-internal-staging-archive-derived \
+  -xcconfig ios/HoopsClips/HoopsClips/Config/InternalStaging.xcconfig \
+  -allowProvisioningUpdates
+```
+
+Result: archive succeeded. Xcode printed existing Swift warnings and one invalid keychain credential warning for a developer-account entry, but it still produced a signed archive.
+
+Archive metadata:
+
+```text
+CFBundleIdentifier: atrak.charlie.hoopsclips
+CFBundleShortVersionString: 1.0.0
+CFBundleVersion: 3
+SigningIdentity: present
+Team: K99RADPB9G
+```
+
+Embedded app runtime config:
+
+```text
+HOOPSAppEnvironment: internal_staging
+HOOPSCloudLaunchMode: internal_only
+HOOPSCloudAnalysisBaseURL: https://hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev
+HOOPSCloudEditBaseURL: https://hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev
+```
+
+No export, upload, App Store Connect submission, or TestFlight submission was attempted.
 
 ## Passing Evidence
 
@@ -193,10 +254,10 @@ Required before submission:
 1. Merge/publish the deploy workflow stack so `cloud-edit-deploy-preflight.yml` is available where operators can dispatch it.
 2. Configure and verify `CLOUDFLARE_API_TOKEN` and GCP deploy inputs without printing secret values.
 3. Deploy or refresh the staging Worker and prove `/v1/editing/version` returns the editing service non-secret feature flag payload.
-4. Produce or locate the intended internal TestFlight `.xcarchive` or `.ipa`.
+4. Export/upload the signed archive only after the live Worker and deploy-token gates pass.
 5. Install the internal TestFlight build on a trusted online iPhone and complete the full smoke: upload/import -> cloud analysis -> Review -> Export -> AI Edit -> render -> preview -> More Hype revision -> revised preview -> share/open-in.
 6. Refresh launch docs so known no-go markers are replaced by current evidence.
-7. Re-run `python3 scripts/submission_readiness_preflight.py`; only submit after it returns `pass=... fail=0`.
+7. Re-run `python3 scripts/submission_readiness_preflight.py --archive-path /tmp/HoopsClips-Launch7-InternalStaging.xcarchive`; only submit after it returns `pass=... fail=0`.
 
 ## Screenshots And Job IDs
 
