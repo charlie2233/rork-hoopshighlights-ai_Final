@@ -1,6 +1,16 @@
 name: iOS Internal TestFlight Upload
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/ios-testflight-upload.yml
+      - ios/HoopsClips.xcodeproj/**
+      - ios/HoopsClips/HoopsClips/**
+      - ios/exportOptions.testflight-internal.plist
+      - ios/scripts/materialize_local_secrets.sh
+      - ios/scripts/verify_internal_staging_config.sh
   pull_request:
     paths:
       - .github/workflows/ios-testflight-upload.yml
@@ -28,7 +38,7 @@ permissions:
 jobs:
   internal-staging-codecheck:
     name: No-secret internal staging codecheck
-    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.operation == 'codecheck')
+    if: github.event_name == 'push' || github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.operation == 'codecheck')
     runs-on: macos-26
     steps:
       - name: Check out repository

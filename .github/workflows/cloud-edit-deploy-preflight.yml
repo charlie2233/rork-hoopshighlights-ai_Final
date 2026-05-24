@@ -1,6 +1,14 @@
 name: Cloud Edit Deploy Preflight
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/cloud-edit-deploy-preflight.yml
+      - services/control-plane/**
+      - services/editing/cloudbuild.yaml
+      - services/editing/scripts/deploy_preflight.py
   pull_request:
     paths:
       - .github/workflows/cloud-edit-deploy-preflight.yml
