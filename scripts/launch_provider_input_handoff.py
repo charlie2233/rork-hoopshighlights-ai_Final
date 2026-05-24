@@ -80,6 +80,7 @@ def build_handoff() -> Handoff:
         "gh workflow run cloud-edit-deploy-preflight.yml --repo charlie2233/rork-hoopshighlights-ai_Final --ref main -f operation=preflight",
         "gh workflow run ios-testflight-upload.yml --repo charlie2233/rork-hoopshighlights-ai_Final --ref main -f operation=preflight",
         "gh workflow run cloud-edit-deploy-preflight.yml --repo charlie2233/rork-hoopshighlights-ai_Final --ref main -f operation=deploy",
+        "python3 scripts/staging_version_probe.py",
         "python3 scripts/submission_readiness_preflight.py",
     ]
     manual_gates = [
