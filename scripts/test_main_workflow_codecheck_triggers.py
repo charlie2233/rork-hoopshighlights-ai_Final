@@ -23,6 +23,27 @@ class MainWorkflowCodecheckTriggerTests(unittest.TestCase):
         self.assertIn("if: github.event_name == 'workflow_dispatch' && inputs.operation != 'codecheck'", text)
         self.assertNotIn("paths:", text)
 
+    def test_cloud_deploy_workflow_deploys_and_verifies_editing_cloud_run(self) -> None:
+        text = workflow_text("cloud-edit-deploy-preflight.yml")
+
+        assert_contains_all(
+            self,
+            text,
+            [
+                "cloud_run_revision:",
+                "Deploy staging editing service",
+                "gcloud builds submit .",
+                "--config=services/editing/cloudbuild.yaml",
+                "--substitutions=\"_IMAGE_TAG=$GITHUB_SHA,_REGION=$GCP_REGION,_SERVICE_NAME=$EDITING_SERVICE_NAME\"",
+                "Verify direct editing version after deploy",
+                "Verify Worker editing version after deploy",
+                ".featureFlags.aiEditLiveRenderEnabled == true",
+                "Roll back staging editing service",
+                "cloud_run_revision is required when operation=rollback",
+                "-f cloud_run_revision=<previous-cloud-run-revision>",
+            ],
+        )
+
     def test_ios_upload_workflow_runs_unsigned_codecheck_on_every_main_push(self) -> None:
         text = workflow_text("ios-testflight-upload.yml")
 

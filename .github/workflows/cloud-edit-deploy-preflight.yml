@@ -21,6 +21,10 @@ on:
         description: "Required only when operation=rollback. Worker version ID to roll back to."
         required: false
         type: string
+      cloud_run_revision:
+        description: "Required only when operation=rollback. Cloud Run editing revision to receive 100% traffic."
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -110,6 +114,9 @@ jobs:
       GCP_REGION: ${{ vars.GCP_REGION }}
       DEPLOY_OPERATION: ${{ inputs.operation }}
       ROLLBACK_VERSION_ID: ${{ inputs.rollback_version_id }}
+      CLOUD_RUN_ROLLBACK_REVISION: ${{ inputs.cloud_run_revision }}
+      EDITING_SERVICE_NAME: hoopclips-editing-staging
+      WORKER_EDITING_VERSION_URL: https://hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev/v1/editing/version
 
     steps:
       - name: Check out repository
@@ -216,6 +223,40 @@ jobs:
       - name: Verify staging deploy dry run with CI token
         run: npm --prefix services/control-plane run deploy:staging:dry-run
 
+      - name: Deploy staging editing service
+        if: inputs.operation == 'deploy'
+        run: |
+          set -euo pipefail
+          gcloud builds submit . \
+            --project="$GCP_PROJECT_ID" \
+            --config=services/editing/cloudbuild.yaml \
+            --substitutions="_IMAGE_TAG=$GITHUB_SHA,_REGION=$GCP_REGION,_SERVICE_NAME=$EDITING_SERVICE_NAME"
+
+      - name: Verify direct editing version after deploy
+        if: inputs.operation == 'deploy'
+        run: |
+          set -euo pipefail
+          editing_url="$(
+            gcloud run services describe "$EDITING_SERVICE_NAME" \
+              --project="$GCP_PROJECT_ID" \
+              --region="$GCP_REGION" \
+              --format='value(status.url)'
+          )"
+          if [[ -z "$editing_url" ]]; then
+            echo "::error::Cloud Run did not return an editing service URL"
+            exit 1
+          fi
+          curl --fail --silent --show-error "$editing_url/version" >/tmp/editing-version.json
+          jq -e --arg sha "$GITHUB_SHA" '
+            .gitSha == $sha
+            and .backendModelVersion == "editing-cloud-v1"
+            and .featureFlags.aiEditEnabled == true
+            and .featureFlags.aiEditLiveRenderEnabled == true
+            and .featureFlags.aiEditRevisionEnabled == true
+            and .featureFlags.aiEditTemplatePackEnabled == true
+          ' /tmp/editing-version.json >/dev/null
+          echo "direct editing /version matches current deploy and required AI Edit flags"
+
       - name: Deploy staging Worker
         if: inputs.operation == 'deploy'
         working-directory: services/control-plane
@@ -226,6 +267,38 @@ jobs:
             --keep-vars \
             --message "GitHub Actions staging deploy ${GITHUB_SHA}"
           npx wrangler deployments status --env staging
+
+      - name: Verify Worker editing version after deploy
+        if: inputs.operation == 'deploy'
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error "$WORKER_EDITING_VERSION_URL" >/tmp/worker-editing-version.json
+          jq -e --arg sha "$GITHUB_SHA" '
+            .gitSha == $sha
+            and .backendModelVersion == "editing-cloud-v1"
+            and .featureFlags.aiEditEnabled == true
+            and .featureFlags.aiEditLiveRenderEnabled == true
+            and .featureFlags.aiEditRevisionEnabled == true
+            and .featureFlags.aiEditTemplatePackEnabled == true
+          ' /tmp/worker-editing-version.json >/dev/null
+          echo "Worker /v1/editing/version matches current deploy and required AI Edit flags"
+
+      - name: Roll back staging editing service
+        if: inputs.operation == 'rollback'
+        run: |
+          set -euo pipefail
+          if [[ -z "${CLOUD_RUN_ROLLBACK_REVISION:-}" ]]; then
+            echo "::error::cloud_run_revision is required when operation=rollback"
+            exit 1
+          fi
+          gcloud run services update-traffic "$EDITING_SERVICE_NAME" \
+            --project="$GCP_PROJECT_ID" \
+            --region="$GCP_REGION" \
+            --to-revisions "${CLOUD_RUN_ROLLBACK_REVISION}=100"
+          gcloud run services describe "$EDITING_SERVICE_NAME" \
+            --project="$GCP_PROJECT_ID" \
+            --region="$GCP_REGION" \
+            --format='value(status.traffic)'
 
       - name: Roll back staging Worker
         if: inputs.operation == 'rollback'
@@ -285,6 +358,18 @@ jobs:
               --project="$GCP_PROJECT_ID" \
               --region="$GCP_REGION" \
               --to-revisions <previous-revision>=100
+
+          GitHub Actions staging deploy:
+            gh workflow run "Cloud Edit Deploy Preflight" \
+              --ref main \
+              -f operation=deploy
+
+          GitHub Actions staging rollback:
+            gh workflow run "Cloud Edit Deploy Preflight" \
+              --ref main \
+              -f operation=rollback \
+              -f cloud_run_revision=<previous-cloud-run-revision> \
+              -f rollback_version_id=<previous-worker-version-id>
 
           Worker rollback:
             cd services/control-plane
