@@ -16,6 +16,7 @@ if str(REPO_ROOT_FOR_IMPORTS) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT_FOR_IMPORTS))
 
 from scripts.submission_readiness_preflight import (
+    DEFAULT_EDITING_VERSION_URL,
     DEFAULT_WORKER_BASE_URL,
     REQUIRED_FEATURE_FLAGS,
     VERSION_ROUTE,
@@ -23,7 +24,6 @@ from scripts.submission_readiness_preflight import (
 )
 
 
-DEFAULT_EDITING_VERSION_URL = "https://hoopclips-editing-staging-npya43jiia-uc.a.run.app/version"
 USER_AGENT = "HoopClipsStagingVersionProbe/1.0"
 
 
@@ -60,7 +60,7 @@ def run_probe(
     worker = probe_endpoint("worker", worker_endpoint, timeout_seconds, fetcher)
     editing = probe_endpoint("editing", editing_endpoint, timeout_seconds, fetcher)
     diagnosis = diagnose(worker, editing)
-    status = "pass" if worker.status == "pass" and editing.status == "pass" else "fail"
+    status = "pass" if diagnosis == "staging_version_ready" else "fail"
     return VersionProbeReport(status=status, diagnosis=diagnosis, worker=worker, editing=editing)
 
 
@@ -145,6 +145,12 @@ def endpoint_without_query(url: str) -> str:
 
 def diagnose(worker: EndpointProbe, editing: EndpointProbe) -> str:
     if worker.status == "pass" and editing.status == "pass":
+        if not worker.gitSha or not editing.gitSha or not worker.backendModelVersion or not editing.backendModelVersion:
+            return "staging_version_metadata_missing"
+        if not git_sha_matches(worker.gitSha, editing.gitSha):
+            return "staging_version_git_sha_drift"
+        if worker.backendModelVersion != editing.backendModelVersion:
+            return "staging_version_backend_model_drift"
         return "staging_version_ready"
     if worker.httpStatus == 404 and editing.status == "fail" and editing.httpStatus == 200:
         return "worker_route_missing_and_editing_version_stale"
@@ -155,6 +161,12 @@ def diagnose(worker: EndpointProbe, editing: EndpointProbe) -> str:
     if worker.status == "pass" and editing.status == "fail":
         return "worker_proxy_ready_but_direct_editing_probe_failed"
     return "staging_version_unready"
+
+
+def git_sha_matches(left: str, right: str) -> bool:
+    left_normalized = left.strip()
+    right_normalized = right.strip()
+    return left_normalized.startswith(right_normalized) or right_normalized.startswith(left_normalized)
 
 
 def render_text(report: VersionProbeReport) -> str:

@@ -25,6 +25,7 @@ from scripts.launch_backend_config_preflight import summarize as summarize_backe
 
 VERSION_ROUTE = "/v1/editing/version"
 DEFAULT_WORKER_BASE_URL = "https://hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev"
+DEFAULT_EDITING_VERSION_URL = "https://hoopclips-editing-staging-npya43jiia-uc.a.run.app/version"
 EXPECTED_IOS_BUNDLE_ID = "atrak.charlie.hoopsclips"
 EXPECTED_IOS_MARKETING_VERSION = "1.0.0"
 EXPECTED_IOS_BUILD_NUMBER = "4"
@@ -127,6 +128,7 @@ def main() -> int:
     findings = run_checks(
         repo_root,
         worker_base_url=args.worker_base_url,
+        editing_version_url=args.editing_version_url,
         archive_path=Path(args.archive_path).resolve() if args.archive_path else None,
         skip_live=args.skip_live,
         timeout_seconds=args.timeout_seconds,
@@ -159,6 +161,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--repo-root", default=Path(__file__).resolve().parents[1])
     parser.add_argument("--worker-base-url", default=None, help="Override staging Worker base URL for live /v1/editing/version probe.")
+    parser.add_argument("--editing-version-url", default=DEFAULT_EDITING_VERSION_URL, help="Override direct editing Cloud Run /version URL for live version drift probe.")
     parser.add_argument("--archive-path", default=None, help="Optional .xcarchive or .ipa path to require for upload readiness.")
     parser.add_argument("--timeout-seconds", type=float, default=10.0, help="Timeout for the live Worker version probe.")
     parser.add_argument("--skip-live", action="store_true", help="Skip live Worker probe and report it as a warning.")
@@ -170,6 +173,7 @@ def run_checks(
     repo_root: Path,
     *,
     worker_base_url: str | None = None,
+    editing_version_url: str = DEFAULT_EDITING_VERSION_URL,
     archive_path: Path | None = None,
     skip_live: bool = False,
     timeout_seconds: float = 10.0,
@@ -184,6 +188,7 @@ def run_checks(
     check_connected_ios_device(collector)
     resolved_worker_base_url = worker_base_url or worker_base_url_from_internal_staging(repo_root) or DEFAULT_WORKER_BASE_URL
     check_live_worker_version(resolved_worker_base_url, collector, skip_live=skip_live, timeout_seconds=timeout_seconds)
+    check_live_editing_version(editing_version_url, collector, repo_root=repo_root, skip_live=skip_live, timeout_seconds=timeout_seconds)
     check_ci_deploy_inputs(collector)
     check_github_workflow_runs(collector)
     check_blocker_docs(repo_root, collector)
@@ -445,18 +450,18 @@ def check_live_worker_version(worker_base_url: str, collector: Collector, *, ski
         collector.warn("live worker version route", endpoint_label, "Live Worker probe skipped by request.")
         return
 
-    request = Request(endpoint, headers={"Accept": "application/json", "User-Agent": "HoopClipsSubmissionPreflight/1.0"})
-    try:
-        with urlopen(request, timeout=timeout_seconds) as response:
-            status_code = response.getcode()
-            body = response.read(256_000)
-    except HTTPError as error:
+    result = fetch_version_payload(endpoint, timeout_seconds=timeout_seconds)
+    if isinstance(result, HTTPError):
+        result.close()
+        error = result
         collector.fail("live worker version route", endpoint_label, f"Returned HTTP {error.code}; staging Worker must proxy editing /version before submission.")
         return
-    except (OSError, URLError) as error:
+    if isinstance(result, (OSError, URLError)):
+        error = result
         collector.fail("live worker version route", endpoint_label, f"Probe failed: {type(error).__name__}.")
         return
 
+    status_code, body = result
     if status_code != 200:
         collector.fail("live worker version route", endpoint_label, f"Returned HTTP {status_code}; expected 200.")
         return
@@ -477,6 +482,73 @@ def check_live_worker_version(worker_base_url: str, collector: Collector, *, ski
         collector.fail("live worker feature flags", endpoint_label, f"Missing feature flag(s): {', '.join(missing_flags)}.")
     else:
         collector.pass_("live worker feature flags", endpoint_label, "Worker returned non-secret AI Edit kill-switch state.")
+
+
+def check_live_editing_version(editing_version_url: str, collector: Collector, *, repo_root: Path, skip_live: bool, timeout_seconds: float) -> None:
+    endpoint = strip_url_query(editing_version_url)
+    endpoint_label = redacted_endpoint_label(endpoint)
+    if skip_live:
+        collector.warn("live editing version route", endpoint_label, "Direct editing service probe skipped by request.")
+        return
+
+    result = fetch_version_payload(endpoint, timeout_seconds=timeout_seconds)
+    if isinstance(result, HTTPError):
+        result.close()
+        error = result
+        collector.fail("live editing version route", endpoint_label, f"Returned HTTP {error.code}; staging editing service must expose /version before submission.")
+        return
+    if isinstance(result, (OSError, URLError)):
+        error = result
+        collector.fail("live editing version route", endpoint_label, f"Probe failed: {type(error).__name__}.")
+        return
+
+    status_code, body = result
+    if status_code != 200:
+        collector.fail("live editing version route", endpoint_label, f"Returned HTTP {status_code}; expected 200.")
+        return
+
+    try:
+        payload = json.loads(body.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        collector.fail("live editing version payload", endpoint_label, "Response was not valid JSON.")
+        return
+
+    if not isinstance(payload, dict):
+        collector.fail("live editing version payload", endpoint_label, "Response was not a JSON object.")
+        return
+
+    feature_flags = payload.get("featureFlags")
+    if not isinstance(feature_flags, dict):
+        collector.fail("live editing feature flags", endpoint_label, "Response did not include featureFlags.")
+        return
+
+    missing_flags = [flag for flag in REQUIRED_FEATURE_FLAGS if flag not in feature_flags]
+    if missing_flags:
+        collector.fail("live editing feature flags", endpoint_label, f"Missing feature flag(s): {', '.join(missing_flags)}.")
+    else:
+        collector.pass_("live editing feature flags", endpoint_label, "Direct editing service returned non-secret AI Edit kill-switch state.")
+
+    reported_git_sha = payload.get("gitSha")
+    current_git_sha = run_git(repo_root, "rev-parse", "HEAD")
+    if not isinstance(reported_git_sha, str) or not reported_git_sha.strip():
+        collector.fail("live editing git sha", endpoint_label, "Response did not include gitSha for deploy drift proof.")
+    elif not current_git_sha:
+        collector.warn("live editing git sha", endpoint_label, "Could not compare live gitSha with the current checkout.")
+    elif git_sha_matches(reported_git_sha.strip(), current_git_sha.strip()):
+        collector.pass_("live editing git sha", endpoint_label, "Direct editing service gitSha matches the current checkout.")
+    else:
+        collector.fail("live editing git sha", endpoint_label, "Direct editing service gitSha does not match the current checkout; deploy current source before submission.")
+
+
+def fetch_version_payload(endpoint: str, *, timeout_seconds: float) -> tuple[int, bytes] | HTTPError | OSError | URLError:
+    request = Request(endpoint, headers={"Accept": "application/json", "User-Agent": "HoopClipsSubmissionPreflight/1.0"})
+    try:
+        with urlopen(request, timeout=timeout_seconds) as response:
+            return response.getcode(), response.read(256_000)
+    except HTTPError as error:
+        return error
+    except (OSError, URLError) as error:
+        return error
 
 
 def check_ci_deploy_inputs(collector: Collector) -> None:
@@ -657,11 +729,24 @@ def normalized_endpoint(base_url: str, path: str) -> str:
     return base_url.rstrip("/") + "/" + path.lstrip("/")
 
 
+def strip_url_query(url: str) -> str:
+    parsed = urlparse(url)
+    if not parsed.netloc:
+        return url.rstrip("/")
+    return parsed._replace(query="", fragment="").geturl().rstrip("/")
+
+
 def redacted_endpoint_label(url: str) -> str:
     parsed = urlparse(url)
     if not parsed.netloc:
         return VERSION_ROUTE
     return f"{parsed.netloc}{parsed.path}"
+
+
+def git_sha_matches(reported: str, expected: str) -> bool:
+    reported_normalized = reported.strip()
+    expected_normalized = expected.strip()
+    return expected_normalized.startswith(reported_normalized) or reported_normalized.startswith(expected_normalized)
 
 
 def run_git(repo_root: Path, *args: str) -> str | None:

@@ -13,6 +13,11 @@ FEATURE_FLAGS = {
     "aiEditRevisionEnabled": True,
     "aiEditTemplatePackEnabled": True,
 }
+VERSION_PAYLOAD = {
+    "backendModelVersion": "editing-cloud-v1",
+    "featureFlags": FEATURE_FLAGS,
+    "gitSha": "abc1234",
+}
 
 
 class StagingVersionProbeTests(unittest.TestCase):
@@ -21,7 +26,7 @@ class StagingVersionProbeTests(unittest.TestCase):
             url = request.full_url
             if "worker.test" in url:
                 raise HTTPError(url, 404, "Not Found", hdrs=None, fp=io.BytesIO())
-            return 200, json.dumps({"featureFlags": FEATURE_FLAGS}).encode("utf-8")
+            return 200, json.dumps(VERSION_PAYLOAD).encode("utf-8")
 
         report = run_probe(
             worker_base_url="https://worker.test",
@@ -36,7 +41,7 @@ class StagingVersionProbeTests(unittest.TestCase):
 
     def test_passes_when_both_endpoints_return_required_feature_flags(self) -> None:
         def opener(_request: Request, _timeout_seconds: float) -> tuple[int, bytes]:
-            return 200, json.dumps({"featureFlags": FEATURE_FLAGS}).encode("utf-8")
+            return 200, json.dumps(VERSION_PAYLOAD).encode("utf-8")
 
         report = run_probe(
             worker_base_url="https://worker.test",
@@ -50,7 +55,9 @@ class StagingVersionProbeTests(unittest.TestCase):
 
     def test_fails_when_feature_flags_are_missing(self) -> None:
         def opener(_request: Request, _timeout_seconds: float) -> tuple[int, bytes]:
-            return 200, json.dumps({"featureFlags": {"aiEditEnabled": True}}).encode("utf-8")
+            return 200, json.dumps({"backendModelVersion": "editing-cloud-v1", "featureFlags": {"aiEditEnabled": True}, "gitSha": "abc1234"}).encode(
+                "utf-8"
+            )
 
         report = run_probe(
             worker_base_url="https://worker.test",
@@ -64,7 +71,7 @@ class StagingVersionProbeTests(unittest.TestCase):
 
     def test_text_output_redacts_query_values_and_body_values(self) -> None:
         def opener(_request: Request, _timeout_seconds: float) -> tuple[int, bytes]:
-            return 200, json.dumps({"featureFlags": FEATURE_FLAGS, "secret": "do-not-print"}).encode("utf-8")
+            return 200, json.dumps({**VERSION_PAYLOAD, "secret": "do-not-print"}).encode("utf-8")
 
         report = run_probe(
             worker_base_url="https://worker.test?token=secret-token",
@@ -77,6 +84,33 @@ class StagingVersionProbeTests(unittest.TestCase):
         self.assertIn("editing.test/version", text)
         self.assertNotIn("secret-token", text)
         self.assertNotIn("do-not-print", text)
+
+    def test_fails_when_reachable_endpoints_have_different_git_sha(self) -> None:
+        def opener(request: Request, _timeout_seconds: float) -> tuple[int, bytes]:
+            payload = {**VERSION_PAYLOAD, "gitSha": "abc1234" if "worker.test" in request.full_url else "def5678"}
+            return 200, json.dumps(payload).encode("utf-8")
+
+        report = run_probe(
+            worker_base_url="https://worker.test",
+            editing_version_url="https://editing.test/version",
+            opener=opener,
+        )
+
+        self.assertEqual(report.status, "fail")
+        self.assertEqual(report.diagnosis, "staging_version_git_sha_drift")
+
+    def test_fails_when_reachable_endpoints_omit_version_metadata(self) -> None:
+        def opener(_request: Request, _timeout_seconds: float) -> tuple[int, bytes]:
+            return 200, json.dumps({"featureFlags": FEATURE_FLAGS}).encode("utf-8")
+
+        report = run_probe(
+            worker_base_url="https://worker.test",
+            editing_version_url="https://editing.test/version",
+            opener=opener,
+        )
+
+        self.assertEqual(report.status, "fail")
+        self.assertEqual(report.diagnosis, "staging_version_metadata_missing")
 
 
 if __name__ == "__main__":

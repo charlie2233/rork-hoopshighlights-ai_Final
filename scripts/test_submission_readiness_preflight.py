@@ -22,6 +22,7 @@ from scripts.submission_readiness_preflight import (
     check_connected_ios_device,
     check_github_workflow_runs,
     check_ios_upload_inputs,
+    check_live_editing_version,
     has_failures,
     parse_devicectl_devices,
     redacted_endpoint_label,
@@ -54,6 +55,13 @@ class SubmissionReadinessPreflightTests(unittest.TestCase):
                     "connected ios device",
                     "xcrun devicectl",
                     "1 available iPhone device(s) detected for TestFlight smoke.",
+                ),
+            ), patch(
+                "scripts.submission_readiness_preflight.check_live_editing_version",
+                side_effect=lambda _url, collector, repo_root, skip_live, timeout_seconds: collector.pass_(
+                    "live editing feature flags",
+                    "editing-staging/version",
+                    "Direct editing service returned non-secret AI Edit kill-switch state.",
                 ),
             ), patch(
                 "scripts.submission_readiness_preflight.check_github_workflow_runs",
@@ -209,6 +217,62 @@ charlie的iPhone   charliedeiPhone.coredevice.local   E5786BB6-0095-5509-8B85-11
             check_upload_artifact(repo_root, collector, archive_path)
 
             self.assertTrue(has_failures(collector.findings))
+
+    def test_live_editing_version_fails_when_required_flag_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            collector = Collector()
+            payload = {
+                "gitSha": "abc1234",
+                "featureFlags": {
+                    "aiEditEnabled": True,
+                    "aiEditRevisionEnabled": True,
+                    "aiEditTemplatePackEnabled": True,
+                },
+            }
+
+            with patch(
+                "scripts.submission_readiness_preflight.fetch_version_payload",
+                return_value=(200, json.dumps(payload).encode("utf-8")),
+            ), patch(
+                "scripts.submission_readiness_preflight.run_git",
+                return_value="abc1234567890\n",
+            ):
+                check_live_editing_version("https://editing.example.test/version?token=secret", collector, repo_root=repo_root, skip_live=False, timeout_seconds=1.0)
+
+            failures = [finding for finding in collector.findings if finding.status == "fail"]
+            self.assertEqual(len(failures), 1)
+            self.assertEqual(failures[0].check, "live editing feature flags")
+            self.assertIn("aiEditLiveRenderEnabled", failures[0].detail)
+            self.assertNotIn("secret", failures[0].path)
+
+    def test_live_editing_version_fails_when_git_sha_is_stale(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            collector = Collector()
+            payload = {
+                "gitSha": "deadbee",
+                "featureFlags": {
+                    "aiEditEnabled": True,
+                    "aiEditLiveRenderEnabled": True,
+                    "aiEditRevisionEnabled": True,
+                    "aiEditTemplatePackEnabled": True,
+                },
+            }
+
+            with patch(
+                "scripts.submission_readiness_preflight.fetch_version_payload",
+                return_value=(200, json.dumps(payload).encode("utf-8")),
+            ), patch(
+                "scripts.submission_readiness_preflight.run_git",
+                return_value="abc1234567890\n",
+            ):
+                check_live_editing_version("https://editing.example.test/version", collector, repo_root=repo_root, skip_live=False, timeout_seconds=1.0)
+
+            failures = [finding for finding in collector.findings if finding.status == "fail"]
+            self.assertEqual(len(failures), 1)
+            self.assertEqual(failures[0].check, "live editing git sha")
+            self.assertIn("does not match", failures[0].detail)
 
 
 def create_ready_fixture(repo_root: Path) -> Path:
