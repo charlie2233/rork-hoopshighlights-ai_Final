@@ -77,6 +77,10 @@ Results:
 - `scripts/staging_version_probe.py`: failed with `diagnosis=worker_route_missing_and_editing_version_stale`.
 - `scripts/submission_readiness_preflight.py` before commit: `pass=16 warn=1 fail=15`. This includes the expected tracked/untracked branch-file checks and the new stale GitHub Actions failures for both required workflows.
 - `scripts/submission_readiness_preflight.py` after commit: `pass=18 warn=0 fail=14`. Repo hygiene passed; stale GitHub Actions evidence, live staging, provider input, signing, artifact, and device blockers remain.
+- GitHub Actions after updating `main`:
+  - `Cloud Edit Deploy Preflight` passed for commit `853d284` in run `26352801716`: https://github.com/charlie2233/rork-hoopshighlights-ai_Final/actions/runs/26352801716
+  - `iOS Internal TestFlight Upload` no-secret codecheck passed for commit `853d284` in run `26352801724`: https://github.com/charlie2233/rork-hoopshighlights-ai_Final/actions/runs/26352801724
+- `scripts/submission_readiness_preflight.py` after current-commit CI passed: `pass=20 warn=0 fail=12`. GitHub workflow evidence is now current; live staging, provider input, signing, artifact, and device blockers remain.
 
 ## Launch Notes
 
