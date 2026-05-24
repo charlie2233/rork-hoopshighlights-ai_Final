@@ -3,7 +3,7 @@ from pathlib import Path
 
 
 class MainWorkflowCodecheckTriggerTests(unittest.TestCase):
-    def test_cloud_deploy_workflow_runs_worker_codecheck_on_main_push(self) -> None:
+    def test_cloud_deploy_workflow_runs_codechecks_on_every_main_push(self) -> None:
         text = workflow_text("cloud-edit-deploy-preflight.yml")
 
         assert_contains_all(
@@ -13,16 +13,17 @@ class MainWorkflowCodecheckTriggerTests(unittest.TestCase):
                 "push:",
                 "branches:",
                 "- main",
-                "paths:",
-                ".github/workflows/cloud-edit-deploy-preflight.yml",
-                "services/control-plane/**",
-                "services/editing/cloudbuild.yaml",
-                "services/editing/scripts/deploy_preflight.py",
+                "pull_request:",
+                "Editing backend Python tests",
+                "PYTHONPATH=ios/backend:services/editing python -m unittest discover ios/backend/tests -v",
+                "PYTHONPATH=ios/backend:services/editing python -m unittest discover services/editing/tests -v",
+                "python -m unittest discover -s scripts -p 'test_*.py' -v",
             ],
         )
         self.assertIn("if: github.event_name == 'workflow_dispatch' && inputs.operation != 'codecheck'", text)
+        self.assertNotIn("paths:", text)
 
-    def test_ios_upload_workflow_runs_unsigned_codecheck_on_main_push_only(self) -> None:
+    def test_ios_upload_workflow_runs_unsigned_codecheck_on_every_main_push(self) -> None:
         text = workflow_text("ios-testflight-upload.yml")
 
         assert_contains_all(
@@ -32,15 +33,13 @@ class MainWorkflowCodecheckTriggerTests(unittest.TestCase):
                 "push:",
                 "branches:",
                 "- main",
-                "paths:",
-                ".github/workflows/ios-testflight-upload.yml",
-                "ios/HoopsClips.xcodeproj/**",
-                "ios/HoopsClips/HoopsClips/**",
+                "pull_request:",
                 "github.event_name == 'push'",
                 "CODE_SIGNING_ALLOWED=NO",
             ],
         )
         self.assertIn("if: github.event_name == 'workflow_dispatch' && inputs.operation != 'codecheck'", text)
+        self.assertNotIn("paths:", text)
 
 
 def workflow_text(name: str) -> str:

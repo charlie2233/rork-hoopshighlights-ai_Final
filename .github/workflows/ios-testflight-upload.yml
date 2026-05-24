@@ -4,21 +4,7 @@ on:
   push:
     branches:
       - main
-    paths:
-      - .github/workflows/ios-testflight-upload.yml
-      - ios/HoopsClips.xcodeproj/**
-      - ios/HoopsClips/HoopsClips/**
-      - ios/exportOptions.testflight-internal.plist
-      - ios/scripts/materialize_local_secrets.sh
-      - ios/scripts/verify_internal_staging_config.sh
   pull_request:
-    paths:
-      - .github/workflows/ios-testflight-upload.yml
-      - ios/HoopsClips.xcodeproj/**
-      - ios/HoopsClips/HoopsClips/**
-      - ios/exportOptions.testflight-internal.plist
-      - ios/scripts/materialize_local_secrets.sh
-      - ios/scripts/verify_internal_staging_config.sh
   workflow_dispatch:
     inputs:
       operation:

@@ -4,17 +4,7 @@ on:
   push:
     branches:
       - main
-    paths:
-      - .github/workflows/cloud-edit-deploy-preflight.yml
-      - services/control-plane/**
-      - services/editing/cloudbuild.yaml
-      - services/editing/scripts/deploy_preflight.py
   pull_request:
-    paths:
-      - .github/workflows/cloud-edit-deploy-preflight.yml
-      - services/control-plane/**
-      - services/editing/cloudbuild.yaml
-      - services/editing/scripts/deploy_preflight.py
   workflow_dispatch:
     inputs:
       operation:
@@ -61,9 +51,54 @@ jobs:
       - name: Validate staging Worker bundle and bindings
         run: npm --prefix services/control-plane run deploy:staging:dry-run
 
+  editing-backend-codecheck:
+    name: Editing backend Python tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install FFmpeg
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Install backend dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -r services/editing/requirements.txt
+          python -m pip install -r ios/backend/requirements.txt
+
+      - name: Compile backend modules
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            ios/backend/app/editing.py \
+            ios/backend/app/main.py \
+            services/editing/editing_app/gpt_reranker.py \
+            services/editing/editing_app/main.py
+
+      - name: Run backend tests
+        run: |
+          set -euo pipefail
+          PYTHONPATH=ios/backend:services/editing python -m unittest discover ios/backend/tests -v
+          PYTHONPATH=ios/backend:services/editing python -m unittest discover services/editing/tests -v
+
+      - name: Run launch script tests
+        run: python -m unittest discover -s scripts -p 'test_*.py' -v
+
   deploy-preflight:
     name: Verify cloud edit deploy secrets
-    needs: worker-dry-run
+    needs:
+      - worker-dry-run
+      - editing-backend-codecheck
     if: github.event_name == 'workflow_dispatch' && inputs.operation != 'codecheck'
     runs-on: ubuntu-latest
     environment: staging

@@ -65,7 +65,7 @@ class SubmissionReadinessPreflightTests(unittest.TestCase):
                 ),
             ), patch(
                 "scripts.submission_readiness_preflight.check_github_workflow_runs",
-                side_effect=lambda collector: collector.pass_(
+                side_effect=lambda _repo_root, collector: collector.pass_(
                     "github workflow status",
                     "GitHub Actions",
                     "Required main-branch workflow runs are green.",
@@ -150,12 +150,14 @@ charlie的iPhone   charliedeiPhone.coredevice.local   E5786BB6-0095-5509-8B85-11
         payload = [
             {
                 "workflowName": "iOS Internal TestFlight Upload",
+                "headSha": "abc1234567890",
                 "status": "completed",
                 "conclusion": "failure",
                 "createdAt": "2026-05-23T21:27:18Z",
             },
             {
                 "workflowName": "Cloud Edit Deploy Preflight",
+                "headSha": "abc1234567890",
                 "status": "completed",
                 "conclusion": "failure",
                 "createdAt": "2026-05-23T20:31:19Z",
@@ -166,12 +168,77 @@ charlie的iPhone   charliedeiPhone.coredevice.local   E5786BB6-0095-5509-8B85-11
         with patch(
             "scripts.submission_readiness_preflight.subprocess.run",
             return_value=SimpleNamespace(returncode=0, stdout=json.dumps(payload)),
+        ), patch(
+            "scripts.submission_readiness_preflight.run_git",
+            return_value="abc1234567890\n",
         ):
-            check_github_workflow_runs(collector)
+            check_github_workflow_runs(Path.cwd(), collector)
 
         failures = [finding for finding in collector.findings if finding.status == "fail"]
         self.assertEqual(len(failures), 2)
         self.assertTrue(all("conclusion=failure" in finding.detail for finding in failures))
+
+    def test_github_workflow_runs_fail_when_latest_required_runs_are_stale(self) -> None:
+        payload = [
+            {
+                "workflowName": "iOS Internal TestFlight Upload",
+                "headSha": "old1234567890",
+                "status": "completed",
+                "conclusion": "success",
+                "createdAt": "2026-05-23T21:27:18Z",
+            },
+            {
+                "workflowName": "Cloud Edit Deploy Preflight",
+                "headSha": "old1234567890",
+                "status": "completed",
+                "conclusion": "success",
+                "createdAt": "2026-05-23T20:31:19Z",
+            },
+        ]
+        collector = Collector()
+
+        with patch(
+            "scripts.submission_readiness_preflight.subprocess.run",
+            return_value=SimpleNamespace(returncode=0, stdout=json.dumps(payload)),
+        ), patch(
+            "scripts.submission_readiness_preflight.run_git",
+            return_value="abc1234567890\n",
+        ):
+            check_github_workflow_runs(Path.cwd(), collector)
+
+        failures = [finding for finding in collector.findings if finding.status == "fail"]
+        self.assertEqual(len(failures), 2)
+        self.assertTrue(all("not current checkout" in finding.detail for finding in failures))
+
+    def test_github_workflow_runs_pass_when_latest_required_runs_match_current_sha(self) -> None:
+        payload = [
+            {
+                "workflowName": "iOS Internal TestFlight Upload",
+                "headSha": "abc1234567890",
+                "status": "completed",
+                "conclusion": "success",
+                "createdAt": "2026-05-23T21:27:18Z",
+            },
+            {
+                "workflowName": "Cloud Edit Deploy Preflight",
+                "headSha": "abc1234567890",
+                "status": "completed",
+                "conclusion": "success",
+                "createdAt": "2026-05-23T20:31:19Z",
+            },
+        ]
+        collector = Collector()
+
+        with patch(
+            "scripts.submission_readiness_preflight.subprocess.run",
+            return_value=SimpleNamespace(returncode=0, stdout=json.dumps(payload)),
+        ), patch(
+            "scripts.submission_readiness_preflight.run_git",
+            return_value="abc1234567890\n",
+        ):
+            check_github_workflow_runs(Path.cwd(), collector)
+
+        self.assertFalse(has_failures(collector.findings))
 
     def test_deploy_inputs_can_come_from_github_environment_names(self) -> None:
         def fake_github_names(kind: str) -> set[str]:

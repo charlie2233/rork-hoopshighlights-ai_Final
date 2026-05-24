@@ -190,7 +190,7 @@ def run_checks(
     check_live_worker_version(resolved_worker_base_url, collector, skip_live=skip_live, timeout_seconds=timeout_seconds)
     check_live_editing_version(editing_version_url, collector, repo_root=repo_root, skip_live=skip_live, timeout_seconds=timeout_seconds)
     check_ci_deploy_inputs(collector)
-    check_github_workflow_runs(collector)
+    check_github_workflow_runs(repo_root, collector)
     check_blocker_docs(repo_root, collector)
     check_submission_automation(repo_root, collector)
     check_ios_upload_inputs(collector)
@@ -567,7 +567,8 @@ def check_ci_deploy_inputs(collector: Collector) -> None:
         collector.pass_("cloud deploy inputs", "environment", "Required deploy input names are present locally or in the GitHub staging environment without printing values.")
 
 
-def check_github_workflow_runs(collector: Collector) -> None:
+def check_github_workflow_runs(repo_root: Path, collector: Collector) -> None:
+    current_sha = current_git_sha(repo_root)
     try:
         result = subprocess.run(
             [
@@ -609,13 +610,30 @@ def check_github_workflow_runs(collector: Collector) -> None:
         if latest is None:
             collector.fail("github workflow status", workflow_name, "No recent main-branch workflow run was found.")
             continue
+        head_sha = str(latest.get("headSha") or "")
         status = str(latest.get("status") or "unknown")
         conclusion = str(latest.get("conclusion") or "unknown")
         created_at = str(latest.get("createdAt") or "unknown")
-        if status == "completed" and conclusion == "success":
-            collector.pass_("github workflow status", workflow_name, f"Latest main-branch run completed successfully at {created_at}.")
+        if current_sha and head_sha != current_sha:
+            short_latest = head_sha[:7] if head_sha else "unknown"
+            short_current = current_sha[:7]
+            collector.fail(
+                "github workflow status",
+                workflow_name,
+                f"Latest main-branch run is for {short_latest}, not current checkout {short_current}; rerun required CI on current main before submission.",
+            )
+        elif status == "completed" and conclusion == "success":
+            collector.pass_("github workflow status", workflow_name, f"Latest main-branch run for current checkout completed successfully at {created_at}.")
         else:
             collector.fail("github workflow status", workflow_name, f"Latest main-branch run status={status} conclusion={conclusion} at {created_at}.")
+
+
+def current_git_sha(repo_root: Path) -> str | None:
+    value = run_git(repo_root, "rev-parse", "HEAD")
+    if value is None:
+        return None
+    sha = value.strip()
+    return sha or None
 
 
 def github_environment_names(kind: str) -> set[str]:
