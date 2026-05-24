@@ -76,7 +76,9 @@ def build_handoff() -> Handoff:
         )
     ]
     verification_commands = [
+        "python3 scripts/configure_github_staging_public_variables.py",
         "python3 scripts/submission_readiness_preflight.py",
+        "python3 scripts/configure_github_staging_public_variables.py --apply",
         "gh workflow run cloud-edit-deploy-preflight.yml --repo charlie2233/rork-hoopshighlights-ai_Final --ref main -f operation=preflight",
         "gh workflow run ios-testflight-upload.yml --repo charlie2233/rork-hoopshighlights-ai_Final --ref main -f operation=preflight",
         "gh workflow run cloud-edit-deploy-preflight.yml --repo charlie2233/rork-hoopshighlights-ai_Final --ref main -f operation=deploy",
