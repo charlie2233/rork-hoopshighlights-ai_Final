@@ -2070,7 +2070,8 @@ def apply_gpt_highlight_rerank(
     story_index_by_id = {clip_id: index for index, clip_id in enumerate(valid_story_order)}
     plan_captions_by_id = {item.clipId: item for item in plan_edit.captions} if plan_edit else {}
     plan_slow_motion_by_id = {item.clipId: item for item in plan_edit.slowMotionMoments} if plan_edit else {}
-    plan_edit_applied = bool(plan_edit and (valid_story_order or plan_captions_by_id or plan_slow_motion_by_id))
+    applied_plan_caption_clip_ids: set[str] = set()
+    applied_plan_slow_motion_clip_ids: set[str] = set()
 
     if not valid_decisions:
         summary = GPTHighlightRerankSummary(
@@ -2102,6 +2103,10 @@ def apply_gpt_highlight_rerank(
         plan_slow_motion = plan_slow_motion_by_id.get(clip.id)
         caption = plan_caption.caption if plan_caption is not None else decision.caption
         caption_moment = plan_caption.captionMoment if plan_caption is not None else suggested.captionMoment
+        if plan_caption is not None:
+            applied_plan_caption_clip_ids.add(clip.id)
+        if plan_slow_motion is not None:
+            applied_plan_slow_motion_clip_ids.add(clip.id)
         suggested_slow_motion_center = _clamp_optional_clip_second(
             plan_slow_motion.center if plan_slow_motion is not None else suggested.slowMotionCenter,
             clip,
@@ -2137,7 +2142,7 @@ def apply_gpt_highlight_rerank(
             returnedDecisionCount=len(valid_decisions),
             fallbackReason="all_clips_rejected",
             storyOrderClipIds=valid_story_order,
-            planEditApplied=plan_edit_applied,
+            planEditApplied=False,
         )
         return request.model_copy(update={"gptRerankSummary": summary})
 
@@ -2152,6 +2157,16 @@ def apply_gpt_highlight_rerank(
             kept_by_duplicate[clip.duplicateGroup] = clip
     deduped.extend(kept_by_duplicate.values())
     reranked = order_by_gpt_story_order(rank_clips(deduped))
+    reranked_clip_ids = {clip.id for clip in reranked}
+    applied_story_order = [clip_id for clip_id in valid_story_order if clip_id in reranked_clip_ids]
+    plan_edit_applied = bool(
+        plan_edit
+        and (
+            applied_story_order
+            or (applied_plan_caption_clip_ids & reranked_clip_ids)
+            or (applied_plan_slow_motion_clip_ids & reranked_clip_ids)
+        )
+    )
     summary = GPTHighlightRerankSummary(
         status="applied",
         model=model,
@@ -2160,7 +2175,7 @@ def apply_gpt_highlight_rerank(
         returnedDecisionCount=len(valid_decisions),
         keptClipIds=[clip.id for clip in reranked if clip.id in valid_decisions],
         rejectedClipIds=(rejected_clip_ids + missing_decision_clip_ids)[:30],
-        storyOrderClipIds=[clip_id for clip_id in valid_story_order if clip_id in {clip.id for clip in reranked}],
+        storyOrderClipIds=applied_story_order,
         planEditApplied=plan_edit_applied,
     )
     return request.model_copy(update={"clips": reranked, "gptRerankSummary": summary})

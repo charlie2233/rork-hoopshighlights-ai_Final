@@ -513,6 +513,49 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertEqual(c1.captionMoment, 3.2)
         self.assertTrue(any(effect.type == "slow_motion" for effect in c3.effects))
 
+    def test_gpt_plan_edit_ignores_invalid_clip_references(self) -> None:
+        request = CreateEditJobRequest(**_request_payload(targetDurationSeconds=45))
+        decisions = [
+            GPTHighlightClipDecision(
+                clipId=clip_id,
+                keep=True,
+                highlightScore=score,
+                watchabilityScore=0.9,
+                basketballEvent=label,
+                outcome="made",
+                caption=caption,
+                reason="Clear event from an existing candidate clip.",
+                storyRole=story_role,
+                suggestedEdit=GPTHighlightSuggestedEdit(),
+            )
+            for clip_id, score, label, caption, story_role in [
+                ("c1", 0.88, "Fast Break", "RUNOUT", "opener"),
+                ("c3", 0.96, "Dunk", "BIG FINISH", "peak"),
+                ("c4", 0.92, "Made Shot", "BUCKET", "closer"),
+            ]
+        ]
+
+        reranked = apply_gpt_highlight_rerank(
+            request,
+            decisions,
+            "gpt-test",
+            3,
+            12,
+            plan_edit=GPTPlanEdit(
+                orderedClipIds=["c999"],
+                pacing="fast",
+                captions=[GPTPlanEditCaption(clipId="c999", caption="INVALID", captionMoment=3.2)],
+                slowMotionMoments=[GPTPlanEditSlowMotionMoment(clipId="c999", center=15.1, speed=0.55)],
+                summary="References a clip outside the validated candidate pool.",
+            ),
+        )
+        plan = build_edit_plan(reranked, "edit_invalid_gpt_plan_edit")
+
+        self.assertFalse(reranked.gptRerankSummary.planEditApplied)
+        self.assertEqual(reranked.gptRerankSummary.storyOrderClipIds, [])
+        self.assertNotIn("c999", [clip.clipId for clip in plan.clips])
+        self.assertEqual(next(clip for clip in plan.clips if clip.clipId == "c1").caption, "RUNOUT")
+
     def test_gpt_highlight_rerank_clamps_hints_and_biases_source_window(self) -> None:
         request = CreateEditJobRequest(
             **_request_payload(
