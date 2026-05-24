@@ -38,8 +38,12 @@ Results:
 - Submission readiness + workflow trigger tests: 12 passed, 0 failed.
 - `git diff --check`: passed.
 - `actionlint` was not installed locally, so workflow validation used static tests and repository command checks.
+- After merge to `main`, GitHub Actions automatically started both push codechecks at `2026-05-24T00:04:36Z` for commit `b812398`.
+- `Cloud Edit Deploy Preflight` push codecheck succeeded: run `26347032786`.
+- `iOS Internal TestFlight Upload` push codecheck succeeded: run `26347032779`.
+- Submission readiness preflight after the green push codechecks: 20 pass, 0 warn, 10 fail.
 
 ## Launch Notes
 
 - This does not resolve missing provider inputs. `CLOUDFLARE_API_TOKEN`, GCP deploy identity/region/project, iOS signing/upload inputs, a signed archive/IPA, staging Worker deploy proof, and real installed TestFlight smoke remain required before Apple submission.
-- After this branch reaches `main`, verify the two automatically triggered main workflow runs complete successfully before treating their status as current codecheck evidence.
+- The two automatically triggered main workflow runs are now current green codecheck evidence only. Secret-gated deploy/upload proof still requires explicit `workflow_dispatch` runs after the staging/provider inputs are installed.
