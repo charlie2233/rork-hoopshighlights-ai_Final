@@ -6,10 +6,12 @@ Improve clip quality for Free users without increasing the number of free video-
 
 ## Change
 
-- Free GPT reranking now defaults to `20` candidate clips.
-- The Free candidate cap is clamped to `1...20`.
+- Free GPT reranking now defaults to the full `30` candidate analysis pool.
+- The Free candidate cap is clamped to `1...30`.
 - Free keyframes remain at the high-quality default of `10` frames per clip, so GPT can inspect setup, release/action, shot arc, rim approach, rim entry, follow-through, and finish context.
 - Pro/internal remains capped at `30` candidate clips.
+- GPT timeout/output defaults are raised to `45s` and `6000` output tokens so full-pool review has enough room to return strict JSON decisions and plan edits.
+- Sampling now reserves GPT review slots for defensive and selected-team uncertain candidates when the eligible pool is larger than the cap.
 - The Free daily edit chance count remains `3`; this change spends more semantic review per edit, not more free edits.
 - Existing kill switches still control whether GPT editing is live:
   - `HOOPS_AI_CLIP_GPT_EDITOR_ENABLED`

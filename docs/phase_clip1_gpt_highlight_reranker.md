@@ -42,7 +42,7 @@ Environment controls:
 - `HOOPS_OPENAI_API_KEY` or `OPENAI_API_KEY`: required to call OpenAI.
 - `HOOPS_GPT_HIGHLIGHT_RERANK_MODEL`: current quality default `gpt-4.1`.
 - `HOOPS_GPT_HIGHLIGHT_RERANK_TIMEOUT_SECONDS`: default `18`.
-- `HOOPS_GPT_HIGHLIGHT_RERANK_FREE_MAX_CLIPS`: legacy Free cap override, clamped to `1-20`.
+- `HOOPS_GPT_HIGHLIGHT_RERANK_FREE_MAX_CLIPS`: legacy Free cap override, clamped to `1-30`.
 - `HOOPS_GPT_HIGHLIGHT_RERANK_FREE_FRAMES_PER_CLIP`: default `10`, clamped to `3-10`.
 - `HOOPS_GPT_HIGHLIGHT_RERANK_PAID_MAX_CLIPS`: default `30`, clamped to `20-30`.
 - `HOOPS_GPT_HIGHLIGHT_RERANK_PAID_FRAMES_PER_CLIP`: default `10`, clamped to `5-10`.

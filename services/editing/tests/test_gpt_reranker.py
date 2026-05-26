@@ -9,7 +9,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO_ROOT / "services" / "editing"))
 sys.path.insert(0, str(REPO_ROOT / "ios" / "backend"))
 
-from app.editing import CreateEditJobRequest, ReviseEditJobRequest, build_edit_job
+from app.editing import CreateEditJobRequest, GPTHighlightClipDecision, GPTHighlightSuggestedEdit, ReviseEditJobRequest, apply_gpt_highlight_rerank, build_edit_job
 import editing_app.gpt_reranker as gpt_reranker
 from editing_app.gpt_reranker import (
     GPTHighlightRerankerSettings,
@@ -305,6 +305,11 @@ class GPTHighlightRerankerTests(unittest.TestCase):
                 "postOutcome",
                 "finish",
                 "midAction",
+                "defenseSetup",
+                "challenge",
+                "possessionChange",
+                "recovery",
+                "defenseOutcome",
             ],
         )
         self.assertTrue(shot_rules["madeShotRequiresFrameRoleTrackingEvidence"])
@@ -1793,14 +1798,164 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertEqual(result.gptRerankSummary.status, "applied")
         self.assertEqual(result.gptRerankSummary.keptClipIds, ["good_context"])
 
+    def test_sampling_reserves_buried_defensive_candidates_for_gpt_review(self) -> None:
+        scoring_clips = [_clip(f"make_{index}", float(index * 7), 0.99 - (index * 0.001)) for index in range(27)]
+        defensive_clips = [
+            {**_clip("late_steal", 230.0, 0.68), "label": "Steal"},
+            {**_clip("late_stop", 238.0, 0.66), "label": "Defensive Stop"},
+            {**_clip("late_forced_turnover", 246.0, 0.64), "label": "Forced Turnover"},
+        ]
+        request = CreateEditJobRequest(
+            videoId="video_defense_pool",
+            analysisJobId="analysis_defense_pool",
+            installId="install-123",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="free",
+            userPrompt="focus on defense",
+            clips=[*scoring_clips, *defensive_clips],
+        )
+
+        sampled = gpt_reranker._quality_filtered_sampled_clips(
+            gpt_reranker.rank_clips(request.clips),
+            20,
+            request=request,
+        )
+        sampled_ids = [clip.id for clip in sampled]
+
+        self.assertEqual(len(sampled), 20)
+        self.assertIn("late_steal", sampled_ids)
+        self.assertIn("late_stop", sampled_ids)
+        self.assertIn("late_forced_turnover", sampled_ids)
+        self.assertLess(len([clip_id for clip_id in sampled_ids if clip_id.startswith("make_")]), 20)
+
+    def test_defensive_candidates_use_possession_change_keyframes(self) -> None:
+        request = CreateEditJobRequest(
+            videoId="video_defense_roles",
+            analysisJobId="analysis_defense_roles",
+            installId="install-123",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="free",
+            clips=[{**_clip("steal", 10.0, 0.86), "label": "Steal"}],
+        )
+
+        roles = [role for role, _ in gpt_reranker._sample_times_for_clip(request.clips[0], 10)]
+
+        self.assertIn("eventCenter", roles)
+        self.assertIn("challenge", roles)
+        self.assertIn("possessionChange", roles)
+        self.assertIn("recovery", roles)
+        self.assertIn("defenseOutcome", roles)
+        self.assertNotIn("shotArcEarly", roles)
+        self.assertNotIn("rimEntry", roles)
+
+    def test_defensive_keep_requires_sampled_possession_change_roles(self) -> None:
+        request = CreateEditJobRequest(
+            videoId="video_defense_validation",
+            analysisJobId="analysis_defense_validation",
+            installId="install-123",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="free",
+            clips=[{**_clip("steal", 10.0, 0.86), "label": "Steal"}],
+        )
+        sampled_roles = ["start", "eventCenter", "finish", "challenge", "possessionChange", "recovery"]
+        weak_decision = GPTHighlightClipDecision(
+            clipId="steal",
+            keep=True,
+            highlightScore=0.88,
+            watchabilityScore=0.82,
+            basketballEvent="Steal",
+            outcome="steal",
+            caption="COOKIES",
+            reason="GPT says the defender takes the ball but omits the possession-change frame.",
+            qualitySignals=_quality_signals(
+                releaseVisible=False,
+                shotArcVisible=False,
+                rimResultVisible=False,
+                reason="Defender and ball are visible.",
+            ),
+            shotResultEvidence=_shot_result_evidence(
+                releaseToRimContinuity="missing",
+                rimResultEvidence="unclear",
+                outcomeConfidence=0.0,
+                rimEntrySequence="unclear",
+                ballApproachFrameRole=None,
+                rimEntryFrameRole=None,
+                ballBelowRimOrNetFrameRole=None,
+                rimEntrySequenceConfidence=0.0,
+            ),
+            shotTrackingEvidence=_shot_tracking_evidence(
+                ballVisibleFrameRoles=["challenge"],
+                rimVisibleFrameRoles=[],
+                releaseFrameRole=None,
+                resultFrameRole=None,
+                ballEntersRimFrameRole=None,
+                trajectoryContinuity="partial",
+            ),
+            suggestedEdit=GPTHighlightSuggestedEdit(cropFocus="ball"),
+        )
+        complete_decision = GPTHighlightClipDecision(
+            **{
+                **weak_decision.model_dump(mode="json"),
+                "shotTrackingEvidence": _shot_tracking_evidence(
+                    ballVisibleFrameRoles=["challenge", "possessionChange", "recovery"],
+                    rimVisibleFrameRoles=[],
+                    releaseFrameRole=None,
+                    resultFrameRole="recovery",
+                    ballEntersRimFrameRole=None,
+                    trajectoryContinuity="partial",
+                ),
+            }
+        )
+
+        rejected = apply_gpt_highlight_rerank(
+            request,
+            [weak_decision],
+            "gpt-test",
+            1,
+            len(sampled_roles),
+            sampled_frame_roles_by_clip={"steal": sampled_roles},
+        )
+        kept = apply_gpt_highlight_rerank(
+            request,
+            [complete_decision],
+            "gpt-test",
+            1,
+            len(sampled_roles),
+            sampled_frame_roles_by_clip={"steal": sampled_roles},
+        )
+
+        self.assertEqual(rejected.clips, [])
+        self.assertEqual(rejected.gptRerankSummary.rejectedReasonCounts["missing_defensive_possession_change_frame"], 1)
+        self.assertEqual([clip.id for clip in kept.clips], ["steal"])
+
     def test_free_and_pro_sampling_limits(self) -> None:
         settings = GPTHighlightRerankerSettings.from_env()
 
-        self.assertEqual(settings.limits_for("free"), (20, 10))
+        self.assertEqual(settings.limits_for("free"), (30, 10))
         self.assertGreaterEqual(settings.limits_for("pro")[0], 20)
         self.assertLessEqual(settings.limits_for("pro")[0], 30)
         self.assertGreaterEqual(settings.limits_for("pro")[1], 5)
         self.assertLessEqual(settings.limits_for("pro")[1], 10)
+        self.assertEqual(settings.timeout_seconds, 45.0)
+        self.assertEqual(settings.max_output_tokens, 6000)
+
+    def test_free_sampling_reviews_full_analysis_pool_by_default(self) -> None:
+        settings = GPTHighlightRerankerSettings.from_env()
+        max_clips, _ = settings.limits_for("free")
+        request = _request("free", 30)
+
+        sampled = gpt_reranker._quality_filtered_sampled_clips(
+            gpt_reranker.rank_clips(request.clips),
+            max_clips,
+        )
+
+        self.assertEqual(max_clips, 30)
+        self.assertEqual(len(sampled), 30)
+        self.assertEqual(sampled[0].id, "c0")
+        self.assertEqual(sampled[-1].id, "c29")
 
     def test_free_sampling_candidate_cap_is_generous_but_bounded(self) -> None:
         env_keys = ("HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_FREE", "HOOPS_GPT_HIGHLIGHT_RERANK_FREE_MAX_CLIPS")
@@ -1816,7 +1971,7 @@ class GPTHighlightRerankerTests(unittest.TestCase):
                 else:
                     os.environ[key] = old_value
 
-        self.assertEqual(settings.limits_for("free")[0], 20)
+        self.assertEqual(settings.limits_for("free")[0], 30)
 
     def test_default_model_prioritizes_full_quality_vision_editor(self) -> None:
         model_env_keys = ("HOOPS_AI_CLIP_GPT_MODEL", "HOOPS_GPT_HIGHLIGHT_RERANK_MODEL")

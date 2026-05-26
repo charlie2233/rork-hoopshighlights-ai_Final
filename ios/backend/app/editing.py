@@ -46,6 +46,11 @@ ShotTrackingFrameRole = Literal[
     "postOutcome",
     "finish",
     "midAction",
+    "defenseSetup",
+    "challenge",
+    "possessionChange",
+    "recovery",
+    "defenseOutcome",
 ]
 UserPromptStyleIntent = Literal[
     "more_hype",
@@ -132,6 +137,8 @@ SHOT_TRACKING_RICH_RELEASE_ROLES = {"release"}
 SHOT_TRACKING_RICH_ARC_ROLES = {"shotArcEarly", "shotArcLate"}
 SHOT_TRACKING_RICH_RESULT_ROLES = {"outcome", "shotArcLate", "rimApproach", "rim", "rimEntry", "belowRim", "postOutcome"}
 SHOT_TRACKING_RICH_RIM_ROLES = {"rimApproach", "rim", "rimEntry", "belowRim", "postOutcome"}
+DEFENSIVE_TRACKING_EVENT_ROLES = {"challenge", "possessionChange", "recovery", "defenseOutcome"}
+DEFENSIVE_TRACKING_RESULT_ROLES = {"possessionChange", "recovery", "defenseOutcome", "finish"}
 TEMPLATE_MIN_CLIP_TOLERANCE = 0.85
 MAX_CAPTION_LENGTH = 24
 MAX_DURATION_OVERRUN_SECONDS = 6.0
@@ -2703,6 +2710,7 @@ def _gpt_decision_rejection_reason(
         return "gpt_outcome_conflicts_with_native_signal"
 
     signals = decision.qualitySignals
+    tracking_evidence = decision.shotTrackingEvidence
     if not signals.eventVisible or not signals.outcomeVisible or not signals.cleanCamera:
         return "unclear_event_or_outcome"
     if not signals.fullPlayContext or not signals.setupVisible:
@@ -2718,6 +2726,10 @@ def _gpt_decision_rejection_reason(
     if decision.outcome == "missed" and not signals.ballPathVisible:
         return "missing_missed_shot_ball_path"
     if decision.outcome in GPT_NON_SCORING_DEFENSIVE_OUTCOMES:
+        if sampled_frame_roles is not None:
+            defensive_role_rejection = _defensive_sampled_tracking_rejection_reason(tracking_evidence, sampled_frame_roles)
+            if defensive_role_rejection is not None:
+                return defensive_role_rejection
         if not signals.playerControlVisible:
             return "missing_defensive_player_control"
         if not signals.ballPathVisible:
@@ -2753,7 +2765,6 @@ def _gpt_decision_rejection_reason(
             return "blocked_outcome_not_visible"
         if result_evidence.outcomeConfidence < 0.65:
             return "low_shot_result_confidence"
-    tracking_evidence = decision.shotTrackingEvidence
     ball_roles = set(tracking_evidence.ballVisibleFrameRoles)
     rim_roles = set(tracking_evidence.rimVisibleFrameRoles)
     if decision.outcome in {"made", "missed"} and sampled_frame_roles is not None:
@@ -2801,6 +2812,25 @@ def _unsampled_gpt_tracking_roles(
     )
     cited_roles.update(role for role in optional_roles if role is not None)
     return cited_roles - sampled_roles
+
+
+def _defensive_sampled_tracking_rejection_reason(
+    tracking_evidence: GPTShotTrackingEvidence,
+    sampled_frame_roles: Sequence[str],
+) -> Optional[str]:
+    sampled_roles = set(sampled_frame_roles)
+    cited_roles = set(tracking_evidence.ballVisibleFrameRoles)
+    for role in (tracking_evidence.resultFrameRole, tracking_evidence.ballEntersRimFrameRole):
+        if role is not None:
+            cited_roles.add(role)
+    unsampled_roles = (cited_roles & DEFENSIVE_TRACKING_EVENT_ROLES) - sampled_roles
+    if unsampled_roles:
+        return "gpt_cited_unsampled_frame_role"
+    if "possessionChange" in sampled_roles and "possessionChange" not in cited_roles:
+        return "missing_defensive_possession_change_frame"
+    if sampled_roles & {"recovery", "defenseOutcome"} and not (cited_roles & DEFENSIVE_TRACKING_RESULT_ROLES):
+        return "missing_defensive_outcome_frame"
+    return None
 
 
 def _unsampled_gpt_result_roles(

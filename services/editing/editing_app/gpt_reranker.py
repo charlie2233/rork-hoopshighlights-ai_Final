@@ -17,6 +17,8 @@ ensure_ios_backend_on_path()
 
 from app.editing import (  # noqa: E402
     CreateEditJobRequest,
+    DEFENSIVE_TRACKING_EVENT_ROLES,
+    DEFENSIVE_TRACKING_RESULT_ROLES,
     EditPlanPatch,
     EditCandidateClip,
     GPTHighlightClipDecision,
@@ -51,6 +53,17 @@ SHOT_CONTEXT_EXPANSION_LEAD_SECONDS = 2.0
 SHOT_CONTEXT_EXPANSION_FOLLOW_THROUGH_SECONDS = 1.25
 SHOT_CONTEXT_EXPANSION_TARGET_SECONDS = 5.5
 SHOT_CONTEXT_EXPANSION_MAX_SECONDS = 8.0
+DEFENSIVE_SAMPLING_LABEL_TOKENS = (
+    "defense",
+    "defensive",
+    "steal",
+    "strip",
+    "turnover",
+    "forced",
+    "stop",
+    "pressure",
+    "lockdown",
+)
 
 
 @dataclass(frozen=True)
@@ -83,9 +96,9 @@ class GPTHighlightRerankerSettings:
             api_key=os.getenv("HOOPS_OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY") or None,
             model=os.getenv("HOOPS_AI_CLIP_GPT_MODEL", os.getenv("HOOPS_GPT_HIGHLIGHT_RERANK_MODEL", "gpt-4.1")),
             endpoint=os.getenv("HOOPS_AI_CLIP_GPT_ENDPOINT", os.getenv("HOOPS_GPT_HIGHLIGHT_RERANK_ENDPOINT", "https://api.openai.com/v1/responses")),
-            timeout_seconds=_env_float("HOOPS_AI_CLIP_GPT_TIMEOUT_SECONDS", _env_float("HOOPS_GPT_HIGHLIGHT_RERANK_TIMEOUT_SECONDS", 18.0, 1.0, 60.0), 1.0, 60.0),
-            max_output_tokens=_env_int("HOOPS_AI_CLIP_GPT_MAX_OUTPUT_TOKENS", _env_int("HOOPS_GPT_HIGHLIGHT_RERANK_MAX_OUTPUT_TOKENS", 3500, 256, 6000), 256, 6000),
-            free_max_clips=_env_int("HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_FREE", _env_int("HOOPS_GPT_HIGHLIGHT_RERANK_FREE_MAX_CLIPS", 20, 1, 20), 1, 20),
+            timeout_seconds=_env_float("HOOPS_AI_CLIP_GPT_TIMEOUT_SECONDS", _env_float("HOOPS_GPT_HIGHLIGHT_RERANK_TIMEOUT_SECONDS", 45.0, 1.0, 60.0), 1.0, 60.0),
+            max_output_tokens=_env_int("HOOPS_AI_CLIP_GPT_MAX_OUTPUT_TOKENS", _env_int("HOOPS_GPT_HIGHLIGHT_RERANK_MAX_OUTPUT_TOKENS", 6000, 256, 12000), 256, 12000),
+            free_max_clips=_env_int("HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_FREE", _env_int("HOOPS_GPT_HIGHLIGHT_RERANK_FREE_MAX_CLIPS", 30, 1, 30), 1, 30),
             paid_max_clips=_env_int("HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_PRO", _env_int("HOOPS_GPT_HIGHLIGHT_RERANK_PAID_MAX_CLIPS", 30, 20, 30), 20, 30),
             free_frames_per_clip=_env_int("HOOPS_AI_CLIP_GPT_KEYFRAMES_PER_CLIP", _env_int("HOOPS_GPT_HIGHLIGHT_RERANK_FREE_FRAMES_PER_CLIP", 10, 3, 10), 3, 10),
             paid_frames_per_clip=_env_int("HOOPS_AI_CLIP_GPT_KEYFRAMES_PER_CLIP", _env_int("HOOPS_GPT_HIGHLIGHT_RERANK_PAID_FRAMES_PER_CLIP", 10, 5, 10), 3, 10),
@@ -151,7 +164,7 @@ def rerank_edit_request_with_gpt(
     team_filtered_clips = filter_clips_for_team_selection(request.clips, request.teamSelection)
     request = request.model_copy(update={"clips": team_filtered_clips})
     max_clips, frames_per_clip = settings.limits_for(request.planTier)
-    sampled_clips = _quality_filtered_sampled_clips(rank_clips(request.clips), max_clips)
+    sampled_clips = _quality_filtered_sampled_clips(rank_clips(request.clips), max_clips, request=request)
     if not sampled_clips:
         return _with_fallback(request, "fallback", settings.model, "no_quality_candidates", 0, 0)
     sampled_frames = _extract_candidate_keyframes(source_path, sampled_clips, frames_per_clip, settings)
@@ -380,18 +393,79 @@ def _candidate_quality_hints(clip: EditCandidateClip) -> Dict[str, Any]:
     }
 
 
-def _quality_filtered_sampled_clips(clips: Sequence[EditCandidateClip], max_clips: int) -> List[EditCandidateClip]:
-    filtered: List[EditCandidateClip] = []
+def _quality_filtered_sampled_clips(
+    clips: Sequence[EditCandidateClip],
+    max_clips: int,
+    request: Optional[CreateEditJobRequest] = None,
+) -> List[EditCandidateClip]:
+    eligible: List[EditCandidateClip] = []
     for clip in clips:
         if not is_plan_quality_eligible_clip(clip):
             continue
         hints = _candidate_quality_hints(clip)
         if not hints["timingWindowOk"]:
             continue
-        filtered.append(clip)
-        if len(filtered) >= max_clips:
+        eligible.append(clip)
+
+    if len(eligible) <= max_clips:
+        return eligible
+
+    selected: List[EditCandidateClip] = []
+    selected_ids: set[str] = set()
+
+    def add_clip(clip: EditCandidateClip) -> None:
+        if len(selected) >= max_clips or clip.id in selected_ids:
+            return
+        selected.append(clip)
+        selected_ids.add(clip.id)
+
+    defense_reserve = _defensive_sampling_reserve_limit(request, max_clips)
+    if defense_reserve > 0:
+        for clip in eligible:
+            if _is_defensive_candidate_clip(clip):
+                add_clip(clip)
+                if sum(1 for item in selected if _is_defensive_candidate_clip(item)) >= defense_reserve:
+                    break
+
+    if request and request.teamSelection is not None and request.teamSelection.mode == "team":
+        team_reserve = min(max(2, max_clips // 6), max_clips)
+        for clip in eligible:
+            if team_attribution_status(clip, request.teamSelection) == "uncertain":
+                add_clip(clip)
+                if sum(1 for item in selected if team_attribution_status(item, request.teamSelection) == "uncertain") >= team_reserve:
+                    break
+
+    for clip in eligible:
+        add_clip(clip)
+        if len(selected) >= max_clips:
             break
-    return filtered
+
+    return rank_clips(selected)
+
+
+def _defensive_sampling_reserve_limit(request: Optional[CreateEditJobRequest], max_clips: int) -> int:
+    if max_clips < 8:
+        return 0
+    reserve = max(3, max_clips // 6)
+    if request is not None:
+        user_intent = derive_user_prompt_intent(request.userPrompt, request.planTier)
+        template = get_template_pack_for_plan(request.preset, request.templateId)
+        defense_focused = bool(
+            user_intent
+            and (
+                "defense" in user_intent.focusAreas
+                or "defense_focus" in user_intent.styleIntents
+            )
+        )
+        team_story_template = template.templateId in {"team_highlight_pro_v1", "coach_review_v1"}
+        if defense_focused or team_story_template:
+            reserve = max(reserve, max_clips // 4)
+    return min(reserve, max_clips)
+
+
+def _is_defensive_candidate_clip(clip: EditCandidateClip) -> bool:
+    normalized = clip.label.strip().lower()
+    return any(token in normalized for token in DEFENSIVE_SAMPLING_LABEL_TOKENS)
 
 
 def _extract_candidate_keyframes(
@@ -484,6 +558,9 @@ def _sampled_frame_roles_by_clip(frames: Sequence[SampledFrame]) -> Dict[str, Li
 
 
 def _sample_times_for_clip(clip: EditCandidateClip, frames_per_clip: int) -> List[tuple[str, float]]:
+    if _is_defensive_candidate_clip(clip) and not is_shot_like_clip(clip):
+        return _defensive_sample_times_for_clip(clip, frames_per_clip)
+
     finish = max(clip.start, clip.end - 0.05)
     base = [("start", clip.start), ("eventCenter", clip.eventCenter), ("finish", finish)]
     base_samples = _clamp_sample_times(base, clip)
@@ -546,6 +623,45 @@ def _sample_times_for_clip(clip: EditCandidateClip, frames_per_clip: int) -> Lis
         candidates = [("preEvent", setup_second), ("outcome", outcome_second)]
     else:
         candidates = [("preEvent", setup_second), ("midAction", mid_action_second)]
+    reserved_buckets = {round(second, 1) for _, second in base_samples}
+    context_samples = _dedupe_sample_times(candidates, clip, reserved_buckets)[: max(0, frames_per_clip - 3)]
+    return sorted([*base_samples, *context_samples], key=lambda item: item[1])
+
+
+def _defensive_sample_times_for_clip(clip: EditCandidateClip, frames_per_clip: int) -> List[tuple[str, float]]:
+    finish = max(clip.start, clip.end - 0.05)
+    duration = max(finish - clip.start, 0.001)
+    base = [("start", clip.start), ("eventCenter", clip.eventCenter), ("finish", finish)]
+    base_samples = _clamp_sample_times(base, clip)
+    if frames_per_clip <= 3:
+        return base_samples
+
+    defense_setup_second = clip.start + (duration * 0.18)
+    challenge_second = max(clip.start, clip.eventCenter - 0.55)
+    possession_change_second = min(finish, clip.eventCenter + 0.18)
+    recovery_second = min(finish, clip.eventCenter + 0.55)
+    defense_outcome_second = min(finish, clip.eventCenter + 0.9)
+    mid_action_second = clip.start + (duration * 0.45)
+    if frames_per_clip >= 8:
+        candidates = [
+            ("defenseSetup", defense_setup_second),
+            ("challenge", challenge_second),
+            ("possessionChange", possession_change_second),
+            ("recovery", recovery_second),
+            ("defenseOutcome", defense_outcome_second),
+            ("midAction", mid_action_second),
+        ]
+    elif frames_per_clip >= 6:
+        candidates = [
+            ("defenseSetup", defense_setup_second),
+            ("challenge", challenge_second),
+            ("possessionChange", possession_change_second),
+        ]
+    elif frames_per_clip >= 5:
+        candidates = [("challenge", challenge_second), ("possessionChange", possession_change_second)]
+    else:
+        candidates = [("challenge", challenge_second)]
+
     reserved_buckets = {round(second, 1) for _, second in base_samples}
     context_samples = _dedupe_sample_times(candidates, clip, reserved_buckets)[: max(0, frames_per_clip - 3)]
     return sorted([*base_samples, *context_samples], key=lambda item: item[1])
@@ -682,6 +798,7 @@ def _build_openai_payload(
                         "madeOrMissedShotRequiresVisibleShotArc": True,
                         "madeOrMissedShotRequiresVisibleBallPath": True,
                         "defensiveOutcomeRequiresEventOutcomePlayerControlBallAndCleanCamera": True,
+                        "defensiveOutcomeUsesPossessionChangeRolesWhenSampled": True,
                         "madeShotRequiresExplicitMadeResultEvidence": True,
                         "madeShotRequiresFrameRoleTrackingEvidence": True,
                         "madeShotRequiresRimEntrySequenceEvidence": True,
@@ -700,6 +817,12 @@ def _build_openai_payload(
                             "ballBelowRimOrNetFrameRole": ["belowRim", "postOutcome", "finish"],
                             "minimumRimEntrySequenceConfidence": 0.72,
                             "dedicatedRimEntryPathRoles": ["rimApproach", "rimEntry", "belowRim"],
+                        },
+                        "requiredDefensiveTracking": {
+                            "eventFrameRoles": ["challenge", "possessionChange", "recovery", "defenseOutcome"],
+                            "resultFrameRoles": ["possessionChange", "recovery", "defenseOutcome", "finish"],
+                            "mustCitePossessionChangeWhenSampled": True,
+                            "mustCiteRecoveryOrOutcomeWhenSampled": True,
                         },
                         "richSampledShotRoleRules": {
                             "ifReleaseRoleIsSampledUseReleaseAsReleaseFrameRole": True,
@@ -740,6 +863,7 @@ def _build_openai_payload(
             "reject clips that start right before the basket, clips shorter than the supplied quality minimum, or clips where the outcome is only implied. "
             "For steals, forced turnovers, or defensive stops, use outcome=steal, outcome=forced_turnover, or outcome=defensive_stop; do not force those plays into unclear or blocked. "
             "Non-scoring defensive outcomes must show the defensive event, possession/control change or stop, visible ball/player control, clean camera, and full play context. "
+            "When defensive roles like challenge, possessionChange, recovery, or defenseOutcome are sampled, cite those roles in shotTrackingEvidence instead of shot-arc or rim roles. "
             "Honor userEditIntent only when it is compatible with the supplied template, plan tier, candidate clips, and safety constraints. "
             "When a selected team is supplied, keep highlights for that team only; exclude confident opponent clips. Keep uncertain team-attribution clips for user review. "
             "Selected-team blocks, steals, defensive stops, and forced turnovers can be highlights even when they are not scoring plays. "
@@ -822,6 +946,11 @@ def _response_schema() -> Dict[str, Any]:
         "postOutcome",
         "finish",
         "midAction",
+        "defenseSetup",
+        "challenge",
+        "possessionChange",
+        "recovery",
+        "defenseOutcome",
     ]
     frame_role_or_null = {"anyOf": [{"type": "string", "enum": frame_role_enum}, {"type": "null"}]}
     quality_signals = {
