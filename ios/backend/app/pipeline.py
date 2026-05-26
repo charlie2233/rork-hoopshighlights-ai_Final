@@ -15,11 +15,12 @@ from typing import List, Optional, Sequence, Tuple
 from .classifier import classify_window, maybe_relabel_with_gemini
 from .config import Settings
 from .external_providers import detect_with_optional_external_provider, rerank_with_optional_external_provider
-from .models import CandidateWindow, CloudAnalysisResult, CloudDiagnostics, PipelineError, StoredJob, clamp
+from .models import CandidateWindow, CloudAnalysisResult, CloudClip, CloudDiagnostics, PipelineError, StoredJob, clamp
 
 
 NATIVE_SHOT_CONTEXT_TARGET_LEAD_SECONDS = 2.0
 NATIVE_SHOT_CONTEXT_TARGET_FOLLOW_THROUGH_SECONDS = 1.25
+HYBRID_OVERLAP_DEDUPE_RATIO = 0.55
 VISUAL_EVENT_SAMPLE_FPS = 2.0
 VISUAL_EVENT_FRAME_WIDTH = 64
 VISUAL_EVENT_FRAME_HEIGHT = 36
@@ -43,30 +44,29 @@ def run_analysis(job: StoredJob, settings: Settings, source_path: Path) -> Cloud
         raise PipelineError("unsupported_duration", "Videos longer than 30 minutes are not supported in cloud analysis right now.")
 
     provider_tags: list[str] = []
-    clips, detection_provider = detect_with_optional_external_provider(
+    external_clips, detection_provider = detect_with_optional_external_provider(
         source_path=source_path,
         duration_seconds=duration_seconds,
         settings=settings,
     )
-    candidate_segments = len(clips)
 
-    if detection_provider:
+    if detection_provider and settings.detection_provider == "hoopcut":
         provider_tags.append(detection_provider)
+        clips = external_clips[: settings.max_returned_clips]
+        candidate_segments = len(external_clips)
     else:
-        audio_profile = _extract_audio_profile(source_path, duration_seconds)
-        shot_boundaries = _detect_shot_boundaries(source_path, duration_seconds, audio_profile)
-        windows = _build_candidate_windows(
-            duration_seconds=duration_seconds,
-            audio_profile=audio_profile,
-            shot_boundaries=shot_boundaries,
-            settings=settings,
-        )
-
-        if not windows:
-            windows = [_fallback_window(duration_seconds, audio_profile, settings)]
-
-        candidate_segments = len(windows)
-        clips = [classify_window(window) for window in windows[: settings.max_returned_clips]]
+        native_clips, native_candidate_segments = _run_native_candidate_detection(source_path, duration_seconds, settings)
+        if detection_provider:
+            provider_tags.append(detection_provider)
+            clips = _merge_hybrid_detection_clips(
+                external_clips=external_clips,
+                native_clips=native_clips,
+                clip_limit=settings.max_returned_clips,
+            )
+            candidate_segments = len(external_clips) + native_candidate_segments
+        else:
+            clips = native_clips
+            candidate_segments = native_candidate_segments
 
     clips, ranking_provider = rerank_with_optional_external_provider(
         clips=clips,
@@ -98,6 +98,105 @@ def run_analysis(job: StoredJob, settings: Settings, source_path: Path) -> Cloud
         clipCount=len(clips),
         clips=clips,
         diagnostics=diagnostics,
+    )
+
+
+def _run_native_candidate_detection(
+    source_path: Path,
+    duration_seconds: float,
+    settings: Settings,
+) -> tuple[list[CloudClip], int]:
+    audio_profile = _extract_audio_profile(source_path, duration_seconds)
+    shot_boundaries = _detect_shot_boundaries(source_path, duration_seconds, audio_profile)
+    windows = _build_candidate_windows(
+        duration_seconds=duration_seconds,
+        audio_profile=audio_profile,
+        shot_boundaries=shot_boundaries,
+        settings=settings,
+    )
+
+    if not windows:
+        windows = [_fallback_window(duration_seconds, audio_profile, settings)]
+
+    clips = [classify_window(window) for window in windows[: settings.max_returned_clips]]
+    return clips, len(windows)
+
+
+def _merge_hybrid_detection_clips(
+    *,
+    external_clips: Sequence[CloudClip],
+    native_clips: Sequence[CloudClip],
+    clip_limit: int,
+) -> list[CloudClip]:
+    ranked = sorted([*external_clips, *native_clips], key=_hybrid_clip_quality_key, reverse=True)
+    kept: list[CloudClip] = []
+    for clip in ranked:
+        duplicate_index = next(
+            (
+                index
+                for index, existing in enumerate(kept)
+                if _clip_overlap_ratio(clip, existing) > HYBRID_OVERLAP_DEDUPE_RATIO
+            ),
+            None,
+        )
+        if duplicate_index is None:
+            kept.append(clip)
+            continue
+        if _hybrid_clip_quality_key(clip) > _hybrid_clip_quality_key(kept[duplicate_index]):
+            kept[duplicate_index] = clip
+
+    kept.sort(key=_hybrid_clip_quality_key, reverse=True)
+    return kept[:clip_limit]
+
+
+def _hybrid_clip_quality_key(clip: CloudClip) -> tuple[float, float, float, float, float, float, float]:
+    duration = max(0.0, clip.endTime - clip.startTime)
+    return (
+        1.0 if duration >= 2.0 else 0.0,
+        _hybrid_clip_context_score(clip),
+        1.0 if clip.shouldAutoKeep else 0.0,
+        clip.combinedScore,
+        clip.confidence,
+        clip.visualScore,
+        clip.motionScore,
+    )
+
+
+def _hybrid_clip_context_score(clip: CloudClip) -> float:
+    duration = max(0.0, clip.endTime - clip.startTime)
+    if duration < 2.0:
+        return 0.0
+    if not _is_shot_like_label(clip.label):
+        return min(1.0, duration / 4.5)
+    if clip.eventCenter is None:
+        return 0.2
+
+    event_center = min(max(clip.eventCenter, clip.startTime), clip.endTime)
+    lead_in = max(0.0, event_center - clip.startTime)
+    follow_through = max(0.0, clip.endTime - event_center)
+    if lead_in <= 0.0 or follow_through <= 0.0:
+        return 0.0
+
+    lead_score = min(1.0, lead_in / NATIVE_SHOT_CONTEXT_TARGET_LEAD_SECONDS)
+    follow_score = min(1.0, follow_through / NATIVE_SHOT_CONTEXT_TARGET_FOLLOW_THROUGH_SECONDS)
+    duration_score = min(1.0, duration / 4.5)
+    balance_score = min(lead_in, follow_through) / max(lead_in, follow_through)
+    return round((lead_score * 0.36) + (follow_score * 0.28) + (duration_score * 0.22) + (balance_score * 0.14), 4)
+
+
+def _clip_overlap_ratio(left: CloudClip, right: CloudClip) -> float:
+    overlap = max(0.0, min(left.endTime, right.endTime) - max(left.startTime, right.startTime))
+    if overlap <= 0.0:
+        return 0.0
+    shortest = min(max(left.endTime - left.startTime, 0.001), max(right.endTime - right.startTime, 0.001))
+    return overlap / shortest
+
+
+def _is_shot_like_label(label: str) -> bool:
+    normalized = label.strip().lower()
+    return any(
+        token in normalized
+        for token in ("shot", "bucket", "basket", "layup", "dunk", "finish", "jumper", "three", "3pt")
     )
 
 
@@ -423,7 +522,7 @@ def _build_candidate_windows(
     if segmented:
         return segmented
 
-    return sorted(windows, key=lambda item: item.combined_score, reverse=True)[: min(3, len(windows))]
+    return sorted(windows, key=lambda item: item.combined_score, reverse=True)[: settings.max_returned_clips]
 
 
 def _shot_context_score_for_window(
