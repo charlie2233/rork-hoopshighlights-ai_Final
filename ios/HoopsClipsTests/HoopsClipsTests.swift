@@ -266,21 +266,27 @@ struct HoopsClipsTests {
     @Test @MainActor func testCloudEditRequestSendsStrongestCandidatesBeforeThirtyClipCap() throws {
         let viewModel = HighlightsViewModel()
         viewModel.cloudEditSourceObjectKey = "uploads/source.mp4"
-        viewModel.analysisService.clips = (0..<31).map { index in
-            Clip(
-                startTime: Double(index * 10),
-                endTime: Double(index * 10 + 6),
-                action: .madeShot,
-                confidence: index == 30 ? 0.98 : 0.42,
-                isKept: true,
-                label: "Made Shot",
-                audioScore: index == 30 ? 0.92 : 0.1,
-                visualScore: index == 30 ? 0.95 : 0.2,
-                motionScore: index == 30 ? 0.95 : 0.2,
-                combinedScore: index == 30 ? 0.99 : 0.15,
-                detectionMethod: .cloud
+        var clips: [Clip] = []
+        for index in 0..<31 {
+            let isStrongCandidate = index == 30
+            let startTime = Double(index * 10)
+            clips.append(
+                Clip(
+                    startTime: startTime,
+                    endTime: startTime + 6,
+                    action: .madeShot,
+                    confidence: isStrongCandidate ? 0.98 : 0.42,
+                    isKept: true,
+                    label: "Made Shot",
+                    audioScore: isStrongCandidate ? 0.92 : 0.1,
+                    visualScore: isStrongCandidate ? 0.95 : 0.2,
+                    motionScore: isStrongCandidate ? 0.95 : 0.2,
+                    combinedScore: isStrongCandidate ? 0.99 : 0.15,
+                    detectionMethod: .cloud
+                )
             )
         }
+        viewModel.analysisService.clips = clips
 
         let request = try viewModel.createCloudEditRequest(
             preset: .personalHighlight,

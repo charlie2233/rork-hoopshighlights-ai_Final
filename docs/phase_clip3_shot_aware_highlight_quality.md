@@ -29,6 +29,7 @@ Improve GPT-led HoopClips highlight selection quality with a bias toward basketb
   - compact `qualityHints` now identify shot-like candidates and expose the stricter timing-window expectations
 - Added an ordinary/non-GPT selector guard so shot-like clips also need minimum setup and follow-through context when GPT is disabled or falls back.
 - Ranked deterministic backend candidates by plan eligibility and shot-context quality before raw planning/watchability/excitement scores, so a complete play beats a tiny or late pre-basket window even when the thin clip has a higher model score.
+- Made GPT-kept duplicate cleanup use the same quality-aware duplicate key, closing the path where GPT could keep two duplicate makes and the higher-scored but thinner window could replace the complete play.
 - Added an 85% template-minimum guard during EditPlan creation and validation, preventing tiny render slices while preserving near-minimum valid clips used by longer recap/revision templates.
 - Added a shot-keyframe completeness gate before the GPT call. With quality-beta sampling, shot-like candidates must have setup, release, outcome, and rim keyframes extracted successfully before they can be sent to GPT.
 - The GPT path now drops only the shot candidates missing those richer context frames and continues with remaining complete candidates instead of falling all the way back when at least one usable candidate remains.
@@ -132,16 +133,19 @@ PYTHONPATH=ios/backend:services/editing /Users/hanfei/rork-hoopshighlights-ai_Fi
 PYTHONPATH=ios/backend:services/editing /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest services.editing.tests.test_editing_service -v
 git diff --check
 xcodebuild build-for-testing -project ios/HoopsClips.xcodeproj -scheme HoopsClips -configuration Debug -destination 'generic/platform=iOS Simulator' -derivedDataPath build/XcodeDerivedDataGenericCodecheck2 -resultBundlePath build/HoopsClipsGenericCodecheck2.xcresult CODE_SIGNING_ALLOWED=NO -skipPackagePluginValidation -skipMacroValidation -quiet
+xcodebuild build-for-testing -project ios/HoopsClips.xcodeproj -scheme HoopsClips -configuration Debug -destination 'generic/platform=iOS Simulator' -derivedDataPath build/XcodeDerivedDataGenericCodecheck3 -resultBundlePath build/HoopsClipsGenericCodecheck3.xcresult CODE_SIGNING_ALLOWED=NO -skipPackagePluginValidation -skipMacroValidation -quiet
 ```
 
 Results:
 
 - Python compile: passed.
-- GPT reranker + edit-plan focused suite: 57 tests passed.
+- GPT reranker + edit-plan focused suite: 58 tests passed after adding the GPT duplicate-context regression.
 - Editing service focused suite: 37 tests passed.
 - `git diff --check`: passed.
 - Generic iOS Debug `build-for-testing`: passed with signing disabled. The previous Xcode 26.4 Codable/test actor-isolation warnings for `AnalysisSettings`, `CreateCloudEditJobRequest`, `CloudEditVersionResponse`, and `CloudEditRenderStatusResponse` were no longer emitted. Remaining warnings are the existing `CloudAnalysisService` no-async-await and `VideoExportService` deprecation/Sendable backlog.
+- Xcode 26.4 CI initially failed type-checking the large cloud candidate-ranking test data expression in `HoopsClipsTests.swift`; the test now builds candidates through a typed loop and the local generic no-signing build-for-testing passes with the same warning backlog.
 - Full iOS simulator `xcodebuild test` was started against the iPhone 17 Pro simulator for this pass, but it had not produced a readable result bundle after more than eight minutes. Treat the generic no-signing build-for-testing plus existing 74-test simulator pass above as the current iOS evidence until the simulator test runner is stable.
+- Added one more GPT duplicate-regression test: when GPT keeps two duplicate made-shot windows, the complete-context duplicate wins over the higher-scored thin window.
 
 PR #10 CI after commit `0177890846230ccef9570e30349b09e7fb77096f`:
 

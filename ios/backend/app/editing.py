@@ -2243,7 +2243,7 @@ def apply_gpt_highlight_rerank(
             deduped.append(clip)
             continue
         current = kept_by_duplicate.get(clip.duplicateGroup)
-        if current is None or clip.planning_score > current.planning_score:
+        if current is None or _duplicate_choice_key(clip) > _duplicate_choice_key(current):
             kept_by_duplicate[clip.duplicateGroup] = clip
     deduped.extend(kept_by_duplicate.values())
     reranked = order_by_gpt_story_order(rank_clips(deduped))

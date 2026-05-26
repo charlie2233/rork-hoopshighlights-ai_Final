@@ -557,6 +557,56 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertIn("unclear_outcome", reranked.gptRerankSummary.rejectedClipIds)
         self.assertEqual([clip.clipId for clip in plan.clips], ["complete_make"])
 
+    def test_gpt_highlight_rerank_duplicate_cleanup_prefers_complete_context(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=15,
+                clips=[
+                    {
+                        **_clip("barely_contextual_make", 8.0, "Made Shot", 0.99, "shot_dup"),
+                        "end": 11.3,
+                        "eventCenter": 9.0,
+                    },
+                    _clip("complete_context_make", 18.0, "Made Shot", 0.82, "shot_dup"),
+                ],
+            )
+        )
+        decisions = [
+            GPTHighlightClipDecision(
+                clipId="barely_contextual_make",
+                keep=True,
+                highlightScore=0.99,
+                watchabilityScore=0.96,
+                basketballEvent="Made Shot",
+                outcome="made",
+                caption="BUCKET",
+                reason="The make is visible, but the window is thin.",
+                suggestedEdit=GPTHighlightSuggestedEdit(),
+            ),
+            GPTHighlightClipDecision(
+                clipId="complete_context_make",
+                keep=True,
+                highlightScore=0.84,
+                watchabilityScore=0.88,
+                basketballEvent="Made Shot",
+                outcome="made",
+                caption="COMPLETE",
+                reason="Shows setup, action, and outcome clearly.",
+                suggestedEdit=GPTHighlightSuggestedEdit(),
+            ),
+        ]
+
+        reranked = apply_gpt_highlight_rerank(request, decisions, "gpt-test", 2, 16)
+        plan = build_edit_plan(reranked, "edit_gpt_duplicate_context")
+
+        self.assertEqual(reranked.gptRerankSummary.status, "applied")
+        self.assertEqual(reranked.gptRerankSummary.keptClipIds, ["complete_context_make"])
+        self.assertGreater(
+            clip_context_quality_score(next(clip for clip in request.clips if clip.id == "complete_context_make")),
+            clip_context_quality_score(next(clip for clip in request.clips if clip.id == "barely_contextual_make")),
+        )
+        self.assertEqual([clip.clipId for clip in plan.clips], ["complete_context_make"])
+
     def test_gpt_highlight_rerank_drops_unjudged_candidates(self) -> None:
         request = CreateEditJobRequest(**_request_payload(targetDurationSeconds=30))
         decisions = [
