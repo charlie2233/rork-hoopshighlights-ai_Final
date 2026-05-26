@@ -435,6 +435,23 @@ class PipelineQualityTests(unittest.TestCase):
         self.assertEqual(shot_clip.label, "Three Pointer")
         self.assertTrue(shot_clip.shouldAutoKeep)
 
+    def test_classifier_keeps_shot_candidate_without_claiming_made_outcome_from_motion_only_context(self) -> None:
+        shot_attempt_window = CandidateWindow(
+            start_time=8.0,
+            end_time=12.5,
+            peak_time=10.0,
+            audio_score=0.48,
+            visual_score=0.66,
+            motion_score=0.5,
+            combined_score=0.7,
+            event_context_score=0.72,
+        )
+
+        clip = classify_window(shot_attempt_window)
+
+        self.assertEqual(clip.label, "Shot Attempt")
+        self.assertTrue(clip.shouldAutoKeep)
+
     @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
     def test_detect_shot_boundaries_extracts_visual_event_from_source(self) -> None:
         with tempfile.TemporaryDirectory(prefix="hoopclips-visual-event-") as temp_dir:

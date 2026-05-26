@@ -13,11 +13,11 @@ def classify_window(window: CandidateWindow) -> CloudClip:
     elif has_shot_context and window.audio_score >= 0.70 and window.motion_score >= 0.56:
         label = "Three Pointer"
     elif has_shot_context and window.visual_score >= 0.60 and window.motion_score >= 0.48:
-        label = "Made Shot"
+        label = "Shot Attempt"
     elif window.motion_score >= 0.64:
         label = "Fast Break"
     elif has_shot_context and combined >= 0.55:
-        label = "Layup"
+        label = "Layup Attempt"
     else:
         label = "Highlight"
 

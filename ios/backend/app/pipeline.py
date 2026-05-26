@@ -331,6 +331,8 @@ def _native_outcome_hint_for_label(label: str, confidence: float, is_shot_like: 
         return "missed", min(1.0, confidence * 0.85)
     if any(token in normalized for token in ("made", "bucket", "basket", "dunk", "finish")):
         return "made", min(1.0, confidence * 0.9)
+    if "attempt" in normalized:
+        return "uncertain", 0.0
     if "layup" in normalized:
         return "made", min(1.0, confidence * 0.72)
     return "uncertain", 0.0

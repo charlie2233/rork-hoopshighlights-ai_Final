@@ -91,6 +91,7 @@ MIN_NON_SHOT_PLANNING_SCORE = 0.5
 MIN_NON_SHOT_WATCHABILITY_SCORE = 0.42
 MIN_GENERIC_HIGHLIGHT_PLANNING_SCORE = 0.62
 MIN_GENERIC_HIGHLIGHT_WATCHABILITY_SCORE = 0.5
+MIN_NATIVE_OUTCOME_CONFLICT_CONFIDENCE = 0.65
 TEMPLATE_MIN_CLIP_TOLERANCE = 0.85
 MAX_CAPTION_LENGTH = 24
 MAX_DURATION_OVERRUN_SECONDS = 6.0
@@ -1878,6 +1879,8 @@ def _native_outcome_hint_for_clip(clip: EditCandidateClip, is_shot_like: bool) -
         return "missed", min(1.0, clip.confidence * 0.85)
     if any(token in normalized for token in ("made", "bucket", "basket", "dunk", "finish")):
         return "made", min(1.0, clip.confidence * 0.9)
+    if "attempt" in normalized:
+        return "uncertain", 0.0
     if "layup" in normalized:
         return "made", min(1.0, clip.confidence * 0.72)
     return "uncertain", 0.0
@@ -2321,6 +2324,8 @@ def apply_gpt_highlight_rerank(
             valid_story_order.append(clip_id)
             seen_story_ids.add(clip_id)
     story_index_by_id = {clip_id: index for index, clip_id in enumerate(valid_story_order)}
+    if plan_edit is not None and _contains_forbidden_gpt_generated_content(plan_edit.model_dump()):
+        plan_edit = None
     plan_captions_by_id = {item.clipId: item for item in plan_edit.captions} if plan_edit else {}
     plan_slow_motion_by_id = {item.clipId: item for item in plan_edit.slowMotionMoments} if plan_edit else {}
     applied_plan_caption_clip_ids: set[str] = set()
@@ -2506,6 +2511,8 @@ def _clip_overlap_ratio(left: EditCandidateClip, right: EditCandidateClip) -> fl
 
 
 def _gpt_decision_rejection_reason(decision: GPTHighlightClipDecision, clip: EditCandidateClip) -> Optional[str]:
+    if _contains_forbidden_gpt_generated_content(decision.model_dump()):
+        return "forbidden_gpt_output_content"
     if not decision.keep:
         if decision.rejectReason:
             return decision.rejectReason
@@ -2524,6 +2531,8 @@ def _gpt_decision_rejection_reason(decision: GPTHighlightClipDecision, clip: Edi
         return "unclear_or_non_basketball_outcome"
     if not _source_supports_gpt_outcome_claim(decision, clip):
         return "gpt_outcome_unsupported_by_source"
+    if _gpt_outcome_conflicts_with_native_signal(decision, clip):
+        return "gpt_outcome_conflicts_with_native_signal"
 
     signals = decision.qualitySignals
     if not signals.eventVisible or not signals.outcomeVisible or not signals.cleanCamera:
@@ -2535,6 +2544,18 @@ def _gpt_decision_rejection_reason(decision: GPTHighlightClipDecision, clip: Edi
     if not signals.playerControlVisible and decision.outcome in {"made", "missed"}:
         return "missing_player_control"
     return None
+
+
+def _gpt_outcome_conflicts_with_native_signal(decision: GPTHighlightClipDecision, clip: EditCandidateClip) -> bool:
+    if decision.outcome not in {"made", "missed", "blocked"}:
+        return False
+
+    native_signals = native_shot_signals_for_clip(clip)
+    if native_signals.outcome not in {"made", "missed", "blocked"}:
+        return False
+    if native_signals.outcomeConfidence < MIN_NATIVE_OUTCOME_CONFLICT_CONFIDENCE:
+        return False
+    return native_signals.outcome != decision.outcome
 
 
 def _source_supports_gpt_outcome_claim(decision: GPTHighlightClipDecision, clip: EditCandidateClip) -> bool:
@@ -2922,14 +2943,18 @@ FORBIDDEN_GPT_PATCH_PATTERNS = [
 ]
 
 
-def _contains_forbidden_gpt_patch_content(value: Any) -> bool:
+def _contains_forbidden_gpt_generated_content(value: Any) -> bool:
     if isinstance(value, str):
         return any(pattern.search(value) for pattern in FORBIDDEN_GPT_PATCH_PATTERNS)
     if isinstance(value, dict):
-        return any(_contains_forbidden_gpt_patch_content(item) for pair in value.items() for item in pair)
+        return any(_contains_forbidden_gpt_generated_content(item) for pair in value.items() for item in pair)
     if isinstance(value, list):
-        return any(_contains_forbidden_gpt_patch_content(item) for item in value)
+        return any(_contains_forbidden_gpt_generated_content(item) for item in value)
     return False
+
+
+def _contains_forbidden_gpt_patch_content(value: Any) -> bool:
+    return _contains_forbidden_gpt_generated_content(value)
 
 
 def apply_edit_plan_patch(plan: EditPlan, patch: EditPlanPatch) -> EditPlan:

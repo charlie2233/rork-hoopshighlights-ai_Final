@@ -815,6 +815,80 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertEqual(reranked.gptRerankSummary.rejectedReasonCounts["gpt_outcome_unsupported_by_source"], 1)
         self.assertEqual(job.status, "failed")
 
+    def test_gpt_highlight_rerank_rejects_outcome_conflicting_with_native_shot_signal(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=15,
+                clips=[
+                    {
+                        **_clip("native_missed_jump_shot", 12.0, "Jump Shot", 0.92),
+                        "nativeShotSignals": {
+                            "isShotLike": True,
+                            "leadInSeconds": 3.4,
+                            "followThroughSeconds": 3.6,
+                            "setupContextScore": 1.0,
+                            "outcomeContextScore": 1.0,
+                            "eventCenterQuality": 1.0,
+                            "contextQualityScore": 1.0,
+                            "timingWindowOk": True,
+                            "outcome": "missed",
+                            "outcomeConfidence": 0.86,
+                        },
+                    }
+                ],
+            )
+        )
+        decisions = [
+            GPTHighlightClipDecision(
+                clipId="native_missed_jump_shot",
+                keep=True,
+                highlightScore=0.95,
+                watchabilityScore=0.91,
+                basketballEvent="Jump shot",
+                outcome="made",
+                caption="BUCKET",
+                reason="GPT claims the shot went in even though native signals saw a miss.",
+                qualitySignals=_quality_signals(),
+                suggestedEdit=GPTHighlightSuggestedEdit(),
+            )
+        ]
+
+        reranked = apply_gpt_highlight_rerank(request, decisions, "gpt-test", 1, 8)
+
+        self.assertEqual(reranked.clips, [])
+        self.assertEqual(reranked.gptRerankSummary.fallbackReason, "all_clips_rejected")
+        self.assertIn("native_missed_jump_shot", reranked.gptRerankSummary.rejectedClipIds)
+        self.assertEqual(reranked.gptRerankSummary.rejectedReasonCounts["gpt_outcome_conflicts_with_native_signal"], 1)
+
+    def test_gpt_highlight_rerank_rejects_forbidden_render_command_content(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=15,
+                clips=[_clip("unsafe_caption_make", 12.0, "Made Shot", 0.92)],
+            )
+        )
+        decisions = [
+            GPTHighlightClipDecision(
+                clipId="unsafe_caption_make",
+                keep=True,
+                highlightScore=0.95,
+                watchabilityScore=0.91,
+                basketballEvent="Made Shot",
+                outcome="made",
+                caption="ffmpeg -i source.mp4",
+                reason="Clear clip, but this text includes a renderer command.",
+                qualitySignals=_quality_signals(),
+                suggestedEdit=GPTHighlightSuggestedEdit(),
+            )
+        ]
+
+        reranked = apply_gpt_highlight_rerank(request, decisions, "gpt-test", 1, 8)
+
+        self.assertEqual(reranked.clips, [])
+        self.assertEqual(reranked.gptRerankSummary.fallbackReason, "all_clips_rejected")
+        self.assertIn("unsafe_caption_make", reranked.gptRerankSummary.rejectedClipIds)
+        self.assertEqual(reranked.gptRerankSummary.rejectedReasonCounts["forbidden_gpt_output_content"], 1)
+
     def test_gpt_highlight_rerank_duplicate_cleanup_prefers_complete_context(self) -> None:
         request = CreateEditJobRequest(
             **_request_payload(
