@@ -650,7 +650,15 @@ def _build_openai_payload(
                         "madeOrMissedShotRequiresVisibleReleaseAndRimResult": True,
                         "madeOrMissedShotRequiresVisibleShotArc": True,
                         "madeShotRequiresExplicitMadeResultEvidence": True,
+                        "madeShotRequiresFrameRoleTrackingEvidence": True,
                         "doNotKeepIfOutcomeIsOnlyImplied": True,
+                        "requiredMadeShotTracking": {
+                            "releaseFrameRole": ["preEvent", "release", "eventCenter"],
+                            "resultFrameRole": ["outcome", "shotArcLate", "rim", "postOutcome", "finish"],
+                            "ballEntersRimFrameRole": ["outcome", "shotArcLate", "rim", "postOutcome", "finish"],
+                            "minimumBallVisibleFrameRoles": 2,
+                            "trajectoryContinuity": "continuous",
+                        },
                         "requiredShotContextKeyframes": sorted(_required_shot_context_roles(settings.limits_for(request.planTier)[1])),
                     },
                     "clips": compact_clips,
@@ -673,6 +681,7 @@ def _build_openai_payload(
             "Act like a basketball shot-tracker: for made shots, verify visible setup, release, ball path, rim/result, and aftermath. "
             "For made or missed shots, releaseVisible, shotArcVisible, and rimResultVisible must all be true; do not infer a make from a label or late rim-only aftermath. "
             "A made outcome requires shotResultEvidence.rimResultEvidence=made_visible with confident visible rim/net proof; use unclear if the result is guessed. "
+            "A made outcome also requires shotTrackingEvidence with release/result frame roles, ball-visible frame roles, continuous trajectory, and a frame or visible net/rim reaction proving entry. "
             "reject clips that start right before the basket, clips shorter than the supplied quality minimum, or clips where the outcome is only implied. "
             "Honor userEditIntent only when it is compatible with the supplied template, plan tier, candidate clips, and safety constraints. "
             "Use only supplied candidate clip IDs and sampled keyframes. Do not replace FFmpeg extraction, CV tracking, rendering, or exact timestamps. "
@@ -739,6 +748,20 @@ def _build_revision_patch_payload(
 
 
 def _response_schema() -> Dict[str, Any]:
+    frame_role_enum = [
+        "start",
+        "preEvent",
+        "release",
+        "shotArcEarly",
+        "eventCenter",
+        "outcome",
+        "shotArcLate",
+        "rim",
+        "postOutcome",
+        "finish",
+        "midAction",
+    ]
+    frame_role_or_null = {"anyOf": [{"type": "string", "enum": frame_role_enum}, {"type": "null"}]}
     quality_signals = {
         "type": "object",
         "additionalProperties": False,
@@ -780,6 +803,30 @@ def _response_schema() -> Dict[str, Any]:
         },
         "required": ["releaseToRimContinuity", "rimResultEvidence", "outcomeConfidence", "reason"],
     }
+    shot_tracking_evidence = {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "ballVisibleFrameRoles": {"type": "array", "items": {"type": "string", "enum": frame_role_enum}, "maxItems": 10},
+            "rimVisibleFrameRoles": {"type": "array", "items": {"type": "string", "enum": frame_role_enum}, "maxItems": 10},
+            "releaseFrameRole": frame_role_or_null,
+            "resultFrameRole": frame_role_or_null,
+            "ballEntersRimFrameRole": frame_role_or_null,
+            "netOrRimReactionVisible": {"type": "boolean"},
+            "trajectoryContinuity": {"type": "string", "enum": ["continuous", "partial", "missing"]},
+            "reason": {"type": "string", "maxLength": 180},
+        },
+        "required": [
+            "ballVisibleFrameRoles",
+            "rimVisibleFrameRoles",
+            "releaseFrameRole",
+            "resultFrameRole",
+            "ballEntersRimFrameRole",
+            "netOrRimReactionVisible",
+            "trajectoryContinuity",
+            "reason",
+        ],
+    }
     suggested_edit = {
         "type": "object",
         "additionalProperties": False,
@@ -809,6 +856,7 @@ def _response_schema() -> Dict[str, Any]:
             "storyRole": {"type": "string", "enum": ["opener", "peak", "filler", "closer"]},
             "qualitySignals": quality_signals,
             "shotResultEvidence": shot_result_evidence,
+            "shotTrackingEvidence": shot_tracking_evidence,
             "suggestedEdit": suggested_edit,
         },
         "required": [
@@ -824,6 +872,7 @@ def _response_schema() -> Dict[str, Any]:
             "storyRole",
             "qualitySignals",
             "shotResultEvidence",
+            "shotTrackingEvidence",
             "suggestedEdit",
         ],
     }

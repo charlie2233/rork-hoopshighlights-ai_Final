@@ -79,6 +79,21 @@ def _shot_result_evidence(**overrides) -> dict:
     return payload
 
 
+def _shot_tracking_evidence(**overrides) -> dict:
+    payload = {
+        "ballVisibleFrameRoles": ["release", "shotArcEarly", "rim"],
+        "rimVisibleFrameRoles": ["rim", "postOutcome"],
+        "releaseFrameRole": "release",
+        "resultFrameRole": "rim",
+        "ballEntersRimFrameRole": "rim",
+        "netOrRimReactionVisible": True,
+        "trajectoryContinuity": "continuous",
+        "reason": "Release, ball flight, and rim entry are visible in sampled frames.",
+    }
+    payload.update(overrides)
+    return payload
+
+
 class GPTHighlightRerankerTests(unittest.TestCase):
     def test_payload_is_strict_structured_output_and_not_stored(self) -> None:
         settings = GPTHighlightRerankerSettings.from_env()
@@ -182,6 +197,27 @@ class GPTHighlightRerankerTests(unittest.TestCase):
             result_evidence["properties"]["rimResultEvidence"]["enum"],
             ["made_visible", "clear_miss", "blocked", "unclear"],
         )
+        self.assertIn("shotTrackingEvidence", decision_properties)
+        self.assertIn("shotTrackingEvidence", decision_schema["required"])
+        tracking_evidence = decision_properties["shotTrackingEvidence"]
+        self.assertEqual(
+            tracking_evidence["properties"]["ballEntersRimFrameRole"]["anyOf"][0]["enum"],
+            [
+                "start",
+                "preEvent",
+                "release",
+                "shotArcEarly",
+                "eventCenter",
+                "outcome",
+                "shotArcLate",
+                "rim",
+                "postOutcome",
+                "finish",
+                "midAction",
+            ],
+        )
+        self.assertTrue(shot_rules["madeShotRequiresFrameRoleTrackingEvidence"])
+        self.assertEqual(shot_rules["requiredMadeShotTracking"]["trajectoryContinuity"], "continuous")
         self.assertTrue(shot_rules["madeOrMissedShotRequiresVisibleReleaseAndRimResult"])
         self.assertTrue(shot_rules["madeOrMissedShotRequiresVisibleShotArc"])
         self.assertTrue(shot_rules["madeShotRequiresExplicitMadeResultEvidence"])
@@ -509,6 +545,7 @@ class GPTHighlightRerankerTests(unittest.TestCase):
                 "storyRole",
                 "qualitySignals",
                 "shotResultEvidence",
+                "shotTrackingEvidence",
                 "suggestedEdit",
             ],
         )
@@ -709,6 +746,7 @@ class GPTHighlightRerankerTests(unittest.TestCase):
                                 "storyRole": "peak",
                                 "qualitySignals": _quality_signals(),
                                 "shotResultEvidence": _shot_result_evidence(),
+                                "shotTrackingEvidence": _shot_tracking_evidence(),
                                 "suggestedEdit": {
                                     "slowMotion": False,
                                     "slowMotionCenter": None,
@@ -854,6 +892,7 @@ class GPTHighlightRerankerTests(unittest.TestCase):
                                     "reason": "Complete shot context.",
                                 },
                                 "shotResultEvidence": _shot_result_evidence(),
+                                "shotTrackingEvidence": _shot_tracking_evidence(),
                                 "suggestedEdit": {
                                     "slowMotion": False,
                                     "slowMotionCenter": None,
@@ -935,6 +974,7 @@ class GPTHighlightRerankerTests(unittest.TestCase):
                                 "storyRole": "filler",
                                 "qualitySignals": _quality_signals(),
                                 "shotResultEvidence": _shot_result_evidence(),
+                                "shotTrackingEvidence": _shot_tracking_evidence(),
                                 "suggestedEdit": {
                                     "slowMotion": False,
                                     "slowMotionCenter": None,
@@ -1012,6 +1052,7 @@ class GPTHighlightRerankerTests(unittest.TestCase):
                 "storyRole": "peak",
                 "qualitySignals": _quality_signals(),
                 "shotResultEvidence": _shot_result_evidence(),
+                "shotTrackingEvidence": _shot_tracking_evidence(),
                 "suggestedEdit": {
                     "slowMotion": False,
                     "slowMotionCenter": None,
@@ -1099,6 +1140,7 @@ class GPTHighlightRerankerTests(unittest.TestCase):
                 "storyRole": "filler",
                 "qualitySignals": _quality_signals(),
                 "shotResultEvidence": _shot_result_evidence(),
+                "shotTrackingEvidence": _shot_tracking_evidence(),
                 "suggestedEdit": {
                     "slowMotion": False,
                     "slowMotionCenter": None,
@@ -1211,6 +1253,7 @@ class GPTHighlightRerankerTests(unittest.TestCase):
                                     "reason": "Shows the play before and after the make.",
                                 },
                                 "shotResultEvidence": _shot_result_evidence(),
+                                "shotTrackingEvidence": _shot_tracking_evidence(),
                                 "suggestedEdit": {
                                     "slowMotion": False,
                                     "slowMotionCenter": None,
@@ -1356,6 +1399,7 @@ class GPTHighlightRerankerTests(unittest.TestCase):
                     "storyRole": "filler",
                     "qualitySignals": _quality_signals(),
                     "shotResultEvidence": _shot_result_evidence(),
+                    "shotTrackingEvidence": _shot_tracking_evidence(),
                     "suggestedEdit": {
                         "slowMotion": False,
                         "slowMotionCenter": None,

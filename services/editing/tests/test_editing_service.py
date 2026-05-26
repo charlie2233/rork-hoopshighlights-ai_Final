@@ -73,6 +73,21 @@ def _shot_result_evidence(**overrides) -> dict:
     return payload
 
 
+def _shot_tracking_evidence(**overrides) -> dict:
+    payload = {
+        "ballVisibleFrameRoles": ["release", "shotArcEarly", "rim"],
+        "rimVisibleFrameRoles": ["rim", "postOutcome"],
+        "releaseFrameRole": "release",
+        "resultFrameRole": "rim",
+        "ballEntersRimFrameRole": "rim",
+        "netOrRimReactionVisible": True,
+        "trajectoryContinuity": "continuous",
+        "reason": "Release, ball flight, and rim entry are visible in sampled frames.",
+    }
+    payload.update(overrides)
+    return payload
+
+
 class EditingServiceTests(unittest.TestCase):
     def setUp(self) -> None:
         self._temp_dir = Path(tempfile.mkdtemp(prefix="hoopclips-editing-tests-"))
@@ -965,6 +980,7 @@ class EditingServiceTests(unittest.TestCase):
                     reason="GPT judged this candidate unclear or boring.",
                     qualitySignals=_quality_signals(outcomeVisible=False, ballPathVisible=False, fullPlayContext=False),
                     shotResultEvidence=_shot_result_evidence(),
+                    shotTrackingEvidence=_shot_tracking_evidence(),
                     suggestedEdit=GPTHighlightSuggestedEdit(),
                 )
                 for clip in request.clips
@@ -1021,6 +1037,7 @@ class EditingServiceTests(unittest.TestCase):
                     reason="Clean shot outcome and watchable finish.",
                     qualitySignals=_quality_signals(),
                     shotResultEvidence=_shot_result_evidence(),
+                    shotTrackingEvidence=_shot_tracking_evidence(),
                     suggestedEdit=GPTHighlightSuggestedEdit(
                         slowMotion=True,
                         slowMotionCenter=10.4,
@@ -1041,6 +1058,7 @@ class EditingServiceTests(unittest.TestCase):
                     reason="Less clear than the made shot.",
                     qualitySignals=_quality_signals(outcomeVisible=False, ballPathVisible=False, fullPlayContext=False),
                     shotResultEvidence=_shot_result_evidence(),
+                    shotTrackingEvidence=_shot_tracking_evidence(),
                     suggestedEdit=GPTHighlightSuggestedEdit(),
                 ),
             ]
