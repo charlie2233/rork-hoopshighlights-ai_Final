@@ -248,6 +248,19 @@ def default_ai_edit_feature_flags() -> AIEditFeatureFlags:
     return AIEditFeatureFlags()
 
 
+class NativeShotSignals(APIModel):
+    isShotLike: bool = False
+    leadInSeconds: float = Field(default=0.0, ge=0.0)
+    followThroughSeconds: float = Field(default=0.0, ge=0.0)
+    setupContextScore: float = Field(default=0.0, ge=0.0, le=1.0)
+    outcomeContextScore: float = Field(default=0.0, ge=0.0, le=1.0)
+    eventCenterQuality: float = Field(default=0.0, ge=0.0, le=1.0)
+    contextQualityScore: float = Field(default=0.0, ge=0.0, le=1.0)
+    timingWindowOk: bool = False
+    outcome: Literal["made", "missed", "blocked", "uncertain", "not_shot"] = "uncertain"
+    outcomeConfidence: float = Field(default=0.0, ge=0.0, le=1.0)
+
+
 class EditCandidateClip(APIModel):
     id: str = Field(min_length=1, max_length=80)
     start: float = Field(ge=0.0)
@@ -261,6 +274,7 @@ class EditCandidateClip(APIModel):
     audioPeak: float = Field(default=0.0, ge=0.0, le=1.0)
     combinedScore: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     duplicateGroup: Optional[str] = Field(default=None, max_length=80)
+    nativeShotSignals: Optional[NativeShotSignals] = None
     captionHint: Optional[str] = Field(default=None, max_length=MAX_CAPTION_LENGTH)
     gptHighlightScore: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     gptWatchabilityScore: Optional[float] = Field(default=None, ge=0.0, le=1.0)
@@ -1607,6 +1621,7 @@ def _compact_agent_candidate_clip(clip: EditCandidateClip) -> Dict[str, object]:
         "audioPeak": clip.audioPeak,
         "watchabilityScore": clip.watchability,
         "duplicateGroup": clip.duplicateGroup,
+        "nativeShotSignals": native_shot_signals_for_clip(clip).model_dump(mode="json"),
     }
 
 
@@ -1807,6 +1822,65 @@ def is_shot_like_clip(clip: EditCandidateClip) -> bool:
         token in normalized
         for token in ("shot", "bucket", "basket", "layup", "dunk", "finish", "jumper", "three", "3pt")
     )
+
+
+def native_shot_signals_for_clip(clip: EditCandidateClip) -> NativeShotSignals:
+    is_shot_like = is_shot_like_clip(clip)
+    lead_in = round(max(0.0, clip.eventCenter - clip.start), 3)
+    follow_through = round(max(0.0, clip.end - clip.eventCenter), 3)
+    setup_context_score = min(1.0, lead_in / TARGET_SHOT_CONTEXT_LEAD_IN_SECONDS) if is_shot_like else 0.0
+    outcome_context_score = min(1.0, follow_through / TARGET_SHOT_CONTEXT_FOLLOW_THROUGH_SECONDS) if is_shot_like else 0.0
+    if is_shot_like:
+        duration_score = min(1.0, clip.duration / max(4.5, TARGET_SHOT_CONTEXT_LEAD_IN_SECONDS + TARGET_SHOT_CONTEXT_FOLLOW_THROUGH_SECONDS))
+        if lead_in <= 0.0 or follow_through <= 0.0:
+            balance_score = 0.0
+        else:
+            balance_score = min(lead_in, follow_through) / max(lead_in, follow_through)
+        event_center_quality = (
+            (setup_context_score * 0.34)
+            + (outcome_context_score * 0.28)
+            + (duration_score * 0.2)
+            + (balance_score * 0.18)
+        )
+        timing_window_ok = clip.duration >= MIN_SHOT_LIKE_CLIP_SECONDS and has_minimum_shot_context(clip)
+    else:
+        event_center_quality = 0.0
+        timing_window_ok = clip.duration >= MIN_PLAN_CLIP_SECONDS
+
+    outcome, outcome_confidence = _native_outcome_hint_for_clip(clip, is_shot_like)
+    incoming = clip.nativeShotSignals
+    if incoming is not None and incoming.outcome not in {"uncertain", "not_shot"}:
+        outcome = incoming.outcome
+        outcome_confidence = min(1.0, max(outcome_confidence, min(incoming.outcomeConfidence, clip.confidence)))
+
+    return NativeShotSignals(
+        isShotLike=is_shot_like,
+        leadInSeconds=lead_in,
+        followThroughSeconds=follow_through,
+        setupContextScore=round(setup_context_score, 4),
+        outcomeContextScore=round(outcome_context_score, 4),
+        eventCenterQuality=round(max(0.0, min(1.0, event_center_quality)), 4),
+        contextQualityScore=clip_context_quality_score(clip),
+        timingWindowOk=timing_window_ok,
+        outcome=outcome,
+        outcomeConfidence=round(outcome_confidence, 4),
+    )
+
+
+def _native_outcome_hint_for_clip(clip: EditCandidateClip, is_shot_like: bool) -> tuple[str, float]:
+    if not is_shot_like:
+        return "not_shot", 1.0
+
+    normalized = clip.label.strip().lower()
+    if "block" in normalized:
+        return "blocked", min(1.0, clip.confidence)
+    if "miss" in normalized:
+        return "missed", min(1.0, clip.confidence * 0.85)
+    if any(token in normalized for token in ("made", "bucket", "basket", "dunk", "finish")):
+        return "made", min(1.0, clip.confidence * 0.9)
+    if "layup" in normalized:
+        return "made", min(1.0, clip.confidence * 0.72)
+    return "uncertain", 0.0
 
 
 def has_minimum_shot_context(clip: EditCandidateClip) -> bool:

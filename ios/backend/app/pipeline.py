@@ -16,11 +16,12 @@ from typing import List, Optional, Sequence, Tuple
 from .classifier import classify_window, maybe_relabel_with_gemini
 from .config import Settings
 from .external_providers import detect_with_optional_external_provider, rerank_with_optional_external_provider
-from .models import CandidateWindow, CloudAnalysisResult, CloudClip, CloudDiagnostics, PipelineError, StoredJob, clamp
+from .models import CandidateWindow, CloudAnalysisResult, CloudClip, CloudDiagnostics, CloudNativeShotSignals, PipelineError, StoredJob, clamp
 
 
 NATIVE_SHOT_CONTEXT_TARGET_LEAD_SECONDS = 2.0
 NATIVE_SHOT_CONTEXT_TARGET_FOLLOW_THROUGH_SECONDS = 1.25
+NATIVE_SHOT_SIGNAL_MIN_DURATION_SECONDS = 3.0
 HYBRID_OVERLAP_DEDUPE_RATIO = 0.55
 VISUAL_EVENT_SAMPLE_FPS = 2.0
 VISUAL_EVENT_FRAME_WIDTH = 64
@@ -178,10 +179,12 @@ def _normalize_clip_for_analysis_context(
             return None
         if _analysis_clip_context_score(normalized) < 0.45:
             return None
+        auto_keep_allowed = _analysis_clip_auto_keep_allowed(normalized)
         return normalized.model_copy(
             update={
-                "shouldAutoKeep": normalized.shouldAutoKeep and _analysis_clip_auto_keep_allowed(normalized),
-                "shouldEnableSlowMotion": normalized.shouldEnableSlowMotion and _analysis_clip_auto_keep_allowed(normalized),
+                "shouldAutoKeep": normalized.shouldAutoKeep and auto_keep_allowed,
+                "shouldEnableSlowMotion": normalized.shouldEnableSlowMotion and auto_keep_allowed,
+                "nativeShotSignals": _native_shot_signals_for_analysis_clip(normalized),
             }
         )
 
@@ -191,10 +194,12 @@ def _normalize_clip_for_analysis_context(
         normalized = normalized.model_copy(
             update={"endTime": round(min(duration_seconds, normalized.startTime + settings.max_clip_duration_seconds), 3)}
         )
+    auto_keep_allowed = _analysis_clip_auto_keep_allowed(normalized)
     return normalized.model_copy(
         update={
-            "shouldAutoKeep": normalized.shouldAutoKeep and _analysis_clip_auto_keep_allowed(normalized),
-            "shouldEnableSlowMotion": normalized.shouldEnableSlowMotion and _analysis_clip_auto_keep_allowed(normalized),
+            "shouldAutoKeep": normalized.shouldAutoKeep and auto_keep_allowed,
+            "shouldEnableSlowMotion": normalized.shouldEnableSlowMotion and auto_keep_allowed,
+            "nativeShotSignals": _native_shot_signals_for_analysis_clip(normalized),
         }
     )
 
@@ -266,6 +271,69 @@ def _analysis_clip_auto_keep_allowed(clip: CloudClip) -> bool:
 
 def _analysis_clip_context_score(clip: CloudClip) -> float:
     return _hybrid_clip_context_score(clip)
+
+
+def _native_shot_signals_for_analysis_clip(clip: CloudClip) -> CloudNativeShotSignals:
+    is_shot_like = _is_shot_like_label(clip.label)
+    duration = max(0.0, clip.endTime - clip.startTime)
+    event_center = clip.eventCenter
+    if event_center is None:
+        lead_in = 0.0
+        follow_through = 0.0
+    else:
+        bounded_center = min(max(event_center, clip.startTime), clip.endTime)
+        lead_in = max(0.0, bounded_center - clip.startTime)
+        follow_through = max(0.0, clip.endTime - bounded_center)
+
+    if not is_shot_like:
+        setup_context_score = 0.0
+        outcome_context_score = 0.0
+        event_center_quality = 0.0
+        timing_window_ok = duration >= 2.0
+    else:
+        setup_context_score = min(1.0, lead_in / NATIVE_SHOT_CONTEXT_TARGET_LEAD_SECONDS)
+        outcome_context_score = min(1.0, follow_through / NATIVE_SHOT_CONTEXT_TARGET_FOLLOW_THROUGH_SECONDS)
+        duration_score = min(1.0, duration / max(4.5, NATIVE_SHOT_CONTEXT_TARGET_LEAD_SECONDS + NATIVE_SHOT_CONTEXT_TARGET_FOLLOW_THROUGH_SECONDS))
+        if lead_in <= 0.0 or follow_through <= 0.0:
+            balance_score = 0.0
+        else:
+            balance_score = min(lead_in, follow_through) / max(lead_in, follow_through)
+        event_center_quality = (setup_context_score * 0.34) + (outcome_context_score * 0.28) + (duration_score * 0.2) + (balance_score * 0.18)
+        timing_window_ok = (
+            duration >= NATIVE_SHOT_SIGNAL_MIN_DURATION_SECONDS
+            and lead_in >= NATIVE_SHOT_CONTEXT_TARGET_LEAD_SECONDS
+            and follow_through >= NATIVE_SHOT_CONTEXT_TARGET_FOLLOW_THROUGH_SECONDS
+        )
+
+    outcome, outcome_confidence = _native_outcome_hint_for_label(clip.label, clip.confidence, is_shot_like)
+    return CloudNativeShotSignals(
+        isShotLike=is_shot_like,
+        leadInSeconds=round(lead_in, 3),
+        followThroughSeconds=round(follow_through, 3),
+        setupContextScore=round(setup_context_score, 4),
+        outcomeContextScore=round(outcome_context_score, 4),
+        eventCenterQuality=round(max(0.0, min(1.0, event_center_quality)), 4),
+        contextQualityScore=_analysis_clip_context_score(clip),
+        timingWindowOk=timing_window_ok,
+        outcome=outcome,
+        outcomeConfidence=round(outcome_confidence, 4),
+    )
+
+
+def _native_outcome_hint_for_label(label: str, confidence: float, is_shot_like: bool) -> tuple[str, float]:
+    if not is_shot_like:
+        return "not_shot", 1.0
+
+    normalized = label.strip().lower()
+    if any(token in normalized for token in ("block", "blocked")):
+        return "blocked", min(1.0, confidence)
+    if any(token in normalized for token in ("miss", "missed")):
+        return "missed", min(1.0, confidence * 0.85)
+    if any(token in normalized for token in ("made", "bucket", "basket", "dunk", "finish")):
+        return "made", min(1.0, confidence * 0.9)
+    if "layup" in normalized:
+        return "made", min(1.0, confidence * 0.72)
+    return "uncertain", 0.0
 
 
 def _merge_hybrid_detection_clips(

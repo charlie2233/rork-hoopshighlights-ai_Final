@@ -226,6 +226,18 @@ struct HoopsClipsTests {
     }
 
     @Test @MainActor func testCloudEditRequestEncodesOptionalUserPrompt() throws {
+        let nativeSignals = NativeShotSignals(
+            isShotLike: true,
+            leadInSeconds: 2.5,
+            followThroughSeconds: 1.5,
+            setupContextScore: 1.0,
+            outcomeContextScore: 1.0,
+            eventCenterQuality: 0.92,
+            contextQualityScore: 0.9,
+            timingWindowOk: true,
+            outcome: "made",
+            outcomeConfidence: 0.8
+        )
         let request = CreateCloudEditJobRequest(
             videoId: "video_123",
             analysisJobId: "analysis_123",
@@ -251,7 +263,8 @@ struct HoopsClipsTests {
                     motionScore: 0.87,
                     audioPeak: 0.5,
                     combinedScore: 0.9,
-                    duplicateGroup: nil
+                    duplicateGroup: nil,
+                    nativeShotSignals: nativeSignals
                 )
             ]
         )
@@ -261,6 +274,10 @@ struct HoopsClipsTests {
 
         #expect(payload["userPrompt"] as? String == "Make it more hype and focus on defense.")
         #expect(payload["sourceObjectKey"] as? String == "uploads/source.mp4")
+        let clips = try #require(payload["clips"] as? [[String: Any]])
+        let encodedSignals = try #require(clips.first?["nativeShotSignals"] as? [String: Any])
+        #expect(encodedSignals["outcome"] as? String == "made")
+        #expect(encodedSignals["timingWindowOk"] as? Bool == true)
     }
 
     @Test @MainActor func testCloudEditRequestSendsStrongestCandidatesBeforeThirtyClipCap() throws {
@@ -439,6 +456,18 @@ struct HoopsClipsTests {
     }
 
     @Test func testCloudClipMappingPreservesCloudMetadata() {
+        let nativeSignals = NativeShotSignals(
+            isShotLike: true,
+            leadInSeconds: 2.7,
+            followThroughSeconds: 1.8,
+            setupContextScore: 1.0,
+            outcomeContextScore: 1.0,
+            eventCenterQuality: 0.96,
+            contextQualityScore: 0.94,
+            timingWindowOk: true,
+            outcome: "made",
+            outcomeConfidence: 0.82
+        )
         let cloudClip = CloudClip(
             startTime: 12.5,
             endTime: 17.0,
@@ -452,7 +481,8 @@ struct HoopsClipsTests {
             combinedScore: 0.86,
             detectionMethod: "Cloud",
             shouldAutoKeep: true,
-            shouldEnableSlowMotion: true
+            shouldEnableSlowMotion: true,
+            nativeShotSignals: nativeSignals
         )
 
         let mapped = cloudClip.makeClip()
@@ -463,6 +493,7 @@ struct HoopsClipsTests {
         #expect(mapped.isSlowMotionEnabled)
         #expect(abs(mapped.duration - 4.5) < 0.001)
         #expect(mapped.eventCenter == 15.2)
+        #expect(mapped.nativeShotSignals == nativeSignals)
     }
 
     @Test func testCloudJobResponseDecodesNestedResults() throws {

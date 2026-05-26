@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -56,6 +56,19 @@ class StartCloudAnalysisJobResponse(APIModel):
     status: str
 
 
+class CloudNativeShotSignals(APIModel):
+    isShotLike: bool = False
+    leadInSeconds: float = Field(default=0.0, ge=0.0)
+    followThroughSeconds: float = Field(default=0.0, ge=0.0)
+    setupContextScore: float = Field(default=0.0, ge=0.0, le=1.0)
+    outcomeContextScore: float = Field(default=0.0, ge=0.0, le=1.0)
+    eventCenterQuality: float = Field(default=0.0, ge=0.0, le=1.0)
+    contextQualityScore: float = Field(default=0.0, ge=0.0, le=1.0)
+    timingWindowOk: bool = False
+    outcome: Literal["made", "missed", "blocked", "uncertain", "not_shot"] = "uncertain"
+    outcomeConfidence: float = Field(default=0.0, ge=0.0, le=1.0)
+
+
 class CloudClip(APIModel):
     startTime: float
     endTime: float
@@ -70,6 +83,7 @@ class CloudClip(APIModel):
     detectionMethod: str = "cloud"
     shouldAutoKeep: bool
     shouldEnableSlowMotion: bool
+    nativeShotSignals: Optional[CloudNativeShotSignals] = None
 
 
 class CloudDiagnostics(APIModel):

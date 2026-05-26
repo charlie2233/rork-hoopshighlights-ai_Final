@@ -242,6 +242,12 @@ class PipelineQualityTests(unittest.TestCase):
         self.assertGreaterEqual(normalized.endTime, 11.25)
         self.assertGreaterEqual(normalized.endTime - normalized.startTime, _settings().min_clip_duration_seconds)
         self.assertTrue(normalized.shouldAutoKeep)
+        self.assertIsNotNone(normalized.nativeShotSignals)
+        assert normalized.nativeShotSignals is not None
+        self.assertTrue(normalized.nativeShotSignals.timingWindowOk)
+        self.assertEqual(normalized.nativeShotSignals.outcome, "made")
+        self.assertGreaterEqual(normalized.nativeShotSignals.setupContextScore, 1.0)
+        self.assertGreaterEqual(normalized.nativeShotSignals.outcomeContextScore, 1.0)
 
     def test_shot_context_score_rewards_setup_and_outcome_around_boundary(self) -> None:
         complete_score, event_time = _shot_context_score_for_window(
