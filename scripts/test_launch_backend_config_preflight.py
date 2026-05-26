@@ -1,7 +1,13 @@
 import unittest
 from pathlib import Path
 
-from scripts.launch_backend_config_preflight import has_failures, run_checks, strip_jsonc_comments, summarize
+from scripts.launch_backend_config_preflight import (
+    REQUIRED_GPT_RERANK_SUBSTITUTIONS,
+    has_failures,
+    run_checks,
+    strip_jsonc_comments,
+    summarize,
+)
 
 
 class LaunchBackendConfigPreflightTests(unittest.TestCase):
@@ -32,6 +38,9 @@ class LaunchBackendConfigPreflightTests(unittest.TestCase):
         self.assertIn('"https://example.com/path//still-string"', cleaned)
         self.assertNotIn("comment before URL", cleaned)
         self.assertNotIn("block comment", cleaned)
+
+    def test_quality_beta_uses_full_shot_tracker_keyframe_default(self) -> None:
+        self.assertEqual(REQUIRED_GPT_RERANK_SUBSTITUTIONS["_AI_CLIP_GPT_KEYFRAMES_PER_CLIP"], "10")
 
 
 if __name__ == "__main__":

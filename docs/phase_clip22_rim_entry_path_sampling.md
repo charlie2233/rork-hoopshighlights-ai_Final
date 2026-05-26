@@ -14,7 +14,7 @@ Improve GPT-led clip selection by giving the model basketball-specific visual ev
 - Updated GPT keyframe sampling so the 10-frame quality path captures setup, release, early arc, late arc, rim approach, rim entry, and below-rim follow-through.
 - Updated GPT payload rules and strict schema so the model can cite dedicated rim-entry path roles.
 - Updated backend validation so, when dedicated rim-entry path frames are sampled, GPT must cite those specific roles instead of generic `finish` or broad rim/result proof.
-- Kept staging Cloud Build default `_AI_CLIP_GPT_KEYFRAMES_PER_CLIP=8` behind the existing launch gate; the richer 10-frame shot-tracker path is available only through an explicit quality-beta substitution override until live OpenAI/staging smoke proves it.
+- Historical note: this phase originally kept staging Cloud Build at `_AI_CLIP_GPT_KEYFRAMES_PER_CLIP=8` behind the launch gate. Phase Clip26 supersedes that conservative default and moves staging quality-beta to the full 10-frame shot-tracker path when GPT is enabled.
 
 ## Architecture
 
@@ -47,6 +47,6 @@ Improve GPT-led clip selection by giving the model basketball-specific visual ev
 ## Launch Notes
 
 - This is backend-only quality hardening and does not enable public cloud cutover.
-- Staging defaults remain conservative. Use an explicit deploy-time substitution override for `_AI_CLIP_GPT_KEYFRAMES_PER_CLIP=10` during quality-beta smoke.
+- Phase Clip26 updates staging defaults to `_AI_CLIP_GPT_KEYFRAMES_PER_CLIP=10` for quality-beta smoke while preserving the GPT/editor kill switches.
 - Existing GPT/editor kill switches and deterministic fallbacks still apply.
 - CI remains dependent on GitHub Actions being able to check out the repository.
