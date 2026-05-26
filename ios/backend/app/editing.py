@@ -1981,6 +1981,8 @@ def _caption_for(label: str, preset: EditPreset) -> str:
         return "FAST BREAK"
     if "dunk" in normalized:
         return "BIG FINISH"
+    if "attempt" in normalized and any(token in normalized for token in ("shot", "jumper", "three", "3pt", "layup")):
+        return "GOOD LOOK"
     if "shot" in normalized or "bucket" in normalized:
         return "BUCKET"
     if "defense" in normalized or "block" in normalized:

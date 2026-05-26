@@ -497,6 +497,20 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertEqual(job.status, "plan_ready")
         self.assertEqual([clip.clipId for clip in job.plan.clips], ["defense_stop"])
 
+    def test_deterministic_plan_does_not_caption_uncertain_shot_attempt_as_bucket(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=15,
+                clips=[_clip("uncertain_jump_shot", 12.0, "Shot Attempt", 0.82)],
+            )
+        )
+
+        plan = build_edit_plan(request, "edit_uncertain_shot_caption")
+
+        self.assertEqual([clip.clipId for clip in plan.clips], ["uncertain_jump_shot"])
+        self.assertEqual(plan.clips[0].caption, "GOOD LOOK")
+        self.assertNotEqual(plan.clips[0].caption, "BUCKET")
+
     def test_build_edit_plan_enforces_template_minimum_clip_length(self) -> None:
         request = CreateEditJobRequest(
             **_request_payload(
