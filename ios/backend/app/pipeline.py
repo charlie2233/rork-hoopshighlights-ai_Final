@@ -18,6 +18,10 @@ from .external_providers import detect_with_optional_external_provider, rerank_w
 from .models import CandidateWindow, CloudAnalysisResult, CloudDiagnostics, PipelineError, StoredJob, clamp
 
 
+NATIVE_SHOT_CONTEXT_TARGET_LEAD_SECONDS = 2.0
+NATIVE_SHOT_CONTEXT_TARGET_FOLLOW_THROUGH_SECONDS = 1.25
+
+
 def run_analysis(job: StoredJob, settings: Settings, source_path: Path) -> CloudAnalysisResult:
     started_at = perf_counter()
     if not source_path.exists():
@@ -199,21 +203,39 @@ def _build_candidate_windows(
         volatility = max(audio_score - audio_mean, 0.0)
         center = (time_cursor + end_time) / 2.0
         center_bias = 1.0 - abs((center / max(duration_seconds, 1.0)) - 0.5) * 1.35
-        transition_boost = 0.14 if any(abs(boundary - center) <= 1.2 for boundary in shot_boundaries) else 0.0
+        shot_context_score, shot_event_time = _shot_context_score_for_window(
+            start_time=time_cursor,
+            end_time=end_time,
+            center_time=center,
+            shot_boundaries=shot_boundaries,
+        )
+        center_transition_boost = 0.14 if any(abs(boundary - center) <= 1.2 for boundary in shot_boundaries) else 0.0
+        context_boost = 0.16 * shot_context_score
 
-        motion_score = clamp((audio_score * 0.65) + (volatility * 1.1) + (transition_boost * 0.75), 0.0, 1.0)
-        visual_score = clamp((audio_mean * 0.45) + (max(center_bias, 0.0) * 0.25) + transition_boost, 0.0, 1.0)
-        combined_score = clamp((audio_score * 0.42) + (motion_score * 0.34) + (visual_score * 0.24), 0.0, 1.0)
+        motion_score = clamp(
+            (audio_score * 0.65) + (volatility * 1.1) + (center_transition_boost * 0.75) + (context_boost * 0.55),
+            0.0,
+            1.0,
+        )
+        visual_score = clamp(
+            (audio_mean * 0.45) + (max(center_bias, 0.0) * 0.25) + center_transition_boost + context_boost,
+            0.0,
+            1.0,
+        )
+        baseline_score = clamp((audio_score * 0.42) + (motion_score * 0.34) + (visual_score * 0.24), 0.0, 1.0)
+        combined_score = clamp(baseline_score + (shot_context_score * 0.12), 0.0, 1.0)
+        peak_time = shot_event_time if shot_event_time is not None and shot_context_score >= 0.45 else center
 
         windows.append(
             CandidateWindow(
                 start_time=time_cursor,
                 end_time=end_time,
-                peak_time=center,
+                peak_time=peak_time,
                 audio_score=audio_score,
                 visual_score=visual_score,
                 motion_score=motion_score,
                 combined_score=combined_score,
+                event_context_score=shot_context_score,
             )
         )
 
@@ -224,6 +246,44 @@ def _build_candidate_windows(
         return segmented
 
     return sorted(windows, key=lambda item: item.combined_score, reverse=True)[: min(3, len(windows))]
+
+
+def _shot_context_score_for_window(
+    *,
+    start_time: float,
+    end_time: float,
+    center_time: float,
+    shot_boundaries: List[float],
+) -> tuple[float, float | None]:
+    best_score = 0.0
+    best_boundary: float | None = None
+    duration = max(end_time - start_time, 0.001)
+    half_duration = max(duration / 2.0, 0.001)
+
+    for boundary in shot_boundaries:
+        if boundary < start_time or boundary > end_time:
+            continue
+
+        lead_in = max(0.0, boundary - start_time)
+        follow_through = max(0.0, end_time - boundary)
+        if lead_in <= 0.0 or follow_through <= 0.0:
+            continue
+
+        lead_score = min(1.0, lead_in / NATIVE_SHOT_CONTEXT_TARGET_LEAD_SECONDS)
+        follow_score = min(1.0, follow_through / NATIVE_SHOT_CONTEXT_TARGET_FOLLOW_THROUGH_SECONDS)
+        balance_score = min(lead_in, follow_through) / max(lead_in, follow_through)
+        center_score = 1.0 - min(abs(boundary - center_time) / half_duration, 1.0)
+        score = (
+            (lead_score * 0.34)
+            + (follow_score * 0.3)
+            + (balance_score * 0.18)
+            + (center_score * 0.18)
+        )
+        if score > best_score:
+            best_score = score
+            best_boundary = boundary
+
+    return round(clamp(best_score, 0.0, 1.0), 4), best_boundary
 
 
 def _segment_with_hysteresis(windows: List[CandidateWindow], settings: Settings) -> List[CandidateWindow]:
@@ -253,9 +313,13 @@ def _segment_with_hysteresis(windows: List[CandidateWindow], settings: Settings)
 
 
 def _collapse_windows(group: List[CandidateWindow], settings: Settings) -> CandidateWindow:
-    start_time = max(group[0].start_time - settings.clip_padding_seconds, 0.0)
-    padded_end = group[-1].end_time + settings.clip_padding_seconds
-    max_end = max(group[-1].end_time, group[0].start_time + settings.max_clip_duration_seconds)
+    peak_window = max(group, key=lambda item: (item.event_context_score, item.combined_score))
+    anchor_window = peak_window if peak_window.event_context_score >= 0.45 else group[0]
+
+    start_time = max(anchor_window.start_time - settings.clip_padding_seconds, 0.0)
+    group_end = peak_window.end_time if peak_window.event_context_score >= 0.45 else group[-1].end_time
+    padded_end = group_end + settings.clip_padding_seconds
+    max_end = max(group_end, start_time + settings.max_clip_duration_seconds)
     end_time = min(padded_end, max_end)
     duration = end_time - start_time
 
@@ -264,7 +328,6 @@ def _collapse_windows(group: List[CandidateWindow], settings: Settings) -> Candi
     if end_time - start_time > settings.max_clip_duration_seconds:
         end_time = start_time + settings.max_clip_duration_seconds
 
-    peak_window = max(group, key=lambda item: item.combined_score)
     return CandidateWindow(
         start_time=start_time,
         end_time=end_time,
@@ -273,6 +336,7 @@ def _collapse_windows(group: List[CandidateWindow], settings: Settings) -> Candi
         visual_score=mean(item.visual_score for item in group),
         motion_score=max(item.motion_score for item in group),
         combined_score=max(item.combined_score for item in group),
+        event_context_score=max(item.event_context_score for item in group),
     )
 
 

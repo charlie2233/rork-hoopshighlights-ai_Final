@@ -139,6 +139,7 @@ class CandidateWindow:
     visual_score: float
     motion_score: float
     combined_score: float
+    event_context_score: float = 0.0
 
 
 @dataclass

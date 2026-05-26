@@ -36,6 +36,11 @@ Improve GPT-led HoopClips highlight selection quality with a bias toward basketb
   - this prevents the ordinary selector from dropping a real make just because the upstream candidate window was too tight or started right before the basket
 - Added an ordinary/non-GPT selector guard so shot-like clips also need minimum setup and follow-through context when GPT is disabled or falls back.
 - Ranked deterministic backend candidates by plan eligibility and shot-context quality before raw planning/watchability/excitement scores, so a complete play beats a tiny or late pre-basket window even when the thin clip has a higher model score.
+- Added native cloud-analysis shot-context scoring before GPT handoff:
+  - candidate windows now score whether a known shot/event boundary includes lead-in, event visibility, and follow-through
+  - baseline audio/motion scoring remains intact for ordinary high-energy moments
+  - shot-like merged candidate groups anchor around the best complete event-context window instead of the earliest noisy pre-event slice
+  - complete shot-context candidates can beat later audio-only aftermath spikes before GPT ever sees the pool
 - Hardened final deterministic render-window construction:
   - shot-like planned source windows are clamped so GPT edit suggestions cannot shift the rendered clip too far after the event
   - `validate_edit_plan` now rejects shot render windows that lack setup before the event or outcome context after it
@@ -202,6 +207,27 @@ PR #10 CI after commit `0177890846230ccef9570e30349b09e7fb77096f`:
 - iOS Internal TestFlight Upload run `26431727445`:
   - No-secret internal staging codecheck: success, job `77806149212`.
   - Build internal staging TestFlight archive: skipped on this PR path, job `77806159114`.
+
+Additional validation before native shot-context candidate commit:
+
+```sh
+python3 -m py_compile ios/backend/app/models.py ios/backend/app/pipeline.py ios/backend/tests/test_pipeline_quality.py
+PYTHONPATH=ios/backend /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest ios.backend.tests.test_pipeline_quality -v
+PYTHONPATH=ios/backend /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest discover ios/backend/tests -v
+PYTHONPATH=ios/backend:services/editing /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest services.editing.tests.test_gpt_reranker ios.backend.tests.test_edit_plan_agent -v
+PYTHONPATH=ios/backend:services/editing /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest discover services/editing/tests -v
+git diff --check
+```
+
+Results:
+
+- Python compile: passed.
+- New native shot-context focused suite: 2 tests passed.
+- iOS backend Python discovery: 56 tests passed.
+- GPT reranker + edit-plan focused suite: 62 tests passed.
+- Services editing discovery: 60 tests passed.
+- `git diff --check`: passed.
+- Added a native candidate regression where a complete shot-context window beats a separated later audio spike, while ordinary audio/motion scoring remains strong enough to keep non-shot high-energy windows in the pool.
 
 ## Launch Recommendations
 
