@@ -912,7 +912,7 @@ class EditPlanAgentTests(unittest.TestCase):
                 orderedClipIds=["c4", "c1", "c3"],
                 pacing="fast",
                 captions=[GPTPlanEditCaption(clipId="c1", caption="RUNOUT!", captionMoment=3.2)],
-                slowMotionMoments=[GPTPlanEditSlowMotionMoment(clipId="c3", center=15.1, speed=0.55)],
+                slowMotionMoments=[GPTPlanEditSlowMotionMoment(clipId="c3", center=13.2, speed=0.55)],
                 summary="Open with the make, then speed, then peak.",
             ),
         )
@@ -925,7 +925,8 @@ class EditPlanAgentTests(unittest.TestCase):
         c3 = next(clip for clip in plan.clips if clip.clipId == "c3")
         self.assertEqual(c1.caption, "RUNOUT!")
         self.assertEqual(c1.captionMoment, 3.2)
-        self.assertTrue(any(effect.type == "slow_motion" for effect in c3.effects))
+        slow_motion = next(effect for effect in c3.effects if effect.type == "slow_motion")
+        self.assertAlmostEqual(((slow_motion.sourceStart or 0.0) + (slow_motion.sourceEnd or 0.0)) / 2.0, 13.2, delta=0.05)
 
     def test_gpt_plan_edit_ignores_invalid_clip_references(self) -> None:
         request = CreateEditJobRequest(**_request_payload(targetDurationSeconds=45))

@@ -1930,9 +1930,12 @@ def _effects_for(clip: EditCandidateClip, source_start: float, source_end: float
         effects.append(EditPlanEffect(type="punch_zoom", at=event_center, strength=0.18))
 
     if preset.slowMotionIntensity in {"high", "medium", "low_medium"}:
+        slow_center = event_center
+        if clip.suggestedSlowMotion and clip.suggestedSlowMotionCenter is not None:
+            slow_center = min(max(clip.suggestedSlowMotionCenter, source_start), source_end)
         half_window = 0.6 if preset.slowMotionIntensity == "high" else 0.45
-        slow_start = max(source_start, event_center - half_window)
-        slow_end = min(source_end, event_center + half_window)
+        slow_start = max(source_start, slow_center - half_window)
+        slow_end = min(source_end, slow_center + half_window)
         if slow_end - slow_start >= 0.5:
             speed = 0.5 if preset.slowMotionIntensity == "high" else 0.65
             effects.append(

@@ -441,6 +441,23 @@ Results:
 - Added story-aware short-reel planning so explicit GPT opener/closer choices survive duration cutoff before rank-fill, instead of being dropped before GPT order is applied.
 - Added hard rejection for shot-like external/provider clips that lack enough event-center context, preventing high-scored provider "made shot" windows from entering the cloud candidate pool without setup/outcome proof.
 
+Additional validation before GPT slow-motion-center commit:
+
+```sh
+python3 -m py_compile ios/backend/app/editing.py ios/backend/tests/test_edit_plan_agent.py
+PYTHONPATH=ios/backend:services/editing /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest ios.backend.tests.test_edit_plan_agent.EditPlanAgentTests.test_gpt_plan_edit_controls_order_captions_and_slow_motion ios.backend.tests.test_edit_plan_agent.EditPlanAgentTests.test_validator_rejects_slow_motion_outside_clip_bounds -v
+PYTHONPATH=ios/backend:services/editing /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest ios.backend.tests.test_edit_plan_agent services.editing.tests.test_editing_service -v
+git diff --check
+```
+
+Results:
+
+- Python compile: passed.
+- GPT slow-motion-center focused checks: 2 tests passed.
+- Edit-plan agent + editing-service suite: 84 tests passed.
+- `git diff --check`: passed.
+- GPT plan-edit slow-motion centers now drive the deterministic slow-motion effect even on templates that already add default slow motion around the event center.
+
 ## Launch Recommendations
 
 - Deploy this branch to staging only after the Cloudflare/GCP deploy secret blockers are cleared.
