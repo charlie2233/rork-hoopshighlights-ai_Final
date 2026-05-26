@@ -9,6 +9,10 @@ from .config import Settings
 from .models import CloudClip, clamp
 
 
+MIN_EXTERNAL_SHOT_LEAD_IN_SECONDS = 2.0
+MIN_EXTERNAL_SHOT_FOLLOW_THROUGH_SECONDS = 1.25
+
+
 def detect_with_optional_external_provider(
     source_path: Path,
     duration_seconds: float,
@@ -123,6 +127,18 @@ def parse_external_clips_from_payload(
         if end <= start:
             continue
 
+        event_center = _coerce_optional_event_center(item, duration_seconds)
+        label = str(item.get("label") or "Highlight")
+        action = str(item.get("action") or item.get("label") or "Highlight")
+        start, end = _expand_shot_window_for_event_context(
+            start,
+            end,
+            event_center,
+            label,
+            duration_seconds=duration_seconds,
+            max_clip_duration=max_clip_duration,
+        )
+
         if end - start > max_clip_duration:
             end = min(duration_seconds, start + max_clip_duration)
         if end <= start:
@@ -131,9 +147,10 @@ def parse_external_clips_from_payload(
         clip_payload = {
             "startTime": round(start, 3),
             "endTime": round(end, 3),
+            "eventCenter": round(event_center, 3) if event_center is not None else None,
             "confidence": round(clamp(_coerce_float(item.get("confidence"), 0.68), 0.35, 0.99), 4),
-            "label": str(item.get("label") or "Highlight"),
-            "action": str(item.get("action") or item.get("label") or "Highlight"),
+            "label": label,
+            "action": action,
             "audioScore": round(clamp(_coerce_float(item.get("audioScore"), 0.45), 0.0, 1.0), 4),
             "visualScore": round(clamp(_coerce_float(item.get("visualScore"), 0.7), 0.0, 1.0), 4),
             "motionScore": round(clamp(_coerce_float(item.get("motionScore"), 0.72), 0.0, 1.0), 4),
@@ -160,6 +177,7 @@ def apply_autohighlight_boosts(clips: Sequence[CloudClip], boosts: Sequence[floa
             CloudClip(
                 startTime=clip.startTime,
                 endTime=clip.endTime,
+                eventCenter=clip.eventCenter,
                 confidence=confidence,
                 label=clip.label,
                 action=clip.action,
@@ -175,6 +193,48 @@ def apply_autohighlight_boosts(clips: Sequence[CloudClip], boosts: Sequence[floa
 
     boosted.sort(key=lambda clip: clip.combinedScore, reverse=True)
     return boosted
+
+
+def _coerce_optional_event_center(item: dict, duration_seconds: float) -> float | None:
+    for key in ("eventCenter", "eventTime", "peakTime", "shotTime"):
+        value = item.get(key)
+        try:
+            event_center = float(value)
+        except (TypeError, ValueError):
+            continue
+        return clamp(event_center, 0.0, duration_seconds)
+    return None
+
+
+def _expand_shot_window_for_event_context(
+    start: float,
+    end: float,
+    event_center: float | None,
+    label: str,
+    *,
+    duration_seconds: float,
+    max_clip_duration: float,
+) -> tuple[float, float]:
+    if event_center is None or not _is_shot_like_label(label):
+        return start, end
+
+    expanded_start = max(0.0, min(start, event_center - MIN_EXTERNAL_SHOT_LEAD_IN_SECONDS))
+    expanded_end = min(duration_seconds, max(end, event_center + MIN_EXTERNAL_SHOT_FOLLOW_THROUGH_SECONDS))
+    if expanded_end - expanded_start <= max_clip_duration:
+        return expanded_start, expanded_end
+
+    preferred_lead = min(max_clip_duration * 0.68, max_clip_duration - MIN_EXTERNAL_SHOT_FOLLOW_THROUGH_SECONDS)
+    expanded_start = max(0.0, event_center - preferred_lead)
+    expanded_end = min(duration_seconds, expanded_start + max_clip_duration)
+    if expanded_end < event_center + MIN_EXTERNAL_SHOT_FOLLOW_THROUGH_SECONDS:
+        expanded_end = min(duration_seconds, event_center + MIN_EXTERNAL_SHOT_FOLLOW_THROUGH_SECONDS)
+        expanded_start = max(0.0, expanded_end - max_clip_duration)
+    return expanded_start, expanded_end
+
+
+def _is_shot_like_label(label: str) -> bool:
+    normalized = label.strip().lower()
+    return any(token in normalized for token in ("shot", "bucket", "basket", "layup", "dunk", "finish", "jumper", "three", "3pt"))
 
 
 def _dedupe_external_clips(clips: Sequence[CloudClip]) -> list[CloudClip]:

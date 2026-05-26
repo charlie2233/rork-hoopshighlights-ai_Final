@@ -59,6 +59,7 @@ class StartCloudAnalysisJobResponse(APIModel):
 class CloudClip(APIModel):
     startTime: float
     endTime: float
+    eventCenter: Optional[float] = None
     confidence: float
     label: str
     action: str

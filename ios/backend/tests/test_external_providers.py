@@ -50,6 +50,38 @@ class ExternalProviderTests(unittest.TestCase):
         self.assertAlmostEqual(clips[0].endTime - clips[0].startTime, 8.0)
         self.assertEqual(clips[0].label, "Made Shot")
 
+    def test_parse_external_shot_clip_expands_around_provider_event_center(self) -> None:
+        payload = {
+            "clips": [
+                {
+                    "startTime": 10.2,
+                    "endTime": 10.4,
+                    "eventCenter": 10.0,
+                    "confidence": 0.91,
+                    "label": "Made Shot",
+                    "action": "Made Shot",
+                    "audioScore": 0.6,
+                    "visualScore": 0.9,
+                    "motionScore": 0.8,
+                    "combinedScore": 0.94,
+                    "shouldAutoKeep": True,
+                    "shouldEnableSlowMotion": False,
+                }
+            ]
+        }
+
+        clips = parse_external_clips_from_payload(
+            payload,
+            duration_seconds=60.0,
+            max_clip_duration=8.0,
+            clip_limit=8,
+        )
+
+        self.assertEqual(len(clips), 1)
+        self.assertEqual(clips[0].eventCenter, 10.0)
+        self.assertLessEqual(clips[0].startTime, 8.0)
+        self.assertGreaterEqual(clips[0].endTime, 11.25)
+
     def test_apply_autohighlight_boosts_updates_scores(self) -> None:
         clips = [
             CloudClip(

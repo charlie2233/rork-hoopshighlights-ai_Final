@@ -356,7 +356,8 @@ final class HighlightsViewModel {
         }
 
         let candidates = keptClips.prefix(30).map { clip in
-            let center = max(clip.startTime, min(clip.endTime, clip.startTime + (clip.duration / 2.0)))
+            let inferredCenter = clip.startTime + (clip.duration / 2.0)
+            let center = max(clip.startTime, min(clip.endTime, clip.eventCenter ?? inferredCenter))
             return CloudEditCandidateClip(
                 id: clip.id.uuidString,
                 start: clip.startTime,

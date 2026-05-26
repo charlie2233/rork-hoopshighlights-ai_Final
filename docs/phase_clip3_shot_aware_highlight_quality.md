@@ -27,6 +27,8 @@ Improve GPT-led HoopClips highlight selection quality with a bias toward basketb
 - Added a shot-keyframe completeness gate before the GPT call. With quality-beta sampling, shot-like candidates must have setup, release, outcome, and rim keyframes extracted successfully before they can be sent to GPT.
 - The GPT path now drops only the shot candidates missing those richer context frames and continues with remaining complete candidates instead of falling all the way back when at least one usable candidate remains.
 - Made duplicate-group selection quality-aware so a higher-scored late/pre-basket duplicate cannot hide the lower-scored full-context duplicate that should actually render.
+- Preserved cloud-owned event centers through analysis, provider adapters, iOS cloud analysis decoding, clip persistence, and cloud edit requests so GPT keyframes sample around the actual shot/peak instead of the clip midpoint.
+- Expanded tight or offset shot-like provider windows around provider `eventCenter`/`eventTime`/`peakTime`/`shotTime` with setup and follow-through context before iOS ever sees the candidate.
 - Added `qualityHints` to the compact GPT payload so the model sees timing-window expectations without receiving full video.
 - Added strict GPT `qualitySignals` output:
   - `setupVisible`
@@ -56,7 +58,7 @@ Improve GPT-led HoopClips highlight selection quality with a bias toward basketb
 - GPT cannot invent clip IDs or exact timestamps.
 - GPT is not asked to judge made-shot quality from only generic start/event/finish frames when richer shot-context roles are configured.
 - Backend validators still produce and repair deterministic `EditPlan` JSON before rendering.
-- iOS is unchanged; it remains a control surface for upload, status, preview, download, share, and user commands.
+- iOS remains a control surface for upload, status, preview, download, share, and user commands. The only iOS-side addition is preserving and forwarding non-secret cloud clip metadata (`eventCenter`) into the cloud edit request.
 
 ## Cost Notes
 
@@ -86,23 +88,30 @@ Commands run:
 
 ```sh
 python3 -m py_compile ios/backend/app/editing.py services/editing/editing_app/gpt_reranker.py scripts/launch_backend_config_preflight.py services/editing/tests/test_gpt_reranker.py ios/backend/tests/test_edit_plan_agent.py
+python3 -m py_compile ios/backend/app/models.py ios/backend/app/classifier.py ios/backend/app/external_providers.py ios/backend/scripts/run_hoopcut_adapter.py ios/backend/tests/test_external_providers.py
+PYTHONPATH=ios/backend /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest ios.backend.tests.test_external_providers -v
 PYTHONPATH=ios/backend:services/editing /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest services.editing.tests.test_gpt_reranker ios.backend.tests.test_edit_plan_agent -v
 PYTHONPATH=ios/backend:services/editing /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest services.editing.tests.test_editing_service -v
 PYTHONPATH=ios/backend /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest discover ios/backend/tests -v
 PYTHONPATH=ios/backend:services/editing /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest discover services/editing/tests -v
 python3 -m unittest discover -s scripts -p 'test_*.py' -v
 python3 scripts/launch_backend_config_preflight.py
+xcodebuild -project ios/HoopsClips.xcodeproj -scheme HoopsClips -configuration Debug -destination 'platform=iOS Simulator,id=7ECBD8FA-B0A2-4C3B-9A5C-EB73D19B99F2' -derivedDataPath build/XcodeDerivedDataBuildForTestingAfterEventCenter -resultBundlePath build/HoopsClipsBuildForTestingAfterEventCenter.xcresult -skipPackagePluginValidation -skipMacroValidation build-for-testing -quiet
+xcodebuild -project ios/HoopsClips.xcodeproj -scheme HoopsClips -configuration Debug -destination 'platform=iOS Simulator,id=7ECBD8FA-B0A2-4C3B-9A5C-EB73D19B99F2' -derivedDataPath build/XcodeDerivedDataBuildForTestingAfterEventCenter -resultBundlePath build/HoopsClipsTestsAfterEventCenter.xcresult -skipPackagePluginValidation -skipMacroValidation test-without-building -quiet
 ```
 
 Results:
 
 - Python compile: passed.
+- External provider focused suite: 3 tests passed, including tight shot-window expansion around provider event center.
 - GPT reranker + edit-plan focused suite: 54 tests passed.
 - Editing service focused suite: 37 tests passed, including local FFmpeg render/revision/download-history paths.
-- iOS backend Python discovery: 47 tests passed.
+- iOS backend Python discovery: 48 tests passed.
 - Services editing discovery: 57 tests passed.
 - Scripts discovery: 34 tests passed.
 - Launch backend config preflight: `pass=63 warn=12 fail=0`.
+- iOS Debug `build-for-testing`: passed on iPhone 17 Pro simulator, iOS 26.0.1. Remaining warnings are the existing Swift concurrency/deprecation backlog outside the event-center handoff.
+- iOS simulator tests: passed on iPhone 17 Pro simulator, iOS 26.0.1. Xcode result summary: `70` total tests, `67` passed, `3` skipped, `0` failed.
 
 PR #10 CI after commit `0177890846230ccef9570e30349b09e7fb77096f`:
 

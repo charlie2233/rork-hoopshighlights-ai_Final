@@ -129,6 +129,7 @@ def _build_clips(
             {
                 "startTime": round(start, 3),
                 "endTime": round(end, 3),
+                "eventCenter": round(shot_time, 3),
                 "confidence": round(confidence, 4),
                 "label": label,
                 "action": label,

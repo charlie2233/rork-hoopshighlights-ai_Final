@@ -23,6 +23,7 @@ def classify_window(window: CandidateWindow) -> CloudClip:
     return CloudClip(
         startTime=round(window.start_time, 3),
         endTime=round(window.end_time, 3),
+        eventCenter=round(window.peak_time, 3),
         confidence=round(confidence, 4),
         label=label,
         action=label,

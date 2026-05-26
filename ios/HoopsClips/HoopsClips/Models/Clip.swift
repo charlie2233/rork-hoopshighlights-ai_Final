@@ -1,9 +1,10 @@
 import Foundation
 
-struct Clip: Identifiable, Codable, Sendable {
+nonisolated struct Clip: Identifiable, Codable, Sendable {
     let id: UUID
     var startTime: Double
     var endTime: Double
+    var eventCenter: Double?
     var action: HighlightAction
     var confidence: Double
     var isKept: Bool
@@ -32,6 +33,7 @@ struct Clip: Identifiable, Codable, Sendable {
         id: UUID = UUID(),
         startTime: Double,
         endTime: Double,
+        eventCenter: Double? = nil,
         action: HighlightAction = .unknown,
         confidence: Double = 0.0,
         isKept: Bool = true,
@@ -47,6 +49,7 @@ struct Clip: Identifiable, Codable, Sendable {
         self.id = id
         self.startTime = startTime
         self.endTime = endTime
+        self.eventCenter = eventCenter
         self.action = action
         self.confidence = confidence
         self.isKept = isKept

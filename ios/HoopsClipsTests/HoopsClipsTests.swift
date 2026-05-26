@@ -367,6 +367,7 @@ struct HoopsClipsTests {
         let cloudClip = CloudClip(
             startTime: 12.5,
             endTime: 17.0,
+            eventCenter: 15.2,
             confidence: 0.91,
             label: "Dunk",
             action: "Dunk",
@@ -386,6 +387,7 @@ struct HoopsClipsTests {
         #expect(mapped.isKept)
         #expect(mapped.isSlowMotionEnabled)
         #expect(abs(mapped.duration - 4.5) < 0.001)
+        #expect(mapped.eventCenter == 15.2)
     }
 
     @Test func testCloudJobResponseDecodesNestedResults() throws {
@@ -404,6 +406,7 @@ struct HoopsClipsTests {
               {
                 "startTime": 1.2,
                 "endTime": 4.6,
+                "eventCenter": 3.8,
                 "confidence": 0.88,
                 "label": "Three Pointer",
                 "action": "Three Pointer",
@@ -434,6 +437,7 @@ struct HoopsClipsTests {
         #expect(response.status == "succeeded")
         #expect(response.results?.clipCount == 1)
         #expect(response.results?.clips.first?.label == "Three Pointer")
+        #expect(response.results?.clips.first?.eventCenter == 3.8)
         #expect(response.results?.diagnostics.backendModelVersion == "cloud-v1")
     }
 
@@ -660,6 +664,7 @@ struct HoopsClipsTests {
                 CloudClip(
                     startTime: 0.0,
                     endTime: 8.0,
+                    eventCenter: nil,
                     confidence: 0.92,
                     label: "Dunk",
                     action: "Dunk",
@@ -674,6 +679,7 @@ struct HoopsClipsTests {
                 CloudClip(
                     startTime: 12.0,
                     endTime: 20.0,
+                    eventCenter: nil,
                     confidence: 0.88,
                     label: "Three Pointer",
                     action: "Three Pointer",
@@ -688,6 +694,7 @@ struct HoopsClipsTests {
                 CloudClip(
                     startTime: 24.0,
                     endTime: 32.0,
+                    eventCenter: nil,
                     confidence: 0.84,
                     label: "Made Shot",
                     action: "Made Shot",
