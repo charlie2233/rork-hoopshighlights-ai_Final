@@ -374,6 +374,25 @@ class PipelineQualityTests(unittest.TestCase):
 
         self.assertEqual(boundaries, [10.0])
 
+    def test_visual_event_detector_prefers_rim_result_over_release_spike_with_follow_through(self) -> None:
+        audio_profile = [0.08] * 40
+        for index in range(18, 22):
+            audio_profile[index] = 0.62
+        frame_signals = [
+            (8.5, 0.2, 0.34, 0.22),
+            (9.5, 0.82, 0.95, 0.8),
+            (10.0, 0.55, 0.72, 0.58),
+            (10.5, 0.36, 0.45, 0.35),
+        ]
+
+        boundaries = _visual_event_boundaries_from_signals(
+            frame_signals,
+            audio_profile,
+            duration_seconds=20.0,
+        )
+
+        self.assertEqual(boundaries, [10.0])
+
     def test_visual_event_detector_does_not_shift_to_dead_aftermath(self) -> None:
         audio_profile = [0.08] * 40
         for index in range(18, 22):
