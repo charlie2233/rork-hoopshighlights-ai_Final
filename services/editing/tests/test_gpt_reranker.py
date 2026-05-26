@@ -1801,9 +1801,9 @@ class GPTHighlightRerankerTests(unittest.TestCase):
     def test_sampling_reserves_buried_defensive_candidates_for_gpt_review(self) -> None:
         scoring_clips = [_clip(f"make_{index}", float(index * 7), 0.99 - (index * 0.001)) for index in range(27)]
         defensive_clips = [
+            {**_clip("late_block", 222.0, 0.69), "label": "Block"},
             {**_clip("late_steal", 230.0, 0.68), "label": "Steal"},
             {**_clip("late_stop", 238.0, 0.66), "label": "Defensive Stop"},
-            {**_clip("late_forced_turnover", 246.0, 0.64), "label": "Forced Turnover"},
         ]
         request = CreateEditJobRequest(
             videoId="video_defense_pool",
@@ -1824,9 +1824,9 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         sampled_ids = [clip.id for clip in sampled]
 
         self.assertEqual(len(sampled), 20)
+        self.assertIn("late_block", sampled_ids)
         self.assertIn("late_steal", sampled_ids)
         self.assertIn("late_stop", sampled_ids)
-        self.assertIn("late_forced_turnover", sampled_ids)
         self.assertLess(len([clip_id for clip_id in sampled_ids if clip_id.startswith("make_")]), 20)
 
     def test_defensive_candidates_use_possession_change_keyframes(self) -> None:
@@ -1846,6 +1846,24 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertIn("challenge", roles)
         self.assertIn("possessionChange", roles)
         self.assertIn("recovery", roles)
+        self.assertIn("defenseOutcome", roles)
+        self.assertNotIn("shotArcEarly", roles)
+        self.assertNotIn("rimEntry", roles)
+
+    def test_block_candidates_use_defensive_challenge_keyframes(self) -> None:
+        request = CreateEditJobRequest(
+            videoId="video_block_roles",
+            analysisJobId="analysis_block_roles",
+            installId="install-123",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="free",
+            clips=[{**_clip("block", 10.0, 0.86), "label": "Block"}],
+        )
+
+        roles = [role for role, _ in gpt_reranker._sample_times_for_clip(request.clips[0], 10)]
+
+        self.assertIn("challenge", roles)
         self.assertIn("defenseOutcome", roles)
         self.assertNotIn("shotArcEarly", roles)
         self.assertNotIn("rimEntry", roles)
@@ -1930,6 +1948,86 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertEqual(rejected.clips, [])
         self.assertEqual(rejected.gptRerankSummary.rejectedReasonCounts["missing_defensive_possession_change_frame"], 1)
         self.assertEqual([clip.id for clip in kept.clips], ["steal"])
+
+    def test_blocked_keep_requires_sampled_challenge_and_outcome_roles(self) -> None:
+        request = CreateEditJobRequest(
+            videoId="video_block_validation",
+            analysisJobId="analysis_block_validation",
+            installId="install-123",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="free",
+            clips=[{**_clip("block", 10.0, 0.86), "label": "Block"}],
+        )
+        sampled_roles = ["start", "eventCenter", "finish", "challenge", "defenseOutcome"]
+        weak_decision = GPTHighlightClipDecision(
+            clipId="block",
+            keep=True,
+            highlightScore=0.88,
+            watchabilityScore=0.82,
+            basketballEvent="Block",
+            outcome="blocked",
+            caption="LOCKDOWN",
+            reason="GPT says the shot was blocked but omits the challenge frame.",
+            qualitySignals=_quality_signals(
+                releaseVisible=False,
+                shotArcVisible=False,
+                reason="The block event and outcome are visible.",
+            ),
+            shotResultEvidence=_shot_result_evidence(
+                releaseToRimContinuity="partial",
+                rimResultEvidence="blocked",
+                outcomeConfidence=0.82,
+                rimEntrySequence="blocked",
+                ballApproachFrameRole=None,
+                rimEntryFrameRole=None,
+                ballBelowRimOrNetFrameRole=None,
+                rimEntrySequenceConfidence=0.0,
+            ),
+            shotTrackingEvidence=_shot_tracking_evidence(
+                ballVisibleFrameRoles=["eventCenter"],
+                rimVisibleFrameRoles=[],
+                releaseFrameRole=None,
+                resultFrameRole=None,
+                ballEntersRimFrameRole=None,
+                trajectoryContinuity="partial",
+            ),
+            suggestedEdit=GPTHighlightSuggestedEdit(cropFocus="ball"),
+        )
+        complete_decision = GPTHighlightClipDecision(
+            **{
+                **weak_decision.model_dump(mode="json"),
+                "shotTrackingEvidence": _shot_tracking_evidence(
+                    ballVisibleFrameRoles=["challenge", "defenseOutcome"],
+                    rimVisibleFrameRoles=[],
+                    releaseFrameRole=None,
+                    resultFrameRole="defenseOutcome",
+                    ballEntersRimFrameRole=None,
+                    trajectoryContinuity="partial",
+                ),
+            }
+        )
+
+        rejected = apply_gpt_highlight_rerank(
+            request,
+            [weak_decision],
+            "gpt-test",
+            1,
+            len(sampled_roles),
+            sampled_frame_roles_by_clip={"block": sampled_roles},
+        )
+        kept = apply_gpt_highlight_rerank(
+            request,
+            [complete_decision],
+            "gpt-test",
+            1,
+            len(sampled_roles),
+            sampled_frame_roles_by_clip={"block": sampled_roles},
+        )
+
+        self.assertEqual(rejected.clips, [])
+        self.assertEqual(rejected.gptRerankSummary.rejectedReasonCounts["missing_block_challenge_frame"], 1)
+        self.assertEqual([clip.id for clip in kept.clips], ["block"])
 
     def test_free_and_pro_sampling_limits(self) -> None:
         settings = GPTHighlightRerankerSettings.from_env()

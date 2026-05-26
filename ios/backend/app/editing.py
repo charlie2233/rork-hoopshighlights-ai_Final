@@ -2761,6 +2761,10 @@ def _gpt_decision_rejection_reason(
         if result_evidence.outcomeConfidence < 0.65:
             return "low_shot_result_confidence"
     if decision.outcome == "blocked":
+        if sampled_frame_roles is not None:
+            blocked_role_rejection = _blocked_sampled_tracking_rejection_reason(tracking_evidence, sampled_frame_roles)
+            if blocked_role_rejection is not None:
+                return blocked_role_rejection
         if result_evidence.rimResultEvidence != "blocked":
             return "blocked_outcome_not_visible"
         if result_evidence.outcomeConfidence < 0.65:
@@ -2830,6 +2834,25 @@ def _defensive_sampled_tracking_rejection_reason(
         return "missing_defensive_possession_change_frame"
     if sampled_roles & {"recovery", "defenseOutcome"} and not (cited_roles & DEFENSIVE_TRACKING_RESULT_ROLES):
         return "missing_defensive_outcome_frame"
+    return None
+
+
+def _blocked_sampled_tracking_rejection_reason(
+    tracking_evidence: GPTShotTrackingEvidence,
+    sampled_frame_roles: Sequence[str],
+) -> Optional[str]:
+    sampled_roles = set(sampled_frame_roles)
+    cited_roles = set(tracking_evidence.ballVisibleFrameRoles)
+    for role in (tracking_evidence.resultFrameRole, tracking_evidence.ballEntersRimFrameRole):
+        if role is not None:
+            cited_roles.add(role)
+    unsampled_roles = (cited_roles & DEFENSIVE_TRACKING_EVENT_ROLES) - sampled_roles
+    if unsampled_roles:
+        return "gpt_cited_unsampled_frame_role"
+    if "challenge" in sampled_roles and "challenge" not in cited_roles:
+        return "missing_block_challenge_frame"
+    if sampled_roles & {"recovery", "defenseOutcome"} and not (cited_roles & {"recovery", "defenseOutcome", "finish"}):
+        return "missing_block_outcome_frame"
     return None
 
 

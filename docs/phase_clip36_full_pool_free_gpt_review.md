@@ -11,10 +11,11 @@ Improve HoopClips highlight quality during internal beta by letting Free users g
 - GPT calls now default to `45s` timeout and `6000` output tokens so the full candidate pool can return strict JSON decisions, captions, story order, slow-motion suggestions, and plan edit hints.
 - GPT sampling is now recall-balanced when the eligible pool is larger than the GPT cap:
   - selected-team uncertain clips reserve review slots instead of being crowded out by high-scoring makes
-  - steals, forced turnovers, defensive stops, pressure/lockdown moments, and other defensive labels reserve review slots
+  - blocks, steals, forced turnovers, defensive stops, pressure/lockdown moments, and other defensive labels reserve review slots
   - defense-focused prompts and team/coach templates reserve a larger defensive slice
-- Defensive non-shot clips now sample defensive keyframe roles (`defenseSetup`, `challenge`, `possessionChange`, `recovery`, `defenseOutcome`) instead of shot-arc/rim roles.
+- Defensive non-shot clips, including standalone `Block` labels, now sample defensive keyframe roles (`defenseSetup`, `challenge`, `possessionChange`, `recovery`, `defenseOutcome`) instead of shot-arc/rim roles.
 - Backend validation rejects defensive GPT keeps that cite unsampled defensive roles or omit sampled `possessionChange`/outcome evidence.
+- Backend validation also rejects blocked-shot keeps that omit sampled `challenge`/blocked-outcome evidence.
 - Staging Cloud Build explicitly sets:
   - `HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_FREE=30`
   - `HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_PRO=30`
@@ -33,11 +34,11 @@ Improve HoopClips highlight quality during internal beta by letting Free users g
 
 Run on branch `codex/phase-clip28-cloud-team-quick-scan`:
 
-- `PYTHONPATH=services/editing:ios/backend /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest services.editing.tests.test_gpt_reranker.GPTHighlightRerankerTests.test_sampling_reserves_buried_defensive_candidates_for_gpt_review services.editing.tests.test_gpt_reranker.GPTHighlightRerankerTests.test_defensive_candidates_use_possession_change_keyframes services.editing.tests.test_gpt_reranker.GPTHighlightRerankerTests.test_defensive_keep_requires_sampled_possession_change_roles services.editing.tests.test_gpt_reranker.GPTHighlightRerankerTests.test_free_and_pro_sampling_limits services.editing.tests.test_gpt_reranker.GPTHighlightRerankerTests.test_free_sampling_reviews_full_analysis_pool_by_default services.editing.tests.test_gpt_reranker.GPTHighlightRerankerTests.test_free_sampling_candidate_cap_is_generous_but_bounded -v`
+- `PYTHONPATH=services/editing:ios/backend /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest services.editing.tests.test_gpt_reranker.GPTHighlightRerankerTests.test_sampling_reserves_buried_defensive_candidates_for_gpt_review services.editing.tests.test_gpt_reranker.GPTHighlightRerankerTests.test_defensive_candidates_use_possession_change_keyframes services.editing.tests.test_gpt_reranker.GPTHighlightRerankerTests.test_block_candidates_use_defensive_challenge_keyframes services.editing.tests.test_gpt_reranker.GPTHighlightRerankerTests.test_defensive_keep_requires_sampled_possession_change_roles services.editing.tests.test_gpt_reranker.GPTHighlightRerankerTests.test_blocked_keep_requires_sampled_challenge_and_outcome_roles services.editing.tests.test_gpt_reranker.GPTHighlightRerankerTests.test_free_and_pro_sampling_limits services.editing.tests.test_gpt_reranker.GPTHighlightRerankerTests.test_free_sampling_reviews_full_analysis_pool_by_default services.editing.tests.test_gpt_reranker.GPTHighlightRerankerTests.test_free_sampling_candidate_cap_is_generous_but_bounded -v`
 - `python3 -m unittest scripts.test_launch_backend_config_preflight.LaunchBackendConfigPreflightTests.test_quality_beta_uses_full_shot_tracker_keyframe_default -v`
 - `PYTHONPATH=services/editing:ios/backend /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m py_compile services/editing/editing_app/gpt_reranker.py services/editing/tests/test_gpt_reranker.py scripts/launch_backend_config_preflight.py scripts/test_launch_backend_config_preflight.py`
 - `git diff --check`
-- `PYTHONPATH=services/editing:ios/backend /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest discover services/editing/tests -v` -> 82 passed
+- `PYTHONPATH=services/editing:ios/backend /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest discover services/editing/tests -v` -> 84 passed
 - `PYTHONPATH=ios/backend /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest discover ios/backend/tests -v` -> 118 passed
 - `python3 -m unittest discover -s scripts -p 'test_*.py' -v` -> 39 passed
 
