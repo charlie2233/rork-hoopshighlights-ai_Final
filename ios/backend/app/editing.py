@@ -80,6 +80,10 @@ RevisionCommand = Literal[
 EDIT_PLAN_VERSION = "edit-plan-v1"
 RENDER_MODE = "cloud_ffmpeg"
 MIN_PLAN_CLIP_SECONDS = 2.0
+MIN_GPT_HIGHLIGHT_SCORE = 0.55
+MIN_GPT_WATCHABILITY_SCORE = 0.5
+MIN_SHOT_CONTEXT_LEAD_IN_SECONDS = 0.5
+MIN_SHOT_CONTEXT_FOLLOW_THROUGH_SECONDS = 0.35
 MAX_CAPTION_LENGTH = 24
 MAX_DURATION_OVERRUN_SECONDS = 6.0
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -948,6 +952,17 @@ class GPTHighlightSuggestedEdit(APIModel):
     extendAfterSeconds: float = Field(default=0.0, ge=0.0, le=3.0)
 
 
+class GPTHighlightQualitySignals(APIModel):
+    setupVisible: bool = True
+    eventVisible: bool = True
+    outcomeVisible: bool = True
+    ballPathVisible: bool = True
+    playerControlVisible: bool = True
+    cleanCamera: bool = True
+    fullPlayContext: bool = True
+    reason: str = Field(default="", max_length=160)
+
+
 class GPTHighlightClipDecision(APIModel):
     clipId: str = Field(min_length=1, max_length=80)
     keep: bool
@@ -959,6 +974,7 @@ class GPTHighlightClipDecision(APIModel):
     caption: str = Field(max_length=MAX_CAPTION_LENGTH)
     reason: str = Field(min_length=1, max_length=180)
     storyRole: StoryRole = "filler"
+    qualitySignals: GPTHighlightQualitySignals = Field(default_factory=GPTHighlightQualitySignals)
     suggestedEdit: GPTHighlightSuggestedEdit
 
 
@@ -1742,6 +1758,8 @@ def select_best_clips(
             break
         if clip.duration < MIN_PLAN_CLIP_SECONDS:
             continue
+        if _is_shot_like_clip(clip) and not _has_minimum_shot_context(clip):
+            continue
         selected.append(clip)
         duration_so_far += min(max_clip_seconds, clip.duration)
 
@@ -1755,6 +1773,20 @@ def select_best_clips(
 
 def fit_to_duration(clips: Sequence[EditCandidateClip], target_seconds: float, preset: EditPreset) -> List[EditCandidateClip]:
     return select_best_clips(clips, target_seconds, preset)
+
+
+def _is_shot_like_clip(clip: EditCandidateClip) -> bool:
+    normalized = clip.label.strip().lower()
+    return any(
+        token in normalized
+        for token in ("shot", "bucket", "basket", "layup", "dunk", "finish", "jumper", "three", "3pt")
+    )
+
+
+def _has_minimum_shot_context(clip: EditCandidateClip) -> bool:
+    lead_in = max(0.0, clip.eventCenter - clip.start)
+    follow_through = max(0.0, clip.end - clip.eventCenter)
+    return lead_in >= MIN_SHOT_CONTEXT_LEAD_IN_SECONDS and follow_through >= MIN_SHOT_CONTEXT_FOLLOW_THROUGH_SECONDS
 
 
 def _caption_for(label: str, preset: EditPreset) -> str:
@@ -2092,7 +2124,8 @@ def apply_gpt_highlight_rerank(
         if decision is None:
             missing_decision_clip_ids.append(clip.id)
             continue
-        if not decision.keep:
+        rejection_reason = _gpt_decision_rejection_reason(decision, clip)
+        if rejection_reason is not None:
             rejected_clip_ids.append(clip.id)
             continue
         event_label = decision.basketballEvent.strip() or clip.label
@@ -2179,6 +2212,30 @@ def apply_gpt_highlight_rerank(
         planEditApplied=plan_edit_applied,
     )
     return request.model_copy(update={"clips": reranked, "gptRerankSummary": summary})
+
+
+def _gpt_decision_rejection_reason(decision: GPTHighlightClipDecision, clip: EditCandidateClip) -> Optional[str]:
+    if not decision.keep:
+        return decision.rejectReason or "gpt_rejected"
+    if clip.duration < MIN_PLAN_CLIP_SECONDS:
+        return "clip_too_short"
+    if decision.highlightScore < MIN_GPT_HIGHLIGHT_SCORE:
+        return "low_highlight_score"
+    if decision.watchabilityScore < MIN_GPT_WATCHABILITY_SCORE:
+        return "low_watchability_score"
+    if decision.outcome in {"unclear", "not_basketball"}:
+        return "unclear_or_non_basketball_outcome"
+
+    signals = decision.qualitySignals
+    if not signals.eventVisible or not signals.outcomeVisible or not signals.cleanCamera:
+        return "unclear_event_or_outcome"
+    if not signals.fullPlayContext or not signals.setupVisible:
+        return "missing_setup_context"
+    if decision.outcome == "made" and not signals.ballPathVisible:
+        return "missing_made_shot_ball_path"
+    if not signals.playerControlVisible and decision.outcome in {"made", "missed"}:
+        return "missing_player_control"
+    return None
 
 
 def _clamp_optional_clip_second(value: Optional[float], clip: EditCandidateClip) -> Optional[float]:

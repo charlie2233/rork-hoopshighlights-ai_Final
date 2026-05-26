@@ -348,6 +348,25 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertEqual(len(grouped), 1)
         self.assertEqual(grouped[0].id, "c1")
 
+    def test_ordinary_selector_rejects_shot_clip_without_setup_context(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=15,
+                clips=[
+                    {
+                        **_clip("pre_basket", 0.0, "Made Shot", 0.99),
+                        "eventCenter": 0.2,
+                    },
+                    _clip("complete_shot", 12.0, "Made Shot", 0.72),
+                ],
+            )
+        )
+
+        plan = build_edit_plan(request, "edit_ordinary_quality")
+
+        self.assertNotIn("pre_basket", [clip.clipId for clip in plan.clips])
+        self.assertIn("complete_shot", [clip.clipId for clip in plan.clips])
+
     def test_gpt_highlight_rerank_uses_existing_clip_ids_only(self) -> None:
         request = CreateEditJobRequest(**_request_payload())
         decisions = [
@@ -405,6 +424,78 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertEqual(plan.clips[0].captionMoment, 15.4)
         self.assertEqual(plan.clips[0].cropMode, "rim")
         self.assertTrue(any(effect.type == "slow_motion" for effect in plan.clips[0].effects))
+
+    def test_gpt_highlight_rerank_rejects_kept_clips_without_full_shot_context(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=30,
+                clips=[
+                    {
+                        **_clip("pre_basket", 0.0, "Made Shot", 0.99),
+                        "eventCenter": 0.2,
+                    },
+                    _clip("unclear_outcome", 12.0, "Made Shot", 0.97),
+                    _clip("complete_make", 24.0, "Made Shot", 0.8),
+                ],
+            )
+        )
+        base_signal = {
+            "setupVisible": True,
+            "eventVisible": True,
+            "outcomeVisible": True,
+            "ballPathVisible": True,
+            "playerControlVisible": True,
+            "cleanCamera": True,
+            "fullPlayContext": True,
+            "reason": "Complete play context.",
+        }
+        decisions = [
+            GPTHighlightClipDecision(
+                clipId="pre_basket",
+                keep=True,
+                highlightScore=0.99,
+                watchabilityScore=0.95,
+                basketballEvent="Made Shot",
+                outcome="made",
+                caption="TOO LATE",
+                reason="The basket is visible, but the setup is missing.",
+                qualitySignals={**base_signal, "setupVisible": False, "fullPlayContext": False, "reason": "Clip starts right before the make."},
+                suggestedEdit=GPTHighlightSuggestedEdit(),
+            ),
+            GPTHighlightClipDecision(
+                clipId="unclear_outcome",
+                keep=True,
+                highlightScore=0.97,
+                watchabilityScore=0.92,
+                basketballEvent="Made Shot",
+                outcome="made",
+                caption="UNCLEAR",
+                reason="The release is visible but the result is not.",
+                qualitySignals={**base_signal, "outcomeVisible": False, "ballPathVisible": False, "reason": "No clear rim or make/miss frame."},
+                suggestedEdit=GPTHighlightSuggestedEdit(),
+            ),
+            GPTHighlightClipDecision(
+                clipId="complete_make",
+                keep=True,
+                highlightScore=0.82,
+                watchabilityScore=0.86,
+                basketballEvent="Made Shot",
+                outcome="made",
+                caption="BUCKET",
+                reason="Shows setup, release, ball path, and made outcome.",
+                qualitySignals=base_signal,
+                suggestedEdit=GPTHighlightSuggestedEdit(),
+            ),
+        ]
+
+        reranked = apply_gpt_highlight_rerank(request, decisions, "gpt-test", 3, 15)
+        plan = build_edit_plan(reranked, "edit_quality_context")
+
+        self.assertEqual(reranked.gptRerankSummary.status, "applied")
+        self.assertEqual(reranked.gptRerankSummary.keptClipIds, ["complete_make"])
+        self.assertIn("pre_basket", reranked.gptRerankSummary.rejectedClipIds)
+        self.assertIn("unclear_outcome", reranked.gptRerankSummary.rejectedClipIds)
+        self.assertEqual([clip.clipId for clip in plan.clips], ["complete_make"])
 
     def test_gpt_highlight_rerank_drops_unjudged_candidates(self) -> None:
         request = CreateEditJobRequest(**_request_payload(targetDurationSeconds=30))
