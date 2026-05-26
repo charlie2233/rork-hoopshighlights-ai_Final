@@ -894,6 +894,9 @@ final class VideoAnalysisService {
         bounded.startTime = min(max(bounded.startTime, 0.0), duration)
         bounded.endTime = min(max(bounded.endTime, 0.0), duration)
         guard bounded.endTime > bounded.startTime else { return nil }
+        if let eventCenter = bounded.eventCenter {
+            bounded.eventCenter = min(max(eventCenter, bounded.startTime), bounded.endTime)
+        }
         return bounded
     }
 
@@ -907,6 +910,22 @@ final class VideoAnalysisService {
         let segmentLength = max(minLength, min(8.0, settings.maxClipDuration))
         let stride = max(minLength, segmentLength * 0.7)
         var derived: [Clip] = []
+
+        if let eventCenter = clip.eventCenter,
+           let eventWindow = boundedWindow(
+               center: eventCenter,
+               preferredLength: segmentLength,
+               minLength: minLength,
+               lowerBound: clip.startTime,
+               upperBound: min(duration, clip.endTime)
+           ) {
+            var segment = clip
+            segment.startTime = eventWindow.start
+            segment.endTime = eventWindow.end
+            segment.eventCenter = min(max(eventCenter, eventWindow.start), eventWindow.end)
+            segment.confidence = max(0.3, clip.confidence * 0.9)
+            return [segment]
+        }
 
         var cursor = clip.startTime
         while cursor < clip.endTime && derived.count < 3 {

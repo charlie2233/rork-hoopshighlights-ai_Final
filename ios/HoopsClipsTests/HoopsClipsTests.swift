@@ -626,6 +626,58 @@ struct HoopsClipsTests {
         #expect(normalized.allSatisfy { $0.duration <= AnalysisSettings().maxClipDuration + 0.001 })
     }
 
+    @Test func testNormalizeOverlongCloudClipCentersSplitOnEventCenter() async throws {
+        let service = await VideoAnalysisService()
+        let original = Clip(
+            startTime: 2.0,
+            endTime: 58.0,
+            eventCenter: 45.0,
+            action: .madeShot,
+            confidence: 0.91,
+            isKept: true,
+            label: "Made Shot",
+            audioScore: 0.8,
+            visualScore: 0.7,
+            motionScore: 0.9,
+            combinedScore: 0.88,
+            detectionMethod: .cloud
+        )
+
+        let normalized = await service.normalizeDetectedClips([original], duration: 60.0)
+        let eventClip = try #require(normalized.first)
+        let eventCenter = try #require(eventClip.eventCenter)
+
+        #expect(normalized.count == 1)
+        #expect(abs(eventCenter - 45.0) < 0.001)
+        #expect(eventClip.startTime < eventCenter)
+        #expect(eventClip.endTime > eventCenter)
+        #expect(eventClip.duration <= AnalysisSettings().maxClipDuration + 0.001)
+    }
+
+    @Test func testNormalizeClampsEventCenterInsideClipBounds() async throws {
+        let service = await VideoAnalysisService()
+        let original = Clip(
+            startTime: 10.0,
+            endTime: 18.0,
+            eventCenter: 30.0,
+            action: .madeShot,
+            confidence: 0.72,
+            isKept: true,
+            label: "Made Shot",
+            audioScore: 0.4,
+            visualScore: 0.5,
+            motionScore: 0.5,
+            combinedScore: 0.6,
+            detectionMethod: .cloud
+        )
+
+        let normalized = await service.normalizeDetectedClips([original], duration: 60.0)
+        let center = try #require(normalized.first?.eventCenter)
+
+        #expect(normalized.count == 1)
+        #expect(abs(center - 18.0) < 0.001)
+    }
+
     @Test func testNormalizeKeepsValidClipUntouched() async {
         let service = await VideoAnalysisService()
         let original = Clip(
