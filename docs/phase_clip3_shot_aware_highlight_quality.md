@@ -229,6 +229,16 @@ Results:
 - `git diff --check`: passed.
 - Added a native candidate regression where a complete shot-context window beats a separated later audio spike, while ordinary audio/motion scoring remains strong enough to keep non-shot high-energy windows in the pool.
 
+PR #10 CI after native code commit `7a97da4`:
+
+- Cloud Edit Deploy Preflight run `26437052895`:
+  - Worker typecheck and dry run: success, job `77822170411`.
+  - Editing backend Python tests: success, job `77822170400`.
+  - Verify cloud edit deploy secrets: skipped on this PR path, job `77822589605`.
+- iOS Internal TestFlight Upload run `26437052937`:
+  - No-secret internal staging codecheck: success, job `77822170386`.
+  - Build internal staging TestFlight archive: skipped on this PR path, job `77822170892`.
+
 ## Launch Recommendations
 
 - Deploy this branch to staging only after the Cloudflare/GCP deploy secret blockers are cleared.
