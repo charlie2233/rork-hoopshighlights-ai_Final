@@ -313,6 +313,9 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertEqual(shot_rules["requiredMadeShotTracking"]["rimEntrySequence"], "visible_entry")
         self.assertEqual(shot_rules["requiredMadeShotTracking"]["dedicatedRimEntryPathRoles"], ["rimApproach", "rimEntry", "belowRim"])
         self.assertTrue(shot_rules["netOrRimReactionDoesNotReplaceEntryFrameRoles"])
+        self.assertEqual(shot_rules["nonScoringDefensiveOutcomes"], ["steal", "forced_turnover", "defensive_stop"])
+        self.assertTrue(shot_rules["madeOrMissedShotRequiresVisibleBallPath"])
+        self.assertTrue(shot_rules["defensiveOutcomeRequiresEventOutcomePlayerControlBallAndCleanCamera"])
         self.assertTrue(shot_rules["richSampledShotRoleRules"]["ifRimEntryIsSampledUseItAsBallEntersRimFrameRole"])
         self.assertTrue(shot_rules["madeOrMissedShotRequiresVisibleReleaseAndRimResult"])
         self.assertTrue(shot_rules["madeOrMissedShotRequiresVisibleShotArc"])
@@ -322,6 +325,13 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertIn("must not replace", payload["instructions"])
         self.assertIn("shot-tracker", payload["instructions"])
         self.assertIn("reject clips that start right before the basket", payload["instructions"])
+        self.assertIn("outcome=steal", payload["instructions"])
+        self.assertIn("forced_turnover", payload["instructions"])
+        self.assertIn("defensive_stop", payload["instructions"])
+        self.assertEqual(
+            decision_properties["outcome"]["enum"],
+            ["made", "missed", "blocked", "steal", "forced_turnover", "defensive_stop", "unclear", "not_basketball"],
+        )
 
     def test_payload_preserves_native_uncertain_outcome_over_provider_made_label(self) -> None:
         settings = GPTHighlightRerankerSettings.from_env()

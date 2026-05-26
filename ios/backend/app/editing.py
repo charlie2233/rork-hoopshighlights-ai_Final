@@ -108,6 +108,8 @@ MIN_NON_SHOT_WATCHABILITY_SCORE = 0.42
 MIN_GENERIC_HIGHLIGHT_PLANNING_SCORE = 0.62
 MIN_GENERIC_HIGHLIGHT_WATCHABILITY_SCORE = 0.5
 MIN_NATIVE_OUTCOME_CONFLICT_CONFIDENCE = 0.65
+GPT_NON_SCORING_DEFENSIVE_OUTCOMES = {"steal", "forced_turnover", "defensive_stop"}
+GPT_SHOT_RESULT_OUTCOMES = {"made", "missed", "blocked"}
 SHOT_TRACKING_RELEASE_ROLES = {"preEvent", "release", "eventCenter"}
 SHOT_TRACKING_BALL_FLIGHT_ROLES = {
     "release",
@@ -1059,7 +1061,7 @@ class GPTHighlightClipDecision(APIModel):
     highlightScore: float = Field(ge=0.0, le=1.0)
     watchabilityScore: float = Field(ge=0.0, le=1.0)
     basketballEvent: str = Field(min_length=1, max_length=80)
-    outcome: Literal["made", "missed", "blocked", "unclear", "not_basketball"]
+    outcome: Literal["made", "missed", "blocked", "steal", "forced_turnover", "defensive_stop", "unclear", "not_basketball"]
     caption: str = Field(max_length=MAX_CAPTION_LENGTH)
     reason: str = Field(min_length=1, max_length=180)
     storyRole: StoryRole = "filler"
@@ -2471,7 +2473,8 @@ def apply_gpt_highlight_rerank(
     plan_edit: Optional[GPTPlanEdit] = None,
     sampled_frame_roles_by_clip: Optional[Mapping[str, Sequence[str]]] = None,
 ) -> CreateEditJobRequest:
-    source_by_id = {clip.id: clip for clip in request.clips}
+    source_clips = filter_clips_for_team_selection(request.clips, request.teamSelection)
+    source_by_id = {clip.id: clip for clip in source_clips}
     valid_decisions: Dict[str, GPTHighlightClipDecision] = {
         decision.clipId: decision for decision in decisions if decision.clipId in source_by_id
     }
@@ -2492,7 +2495,7 @@ def apply_gpt_highlight_rerank(
     applied_plan_slow_motion_clip_ids: set[str] = set()
 
     if not valid_decisions:
-        fallback_clips = rank_clips([clip for clip in request.clips if is_plan_quality_eligible_clip(clip)])
+        fallback_clips = rank_clips([clip for clip in source_clips if is_plan_quality_eligible_clip(clip)])
         fallback_clip_ids = {clip.id for clip in fallback_clips}
         rejected_clip_ids = [clip.id for clip in request.clips if clip.id not in fallback_clip_ids]
         rejected_reason_counts = {}
@@ -2712,6 +2715,16 @@ def _gpt_decision_rejection_reason(
         return "missing_rim_result"
     if decision.outcome == "made" and not signals.ballPathVisible:
         return "missing_made_shot_ball_path"
+    if decision.outcome == "missed" and not signals.ballPathVisible:
+        return "missing_missed_shot_ball_path"
+    if decision.outcome in GPT_NON_SCORING_DEFENSIVE_OUTCOMES:
+        if not signals.playerControlVisible:
+            return "missing_defensive_player_control"
+        if not signals.ballPathVisible:
+            return "missing_defensive_ball_control"
+        if not has_minimum_non_shot_quality(clip):
+            return "low_defensive_clip_quality"
+        return None
     if not signals.playerControlVisible and decision.outcome in {"made", "missed"}:
         return "missing_player_control"
     result_evidence = decision.shotResultEvidence
@@ -2849,11 +2862,11 @@ def _rich_sampled_result_rejection_reason(
 
 
 def _gpt_outcome_conflicts_with_native_signal(decision: GPTHighlightClipDecision, clip: EditCandidateClip) -> bool:
-    if decision.outcome not in {"made", "missed", "blocked"}:
+    if decision.outcome not in GPT_SHOT_RESULT_OUTCOMES:
         return False
 
     native_signals = native_shot_signals_for_clip(clip)
-    if native_signals.outcome not in {"made", "missed", "blocked"}:
+    if native_signals.outcome not in GPT_SHOT_RESULT_OUTCOMES:
         return False
     if native_signals.outcomeConfidence < MIN_NATIVE_OUTCOME_CONFLICT_CONFIDENCE:
         return False
@@ -2861,7 +2874,24 @@ def _gpt_outcome_conflicts_with_native_signal(decision: GPTHighlightClipDecision
 
 
 def _source_supports_gpt_outcome_claim(decision: GPTHighlightClipDecision, clip: EditCandidateClip) -> bool:
-    if decision.outcome not in {"made", "missed", "blocked"}:
+    if decision.outcome in GPT_NON_SCORING_DEFENSIVE_OUTCOMES:
+        if is_shot_like_clip(clip):
+            return False
+        if not has_minimum_non_shot_quality(clip):
+            return False
+
+        normalized_label = clip.label.strip().lower()
+        defensive_label = any(
+            token in normalized_label
+            for token in ("defense", "defensive", "steal", "strip", "turnover", "forced", "stop", "pressure", "lockdown")
+        )
+        if defensive_label:
+            return True
+        if not is_generic_filler_clip(clip):
+            return max(clip.watchability, clip.motionScore) >= 0.55 and clip.confidence >= 0.55
+        return max(clip.watchability, clip.motionScore) >= 0.72 and clip.confidence >= 0.65 and clip.planning_score >= 0.7
+
+    if decision.outcome not in GPT_SHOT_RESULT_OUTCOMES:
         return True
     if is_shot_like_clip(clip):
         return True

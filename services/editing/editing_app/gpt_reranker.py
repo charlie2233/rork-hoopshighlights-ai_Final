@@ -676,9 +676,12 @@ def _build_openai_payload(
                         "preferCompletePlayContext": True,
                         "rejectTinyClips": True,
                         "rejectPreBasketOnlyClips": True,
+                        "nonScoringDefensiveOutcomes": ["steal", "forced_turnover", "defensive_stop"],
                         "madeShotRequiresSetupReleaseBallPathRimAndOutcome": True,
                         "madeOrMissedShotRequiresVisibleReleaseAndRimResult": True,
                         "madeOrMissedShotRequiresVisibleShotArc": True,
+                        "madeOrMissedShotRequiresVisibleBallPath": True,
+                        "defensiveOutcomeRequiresEventOutcomePlayerControlBallAndCleanCamera": True,
                         "madeShotRequiresExplicitMadeResultEvidence": True,
                         "madeShotRequiresFrameRoleTrackingEvidence": True,
                         "madeShotRequiresRimEntrySequenceEvidence": True,
@@ -735,6 +738,8 @@ def _build_openai_payload(
             "A made outcome also requires shotTrackingEvidence with release/result frame roles, ball-visible frame roles, continuous trajectory, and cited entry/follow-through frame roles; net/rim reaction can support evidence but must not replace those frame-role citations. "
             "When sampled roles include release, shot-arc, rim, or post-outcome frames, cite those specific rich roles instead of generic eventCenter/finish proof. "
             "reject clips that start right before the basket, clips shorter than the supplied quality minimum, or clips where the outcome is only implied. "
+            "For steals, forced turnovers, or defensive stops, use outcome=steal, outcome=forced_turnover, or outcome=defensive_stop; do not force those plays into unclear or blocked. "
+            "Non-scoring defensive outcomes must show the defensive event, possession/control change or stop, visible ball/player control, clean camera, and full play context. "
             "Honor userEditIntent only when it is compatible with the supplied template, plan tier, candidate clips, and safety constraints. "
             "When a selected team is supplied, keep highlights for that team only; exclude confident opponent clips. Keep uncertain team-attribution clips for user review. "
             "Selected-team blocks, steals, defensive stops, and forced turnovers can be highlights even when they are not scoring plays. "
@@ -922,7 +927,7 @@ def _response_schema() -> Dict[str, Any]:
             "highlightScore": {"type": "number", "minimum": 0, "maximum": 1},
             "watchabilityScore": {"type": "number", "minimum": 0, "maximum": 1},
             "basketballEvent": {"type": "string"},
-            "outcome": {"type": "string", "enum": ["made", "missed", "blocked", "unclear", "not_basketball"]},
+            "outcome": {"type": "string", "enum": ["made", "missed", "blocked", "steal", "forced_turnover", "defensive_stop", "unclear", "not_basketball"]},
             "caption": {"type": "string", "maxLength": 24},
             "reason": {"type": "string"},
             "storyRole": {"type": "string", "enum": ["opener", "peak", "filler", "closer"]},

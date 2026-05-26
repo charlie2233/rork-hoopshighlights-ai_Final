@@ -128,6 +128,22 @@ def _shot_result_evidence(**overrides) -> dict:
     return payload
 
 
+def _defensive_result_evidence(**overrides) -> dict:
+    payload = {
+        "releaseToRimContinuity": "missing",
+        "rimResultEvidence": "unclear",
+        "outcomeConfidence": 0.86,
+        "rimEntrySequence": "unclear",
+        "ballApproachFrameRole": None,
+        "rimEntryFrameRole": None,
+        "ballBelowRimOrNetFrameRole": None,
+        "rimEntrySequenceConfidence": 0.0,
+        "reason": "Non-scoring defensive event with visible ball control change.",
+    }
+    payload.update(overrides)
+    return payload
+
+
 def _shot_tracking_evidence(**overrides) -> dict:
     payload = {
         "ballVisibleFrameRoles": ["eventCenter", "finish"],
@@ -905,6 +921,112 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertEqual(plan.clips[0].captionMoment, 15.4)
         self.assertEqual(plan.clips[0].cropMode, "rim")
         self.assertTrue(any(effect.type == "slow_motion" for effect in plan.clips[0].effects))
+
+    def test_gpt_highlight_rerank_keeps_selected_and_uncertain_team_steals(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                teamSelection={
+                    "mode": "team",
+                    "teamId": "team_dark",
+                    "label": "Dark jerseys",
+                    "colorLabel": "black",
+                    "confidenceThreshold": 0.85,
+                    "includeUncertain": True,
+                },
+                clips=[
+                    {
+                        **_clip("dark_steal", 0.0, "Steal", 0.93),
+                        "teamAttribution": {"teamId": "team_dark", "colorLabel": "black", "confidence": 0.93},
+                    },
+                    {
+                        **_clip("uncertain_steal", 9.0, "Steal", 0.82),
+                        "teamAttribution": {"teamId": "team_light", "colorLabel": "white", "confidence": 0.62},
+                    },
+                    {
+                        **_clip("light_steal", 18.0, "Steal", 0.96),
+                        "teamAttribution": {"teamId": "team_light", "colorLabel": "white", "confidence": 0.96},
+                    },
+                ],
+            )
+        )
+        decisions = [
+            GPTHighlightClipDecision(
+                clipId=clip.id,
+                keep=True,
+                highlightScore=0.9,
+                watchabilityScore=0.84,
+                basketballEvent="Steal",
+                outcome="steal",
+                caption="COOKIES",
+                reason="Shows the defender taking possession cleanly.",
+                qualitySignals=_quality_signals(
+                    releaseVisible=False,
+                    shotArcVisible=False,
+                    rimResultVisible=False,
+                    reason="Ball and defender control are visible through the steal.",
+                ),
+                shotResultEvidence=_defensive_result_evidence(),
+                shotTrackingEvidence=_shot_tracking_evidence(
+                    ballVisibleFrameRoles=["eventCenter", "finish"],
+                    rimVisibleFrameRoles=[],
+                    releaseFrameRole=None,
+                    resultFrameRole=None,
+                    ballEntersRimFrameRole=None,
+                    trajectoryContinuity="partial",
+                    reason="Ball control is visible before and after the steal.",
+                ),
+                suggestedEdit=GPTHighlightSuggestedEdit(cropFocus="ball"),
+            )
+            for clip in request.clips
+        ]
+
+        reranked = apply_gpt_highlight_rerank(request, decisions, "gpt-test", 3, 12)
+
+        self.assertEqual(reranked.gptRerankSummary.status, "applied")
+        self.assertEqual([clip.id for clip in reranked.clips], ["dark_steal", "uncertain_steal"])
+        self.assertNotIn("light_steal", reranked.gptRerankSummary.keptClipIds)
+
+    def test_gpt_highlight_rerank_rejects_missed_shot_without_ball_path(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=15,
+                clips=[_clip("miss_no_ball_path", 12.0, "Missed Shot", 0.9)],
+            )
+        )
+        decisions = [
+            GPTHighlightClipDecision(
+                clipId="miss_no_ball_path",
+                keep=True,
+                highlightScore=0.86,
+                watchabilityScore=0.82,
+                basketballEvent="Missed shot",
+                outcome="missed",
+                caption="GOOD LOOK",
+                reason="GPT claims a miss but cannot see the ball path.",
+                qualitySignals=_quality_signals(ballPathVisible=False, reason="Release and rim are visible, but ball path is not."),
+                shotResultEvidence=_shot_result_evidence(
+                    rimResultEvidence="clear_miss",
+                    outcomeConfidence=0.78,
+                    rimEntrySequence="visible_miss",
+                    rimEntrySequenceConfidence=0.76,
+                ),
+                shotTrackingEvidence=_shot_tracking_evidence(
+                    ballVisibleFrameRoles=["eventCenter", "finish"],
+                    rimVisibleFrameRoles=["finish"],
+                    releaseFrameRole="eventCenter",
+                    resultFrameRole="finish",
+                    ballEntersRimFrameRole=None,
+                    trajectoryContinuity="partial",
+                ),
+                suggestedEdit=GPTHighlightSuggestedEdit(),
+            )
+        ]
+
+        reranked = apply_gpt_highlight_rerank(request, decisions, "gpt-test", 1, 5)
+
+        self.assertEqual(reranked.clips, [])
+        self.assertEqual(reranked.gptRerankSummary.fallbackReason, "all_clips_rejected")
+        self.assertEqual(reranked.gptRerankSummary.rejectedReasonCounts["missing_missed_shot_ball_path"], 1)
 
     def test_gpt_highlight_decision_requires_quality_signals(self) -> None:
         with self.assertRaises(ValidationError):
