@@ -372,6 +372,25 @@ PR #10 CI after GPT all-rejected safety commit `2e0f711`:
   - No-secret internal staging codecheck: success, job `77833525223`.
   - Build internal staging TestFlight archive: skipped on this PR path, job `77833525641`.
 
+Additional validation before partial keyframe-pruning commit:
+
+```sh
+python3 -m py_compile services/editing/editing_app/gpt_reranker.py services/editing/tests/test_gpt_reranker.py
+PYTHONPATH=ios/backend:services/editing /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest services.editing.tests.test_gpt_reranker.GPTHighlightRerankerTests.test_incomplete_keyframes_fall_back_before_openai_call services.editing.tests.test_gpt_reranker.GPTHighlightRerankerTests.test_incomplete_keyframes_drop_bad_candidate_without_losing_complete_candidates services.editing.tests.test_gpt_reranker.GPTHighlightRerankerTests.test_shot_candidates_missing_context_are_dropped_without_losing_complete_candidates -v
+PYTHONPATH=ios/backend:services/editing /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest services.editing.tests.test_gpt_reranker ios.backend.tests.test_edit_plan_agent services.editing.tests.test_editing_service -v
+PYTHONPATH=ios/backend /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest discover ios/backend/tests -v
+PYTHONPATH=ios/backend:services/editing /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest discover services/editing/tests -v
+```
+
+Results:
+
+- Python compile: passed.
+- New partial keyframe-pruning focused checks: 3 tests passed.
+- GPT reranker + edit-plan + editing-service combined suite: 107 tests passed.
+- iOS backend Python discovery: 66 tests passed.
+- Services editing discovery: 64 tests passed.
+- Added regression coverage so a sampled candidate with incomplete required keyframes is dropped from the GPT payload without losing complete candidates. If every sampled candidate is missing required keyframes, the reranker still falls back before any OpenAI call.
+
 ## Launch Recommendations
 
 - Deploy this branch to staging only after the Cloudflare/GCP deploy secret blockers are cleared.

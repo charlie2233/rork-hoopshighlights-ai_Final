@@ -152,8 +152,13 @@ def rerank_edit_request_with_gpt(
     sampled_frames = _extract_candidate_keyframes(source_path, sampled_clips, frames_per_clip, settings)
     if not sampled_frames:
         return _with_fallback(request, "fallback", settings.model, "keyframe_extraction_failed", len(sampled_clips), 0)
-    if _missing_required_keyframes(sampled_clips, sampled_frames):
-        return _with_fallback(request, "fallback", settings.model, "keyframe_extraction_incomplete", len(sampled_clips), len(sampled_frames))
+    missing_required = _missing_required_keyframes(sampled_clips, sampled_frames)
+    if missing_required:
+        incomplete_clip_ids = set(missing_required)
+        sampled_clips = [clip for clip in sampled_clips if clip.id not in incomplete_clip_ids]
+        sampled_frames = [frame for frame in sampled_frames if frame.clip_id not in incomplete_clip_ids]
+        if not sampled_clips:
+            return _with_fallback(request, "fallback", settings.model, "keyframe_extraction_incomplete", 0, len(sampled_frames))
     missing_shot_context = _missing_shot_context_keyframes(sampled_clips, sampled_frames, frames_per_clip)
     if missing_shot_context:
         incomplete_clip_ids = set(missing_shot_context)
