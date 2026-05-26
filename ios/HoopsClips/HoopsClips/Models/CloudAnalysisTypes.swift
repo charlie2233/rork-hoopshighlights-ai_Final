@@ -131,6 +131,19 @@ nonisolated struct CloudAnalysisResult: Codable, Sendable {
     }
 }
 
+nonisolated struct NativeShotSignals: Codable, Sendable, Equatable {
+    let isShotLike: Bool
+    let leadInSeconds: Double
+    let followThroughSeconds: Double
+    let setupContextScore: Double
+    let outcomeContextScore: Double
+    let eventCenterQuality: Double
+    let contextQualityScore: Double
+    let timingWindowOk: Bool
+    let outcome: String
+    let outcomeConfidence: Double
+}
+
 nonisolated struct CloudClip: Codable, Sendable {
     let startTime: Double
     let endTime: Double
@@ -145,6 +158,7 @@ nonisolated struct CloudClip: Codable, Sendable {
     let detectionMethod: String
     let shouldAutoKeep: Bool
     let shouldEnableSlowMotion: Bool
+    var nativeShotSignals: NativeShotSignals? = nil
 
     func makeClip() -> Clip {
         let resolvedAction = HighlightAction(rawValue: action)
@@ -164,7 +178,8 @@ nonisolated struct CloudClip: Codable, Sendable {
             motionScore: motionScore,
             combinedScore: combinedScore,
             isSlowMotionEnabled: shouldEnableSlowMotion,
-            detectionMethod: resolvedMethod
+            detectionMethod: resolvedMethod,
+            nativeShotSignals: nativeShotSignals
         )
     }
 }

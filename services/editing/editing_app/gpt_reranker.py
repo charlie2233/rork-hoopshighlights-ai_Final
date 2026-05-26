@@ -31,6 +31,7 @@ from app.editing import (  # noqa: E402
     get_template_pack_for_plan,
     is_plan_quality_eligible_clip,
     is_shot_like_clip,
+    native_shot_signals_for_clip,
     rank_clips,
     summarize_clip_pool,
     validate_edit_plan_patch,
@@ -363,6 +364,7 @@ def _candidate_quality_hints(clip: EditCandidateClip) -> Dict[str, Any]:
         "minLeadInSeconds": MIN_GPT_CANDIDATE_LEAD_IN_SECONDS,
         "minFollowThroughSeconds": MIN_GPT_CANDIDATE_FOLLOW_THROUGH_SECONDS,
         "shotLike": is_shot_like,
+        "nativeShotSignals": native_shot_signals_for_clip(clip).model_dump(mode="json"),
         "timingWindowOk": (
             duration >= min_duration
             and lead_in >= MIN_GPT_CANDIDATE_LEAD_IN_SECONDS
@@ -576,6 +578,7 @@ def _build_openai_payload(
             "templateId": template.templateId,
             "planTier": request.planTier,
             "qualityHints": _candidate_quality_hints(clip),
+            "nativeShotSignals": native_shot_signals_for_clip(clip).model_dump(mode="json"),
             "sampledKeyframes": [
                 {"role": frame.role, "time": frame.time_seconds}
                 for frame in candidate_frames
@@ -665,6 +668,7 @@ def _build_revision_patch_payload(
                 "motionScore": clip.motionScore,
                 "watchabilityScore": clip.watchability,
                 "duplicateGroup": clip.duplicateGroup,
+                "nativeShotSignals": native_shot_signals_for_clip(clip).model_dump(mode="json"),
             }
             for clip in job.request.clips
         ],

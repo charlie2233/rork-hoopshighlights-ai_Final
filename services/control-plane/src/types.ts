@@ -127,6 +127,20 @@ export interface CloudClip {
   comparisonTopLabels?: CloudLabelScore[] | null;
   rawTopLabels?: CloudRawLabelScore[] | null;
   comparisonRawTopLabels?: CloudRawLabelScore[] | null;
+  nativeShotSignals?: NativeShotSignals | null;
+}
+
+export interface NativeShotSignals {
+  isShotLike: boolean;
+  leadInSeconds: number;
+  followThroughSeconds: number;
+  setupContextScore: number;
+  outcomeContextScore: number;
+  eventCenterQuality: number;
+  contextQualityScore: number;
+  timingWindowOk: boolean;
+  outcome: "made" | "missed" | "blocked" | "uncertain" | "not_shot";
+  outcomeConfidence: number;
 }
 
 export interface CloudDiagnostics {
@@ -356,6 +370,7 @@ export interface EditCandidateClip {
   audioPeak?: number;
   combinedScore?: number | null;
   duplicateGroup?: string | null;
+  nativeShotSignals?: NativeShotSignals | null;
 }
 
 export interface CreateEditJobRequest {

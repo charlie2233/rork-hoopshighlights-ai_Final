@@ -370,7 +370,8 @@ final class HighlightsViewModel {
                 motionScore: clip.motionScore,
                 audioPeak: clip.audioScore,
                 combinedScore: clip.combinedScore,
-                duplicateGroup: nil
+                duplicateGroup: nil,
+                nativeShotSignals: clip.nativeShotSignals
             )
         }
 

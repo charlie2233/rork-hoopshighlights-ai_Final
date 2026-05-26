@@ -35,6 +35,7 @@ from app.editing import (
     clip_context_quality_score,
     get_template_pack_for_plan,
     is_plan_quality_eligible_clip,
+    native_shot_signals_for_clip,
     rank_clips,
     remove_duplicate_moments,
     repair_edit_plan,
@@ -299,10 +300,42 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertEqual(context["templateCookbookRules"]["orderingRules"]["opener"], "one_of_top_2_clips")
         self.assertIn("COLD.", context["templateCookbookRules"]["captionRules"]["examples"])
         self.assertEqual(context["candidateClips"][0]["clipId"], "c3")
+        self.assertEqual(context["candidateClips"][0]["nativeShotSignals"]["outcome"], "made")
         serialized = str(context)
         self.assertNotIn("sourceObjectKey", serialized)
         self.assertNotIn("downloadUrl", serialized)
         self.assertNotIn("presigned", serialized.lower())
+
+    def test_native_shot_signals_preserve_analysis_outcome_hint_without_relaxing_timing(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                clips=[
+                    {
+                        **_clip("late_block", 10.0, "Blocked Shot", 0.91),
+                        "eventCenter": 10.2,
+                        "nativeShotSignals": {
+                            "isShotLike": True,
+                            "leadInSeconds": 3.4,
+                            "followThroughSeconds": 3.6,
+                            "setupContextScore": 1.0,
+                            "outcomeContextScore": 1.0,
+                            "eventCenterQuality": 1.0,
+                            "contextQualityScore": 1.0,
+                            "timingWindowOk": True,
+                            "outcome": "blocked",
+                            "outcomeConfidence": 0.88,
+                        },
+                    }
+                ],
+            )
+        )
+
+        signals = native_shot_signals_for_clip(request.clips[0])
+
+        self.assertEqual(signals.outcome, "blocked")
+        self.assertEqual(signals.leadInSeconds, 0.2)
+        self.assertFalse(signals.timingWindowOk)
+        self.assertLess(signals.setupContextScore, 1.0)
 
     def test_free_plan_rejects_premium_template_pack(self) -> None:
         request = CreateEditJobRequest(**_request_payload(templateId="cinematic_mixtape_pro_v1", targetDurationSeconds=30))
