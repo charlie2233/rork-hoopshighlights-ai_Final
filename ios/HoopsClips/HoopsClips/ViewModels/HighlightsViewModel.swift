@@ -15,6 +15,7 @@ final class HighlightsViewModel {
     private let projectStore: ProjectHistoryStore
     private var projectLibrary: PersistedProjectLibrary
     private var suppressProjectPersistence = false
+    private var pendingCloudAnalysisJob: PreparedCloudAnalysisJob?
     private var lastAnalysisStatusSummary: String?
     private var lastAnalyzedAt: Date?
     private var lastExportedAt: Date?
@@ -63,6 +64,9 @@ final class HighlightsViewModel {
     var cloudAnalysisJobID: String?
     var cloudEditSourceObjectKey: String?
     var cloudDetectedTeams: [CloudTeamOption] = []
+    var isCloudTeamScanInProgress = false
+    var cloudTeamScanStatusMessage: String?
+    var cloudTeamScanErrorMessage: String?
 
     var analysisModeDisplayName: String {
         switch analysisMode {
@@ -94,6 +98,25 @@ final class HighlightsViewModel {
             return "Keep at least one clip before making an AI edit."
         }
         return nil
+    }
+
+    var availableHighlightTeamChoices: [HighlightTeamSelection] {
+        let scannedChoices = cloudDetectedTeams.map { team in
+            HighlightTeamSelection(
+                mode: .team,
+                teamId: team.teamId,
+                label: team.label,
+                colorLabel: team.colorLabel,
+                confidenceThreshold: 0.85,
+                includeUncertain: true
+            )
+        }
+
+        if scannedChoices.isEmpty {
+            return HighlightTeamSelection.defaultChoices
+        }
+
+        return [.allTeams] + scannedChoices
     }
 
     var historyProjects: [PersistedProjectRecord] {
@@ -160,6 +183,7 @@ final class HighlightsViewModel {
 
         do {
             try Task.checkCancellation()
+            clearPendingCloudAnalysisJob()
             let project = try await projectStore.createProjectFromImportedVideo(sourceURL: url.standardizedFileURL)
             try Task.checkCancellation()
             insertProject(project, makeCurrent: true)
@@ -192,19 +216,31 @@ final class HighlightsViewModel {
         analysisService.beginExternalAnalysis(status: "Preparing upload")
 
         do {
-            let result = try await cloudAnalysisService.analyzeVideo(
-                url: url,
-                duration: videoDuration,
-                installID: installID,
-                teamSelection: settings.highlightTeamSelection
-            ) { [weak service = analysisService] progress, status in
-                service?.updateExternalAnalysis(progress: progress, status: status)
+            let result: CloudAnalysisResult
+            if let preparedJob = pendingCloudAnalysisJob, preparedJob.sourceURL == url.standardizedFileURL {
+                result = try await cloudAnalysisService.analyzePreparedVideo(
+                    preparedJob,
+                    teamSelection: settings.highlightTeamSelection,
+                    installID: installID
+                ) { [weak service = analysisService] progress, status in
+                    service?.updateExternalAnalysis(progress: progress, status: status)
+                }
+            } else {
+                result = try await cloudAnalysisService.analyzeVideo(
+                    url: url,
+                    duration: videoDuration,
+                    installID: installID,
+                    teamSelection: settings.highlightTeamSelection
+                ) { [weak service = analysisService] progress, status in
+                    service?.updateExternalAnalysis(progress: progress, status: status)
+                }
             }
             cloudQuotaRemaining = nil
             analysisService.applyCloudAnalysis(result, duration: videoDuration)
             cloudAnalysisJobID = result.analysisJobId
             cloudEditSourceObjectKey = result.sourceObjectKey
             cloudDetectedTeams = result.detectedTeams
+            pendingCloudAnalysisJob = nil
             applyDefaultRedundantClipSuppression()
             AnalysisNotificationService.shared.notifyAnalysisCompleted(
                 clipsCount: analysisService.clips.count,
@@ -224,6 +260,59 @@ final class HighlightsViewModel {
         }
     }
 
+    func scanTeamsBeforeAnalysis() async {
+        guard let url = videoURL else { return }
+        guard AppConstants.cloudAnalysisEnabled else { return }
+        guard !analysisService.isAnalyzing, !isCloudTeamScanInProgress else { return }
+        let scanSourceURL = url.standardizedFileURL
+        guard pendingCloudAnalysisJob?.sourceURL != scanSourceURL else { return }
+
+        isCloudTeamScanInProgress = true
+        cloudTeamScanErrorMessage = nil
+        cloudTeamScanStatusMessage = "Preparing team scan"
+        analysisMode = .cloud
+
+        do {
+            let preparedJob = try await cloudAnalysisService.prepareTeamScan(
+                url: url,
+                duration: videoDuration,
+                installID: installID
+            ) { [weak self] progress, status in
+                self?.cloudTeamScanStatusMessage = status
+                self?.analysisService.updateExternalAnalysis(progress: progress, status: status)
+            }
+
+            guard videoURL?.standardizedFileURL == scanSourceURL else { return }
+            pendingCloudAnalysisJob = preparedJob
+            cloudDetectedTeams = preparedJob.detectedTeams
+            cloudTeamScanStatusMessage = preparedJob.detectedTeams.isEmpty
+                ? "No clear jersey colors found yet"
+                : "Choose a team before analysis"
+        } catch is CancellationError {
+            if videoURL?.standardizedFileURL == scanSourceURL {
+                clearPendingCloudAnalysisJob()
+            }
+            return
+        } catch let error as CloudAnalysisError {
+            guard videoURL?.standardizedFileURL == scanSourceURL else { return }
+            if case .quotaExceeded(let remaining) = error {
+                cloudQuotaRemaining = remaining
+            }
+            cloudTeamScanErrorMessage = error.localizedDescription
+            cloudTeamScanStatusMessage = "Team scan unavailable"
+            pendingCloudAnalysisJob = nil
+            cloudDetectedTeams = []
+        } catch {
+            guard videoURL?.standardizedFileURL == scanSourceURL else { return }
+            cloudTeamScanErrorMessage = error.localizedDescription
+            cloudTeamScanStatusMessage = "Team scan unavailable"
+            pendingCloudAnalysisJob = nil
+            cloudDetectedTeams = []
+        }
+
+        isCloudTeamScanInProgress = false
+    }
+
     private func runPrimaryLocalAnalysis(for url: URL, status: String) async {
         analysisMode = .local
         isCloudFallbackOffered = false
@@ -231,6 +320,7 @@ final class HighlightsViewModel {
         cloudAnalysisJobID = nil
         cloudEditSourceObjectKey = nil
         cloudDetectedTeams = []
+        clearPendingCloudAnalysisJob()
         analysisService.beginExternalAnalysis(status: status)
         await analysisService.analyze(url: url, settings: settings)
         applyDefaultRedundantClipSuppression()
@@ -657,6 +747,7 @@ final class HighlightsViewModel {
         cloudAnalysisJobID = project.cloudAnalysisJobID
         cloudEditSourceObjectKey = project.cloudEditSourceObjectKey
         cloudDetectedTeams = []
+        clearPendingCloudAnalysisJob()
         lastAnalysisStatusSummary = project.analysisStatusSummary
         lastAnalyzedAt = project.lastAnalyzedAt
         lastExportedAt = project.lastExportedAt
@@ -700,8 +791,16 @@ final class HighlightsViewModel {
         cloudAnalysisJobID = nil
         cloudEditSourceObjectKey = nil
         cloudDetectedTeams = []
+        clearPendingCloudAnalysisJob()
         lastAnalyzedAt = nil
         lastExportedAt = nil
+    }
+
+    private func clearPendingCloudAnalysisJob() {
+        pendingCloudAnalysisJob = nil
+        isCloudTeamScanInProgress = false
+        cloudTeamScanStatusMessage = nil
+        cloudTeamScanErrorMessage = nil
     }
 
     private func insertProject(_ project: PersistedProjectRecord, makeCurrent: Bool) {

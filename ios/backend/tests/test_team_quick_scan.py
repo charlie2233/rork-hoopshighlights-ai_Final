@@ -3,11 +3,16 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import tempfile
+import time
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
-from app.models import CloudClip
+from fastapi.testclient import TestClient
+
+from app.config import Settings
+from app.main import create_app
+from app.models import CloudAnalysisResult, CloudClip, CloudDiagnostics, TeamOption
 from app.team_quick_scan import QuickScanFrame, apply_team_quick_scan
 
 
@@ -49,6 +54,47 @@ def _clip(label: str, start: float, end: float, event_center: float, combined: f
 
 def _response(payload: dict) -> dict:
     return {"output": [{"content": [{"type": "output_text", "text": json.dumps(payload)}]}]}
+
+
+def _local_settings(upload_root: Path) -> Settings:
+    return Settings(
+        service_name="hoops-ai-api",
+        environment="local",
+        host_base_url="http://127.0.0.1:8080",
+        cloud_run_base_url="http://127.0.0.1:8080",
+        upload_root=upload_root,
+        external_repo_root=upload_root / "external",
+        internal_process_secret=None,
+        public_api_enabled=True,
+        gcp_project_id=None,
+        gcp_region="us-central1",
+        gcs_bucket_name="charlie-hoops-ai-analysis-temp",
+        firestore_jobs_collection="analysisJobs",
+        firestore_usage_collection="usageCounters",
+        cloud_tasks_queue="analysis-jobs",
+        enable_local_upload_emulation=True,
+        detection_provider="hybrid",
+        post_ranking_provider="native",
+        hoopcut_repo_path=None,
+        hoopcut_python_bin=None,
+        autohighlight_repo_path=None,
+        autohighlight_python_bin=None,
+        daily_quota=3,
+        rolling_quota_hours=24,
+        default_poll_after_seconds=1,
+        job_ttl_seconds=3600,
+        signed_upload_ttl_seconds=900,
+        max_file_size_bytes=500 * 1024 * 1024,
+        max_duration_seconds=1800.0,
+        min_clip_duration_seconds=2.0,
+        max_clip_duration_seconds=15.0,
+        clip_padding_seconds=0.35,
+        max_returned_clips=8,
+        backend_model_version="cloud-v1",
+        use_gemini_relabeling=False,
+        team_quick_scan_enabled=True,
+        team_quick_scan_api_key="test-key",
+    )
 
 
 class TeamQuickScanTests(unittest.TestCase):
@@ -202,6 +248,92 @@ class TeamQuickScanTests(unittest.TestCase):
         self.assertEqual(teams[0].teamId, "team_dark")
         self.assertEqual(scanned[0].teamAttribution.teamId, "team_dark")
         self.assertLess(scanned[0].teamAttribution.confidence, 0.85)
+
+    def test_team_scan_endpoint_runs_before_start_and_start_accepts_selection(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="hoopclips-team-scan-api-") as temp_dir:
+            settings = _local_settings(Path(temp_dir))
+            app = create_app(settings)
+            client = TestClient(app)
+
+            create_response = client.post(
+                "/v1/analysis/jobs",
+                json={
+                    "filename": "game.mp4",
+                    "contentType": "video/mp4",
+                    "fileSizeBytes": 9,
+                    "durationSeconds": 30.0,
+                    "installId": "install-123456",
+                    "appVersion": "1.0",
+                    "analysisVersion": "cloud-v1",
+                },
+            )
+            self.assertEqual(create_response.status_code, 200)
+            created = create_response.json()
+            upload_response = client.put(created["uploadUrl"], content=b"fakevideo")
+            self.assertEqual(upload_response.status_code, 204)
+
+            detected = [
+                TeamOption(teamId="team_dark", label="Dark jerseys", colorLabel="black", confidence=0.92, source="quick_scan"),
+                TeamOption(teamId="team_light", label="Light jerseys", colorLabel="white", confidence=0.9, source="quick_scan"),
+            ]
+
+            def fake_run_analysis(job, _settings, _source_path):
+                self.assertEqual(job.team_selection.teamId, "team_dark")
+                return CloudAnalysisResult(
+                    clipCount=0,
+                    clips=[],
+                    diagnostics=CloudDiagnostics(
+                        processingMs=1,
+                        backendModelVersion="cloud-v1+team-scan",
+                        usedVideoIntelligence=False,
+                        usedGeminiRelabeling=False,
+                        candidateSegments=0,
+                        finalSegments=0,
+                    ),
+                    detectedTeams=detected,
+                    teamSelection=job.team_selection,
+                )
+
+            job_payload = None
+            with (
+                patch("app.api.apply_team_quick_scan", return_value=([], detected, True)),
+                patch("app.api.run_analysis", side_effect=fake_run_analysis),
+            ):
+                scan_response = client.post(
+                    f"/v1/analysis/jobs/{created['jobId']}/team-scan",
+                    json={"installId": "install-123456"},
+                )
+                self.assertEqual(scan_response.status_code, 200)
+                self.assertEqual(scan_response.json()["status"], "scanned")
+                self.assertEqual(scan_response.json()["detectedTeams"][0]["teamId"], "team_dark")
+
+                start_response = client.post(
+                    f"/v1/analysis/jobs/{created['jobId']}/start",
+                    json={
+                        "installId": "install-123456",
+                        "teamSelection": {
+                            "mode": "team",
+                            "teamId": "team_dark",
+                            "label": "Dark jerseys",
+                            "colorLabel": "black",
+                            "includeUncertain": True,
+                        },
+                    },
+                )
+                self.assertEqual(start_response.status_code, 200)
+
+                for _ in range(20):
+                    poll_response = client.get(f"/v1/analysis/jobs/{created['jobId']}")
+                    self.assertEqual(poll_response.status_code, 200)
+                    job_payload = poll_response.json()
+                    if job_payload["status"] == "succeeded":
+                        break
+                    time.sleep(0.05)
+
+            self.assertIsNotNone(job_payload)
+            assert job_payload is not None
+            self.assertEqual(job_payload["status"], "succeeded")
+            self.assertEqual(job_payload["results"]["teamSelection"]["teamId"], "team_dark")
 
 
 if __name__ == "__main__":

@@ -30,6 +30,8 @@ from .models import (
     ErrorResponse,
     JobStatus,
     PipelineError,
+    ScanCloudAnalysisTeamsRequest,
+    ScanCloudAnalysisTeamsResponse,
     StartCloudAnalysisJobRequest,
     StartCloudAnalysisJobResponse,
     now_utc,
@@ -48,6 +50,7 @@ from .rendering import (
 )
 from .storage import GCSStorageProvider, LocalStorageProvider, StorageProvider
 from .task_dispatcher import CloudTasksDispatcher, InlineTaskDispatcher, TaskDispatcher
+from .team_quick_scan import apply_team_quick_scan
 
 
 @dataclass(frozen=True)
@@ -294,6 +297,43 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
                 return _error_response(error)
 
     @router.post(
+        "/v1/analysis/jobs/{job_id}/team-scan",
+        response_model=ScanCloudAnalysisTeamsResponse,
+        responses={400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+    )
+    async def scan_job_teams(job_id: str, request: ScanCloudAnalysisTeamsRequest):
+        assert runtime is not None
+        source = None
+        try:
+            _require_public_api_enabled()
+            job = await _require_job(job_id)
+            if job.install_id != request.installId:
+                raise APIError(403, "install_mismatch", "Install ID does not own this analysis job.")
+            if job.status != JobStatus.CREATED:
+                raise APIError(400, "job_already_started", "Team scan is only available before analysis starts.")
+            if not await runtime.storage.object_exists(job):
+                raise APIError(400, "upload_missing", "Upload is missing. Complete the signed upload before scanning teams.")
+
+            await runtime.job_store.update_job(job_id, stage="Scanning teams", progress=max(job.progress, 0.18))
+            job = await _require_job(job_id)
+            source = await runtime.storage.materialize_source(job)
+            _, detected_teams, applied = await run_in_threadpool(
+                apply_team_quick_scan,
+                source.local_path,
+                job.duration_seconds,
+                [],
+                resolved_settings,
+            )
+            status = "scanned" if applied and detected_teams else "unavailable"
+            await runtime.job_store.update_job(job_id, stage="Team scan complete", progress=max(job.progress, 0.22))
+            return ScanCloudAnalysisTeamsResponse(jobId=job.job_id, status=status, detectedTeams=detected_teams)
+        except APIError as error:
+            return _error_response(error)
+        finally:
+            if source is not None:
+                source.cleanup()
+
+    @router.post(
         "/v1/analysis/jobs/{job_id}/start",
         response_model=StartCloudAnalysisJobResponse,
         responses={400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
@@ -310,6 +350,8 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
             if not await runtime.storage.object_exists(job):
                 raise APIError(400, "upload_missing", "Upload is missing. Complete the signed upload before starting analysis.")
 
+            if request.teamSelection is not None:
+                job = await runtime.job_store.update_job(job_id, team_selection=request.teamSelection)
             job = await runtime.job_store.mark_queued(job_id)
             await runtime.dispatcher.enqueue_process(job)
             return StartCloudAnalysisJobResponse(jobId=job.job_id, status=job.status.value)

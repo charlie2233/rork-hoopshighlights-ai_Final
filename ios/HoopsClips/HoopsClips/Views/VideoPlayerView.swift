@@ -20,6 +20,7 @@ struct VideoPlayerView: View {
     @State private var isImportingVideo = false
     @State private var activeImportID: UUID?
     @State private var importTask: Task<Void, Never>?
+    @State private var teamScanTask: Task<Void, Never>?
     @State private var importErrorMessage: String?
     @State private var lastAnalysisAnnouncementPercent = -1
 
@@ -94,8 +95,11 @@ struct VideoPlayerView: View {
                 if !isVideoLoaded {
                     analysisStarted = false
                     lastAnalysisAnnouncementPercent = -1
+                    teamScanTask?.cancel()
+                    teamScanTask = nil
                 } else {
                     HoopsAccessibility.announce("Video imported. Choose a target highlight length, then start analysis.")
+                    startTeamScanIfNeeded()
                 }
             }
             .onChange(of: isImportingVideo) { _, isImporting in
@@ -217,8 +221,21 @@ struct VideoPlayerView: View {
         importTask = task
     }
 
+    private func startTeamScanIfNeeded() {
+        guard AppConstants.cloudAnalysisEnabled else { return }
+        guard viewModel.isVideoLoaded, viewModel.clips.isEmpty else { return }
+        guard teamScanTask == nil else { return }
+
+        teamScanTask = Task { @MainActor in
+            await viewModel.scanTeamsBeforeAnalysis()
+            teamScanTask = nil
+        }
+    }
+
     private func cancelActiveImport() {
         importTask?.cancel()
+        teamScanTask?.cancel()
+        teamScanTask = nil
         clearImportState()
     }
 
@@ -255,6 +272,8 @@ struct VideoPlayerView: View {
         showingNoClipsAlert = false
         showingDurationLimitAlert = false
         analysisStarted = false
+        teamScanTask?.cancel()
+        teamScanTask = nil
         cancelActiveImport()
         importErrorMessage = nil
     }
@@ -462,6 +481,7 @@ struct VideoPlayerView: View {
                         showingDurationLimitAlert = true
                         return
                     }
+                    guard !viewModel.isCloudTeamScanInProgress else { return }
                     analysisStarted = true
                     Task {
                         await viewModel.startAnalysis()
@@ -487,6 +507,8 @@ struct VideoPlayerView: View {
                     .padding(16)
                     .background(AppTheme.purpleGradient, in: .rect(cornerRadius: 16))
                 }
+                .disabled(viewModel.isCloudTeamScanInProgress)
+                .opacity(viewModel.isCloudTeamScanInProgress ? 0.72 : 1)
                 .sensoryFeedback(.impact(weight: .medium), trigger: analysisStarted)
 
                 if AppConstants.requiresCloudVideoPipeline {
@@ -516,7 +538,7 @@ struct VideoPlayerView: View {
                     Text("Highlight Team")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.white)
-                    Text("Cloud AI targets this team and keeps uncertain clips for Review.")
+                    Text(teamTargetSubtitle)
                         .font(.caption2)
                         .foregroundStyle(AppTheme.subtleText)
                         .lineLimit(2)
@@ -525,8 +547,10 @@ struct VideoPlayerView: View {
                 Spacer(minLength: 0)
             }
 
+            teamScanStatusRow
+
             HStack(spacing: 8) {
-                ForEach(HighlightTeamSelection.defaultChoices, id: \.selectionKey) { selection in
+                ForEach(viewModel.availableHighlightTeamChoices, id: \.selectionKey) { selection in
                     teamTargetButton(selection)
                 }
             }
@@ -543,7 +567,6 @@ struct VideoPlayerView: View {
 
     private func teamTargetButton(_ selection: HighlightTeamSelection) -> some View {
         let isSelected = viewModel.settings.highlightTeamSelection.selectionKey == selection.selectionKey
-        let icon = selection.mode == .all ? "person.3.fill" : "circle.lefthalf.filled"
 
         return Button {
             HoopsAccessibility.animate(reduceMotion: reduceMotion, .snappy(duration: 0.18)) {
@@ -551,8 +574,18 @@ struct VideoPlayerView: View {
             }
         } label: {
             VStack(spacing: 4) {
-                Image(systemName: icon)
-                    .font(.caption.weight(.bold))
+                if selection.mode == .all {
+                    Image(systemName: "person.3.fill")
+                        .font(.caption.weight(.bold))
+                } else {
+                    Circle()
+                        .fill(teamSwatchColor(for: selection))
+                        .frame(width: 14, height: 14)
+                        .overlay(
+                            Circle()
+                                .stroke(isSelected ? AppTheme.darkBg.opacity(0.25) : AppTheme.neonPurple.opacity(0.35), lineWidth: 1)
+                        )
+                }
                 Text(selection.displayTitle)
                     .font(.caption.weight(.semibold))
                     .lineLimit(1)
@@ -575,6 +608,85 @@ struct VideoPlayerView: View {
         .accessibilityValue(isSelected ? "Selected" : "Not selected")
         .accessibilityHint(selection.displaySubtitle)
         .hoopsSelectedState(isSelected)
+    }
+
+    private var teamTargetSubtitle: String {
+        if viewModel.isCloudTeamScanInProgress {
+            return viewModel.cloudTeamScanStatusMessage ?? "Scanning jersey colors before analysis."
+        }
+        if !viewModel.cloudDetectedTeams.isEmpty {
+            return "Detected teams are labeled by jersey color. Uncertain plays stay in Review."
+        }
+        return "Cloud AI targets this team and keeps uncertain clips for Review."
+    }
+
+    private var teamScanStatusRow: some View {
+        HStack(spacing: 8) {
+            if viewModel.isCloudTeamScanInProgress {
+                ProgressView()
+                    .tint(AppTheme.neonPurple)
+                    .controlSize(.small)
+                Text(viewModel.cloudTeamScanStatusMessage ?? "Scanning teams")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(AppTheme.neonPurple)
+            } else if !viewModel.cloudDetectedTeams.isEmpty {
+                Image(systemName: "checkmark.seal.fill")
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.successGreen)
+                Text(viewModel.cloudDetectedTeams.map(\.label).joined(separator: " vs "))
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(AppTheme.successGreen)
+                    .lineLimit(1)
+            } else if viewModel.cloudTeamScanErrorMessage != nil {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.warningYellow)
+                Text("Team scan unavailable")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(AppTheme.warningYellow)
+                Spacer(minLength: 0)
+                Button("Retry") {
+                    startTeamScanIfNeeded()
+                }
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(AppTheme.neonPurple)
+            } else {
+                Image(systemName: "sparkles")
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.subtleText)
+                Text("All teams is always available")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(AppTheme.subtleText)
+            }
+            Spacer(minLength: 0)
+        }
+        .frame(minHeight: 20)
+        .accessibilityElement(children: .combine)
+    }
+
+    private func teamSwatchColor(for selection: HighlightTeamSelection) -> Color {
+        switch selection.colorLabel?.lowercased() {
+        case "black", "dark":
+            return .black
+        case "white", "light":
+            return .white
+        case "red":
+            return .red
+        case "blue":
+            return .blue
+        case "green":
+            return .green
+        case "yellow":
+            return .yellow
+        case "orange":
+            return .orange
+        case "purple":
+            return .purple
+        case "gray", "grey":
+            return .gray
+        default:
+            return AppTheme.neonPurple
+        }
     }
 
     private var targetHighlightLengthControl: some View {
@@ -845,6 +957,9 @@ struct VideoPlayerView: View {
     private var analysisButtonSubtitle: String {
         if requiresProForCurrentVideo {
             return "\(languageStore.text(.analysisButtonUpgradePrefix)) \(formatDuration(AppConstants.nonProMaxAnalysisDuration))"
+        }
+        if viewModel.isCloudTeamScanInProgress {
+            return viewModel.cloudTeamScanStatusMessage ?? "Scanning teams first"
         }
         return languageStore.text(.analysisButtonSubtitle)
     }

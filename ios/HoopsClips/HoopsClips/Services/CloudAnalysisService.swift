@@ -47,13 +47,81 @@ struct CloudAnalysisService {
         try await uploadVideo(to: job, from: url)
 
         await progress(0.28, "Preparing clips")
-        _ = try await startJob(baseURL: baseURL, jobID: job.jobId, installID: installID)
+        _ = try await startJob(baseURL: baseURL, jobID: job.jobId, installID: installID, teamSelection: teamSelection)
 
         return try await pollJob(
             baseURL: baseURL,
             jobID: job.jobId,
             sourceObjectKey: job.sourceObjectKey,
             initialPollAfterSeconds: job.pollAfterSeconds,
+            progress: progress
+        )
+    }
+
+    func prepareTeamScan(
+        url: URL,
+        duration: Double,
+        installID: String,
+        appVersion: String = "v1.0",
+        analysisVersion: String = "v1",
+        progress: @escaping @MainActor @Sendable (Double, String) -> Void
+    ) async throws -> PreparedCloudAnalysisJob {
+        guard let baseURL = configuredBaseURL() else {
+            throw CloudAnalysisError.notConfigured
+        }
+
+        let fileInfo = try fileInfo(for: url)
+        await progress(0.02, "Preparing team scan")
+        let job = try await createJob(
+            baseURL: baseURL,
+            request: CreateCloudAnalysisJobRequest(
+                filename: url.lastPathComponent,
+                contentType: fileInfo.contentType,
+                fileSizeBytes: fileInfo.fileSizeBytes,
+                durationSeconds: duration,
+                installId: installID,
+                appVersion: appVersion,
+                analysisVersion: analysisVersion
+            )
+        )
+
+        await progress(0.14, "Uploading for team scan")
+        try await uploadVideo(to: job, from: url)
+
+        await progress(0.20, "Scanning jersey colors")
+        let scan = try await scanJobTeams(baseURL: baseURL, jobID: job.jobId, installID: installID)
+        await progress(0.24, scan.detectedTeams.isEmpty ? "Team scan unavailable" : "Choose highlight team")
+
+        return PreparedCloudAnalysisJob(
+            sourceURL: url.standardizedFileURL,
+            job: job,
+            detectedTeams: scan.detectedTeams
+        )
+    }
+
+    func analyzePreparedVideo(
+        _ preparedJob: PreparedCloudAnalysisJob,
+        teamSelection: HighlightTeamSelection? = nil,
+        installID: String,
+        progress: @escaping @MainActor @Sendable (Double, String) -> Void
+    ) async throws -> CloudAnalysisResult {
+        guard let baseURL = configuredBaseURL() else {
+            throw CloudAnalysisError.notConfigured
+        }
+
+        await progress(0.28, "Preparing clips")
+        _ = try await startJob(
+            baseURL: baseURL,
+            jobID: preparedJob.job.jobId,
+            installID: installID,
+            teamSelection: teamSelection
+        )
+
+        return try await pollJob(
+            baseURL: baseURL,
+            jobID: preparedJob.job.jobId,
+            sourceObjectKey: preparedJob.job.sourceObjectKey,
+            initialPollAfterSeconds: preparedJob.job.pollAfterSeconds,
             progress: progress
         )
     }
@@ -124,18 +192,37 @@ struct CloudAnalysisService {
     private func startJob(
         baseURL: URL,
         jobID: String,
-        installID: String
+        installID: String,
+        teamSelection: HighlightTeamSelection? = nil
     ) async throws -> StartCloudAnalysisJobResponse {
         var request = URLRequest(url: baseURL.appending(path: "v1/analysis/jobs/\(jobID)/start"))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try encoder.encode(StartCloudAnalysisJobRequest(installId: installID))
+        request.httpBody = try encoder.encode(StartCloudAnalysisJobRequest(installId: installID, teamSelection: teamSelection))
 
         let (data, response) = try await session.data(for: request)
         return try decodeResponse(
             data: data,
             response: response,
             successType: StartCloudAnalysisJobResponse.self
+        )
+    }
+
+    private func scanJobTeams(
+        baseURL: URL,
+        jobID: String,
+        installID: String
+    ) async throws -> ScanCloudAnalysisTeamsResponse {
+        var request = URLRequest(url: baseURL.appending(path: "v1/analysis/jobs/\(jobID)/team-scan"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try encoder.encode(ScanCloudAnalysisTeamsRequest(installId: installID))
+
+        let (data, response) = try await session.data(for: request)
+        return try decodeResponse(
+            data: data,
+            response: response,
+            successType: ScanCloudAnalysisTeamsResponse.self
         )
     }
 

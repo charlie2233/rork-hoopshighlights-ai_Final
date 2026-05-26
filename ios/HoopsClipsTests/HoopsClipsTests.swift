@@ -332,6 +332,136 @@ struct HoopsClipsTests {
         #expect(teamSelection["includeUncertain"] as? Bool == true)
     }
 
+    @Test @MainActor func testCloudTeamScanPreparesJobThenStartSendsSelectedTeam() async throws {
+        let tempURL = FileManager.default.temporaryDirectory.appending(path: "team-scan-\(UUID().uuidString).mp4")
+        try Data("fake video".utf8).write(to: tempURL)
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+
+        var startPayload: [String: Any]?
+        var requestedPaths: [String] = []
+        let service = CloudAnalysisService(session: makeCloudAnalysisSession { request in
+            let url = try #require(request.url)
+            requestedPaths.append("\(request.httpMethod ?? "GET") \(url.path)")
+
+            if request.httpMethod == "POST", url.path == "/v1/analysis/jobs" {
+                return try cloudAnalysisJSONResponse(for: request, body: """
+                {
+                  "jobId": "job_team_scan",
+                  "uploadUrl": "https://analysis.hoopsclips.test/upload/job_team_scan",
+                  "uploadMethod": "PUT",
+                  "uploadHeaders": {},
+                  "expiresAt": "2026-05-26T20:00:00Z",
+                  "pollAfterSeconds": 1,
+                  "quotaRemainingToday": 2,
+                  "analysisMode": "cloud",
+                  "sourceObjectKey": "uploads/job_team_scan/source.mp4",
+                  "resultObjectKey": null
+                }
+                """)
+            }
+
+            if request.httpMethod == "PUT", url.path == "/upload/job_team_scan" {
+                return try cloudAnalysisEmptyResponse(for: request, statusCode: 204)
+            }
+
+            if request.httpMethod == "POST", url.path == "/v1/analysis/jobs/job_team_scan/team-scan" {
+                let payload = try cloudAnalysisJSONObject(from: try cloudAnalysisRequestBodyData(from: request))
+                #expect(payload["installId"] as? String == "install-123456")
+                return try cloudAnalysisJSONResponse(for: request, body: """
+                {
+                  "jobId": "job_team_scan",
+                  "status": "scanned",
+                  "detectedTeams": [
+                    {"teamId": "team_dark", "label": "Dark jerseys", "colorLabel": "black", "primaryColorHex": "#111111", "confidence": 0.93, "source": "quick_scan"},
+                    {"teamId": "team_light", "label": "Light jerseys", "colorLabel": "white", "primaryColorHex": "#ffffff", "confidence": 0.90, "source": "quick_scan"}
+                  ]
+                }
+                """)
+            }
+
+            if request.httpMethod == "POST", url.path == "/v1/analysis/jobs/job_team_scan/start" {
+                startPayload = try cloudAnalysisJSONObject(from: try cloudAnalysisRequestBodyData(from: request))
+                return try cloudAnalysisJSONResponse(for: request, body: """
+                {"jobId": "job_team_scan", "status": "queued"}
+                """)
+            }
+
+            if request.httpMethod == "GET", url.path == "/v1/analysis/jobs/job_team_scan" {
+                return try cloudAnalysisJSONResponse(for: request, body: """
+                {
+                  "jobId": "job_team_scan",
+                  "status": "succeeded",
+                  "progress": 1.0,
+                  "stage": "Finalizing clips",
+                  "errorCode": null,
+                  "errorMessage": null,
+                  "analysisVersion": "v1",
+                  "sourceObjectKey": "uploads/job_team_scan/source.mp4",
+                  "resultObjectKey": null,
+                  "results": {
+                    "analysisJobId": "job_team_scan",
+                    "sourceObjectKey": "uploads/job_team_scan/source.mp4",
+                    "clipCount": 0,
+                    "clips": [],
+                    "diagnostics": {
+                      "processingMs": 1,
+                      "backendModelVersion": "cloud-v1+team-scan",
+                      "usedVideoIntelligence": false,
+                      "usedGeminiRelabeling": false,
+                      "candidateSegments": 0,
+                      "finalSegments": 0
+                    },
+                    "detectedTeams": [
+                      {"teamId": "team_dark", "label": "Dark jerseys", "colorLabel": "black", "primaryColorHex": "#111111", "confidence": 0.93, "source": "quick_scan"}
+                    ],
+                    "teamSelection": {
+                      "mode": "team",
+                      "teamId": "team_dark",
+                      "label": "Dark jerseys",
+                      "colorLabel": "black",
+                      "confidenceThreshold": 0.85,
+                      "includeUncertain": true
+                    }
+                  }
+                }
+                """)
+            }
+
+            throw CloudAnalysisError.invalidResponse
+        })
+
+        UserDefaults.standard.set("https://analysis.hoopsclips.test", forKey: "hoops.cloudAnalysisBaseURL")
+        defer {
+            UserDefaults.standard.removeObject(forKey: "hoops.cloudAnalysisBaseURL")
+            CloudAnalysisMockURLProtocol.requestHandler = nil
+        }
+
+        let prepared = try await service.prepareTeamScan(
+            url: tempURL,
+            duration: 120,
+            installID: "install-123456"
+        ) { _, _ in }
+        #expect(prepared.detectedTeams.map(\.teamId) == ["team_dark", "team_light"])
+
+        let result = try await service.analyzePreparedVideo(
+            prepared,
+            teamSelection: HighlightTeamSelection(
+                mode: .team,
+                teamId: "team_dark",
+                label: "Dark jerseys",
+                colorLabel: "black"
+            ),
+            installID: "install-123456"
+        ) { _, _ in }
+
+        let encodedSelection = try #require(startPayload?["teamSelection"] as? [String: Any])
+        #expect(encodedSelection["teamId"] as? String == "team_dark")
+        #expect(encodedSelection["includeUncertain"] as? Bool == true)
+        #expect(result.teamSelection?.teamId == "team_dark")
+        #expect(requestedPaths.contains("POST /v1/analysis/jobs/job_team_scan/team-scan"))
+        #expect(requestedPaths.contains("POST /v1/analysis/jobs/job_team_scan/start"))
+    }
+
     @Test @MainActor func testCloudEditRequestSendsStrongestCandidatesBeforeThirtyClipCap() throws {
         let viewModel = HighlightsViewModel()
         viewModel.cloudEditSourceObjectKey = "uploads/source.mp4"
@@ -1098,4 +1228,102 @@ struct HoopsClipsTests {
         #expect(abs(endBoundaryScale - 1.0) < 0.0001)
     }
 
+}
+
+private func makeCloudAnalysisSession(
+    handler: @escaping (URLRequest) throws -> (HTTPURLResponse, Data)
+) -> URLSession {
+    CloudAnalysisMockURLProtocol.requestHandler = handler
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.protocolClasses = [CloudAnalysisMockURLProtocol.self]
+    return URLSession(configuration: configuration)
+}
+
+private func cloudAnalysisJSONResponse(for request: URLRequest, body: String) throws -> (HTTPURLResponse, Data) {
+    let url = try #require(request.url)
+    let response = try #require(
+        HTTPURLResponse(
+            url: url,
+            statusCode: 200,
+            httpVersion: nil,
+            headerFields: ["Content-Type": "application/json"]
+        )
+    )
+    return (response, Data(body.utf8))
+}
+
+private func cloudAnalysisEmptyResponse(
+    for request: URLRequest,
+    statusCode: Int
+) throws -> (HTTPURLResponse, Data) {
+    let url = try #require(request.url)
+    let response = try #require(
+        HTTPURLResponse(
+            url: url,
+            statusCode: statusCode,
+            httpVersion: nil,
+            headerFields: nil
+        )
+    )
+    return (response, Data())
+}
+
+private func cloudAnalysisJSONObject(from data: Data) throws -> [String: Any] {
+    let value = try JSONSerialization.jsonObject(with: data)
+    return try #require(value as? [String: Any])
+}
+
+private func cloudAnalysisRequestBodyData(from request: URLRequest) throws -> Data {
+    if let body = request.httpBody {
+        return body
+    }
+    guard let stream = request.httpBodyStream else {
+        throw CloudAnalysisError.invalidResponse
+    }
+    stream.open()
+    defer { stream.close() }
+
+    var data = Data()
+    var buffer = [UInt8](repeating: 0, count: 1024)
+    while stream.hasBytesAvailable {
+        let count = stream.read(&buffer, maxLength: buffer.count)
+        if count < 0 {
+            throw stream.streamError ?? CloudAnalysisError.invalidResponse
+        }
+        if count == 0 {
+            break
+        }
+        data.append(buffer, count: count)
+    }
+    return data
+}
+
+private final class CloudAnalysisMockURLProtocol: URLProtocol {
+    static var requestHandler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
+
+    override class func canInit(with request: URLRequest) -> Bool {
+        true
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
+
+    override func startLoading() {
+        guard let handler = Self.requestHandler else {
+            client?.urlProtocol(self, didFailWithError: CloudAnalysisError.network("missing test handler"))
+            return
+        }
+
+        do {
+            let (response, data) = try handler(request)
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: data)
+            client?.urlProtocolDidFinishLoading(self)
+        } catch {
+            client?.urlProtocol(self, didFailWithError: error)
+        }
+    }
+
+    override func stopLoading() {}
 }

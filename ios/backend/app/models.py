@@ -82,11 +82,22 @@ class CreateCloudAnalysisJobResponse(APIModel):
 
 class StartCloudAnalysisJobRequest(APIModel):
     installId: str = Field(min_length=8, max_length=128)
+    teamSelection: Optional[TeamSelection] = None
 
 
 class StartCloudAnalysisJobResponse(APIModel):
     jobId: str
     status: str
+
+
+class ScanCloudAnalysisTeamsRequest(APIModel):
+    installId: str = Field(min_length=8, max_length=128)
+
+
+class ScanCloudAnalysisTeamsResponse(APIModel):
+    jobId: str
+    status: Literal["scanned", "unavailable"]
+    detectedTeams: List[TeamOption] = Field(default_factory=list)
 
 
 class CloudNativeShotSignals(APIModel):

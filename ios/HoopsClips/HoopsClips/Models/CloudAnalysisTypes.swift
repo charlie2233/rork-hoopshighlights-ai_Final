@@ -147,11 +147,28 @@ nonisolated struct CreateCloudAnalysisJobResponse: Codable, Sendable {
 
 nonisolated struct StartCloudAnalysisJobRequest: Codable, Sendable {
     let installId: String
+    var teamSelection: HighlightTeamSelection? = nil
 }
 
 nonisolated struct StartCloudAnalysisJobResponse: Codable, Sendable {
     let jobId: String
     let status: String
+}
+
+nonisolated struct ScanCloudAnalysisTeamsRequest: Codable, Sendable {
+    let installId: String
+}
+
+nonisolated struct ScanCloudAnalysisTeamsResponse: Codable, Sendable {
+    let jobId: String
+    let status: String
+    let detectedTeams: [CloudTeamOption]
+}
+
+nonisolated struct PreparedCloudAnalysisJob: Sendable {
+    let sourceURL: URL
+    let job: CreateCloudAnalysisJobResponse
+    let detectedTeams: [CloudTeamOption]
 }
 
 nonisolated struct CloudAnalysisJobResponse: Codable, Sendable {
