@@ -511,6 +511,81 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertEqual(plan.clips[0].caption, "GOOD LOOK")
         self.assertNotEqual(plan.clips[0].caption, "BUCKET")
 
+    def test_deterministic_plan_trusts_native_uncertain_outcome_over_provider_made_label(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=15,
+                clips=[
+                    {
+                        **_clip("provider_overclaimed_make", 12.0, "Made Shot", 0.92),
+                        "nativeShotSignals": {
+                            "isShotLike": True,
+                            "leadInSeconds": 3.4,
+                            "followThroughSeconds": 3.6,
+                            "setupContextScore": 1.0,
+                            "outcomeContextScore": 1.0,
+                            "eventCenterQuality": 1.0,
+                            "contextQualityScore": 1.0,
+                            "timingWindowOk": True,
+                            "outcome": "uncertain",
+                            "outcomeConfidence": 0.0,
+                        },
+                    }
+                ],
+            )
+        )
+
+        signals = native_shot_signals_for_clip(request.clips[0])
+        plan = build_edit_plan(request, "edit_native_uncertain_caption")
+
+        self.assertEqual(signals.outcome, "uncertain")
+        self.assertEqual([clip.clipId for clip in plan.clips], ["provider_overclaimed_make"])
+        self.assertEqual(plan.clips[0].caption, "GOOD LOOK")
+        self.assertNotEqual(plan.clips[0].caption, "BUCKET")
+
+    def test_deterministic_plan_rejects_provider_shot_when_native_says_not_shot(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=15,
+                clips=[
+                    {
+                        **_clip("provider_false_make", 12.0, "Made Shot", 0.96),
+                        "nativeShotSignals": {
+                            "isShotLike": True,
+                            "leadInSeconds": 3.4,
+                            "followThroughSeconds": 3.6,
+                            "setupContextScore": 1.0,
+                            "outcomeContextScore": 1.0,
+                            "eventCenterQuality": 1.0,
+                            "contextQualityScore": 1.0,
+                            "timingWindowOk": True,
+                            "outcome": "not_shot",
+                            "outcomeConfidence": 1.0,
+                        },
+                    },
+                    _clip("defense_stop", 24.0, "Defense", 0.74),
+                ],
+            )
+        )
+
+        self.assertFalse(is_plan_quality_eligible_clip(request.clips[0]))
+        plan = build_edit_plan(request, "edit_native_not_shot_reject")
+
+        self.assertEqual([clip.clipId for clip in plan.clips], ["defense_stop"])
+
+    def test_deterministic_plan_captions_blocked_shot_as_lockdown_not_bucket(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=15,
+                clips=[_clip("clean_block", 12.0, "Blocked Shot", 0.9)],
+            )
+        )
+
+        plan = build_edit_plan(request, "edit_block_caption")
+
+        self.assertEqual([clip.clipId for clip in plan.clips], ["clean_block"])
+        self.assertEqual(plan.clips[0].caption, "LOCKDOWN")
+
     def test_build_edit_plan_enforces_template_minimum_clip_length(self) -> None:
         request = CreateEditJobRequest(
             **_request_payload(
