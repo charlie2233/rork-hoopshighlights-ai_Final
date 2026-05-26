@@ -48,6 +48,7 @@ def _quality_signals(**overrides) -> dict:
     payload = {
         "setupVisible": True,
         "releaseVisible": True,
+        "shotArcVisible": True,
         "eventVisible": True,
         "outcomeVisible": True,
         "rimResultVisible": True,

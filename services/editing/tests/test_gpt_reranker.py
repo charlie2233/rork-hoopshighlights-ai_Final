@@ -54,6 +54,7 @@ def _quality_signals(**overrides) -> dict:
     payload = {
         "setupVisible": True,
         "releaseVisible": True,
+        "shotArcVisible": True,
         "eventVisible": True,
         "outcomeVisible": True,
         "rimResultVisible": True,
@@ -152,13 +153,18 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertTrue(compact_clip["qualityHints"]["timingWindowOk"])
         self.assertEqual(compact_clip["nativeShotSignals"]["setupContextScore"], 1.0)
         self.assertEqual(compact_clip["nativeShotSignals"]["outcomeContextScore"], 1.0)
-        self.assertEqual(shot_rules["requiredShotContextKeyframes"], ["outcome", "postOutcome", "preEvent", "release", "rim"])
+        self.assertEqual(
+            shot_rules["requiredShotContextKeyframes"],
+            ["outcome", "postOutcome", "preEvent", "release", "rim", "shotArcEarly", "shotArcLate"],
+        )
         self.assertIn("qualitySignals", decision_schema["properties"])
         self.assertIn("qualitySignals", decision_schema["required"])
         quality_required = decision_schema["properties"]["qualitySignals"]["required"]
         self.assertIn("releaseVisible", quality_required)
+        self.assertIn("shotArcVisible", quality_required)
         self.assertIn("rimResultVisible", quality_required)
         self.assertTrue(shot_rules["madeOrMissedShotRequiresVisibleReleaseAndRimResult"])
+        self.assertTrue(shot_rules["madeOrMissedShotRequiresVisibleShotArc"])
         self.assertIn("shot-tracker", payload["instructions"])
         self.assertIn("reject clips that start right before the basket", payload["instructions"])
 
@@ -537,18 +543,24 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         request = _request()
         clip = request.clips[0]
 
-        pro_samples = gpt_reranker._sample_times_for_clip(clip, 8)
+        pro_samples = gpt_reranker._sample_times_for_clip(clip, 10)
         roles = [role for role, _ in pro_samples]
 
         self.assertIn("preEvent", roles)
-        self.assertIn("outcome", roles)
         self.assertIn("release", roles)
+        self.assertIn("shotArcEarly", roles)
+        self.assertIn("outcome", roles)
+        self.assertIn("shotArcLate", roles)
         self.assertIn("rim", roles)
         self.assertIn("postOutcome", roles)
         self.assertLess(dict(pro_samples)["preEvent"], clip.eventCenter)
         self.assertLess(dict(pro_samples)["release"], clip.eventCenter)
+        self.assertGreater(dict(pro_samples)["shotArcEarly"], clip.eventCenter)
         self.assertGreater(dict(pro_samples)["outcome"], clip.eventCenter)
+        self.assertGreater(dict(pro_samples)["shotArcLate"], dict(pro_samples)["outcome"])
         self.assertGreater(dict(pro_samples)["postOutcome"], dict(pro_samples)["rim"])
+        sample_times = [second for _, second in pro_samples]
+        self.assertEqual(sample_times, sorted(sample_times))
 
     def test_sampling_preserves_required_roles_for_short_clips(self) -> None:
         request = CreateEditJobRequest(
@@ -809,6 +821,7 @@ class GPTHighlightRerankerTests(unittest.TestCase):
                                 "qualitySignals": {
                                     "setupVisible": True,
                                     "releaseVisible": True,
+                                    "shotArcVisible": True,
                                     "eventVisible": True,
                                     "outcomeVisible": True,
                                     "rimResultVisible": True,
@@ -1161,6 +1174,7 @@ class GPTHighlightRerankerTests(unittest.TestCase):
                                 "qualitySignals": {
                                     "setupVisible": True,
                                     "releaseVisible": True,
+                                    "shotArcVisible": True,
                                     "eventVisible": True,
                                     "outcomeVisible": True,
                                     "rimResultVisible": True,
@@ -1207,11 +1221,11 @@ class GPTHighlightRerankerTests(unittest.TestCase):
     def test_free_and_pro_sampling_limits(self) -> None:
         settings = GPTHighlightRerankerSettings.from_env()
 
-        self.assertEqual(settings.limits_for("free"), (8, 8))
+        self.assertEqual(settings.limits_for("free"), (8, 10))
         self.assertGreaterEqual(settings.limits_for("pro")[0], 20)
         self.assertLessEqual(settings.limits_for("pro")[0], 30)
         self.assertGreaterEqual(settings.limits_for("pro")[1], 5)
-        self.assertLessEqual(settings.limits_for("pro")[1], 8)
+        self.assertLessEqual(settings.limits_for("pro")[1], 10)
 
     def test_default_model_prioritizes_full_quality_vision_editor(self) -> None:
         model_env_keys = ("HOOPS_AI_CLIP_GPT_MODEL", "HOOPS_GPT_HIGHLIGHT_RERANK_MODEL")
