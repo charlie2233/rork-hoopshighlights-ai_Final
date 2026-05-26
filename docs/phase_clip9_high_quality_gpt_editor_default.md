@@ -42,4 +42,4 @@ Official OpenAI docs list `gpt-4.1` as supporting image input, the Responses API
 
 - Staging/prod can still pin a different model through environment config without code changes.
 - This phase does not send full videos to GPT, does not add iOS rendering, and does not let GPT generate FFmpeg commands.
-- Watch OpenAI usage during internal beta because Free uses up to 8 clips and up to 10 keyframes per clip in the current quality-beta defaults.
+- Watch OpenAI usage during internal beta because Free uses up to 20 clips and up to 10 keyframes per clip in the current quality-beta defaults.

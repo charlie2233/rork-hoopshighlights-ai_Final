@@ -41,6 +41,7 @@ class LaunchBackendConfigPreflightTests(unittest.TestCase):
 
     def test_quality_beta_uses_full_shot_tracker_keyframe_default(self) -> None:
         self.assertEqual(REQUIRED_GPT_RERANK_SUBSTITUTIONS["_AI_CLIP_GPT_KEYFRAMES_PER_CLIP"], "10")
+        self.assertEqual(REQUIRED_GPT_RERANK_SUBSTITUTIONS["_AI_CLIP_GPT_MAX_CANDIDATES_FREE"], "20")
 
 
 if __name__ == "__main__":

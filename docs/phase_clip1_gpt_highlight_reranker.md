@@ -40,12 +40,12 @@ Environment controls:
 
 - `HOOPS_GPT_HIGHLIGHT_RERANKER_ENABLED`: enables the reranker when true.
 - `HOOPS_OPENAI_API_KEY` or `OPENAI_API_KEY`: required to call OpenAI.
-- `HOOPS_GPT_HIGHLIGHT_RERANK_MODEL`: default `gpt-4.1-mini`.
+- `HOOPS_GPT_HIGHLIGHT_RERANK_MODEL`: current quality default `gpt-4.1`.
 - `HOOPS_GPT_HIGHLIGHT_RERANK_TIMEOUT_SECONDS`: default `18`.
-- `HOOPS_GPT_HIGHLIGHT_RERANK_FREE_MAX_CLIPS`: default/cap `8`.
-- `HOOPS_GPT_HIGHLIGHT_RERANK_FREE_FRAMES_PER_CLIP`: fixed at `3`.
-- `HOOPS_GPT_HIGHLIGHT_RERANK_PAID_MAX_CLIPS`: default `24`, clamped to `20-30`.
-- `HOOPS_GPT_HIGHLIGHT_RERANK_PAID_FRAMES_PER_CLIP`: default `5`, clamped to `5-8`.
+- `HOOPS_GPT_HIGHLIGHT_RERANK_FREE_MAX_CLIPS`: legacy Free cap override, clamped to `1-20`.
+- `HOOPS_GPT_HIGHLIGHT_RERANK_FREE_FRAMES_PER_CLIP`: default `10`, clamped to `3-10`.
+- `HOOPS_GPT_HIGHLIGHT_RERANK_PAID_MAX_CLIPS`: default `30`, clamped to `20-30`.
+- `HOOPS_GPT_HIGHLIGHT_RERANK_PAID_FRAMES_PER_CLIP`: default `10`, clamped to `5-10`.
 - `HOOPS_GPT_HIGHLIGHT_RERANK_MAX_OUTPUT_TOKENS`, `HOOPS_GPT_HIGHLIGHT_RERANK_FRAME_WIDTH`, `HOOPS_GPT_HIGHLIGHT_RERANK_JPEG_QUALITY`, and `HOOPS_GPT_HIGHLIGHT_RERANK_MAX_IMAGE_BYTES` bound cost and payload size.
 
 The `/version` response exposes only safe status: enabled/configured, model, and sampling caps. It does not expose API keys, images, source URLs, R2 credentials, or presigned URLs. Follow-up hardening in `codex/phase-clip1-gpt-reranker-hardening` makes the staging Cloud Run launch switch explicit and disabled by default, sends Responses API requests with `store=false`, and clamps GPT edit hint times to existing candidate clip bounds.

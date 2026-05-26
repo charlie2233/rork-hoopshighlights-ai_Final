@@ -1786,11 +1786,27 @@ class GPTHighlightRerankerTests(unittest.TestCase):
     def test_free_and_pro_sampling_limits(self) -> None:
         settings = GPTHighlightRerankerSettings.from_env()
 
-        self.assertEqual(settings.limits_for("free"), (8, 10))
+        self.assertEqual(settings.limits_for("free"), (20, 10))
         self.assertGreaterEqual(settings.limits_for("pro")[0], 20)
         self.assertLessEqual(settings.limits_for("pro")[0], 30)
         self.assertGreaterEqual(settings.limits_for("pro")[1], 5)
         self.assertLessEqual(settings.limits_for("pro")[1], 10)
+
+    def test_free_sampling_candidate_cap_is_generous_but_bounded(self) -> None:
+        env_keys = ("HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_FREE", "HOOPS_GPT_HIGHLIGHT_RERANK_FREE_MAX_CLIPS")
+        old_values = {key: os.environ.get(key) for key in env_keys}
+        os.environ["HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_FREE"] = "999"
+        os.environ["HOOPS_GPT_HIGHLIGHT_RERANK_FREE_MAX_CLIPS"] = "999"
+        try:
+            settings = GPTHighlightRerankerSettings.from_env()
+        finally:
+            for key, old_value in old_values.items():
+                if old_value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = old_value
+
+        self.assertEqual(settings.limits_for("free")[0], 20)
 
     def test_default_model_prioritizes_full_quality_vision_editor(self) -> None:
         model_env_keys = ("HOOPS_AI_CLIP_GPT_MODEL", "HOOPS_GPT_HIGHLIGHT_RERANK_MODEL")
