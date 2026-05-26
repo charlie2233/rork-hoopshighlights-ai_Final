@@ -202,6 +202,7 @@ def rerank_edit_request_with_gpt(
         sampled_frame_count=len(sampled_frames),
         story_order=story_order,
         plan_edit=plan_edit,
+        sampled_frame_roles_by_clip=_sampled_frame_roles_by_clip(sampled_frames),
     )
 
 
@@ -467,6 +468,15 @@ def _missing_shot_context_keyframes(
         for clip_id, roles in roles_by_clip_id.items()
         if not required_roles.issubset(roles)
     }
+
+
+def _sampled_frame_roles_by_clip(frames: Sequence[SampledFrame]) -> Dict[str, List[str]]:
+    roles_by_clip_id: Dict[str, List[str]] = {}
+    for frame in frames:
+        roles = roles_by_clip_id.setdefault(frame.clip_id, [])
+        if frame.role not in roles:
+            roles.append(frame.role)
+    return roles_by_clip_id
 
 
 def _sample_times_for_clip(clip: EditCandidateClip, frames_per_clip: int) -> List[tuple[str, float]]:

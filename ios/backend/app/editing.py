@@ -5,7 +5,7 @@ from datetime import datetime
 import json
 from pathlib import Path
 import re
-from typing import Any, Dict, List, Literal, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Literal, Mapping, Optional, Sequence, Tuple
 
 from pydantic import Field, ValidationError, field_validator, model_validator
 
@@ -106,7 +106,7 @@ MIN_GENERIC_HIGHLIGHT_PLANNING_SCORE = 0.62
 MIN_GENERIC_HIGHLIGHT_WATCHABILITY_SCORE = 0.5
 MIN_NATIVE_OUTCOME_CONFLICT_CONFIDENCE = 0.65
 SHOT_TRACKING_RELEASE_ROLES = {"preEvent", "release", "eventCenter"}
-SHOT_TRACKING_BALL_FLIGHT_ROLES = {"release", "shotArcEarly", "eventCenter", "outcome", "shotArcLate", "rim", "postOutcome"}
+SHOT_TRACKING_BALL_FLIGHT_ROLES = {"release", "shotArcEarly", "eventCenter", "outcome", "shotArcLate", "rim", "postOutcome", "finish"}
 SHOT_TRACKING_RESULT_ROLES = {"outcome", "shotArcLate", "rim", "postOutcome", "finish"}
 TEMPLATE_MIN_CLIP_TOLERANCE = 0.85
 MAX_CAPTION_LENGTH = 24
@@ -2376,6 +2376,7 @@ def apply_gpt_highlight_rerank(
     sampled_frame_count: int,
     story_order: Optional[Sequence[str]] = None,
     plan_edit: Optional[GPTPlanEdit] = None,
+    sampled_frame_roles_by_clip: Optional[Mapping[str, Sequence[str]]] = None,
 ) -> CreateEditJobRequest:
     source_by_id = {clip.id: clip for clip in request.clips}
     valid_decisions: Dict[str, GPTHighlightClipDecision] = {
@@ -2426,7 +2427,8 @@ def apply_gpt_highlight_rerank(
         if decision is None:
             missing_decision_clip_ids.append(clip.id)
             continue
-        rejection_reason = _gpt_decision_rejection_reason(decision, clip)
+        sampled_frame_roles = sampled_frame_roles_by_clip.get(clip.id) if sampled_frame_roles_by_clip is not None else None
+        rejection_reason = _gpt_decision_rejection_reason(decision, clip, sampled_frame_roles)
         if rejection_reason is not None:
             rejected_clip_ids.append(clip.id)
             _increment_reason_count(rejected_reason_counts, rejection_reason)
@@ -2576,7 +2578,11 @@ def _clip_overlap_ratio(left: EditCandidateClip, right: EditCandidateClip) -> fl
     return overlap / shortest
 
 
-def _gpt_decision_rejection_reason(decision: GPTHighlightClipDecision, clip: EditCandidateClip) -> Optional[str]:
+def _gpt_decision_rejection_reason(
+    decision: GPTHighlightClipDecision,
+    clip: EditCandidateClip,
+    sampled_frame_roles: Optional[Sequence[str]] = None,
+) -> Optional[str]:
     if _contains_forbidden_gpt_generated_content(decision.model_dump()):
         return "forbidden_gpt_output_content"
     if not decision.keep:
@@ -2636,6 +2642,10 @@ def _gpt_decision_rejection_reason(decision: GPTHighlightClipDecision, clip: Edi
     tracking_evidence = decision.shotTrackingEvidence
     ball_roles = set(tracking_evidence.ballVisibleFrameRoles)
     rim_roles = set(tracking_evidence.rimVisibleFrameRoles)
+    if decision.outcome in {"made", "missed"} and sampled_frame_roles is not None:
+        unsampled_roles = _unsampled_gpt_tracking_roles(tracking_evidence, sampled_frame_roles)
+        if unsampled_roles:
+            return "gpt_cited_unsampled_frame_role"
     if decision.outcome in {"made", "missed"}:
         if tracking_evidence.releaseFrameRole not in SHOT_TRACKING_RELEASE_ROLES:
             return "missing_tracking_release_frame"
@@ -2653,6 +2663,21 @@ def _gpt_decision_rejection_reason(decision: GPTHighlightClipDecision, clip: Edi
         if tracking_evidence.ballEntersRimFrameRole not in SHOT_TRACKING_RESULT_ROLES and not tracking_evidence.netOrRimReactionVisible:
             return "missing_made_shot_entry_frame"
     return None
+
+
+def _unsampled_gpt_tracking_roles(
+    tracking_evidence: GPTShotTrackingEvidence,
+    sampled_frame_roles: Sequence[str],
+) -> set[str]:
+    sampled_roles = set(sampled_frame_roles)
+    cited_roles = set(tracking_evidence.ballVisibleFrameRoles) | set(tracking_evidence.rimVisibleFrameRoles)
+    optional_roles = (
+        tracking_evidence.releaseFrameRole,
+        tracking_evidence.resultFrameRole,
+        tracking_evidence.ballEntersRimFrameRole,
+    )
+    cited_roles.update(role for role in optional_roles if role is not None)
+    return cited_roles - sampled_roles
 
 
 def _gpt_outcome_conflicts_with_native_signal(decision: GPTHighlightClipDecision, clip: EditCandidateClip) -> bool:

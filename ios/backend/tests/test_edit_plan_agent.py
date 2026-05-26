@@ -123,14 +123,14 @@ def _shot_result_evidence(**overrides) -> dict:
 
 def _shot_tracking_evidence(**overrides) -> dict:
     payload = {
-        "ballVisibleFrameRoles": ["release", "shotArcEarly", "rim"],
-        "rimVisibleFrameRoles": ["rim", "postOutcome"],
-        "releaseFrameRole": "release",
-        "resultFrameRole": "rim",
-        "ballEntersRimFrameRole": "rim",
+        "ballVisibleFrameRoles": ["eventCenter", "finish"],
+        "rimVisibleFrameRoles": ["finish"],
+        "releaseFrameRole": "eventCenter",
+        "resultFrameRole": "finish",
+        "ballEntersRimFrameRole": "finish",
         "netOrRimReactionVisible": True,
         "trajectoryContinuity": "continuous",
-        "reason": "Release, ball flight, and rim entry are visible in sampled frames.",
+        "reason": "Shot action and rim result are visible in sampled frames.",
     }
     payload.update(overrides)
     return payload
@@ -947,6 +947,51 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertEqual(reranked.gptRerankSummary.rejectedReasonCounts.get("made_outcome_not_visible"), 1)
         self.assertEqual(reranked.gptRerankSummary.rejectedReasonCounts.get("missing_made_shot_entry_frame"), 1)
         self.assertEqual([clip.clipId for clip in plan.clips], ["complete_make"])
+
+    def test_gpt_highlight_rerank_rejects_tracking_roles_that_were_not_sampled(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=15,
+                clips=[_clip("claimed_make", 24.0, "Made Shot", 0.9)],
+            )
+        )
+        decisions = [
+            GPTHighlightClipDecision(
+                clipId="claimed_make",
+                keep=True,
+                highlightScore=0.92,
+                watchabilityScore=0.9,
+                basketballEvent="Made Shot",
+                outcome="made",
+                caption="BUCKET",
+                reason="Claims a clean make.",
+                qualitySignals=_quality_signals(),
+                shotResultEvidence=_shot_result_evidence(),
+                shotTrackingEvidence=_shot_tracking_evidence(
+                    ballVisibleFrameRoles=["release", "shotArcEarly", "rim"],
+                    rimVisibleFrameRoles=["rim", "postOutcome"],
+                    releaseFrameRole="release",
+                    resultFrameRole="rim",
+                    ballEntersRimFrameRole="rim",
+                ),
+                suggestedEdit=GPTHighlightSuggestedEdit(),
+            )
+        ]
+
+        reranked = apply_gpt_highlight_rerank(
+            request,
+            decisions,
+            "gpt-test",
+            1,
+            3,
+            sampled_frame_roles_by_clip={"claimed_make": ["start", "eventCenter", "finish"]},
+        )
+
+        self.assertEqual(reranked.gptRerankSummary.status, "applied")
+        self.assertEqual(reranked.gptRerankSummary.keptClipIds, [])
+        self.assertEqual(reranked.gptRerankSummary.fallbackReason, "all_clips_rejected")
+        self.assertIn("claimed_make", reranked.gptRerankSummary.rejectedClipIds)
+        self.assertEqual(reranked.gptRerankSummary.rejectedReasonCounts.get("gpt_cited_unsampled_frame_role"), 1)
 
     def test_gpt_highlight_rerank_all_rejected_does_not_fallback_to_original_clips(self) -> None:
         request = CreateEditJobRequest(

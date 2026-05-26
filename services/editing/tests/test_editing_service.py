@@ -75,14 +75,14 @@ def _shot_result_evidence(**overrides) -> dict:
 
 def _shot_tracking_evidence(**overrides) -> dict:
     payload = {
-        "ballVisibleFrameRoles": ["release", "shotArcEarly", "rim"],
-        "rimVisibleFrameRoles": ["rim", "postOutcome"],
-        "releaseFrameRole": "release",
-        "resultFrameRole": "rim",
-        "ballEntersRimFrameRole": "rim",
+        "ballVisibleFrameRoles": ["eventCenter", "finish"],
+        "rimVisibleFrameRoles": ["finish"],
+        "releaseFrameRole": "eventCenter",
+        "resultFrameRole": "finish",
+        "ballEntersRimFrameRole": "finish",
         "netOrRimReactionVisible": True,
         "trajectoryContinuity": "continuous",
-        "reason": "Release, ball flight, and rim entry are visible in sampled frames.",
+        "reason": "Shot action and rim result are visible in sampled frames.",
     }
     payload.update(overrides)
     return payload
