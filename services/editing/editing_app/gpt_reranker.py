@@ -667,6 +667,7 @@ def _build_openai_payload(
                         "madeShotRequiresRimEntrySequenceEvidence": True,
                         "mustUseRichSampledShotRolesWhenPresent": True,
                         "doNotKeepIfOutcomeIsOnlyImplied": True,
+                        "netOrRimReactionDoesNotReplaceEntryFrameRoles": True,
                         "requiredMadeShotTracking": {
                             "releaseFrameRole": ["preEvent", "release", "eventCenter"],
                             "resultFrameRole": ["outcome", "shotArcLate", "rimApproach", "rim", "rimEntry", "belowRim", "postOutcome", "finish"],
@@ -687,6 +688,7 @@ def _build_openai_payload(
                             "ifOutcomeRimOrPostOutcomeIsSampledUseOneAsResultFrameRole": True,
                             "ifRimApproachIsSampledUseItAsBallApproachFrameRole": True,
                             "ifRimEntryIsSampledUseItAsRimEntryFrameRole": True,
+                            "ifRimEntryIsSampledUseItAsBallEntersRimFrameRole": True,
                             "ifBelowRimIsSampledUseItAsBallBelowRimOrNetFrameRole": True,
                         },
                         "requiredShotContextKeyframes": sorted(_required_shot_context_roles(settings.limits_for(request.planTier)[1])),
@@ -712,8 +714,8 @@ def _build_openai_payload(
             "For made or missed shots, releaseVisible, shotArcVisible, and rimResultVisible must all be true; do not infer a make from a label or late rim-only aftermath. "
             "A made outcome requires shotResultEvidence.rimResultEvidence=made_visible with confident visible rim/net proof; use unclear if the result is guessed. "
             "A made outcome also requires shotResultEvidence.rimEntrySequence=visible_entry with approach, rim-entry, and below-rim/net frame roles. "
-            "When rimApproach, rimEntry, and belowRim frames are sampled, use those dedicated roles for the made-basket entry path. "
-            "A made outcome also requires shotTrackingEvidence with release/result frame roles, ball-visible frame roles, continuous trajectory, and a frame or visible net/rim reaction proving entry. "
+            "When rimApproach, rimEntry, and belowRim frames are sampled, use those dedicated roles for the made-basket entry path, and cite rimEntry as shotTrackingEvidence.ballEntersRimFrameRole. "
+            "A made outcome also requires shotTrackingEvidence with release/result frame roles, ball-visible frame roles, continuous trajectory, and cited entry/follow-through frame roles; net/rim reaction can support evidence but must not replace those frame-role citations. "
             "When sampled roles include release, shot-arc, rim, or post-outcome frames, cite those specific rich roles instead of generic eventCenter/finish proof. "
             "reject clips that start right before the basket, clips shorter than the supplied quality minimum, or clips where the outcome is only implied. "
             "Honor userEditIntent only when it is compatible with the supplied template, plan tier, candidate clips, and safety constraints. "

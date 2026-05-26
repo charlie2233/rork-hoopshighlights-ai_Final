@@ -2702,9 +2702,9 @@ def _gpt_decision_rejection_reason(
     if decision.outcome == "made":
         if tracking_evidence.trajectoryContinuity != "continuous":
             return "incomplete_made_shot_tracking"
-        if tracking_evidence.ballEntersRimFrameRole not in SHOT_TRACKING_RESULT_ROLES and not tracking_evidence.netOrRimReactionVisible:
+        if tracking_evidence.ballEntersRimFrameRole not in SHOT_TRACKING_RESULT_ROLES:
             return "missing_made_shot_entry_frame"
-        if result_evidence.ballBelowRimOrNetFrameRole not in SHOT_TRACKING_RIM_ENTRY_FOLLOW_THROUGH_ROLES and not tracking_evidence.netOrRimReactionVisible:
+        if result_evidence.ballBelowRimOrNetFrameRole not in SHOT_TRACKING_RIM_ENTRY_FOLLOW_THROUGH_ROLES:
             return "missing_rim_entry_followthrough_frame"
     return None
 
@@ -2755,6 +2755,8 @@ def _rich_sampled_tracking_rejection_reason(
         return "gpt_missing_sampled_arc_tracking"
     if sampled_roles & SHOT_TRACKING_RICH_RESULT_ROLES and tracking_evidence.resultFrameRole not in SHOT_TRACKING_RICH_RESULT_ROLES:
         return "gpt_ignored_sampled_result_frame"
+    if "rimEntry" in sampled_roles and tracking_evidence.ballEntersRimFrameRole != "rimEntry":
+        return "gpt_ignored_sampled_ball_entry_frame"
     if sampled_roles & SHOT_TRACKING_RICH_RIM_ROLES and not (rim_roles & SHOT_TRACKING_RICH_RIM_ROLES):
         return "gpt_missing_sampled_rim_tracking"
     return None
