@@ -147,8 +147,13 @@ def rerank_edit_request_with_gpt(
         return _with_fallback(request, "fallback", settings.model, "keyframe_extraction_failed", len(sampled_clips), 0)
     if _missing_required_keyframes(sampled_clips, sampled_frames):
         return _with_fallback(request, "fallback", settings.model, "keyframe_extraction_incomplete", len(sampled_clips), len(sampled_frames))
-    if _missing_shot_context_keyframes(sampled_clips, sampled_frames, frames_per_clip):
-        return _with_fallback(request, "fallback", settings.model, "shot_keyframe_extraction_incomplete", len(sampled_clips), len(sampled_frames))
+    missing_shot_context = _missing_shot_context_keyframes(sampled_clips, sampled_frames, frames_per_clip)
+    if missing_shot_context:
+        incomplete_clip_ids = set(missing_shot_context)
+        sampled_clips = [clip for clip in sampled_clips if clip.id not in incomplete_clip_ids]
+        sampled_frames = [frame for frame in sampled_frames if frame.clip_id not in incomplete_clip_ids]
+        if not sampled_clips:
+            return _with_fallback(request, "fallback", settings.model, "shot_keyframe_extraction_incomplete", 0, len(sampled_frames))
 
     payload = _build_openai_payload(request, sampled_clips, sampled_frames, settings)
     try:

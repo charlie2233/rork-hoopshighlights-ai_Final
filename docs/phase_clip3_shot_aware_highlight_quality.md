@@ -25,6 +25,7 @@ Improve GPT-led HoopClips highlight selection quality with a bias toward basketb
   - reject clips without enough follow-through after the event center
 - Added an ordinary/non-GPT selector guard so shot-like clips also need minimum setup and follow-through context when GPT is disabled or falls back.
 - Added a shot-keyframe completeness gate before the GPT call. With quality-beta sampling, shot-like candidates must have setup, release, outcome, and rim keyframes extracted successfully before they can be sent to GPT.
+- The GPT path now drops only the shot candidates missing those richer context frames and continues with remaining complete candidates instead of falling all the way back when at least one usable candidate remains.
 - Made duplicate-group selection quality-aware so a higher-scored late/pre-basket duplicate cannot hide the lower-scored full-context duplicate that should actually render.
 - Added `qualityHints` to the compact GPT payload so the model sees timing-window expectations without receiving full video.
 - Added strict GPT `qualitySignals` output:
@@ -96,10 +97,10 @@ python3 scripts/launch_backend_config_preflight.py
 Results:
 
 - Python compile: passed.
-- GPT reranker + edit-plan focused suite: 53 tests passed.
+- GPT reranker + edit-plan focused suite: 54 tests passed.
 - Editing service focused suite: 37 tests passed, including local FFmpeg render/revision/download-history paths.
 - iOS backend Python discovery: 47 tests passed.
-- Services editing discovery: 56 tests passed.
+- Services editing discovery: 57 tests passed.
 - Scripts discovery: 34 tests passed.
 - Launch backend config preflight: `pass=63 warn=12 fail=0`.
 

@@ -468,6 +468,99 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertEqual(result.gptRerankSummary.status, "fallback")
         self.assertEqual(result.gptRerankSummary.fallbackReason, "shot_keyframe_extraction_incomplete")
 
+    def test_shot_candidates_missing_context_are_dropped_without_losing_complete_candidates(self) -> None:
+        settings = GPTHighlightRerankerSettings(
+            enabled=True,
+            api_key="unit-test-key",
+            model="gpt-test",
+            endpoint="https://api.openai.test/v1/responses",
+            timeout_seconds=1.0,
+            max_output_tokens=512,
+            free_max_clips=2,
+            paid_max_clips=24,
+            free_frames_per_clip=8,
+            paid_frames_per_clip=8,
+            frame_width=512,
+            jpeg_quality=5,
+            max_image_bytes=180_000,
+            image_detail="low",
+        )
+        original_extract = gpt_reranker._extract_candidate_keyframes
+        observed_payload_clip_ids: list[str] = []
+
+        def fake_extract(source_path, clips, frames_per_clip, rerank_settings):
+            frames = []
+            for clip in clips:
+                roles = ["start", "preEvent", "release", "rim", "eventCenter", "finish"]
+                if clip.id == "c1":
+                    roles.insert(3, "outcome")
+                for role in roles:
+                    frames.append(SampledFrame(clip_id=clip.id, role=role, time_seconds=clip.eventCenter, data_url="data:image/jpeg;base64,ZmFrZQ=="))
+            return frames
+
+        def fake_response_client(payload, api_key, endpoint, timeout_seconds):
+            compact_input = json.loads(payload["input"][0]["content"][0]["text"])
+            observed_payload_clip_ids[:] = [clip["clipId"] for clip in compact_input["clips"]]
+            return {
+                "output_text": json.dumps(
+                    {
+                        "decisions": [
+                            {
+                                "clipId": "c1",
+                                "keep": True,
+                                "rejectReason": None,
+                                "highlightScore": 0.92,
+                                "watchabilityScore": 0.88,
+                                "basketballEvent": "Made Shot",
+                                "outcome": "made",
+                                "caption": "BUCKET",
+                                "reason": "Complete setup, release, rim, and outcome.",
+                                "storyRole": "peak",
+                                "qualitySignals": {
+                                    "setupVisible": True,
+                                    "eventVisible": True,
+                                    "outcomeVisible": True,
+                                    "ballPathVisible": True,
+                                    "playerControlVisible": True,
+                                    "cleanCamera": True,
+                                    "fullPlayContext": True,
+                                    "reason": "Complete shot context.",
+                                },
+                                "suggestedEdit": {
+                                    "slowMotion": False,
+                                    "slowMotionCenter": None,
+                                    "captionMoment": None,
+                                    "cropFocus": "rim",
+                                    "extendBeforeSeconds": 0,
+                                    "extendAfterSeconds": 0,
+                                },
+                            }
+                        ],
+                        "storyOrder": ["c1"],
+                        "planEdit": {
+                            "orderedClipIds": ["c1"],
+                            "pacing": "fast",
+                            "captions": [],
+                            "slowMotionMoments": [],
+                            "summary": "ok",
+                        },
+                        "summary": "ok",
+                    }
+                )
+            }
+
+        try:
+            gpt_reranker._extract_candidate_keyframes = fake_extract
+            with tempfile.NamedTemporaryFile(suffix=".mp4") as source:
+                result = gpt_reranker.rerank_edit_request_with_gpt(_request("free", 2), Path(source.name), settings, fake_response_client)
+        finally:
+            gpt_reranker._extract_candidate_keyframes = original_extract
+
+        self.assertEqual(observed_payload_clip_ids, ["c1"])
+        self.assertEqual(result.gptRerankSummary.status, "applied")
+        self.assertEqual(result.gptRerankSummary.keptClipIds, ["c1"])
+        self.assertIn("c0", result.gptRerankSummary.rejectedClipIds)
+
     def test_incomplete_gpt_decisions_fall_back(self) -> None:
         settings = GPTHighlightRerankerSettings(
             enabled=True,
