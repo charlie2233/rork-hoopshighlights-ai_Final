@@ -96,6 +96,7 @@ Then you can selectively install dependencies into isolated virtualenvs:
 - `HOOPS_DAILY_QUOTA`: per-install rolling quota (default `3`)
 - `HOOPS_MAX_DURATION_SECONDS`: max backend video duration (default `1800`)
 - `HOOPS_MAX_FILE_SIZE_BYTES`: max video size for v1 (default `524288000`)
+- `HOOPS_MAX_RETURNED_CLIPS`: high-recall cloud analysis candidate pool returned to iOS and AI Edit, clamped to `8...40` (default `30`)
 - `HOOPS_BACKEND_MODEL_VERSION`: version string exposed in diagnostics (default `cloud-v1`)
 - `HOOPS_USE_GEMINI_RELABELING`: reserved flag; current scaffold keeps deterministic labels
 - `HOOPS_TEAM_QUICK_SCAN_ENABLED`: enables the cloud GPT frame quick scan for jersey-color team detection and per-clip team attribution. If unset, it follows `HOOPS_AI_CLIP_GPT_EDITOR_ENABLED` / `HOOPS_GPT_HIGHLIGHT_RERANKER_ENABLED`.

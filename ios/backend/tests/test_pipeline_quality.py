@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
+import os
 import shutil
 import subprocess
 import tempfile
@@ -9,6 +10,7 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
+from app.config import get_settings
 from app.pipeline import (
     _build_candidate_windows,
     _detect_shot_boundaries,
@@ -108,6 +110,38 @@ def _clip(
 
 
 class PipelineQualityTests(unittest.TestCase):
+    def tearDown(self) -> None:
+        get_settings.cache_clear()
+
+    def test_default_backend_candidate_pool_feeds_gpt_internal_top_thirty(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="hoopclips-settings-") as temp_dir:
+            with patch.dict(os.environ, {"HOOPS_ENVIRONMENT": "local", "HOOPS_UPLOAD_ROOT": temp_dir}, clear=True):
+                get_settings.cache_clear()
+                settings = get_settings()
+
+        self.assertEqual(settings.max_returned_clips, 30)
+
+    def test_backend_candidate_pool_env_is_clamped_for_review_safety(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="hoopclips-settings-") as temp_dir:
+            with patch.dict(
+                os.environ,
+                {"HOOPS_ENVIRONMENT": "local", "HOOPS_UPLOAD_ROOT": temp_dir, "HOOPS_MAX_RETURNED_CLIPS": "100"},
+                clear=True,
+            ):
+                get_settings.cache_clear()
+                high_settings = get_settings()
+
+            with patch.dict(
+                os.environ,
+                {"HOOPS_ENVIRONMENT": "local", "HOOPS_UPLOAD_ROOT": temp_dir, "HOOPS_MAX_RETURNED_CLIPS": "2"},
+                clear=True,
+            ):
+                get_settings.cache_clear()
+                low_settings = get_settings()
+
+        self.assertEqual(high_settings.max_returned_clips, 40)
+        self.assertEqual(low_settings.max_returned_clips, 8)
+
     def test_run_analysis_applies_quick_scan_before_selected_team_filter(self) -> None:
         native = [
             _clip(start=7.5, end=12.0, label="Three Pointer", combined=0.86, event_center=10.0, auto_keep=True),
