@@ -978,6 +978,7 @@ class GPTHighlightSuggestedEdit(APIModel):
 class GPTHighlightQualitySignals(APIModel):
     setupVisible: bool
     releaseVisible: bool
+    shotArcVisible: bool
     eventVisible: bool
     outcomeVisible: bool
     rimResultVisible: bool
@@ -2563,6 +2564,8 @@ def _gpt_decision_rejection_reason(decision: GPTHighlightClipDecision, clip: Edi
         return "missing_setup_context"
     if decision.outcome in {"made", "missed"} and not signals.releaseVisible:
         return "missing_shot_release"
+    if decision.outcome in {"made", "missed"} and not signals.shotArcVisible:
+        return "missing_shot_arc"
     if decision.outcome in {"made", "missed"} and not signals.rimResultVisible:
         return "missing_rim_result"
     if decision.outcome == "made" and not signals.ballPathVisible:

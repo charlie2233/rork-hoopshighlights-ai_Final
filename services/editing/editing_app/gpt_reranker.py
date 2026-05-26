@@ -41,7 +41,7 @@ from app.editing import (  # noqa: E402
 ResponseClient = Callable[[Dict[str, Any], str, str, float], Dict[str, Any]]
 ALLOWED_IMAGE_DETAIL_LEVELS = {"low", "high", "original", "auto"}
 REQUIRED_KEYFRAME_ROLES = {"start", "eventCenter", "finish"}
-SHOT_CONTEXT_KEYFRAME_ROLES = ("preEvent", "release", "outcome", "rim", "postOutcome")
+SHOT_CONTEXT_KEYFRAME_ROLES = ("preEvent", "release", "shotArcEarly", "outcome", "shotArcLate", "rim", "postOutcome")
 MIN_GPT_CANDIDATE_LEAD_IN_SECONDS = 1.2
 MIN_GPT_CANDIDATE_FOLLOW_THROUGH_SECONDS = 0.75
 MIN_GPT_SHOT_LIKE_CANDIDATE_SECONDS = 3.0
@@ -85,8 +85,8 @@ class GPTHighlightRerankerSettings:
             max_output_tokens=_env_int("HOOPS_AI_CLIP_GPT_MAX_OUTPUT_TOKENS", _env_int("HOOPS_GPT_HIGHLIGHT_RERANK_MAX_OUTPUT_TOKENS", 3500, 256, 6000), 256, 6000),
             free_max_clips=_env_int("HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_FREE", _env_int("HOOPS_GPT_HIGHLIGHT_RERANK_FREE_MAX_CLIPS", 8, 1, 8), 1, 8),
             paid_max_clips=_env_int("HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_PRO", _env_int("HOOPS_GPT_HIGHLIGHT_RERANK_PAID_MAX_CLIPS", 30, 20, 30), 20, 30),
-            free_frames_per_clip=_env_int("HOOPS_AI_CLIP_GPT_KEYFRAMES_PER_CLIP", _env_int("HOOPS_GPT_HIGHLIGHT_RERANK_FREE_FRAMES_PER_CLIP", 8, 3, 8), 3, 8),
-            paid_frames_per_clip=_env_int("HOOPS_AI_CLIP_GPT_KEYFRAMES_PER_CLIP", _env_int("HOOPS_GPT_HIGHLIGHT_RERANK_PAID_FRAMES_PER_CLIP", 8, 5, 8), 3, 8),
+            free_frames_per_clip=_env_int("HOOPS_AI_CLIP_GPT_KEYFRAMES_PER_CLIP", _env_int("HOOPS_GPT_HIGHLIGHT_RERANK_FREE_FRAMES_PER_CLIP", 10, 3, 10), 3, 10),
+            paid_frames_per_clip=_env_int("HOOPS_AI_CLIP_GPT_KEYFRAMES_PER_CLIP", _env_int("HOOPS_GPT_HIGHLIGHT_RERANK_PAID_FRAMES_PER_CLIP", 10, 5, 10), 3, 10),
             frame_width=_env_int("HOOPS_GPT_HIGHLIGHT_RERANK_FRAME_WIDTH", 1024, 256, 1280),
             jpeg_quality=_env_int("HOOPS_GPT_HIGHLIGHT_RERANK_JPEG_QUALITY", 4, 2, 12),
             max_image_bytes=_env_int("HOOPS_GPT_HIGHLIGHT_RERANK_MAX_IMAGE_BYTES", 750_000, 40_000, 1_000_000),
@@ -433,8 +433,12 @@ def _missing_required_keyframes(
 
 
 def _required_shot_context_roles(frames_per_clip: int) -> set[str]:
-    if frames_per_clip >= 8:
+    if frames_per_clip >= 10:
         return set(SHOT_CONTEXT_KEYFRAME_ROLES)
+    if frames_per_clip >= 9:
+        return {"preEvent", "release", "shotArcEarly", "outcome", "rim", "postOutcome"}
+    if frames_per_clip >= 8:
+        return {"preEvent", "release", "outcome", "rim", "postOutcome"}
     if frames_per_clip >= 7:
         return {"preEvent", "release", "outcome", "rim"}
     if frames_per_clip >= 6:
@@ -474,21 +478,59 @@ def _sample_times_for_clip(clip: EditCandidateClip, frames_per_clip: int) -> Lis
 
     setup_second = max(clip.start, clip.eventCenter - 0.85)
     release_second = max(clip.start, clip.eventCenter - 0.35)
+    shot_arc_early_second = min(finish, clip.eventCenter + 0.2)
     outcome_second = min(finish, clip.eventCenter + 0.55)
+    shot_arc_late_second = min(finish, clip.eventCenter + 0.8)
     rim_second = min(finish, clip.eventCenter + 0.95)
     post_outcome_second = min(finish, clip.eventCenter + 1.35)
     mid_action_second = clip.start + ((finish - clip.start) * 0.45)
-    candidates = [
-        ("preEvent", setup_second),
-        ("outcome", outcome_second),
-        ("release", release_second),
-        ("rim", rim_second),
-        ("postOutcome", post_outcome_second),
-        ("midAction", mid_action_second),
-    ]
+    if frames_per_clip >= 10:
+        candidates = [
+            ("preEvent", setup_second),
+            ("release", release_second),
+            ("shotArcEarly", shot_arc_early_second),
+            ("outcome", outcome_second),
+            ("shotArcLate", shot_arc_late_second),
+            ("rim", rim_second),
+            ("postOutcome", post_outcome_second),
+        ]
+    elif frames_per_clip >= 9:
+        candidates = [
+            ("preEvent", setup_second),
+            ("release", release_second),
+            ("shotArcEarly", shot_arc_early_second),
+            ("outcome", outcome_second),
+            ("rim", rim_second),
+            ("postOutcome", post_outcome_second),
+        ]
+    elif frames_per_clip >= 8:
+        candidates = [
+            ("preEvent", setup_second),
+            ("release", release_second),
+            ("outcome", outcome_second),
+            ("rim", rim_second),
+            ("postOutcome", post_outcome_second),
+        ]
+    elif frames_per_clip >= 7:
+        candidates = [
+            ("preEvent", setup_second),
+            ("release", release_second),
+            ("outcome", outcome_second),
+            ("rim", rim_second),
+        ]
+    elif frames_per_clip >= 6:
+        candidates = [
+            ("preEvent", setup_second),
+            ("release", release_second),
+            ("outcome", outcome_second),
+        ]
+    elif frames_per_clip >= 5:
+        candidates = [("preEvent", setup_second), ("outcome", outcome_second)]
+    else:
+        candidates = [("preEvent", setup_second), ("midAction", mid_action_second)]
     reserved_buckets = {round(second, 1) for _, second in base_samples}
     context_samples = _dedupe_sample_times(candidates, clip, reserved_buckets)[: max(0, frames_per_clip - 3)]
-    return [base_samples[0], *context_samples, base_samples[1], base_samples[2]]
+    return sorted([*base_samples, *context_samples], key=lambda item: item[1])
 
 
 def _clamp_sample_times(samples: Sequence[tuple[str, float]], clip: EditCandidateClip) -> List[tuple[str, float]]:
@@ -606,6 +648,7 @@ def _build_openai_payload(
                         "rejectPreBasketOnlyClips": True,
                         "madeShotRequiresSetupReleaseBallPathRimAndOutcome": True,
                         "madeOrMissedShotRequiresVisibleReleaseAndRimResult": True,
+                        "madeOrMissedShotRequiresVisibleShotArc": True,
                         "doNotKeepIfOutcomeIsOnlyImplied": True,
                         "requiredShotContextKeyframes": sorted(_required_shot_context_roles(settings.limits_for(request.planTier)[1])),
                     },
@@ -627,7 +670,7 @@ def _build_openai_payload(
             "You are HoopClips GPT Highlight Reranker. Judge basketball highlight worthiness, watchability, event clarity, "
             "outcome sanity, boring/duplicate rejection, concise captions, story order, and safe edit suggestions. "
             "Act like a basketball shot-tracker: for made shots, verify visible setup, release, ball path, rim/result, and aftermath. "
-            "For made or missed shots, releaseVisible and rimResultVisible must both be true; do not infer a make from a label or late rim-only aftermath. "
+            "For made or missed shots, releaseVisible, shotArcVisible, and rimResultVisible must all be true; do not infer a make from a label or late rim-only aftermath. "
             "reject clips that start right before the basket, clips shorter than the supplied quality minimum, or clips where the outcome is only implied. "
             "Honor userEditIntent only when it is compatible with the supplied template, plan tier, candidate clips, and safety constraints. "
             "Use only supplied candidate clip IDs and sampled keyframes. Do not replace FFmpeg extraction, CV tracking, rendering, or exact timestamps. "
@@ -700,6 +743,7 @@ def _response_schema() -> Dict[str, Any]:
         "properties": {
             "setupVisible": {"type": "boolean"},
             "releaseVisible": {"type": "boolean"},
+            "shotArcVisible": {"type": "boolean"},
             "eventVisible": {"type": "boolean"},
             "outcomeVisible": {"type": "boolean"},
             "rimResultVisible": {"type": "boolean"},
@@ -712,6 +756,7 @@ def _response_schema() -> Dict[str, Any]:
         "required": [
             "setupVisible",
             "releaseVisible",
+            "shotArcVisible",
             "eventVisible",
             "outcomeVisible",
             "rimResultVisible",

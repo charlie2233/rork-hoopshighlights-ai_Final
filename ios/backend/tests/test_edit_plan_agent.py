@@ -96,6 +96,7 @@ def _quality_signals(**overrides) -> dict:
     payload = {
         "setupVisible": True,
         "releaseVisible": True,
+        "shotArcVisible": True,
         "eventVisible": True,
         "outcomeVisible": True,
         "rimResultVisible": True,
@@ -751,6 +752,7 @@ class EditPlanAgentTests(unittest.TestCase):
                     },
                     _clip("unclear_outcome", 12.0, "Made Shot", 0.97),
                     _clip("missing_release", 18.0, "Made Shot", 0.96),
+                    _clip("missing_shot_arc", 19.5, "Made Shot", 0.955),
                     _clip("missing_rim_result", 21.0, "Made Shot", 0.95),
                     _clip("complete_make", 24.0, "Made Shot", 0.8),
                 ],
@@ -759,6 +761,7 @@ class EditPlanAgentTests(unittest.TestCase):
         base_signal = {
             "setupVisible": True,
             "releaseVisible": True,
+            "shotArcVisible": True,
             "eventVisible": True,
             "outcomeVisible": True,
             "rimResultVisible": True,
@@ -818,6 +821,18 @@ class EditPlanAgentTests(unittest.TestCase):
                 suggestedEdit=GPTHighlightSuggestedEdit(),
             ),
             GPTHighlightClipDecision(
+                clipId="missing_shot_arc",
+                keep=True,
+                highlightScore=0.955,
+                watchabilityScore=0.9,
+                basketballEvent="Made Shot",
+                outcome="made",
+                caption="NO ARC",
+                reason="The release and rim are visible, but the ball flight is not.",
+                qualitySignals={**base_signal, "shotArcVisible": False, "reason": "No visible ball arc."},
+                suggestedEdit=GPTHighlightSuggestedEdit(),
+            ),
+            GPTHighlightClipDecision(
                 clipId="complete_make",
                 keep=True,
                 highlightScore=0.82,
@@ -839,8 +854,10 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertIn("pre_basket", reranked.gptRerankSummary.rejectedClipIds)
         self.assertIn("unclear_outcome", reranked.gptRerankSummary.rejectedClipIds)
         self.assertIn("missing_release", reranked.gptRerankSummary.rejectedClipIds)
+        self.assertIn("missing_shot_arc", reranked.gptRerankSummary.rejectedClipIds)
         self.assertIn("missing_rim_result", reranked.gptRerankSummary.rejectedClipIds)
         self.assertEqual(reranked.gptRerankSummary.rejectedReasonCounts.get("missing_shot_release"), 1)
+        self.assertEqual(reranked.gptRerankSummary.rejectedReasonCounts.get("missing_shot_arc"), 1)
         self.assertEqual(reranked.gptRerankSummary.rejectedReasonCounts.get("missing_rim_result"), 1)
         self.assertEqual([clip.clipId for clip in plan.clips], ["complete_make"])
 
