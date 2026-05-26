@@ -31,6 +31,19 @@ TemplateId = Literal[
     "team_highlight_pro_v1",
 ]
 StoryRole = Literal["opener", "peak", "filler", "closer"]
+ShotTrackingFrameRole = Literal[
+    "start",
+    "preEvent",
+    "release",
+    "shotArcEarly",
+    "eventCenter",
+    "outcome",
+    "shotArcLate",
+    "rim",
+    "postOutcome",
+    "finish",
+    "midAction",
+]
 UserPromptStyleIntent = Literal[
     "more_hype",
     "nba_recap",
@@ -92,6 +105,9 @@ MIN_NON_SHOT_WATCHABILITY_SCORE = 0.42
 MIN_GENERIC_HIGHLIGHT_PLANNING_SCORE = 0.62
 MIN_GENERIC_HIGHLIGHT_WATCHABILITY_SCORE = 0.5
 MIN_NATIVE_OUTCOME_CONFLICT_CONFIDENCE = 0.65
+SHOT_TRACKING_RELEASE_ROLES = {"preEvent", "release", "eventCenter"}
+SHOT_TRACKING_BALL_FLIGHT_ROLES = {"release", "shotArcEarly", "eventCenter", "outcome", "shotArcLate", "rim", "postOutcome"}
+SHOT_TRACKING_RESULT_ROLES = {"outcome", "shotArcLate", "rim", "postOutcome", "finish"}
 TEMPLATE_MIN_CLIP_TOLERANCE = 0.85
 MAX_CAPTION_LENGTH = 24
 MAX_DURATION_OVERRUN_SECONDS = 6.0
@@ -996,6 +1012,17 @@ class GPTShotResultEvidence(APIModel):
     reason: str = Field(min_length=1, max_length=160)
 
 
+class GPTShotTrackingEvidence(APIModel):
+    ballVisibleFrameRoles: List[ShotTrackingFrameRole] = Field(default_factory=list, max_length=10)
+    rimVisibleFrameRoles: List[ShotTrackingFrameRole] = Field(default_factory=list, max_length=10)
+    releaseFrameRole: Optional[ShotTrackingFrameRole] = None
+    resultFrameRole: Optional[ShotTrackingFrameRole] = None
+    ballEntersRimFrameRole: Optional[ShotTrackingFrameRole] = None
+    netOrRimReactionVisible: bool = False
+    trajectoryContinuity: Literal["continuous", "partial", "missing"] = "missing"
+    reason: str = Field(default="No frame-role shot tracking evidence supplied.", min_length=1, max_length=180)
+
+
 class GPTHighlightClipDecision(APIModel):
     clipId: str = Field(min_length=1, max_length=80)
     keep: bool
@@ -1016,6 +1043,7 @@ class GPTHighlightClipDecision(APIModel):
             reason="No explicit shot result evidence supplied.",
         )
     )
+    shotTrackingEvidence: GPTShotTrackingEvidence = Field(default_factory=GPTShotTrackingEvidence)
     suggestedEdit: GPTHighlightSuggestedEdit
 
 
@@ -2605,6 +2633,25 @@ def _gpt_decision_rejection_reason(decision: GPTHighlightClipDecision, clip: Edi
             return "blocked_outcome_not_visible"
         if result_evidence.outcomeConfidence < 0.65:
             return "low_shot_result_confidence"
+    tracking_evidence = decision.shotTrackingEvidence
+    ball_roles = set(tracking_evidence.ballVisibleFrameRoles)
+    rim_roles = set(tracking_evidence.rimVisibleFrameRoles)
+    if decision.outcome in {"made", "missed"}:
+        if tracking_evidence.releaseFrameRole not in SHOT_TRACKING_RELEASE_ROLES:
+            return "missing_tracking_release_frame"
+        if tracking_evidence.resultFrameRole not in SHOT_TRACKING_RESULT_ROLES:
+            return "missing_tracking_result_frame"
+        if len(ball_roles & SHOT_TRACKING_BALL_FLIGHT_ROLES) < 2:
+            return "insufficient_ball_tracking_frames"
+        if not (rim_roles & SHOT_TRACKING_RESULT_ROLES):
+            return "missing_rim_tracking_frame"
+        if tracking_evidence.trajectoryContinuity == "missing":
+            return "missing_shot_tracking_trajectory"
+    if decision.outcome == "made":
+        if tracking_evidence.trajectoryContinuity != "continuous":
+            return "incomplete_made_shot_tracking"
+        if tracking_evidence.ballEntersRimFrameRole not in SHOT_TRACKING_RESULT_ROLES and not tracking_evidence.netOrRimReactionVisible:
+            return "missing_made_shot_entry_frame"
     return None
 
 
