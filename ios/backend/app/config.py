@@ -43,6 +43,17 @@ class Settings:
     max_returned_clips: int
     backend_model_version: str
     use_gemini_relabeling: bool
+    team_quick_scan_enabled: bool = False
+    team_quick_scan_api_key: Optional[str] = None
+    team_quick_scan_model: str = "gpt-4.1"
+    team_quick_scan_endpoint: str = "https://api.openai.com/v1/responses"
+    team_quick_scan_timeout_seconds: float = 24.0
+    team_quick_scan_video_frame_count: int = 8
+    team_quick_scan_clip_frames_per_clip: int = 3
+    team_quick_scan_frame_width: int = 720
+    team_quick_scan_jpeg_quality: int = 4
+    team_quick_scan_max_image_bytes: int = 600_000
+    team_quick_scan_min_team_confidence: float = 0.55
 
     @property
     def is_local(self) -> bool:
@@ -98,6 +109,34 @@ def _resolve_optional_python(env_key: str, default_venv_dir: Path) -> Optional[s
     return None
 
 
+def _env_flag_optional(name: str) -> Optional[bool]:
+    value = os.getenv(name)
+    if value is None:
+        return None
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _env_flag(name: str, default: bool = False) -> bool:
+    parsed = _env_flag_optional(name)
+    return default if parsed is None else parsed
+
+
+def _env_int(name: str, default: int, minimum: int, maximum: int) -> int:
+    try:
+        value = int(os.getenv(name, str(default)))
+    except ValueError:
+        value = default
+    return max(minimum, min(maximum, value))
+
+
+def _env_float(name: str, default: float, minimum: float, maximum: float) -> float:
+    try:
+        value = float(os.getenv(name, str(default)))
+    except ValueError:
+        value = default
+    return max(minimum, min(maximum, value))
+
+
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     environment = os.getenv("HOOPS_ENVIRONMENT", os.getenv("ENV", "local")).strip().lower() or "local"
@@ -127,6 +166,12 @@ def get_settings() -> Settings:
 
     detection_provider = os.getenv("HOOPS_DETECTION_PROVIDER", "hybrid").strip().lower() or "hybrid"
     post_ranking_provider = os.getenv("HOOPS_POST_RANKING_PROVIDER", "native").strip().lower() or "native"
+    explicit_team_scan = _env_flag_optional("HOOPS_TEAM_QUICK_SCAN_ENABLED")
+    team_quick_scan_enabled = (
+        explicit_team_scan
+        if explicit_team_scan is not None
+        else _env_flag("HOOPS_AI_CLIP_GPT_EDITOR_ENABLED") or _env_flag("HOOPS_GPT_HIGHLIGHT_RERANKER_ENABLED")
+    )
 
     default_hoopcut_repo = external_repo_root / "HoopCut_FH"
     default_autohighlight_repo = external_repo_root / "autohighlight"
@@ -155,7 +200,7 @@ def get_settings() -> Settings:
         or None
     )
 
-    return Settings(
+    settings = Settings(
         service_name="hoops-ai-api",
         environment=environment,
         host_base_url=host_base_url,
@@ -190,6 +235,17 @@ def get_settings() -> Settings:
         max_returned_clips=int(os.getenv("HOOPS_MAX_RETURNED_CLIPS", "8")),
         backend_model_version=os.getenv("HOOPS_BACKEND_MODEL_VERSION", "cloud-v1"),
         use_gemini_relabeling=os.getenv("HOOPS_USE_GEMINI_RELABELING", "false").lower() == "true",
+        team_quick_scan_enabled=team_quick_scan_enabled,
+        team_quick_scan_api_key=os.getenv("HOOPS_OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY") or None,
+        team_quick_scan_model=os.getenv("HOOPS_TEAM_QUICK_SCAN_MODEL", os.getenv("HOOPS_AI_CLIP_GPT_MODEL", "gpt-4.1")),
+        team_quick_scan_endpoint=os.getenv("HOOPS_TEAM_QUICK_SCAN_ENDPOINT", "https://api.openai.com/v1/responses"),
+        team_quick_scan_timeout_seconds=_env_float("HOOPS_TEAM_QUICK_SCAN_TIMEOUT_SECONDS", 24.0, 2.0, 90.0),
+        team_quick_scan_video_frame_count=_env_int("HOOPS_TEAM_QUICK_SCAN_VIDEO_FRAME_COUNT", 8, 2, 16),
+        team_quick_scan_clip_frames_per_clip=_env_int("HOOPS_TEAM_QUICK_SCAN_CLIP_FRAMES_PER_CLIP", 3, 1, 4),
+        team_quick_scan_frame_width=_env_int("HOOPS_TEAM_QUICK_SCAN_FRAME_WIDTH", 720, 320, 1280),
+        team_quick_scan_jpeg_quality=_env_int("HOOPS_TEAM_QUICK_SCAN_JPEG_QUALITY", 4, 2, 12),
+        team_quick_scan_max_image_bytes=_env_int("HOOPS_TEAM_QUICK_SCAN_MAX_IMAGE_BYTES", 600_000, 40_000, 1_000_000),
+        team_quick_scan_min_team_confidence=_env_float("HOOPS_TEAM_QUICK_SCAN_MIN_TEAM_CONFIDENCE", 0.55, 0.0, 0.99),
     )
 
     settings.validate()

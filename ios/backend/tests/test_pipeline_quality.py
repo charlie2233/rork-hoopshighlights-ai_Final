@@ -20,7 +20,7 @@ from app.pipeline import (
     run_analysis,
 )
 from app.classifier import classify_window
-from app.models import CandidateWindow, CloudClip, StoredJob, now_utc
+from app.models import CandidateWindow, ClipTeamAttribution, CloudClip, StoredJob, TeamOption, TeamSelection, now_utc
 
 
 def _settings() -> SimpleNamespace:
@@ -48,10 +48,21 @@ def _analysis_settings(detection_provider: str = "hybrid") -> SimpleNamespace:
         max_duration_seconds=60.0,
         backend_model_version="test-cloud",
         use_gemini_relabeling=False,
+        team_quick_scan_enabled=True,
+        team_quick_scan_api_key="test-key",
+        team_quick_scan_model="gpt-4.1",
+        team_quick_scan_endpoint="https://api.openai.com/v1/responses",
+        team_quick_scan_timeout_seconds=12.0,
+        team_quick_scan_video_frame_count=6,
+        team_quick_scan_clip_frames_per_clip=3,
+        team_quick_scan_frame_width=720,
+        team_quick_scan_jpeg_quality=4,
+        team_quick_scan_max_image_bytes=500_000,
+        team_quick_scan_min_team_confidence=0.55,
     )
 
 
-def _job(duration_seconds: float = 30.0) -> StoredJob:
+def _job(duration_seconds: float = 30.0, team_selection: TeamSelection | None = None) -> StoredJob:
     created = now_utc()
     return StoredJob(
         job_id="job_quality",
@@ -65,6 +76,7 @@ def _job(duration_seconds: float = 30.0) -> StoredJob:
         created_at=created,
         expires_at=created + timedelta(hours=1),
         object_key="uploads/source.mp4",
+        team_selection=team_selection,
     )
 
 
@@ -96,6 +108,71 @@ def _clip(
 
 
 class PipelineQualityTests(unittest.TestCase):
+    def test_run_analysis_applies_quick_scan_before_selected_team_filter(self) -> None:
+        native = [
+            _clip(start=7.5, end=12.0, label="Three Pointer", combined=0.86, event_center=10.0, auto_keep=True),
+            _clip(start=16.0, end=20.5, label="Steal", combined=0.82, event_center=18.0, auto_keep=True),
+            _clip(start=24.0, end=28.5, label="Block", combined=0.8, event_center=26.0, auto_keep=True),
+        ]
+        detected = [
+            TeamOption(teamId="team_dark", label="Dark jerseys", colorLabel="black", confidence=0.93, source="quick_scan"),
+            TeamOption(teamId="team_light", label="Light jerseys", colorLabel="white", confidence=0.91, source="quick_scan"),
+        ]
+        attributed = [
+            native[0].model_copy(
+                update={
+                    "teamAttribution": ClipTeamAttribution(
+                        teamId="team_dark",
+                        label="Dark jerseys",
+                        colorLabel="black",
+                        confidence=0.92,
+                        source="gpt_frame_review",
+                    )
+                }
+            ),
+            native[1].model_copy(
+                update={
+                    "teamAttribution": ClipTeamAttribution(
+                        teamId="team_light",
+                        label="Light jerseys",
+                        colorLabel="white",
+                        confidence=0.93,
+                        source="gpt_frame_review",
+                    )
+                }
+            ),
+            native[2].model_copy(
+                update={
+                    "teamAttribution": ClipTeamAttribution(
+                        teamId="team_dark",
+                        label="Dark jerseys",
+                        colorLabel="black",
+                        confidence=0.62,
+                        source="gpt_frame_review",
+                    )
+                }
+            ),
+        ]
+        team_selection = TeamSelection(mode="team", teamId="team_dark", colorLabel="black", includeUncertain=True)
+
+        with tempfile.TemporaryDirectory(prefix="hoopclips-team-scan-") as temp_dir:
+            source_path = Path(temp_dir) / "source.mp4"
+            source_path.write_bytes(b"video")
+            with (
+                patch("app.pipeline._probe_duration", return_value=30.0),
+                patch("app.pipeline.detect_with_optional_external_provider", return_value=([], None)),
+                patch("app.pipeline._run_native_candidate_detection", return_value=(native, len(native))),
+                patch("app.pipeline.apply_team_quick_scan", return_value=(attributed, detected, True)),
+            ):
+                result = run_analysis(_job(team_selection=team_selection), _analysis_settings("hybrid"), source_path)
+
+        labels = [clip.label for clip in result.clips]
+        self.assertIn("Three Pointer", labels)
+        self.assertIn("Block", labels)
+        self.assertNotIn("Steal", labels)
+        self.assertEqual([team.teamId for team in result.detectedTeams], ["team_dark", "team_light"])
+        self.assertEqual(result.diagnostics.backendModelVersion, "test-cloud+team-scan")
+
     def test_run_analysis_hybrid_merges_native_pool_when_provider_returns_limited_clips(self) -> None:
         external = [
             _clip(start=18.0, end=22.0, label="Defense", combined=0.62, event_center=20.0, auto_keep=True)

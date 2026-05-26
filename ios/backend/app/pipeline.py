@@ -17,6 +17,7 @@ from .classifier import classify_window, maybe_relabel_with_gemini
 from .config import Settings
 from .external_providers import detect_with_optional_external_provider, rerank_with_optional_external_provider
 from .models import CandidateWindow, CloudAnalysisResult, CloudClip, CloudDiagnostics, CloudNativeShotSignals, PipelineError, StoredJob, TeamOption, TeamSelection, clamp
+from .team_quick_scan import apply_team_quick_scan
 
 
 NATIVE_SHOT_CONTEXT_TARGET_LEAD_SECONDS = 2.0
@@ -94,7 +95,11 @@ def run_analysis(job: StoredJob, settings: Settings, source_path: Path) -> Cloud
         provider_tags.append(ranking_provider)
 
     clips, used_gemini = maybe_relabel_with_gemini(clips, settings.use_gemini_relabeling)
-    detected_teams = _detected_teams_from_clips(clips)
+    clips, detected_teams, used_team_quick_scan = apply_team_quick_scan(source_path, duration_seconds, clips, settings)
+    if used_team_quick_scan:
+        provider_tags.append("team-scan")
+    if not detected_teams:
+        detected_teams = _detected_teams_from_clips(clips)
     clips = _filter_analysis_clips_for_team_selection(clips, job.team_selection)
 
     elapsed_ms = int((perf_counter() - started_at) * 1000)

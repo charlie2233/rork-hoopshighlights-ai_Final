@@ -98,6 +98,12 @@ Then you can selectively install dependencies into isolated virtualenvs:
 - `HOOPS_MAX_FILE_SIZE_BYTES`: max video size for v1 (default `524288000`)
 - `HOOPS_BACKEND_MODEL_VERSION`: version string exposed in diagnostics (default `cloud-v1`)
 - `HOOPS_USE_GEMINI_RELABELING`: reserved flag; current scaffold keeps deterministic labels
+- `HOOPS_TEAM_QUICK_SCAN_ENABLED`: enables the cloud GPT frame quick scan for jersey-color team detection and per-clip team attribution. If unset, it follows `HOOPS_AI_CLIP_GPT_EDITOR_ENABLED` / `HOOPS_GPT_HIGHLIGHT_RERANKER_ENABLED`.
+- `HOOPS_OPENAI_API_KEY`: required only when GPT team quick scan is enabled. Do not print or log this value.
+- `HOOPS_TEAM_QUICK_SCAN_MODEL`: vision-capable model for team quick scan (default follows `HOOPS_AI_CLIP_GPT_MODEL`, then `gpt-4.1`)
+- `HOOPS_TEAM_QUICK_SCAN_VIDEO_FRAME_COUNT`: whole-video frame samples for team color detection, clamped to `2...16` (default `8`)
+- `HOOPS_TEAM_QUICK_SCAN_CLIP_FRAMES_PER_CLIP`: per-candidate clip frames for team ownership, clamped to `1...4` (default `3`)
+- `HOOPS_TEAM_QUICK_SCAN_MIN_TEAM_CONFIDENCE`: minimum confidence to expose a detected team option (default `0.55`). Clip filtering still treats attribution below `0.85` as uncertain.
 - `HOOPS_RENDER_STORAGE_PROVIDER`: `local` or `r2` (default `local`)
 - `HOOPS_RENDER_DOWNLOAD_TTL_SECONDS`: signed/local render download URL TTL (default `900`)
 - `HOOPS_MAX_RENDER_COMPLEXITY_UNITS`: max estimated render complexity before rejecting render (default `600`)
