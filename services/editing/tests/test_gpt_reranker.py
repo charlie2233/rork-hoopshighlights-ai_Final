@@ -234,10 +234,14 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertEqual(shot_rules["requiredMadeShotTracking"]["trajectoryContinuity"], "continuous")
         self.assertEqual(shot_rules["requiredMadeShotTracking"]["rimEntrySequence"], "visible_entry")
         self.assertEqual(shot_rules["requiredMadeShotTracking"]["dedicatedRimEntryPathRoles"], ["rimApproach", "rimEntry", "belowRim"])
+        self.assertTrue(shot_rules["netOrRimReactionDoesNotReplaceEntryFrameRoles"])
+        self.assertTrue(shot_rules["richSampledShotRoleRules"]["ifRimEntryIsSampledUseItAsBallEntersRimFrameRole"])
         self.assertTrue(shot_rules["madeOrMissedShotRequiresVisibleReleaseAndRimResult"])
         self.assertTrue(shot_rules["madeOrMissedShotRequiresVisibleShotArc"])
         self.assertTrue(shot_rules["madeShotRequiresExplicitMadeResultEvidence"])
         self.assertIn("rimEntrySequence=visible_entry", payload["instructions"])
+        self.assertIn("ballEntersRimFrameRole", payload["instructions"])
+        self.assertIn("must not replace", payload["instructions"])
         self.assertIn("shot-tracker", payload["instructions"])
         self.assertIn("reject clips that start right before the basket", payload["instructions"])
 
@@ -1755,7 +1759,7 @@ class GPTHighlightRerankerTests(unittest.TestCase):
                 result_evidence = _shot_result_evidence(
                     ballApproachFrameRole="eventCenter",
                     rimEntryFrameRole="outcome",
-                    ballBelowRimOrNetFrameRole="outcome",
+                    ballBelowRimOrNetFrameRole="finish",
                 )
                 tracking_evidence = _shot_tracking_evidence(
                     ballVisibleFrameRoles=["eventCenter", "outcome", "finish"],
