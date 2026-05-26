@@ -1850,7 +1850,10 @@ def native_shot_signals_for_clip(clip: EditCandidateClip) -> NativeShotSignals:
 
     outcome, outcome_confidence = _native_outcome_hint_for_clip(clip, is_shot_like)
     incoming = clip.nativeShotSignals
-    if incoming is not None and incoming.outcome not in {"uncertain", "not_shot"}:
+    if incoming is not None and incoming.outcome in {"uncertain", "not_shot"}:
+        outcome = incoming.outcome
+        outcome_confidence = min(incoming.outcomeConfidence, clip.confidence)
+    elif incoming is not None and incoming.outcome not in {"uncertain", "not_shot"}:
         outcome = incoming.outcome
         outcome_confidence = min(1.0, max(outcome_confidence, min(incoming.outcomeConfidence, clip.confidence)))
 
@@ -1955,6 +1958,8 @@ def is_plan_quality_eligible_clip(clip: EditCandidateClip) -> bool:
         return False
     if not is_shot_like_clip(clip):
         return has_minimum_non_shot_quality(clip)
+    if native_shot_signals_for_clip(clip).outcome == "not_shot":
+        return False
     if clip.duration < MIN_SHOT_LIKE_CLIP_SECONDS:
         return False
     if not has_minimum_shot_context(clip):
@@ -1981,12 +1986,12 @@ def _caption_for(label: str, preset: EditPreset) -> str:
         return "FAST BREAK"
     if "dunk" in normalized:
         return "BIG FINISH"
+    if "defense" in normalized or "block" in normalized:
+        return "LOCKDOWN"
     if "attempt" in normalized and any(token in normalized for token in ("shot", "jumper", "three", "3pt", "layup")):
         return "GOOD LOOK"
     if "shot" in normalized or "bucket" in normalized:
         return "BUCKET"
-    if "defense" in normalized or "block" in normalized:
-        return "LOCKDOWN"
     if "layup" in normalized:
         return "TOUGH TAKE"
     return label.upper()[:MAX_CAPTION_LENGTH]
@@ -1995,7 +2000,20 @@ def _caption_for(label: str, preset: EditPreset) -> str:
 def _caption_for_clip(clip: EditCandidateClip, preset: EditPreset) -> str:
     if clip.captionHint:
         return clip.captionHint[:MAX_CAPTION_LENGTH]
+    if is_shot_like_clip(clip):
+        signals = native_shot_signals_for_clip(clip)
+        if signals.outcome in {"uncertain", "not_shot"} and _shot_label_overclaims_outcome(clip.label):
+            return "GOOD LOOK"
+        if signals.outcome == "missed":
+            return "GOOD LOOK"
+        if signals.outcome == "blocked":
+            return "LOCKDOWN"
     return _caption_for(clip.label, preset)
+
+
+def _shot_label_overclaims_outcome(label: str) -> bool:
+    normalized = label.strip().lower()
+    return any(token in normalized for token in ("made", "bucket", "basket", "shot", "jumper", "attempt", "dunk", "finish"))
 
 
 def add_caption(label: str, preset: EditPreset) -> str:

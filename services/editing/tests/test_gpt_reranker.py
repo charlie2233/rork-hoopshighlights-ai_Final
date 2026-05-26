@@ -156,6 +156,47 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertIn("shot-tracker", payload["instructions"])
         self.assertIn("reject clips that start right before the basket", payload["instructions"])
 
+    def test_payload_preserves_native_uncertain_outcome_over_provider_made_label(self) -> None:
+        settings = GPTHighlightRerankerSettings.from_env()
+        clip = {
+            **_clip("provider_overclaimed_make", 12.0, 0.92),
+            "nativeShotSignals": {
+                "isShotLike": True,
+                "leadInSeconds": 3.0,
+                "followThroughSeconds": 3.0,
+                "setupContextScore": 1.0,
+                "outcomeContextScore": 1.0,
+                "eventCenterQuality": 1.0,
+                "contextQualityScore": 1.0,
+                "timingWindowOk": True,
+                "outcome": "uncertain",
+                "outcomeConfidence": 0.0,
+            },
+        }
+        request = CreateEditJobRequest(
+            videoId="video_123",
+            analysisJobId="analysis_123",
+            installId="install-123",
+            sourceObjectKey="uploads/source.mp4",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="free",
+            clips=[clip],
+        )
+        frames = [
+            SampledFrame(clip_id="provider_overclaimed_make", role="start", time_seconds=12.0, data_url="data:image/jpeg;base64,ZmFrZQ=="),
+            SampledFrame(clip_id="provider_overclaimed_make", role="eventCenter", time_seconds=15.0, data_url="data:image/jpeg;base64,ZmFrZQ=="),
+            SampledFrame(clip_id="provider_overclaimed_make", role="finish", time_seconds=17.95, data_url="data:image/jpeg;base64,ZmFrZQ=="),
+        ]
+
+        payload = _build_openai_payload(request, request.clips, frames, settings)
+        compact_input = json.loads(payload["input"][0]["content"][0]["text"])
+        compact_clip = compact_input["clips"][0]
+
+        self.assertEqual(compact_clip["existingLabel"], "Made Shot")
+        self.assertEqual(compact_clip["nativeShotSignals"]["outcome"], "uncertain")
+        self.assertEqual(compact_clip["qualityHints"]["nativeShotSignals"]["outcome"], "uncertain")
+
     def test_quality_filter_excludes_tiny_and_late_shot_windows_before_gpt(self) -> None:
         request = CreateEditJobRequest(
             videoId="video_quality_filter",
@@ -180,6 +221,39 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertFalse(hints[1]["timingWindowOk"])
         self.assertTrue(hints[2]["timingWindowOk"])
         self.assertGreaterEqual(hints[2]["minRecommendedDurationSeconds"], 3.0)
+
+    def test_quality_filter_excludes_native_not_shot_overclaimed_provider_clip(self) -> None:
+        request = CreateEditJobRequest(
+            videoId="video_native_not_shot_filter",
+            analysisJobId="analysis_native_not_shot_filter",
+            installId="install-123",
+            sourceObjectKey="uploads/source.mp4",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="free",
+            clips=[
+                {
+                    **_clip("provider_false_make", 0.0, 0.99),
+                    "nativeShotSignals": {
+                        "isShotLike": True,
+                        "leadInSeconds": 3.0,
+                        "followThroughSeconds": 3.0,
+                        "setupContextScore": 1.0,
+                        "outcomeContextScore": 1.0,
+                        "eventCenterQuality": 1.0,
+                        "contextQualityScore": 1.0,
+                        "timingWindowOk": True,
+                        "outcome": "not_shot",
+                        "outcomeConfidence": 1.0,
+                    },
+                },
+                _clip("good_context", 8.0, 0.72),
+            ],
+        )
+
+        sampled = gpt_reranker._quality_filtered_sampled_clips(request.clips, max_clips=3)
+
+        self.assertEqual([clip.id for clip in sampled], ["good_context"])
 
     def test_quality_filter_excludes_weak_generic_non_shot_candidates_before_gpt(self) -> None:
         request = CreateEditJobRequest(
