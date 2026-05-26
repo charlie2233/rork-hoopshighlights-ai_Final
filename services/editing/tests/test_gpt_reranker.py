@@ -68,6 +68,17 @@ def _quality_signals(**overrides) -> dict:
     return payload
 
 
+def _shot_result_evidence(**overrides) -> dict:
+    payload = {
+        "releaseToRimContinuity": "continuous",
+        "rimResultEvidence": "made_visible",
+        "outcomeConfidence": 0.92,
+        "reason": "Ball flight and rim result are visible.",
+    }
+    payload.update(overrides)
+    return payload
+
+
 class GPTHighlightRerankerTests(unittest.TestCase):
     def test_payload_is_strict_structured_output_and_not_stored(self) -> None:
         settings = GPTHighlightRerankerSettings.from_env()
@@ -147,6 +158,7 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         compact_clip = compact_input["clips"][0]
         shot_rules = compact_input["shotTrackerRules"]
         decision_schema = payload["text"]["format"]["schema"]["properties"]["decisions"]["items"]
+        decision_properties = decision_schema["properties"]
 
         self.assertEqual(compact_clip["qualityHints"]["leadInSeconds"], 3.0)
         self.assertEqual(compact_clip["qualityHints"]["followThroughSeconds"], 3.0)
@@ -157,14 +169,22 @@ class GPTHighlightRerankerTests(unittest.TestCase):
             shot_rules["requiredShotContextKeyframes"],
             ["outcome", "postOutcome", "preEvent", "release", "rim", "shotArcEarly", "shotArcLate"],
         )
-        self.assertIn("qualitySignals", decision_schema["properties"])
+        self.assertIn("qualitySignals", decision_properties)
         self.assertIn("qualitySignals", decision_schema["required"])
-        quality_required = decision_schema["properties"]["qualitySignals"]["required"]
+        quality_required = decision_properties["qualitySignals"]["required"]
         self.assertIn("releaseVisible", quality_required)
         self.assertIn("shotArcVisible", quality_required)
         self.assertIn("rimResultVisible", quality_required)
+        self.assertIn("shotResultEvidence", decision_properties)
+        self.assertIn("shotResultEvidence", decision_schema["required"])
+        result_evidence = decision_properties["shotResultEvidence"]
+        self.assertEqual(
+            result_evidence["properties"]["rimResultEvidence"]["enum"],
+            ["made_visible", "clear_miss", "blocked", "unclear"],
+        )
         self.assertTrue(shot_rules["madeOrMissedShotRequiresVisibleReleaseAndRimResult"])
         self.assertTrue(shot_rules["madeOrMissedShotRequiresVisibleShotArc"])
+        self.assertTrue(shot_rules["madeShotRequiresExplicitMadeResultEvidence"])
         self.assertIn("shot-tracker", payload["instructions"])
         self.assertIn("reject clips that start right before the basket", payload["instructions"])
 
@@ -488,6 +508,7 @@ class GPTHighlightRerankerTests(unittest.TestCase):
                 "reason",
                 "storyRole",
                 "qualitySignals",
+                "shotResultEvidence",
                 "suggestedEdit",
             ],
         )
@@ -687,6 +708,7 @@ class GPTHighlightRerankerTests(unittest.TestCase):
                                 "reason": "Complete keyframes and clear context.",
                                 "storyRole": "peak",
                                 "qualitySignals": _quality_signals(),
+                                "shotResultEvidence": _shot_result_evidence(),
                                 "suggestedEdit": {
                                     "slowMotion": False,
                                     "slowMotionCenter": None,
@@ -831,6 +853,7 @@ class GPTHighlightRerankerTests(unittest.TestCase):
                                     "fullPlayContext": True,
                                     "reason": "Complete shot context.",
                                 },
+                                "shotResultEvidence": _shot_result_evidence(),
                                 "suggestedEdit": {
                                     "slowMotion": False,
                                     "slowMotionCenter": None,
@@ -911,6 +934,7 @@ class GPTHighlightRerankerTests(unittest.TestCase):
                                 "reason": "Clear outcome.",
                                 "storyRole": "filler",
                                 "qualitySignals": _quality_signals(),
+                                "shotResultEvidence": _shot_result_evidence(),
                                 "suggestedEdit": {
                                     "slowMotion": False,
                                     "slowMotionCenter": None,
@@ -987,6 +1011,7 @@ class GPTHighlightRerankerTests(unittest.TestCase):
                 "reason": "Clear outcome.",
                 "storyRole": "peak",
                 "qualitySignals": _quality_signals(),
+                "shotResultEvidence": _shot_result_evidence(),
                 "suggestedEdit": {
                     "slowMotion": False,
                     "slowMotionCenter": None,
@@ -1073,6 +1098,7 @@ class GPTHighlightRerankerTests(unittest.TestCase):
                 "reason": "Clear outcome.",
                 "storyRole": "filler",
                 "qualitySignals": _quality_signals(),
+                "shotResultEvidence": _shot_result_evidence(),
                 "suggestedEdit": {
                     "slowMotion": False,
                     "slowMotionCenter": None,
@@ -1184,6 +1210,7 @@ class GPTHighlightRerankerTests(unittest.TestCase):
                                     "fullPlayContext": True,
                                     "reason": "Shows the play before and after the make.",
                                 },
+                                "shotResultEvidence": _shot_result_evidence(),
                                 "suggestedEdit": {
                                     "slowMotion": False,
                                     "slowMotionCenter": None,
@@ -1328,6 +1355,7 @@ class GPTHighlightRerankerTests(unittest.TestCase):
                     "reason": "Clear outcome.",
                     "storyRole": "filler",
                     "qualitySignals": _quality_signals(),
+                    "shotResultEvidence": _shot_result_evidence(),
                     "suggestedEdit": {
                         "slowMotion": False,
                         "slowMotionCenter": None,

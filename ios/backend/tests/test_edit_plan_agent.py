@@ -110,6 +110,17 @@ def _quality_signals(**overrides) -> dict:
     return payload
 
 
+def _shot_result_evidence(**overrides) -> dict:
+    payload = {
+        "releaseToRimContinuity": "continuous",
+        "rimResultEvidence": "made_visible",
+        "outcomeConfidence": 0.92,
+        "reason": "Ball flight and rim result are visible.",
+    }
+    payload.update(overrides)
+    return payload
+
+
 class EditPlanAgentTests(unittest.TestCase):
     def setUp(self) -> None:
         self._temp_dir = Path(tempfile.mkdtemp(prefix="hoops-edit-agent-"))
@@ -664,6 +675,7 @@ class EditPlanAgentTests(unittest.TestCase):
                 caption="BIG FINISH",
                 reason="Clear finish and strong watchability.",
                 qualitySignals=_quality_signals(),
+                shotResultEvidence=_shot_result_evidence(),
                 suggestedEdit=GPTHighlightSuggestedEdit(
                     slowMotion=True,
                     slowMotionCenter=15.4,
@@ -683,6 +695,7 @@ class EditPlanAgentTests(unittest.TestCase):
                 caption="NOPE",
                 reason="Should be ignored because it is not in the candidate pool.",
                 qualitySignals=_quality_signals(outcomeVisible=False, ballPathVisible=False, fullPlayContext=False),
+                shotResultEvidence=_shot_result_evidence(),
                 suggestedEdit=GPTHighlightSuggestedEdit(),
             ),
             GPTHighlightClipDecision(
@@ -695,6 +708,7 @@ class EditPlanAgentTests(unittest.TestCase):
                 caption="SKIP",
                 reason="Duplicate was less clear.",
                 qualitySignals=_quality_signals(outcomeVisible=False, ballPathVisible=False, fullPlayContext=False),
+                shotResultEvidence=_shot_result_evidence(),
                 suggestedEdit=GPTHighlightSuggestedEdit(),
             ),
         ]
@@ -738,6 +752,7 @@ class EditPlanAgentTests(unittest.TestCase):
                 caption="BUCKET",
                 reason="Partial visual evidence must not default unknown checks to true.",
                 qualitySignals={"outcomeVisible": True, "reason": "Only the outcome was claimed."},
+                shotResultEvidence=_shot_result_evidence(),
                 suggestedEdit=GPTHighlightSuggestedEdit(),
             )
 
@@ -754,6 +769,7 @@ class EditPlanAgentTests(unittest.TestCase):
                     _clip("missing_release", 18.0, "Made Shot", 0.96),
                     _clip("missing_shot_arc", 19.5, "Made Shot", 0.955),
                     _clip("missing_rim_result", 21.0, "Made Shot", 0.95),
+                    _clip("weak_made_evidence", 22.5, "Made Shot", 0.94),
                     _clip("complete_make", 24.0, "Made Shot", 0.8),
                 ],
             )
@@ -782,6 +798,7 @@ class EditPlanAgentTests(unittest.TestCase):
                 caption="TOO LATE",
                 reason="The basket is visible, but the setup is missing.",
                 qualitySignals={**base_signal, "setupVisible": False, "fullPlayContext": False, "reason": "Clip starts right before the make."},
+                shotResultEvidence=_shot_result_evidence(),
                 suggestedEdit=GPTHighlightSuggestedEdit(),
             ),
             GPTHighlightClipDecision(
@@ -794,6 +811,7 @@ class EditPlanAgentTests(unittest.TestCase):
                 caption="UNCLEAR",
                 reason="The release is visible but the result is not.",
                 qualitySignals={**base_signal, "outcomeVisible": False, "ballPathVisible": False, "reason": "No clear rim or make/miss frame."},
+                shotResultEvidence=_shot_result_evidence(),
                 suggestedEdit=GPTHighlightSuggestedEdit(),
             ),
             GPTHighlightClipDecision(
@@ -806,6 +824,7 @@ class EditPlanAgentTests(unittest.TestCase):
                 caption="NO RELEASE",
                 reason="The aftermath is visible, but the shooting release is not.",
                 qualitySignals={**base_signal, "releaseVisible": False, "reason": "No visible shot release."},
+                shotResultEvidence=_shot_result_evidence(),
                 suggestedEdit=GPTHighlightSuggestedEdit(),
             ),
             GPTHighlightClipDecision(
@@ -818,6 +837,7 @@ class EditPlanAgentTests(unittest.TestCase):
                 caption="NO RESULT",
                 reason="The ball path is visible, but the rim result is not.",
                 qualitySignals={**base_signal, "rimResultVisible": False, "reason": "No visible rim result."},
+                shotResultEvidence=_shot_result_evidence(),
                 suggestedEdit=GPTHighlightSuggestedEdit(),
             ),
             GPTHighlightClipDecision(
@@ -830,6 +850,24 @@ class EditPlanAgentTests(unittest.TestCase):
                 caption="NO ARC",
                 reason="The release and rim are visible, but the ball flight is not.",
                 qualitySignals={**base_signal, "shotArcVisible": False, "reason": "No visible ball arc."},
+                shotResultEvidence=_shot_result_evidence(),
+                suggestedEdit=GPTHighlightSuggestedEdit(),
+            ),
+            GPTHighlightClipDecision(
+                clipId="weak_made_evidence",
+                keep=True,
+                highlightScore=0.94,
+                watchabilityScore=0.9,
+                basketballEvent="Made Shot",
+                outcome="made",
+                caption="NO PROOF",
+                reason="GPT saw a late rim frame but could not prove the ball went in.",
+                qualitySignals=base_signal,
+                shotResultEvidence=_shot_result_evidence(
+                    rimResultEvidence="unclear",
+                    outcomeConfidence=0.58,
+                    reason="No clear net reaction or ball entering the rim.",
+                ),
                 suggestedEdit=GPTHighlightSuggestedEdit(),
             ),
             GPTHighlightClipDecision(
@@ -842,6 +880,7 @@ class EditPlanAgentTests(unittest.TestCase):
                 caption="BUCKET",
                 reason="Shows setup, release, ball path, and made outcome.",
                 qualitySignals=base_signal,
+                shotResultEvidence=_shot_result_evidence(),
                 suggestedEdit=GPTHighlightSuggestedEdit(),
             ),
         ]
@@ -856,9 +895,11 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertIn("missing_release", reranked.gptRerankSummary.rejectedClipIds)
         self.assertIn("missing_shot_arc", reranked.gptRerankSummary.rejectedClipIds)
         self.assertIn("missing_rim_result", reranked.gptRerankSummary.rejectedClipIds)
+        self.assertIn("weak_made_evidence", reranked.gptRerankSummary.rejectedClipIds)
         self.assertEqual(reranked.gptRerankSummary.rejectedReasonCounts.get("missing_shot_release"), 1)
         self.assertEqual(reranked.gptRerankSummary.rejectedReasonCounts.get("missing_shot_arc"), 1)
         self.assertEqual(reranked.gptRerankSummary.rejectedReasonCounts.get("missing_rim_result"), 1)
+        self.assertEqual(reranked.gptRerankSummary.rejectedReasonCounts.get("made_outcome_not_visible"), 1)
         self.assertEqual([clip.clipId for clip in plan.clips], ["complete_make"])
 
     def test_gpt_highlight_rerank_all_rejected_does_not_fallback_to_original_clips(self) -> None:
@@ -902,6 +943,7 @@ class EditPlanAgentTests(unittest.TestCase):
                 caption="SKIP",
                 reason="The clip starts too late and misses the setup.",
                 qualitySignals=_quality_signals(setupVisible=False, fullPlayContext=False),
+                shotResultEvidence=_shot_result_evidence(),
                 suggestedEdit=GPTHighlightSuggestedEdit(),
             ),
         ]
@@ -942,6 +984,7 @@ class EditPlanAgentTests(unittest.TestCase):
                 caption="BUCKET",
                 reason="GPT overclaimed a made shot from a generic audio-heavy moment.",
                 qualitySignals=_quality_signals(),
+                shotResultEvidence=_shot_result_evidence(),
                 suggestedEdit=GPTHighlightSuggestedEdit(),
             )
         ]
@@ -989,6 +1032,7 @@ class EditPlanAgentTests(unittest.TestCase):
                 caption="BUCKET",
                 reason="GPT claims the shot went in even though native signals saw a miss.",
                 qualitySignals=_quality_signals(),
+                shotResultEvidence=_shot_result_evidence(),
                 suggestedEdit=GPTHighlightSuggestedEdit(),
             )
         ]
@@ -1018,6 +1062,7 @@ class EditPlanAgentTests(unittest.TestCase):
                 caption="ffmpeg -i source.mp4",
                 reason="Clear clip, but this text includes a renderer command.",
                 qualitySignals=_quality_signals(),
+                shotResultEvidence=_shot_result_evidence(),
                 suggestedEdit=GPTHighlightSuggestedEdit(),
             )
         ]
@@ -1054,6 +1099,7 @@ class EditPlanAgentTests(unittest.TestCase):
                 caption="BUCKET",
                 reason="The make is visible, but the window is thin.",
                 qualitySignals=_quality_signals(),
+                shotResultEvidence=_shot_result_evidence(),
                 suggestedEdit=GPTHighlightSuggestedEdit(),
             ),
             GPTHighlightClipDecision(
@@ -1066,6 +1112,7 @@ class EditPlanAgentTests(unittest.TestCase):
                 caption="COMPLETE",
                 reason="Shows setup, action, and outcome clearly.",
                 qualitySignals=_quality_signals(),
+                shotResultEvidence=_shot_result_evidence(),
                 suggestedEdit=GPTHighlightSuggestedEdit(),
             ),
         ]
@@ -1112,6 +1159,7 @@ class EditPlanAgentTests(unittest.TestCase):
                 caption="BUCKET",
                 reason="Same scoring moment from a slightly weaker window.",
                 qualitySignals=_quality_signals(),
+                shotResultEvidence=_shot_result_evidence(),
                 suggestedEdit=GPTHighlightSuggestedEdit(),
             ),
             GPTHighlightClipDecision(
@@ -1124,6 +1172,7 @@ class EditPlanAgentTests(unittest.TestCase):
                 caption="CLEAN",
                 reason="Same scoring moment with better watchability.",
                 qualitySignals=_quality_signals(),
+                shotResultEvidence=_shot_result_evidence(),
                 suggestedEdit=GPTHighlightSuggestedEdit(),
             ),
         ]
@@ -1149,6 +1198,7 @@ class EditPlanAgentTests(unittest.TestCase):
                 caption="BIG FINISH",
                 reason="Clear finish and outcome.",
                 qualitySignals=_quality_signals(),
+                shotResultEvidence=_shot_result_evidence(),
                 suggestedEdit=GPTHighlightSuggestedEdit(),
             )
         ]
@@ -1174,6 +1224,7 @@ class EditPlanAgentTests(unittest.TestCase):
                 caption=caption,
                 reason="Clear event from an existing candidate clip.",
                 qualitySignals=_quality_signals(),
+                shotResultEvidence=_shot_result_evidence(),
                 suggestedEdit=GPTHighlightSuggestedEdit(),
             )
             for clip_id, score, label, caption in [
@@ -1211,6 +1262,7 @@ class EditPlanAgentTests(unittest.TestCase):
                 caption=caption,
                 reason="Clear event from an existing candidate clip.",
                 qualitySignals=_quality_signals(),
+                shotResultEvidence=_shot_result_evidence(),
                 suggestedEdit=GPTHighlightSuggestedEdit(),
             )
             for clip_id, score, label, caption in [
@@ -1248,6 +1300,7 @@ class EditPlanAgentTests(unittest.TestCase):
                 reason="Clear event from an existing candidate clip.",
                 storyRole=story_role,
                 qualitySignals=_quality_signals(),
+                shotResultEvidence=_shot_result_evidence(),
                 suggestedEdit=GPTHighlightSuggestedEdit(),
             )
             for clip_id, score, label, caption, story_role in [
@@ -1297,6 +1350,7 @@ class EditPlanAgentTests(unittest.TestCase):
                 reason="Clear event from an existing candidate clip.",
                 storyRole=story_role,
                 qualitySignals=_quality_signals(),
+                shotResultEvidence=_shot_result_evidence(),
                 suggestedEdit=GPTHighlightSuggestedEdit(),
             )
             for clip_id, score, label, caption, story_role in [
@@ -1359,6 +1413,7 @@ class EditPlanAgentTests(unittest.TestCase):
                 caption="CLEAN HIT",
                 reason="Clear make with usable framing.",
                 qualitySignals=_quality_signals(),
+                shotResultEvidence=_shot_result_evidence(),
                 suggestedEdit=GPTHighlightSuggestedEdit(
                     slowMotion=True,
                     slowMotionCenter=999.0,
