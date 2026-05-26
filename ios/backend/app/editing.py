@@ -82,8 +82,12 @@ RENDER_MODE = "cloud_ffmpeg"
 MIN_PLAN_CLIP_SECONDS = 2.0
 MIN_GPT_HIGHLIGHT_SCORE = 0.55
 MIN_GPT_WATCHABILITY_SCORE = 0.5
-MIN_SHOT_CONTEXT_LEAD_IN_SECONDS = 0.5
-MIN_SHOT_CONTEXT_FOLLOW_THROUGH_SECONDS = 0.35
+MIN_SHOT_CONTEXT_LEAD_IN_SECONDS = 0.9
+MIN_SHOT_CONTEXT_FOLLOW_THROUGH_SECONDS = 0.6
+TARGET_SHOT_CONTEXT_LEAD_IN_SECONDS = 1.6
+TARGET_SHOT_CONTEXT_FOLLOW_THROUGH_SECONDS = 1.0
+MIN_SHOT_LIKE_CLIP_SECONDS = 3.0
+TEMPLATE_MIN_CLIP_TOLERANCE = 0.85
 MAX_CAPTION_LENGTH = 24
 MAX_DURATION_OVERRUN_SECONDS = 6.0
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -1673,7 +1677,14 @@ def build_edit_context(request: CreateEditJobRequest) -> EditContext:
 def rank_clips(clips: Sequence[EditCandidateClip]) -> List[EditCandidateClip]:
     return sorted(
         clips,
-        key=lambda clip: (clip.planning_score, clip.watchability, clip.excitement, -clip.start),
+        key=lambda clip: (
+            1 if is_plan_quality_eligible_clip(clip) else 0,
+            clip_context_quality_score(clip),
+            clip.planning_score,
+            clip.watchability,
+            clip.excitement,
+            -clip.start,
+        ),
         reverse=True,
     )
 
@@ -1787,17 +1798,43 @@ def has_minimum_shot_context(clip: EditCandidateClip) -> bool:
     return lead_in >= MIN_SHOT_CONTEXT_LEAD_IN_SECONDS and follow_through >= MIN_SHOT_CONTEXT_FOLLOW_THROUGH_SECONDS
 
 
+def clip_context_quality_score(clip: EditCandidateClip) -> float:
+    if clip.duration < MIN_PLAN_CLIP_SECONDS:
+        return 0.0
+    if not is_shot_like_clip(clip):
+        return 1.0
+
+    lead_in = max(0.0, clip.eventCenter - clip.start)
+    follow_through = max(0.0, clip.end - clip.eventCenter)
+    if clip.duration < MIN_SHOT_LIKE_CLIP_SECONDS:
+        duration_score = max(0.0, clip.duration / MIN_SHOT_LIKE_CLIP_SECONDS) * 0.55
+    else:
+        duration_score = min(1.0, clip.duration / 4.5)
+    lead_score = min(1.0, lead_in / TARGET_SHOT_CONTEXT_LEAD_IN_SECONDS)
+    follow_score = min(1.0, follow_through / TARGET_SHOT_CONTEXT_FOLLOW_THROUGH_SECONDS)
+    if lead_in <= 0.0 or follow_through <= 0.0:
+        balance_score = 0.0
+    else:
+        balance_score = min(lead_in, follow_through) / max(lead_in, follow_through)
+
+    score = (lead_score * 0.38) + (follow_score * 0.28) + (duration_score * 0.22) + (balance_score * 0.12)
+    return round(max(0.0, min(1.0, score)), 4)
+
+
 def is_plan_quality_eligible_clip(clip: EditCandidateClip) -> bool:
     if clip.duration < MIN_PLAN_CLIP_SECONDS:
+        return False
+    if is_shot_like_clip(clip) and clip.duration < MIN_SHOT_LIKE_CLIP_SECONDS:
         return False
     if is_shot_like_clip(clip) and not has_minimum_shot_context(clip):
         return False
     return True
 
 
-def _duplicate_choice_key(clip: EditCandidateClip) -> Tuple[int, float, float, float, float]:
+def _duplicate_choice_key(clip: EditCandidateClip) -> Tuple[int, float, float, float, float, float]:
     return (
         1 if is_plan_quality_eligible_clip(clip) else 0,
+        clip_context_quality_score(clip),
         clip.planning_score,
         clip.watchability,
         clip.excitement,
@@ -1923,7 +1960,8 @@ def build_edit_plan(request: CreateEditJobRequest, edit_job_id: str) -> EditPlan
         if remaining < MIN_PLAN_CLIP_SECONDS:
             break
         source_duration = min(max_clip_seconds, clip.duration, remaining)
-        if source_duration < min(min_clip_seconds, MIN_PLAN_CLIP_SECONDS):
+        minimum_source_duration = max(MIN_PLAN_CLIP_SECONDS, min_clip_seconds * TEMPLATE_MIN_CLIP_TOLERANCE)
+        if source_duration < minimum_source_duration:
             continue
         source_start = _source_window_start_for_clip(clip, source_duration)
         source_end = source_start + source_duration
@@ -2059,8 +2097,11 @@ def validate_edit_plan(
             continue
         if clip.sourceStart < source.start or clip.sourceEnd > source.end:
             add(f"{field_prefix}.source", "source_bounds_invalid", "Clip source bounds exceed source clip bounds.")
+        minimum_template_clip_seconds = max(MIN_PLAN_CLIP_SECONDS, template.clipLength.minSeconds * TEMPLATE_MIN_CLIP_TOLERANCE)
         if clip.sourceEnd - clip.sourceStart < MIN_PLAN_CLIP_SECONDS:
             add(f"{field_prefix}.source", "clip_too_short", "Clip is shorter than the minimum render duration.")
+        if clip.sourceEnd - clip.sourceStart < minimum_template_clip_seconds:
+            add(f"{field_prefix}.source", "template_clip_too_short", "Clip is shorter than the selected template minimum.")
         if len(clip.caption) > MAX_CAPTION_LENGTH:
             add(f"{field_prefix}.caption", "caption_too_long", "Caption is too long for the selected template.")
         for effect_index, effect in enumerate(clip.effects):

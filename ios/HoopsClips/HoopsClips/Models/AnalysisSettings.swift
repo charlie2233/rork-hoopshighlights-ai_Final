@@ -1,6 +1,6 @@
 import Foundation
 
-struct AnalysisSettings: Codable, Sendable {
+nonisolated struct AnalysisSettings: Codable, Sendable {
     var audioWeight: Double = 0.15
     var motionWeight: Double = 0.35
     var poseWeight: Double = 0.35
@@ -41,7 +41,7 @@ extension AnalysisSettings {
         case enableSmartCropping
     }
 
-    init(from decoder: Decoder) throws {
+    nonisolated init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         audioWeight = try container.decodeIfPresent(Double.self, forKey: .audioWeight) ?? 0.15
         motionWeight = try container.decodeIfPresent(Double.self, forKey: .motionWeight) ?? 0.35
@@ -58,5 +58,24 @@ extension AnalysisSettings {
         minMLPredictionCount = try container.decodeIfPresent(Int.self, forKey: .minMLPredictionCount) ?? 3
         scoreSmoothingWindow = try container.decodeIfPresent(Int.self, forKey: .scoreSmoothingWindow) ?? 3
         enableSmartCropping = try container.decodeIfPresent(Bool.self, forKey: .enableSmartCropping) ?? true
+    }
+
+    nonisolated func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(audioWeight, forKey: .audioWeight)
+        try container.encode(motionWeight, forKey: .motionWeight)
+        try container.encode(poseWeight, forKey: .poseWeight)
+        try container.encode(sceneWeight, forKey: .sceneWeight)
+        try container.encode(confidenceThreshold, forKey: .confidenceThreshold)
+        try container.encode(minClipDuration, forKey: .minClipDuration)
+        try container.encode(maxClipDuration, forKey: .maxClipDuration)
+        try container.encode(targetHighlightDuration, forKey: .targetHighlightDuration)
+        try container.encode(clipPadding, forKey: .clipPadding)
+        try container.encode(framesSampledPerSecond, forKey: .framesSampledPerSecond)
+        try container.encode(preferKeepUncertain, forKey: .preferKeepUncertain)
+        try container.encode(mlWindowSize, forKey: .mlWindowSize)
+        try container.encode(minMLPredictionCount, forKey: .minMLPredictionCount)
+        try container.encode(scoreSmoothingWindow, forKey: .scoreSmoothingWindow)
+        try container.encode(enableSmartCropping, forKey: .enableSmartCropping)
     }
 }

@@ -225,7 +225,7 @@ struct HoopsClipsTests {
         #expect(pro.retentionSummary == "Videos stored for 60 days")
     }
 
-    @Test func testCloudEditRequestEncodesOptionalUserPrompt() throws {
+    @Test @MainActor func testCloudEditRequestEncodesOptionalUserPrompt() throws {
         let request = CreateCloudEditJobRequest(
             videoId: "video_123",
             analysisJobId: "analysis_123",
@@ -362,7 +362,7 @@ struct HoopsClipsTests {
         #expect(flags.cloudLockerEnabled)
     }
 
-    @Test func testCloudEditVersionFlagsDecodeLiveRenderKillSwitch() throws {
+    @Test @MainActor func testCloudEditVersionFlagsDecodeLiveRenderKillSwitch() throws {
         let payload = """
         {
           "service": "hoopclips-editing",
@@ -510,7 +510,7 @@ struct HoopsClipsTests {
         #expect(response.results?.diagnostics.backendModelVersion == "cloud-v1")
     }
 
-    @Test func testCloudEditRenderStatusDecodesAIWorkTimelineAndReceipt() throws {
+    @Test @MainActor func testCloudEditRenderStatusDecodesAIWorkTimelineAndReceipt() throws {
         let payload = """
         {
           "editJobId": "edit_123",

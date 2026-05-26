@@ -30,7 +30,9 @@ from app.editing import (
     build_revision_response,
     build_edit_job,
     build_edit_plan,
+    clip_context_quality_score,
     get_template_pack_for_plan,
+    rank_clips,
     remove_duplicate_moments,
     repair_edit_plan,
     revise_edit_job,
@@ -385,6 +387,45 @@ class EditPlanAgentTests(unittest.TestCase):
         plan = build_edit_plan(request, "edit_duplicate_quality")
 
         self.assertEqual([clip.clipId for clip in plan.clips], ["complete_duplicate"])
+
+    def test_rank_clips_rewards_complete_shot_context_over_thin_late_window(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                clips=[
+                    {
+                        **_clip("thin_late_make", 8.0, "Made Shot", 0.99),
+                        "end": 11.0,
+                        "eventCenter": 8.92,
+                    },
+                    _clip("complete_make", 18.0, "Made Shot", 0.82),
+                ],
+            )
+        )
+
+        ranked = rank_clips(request.clips)
+
+        self.assertEqual(ranked[0].id, "complete_make")
+        self.assertGreater(clip_context_quality_score(ranked[0]), clip_context_quality_score(request.clips[0]))
+
+    def test_build_edit_plan_enforces_template_minimum_clip_length(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=15,
+                clips=[
+                    {
+                        **_clip("tiny_make", 0.0, "Made Shot", 0.99),
+                        "end": 2.8,
+                        "eventCenter": 1.4,
+                    },
+                    _clip("complete_make", 12.0, "Made Shot", 0.75),
+                ],
+            )
+        )
+
+        plan = build_edit_plan(request, "edit_template_min_clip")
+
+        self.assertNotIn("tiny_make", [clip.clipId for clip in plan.clips])
+        self.assertEqual([clip.clipId for clip in plan.clips], ["complete_make"])
 
     def test_gpt_highlight_rerank_uses_existing_clip_ids_only(self) -> None:
         request = CreateEditJobRequest(**_request_payload())

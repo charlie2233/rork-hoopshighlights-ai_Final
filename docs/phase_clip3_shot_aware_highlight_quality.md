@@ -23,7 +23,13 @@ Improve GPT-led HoopClips highlight selection quality with a bias toward basketb
   - reject clips shorter than the backend minimum
   - reject clips whose event center is too close to clip start
   - reject clips without enough follow-through after the event center
+- Tightened shot-like candidate context before GPT:
+  - shot-like clips must be at least 3.0 seconds
+  - shot-like clips need at least 1.2 seconds of lead-in and 0.75 seconds of follow-through before they are sampled for GPT
+  - compact `qualityHints` now identify shot-like candidates and expose the stricter timing-window expectations
 - Added an ordinary/non-GPT selector guard so shot-like clips also need minimum setup and follow-through context when GPT is disabled or falls back.
+- Ranked deterministic backend candidates by plan eligibility and shot-context quality before raw planning/watchability/excitement scores, so a complete play beats a tiny or late pre-basket window even when the thin clip has a higher model score.
+- Added an 85% template-minimum guard during EditPlan creation and validation, preventing tiny render slices while preserving near-minimum valid clips used by longer recap/revision templates.
 - Added a shot-keyframe completeness gate before the GPT call. With quality-beta sampling, shot-like candidates must have setup, release, outcome, and rim keyframes extracted successfully before they can be sent to GPT.
 - The GPT path now drops only the shot candidates missing those richer context frames and continues with remaining complete candidates instead of falling all the way back when at least one usable candidate remains.
 - Made duplicate-group selection quality-aware so a higher-scored late/pre-basket duplicate cannot hide the lower-scored full-context duplicate that should actually render.
@@ -116,6 +122,26 @@ Results:
 - iOS simulator tests: passed on iPhone 17 Pro simulator, iOS 26.0.1. Xcode result summary: `74` total tests, `71` passed, `3` skipped, `0` failed.
 - Added iOS regression coverage for event-centered overlong cloud clip normalization and event-center bounds clamping.
 - Added iOS regression coverage for candidate handoff ranking so a later high-quality clip is not dropped by the 30-clip cap and a complete shot outranks a higher-scored pre-basket-only window.
+- Cleaned up Xcode 26 actor-isolation warnings in the no-secret codecheck path by marking analysis/test-only Codable helpers with explicit isolation where needed.
+
+Additional validation after commit `1aad21d`:
+
+```sh
+python3 -m py_compile ios/backend/app/editing.py services/editing/editing_app/gpt_reranker.py services/editing/tests/test_gpt_reranker.py ios/backend/tests/test_edit_plan_agent.py
+PYTHONPATH=ios/backend:services/editing /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest services.editing.tests.test_gpt_reranker ios.backend.tests.test_edit_plan_agent -v
+PYTHONPATH=ios/backend:services/editing /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest services.editing.tests.test_editing_service -v
+git diff --check
+xcodebuild build-for-testing -project ios/HoopsClips.xcodeproj -scheme HoopsClips -configuration Debug -destination 'generic/platform=iOS Simulator' -derivedDataPath build/XcodeDerivedDataGenericCodecheck2 -resultBundlePath build/HoopsClipsGenericCodecheck2.xcresult CODE_SIGNING_ALLOWED=NO -skipPackagePluginValidation -skipMacroValidation -quiet
+```
+
+Results:
+
+- Python compile: passed.
+- GPT reranker + edit-plan focused suite: 57 tests passed.
+- Editing service focused suite: 37 tests passed.
+- `git diff --check`: passed.
+- Generic iOS Debug `build-for-testing`: passed with signing disabled. The previous Xcode 26.4 Codable/test actor-isolation warnings for `AnalysisSettings`, `CreateCloudEditJobRequest`, `CloudEditVersionResponse`, and `CloudEditRenderStatusResponse` were no longer emitted. Remaining warnings are the existing `CloudAnalysisService` no-async-await and `VideoExportService` deprecation/Sendable backlog.
+- Full iOS simulator `xcodebuild test` was started against the iPhone 17 Pro simulator for this pass, but it had not produced a readable result bundle after more than eight minutes. Treat the generic no-signing build-for-testing plus existing 74-test simulator pass above as the current iOS evidence until the simulator test runner is stable.
 
 PR #10 CI after commit `0177890846230ccef9570e30349b09e7fb77096f`:
 

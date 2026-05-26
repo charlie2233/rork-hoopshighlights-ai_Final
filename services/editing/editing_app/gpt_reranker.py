@@ -40,8 +40,9 @@ ResponseClient = Callable[[Dict[str, Any], str, str, float], Dict[str, Any]]
 ALLOWED_IMAGE_DETAIL_LEVELS = {"low", "high", "original", "auto"}
 REQUIRED_KEYFRAME_ROLES = {"start", "eventCenter", "finish"}
 SHOT_CONTEXT_KEYFRAME_ROLES = ("preEvent", "release", "outcome", "rim")
-MIN_GPT_CANDIDATE_LEAD_IN_SECONDS = 0.75
-MIN_GPT_CANDIDATE_FOLLOW_THROUGH_SECONDS = 0.45
+MIN_GPT_CANDIDATE_LEAD_IN_SECONDS = 1.2
+MIN_GPT_CANDIDATE_FOLLOW_THROUGH_SECONDS = 0.75
+MIN_GPT_SHOT_LIKE_CANDIDATE_SECONDS = 3.0
 
 
 @dataclass(frozen=True)
@@ -237,15 +238,18 @@ def _candidate_quality_hints(clip: EditCandidateClip) -> Dict[str, Any]:
     lead_in = round(max(0.0, clip.eventCenter - clip.start), 3)
     follow_through = round(max(0.0, clip.end - clip.eventCenter), 3)
     duration = round(clip.duration, 3)
+    is_shot_like = is_shot_like_clip(clip)
+    min_duration = max(MIN_PLAN_CLIP_SECONDS, MIN_GPT_SHOT_LIKE_CANDIDATE_SECONDS if is_shot_like else 2.5)
     return {
         "durationSeconds": duration,
         "leadInSeconds": lead_in,
         "followThroughSeconds": follow_through,
-        "minRecommendedDurationSeconds": max(MIN_PLAN_CLIP_SECONDS, 2.5),
+        "minRecommendedDurationSeconds": min_duration,
         "minLeadInSeconds": MIN_GPT_CANDIDATE_LEAD_IN_SECONDS,
         "minFollowThroughSeconds": MIN_GPT_CANDIDATE_FOLLOW_THROUGH_SECONDS,
+        "shotLike": is_shot_like,
         "timingWindowOk": (
-            duration >= MIN_PLAN_CLIP_SECONDS
+            duration >= min_duration
             and lead_in >= MIN_GPT_CANDIDATE_LEAD_IN_SECONDS
             and follow_through >= MIN_GPT_CANDIDATE_FOLLOW_THROUGH_SECONDS
         ),

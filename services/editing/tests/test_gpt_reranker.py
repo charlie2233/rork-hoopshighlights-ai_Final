@@ -133,6 +133,31 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertIn("shot-tracker", payload["instructions"])
         self.assertIn("reject clips that start right before the basket", payload["instructions"])
 
+    def test_quality_filter_excludes_tiny_and_late_shot_windows_before_gpt(self) -> None:
+        request = CreateEditJobRequest(
+            videoId="video_quality_filter",
+            analysisJobId="analysis_quality_filter",
+            installId="install-123",
+            sourceObjectKey="uploads/source.mp4",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="free",
+            clips=[
+                {**_clip("late_make", 0.0, 0.99), "end": 6.0, "eventCenter": 0.9},
+                {**_clip("tiny_make", 8.0, 0.98), "end": 10.5, "eventCenter": 9.4},
+                _clip("complete_make", 18.0, 0.82),
+            ],
+        )
+
+        sampled = gpt_reranker._quality_filtered_sampled_clips(request.clips, max_clips=3)
+        hints = [gpt_reranker._candidate_quality_hints(clip) for clip in request.clips]
+
+        self.assertEqual([clip.id for clip in sampled], ["complete_make"])
+        self.assertFalse(hints[0]["timingWindowOk"])
+        self.assertFalse(hints[1]["timingWindowOk"])
+        self.assertTrue(hints[2]["timingWindowOk"])
+        self.assertGreaterEqual(hints[2]["minRecommendedDurationSeconds"], 3.0)
+
     def test_payload_resolves_preset_default_template_for_agent_cookbook(self) -> None:
         settings = GPTHighlightRerankerSettings.from_env()
         request = _request().model_copy(update={"preset": "full_game_highlight", "templateId": None, "targetDurationSeconds": 60})

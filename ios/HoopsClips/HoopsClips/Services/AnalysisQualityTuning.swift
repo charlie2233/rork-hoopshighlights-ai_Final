@@ -27,7 +27,7 @@ struct PredictionVote: Sendable, Equatable {
     var recencyWeight: Double
 }
 
-enum AnalysisQualityTuning {
+nonisolated enum AnalysisQualityTuning {
     static func normalized(_ weights: AnalysisWeights) -> AnalysisWeights {
         let clamped = AnalysisWeights(
             audio: max(0, weights.audio),
