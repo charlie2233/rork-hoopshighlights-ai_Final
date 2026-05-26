@@ -601,6 +601,21 @@ class EditPlanAgentTests(unittest.TestCase):
                 suggestedEdit=GPTHighlightSuggestedEdit(),
             )
 
+    def test_gpt_highlight_decision_rejects_partial_quality_signals(self) -> None:
+        with self.assertRaises(ValidationError):
+            GPTHighlightClipDecision(
+                clipId="partial_signals",
+                keep=True,
+                highlightScore=0.95,
+                watchabilityScore=0.9,
+                basketballEvent="Made Shot",
+                outcome="made",
+                caption="BUCKET",
+                reason="Partial visual evidence must not default unknown checks to true.",
+                qualitySignals={"outcomeVisible": True, "reason": "Only the outcome was claimed."},
+                suggestedEdit=GPTHighlightSuggestedEdit(),
+            )
+
     def test_gpt_highlight_rerank_rejects_kept_clips_without_full_shot_context(self) -> None:
         request = CreateEditJobRequest(
             **_request_payload(
@@ -729,6 +744,44 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertEqual(job.status, "failed")
         self.assertIn("empty_clip_list", [error.code for error in job.validation_errors])
 
+    def test_gpt_highlight_rerank_rejects_generic_audio_only_scoring_claim(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=15,
+                clips=[
+                    {
+                        **_clip("audio_only_hype", 0.0, "Highlight", 0.9),
+                        "watchability": 0.51,
+                        "motionScore": 0.35,
+                        "audioPeak": 1.0,
+                    }
+                ],
+            )
+        )
+        decisions = [
+            GPTHighlightClipDecision(
+                clipId="audio_only_hype",
+                keep=True,
+                highlightScore=0.95,
+                watchabilityScore=0.9,
+                basketballEvent="Made Shot",
+                outcome="made",
+                caption="BUCKET",
+                reason="GPT overclaimed a made shot from a generic audio-heavy moment.",
+                qualitySignals=_quality_signals(),
+                suggestedEdit=GPTHighlightSuggestedEdit(),
+            )
+        ]
+
+        reranked = apply_gpt_highlight_rerank(request, decisions, "gpt-test", 1, 8)
+        job = build_edit_job(reranked, "edit_generic_audio_claim")
+
+        self.assertEqual(reranked.clips, [])
+        self.assertEqual(reranked.gptRerankSummary.fallbackReason, "all_clips_rejected")
+        self.assertIn("audio_only_hype", reranked.gptRerankSummary.rejectedClipIds)
+        self.assertEqual(reranked.gptRerankSummary.rejectedReasonCounts["gpt_outcome_unsupported_by_source"], 1)
+        self.assertEqual(job.status, "failed")
+
     def test_gpt_highlight_rerank_duplicate_cleanup_prefers_complete_context(self) -> None:
         request = CreateEditJobRequest(
             **_request_payload(
@@ -780,6 +833,61 @@ class EditPlanAgentTests(unittest.TestCase):
             clip_context_quality_score(next(clip for clip in request.clips if clip.id == "barely_contextual_make")),
         )
         self.assertEqual([clip.clipId for clip in plan.clips], ["complete_context_make"])
+
+    def test_gpt_highlight_rerank_dedupes_overlapping_kept_clips_without_duplicate_group(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=15,
+                clips=[
+                    {
+                        **_clip("same_make_a", 8.0, "Made Shot", 0.88),
+                        "end": 15.0,
+                        "eventCenter": 11.0,
+                        "duplicateGroup": None,
+                    },
+                    {
+                        **_clip("same_make_b", 8.4, "Made Shot", 0.9),
+                        "end": 15.4,
+                        "eventCenter": 11.2,
+                        "duplicateGroup": None,
+                    },
+                ],
+            )
+        )
+        decisions = [
+            GPTHighlightClipDecision(
+                clipId="same_make_a",
+                keep=True,
+                highlightScore=0.86,
+                watchabilityScore=0.88,
+                basketballEvent="Made Shot",
+                outcome="made",
+                caption="BUCKET",
+                reason="Same scoring moment from a slightly weaker window.",
+                qualitySignals=_quality_signals(),
+                suggestedEdit=GPTHighlightSuggestedEdit(),
+            ),
+            GPTHighlightClipDecision(
+                clipId="same_make_b",
+                keep=True,
+                highlightScore=0.94,
+                watchabilityScore=0.91,
+                basketballEvent="Made Shot",
+                outcome="made",
+                caption="CLEAN",
+                reason="Same scoring moment with better watchability.",
+                qualitySignals=_quality_signals(),
+                suggestedEdit=GPTHighlightSuggestedEdit(),
+            ),
+        ]
+
+        reranked = apply_gpt_highlight_rerank(request, decisions, "gpt-test", 2, 16)
+        plan = build_edit_plan(reranked, "edit_overlap_dedupe")
+
+        self.assertEqual(len(reranked.clips), 1)
+        self.assertEqual(len(plan.clips), 1)
+        self.assertEqual(set(reranked.gptRerankSummary.keptClipIds + reranked.gptRerankSummary.rejectedClipIds), {"same_make_a", "same_make_b"})
+        self.assertEqual(reranked.gptRerankSummary.rejectedReasonCounts["duplicate_moment"], 1)
 
     def test_gpt_highlight_rerank_drops_unjudged_candidates(self) -> None:
         request = CreateEditJobRequest(**_request_payload(targetDurationSeconds=30))
