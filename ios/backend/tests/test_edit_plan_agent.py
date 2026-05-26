@@ -1036,6 +1036,67 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertEqual(reranked.gptRerankSummary.fallbackReason, "all_clips_rejected")
         self.assertEqual(reranked.gptRerankSummary.rejectedReasonCounts.get("made_rim_entry_sequence_not_visible"), 1)
 
+    def test_gpt_highlight_rerank_rejects_generic_entry_when_rim_path_was_sampled(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=15,
+                clips=[_clip("generic_entry_claim", 24.0, "Made Shot", 0.9)],
+            )
+        )
+        decisions = [
+            GPTHighlightClipDecision(
+                clipId="generic_entry_claim",
+                keep=True,
+                highlightScore=0.92,
+                watchabilityScore=0.9,
+                basketballEvent="Made Shot",
+                outcome="made",
+                caption="BUCKET",
+                reason="Claims a made shot but uses a generic finish frame for entry.",
+                qualitySignals=_quality_signals(),
+                shotResultEvidence=_shot_result_evidence(
+                    ballApproachFrameRole="rimApproach",
+                    rimEntryFrameRole="finish",
+                    ballBelowRimOrNetFrameRole="belowRim",
+                ),
+                shotTrackingEvidence=_shot_tracking_evidence(
+                    ballVisibleFrameRoles=["release", "shotArcLate", "rimApproach", "rimEntry", "belowRim"],
+                    rimVisibleFrameRoles=["rimEntry", "belowRim"],
+                    releaseFrameRole="release",
+                    resultFrameRole="rimEntry",
+                    ballEntersRimFrameRole="rimEntry",
+                ),
+                suggestedEdit=GPTHighlightSuggestedEdit(),
+            )
+        ]
+
+        reranked = apply_gpt_highlight_rerank(
+            request,
+            decisions,
+            "gpt-test",
+            1,
+            10,
+            sampled_frame_roles_by_clip={
+                "generic_entry_claim": [
+                    "start",
+                    "preEvent",
+                    "release",
+                    "eventCenter",
+                    "shotArcEarly",
+                    "shotArcLate",
+                    "rimApproach",
+                    "rimEntry",
+                    "belowRim",
+                    "finish",
+                ]
+            },
+        )
+
+        self.assertEqual(reranked.gptRerankSummary.status, "applied")
+        self.assertEqual(reranked.gptRerankSummary.keptClipIds, [])
+        self.assertEqual(reranked.gptRerankSummary.fallbackReason, "all_clips_rejected")
+        self.assertEqual(reranked.gptRerankSummary.rejectedReasonCounts.get("gpt_ignored_sampled_rim_entry_frame"), 1)
+
     def test_gpt_highlight_rerank_rejects_generic_tracking_when_rich_roles_were_sampled(self) -> None:
         request = CreateEditJobRequest(
             **_request_payload(

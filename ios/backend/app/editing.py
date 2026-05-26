@@ -39,7 +39,10 @@ ShotTrackingFrameRole = Literal[
     "eventCenter",
     "outcome",
     "shotArcLate",
+    "rimApproach",
     "rim",
+    "rimEntry",
+    "belowRim",
     "postOutcome",
     "finish",
     "midAction",
@@ -106,12 +109,27 @@ MIN_GENERIC_HIGHLIGHT_PLANNING_SCORE = 0.62
 MIN_GENERIC_HIGHLIGHT_WATCHABILITY_SCORE = 0.5
 MIN_NATIVE_OUTCOME_CONFLICT_CONFIDENCE = 0.65
 SHOT_TRACKING_RELEASE_ROLES = {"preEvent", "release", "eventCenter"}
-SHOT_TRACKING_BALL_FLIGHT_ROLES = {"release", "shotArcEarly", "eventCenter", "outcome", "shotArcLate", "rim", "postOutcome", "finish"}
-SHOT_TRACKING_RESULT_ROLES = {"outcome", "shotArcLate", "rim", "postOutcome", "finish"}
+SHOT_TRACKING_BALL_FLIGHT_ROLES = {
+    "release",
+    "shotArcEarly",
+    "eventCenter",
+    "outcome",
+    "shotArcLate",
+    "rimApproach",
+    "rim",
+    "rimEntry",
+    "belowRim",
+    "postOutcome",
+    "finish",
+}
+SHOT_TRACKING_RESULT_ROLES = {"outcome", "shotArcLate", "rimApproach", "rim", "rimEntry", "belowRim", "postOutcome", "finish"}
+SHOT_TRACKING_RIM_ENTRY_APPROACH_ROLES = {"release", "shotArcEarly", "eventCenter", "shotArcLate", "rimApproach"}
+SHOT_TRACKING_RIM_ENTRY_FRAME_ROLES = {"outcome", "shotArcLate", "rim", "rimEntry", "finish"}
+SHOT_TRACKING_RIM_ENTRY_FOLLOW_THROUGH_ROLES = {"belowRim", "postOutcome", "finish"}
 SHOT_TRACKING_RICH_RELEASE_ROLES = {"release"}
 SHOT_TRACKING_RICH_ARC_ROLES = {"shotArcEarly", "shotArcLate"}
-SHOT_TRACKING_RICH_RESULT_ROLES = {"outcome", "shotArcLate", "rim", "postOutcome"}
-SHOT_TRACKING_RICH_RIM_ROLES = {"rim", "postOutcome"}
+SHOT_TRACKING_RICH_RESULT_ROLES = {"outcome", "shotArcLate", "rimApproach", "rim", "rimEntry", "belowRim", "postOutcome"}
+SHOT_TRACKING_RICH_RIM_ROLES = {"rimApproach", "rim", "rimEntry", "belowRim", "postOutcome"}
 TEMPLATE_MIN_CLIP_TOLERANCE = 0.85
 MAX_CAPTION_LENGTH = 24
 MAX_DURATION_OVERRUN_SECONDS = 6.0
@@ -2642,9 +2660,9 @@ def _gpt_decision_rejection_reason(
             return "made_rim_entry_sequence_not_visible"
         if result_evidence.rimEntrySequenceConfidence < 0.72:
             return "low_rim_entry_sequence_confidence"
-        if result_evidence.ballApproachFrameRole not in SHOT_TRACKING_BALL_FLIGHT_ROLES:
+        if result_evidence.ballApproachFrameRole not in SHOT_TRACKING_RIM_ENTRY_APPROACH_ROLES:
             return "missing_rim_entry_approach_frame"
-        if result_evidence.rimEntryFrameRole not in SHOT_TRACKING_RESULT_ROLES:
+        if result_evidence.rimEntryFrameRole not in SHOT_TRACKING_RIM_ENTRY_FRAME_ROLES:
             return "missing_rim_entry_frame"
     if decision.outcome == "missed":
         if result_evidence.rimResultEvidence != "clear_miss":
@@ -2686,7 +2704,7 @@ def _gpt_decision_rejection_reason(
             return "incomplete_made_shot_tracking"
         if tracking_evidence.ballEntersRimFrameRole not in SHOT_TRACKING_RESULT_ROLES and not tracking_evidence.netOrRimReactionVisible:
             return "missing_made_shot_entry_frame"
-        if result_evidence.ballBelowRimOrNetFrameRole not in SHOT_TRACKING_RESULT_ROLES and not tracking_evidence.netOrRimReactionVisible:
+        if result_evidence.ballBelowRimOrNetFrameRole not in SHOT_TRACKING_RIM_ENTRY_FOLLOW_THROUGH_ROLES and not tracking_evidence.netOrRimReactionVisible:
             return "missing_rim_entry_followthrough_frame"
     return None
 
@@ -2749,6 +2767,12 @@ def _rich_sampled_result_rejection_reason(
     sampled_roles = set(sampled_frame_roles)
     if result_evidence.rimEntrySequence != "visible_entry":
         return None
+    if "rimApproach" in sampled_roles and result_evidence.ballApproachFrameRole != "rimApproach":
+        return "gpt_ignored_sampled_rim_approach_frame"
+    if "rimEntry" in sampled_roles and result_evidence.rimEntryFrameRole != "rimEntry":
+        return "gpt_ignored_sampled_rim_entry_frame"
+    if "belowRim" in sampled_roles and result_evidence.ballBelowRimOrNetFrameRole != "belowRim":
+        return "gpt_ignored_sampled_below_rim_frame"
     if sampled_roles & SHOT_TRACKING_RICH_RESULT_ROLES and result_evidence.rimEntryFrameRole not in SHOT_TRACKING_RICH_RESULT_ROLES:
         return "gpt_ignored_sampled_rim_entry_frame"
     if sampled_roles & {"postOutcome"} and result_evidence.ballBelowRimOrNetFrameRole not in {"postOutcome", "finish"}:

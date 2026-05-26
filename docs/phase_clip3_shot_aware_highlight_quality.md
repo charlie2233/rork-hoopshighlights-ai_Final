@@ -10,14 +10,17 @@ Improve GPT-led HoopClips highlight selection quality with a bias toward basketb
 ## What Changed
 
 - Raised quality-beta GPT sampling defaults:
-  - Free: up to 8 candidate clips and 8 keyframes per clip.
-  - Pro/internal: up to 30 candidate clips and 8 keyframes per clip.
-  - Default sampled frame width is 768, JPEG quality is 4, max frame bytes is 300000, OpenAI image detail defaults to `high`, and structured output budget defaults to 3500 tokens.
+  - Free: up to 8 candidate clips and up to 10 keyframes per clip.
+  - Pro/internal: up to 30 candidate clips and up to 10 keyframes per clip.
+  - Default sampled frame width is 1024, JPEG quality is 4, max frame bytes is 750000, OpenAI image detail defaults to `high`, and structured output budget defaults to 3500 tokens.
 - Added shot-aware keyframe roles beyond start/eventCenter/finish:
   - `preEvent`
   - `release`
-  - `outcome`
-  - `rim`
+  - `shotArcEarly`
+  - `shotArcLate`
+  - `rimApproach`
+  - `rimEntry`
+  - `belowRim`
   - `midAction`
 - Added candidate quality filters before GPT:
   - reject clips shorter than the backend minimum
