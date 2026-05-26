@@ -868,6 +868,81 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertEqual(result.gptRerankSummary.fallbackReason, "all_clips_rejected")
         self.assertEqual(result.gptRerankSummary.rejectedReasonCounts.get("gpt_cited_unsampled_frame_role"), 1)
 
+    def test_gpt_decision_must_use_rich_sampled_shot_roles_when_available(self) -> None:
+        settings = GPTHighlightRerankerSettings(
+            enabled=True,
+            api_key="unit-test-key",
+            model="gpt-test",
+            endpoint="https://api.openai.test/v1/responses",
+            timeout_seconds=1.0,
+            max_output_tokens=512,
+            free_max_clips=1,
+            paid_max_clips=24,
+            free_frames_per_clip=10,
+            paid_frames_per_clip=10,
+            frame_width=512,
+            jpeg_quality=5,
+            max_image_bytes=180_000,
+            image_detail="low",
+        )
+        original_extract = gpt_reranker._extract_candidate_keyframes
+
+        def fake_extract(source_path, clips, frames_per_clip, rerank_settings):
+            clip = clips[0]
+            return [
+                SampledFrame(clip_id=clip.id, role=role, time_seconds=second, data_url="data:image/jpeg;base64,ZmFrZQ==")
+                for role, second in gpt_reranker._sample_times_for_clip(clip, frames_per_clip)
+            ]
+
+        def fake_response_client(payload, api_key, endpoint, timeout_seconds):
+            compact_input = json.loads(payload["input"][0]["content"][0]["text"])
+            self.assertTrue(compact_input["shotTrackerRules"]["mustUseRichSampledShotRolesWhenPresent"])
+            return {
+                "output_text": json.dumps(
+                    {
+                        "decisions": [
+                            {
+                                "clipId": "c0",
+                                "keep": True,
+                                "rejectReason": None,
+                                "highlightScore": 0.91,
+                                "watchabilityScore": 0.87,
+                                "basketballEvent": "Made Shot",
+                                "outcome": "made",
+                                "caption": "BUCKET",
+                                "reason": "Claims a made shot but ignores the sampled release/rim roles.",
+                                "storyRole": "peak",
+                                "qualitySignals": _quality_signals(),
+                                "shotResultEvidence": _shot_result_evidence(),
+                                "shotTrackingEvidence": _shot_tracking_evidence(),
+                                "suggestedEdit": {
+                                    "slowMotion": False,
+                                    "slowMotionCenter": None,
+                                    "captionMoment": None,
+                                    "cropFocus": "rim",
+                                    "extendBeforeSeconds": 0,
+                                    "extendAfterSeconds": 0,
+                                },
+                            }
+                        ],
+                        "storyOrder": ["c0"],
+                        "summary": "ok",
+                    }
+                )
+            }
+
+        try:
+            gpt_reranker._extract_candidate_keyframes = fake_extract
+            with tempfile.NamedTemporaryFile(suffix=".mp4") as source:
+                result = gpt_reranker.rerank_edit_request_with_gpt(_request("free", 1), Path(source.name), settings, fake_response_client)
+        finally:
+            gpt_reranker._extract_candidate_keyframes = original_extract
+
+        self.assertEqual(result.gptRerankSummary.status, "applied")
+        self.assertEqual(result.gptRerankSummary.keptClipIds, [])
+        self.assertEqual(result.gptRerankSummary.fallbackReason, "all_clips_rejected")
+        self.assertEqual(result.gptRerankSummary.rejectedReasonCounts.get("gpt_ignored_sampled_release_frame"), 1)
+
     def test_shot_candidates_require_setup_and_outcome_keyframes_before_openai_call(self) -> None:
         settings = GPTHighlightRerankerSettings(
             enabled=True,
@@ -978,7 +1053,13 @@ class GPTHighlightRerankerTests(unittest.TestCase):
                                     "reason": "Complete shot context.",
                                 },
                                 "shotResultEvidence": _shot_result_evidence(),
-                                "shotTrackingEvidence": _shot_tracking_evidence(),
+                                "shotTrackingEvidence": _shot_tracking_evidence(
+                                    ballVisibleFrameRoles=["release", "outcome", "rim"],
+                                    rimVisibleFrameRoles=["rim", "postOutcome"],
+                                    releaseFrameRole="release",
+                                    resultFrameRole="rim",
+                                    ballEntersRimFrameRole="rim",
+                                ),
                                 "suggestedEdit": {
                                     "slowMotion": False,
                                     "slowMotionCenter": None,
@@ -1471,6 +1552,16 @@ class GPTHighlightRerankerTests(unittest.TestCase):
             return frames
 
         def fake_response_client(payload, api_key, endpoint, timeout_seconds):
+            compact_input = json.loads(payload["input"][0]["content"][0]["text"])
+            required_roles = set(compact_input["shotTrackerRules"]["requiredShotContextKeyframes"])
+            tracking_evidence = _shot_tracking_evidence()
+            if "outcome" in required_roles:
+                tracking_evidence = _shot_tracking_evidence(
+                    ballVisibleFrameRoles=["eventCenter", "outcome", "finish"],
+                    rimVisibleFrameRoles=["outcome"],
+                    resultFrameRole="outcome",
+                    ballEntersRimFrameRole="outcome",
+                )
             decisions = [
                 {
                     "clipId": clip_id,
@@ -1485,7 +1576,7 @@ class GPTHighlightRerankerTests(unittest.TestCase):
                     "storyRole": "filler",
                     "qualitySignals": _quality_signals(),
                     "shotResultEvidence": _shot_result_evidence(),
-                    "shotTrackingEvidence": _shot_tracking_evidence(),
+                    "shotTrackingEvidence": tracking_evidence,
                     "suggestedEdit": {
                         "slowMotion": False,
                         "slowMotionCenter": None,

@@ -108,6 +108,10 @@ MIN_NATIVE_OUTCOME_CONFLICT_CONFIDENCE = 0.65
 SHOT_TRACKING_RELEASE_ROLES = {"preEvent", "release", "eventCenter"}
 SHOT_TRACKING_BALL_FLIGHT_ROLES = {"release", "shotArcEarly", "eventCenter", "outcome", "shotArcLate", "rim", "postOutcome", "finish"}
 SHOT_TRACKING_RESULT_ROLES = {"outcome", "shotArcLate", "rim", "postOutcome", "finish"}
+SHOT_TRACKING_RICH_RELEASE_ROLES = {"release"}
+SHOT_TRACKING_RICH_ARC_ROLES = {"shotArcEarly", "shotArcLate"}
+SHOT_TRACKING_RICH_RESULT_ROLES = {"outcome", "shotArcLate", "rim", "postOutcome"}
+SHOT_TRACKING_RICH_RIM_ROLES = {"rim", "postOutcome"}
 TEMPLATE_MIN_CLIP_TOLERANCE = 0.85
 MAX_CAPTION_LENGTH = 24
 MAX_DURATION_OVERRUN_SECONDS = 6.0
@@ -2646,6 +2650,9 @@ def _gpt_decision_rejection_reason(
         unsampled_roles = _unsampled_gpt_tracking_roles(tracking_evidence, sampled_frame_roles)
         if unsampled_roles:
             return "gpt_cited_unsampled_frame_role"
+        rich_role_rejection_reason = _rich_sampled_tracking_rejection_reason(tracking_evidence, sampled_frame_roles)
+        if rich_role_rejection_reason is not None:
+            return rich_role_rejection_reason
     if decision.outcome in {"made", "missed"}:
         if tracking_evidence.releaseFrameRole not in SHOT_TRACKING_RELEASE_ROLES:
             return "missing_tracking_release_frame"
@@ -2678,6 +2685,25 @@ def _unsampled_gpt_tracking_roles(
     )
     cited_roles.update(role for role in optional_roles if role is not None)
     return cited_roles - sampled_roles
+
+
+def _rich_sampled_tracking_rejection_reason(
+    tracking_evidence: GPTShotTrackingEvidence,
+    sampled_frame_roles: Sequence[str],
+) -> Optional[str]:
+    sampled_roles = set(sampled_frame_roles)
+    ball_roles = set(tracking_evidence.ballVisibleFrameRoles)
+    rim_roles = set(tracking_evidence.rimVisibleFrameRoles)
+
+    if sampled_roles & SHOT_TRACKING_RICH_RELEASE_ROLES and tracking_evidence.releaseFrameRole not in SHOT_TRACKING_RICH_RELEASE_ROLES:
+        return "gpt_ignored_sampled_release_frame"
+    if sampled_roles & SHOT_TRACKING_RICH_ARC_ROLES and not (ball_roles & SHOT_TRACKING_RICH_ARC_ROLES):
+        return "gpt_missing_sampled_arc_tracking"
+    if sampled_roles & SHOT_TRACKING_RICH_RESULT_ROLES and tracking_evidence.resultFrameRole not in SHOT_TRACKING_RICH_RESULT_ROLES:
+        return "gpt_ignored_sampled_result_frame"
+    if sampled_roles & SHOT_TRACKING_RICH_RIM_ROLES and not (rim_roles & SHOT_TRACKING_RICH_RIM_ROLES):
+        return "gpt_missing_sampled_rim_tracking"
+    return None
 
 
 def _gpt_outcome_conflicts_with_native_signal(decision: GPTHighlightClipDecision, clip: EditCandidateClip) -> bool:

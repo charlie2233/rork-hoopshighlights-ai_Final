@@ -661,6 +661,7 @@ def _build_openai_payload(
                         "madeOrMissedShotRequiresVisibleShotArc": True,
                         "madeShotRequiresExplicitMadeResultEvidence": True,
                         "madeShotRequiresFrameRoleTrackingEvidence": True,
+                        "mustUseRichSampledShotRolesWhenPresent": True,
                         "doNotKeepIfOutcomeIsOnlyImplied": True,
                         "requiredMadeShotTracking": {
                             "releaseFrameRole": ["preEvent", "release", "eventCenter"],
@@ -668,6 +669,12 @@ def _build_openai_payload(
                             "ballEntersRimFrameRole": ["outcome", "shotArcLate", "rim", "postOutcome", "finish"],
                             "minimumBallVisibleFrameRoles": 2,
                             "trajectoryContinuity": "continuous",
+                        },
+                        "richSampledShotRoleRules": {
+                            "ifReleaseRoleIsSampledUseReleaseAsReleaseFrameRole": True,
+                            "ifArcRolesAreSampledIncludeAtLeastOneArcRoleInBallVisibleFrameRoles": True,
+                            "ifRimOrPostOutcomeIsSampledIncludeOneInRimVisibleFrameRoles": True,
+                            "ifOutcomeRimOrPostOutcomeIsSampledUseOneAsResultFrameRole": True,
                         },
                         "requiredShotContextKeyframes": sorted(_required_shot_context_roles(settings.limits_for(request.planTier)[1])),
                     },
@@ -692,6 +699,7 @@ def _build_openai_payload(
             "For made or missed shots, releaseVisible, shotArcVisible, and rimResultVisible must all be true; do not infer a make from a label or late rim-only aftermath. "
             "A made outcome requires shotResultEvidence.rimResultEvidence=made_visible with confident visible rim/net proof; use unclear if the result is guessed. "
             "A made outcome also requires shotTrackingEvidence with release/result frame roles, ball-visible frame roles, continuous trajectory, and a frame or visible net/rim reaction proving entry. "
+            "When sampled roles include release, shot-arc, rim, or post-outcome frames, cite those specific rich roles instead of generic eventCenter/finish proof. "
             "reject clips that start right before the basket, clips shorter than the supplied quality minimum, or clips where the outcome is only implied. "
             "Honor userEditIntent only when it is compatible with the supplied template, plan tier, candidate clips, and safety constraints. "
             "Use only supplied candidate clip IDs and sampled keyframes. Do not replace FFmpeg extraction, CV tracking, rendering, or exact timestamps. "
