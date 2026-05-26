@@ -1,5 +1,96 @@
 import Foundation
 
+nonisolated enum HighlightTeamSelectionMode: String, Codable, Sendable, CaseIterable {
+    case all
+    case team
+}
+
+nonisolated struct HighlightTeamSelection: Codable, Sendable, Equatable {
+    var mode: HighlightTeamSelectionMode = .all
+    var teamId: String?
+    var label: String?
+    var colorLabel: String?
+    var confidenceThreshold: Double = 0.85
+    var includeUncertain: Bool = true
+
+    static let allTeams = HighlightTeamSelection(mode: .all)
+
+    static let defaultChoices: [HighlightTeamSelection] = [
+        .allTeams,
+        HighlightTeamSelection(mode: .team, teamId: "team_dark", label: "Dark jerseys", colorLabel: "black"),
+        HighlightTeamSelection(mode: .team, teamId: "team_light", label: "Light jerseys", colorLabel: "white")
+    ]
+
+    var selectionKey: String {
+        if mode == .all { return "all" }
+        return teamId ?? colorLabel ?? label ?? "team"
+    }
+
+    var displayTitle: String {
+        if mode == .all { return "All teams" }
+        return label ?? colorLabel ?? teamId ?? "Selected team"
+    }
+
+    var displaySubtitle: String {
+        if mode == .all {
+            return "Keep highlights from both teams"
+        }
+        return includeUncertain ? "Keep uncertain clips for review" : "Only confident matches"
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case mode
+        case teamId
+        case label
+        case colorLabel
+        case confidenceThreshold
+        case includeUncertain
+    }
+
+    init(
+        mode: HighlightTeamSelectionMode = .all,
+        teamId: String? = nil,
+        label: String? = nil,
+        colorLabel: String? = nil,
+        confidenceThreshold: Double = 0.85,
+        includeUncertain: Bool = true
+    ) {
+        self.mode = mode
+        self.teamId = teamId
+        self.label = label
+        self.colorLabel = colorLabel
+        self.confidenceThreshold = confidenceThreshold
+        self.includeUncertain = includeUncertain
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        mode = try container.decodeIfPresent(HighlightTeamSelectionMode.self, forKey: .mode) ?? .all
+        teamId = try container.decodeIfPresent(String.self, forKey: .teamId)
+        label = try container.decodeIfPresent(String.self, forKey: .label)
+        colorLabel = try container.decodeIfPresent(String.self, forKey: .colorLabel)
+        confidenceThreshold = try container.decodeIfPresent(Double.self, forKey: .confidenceThreshold) ?? 0.85
+        includeUncertain = try container.decodeIfPresent(Bool.self, forKey: .includeUncertain) ?? true
+    }
+}
+
+nonisolated struct CloudTeamOption: Codable, Sendable, Equatable {
+    let teamId: String
+    let label: String
+    let colorLabel: String?
+    let primaryColorHex: String?
+    let confidence: Double
+    let source: String?
+}
+
+nonisolated struct ClipTeamAttribution: Codable, Sendable, Equatable {
+    var teamId: String?
+    var label: String?
+    var colorLabel: String?
+    var confidence: Double
+    var source: String?
+}
+
 nonisolated enum AnalysisExecutionMode: String, Codable, Sendable {
     case cloud
     case local
@@ -14,6 +105,7 @@ nonisolated struct CreateCloudAnalysisJobRequest: Codable, Sendable {
     let installId: String
     let appVersion: String
     let analysisVersion: String
+    var teamSelection: HighlightTeamSelection? = nil
 }
 
 nonisolated struct CreateCloudAnalysisJobResponse: Codable, Sendable {
@@ -105,19 +197,46 @@ nonisolated struct CloudAnalysisResult: Codable, Sendable {
     let clipCount: Int
     let clips: [CloudClip]
     let diagnostics: CloudDiagnostics
+    var detectedTeams: [CloudTeamOption] = []
+    var teamSelection: HighlightTeamSelection? = nil
 
     init(
         analysisJobId: String? = nil,
         sourceObjectKey: String? = nil,
         clipCount: Int,
         clips: [CloudClip],
-        diagnostics: CloudDiagnostics
+        diagnostics: CloudDiagnostics,
+        detectedTeams: [CloudTeamOption] = [],
+        teamSelection: HighlightTeamSelection? = nil
     ) {
         self.analysisJobId = analysisJobId
         self.sourceObjectKey = sourceObjectKey
         self.clipCount = clipCount
         self.clips = clips
         self.diagnostics = diagnostics
+        self.detectedTeams = detectedTeams
+        self.teamSelection = teamSelection
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case analysisJobId
+        case sourceObjectKey
+        case clipCount
+        case clips
+        case diagnostics
+        case detectedTeams
+        case teamSelection
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        analysisJobId = try container.decodeIfPresent(String.self, forKey: .analysisJobId)
+        sourceObjectKey = try container.decodeIfPresent(String.self, forKey: .sourceObjectKey)
+        clipCount = try container.decode(Int.self, forKey: .clipCount)
+        clips = try container.decode([CloudClip].self, forKey: .clips)
+        diagnostics = try container.decode(CloudDiagnostics.self, forKey: .diagnostics)
+        detectedTeams = try container.decodeIfPresent([CloudTeamOption].self, forKey: .detectedTeams) ?? []
+        teamSelection = try container.decodeIfPresent(HighlightTeamSelection.self, forKey: .teamSelection)
     }
 
     func withJobMetadata(analysisJobId: String, sourceObjectKey: String?) -> CloudAnalysisResult {
@@ -126,7 +245,9 @@ nonisolated struct CloudAnalysisResult: Codable, Sendable {
             sourceObjectKey: sourceObjectKey ?? self.sourceObjectKey,
             clipCount: clipCount,
             clips: clips,
-            diagnostics: diagnostics
+            diagnostics: diagnostics,
+            detectedTeams: detectedTeams,
+            teamSelection: teamSelection
         )
     }
 }
@@ -159,6 +280,7 @@ nonisolated struct CloudClip: Codable, Sendable {
     let shouldAutoKeep: Bool
     let shouldEnableSlowMotion: Bool
     var nativeShotSignals: NativeShotSignals? = nil
+    var teamAttribution: ClipTeamAttribution? = nil
 
     func makeClip() -> Clip {
         let resolvedAction = HighlightAction(rawValue: action)
@@ -179,7 +301,8 @@ nonisolated struct CloudClip: Codable, Sendable {
             combinedScore: combinedScore,
             isSlowMotionEnabled: shouldEnableSlowMotion,
             detectionMethod: resolvedMethod,
-            nativeShotSignals: nativeShotSignals
+            nativeShotSignals: nativeShotSignals,
+            teamAttribution: teamAttribution
         )
     }
 }

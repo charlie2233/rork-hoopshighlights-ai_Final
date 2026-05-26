@@ -28,12 +28,14 @@ from app.editing import (  # noqa: E402
     apply_gpt_highlight_rerank,
     build_agent_editing_context,
     derive_user_prompt_intent,
+    filter_clips_for_team_selection,
     get_template_pack_for_plan,
     is_plan_quality_eligible_clip,
     is_shot_like_clip,
     native_shot_signals_for_clip,
     rank_clips,
     summarize_clip_pool,
+    team_attribution_status,
     validate_edit_plan_patch,
 )
 
@@ -146,6 +148,8 @@ def rerank_edit_request_with_gpt(
         return _with_fallback(request, "fallback", settings.model, "source_missing")
 
     request = expand_shot_candidate_windows_from_source_path(request, source_path)
+    team_filtered_clips = filter_clips_for_team_selection(request.clips, request.teamSelection)
+    request = request.model_copy(update={"clips": team_filtered_clips})
     max_clips, frames_per_clip = settings.limits_for(request.planTier)
     sampled_clips = _quality_filtered_sampled_clips(rank_clips(request.clips), max_clips)
     if not sampled_clips:
@@ -604,6 +608,7 @@ def _build_openai_payload(
     sampled_frames: Sequence[SampledFrame],
     settings: GPTHighlightRerankerSettings,
 ) -> Dict[str, Any]:
+    sampled_clips = filter_clips_for_team_selection(sampled_clips, request.teamSelection)
     sampled_clip_ids = {clip.id for clip in sampled_clips}
     candidate_frames = [frame for frame in sampled_frames if frame.clip_id in sampled_clip_ids]
     template = get_template_pack_for_plan(request.preset, request.templateId)
@@ -621,6 +626,7 @@ def _build_openai_payload(
         template.templateId,
         summarize_clip_pool(sampled_clips),
         sampled_clips,
+        teamSelection=request.teamSelection,
     )
     compact_clips = [
         {
@@ -635,6 +641,8 @@ def _build_openai_payload(
             "confidence": clip.confidence,
             "watchabilityScore": clip.watchability,
             "duplicateGroup": clip.duplicateGroup,
+            "teamAttribution": clip.teamAttribution.model_dump(mode="json") if clip.teamAttribution is not None else None,
+            "teamAttributionStatus": team_attribution_status(clip, request.teamSelection),
             "templateId": template.templateId,
             "planTier": request.planTier,
             "qualityHints": _candidate_quality_hints(clip),
@@ -656,6 +664,14 @@ def _build_openai_payload(
                     "templateContext": template_context,
                     "agentTemplateCookbook": agent_template_context,
                     "userEditIntent": user_edit_intent.model_dump(mode="json") if user_edit_intent is not None else None,
+                    "teamTargeting": request.teamSelection.model_dump(mode="json") if request.teamSelection is not None else {
+                        "mode": "all",
+                        "teamId": None,
+                        "label": None,
+                        "colorLabel": None,
+                        "confidenceThreshold": 0.85,
+                        "includeUncertain": True,
+                    },
                     "shotTrackerRules": {
                         "preferCompletePlayContext": True,
                         "rejectTinyClips": True,
@@ -720,6 +736,8 @@ def _build_openai_payload(
             "When sampled roles include release, shot-arc, rim, or post-outcome frames, cite those specific rich roles instead of generic eventCenter/finish proof. "
             "reject clips that start right before the basket, clips shorter than the supplied quality minimum, or clips where the outcome is only implied. "
             "Honor userEditIntent only when it is compatible with the supplied template, plan tier, candidate clips, and safety constraints. "
+            "When a selected team is supplied, keep highlights for that team only; exclude confident opponent clips. Keep uncertain team-attribution clips for user review. "
+            "Selected-team blocks, steals, defensive stops, and forced turnovers can be highlights even when they are not scoring plays. "
             "Use only supplied candidate clip IDs and sampled keyframes. Do not replace FFmpeg extraction, CV tracking, rendering, or exact timestamps. "
             "Do not output FFmpeg commands, shell commands, file paths, source video URLs, or storage keys. "
             "Return strict JSON only."

@@ -17,6 +17,7 @@ nonisolated struct Clip: Identifiable, Codable, Sendable {
     var isSlowMotionEnabled: Bool
     var detectionMethod: DetectionMethod
     var nativeShotSignals: NativeShotSignals?
+    var teamAttribution: ClipTeamAttribution?
 
     var duration: Double { endTime - startTime }
 
@@ -46,7 +47,8 @@ nonisolated struct Clip: Identifiable, Codable, Sendable {
         playbackSpeed: Double = 1.0,
         isSlowMotionEnabled: Bool = false,
         detectionMethod: DetectionMethod = .heuristic,
-        nativeShotSignals: NativeShotSignals? = nil
+        nativeShotSignals: NativeShotSignals? = nil,
+        teamAttribution: ClipTeamAttribution? = nil
     ) {
         self.id = id
         self.startTime = startTime
@@ -64,6 +66,7 @@ nonisolated struct Clip: Identifiable, Codable, Sendable {
         self.isSlowMotionEnabled = isSlowMotionEnabled
         self.detectionMethod = detectionMethod
         self.nativeShotSignals = nativeShotSignals
+        self.teamAttribution = teamAttribution
     }
 
     static func formatTime(_ time: Double) -> String {

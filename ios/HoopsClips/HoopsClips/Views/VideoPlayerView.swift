@@ -436,6 +436,7 @@ struct VideoPlayerView: View {
             } else if !viewModel.clips.isEmpty {
                 analysisCompleteView
             } else {
+                teamTargetControl
                 targetHighlightLengthControl
 
                 if !subscriptionManager.isProUser || viewModel.cloudQuotaRemaining != nil {
@@ -497,6 +498,83 @@ struct VideoPlayerView: View {
         }
         .padding(16)
         .rorkCard(cornerRadius: 18, stroke: AppTheme.softBorder)
+    }
+
+    private var teamTargetControl: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 10) {
+                ZStack {
+                    Circle()
+                        .fill(AppTheme.neonPurple.opacity(0.14))
+                        .frame(width: 34, height: 34)
+                    Image(systemName: "person.3.fill")
+                        .font(.headline)
+                        .foregroundStyle(AppTheme.neonPurple)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Highlight Team")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.white)
+                    Text("Cloud AI targets this team and keeps uncertain clips for Review.")
+                        .font(.caption2)
+                        .foregroundStyle(AppTheme.subtleText)
+                        .lineLimit(2)
+                }
+
+                Spacer(minLength: 0)
+            }
+
+            HStack(spacing: 8) {
+                ForEach(HighlightTeamSelection.defaultChoices, id: \.selectionKey) { selection in
+                    teamTargetButton(selection)
+                }
+            }
+        }
+        .padding(14)
+        .rorkCard(
+            cornerRadius: 16,
+            fill: AnyShapeStyle(AppTheme.surfaceBg.opacity(0.68)),
+            stroke: AppTheme.neonPurple.opacity(0.18),
+            glow: AppTheme.neonPurple,
+            glowOpacity: 0.04
+        )
+    }
+
+    private func teamTargetButton(_ selection: HighlightTeamSelection) -> some View {
+        let isSelected = viewModel.settings.highlightTeamSelection.selectionKey == selection.selectionKey
+        let icon = selection.mode == .all ? "person.3.fill" : "circle.lefthalf.filled"
+
+        return Button {
+            HoopsAccessibility.animate(reduceMotion: reduceMotion, .snappy(duration: 0.18)) {
+                viewModel.settings.highlightTeamSelection = selection
+            }
+        } label: {
+            VStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(.caption.weight(.bold))
+                Text(selection.displayTitle)
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.78)
+            }
+            .foregroundStyle(isSelected ? AppTheme.darkBg : AppTheme.neonPurple)
+            .frame(maxWidth: .infinity, minHeight: 48)
+            .padding(.horizontal, 6)
+            .background(
+                isSelected ? AppTheme.neonPurple : AppTheme.neonPurple.opacity(0.10),
+                in: .rect(cornerRadius: 12)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(AppTheme.neonPurple.opacity(isSelected ? 0 : 0.28), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Target \(selection.displayTitle)")
+        .accessibilityValue(isSelected ? "Selected" : "Not selected")
+        .accessibilityHint(selection.displaySubtitle)
+        .hoopsSelectedState(isSelected)
     }
 
     private var targetHighlightLengthControl: some View {

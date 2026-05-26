@@ -6,7 +6,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Dict, List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class APIModel(BaseModel):
@@ -26,6 +26,38 @@ class JobStatus(str, Enum):
         return self in {JobStatus.SUCCEEDED, JobStatus.FAILED, JobStatus.EXPIRED}
 
 
+class TeamSelection(APIModel):
+    mode: Literal["all", "team"] = "all"
+    teamId: Optional[str] = Field(default=None, min_length=1, max_length=80)
+    label: Optional[str] = Field(default=None, min_length=1, max_length=80)
+    colorLabel: Optional[str] = Field(default=None, min_length=1, max_length=80)
+    confidenceThreshold: float = Field(default=0.85, ge=0.5, le=0.99)
+    includeUncertain: bool = True
+
+    @model_validator(mode="after")
+    def validate_team_selection(self) -> "TeamSelection":
+        if self.mode == "team" and not (self.teamId or self.colorLabel):
+            raise ValueError("team selection requires a teamId or colorLabel")
+        return self
+
+
+class TeamOption(APIModel):
+    teamId: str = Field(min_length=1, max_length=80)
+    label: str = Field(min_length=1, max_length=80)
+    colorLabel: Optional[str] = Field(default=None, max_length=80)
+    primaryColorHex: Optional[str] = Field(default=None, max_length=16)
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    source: Literal["quick_scan", "provider", "manual", "unknown"] = "unknown"
+
+
+class ClipTeamAttribution(APIModel):
+    teamId: Optional[str] = Field(default=None, min_length=1, max_length=80)
+    label: Optional[str] = Field(default=None, min_length=1, max_length=80)
+    colorLabel: Optional[str] = Field(default=None, min_length=1, max_length=80)
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    source: Literal["quick_scan", "gpt_frame_review", "provider", "manual", "unknown"] = "unknown"
+
+
 class CreateCloudAnalysisJobRequest(APIModel):
     filename: str = Field(min_length=1, max_length=255)
     contentType: str = Field(min_length=1, max_length=120)
@@ -34,6 +66,7 @@ class CreateCloudAnalysisJobRequest(APIModel):
     installId: str = Field(min_length=8, max_length=128)
     appVersion: str = Field(min_length=1, max_length=64)
     analysisVersion: str = Field(min_length=1, max_length=64)
+    teamSelection: Optional[TeamSelection] = None
 
 
 class CreateCloudAnalysisJobResponse(APIModel):
@@ -84,6 +117,7 @@ class CloudClip(APIModel):
     shouldAutoKeep: bool
     shouldEnableSlowMotion: bool
     nativeShotSignals: Optional[CloudNativeShotSignals] = None
+    teamAttribution: Optional[ClipTeamAttribution] = None
 
 
 class CloudDiagnostics(APIModel):
@@ -99,6 +133,8 @@ class CloudAnalysisResult(APIModel):
     clipCount: int
     clips: List[CloudClip]
     diagnostics: CloudDiagnostics
+    detectedTeams: List[TeamOption] = Field(default_factory=list)
+    teamSelection: Optional[TeamSelection] = None
 
 
 class CloudAnalysisJobResponse(APIModel):
@@ -170,6 +206,7 @@ class StoredJob:
     expires_at: datetime
     object_key: str
     upload_headers: Dict[str, str] = field(default_factory=dict)
+    team_selection: Optional[TeamSelection] = None
     status: JobStatus = JobStatus.CREATED
     progress: float = 0.0
     stage: str = "Preparing upload"

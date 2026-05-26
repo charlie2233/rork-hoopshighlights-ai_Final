@@ -20,6 +20,7 @@ struct CloudAnalysisService {
         installID: String,
         appVersion: String = "v1.0",
         analysisVersion: String = "v1",
+        teamSelection: HighlightTeamSelection? = nil,
         progress: @escaping @MainActor @Sendable (Double, String) -> Void
     ) async throws -> CloudAnalysisResult {
         guard let baseURL = configuredBaseURL() else {
@@ -37,7 +38,8 @@ struct CloudAnalysisService {
                 durationSeconds: duration,
                 installId: installID,
                 appVersion: appVersion,
-                analysisVersion: analysisVersion
+                analysisVersion: analysisVersion,
+                teamSelection: teamSelection
             )
         )
 
