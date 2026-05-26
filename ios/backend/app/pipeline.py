@@ -10,7 +10,7 @@ import shutil
 import subprocess
 import tempfile
 import wave
-from typing import List
+from typing import List, Optional, Sequence, Tuple
 
 from .classifier import classify_window, maybe_relabel_with_gemini
 from .config import Settings
@@ -20,6 +20,14 @@ from .models import CandidateWindow, CloudAnalysisResult, CloudDiagnostics, Pipe
 
 NATIVE_SHOT_CONTEXT_TARGET_LEAD_SECONDS = 2.0
 NATIVE_SHOT_CONTEXT_TARGET_FOLLOW_THROUGH_SECONDS = 1.25
+VISUAL_EVENT_SAMPLE_FPS = 2.0
+VISUAL_EVENT_FRAME_WIDTH = 64
+VISUAL_EVENT_FRAME_HEIGHT = 36
+VISUAL_EVENT_MIN_SCORE = 0.46
+VISUAL_EVENT_MIN_VISUAL_SCORE = 0.28
+VISUAL_EVENT_MIN_GAP_SECONDS = 1.4
+VISUAL_EVENT_MAX_BOUNDARIES = 24
+VisualFrameSignal = Tuple[float, float, float, float]
 
 
 def run_analysis(job: StoredJob, settings: Settings, source_path: Path) -> CloudAnalysisResult:
@@ -45,8 +53,8 @@ def run_analysis(job: StoredJob, settings: Settings, source_path: Path) -> Cloud
     if detection_provider:
         provider_tags.append(detection_provider)
     else:
-        shot_boundaries = _detect_shot_boundaries(source_path)
         audio_profile = _extract_audio_profile(source_path, duration_seconds)
+        shot_boundaries = _detect_shot_boundaries(source_path, duration_seconds, audio_profile)
         windows = _build_candidate_windows(
             duration_seconds=duration_seconds,
             audio_profile=audio_profile,
@@ -117,12 +125,182 @@ def _probe_duration(path: Path, fallback: float) -> float:
         return max(fallback, 1.0)
 
 
-def _detect_shot_boundaries(path: Path) -> List[float]:
-    # Google Video Intelligence is not invoked in the local scaffold. This hook
-    # keeps the pipeline shape stable so the storage/store contract stays the same
-    # when the Cloud Run service is later wired to GCP managed services.
-    _ = path
-    return []
+def _detect_shot_boundaries(
+    path: Path,
+    duration_seconds: Optional[float] = None,
+    audio_profile: Optional[List[float]] = None,
+) -> List[float]:
+    duration = duration_seconds if duration_seconds is not None else _probe_duration(path, fallback=1.0)
+    frame_signals = _extract_visual_frame_signals(path, duration)
+    if not frame_signals:
+        return []
+    return _visual_event_boundaries_from_signals(
+        frame_signals,
+        audio_profile or [],
+        duration_seconds=duration,
+    )
+
+
+def _extract_visual_frame_signals(path: Path, duration_seconds: float) -> List[VisualFrameSignal]:
+    ffmpeg = shutil.which("ffmpeg")
+    if ffmpeg is None:
+        return []
+
+    frame_size = VISUAL_EVENT_FRAME_WIDTH * VISUAL_EVENT_FRAME_HEIGHT * 3
+    command = [
+        ffmpeg,
+        "-v",
+        "error",
+        "-i",
+        str(path),
+        "-vf",
+        "fps={fps},scale={width}:{height}:flags=fast_bilinear".format(
+            fps=VISUAL_EVENT_SAMPLE_FPS,
+            width=VISUAL_EVENT_FRAME_WIDTH,
+            height=VISUAL_EVENT_FRAME_HEIGHT,
+        ),
+        "-an",
+        "-f",
+        "rawvideo",
+        "-pix_fmt",
+        "rgb24",
+        "pipe:1",
+    ]
+    try:
+        completed = subprocess.run(
+            command,
+            capture_output=True,
+            check=True,
+            timeout=max(15.0, min(120.0, duration_seconds * 0.12)),
+        )
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        return []
+
+    raw = completed.stdout or b""
+    frame_count = len(raw) // frame_size
+    if frame_count < 2:
+        return []
+
+    signals: List[VisualFrameSignal] = []
+    previous = raw[:frame_size]
+    for index in range(1, frame_count):
+        start = index * frame_size
+        current = raw[start : start + frame_size]
+        if len(current) < frame_size:
+            break
+        time_seconds = index / VISUAL_EVENT_SAMPLE_FPS
+        full_motion = _region_motion_score(
+            current,
+            previous,
+            VISUAL_EVENT_FRAME_WIDTH,
+            VISUAL_EVENT_FRAME_HEIGHT,
+            0,
+            VISUAL_EVENT_FRAME_WIDTH,
+            0,
+            VISUAL_EVENT_FRAME_HEIGHT,
+        )
+        upper_motion = _region_motion_score(
+            current,
+            previous,
+            VISUAL_EVENT_FRAME_WIDTH,
+            VISUAL_EVENT_FRAME_HEIGHT,
+            0,
+            VISUAL_EVENT_FRAME_WIDTH,
+            0,
+            VISUAL_EVENT_FRAME_HEIGHT // 2,
+        )
+        center_motion = _region_motion_score(
+            current,
+            previous,
+            VISUAL_EVENT_FRAME_WIDTH,
+            VISUAL_EVENT_FRAME_HEIGHT,
+            VISUAL_EVENT_FRAME_WIDTH // 4,
+            (VISUAL_EVENT_FRAME_WIDTH * 3) // 4,
+            0,
+            VISUAL_EVENT_FRAME_HEIGHT,
+        )
+        signals.append((round(time_seconds, 3), full_motion, upper_motion, center_motion))
+        previous = current
+
+    return signals
+
+
+def _region_motion_score(
+    current: bytes,
+    previous: bytes,
+    width: int,
+    height: int,
+    x_start: int,
+    x_end: int,
+    y_start: int,
+    y_end: int,
+) -> float:
+    x_start = max(0, min(x_start, width))
+    x_end = max(x_start, min(x_end, width))
+    y_start = max(0, min(y_start, height))
+    y_end = max(y_start, min(y_end, height))
+    total = 0
+    count = 0
+    for y in range(y_start, y_end):
+        row_offset = y * width * 3
+        for x in range(x_start, x_end):
+            offset = row_offset + (x * 3)
+            total += abs(current[offset] - previous[offset])
+            total += abs(current[offset + 1] - previous[offset + 1])
+            total += abs(current[offset + 2] - previous[offset + 2])
+            count += 3
+    if count == 0:
+        return 0.0
+    # Small scaled-frame deltas are meaningful for basketball action, so normalize
+    # around a 16/255 mean channel difference instead of requiring scene-cut motion.
+    return round(clamp((total / count) / 16.0, 0.0, 1.0), 4)
+
+
+def _visual_event_boundaries_from_signals(
+    frame_signals: Sequence[VisualFrameSignal],
+    audio_profile: Sequence[float],
+    *,
+    duration_seconds: float,
+) -> List[float]:
+    if not frame_signals:
+        return []
+
+    scored: List[Tuple[float, float]] = []
+    for time_seconds, full_motion, upper_motion, center_motion in frame_signals:
+        visual_score = clamp(
+            (upper_motion * 0.48) + (center_motion * 0.34) + (full_motion * 0.18),
+            0.0,
+            1.0,
+        )
+        if visual_score < VISUAL_EVENT_MIN_VISUAL_SCORE:
+            continue
+
+        audio_score = _audio_peak_near_time(audio_profile, time_seconds)
+        edge_penalty = 1.0
+        if time_seconds < 1.0 or time_seconds > max(duration_seconds - 0.75, 0.0):
+            edge_penalty = 0.62
+        score = clamp(((visual_score * 0.78) + (audio_score * 0.22)) * edge_penalty, 0.0, 1.0)
+        if score >= VISUAL_EVENT_MIN_SCORE:
+            scored.append((time_seconds, round(score, 4)))
+
+    scored.sort(key=lambda item: item[1], reverse=True)
+    chosen: List[float] = []
+    for time_seconds, _ in scored:
+        if all(abs(time_seconds - existing) >= VISUAL_EVENT_MIN_GAP_SECONDS for existing in chosen):
+            chosen.append(round(time_seconds, 3))
+        if len(chosen) >= VISUAL_EVENT_MAX_BOUNDARIES:
+            break
+
+    return sorted(chosen)
+
+
+def _audio_peak_near_time(audio_profile: Sequence[float], time_seconds: float) -> float:
+    if not audio_profile:
+        return 0.0
+    center = max(int(time_seconds / 0.5), 0)
+    start = max(center - 1, 0)
+    end = min(center + 2, len(audio_profile))
+    return clamp(max(audio_profile[start:end] or [0.0]), 0.0, 1.0)
 
 
 def _extract_audio_profile(path: Path, duration_seconds: float) -> List[float]:

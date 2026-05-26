@@ -37,6 +37,9 @@ Improve GPT-led HoopClips highlight selection quality with a bias toward basketb
 - Added an ordinary/non-GPT selector guard so shot-like clips also need minimum setup and follow-through context when GPT is disabled or falls back.
 - Ranked deterministic backend candidates by plan eligibility and shot-context quality before raw planning/watchability/excitement scores, so a complete play beats a tiny or late pre-basket window even when the thin clip has a higher model score.
 - Added native cloud-analysis shot-context scoring before GPT handoff:
+  - native cloud analysis now samples tiny scaled source frames with FFmpeg and extracts visual event boundaries instead of leaving shot/event boundaries empty unless an external provider is configured
+  - visual event detection emphasizes upper-frame and center-action motion near the rim/ball path, with audio as a boost but not as the only reason to create a shot event
+  - low-quality camera-only motion and late audio-only spikes do not become shot boundaries
   - candidate windows now score whether a known shot/event boundary includes lead-in, event visibility, and follow-through
   - baseline audio/motion scoring remains intact for ordinary high-energy moments
   - shot-like merged candidate groups anchor around the best complete event-context window instead of the earliest noisy pre-event slice
@@ -310,6 +313,25 @@ PR #10 CI after deterministic fallback-quality code commit `cd2a25d`:
 - iOS Internal TestFlight Upload run `26438895641`:
   - No-secret internal staging codecheck: success, job `77828162261`.
   - Build internal staging TestFlight archive: skipped on this PR path, job `77828162544`.
+
+Additional validation before native visual-event detector commit:
+
+```sh
+python3 -m py_compile ios/backend/app/pipeline.py ios/backend/tests/test_pipeline_quality.py
+PYTHONPATH=ios/backend /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest ios.backend.tests.test_pipeline_quality -v
+PYTHONPATH=ios/backend /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest discover ios/backend/tests -v
+PYTHONPATH=ios/backend:services/editing /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest discover services/editing/tests -v
+git diff --check
+```
+
+Results:
+
+- Python compile: passed.
+- New native visual event detector focused suite: 5 tests passed, including an FFmpeg-backed synthetic source event.
+- iOS backend Python discovery: 65 tests passed.
+- Services editing discovery: 62 tests passed.
+- `git diff --check`: passed.
+- Added regressions for visual shot-event extraction, audio-only spike rejection, low-quality camera-motion rejection, and complete-context window ranking from native visual event boundaries.
 
 ## Launch Recommendations
 
