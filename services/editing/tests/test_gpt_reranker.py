@@ -286,6 +286,31 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertEqual(compact_clip["nativeShotSignals"]["outcome"], "uncertain")
         self.assertEqual(compact_clip["qualityHints"]["nativeShotSignals"]["outcome"], "uncertain")
 
+    def test_payload_does_not_treat_ambiguous_layup_label_as_made(self) -> None:
+        settings = GPTHighlightRerankerSettings.from_env()
+        request = CreateEditJobRequest(
+            videoId="video_ambiguous_layup",
+            analysisJobId="analysis_ambiguous_layup",
+            installId="install-123",
+            sourceObjectKey="uploads/source.mp4",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="free",
+            clips=[{**_clip("ambiguous_layup", 12.0, 0.9), "label": "Layup"}],
+        )
+        frames = [
+            SampledFrame(clip_id="ambiguous_layup", role="start", time_seconds=12.0, data_url="data:image/jpeg;base64,ZmFrZQ=="),
+            SampledFrame(clip_id="ambiguous_layup", role="eventCenter", time_seconds=15.0, data_url="data:image/jpeg;base64,ZmFrZQ=="),
+            SampledFrame(clip_id="ambiguous_layup", role="finish", time_seconds=17.95, data_url="data:image/jpeg;base64,ZmFrZQ=="),
+        ]
+
+        payload = _build_openai_payload(request, request.clips, frames, settings)
+        compact_clip = json.loads(payload["input"][0]["content"][0]["text"])["clips"][0]
+
+        self.assertEqual(compact_clip["existingLabel"], "Layup")
+        self.assertEqual(compact_clip["nativeShotSignals"]["outcome"], "uncertain")
+        self.assertEqual(compact_clip["nativeShotSignals"]["outcomeConfidence"], 0.0)
+
     def test_quality_filter_excludes_tiny_and_late_shot_windows_before_gpt(self) -> None:
         request = CreateEditJobRequest(
             videoId="video_quality_filter",
