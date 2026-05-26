@@ -27,6 +27,10 @@ Improve GPT-led HoopClips highlight selection quality with a bias toward basketb
   - shot-like clips must be at least 3.0 seconds
   - shot-like clips need at least 1.2 seconds of lead-in and 0.75 seconds of follow-through before they are sampled for GPT
   - compact `qualityHints` now identify shot-like candidates and expose the stricter timing-window expectations
+- Added deterministic cloud-side shot-window expansion before GPT sampling:
+  - probes the local cloud source copy for duration with `ffprobe`
+  - expands shot-like candidate bounds around `eventCenter` to recover setup and outcome context
+  - keeps non-shot clips unchanged and still sends GPT only sampled JPEG keyframes plus compact metadata
 - Added an ordinary/non-GPT selector guard so shot-like clips also need minimum setup and follow-through context when GPT is disabled or falls back.
 - Ranked deterministic backend candidates by plan eligibility and shot-context quality before raw planning/watchability/excitement scores, so a complete play beats a tiny or late pre-basket window even when the thin clip has a higher model score.
 - Made GPT-kept duplicate cleanup use the same quality-aware duplicate key, closing the path where GPT could keep two duplicate makes and the higher-scored but thinner window could replace the complete play.
@@ -139,7 +143,7 @@ xcodebuild build-for-testing -project ios/HoopsClips.xcodeproj -scheme HoopsClip
 Results:
 
 - Python compile: passed.
-- GPT reranker + edit-plan focused suite: 58 tests passed after adding the GPT duplicate-context regression.
+- GPT reranker + edit-plan focused suite: 59 tests passed after adding the GPT duplicate-context regression and source-context expansion coverage.
 - Editing service focused suite: 37 tests passed.
 - `git diff --check`: passed.
 - Generic iOS Debug `build-for-testing`: passed with signing disabled. The previous Xcode 26.4 Codable/test actor-isolation warnings for `AnalysisSettings`, `CreateCloudEditJobRequest`, `CloudEditVersionResponse`, and `CloudEditRenderStatusResponse` were no longer emitted. Remaining warnings are the existing `CloudAnalysisService` no-async-await and `VideoExportService` deprecation/Sendable backlog.

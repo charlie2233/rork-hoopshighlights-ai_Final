@@ -43,6 +43,10 @@ SHOT_CONTEXT_KEYFRAME_ROLES = ("preEvent", "release", "outcome", "rim")
 MIN_GPT_CANDIDATE_LEAD_IN_SECONDS = 1.2
 MIN_GPT_CANDIDATE_FOLLOW_THROUGH_SECONDS = 0.75
 MIN_GPT_SHOT_LIKE_CANDIDATE_SECONDS = 3.0
+SHOT_CONTEXT_EXPANSION_LEAD_SECONDS = 2.0
+SHOT_CONTEXT_EXPANSION_FOLLOW_THROUGH_SECONDS = 1.25
+SHOT_CONTEXT_EXPANSION_TARGET_SECONDS = 5.5
+SHOT_CONTEXT_EXPANSION_MAX_SECONDS = 8.0
 
 
 @dataclass(frozen=True)
@@ -139,6 +143,8 @@ def rerank_edit_request_with_gpt(
     if not source_path.is_file():
         return _with_fallback(request, "fallback", settings.model, "source_missing")
 
+    source_duration_seconds = _probe_source_duration_seconds(source_path)
+    request = expand_shot_candidate_windows_for_source_context(request, source_duration_seconds)
     max_clips, frames_per_clip = settings.limits_for(request.planTier)
     sampled_clips = _quality_filtered_sampled_clips(rank_clips(request.clips), max_clips)
     if not sampled_clips:
@@ -232,6 +238,97 @@ def _with_fallback(
         fallbackReason=reason,
     )
     return request.model_copy(update={"gptRerankSummary": summary})
+
+
+def expand_shot_candidate_windows_for_source_context(
+    request: CreateEditJobRequest,
+    source_duration_seconds: Optional[float],
+) -> CreateEditJobRequest:
+    if not source_duration_seconds or source_duration_seconds <= 0:
+        return request
+
+    expanded_clips: List[EditCandidateClip] = []
+    changed = False
+    for clip in request.clips:
+        expanded = _expand_shot_candidate_clip(clip, source_duration_seconds)
+        expanded_clips.append(expanded)
+        changed = changed or expanded.start != clip.start or expanded.end != clip.end
+
+    if not changed:
+        return request
+    return request.model_copy(update={"clips": expanded_clips})
+
+
+def _expand_shot_candidate_clip(clip: EditCandidateClip, source_duration_seconds: float) -> EditCandidateClip:
+    if not is_shot_like_clip(clip):
+        return clip
+
+    source_duration = max(source_duration_seconds, clip.end)
+    event_center = min(max(clip.eventCenter, 0.0), source_duration)
+    start = min(clip.start, event_center - SHOT_CONTEXT_EXPANSION_LEAD_SECONDS)
+    end = max(clip.end, event_center + SHOT_CONTEXT_EXPANSION_FOLLOW_THROUGH_SECONDS)
+
+    if end - start < SHOT_CONTEXT_EXPANSION_TARGET_SECONDS:
+        missing = SHOT_CONTEXT_EXPANSION_TARGET_SECONDS - (end - start)
+        start -= missing * 0.65
+        end += missing * 0.35
+
+    start, end = _clamp_expanded_window(start, end, source_duration)
+    if end - start > SHOT_CONTEXT_EXPANSION_MAX_SECONDS:
+        preferred_lead = min(
+            SHOT_CONTEXT_EXPANSION_MAX_SECONDS - SHOT_CONTEXT_EXPANSION_FOLLOW_THROUGH_SECONDS,
+            max(SHOT_CONTEXT_EXPANSION_LEAD_SECONDS, SHOT_CONTEXT_EXPANSION_MAX_SECONDS * 0.65),
+        )
+        start = event_center - preferred_lead
+        end = start + SHOT_CONTEXT_EXPANSION_MAX_SECONDS
+        start, end = _clamp_expanded_window(start, end, source_duration)
+
+    if end - start <= clip.duration:
+        return clip
+    return clip.model_copy(
+        update={
+            "start": round(start, 3),
+            "end": round(end, 3),
+            "eventCenter": round(event_center, 3),
+        }
+    )
+
+
+def _clamp_expanded_window(start: float, end: float, source_duration_seconds: float) -> tuple[float, float]:
+    source_duration = max(source_duration_seconds, 0.001)
+    if start < 0.0:
+        end = min(source_duration, end - start)
+        start = 0.0
+    if end > source_duration:
+        overflow = end - source_duration
+        start = max(0.0, start - overflow)
+        end = source_duration
+    return max(0.0, start), min(source_duration, end)
+
+
+def _probe_source_duration_seconds(source_path: Path) -> Optional[float]:
+    try:
+        completed = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "json",
+                str(source_path),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=8,
+        )
+        payload = json.loads(completed.stdout)
+        duration = float(payload.get("format", {}).get("duration", 0.0))
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError, ValueError, TypeError, json.JSONDecodeError):
+        return None
+    return duration if duration > 0.0 else None
 
 
 def _candidate_quality_hints(clip: EditCandidateClip) -> Dict[str, Any]:

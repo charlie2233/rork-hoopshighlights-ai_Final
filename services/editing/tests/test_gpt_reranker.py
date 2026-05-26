@@ -16,6 +16,7 @@ from editing_app.gpt_reranker import (
     SampledFrame,
     _build_openai_payload,
     _build_revision_patch_payload,
+    expand_shot_candidate_windows_for_source_context,
     request_gpt_edit_plan_patch,
 )
 
@@ -157,6 +158,49 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertFalse(hints[1]["timingWindowOk"])
         self.assertTrue(hints[2]["timingWindowOk"])
         self.assertGreaterEqual(hints[2]["minRecommendedDurationSeconds"], 3.0)
+
+    def test_source_context_expansion_salvages_thin_shot_windows_before_gpt(self) -> None:
+        request = CreateEditJobRequest(
+            videoId="video_expand_context",
+            analysisJobId="analysis_expand_context",
+            installId="install-123",
+            sourceObjectKey="uploads/source.mp4",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="free",
+            clips=[
+                {
+                    **_clip("thin_make", 8.8, 0.96),
+                    "end": 10.5,
+                    "eventCenter": 9.1,
+                    "duplicateGroup": "shot_1",
+                },
+                {
+                    **_clip("non_shot_context", 20.0, 0.8),
+                    "label": "Defense",
+                    "end": 21.8,
+                    "eventCenter": 20.9,
+                },
+            ],
+        )
+
+        expanded = expand_shot_candidate_windows_for_source_context(request, source_duration_seconds=60.0)
+        thin_make = expanded.clips[0]
+        non_shot = expanded.clips[1]
+        hints = gpt_reranker._candidate_quality_hints(thin_make)
+        sampled = gpt_reranker._quality_filtered_sampled_clips(expanded.clips, max_clips=2)
+        plan = build_edit_job(expanded, "edit_expanded_context").plan
+
+        self.assertLess(thin_make.start, 8.8)
+        self.assertGreater(thin_make.end, 10.5)
+        self.assertGreaterEqual(thin_make.eventCenter - thin_make.start, 2.0)
+        self.assertGreaterEqual(thin_make.end - thin_make.eventCenter, 1.25)
+        self.assertTrue(hints["timingWindowOk"])
+        self.assertEqual(non_shot.start, 20.0)
+        self.assertEqual(non_shot.end, 21.8)
+        self.assertIn("thin_make", [clip.id for clip in sampled])
+        self.assertEqual(plan.clips[0].clipId, "thin_make")
+        self.assertLessEqual(plan.clips[0].sourceStart, 8.8)
 
     def test_payload_resolves_preset_default_template_for_agent_cookbook(self) -> None:
         settings = GPTHighlightRerankerSettings.from_env()
