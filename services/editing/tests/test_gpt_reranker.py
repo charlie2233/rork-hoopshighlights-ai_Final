@@ -1125,6 +1125,22 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertGreaterEqual(settings.limits_for("pro")[1], 5)
         self.assertLessEqual(settings.limits_for("pro")[1], 8)
 
+    def test_default_model_prioritizes_full_quality_vision_editor(self) -> None:
+        model_env_keys = ("HOOPS_AI_CLIP_GPT_MODEL", "HOOPS_GPT_HIGHLIGHT_RERANK_MODEL")
+        old_values = {key: os.environ.get(key) for key in model_env_keys}
+        for key in model_env_keys:
+            os.environ.pop(key, None)
+        try:
+            settings = GPTHighlightRerankerSettings.from_env()
+        finally:
+            for key, old_value in old_values.items():
+                if old_value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = old_value
+
+        self.assertEqual(settings.model, "gpt-4.1")
+
     def test_sampling_caps_are_applied_before_openai_call(self) -> None:
         settings = GPTHighlightRerankerSettings(
             enabled=True,

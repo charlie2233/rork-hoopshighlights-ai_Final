@@ -79,7 +79,7 @@ class GPTHighlightRerankerSettings:
                 or _env_flag("HOOPS_GPT_HIGHLIGHT_RERANK_ENABLED")
             ),
             api_key=os.getenv("HOOPS_OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY") or None,
-            model=os.getenv("HOOPS_AI_CLIP_GPT_MODEL", os.getenv("HOOPS_GPT_HIGHLIGHT_RERANK_MODEL", "gpt-4.1-mini")),
+            model=os.getenv("HOOPS_AI_CLIP_GPT_MODEL", os.getenv("HOOPS_GPT_HIGHLIGHT_RERANK_MODEL", "gpt-4.1")),
             endpoint=os.getenv("HOOPS_AI_CLIP_GPT_ENDPOINT", os.getenv("HOOPS_GPT_HIGHLIGHT_RERANK_ENDPOINT", "https://api.openai.com/v1/responses")),
             timeout_seconds=_env_float("HOOPS_AI_CLIP_GPT_TIMEOUT_SECONDS", _env_float("HOOPS_GPT_HIGHLIGHT_RERANK_TIMEOUT_SECONDS", 18.0, 1.0, 60.0), 1.0, 60.0),
             max_output_tokens=_env_int("HOOPS_AI_CLIP_GPT_MAX_OUTPUT_TOKENS", _env_int("HOOPS_GPT_HIGHLIGHT_RERANK_MAX_OUTPUT_TOKENS", 3500, 256, 6000), 256, 6000),
