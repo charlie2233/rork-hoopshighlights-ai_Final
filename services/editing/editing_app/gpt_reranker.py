@@ -486,16 +486,17 @@ def _sample_times_for_clip(clip: EditCandidateClip, frames_per_clip: int) -> Lis
     if frames_per_clip <= 3:
         return base_samples
 
-    setup_second = max(clip.start, clip.eventCenter - 0.85)
-    release_second = max(clip.start, clip.eventCenter - 0.35)
-    shot_arc_early_second = min(finish, clip.eventCenter + 0.2)
-    outcome_second = min(finish, clip.eventCenter + 0.55)
-    shot_arc_late_second = min(finish, clip.eventCenter + 0.72)
-    rim_approach_second = min(finish, clip.eventCenter + 0.9)
-    rim_second = min(finish, clip.eventCenter + 0.95)
-    rim_entry_second = min(finish, clip.eventCenter + 1.05)
-    below_rim_second = min(finish, clip.eventCenter + 1.2)
-    post_outcome_second = min(finish, clip.eventCenter + 1.35)
+    # Native analysis anchors shot eventCenter on the rim/result moment, not release.
+    setup_second = max(clip.start, clip.eventCenter - 1.8)
+    release_second = max(clip.start, clip.eventCenter - 1.1)
+    shot_arc_early_second = max(clip.start, clip.eventCenter - 0.65)
+    shot_arc_late_second = max(clip.start, clip.eventCenter - 0.35)
+    rim_approach_second = max(clip.start, clip.eventCenter - 0.15)
+    rim_second = max(clip.start, clip.eventCenter - 0.08)
+    outcome_second = min(finish, clip.eventCenter + 0.12)
+    rim_entry_second = min(finish, clip.eventCenter + 0.12)
+    below_rim_second = min(finish, clip.eventCenter + 0.35)
+    post_outcome_second = min(finish, clip.eventCenter + 0.5)
     mid_action_second = clip.start + ((finish - clip.start) * 0.45)
     if frames_per_clip >= 10:
         candidates = [
