@@ -333,6 +333,16 @@ Results:
 - `git diff --check`: passed.
 - Added regressions for visual shot-event extraction, audio-only spike rejection, low-quality camera-motion rejection, and complete-context window ranking from native visual event boundaries.
 
+PR #10 CI after native visual-event detector code commit `bbd36eb`:
+
+- Cloud Edit Deploy Preflight run `26439702423`:
+  - Worker typecheck and dry run: success, job `77830818563`.
+  - Editing backend Python tests: success, job `77830818533`.
+  - Verify cloud edit deploy secrets: skipped on this PR path, job `77831234990`.
+- iOS Internal TestFlight Upload run `26439702341`:
+  - No-secret internal staging codecheck: success, job `77830818569`.
+  - Build internal staging TestFlight archive: skipped on this PR path, job `77830819176`.
+
 ## Launch Recommendations
 
 - Deploy this branch to staging only after the Cloudflare/GCP deploy secret blockers are cleared.
