@@ -33,6 +33,7 @@ from app.editing import (
     build_edit_job,
     build_edit_plan,
     clip_context_quality_score,
+    filter_clips_for_team_selection,
     get_template_pack_for_plan,
     is_plan_quality_eligible_clip,
     native_shot_signals_for_clip,
@@ -40,6 +41,7 @@ from app.editing import (
     remove_duplicate_moments,
     repair_edit_plan,
     revise_edit_job,
+    summarize_clip_pool,
     validate_agent_template_cookbook_registry,
     validate_edit_plan,
     validate_edit_plan_patch,
@@ -247,6 +249,144 @@ class EditPlanAgentTests(unittest.TestCase):
             with self.subTest(prompt=prompt):
                 with self.assertRaises(ValidationError):
                     CreateEditJobRequest(**_request_payload(userPrompt=prompt))
+
+    def test_selected_team_filter_keeps_matching_and_uncertain_clips_for_review(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                teamSelection={
+                    "mode": "team",
+                    "teamId": "team_dark",
+                    "label": "Dark jerseys",
+                    "colorLabel": "black",
+                    "confidenceThreshold": 0.85,
+                    "includeUncertain": True,
+                },
+                clips=[
+                    {
+                        **_clip("dark_bucket", 0.0, "Made Shot", 0.93),
+                        "teamAttribution": {
+                            "teamId": "team_dark",
+                            "label": "Dark jerseys",
+                            "colorLabel": "black",
+                            "confidence": 0.91,
+                            "source": "quick_scan",
+                        },
+                    },
+                    {
+                        **_clip("light_bucket", 9.0, "Made Shot", 0.94),
+                        "teamAttribution": {
+                            "teamId": "team_light",
+                            "label": "Light jerseys",
+                            "colorLabel": "white",
+                            "confidence": 0.92,
+                            "source": "quick_scan",
+                        },
+                    },
+                    {
+                        **_clip("uncertain_bucket", 18.0, "Made Shot", 0.75),
+                        "teamAttribution": {
+                            "teamId": "team_light",
+                            "label": "Light jerseys",
+                            "colorLabel": "white",
+                            "confidence": 0.61,
+                            "source": "quick_scan",
+                        },
+                    },
+                ],
+            )
+        )
+
+        filtered = filter_clips_for_team_selection(request.clips, request.teamSelection)
+
+        self.assertEqual([clip.id for clip in filtered], ["dark_bucket", "uncertain_bucket"])
+
+    def test_all_teams_selection_does_not_filter_opponent_clips(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                teamSelection={"mode": "all"},
+                clips=[
+                    {
+                        **_clip("dark_bucket", 0.0, "Made Shot", 0.93),
+                        "teamAttribution": {"teamId": "team_dark", "colorLabel": "black", "confidence": 0.94},
+                    },
+                    {
+                        **_clip("light_bucket", 9.0, "Made Shot", 0.94),
+                        "teamAttribution": {"teamId": "team_light", "colorLabel": "white", "confidence": 0.94},
+                    },
+                ],
+            )
+        )
+
+        filtered = filter_clips_for_team_selection(request.clips, request.teamSelection)
+
+        self.assertEqual([clip.id for clip in filtered], ["dark_bucket", "light_bucket"])
+
+    def test_selected_team_plan_keeps_defensive_blocks_and_steals(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                teamSelection={
+                    "mode": "team",
+                    "teamId": "team_dark",
+                    "label": "Dark jerseys",
+                    "colorLabel": "black",
+                    "confidenceThreshold": 0.85,
+                },
+                clips=[
+                    {
+                        **_clip("dark_block", 0.0, "Blocked Shot", 0.92),
+                        "teamAttribution": {"teamId": "team_dark", "colorLabel": "black", "confidence": 0.91},
+                    },
+                    {
+                        **_clip("dark_steal", 9.0, "Steal", 0.89),
+                        "teamAttribution": {"teamId": "team_dark", "colorLabel": "black", "confidence": 0.9},
+                    },
+                    {
+                        **_clip("light_bucket", 18.0, "Made Shot", 0.97),
+                        "teamAttribution": {"teamId": "team_light", "colorLabel": "white", "confidence": 0.96},
+                    },
+                ],
+            )
+        )
+
+        plan = build_edit_plan(request, "edit_team_defense")
+
+        planned_clip_ids = [clip.clipId for clip in plan.clips]
+        self.assertIn("dark_block", planned_clip_ids)
+        self.assertIn("dark_steal", planned_clip_ids)
+        self.assertNotIn("light_bucket", planned_clip_ids)
+
+    def test_agent_editing_context_includes_team_targeting_and_attribution(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                teamSelection={
+                    "mode": "team",
+                    "teamId": "team_dark",
+                    "label": "Dark jerseys",
+                    "colorLabel": "black",
+                    "confidenceThreshold": 0.85,
+                    "includeUncertain": True,
+                },
+                clips=[
+                    {
+                        **_clip("dark_bucket", 0.0, "Made Shot", 0.93),
+                        "teamAttribution": {"teamId": "team_dark", "colorLabel": "black", "confidence": 0.91},
+                    }
+                ],
+            )
+        )
+
+        context = build_agent_editing_context(
+            request.templateId,
+            summarize_clip_pool(request.clips),
+            request.clips,
+            teamSelection=request.teamSelection,
+        )
+
+        self.assertEqual(context["teamTargeting"]["mode"], "team")
+        self.assertEqual(context["teamTargeting"]["confidenceThreshold"], 0.85)
+        self.assertTrue(context["teamTargeting"]["includeUncertain"])
+        self.assertEqual(context["candidateClips"][0]["teamAttribution"]["teamId"], "team_dark")
+        self.assertEqual(context["candidateClips"][0]["teamAttributionStatus"], "matched")
 
     def test_template_registry_has_base_and_pro_packs(self) -> None:
         validation = validate_template_registry()

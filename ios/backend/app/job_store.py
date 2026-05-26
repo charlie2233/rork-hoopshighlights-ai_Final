@@ -12,6 +12,7 @@ from .models import (
     JobStatus,
     PreparedUpload,
     StoredJob,
+    TeamSelection,
     now_utc,
 )
 
@@ -150,6 +151,7 @@ class InMemoryJobStore(JobStoreBase):
                 expires_at=created_at + timedelta(seconds=self._settings.job_ttl_seconds),
                 object_key=upload.object_key,
                 upload_headers=upload.upload_headers,
+                team_selection=request.teamSelection,
                 quota_remaining_today=quota_remaining_today,
             )
             self._jobs[job_id] = job
@@ -242,6 +244,7 @@ class FirestoreJobStore(JobStoreBase):
             expires_at=created_at + timedelta(seconds=self._settings.job_ttl_seconds),
             object_key=upload.object_key,
             upload_headers=upload.upload_headers,
+            team_selection=request.teamSelection,
             quota_remaining_today=quota_remaining_today,
         )
         await asyncio.to_thread(self._job_ref(job_id).set, self._serialize_job(job))
@@ -285,6 +288,7 @@ class FirestoreJobStore(JobStoreBase):
             "ttlAt": job.expires_at,
             "objectKey": job.object_key,
             "uploadHeaders": job.upload_headers,
+            "teamSelection": job.team_selection.model_dump(mode="json") if job.team_selection is not None else None,
             "status": job.status.value,
             "progress": job.progress,
             "stage": job.stage,
@@ -316,6 +320,7 @@ class FirestoreJobStore(JobStoreBase):
             expires_at=payload["expiresAt"],
             object_key=payload["objectKey"],
             upload_headers=dict(payload.get("uploadHeaders") or {}),
+            team_selection=TeamSelection.model_validate(payload.get("teamSelection")) if payload.get("teamSelection") else None,
             status=JobStatus(status_value),
             progress=float(payload.get("progress") or 0.0),
             stage=payload.get("stage") or "Preparing upload",

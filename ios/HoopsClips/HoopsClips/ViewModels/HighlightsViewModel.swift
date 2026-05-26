@@ -62,6 +62,7 @@ final class HighlightsViewModel {
     var isCloudFallbackOffered = false
     var cloudAnalysisJobID: String?
     var cloudEditSourceObjectKey: String?
+    var cloudDetectedTeams: [CloudTeamOption] = []
 
     var analysisModeDisplayName: String {
         switch analysisMode {
@@ -194,7 +195,8 @@ final class HighlightsViewModel {
             let result = try await cloudAnalysisService.analyzeVideo(
                 url: url,
                 duration: videoDuration,
-                installID: installID
+                installID: installID,
+                teamSelection: settings.highlightTeamSelection
             ) { [weak service = analysisService] progress, status in
                 service?.updateExternalAnalysis(progress: progress, status: status)
             }
@@ -202,6 +204,7 @@ final class HighlightsViewModel {
             analysisService.applyCloudAnalysis(result, duration: videoDuration)
             cloudAnalysisJobID = result.analysisJobId
             cloudEditSourceObjectKey = result.sourceObjectKey
+            cloudDetectedTeams = result.detectedTeams
             applyDefaultRedundantClipSuppression()
             AnalysisNotificationService.shared.notifyAnalysisCompleted(
                 clipsCount: analysisService.clips.count,
@@ -227,6 +230,7 @@ final class HighlightsViewModel {
         cloudQuotaRemaining = nil
         cloudAnalysisJobID = nil
         cloudEditSourceObjectKey = nil
+        cloudDetectedTeams = []
         analysisService.beginExternalAnalysis(status: status)
         await analysisService.analyze(url: url, settings: settings)
         applyDefaultRedundantClipSuppression()
@@ -371,7 +375,8 @@ final class HighlightsViewModel {
                 audioPeak: clip.audioScore,
                 combinedScore: clip.combinedScore,
                 duplicateGroup: nil,
-                nativeShotSignals: clip.nativeShotSignals
+                nativeShotSignals: clip.nativeShotSignals,
+                teamAttribution: clip.teamAttribution
             )
         }
 
@@ -387,6 +392,7 @@ final class HighlightsViewModel {
             planTier: isProUser ? .pro : .free,
             revenueCatAppUserID: revenueCatAppUserID,
             userPrompt: userPrompt,
+            teamSelection: settings.highlightTeamSelection,
             clips: Array(candidates)
         )
     }
@@ -650,6 +656,7 @@ final class HighlightsViewModel {
         analysisMode = project.analysisMode ?? AppRuntimeConfig.shared.launchAnalysisMode
         cloudAnalysisJobID = project.cloudAnalysisJobID
         cloudEditSourceObjectKey = project.cloudEditSourceObjectKey
+        cloudDetectedTeams = []
         lastAnalysisStatusSummary = project.analysisStatusSummary
         lastAnalyzedAt = project.lastAnalyzedAt
         lastExportedAt = project.lastExportedAt
@@ -692,6 +699,7 @@ final class HighlightsViewModel {
         lastAnalysisStatusSummary = nil
         cloudAnalysisJobID = nil
         cloudEditSourceObjectKey = nil
+        cloudDetectedTeams = []
         lastAnalyzedAt = nil
         lastExportedAt = nil
     }

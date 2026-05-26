@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Literal, Mapping, Optional, Sequence, Tuple
 
 from pydantic import Field, ValidationError, field_validator, model_validator
 
-from .models import APIModel, now_utc
+from .models import APIModel, ClipTeamAttribution, TeamSelection, now_utc
 
 
 PresetId = Literal[
@@ -314,6 +314,7 @@ class EditCandidateClip(APIModel):
     combinedScore: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     duplicateGroup: Optional[str] = Field(default=None, max_length=80)
     nativeShotSignals: Optional[NativeShotSignals] = None
+    teamAttribution: Optional[ClipTeamAttribution] = None
     captionHint: Optional[str] = Field(default=None, max_length=MAX_CAPTION_LENGTH)
     gptHighlightScore: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     gptWatchabilityScore: Optional[float] = Field(default=None, ge=0.0, le=1.0)
@@ -966,6 +967,7 @@ class CreateEditJobRequest(APIModel):
     planTier: PlanTier = "free"
     revenueCatAppUserID: Optional[str] = Field(default=None, min_length=1, max_length=160)
     userPrompt: Optional[str] = Field(default=None, max_length=240)
+    teamSelection: Optional[TeamSelection] = None
     clips: List[EditCandidateClip] = Field(min_length=1, max_length=30)
     gptRerankSummary: Optional["GPTHighlightRerankSummary"] = None
 
@@ -1669,6 +1671,63 @@ def summarize_clip_pool(clips: Sequence[EditCandidateClip]) -> Dict[str, object]
     }
 
 
+def _team_key(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    normalized = " ".join(value.strip().lower().split())
+    return normalized or None
+
+
+def _team_selection_payload(team_selection: Optional[TeamSelection]) -> Dict[str, object]:
+    if team_selection is None:
+        return {
+            "mode": "all",
+            "teamId": None,
+            "label": None,
+            "colorLabel": None,
+            "confidenceThreshold": 0.85,
+            "includeUncertain": True,
+        }
+    return team_selection.model_dump(mode="json")
+
+
+def team_attribution_status(
+    clip: EditCandidateClip,
+    team_selection: Optional[TeamSelection],
+) -> Literal["all", "matched", "opponent", "uncertain"]:
+    if team_selection is None or team_selection.mode == "all":
+        return "all"
+    attribution = clip.teamAttribution
+    if attribution is None:
+        return "uncertain"
+    if attribution.confidence < team_selection.confidenceThreshold:
+        return "uncertain"
+
+    selected_team_id = _team_key(team_selection.teamId)
+    selected_color = _team_key(team_selection.colorLabel)
+    clip_team_id = _team_key(attribution.teamId)
+    clip_color = _team_key(attribution.colorLabel)
+    if selected_team_id and clip_team_id and selected_team_id == clip_team_id:
+        return "matched"
+    if selected_color and clip_color and selected_color == clip_color:
+        return "matched"
+    return "opponent"
+
+
+def filter_clips_for_team_selection(
+    clips: Sequence[EditCandidateClip],
+    team_selection: Optional[TeamSelection],
+) -> List[EditCandidateClip]:
+    if team_selection is None or team_selection.mode == "all":
+        return list(clips)
+    filtered: List[EditCandidateClip] = []
+    for clip in clips:
+        status = team_attribution_status(clip, team_selection)
+        if status == "matched" or (status == "uncertain" and team_selection.includeUncertain):
+            filtered.append(clip)
+    return filtered
+
+
 def _clip_pool_summary_payload(clip_pool_summary: object) -> Dict[str, object]:
     if isinstance(clip_pool_summary, EditClipPoolSummary):
         return clip_pool_summary.model_dump(mode="json")
@@ -1682,7 +1741,10 @@ def _clip_pool_summary_payload(clip_pool_summary: object) -> Dict[str, object]:
     return {"clipCount": 0, "totalCandidateDuration": 0.0, "topLabels": [], "duplicateGroups": 0}
 
 
-def _compact_agent_candidate_clip(clip: EditCandidateClip) -> Dict[str, object]:
+def _compact_agent_candidate_clip(
+    clip: EditCandidateClip,
+    team_selection: Optional[TeamSelection] = None,
+) -> Dict[str, object]:
     return {
         "clipId": clip.id,
         "start": round(clip.start, 3),
@@ -1695,6 +1757,8 @@ def _compact_agent_candidate_clip(clip: EditCandidateClip) -> Dict[str, object]:
         "audioPeak": clip.audioPeak,
         "watchabilityScore": clip.watchability,
         "duplicateGroup": clip.duplicateGroup,
+        "teamAttribution": clip.teamAttribution.model_dump(mode="json") if clip.teamAttribution is not None else None,
+        "teamAttributionStatus": team_attribution_status(clip, team_selection),
         "nativeShotSignals": native_shot_signals_for_clip(clip).model_dump(mode="json"),
     }
 
@@ -1703,9 +1767,11 @@ def build_agent_editing_context(
     templateId: Optional[str],
     clipPoolSummary: object,
     candidateClips: Sequence[EditCandidateClip],
+    teamSelection: Optional[TeamSelection] = None,
 ) -> Dict[str, object]:
     template = get_template_pack(templateId)
     cookbook = get_agent_template_cookbook(template.templateId)
+    filtered_candidates = filter_clips_for_team_selection(candidateClips, teamSelection)
     return {
         "templateId": template.templateId,
         "agentStyleIntent": cookbook.agentStyleIntent,
@@ -1742,12 +1808,14 @@ def build_agent_editing_context(
             },
             "premiumOnly": template.premiumOnly,
         },
+        "teamTargeting": _team_selection_payload(teamSelection),
         "clipPoolSummary": _clip_pool_summary_payload(clipPoolSummary),
-        "candidateClips": [_compact_agent_candidate_clip(clip) for clip in rank_clips(candidateClips)[:30]],
+        "candidateClips": [_compact_agent_candidate_clip(clip, teamSelection) for clip in rank_clips(filtered_candidates)[:30]],
     }
 
 
 def build_edit_context(request: CreateEditJobRequest) -> EditContext:
+    team_filtered_clips = filter_clips_for_team_selection(request.clips, request.teamSelection)
     return EditContext(
         videoId=request.videoId,
         analysisJobId=request.analysisJobId,
@@ -1759,8 +1827,8 @@ def build_edit_context(request: CreateEditJobRequest) -> EditContext:
             planTier=request.planTier,
             userPromptIntent=derive_user_prompt_intent(request.userPrompt, request.planTier),
         ),
-        clipPoolSummary=EditClipPoolSummary(**summarize_clip_pool(request.clips)),
-        clips=request.clips,
+        clipPoolSummary=EditClipPoolSummary(**summarize_clip_pool(team_filtered_clips)),
+        clips=team_filtered_clips,
         availablePresets=list(PRESET_REGISTRY.keys()),
         availableTemplates=list(TEMPLATE_PACK_REGISTRY.keys()),
         availableThemes=list(THEME_REGISTRY.keys()),

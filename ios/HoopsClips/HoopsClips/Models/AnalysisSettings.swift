@@ -9,6 +9,7 @@ nonisolated struct AnalysisSettings: Codable, Sendable {
     var minClipDuration: Double = 2.0
     var maxClipDuration: Double = 15.0
     var targetHighlightDuration: Double = 45.0
+    var highlightTeamSelection: HighlightTeamSelection = .allTeams
     var clipPadding: Double = 1.5
     var framesSampledPerSecond: Double = 3.0
     var preferKeepUncertain: Bool = true
@@ -32,6 +33,7 @@ extension AnalysisSettings {
         case minClipDuration
         case maxClipDuration
         case targetHighlightDuration
+        case highlightTeamSelection
         case clipPadding
         case framesSampledPerSecond
         case preferKeepUncertain
@@ -51,6 +53,7 @@ extension AnalysisSettings {
         minClipDuration = try container.decodeIfPresent(Double.self, forKey: .minClipDuration) ?? 2.0
         maxClipDuration = try container.decodeIfPresent(Double.self, forKey: .maxClipDuration) ?? 15.0
         targetHighlightDuration = try container.decodeIfPresent(Double.self, forKey: .targetHighlightDuration) ?? 45.0
+        highlightTeamSelection = try container.decodeIfPresent(HighlightTeamSelection.self, forKey: .highlightTeamSelection) ?? .allTeams
         clipPadding = try container.decodeIfPresent(Double.self, forKey: .clipPadding) ?? 1.5
         framesSampledPerSecond = try container.decodeIfPresent(Double.self, forKey: .framesSampledPerSecond) ?? 3.0
         preferKeepUncertain = try container.decodeIfPresent(Bool.self, forKey: .preferKeepUncertain) ?? true
@@ -70,6 +73,7 @@ extension AnalysisSettings {
         try container.encode(minClipDuration, forKey: .minClipDuration)
         try container.encode(maxClipDuration, forKey: .maxClipDuration)
         try container.encode(targetHighlightDuration, forKey: .targetHighlightDuration)
+        try container.encode(highlightTeamSelection, forKey: .highlightTeamSelection)
         try container.encode(clipPadding, forKey: .clipPadding)
         try container.encode(framesSampledPerSecond, forKey: .framesSampledPerSecond)
         try container.encode(preferKeepUncertain, forKey: .preferKeepUncertain)

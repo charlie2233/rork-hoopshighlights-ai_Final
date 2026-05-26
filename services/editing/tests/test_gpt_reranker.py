@@ -50,6 +50,58 @@ def _request(plan_tier: str = "free", clip_count: int = 10) -> CreateEditJobRequ
     )
 
 
+def _team_targeted_request() -> CreateEditJobRequest:
+    return CreateEditJobRequest(
+        videoId="video_123",
+        analysisJobId="analysis_123",
+        installId="install-123",
+        sourceObjectKey="uploads/source.mp4",
+        preset="personal_highlight",
+        targetDurationSeconds=30,
+        planTier="free",
+        teamSelection={
+            "mode": "team",
+            "teamId": "team_dark",
+            "label": "Dark jerseys",
+            "colorLabel": "black",
+            "confidenceThreshold": 0.85,
+            "includeUncertain": True,
+        },
+        clips=[
+            {
+                **_clip("dark_make", 0.0, 0.98),
+                "teamAttribution": {
+                    "teamId": "team_dark",
+                    "label": "Dark jerseys",
+                    "colorLabel": "black",
+                    "confidence": 0.92,
+                    "source": "quick_scan",
+                },
+            },
+            {
+                **_clip("light_make", 7.0, 0.97),
+                "teamAttribution": {
+                    "teamId": "team_light",
+                    "label": "Light jerseys",
+                    "colorLabel": "white",
+                    "confidence": 0.94,
+                    "source": "quick_scan",
+                },
+            },
+            {
+                **_clip("uncertain_make", 14.0, 0.76),
+                "teamAttribution": {
+                    "teamId": "team_light",
+                    "label": "Light jerseys",
+                    "colorLabel": "white",
+                    "confidence": 0.64,
+                    "source": "quick_scan",
+                },
+            },
+        ],
+    )
+
+
 def _quality_signals(**overrides) -> dict:
     payload = {
         "setupVisible": True,
@@ -141,6 +193,8 @@ class GPTHighlightRerankerTests(unittest.TestCase):
                 "confidence",
                 "watchabilityScore",
                 "duplicateGroup",
+                "teamAttribution",
+                "teamAttributionStatus",
                 "templateId",
                 "planTier",
                 "qualityHints",
@@ -163,6 +217,30 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertNotIn("sourceObjectKey", str(payload))
         self.assertNotIn("uploads/source.mp4", str(payload))
         self.assertNotIn("https://", str(payload))
+
+    def test_payload_includes_team_targeting_and_excludes_confident_opponent_clips(self) -> None:
+        settings = GPTHighlightRerankerSettings.from_env()
+        request = _team_targeted_request()
+        frames = [
+            SampledFrame(clip_id="dark_make", role="start", time_seconds=0.0, data_url="data:image/jpeg;base64,ZA=="),
+            SampledFrame(clip_id="uncertain_make", role="start", time_seconds=14.0, data_url="data:image/jpeg;base64,dQ=="),
+            SampledFrame(clip_id="light_make", role="start", time_seconds=7.0, data_url="data:image/jpeg;base64,bA=="),
+        ]
+
+        payload = _build_openai_payload(request, request.clips, frames, settings)
+        compact_input = json.loads(payload["input"][0]["content"][0]["text"])
+        compact_clip_ids = [clip["clipId"] for clip in compact_input["clips"]]
+        by_id = {clip["clipId"]: clip for clip in compact_input["clips"]}
+
+        self.assertEqual(compact_input["teamTargeting"]["mode"], "team")
+        self.assertEqual(compact_input["teamTargeting"]["confidenceThreshold"], 0.85)
+        self.assertTrue(compact_input["teamTargeting"]["includeUncertain"])
+        self.assertIn("dark_make", compact_clip_ids)
+        self.assertIn("uncertain_make", compact_clip_ids)
+        self.assertNotIn("light_make", compact_clip_ids)
+        self.assertEqual(by_id["dark_make"]["teamAttributionStatus"], "matched")
+        self.assertEqual(by_id["uncertain_make"]["teamAttributionStatus"], "uncertain")
+        self.assertIn("Keep uncertain team-attribution clips", payload["instructions"])
 
     def test_payload_requires_shot_quality_signals_and_context_judgment(self) -> None:
         settings = GPTHighlightRerankerSettings.from_env()

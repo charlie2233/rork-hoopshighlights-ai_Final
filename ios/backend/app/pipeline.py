@@ -16,7 +16,7 @@ from typing import List, Optional, Sequence, Tuple
 from .classifier import classify_window, maybe_relabel_with_gemini
 from .config import Settings
 from .external_providers import detect_with_optional_external_provider, rerank_with_optional_external_provider
-from .models import CandidateWindow, CloudAnalysisResult, CloudClip, CloudDiagnostics, CloudNativeShotSignals, PipelineError, StoredJob, clamp
+from .models import CandidateWindow, CloudAnalysisResult, CloudClip, CloudDiagnostics, CloudNativeShotSignals, PipelineError, StoredJob, TeamOption, TeamSelection, clamp
 
 
 NATIVE_SHOT_CONTEXT_TARGET_LEAD_SECONDS = 2.0
@@ -94,6 +94,8 @@ def run_analysis(job: StoredJob, settings: Settings, source_path: Path) -> Cloud
         provider_tags.append(ranking_provider)
 
     clips, used_gemini = maybe_relabel_with_gemini(clips, settings.use_gemini_relabeling)
+    detected_teams = _detected_teams_from_clips(clips)
+    clips = _filter_analysis_clips_for_team_selection(clips, job.team_selection)
 
     elapsed_ms = int((perf_counter() - started_at) * 1000)
     model_version = settings.backend_model_version
@@ -115,7 +117,76 @@ def run_analysis(job: StoredJob, settings: Settings, source_path: Path) -> Cloud
         clipCount=len(clips),
         clips=clips,
         diagnostics=diagnostics,
+        detectedTeams=detected_teams,
+        teamSelection=job.team_selection,
     )
+
+
+def _team_key(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    normalized = " ".join(value.strip().lower().split())
+    return normalized or None
+
+
+def _analysis_team_status(
+    clip: CloudClip,
+    team_selection: Optional[TeamSelection],
+) -> str:
+    if team_selection is None or team_selection.mode == "all":
+        return "all"
+    attribution = clip.teamAttribution
+    if attribution is None or attribution.confidence < team_selection.confidenceThreshold:
+        return "uncertain"
+
+    selected_team_id = _team_key(team_selection.teamId)
+    selected_color = _team_key(team_selection.colorLabel)
+    clip_team_id = _team_key(attribution.teamId)
+    clip_color = _team_key(attribution.colorLabel)
+    if selected_team_id and clip_team_id and selected_team_id == clip_team_id:
+        return "matched"
+    if selected_color and clip_color and selected_color == clip_color:
+        return "matched"
+    return "opponent"
+
+
+def _filter_analysis_clips_for_team_selection(
+    clips: Sequence[CloudClip],
+    team_selection: Optional[TeamSelection],
+) -> list[CloudClip]:
+    if team_selection is None or team_selection.mode == "all":
+        return list(clips)
+    filtered: list[CloudClip] = []
+    for clip in clips:
+        status = _analysis_team_status(clip, team_selection)
+        if status == "matched" or (status == "uncertain" and team_selection.includeUncertain):
+            filtered.append(clip)
+    return filtered
+
+
+def _detected_teams_from_clips(clips: Sequence[CloudClip]) -> list[TeamOption]:
+    best_by_key: dict[str, TeamOption] = {}
+    for clip in clips:
+        attribution = clip.teamAttribution
+        if attribution is None:
+            continue
+        team_id = attribution.teamId or attribution.colorLabel
+        label = attribution.label or attribution.colorLabel or attribution.teamId
+        if not team_id or not label:
+            continue
+        key = _team_key(team_id) or team_id
+        option_source = attribution.source if attribution.source in {"quick_scan", "provider", "manual", "unknown"} else "unknown"
+        option = TeamOption(
+            teamId=team_id,
+            label=label,
+            colorLabel=attribution.colorLabel,
+            confidence=attribution.confidence,
+            source=option_source,
+        )
+        current = best_by_key.get(key)
+        if current is None or option.confidence > current.confidence:
+            best_by_key[key] = option
+    return sorted(best_by_key.values(), key=lambda option: (-option.confidence, option.label))[:4]
 
 
 def _run_native_candidate_detection(

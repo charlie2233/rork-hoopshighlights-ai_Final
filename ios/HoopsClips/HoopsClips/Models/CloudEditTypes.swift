@@ -586,6 +586,7 @@ struct CloudEditCandidateClip: Codable, Sendable {
     let combinedScore: Double?
     let duplicateGroup: String?
     var nativeShotSignals: NativeShotSignals? = nil
+    var teamAttribution: ClipTeamAttribution? = nil
 }
 
 struct CreateCloudEditJobRequest: Codable, Sendable {
@@ -600,6 +601,7 @@ struct CreateCloudEditJobRequest: Codable, Sendable {
     let planTier: CloudEditPlanTier
     let revenueCatAppUserID: String?
     let userPrompt: String?
+    var teamSelection: HighlightTeamSelection? = nil
     let clips: [CloudEditCandidateClip]
 }
 

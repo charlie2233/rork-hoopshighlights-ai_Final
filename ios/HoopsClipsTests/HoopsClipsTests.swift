@@ -238,6 +238,21 @@ struct HoopsClipsTests {
             outcome: "made",
             outcomeConfidence: 0.8
         )
+        let teamSelection = HighlightTeamSelection(
+            mode: .team,
+            teamId: "team_dark",
+            label: "Dark jerseys",
+            colorLabel: "black",
+            confidenceThreshold: 0.85,
+            includeUncertain: true
+        )
+        let teamAttribution = ClipTeamAttribution(
+            teamId: "team_dark",
+            label: "Dark jerseys",
+            colorLabel: "black",
+            confidence: 0.91,
+            source: "quick_scan"
+        )
         let request = CreateCloudEditJobRequest(
             videoId: "video_123",
             analysisJobId: "analysis_123",
@@ -250,6 +265,7 @@ struct HoopsClipsTests {
             planTier: .free,
             revenueCatAppUserID: nil,
             userPrompt: "Make it more hype and focus on defense.",
+            teamSelection: teamSelection,
             clips: [
                 CloudEditCandidateClip(
                     id: "clip_1",
@@ -264,7 +280,8 @@ struct HoopsClipsTests {
                     audioPeak: 0.5,
                     combinedScore: 0.9,
                     duplicateGroup: nil,
-                    nativeShotSignals: nativeSignals
+                    nativeShotSignals: nativeSignals,
+                    teamAttribution: teamAttribution
                 )
             ]
         )
@@ -278,6 +295,41 @@ struct HoopsClipsTests {
         let encodedSignals = try #require(clips.first?["nativeShotSignals"] as? [String: Any])
         #expect(encodedSignals["outcome"] as? String == "made")
         #expect(encodedSignals["timingWindowOk"] as? Bool == true)
+        let encodedTeamSelection = try #require(payload["teamSelection"] as? [String: Any])
+        #expect(encodedTeamSelection["mode"] as? String == "team")
+        #expect(encodedTeamSelection["teamId"] as? String == "team_dark")
+        #expect(encodedTeamSelection["confidenceThreshold"] as? Double == 0.85)
+        let encodedTeamAttribution = try #require(clips.first?["teamAttribution"] as? [String: Any])
+        #expect(encodedTeamAttribution["teamId"] as? String == "team_dark")
+        #expect(encodedTeamAttribution["confidence"] as? Double == 0.91)
+    }
+
+    @Test func testCloudAnalysisRequestEncodesPreAnalysisTeamChoice() throws {
+        let request = CreateCloudAnalysisJobRequest(
+            filename: "game.mp4",
+            contentType: "video/mp4",
+            fileSizeBytes: 1024,
+            durationSeconds: 120,
+            installId: "install-123",
+            appVersion: "v1",
+            analysisVersion: "v1",
+            teamSelection: HighlightTeamSelection(
+                mode: .team,
+                teamId: "team_light",
+                label: "Light jerseys",
+                colorLabel: "white",
+                confidenceThreshold: 0.85,
+                includeUncertain: true
+            )
+        )
+
+        let data = try JSONEncoder().encode(request)
+        let payload = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let teamSelection = try #require(payload["teamSelection"] as? [String: Any])
+
+        #expect(teamSelection["mode"] as? String == "team")
+        #expect(teamSelection["label"] as? String == "Light jerseys")
+        #expect(teamSelection["includeUncertain"] as? Bool == true)
     }
 
     @Test @MainActor func testCloudEditRequestSendsStrongestCandidatesBeforeThirtyClipCap() throws {
