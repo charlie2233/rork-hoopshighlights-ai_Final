@@ -11,6 +11,7 @@ from .models import CloudClip, clamp
 
 MIN_EXTERNAL_SHOT_LEAD_IN_SECONDS = 2.0
 MIN_EXTERNAL_SHOT_FOLLOW_THROUGH_SECONDS = 1.25
+MIN_EXTERNAL_CLIP_DURATION_SECONDS = 2.0
 
 
 def detect_with_optional_external_provider(
@@ -47,6 +48,7 @@ def detect_with_optional_external_provider(
     clips = parse_external_clips_from_payload(
         payload,
         duration_seconds=duration_seconds,
+        min_clip_duration=settings.min_clip_duration_seconds,
         max_clip_duration=settings.max_clip_duration_seconds,
         clip_limit=settings.max_returned_clips,
     )
@@ -103,6 +105,7 @@ def parse_external_clips_from_payload(
     payload: object,
     *,
     duration_seconds: float,
+    min_clip_duration: float = MIN_EXTERNAL_CLIP_DURATION_SECONDS,
     max_clip_duration: float,
     clip_limit: int,
 ) -> list[CloudClip]:
@@ -141,6 +144,8 @@ def parse_external_clips_from_payload(
 
         if end - start > max_clip_duration:
             end = min(duration_seconds, start + max_clip_duration)
+        if end - start < min_clip_duration:
+            continue
         if end <= start:
             continue
 
@@ -148,21 +153,29 @@ def parse_external_clips_from_payload(
             "startTime": round(start, 3),
             "endTime": round(end, 3),
             "eventCenter": round(event_center, 3) if event_center is not None else None,
-            "confidence": round(clamp(_coerce_float(item.get("confidence"), 0.68), 0.35, 0.99), 4),
+            "confidence": round(clamp(_coerce_float(item.get("confidence"), 0.52), 0.35, 0.99), 4),
             "label": label,
             "action": action,
-            "audioScore": round(clamp(_coerce_float(item.get("audioScore"), 0.45), 0.0, 1.0), 4),
-            "visualScore": round(clamp(_coerce_float(item.get("visualScore"), 0.7), 0.0, 1.0), 4),
-            "motionScore": round(clamp(_coerce_float(item.get("motionScore"), 0.72), 0.0, 1.0), 4),
-            "combinedScore": round(clamp(_coerce_float(item.get("combinedScore"), 0.76), 0.0, 1.0), 4),
+            "audioScore": round(clamp(_coerce_float(item.get("audioScore"), 0.35), 0.0, 1.0), 4),
+            "visualScore": round(clamp(_coerce_float(item.get("visualScore"), 0.45), 0.0, 1.0), 4),
+            "motionScore": round(clamp(_coerce_float(item.get("motionScore"), 0.45), 0.0, 1.0), 4),
+            "combinedScore": round(clamp(_coerce_float(item.get("combinedScore"), 0.5), 0.0, 1.0), 4),
             "detectionMethod": "cloud",
-            "shouldAutoKeep": bool(item.get("shouldAutoKeep", True)),
+            "shouldAutoKeep": bool(item.get("shouldAutoKeep", False)),
             "shouldEnableSlowMotion": bool(item.get("shouldEnableSlowMotion", False)),
         }
-        parsed.append(CloudClip(**clip_payload))
+        clip = CloudClip(**clip_payload)
+        parsed.append(
+            clip.model_copy(
+                update={
+                    "shouldAutoKeep": clip.shouldAutoKeep and _external_clip_auto_keep_allowed(clip),
+                    "shouldEnableSlowMotion": clip.shouldEnableSlowMotion and _external_clip_auto_keep_allowed(clip),
+                }
+            )
+        )
 
     parsed = _dedupe_external_clips(parsed)
-    parsed.sort(key=lambda clip: clip.combinedScore, reverse=True)
+    parsed.sort(key=_external_clip_quality_key, reverse=True)
     return parsed[:clip_limit]
 
 
@@ -173,25 +186,31 @@ def apply_autohighlight_boosts(clips: Sequence[CloudClip], boosts: Sequence[floa
         combined = round(clamp((clip.combinedScore * 0.78) + (boost * 0.22), 0.0, 1.0), 4)
         confidence = round(clamp(clip.confidence + (boost * 0.08), 0.35, 0.99), 4)
         should_auto_keep = clip.shouldAutoKeep or confidence >= 0.62 or boost >= 0.52
+        updated = CloudClip(
+            startTime=clip.startTime,
+            endTime=clip.endTime,
+            eventCenter=clip.eventCenter,
+            confidence=confidence,
+            label=clip.label,
+            action=clip.action,
+            audioScore=clip.audioScore,
+            visualScore=clip.visualScore,
+            motionScore=clip.motionScore,
+            combinedScore=combined,
+            detectionMethod=clip.detectionMethod,
+            shouldAutoKeep=should_auto_keep,
+            shouldEnableSlowMotion=clip.shouldEnableSlowMotion,
+        )
         boosted.append(
-            CloudClip(
-                startTime=clip.startTime,
-                endTime=clip.endTime,
-                eventCenter=clip.eventCenter,
-                confidence=confidence,
-                label=clip.label,
-                action=clip.action,
-                audioScore=clip.audioScore,
-                visualScore=clip.visualScore,
-                motionScore=clip.motionScore,
-                combinedScore=combined,
-                detectionMethod=clip.detectionMethod,
-                shouldAutoKeep=should_auto_keep,
-                shouldEnableSlowMotion=clip.shouldEnableSlowMotion,
+            updated.model_copy(
+                update={
+                    "shouldAutoKeep": should_auto_keep and _external_clip_auto_keep_allowed(updated),
+                    "shouldEnableSlowMotion": updated.shouldEnableSlowMotion and _external_clip_auto_keep_allowed(updated),
+                }
             )
         )
 
-    boosted.sort(key=lambda clip: clip.combinedScore, reverse=True)
+    boosted.sort(key=_external_clip_quality_key, reverse=True)
     return boosted
 
 
@@ -239,11 +258,56 @@ def _is_shot_like_label(label: str) -> bool:
 
 def _dedupe_external_clips(clips: Sequence[CloudClip]) -> list[CloudClip]:
     kept: list[CloudClip] = []
-    for clip in sorted(clips, key=lambda item: (item.startTime, -item.combinedScore)):
-        if any(_overlap_ratio(clip, existing) > 0.55 for existing in kept):
+    for clip in clips:
+        duplicate_index = next((index for index, existing in enumerate(kept) if _overlap_ratio(clip, existing) > 0.55), None)
+        if duplicate_index is None:
+            kept.append(clip)
             continue
-        kept.append(clip)
+        if _external_clip_quality_key(clip) > _external_clip_quality_key(kept[duplicate_index]):
+            kept[duplicate_index] = clip
     return kept
+
+
+def _external_clip_quality_key(clip: CloudClip) -> tuple[float, float, float, float, float, float]:
+    duration = max(0.0, clip.endTime - clip.startTime)
+    return (
+        1.0 if duration >= MIN_EXTERNAL_CLIP_DURATION_SECONDS else 0.0,
+        _external_clip_context_score(clip),
+        clip.combinedScore,
+        clip.confidence,
+        clip.visualScore,
+        clip.motionScore,
+    )
+
+
+def _external_clip_auto_keep_allowed(clip: CloudClip) -> bool:
+    if clip.combinedScore < 0.58 or clip.confidence < 0.55:
+        return False
+    if _external_clip_context_score(clip) < 0.45:
+        return False
+    return True
+
+
+def _external_clip_context_score(clip: CloudClip) -> float:
+    duration = max(0.0, clip.endTime - clip.startTime)
+    if duration < MIN_EXTERNAL_CLIP_DURATION_SECONDS:
+        return 0.0
+    if not _is_shot_like_label(clip.label):
+        return min(1.0, duration / 4.5)
+    if clip.eventCenter is None:
+        return 0.2
+
+    event_center = min(max(clip.eventCenter, clip.startTime), clip.endTime)
+    lead_in = max(0.0, event_center - clip.startTime)
+    follow_through = max(0.0, clip.endTime - event_center)
+    if lead_in <= 0.0 or follow_through <= 0.0:
+        return 0.0
+
+    lead_score = min(1.0, lead_in / MIN_EXTERNAL_SHOT_LEAD_IN_SECONDS)
+    follow_score = min(1.0, follow_through / MIN_EXTERNAL_SHOT_FOLLOW_THROUGH_SECONDS)
+    duration_score = min(1.0, duration / 4.5)
+    balance_score = min(lead_in, follow_through) / max(lead_in, follow_through)
+    return round((lead_score * 0.36) + (follow_score * 0.28) + (duration_score * 0.22) + (balance_score * 0.14), 4)
 
 
 def _overlap_ratio(left: CloudClip, right: CloudClip) -> float:

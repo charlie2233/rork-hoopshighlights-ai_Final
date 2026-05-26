@@ -41,6 +41,11 @@ Improve GPT-led HoopClips highlight selection quality with a bias toward basketb
   - baseline audio/motion scoring remains intact for ordinary high-energy moments
   - shot-like merged candidate groups anchor around the best complete event-context window instead of the earliest noisy pre-event slice
   - complete shot-context candidates can beat later audio-only aftermath spikes before GPT ever sees the pool
+- Hardened external/provider candidate admission:
+  - provider clips shorter than the configured minimum are dropped unless they can be safely expanded from a shot event center
+  - missing provider scores now default to conservative non-auto-keep values instead of premium-looking candidates
+  - overlapping external candidates are deduped by quality/context, so a complete event-centered shot beats a higher-scored thin overlap
+  - AutoHighlight boosts can improve ranking but cannot force auto-keep or slow motion for tiny/context-poor clips
 - Hardened final deterministic render-window construction:
   - shot-like planned source windows are clamped so GPT edit suggestions cannot shift the rendered clip too far after the event
   - `validate_edit_plan` now rejects shot render windows that lack setup before the event or outcome context after it
@@ -238,6 +243,27 @@ PR #10 CI after native code commit `7a97da4`:
 - iOS Internal TestFlight Upload run `26437052937`:
   - No-secret internal staging codecheck: success, job `77822170386`.
   - Build internal staging TestFlight archive: skipped on this PR path, job `77822170892`.
+
+Additional validation before external-provider quality commit:
+
+```sh
+python3 -m py_compile ios/backend/app/external_providers.py ios/backend/tests/test_external_providers.py
+PYTHONPATH=ios/backend /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest ios.backend.tests.test_external_providers -v
+PYTHONPATH=ios/backend /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest discover ios/backend/tests -v
+PYTHONPATH=ios/backend:services/editing /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest services.editing.tests.test_gpt_reranker ios.backend.tests.test_edit_plan_agent -v
+PYTHONPATH=ios/backend:services/editing /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest discover services/editing/tests -v
+git diff --check
+```
+
+Results:
+
+- Python compile: passed.
+- External provider focused suite: 7 tests passed.
+- iOS backend Python discovery: 60 tests passed.
+- GPT reranker + edit-plan focused suite: 62 tests passed.
+- Services editing discovery: 60 tests passed.
+- `git diff --check`: passed.
+- Added regressions for tiny provider-window rejection, conservative missing-score defaults, quality-aware external dedupe, and AutoHighlight boost safety.
 
 ## Launch Recommendations
 
