@@ -1215,6 +1215,40 @@ class GPTHighlightRerankerTests(unittest.TestCase):
 
         self.assertEqual(settings.model, "gpt-4.1")
 
+    def test_default_visual_sampling_prioritizes_ball_and_rim_detail(self) -> None:
+        env_keys = ("HOOPS_GPT_HIGHLIGHT_RERANK_FRAME_WIDTH", "HOOPS_GPT_HIGHLIGHT_RERANK_MAX_IMAGE_BYTES")
+        old_values = {key: os.environ.get(key) for key in env_keys}
+        for key in env_keys:
+            os.environ.pop(key, None)
+        try:
+            settings = GPTHighlightRerankerSettings.from_env()
+        finally:
+            for key, old_value in old_values.items():
+                if old_value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = old_value
+
+        self.assertGreaterEqual(settings.frame_width, 1024)
+        self.assertGreaterEqual(settings.max_image_bytes, 750_000)
+
+    def test_visual_sampling_env_allows_quality_beta_high_resolution_cap(self) -> None:
+        env_keys = ("HOOPS_GPT_HIGHLIGHT_RERANK_FRAME_WIDTH", "HOOPS_GPT_HIGHLIGHT_RERANK_MAX_IMAGE_BYTES")
+        old_values = {key: os.environ.get(key) for key in env_keys}
+        os.environ["HOOPS_GPT_HIGHLIGHT_RERANK_FRAME_WIDTH"] = "4096"
+        os.environ["HOOPS_GPT_HIGHLIGHT_RERANK_MAX_IMAGE_BYTES"] = "9999999"
+        try:
+            settings = GPTHighlightRerankerSettings.from_env()
+        finally:
+            for key, old_value in old_values.items():
+                if old_value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = old_value
+
+        self.assertEqual(settings.frame_width, 1280)
+        self.assertEqual(settings.max_image_bytes, 1_000_000)
+
     def test_sampling_caps_are_applied_before_openai_call(self) -> None:
         settings = GPTHighlightRerankerSettings(
             enabled=True,

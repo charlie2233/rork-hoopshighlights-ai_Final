@@ -49,9 +49,9 @@ The service receives a validated `EditPlan`, downloads the source video from ren
 - `HOOPS_GPT_HIGHLIGHT_RERANK_PAID_FRAMES_PER_CLIP`: Pro/internal frames per clip, clamped to `5...8`; quality-beta default is `8`
 - `HOOPS_GPT_HIGHLIGHT_RERANK_TIMEOUT_SECONDS`: OpenAI request timeout, clamped to `1...60`
 - `HOOPS_GPT_HIGHLIGHT_RERANK_MAX_OUTPUT_TOKENS`: Structured-output budget, clamped to `256...6000`; quality-beta default is `3500`
-- `HOOPS_GPT_HIGHLIGHT_RERANK_FRAME_WIDTH`: sampled keyframe width, clamped to `256...768`; quality-beta default is `768`
+- `HOOPS_GPT_HIGHLIGHT_RERANK_FRAME_WIDTH`: sampled keyframe width, clamped to `256...1280`; quality-beta default is `1024`
 - `HOOPS_GPT_HIGHLIGHT_RERANK_JPEG_QUALITY`: FFmpeg JPEG quality, clamped to `2...12`; quality-beta default is `4`
-- `HOOPS_GPT_HIGHLIGHT_RERANK_MAX_IMAGE_BYTES`: per-frame payload cap, clamped to `40000...500000`; quality-beta default is `300000`
+- `HOOPS_GPT_HIGHLIGHT_RERANK_MAX_IMAGE_BYTES`: per-frame payload cap, clamped to `40000...1000000`; quality-beta default is `750000`
 - `HOOPS_GPT_HIGHLIGHT_RERANK_IMAGE_DETAIL`: OpenAI image detail, one of `low`, `high`, `original`, or `auto`; defaults to `high`
 
 The `/version` endpoint reports the resolved non-secret feature-flag snapshot and GPT reranker sampling caps. It intentionally does not expose all cost knobs. Use it to verify staging rollout state without exposing R2 credentials, service secrets, OpenAI keys, sampled frames, or presigned URLs. GPT reranker OpenAI requests are built with `store=false`.
