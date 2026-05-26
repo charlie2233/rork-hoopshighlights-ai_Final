@@ -301,6 +301,16 @@ Results:
 - `git diff --check`: passed.
 - Added regressions for weak generic filler rejection when GPT is disabled, clear non-shot defense preservation, GPT preflight exclusion of weak generic non-shot candidates, and compact agent context ranking by shot-aware quality.
 
+PR #10 CI after deterministic fallback-quality code commit `cd2a25d`:
+
+- Cloud Edit Deploy Preflight run `26438895679`:
+  - Worker typecheck and dry run: success, job `77828162355`.
+  - Editing backend Python tests: success, job `77828162442`.
+  - Verify cloud edit deploy secrets: skipped on this PR path, job `77828631754`.
+- iOS Internal TestFlight Upload run `26438895641`:
+  - No-secret internal staging codecheck: success, job `77828162261`.
+  - Build internal staging TestFlight archive: skipped on this PR path, job `77828162544`.
+
 ## Launch Recommendations
 
 - Deploy this branch to staging only after the Cloudflare/GCP deploy secret blockers are cleared.
