@@ -115,6 +115,11 @@ def _shot_result_evidence(**overrides) -> dict:
         "releaseToRimContinuity": "continuous",
         "rimResultEvidence": "made_visible",
         "outcomeConfidence": 0.92,
+        "rimEntrySequence": "visible_entry",
+        "ballApproachFrameRole": "eventCenter",
+        "rimEntryFrameRole": "finish",
+        "ballBelowRimOrNetFrameRole": "finish",
+        "rimEntrySequenceConfidence": 0.92,
         "reason": "Ball flight and rim result are visible.",
     }
     payload.update(overrides)
@@ -992,6 +997,44 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertEqual(reranked.gptRerankSummary.fallbackReason, "all_clips_rejected")
         self.assertIn("claimed_make", reranked.gptRerankSummary.rejectedClipIds)
         self.assertEqual(reranked.gptRerankSummary.rejectedReasonCounts.get("gpt_cited_unsampled_frame_role"), 1)
+
+    def test_gpt_highlight_rerank_rejects_made_shot_without_rim_entry_sequence(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=15,
+                clips=[_clip("late_rim_claim", 24.0, "Made Shot", 0.9)],
+            )
+        )
+        decisions = [
+            GPTHighlightClipDecision(
+                clipId="late_rim_claim",
+                keep=True,
+                highlightScore=0.92,
+                watchabilityScore=0.9,
+                basketballEvent="Made Shot",
+                outcome="made",
+                caption="BUCKET",
+                reason="Claims a made shot from a late rim view.",
+                qualitySignals=_quality_signals(),
+                shotResultEvidence=_shot_result_evidence(
+                    rimEntrySequence="unclear",
+                    ballApproachFrameRole=None,
+                    rimEntryFrameRole=None,
+                    ballBelowRimOrNetFrameRole=None,
+                    rimEntrySequenceConfidence=0.2,
+                    reason="The sampled frames do not show the ball entering or passing through the rim.",
+                ),
+                shotTrackingEvidence=_shot_tracking_evidence(),
+                suggestedEdit=GPTHighlightSuggestedEdit(),
+            )
+        ]
+
+        reranked = apply_gpt_highlight_rerank(request, decisions, "gpt-test", 1, 3)
+
+        self.assertEqual(reranked.gptRerankSummary.status, "applied")
+        self.assertEqual(reranked.gptRerankSummary.keptClipIds, [])
+        self.assertEqual(reranked.gptRerankSummary.fallbackReason, "all_clips_rejected")
+        self.assertEqual(reranked.gptRerankSummary.rejectedReasonCounts.get("made_rim_entry_sequence_not_visible"), 1)
 
     def test_gpt_highlight_rerank_rejects_generic_tracking_when_rich_roles_were_sampled(self) -> None:
         request = CreateEditJobRequest(

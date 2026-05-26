@@ -1013,6 +1013,11 @@ class GPTShotResultEvidence(APIModel):
     releaseToRimContinuity: Literal["continuous", "partial", "missing"]
     rimResultEvidence: Literal["made_visible", "clear_miss", "blocked", "unclear"]
     outcomeConfidence: float = Field(ge=0.0, le=1.0)
+    rimEntrySequence: Literal["visible_entry", "visible_miss", "blocked", "unclear"] = "unclear"
+    ballApproachFrameRole: Optional[ShotTrackingFrameRole] = None
+    rimEntryFrameRole: Optional[ShotTrackingFrameRole] = None
+    ballBelowRimOrNetFrameRole: Optional[ShotTrackingFrameRole] = None
+    rimEntrySequenceConfidence: float = Field(default=0.0, ge=0.0, le=1.0)
     reason: str = Field(min_length=1, max_length=160)
 
 
@@ -2633,6 +2638,14 @@ def _gpt_decision_rejection_reason(
             return "made_outcome_not_visible"
         if result_evidence.outcomeConfidence < 0.72:
             return "low_shot_result_confidence"
+        if result_evidence.rimEntrySequence != "visible_entry":
+            return "made_rim_entry_sequence_not_visible"
+        if result_evidence.rimEntrySequenceConfidence < 0.72:
+            return "low_rim_entry_sequence_confidence"
+        if result_evidence.ballApproachFrameRole not in SHOT_TRACKING_BALL_FLIGHT_ROLES:
+            return "missing_rim_entry_approach_frame"
+        if result_evidence.rimEntryFrameRole not in SHOT_TRACKING_RESULT_ROLES:
+            return "missing_rim_entry_frame"
     if decision.outcome == "missed":
         if result_evidence.rimResultEvidence != "clear_miss":
             return "miss_outcome_not_visible"
@@ -2648,11 +2661,15 @@ def _gpt_decision_rejection_reason(
     rim_roles = set(tracking_evidence.rimVisibleFrameRoles)
     if decision.outcome in {"made", "missed"} and sampled_frame_roles is not None:
         unsampled_roles = _unsampled_gpt_tracking_roles(tracking_evidence, sampled_frame_roles)
+        unsampled_roles |= _unsampled_gpt_result_roles(result_evidence, sampled_frame_roles)
         if unsampled_roles:
             return "gpt_cited_unsampled_frame_role"
         rich_role_rejection_reason = _rich_sampled_tracking_rejection_reason(tracking_evidence, sampled_frame_roles)
         if rich_role_rejection_reason is not None:
             return rich_role_rejection_reason
+        rich_result_rejection_reason = _rich_sampled_result_rejection_reason(result_evidence, sampled_frame_roles)
+        if rich_result_rejection_reason is not None:
+            return rich_result_rejection_reason
     if decision.outcome in {"made", "missed"}:
         if tracking_evidence.releaseFrameRole not in SHOT_TRACKING_RELEASE_ROLES:
             return "missing_tracking_release_frame"
@@ -2669,6 +2686,8 @@ def _gpt_decision_rejection_reason(
             return "incomplete_made_shot_tracking"
         if tracking_evidence.ballEntersRimFrameRole not in SHOT_TRACKING_RESULT_ROLES and not tracking_evidence.netOrRimReactionVisible:
             return "missing_made_shot_entry_frame"
+        if result_evidence.ballBelowRimOrNetFrameRole not in SHOT_TRACKING_RESULT_ROLES and not tracking_evidence.netOrRimReactionVisible:
+            return "missing_rim_entry_followthrough_frame"
     return None
 
 
@@ -2684,6 +2703,23 @@ def _unsampled_gpt_tracking_roles(
         tracking_evidence.ballEntersRimFrameRole,
     )
     cited_roles.update(role for role in optional_roles if role is not None)
+    return cited_roles - sampled_roles
+
+
+def _unsampled_gpt_result_roles(
+    result_evidence: GPTShotResultEvidence,
+    sampled_frame_roles: Sequence[str],
+) -> set[str]:
+    sampled_roles = set(sampled_frame_roles)
+    cited_roles = {
+        role
+        for role in (
+            result_evidence.ballApproachFrameRole,
+            result_evidence.rimEntryFrameRole,
+            result_evidence.ballBelowRimOrNetFrameRole,
+        )
+        if role is not None
+    }
     return cited_roles - sampled_roles
 
 
@@ -2703,6 +2739,20 @@ def _rich_sampled_tracking_rejection_reason(
         return "gpt_ignored_sampled_result_frame"
     if sampled_roles & SHOT_TRACKING_RICH_RIM_ROLES and not (rim_roles & SHOT_TRACKING_RICH_RIM_ROLES):
         return "gpt_missing_sampled_rim_tracking"
+    return None
+
+
+def _rich_sampled_result_rejection_reason(
+    result_evidence: GPTShotResultEvidence,
+    sampled_frame_roles: Sequence[str],
+) -> Optional[str]:
+    sampled_roles = set(sampled_frame_roles)
+    if result_evidence.rimEntrySequence != "visible_entry":
+        return None
+    if sampled_roles & SHOT_TRACKING_RICH_RESULT_ROLES and result_evidence.rimEntryFrameRole not in SHOT_TRACKING_RICH_RESULT_ROLES:
+        return "gpt_ignored_sampled_rim_entry_frame"
+    if sampled_roles & {"postOutcome"} and result_evidence.ballBelowRimOrNetFrameRole not in {"postOutcome", "finish"}:
+        return "gpt_ignored_sampled_post_entry_frame"
     return None
 
 

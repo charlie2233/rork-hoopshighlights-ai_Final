@@ -67,6 +67,11 @@ def _shot_result_evidence(**overrides) -> dict:
         "releaseToRimContinuity": "continuous",
         "rimResultEvidence": "made_visible",
         "outcomeConfidence": 0.92,
+        "rimEntrySequence": "visible_entry",
+        "ballApproachFrameRole": "eventCenter",
+        "rimEntryFrameRole": "finish",
+        "ballBelowRimOrNetFrameRole": "finish",
+        "rimEntrySequenceConfidence": 0.92,
         "reason": "Ball flight and rim result are visible.",
     }
     payload.update(overrides)

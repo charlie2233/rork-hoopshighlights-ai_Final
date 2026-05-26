@@ -661,6 +661,7 @@ def _build_openai_payload(
                         "madeOrMissedShotRequiresVisibleShotArc": True,
                         "madeShotRequiresExplicitMadeResultEvidence": True,
                         "madeShotRequiresFrameRoleTrackingEvidence": True,
+                        "madeShotRequiresRimEntrySequenceEvidence": True,
                         "mustUseRichSampledShotRolesWhenPresent": True,
                         "doNotKeepIfOutcomeIsOnlyImplied": True,
                         "requiredMadeShotTracking": {
@@ -669,6 +670,10 @@ def _build_openai_payload(
                             "ballEntersRimFrameRole": ["outcome", "shotArcLate", "rim", "postOutcome", "finish"],
                             "minimumBallVisibleFrameRoles": 2,
                             "trajectoryContinuity": "continuous",
+                            "rimEntrySequence": "visible_entry",
+                            "rimEntryFrameRole": ["outcome", "shotArcLate", "rim", "postOutcome", "finish"],
+                            "ballBelowRimOrNetFrameRole": ["outcome", "shotArcLate", "rim", "postOutcome", "finish"],
+                            "minimumRimEntrySequenceConfidence": 0.72,
                         },
                         "richSampledShotRoleRules": {
                             "ifReleaseRoleIsSampledUseReleaseAsReleaseFrameRole": True,
@@ -698,6 +703,7 @@ def _build_openai_payload(
             "Act like a basketball shot-tracker: for made shots, verify visible setup, release, ball path, rim/result, and aftermath. "
             "For made or missed shots, releaseVisible, shotArcVisible, and rimResultVisible must all be true; do not infer a make from a label or late rim-only aftermath. "
             "A made outcome requires shotResultEvidence.rimResultEvidence=made_visible with confident visible rim/net proof; use unclear if the result is guessed. "
+            "A made outcome also requires shotResultEvidence.rimEntrySequence=visible_entry with approach, rim-entry, and below-rim/net frame roles. "
             "A made outcome also requires shotTrackingEvidence with release/result frame roles, ball-visible frame roles, continuous trajectory, and a frame or visible net/rim reaction proving entry. "
             "When sampled roles include release, shot-arc, rim, or post-outcome frames, cite those specific rich roles instead of generic eventCenter/finish proof. "
             "reject clips that start right before the basket, clips shorter than the supplied quality minimum, or clips where the outcome is only implied. "
@@ -817,9 +823,24 @@ def _response_schema() -> Dict[str, Any]:
             "releaseToRimContinuity": {"type": "string", "enum": ["continuous", "partial", "missing"]},
             "rimResultEvidence": {"type": "string", "enum": ["made_visible", "clear_miss", "blocked", "unclear"]},
             "outcomeConfidence": {"type": "number", "minimum": 0, "maximum": 1},
+            "rimEntrySequence": {"type": "string", "enum": ["visible_entry", "visible_miss", "blocked", "unclear"]},
+            "ballApproachFrameRole": frame_role_or_null,
+            "rimEntryFrameRole": frame_role_or_null,
+            "ballBelowRimOrNetFrameRole": frame_role_or_null,
+            "rimEntrySequenceConfidence": {"type": "number", "minimum": 0, "maximum": 1},
             "reason": {"type": "string", "maxLength": 160},
         },
-        "required": ["releaseToRimContinuity", "rimResultEvidence", "outcomeConfidence", "reason"],
+        "required": [
+            "releaseToRimContinuity",
+            "rimResultEvidence",
+            "outcomeConfidence",
+            "rimEntrySequence",
+            "ballApproachFrameRole",
+            "rimEntryFrameRole",
+            "ballBelowRimOrNetFrameRole",
+            "rimEntrySequenceConfidence",
+            "reason",
+        ],
     }
     shot_tracking_evidence = {
         "type": "object",
