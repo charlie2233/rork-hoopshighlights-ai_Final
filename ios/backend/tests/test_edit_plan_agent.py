@@ -34,6 +34,7 @@ from app.editing import (
     build_edit_plan,
     clip_context_quality_score,
     get_template_pack_for_plan,
+    is_plan_quality_eligible_clip,
     rank_clips,
     remove_duplicate_moments,
     repair_edit_plan,
@@ -297,7 +298,7 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertEqual(context["rendererTemplateDefaults"]["captionStyle"], "cinematic_hype")
         self.assertEqual(context["templateCookbookRules"]["orderingRules"]["opener"], "one_of_top_2_clips")
         self.assertIn("COLD.", context["templateCookbookRules"]["captionRules"]["examples"])
-        self.assertEqual(context["candidateClips"][0]["clipId"], "c1")
+        self.assertEqual(context["candidateClips"][0]["clipId"], "c3")
         serialized = str(context)
         self.assertNotIn("sourceObjectKey", serialized)
         self.assertNotIn("downloadUrl", serialized)
@@ -423,6 +424,45 @@ class EditPlanAgentTests(unittest.TestCase):
 
         self.assertEqual(ranked[0].id, "complete_make")
         self.assertGreater(clip_context_quality_score(ranked[0]), clip_context_quality_score(request.clips[0]))
+
+    def test_deterministic_plan_rejects_weak_generic_filler_when_gpt_falls_back(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                clips=[
+                    {
+                        **_clip("audio_only_filler", 0.0, "Highlight", 0.42),
+                        "watchability": 0.2,
+                        "motionScore": 0.22,
+                        "audioPeak": 0.95,
+                    }
+                ],
+            )
+        )
+
+        job = build_edit_job(request, "edit_weak_fallback")
+
+        self.assertFalse(is_plan_quality_eligible_clip(request.clips[0]))
+        self.assertEqual(job.status, "failed")
+        self.assertIn("empty_clip_list", [error.code for error in job.validation_errors])
+
+    def test_deterministic_plan_keeps_clear_non_shot_defense_clip(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                clips=[
+                    {
+                        **_clip("defense_stop", 4.0, "Defense", 0.66),
+                        "watchability": 0.62,
+                        "motionScore": 0.7,
+                    }
+                ],
+            )
+        )
+
+        job = build_edit_job(request, "edit_defense_non_shot")
+
+        self.assertTrue(is_plan_quality_eligible_clip(request.clips[0]))
+        self.assertEqual(job.status, "plan_ready")
+        self.assertEqual([clip.clipId for clip in job.plan.clips], ["defense_stop"])
 
     def test_build_edit_plan_enforces_template_minimum_clip_length(self) -> None:
         request = CreateEditJobRequest(

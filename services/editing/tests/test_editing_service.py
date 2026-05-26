@@ -224,6 +224,52 @@ class EditingServiceTests(unittest.TestCase):
             else:
                 os.environ["HOOPS_GPT_HIGHLIGHT_RERANKER_ENABLED"] = old_enabled
 
+    def test_create_edit_job_gpt_disabled_drops_weak_generic_fallback_candidate(self) -> None:
+        old_enabled = os.environ.get("HOOPS_GPT_HIGHLIGHT_RERANKER_ENABLED")
+        os.environ["HOOPS_GPT_HIGHLIGHT_RERANKER_ENABLED"] = "false"
+        try:
+            client = TestClient(create_app(self._settings()))
+            edit_request = CreateEditJobRequest(
+                videoId="video_weak_generic_fallback",
+                analysisJobId="analysis_weak_generic_fallback",
+                installId="install-123",
+                preset="personal_highlight",
+                targetDurationSeconds=15,
+                aspectRatio="9:16",
+                planTier="free",
+                clips=[
+                    {
+                        **_clip("audio_only_filler", 0.0, "Highlight", 0.42),
+                        "watchability": 0.2,
+                        "motionScore": 0.22,
+                        "audioPeak": 0.95,
+                    },
+                    {
+                        **_clip("clear_defense", 8.0, "Defense", 0.66),
+                        "watchability": 0.62,
+                        "motionScore": 0.7,
+                    },
+                ],
+            )
+
+            create_response = client.post("/v1/edit-jobs", json=edit_request.model_dump())
+
+            self.assertEqual(create_response.status_code, 200)
+            create_payload = create_response.json()
+            self.assertEqual(create_payload["status"], "plan_ready")
+            self.assertEqual(create_payload["clipCount"], 1)
+            plan_response = client.get(
+                f"/v1/edit-jobs/{create_payload['editJobId']}/plan",
+                params={"installId": edit_request.installId},
+            )
+            self.assertEqual(plan_response.status_code, 200)
+            self.assertEqual([clip["clipId"] for clip in plan_response.json()["plan"]["clips"]], ["clear_defense"])
+        finally:
+            if old_enabled is None:
+                os.environ.pop("HOOPS_GPT_HIGHLIGHT_RERANKER_ENABLED", None)
+            else:
+                os.environ["HOOPS_GPT_HIGHLIGHT_RERANKER_ENABLED"] = old_enabled
+
     def test_edit_job_error_routes_return_error_responses(self) -> None:
         client = TestClient(create_app(self._settings()))
 

@@ -87,6 +87,10 @@ MIN_SHOT_CONTEXT_FOLLOW_THROUGH_SECONDS = 0.6
 TARGET_SHOT_CONTEXT_LEAD_IN_SECONDS = 1.6
 TARGET_SHOT_CONTEXT_FOLLOW_THROUGH_SECONDS = 1.0
 MIN_SHOT_LIKE_CLIP_SECONDS = 3.0
+MIN_NON_SHOT_PLANNING_SCORE = 0.5
+MIN_NON_SHOT_WATCHABILITY_SCORE = 0.42
+MIN_GENERIC_HIGHLIGHT_PLANNING_SCORE = 0.62
+MIN_GENERIC_HIGHLIGHT_WATCHABILITY_SCORE = 0.5
 TEMPLATE_MIN_CLIP_TOLERANCE = 0.85
 MAX_CAPTION_LENGTH = 24
 MAX_DURATION_OVERRUN_SECONDS = 6.0
@@ -1802,7 +1806,7 @@ def clip_context_quality_score(clip: EditCandidateClip) -> float:
     if clip.duration < MIN_PLAN_CLIP_SECONDS:
         return 0.0
     if not is_shot_like_clip(clip):
-        return 1.0
+        return non_shot_clip_quality_score(clip)
 
     lead_in = max(0.0, clip.eventCenter - clip.start)
     follow_through = max(0.0, clip.end - clip.eventCenter)
@@ -1821,12 +1825,49 @@ def clip_context_quality_score(clip: EditCandidateClip) -> float:
     return round(max(0.0, min(1.0, score)), 4)
 
 
+def non_shot_clip_quality_score(clip: EditCandidateClip) -> float:
+    if clip.duration < MIN_PLAN_CLIP_SECONDS:
+        return 0.0
+    duration_score = min(1.0, clip.duration / 4.5)
+    watchability_score = max(clip.watchability, clip.motionScore)
+    activity_score = max(clip.excitement, clip.audioPeak)
+    score = (
+        (clip.planning_score * 0.42)
+        + (watchability_score * 0.3)
+        + (activity_score * 0.13)
+        + (duration_score * 0.15)
+    )
+    if is_generic_filler_clip(clip):
+        score *= 0.82
+    return round(max(0.0, min(1.0, score)), 4)
+
+
+def is_generic_filler_clip(clip: EditCandidateClip) -> bool:
+    normalized = clip.label.strip().lower()
+    return normalized in {"highlight", "clip", "play", "moment"} or normalized.endswith(" highlight")
+
+
+def has_minimum_non_shot_quality(clip: EditCandidateClip) -> bool:
+    if is_generic_filler_clip(clip):
+        planning_threshold = MIN_GENERIC_HIGHLIGHT_PLANNING_SCORE
+        watchability_threshold = MIN_GENERIC_HIGHLIGHT_WATCHABILITY_SCORE
+    else:
+        planning_threshold = MIN_NON_SHOT_PLANNING_SCORE
+        watchability_threshold = MIN_NON_SHOT_WATCHABILITY_SCORE
+    return (
+        clip.planning_score >= planning_threshold
+        and max(clip.watchability, clip.motionScore) >= watchability_threshold
+    )
+
+
 def is_plan_quality_eligible_clip(clip: EditCandidateClip) -> bool:
     if clip.duration < MIN_PLAN_CLIP_SECONDS:
         return False
-    if is_shot_like_clip(clip) and clip.duration < MIN_SHOT_LIKE_CLIP_SECONDS:
+    if not is_shot_like_clip(clip):
+        return has_minimum_non_shot_quality(clip)
+    if clip.duration < MIN_SHOT_LIKE_CLIP_SECONDS:
         return False
-    if is_shot_like_clip(clip) and not has_minimum_shot_context(clip):
+    if not has_minimum_shot_context(clip):
         return False
     return True
 

@@ -174,6 +174,39 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertTrue(hints[2]["timingWindowOk"])
         self.assertGreaterEqual(hints[2]["minRecommendedDurationSeconds"], 3.0)
 
+    def test_quality_filter_excludes_weak_generic_non_shot_candidates_before_gpt(self) -> None:
+        request = CreateEditJobRequest(
+            videoId="video_weak_non_shot_filter",
+            analysisJobId="analysis_weak_non_shot_filter",
+            installId="install-123",
+            sourceObjectKey="uploads/source.mp4",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="free",
+            clips=[
+                {
+                    **_clip("audio_only_filler", 0.0, 0.42),
+                    "label": "Highlight",
+                    "watchability": 0.2,
+                    "motionScore": 0.22,
+                    "audioPeak": 0.95,
+                },
+                {
+                    **_clip("clear_defense", 10.0, 0.66),
+                    "label": "Defense",
+                    "watchability": 0.62,
+                    "motionScore": 0.7,
+                },
+            ],
+        )
+
+        sampled = gpt_reranker._quality_filtered_sampled_clips(request.clips, max_clips=2)
+        hints = [gpt_reranker._candidate_quality_hints(clip) for clip in request.clips]
+
+        self.assertEqual([clip.id for clip in sampled], ["clear_defense"])
+        self.assertTrue(hints[0]["timingWindowOk"])
+        self.assertTrue(hints[1]["timingWindowOk"])
+
     def test_source_context_expansion_salvages_thin_shot_windows_before_gpt(self) -> None:
         request = CreateEditJobRequest(
             videoId="video_expand_context",

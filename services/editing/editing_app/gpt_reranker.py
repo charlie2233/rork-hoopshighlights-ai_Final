@@ -29,6 +29,7 @@ from app.editing import (  # noqa: E402
     build_agent_editing_context,
     derive_user_prompt_intent,
     get_template_pack_for_plan,
+    is_plan_quality_eligible_clip,
     is_shot_like_clip,
     rank_clips,
     summarize_clip_pool,
@@ -369,6 +370,8 @@ def _candidate_quality_hints(clip: EditCandidateClip) -> Dict[str, Any]:
 def _quality_filtered_sampled_clips(clips: Sequence[EditCandidateClip], max_clips: int) -> List[EditCandidateClip]:
     filtered: List[EditCandidateClip] = []
     for clip in clips:
+        if not is_plan_quality_eligible_clip(clip):
+            continue
         hints = _candidate_quality_hints(clip)
         if not hints["timingWindowOk"]:
             continue

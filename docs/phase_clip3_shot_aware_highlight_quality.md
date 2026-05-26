@@ -46,6 +46,11 @@ Improve GPT-led HoopClips highlight selection quality with a bias toward basketb
   - missing provider scores now default to conservative non-auto-keep values instead of premium-looking candidates
   - overlapping external candidates are deduped by quality/context, so a complete event-centered shot beats a higher-scored thin overlap
   - AutoHighlight boosts can improve ranking but cannot force auto-keep or slow motion for tiny/context-poor clips
+- Hardened deterministic GPT fallback and planner quality gates:
+  - generic labels like `Highlight`, `Clip`, `Play`, and `Moment` now need stronger planning/watchability scores before they can enter an EditPlan
+  - clear non-shot basketball moments like defensive stops remain eligible when they carry enough motion/watchability signal
+  - non-shot candidate context quality now reflects planning, watchability, activity, and duration instead of always scoring as perfect
+  - GPT preflight sampling uses the same plan-quality eligibility gate, so weak generic fallback candidates are not sent to GPT or reintroduced when GPT is disabled
 - Hardened final deterministic render-window construction:
   - shot-like planned source windows are clamped so GPT edit suggestions cannot shift the rendered clip too far after the event
   - `validate_edit_plan` now rejects shot render windows that lack setup before the event or outcome context after it
@@ -274,6 +279,27 @@ PR #10 CI after external-provider code commit `a735a58`:
 - iOS Internal TestFlight Upload run `26437957049`:
   - No-secret internal staging codecheck: success, job `77825086021`.
   - Build internal staging TestFlight archive: skipped on this PR path, job `77825086434`.
+
+Additional validation before deterministic fallback-quality commit:
+
+```sh
+python3 -m py_compile ios/backend/app/editing.py services/editing/editing_app/gpt_reranker.py ios/backend/tests/test_edit_plan_agent.py services/editing/tests/test_gpt_reranker.py services/editing/tests/test_editing_service.py
+PYTHONPATH=ios/backend:services/editing /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest ios.backend.tests.test_edit_plan_agent.EditPlanAgentTests.test_deterministic_plan_rejects_weak_generic_filler_when_gpt_falls_back ios.backend.tests.test_edit_plan_agent.EditPlanAgentTests.test_deterministic_plan_keeps_clear_non_shot_defense_clip services.editing.tests.test_gpt_reranker.GPTHighlightRerankerTests.test_quality_filter_excludes_weak_generic_non_shot_candidates_before_gpt services.editing.tests.test_editing_service.EditingServiceTests.test_create_edit_job_gpt_disabled_drops_weak_generic_fallback_candidate -v
+PYTHONPATH=ios/backend:services/editing /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest services.editing.tests.test_gpt_reranker ios.backend.tests.test_edit_plan_agent services.editing.tests.test_editing_service -v
+PYTHONPATH=ios/backend /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest discover ios/backend/tests -v
+PYTHONPATH=ios/backend:services/editing /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest discover services/editing/tests -v
+git diff --check
+```
+
+Results:
+
+- Python compile: passed.
+- New deterministic fallback focused checks: 4 tests passed.
+- GPT reranker + edit-plan + editing-service combined suite: 104 tests passed.
+- iOS backend Python discovery: 62 tests passed.
+- Services editing discovery: 62 tests passed.
+- `git diff --check`: passed.
+- Added regressions for weak generic filler rejection when GPT is disabled, clear non-shot defense preservation, GPT preflight exclusion of weak generic non-shot candidates, and compact agent context ranking by shot-aware quality.
 
 ## Launch Recommendations
 
