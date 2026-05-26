@@ -545,6 +545,23 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertEqual(plan.clips[0].caption, "GOOD LOOK")
         self.assertNotEqual(plan.clips[0].caption, "BUCKET")
 
+    def test_native_shot_signals_do_not_treat_ambiguous_finish_labels_as_made(self) -> None:
+        for label in ("Layup", "Tough Finish"):
+            with self.subTest(label=label):
+                request = CreateEditJobRequest(
+                    **_request_payload(
+                        targetDurationSeconds=15,
+                        clips=[_clip("ambiguous_finish", 12.0, label, 0.86)],
+                    )
+                )
+
+                signals = native_shot_signals_for_clip(request.clips[0])
+
+                self.assertTrue(signals.isShotLike)
+                self.assertTrue(signals.timingWindowOk)
+                self.assertEqual(signals.outcome, "uncertain")
+                self.assertEqual(signals.outcomeConfidence, 0.0)
+
     def test_deterministic_plan_trusts_native_uncertain_outcome_over_provider_made_label(self) -> None:
         request = CreateEditJobRequest(
             **_request_payload(

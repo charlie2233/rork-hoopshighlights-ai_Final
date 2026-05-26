@@ -13,6 +13,7 @@ from app.pipeline import (
     _build_candidate_windows,
     _detect_shot_boundaries,
     _merge_hybrid_detection_clips,
+    _native_shot_signals_for_analysis_clip,
     _normalize_clip_for_analysis_context,
     _shot_context_score_for_window,
     _visual_event_boundaries_from_signals,
@@ -248,6 +249,44 @@ class PipelineQualityTests(unittest.TestCase):
         self.assertEqual(normalized.nativeShotSignals.outcome, "made")
         self.assertGreaterEqual(normalized.nativeShotSignals.setupContextScore, 1.0)
         self.assertGreaterEqual(normalized.nativeShotSignals.outcomeContextScore, 1.0)
+
+    def test_native_outcome_hints_do_not_treat_ambiguous_finishes_as_makes(self) -> None:
+        for label in ("Layup", "Tough Finish"):
+            with self.subTest(label=label):
+                clip = _clip(
+                    start=8.0,
+                    end=12.5,
+                    label=label,
+                    combined=0.86,
+                    confidence=0.9,
+                    event_center=10.0,
+                    auto_keep=True,
+                )
+
+                signals = _native_shot_signals_for_analysis_clip(clip)
+
+                self.assertTrue(signals.isShotLike)
+                self.assertTrue(signals.timingWindowOk)
+                self.assertEqual(signals.outcome, "uncertain")
+                self.assertEqual(signals.outcomeConfidence, 0.0)
+
+    def test_native_outcome_hints_keep_explicit_made_labels(self) -> None:
+        for label in ("Made Layup", "Bucket", "Basket", "Dunk"):
+            with self.subTest(label=label):
+                clip = _clip(
+                    start=8.0,
+                    end=12.5,
+                    label=label,
+                    combined=0.86,
+                    confidence=0.9,
+                    event_center=10.0,
+                    auto_keep=True,
+                )
+
+                signals = _native_shot_signals_for_analysis_clip(clip)
+
+                self.assertEqual(signals.outcome, "made")
+                self.assertGreaterEqual(signals.outcomeConfidence, 0.8)
 
     def test_shot_context_score_rewards_setup_and_outcome_around_boundary(self) -> None:
         complete_score, event_time = _shot_context_score_for_window(
