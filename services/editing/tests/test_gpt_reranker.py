@@ -73,6 +73,11 @@ def _shot_result_evidence(**overrides) -> dict:
         "releaseToRimContinuity": "continuous",
         "rimResultEvidence": "made_visible",
         "outcomeConfidence": 0.92,
+        "rimEntrySequence": "visible_entry",
+        "ballApproachFrameRole": "eventCenter",
+        "rimEntryFrameRole": "finish",
+        "ballBelowRimOrNetFrameRole": "finish",
+        "rimEntrySequenceConfidence": 0.92,
         "reason": "Ball flight and rim result are visible.",
     }
     payload.update(overrides)
@@ -81,14 +86,14 @@ def _shot_result_evidence(**overrides) -> dict:
 
 def _shot_tracking_evidence(**overrides) -> dict:
     payload = {
-        "ballVisibleFrameRoles": ["release", "shotArcEarly", "rim"],
-        "rimVisibleFrameRoles": ["rim", "postOutcome"],
-        "releaseFrameRole": "release",
-        "resultFrameRole": "rim",
-        "ballEntersRimFrameRole": "rim",
+        "ballVisibleFrameRoles": ["eventCenter", "finish"],
+        "rimVisibleFrameRoles": ["finish"],
+        "releaseFrameRole": "eventCenter",
+        "resultFrameRole": "finish",
+        "ballEntersRimFrameRole": "finish",
         "netOrRimReactionVisible": True,
         "trajectoryContinuity": "continuous",
-        "reason": "Release, ball flight, and rim entry are visible in sampled frames.",
+        "reason": "Shot action and rim result are visible in sampled frames.",
     }
     payload.update(overrides)
     return payload
@@ -182,7 +187,7 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertEqual(compact_clip["nativeShotSignals"]["outcomeContextScore"], 1.0)
         self.assertEqual(
             shot_rules["requiredShotContextKeyframes"],
-            ["outcome", "postOutcome", "preEvent", "release", "rim", "shotArcEarly", "shotArcLate"],
+            ["belowRim", "preEvent", "release", "rimApproach", "rimEntry", "shotArcEarly", "shotArcLate"],
         )
         self.assertIn("qualitySignals", decision_properties)
         self.assertIn("qualitySignals", decision_schema["required"])
@@ -197,6 +202,11 @@ class GPTHighlightRerankerTests(unittest.TestCase):
             result_evidence["properties"]["rimResultEvidence"]["enum"],
             ["made_visible", "clear_miss", "blocked", "unclear"],
         )
+        self.assertIn("rimEntrySequence", result_evidence["required"])
+        self.assertIn("ballApproachFrameRole", result_evidence["required"])
+        self.assertIn("rimEntryFrameRole", result_evidence["required"])
+        self.assertIn("ballBelowRimOrNetFrameRole", result_evidence["required"])
+        self.assertEqual(result_evidence["properties"]["rimEntrySequence"]["enum"], ["visible_entry", "visible_miss", "blocked", "unclear"])
         self.assertIn("shotTrackingEvidence", decision_properties)
         self.assertIn("shotTrackingEvidence", decision_schema["required"])
         tracking_evidence = decision_properties["shotTrackingEvidence"]
@@ -210,17 +220,24 @@ class GPTHighlightRerankerTests(unittest.TestCase):
                 "eventCenter",
                 "outcome",
                 "shotArcLate",
+                "rimApproach",
                 "rim",
+                "rimEntry",
+                "belowRim",
                 "postOutcome",
                 "finish",
                 "midAction",
             ],
         )
         self.assertTrue(shot_rules["madeShotRequiresFrameRoleTrackingEvidence"])
+        self.assertTrue(shot_rules["madeShotRequiresRimEntrySequenceEvidence"])
         self.assertEqual(shot_rules["requiredMadeShotTracking"]["trajectoryContinuity"], "continuous")
+        self.assertEqual(shot_rules["requiredMadeShotTracking"]["rimEntrySequence"], "visible_entry")
+        self.assertEqual(shot_rules["requiredMadeShotTracking"]["dedicatedRimEntryPathRoles"], ["rimApproach", "rimEntry", "belowRim"])
         self.assertTrue(shot_rules["madeOrMissedShotRequiresVisibleReleaseAndRimResult"])
         self.assertTrue(shot_rules["madeOrMissedShotRequiresVisibleShotArc"])
         self.assertTrue(shot_rules["madeShotRequiresExplicitMadeResultEvidence"])
+        self.assertIn("rimEntrySequence=visible_entry", payload["instructions"])
         self.assertIn("shot-tracker", payload["instructions"])
         self.assertIn("reject clips that start right before the basket", payload["instructions"])
 
@@ -597,7 +614,7 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertIn("eventCenter", [role for role, _ in pro_samples])
         self.assertIn("finish", [role for role, _ in pro_samples])
 
-    def test_pro_sampling_adds_shot_setup_and_outcome_roles(self) -> None:
+    def test_pro_sampling_adds_shot_setup_and_rim_entry_path_roles(self) -> None:
         request = _request()
         clip = request.clips[0]
 
@@ -607,16 +624,17 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertIn("preEvent", roles)
         self.assertIn("release", roles)
         self.assertIn("shotArcEarly", roles)
-        self.assertIn("outcome", roles)
         self.assertIn("shotArcLate", roles)
-        self.assertIn("rim", roles)
-        self.assertIn("postOutcome", roles)
+        self.assertIn("rimApproach", roles)
+        self.assertIn("rimEntry", roles)
+        self.assertIn("belowRim", roles)
         self.assertLess(dict(pro_samples)["preEvent"], clip.eventCenter)
         self.assertLess(dict(pro_samples)["release"], clip.eventCenter)
         self.assertGreater(dict(pro_samples)["shotArcEarly"], clip.eventCenter)
-        self.assertGreater(dict(pro_samples)["outcome"], clip.eventCenter)
-        self.assertGreater(dict(pro_samples)["shotArcLate"], dict(pro_samples)["outcome"])
-        self.assertGreater(dict(pro_samples)["postOutcome"], dict(pro_samples)["rim"])
+        self.assertGreater(dict(pro_samples)["shotArcLate"], dict(pro_samples)["shotArcEarly"])
+        self.assertGreater(dict(pro_samples)["rimApproach"], dict(pro_samples)["shotArcLate"])
+        self.assertGreater(dict(pro_samples)["rimEntry"], dict(pro_samples)["rimApproach"])
+        self.assertGreater(dict(pro_samples)["belowRim"], dict(pro_samples)["rimEntry"])
         sample_times = [second for _, second in pro_samples]
         self.assertEqual(sample_times, sorted(sample_times))
 
@@ -746,7 +764,13 @@ class GPTHighlightRerankerTests(unittest.TestCase):
                                 "storyRole": "peak",
                                 "qualitySignals": _quality_signals(),
                                 "shotResultEvidence": _shot_result_evidence(),
-                                "shotTrackingEvidence": _shot_tracking_evidence(),
+                                "shotTrackingEvidence": _shot_tracking_evidence(
+                                    ballVisibleFrameRoles=["eventCenter", "finish"],
+                                    rimVisibleFrameRoles=["finish"],
+                                    releaseFrameRole="eventCenter",
+                                    resultFrameRole="finish",
+                                    ballEntersRimFrameRole="finish",
+                                ),
                                 "suggestedEdit": {
                                     "slowMotion": False,
                                     "slowMotionCenter": None,
@@ -781,6 +805,334 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertEqual(result.gptRerankSummary.status, "applied")
         self.assertEqual(result.gptRerankSummary.keptClipIds, ["c0"])
         self.assertIn("c1", result.gptRerankSummary.rejectedClipIds)
+
+    def test_gpt_decision_citing_unsampled_frame_roles_is_rejected(self) -> None:
+        settings = GPTHighlightRerankerSettings(
+            enabled=True,
+            api_key="unit-test-key",
+            model="gpt-test",
+            endpoint="https://api.openai.test/v1/responses",
+            timeout_seconds=1.0,
+            max_output_tokens=512,
+            free_max_clips=1,
+            paid_max_clips=24,
+            free_frames_per_clip=3,
+            paid_frames_per_clip=5,
+            frame_width=512,
+            jpeg_quality=5,
+            max_image_bytes=180_000,
+            image_detail="low",
+        )
+        original_extract = gpt_reranker._extract_candidate_keyframes
+
+        def fake_extract(source_path, clips, frames_per_clip, rerank_settings):
+            clip = clips[0]
+            return [
+                SampledFrame(clip_id=clip.id, role="start", time_seconds=clip.start, data_url="data:image/jpeg;base64,ZmFrZQ=="),
+                SampledFrame(clip_id=clip.id, role="eventCenter", time_seconds=clip.eventCenter, data_url="data:image/jpeg;base64,ZmFrZQ=="),
+                SampledFrame(clip_id=clip.id, role="finish", time_seconds=clip.end - 0.05, data_url="data:image/jpeg;base64,ZmFrZQ=="),
+            ]
+
+        def fake_response_client(payload, api_key, endpoint, timeout_seconds):
+            return {
+                "output_text": json.dumps(
+                    {
+                        "decisions": [
+                            {
+                                "clipId": "c0",
+                                "keep": True,
+                                "rejectReason": None,
+                                "highlightScore": 0.91,
+                                "watchabilityScore": 0.87,
+                                "basketballEvent": "Made Shot",
+                                "outcome": "made",
+                                "caption": "BUCKET",
+                                "reason": "Claims rim proof that was not actually sampled.",
+                                "storyRole": "peak",
+                                "qualitySignals": _quality_signals(),
+                                "shotResultEvidence": _shot_result_evidence(
+                                    ballApproachFrameRole="rimApproach",
+                                    rimEntryFrameRole="rimEntry",
+                                    ballBelowRimOrNetFrameRole="belowRim",
+                                ),
+                                "shotTrackingEvidence": _shot_tracking_evidence(
+                                    ballVisibleFrameRoles=["release", "shotArcEarly", "rim"],
+                                    rimVisibleFrameRoles=["rim", "postOutcome"],
+                                    releaseFrameRole="release",
+                                    resultFrameRole="rim",
+                                    ballEntersRimFrameRole="rim",
+                                ),
+                                "suggestedEdit": {
+                                    "slowMotion": False,
+                                    "slowMotionCenter": None,
+                                    "captionMoment": None,
+                                    "cropFocus": "rim",
+                                    "extendBeforeSeconds": 0,
+                                    "extendAfterSeconds": 0,
+                                },
+                            }
+                        ],
+                        "storyOrder": ["c0"],
+                        "summary": "ok",
+                    }
+                )
+            }
+
+        try:
+            gpt_reranker._extract_candidate_keyframes = fake_extract
+            with tempfile.NamedTemporaryFile(suffix=".mp4") as source:
+                result = gpt_reranker.rerank_edit_request_with_gpt(_request("free", 1), Path(source.name), settings, fake_response_client)
+        finally:
+            gpt_reranker._extract_candidate_keyframes = original_extract
+
+        self.assertEqual(result.gptRerankSummary.status, "applied")
+        self.assertEqual(result.gptRerankSummary.keptClipIds, [])
+        self.assertEqual(result.gptRerankSummary.fallbackReason, "all_clips_rejected")
+        self.assertEqual(result.gptRerankSummary.rejectedReasonCounts.get("gpt_cited_unsampled_frame_role"), 1)
+
+    def test_gpt_decision_must_use_rich_sampled_shot_roles_when_available(self) -> None:
+        settings = GPTHighlightRerankerSettings(
+            enabled=True,
+            api_key="unit-test-key",
+            model="gpt-test",
+            endpoint="https://api.openai.test/v1/responses",
+            timeout_seconds=1.0,
+            max_output_tokens=512,
+            free_max_clips=1,
+            paid_max_clips=24,
+            free_frames_per_clip=10,
+            paid_frames_per_clip=10,
+            frame_width=512,
+            jpeg_quality=5,
+            max_image_bytes=180_000,
+            image_detail="low",
+        )
+        original_extract = gpt_reranker._extract_candidate_keyframes
+
+        def fake_extract(source_path, clips, frames_per_clip, rerank_settings):
+            clip = clips[0]
+            return [
+                SampledFrame(clip_id=clip.id, role=role, time_seconds=second, data_url="data:image/jpeg;base64,ZmFrZQ==")
+                for role, second in gpt_reranker._sample_times_for_clip(clip, frames_per_clip)
+            ]
+
+        def fake_response_client(payload, api_key, endpoint, timeout_seconds):
+            compact_input = json.loads(payload["input"][0]["content"][0]["text"])
+            self.assertTrue(compact_input["shotTrackerRules"]["mustUseRichSampledShotRolesWhenPresent"])
+            return {
+                "output_text": json.dumps(
+                    {
+                        "decisions": [
+                            {
+                                "clipId": "c0",
+                                "keep": True,
+                                "rejectReason": None,
+                                "highlightScore": 0.91,
+                                "watchabilityScore": 0.87,
+                                "basketballEvent": "Made Shot",
+                                "outcome": "made",
+                                "caption": "BUCKET",
+                                "reason": "Claims a made shot but ignores the sampled release/rim roles.",
+                                "storyRole": "peak",
+                                "qualitySignals": _quality_signals(),
+                                "shotResultEvidence": _shot_result_evidence(
+                                    ballApproachFrameRole="rimApproach",
+                                    rimEntryFrameRole="rimEntry",
+                                    ballBelowRimOrNetFrameRole="belowRim",
+                                ),
+                                "shotTrackingEvidence": _shot_tracking_evidence(),
+                                "suggestedEdit": {
+                                    "slowMotion": False,
+                                    "slowMotionCenter": None,
+                                    "captionMoment": None,
+                                    "cropFocus": "rim",
+                                    "extendBeforeSeconds": 0,
+                                    "extendAfterSeconds": 0,
+                                },
+                            }
+                        ],
+                        "storyOrder": ["c0"],
+                        "summary": "ok",
+                    }
+                )
+            }
+
+        try:
+            gpt_reranker._extract_candidate_keyframes = fake_extract
+            with tempfile.NamedTemporaryFile(suffix=".mp4") as source:
+                result = gpt_reranker.rerank_edit_request_with_gpt(_request("free", 1), Path(source.name), settings, fake_response_client)
+        finally:
+            gpt_reranker._extract_candidate_keyframes = original_extract
+
+        self.assertEqual(result.gptRerankSummary.status, "applied")
+        self.assertEqual(result.gptRerankSummary.keptClipIds, [])
+        self.assertEqual(result.gptRerankSummary.fallbackReason, "all_clips_rejected")
+        self.assertEqual(result.gptRerankSummary.rejectedReasonCounts.get("gpt_ignored_sampled_release_frame"), 1)
+
+    def test_gpt_decision_must_use_sampled_rim_entry_path_roles_when_available(self) -> None:
+        settings = GPTHighlightRerankerSettings(
+            enabled=True,
+            api_key="unit-test-key",
+            model="gpt-test",
+            endpoint="https://api.openai.test/v1/responses",
+            timeout_seconds=1.0,
+            max_output_tokens=512,
+            free_max_clips=1,
+            paid_max_clips=24,
+            free_frames_per_clip=10,
+            paid_frames_per_clip=10,
+            frame_width=512,
+            jpeg_quality=5,
+            max_image_bytes=180_000,
+            image_detail="low",
+        )
+        original_extract = gpt_reranker._extract_candidate_keyframes
+
+        def fake_extract(source_path, clips, frames_per_clip, rerank_settings):
+            clip = clips[0]
+            return [
+                SampledFrame(clip_id=clip.id, role=role, time_seconds=second, data_url="data:image/jpeg;base64,ZmFrZQ==")
+                for role, second in gpt_reranker._sample_times_for_clip(clip, frames_per_clip)
+            ]
+
+        def fake_response_client(payload, api_key, endpoint, timeout_seconds):
+            compact_input = json.loads(payload["input"][0]["content"][0]["text"])
+            self.assertEqual(compact_input["shotTrackerRules"]["requiredMadeShotTracking"]["dedicatedRimEntryPathRoles"], ["rimApproach", "rimEntry", "belowRim"])
+            return {
+                "output_text": json.dumps(
+                    {
+                        "decisions": [
+                            {
+                                "clipId": "c0",
+                                "keep": True,
+                                "rejectReason": None,
+                                "highlightScore": 0.91,
+                                "watchabilityScore": 0.87,
+                                "basketballEvent": "Made Shot",
+                                "outcome": "made",
+                                "caption": "BUCKET",
+                                "reason": "Claims the make but ignores the sampled rim-entry frame.",
+                                "storyRole": "peak",
+                                "qualitySignals": _quality_signals(),
+                                "shotResultEvidence": _shot_result_evidence(
+                                    ballApproachFrameRole="rimApproach",
+                                    rimEntryFrameRole="finish",
+                                    ballBelowRimOrNetFrameRole="belowRim",
+                                ),
+                                "shotTrackingEvidence": _shot_tracking_evidence(
+                                    ballVisibleFrameRoles=["release", "shotArcLate", "rimApproach", "rimEntry", "belowRim"],
+                                    rimVisibleFrameRoles=["rimEntry", "belowRim"],
+                                    releaseFrameRole="release",
+                                    resultFrameRole="rimEntry",
+                                    ballEntersRimFrameRole="rimEntry",
+                                ),
+                                "suggestedEdit": {
+                                    "slowMotion": False,
+                                    "slowMotionCenter": None,
+                                    "captionMoment": None,
+                                    "cropFocus": "rim",
+                                    "extendBeforeSeconds": 0,
+                                    "extendAfterSeconds": 0,
+                                },
+                            }
+                        ],
+                        "storyOrder": ["c0"],
+                        "summary": "ok",
+                    }
+                )
+            }
+
+        try:
+            gpt_reranker._extract_candidate_keyframes = fake_extract
+            with tempfile.NamedTemporaryFile(suffix=".mp4") as source:
+                result = gpt_reranker.rerank_edit_request_with_gpt(_request("free", 1), Path(source.name), settings, fake_response_client)
+        finally:
+            gpt_reranker._extract_candidate_keyframes = original_extract
+
+        self.assertEqual(result.gptRerankSummary.status, "applied")
+        self.assertEqual(result.gptRerankSummary.keptClipIds, [])
+        self.assertEqual(result.gptRerankSummary.fallbackReason, "all_clips_rejected")
+        self.assertEqual(result.gptRerankSummary.rejectedReasonCounts.get("gpt_ignored_sampled_rim_entry_frame"), 1)
+
+    def test_gpt_decision_without_rim_entry_sequence_is_rejected(self) -> None:
+        settings = GPTHighlightRerankerSettings(
+            enabled=True,
+            api_key="unit-test-key",
+            model="gpt-test",
+            endpoint="https://api.openai.test/v1/responses",
+            timeout_seconds=1.0,
+            max_output_tokens=512,
+            free_max_clips=1,
+            paid_max_clips=24,
+            free_frames_per_clip=3,
+            paid_frames_per_clip=5,
+            frame_width=512,
+            jpeg_quality=5,
+            max_image_bytes=180_000,
+            image_detail="low",
+        )
+        original_extract = gpt_reranker._extract_candidate_keyframes
+
+        def fake_extract(source_path, clips, frames_per_clip, rerank_settings):
+            clip = clips[0]
+            return [
+                SampledFrame(clip_id=clip.id, role="start", time_seconds=clip.start, data_url="data:image/jpeg;base64,ZmFrZQ=="),
+                SampledFrame(clip_id=clip.id, role="eventCenter", time_seconds=clip.eventCenter, data_url="data:image/jpeg;base64,ZmFrZQ=="),
+                SampledFrame(clip_id=clip.id, role="finish", time_seconds=clip.end - 0.05, data_url="data:image/jpeg;base64,ZmFrZQ=="),
+            ]
+
+        def fake_response_client(payload, api_key, endpoint, timeout_seconds):
+            return {
+                "output_text": json.dumps(
+                    {
+                        "decisions": [
+                            {
+                                "clipId": "c0",
+                                "keep": True,
+                                "rejectReason": None,
+                                "highlightScore": 0.91,
+                                "watchabilityScore": 0.87,
+                                "basketballEvent": "Made Shot",
+                                "outcome": "made",
+                                "caption": "BUCKET",
+                                "reason": "Claims a made shot without an entry sequence.",
+                                "storyRole": "peak",
+                                "qualitySignals": _quality_signals(),
+                                "shotResultEvidence": _shot_result_evidence(
+                                    rimEntrySequence="unclear",
+                                    ballApproachFrameRole=None,
+                                    rimEntryFrameRole=None,
+                                    ballBelowRimOrNetFrameRole=None,
+                                    rimEntrySequenceConfidence=0.25,
+                                ),
+                                "shotTrackingEvidence": _shot_tracking_evidence(),
+                                "suggestedEdit": {
+                                    "slowMotion": False,
+                                    "slowMotionCenter": None,
+                                    "captionMoment": None,
+                                    "cropFocus": "rim",
+                                    "extendBeforeSeconds": 0,
+                                    "extendAfterSeconds": 0,
+                                },
+                            }
+                        ],
+                        "storyOrder": ["c0"],
+                        "summary": "ok",
+                    }
+                )
+            }
+
+        try:
+            gpt_reranker._extract_candidate_keyframes = fake_extract
+            with tempfile.NamedTemporaryFile(suffix=".mp4") as source:
+                result = gpt_reranker.rerank_edit_request_with_gpt(_request("free", 1), Path(source.name), settings, fake_response_client)
+        finally:
+            gpt_reranker._extract_candidate_keyframes = original_extract
+
+        self.assertEqual(result.gptRerankSummary.status, "applied")
+        self.assertEqual(result.gptRerankSummary.keptClipIds, [])
+        self.assertEqual(result.gptRerankSummary.fallbackReason, "all_clips_rejected")
+        self.assertEqual(result.gptRerankSummary.rejectedReasonCounts.get("made_rim_entry_sequence_not_visible"), 1)
 
     def test_shot_candidates_require_setup_and_outcome_keyframes_before_openai_call(self) -> None:
         settings = GPTHighlightRerankerSettings(
@@ -891,8 +1243,18 @@ class GPTHighlightRerankerTests(unittest.TestCase):
                                     "fullPlayContext": True,
                                     "reason": "Complete shot context.",
                                 },
-                                "shotResultEvidence": _shot_result_evidence(),
-                                "shotTrackingEvidence": _shot_tracking_evidence(),
+                                "shotResultEvidence": _shot_result_evidence(
+                                    ballApproachFrameRole="release",
+                                    rimEntryFrameRole="rim",
+                                    ballBelowRimOrNetFrameRole="postOutcome",
+                                ),
+                                "shotTrackingEvidence": _shot_tracking_evidence(
+                                    ballVisibleFrameRoles=["release", "outcome", "rim"],
+                                    rimVisibleFrameRoles=["rim", "postOutcome"],
+                                    releaseFrameRole="release",
+                                    resultFrameRole="rim",
+                                    ballEntersRimFrameRole="rim",
+                                ),
                                 "suggestedEdit": {
                                     "slowMotion": False,
                                     "slowMotionCenter": None,
@@ -1385,6 +1747,22 @@ class GPTHighlightRerankerTests(unittest.TestCase):
             return frames
 
         def fake_response_client(payload, api_key, endpoint, timeout_seconds):
+            compact_input = json.loads(payload["input"][0]["content"][0]["text"])
+            required_roles = set(compact_input["shotTrackerRules"]["requiredShotContextKeyframes"])
+            result_evidence = _shot_result_evidence()
+            tracking_evidence = _shot_tracking_evidence()
+            if "outcome" in required_roles:
+                result_evidence = _shot_result_evidence(
+                    ballApproachFrameRole="eventCenter",
+                    rimEntryFrameRole="outcome",
+                    ballBelowRimOrNetFrameRole="outcome",
+                )
+                tracking_evidence = _shot_tracking_evidence(
+                    ballVisibleFrameRoles=["eventCenter", "outcome", "finish"],
+                    rimVisibleFrameRoles=["outcome"],
+                    resultFrameRole="outcome",
+                    ballEntersRimFrameRole="outcome",
+                )
             decisions = [
                 {
                     "clipId": clip_id,
@@ -1398,8 +1776,8 @@ class GPTHighlightRerankerTests(unittest.TestCase):
                     "reason": "Clear outcome.",
                     "storyRole": "filler",
                     "qualitySignals": _quality_signals(),
-                    "shotResultEvidence": _shot_result_evidence(),
-                    "shotTrackingEvidence": _shot_tracking_evidence(),
+                    "shotResultEvidence": result_evidence,
+                    "shotTrackingEvidence": tracking_evidence,
                     "suggestedEdit": {
                         "slowMotion": False,
                         "slowMotionCenter": None,

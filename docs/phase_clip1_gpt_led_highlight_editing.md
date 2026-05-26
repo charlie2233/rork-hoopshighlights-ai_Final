@@ -79,7 +79,7 @@ Revision commands such as More Hype, NBA Style, and Shorter can use GPT-produced
 ## Feature Flags
 
 - `HOOPS_AI_CLIP_GPT_EDITOR_ENABLED`: enables GPT-led clip selection.
-- `HOOPS_AI_CLIP_GPT_KEYFRAMES_PER_CLIP`: shared sampled-keyframe cap, clamped to `3...8`.
+- `HOOPS_AI_CLIP_GPT_KEYFRAMES_PER_CLIP`: shared sampled-keyframe cap, clamped to `3...10`.
 - `HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_FREE`: Free candidate cap, clamped to `1...8`.
 - `HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_PRO`: Pro/internal candidate cap, clamped to `20...30`.
 - `HOOPS_AI_CLIP_GPT_PLAN_EDIT_ENABLED`: applies GPT `planEdit` directives after validation.
@@ -91,8 +91,8 @@ Legacy `HOOPS_GPT_HIGHLIGHT_RERANKER_ENABLED` remains mapped for backward compat
 
 Cost is intentionally not the primary constraint for this phase, but the rollout remains bounded by tier caps:
 
-- Free: up to 8 candidate clips and 3 keyframes per clip.
-- Pro/internal: 20 to 30 candidate clips and 5 to 8 keyframes per clip.
+- Free: up to 8 candidate clips and up to 10 keyframes per clip in quality-beta mode.
+- Pro/internal: 20 to 30 candidate clips and up to 10 keyframes per clip in quality-beta mode.
 - JPEG keyframes are resized and capped by byte size before upload to the model.
 - Requests use `store=false`.
 - OpenAI key is required only when GPT editing is enabled.

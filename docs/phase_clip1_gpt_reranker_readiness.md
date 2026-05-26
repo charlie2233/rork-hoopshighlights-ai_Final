@@ -24,7 +24,7 @@ Two read-only subagents audited the backend reranker contract and the EditPlan/A
 
 - Existing candidate clips only: `rerank_edit_request_with_gpt` samples from `rank_clips(request.clips)[:max_clips]`.
 - No full videos to GPT: FFmpeg extracts JPEG keyframes from candidate windows; the OpenAI payload includes compact JSON plus `data:image/jpeg;base64,...` images.
-- Sampling caps: Free remains top 8 clips with 3 frames each; Pro/internal remains 20 to 30 clips with 5 to 8 frames each.
+- Sampling caps: Free remains top 8 clips and Pro/internal remains 20 to 30 clips; quality-beta configs can sample up to 10 frames each.
 - Structured output: the Responses payload uses `text.format.type = "json_schema"` with `strict = true`.
 - Output schema: `clipId`, `keep`, `highlightScore`, `watchabilityScore`, `basketballEvent`, `outcome`, `caption`, `reason`, and `suggestedEdit` with `slowMotion`, `slowMotionCenter`, `captionMoment`, `cropFocus`, `extendBeforeSeconds`, and `extendAfterSeconds`.
 - Deterministic ownership: GPT can bias ranking, captions, slow-motion hints, crop focus, and source-window hints, but cannot create clips, replace FFmpeg extraction, replace CV tracking, replace rendering, or override exact timestamps.

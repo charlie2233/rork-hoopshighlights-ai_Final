@@ -41,7 +41,7 @@ from app.editing import (  # noqa: E402
 ResponseClient = Callable[[Dict[str, Any], str, str, float], Dict[str, Any]]
 ALLOWED_IMAGE_DETAIL_LEVELS = {"low", "high", "original", "auto"}
 REQUIRED_KEYFRAME_ROLES = {"start", "eventCenter", "finish"}
-SHOT_CONTEXT_KEYFRAME_ROLES = ("preEvent", "release", "shotArcEarly", "outcome", "shotArcLate", "rim", "postOutcome")
+SHOT_CONTEXT_KEYFRAME_ROLES = ("preEvent", "release", "shotArcEarly", "shotArcLate", "rimApproach", "rimEntry", "belowRim")
 MIN_GPT_CANDIDATE_LEAD_IN_SECONDS = 1.2
 MIN_GPT_CANDIDATE_FOLLOW_THROUGH_SECONDS = 0.75
 MIN_GPT_SHOT_LIKE_CANDIDATE_SECONDS = 3.0
@@ -202,6 +202,7 @@ def rerank_edit_request_with_gpt(
         sampled_frame_count=len(sampled_frames),
         story_order=story_order,
         plan_edit=plan_edit,
+        sampled_frame_roles_by_clip=_sampled_frame_roles_by_clip(sampled_frames),
     )
 
 
@@ -469,6 +470,15 @@ def _missing_shot_context_keyframes(
     }
 
 
+def _sampled_frame_roles_by_clip(frames: Sequence[SampledFrame]) -> Dict[str, List[str]]:
+    roles_by_clip_id: Dict[str, List[str]] = {}
+    for frame in frames:
+        roles = roles_by_clip_id.setdefault(frame.clip_id, [])
+        if frame.role not in roles:
+            roles.append(frame.role)
+    return roles_by_clip_id
+
+
 def _sample_times_for_clip(clip: EditCandidateClip, frames_per_clip: int) -> List[tuple[str, float]]:
     finish = max(clip.start, clip.end - 0.05)
     base = [("start", clip.start), ("eventCenter", clip.eventCenter), ("finish", finish)]
@@ -480,8 +490,11 @@ def _sample_times_for_clip(clip: EditCandidateClip, frames_per_clip: int) -> Lis
     release_second = max(clip.start, clip.eventCenter - 0.35)
     shot_arc_early_second = min(finish, clip.eventCenter + 0.2)
     outcome_second = min(finish, clip.eventCenter + 0.55)
-    shot_arc_late_second = min(finish, clip.eventCenter + 0.8)
+    shot_arc_late_second = min(finish, clip.eventCenter + 0.72)
+    rim_approach_second = min(finish, clip.eventCenter + 0.9)
     rim_second = min(finish, clip.eventCenter + 0.95)
+    rim_entry_second = min(finish, clip.eventCenter + 1.05)
+    below_rim_second = min(finish, clip.eventCenter + 1.2)
     post_outcome_second = min(finish, clip.eventCenter + 1.35)
     mid_action_second = clip.start + ((finish - clip.start) * 0.45)
     if frames_per_clip >= 10:
@@ -489,10 +502,10 @@ def _sample_times_for_clip(clip: EditCandidateClip, frames_per_clip: int) -> Lis
             ("preEvent", setup_second),
             ("release", release_second),
             ("shotArcEarly", shot_arc_early_second),
-            ("outcome", outcome_second),
             ("shotArcLate", shot_arc_late_second),
-            ("rim", rim_second),
-            ("postOutcome", post_outcome_second),
+            ("rimApproach", rim_approach_second),
+            ("rimEntry", rim_entry_second),
+            ("belowRim", below_rim_second),
         ]
     elif frames_per_clip >= 9:
         candidates = [
@@ -651,13 +664,30 @@ def _build_openai_payload(
                         "madeOrMissedShotRequiresVisibleShotArc": True,
                         "madeShotRequiresExplicitMadeResultEvidence": True,
                         "madeShotRequiresFrameRoleTrackingEvidence": True,
+                        "madeShotRequiresRimEntrySequenceEvidence": True,
+                        "mustUseRichSampledShotRolesWhenPresent": True,
                         "doNotKeepIfOutcomeIsOnlyImplied": True,
                         "requiredMadeShotTracking": {
                             "releaseFrameRole": ["preEvent", "release", "eventCenter"],
-                            "resultFrameRole": ["outcome", "shotArcLate", "rim", "postOutcome", "finish"],
-                            "ballEntersRimFrameRole": ["outcome", "shotArcLate", "rim", "postOutcome", "finish"],
+                            "resultFrameRole": ["outcome", "shotArcLate", "rimApproach", "rim", "rimEntry", "belowRim", "postOutcome", "finish"],
+                            "ballEntersRimFrameRole": ["outcome", "shotArcLate", "rim", "rimEntry", "finish"],
                             "minimumBallVisibleFrameRoles": 2,
                             "trajectoryContinuity": "continuous",
+                            "rimEntrySequence": "visible_entry",
+                            "ballApproachFrameRole": ["release", "shotArcEarly", "eventCenter", "shotArcLate", "rimApproach"],
+                            "rimEntryFrameRole": ["outcome", "shotArcLate", "rim", "rimEntry", "finish"],
+                            "ballBelowRimOrNetFrameRole": ["belowRim", "postOutcome", "finish"],
+                            "minimumRimEntrySequenceConfidence": 0.72,
+                            "dedicatedRimEntryPathRoles": ["rimApproach", "rimEntry", "belowRim"],
+                        },
+                        "richSampledShotRoleRules": {
+                            "ifReleaseRoleIsSampledUseReleaseAsReleaseFrameRole": True,
+                            "ifArcRolesAreSampledIncludeAtLeastOneArcRoleInBallVisibleFrameRoles": True,
+                            "ifRimOrPostOutcomeIsSampledIncludeOneInRimVisibleFrameRoles": True,
+                            "ifOutcomeRimOrPostOutcomeIsSampledUseOneAsResultFrameRole": True,
+                            "ifRimApproachIsSampledUseItAsBallApproachFrameRole": True,
+                            "ifRimEntryIsSampledUseItAsRimEntryFrameRole": True,
+                            "ifBelowRimIsSampledUseItAsBallBelowRimOrNetFrameRole": True,
                         },
                         "requiredShotContextKeyframes": sorted(_required_shot_context_roles(settings.limits_for(request.planTier)[1])),
                     },
@@ -681,7 +711,10 @@ def _build_openai_payload(
             "Act like a basketball shot-tracker: for made shots, verify visible setup, release, ball path, rim/result, and aftermath. "
             "For made or missed shots, releaseVisible, shotArcVisible, and rimResultVisible must all be true; do not infer a make from a label or late rim-only aftermath. "
             "A made outcome requires shotResultEvidence.rimResultEvidence=made_visible with confident visible rim/net proof; use unclear if the result is guessed. "
+            "A made outcome also requires shotResultEvidence.rimEntrySequence=visible_entry with approach, rim-entry, and below-rim/net frame roles. "
+            "When rimApproach, rimEntry, and belowRim frames are sampled, use those dedicated roles for the made-basket entry path. "
             "A made outcome also requires shotTrackingEvidence with release/result frame roles, ball-visible frame roles, continuous trajectory, and a frame or visible net/rim reaction proving entry. "
+            "When sampled roles include release, shot-arc, rim, or post-outcome frames, cite those specific rich roles instead of generic eventCenter/finish proof. "
             "reject clips that start right before the basket, clips shorter than the supplied quality minimum, or clips where the outcome is only implied. "
             "Honor userEditIntent only when it is compatible with the supplied template, plan tier, candidate clips, and safety constraints. "
             "Use only supplied candidate clip IDs and sampled keyframes. Do not replace FFmpeg extraction, CV tracking, rendering, or exact timestamps. "
@@ -756,7 +789,10 @@ def _response_schema() -> Dict[str, Any]:
         "eventCenter",
         "outcome",
         "shotArcLate",
+        "rimApproach",
         "rim",
+        "rimEntry",
+        "belowRim",
         "postOutcome",
         "finish",
         "midAction",
@@ -799,9 +835,24 @@ def _response_schema() -> Dict[str, Any]:
             "releaseToRimContinuity": {"type": "string", "enum": ["continuous", "partial", "missing"]},
             "rimResultEvidence": {"type": "string", "enum": ["made_visible", "clear_miss", "blocked", "unclear"]},
             "outcomeConfidence": {"type": "number", "minimum": 0, "maximum": 1},
+            "rimEntrySequence": {"type": "string", "enum": ["visible_entry", "visible_miss", "blocked", "unclear"]},
+            "ballApproachFrameRole": frame_role_or_null,
+            "rimEntryFrameRole": frame_role_or_null,
+            "ballBelowRimOrNetFrameRole": frame_role_or_null,
+            "rimEntrySequenceConfidence": {"type": "number", "minimum": 0, "maximum": 1},
             "reason": {"type": "string", "maxLength": 160},
         },
-        "required": ["releaseToRimContinuity", "rimResultEvidence", "outcomeConfidence", "reason"],
+        "required": [
+            "releaseToRimContinuity",
+            "rimResultEvidence",
+            "outcomeConfidence",
+            "rimEntrySequence",
+            "ballApproachFrameRole",
+            "rimEntryFrameRole",
+            "ballBelowRimOrNetFrameRole",
+            "rimEntrySequenceConfidence",
+            "reason",
+        ],
     }
     shot_tracking_evidence = {
         "type": "object",
