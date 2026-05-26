@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 from app.config import Settings
 from app.main import create_app
 from app.models import CloudAnalysisResult, CloudClip, CloudDiagnostics, TeamOption
-from app.team_quick_scan import QuickScanFrame, apply_team_quick_scan
+from app.team_quick_scan import QuickScanFrame, _extract_quick_scan_frames, apply_team_quick_scan
 
 
 def _settings(**overrides):
@@ -29,6 +29,8 @@ def _settings(**overrides):
         "team_quick_scan_jpeg_quality": 4,
         "team_quick_scan_max_image_bytes": 500_000,
         "team_quick_scan_min_team_confidence": 0.55,
+        "team_quick_scan_max_candidate_clips": 120,
+        "team_quick_scan_max_output_tokens": 6000,
     }
     values.update(overrides)
     return SimpleNamespace(**values)
@@ -198,6 +200,92 @@ class TeamQuickScanTests(unittest.TestCase):
         self.assertEqual(scanned[0].teamAttribution.teamId, "team_dark")
         self.assertEqual(scanned[0].teamAttribution.source, "gpt_frame_review")
         self.assertEqual(scanned[1].teamAttribution.colorLabel, "white")
+
+    def test_payload_can_attribute_expanded_selected_team_candidate_pool(self) -> None:
+        clips = [
+            _clip("Steal" if index == 74 else "Made Shot", index * 4.0, (index * 4.0) + 3.5, (index * 4.0) + 2.0)
+            for index in range(75)
+        ]
+        frames = [
+            QuickScanFrame(
+                frame_ref=f"clip_{index}_event",
+                role="eventCenter",
+                time_seconds=clip.eventCenter or clip.startTime,
+                data_url=f"data:image/jpeg;base64,{index}",
+                clip_ref=f"clip_{index}",
+            )
+            for index, clip in enumerate(clips)
+        ]
+        captured_payload = {}
+
+        def fake_client(payload, *_args):
+            captured_payload.update(payload)
+            context = json.loads(payload["input"][0]["content"][0]["text"])
+            self.assertEqual(len(context["candidateClips"]), 75)
+            self.assertEqual(context["candidateClips"][-1]["clipRef"], "clip_74")
+            self.assertEqual(payload["text"]["format"]["schema"]["properties"]["clipAttributions"]["maxItems"], 75)
+            self.assertEqual(payload["max_output_tokens"], 6000)
+            return _response(
+                {
+                    "teams": [
+                        {
+                            "teamId": "team_dark",
+                            "label": "Dark jerseys",
+                            "colorLabel": "black",
+                            "primaryColorHex": "#111111",
+                            "confidence": 0.92,
+                            "reason": "Dark jerseys are visible across sampled clips.",
+                        }
+                    ],
+                    "clipAttributions": [
+                        {
+                            "clipRef": "clip_74",
+                            "teamId": "team_dark",
+                            "label": "Dark jerseys",
+                            "colorLabel": "black",
+                            "confidence": 0.88,
+                            "reason": "Defender in black creates the steal.",
+                        }
+                    ],
+                }
+            )
+
+        with tempfile.TemporaryDirectory(prefix="hoopclips-team-scan-expanded-") as temp_dir:
+            source_path = Path(temp_dir) / "source.mp4"
+            source_path.write_bytes(b"video")
+            with patch("app.team_quick_scan._extract_quick_scan_frames", return_value=frames):
+                scanned, teams, applied = apply_team_quick_scan(
+                    source_path,
+                    360.0,
+                    clips,
+                    _settings(team_quick_scan_max_candidate_clips=75),
+                    response_client=fake_client,
+                )
+
+        self.assertTrue(applied)
+        self.assertEqual(teams[0].teamId, "team_dark")
+        self.assertIsNotNone(scanned[74].teamAttribution)
+        self.assertEqual(scanned[74].teamAttribution.teamId, "team_dark")
+        self.assertNotIn("videoUrl", json.dumps(captured_payload))
+
+    def test_frame_extraction_respects_configurable_candidate_limit(self) -> None:
+        clips = [_clip("Highlight", index * 4.0, (index * 4.0) + 3.0, (index * 4.0) + 1.5) for index in range(50)]
+        settings = _settings(
+            team_quick_scan_max_candidate_clips=12,
+            team_quick_scan_video_frame_count=2,
+            team_quick_scan_clip_frames_per_clip=1,
+        )
+
+        with tempfile.TemporaryDirectory(prefix="hoopclips-team-scan-limit-") as temp_dir:
+            source_path = Path(temp_dir) / "source.mp4"
+            source_path.write_bytes(b"video")
+            with patch("app.team_quick_scan._extract_frame_data_url", return_value="data:image/jpeg;base64,frame"):
+                frames = _extract_quick_scan_frames(source_path, 240.0, clips, settings)
+
+        clip_refs = {frame.clip_ref for frame in frames if frame.clip_ref is not None}
+        self.assertIn("clip_11", clip_refs)
+        self.assertNotIn("clip_12", clip_refs)
+        self.assertEqual(len([frame for frame in frames if frame.clip_ref is not None]), 12)
 
     def test_low_confidence_clip_attribution_is_kept_as_uncertain_signal(self) -> None:
         clips = [_clip("Block", 6.0, 10.5, 8.0)]

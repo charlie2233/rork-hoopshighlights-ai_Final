@@ -54,6 +54,8 @@ class Settings:
     team_quick_scan_jpeg_quality: int = 4
     team_quick_scan_max_image_bytes: int = 600_000
     team_quick_scan_min_team_confidence: float = 0.55
+    team_quick_scan_max_candidate_clips: int = 120
+    team_quick_scan_max_output_tokens: int = 6000
 
     @property
     def is_local(self) -> bool:
@@ -246,6 +248,8 @@ def get_settings() -> Settings:
         team_quick_scan_jpeg_quality=_env_int("HOOPS_TEAM_QUICK_SCAN_JPEG_QUALITY", 4, 2, 12),
         team_quick_scan_max_image_bytes=_env_int("HOOPS_TEAM_QUICK_SCAN_MAX_IMAGE_BYTES", 600_000, 40_000, 1_000_000),
         team_quick_scan_min_team_confidence=_env_float("HOOPS_TEAM_QUICK_SCAN_MIN_TEAM_CONFIDENCE", 0.55, 0.0, 0.99),
+        team_quick_scan_max_candidate_clips=_env_int("HOOPS_TEAM_QUICK_SCAN_MAX_CANDIDATE_CLIPS", 120, 1, 120),
+        team_quick_scan_max_output_tokens=_env_int("HOOPS_TEAM_QUICK_SCAN_MAX_OUTPUT_TOKENS", 6000, 512, 12000),
     )
 
     settings.validate()

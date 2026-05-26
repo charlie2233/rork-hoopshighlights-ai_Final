@@ -17,6 +17,7 @@ from .models import ClipTeamAttribution, CloudClip, TeamOption, clamp
 
 ResponseClient = Callable[[Dict[str, Any], str, str, float], Dict[str, Any]]
 TEAM_QUICK_SCAN_CONFIDENT_ATTRIBUTION = 0.85
+TEAM_QUICK_SCAN_MAX_CANDIDATE_CLIPS = 120
 
 
 @dataclass(frozen=True)
@@ -74,6 +75,8 @@ def _build_openai_payload(
     frames: Sequence[QuickScanFrame],
     settings: Settings,
 ) -> Dict[str, Any]:
+    candidate_clip_limit = _max_quick_scan_candidate_clips(settings, len(clips))
+    candidate_clips = list(clips[:candidate_clip_limit])
     context = {
         "task": "Detect basketball teams by jersey color and attribute each candidate clip to the team controlling the highlight moment.",
         "rules": {
@@ -100,7 +103,7 @@ def _build_openai_payload(
                 "audioScore": clip.audioScore,
                 "combinedScore": clip.combinedScore,
             }
-            for index, clip in enumerate(clips)
+            for index, clip in enumerate(candidate_clips)
         ],
     }
     content: list[dict[str, Any]] = [{"type": "input_text", "text": json.dumps(context, separators=(",", ":"))}]
@@ -131,14 +134,15 @@ def _build_openai_payload(
                 "type": "json_schema",
                 "name": "hoopclips_team_quick_scan",
                 "strict": True,
-                "schema": _response_schema(),
+                "schema": _response_schema(candidate_clip_limit),
             }
         },
-        "max_output_tokens": 1800,
+        "max_output_tokens": int(getattr(settings, "team_quick_scan_max_output_tokens", 6000)),
     }
 
 
-def _response_schema() -> Dict[str, Any]:
+def _response_schema(max_clip_attributions: int = 40) -> Dict[str, Any]:
+    max_clip_attributions = max(1, min(int(max_clip_attributions), TEAM_QUICK_SCAN_MAX_CANDIDATE_CLIPS))
     nullable_string = {"anyOf": [{"type": "string", "maxLength": 80}, {"type": "null"}]}
     return {
         "type": "object",
@@ -163,7 +167,7 @@ def _response_schema() -> Dict[str, Any]:
             },
             "clipAttributions": {
                 "type": "array",
-                "maxItems": 40,
+                "maxItems": max_clip_attributions,
                 "items": {
                     "type": "object",
                     "additionalProperties": False,
@@ -249,7 +253,8 @@ def _extract_quick_scan_frames(
             frames.append(QuickScanFrame(frame_ref=f"video_{index}", role="videoContext", time_seconds=time_seconds, data_url=data_url))
 
     frames_per_clip = int(getattr(settings, "team_quick_scan_clip_frames_per_clip", 3))
-    for index, clip in enumerate(clips[:40]):
+    candidate_clip_limit = _max_quick_scan_candidate_clips(settings, len(clips))
+    for index, clip in enumerate(clips[:candidate_clip_limit]):
         for role, time_seconds in _clip_sample_times(clip, frames_per_clip):
             data_url = _extract_frame_data_url(source_path, time_seconds, settings)
             if data_url:
@@ -264,6 +269,14 @@ def _extract_quick_scan_frames(
                     )
                 )
     return frames
+
+
+def _max_quick_scan_candidate_clips(settings: Settings, clip_count: int | None = None) -> int:
+    configured = int(getattr(settings, "team_quick_scan_max_candidate_clips", TEAM_QUICK_SCAN_MAX_CANDIDATE_CLIPS))
+    bounded = max(1, min(configured, TEAM_QUICK_SCAN_MAX_CANDIDATE_CLIPS))
+    if clip_count is None:
+        return bounded
+    return max(1, min(bounded, max(1, int(clip_count))))
 
 
 def _video_sample_times(duration_seconds: float, count: int) -> list[float]:
