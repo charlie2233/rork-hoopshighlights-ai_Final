@@ -41,7 +41,7 @@ from app.editing import (  # noqa: E402
 ResponseClient = Callable[[Dict[str, Any], str, str, float], Dict[str, Any]]
 ALLOWED_IMAGE_DETAIL_LEVELS = {"low", "high", "original", "auto"}
 REQUIRED_KEYFRAME_ROLES = {"start", "eventCenter", "finish"}
-SHOT_CONTEXT_KEYFRAME_ROLES = ("preEvent", "release", "outcome", "rim")
+SHOT_CONTEXT_KEYFRAME_ROLES = ("preEvent", "release", "outcome", "rim", "postOutcome")
 MIN_GPT_CANDIDATE_LEAD_IN_SECONDS = 1.2
 MIN_GPT_CANDIDATE_FOLLOW_THROUGH_SECONDS = 0.75
 MIN_GPT_SHOT_LIKE_CANDIDATE_SECONDS = 3.0
@@ -433,8 +433,10 @@ def _missing_required_keyframes(
 
 
 def _required_shot_context_roles(frames_per_clip: int) -> set[str]:
-    if frames_per_clip >= 7:
+    if frames_per_clip >= 8:
         return set(SHOT_CONTEXT_KEYFRAME_ROLES)
+    if frames_per_clip >= 7:
+        return {"preEvent", "release", "outcome", "rim"}
     if frames_per_clip >= 6:
         return {"preEvent", "release", "outcome"}
     if frames_per_clip >= 5:
@@ -474,12 +476,14 @@ def _sample_times_for_clip(clip: EditCandidateClip, frames_per_clip: int) -> Lis
     release_second = max(clip.start, clip.eventCenter - 0.35)
     outcome_second = min(finish, clip.eventCenter + 0.55)
     rim_second = min(finish, clip.eventCenter + 0.95)
+    post_outcome_second = min(finish, clip.eventCenter + 1.35)
     mid_action_second = clip.start + ((finish - clip.start) * 0.45)
     candidates = [
         ("preEvent", setup_second),
         ("outcome", outcome_second),
         ("release", release_second),
         ("rim", rim_second),
+        ("postOutcome", post_outcome_second),
         ("midAction", mid_action_second),
     ]
     reserved_buckets = {round(second, 1) for _, second in base_samples}

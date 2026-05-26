@@ -150,7 +150,7 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertTrue(compact_clip["qualityHints"]["timingWindowOk"])
         self.assertEqual(compact_clip["nativeShotSignals"]["setupContextScore"], 1.0)
         self.assertEqual(compact_clip["nativeShotSignals"]["outcomeContextScore"], 1.0)
-        self.assertEqual(shot_rules["requiredShotContextKeyframes"], ["outcome", "preEvent", "release", "rim"])
+        self.assertEqual(shot_rules["requiredShotContextKeyframes"], ["outcome", "postOutcome", "preEvent", "release", "rim"])
         self.assertIn("qualitySignals", decision_schema["properties"])
         self.assertIn("qualitySignals", decision_schema["required"])
         self.assertIn("shot-tracker", payload["instructions"])
@@ -538,8 +538,11 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertIn("outcome", roles)
         self.assertIn("release", roles)
         self.assertIn("rim", roles)
+        self.assertIn("postOutcome", roles)
         self.assertLess(dict(pro_samples)["preEvent"], clip.eventCenter)
+        self.assertLess(dict(pro_samples)["release"], clip.eventCenter)
         self.assertGreater(dict(pro_samples)["outcome"], clip.eventCenter)
+        self.assertGreater(dict(pro_samples)["postOutcome"], dict(pro_samples)["rim"])
 
     def test_sampling_preserves_required_roles_for_short_clips(self) -> None:
         request = CreateEditJobRequest(
@@ -774,6 +777,7 @@ class GPTHighlightRerankerTests(unittest.TestCase):
                 roles = ["start", "preEvent", "release", "rim", "eventCenter", "finish"]
                 if clip.id == "c1":
                     roles.insert(3, "outcome")
+                    roles.insert(5, "postOutcome")
                 for role in roles:
                     frames.append(SampledFrame(clip_id=clip.id, role=role, time_seconds=clip.eventCenter, data_url="data:image/jpeg;base64,ZmFrZQ=="))
             return frames
