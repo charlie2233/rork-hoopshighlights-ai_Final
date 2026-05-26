@@ -663,7 +663,14 @@ def _outcome_aware_visual_event_score(frame: VisualEventFrame, frames: Sequence[
         ),
         default=0.0,
     )
-    context_bonus = min((setup_score * 0.18) + (outcome_score * 0.03), 0.2)
+    # A release-only spike should not beat the rim/result frame when the
+    # surrounding frames show setup and follow-through. Setup carries the
+    # strongest weight because it distinguishes a real shot sequence from a
+    # random aftermath spike; outcome follow-through breaks close ties.
+    context_bonus = min(
+        (setup_score * 0.32) + (outcome_score * 0.04) + (min(setup_score, outcome_score) * 0.04),
+        0.34,
+    )
     return round(clamp(frame.score + context_bonus, 0.0, 1.0), 4)
 
 
