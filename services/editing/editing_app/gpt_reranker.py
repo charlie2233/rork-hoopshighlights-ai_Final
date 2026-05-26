@@ -143,8 +143,7 @@ def rerank_edit_request_with_gpt(
     if not source_path.is_file():
         return _with_fallback(request, "fallback", settings.model, "source_missing")
 
-    source_duration_seconds = _probe_source_duration_seconds(source_path)
-    request = expand_shot_candidate_windows_for_source_context(request, source_duration_seconds)
+    request = expand_shot_candidate_windows_from_source_path(request, source_path)
     max_clips, frames_per_clip = settings.limits_for(request.planTier)
     sampled_clips = _quality_filtered_sampled_clips(rank_clips(request.clips), max_clips)
     if not sampled_clips:
@@ -238,6 +237,18 @@ def _with_fallback(
         fallbackReason=reason,
     )
     return request.model_copy(update={"gptRerankSummary": summary})
+
+
+def expand_shot_candidate_windows_from_source_path(
+    request: CreateEditJobRequest,
+    source_path: Path,
+) -> CreateEditJobRequest:
+    if not source_path.is_file():
+        return request
+    return expand_shot_candidate_windows_for_source_context(
+        request,
+        _probe_source_duration_seconds(source_path),
+    )
 
 
 def expand_shot_candidate_windows_for_source_context(

@@ -31,6 +31,9 @@ Improve GPT-led HoopClips highlight selection quality with a bias toward basketb
   - probes the local cloud source copy for duration with `ffprobe`
   - expands shot-like candidate bounds around `eventCenter` to recover setup and outcome context
   - keeps non-shot clips unchanged and still sends GPT only sampled JPEG keyframes plus compact metadata
+- Moved the same source-backed shot-window expansion into the edit-service fallback path:
+  - if GPT is disabled, missing an API key, or later falls back, the deterministic EditPlan builder still receives expanded shot windows when the cloud source can be materialized
+  - this prevents the ordinary selector from dropping a real make just because the upstream candidate window was too tight or started right before the basket
 - Added an ordinary/non-GPT selector guard so shot-like clips also need minimum setup and follow-through context when GPT is disabled or falls back.
 - Ranked deterministic backend candidates by plan eligibility and shot-context quality before raw planning/watchability/excitement scores, so a complete play beats a tiny or late pre-basket window even when the thin clip has a higher model score.
 - Made GPT-kept duplicate cleanup use the same quality-aware duplicate key, closing the path where GPT could keep two duplicate makes and the higher-scored but thinner window could replace the complete play.
@@ -133,8 +136,10 @@ Additional validation after commit `1aad21d`:
 
 ```sh
 python3 -m py_compile ios/backend/app/editing.py services/editing/editing_app/gpt_reranker.py services/editing/tests/test_gpt_reranker.py ios/backend/tests/test_edit_plan_agent.py
+python3 -m py_compile services/editing/editing_app/main.py services/editing/editing_app/gpt_reranker.py services/editing/tests/test_editing_service.py services/editing/tests/test_gpt_reranker.py
 PYTHONPATH=ios/backend:services/editing /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest services.editing.tests.test_gpt_reranker ios.backend.tests.test_edit_plan_agent -v
 PYTHONPATH=ios/backend:services/editing /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest services.editing.tests.test_editing_service -v
+PYTHONPATH=ios/backend:services/editing /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest services.editing.tests.test_gpt_reranker services.editing.tests.test_editing_service -v
 git diff --check
 xcodebuild build-for-testing -project ios/HoopsClips.xcodeproj -scheme HoopsClips -configuration Debug -destination 'generic/platform=iOS Simulator' -derivedDataPath build/XcodeDerivedDataGenericCodecheck2 -resultBundlePath build/HoopsClipsGenericCodecheck2.xcresult CODE_SIGNING_ALLOWED=NO -skipPackagePluginValidation -skipMacroValidation -quiet
 xcodebuild build-for-testing -project ios/HoopsClips.xcodeproj -scheme HoopsClips -configuration Debug -destination 'generic/platform=iOS Simulator' -derivedDataPath build/XcodeDerivedDataGenericCodecheck3 -resultBundlePath build/HoopsClipsGenericCodecheck3.xcresult CODE_SIGNING_ALLOWED=NO -skipPackagePluginValidation -skipMacroValidation -quiet
@@ -145,11 +150,13 @@ Results:
 - Python compile: passed.
 - GPT reranker + edit-plan focused suite: 59 tests passed after adding the GPT duplicate-context regression and source-context expansion coverage.
 - Editing service focused suite: 37 tests passed.
+- GPT reranker + editing service combined suite: 60 tests passed after adding the disabled-GPT fallback expansion regression.
 - `git diff --check`: passed.
 - Generic iOS Debug `build-for-testing`: passed with signing disabled. The previous Xcode 26.4 Codable/test actor-isolation warnings for `AnalysisSettings`, `CreateCloudEditJobRequest`, `CloudEditVersionResponse`, and `CloudEditRenderStatusResponse` were no longer emitted. Remaining warnings are the existing `CloudAnalysisService` no-async-await and `VideoExportService` deprecation/Sendable backlog.
 - Xcode 26.4 CI initially failed type-checking the large cloud candidate-ranking test data expression in `HoopsClipsTests.swift`; the test now builds candidates through a typed loop and the local generic no-signing build-for-testing passes with the same warning backlog.
 - Full iOS simulator `xcodebuild test` was started against the iPhone 17 Pro simulator for this pass, but it had not produced a readable result bundle after more than eight minutes. Treat the generic no-signing build-for-testing plus existing 74-test simulator pass above as the current iOS evidence until the simulator test runner is stable.
 - Added one more GPT duplicate-regression test: when GPT keeps two duplicate made-shot windows, the complete-context duplicate wins over the higher-scored thin window.
+- Added one edit-service regression test: when GPT is disabled, a too-tight made-shot candidate is expanded from the materialized cloud source before deterministic EditPlan creation, so the rendered clip includes setup and follow-through instead of failing as pre-basket-only.
 
 PR #10 CI after commit `0177890846230ccef9570e30349b09e7fb77096f`:
 

@@ -164,6 +164,51 @@ class EditingServiceTests(unittest.TestCase):
         self.assertEqual(plan_payload["plan"]["captionStyle"], "bold_hype")
         self.assertEqual(plan_payload["plan"]["aspectRatio"], "9:16")
 
+    @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "ffmpeg and ffprobe are required")
+    def test_create_edit_job_expands_thin_shot_context_even_when_gpt_disabled(self) -> None:
+        old_enabled = os.environ.get("HOOPS_GPT_HIGHLIGHT_RERANKER_ENABLED")
+        os.environ["HOOPS_GPT_HIGHLIGHT_RERANKER_ENABLED"] = "false"
+        try:
+            client = TestClient(create_app(self._settings()))
+            edit_request = CreateEditJobRequest(
+                videoId="video_context_expand_123",
+                analysisJobId="analysis_context_expand_123",
+                installId="install-123",
+                sourceObjectKey=self._source_key(),
+                preset="personal_highlight",
+                targetDurationSeconds=15,
+                aspectRatio="9:16",
+                planTier="free",
+                clips=[
+                    {
+                        **_clip("thin_make", 8.8, "Made Shot", 0.96),
+                        "end": 10.5,
+                        "eventCenter": 9.1,
+                    }
+                ],
+            )
+
+            create_response = client.post("/v1/edit-jobs", json=edit_request.model_dump())
+
+            self.assertEqual(create_response.status_code, 200)
+            create_payload = create_response.json()
+            self.assertEqual(create_payload["status"], "plan_ready")
+            self.assertEqual(create_payload["clipCount"], 1)
+            plan_response = client.get(
+                f"/v1/edit-jobs/{create_payload['editJobId']}/plan",
+                params={"installId": edit_request.installId},
+            )
+            self.assertEqual(plan_response.status_code, 200)
+            plan_clip = plan_response.json()["plan"]["clips"][0]
+            self.assertEqual(plan_clip["clipId"], "thin_make")
+            self.assertLess(plan_clip["sourceStart"], 8.8)
+            self.assertGreater(plan_clip["sourceEnd"], 10.5)
+        finally:
+            if old_enabled is None:
+                os.environ.pop("HOOPS_GPT_HIGHLIGHT_RERANKER_ENABLED", None)
+            else:
+                os.environ["HOOPS_GPT_HIGHLIGHT_RERANKER_ENABLED"] = old_enabled
+
     def test_edit_job_error_routes_return_error_responses(self) -> None:
         client = TestClient(create_app(self._settings()))
 
