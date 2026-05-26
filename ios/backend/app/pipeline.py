@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from array import array
-from dataclasses import dataclass
+from copy import copy
+from dataclasses import dataclass, is_dataclass, replace
 from pathlib import Path
 from statistics import mean
 from time import perf_counter
@@ -33,6 +34,8 @@ VISUAL_EVENT_MIN_GAP_SECONDS = 1.4
 VISUAL_EVENT_MAX_BOUNDARIES = 24
 VISUAL_EVENT_SEQUENCE_GAP_SECONDS = 1.1
 VISUAL_EVENT_CONTEXT_SECONDS = 1.25
+TEAM_SELECTION_PREFILTER_MULTIPLIER = 3
+TEAM_SELECTION_PREFILTER_MAX_CLIPS = 120
 VisualFrameSignal = Tuple[float, float, float, float]
 
 
@@ -60,31 +63,39 @@ def run_analysis(job: StoredJob, settings: Settings, source_path: Path) -> Cloud
         raise PipelineError("unsupported_duration", "Videos longer than 30 minutes are not supported in cloud analysis right now.")
 
     provider_tags: list[str] = []
+    candidate_pool_limit = _analysis_candidate_pool_limit(settings, job.team_selection)
+    expanded_settings = _settings_with_candidate_limit(settings, candidate_pool_limit)
+
     external_clips, detection_provider = detect_with_optional_external_provider(
         source_path=source_path,
         duration_seconds=duration_seconds,
-        settings=settings,
+        settings=expanded_settings,
     )
 
     if detection_provider and settings.detection_provider == "hoopcut":
         provider_tags.append(detection_provider)
-        clips = external_clips[: settings.max_returned_clips]
+        clips = external_clips[:candidate_pool_limit]
         candidate_segments = len(external_clips)
     else:
-        native_clips, native_candidate_segments = _run_native_candidate_detection(source_path, duration_seconds, settings)
+        native_clips, native_candidate_segments = _run_native_candidate_detection(
+            source_path,
+            duration_seconds,
+            settings,
+            clip_limit=candidate_pool_limit,
+        )
         if detection_provider:
             provider_tags.append(detection_provider)
             clips = _merge_hybrid_detection_clips(
                 external_clips=external_clips,
                 native_clips=native_clips,
-                clip_limit=settings.max_returned_clips,
+                clip_limit=candidate_pool_limit,
             )
             candidate_segments = len(external_clips) + native_candidate_segments
         else:
             clips = native_clips
             candidate_segments = native_candidate_segments
 
-    clips = _normalize_analysis_clips(clips, duration_seconds, settings)
+    clips = _normalize_analysis_clips(clips, duration_seconds, settings, clip_limit=candidate_pool_limit)
 
     clips, ranking_provider = rerank_with_optional_external_provider(
         clips=clips,
@@ -101,6 +112,7 @@ def run_analysis(job: StoredJob, settings: Settings, source_path: Path) -> Cloud
     if not detected_teams:
         detected_teams = _detected_teams_from_clips(clips)
     clips = _filter_analysis_clips_for_team_selection(clips, job.team_selection)
+    clips = clips[: settings.max_returned_clips]
 
     elapsed_ms = int((perf_counter() - started_at) * 1000)
     model_version = settings.backend_model_version
@@ -125,6 +137,23 @@ def run_analysis(job: StoredJob, settings: Settings, source_path: Path) -> Cloud
         detectedTeams=detected_teams,
         teamSelection=job.team_selection,
     )
+
+
+def _analysis_candidate_pool_limit(settings: Settings, team_selection: Optional[TeamSelection]) -> int:
+    base_limit = max(1, int(settings.max_returned_clips))
+    if team_selection is None or team_selection.mode == "all":
+        return base_limit
+    return min(TEAM_SELECTION_PREFILTER_MAX_CLIPS, max(base_limit, base_limit * TEAM_SELECTION_PREFILTER_MULTIPLIER))
+
+
+def _settings_with_candidate_limit(settings: Settings, clip_limit: int) -> Settings:
+    if int(settings.max_returned_clips) == clip_limit:
+        return settings
+    if is_dataclass(settings):
+        return replace(settings, max_returned_clips=clip_limit)
+    copied = copy(settings)
+    copied.max_returned_clips = clip_limit
+    return copied
 
 
 def _team_key(value: Optional[str]) -> Optional[str]:
@@ -198,6 +227,7 @@ def _run_native_candidate_detection(
     source_path: Path,
     duration_seconds: float,
     settings: Settings,
+    clip_limit: Optional[int] = None,
 ) -> tuple[list[CloudClip], int]:
     audio_profile = _extract_audio_profile(source_path, duration_seconds)
     shot_boundaries = _detect_shot_boundaries(source_path, duration_seconds, audio_profile)
@@ -206,12 +236,14 @@ def _run_native_candidate_detection(
         audio_profile=audio_profile,
         shot_boundaries=shot_boundaries,
         settings=settings,
+        clip_limit=clip_limit,
     )
 
     if not windows:
         windows = [_fallback_window(duration_seconds, audio_profile, settings)]
 
-    clips = [classify_window(window) for window in windows[: settings.max_returned_clips]]
+    resolved_limit = clip_limit or settings.max_returned_clips
+    clips = [classify_window(window) for window in windows[:resolved_limit]]
     return clips, len(windows)
 
 
@@ -219,13 +251,14 @@ def _normalize_analysis_clips(
     clips: Sequence[CloudClip],
     duration_seconds: float,
     settings: Settings,
+    clip_limit: Optional[int] = None,
 ) -> list[CloudClip]:
     normalized: list[CloudClip] = []
     for clip in clips:
         normalized_clip = _normalize_clip_for_analysis_context(clip, duration_seconds, settings)
         if normalized_clip is not None:
             normalized.append(normalized_clip)
-    return normalized[: settings.max_returned_clips]
+    return normalized[: (clip_limit or settings.max_returned_clips)]
 
 
 def _normalize_clip_for_analysis_context(
@@ -819,7 +852,9 @@ def _build_candidate_windows(
     audio_profile: List[float],
     shot_boundaries: List[float],
     settings: Settings,
+    clip_limit: Optional[int] = None,
 ) -> List[CandidateWindow]:
+    resolved_limit = clip_limit or settings.max_returned_clips
     window_span = min(max(4.5, settings.min_clip_duration_seconds + 1.5), settings.max_clip_duration_seconds)
     stride = 1.5
     windows: List[CandidateWindow] = []
@@ -877,11 +912,11 @@ def _build_candidate_windows(
 
         time_cursor += stride
 
-    segmented = _segment_with_hysteresis(windows, settings)
+    segmented = _segment_with_hysteresis(windows, settings, clip_limit=resolved_limit)
     if segmented:
         return segmented
 
-    return sorted(windows, key=lambda item: item.combined_score, reverse=True)[: settings.max_returned_clips]
+    return sorted(windows, key=lambda item: item.combined_score, reverse=True)[:resolved_limit]
 
 
 def _shot_context_score_for_window(
@@ -926,7 +961,8 @@ def _shot_context_score_for_window(
     return round(clamp(best_score, 0.0, 1.0), 4), best_boundary
 
 
-def _segment_with_hysteresis(windows: List[CandidateWindow], settings: Settings) -> List[CandidateWindow]:
+def _segment_with_hysteresis(windows: List[CandidateWindow], settings: Settings, clip_limit: Optional[int] = None) -> List[CandidateWindow]:
+    resolved_limit = clip_limit or settings.max_returned_clips
     high_threshold = 0.66
     low_threshold = 0.48
     active: List[CandidateWindow] = []
@@ -949,7 +985,7 @@ def _segment_with_hysteresis(windows: List[CandidateWindow], settings: Settings)
         merged.append(_collapse_windows(active, settings))
 
     merged.sort(key=lambda item: item.combined_score, reverse=True)
-    return merged[: settings.max_returned_clips]
+    return merged[:resolved_limit]
 
 
 def _collapse_windows(group: List[CandidateWindow], settings: Settings) -> CandidateWindow:
