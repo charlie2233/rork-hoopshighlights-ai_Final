@@ -48,7 +48,7 @@ Environment controls:
 - `HOOPS_GPT_HIGHLIGHT_RERANK_PAID_FRAMES_PER_CLIP`: default `10`, clamped to `5-10`.
 - `HOOPS_GPT_HIGHLIGHT_RERANK_MAX_OUTPUT_TOKENS`, `HOOPS_GPT_HIGHLIGHT_RERANK_FRAME_WIDTH`, `HOOPS_GPT_HIGHLIGHT_RERANK_JPEG_QUALITY`, and `HOOPS_GPT_HIGHLIGHT_RERANK_MAX_IMAGE_BYTES` bound cost and payload size.
 
-The `/version` response exposes only safe status: enabled/configured, model, and sampling caps. It does not expose API keys, images, source URLs, R2 credentials, or presigned URLs. Follow-up hardening in `codex/phase-clip1-gpt-reranker-hardening` makes the staging Cloud Run launch switch explicit and disabled by default, sends Responses API requests with `store=false`, and clamps GPT edit hint times to existing candidate clip bounds.
+The `/version` response exposes only safe status: enabled/configured, model, and sampling caps. It does not expose API keys, images, source URLs, R2 credentials, or presigned URLs. Follow-up hardening in `codex/phase-clip1-gpt-reranker-hardening` made the staging Cloud Run launch switch explicit, sends Responses API requests with `store=false`, and clamps GPT edit hint times to existing candidate clip bounds. Phase Clip32 later enables the staging GPT switches for quality-beta only after requiring the `HOOPS_OPENAI_API_KEY` Secret Manager entry.
 
 ## Implementation
 

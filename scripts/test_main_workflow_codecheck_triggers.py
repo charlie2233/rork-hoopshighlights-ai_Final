@@ -38,6 +38,8 @@ class MainWorkflowCodecheckTriggerTests(unittest.TestCase):
                 "Verify direct editing version after deploy",
                 "Verify Worker editing version after deploy",
                 ".featureFlags.aiEditLiveRenderEnabled == true",
+                ".featureFlags.aiClipGptEditorEnabled == true",
+                ".gptHighlightReranker.configured == true",
                 "Roll back staging editing service",
                 "cloud_run_revision is required when operation=rollback",
                 "-f cloud_run_revision=<previous-cloud-run-revision>",

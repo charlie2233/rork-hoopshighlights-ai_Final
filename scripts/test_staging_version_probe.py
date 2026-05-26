@@ -12,6 +12,10 @@ FEATURE_FLAGS = {
     "aiEditLiveRenderEnabled": True,
     "aiEditRevisionEnabled": True,
     "aiEditTemplatePackEnabled": True,
+    "aiClipGptEditorEnabled": True,
+    "aiClipGptPlanEditEnabled": True,
+    "aiClipGptRevisionEnabled": True,
+    "gptHighlightRerankerEnabled": True,
 }
 VERSION_PAYLOAD = {
     "backendModelVersion": "editing-cloud-v1",

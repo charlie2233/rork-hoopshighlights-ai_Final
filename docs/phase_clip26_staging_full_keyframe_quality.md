@@ -16,11 +16,12 @@ The code default already supported 10 frames per clip. Staging Cloud Build still
 
 ## Safety
 
-- GPT/editor kill switches stay off by default in Cloud Build:
+- Historical note: at the end of this phase, GPT/editor kill switches still stayed off by default in Cloud Build:
   - `_AI_CLIP_GPT_EDITOR_ENABLED: "false"`
   - `_AI_CLIP_GPT_PLAN_EDIT_ENABLED: "false"`
   - `_AI_CLIP_GPT_REVISION_ENABLED: "false"`
   - `_GPT_HIGHLIGHT_RERANKER_ENABLED: "false"`
+- Phase Clip32 supersedes that conservative default and enables the GPT editor for quality-beta staging once the `HOOPS_OPENAI_API_KEY` Secret Manager entry exists.
 - This does not enable public cloud cutover.
 - This does not change iOS local behavior.
 - No full videos are sent to GPT.

@@ -8,6 +8,7 @@ from scripts.launch_backend_config_preflight import (
     strip_jsonc_comments,
     summarize,
 )
+from services.editing.scripts.deploy_preflight import REQUIRED_GCP_SECRETS
 
 
 class LaunchBackendConfigPreflightTests(unittest.TestCase):
@@ -40,8 +41,13 @@ class LaunchBackendConfigPreflightTests(unittest.TestCase):
         self.assertNotIn("block comment", cleaned)
 
     def test_quality_beta_uses_full_shot_tracker_keyframe_default(self) -> None:
+        self.assertEqual(REQUIRED_GPT_RERANK_SUBSTITUTIONS["_AI_CLIP_GPT_EDITOR_ENABLED"], "true")
+        self.assertEqual(REQUIRED_GPT_RERANK_SUBSTITUTIONS["_AI_CLIP_GPT_PLAN_EDIT_ENABLED"], "true")
+        self.assertEqual(REQUIRED_GPT_RERANK_SUBSTITUTIONS["_AI_CLIP_GPT_REVISION_ENABLED"], "true")
         self.assertEqual(REQUIRED_GPT_RERANK_SUBSTITUTIONS["_AI_CLIP_GPT_KEYFRAMES_PER_CLIP"], "10")
         self.assertEqual(REQUIRED_GPT_RERANK_SUBSTITUTIONS["_AI_CLIP_GPT_MAX_CANDIDATES_FREE"], "20")
+        self.assertEqual(REQUIRED_GPT_RERANK_SUBSTITUTIONS["_GPT_HIGHLIGHT_RERANKER_ENABLED"], "true")
+        self.assertIn("HOOPS_OPENAI_API_KEY", REQUIRED_GCP_SECRETS)
 
 
 if __name__ == "__main__":

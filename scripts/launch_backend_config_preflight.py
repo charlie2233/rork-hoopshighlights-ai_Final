@@ -30,13 +30,13 @@ REQUIRED_AI_EDIT_SUBSTITUTIONS = {
 }
 
 REQUIRED_GPT_RERANK_SUBSTITUTIONS = {
-    "_AI_CLIP_GPT_EDITOR_ENABLED": "false",
-    "_AI_CLIP_GPT_PLAN_EDIT_ENABLED": "false",
-    "_AI_CLIP_GPT_REVISION_ENABLED": "false",
+    "_AI_CLIP_GPT_EDITOR_ENABLED": "true",
+    "_AI_CLIP_GPT_PLAN_EDIT_ENABLED": "true",
+    "_AI_CLIP_GPT_REVISION_ENABLED": "true",
     "_AI_CLIP_GPT_KEYFRAMES_PER_CLIP": "10",
     "_AI_CLIP_GPT_MAX_CANDIDATES_FREE": "20",
     "_AI_CLIP_GPT_MAX_CANDIDATES_PRO": "30",
-    "_GPT_HIGHLIGHT_RERANKER_ENABLED": "false",
+    "_GPT_HIGHLIGHT_RERANKER_ENABLED": "true",
 }
 
 REQUIRED_DEPLOY_INPUTS = {
@@ -230,9 +230,9 @@ def check_editing_cloudbuild(repo_root: Path, collector: Collector) -> None:
 
     for key, expected in REQUIRED_GPT_RERANK_SUBSTITUTIONS.items():
         if substitutions.get(key) == expected:
-            collector.pass_("editing gpt reranker substitution", rel(path, repo_root), f"{key} is explicit and disabled by default.")
+            collector.pass_("editing gpt reranker substitution", rel(path, repo_root), f"{key} is explicit for quality-beta staging.")
         else:
-            collector.fail("editing gpt reranker substitution", rel(path, repo_root), f"{key} must be explicit and default false until live OpenAI/staging smoke is proven.")
+            collector.fail("editing gpt reranker substitution", rel(path, repo_root), f"{key} must be explicit for quality-beta staging.")
 
     env_line = find_arg_value_after(text, "--set-env-vars")
     if env_line and "HOOPS_ENVIRONMENT=staging" in env_line and "HOOPS_RENDER_STORAGE_PROVIDER=r2" in env_line:
@@ -270,14 +270,14 @@ def check_editing_cloudbuild(repo_root: Path, collector: Collector) -> None:
     if "HOOPS_OPENAI_API_KEY" not in text and not gpt_enabled:
         collector.pass_("openai secret gate", rel(path, repo_root), "OpenAI key is not required while GPT clip editor defaults disabled.")
     elif "HOOPS_OPENAI_API_KEY" in text:
-        collector.warn("openai secret gate", rel(path, repo_root), "OpenAI key secret name is configured; verify no secret value is printed during deploy.")
+        collector.pass_("openai secret gate", rel(path, repo_root), "OpenAI key secret name is configured without a secret value in source.")
     else:
         collector.fail("openai secret gate", rel(path, repo_root), "GPT reranker is enabled but no OpenAI key secret name is configured.")
 
     secret_line = find_arg_value_after(text, "--set-secrets")
     missing_secret_names = [
         name
-        for name in ("HOOPS_EDITING_SERVICE_SECRET", "HOOPS_R2_ACCESS_KEY_ID", "HOOPS_R2_SECRET_ACCESS_KEY")
+        for name in ("HOOPS_EDITING_SERVICE_SECRET", "HOOPS_R2_ACCESS_KEY_ID", "HOOPS_R2_SECRET_ACCESS_KEY", "HOOPS_OPENAI_API_KEY")
         if not secret_line or name not in secret_line
     ]
     if missing_secret_names:

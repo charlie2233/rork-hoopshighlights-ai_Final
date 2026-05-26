@@ -254,8 +254,14 @@ jobs:
             and .featureFlags.aiEditLiveRenderEnabled == true
             and .featureFlags.aiEditRevisionEnabled == true
             and .featureFlags.aiEditTemplatePackEnabled == true
+            and .featureFlags.aiClipGptEditorEnabled == true
+            and .featureFlags.aiClipGptPlanEditEnabled == true
+            and .featureFlags.aiClipGptRevisionEnabled == true
+            and .featureFlags.gptHighlightRerankerEnabled == true
+            and .gptHighlightReranker.enabled == true
+            and .gptHighlightReranker.configured == true
           ' /tmp/editing-version.json >/dev/null
-          echo "direct editing /version matches current deploy and required AI Edit flags"
+          echo "direct editing /version matches current deploy and required AI Edit/GPT flags"
 
       - name: Deploy staging Worker
         if: inputs.operation == 'deploy'
@@ -280,8 +286,14 @@ jobs:
             and .featureFlags.aiEditLiveRenderEnabled == true
             and .featureFlags.aiEditRevisionEnabled == true
             and .featureFlags.aiEditTemplatePackEnabled == true
+            and .featureFlags.aiClipGptEditorEnabled == true
+            and .featureFlags.aiClipGptPlanEditEnabled == true
+            and .featureFlags.aiClipGptRevisionEnabled == true
+            and .featureFlags.gptHighlightRerankerEnabled == true
+            and .gptHighlightReranker.enabled == true
+            and .gptHighlightReranker.configured == true
           ' /tmp/worker-editing-version.json >/dev/null
-          echo "Worker /v1/editing/version matches current deploy and required AI Edit flags"
+          echo "Worker /v1/editing/version matches current deploy and required AI Edit/GPT flags"
 
       - name: Roll back staging editing service
         if: inputs.operation == 'rollback'

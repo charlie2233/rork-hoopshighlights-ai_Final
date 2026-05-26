@@ -324,6 +324,10 @@ charlie的iPhone   charliedeiPhone.coredevice.local   E5786BB6-0095-5509-8B85-11
                     "aiEditLiveRenderEnabled": True,
                     "aiEditRevisionEnabled": True,
                     "aiEditTemplatePackEnabled": True,
+                    "aiClipGptEditorEnabled": True,
+                    "aiClipGptPlanEditEnabled": True,
+                    "aiClipGptRevisionEnabled": True,
+                    "gptHighlightRerankerEnabled": True,
                 },
             }
 

@@ -35,6 +35,10 @@ REQUIRED_FEATURE_FLAGS = (
     "aiEditLiveRenderEnabled",
     "aiEditRevisionEnabled",
     "aiEditTemplatePackEnabled",
+    "aiClipGptEditorEnabled",
+    "aiClipGptPlanEditEnabled",
+    "aiClipGptRevisionEnabled",
+    "gptHighlightRerankerEnabled",
 )
 REQUIRED_DEPLOY_SECRET_INPUTS = (
     "CLOUDFLARE_API_TOKEN",
