@@ -634,13 +634,39 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertIn("belowRim", roles)
         self.assertLess(dict(pro_samples)["preEvent"], clip.eventCenter)
         self.assertLess(dict(pro_samples)["release"], clip.eventCenter)
-        self.assertGreater(dict(pro_samples)["shotArcEarly"], clip.eventCenter)
+        self.assertLess(dict(pro_samples)["shotArcEarly"], clip.eventCenter)
+        self.assertLess(dict(pro_samples)["shotArcLate"], clip.eventCenter)
+        self.assertLessEqual(dict(pro_samples)["rimApproach"], clip.eventCenter)
+        self.assertGreaterEqual(clip.eventCenter - dict(pro_samples)["release"], 0.9)
         self.assertGreater(dict(pro_samples)["shotArcLate"], dict(pro_samples)["shotArcEarly"])
-        self.assertGreater(dict(pro_samples)["rimApproach"], dict(pro_samples)["shotArcLate"])
+        self.assertGreaterEqual(dict(pro_samples)["rimApproach"], dict(pro_samples)["shotArcLate"])
         self.assertGreater(dict(pro_samples)["rimEntry"], dict(pro_samples)["rimApproach"])
+        self.assertLessEqual(dict(pro_samples)["rimEntry"], clip.eventCenter + 0.2)
         self.assertGreater(dict(pro_samples)["belowRim"], dict(pro_samples)["rimEntry"])
         sample_times = [second for _, second in pro_samples]
         self.assertEqual(sample_times, sorted(sample_times))
+
+    def test_shot_sampling_treats_event_center_as_rim_result_anchor(self) -> None:
+        request = CreateEditJobRequest(
+            videoId="video_result_anchor",
+            analysisJobId="analysis_result_anchor",
+            installId="install-123",
+            preset="personal_highlight",
+            targetDurationSeconds=15,
+            planTier="pro",
+            clips=[{**_clip("result_anchor", 8.0, 0.98), "end": 12.5, "eventCenter": 10.0}],
+        )
+        clip = request.clips[0]
+
+        samples = dict(gpt_reranker._sample_times_for_clip(clip, 10))
+
+        self.assertGreaterEqual(clip.eventCenter - samples["release"], 0.9)
+        self.assertLess(samples["shotArcEarly"], clip.eventCenter)
+        self.assertLess(samples["shotArcLate"], clip.eventCenter)
+        self.assertLessEqual(samples["rimApproach"], clip.eventCenter)
+        self.assertGreater(samples["rimEntry"], samples["rimApproach"])
+        self.assertLessEqual(samples["rimEntry"], clip.eventCenter + 0.2)
+        self.assertGreater(samples["belowRim"], samples["rimEntry"])
 
     def test_sampling_preserves_required_roles_for_short_clips(self) -> None:
         request = CreateEditJobRequest(
