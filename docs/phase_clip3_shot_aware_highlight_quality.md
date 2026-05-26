@@ -265,6 +265,16 @@ Results:
 - `git diff --check`: passed.
 - Added regressions for tiny provider-window rejection, conservative missing-score defaults, quality-aware external dedupe, and AutoHighlight boost safety.
 
+PR #10 CI after external-provider code commit `a735a58`:
+
+- Cloud Edit Deploy Preflight run `26437957046`:
+  - Worker typecheck and dry run: success, job `77825086026`.
+  - Editing backend Python tests: success, job `77825086040`.
+  - Verify cloud edit deploy secrets: skipped on this PR path, job `77825481760`.
+- iOS Internal TestFlight Upload run `26437957049`:
+  - No-secret internal staging codecheck: success, job `77825086021`.
+  - Build internal staging TestFlight archive: skipped on this PR path, job `77825086434`.
+
 ## Launch Recommendations
 
 - Deploy this branch to staging only after the Cloudflare/GCP deploy secret blockers are cleared.
