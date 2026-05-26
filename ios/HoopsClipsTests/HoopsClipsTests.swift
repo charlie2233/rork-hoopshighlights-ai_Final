@@ -263,6 +263,75 @@ struct HoopsClipsTests {
         #expect(payload["sourceObjectKey"] as? String == "uploads/source.mp4")
     }
 
+    @Test @MainActor func testCloudEditRequestSendsStrongestCandidatesBeforeThirtyClipCap() throws {
+        let viewModel = HighlightsViewModel()
+        viewModel.cloudEditSourceObjectKey = "uploads/source.mp4"
+        viewModel.analysisService.clips = (0..<31).map { index in
+            Clip(
+                startTime: Double(index * 10),
+                endTime: Double(index * 10 + 6),
+                action: .madeShot,
+                confidence: index == 30 ? 0.98 : 0.42,
+                isKept: true,
+                label: "Made Shot",
+                audioScore: index == 30 ? 0.92 : 0.1,
+                visualScore: index == 30 ? 0.95 : 0.2,
+                motionScore: index == 30 ? 0.95 : 0.2,
+                combinedScore: index == 30 ? 0.99 : 0.15,
+                detectionMethod: .cloud
+            )
+        }
+
+        let request = try viewModel.createCloudEditRequest(
+            preset: .personalHighlight,
+            targetDurationSeconds: 30,
+            isProUser: false
+        )
+        let candidateStarts = request.clips.map(\.start)
+
+        #expect(request.clips.count == 30)
+        #expect(candidateStarts.contains(300.0))
+        #expect(!candidateStarts.contains(290.0))
+    }
+
+    @Test func testCloudEditCandidateRankingPrefersCompleteShotContextOverLatePreBasketWindow() {
+        let preBasketOnly = Clip(
+            startTime: 10.0,
+            endTime: 16.0,
+            eventCenter: 10.1,
+            action: .madeShot,
+            confidence: 0.99,
+            isKept: true,
+            label: "Made Shot",
+            audioScore: 0.95,
+            visualScore: 0.95,
+            motionScore: 0.95,
+            combinedScore: 0.99,
+            detectionMethod: .cloud
+        )
+        let completeShot = Clip(
+            startTime: 20.0,
+            endTime: 26.0,
+            eventCenter: 23.0,
+            action: .madeShot,
+            confidence: 0.78,
+            isKept: true,
+            label: "Made Shot",
+            audioScore: 0.55,
+            visualScore: 0.7,
+            motionScore: 0.72,
+            combinedScore: 0.72,
+            detectionMethod: .cloud
+        )
+
+        let ranked = HighlightsViewModel.rankedCloudEditCandidateClips(
+            from: [preBasketOnly, completeShot],
+            limit: 1
+        )
+
+        #expect(ranked.first?.startTime == 20.0)
+    }
+
     @Test func testCloudEditProTemplatesAreRealAndDistinct() {
         let templates = CloudEditProTemplate.allCases
         let identifiers = templates.map(\.accessibilityIdentifier)

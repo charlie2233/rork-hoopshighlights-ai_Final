@@ -355,7 +355,7 @@ final class HighlightsViewModel {
             throw CloudEditError.missingSourceObject
         }
 
-        let candidates = keptClips.prefix(30).map { clip in
+        let candidates = Self.rankedCloudEditCandidateClips(from: keptClips).map { clip in
             let inferredCenter = clip.startTime + (clip.duration / 2.0)
             let center = max(clip.startTime, min(clip.endTime, clip.eventCenter ?? inferredCenter))
             return CloudEditCandidateClip(
@@ -388,6 +388,68 @@ final class HighlightsViewModel {
             userPrompt: userPrompt,
             clips: Array(candidates)
         )
+    }
+
+    nonisolated static func rankedCloudEditCandidateClips(from clips: [Clip], limit: Int = 30) -> [Clip] {
+        let ranked = clips.sorted { lhs, rhs in
+            let lhsEligible = isCloudEditCandidateQualityEligible(lhs)
+            let rhsEligible = isCloudEditCandidateQualityEligible(rhs)
+            if lhsEligible != rhsEligible {
+                return lhsEligible
+            }
+
+            let lhsScore = cloudEditCandidateScore(lhs)
+            let rhsScore = cloudEditCandidateScore(rhs)
+            if lhsScore != rhsScore {
+                return lhsScore > rhsScore
+            }
+
+            if lhs.confidence != rhs.confidence {
+                return lhs.confidence > rhs.confidence
+            }
+
+            return lhs.startTime < rhs.startTime
+        }
+
+        return ranked.prefix(max(0, limit)).sorted { $0.startTime < $1.startTime }
+    }
+
+    nonisolated private static func isCloudEditCandidateQualityEligible(_ clip: Clip) -> Bool {
+        guard clip.duration >= 2.0 else { return false }
+        guard isShotLikeCloudEditCandidate(clip) else { return true }
+        let center = clip.eventCenter ?? (clip.startTime + (clip.duration / 2.0))
+        let leadIn = center - clip.startTime
+        let followThrough = clip.endTime - center
+        return leadIn >= 0.75 && followThrough >= 0.45
+    }
+
+    nonisolated private static func cloudEditCandidateScore(_ clip: Clip) -> Double {
+        let watchability = max(clip.visualScore, clip.motionScore)
+        let durationScore = min(max(clip.duration / 8.0, 0.0), 1.0)
+        var score = (clip.combinedScore * 0.45)
+            + (clip.confidence * 0.25)
+            + (watchability * 0.20)
+            + (clip.audioScore * 0.06)
+            + (durationScore * 0.04)
+
+        if let eventCenter = clip.eventCenter {
+            let leadIn = eventCenter - clip.startTime
+            let followThrough = clip.endTime - eventCenter
+            if leadIn >= 0.75 && followThrough >= 0.45 {
+                score += 0.08
+            } else if isShotLikeCloudEditCandidate(clip) {
+                score -= 0.30
+            }
+        } else if isShotLikeCloudEditCandidate(clip) {
+            score -= 0.04
+        }
+
+        return score
+    }
+
+    nonisolated private static func isShotLikeCloudEditCandidate(_ clip: Clip) -> Bool {
+        let text = "\(clip.label) \(clip.action.rawValue)".lowercased()
+        return ["shot", "bucket", "basket", "layup", "dunk", "finish", "jumper", "three", "3pt"].contains { text.contains($0) }
     }
 
     func attachCloudRenderedExport(from temporaryURL: URL) {

@@ -30,6 +30,7 @@ Improve GPT-led HoopClips highlight selection quality with a bias toward basketb
 - Preserved cloud-owned event centers through analysis, provider adapters, iOS cloud analysis decoding, clip persistence, and cloud edit requests so GPT keyframes sample around the actual shot/peak instead of the clip midpoint.
 - Expanded tight or offset shot-like provider windows around provider `eventCenter`/`eventTime`/`peakTime`/`shotTime` with setup and follow-through context before iOS ever sees the candidate.
 - Made iOS normalization event-center aware: overlong cloud clips with a known event center now create an event-centered segment instead of arbitrary early chunks, and invalid event centers are clamped inside the normalized clip bounds before cloud edit handoff.
+- Ranked iOS-to-cloud edit candidate handoff by cloud analysis quality before the 30-clip API cap, then restored chronological order in the payload. This keeps later high-value plays in GPT's candidate pool and demotes shot-like clips that start too close to the event.
 - Added `qualityHints` to the compact GPT payload so the model sees timing-window expectations without receiving full video.
 - Added strict GPT `qualitySignals` output:
   - `setupVisible`
@@ -112,8 +113,9 @@ Results:
 - Scripts discovery: 34 tests passed.
 - Launch backend config preflight: `pass=63 warn=12 fail=0`.
 - iOS Debug `build-for-testing`: passed on iPhone 17 Pro simulator, iOS 26.0.1. Remaining warnings are the existing Swift concurrency/deprecation backlog outside the event-center handoff.
-- iOS simulator tests: passed on iPhone 17 Pro simulator, iOS 26.0.1. Xcode result summary: `72` total tests, `69` passed, `3` skipped, `0` failed.
+- iOS simulator tests: passed on iPhone 17 Pro simulator, iOS 26.0.1. Xcode result summary: `74` total tests, `71` passed, `3` skipped, `0` failed.
 - Added iOS regression coverage for event-centered overlong cloud clip normalization and event-center bounds clamping.
+- Added iOS regression coverage for candidate handoff ranking so a later high-quality clip is not dropped by the 30-clip cap and a complete shot outranks a higher-scored pre-basket-only window.
 
 PR #10 CI after commit `0177890846230ccef9570e30349b09e7fb77096f`:
 
