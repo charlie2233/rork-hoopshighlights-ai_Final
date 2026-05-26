@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from array import array
+from dataclasses import dataclass
 from pathlib import Path
 from statistics import mean
 from time import perf_counter
@@ -28,7 +29,20 @@ VISUAL_EVENT_MIN_SCORE = 0.46
 VISUAL_EVENT_MIN_VISUAL_SCORE = 0.28
 VISUAL_EVENT_MIN_GAP_SECONDS = 1.4
 VISUAL_EVENT_MAX_BOUNDARIES = 24
+VISUAL_EVENT_SEQUENCE_GAP_SECONDS = 1.1
+VISUAL_EVENT_CONTEXT_SECONDS = 1.25
 VisualFrameSignal = Tuple[float, float, float, float]
+
+
+@dataclass(frozen=True)
+class VisualEventFrame:
+    time_seconds: float
+    score: float
+    visual_score: float
+    full_motion: float
+    upper_motion: float
+    center_motion: float
+    audio_score: float
 
 
 def run_analysis(job: StoredJob, settings: Settings, source_path: Path) -> CloudAnalysisResult:
@@ -67,6 +81,8 @@ def run_analysis(job: StoredJob, settings: Settings, source_path: Path) -> Cloud
         else:
             clips = native_clips
             candidate_segments = native_candidate_segments
+
+    clips = _normalize_analysis_clips(clips, duration_seconds, settings)
 
     clips, ranking_provider = rerank_with_optional_external_provider(
         clips=clips,
@@ -120,6 +136,136 @@ def _run_native_candidate_detection(
 
     clips = [classify_window(window) for window in windows[: settings.max_returned_clips]]
     return clips, len(windows)
+
+
+def _normalize_analysis_clips(
+    clips: Sequence[CloudClip],
+    duration_seconds: float,
+    settings: Settings,
+) -> list[CloudClip]:
+    normalized: list[CloudClip] = []
+    for clip in clips:
+        normalized_clip = _normalize_clip_for_analysis_context(clip, duration_seconds, settings)
+        if normalized_clip is not None:
+            normalized.append(normalized_clip)
+    return normalized[: settings.max_returned_clips]
+
+
+def _normalize_clip_for_analysis_context(
+    clip: CloudClip,
+    duration_seconds: float,
+    settings: Settings,
+) -> CloudClip | None:
+    start = clamp(clip.startTime, 0.0, duration_seconds)
+    end = clamp(clip.endTime, 0.0, duration_seconds)
+    if end <= start:
+        return None
+
+    event_center = clip.eventCenter
+    if event_center is not None:
+        event_center = clamp(event_center, 0.0, duration_seconds)
+
+    normalized = clip.model_copy(
+        update={
+            "startTime": round(start, 3),
+            "endTime": round(end, 3),
+            "eventCenter": round(event_center, 3) if event_center is not None else None,
+        }
+    )
+    if _is_shot_like_label(normalized.label):
+        normalized = _expand_shot_clip_for_analysis_context(normalized, duration_seconds, settings)
+        if normalized is None:
+            return None
+        if _analysis_clip_context_score(normalized) < 0.45:
+            return None
+        return normalized.model_copy(
+            update={
+                "shouldAutoKeep": normalized.shouldAutoKeep and _analysis_clip_auto_keep_allowed(normalized),
+                "shouldEnableSlowMotion": normalized.shouldEnableSlowMotion and _analysis_clip_auto_keep_allowed(normalized),
+            }
+        )
+
+    if normalized.endTime - normalized.startTime < settings.min_clip_duration_seconds:
+        return None
+    if normalized.endTime - normalized.startTime > settings.max_clip_duration_seconds:
+        normalized = normalized.model_copy(
+            update={"endTime": round(min(duration_seconds, normalized.startTime + settings.max_clip_duration_seconds), 3)}
+        )
+    return normalized.model_copy(
+        update={
+            "shouldAutoKeep": normalized.shouldAutoKeep and _analysis_clip_auto_keep_allowed(normalized),
+            "shouldEnableSlowMotion": normalized.shouldEnableSlowMotion and _analysis_clip_auto_keep_allowed(normalized),
+        }
+    )
+
+
+def _expand_shot_clip_for_analysis_context(
+    clip: CloudClip,
+    duration_seconds: float,
+    settings: Settings,
+) -> CloudClip | None:
+    if clip.eventCenter is None:
+        return None
+
+    event_center = clamp(clip.eventCenter, 0.0, duration_seconds)
+    desired_start = min(clip.startTime, event_center - NATIVE_SHOT_CONTEXT_TARGET_LEAD_SECONDS)
+    desired_end = max(clip.endTime, event_center + NATIVE_SHOT_CONTEXT_TARGET_FOLLOW_THROUGH_SECONDS)
+    start = max(0.0, desired_start)
+    end = min(duration_seconds, desired_end)
+
+    min_duration = settings.min_clip_duration_seconds
+    if end - start < min_duration:
+        missing = min_duration - (end - start)
+        start = max(0.0, start - (missing / 2.0))
+        end = min(duration_seconds, end + (missing / 2.0))
+        if end - start < min_duration:
+            start = max(0.0, min(start, duration_seconds - min_duration))
+            end = min(duration_seconds, start + min_duration)
+
+    if end - start > settings.max_clip_duration_seconds:
+        preferred_lead = min(
+            settings.max_clip_duration_seconds - NATIVE_SHOT_CONTEXT_TARGET_FOLLOW_THROUGH_SECONDS,
+            max(NATIVE_SHOT_CONTEXT_TARGET_LEAD_SECONDS, settings.max_clip_duration_seconds * 0.66),
+        )
+        start = max(0.0, event_center - preferred_lead)
+        end = min(duration_seconds, start + settings.max_clip_duration_seconds)
+        if end < event_center + NATIVE_SHOT_CONTEXT_TARGET_FOLLOW_THROUGH_SECONDS:
+            end = min(duration_seconds, event_center + NATIVE_SHOT_CONTEXT_TARGET_FOLLOW_THROUGH_SECONDS)
+            start = max(0.0, end - settings.max_clip_duration_seconds)
+
+    if end <= start:
+        return None
+
+    lead_in = event_center - start
+    follow_through = end - event_center
+    if lead_in < NATIVE_SHOT_CONTEXT_TARGET_LEAD_SECONDS:
+        return None
+    if follow_through < NATIVE_SHOT_CONTEXT_TARGET_FOLLOW_THROUGH_SECONDS:
+        return None
+    if end - start < settings.min_clip_duration_seconds:
+        return None
+
+    return clip.model_copy(
+        update={
+            "startTime": round(start, 3),
+            "endTime": round(end, 3),
+            "eventCenter": round(event_center, 3),
+        }
+    )
+
+
+def _analysis_clip_auto_keep_allowed(clip: CloudClip) -> bool:
+    if clip.endTime - clip.startTime < 2.0:
+        return False
+    if clip.combinedScore < 0.55 or clip.confidence < 0.52:
+        return False
+    if _analysis_clip_context_score(clip) < 0.45:
+        return False
+    return True
+
+
+def _analysis_clip_context_score(clip: CloudClip) -> float:
+    return _hybrid_clip_context_score(clip)
 
 
 def _merge_hybrid_detection_clips(
@@ -364,33 +510,95 @@ def _visual_event_boundaries_from_signals(
     if not frame_signals:
         return []
 
-    scored: List[Tuple[float, float]] = []
+    scored_frames: List[VisualEventFrame] = []
     for time_seconds, full_motion, upper_motion, center_motion in frame_signals:
         visual_score = clamp(
             (upper_motion * 0.48) + (center_motion * 0.34) + (full_motion * 0.18),
             0.0,
             1.0,
         )
-        if visual_score < VISUAL_EVENT_MIN_VISUAL_SCORE:
-            continue
-
         audio_score = _audio_peak_near_time(audio_profile, time_seconds)
         edge_penalty = 1.0
         if time_seconds < 1.0 or time_seconds > max(duration_seconds - 0.75, 0.0):
             edge_penalty = 0.62
         score = clamp(((visual_score * 0.78) + (audio_score * 0.22)) * edge_penalty, 0.0, 1.0)
-        if score >= VISUAL_EVENT_MIN_SCORE:
-            scored.append((time_seconds, round(score, 4)))
+        scored_frames.append(
+            VisualEventFrame(
+                time_seconds=time_seconds,
+                score=round(score, 4),
+                visual_score=round(visual_score, 4),
+                full_motion=full_motion,
+                upper_motion=upper_motion,
+                center_motion=center_motion,
+                audio_score=audio_score,
+            )
+        )
 
-    scored.sort(key=lambda item: item[1], reverse=True)
+    candidates = [
+        frame
+        for frame in scored_frames
+        if frame.visual_score >= VISUAL_EVENT_MIN_VISUAL_SCORE
+        and _outcome_aware_visual_event_score(frame, scored_frames) >= VISUAL_EVENT_MIN_SCORE
+    ]
+    clusters = _cluster_visual_event_frames(candidates)
+
+    selected: List[tuple[float, float]] = []
+    for cluster in clusters:
+        best_frame = max(
+            cluster,
+            key=lambda frame: (
+                _outcome_aware_visual_event_score(frame, scored_frames)
+                + min(max(frame.time_seconds - cluster[0].time_seconds, 0.0) * 0.035, 0.055),
+                frame.score,
+                frame.time_seconds,
+            ),
+        )
+        selected.append((best_frame.time_seconds, _outcome_aware_visual_event_score(best_frame, scored_frames)))
+
+    selected.sort(key=lambda item: item[1], reverse=True)
     chosen: List[float] = []
-    for time_seconds, _ in scored:
+    for time_seconds, _ in selected:
         if all(abs(time_seconds - existing) >= VISUAL_EVENT_MIN_GAP_SECONDS for existing in chosen):
             chosen.append(round(time_seconds, 3))
         if len(chosen) >= VISUAL_EVENT_MAX_BOUNDARIES:
             break
 
     return sorted(chosen)
+
+
+def _cluster_visual_event_frames(frames: Sequence[VisualEventFrame]) -> List[List[VisualEventFrame]]:
+    clusters: List[List[VisualEventFrame]] = []
+    for frame in sorted(frames, key=lambda item: item.time_seconds):
+        if not clusters or frame.time_seconds - clusters[-1][-1].time_seconds > VISUAL_EVENT_SEQUENCE_GAP_SECONDS:
+            clusters.append([frame])
+        else:
+            clusters[-1].append(frame)
+    return clusters
+
+
+def _outcome_aware_visual_event_score(frame: VisualEventFrame, frames: Sequence[VisualEventFrame]) -> float:
+    setup_score = max(
+        (
+            _shot_context_visual_score(candidate)
+            for candidate in frames
+            if frame.time_seconds - VISUAL_EVENT_CONTEXT_SECONDS <= candidate.time_seconds <= frame.time_seconds - 0.25
+        ),
+        default=0.0,
+    )
+    outcome_score = max(
+        (
+            _shot_context_visual_score(candidate)
+            for candidate in frames
+            if frame.time_seconds + 0.25 <= candidate.time_seconds <= frame.time_seconds + VISUAL_EVENT_CONTEXT_SECONDS
+        ),
+        default=0.0,
+    )
+    context_bonus = min((setup_score * 0.18) + (outcome_score * 0.03), 0.2)
+    return round(clamp(frame.score + context_bonus, 0.0, 1.0), 4)
+
+
+def _shot_context_visual_score(frame: VisualEventFrame) -> float:
+    return clamp((frame.upper_motion * 0.52) + (frame.center_motion * 0.34) + (frame.full_motion * 0.14), 0.0, 1.0)
 
 
 def _audio_peak_near_time(audio_profile: Sequence[float], time_seconds: float) -> float:
@@ -544,6 +752,10 @@ def _shot_context_score_for_window(
         lead_in = max(0.0, boundary - start_time)
         follow_through = max(0.0, end_time - boundary)
         if lead_in <= 0.0 or follow_through <= 0.0:
+            continue
+        if lead_in < NATIVE_SHOT_CONTEXT_TARGET_LEAD_SECONDS:
+            continue
+        if follow_through < NATIVE_SHOT_CONTEXT_TARGET_FOLLOW_THROUGH_SECONDS:
             continue
 
         lead_score = min(1.0, lead_in / NATIVE_SHOT_CONTEXT_TARGET_LEAD_SECONDS)
