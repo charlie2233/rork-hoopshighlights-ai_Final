@@ -95,8 +95,10 @@ def _request_payload(**overrides) -> dict:
 def _quality_signals(**overrides) -> dict:
     payload = {
         "setupVisible": True,
+        "releaseVisible": True,
         "eventVisible": True,
         "outcomeVisible": True,
+        "rimResultVisible": True,
         "ballPathVisible": True,
         "playerControlVisible": True,
         "cleanCamera": True,
@@ -748,14 +750,18 @@ class EditPlanAgentTests(unittest.TestCase):
                         "eventCenter": 0.2,
                     },
                     _clip("unclear_outcome", 12.0, "Made Shot", 0.97),
+                    _clip("missing_release", 18.0, "Made Shot", 0.96),
+                    _clip("missing_rim_result", 21.0, "Made Shot", 0.95),
                     _clip("complete_make", 24.0, "Made Shot", 0.8),
                 ],
             )
         )
         base_signal = {
             "setupVisible": True,
+            "releaseVisible": True,
             "eventVisible": True,
             "outcomeVisible": True,
+            "rimResultVisible": True,
             "ballPathVisible": True,
             "playerControlVisible": True,
             "cleanCamera": True,
@@ -788,6 +794,30 @@ class EditPlanAgentTests(unittest.TestCase):
                 suggestedEdit=GPTHighlightSuggestedEdit(),
             ),
             GPTHighlightClipDecision(
+                clipId="missing_release",
+                keep=True,
+                highlightScore=0.96,
+                watchabilityScore=0.9,
+                basketballEvent="Made Shot",
+                outcome="made",
+                caption="NO RELEASE",
+                reason="The aftermath is visible, but the shooting release is not.",
+                qualitySignals={**base_signal, "releaseVisible": False, "reason": "No visible shot release."},
+                suggestedEdit=GPTHighlightSuggestedEdit(),
+            ),
+            GPTHighlightClipDecision(
+                clipId="missing_rim_result",
+                keep=True,
+                highlightScore=0.95,
+                watchabilityScore=0.9,
+                basketballEvent="Made Shot",
+                outcome="made",
+                caption="NO RESULT",
+                reason="The ball path is visible, but the rim result is not.",
+                qualitySignals={**base_signal, "rimResultVisible": False, "reason": "No visible rim result."},
+                suggestedEdit=GPTHighlightSuggestedEdit(),
+            ),
+            GPTHighlightClipDecision(
                 clipId="complete_make",
                 keep=True,
                 highlightScore=0.82,
@@ -808,6 +838,10 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertEqual(reranked.gptRerankSummary.keptClipIds, ["complete_make"])
         self.assertIn("pre_basket", reranked.gptRerankSummary.rejectedClipIds)
         self.assertIn("unclear_outcome", reranked.gptRerankSummary.rejectedClipIds)
+        self.assertIn("missing_release", reranked.gptRerankSummary.rejectedClipIds)
+        self.assertIn("missing_rim_result", reranked.gptRerankSummary.rejectedClipIds)
+        self.assertEqual(reranked.gptRerankSummary.rejectedReasonCounts.get("missing_shot_release"), 1)
+        self.assertEqual(reranked.gptRerankSummary.rejectedReasonCounts.get("missing_rim_result"), 1)
         self.assertEqual([clip.clipId for clip in plan.clips], ["complete_make"])
 
     def test_gpt_highlight_rerank_all_rejected_does_not_fallback_to_original_clips(self) -> None:

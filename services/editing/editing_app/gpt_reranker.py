@@ -605,6 +605,7 @@ def _build_openai_payload(
                         "rejectTinyClips": True,
                         "rejectPreBasketOnlyClips": True,
                         "madeShotRequiresSetupReleaseBallPathRimAndOutcome": True,
+                        "madeOrMissedShotRequiresVisibleReleaseAndRimResult": True,
                         "doNotKeepIfOutcomeIsOnlyImplied": True,
                         "requiredShotContextKeyframes": sorted(_required_shot_context_roles(settings.limits_for(request.planTier)[1])),
                     },
@@ -626,6 +627,7 @@ def _build_openai_payload(
             "You are HoopClips GPT Highlight Reranker. Judge basketball highlight worthiness, watchability, event clarity, "
             "outcome sanity, boring/duplicate rejection, concise captions, story order, and safe edit suggestions. "
             "Act like a basketball shot-tracker: for made shots, verify visible setup, release, ball path, rim/result, and aftermath. "
+            "For made or missed shots, releaseVisible and rimResultVisible must both be true; do not infer a make from a label or late rim-only aftermath. "
             "reject clips that start right before the basket, clips shorter than the supplied quality minimum, or clips where the outcome is only implied. "
             "Honor userEditIntent only when it is compatible with the supplied template, plan tier, candidate clips, and safety constraints. "
             "Use only supplied candidate clip IDs and sampled keyframes. Do not replace FFmpeg extraction, CV tracking, rendering, or exact timestamps. "
@@ -697,8 +699,10 @@ def _response_schema() -> Dict[str, Any]:
         "additionalProperties": False,
         "properties": {
             "setupVisible": {"type": "boolean"},
+            "releaseVisible": {"type": "boolean"},
             "eventVisible": {"type": "boolean"},
             "outcomeVisible": {"type": "boolean"},
+            "rimResultVisible": {"type": "boolean"},
             "ballPathVisible": {"type": "boolean"},
             "playerControlVisible": {"type": "boolean"},
             "cleanCamera": {"type": "boolean"},
@@ -707,8 +711,10 @@ def _response_schema() -> Dict[str, Any]:
         },
         "required": [
             "setupVisible",
+            "releaseVisible",
             "eventVisible",
             "outcomeVisible",
+            "rimResultVisible",
             "ballPathVisible",
             "playerControlVisible",
             "cleanCamera",

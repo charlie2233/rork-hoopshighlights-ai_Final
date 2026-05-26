@@ -47,8 +47,10 @@ def _clip(clip_id: str, start: float, label: str, score: float) -> dict:
 def _quality_signals(**overrides) -> dict:
     payload = {
         "setupVisible": True,
+        "releaseVisible": True,
         "eventVisible": True,
         "outcomeVisible": True,
+        "rimResultVisible": True,
         "ballPathVisible": True,
         "playerControlVisible": True,
         "cleanCamera": True,

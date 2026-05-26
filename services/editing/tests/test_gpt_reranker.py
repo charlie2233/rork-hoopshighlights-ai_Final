@@ -53,8 +53,10 @@ def _request(plan_tier: str = "free", clip_count: int = 10) -> CreateEditJobRequ
 def _quality_signals(**overrides) -> dict:
     payload = {
         "setupVisible": True,
+        "releaseVisible": True,
         "eventVisible": True,
         "outcomeVisible": True,
+        "rimResultVisible": True,
         "ballPathVisible": True,
         "playerControlVisible": True,
         "cleanCamera": True,
@@ -153,6 +155,10 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertEqual(shot_rules["requiredShotContextKeyframes"], ["outcome", "postOutcome", "preEvent", "release", "rim"])
         self.assertIn("qualitySignals", decision_schema["properties"])
         self.assertIn("qualitySignals", decision_schema["required"])
+        quality_required = decision_schema["properties"]["qualitySignals"]["required"]
+        self.assertIn("releaseVisible", quality_required)
+        self.assertIn("rimResultVisible", quality_required)
+        self.assertTrue(shot_rules["madeOrMissedShotRequiresVisibleReleaseAndRimResult"])
         self.assertIn("shot-tracker", payload["instructions"])
         self.assertIn("reject clips that start right before the basket", payload["instructions"])
 
@@ -802,8 +808,10 @@ class GPTHighlightRerankerTests(unittest.TestCase):
                                 "storyRole": "peak",
                                 "qualitySignals": {
                                     "setupVisible": True,
+                                    "releaseVisible": True,
                                     "eventVisible": True,
                                     "outcomeVisible": True,
+                                    "rimResultVisible": True,
                                     "ballPathVisible": True,
                                     "playerControlVisible": True,
                                     "cleanCamera": True,
@@ -1152,8 +1160,10 @@ class GPTHighlightRerankerTests(unittest.TestCase):
                                 "storyRole": "peak",
                                 "qualitySignals": {
                                     "setupVisible": True,
+                                    "releaseVisible": True,
                                     "eventVisible": True,
                                     "outcomeVisible": True,
+                                    "rimResultVisible": True,
                                     "ballPathVisible": True,
                                     "playerControlVisible": True,
                                     "cleanCamera": True,
