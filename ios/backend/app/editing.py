@@ -978,7 +978,7 @@ class GPTHighlightClipDecision(APIModel):
     caption: str = Field(max_length=MAX_CAPTION_LENGTH)
     reason: str = Field(min_length=1, max_length=180)
     storyRole: StoryRole = "filler"
-    qualitySignals: GPTHighlightQualitySignals = Field(default_factory=GPTHighlightQualitySignals)
+    qualitySignals: GPTHighlightQualitySignals
     suggestedEdit: GPTHighlightSuggestedEdit
 
 
@@ -1918,7 +1918,33 @@ def _source_window_start_for_clip(clip: EditCandidateClip, source_duration: floa
     extend_after = clip.suggestedExtendAfterSeconds or 0.0
     extension_bias = (extend_after - extend_before) * 0.5
     source_start = clip.eventCenter - (source_duration / 2.0) + extension_bias
-    return max(clip.start, min(source_start, clip.end - source_duration))
+    source_start = max(clip.start, min(source_start, clip.end - source_duration))
+    return _clamp_source_window_start_for_clip_context(clip, source_start, source_duration)
+
+
+def _clamp_source_window_start_for_clip_context(
+    clip: EditCandidateClip,
+    source_start: float,
+    source_duration: float,
+) -> float:
+    lower_bound = clip.start
+    upper_bound = clip.end - source_duration
+    if upper_bound < lower_bound:
+        return lower_bound
+    if not is_shot_like_clip(clip):
+        return max(lower_bound, min(source_start, upper_bound))
+
+    contextual_lower_bound = max(
+        lower_bound,
+        clip.eventCenter + MIN_SHOT_CONTEXT_FOLLOW_THROUGH_SECONDS - source_duration,
+    )
+    contextual_upper_bound = min(
+        upper_bound,
+        clip.eventCenter - MIN_SHOT_CONTEXT_LEAD_IN_SECONDS,
+    )
+    if contextual_lower_bound <= contextual_upper_bound:
+        return max(contextual_lower_bound, min(source_start, contextual_upper_bound))
+    return max(lower_bound, min(source_start, upper_bound))
 
 
 def build_edit_plan(request: CreateEditJobRequest, edit_job_id: str) -> EditPlan:
@@ -2102,6 +2128,13 @@ def validate_edit_plan(
             add(f"{field_prefix}.source", "clip_too_short", "Clip is shorter than the minimum render duration.")
         if clip.sourceEnd - clip.sourceStart < minimum_template_clip_seconds:
             add(f"{field_prefix}.source", "template_clip_too_short", "Clip is shorter than the selected template minimum.")
+        if is_shot_like_clip(source):
+            lead_in = clip.eventCenter - clip.sourceStart
+            follow_through = clip.sourceEnd - clip.eventCenter
+            if lead_in < MIN_SHOT_CONTEXT_LEAD_IN_SECONDS:
+                add(f"{field_prefix}.source", "shot_context_missing_setup", "Shot clip starts too close to the basketball event.")
+            if follow_through < MIN_SHOT_CONTEXT_FOLLOW_THROUGH_SECONDS:
+                add(f"{field_prefix}.source", "shot_context_missing_outcome", "Shot clip ends before enough outcome context is visible.")
         if len(clip.caption) > MAX_CAPTION_LENGTH:
             add(f"{field_prefix}.caption", "caption_too_long", "Caption is too long for the selected template.")
         for effect_index, effect in enumerate(clip.effects):

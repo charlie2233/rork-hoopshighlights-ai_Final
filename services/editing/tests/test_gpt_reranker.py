@@ -50,6 +50,21 @@ def _request(plan_tier: str = "free", clip_count: int = 10) -> CreateEditJobRequ
     )
 
 
+def _quality_signals(**overrides) -> dict:
+    payload = {
+        "setupVisible": True,
+        "eventVisible": True,
+        "outcomeVisible": True,
+        "ballPathVisible": True,
+        "playerControlVisible": True,
+        "cleanCamera": True,
+        "fullPlayContext": True,
+        "reason": "Complete play context.",
+    }
+    payload.update(overrides)
+    return payload
+
+
 class GPTHighlightRerankerTests(unittest.TestCase):
     def test_payload_is_strict_structured_output_and_not_stored(self) -> None:
         settings = GPTHighlightRerankerSettings.from_env()
@@ -674,6 +689,7 @@ class GPTHighlightRerankerTests(unittest.TestCase):
                                 "caption": "BUCKET",
                                 "reason": "Clear outcome.",
                                 "storyRole": "filler",
+                                "qualitySignals": _quality_signals(),
                                 "suggestedEdit": {
                                     "slowMotion": False,
                                     "slowMotionCenter": None,
@@ -747,6 +763,7 @@ class GPTHighlightRerankerTests(unittest.TestCase):
                 "caption": caption,
                 "reason": "Clear outcome.",
                 "storyRole": "filler",
+                "qualitySignals": _quality_signals(),
                 "suggestedEdit": {
                     "slowMotion": False,
                     "slowMotionCenter": None,
@@ -948,6 +965,7 @@ class GPTHighlightRerankerTests(unittest.TestCase):
                     "caption": "BUCKET",
                     "reason": "Clear outcome.",
                     "storyRole": "filler",
+                    "qualitySignals": _quality_signals(),
                     "suggestedEdit": {
                         "slowMotion": False,
                         "slowMotionCenter": None,

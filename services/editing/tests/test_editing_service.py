@@ -44,6 +44,21 @@ def _clip(clip_id: str, start: float, label: str, score: float) -> dict:
     }
 
 
+def _quality_signals(**overrides) -> dict:
+    payload = {
+        "setupVisible": True,
+        "eventVisible": True,
+        "outcomeVisible": True,
+        "ballPathVisible": True,
+        "playerControlVisible": True,
+        "cleanCamera": True,
+        "fullPlayContext": True,
+        "reason": "Complete play context.",
+    }
+    payload.update(overrides)
+    return payload
+
+
 class EditingServiceTests(unittest.TestCase):
     def setUp(self) -> None:
         self._temp_dir = Path(tempfile.mkdtemp(prefix="hoopclips-editing-tests-"))
@@ -888,6 +903,7 @@ class EditingServiceTests(unittest.TestCase):
                     outcome="made",
                     caption="BUCKET",
                     reason="Clean shot outcome and watchable finish.",
+                    qualitySignals=_quality_signals(),
                     suggestedEdit=GPTHighlightSuggestedEdit(
                         slowMotion=True,
                         slowMotionCenter=10.4,
@@ -906,6 +922,7 @@ class EditingServiceTests(unittest.TestCase):
                     outcome="unclear",
                     caption="SKIP",
                     reason="Less clear than the made shot.",
+                    qualitySignals=_quality_signals(outcomeVisible=False, ballPathVisible=False, fullPlayContext=False),
                     suggestedEdit=GPTHighlightSuggestedEdit(),
                 ),
             ]

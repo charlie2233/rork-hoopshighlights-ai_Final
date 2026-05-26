@@ -36,6 +36,9 @@ Improve GPT-led HoopClips highlight selection quality with a bias toward basketb
   - this prevents the ordinary selector from dropping a real make just because the upstream candidate window was too tight or started right before the basket
 - Added an ordinary/non-GPT selector guard so shot-like clips also need minimum setup and follow-through context when GPT is disabled or falls back.
 - Ranked deterministic backend candidates by plan eligibility and shot-context quality before raw planning/watchability/excitement scores, so a complete play beats a tiny or late pre-basket window even when the thin clip has a higher model score.
+- Hardened final deterministic render-window construction:
+  - shot-like planned source windows are clamped so GPT edit suggestions cannot shift the rendered clip too far after the event
+  - `validate_edit_plan` now rejects shot render windows that lack setup before the event or outcome context after it
 - Made GPT-kept duplicate cleanup use the same quality-aware duplicate key, closing the path where GPT could keep two duplicate makes and the higher-scored but thinner window could replace the complete play.
 - Added an 85% template-minimum guard during EditPlan creation and validation, preventing tiny render slices while preserving near-minimum valid clips used by longer recap/revision templates.
 - Added a shot-keyframe completeness gate before the GPT call. With quality-beta sampling, shot-like candidates must have setup, release, outcome, and rim keyframes extracted successfully before they can be sent to GPT.
@@ -55,6 +58,7 @@ Improve GPT-led HoopClips highlight selection quality with a bias toward basketb
   - `cleanCamera`
   - `fullPlayContext`
   - `reason`
+- Made `qualitySignals` required in the backend `GPTHighlightClipDecision` model, so direct service/tests, malformed GPT integrations, or future patch paths cannot default all visual-quality checks to `true`.
 - Added backend rejection of GPT-kept clips that still fail shot quality:
   - tiny clips
   - pre-basket-only shot windows
@@ -157,6 +161,36 @@ Results:
 - Full iOS simulator `xcodebuild test` was started against the iPhone 17 Pro simulator for this pass, but it had not produced a readable result bundle after more than eight minutes. Treat the generic no-signing build-for-testing plus existing 74-test simulator pass above as the current iOS evidence until the simulator test runner is stable.
 - Added one more GPT duplicate-regression test: when GPT keeps two duplicate made-shot windows, the complete-context duplicate wins over the higher-scored thin window.
 - Added one edit-service regression test: when GPT is disabled, a too-tight made-shot candidate is expanded from the materialized cloud source before deterministic EditPlan creation, so the rendered clip includes setup and follow-through instead of failing as pre-basket-only.
+
+Additional validation after commit `58a0401`:
+
+```sh
+python3 -m py_compile ios/backend/app/editing.py ios/backend/tests/test_edit_plan_agent.py
+python3 -m py_compile ios/backend/app/editing.py ios/backend/tests/test_edit_plan_agent.py services/editing/tests/test_editing_service.py services/editing/tests/test_gpt_reranker.py
+PYTHONPATH=ios/backend:services/editing /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest ios.backend.tests.test_edit_plan_agent.EditPlanAgentTests.test_build_edit_plan_keeps_shot_render_window_from_shifting_too_late ios.backend.tests.test_edit_plan_agent.EditPlanAgentTests.test_validate_edit_plan_rejects_shot_render_window_without_setup_context -v
+PYTHONPATH=ios/backend:services/editing /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest ios.backend.tests.test_edit_plan_agent -v
+PYTHONPATH=ios/backend:services/editing /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest services.editing.tests.test_editing_service.EditingServiceTests.test_gpt_highlight_rerank_summary_feeds_render_receipt -v
+PYTHONPATH=ios/backend:services/editing /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest services.editing.tests.test_gpt_reranker -v
+PYTHONPATH=ios/backend:services/editing /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest services.editing.tests.test_gpt_reranker ios.backend.tests.test_edit_plan_agent -v
+PYTHONPATH=ios/backend:services/editing /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest discover services/editing/tests -v
+PYTHONPATH=ios/backend /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest discover ios/backend/tests -v
+git diff --check
+```
+
+Results:
+
+- Python compile: passed.
+- New render-window regressions: 2 tests passed.
+- GPT reranker focused suite: 22 tests passed after updating strict quality-signal fixtures.
+- GPT reranker + edit-plan focused suite: 62 tests passed.
+- Editing service discovery: 60 tests passed.
+- iOS backend Python discovery: 54 tests passed.
+- `git diff --check`: passed.
+- Edit-plan agent focused suite: 40 tests passed after adding the required-quality-signals regression.
+- Editing service GPT receipt regression: passed with explicit quality signals in fake GPT decisions.
+- Added a deterministic plan-builder regression so a GPT-style `extendAfterSeconds=3.0` suggestion cannot shift a made-shot render window into a pre-basket-only slice.
+- Added a validator regression so manually patched or future GPT-patched `EditPlan` JSON cannot pass with a shot render window missing setup context.
+- Added a GPT decision model regression so `qualitySignals` must be explicit instead of silently assuming complete visual clarity.
 
 PR #10 CI after commit `0177890846230ccef9570e30349b09e7fb77096f`:
 

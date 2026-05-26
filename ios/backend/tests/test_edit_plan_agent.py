@@ -20,6 +20,8 @@ from app.editing import (
     GPTPlanEditCaption,
     GPTPlanEditSlowMotionMoment,
     GPTHighlightSuggestedEdit,
+    MIN_SHOT_CONTEXT_FOLLOW_THROUGH_SECONDS,
+    MIN_SHOT_CONTEXT_LEAD_IN_SECONDS,
     ReviseEditJobRequest,
     TEMPLATE_PACK_REGISTRY,
     apply_gpt_highlight_rerank,
@@ -83,6 +85,21 @@ def _request_payload(**overrides) -> dict:
             _clip("c4", 24.0, "Made Shot", 0.86),
             _clip("c5", 36.0, "Defense", 0.8),
         ],
+    }
+    payload.update(overrides)
+    return payload
+
+
+def _quality_signals(**overrides) -> dict:
+    payload = {
+        "setupVisible": True,
+        "eventVisible": True,
+        "outcomeVisible": True,
+        "ballPathVisible": True,
+        "playerControlVisible": True,
+        "cleanCamera": True,
+        "fullPlayContext": True,
+        "reason": "Complete play context.",
     }
     payload.update(overrides)
     return payload
@@ -427,6 +444,48 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertNotIn("tiny_make", [clip.clipId for clip in plan.clips])
         self.assertEqual([clip.clipId for clip in plan.clips], ["complete_make"])
 
+    def test_build_edit_plan_keeps_shot_render_window_from_shifting_too_late(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=15,
+                clips=[
+                    {
+                        **_clip("late_shift_make", 20.0, "Made Shot", 0.93),
+                        "end": 27.0,
+                        "eventCenter": 22.0,
+                        "suggestedExtendAfterSeconds": 3.0,
+                    },
+                ],
+            )
+        )
+
+        plan = build_edit_plan(request, "edit_shot_window_clamp")
+
+        self.assertEqual([clip.clipId for clip in plan.clips], ["late_shift_make"])
+        planned_clip = plan.clips[0]
+        self.assertGreaterEqual(planned_clip.eventCenter - planned_clip.sourceStart, MIN_SHOT_CONTEXT_LEAD_IN_SECONDS)
+        self.assertGreaterEqual(planned_clip.sourceEnd - planned_clip.eventCenter, MIN_SHOT_CONTEXT_FOLLOW_THROUGH_SECONDS)
+
+    def test_validate_edit_plan_rejects_shot_render_window_without_setup_context(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=15,
+                clips=[_clip("manual_late_make", 20.0, "Made Shot", 0.93)],
+            )
+        )
+        plan = build_edit_plan(request, "edit_manual_late_window")
+        clipped = plan.clips[0].model_copy(
+            update={
+                "sourceStart": round(plan.clips[0].eventCenter - 0.2, 3),
+                "sourceEnd": round(plan.clips[0].eventCenter + 3.3, 3),
+            }
+        )
+        invalid_plan = plan.model_copy(update={"clips": [clipped]})
+
+        errors = validate_edit_plan(invalid_plan, request.clips, request.planTier)
+
+        self.assertIn("shot_context_missing_setup", [error.code for error in errors])
+
     def test_gpt_highlight_rerank_uses_existing_clip_ids_only(self) -> None:
         request = CreateEditJobRequest(**_request_payload())
         decisions = [
@@ -439,6 +498,7 @@ class EditPlanAgentTests(unittest.TestCase):
                 outcome="made",
                 caption="BIG FINISH",
                 reason="Clear finish and strong watchability.",
+                qualitySignals=_quality_signals(),
                 suggestedEdit=GPTHighlightSuggestedEdit(
                     slowMotion=True,
                     slowMotionCenter=15.4,
@@ -457,6 +517,7 @@ class EditPlanAgentTests(unittest.TestCase):
                 outcome="unclear",
                 caption="NOPE",
                 reason="Should be ignored because it is not in the candidate pool.",
+                qualitySignals=_quality_signals(outcomeVisible=False, ballPathVisible=False, fullPlayContext=False),
                 suggestedEdit=GPTHighlightSuggestedEdit(),
             ),
             GPTHighlightClipDecision(
@@ -468,6 +529,7 @@ class EditPlanAgentTests(unittest.TestCase):
                 outcome="unclear",
                 caption="SKIP",
                 reason="Duplicate was less clear.",
+                qualitySignals=_quality_signals(outcomeVisible=False, ballPathVisible=False, fullPlayContext=False),
                 suggestedEdit=GPTHighlightSuggestedEdit(),
             ),
         ]
@@ -484,6 +546,20 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertEqual(plan.clips[0].captionMoment, 15.4)
         self.assertEqual(plan.clips[0].cropMode, "rim")
         self.assertTrue(any(effect.type == "slow_motion" for effect in plan.clips[0].effects))
+
+    def test_gpt_highlight_decision_requires_quality_signals(self) -> None:
+        with self.assertRaises(ValidationError):
+            GPTHighlightClipDecision(
+                clipId="missing_signals",
+                keep=True,
+                highlightScore=0.95,
+                watchabilityScore=0.9,
+                basketballEvent="Made Shot",
+                outcome="made",
+                caption="BUCKET",
+                reason="This must not default visual quality to true.",
+                suggestedEdit=GPTHighlightSuggestedEdit(),
+            )
 
     def test_gpt_highlight_rerank_rejects_kept_clips_without_full_shot_context(self) -> None:
         request = CreateEditJobRequest(
@@ -581,6 +657,7 @@ class EditPlanAgentTests(unittest.TestCase):
                 outcome="made",
                 caption="BUCKET",
                 reason="The make is visible, but the window is thin.",
+                qualitySignals=_quality_signals(),
                 suggestedEdit=GPTHighlightSuggestedEdit(),
             ),
             GPTHighlightClipDecision(
@@ -592,6 +669,7 @@ class EditPlanAgentTests(unittest.TestCase):
                 outcome="made",
                 caption="COMPLETE",
                 reason="Shows setup, action, and outcome clearly.",
+                qualitySignals=_quality_signals(),
                 suggestedEdit=GPTHighlightSuggestedEdit(),
             ),
         ]
@@ -619,6 +697,7 @@ class EditPlanAgentTests(unittest.TestCase):
                 outcome="made",
                 caption="BIG FINISH",
                 reason="Clear finish and outcome.",
+                qualitySignals=_quality_signals(),
                 suggestedEdit=GPTHighlightSuggestedEdit(),
             )
         ]
@@ -643,6 +722,7 @@ class EditPlanAgentTests(unittest.TestCase):
                 outcome="made",
                 caption=caption,
                 reason="Clear event from an existing candidate clip.",
+                qualitySignals=_quality_signals(),
                 suggestedEdit=GPTHighlightSuggestedEdit(),
             )
             for clip_id, score, label, caption in [
@@ -680,6 +760,7 @@ class EditPlanAgentTests(unittest.TestCase):
                 caption=caption,
                 reason="Clear event from an existing candidate clip.",
                 storyRole=story_role,
+                qualitySignals=_quality_signals(),
                 suggestedEdit=GPTHighlightSuggestedEdit(),
             )
             for clip_id, score, label, caption, story_role in [
@@ -727,6 +808,7 @@ class EditPlanAgentTests(unittest.TestCase):
                 caption=caption,
                 reason="Clear event from an existing candidate clip.",
                 storyRole=story_role,
+                qualitySignals=_quality_signals(),
                 suggestedEdit=GPTHighlightSuggestedEdit(),
             )
             for clip_id, score, label, caption, story_role in [
@@ -788,6 +870,7 @@ class EditPlanAgentTests(unittest.TestCase):
                 outcome="made",
                 caption="CLEAN HIT",
                 reason="Clear make with usable framing.",
+                qualitySignals=_quality_signals(),
                 suggestedEdit=GPTHighlightSuggestedEdit(
                     slowMotion=True,
                     slowMotionCenter=999.0,
