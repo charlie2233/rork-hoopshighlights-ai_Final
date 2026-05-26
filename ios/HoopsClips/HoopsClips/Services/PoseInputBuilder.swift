@@ -13,7 +13,7 @@ struct PoseFrame {
     let points: [VNHumanBodyPoseObservation.JointName: PosePoint]
 }
 
-final class PoseInputBuilder {
+nonisolated final class PoseInputBuilder {
     static let windowSize = 60
     
     // Order matches the training script

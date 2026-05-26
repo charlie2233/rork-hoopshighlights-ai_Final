@@ -80,6 +80,18 @@ RevisionCommand = Literal[
 EDIT_PLAN_VERSION = "edit-plan-v1"
 RENDER_MODE = "cloud_ffmpeg"
 MIN_PLAN_CLIP_SECONDS = 2.0
+MIN_GPT_HIGHLIGHT_SCORE = 0.55
+MIN_GPT_WATCHABILITY_SCORE = 0.5
+MIN_SHOT_CONTEXT_LEAD_IN_SECONDS = 0.9
+MIN_SHOT_CONTEXT_FOLLOW_THROUGH_SECONDS = 0.6
+TARGET_SHOT_CONTEXT_LEAD_IN_SECONDS = 1.6
+TARGET_SHOT_CONTEXT_FOLLOW_THROUGH_SECONDS = 1.0
+MIN_SHOT_LIKE_CLIP_SECONDS = 3.0
+MIN_NON_SHOT_PLANNING_SCORE = 0.5
+MIN_NON_SHOT_WATCHABILITY_SCORE = 0.42
+MIN_GENERIC_HIGHLIGHT_PLANNING_SCORE = 0.62
+MIN_GENERIC_HIGHLIGHT_WATCHABILITY_SCORE = 0.5
+TEMPLATE_MIN_CLIP_TOLERANCE = 0.85
 MAX_CAPTION_LENGTH = 24
 MAX_DURATION_OVERRUN_SECONDS = 6.0
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -948,6 +960,17 @@ class GPTHighlightSuggestedEdit(APIModel):
     extendAfterSeconds: float = Field(default=0.0, ge=0.0, le=3.0)
 
 
+class GPTHighlightQualitySignals(APIModel):
+    setupVisible: bool = True
+    eventVisible: bool = True
+    outcomeVisible: bool = True
+    ballPathVisible: bool = True
+    playerControlVisible: bool = True
+    cleanCamera: bool = True
+    fullPlayContext: bool = True
+    reason: str = Field(default="", max_length=160)
+
+
 class GPTHighlightClipDecision(APIModel):
     clipId: str = Field(min_length=1, max_length=80)
     keep: bool
@@ -959,6 +982,7 @@ class GPTHighlightClipDecision(APIModel):
     caption: str = Field(max_length=MAX_CAPTION_LENGTH)
     reason: str = Field(min_length=1, max_length=180)
     storyRole: StoryRole = "filler"
+    qualitySignals: GPTHighlightQualitySignals
     suggestedEdit: GPTHighlightSuggestedEdit
 
 
@@ -1657,7 +1681,14 @@ def build_edit_context(request: CreateEditJobRequest) -> EditContext:
 def rank_clips(clips: Sequence[EditCandidateClip]) -> List[EditCandidateClip]:
     return sorted(
         clips,
-        key=lambda clip: (clip.planning_score, clip.watchability, clip.excitement, -clip.start),
+        key=lambda clip: (
+            1 if is_plan_quality_eligible_clip(clip) else 0,
+            clip_context_quality_score(clip),
+            clip.planning_score,
+            clip.watchability,
+            clip.excitement,
+            -clip.start,
+        ),
         reverse=True,
     )
 
@@ -1670,7 +1701,7 @@ def remove_duplicate_moments(clips: Sequence[EditCandidateClip]) -> List[EditCan
             unique.append(clip)
             continue
         current = best_by_group.get(clip.duplicateGroup)
-        if current is None or clip.planning_score > current.planning_score:
+        if current is None or _duplicate_choice_key(clip) > _duplicate_choice_key(current):
             best_by_group[clip.duplicateGroup] = clip
     unique.extend(best_by_group.values())
     return rank_clips(unique)
@@ -1736,12 +1767,24 @@ def select_best_clips(
     selected: List[EditCandidateClip] = []
     duration_so_far = 0.0
     _, max_clip_seconds = preset.clipLengthRangeSeconds
+    ranked_candidates = [clip for clip in remove_duplicate_moments(clips) if is_plan_quality_eligible_clip(clip)]
+    selection_order = ranked_candidates
+    if not preset.ordering.startswith("chronological"):
+        story_ordered = [clip for clip in order_by_gpt_story_order(ranked_candidates) if clip.gptStoryOrderIndex is not None]
+        if story_ordered:
+            anchored: List[EditCandidateClip] = [story_ordered[0]]
+            if len(story_ordered) > 1:
+                anchored.append(story_ordered[-1])
+            anchored_ids = {clip.id for clip in anchored}
+            selection_order = (
+                anchored
+                + [clip for clip in story_ordered[1:-1] if clip.id not in anchored_ids]
+                + [clip for clip in ranked_candidates if clip.gptStoryOrderIndex is None and clip.id not in anchored_ids]
+            )
 
-    for clip in remove_duplicate_moments(clips):
+    for clip in selection_order:
         if duration_so_far >= target_seconds:
             break
-        if clip.duration < MIN_PLAN_CLIP_SECONDS:
-            continue
         selected.append(clip)
         duration_so_far += min(max_clip_seconds, clip.duration)
 
@@ -1755,6 +1798,101 @@ def select_best_clips(
 
 def fit_to_duration(clips: Sequence[EditCandidateClip], target_seconds: float, preset: EditPreset) -> List[EditCandidateClip]:
     return select_best_clips(clips, target_seconds, preset)
+
+
+def is_shot_like_clip(clip: EditCandidateClip) -> bool:
+    normalized = clip.label.strip().lower()
+    return any(
+        token in normalized
+        for token in ("shot", "bucket", "basket", "layup", "dunk", "finish", "jumper", "three", "3pt")
+    )
+
+
+def has_minimum_shot_context(clip: EditCandidateClip) -> bool:
+    lead_in = max(0.0, clip.eventCenter - clip.start)
+    follow_through = max(0.0, clip.end - clip.eventCenter)
+    return lead_in >= MIN_SHOT_CONTEXT_LEAD_IN_SECONDS and follow_through >= MIN_SHOT_CONTEXT_FOLLOW_THROUGH_SECONDS
+
+
+def clip_context_quality_score(clip: EditCandidateClip) -> float:
+    if clip.duration < MIN_PLAN_CLIP_SECONDS:
+        return 0.0
+    if not is_shot_like_clip(clip):
+        return non_shot_clip_quality_score(clip)
+
+    lead_in = max(0.0, clip.eventCenter - clip.start)
+    follow_through = max(0.0, clip.end - clip.eventCenter)
+    if clip.duration < MIN_SHOT_LIKE_CLIP_SECONDS:
+        duration_score = max(0.0, clip.duration / MIN_SHOT_LIKE_CLIP_SECONDS) * 0.55
+    else:
+        duration_score = min(1.0, clip.duration / 4.5)
+    lead_score = min(1.0, lead_in / TARGET_SHOT_CONTEXT_LEAD_IN_SECONDS)
+    follow_score = min(1.0, follow_through / TARGET_SHOT_CONTEXT_FOLLOW_THROUGH_SECONDS)
+    if lead_in <= 0.0 or follow_through <= 0.0:
+        balance_score = 0.0
+    else:
+        balance_score = min(lead_in, follow_through) / max(lead_in, follow_through)
+
+    score = (lead_score * 0.38) + (follow_score * 0.28) + (duration_score * 0.22) + (balance_score * 0.12)
+    return round(max(0.0, min(1.0, score)), 4)
+
+
+def non_shot_clip_quality_score(clip: EditCandidateClip) -> float:
+    if clip.duration < MIN_PLAN_CLIP_SECONDS:
+        return 0.0
+    duration_score = min(1.0, clip.duration / 4.5)
+    watchability_score = max(clip.watchability, clip.motionScore)
+    activity_score = max(clip.excitement, clip.audioPeak)
+    score = (
+        (clip.planning_score * 0.42)
+        + (watchability_score * 0.3)
+        + (activity_score * 0.13)
+        + (duration_score * 0.15)
+    )
+    if is_generic_filler_clip(clip):
+        score *= 0.82
+    return round(max(0.0, min(1.0, score)), 4)
+
+
+def is_generic_filler_clip(clip: EditCandidateClip) -> bool:
+    normalized = clip.label.strip().lower()
+    return normalized in {"highlight", "clip", "play", "moment"} or normalized.endswith(" highlight")
+
+
+def has_minimum_non_shot_quality(clip: EditCandidateClip) -> bool:
+    if is_generic_filler_clip(clip):
+        planning_threshold = MIN_GENERIC_HIGHLIGHT_PLANNING_SCORE
+        watchability_threshold = MIN_GENERIC_HIGHLIGHT_WATCHABILITY_SCORE
+    else:
+        planning_threshold = MIN_NON_SHOT_PLANNING_SCORE
+        watchability_threshold = MIN_NON_SHOT_WATCHABILITY_SCORE
+    return (
+        clip.planning_score >= planning_threshold
+        and max(clip.watchability, clip.motionScore) >= watchability_threshold
+    )
+
+
+def is_plan_quality_eligible_clip(clip: EditCandidateClip) -> bool:
+    if clip.duration < MIN_PLAN_CLIP_SECONDS:
+        return False
+    if not is_shot_like_clip(clip):
+        return has_minimum_non_shot_quality(clip)
+    if clip.duration < MIN_SHOT_LIKE_CLIP_SECONDS:
+        return False
+    if not has_minimum_shot_context(clip):
+        return False
+    return True
+
+
+def _duplicate_choice_key(clip: EditCandidateClip) -> Tuple[int, float, float, float, float, float]:
+    return (
+        1 if is_plan_quality_eligible_clip(clip) else 0,
+        clip_context_quality_score(clip),
+        clip.planning_score,
+        clip.watchability,
+        clip.excitement,
+        -clip.start,
+    )
 
 
 def _caption_for(label: str, preset: EditPreset) -> str:
@@ -1792,9 +1930,12 @@ def _effects_for(clip: EditCandidateClip, source_start: float, source_end: float
         effects.append(EditPlanEffect(type="punch_zoom", at=event_center, strength=0.18))
 
     if preset.slowMotionIntensity in {"high", "medium", "low_medium"}:
+        slow_center = event_center
+        if clip.suggestedSlowMotion and clip.suggestedSlowMotionCenter is not None:
+            slow_center = min(max(clip.suggestedSlowMotionCenter, source_start), source_end)
         half_window = 0.6 if preset.slowMotionIntensity == "high" else 0.45
-        slow_start = max(source_start, event_center - half_window)
-        slow_end = min(source_end, event_center + half_window)
+        slow_start = max(source_start, slow_center - half_window)
+        slow_end = min(source_end, slow_center + half_window)
         if slow_end - slow_start >= 0.5:
             speed = 0.5 if preset.slowMotionIntensity == "high" else 0.65
             effects.append(
@@ -1833,7 +1974,33 @@ def _source_window_start_for_clip(clip: EditCandidateClip, source_duration: floa
     extend_after = clip.suggestedExtendAfterSeconds or 0.0
     extension_bias = (extend_after - extend_before) * 0.5
     source_start = clip.eventCenter - (source_duration / 2.0) + extension_bias
-    return max(clip.start, min(source_start, clip.end - source_duration))
+    source_start = max(clip.start, min(source_start, clip.end - source_duration))
+    return _clamp_source_window_start_for_clip_context(clip, source_start, source_duration)
+
+
+def _clamp_source_window_start_for_clip_context(
+    clip: EditCandidateClip,
+    source_start: float,
+    source_duration: float,
+) -> float:
+    lower_bound = clip.start
+    upper_bound = clip.end - source_duration
+    if upper_bound < lower_bound:
+        return lower_bound
+    if not is_shot_like_clip(clip):
+        return max(lower_bound, min(source_start, upper_bound))
+
+    contextual_lower_bound = max(
+        lower_bound,
+        clip.eventCenter + MIN_SHOT_CONTEXT_FOLLOW_THROUGH_SECONDS - source_duration,
+    )
+    contextual_upper_bound = min(
+        upper_bound,
+        clip.eventCenter - MIN_SHOT_CONTEXT_LEAD_IN_SECONDS,
+    )
+    if contextual_lower_bound <= contextual_upper_bound:
+        return max(contextual_lower_bound, min(source_start, contextual_upper_bound))
+    return max(lower_bound, min(source_start, upper_bound))
 
 
 def build_edit_plan(request: CreateEditJobRequest, edit_job_id: str) -> EditPlan:
@@ -1875,7 +2042,8 @@ def build_edit_plan(request: CreateEditJobRequest, edit_job_id: str) -> EditPlan
         if remaining < MIN_PLAN_CLIP_SECONDS:
             break
         source_duration = min(max_clip_seconds, clip.duration, remaining)
-        if source_duration < min(min_clip_seconds, MIN_PLAN_CLIP_SECONDS):
+        minimum_source_duration = max(MIN_PLAN_CLIP_SECONDS, min_clip_seconds * TEMPLATE_MIN_CLIP_TOLERANCE)
+        if source_duration < minimum_source_duration:
             continue
         source_start = _source_window_start_for_clip(clip, source_duration)
         source_end = source_start + source_duration
@@ -2011,8 +2179,18 @@ def validate_edit_plan(
             continue
         if clip.sourceStart < source.start or clip.sourceEnd > source.end:
             add(f"{field_prefix}.source", "source_bounds_invalid", "Clip source bounds exceed source clip bounds.")
+        minimum_template_clip_seconds = max(MIN_PLAN_CLIP_SECONDS, template.clipLength.minSeconds * TEMPLATE_MIN_CLIP_TOLERANCE)
         if clip.sourceEnd - clip.sourceStart < MIN_PLAN_CLIP_SECONDS:
             add(f"{field_prefix}.source", "clip_too_short", "Clip is shorter than the minimum render duration.")
+        if clip.sourceEnd - clip.sourceStart < minimum_template_clip_seconds:
+            add(f"{field_prefix}.source", "template_clip_too_short", "Clip is shorter than the selected template minimum.")
+        if is_shot_like_clip(source):
+            lead_in = clip.eventCenter - clip.sourceStart
+            follow_through = clip.sourceEnd - clip.eventCenter
+            if lead_in < MIN_SHOT_CONTEXT_LEAD_IN_SECONDS:
+                add(f"{field_prefix}.source", "shot_context_missing_setup", "Shot clip starts too close to the basketball event.")
+            if follow_through < MIN_SHOT_CONTEXT_FOLLOW_THROUGH_SECONDS:
+                add(f"{field_prefix}.source", "shot_context_missing_outcome", "Shot clip ends before enough outcome context is visible.")
         if len(clip.caption) > MAX_CAPTION_LENGTH:
             add(f"{field_prefix}.caption", "caption_too_long", "Caption is too long for the selected template.")
         for effect_index, effect in enumerate(clip.effects):
@@ -2092,7 +2270,8 @@ def apply_gpt_highlight_rerank(
         if decision is None:
             missing_decision_clip_ids.append(clip.id)
             continue
-        if not decision.keep:
+        rejection_reason = _gpt_decision_rejection_reason(decision, clip)
+        if rejection_reason is not None:
             rejected_clip_ids.append(clip.id)
             continue
         event_label = decision.basketballEvent.strip() or clip.label
@@ -2135,16 +2314,18 @@ def apply_gpt_highlight_rerank(
 
     if not kept:
         summary = GPTHighlightRerankSummary(
-            status="fallback",
+            status="applied",
             model=model,
             sampledClipCount=sampled_clip_count,
             sampledFrameCount=sampled_frame_count,
             returnedDecisionCount=len(valid_decisions),
+            keptClipIds=[],
+            rejectedClipIds=(rejected_clip_ids + missing_decision_clip_ids)[:30],
             fallbackReason="all_clips_rejected",
-            storyOrderClipIds=valid_story_order,
+            storyOrderClipIds=[],
             planEditApplied=False,
         )
-        return request.model_copy(update={"gptRerankSummary": summary})
+        return request.model_copy(update={"clips": [], "gptRerankSummary": summary})
 
     kept_by_duplicate: Dict[str, EditCandidateClip] = {}
     deduped: List[EditCandidateClip] = []
@@ -2153,7 +2334,7 @@ def apply_gpt_highlight_rerank(
             deduped.append(clip)
             continue
         current = kept_by_duplicate.get(clip.duplicateGroup)
-        if current is None or clip.planning_score > current.planning_score:
+        if current is None or _duplicate_choice_key(clip) > _duplicate_choice_key(current):
             kept_by_duplicate[clip.duplicateGroup] = clip
     deduped.extend(kept_by_duplicate.values())
     reranked = order_by_gpt_story_order(rank_clips(deduped))
@@ -2179,6 +2360,32 @@ def apply_gpt_highlight_rerank(
         planEditApplied=plan_edit_applied,
     )
     return request.model_copy(update={"clips": reranked, "gptRerankSummary": summary})
+
+
+def _gpt_decision_rejection_reason(decision: GPTHighlightClipDecision, clip: EditCandidateClip) -> Optional[str]:
+    if not decision.keep:
+        return decision.rejectReason or "gpt_rejected"
+    if clip.duration < MIN_PLAN_CLIP_SECONDS:
+        return "clip_too_short"
+    if not is_plan_quality_eligible_clip(clip):
+        return "candidate_missing_minimum_quality_context"
+    if decision.highlightScore < MIN_GPT_HIGHLIGHT_SCORE:
+        return "low_highlight_score"
+    if decision.watchabilityScore < MIN_GPT_WATCHABILITY_SCORE:
+        return "low_watchability_score"
+    if decision.outcome in {"unclear", "not_basketball"}:
+        return "unclear_or_non_basketball_outcome"
+
+    signals = decision.qualitySignals
+    if not signals.eventVisible or not signals.outcomeVisible or not signals.cleanCamera:
+        return "unclear_event_or_outcome"
+    if not signals.fullPlayContext or not signals.setupVisible:
+        return "missing_setup_context"
+    if decision.outcome == "made" and not signals.ballPathVisible:
+        return "missing_made_shot_ball_path"
+    if not signals.playerControlVisible and decision.outcome in {"made", "missed"}:
+        return "missing_player_control"
+    return None
 
 
 def _clamp_optional_clip_second(value: Optional[float], clip: EditCandidateClip) -> Optional[float]:

@@ -37,24 +37,26 @@ The service receives a validated `EditPlan`, downloads the source video from ren
 - `HOOPS_AI_CLIP_GPT_EDITOR_ENABLED`: kill switch for GPT-led highlight editing, default `false`
 - `HOOPS_AI_CLIP_GPT_PLAN_EDIT_ENABLED`: allows GPT `planEdit` ordering/caption/slow-motion directives to affect EditPlan inputs, default `false`
 - `HOOPS_AI_CLIP_GPT_REVISION_ENABLED`: launch switch for GPT-produced `EditPlanPatch` revision flows, default `false`
-- `HOOPS_AI_CLIP_GPT_KEYFRAMES_PER_CLIP`: shared keyframe cap per clip, clamped to `3...8`; Free should stay at `3`
+- `HOOPS_AI_CLIP_GPT_KEYFRAMES_PER_CLIP`: shared keyframe cap per clip, clamped to `3...8`; quality-beta default is `8` for stronger shot context
 - `HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_FREE`: Free candidate cap, clamped to `1...8`
-- `HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_PRO`: Pro/internal candidate cap, clamped to `20...30`
+- `HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_PRO`: Pro/internal candidate cap, clamped to `20...30`; quality-beta default is `30`
 - `HOOPS_GPT_HIGHLIGHT_RERANKER_ENABLED`: kill switch for GPT highlight reranking, default `false`
 - `HOOPS_OPENAI_API_KEY`: OpenAI key required only when GPT highlight reranking is enabled
 - `HOOPS_GPT_HIGHLIGHT_RERANK_MODEL`: vision-capable reranker model, default `gpt-4.1-mini`
 - `HOOPS_GPT_HIGHLIGHT_RERANK_FREE_MAX_CLIPS`: Free cap, clamped to `1...8`
-- `HOOPS_GPT_HIGHLIGHT_RERANK_FREE_FRAMES_PER_CLIP`: Free frames per clip, fixed at `3`
-- `HOOPS_GPT_HIGHLIGHT_RERANK_PAID_MAX_CLIPS`: Pro/internal cap, clamped to `20...30`
-- `HOOPS_GPT_HIGHLIGHT_RERANK_PAID_FRAMES_PER_CLIP`: Pro/internal frames per clip, clamped to `5...8`
+- `HOOPS_GPT_HIGHLIGHT_RERANK_FREE_FRAMES_PER_CLIP`: Free frames per clip, clamped to `3...8`; quality-beta default is `8`
+- `HOOPS_GPT_HIGHLIGHT_RERANK_PAID_MAX_CLIPS`: Pro/internal cap, clamped to `20...30`; quality-beta default is `30`
+- `HOOPS_GPT_HIGHLIGHT_RERANK_PAID_FRAMES_PER_CLIP`: Pro/internal frames per clip, clamped to `5...8`; quality-beta default is `8`
 - `HOOPS_GPT_HIGHLIGHT_RERANK_TIMEOUT_SECONDS`: OpenAI request timeout, clamped to `1...60`
-- `HOOPS_GPT_HIGHLIGHT_RERANK_MAX_OUTPUT_TOKENS`: Structured-output budget, clamped to `256...6000`
-- `HOOPS_GPT_HIGHLIGHT_RERANK_FRAME_WIDTH`: sampled keyframe width, clamped to `256...768`
-- `HOOPS_GPT_HIGHLIGHT_RERANK_JPEG_QUALITY`: FFmpeg JPEG quality, clamped to `2...12`
-- `HOOPS_GPT_HIGHLIGHT_RERANK_MAX_IMAGE_BYTES`: per-frame payload cap, clamped to `40000...500000`
-- `HOOPS_GPT_HIGHLIGHT_RERANK_IMAGE_DETAIL`: OpenAI image detail, one of `low`, `high`, `original`, or `auto`; defaults to `low`
+- `HOOPS_GPT_HIGHLIGHT_RERANK_MAX_OUTPUT_TOKENS`: Structured-output budget, clamped to `256...6000`; quality-beta default is `3500`
+- `HOOPS_GPT_HIGHLIGHT_RERANK_FRAME_WIDTH`: sampled keyframe width, clamped to `256...768`; quality-beta default is `768`
+- `HOOPS_GPT_HIGHLIGHT_RERANK_JPEG_QUALITY`: FFmpeg JPEG quality, clamped to `2...12`; quality-beta default is `4`
+- `HOOPS_GPT_HIGHLIGHT_RERANK_MAX_IMAGE_BYTES`: per-frame payload cap, clamped to `40000...500000`; quality-beta default is `300000`
+- `HOOPS_GPT_HIGHLIGHT_RERANK_IMAGE_DETAIL`: OpenAI image detail, one of `low`, `high`, `original`, or `auto`; defaults to `high`
 
 The `/version` endpoint reports the resolved non-secret feature-flag snapshot and GPT reranker sampling caps. It intentionally does not expose all cost knobs. Use it to verify staging rollout state without exposing R2 credentials, service secrets, OpenAI keys, sampled frames, or presigned URLs. GPT reranker OpenAI requests are built with `store=false`.
+
+GPT highlight reranking only receives existing candidate clips and sampled JPEG keyframes. The quality-beta path filters out candidates shorter than the backend minimum or candidates whose event center is too close to the start/end of the window, then asks GPT to verify visible setup, release/event, ball path, rim/outcome, camera quality, and full play context through strict `qualitySignals` JSON. Backend validation rejects kept GPT decisions that still describe tiny, pre-basket-only, unclear, low-score, or missing-outcome clips before the deterministic EditPlan is built.
 
 ## Local Smoke
 

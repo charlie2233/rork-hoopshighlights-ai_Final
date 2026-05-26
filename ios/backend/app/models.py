@@ -59,6 +59,7 @@ class StartCloudAnalysisJobResponse(APIModel):
 class CloudClip(APIModel):
     startTime: float
     endTime: float
+    eventCenter: Optional[float] = None
     confidence: float
     label: str
     action: str
@@ -138,6 +139,7 @@ class CandidateWindow:
     visual_score: float
     motion_score: float
     combined_score: float
+    event_context_score: float = 0.0
 
 
 @dataclass

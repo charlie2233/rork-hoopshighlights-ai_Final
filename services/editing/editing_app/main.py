@@ -16,7 +16,12 @@ from fastapi.responses import FileResponse, JSONResponse
 
 from .backend_imports import ensure_ios_backend_on_path
 from .config import EditingSettings, get_settings
-from .gpt_reranker import GPTHighlightRerankerSettings, request_gpt_edit_plan_patch, rerank_edit_request_with_gpt
+from .gpt_reranker import (
+    GPTHighlightRerankerSettings,
+    expand_shot_candidate_windows_from_source_path,
+    request_gpt_edit_plan_patch,
+    rerank_edit_request_with_gpt,
+)
 from .models import (
     AIWorkReceipt,
     AIWorkTimeline,
@@ -566,8 +571,19 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             raise EditingServiceError(403, "ai_edit_live_render_disabled", "AI Edit rendering is temporarily unavailable.")
 
     def maybe_apply_gpt_highlight_rerank(request: CreateEditJobRequest) -> CreateEditJobRequest:
+        source = None
+        source_context_request = request
+        if request.sourceObjectKey:
+            try:
+                source = storage.materialize_source(request.sourceObjectKey)
+                source_context_request = expand_shot_candidate_windows_from_source_path(request, source.local_path)
+            except EditingServiceError:
+                source = None
+
         if not feature_flags.gptHighlightRerankerEnabled:
-            return request.model_copy(
+            if source is not None:
+                source.cleanup()
+            return source_context_request.model_copy(
                 update={
                     "gptRerankSummary": GPTHighlightRerankSummary(
                         status="disabled",
@@ -577,16 +593,17 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
                 }
             )
         if not request.sourceObjectKey:
-            return rerank_edit_request_with_gpt(request, Path("__missing_source__"), gpt_reranker_settings)
+            return rerank_edit_request_with_gpt(source_context_request, Path("__missing_source__"), gpt_reranker_settings)
         if not gpt_reranker_settings.configured:
-            return rerank_edit_request_with_gpt(request, Path("__missing_key__"), gpt_reranker_settings)
+            if source is not None:
+                source.cleanup()
+            return rerank_edit_request_with_gpt(source_context_request, Path("__missing_key__"), gpt_reranker_settings)
 
-        source = None
         try:
-            source = storage.materialize_source(request.sourceObjectKey)
-            reranked = rerank_edit_request_with_gpt(request, source.local_path, gpt_reranker_settings)
-        except EditingServiceError:
-            reranked = rerank_edit_request_with_gpt(request, Path("__missing_source__"), gpt_reranker_settings)
+            if source is None:
+                reranked = rerank_edit_request_with_gpt(source_context_request, Path("__missing_source__"), gpt_reranker_settings)
+            else:
+                reranked = rerank_edit_request_with_gpt(source_context_request, source.local_path, gpt_reranker_settings)
         finally:
             if source is not None:
                 source.cleanup()

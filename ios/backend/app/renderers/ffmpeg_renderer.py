@@ -178,7 +178,7 @@ class FfmpegRenderer:
             f"trim=start={start:.3f}:end={end:.3f}",
             f"setpts=(PTS-STARTPTS)/{speed:.6f}",
             f"scale={width}:{height}:force_original_aspect_ratio=increase",
-            f"crop={width}:{height}",
+            self._crop_filter(width, height, clip.cropMode),
             "setsar=1",
             "fps=30",
             "format=yuv420p",
@@ -441,6 +441,10 @@ class FfmpegRenderer:
             return 720, 1280
         return 1280, 720
 
+    def _crop_filter(self, width: int, height: int, crop_mode: str) -> str:
+        x, y = _crop_focus_expression(crop_mode)
+        return f"crop={width}:{height}:{x}:{y}"
+
     def _source_has_audio(self, source_path: Path) -> bool:
         command = [
             self._ffprobe,
@@ -495,6 +499,17 @@ class FfmpegRenderer:
 
     def _redact_command(self, command: List[str]) -> str:
         return " ".join(shlex.quote(part) for part in command)
+
+
+def _crop_focus_expression(crop_mode: str) -> Tuple[str, str]:
+    normalized = crop_mode.strip().lower()
+    if normalized == "rim":
+        return "(iw-ow)*0.50", "(ih-oh)*0.28"
+    if normalized == "ball":
+        return "(iw-ow)*0.50", "(ih-oh)*0.42"
+    if normalized == "shooter":
+        return "(iw-ow)*0.42", "(ih-oh)*0.54"
+    return "(iw-ow)/2", "(ih-oh)/2"
 
 
 def resolve_music_track_path(track_id: str) -> Optional[Path]:

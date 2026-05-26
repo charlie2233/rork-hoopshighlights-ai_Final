@@ -20,6 +20,8 @@ from app.editing import (
     GPTPlanEditCaption,
     GPTPlanEditSlowMotionMoment,
     GPTHighlightSuggestedEdit,
+    MIN_SHOT_CONTEXT_FOLLOW_THROUGH_SECONDS,
+    MIN_SHOT_CONTEXT_LEAD_IN_SECONDS,
     ReviseEditJobRequest,
     TEMPLATE_PACK_REGISTRY,
     apply_gpt_highlight_rerank,
@@ -30,7 +32,10 @@ from app.editing import (
     build_revision_response,
     build_edit_job,
     build_edit_plan,
+    clip_context_quality_score,
     get_template_pack_for_plan,
+    is_plan_quality_eligible_clip,
+    rank_clips,
     remove_duplicate_moments,
     repair_edit_plan,
     revise_edit_job,
@@ -81,6 +86,21 @@ def _request_payload(**overrides) -> dict:
             _clip("c4", 24.0, "Made Shot", 0.86),
             _clip("c5", 36.0, "Defense", 0.8),
         ],
+    }
+    payload.update(overrides)
+    return payload
+
+
+def _quality_signals(**overrides) -> dict:
+    payload = {
+        "setupVisible": True,
+        "eventVisible": True,
+        "outcomeVisible": True,
+        "ballPathVisible": True,
+        "playerControlVisible": True,
+        "cleanCamera": True,
+        "fullPlayContext": True,
+        "reason": "Complete play context.",
     }
     payload.update(overrides)
     return payload
@@ -278,7 +298,7 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertEqual(context["rendererTemplateDefaults"]["captionStyle"], "cinematic_hype")
         self.assertEqual(context["templateCookbookRules"]["orderingRules"]["opener"], "one_of_top_2_clips")
         self.assertIn("COLD.", context["templateCookbookRules"]["captionRules"]["examples"])
-        self.assertEqual(context["candidateClips"][0]["clipId"], "c1")
+        self.assertEqual(context["candidateClips"][0]["clipId"], "c3")
         serialized = str(context)
         self.assertNotIn("sourceObjectKey", serialized)
         self.assertNotIn("downloadUrl", serialized)
@@ -348,6 +368,164 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertEqual(len(grouped), 1)
         self.assertEqual(grouped[0].id, "c1")
 
+    def test_ordinary_selector_rejects_shot_clip_without_setup_context(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=15,
+                clips=[
+                    {
+                        **_clip("pre_basket", 0.0, "Made Shot", 0.99),
+                        "eventCenter": 0.2,
+                    },
+                    _clip("complete_shot", 12.0, "Made Shot", 0.72),
+                ],
+            )
+        )
+
+        plan = build_edit_plan(request, "edit_ordinary_quality")
+
+        self.assertNotIn("pre_basket", [clip.clipId for clip in plan.clips])
+        self.assertIn("complete_shot", [clip.clipId for clip in plan.clips])
+
+    def test_duplicate_group_prefers_complete_shot_context_over_higher_scored_pre_basket_window(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=15,
+                clips=[
+                    {
+                        **_clip("late_duplicate", 8.0, "Made Shot", 0.99, "shot_1"),
+                        "end": 10.2,
+                        "eventCenter": 8.1,
+                    },
+                    _clip("complete_duplicate", 6.0, "Made Shot", 0.82, "shot_1"),
+                ],
+            )
+        )
+
+        plan = build_edit_plan(request, "edit_duplicate_quality")
+
+        self.assertEqual([clip.clipId for clip in plan.clips], ["complete_duplicate"])
+
+    def test_rank_clips_rewards_complete_shot_context_over_thin_late_window(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                clips=[
+                    {
+                        **_clip("thin_late_make", 8.0, "Made Shot", 0.99),
+                        "end": 11.0,
+                        "eventCenter": 8.92,
+                    },
+                    _clip("complete_make", 18.0, "Made Shot", 0.82),
+                ],
+            )
+        )
+
+        ranked = rank_clips(request.clips)
+
+        self.assertEqual(ranked[0].id, "complete_make")
+        self.assertGreater(clip_context_quality_score(ranked[0]), clip_context_quality_score(request.clips[0]))
+
+    def test_deterministic_plan_rejects_weak_generic_filler_when_gpt_falls_back(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                clips=[
+                    {
+                        **_clip("audio_only_filler", 0.0, "Highlight", 0.42),
+                        "watchability": 0.2,
+                        "motionScore": 0.22,
+                        "audioPeak": 0.95,
+                    }
+                ],
+            )
+        )
+
+        job = build_edit_job(request, "edit_weak_fallback")
+
+        self.assertFalse(is_plan_quality_eligible_clip(request.clips[0]))
+        self.assertEqual(job.status, "failed")
+        self.assertIn("empty_clip_list", [error.code for error in job.validation_errors])
+
+    def test_deterministic_plan_keeps_clear_non_shot_defense_clip(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                clips=[
+                    {
+                        **_clip("defense_stop", 4.0, "Defense", 0.66),
+                        "watchability": 0.62,
+                        "motionScore": 0.7,
+                    }
+                ],
+            )
+        )
+
+        job = build_edit_job(request, "edit_defense_non_shot")
+
+        self.assertTrue(is_plan_quality_eligible_clip(request.clips[0]))
+        self.assertEqual(job.status, "plan_ready")
+        self.assertEqual([clip.clipId for clip in job.plan.clips], ["defense_stop"])
+
+    def test_build_edit_plan_enforces_template_minimum_clip_length(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=15,
+                clips=[
+                    {
+                        **_clip("tiny_make", 0.0, "Made Shot", 0.99),
+                        "end": 2.8,
+                        "eventCenter": 1.4,
+                    },
+                    _clip("complete_make", 12.0, "Made Shot", 0.75),
+                ],
+            )
+        )
+
+        plan = build_edit_plan(request, "edit_template_min_clip")
+
+        self.assertNotIn("tiny_make", [clip.clipId for clip in plan.clips])
+        self.assertEqual([clip.clipId for clip in plan.clips], ["complete_make"])
+
+    def test_build_edit_plan_keeps_shot_render_window_from_shifting_too_late(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=15,
+                clips=[
+                    {
+                        **_clip("late_shift_make", 20.0, "Made Shot", 0.93),
+                        "end": 27.0,
+                        "eventCenter": 22.0,
+                        "suggestedExtendAfterSeconds": 3.0,
+                    },
+                ],
+            )
+        )
+
+        plan = build_edit_plan(request, "edit_shot_window_clamp")
+
+        self.assertEqual([clip.clipId for clip in plan.clips], ["late_shift_make"])
+        planned_clip = plan.clips[0]
+        self.assertGreaterEqual(planned_clip.eventCenter - planned_clip.sourceStart, MIN_SHOT_CONTEXT_LEAD_IN_SECONDS)
+        self.assertGreaterEqual(planned_clip.sourceEnd - planned_clip.eventCenter, MIN_SHOT_CONTEXT_FOLLOW_THROUGH_SECONDS)
+
+    def test_validate_edit_plan_rejects_shot_render_window_without_setup_context(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=15,
+                clips=[_clip("manual_late_make", 20.0, "Made Shot", 0.93)],
+            )
+        )
+        plan = build_edit_plan(request, "edit_manual_late_window")
+        clipped = plan.clips[0].model_copy(
+            update={
+                "sourceStart": round(plan.clips[0].eventCenter - 0.2, 3),
+                "sourceEnd": round(plan.clips[0].eventCenter + 3.3, 3),
+            }
+        )
+        invalid_plan = plan.model_copy(update={"clips": [clipped]})
+
+        errors = validate_edit_plan(invalid_plan, request.clips, request.planTier)
+
+        self.assertIn("shot_context_missing_setup", [error.code for error in errors])
+
     def test_gpt_highlight_rerank_uses_existing_clip_ids_only(self) -> None:
         request = CreateEditJobRequest(**_request_payload())
         decisions = [
@@ -360,6 +538,7 @@ class EditPlanAgentTests(unittest.TestCase):
                 outcome="made",
                 caption="BIG FINISH",
                 reason="Clear finish and strong watchability.",
+                qualitySignals=_quality_signals(),
                 suggestedEdit=GPTHighlightSuggestedEdit(
                     slowMotion=True,
                     slowMotionCenter=15.4,
@@ -378,6 +557,7 @@ class EditPlanAgentTests(unittest.TestCase):
                 outcome="unclear",
                 caption="NOPE",
                 reason="Should be ignored because it is not in the candidate pool.",
+                qualitySignals=_quality_signals(outcomeVisible=False, ballPathVisible=False, fullPlayContext=False),
                 suggestedEdit=GPTHighlightSuggestedEdit(),
             ),
             GPTHighlightClipDecision(
@@ -389,6 +569,7 @@ class EditPlanAgentTests(unittest.TestCase):
                 outcome="unclear",
                 caption="SKIP",
                 reason="Duplicate was less clear.",
+                qualitySignals=_quality_signals(outcomeVisible=False, ballPathVisible=False, fullPlayContext=False),
                 suggestedEdit=GPTHighlightSuggestedEdit(),
             ),
         ]
@@ -406,6 +587,200 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertEqual(plan.clips[0].cropMode, "rim")
         self.assertTrue(any(effect.type == "slow_motion" for effect in plan.clips[0].effects))
 
+    def test_gpt_highlight_decision_requires_quality_signals(self) -> None:
+        with self.assertRaises(ValidationError):
+            GPTHighlightClipDecision(
+                clipId="missing_signals",
+                keep=True,
+                highlightScore=0.95,
+                watchabilityScore=0.9,
+                basketballEvent="Made Shot",
+                outcome="made",
+                caption="BUCKET",
+                reason="This must not default visual quality to true.",
+                suggestedEdit=GPTHighlightSuggestedEdit(),
+            )
+
+    def test_gpt_highlight_rerank_rejects_kept_clips_without_full_shot_context(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=30,
+                clips=[
+                    {
+                        **_clip("pre_basket", 0.0, "Made Shot", 0.99),
+                        "eventCenter": 0.2,
+                    },
+                    _clip("unclear_outcome", 12.0, "Made Shot", 0.97),
+                    _clip("complete_make", 24.0, "Made Shot", 0.8),
+                ],
+            )
+        )
+        base_signal = {
+            "setupVisible": True,
+            "eventVisible": True,
+            "outcomeVisible": True,
+            "ballPathVisible": True,
+            "playerControlVisible": True,
+            "cleanCamera": True,
+            "fullPlayContext": True,
+            "reason": "Complete play context.",
+        }
+        decisions = [
+            GPTHighlightClipDecision(
+                clipId="pre_basket",
+                keep=True,
+                highlightScore=0.99,
+                watchabilityScore=0.95,
+                basketballEvent="Made Shot",
+                outcome="made",
+                caption="TOO LATE",
+                reason="The basket is visible, but the setup is missing.",
+                qualitySignals={**base_signal, "setupVisible": False, "fullPlayContext": False, "reason": "Clip starts right before the make."},
+                suggestedEdit=GPTHighlightSuggestedEdit(),
+            ),
+            GPTHighlightClipDecision(
+                clipId="unclear_outcome",
+                keep=True,
+                highlightScore=0.97,
+                watchabilityScore=0.92,
+                basketballEvent="Made Shot",
+                outcome="made",
+                caption="UNCLEAR",
+                reason="The release is visible but the result is not.",
+                qualitySignals={**base_signal, "outcomeVisible": False, "ballPathVisible": False, "reason": "No clear rim or make/miss frame."},
+                suggestedEdit=GPTHighlightSuggestedEdit(),
+            ),
+            GPTHighlightClipDecision(
+                clipId="complete_make",
+                keep=True,
+                highlightScore=0.82,
+                watchabilityScore=0.86,
+                basketballEvent="Made Shot",
+                outcome="made",
+                caption="BUCKET",
+                reason="Shows setup, release, ball path, and made outcome.",
+                qualitySignals=base_signal,
+                suggestedEdit=GPTHighlightSuggestedEdit(),
+            ),
+        ]
+
+        reranked = apply_gpt_highlight_rerank(request, decisions, "gpt-test", 3, 15)
+        plan = build_edit_plan(reranked, "edit_quality_context")
+
+        self.assertEqual(reranked.gptRerankSummary.status, "applied")
+        self.assertEqual(reranked.gptRerankSummary.keptClipIds, ["complete_make"])
+        self.assertIn("pre_basket", reranked.gptRerankSummary.rejectedClipIds)
+        self.assertIn("unclear_outcome", reranked.gptRerankSummary.rejectedClipIds)
+        self.assertEqual([clip.clipId for clip in plan.clips], ["complete_make"])
+
+    def test_gpt_highlight_rerank_all_rejected_does_not_fallback_to_original_clips(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=15,
+                clips=[
+                    _clip("boring_walkup", 0.0, "Highlight", 0.62),
+                    _clip("late_basket", 12.0, "Made Shot", 0.95),
+                ],
+            )
+        )
+        decisions = [
+            GPTHighlightClipDecision(
+                clipId="boring_walkup",
+                keep=False,
+                rejectReason="boring",
+                highlightScore=0.18,
+                watchabilityScore=0.34,
+                basketballEvent="Dead ball",
+                outcome="not_basketball",
+                caption="SKIP",
+                reason="No clear basketball outcome.",
+                qualitySignals=_quality_signals(
+                    eventVisible=False,
+                    outcomeVisible=False,
+                    ballPathVisible=False,
+                    playerControlVisible=False,
+                    fullPlayContext=False,
+                ),
+                suggestedEdit=GPTHighlightSuggestedEdit(),
+            ),
+            GPTHighlightClipDecision(
+                clipId="late_basket",
+                keep=False,
+                rejectReason="missing_setup_context",
+                highlightScore=0.42,
+                watchabilityScore=0.72,
+                basketballEvent="Made Shot",
+                outcome="made",
+                caption="SKIP",
+                reason="The clip starts too late and misses the setup.",
+                qualitySignals=_quality_signals(setupVisible=False, fullPlayContext=False),
+                suggestedEdit=GPTHighlightSuggestedEdit(),
+            ),
+        ]
+
+        reranked = apply_gpt_highlight_rerank(request, decisions, "gpt-test", 2, 6)
+        job = build_edit_job(reranked, "edit_all_gpt_rejected")
+
+        self.assertEqual(reranked.gptRerankSummary.status, "applied")
+        self.assertEqual(reranked.gptRerankSummary.fallbackReason, "all_clips_rejected")
+        self.assertEqual(reranked.gptRerankSummary.keptClipIds, [])
+        self.assertEqual(set(reranked.gptRerankSummary.rejectedClipIds), {"boring_walkup", "late_basket"})
+        self.assertEqual(reranked.clips, [])
+        self.assertEqual(job.status, "failed")
+        self.assertIn("empty_clip_list", [error.code for error in job.validation_errors])
+
+    def test_gpt_highlight_rerank_duplicate_cleanup_prefers_complete_context(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=15,
+                clips=[
+                    {
+                        **_clip("barely_contextual_make", 8.0, "Made Shot", 0.99, "shot_dup"),
+                        "end": 11.3,
+                        "eventCenter": 9.0,
+                    },
+                    _clip("complete_context_make", 18.0, "Made Shot", 0.82, "shot_dup"),
+                ],
+            )
+        )
+        decisions = [
+            GPTHighlightClipDecision(
+                clipId="barely_contextual_make",
+                keep=True,
+                highlightScore=0.99,
+                watchabilityScore=0.96,
+                basketballEvent="Made Shot",
+                outcome="made",
+                caption="BUCKET",
+                reason="The make is visible, but the window is thin.",
+                qualitySignals=_quality_signals(),
+                suggestedEdit=GPTHighlightSuggestedEdit(),
+            ),
+            GPTHighlightClipDecision(
+                clipId="complete_context_make",
+                keep=True,
+                highlightScore=0.84,
+                watchabilityScore=0.88,
+                basketballEvent="Made Shot",
+                outcome="made",
+                caption="COMPLETE",
+                reason="Shows setup, action, and outcome clearly.",
+                qualitySignals=_quality_signals(),
+                suggestedEdit=GPTHighlightSuggestedEdit(),
+            ),
+        ]
+
+        reranked = apply_gpt_highlight_rerank(request, decisions, "gpt-test", 2, 16)
+        plan = build_edit_plan(reranked, "edit_gpt_duplicate_context")
+
+        self.assertEqual(reranked.gptRerankSummary.status, "applied")
+        self.assertEqual(reranked.gptRerankSummary.keptClipIds, ["complete_context_make"])
+        self.assertGreater(
+            clip_context_quality_score(next(clip for clip in request.clips if clip.id == "complete_context_make")),
+            clip_context_quality_score(next(clip for clip in request.clips if clip.id == "barely_contextual_make")),
+        )
+        self.assertEqual([clip.clipId for clip in plan.clips], ["complete_context_make"])
+
     def test_gpt_highlight_rerank_drops_unjudged_candidates(self) -> None:
         request = CreateEditJobRequest(**_request_payload(targetDurationSeconds=30))
         decisions = [
@@ -418,6 +793,7 @@ class EditPlanAgentTests(unittest.TestCase):
                 outcome="made",
                 caption="BIG FINISH",
                 reason="Clear finish and outcome.",
+                qualitySignals=_quality_signals(),
                 suggestedEdit=GPTHighlightSuggestedEdit(),
             )
         ]
@@ -442,6 +818,7 @@ class EditPlanAgentTests(unittest.TestCase):
                 outcome="made",
                 caption=caption,
                 reason="Clear event from an existing candidate clip.",
+                qualitySignals=_quality_signals(),
                 suggestedEdit=GPTHighlightSuggestedEdit(),
             )
             for clip_id, score, label, caption in [
@@ -466,6 +843,42 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertEqual([clip.clipId for clip in plan.clips[:3]], ["c4", "c3", "c1"])
         self.assertNotIn("c999", [clip.clipId for clip in plan.clips])
 
+    def test_gpt_story_order_opener_and_closer_survive_short_reel_cutoff(self) -> None:
+        request = CreateEditJobRequest(**_request_payload(targetDurationSeconds=15))
+        decisions = [
+            GPTHighlightClipDecision(
+                clipId=clip_id,
+                keep=True,
+                highlightScore=score,
+                watchabilityScore=score,
+                basketballEvent=label,
+                outcome="made",
+                caption=caption,
+                reason="Clear event from an existing candidate clip.",
+                qualitySignals=_quality_signals(),
+                suggestedEdit=GPTHighlightSuggestedEdit(),
+            )
+            for clip_id, score, label, caption in [
+                ("c1", 0.99, "Fast Break", "RUNOUT"),
+                ("c3", 0.98, "Dunk", "BIG FINISH"),
+                ("c4", 0.74, "Made Shot", "CLOSER"),
+            ]
+        ]
+
+        reranked = apply_gpt_highlight_rerank(
+            request,
+            decisions,
+            "gpt-test",
+            3,
+            9,
+            story_order=["c1", "c3", "c4"],
+        )
+        plan = build_edit_plan(reranked, "edit_gpt_story_order_short")
+
+        self.assertEqual(reranked.gptRerankSummary.storyOrderClipIds, ["c1", "c3", "c4"])
+        self.assertEqual([clip.clipId for clip in plan.clips], ["c1", "c4"])
+        self.assertNotIn("c3", [clip.clipId for clip in plan.clips])
+
     def test_gpt_plan_edit_controls_order_captions_and_slow_motion(self) -> None:
         request = CreateEditJobRequest(**_request_payload(targetDurationSeconds=45))
         decisions = [
@@ -479,6 +892,7 @@ class EditPlanAgentTests(unittest.TestCase):
                 caption=caption,
                 reason="Clear event from an existing candidate clip.",
                 storyRole=story_role,
+                qualitySignals=_quality_signals(),
                 suggestedEdit=GPTHighlightSuggestedEdit(),
             )
             for clip_id, score, label, caption, story_role in [
@@ -498,7 +912,7 @@ class EditPlanAgentTests(unittest.TestCase):
                 orderedClipIds=["c4", "c1", "c3"],
                 pacing="fast",
                 captions=[GPTPlanEditCaption(clipId="c1", caption="RUNOUT!", captionMoment=3.2)],
-                slowMotionMoments=[GPTPlanEditSlowMotionMoment(clipId="c3", center=15.1, speed=0.55)],
+                slowMotionMoments=[GPTPlanEditSlowMotionMoment(clipId="c3", center=13.2, speed=0.55)],
                 summary="Open with the make, then speed, then peak.",
             ),
         )
@@ -511,7 +925,8 @@ class EditPlanAgentTests(unittest.TestCase):
         c3 = next(clip for clip in plan.clips if clip.clipId == "c3")
         self.assertEqual(c1.caption, "RUNOUT!")
         self.assertEqual(c1.captionMoment, 3.2)
-        self.assertTrue(any(effect.type == "slow_motion" for effect in c3.effects))
+        slow_motion = next(effect for effect in c3.effects if effect.type == "slow_motion")
+        self.assertAlmostEqual(((slow_motion.sourceStart or 0.0) + (slow_motion.sourceEnd or 0.0)) / 2.0, 13.2, delta=0.05)
 
     def test_gpt_plan_edit_ignores_invalid_clip_references(self) -> None:
         request = CreateEditJobRequest(**_request_payload(targetDurationSeconds=45))
@@ -526,6 +941,7 @@ class EditPlanAgentTests(unittest.TestCase):
                 caption=caption,
                 reason="Clear event from an existing candidate clip.",
                 storyRole=story_role,
+                qualitySignals=_quality_signals(),
                 suggestedEdit=GPTHighlightSuggestedEdit(),
             )
             for clip_id, score, label, caption, story_role in [
@@ -587,6 +1003,7 @@ class EditPlanAgentTests(unittest.TestCase):
                 outcome="made",
                 caption="CLEAN HIT",
                 reason="Clear make with usable framing.",
+                qualitySignals=_quality_signals(),
                 suggestedEdit=GPTHighlightSuggestedEdit(
                     slowMotion=True,
                     slowMotionCenter=999.0,

@@ -22,12 +22,15 @@ from app.editing import (  # noqa: E402
     GPTHighlightClipDecision,
     GPTPlanEdit,
     GPTHighlightRerankSummary,
+    MIN_PLAN_CLIP_SECONDS,
     ReviseEditJobRequest,
     StoredEditJob,
     apply_gpt_highlight_rerank,
     build_agent_editing_context,
     derive_user_prompt_intent,
     get_template_pack_for_plan,
+    is_plan_quality_eligible_clip,
+    is_shot_like_clip,
     rank_clips,
     summarize_clip_pool,
     validate_edit_plan_patch,
@@ -37,6 +40,14 @@ from app.editing import (  # noqa: E402
 ResponseClient = Callable[[Dict[str, Any], str, str, float], Dict[str, Any]]
 ALLOWED_IMAGE_DETAIL_LEVELS = {"low", "high", "original", "auto"}
 REQUIRED_KEYFRAME_ROLES = {"start", "eventCenter", "finish"}
+SHOT_CONTEXT_KEYFRAME_ROLES = ("preEvent", "release", "outcome", "rim")
+MIN_GPT_CANDIDATE_LEAD_IN_SECONDS = 1.2
+MIN_GPT_CANDIDATE_FOLLOW_THROUGH_SECONDS = 0.75
+MIN_GPT_SHOT_LIKE_CANDIDATE_SECONDS = 3.0
+SHOT_CONTEXT_EXPANSION_LEAD_SECONDS = 2.0
+SHOT_CONTEXT_EXPANSION_FOLLOW_THROUGH_SECONDS = 1.25
+SHOT_CONTEXT_EXPANSION_TARGET_SECONDS = 5.5
+SHOT_CONTEXT_EXPANSION_MAX_SECONDS = 8.0
 
 
 @dataclass(frozen=True)
@@ -70,15 +81,15 @@ class GPTHighlightRerankerSettings:
             model=os.getenv("HOOPS_AI_CLIP_GPT_MODEL", os.getenv("HOOPS_GPT_HIGHLIGHT_RERANK_MODEL", "gpt-4.1-mini")),
             endpoint=os.getenv("HOOPS_AI_CLIP_GPT_ENDPOINT", os.getenv("HOOPS_GPT_HIGHLIGHT_RERANK_ENDPOINT", "https://api.openai.com/v1/responses")),
             timeout_seconds=_env_float("HOOPS_AI_CLIP_GPT_TIMEOUT_SECONDS", _env_float("HOOPS_GPT_HIGHLIGHT_RERANK_TIMEOUT_SECONDS", 18.0, 1.0, 60.0), 1.0, 60.0),
-            max_output_tokens=_env_int("HOOPS_AI_CLIP_GPT_MAX_OUTPUT_TOKENS", _env_int("HOOPS_GPT_HIGHLIGHT_RERANK_MAX_OUTPUT_TOKENS", 2200, 256, 6000), 256, 6000),
+            max_output_tokens=_env_int("HOOPS_AI_CLIP_GPT_MAX_OUTPUT_TOKENS", _env_int("HOOPS_GPT_HIGHLIGHT_RERANK_MAX_OUTPUT_TOKENS", 3500, 256, 6000), 256, 6000),
             free_max_clips=_env_int("HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_FREE", _env_int("HOOPS_GPT_HIGHLIGHT_RERANK_FREE_MAX_CLIPS", 8, 1, 8), 1, 8),
-            paid_max_clips=_env_int("HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_PRO", _env_int("HOOPS_GPT_HIGHLIGHT_RERANK_PAID_MAX_CLIPS", 24, 20, 30), 20, 30),
-            free_frames_per_clip=_env_int("HOOPS_AI_CLIP_GPT_KEYFRAMES_PER_CLIP", _env_int("HOOPS_GPT_HIGHLIGHT_RERANK_FREE_FRAMES_PER_CLIP", 3, 3, 3), 3, 8),
-            paid_frames_per_clip=_env_int("HOOPS_AI_CLIP_GPT_KEYFRAMES_PER_CLIP", _env_int("HOOPS_GPT_HIGHLIGHT_RERANK_PAID_FRAMES_PER_CLIP", 5, 5, 8), 3, 8),
-            frame_width=_env_int("HOOPS_GPT_HIGHLIGHT_RERANK_FRAME_WIDTH", 512, 256, 768),
-            jpeg_quality=_env_int("HOOPS_GPT_HIGHLIGHT_RERANK_JPEG_QUALITY", 5, 2, 12),
-            max_image_bytes=_env_int("HOOPS_GPT_HIGHLIGHT_RERANK_MAX_IMAGE_BYTES", 180_000, 40_000, 500_000),
-            image_detail=_env_image_detail("HOOPS_AI_CLIP_GPT_IMAGE_DETAIL", _env_image_detail("HOOPS_GPT_HIGHLIGHT_RERANK_IMAGE_DETAIL", "low")),
+            paid_max_clips=_env_int("HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_PRO", _env_int("HOOPS_GPT_HIGHLIGHT_RERANK_PAID_MAX_CLIPS", 30, 20, 30), 20, 30),
+            free_frames_per_clip=_env_int("HOOPS_AI_CLIP_GPT_KEYFRAMES_PER_CLIP", _env_int("HOOPS_GPT_HIGHLIGHT_RERANK_FREE_FRAMES_PER_CLIP", 8, 3, 8), 3, 8),
+            paid_frames_per_clip=_env_int("HOOPS_AI_CLIP_GPT_KEYFRAMES_PER_CLIP", _env_int("HOOPS_GPT_HIGHLIGHT_RERANK_PAID_FRAMES_PER_CLIP", 8, 5, 8), 3, 8),
+            frame_width=_env_int("HOOPS_GPT_HIGHLIGHT_RERANK_FRAME_WIDTH", 768, 256, 768),
+            jpeg_quality=_env_int("HOOPS_GPT_HIGHLIGHT_RERANK_JPEG_QUALITY", 4, 2, 12),
+            max_image_bytes=_env_int("HOOPS_GPT_HIGHLIGHT_RERANK_MAX_IMAGE_BYTES", 300_000, 40_000, 500_000),
+            image_detail=_env_image_detail("HOOPS_AI_CLIP_GPT_IMAGE_DETAIL", _env_image_detail("HOOPS_GPT_HIGHLIGHT_RERANK_IMAGE_DETAIL", "high")),
             plan_edit_enabled=_env_flag("HOOPS_AI_CLIP_GPT_PLAN_EDIT_ENABLED"),
             revision_enabled=_env_flag("HOOPS_AI_CLIP_GPT_REVISION_ENABLED"),
         )
@@ -133,13 +144,28 @@ def rerank_edit_request_with_gpt(
     if not source_path.is_file():
         return _with_fallback(request, "fallback", settings.model, "source_missing")
 
+    request = expand_shot_candidate_windows_from_source_path(request, source_path)
     max_clips, frames_per_clip = settings.limits_for(request.planTier)
-    sampled_clips = rank_clips(request.clips)[:max_clips]
+    sampled_clips = _quality_filtered_sampled_clips(rank_clips(request.clips), max_clips)
+    if not sampled_clips:
+        return _with_fallback(request, "fallback", settings.model, "no_quality_candidates", 0, 0)
     sampled_frames = _extract_candidate_keyframes(source_path, sampled_clips, frames_per_clip, settings)
     if not sampled_frames:
         return _with_fallback(request, "fallback", settings.model, "keyframe_extraction_failed", len(sampled_clips), 0)
-    if _missing_required_keyframes(sampled_clips, sampled_frames):
-        return _with_fallback(request, "fallback", settings.model, "keyframe_extraction_incomplete", len(sampled_clips), len(sampled_frames))
+    missing_required = _missing_required_keyframes(sampled_clips, sampled_frames)
+    if missing_required:
+        incomplete_clip_ids = set(missing_required)
+        sampled_clips = [clip for clip in sampled_clips if clip.id not in incomplete_clip_ids]
+        sampled_frames = [frame for frame in sampled_frames if frame.clip_id not in incomplete_clip_ids]
+        if not sampled_clips:
+            return _with_fallback(request, "fallback", settings.model, "keyframe_extraction_incomplete", 0, len(sampled_frames))
+    missing_shot_context = _missing_shot_context_keyframes(sampled_clips, sampled_frames, frames_per_clip)
+    if missing_shot_context:
+        incomplete_clip_ids = set(missing_shot_context)
+        sampled_clips = [clip for clip in sampled_clips if clip.id not in incomplete_clip_ids]
+        sampled_frames = [frame for frame in sampled_frames if frame.clip_id not in incomplete_clip_ids]
+        if not sampled_clips:
+            return _with_fallback(request, "fallback", settings.model, "shot_keyframe_extraction_incomplete", 0, len(sampled_frames))
 
     payload = _build_openai_payload(request, sampled_clips, sampled_frames, settings)
     try:
@@ -163,12 +189,13 @@ def rerank_edit_request_with_gpt(
     if duplicate_decision_ids:
         return _with_fallback(request, "fallback", settings.model, "duplicate_gpt_decisions", len(sampled_clips), len(sampled_frames))
     valid_decision_id_set = set(valid_decision_ids)
-    if valid_decision_id_set != sampled_clip_ids:
+    if not valid_decision_id_set:
         return _with_fallback(request, "fallback", settings.model, "incomplete_gpt_decisions", len(sampled_clips), len(sampled_frames))
+    sampled_decisions = [decision for decision in decisions if decision.clipId in sampled_clip_ids]
 
     return apply_gpt_highlight_rerank(
         request,
-        decisions,
+        sampled_decisions,
         model=settings.model,
         sampled_clip_count=len(sampled_clips),
         sampled_frame_count=len(sampled_frames),
@@ -219,6 +246,147 @@ def _with_fallback(
     return request.model_copy(update={"gptRerankSummary": summary})
 
 
+def expand_shot_candidate_windows_from_source_path(
+    request: CreateEditJobRequest,
+    source_path: Path,
+) -> CreateEditJobRequest:
+    if not source_path.is_file():
+        return request
+    return expand_shot_candidate_windows_for_source_context(
+        request,
+        _probe_source_duration_seconds(source_path),
+    )
+
+
+def expand_shot_candidate_windows_for_source_context(
+    request: CreateEditJobRequest,
+    source_duration_seconds: Optional[float],
+) -> CreateEditJobRequest:
+    if not source_duration_seconds or source_duration_seconds <= 0:
+        return request
+
+    expanded_clips: List[EditCandidateClip] = []
+    changed = False
+    for clip in request.clips:
+        expanded = _expand_shot_candidate_clip(clip, source_duration_seconds)
+        expanded_clips.append(expanded)
+        changed = changed or expanded.start != clip.start or expanded.end != clip.end
+
+    if not changed:
+        return request
+    return request.model_copy(update={"clips": expanded_clips})
+
+
+def _expand_shot_candidate_clip(clip: EditCandidateClip, source_duration_seconds: float) -> EditCandidateClip:
+    if not is_shot_like_clip(clip):
+        return clip
+
+    source_duration = max(source_duration_seconds, clip.end)
+    event_center = min(max(clip.eventCenter, 0.0), source_duration)
+    start = min(clip.start, event_center - SHOT_CONTEXT_EXPANSION_LEAD_SECONDS)
+    end = max(clip.end, event_center + SHOT_CONTEXT_EXPANSION_FOLLOW_THROUGH_SECONDS)
+
+    if end - start < SHOT_CONTEXT_EXPANSION_TARGET_SECONDS:
+        missing = SHOT_CONTEXT_EXPANSION_TARGET_SECONDS - (end - start)
+        start -= missing * 0.65
+        end += missing * 0.35
+
+    start, end = _clamp_expanded_window(start, end, source_duration)
+    if end - start > SHOT_CONTEXT_EXPANSION_MAX_SECONDS:
+        preferred_lead = min(
+            SHOT_CONTEXT_EXPANSION_MAX_SECONDS - SHOT_CONTEXT_EXPANSION_FOLLOW_THROUGH_SECONDS,
+            max(SHOT_CONTEXT_EXPANSION_LEAD_SECONDS, SHOT_CONTEXT_EXPANSION_MAX_SECONDS * 0.65),
+        )
+        start = event_center - preferred_lead
+        end = start + SHOT_CONTEXT_EXPANSION_MAX_SECONDS
+        start, end = _clamp_expanded_window(start, end, source_duration)
+
+    if end - start <= clip.duration:
+        return clip
+    return clip.model_copy(
+        update={
+            "start": round(start, 3),
+            "end": round(end, 3),
+            "eventCenter": round(event_center, 3),
+        }
+    )
+
+
+def _clamp_expanded_window(start: float, end: float, source_duration_seconds: float) -> tuple[float, float]:
+    source_duration = max(source_duration_seconds, 0.001)
+    if start < 0.0:
+        end = min(source_duration, end - start)
+        start = 0.0
+    if end > source_duration:
+        overflow = end - source_duration
+        start = max(0.0, start - overflow)
+        end = source_duration
+    return max(0.0, start), min(source_duration, end)
+
+
+def _probe_source_duration_seconds(source_path: Path) -> Optional[float]:
+    try:
+        completed = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "json",
+                str(source_path),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=8,
+        )
+        payload = json.loads(completed.stdout)
+        duration = float(payload.get("format", {}).get("duration", 0.0))
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError, ValueError, TypeError, json.JSONDecodeError):
+        return None
+    return duration if duration > 0.0 else None
+
+
+def _candidate_quality_hints(clip: EditCandidateClip) -> Dict[str, Any]:
+    lead_in = round(max(0.0, clip.eventCenter - clip.start), 3)
+    follow_through = round(max(0.0, clip.end - clip.eventCenter), 3)
+    duration = round(clip.duration, 3)
+    is_shot_like = is_shot_like_clip(clip)
+    min_duration = max(MIN_PLAN_CLIP_SECONDS, MIN_GPT_SHOT_LIKE_CANDIDATE_SECONDS if is_shot_like else 2.5)
+    return {
+        "durationSeconds": duration,
+        "leadInSeconds": lead_in,
+        "followThroughSeconds": follow_through,
+        "minRecommendedDurationSeconds": min_duration,
+        "minLeadInSeconds": MIN_GPT_CANDIDATE_LEAD_IN_SECONDS,
+        "minFollowThroughSeconds": MIN_GPT_CANDIDATE_FOLLOW_THROUGH_SECONDS,
+        "shotLike": is_shot_like,
+        "timingWindowOk": (
+            duration >= min_duration
+            and lead_in >= MIN_GPT_CANDIDATE_LEAD_IN_SECONDS
+            and follow_through >= MIN_GPT_CANDIDATE_FOLLOW_THROUGH_SECONDS
+        ),
+        "requiresVisibleOutcome": True,
+        "rejectIfOnlyBasketOrAftermath": True,
+    }
+
+
+def _quality_filtered_sampled_clips(clips: Sequence[EditCandidateClip], max_clips: int) -> List[EditCandidateClip]:
+    filtered: List[EditCandidateClip] = []
+    for clip in clips:
+        if not is_plan_quality_eligible_clip(clip):
+            continue
+        hints = _candidate_quality_hints(clip)
+        if not hints["timingWindowOk"]:
+            continue
+        filtered.append(clip)
+        if len(filtered) >= max_clips:
+            break
+    return filtered
+
+
 def _extract_candidate_keyframes(
     source_path: Path,
     clips: Sequence[EditCandidateClip],
@@ -262,6 +430,37 @@ def _missing_required_keyframes(
     }
 
 
+def _required_shot_context_roles(frames_per_clip: int) -> set[str]:
+    if frames_per_clip >= 7:
+        return set(SHOT_CONTEXT_KEYFRAME_ROLES)
+    if frames_per_clip >= 6:
+        return {"preEvent", "release", "outcome"}
+    if frames_per_clip >= 5:
+        return {"preEvent", "outcome"}
+    if frames_per_clip >= 4:
+        return {"preEvent"}
+    return set()
+
+
+def _missing_shot_context_keyframes(
+    clips: Sequence[EditCandidateClip],
+    frames: Sequence[SampledFrame],
+    frames_per_clip: int,
+) -> Dict[str, List[str]]:
+    required_roles = _required_shot_context_roles(frames_per_clip)
+    if not required_roles:
+        return {}
+    roles_by_clip_id: Dict[str, set[str]] = {clip.id: set() for clip in clips if is_shot_like_clip(clip)}
+    for frame in frames:
+        if frame.clip_id in roles_by_clip_id:
+            roles_by_clip_id[frame.clip_id].add(frame.role)
+    return {
+        clip_id: sorted(required_roles - roles)
+        for clip_id, roles in roles_by_clip_id.items()
+        if not required_roles.issubset(roles)
+    }
+
+
 def _sample_times_for_clip(clip: EditCandidateClip, frames_per_clip: int) -> List[tuple[str, float]]:
     finish = max(clip.start, clip.end - 0.05)
     base = [("start", clip.start), ("eventCenter", clip.eventCenter), ("finish", finish)]
@@ -269,19 +468,21 @@ def _sample_times_for_clip(clip: EditCandidateClip, frames_per_clip: int) -> Lis
     if frames_per_clip <= 3:
         return base_samples
 
-    duration = max(0.001, finish - clip.start)
-    extra_count = max(0, frames_per_clip - 3)
-    extras = []
-    for index in range(extra_count):
-        fraction = (index + 1) / (extra_count + 1)
-        second = clip.start + (duration * fraction)
-        if abs(second - clip.eventCenter) < 0.2:
-            continue
-        role = "action" if index == 0 else "rim" if index == 1 else f"context_{index + 1}"
-        extras.append((role, second))
+    setup_second = max(clip.start, clip.eventCenter - 0.85)
+    release_second = max(clip.start, clip.eventCenter - 0.35)
+    outcome_second = min(finish, clip.eventCenter + 0.55)
+    rim_second = min(finish, clip.eventCenter + 0.95)
+    mid_action_second = clip.start + ((finish - clip.start) * 0.45)
+    candidates = [
+        ("preEvent", setup_second),
+        ("outcome", outcome_second),
+        ("release", release_second),
+        ("rim", rim_second),
+        ("midAction", mid_action_second),
+    ]
     reserved_buckets = {round(second, 1) for _, second in base_samples}
-    context_samples = _dedupe_sample_times(extras, clip, reserved_buckets)
-    return [base_samples[0], *context_samples, base_samples[1], base_samples[2]][:frames_per_clip]
+    context_samples = _dedupe_sample_times(candidates, clip, reserved_buckets)[: max(0, frames_per_clip - 3)]
+    return [base_samples[0], *context_samples, base_samples[1], base_samples[2]]
 
 
 def _clamp_sample_times(samples: Sequence[tuple[str, float]], clip: EditCandidateClip) -> List[tuple[str, float]]:
@@ -374,6 +575,7 @@ def _build_openai_payload(
             "duplicateGroup": clip.duplicateGroup,
             "templateId": template.templateId,
             "planTier": request.planTier,
+            "qualityHints": _candidate_quality_hints(clip),
             "sampledKeyframes": [
                 {"role": frame.role, "time": frame.time_seconds}
                 for frame in candidate_frames
@@ -391,6 +593,14 @@ def _build_openai_payload(
                     "templateContext": template_context,
                     "agentTemplateCookbook": agent_template_context,
                     "userEditIntent": user_edit_intent.model_dump(mode="json") if user_edit_intent is not None else None,
+                    "shotTrackerRules": {
+                        "preferCompletePlayContext": True,
+                        "rejectTinyClips": True,
+                        "rejectPreBasketOnlyClips": True,
+                        "madeShotRequiresSetupReleaseBallPathRimAndOutcome": True,
+                        "doNotKeepIfOutcomeIsOnlyImplied": True,
+                        "requiredShotContextKeyframes": sorted(_required_shot_context_roles(settings.limits_for(request.planTier)[1])),
+                    },
                     "clips": compact_clips,
                     "planEdit": "After selecting clips, propose final ordering, pacing, captions, and slow-motion moments as planEdit JSON.",
                 },
@@ -408,6 +618,8 @@ def _build_openai_payload(
         "instructions": (
             "You are HoopClips GPT Highlight Reranker. Judge basketball highlight worthiness, watchability, event clarity, "
             "outcome sanity, boring/duplicate rejection, concise captions, story order, and safe edit suggestions. "
+            "Act like a basketball shot-tracker: for made shots, verify visible setup, release, ball path, rim/result, and aftermath. "
+            "reject clips that start right before the basket, clips shorter than the supplied quality minimum, or clips where the outcome is only implied. "
             "Honor userEditIntent only when it is compatible with the supplied template, plan tier, candidate clips, and safety constraints. "
             "Use only supplied candidate clip IDs and sampled keyframes. Do not replace FFmpeg extraction, CV tracking, rendering, or exact timestamps. "
             "Do not output FFmpeg commands, shell commands, file paths, source video URLs, or storage keys. "
@@ -472,6 +684,30 @@ def _build_revision_patch_payload(
 
 
 def _response_schema() -> Dict[str, Any]:
+    quality_signals = {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "setupVisible": {"type": "boolean"},
+            "eventVisible": {"type": "boolean"},
+            "outcomeVisible": {"type": "boolean"},
+            "ballPathVisible": {"type": "boolean"},
+            "playerControlVisible": {"type": "boolean"},
+            "cleanCamera": {"type": "boolean"},
+            "fullPlayContext": {"type": "boolean"},
+            "reason": {"type": "string", "maxLength": 160},
+        },
+        "required": [
+            "setupVisible",
+            "eventVisible",
+            "outcomeVisible",
+            "ballPathVisible",
+            "playerControlVisible",
+            "cleanCamera",
+            "fullPlayContext",
+            "reason",
+        ],
+    }
     suggested_edit = {
         "type": "object",
         "additionalProperties": False,
@@ -499,6 +735,7 @@ def _response_schema() -> Dict[str, Any]:
             "caption": {"type": "string", "maxLength": 24},
             "reason": {"type": "string"},
             "storyRole": {"type": "string", "enum": ["opener", "peak", "filler", "closer"]},
+            "qualitySignals": quality_signals,
             "suggestedEdit": suggested_edit,
         },
         "required": [
@@ -512,6 +749,7 @@ def _response_schema() -> Dict[str, Any]:
             "caption",
             "reason",
             "storyRole",
+            "qualitySignals",
             "suggestedEdit",
         ],
     }

@@ -134,6 +134,7 @@ nonisolated struct CloudAnalysisResult: Codable, Sendable {
 nonisolated struct CloudClip: Codable, Sendable {
     let startTime: Double
     let endTime: Double
+    let eventCenter: Double?
     let confidence: Double
     let label: String
     let action: String
@@ -153,6 +154,7 @@ nonisolated struct CloudClip: Codable, Sendable {
         return Clip(
             startTime: startTime,
             endTime: endTime,
+            eventCenter: eventCenter,
             action: resolvedAction,
             confidence: confidence,
             isKept: shouldAutoKeep,

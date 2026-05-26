@@ -225,7 +225,7 @@ struct HoopsClipsTests {
         #expect(pro.retentionSummary == "Videos stored for 60 days")
     }
 
-    @Test func testCloudEditRequestEncodesOptionalUserPrompt() throws {
+    @Test @MainActor func testCloudEditRequestEncodesOptionalUserPrompt() throws {
         let request = CreateCloudEditJobRequest(
             videoId: "video_123",
             analysisJobId: "analysis_123",
@@ -263,6 +263,81 @@ struct HoopsClipsTests {
         #expect(payload["sourceObjectKey"] as? String == "uploads/source.mp4")
     }
 
+    @Test @MainActor func testCloudEditRequestSendsStrongestCandidatesBeforeThirtyClipCap() throws {
+        let viewModel = HighlightsViewModel()
+        viewModel.cloudEditSourceObjectKey = "uploads/source.mp4"
+        var clips: [Clip] = []
+        for index in 0..<31 {
+            let isStrongCandidate = index == 30
+            let startTime = Double(index * 10)
+            clips.append(
+                Clip(
+                    startTime: startTime,
+                    endTime: startTime + 6,
+                    action: .madeShot,
+                    confidence: isStrongCandidate ? 0.98 : 0.42,
+                    isKept: true,
+                    label: "Made Shot",
+                    audioScore: isStrongCandidate ? 0.92 : 0.1,
+                    visualScore: isStrongCandidate ? 0.95 : 0.2,
+                    motionScore: isStrongCandidate ? 0.95 : 0.2,
+                    combinedScore: isStrongCandidate ? 0.99 : 0.15,
+                    detectionMethod: .cloud
+                )
+            )
+        }
+        viewModel.analysisService.clips = clips
+
+        let request = try viewModel.createCloudEditRequest(
+            preset: .personalHighlight,
+            targetDurationSeconds: 30,
+            isProUser: false
+        )
+        let candidateStarts = request.clips.map(\.start)
+
+        #expect(request.clips.count == 30)
+        #expect(candidateStarts.contains(300.0))
+        #expect(!candidateStarts.contains(290.0))
+    }
+
+    @Test func testCloudEditCandidateRankingPrefersCompleteShotContextOverLatePreBasketWindow() {
+        let preBasketOnly = Clip(
+            startTime: 10.0,
+            endTime: 16.0,
+            eventCenter: 10.1,
+            action: .madeShot,
+            confidence: 0.99,
+            isKept: true,
+            label: "Made Shot",
+            audioScore: 0.95,
+            visualScore: 0.95,
+            motionScore: 0.95,
+            combinedScore: 0.99,
+            detectionMethod: .cloud
+        )
+        let completeShot = Clip(
+            startTime: 20.0,
+            endTime: 26.0,
+            eventCenter: 23.0,
+            action: .madeShot,
+            confidence: 0.78,
+            isKept: true,
+            label: "Made Shot",
+            audioScore: 0.55,
+            visualScore: 0.7,
+            motionScore: 0.72,
+            combinedScore: 0.72,
+            detectionMethod: .cloud
+        )
+
+        let ranked = HighlightsViewModel.rankedCloudEditCandidateClips(
+            from: [preBasketOnly, completeShot],
+            limit: 1
+        )
+
+        #expect(ranked.first?.startTime == 20.0)
+    }
+
     @Test func testCloudEditProTemplatesAreRealAndDistinct() {
         let templates = CloudEditProTemplate.allCases
         let identifiers = templates.map(\.accessibilityIdentifier)
@@ -293,7 +368,7 @@ struct HoopsClipsTests {
         #expect(flags.cloudLockerEnabled)
     }
 
-    @Test func testCloudEditVersionFlagsDecodeLiveRenderKillSwitch() throws {
+    @Test @MainActor func testCloudEditVersionFlagsDecodeLiveRenderKillSwitch() throws {
         let payload = """
         {
           "service": "hoopclips-editing",
@@ -367,6 +442,7 @@ struct HoopsClipsTests {
         let cloudClip = CloudClip(
             startTime: 12.5,
             endTime: 17.0,
+            eventCenter: 15.2,
             confidence: 0.91,
             label: "Dunk",
             action: "Dunk",
@@ -386,6 +462,7 @@ struct HoopsClipsTests {
         #expect(mapped.isKept)
         #expect(mapped.isSlowMotionEnabled)
         #expect(abs(mapped.duration - 4.5) < 0.001)
+        #expect(mapped.eventCenter == 15.2)
     }
 
     @Test func testCloudJobResponseDecodesNestedResults() throws {
@@ -404,6 +481,7 @@ struct HoopsClipsTests {
               {
                 "startTime": 1.2,
                 "endTime": 4.6,
+                "eventCenter": 3.8,
                 "confidence": 0.88,
                 "label": "Three Pointer",
                 "action": "Three Pointer",
@@ -434,10 +512,11 @@ struct HoopsClipsTests {
         #expect(response.status == "succeeded")
         #expect(response.results?.clipCount == 1)
         #expect(response.results?.clips.first?.label == "Three Pointer")
+        #expect(response.results?.clips.first?.eventCenter == 3.8)
         #expect(response.results?.diagnostics.backendModelVersion == "cloud-v1")
     }
 
-    @Test func testCloudEditRenderStatusDecodesAIWorkTimelineAndReceipt() throws {
+    @Test @MainActor func testCloudEditRenderStatusDecodesAIWorkTimelineAndReceipt() throws {
         let payload = """
         {
           "editJobId": "edit_123",
@@ -622,6 +701,58 @@ struct HoopsClipsTests {
         #expect(normalized.allSatisfy { $0.duration <= AnalysisSettings().maxClipDuration + 0.001 })
     }
 
+    @Test func testNormalizeOverlongCloudClipCentersSplitOnEventCenter() async throws {
+        let service = await VideoAnalysisService()
+        let original = Clip(
+            startTime: 2.0,
+            endTime: 58.0,
+            eventCenter: 45.0,
+            action: .madeShot,
+            confidence: 0.91,
+            isKept: true,
+            label: "Made Shot",
+            audioScore: 0.8,
+            visualScore: 0.7,
+            motionScore: 0.9,
+            combinedScore: 0.88,
+            detectionMethod: .cloud
+        )
+
+        let normalized = await service.normalizeDetectedClips([original], duration: 60.0)
+        let eventClip = try #require(normalized.first)
+        let eventCenter = try #require(eventClip.eventCenter)
+
+        #expect(normalized.count == 1)
+        #expect(abs(eventCenter - 45.0) < 0.001)
+        #expect(eventClip.startTime < eventCenter)
+        #expect(eventClip.endTime > eventCenter)
+        #expect(eventClip.duration <= AnalysisSettings().maxClipDuration + 0.001)
+    }
+
+    @Test func testNormalizeClampsEventCenterInsideClipBounds() async throws {
+        let service = await VideoAnalysisService()
+        let original = Clip(
+            startTime: 10.0,
+            endTime: 18.0,
+            eventCenter: 30.0,
+            action: .madeShot,
+            confidence: 0.72,
+            isKept: true,
+            label: "Made Shot",
+            audioScore: 0.4,
+            visualScore: 0.5,
+            motionScore: 0.5,
+            combinedScore: 0.6,
+            detectionMethod: .cloud
+        )
+
+        let normalized = await service.normalizeDetectedClips([original], duration: 60.0)
+        let center = try #require(normalized.first?.eventCenter)
+
+        #expect(normalized.count == 1)
+        #expect(abs(center - 18.0) < 0.001)
+    }
+
     @Test func testNormalizeKeepsValidClipUntouched() async {
         let service = await VideoAnalysisService()
         let original = Clip(
@@ -660,6 +791,7 @@ struct HoopsClipsTests {
                 CloudClip(
                     startTime: 0.0,
                     endTime: 8.0,
+                    eventCenter: nil,
                     confidence: 0.92,
                     label: "Dunk",
                     action: "Dunk",
@@ -674,6 +806,7 @@ struct HoopsClipsTests {
                 CloudClip(
                     startTime: 12.0,
                     endTime: 20.0,
+                    eventCenter: nil,
                     confidence: 0.88,
                     label: "Three Pointer",
                     action: "Three Pointer",
@@ -688,6 +821,7 @@ struct HoopsClipsTests {
                 CloudClip(
                     startTime: 24.0,
                     endTime: 32.0,
+                    eventCenter: nil,
                     confidence: 0.84,
                     label: "Made Shot",
                     action: "Made Shot",
