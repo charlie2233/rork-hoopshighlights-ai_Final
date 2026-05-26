@@ -673,6 +673,62 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertIn("unclear_outcome", reranked.gptRerankSummary.rejectedClipIds)
         self.assertEqual([clip.clipId for clip in plan.clips], ["complete_make"])
 
+    def test_gpt_highlight_rerank_all_rejected_does_not_fallback_to_original_clips(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=15,
+                clips=[
+                    _clip("boring_walkup", 0.0, "Highlight", 0.62),
+                    _clip("late_basket", 12.0, "Made Shot", 0.95),
+                ],
+            )
+        )
+        decisions = [
+            GPTHighlightClipDecision(
+                clipId="boring_walkup",
+                keep=False,
+                rejectReason="boring",
+                highlightScore=0.18,
+                watchabilityScore=0.34,
+                basketballEvent="Dead ball",
+                outcome="not_basketball",
+                caption="SKIP",
+                reason="No clear basketball outcome.",
+                qualitySignals=_quality_signals(
+                    eventVisible=False,
+                    outcomeVisible=False,
+                    ballPathVisible=False,
+                    playerControlVisible=False,
+                    fullPlayContext=False,
+                ),
+                suggestedEdit=GPTHighlightSuggestedEdit(),
+            ),
+            GPTHighlightClipDecision(
+                clipId="late_basket",
+                keep=False,
+                rejectReason="missing_setup_context",
+                highlightScore=0.42,
+                watchabilityScore=0.72,
+                basketballEvent="Made Shot",
+                outcome="made",
+                caption="SKIP",
+                reason="The clip starts too late and misses the setup.",
+                qualitySignals=_quality_signals(setupVisible=False, fullPlayContext=False),
+                suggestedEdit=GPTHighlightSuggestedEdit(),
+            ),
+        ]
+
+        reranked = apply_gpt_highlight_rerank(request, decisions, "gpt-test", 2, 6)
+        job = build_edit_job(reranked, "edit_all_gpt_rejected")
+
+        self.assertEqual(reranked.gptRerankSummary.status, "applied")
+        self.assertEqual(reranked.gptRerankSummary.fallbackReason, "all_clips_rejected")
+        self.assertEqual(reranked.gptRerankSummary.keptClipIds, [])
+        self.assertEqual(set(reranked.gptRerankSummary.rejectedClipIds), {"boring_walkup", "late_basket"})
+        self.assertEqual(reranked.clips, [])
+        self.assertEqual(job.status, "failed")
+        self.assertIn("empty_clip_list", [error.code for error in job.validation_errors])
+
     def test_gpt_highlight_rerank_duplicate_cleanup_prefers_complete_context(self) -> None:
         request = CreateEditJobRequest(
             **_request_payload(

@@ -932,6 +932,61 @@ class EditingServiceTests(unittest.TestCase):
         self.assertEqual(download_response.status_code, 200)
         self.assertEqual(download_response.json()["contentType"], "video/mp4")
 
+    def test_create_edit_job_gpt_all_rejected_returns_empty_clip_validation_error(self) -> None:
+        original_reranker = editing_main.rerank_edit_request_with_gpt
+        old_enabled = os.environ.get("HOOPS_GPT_HIGHLIGHT_RERANKER_ENABLED")
+        old_key = os.environ.get("HOOPS_OPENAI_API_KEY")
+
+        def fake_reranker(request, source_path, settings):
+            decisions = [
+                GPTHighlightClipDecision(
+                    clipId=clip.id,
+                    keep=False,
+                    rejectReason="boring",
+                    highlightScore=0.2,
+                    watchabilityScore=0.3,
+                    basketballEvent="Unclear",
+                    outcome="unclear",
+                    caption="SKIP",
+                    reason="GPT judged this candidate unclear or boring.",
+                    qualitySignals=_quality_signals(outcomeVisible=False, ballPathVisible=False, fullPlayContext=False),
+                    suggestedEdit=GPTHighlightSuggestedEdit(),
+                )
+                for clip in request.clips
+            ]
+            return apply_gpt_highlight_rerank(request, decisions, "gpt-test", len(request.clips), len(request.clips) * 3)
+
+        try:
+            os.environ["HOOPS_GPT_HIGHLIGHT_RERANKER_ENABLED"] = "true"
+            os.environ["HOOPS_OPENAI_API_KEY"] = "test-key"
+            editing_main.rerank_edit_request_with_gpt = fake_reranker
+            client = TestClient(editing_main.create_app(self._settings()))
+            edit_request = CreateEditJobRequest(
+                videoId="video_gpt_rejects_all",
+                analysisJobId="analysis_gpt_rejects_all",
+                installId="install-123",
+                preset="personal_highlight",
+                targetDurationSeconds=15,
+                aspectRatio="9:16",
+                planTier="free",
+                clips=[_clip("c1", 0.0, "Highlight", 0.62), _clip("c2", 8.0, "Made Shot", 0.9)],
+            )
+
+            response = client.post("/v1/edit-jobs", json=edit_request.model_dump())
+
+            self.assertEqual(response.status_code, 400)
+            self.assertEqual(response.json()["errorCode"], "empty_clip_list")
+        finally:
+            editing_main.rerank_edit_request_with_gpt = original_reranker
+            if old_enabled is None:
+                os.environ.pop("HOOPS_GPT_HIGHLIGHT_RERANKER_ENABLED", None)
+            else:
+                os.environ["HOOPS_GPT_HIGHLIGHT_RERANKER_ENABLED"] = old_enabled
+            if old_key is None:
+                os.environ.pop("HOOPS_OPENAI_API_KEY", None)
+            else:
+                os.environ["HOOPS_OPENAI_API_KEY"] = old_key
+
     @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "ffmpeg and ffprobe are required")
     def test_gpt_highlight_rerank_summary_feeds_render_receipt(self) -> None:
         original_reranker = editing_main.rerank_edit_request_with_gpt

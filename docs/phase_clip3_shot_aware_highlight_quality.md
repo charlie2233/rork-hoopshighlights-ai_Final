@@ -343,6 +343,25 @@ PR #10 CI after native visual-event detector code commit `bbd36eb`:
   - No-secret internal staging codecheck: success, job `77830818569`.
   - Build internal staging TestFlight archive: skipped on this PR path, job `77830819176`.
 
+Additional validation before GPT all-rejected safety commit:
+
+```sh
+python3 -m py_compile ios/backend/app/editing.py ios/backend/tests/test_edit_plan_agent.py services/editing/tests/test_editing_service.py
+PYTHONPATH=ios/backend:services/editing /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest ios.backend.tests.test_edit_plan_agent.EditPlanAgentTests.test_gpt_highlight_rerank_all_rejected_does_not_fallback_to_original_clips services.editing.tests.test_editing_service.EditingServiceTests.test_create_edit_job_gpt_all_rejected_returns_empty_clip_validation_error -v
+PYTHONPATH=ios/backend:services/editing /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest services.editing.tests.test_gpt_reranker ios.backend.tests.test_edit_plan_agent services.editing.tests.test_editing_service -v
+PYTHONPATH=ios/backend /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest discover ios/backend/tests -v
+PYTHONPATH=ios/backend:services/editing /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest discover services/editing/tests -v
+```
+
+Results:
+
+- Python compile: passed.
+- New GPT all-rejected focused checks: 2 tests passed.
+- GPT reranker + edit-plan + editing-service combined suite: 106 tests passed.
+- iOS backend Python discovery: 66 tests passed.
+- Services editing discovery: 63 tests passed.
+- Added regression coverage so valid GPT output that rejects every candidate does not fall back to the original clip list. The reranked request now carries an empty clip list and the edit job fails with `empty_clip_list`, preventing render of boring, duplicate, unclear, or too-late clips that GPT deliberately rejected.
+
 ## Launch Recommendations
 
 - Deploy this branch to staging only after the Cloudflare/GCP deploy secret blockers are cleared.

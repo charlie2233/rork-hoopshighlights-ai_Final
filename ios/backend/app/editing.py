@@ -2299,16 +2299,18 @@ def apply_gpt_highlight_rerank(
 
     if not kept:
         summary = GPTHighlightRerankSummary(
-            status="fallback",
+            status="applied",
             model=model,
             sampledClipCount=sampled_clip_count,
             sampledFrameCount=sampled_frame_count,
             returnedDecisionCount=len(valid_decisions),
+            keptClipIds=[],
+            rejectedClipIds=(rejected_clip_ids + missing_decision_clip_ids)[:30],
             fallbackReason="all_clips_rejected",
-            storyOrderClipIds=valid_story_order,
+            storyOrderClipIds=[],
             planEditApplied=False,
         )
-        return request.model_copy(update={"gptRerankSummary": summary})
+        return request.model_copy(update={"clips": [], "gptRerankSummary": summary})
 
     kept_by_duplicate: Dict[str, EditCandidateClip] = {}
     deduped: List[EditCandidateClip] = []
