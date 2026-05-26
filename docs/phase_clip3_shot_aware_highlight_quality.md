@@ -362,6 +362,16 @@ Results:
 - Services editing discovery: 63 tests passed.
 - Added regression coverage so valid GPT output that rejects every candidate does not fall back to the original clip list. The reranked request now carries an empty clip list and the edit job fails with `empty_clip_list`, preventing render of boring, duplicate, unclear, or too-late clips that GPT deliberately rejected.
 
+PR #10 CI after GPT all-rejected safety commit `2e0f711`:
+
+- Cloud Edit Deploy Preflight run `26440520436`:
+  - Worker typecheck and dry run: success, job `77833525101`.
+  - Editing backend Python tests: success, job `77833525210`.
+  - Verify cloud edit deploy secrets: skipped on this PR path, job `77833984331`.
+- iOS Internal TestFlight Upload run `26440520407`:
+  - No-secret internal staging codecheck: success, job `77833525223`.
+  - Build internal staging TestFlight archive: skipped on this PR path, job `77833525641`.
+
 ## Launch Recommendations
 
 - Deploy this branch to staging only after the Cloudflare/GCP deploy secret blockers are cleared.
