@@ -1054,8 +1054,10 @@ class EditingServiceTests(unittest.TestCase):
             self.assertEqual(render_payload["workReceipt"]["gptRerankSampledFrameCount"], 6)
             self.assertEqual(render_payload["workReceipt"]["gptRerankKeptClipCount"], 1)
             self.assertEqual(render_payload["workReceipt"]["gptRerankRejectedClipCount"], 1)
+            self.assertEqual(render_payload["workReceipt"]["gptRerankRejectedReasonCounts"]["unclear_or_non_basketball_outcome"], 1)
             self.assertEqual(render_payload["workReceipt"]["gptRerankStoryOrderClipIds"], ["c2"])
             self.assertIn("GPT reranked 2 clips from 6 keyframes.", render_payload["workReceipt"]["summaryRows"])
+            self.assertIn("GPT rejected clips: unclear_or_non_basketball_outcome x1.", render_payload["workReceipt"]["summaryRows"])
             self.assertIn("GPT story order applied to 1 candidate clip.", render_payload["workReceipt"]["summaryRows"])
         finally:
             editing_main.rerank_edit_request_with_gpt = original_reranker

@@ -13,6 +13,8 @@ from app.pipeline import (
     _shot_context_score_for_window,
     _visual_event_boundaries_from_signals,
 )
+from app.classifier import classify_window
+from app.models import CandidateWindow
 
 
 def _settings() -> SimpleNamespace:
@@ -111,6 +113,36 @@ class PipelineQualityTests(unittest.TestCase):
         )
 
         self.assertEqual(boundaries, [])
+
+    def test_classifier_does_not_call_audio_only_window_a_shot(self) -> None:
+        audio_only_window = CandidateWindow(
+            start_time=12.0,
+            end_time=16.5,
+            peak_time=14.25,
+            audio_score=0.86,
+            visual_score=0.42,
+            motion_score=0.58,
+            combined_score=0.78,
+            event_context_score=0.0,
+        )
+        shot_context_window = CandidateWindow(
+            start_time=8.0,
+            end_time=12.5,
+            peak_time=10.0,
+            audio_score=0.86,
+            visual_score=0.62,
+            motion_score=0.58,
+            combined_score=0.78,
+            event_context_score=0.72,
+        )
+
+        audio_clip = classify_window(audio_only_window)
+        shot_clip = classify_window(shot_context_window)
+
+        self.assertEqual(audio_clip.label, "Highlight")
+        self.assertFalse(audio_clip.shouldAutoKeep)
+        self.assertEqual(shot_clip.label, "Three Pointer")
+        self.assertTrue(shot_clip.shouldAutoKeep)
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
     def test_detect_shot_boundaries_extracts_visual_event_from_source(self) -> None:

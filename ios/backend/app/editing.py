@@ -961,14 +961,14 @@ class GPTHighlightSuggestedEdit(APIModel):
 
 
 class GPTHighlightQualitySignals(APIModel):
-    setupVisible: bool = True
-    eventVisible: bool = True
-    outcomeVisible: bool = True
-    ballPathVisible: bool = True
-    playerControlVisible: bool = True
-    cleanCamera: bool = True
-    fullPlayContext: bool = True
-    reason: str = Field(default="", max_length=160)
+    setupVisible: bool
+    eventVisible: bool
+    outcomeVisible: bool
+    ballPathVisible: bool
+    playerControlVisible: bool
+    cleanCamera: bool
+    fullPlayContext: bool
+    reason: str = Field(min_length=1, max_length=160)
 
 
 class GPTHighlightClipDecision(APIModel):
@@ -1014,6 +1014,7 @@ class GPTHighlightRerankSummary(APIModel):
     returnedDecisionCount: int = Field(default=0, ge=0)
     keptClipIds: List[str] = Field(default_factory=list, max_length=30)
     rejectedClipIds: List[str] = Field(default_factory=list, max_length=30)
+    rejectedReasonCounts: Dict[str, int] = Field(default_factory=dict)
     storyOrderClipIds: List[str] = Field(default_factory=list, max_length=30)
     planEditApplied: bool = False
     fallbackReason: Optional[str] = Field(default=None, max_length=120)
@@ -2252,18 +2253,28 @@ def apply_gpt_highlight_rerank(
     applied_plan_slow_motion_clip_ids: set[str] = set()
 
     if not valid_decisions:
+        fallback_clips = rank_clips([clip for clip in request.clips if is_plan_quality_eligible_clip(clip)])
+        fallback_clip_ids = {clip.id for clip in fallback_clips}
+        rejected_clip_ids = [clip.id for clip in request.clips if clip.id not in fallback_clip_ids]
+        rejected_reason_counts = {}
+        if rejected_clip_ids:
+            rejected_reason_counts["candidate_missing_minimum_quality_context"] = len(rejected_clip_ids)
         summary = GPTHighlightRerankSummary(
             status="fallback",
             model=model,
             sampledClipCount=sampled_clip_count,
             sampledFrameCount=sampled_frame_count,
             returnedDecisionCount=len(decisions),
+            keptClipIds=[clip.id for clip in fallback_clips[:30]],
+            rejectedClipIds=rejected_clip_ids[:30],
+            rejectedReasonCounts=rejected_reason_counts,
             fallbackReason="no_valid_decisions",
         )
-        return request.model_copy(update={"gptRerankSummary": summary})
+        return request.model_copy(update={"clips": fallback_clips, "gptRerankSummary": summary})
 
     kept: List[EditCandidateClip] = []
     rejected_clip_ids: List[str] = []
+    rejected_reason_counts: Dict[str, int] = {}
     missing_decision_clip_ids: List[str] = []
     for clip in request.clips:
         decision = valid_decisions.get(clip.id)
@@ -2273,6 +2284,7 @@ def apply_gpt_highlight_rerank(
         rejection_reason = _gpt_decision_rejection_reason(decision, clip)
         if rejection_reason is not None:
             rejected_clip_ids.append(clip.id)
+            _increment_reason_count(rejected_reason_counts, rejection_reason)
             continue
         event_label = decision.basketballEvent.strip() or clip.label
         if decision.outcome != "unclear" and decision.outcome != "not_basketball":
@@ -2313,6 +2325,8 @@ def apply_gpt_highlight_rerank(
         kept.append(updated)
 
     if not kept:
+        if missing_decision_clip_ids:
+            _increment_reason_count(rejected_reason_counts, "missing_gpt_decision", len(missing_decision_clip_ids))
         summary = GPTHighlightRerankSummary(
             status="applied",
             model=model,
@@ -2321,22 +2335,19 @@ def apply_gpt_highlight_rerank(
             returnedDecisionCount=len(valid_decisions),
             keptClipIds=[],
             rejectedClipIds=(rejected_clip_ids + missing_decision_clip_ids)[:30],
+            rejectedReasonCounts=rejected_reason_counts,
             fallbackReason="all_clips_rejected",
             storyOrderClipIds=[],
             planEditApplied=False,
         )
         return request.model_copy(update={"clips": [], "gptRerankSummary": summary})
 
-    kept_by_duplicate: Dict[str, EditCandidateClip] = {}
-    deduped: List[EditCandidateClip] = []
-    for clip in rank_clips(kept):
-        if not clip.duplicateGroup:
-            deduped.append(clip)
-            continue
-        current = kept_by_duplicate.get(clip.duplicateGroup)
-        if current is None or _duplicate_choice_key(clip) > _duplicate_choice_key(current):
-            kept_by_duplicate[clip.duplicateGroup] = clip
-    deduped.extend(kept_by_duplicate.values())
+    deduped, duplicate_dropped_ids = _dedupe_gpt_kept_moments(kept)
+    if duplicate_dropped_ids:
+        rejected_clip_ids.extend(duplicate_dropped_ids)
+        _increment_reason_count(rejected_reason_counts, "duplicate_moment", len(duplicate_dropped_ids))
+    if missing_decision_clip_ids:
+        _increment_reason_count(rejected_reason_counts, "missing_gpt_decision", len(missing_decision_clip_ids))
     reranked = order_by_gpt_story_order(rank_clips(deduped))
     reranked_clip_ids = {clip.id for clip in reranked}
     applied_story_order = [clip_id for clip_id in valid_story_order if clip_id in reranked_clip_ids]
@@ -2356,15 +2367,77 @@ def apply_gpt_highlight_rerank(
         returnedDecisionCount=len(valid_decisions),
         keptClipIds=[clip.id for clip in reranked if clip.id in valid_decisions],
         rejectedClipIds=(rejected_clip_ids + missing_decision_clip_ids)[:30],
+        rejectedReasonCounts=rejected_reason_counts,
         storyOrderClipIds=applied_story_order,
         planEditApplied=plan_edit_applied,
     )
     return request.model_copy(update={"clips": reranked, "gptRerankSummary": summary})
 
 
+def _increment_reason_count(counts: Dict[str, int], reason: str, amount: int = 1) -> None:
+    counts[reason] = counts.get(reason, 0) + amount
+
+
+def _dedupe_gpt_kept_moments(clips: Sequence[EditCandidateClip]) -> Tuple[List[EditCandidateClip], List[str]]:
+    kept_by_group: Dict[str, EditCandidateClip] = {}
+    candidates: List[EditCandidateClip] = []
+    dropped_ids: List[str] = []
+    for clip in rank_clips(clips):
+        if not clip.duplicateGroup:
+            candidates.append(clip)
+            continue
+        current = kept_by_group.get(clip.duplicateGroup)
+        if current is None:
+            kept_by_group[clip.duplicateGroup] = clip
+            continue
+        if _duplicate_choice_key(clip) > _duplicate_choice_key(current):
+            dropped_ids.append(current.id)
+            kept_by_group[clip.duplicateGroup] = clip
+        else:
+            dropped_ids.append(clip.id)
+    candidates.extend(kept_by_group.values())
+
+    deduped: List[EditCandidateClip] = []
+    for clip in rank_clips(candidates):
+        duplicate_index = next((index for index, existing in enumerate(deduped) if _clips_describe_same_moment(clip, existing)), None)
+        if duplicate_index is None:
+            deduped.append(clip)
+            continue
+        if _duplicate_choice_key(clip) > _duplicate_choice_key(deduped[duplicate_index]):
+            dropped_ids.append(deduped[duplicate_index].id)
+            deduped[duplicate_index] = clip
+        else:
+            dropped_ids.append(clip.id)
+
+    return rank_clips(deduped), dropped_ids
+
+
+def _clips_describe_same_moment(left: EditCandidateClip, right: EditCandidateClip) -> bool:
+    if left.duplicateGroup and left.duplicateGroup == right.duplicateGroup:
+        return True
+    overlap = _clip_overlap_ratio(left, right)
+    if overlap >= 0.72:
+        return True
+    if abs(left.eventCenter - right.eventCenter) <= 1.0 and overlap >= 0.4:
+        return True
+    return False
+
+
+def _clip_overlap_ratio(left: EditCandidateClip, right: EditCandidateClip) -> float:
+    overlap = max(0.0, min(left.end, right.end) - max(left.start, right.start))
+    if overlap <= 0.0:
+        return 0.0
+    shortest = min(max(left.duration, 0.001), max(right.duration, 0.001))
+    return overlap / shortest
+
+
 def _gpt_decision_rejection_reason(decision: GPTHighlightClipDecision, clip: EditCandidateClip) -> Optional[str]:
     if not decision.keep:
-        return decision.rejectReason or "gpt_rejected"
+        if decision.rejectReason:
+            return decision.rejectReason
+        if decision.outcome in {"unclear", "not_basketball"}:
+            return "unclear_or_non_basketball_outcome"
+        return "gpt_rejected"
     if clip.duration < MIN_PLAN_CLIP_SECONDS:
         return "clip_too_short"
     if not is_plan_quality_eligible_clip(clip):
@@ -2375,6 +2448,8 @@ def _gpt_decision_rejection_reason(decision: GPTHighlightClipDecision, clip: Edi
         return "low_watchability_score"
     if decision.outcome in {"unclear", "not_basketball"}:
         return "unclear_or_non_basketball_outcome"
+    if not _source_supports_gpt_outcome_claim(decision, clip):
+        return "gpt_outcome_unsupported_by_source"
 
     signals = decision.qualitySignals
     if not signals.eventVisible or not signals.outcomeVisible or not signals.cleanCamera:
@@ -2386,6 +2461,25 @@ def _gpt_decision_rejection_reason(decision: GPTHighlightClipDecision, clip: Edi
     if not signals.playerControlVisible and decision.outcome in {"made", "missed"}:
         return "missing_player_control"
     return None
+
+
+def _source_supports_gpt_outcome_claim(decision: GPTHighlightClipDecision, clip: EditCandidateClip) -> bool:
+    if decision.outcome not in {"made", "missed", "blocked"}:
+        return True
+    if is_shot_like_clip(clip):
+        return True
+
+    normalized_label = clip.label.strip().lower()
+    if decision.outcome in {"made", "missed"} and normalized_label in {"defense", "defensive stop", "block", "steal"}:
+        return False
+    if not is_generic_filler_clip(clip):
+        return True
+
+    return (
+        max(clip.watchability, clip.motionScore) >= 0.72
+        and clip.confidence >= 0.65
+        and clip.planning_score >= 0.7
+    )
 
 
 def _clamp_optional_clip_second(value: Optional[float], clip: EditCandidateClip) -> Optional[float]:

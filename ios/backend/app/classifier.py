@@ -6,16 +6,17 @@ from .models import CandidateWindow, CloudClip, clamp
 def classify_window(window: CandidateWindow) -> CloudClip:
     combined = clamp(window.combined_score, 0.0, 1.0)
     confidence = clamp(0.46 + (combined * 0.52), 0.55, 0.98)
+    has_shot_context = window.event_context_score >= 0.45
 
-    if combined >= 0.82 and window.motion_score >= 0.70 and window.visual_score >= 0.52:
+    if has_shot_context and combined >= 0.82 and window.motion_score >= 0.70 and window.visual_score >= 0.52:
         label = "Dunk"
-    elif window.audio_score >= 0.70 and window.motion_score >= 0.56:
+    elif has_shot_context and window.audio_score >= 0.70 and window.motion_score >= 0.56:
         label = "Three Pointer"
-    elif window.visual_score >= 0.60 and window.motion_score >= 0.48:
+    elif has_shot_context and window.visual_score >= 0.60 and window.motion_score >= 0.48:
         label = "Made Shot"
     elif window.motion_score >= 0.64:
         label = "Fast Break"
-    elif combined >= 0.55:
+    elif has_shot_context and combined >= 0.55:
         label = "Layup"
     else:
         label = "Highlight"
@@ -31,7 +32,7 @@ def classify_window(window: CandidateWindow) -> CloudClip:
         visualScore=round(clamp(window.visual_score, 0.0, 1.0), 4),
         motionScore=round(clamp(window.motion_score, 0.0, 1.0), 4),
         combinedScore=round(combined, 4),
-        shouldAutoKeep=confidence >= 0.62,
+        shouldAutoKeep=confidence >= 0.62 and label != "Highlight",
         shouldEnableSlowMotion=label in {"Dunk", "Posterize"},
     )
 
