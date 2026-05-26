@@ -165,6 +165,8 @@ def parse_external_clips_from_payload(
             "shouldEnableSlowMotion": bool(item.get("shouldEnableSlowMotion", False)),
         }
         clip = CloudClip(**clip_payload)
+        if _is_shot_like_label(clip.label) and _external_clip_context_score(clip) < 0.45:
+            continue
         parsed.append(
             clip.model_copy(
                 update={

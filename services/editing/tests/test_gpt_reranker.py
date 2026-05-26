@@ -840,6 +840,92 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertIn(observed_clip_ids[1], result.gptRerankSummary.rejectedClipIds)
         self.assertEqual([clip.id for clip in result.clips], [observed_clip_ids[0]])
 
+    def test_unsampled_existing_clip_decision_is_rejected(self) -> None:
+        settings = GPTHighlightRerankerSettings(
+            enabled=True,
+            api_key="unit-test-key",
+            model="gpt-test",
+            endpoint="https://api.openai.test/v1/responses",
+            timeout_seconds=1.0,
+            max_output_tokens=512,
+            free_max_clips=2,
+            paid_max_clips=24,
+            free_frames_per_clip=3,
+            paid_frames_per_clip=5,
+            frame_width=512,
+            jpeg_quality=5,
+            max_image_bytes=180_000,
+            image_detail="low",
+        )
+        original_extract = gpt_reranker._extract_candidate_keyframes
+        observed_clip_ids: list[str] = []
+
+        def fake_extract(source_path, clips, frames_per_clip, rerank_settings):
+            observed_clip_ids[:] = [clip.id for clip in clips]
+            frames = []
+            for clip in clips:
+                for role, second in gpt_reranker._sample_times_for_clip(clip, frames_per_clip):
+                    frames.append(SampledFrame(clip_id=clip.id, role=role, time_seconds=second, data_url="data:image/jpeg;base64,ZmFrZQ=="))
+            return frames
+
+        def decision(clip_id: str, score: float) -> dict:
+            return {
+                "clipId": clip_id,
+                "keep": True,
+                "rejectReason": None,
+                "highlightScore": score,
+                "watchabilityScore": score,
+                "basketballEvent": "Made Shot",
+                "outcome": "made",
+                "caption": "BUCKET",
+                "reason": "Clear outcome.",
+                "storyRole": "peak",
+                "qualitySignals": _quality_signals(),
+                "suggestedEdit": {
+                    "slowMotion": False,
+                    "slowMotionCenter": None,
+                    "captionMoment": None,
+                    "cropFocus": "center_action",
+                    "extendBeforeSeconds": 0,
+                    "extendAfterSeconds": 0,
+                },
+            }
+
+        def fake_response_client(payload, api_key, endpoint, timeout_seconds):
+            return {
+                "output_text": json.dumps(
+                    {
+                        "decisions": [
+                            decision(observed_clip_ids[0], 0.9),
+                            decision("c2", 1.0),
+                        ],
+                        "storyOrder": ["c2", observed_clip_ids[0]],
+                        "planEdit": {
+                            "orderedClipIds": ["c2", observed_clip_ids[0]],
+                            "pacing": "fast",
+                            "captions": [],
+                            "slowMotionMoments": [],
+                            "summary": "ok",
+                        },
+                        "summary": "ok",
+                    }
+                )
+            }
+
+        try:
+            gpt_reranker._extract_candidate_keyframes = fake_extract
+            with tempfile.NamedTemporaryFile(suffix=".mp4") as source:
+                result = gpt_reranker.rerank_edit_request_with_gpt(_request("free", 3), Path(source.name), settings, fake_response_client)
+        finally:
+            gpt_reranker._extract_candidate_keyframes = original_extract
+
+        self.assertEqual(observed_clip_ids, ["c0", "c1"])
+        self.assertEqual(result.gptRerankSummary.status, "applied")
+        self.assertEqual(result.gptRerankSummary.keptClipIds, ["c0"])
+        self.assertIn("c1", result.gptRerankSummary.rejectedClipIds)
+        self.assertIn("c2", result.gptRerankSummary.rejectedClipIds)
+        self.assertEqual([clip.id for clip in result.clips], ["c0"])
+
     def test_duplicate_gpt_decisions_fall_back(self) -> None:
         settings = GPTHighlightRerankerSettings(
             enabled=True,

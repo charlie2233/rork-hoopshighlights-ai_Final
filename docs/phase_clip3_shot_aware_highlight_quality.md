@@ -418,6 +418,29 @@ Results:
 - Services editing discovery: 64 tests passed.
 - Added regression coverage so a partial GPT response with at least one valid sampled clip decision is applied instead of discarded, while sampled clips missing a GPT decision remain rejected by the deterministic rerank merge. Duplicate GPT decisions still fall back.
 
+Additional validation before sampled-only GPT/story-order/provider-context commit:
+
+```sh
+python3 -m py_compile ios/backend/app/external_providers.py ios/backend/tests/test_external_providers.py ios/backend/app/editing.py ios/backend/tests/test_edit_plan_agent.py services/editing/editing_app/gpt_reranker.py services/editing/tests/test_gpt_reranker.py
+PYTHONPATH=ios/backend:services/editing /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest ios.backend.tests.test_edit_plan_agent.EditPlanAgentTests.test_gpt_story_order_opener_and_closer_survive_short_reel_cutoff ios.backend.tests.test_edit_plan_agent.EditPlanAgentTests.test_gpt_highlight_rerank_applies_story_order_to_edit_plan services.editing.tests.test_gpt_reranker.GPTHighlightRerankerTests.test_unsampled_existing_clip_decision_is_rejected -v
+PYTHONPATH=ios/backend /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest ios.backend.tests.test_external_providers -v
+PYTHONPATH=ios/backend:services/editing /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest services.editing.tests.test_gpt_reranker ios.backend.tests.test_edit_plan_agent services.editing.tests.test_editing_service -v
+PYTHONPATH=ios/backend /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest discover ios/backend/tests -v
+PYTHONPATH=ios/backend:services/editing /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest discover services/editing/tests -v
+```
+
+Results:
+
+- Python compile: passed.
+- New GPT/editor focused checks: 3 tests passed.
+- External provider focused suite: 8 tests passed.
+- GPT reranker + edit-plan + editing-service combined suite: 109 tests passed.
+- iOS backend Python discovery: 68 tests passed.
+- Services editing discovery: 65 tests passed.
+- Added a sampled-only GPT merge guard so GPT decisions for real but unsampled clip IDs cannot keep candidates that were not included in the frame payload.
+- Added story-aware short-reel planning so explicit GPT opener/closer choices survive duration cutoff before rank-fill, instead of being dropped before GPT order is applied.
+- Added hard rejection for shot-like external/provider clips that lack enough event-center context, preventing high-scored provider "made shot" windows from entering the cloud candidate pool without setup/outcome proof.
+
 ## Launch Recommendations
 
 - Deploy this branch to staging only after the Cloudflare/GCP deploy secret blockers are cleared.

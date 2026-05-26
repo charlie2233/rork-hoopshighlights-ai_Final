@@ -14,8 +14,8 @@ class ExternalProviderTests(unittest.TestCase):
                     "startTime": 0.0,
                     "endTime": 30.0,
                     "confidence": 0.92,
-                    "label": "Made Shot",
-                    "action": "Made Shot",
+                    "label": "Fast Break",
+                    "action": "Fast Break",
                     "audioScore": 0.6,
                     "visualScore": 0.9,
                     "motionScore": 0.8,
@@ -27,8 +27,8 @@ class ExternalProviderTests(unittest.TestCase):
                     "startTime": 1.0,
                     "endTime": 6.0,
                     "confidence": 0.75,
-                    "label": "Made Shot",
-                    "action": "Made Shot",
+                    "label": "Fast Break",
+                    "action": "Fast Break",
                     "audioScore": 0.55,
                     "visualScore": 0.82,
                     "motionScore": 0.72,
@@ -48,7 +48,7 @@ class ExternalProviderTests(unittest.TestCase):
 
         self.assertEqual(len(clips), 1)
         self.assertAlmostEqual(clips[0].endTime - clips[0].startTime, 8.0)
-        self.assertEqual(clips[0].label, "Made Shot")
+        self.assertEqual(clips[0].label, "Fast Break")
 
     def test_parse_external_shot_clip_expands_around_provider_event_center(self) -> None:
         payload = {
@@ -124,6 +124,52 @@ class ExternalProviderTests(unittest.TestCase):
 
         self.assertEqual([clip.label for clip in clips], ["Defense"])
         self.assertGreaterEqual(clips[0].endTime - clips[0].startTime, 2.0)
+
+    def test_parse_external_shot_clip_requires_event_center_context(self) -> None:
+        payload = {
+            "clips": [
+                {
+                    "startTime": 8.0,
+                    "endTime": 13.5,
+                    "confidence": 0.99,
+                    "label": "Made Shot",
+                    "action": "Made Shot",
+                    "audioScore": 0.9,
+                    "visualScore": 0.9,
+                    "motionScore": 0.9,
+                    "combinedScore": 0.99,
+                    "shouldAutoKeep": True,
+                    "shouldEnableSlowMotion": True,
+                },
+                {
+                    "startTime": 20.0,
+                    "endTime": 24.5,
+                    "eventCenter": 22.1,
+                    "confidence": 0.82,
+                    "label": "Made Shot",
+                    "action": "Made Shot",
+                    "audioScore": 0.5,
+                    "visualScore": 0.78,
+                    "motionScore": 0.72,
+                    "combinedScore": 0.74,
+                    "shouldAutoKeep": True,
+                    "shouldEnableSlowMotion": True,
+                },
+            ]
+        }
+
+        clips = parse_external_clips_from_payload(
+            payload,
+            duration_seconds=60.0,
+            min_clip_duration=2.0,
+            max_clip_duration=8.0,
+            clip_limit=8,
+        )
+
+        self.assertEqual(len(clips), 1)
+        self.assertEqual(clips[0].eventCenter, 22.1)
+        self.assertLessEqual(clips[0].startTime, 20.1)
+        self.assertGreaterEqual(clips[0].endTime, 23.35)
 
     def test_external_dedupe_prefers_complete_event_context_over_thin_overlap(self) -> None:
         payload = {

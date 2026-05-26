@@ -1767,12 +1767,24 @@ def select_best_clips(
     selected: List[EditCandidateClip] = []
     duration_so_far = 0.0
     _, max_clip_seconds = preset.clipLengthRangeSeconds
+    ranked_candidates = [clip for clip in remove_duplicate_moments(clips) if is_plan_quality_eligible_clip(clip)]
+    selection_order = ranked_candidates
+    if not preset.ordering.startswith("chronological"):
+        story_ordered = [clip for clip in order_by_gpt_story_order(ranked_candidates) if clip.gptStoryOrderIndex is not None]
+        if story_ordered:
+            anchored: List[EditCandidateClip] = [story_ordered[0]]
+            if len(story_ordered) > 1:
+                anchored.append(story_ordered[-1])
+            anchored_ids = {clip.id for clip in anchored}
+            selection_order = (
+                anchored
+                + [clip for clip in story_ordered[1:-1] if clip.id not in anchored_ids]
+                + [clip for clip in ranked_candidates if clip.gptStoryOrderIndex is None and clip.id not in anchored_ids]
+            )
 
-    for clip in remove_duplicate_moments(clips):
+    for clip in selection_order:
         if duration_so_far >= target_seconds:
             break
-        if not is_plan_quality_eligible_clip(clip):
-            continue
         selected.append(clip)
         duration_so_far += min(max_clip_seconds, clip.duration)
 

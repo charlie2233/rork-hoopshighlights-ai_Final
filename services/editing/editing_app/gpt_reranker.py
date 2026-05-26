@@ -191,10 +191,11 @@ def rerank_edit_request_with_gpt(
     valid_decision_id_set = set(valid_decision_ids)
     if not valid_decision_id_set:
         return _with_fallback(request, "fallback", settings.model, "incomplete_gpt_decisions", len(sampled_clips), len(sampled_frames))
+    sampled_decisions = [decision for decision in decisions if decision.clipId in sampled_clip_ids]
 
     return apply_gpt_highlight_rerank(
         request,
-        decisions,
+        sampled_decisions,
         model=settings.model,
         sampled_clip_count=len(sampled_clips),
         sampled_frame_count=len(sampled_frames),

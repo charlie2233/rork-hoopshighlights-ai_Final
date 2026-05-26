@@ -843,6 +843,42 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertEqual([clip.clipId for clip in plan.clips[:3]], ["c4", "c3", "c1"])
         self.assertNotIn("c999", [clip.clipId for clip in plan.clips])
 
+    def test_gpt_story_order_opener_and_closer_survive_short_reel_cutoff(self) -> None:
+        request = CreateEditJobRequest(**_request_payload(targetDurationSeconds=15))
+        decisions = [
+            GPTHighlightClipDecision(
+                clipId=clip_id,
+                keep=True,
+                highlightScore=score,
+                watchabilityScore=score,
+                basketballEvent=label,
+                outcome="made",
+                caption=caption,
+                reason="Clear event from an existing candidate clip.",
+                qualitySignals=_quality_signals(),
+                suggestedEdit=GPTHighlightSuggestedEdit(),
+            )
+            for clip_id, score, label, caption in [
+                ("c1", 0.99, "Fast Break", "RUNOUT"),
+                ("c3", 0.98, "Dunk", "BIG FINISH"),
+                ("c4", 0.74, "Made Shot", "CLOSER"),
+            ]
+        ]
+
+        reranked = apply_gpt_highlight_rerank(
+            request,
+            decisions,
+            "gpt-test",
+            3,
+            9,
+            story_order=["c1", "c3", "c4"],
+        )
+        plan = build_edit_plan(reranked, "edit_gpt_story_order_short")
+
+        self.assertEqual(reranked.gptRerankSummary.storyOrderClipIds, ["c1", "c3", "c4"])
+        self.assertEqual([clip.clipId for clip in plan.clips], ["c1", "c4"])
+        self.assertNotIn("c3", [clip.clipId for clip in plan.clips])
+
     def test_gpt_plan_edit_controls_order_captions_and_slow_motion(self) -> None:
         request = CreateEditJobRequest(**_request_payload(targetDurationSeconds=45))
         decisions = [
