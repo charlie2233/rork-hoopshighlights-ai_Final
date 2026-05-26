@@ -1758,7 +1758,7 @@ def select_best_clips(
             break
         if clip.duration < MIN_PLAN_CLIP_SECONDS:
             continue
-        if _is_shot_like_clip(clip) and not _has_minimum_shot_context(clip):
+        if is_shot_like_clip(clip) and not has_minimum_shot_context(clip):
             continue
         selected.append(clip)
         duration_so_far += min(max_clip_seconds, clip.duration)
@@ -1775,7 +1775,7 @@ def fit_to_duration(clips: Sequence[EditCandidateClip], target_seconds: float, p
     return select_best_clips(clips, target_seconds, preset)
 
 
-def _is_shot_like_clip(clip: EditCandidateClip) -> bool:
+def is_shot_like_clip(clip: EditCandidateClip) -> bool:
     normalized = clip.label.strip().lower()
     return any(
         token in normalized
@@ -1783,7 +1783,7 @@ def _is_shot_like_clip(clip: EditCandidateClip) -> bool:
     )
 
 
-def _has_minimum_shot_context(clip: EditCandidateClip) -> bool:
+def has_minimum_shot_context(clip: EditCandidateClip) -> bool:
     lead_in = max(0.0, clip.eventCenter - clip.start)
     follow_through = max(0.0, clip.end - clip.eventCenter)
     return lead_in >= MIN_SHOT_CONTEXT_LEAD_IN_SECONDS and follow_through >= MIN_SHOT_CONTEXT_FOLLOW_THROUGH_SECONDS

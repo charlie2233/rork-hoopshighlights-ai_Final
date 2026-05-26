@@ -24,6 +24,7 @@ Improve GPT-led HoopClips highlight selection quality with a bias toward basketb
   - reject clips whose event center is too close to clip start
   - reject clips without enough follow-through after the event center
 - Added an ordinary/non-GPT selector guard so shot-like clips also need minimum setup and follow-through context when GPT is disabled or falls back.
+- Added a shot-keyframe completeness gate before the GPT call. With quality-beta sampling, shot-like candidates must have setup, release, outcome, and rim keyframes extracted successfully before they can be sent to GPT.
 - Added `qualityHints` to the compact GPT payload so the model sees timing-window expectations without receiving full video.
 - Added strict GPT `qualitySignals` output:
   - `setupVisible`
@@ -35,9 +36,9 @@ Improve GPT-led HoopClips highlight selection quality with a bias toward basketb
   - `fullPlayContext`
   - `reason`
 - Added backend rejection of GPT-kept clips that still fail shot quality:
-- tiny clips
-- pre-basket-only shot windows
-- low highlight/watchability scores
+  - tiny clips
+  - pre-basket-only shot windows
+  - low highlight/watchability scores
   - unclear or non-basketball outcomes
   - missing event/outcome/clean camera
   - missing setup/full play context
@@ -51,6 +52,7 @@ Improve GPT-led HoopClips highlight selection quality with a bias toward basketb
 - GPT does not receive full source videos, presigned URLs, R2 credentials, storage keys, or source object keys.
 - GPT cannot generate FFmpeg commands or renderer commands.
 - GPT cannot invent clip IDs or exact timestamps.
+- GPT is not asked to judge made-shot quality from only generic start/event/finish frames when richer shot-context roles are configured.
 - Backend validators still produce and repair deterministic `EditPlan` JSON before rendering.
 - iOS is unchanged; it remains a control surface for upload, status, preview, download, share, and user commands.
 
@@ -93,10 +95,10 @@ python3 scripts/launch_backend_config_preflight.py
 Results:
 
 - Python compile: passed.
-- GPT reranker + edit-plan focused suite: 51 tests passed.
+- GPT reranker + edit-plan focused suite: 52 tests passed.
 - Editing service focused suite: 37 tests passed, including local FFmpeg render/revision/download-history paths.
 - iOS backend Python discovery: 46 tests passed.
-- Services editing discovery: 55 tests passed.
+- Services editing discovery: 56 tests passed.
 - Scripts discovery: 34 tests passed.
 - Launch backend config preflight: `pass=63 warn=12 fail=0`.
 

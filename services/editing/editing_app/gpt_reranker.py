@@ -29,6 +29,7 @@ from app.editing import (  # noqa: E402
     build_agent_editing_context,
     derive_user_prompt_intent,
     get_template_pack_for_plan,
+    is_shot_like_clip,
     rank_clips,
     summarize_clip_pool,
     validate_edit_plan_patch,
@@ -38,6 +39,7 @@ from app.editing import (  # noqa: E402
 ResponseClient = Callable[[Dict[str, Any], str, str, float], Dict[str, Any]]
 ALLOWED_IMAGE_DETAIL_LEVELS = {"low", "high", "original", "auto"}
 REQUIRED_KEYFRAME_ROLES = {"start", "eventCenter", "finish"}
+SHOT_CONTEXT_KEYFRAME_ROLES = ("preEvent", "release", "outcome", "rim")
 MIN_GPT_CANDIDATE_LEAD_IN_SECONDS = 0.75
 MIN_GPT_CANDIDATE_FOLLOW_THROUGH_SECONDS = 0.45
 
@@ -145,6 +147,8 @@ def rerank_edit_request_with_gpt(
         return _with_fallback(request, "fallback", settings.model, "keyframe_extraction_failed", len(sampled_clips), 0)
     if _missing_required_keyframes(sampled_clips, sampled_frames):
         return _with_fallback(request, "fallback", settings.model, "keyframe_extraction_incomplete", len(sampled_clips), len(sampled_frames))
+    if _missing_shot_context_keyframes(sampled_clips, sampled_frames, frames_per_clip):
+        return _with_fallback(request, "fallback", settings.model, "shot_keyframe_extraction_incomplete", len(sampled_clips), len(sampled_frames))
 
     payload = _build_openai_payload(request, sampled_clips, sampled_frames, settings)
     try:
@@ -300,6 +304,37 @@ def _missing_required_keyframes(
     }
 
 
+def _required_shot_context_roles(frames_per_clip: int) -> set[str]:
+    if frames_per_clip >= 7:
+        return set(SHOT_CONTEXT_KEYFRAME_ROLES)
+    if frames_per_clip >= 6:
+        return {"preEvent", "release", "outcome"}
+    if frames_per_clip >= 5:
+        return {"preEvent", "outcome"}
+    if frames_per_clip >= 4:
+        return {"preEvent"}
+    return set()
+
+
+def _missing_shot_context_keyframes(
+    clips: Sequence[EditCandidateClip],
+    frames: Sequence[SampledFrame],
+    frames_per_clip: int,
+) -> Dict[str, List[str]]:
+    required_roles = _required_shot_context_roles(frames_per_clip)
+    if not required_roles:
+        return {}
+    roles_by_clip_id: Dict[str, set[str]] = {clip.id: set() for clip in clips if is_shot_like_clip(clip)}
+    for frame in frames:
+        if frame.clip_id in roles_by_clip_id:
+            roles_by_clip_id[frame.clip_id].add(frame.role)
+    return {
+        clip_id: sorted(required_roles - roles)
+        for clip_id, roles in roles_by_clip_id.items()
+        if not required_roles.issubset(roles)
+    }
+
+
 def _sample_times_for_clip(clip: EditCandidateClip, frames_per_clip: int) -> List[tuple[str, float]]:
     finish = max(clip.start, clip.end - 0.05)
     base = [("start", clip.start), ("eventCenter", clip.eventCenter), ("finish", finish)]
@@ -438,6 +473,7 @@ def _build_openai_payload(
                         "rejectPreBasketOnlyClips": True,
                         "madeShotRequiresSetupReleaseBallPathRimAndOutcome": True,
                         "doNotKeepIfOutcomeIsOnlyImplied": True,
+                        "requiredShotContextKeyframes": sorted(_required_shot_context_roles(settings.limits_for(request.planTier)[1])),
                     },
                     "clips": compact_clips,
                     "planEdit": "After selecting clips, propose final ordering, pacing, captions, and slow-motion moments as planEdit JSON.",
