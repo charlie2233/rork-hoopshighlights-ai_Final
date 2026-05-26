@@ -11,8 +11,9 @@ import unittest
 from fastapi.testclient import TestClient
 
 from app.config import Settings
-from app.editing import CreateEditJobRequest, EditPlan, build_edit_job
+from app.editing import CreateEditJobRequest, EditPlan, EditPlanClip, build_edit_job, get_template_pack
 from app.main import create_app
+from app.renderers.ffmpeg_renderer import FfmpegRenderer
 from app.rendering import validate_render_request
 
 
@@ -211,6 +212,41 @@ class RenderJobTests(unittest.TestCase):
         self.assertEqual(payload["status"], "failed")
         self.assertEqual(payload["failureReason"], "invalid_edit_plan")
         self.assertTrue(any(error["code"] == "source_missing" for error in payload["validationErrors"]))
+
+    def test_renderer_crop_filter_uses_gpt_crop_focus(self) -> None:
+        renderer = FfmpegRenderer(ffmpeg_binary="ffmpeg", ffprobe_binary="ffprobe")
+        source_path = self._temp_dir / "source.mp4"
+        output_path = self._temp_dir / "segment.mp4"
+        clip = EditPlanClip(
+            clipId="c1",
+            sourceStart=1.0,
+            sourceEnd=5.0,
+            eventCenter=3.0,
+            timelineStart=0.0,
+            timelineEnd=4.0,
+            label="Made Shot",
+            caption="BUCKET",
+            cropMode="rim",
+        )
+
+        command = renderer._segment_command(
+            source_path=source_path,
+            output_path=output_path,
+            clip=clip,
+            start=1.0,
+            end=5.0,
+            speed=1.0,
+            width=720,
+            height=1280,
+            caption_style=get_template_pack("personal_highlight_v1").captionStyle,
+            watermark_text="Hoopclips",
+            source_has_audio=False,
+            watermark_enabled=False,
+        )
+        filter_complex = command[command.index("-filter_complex") + 1]
+
+        self.assertIn("crop=720:1280:(iw-ow)*0.50:(ih-oh)*0.28", filter_complex)
+        self.assertNotIn("crop=720:1280,setsar", filter_complex)
 
     @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "ffmpeg and ffprobe are required")
     def test_render_failure_records_failure_reason_and_log(self) -> None:

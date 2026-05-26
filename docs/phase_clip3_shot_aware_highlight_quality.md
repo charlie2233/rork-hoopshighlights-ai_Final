@@ -458,10 +458,27 @@ Results:
 - `git diff --check`: passed.
 - GPT plan-edit slow-motion centers now drive the deterministic slow-motion effect even on templates that already add default slow motion around the event center.
 
+Additional validation before GPT crop-focus renderer commit:
+
+```sh
+python3 -m py_compile ios/backend/app/renderers/ffmpeg_renderer.py ios/backend/tests/test_render_jobs.py
+PYTHONPATH=ios/backend /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest ios.backend.tests.test_render_jobs.RenderJobTests.test_renderer_crop_filter_uses_gpt_crop_focus -v
+PYTHONPATH=ios/backend:services/editing /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest ios.backend.tests.test_edit_plan_agent.EditPlanAgentTests.test_gpt_plan_edit_controls_order_captions_and_slow_motion ios.backend.tests.test_render_jobs.RenderJobTests.test_renderer_crop_filter_uses_gpt_crop_focus -v
+PYTHONPATH=ios/backend /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest ios.backend.tests.test_render_jobs -v
+```
+
+Results:
+
+- Python compile: passed.
+- New renderer crop-focus command check: passed.
+- GPT slow-motion plus renderer crop-focus focused checks: 2 tests passed.
+- Render job suite: 7 tests passed, including local FFmpeg render/revision/download-history paths.
+- GPT `cropFocus` hints now flow into deterministic FFmpeg crop expressions for `rim`, `ball`, and `shooter` focus modes. The renderer still owns FFmpeg command construction; GPT cannot emit commands, replace timestamp logic, or bypass `EditPlan` validation.
+
 ## Launch Recommendations
 
 - Deploy this branch to staging only after the Cloudflare/GCP deploy secret blockers are cleared.
-- Cloudflare deploy-token creation is still externally blocked on account/zone selection and explicit TTL start/end dates in the Cloudflare dashboard form.
+- Cloudflare deploy-token creation is still externally blocked on completing the Cloudflare dashboard form, selecting the HoopClips account, and saving the token into GitHub Actions as `staging / CLOUDFLARE_API_TOKEN`.
 - Run a live cloud smoke using a real basketball sample with GPT enabled:
   - upload/import
   - cloud analysis candidate generation
