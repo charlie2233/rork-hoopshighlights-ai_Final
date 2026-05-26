@@ -391,6 +391,16 @@ Results:
 - Services editing discovery: 64 tests passed.
 - Added regression coverage so a sampled candidate with incomplete required keyframes is dropped from the GPT payload without losing complete candidates. If every sampled candidate is missing required keyframes, the reranker still falls back before any OpenAI call.
 
+PR #10 CI after partial keyframe-pruning commit `650bda9`:
+
+- Cloud Edit Deploy Preflight run `26441236094`:
+  - Worker typecheck and dry run: success, job `77835939011`.
+  - Editing backend Python tests: success, job `77835938970`.
+  - Verify cloud edit deploy secrets: skipped on this PR path, job `77836443742`.
+- iOS Internal TestFlight Upload run `26441236151`:
+  - No-secret internal staging codecheck: success, job `77835938993`.
+  - Build internal staging TestFlight archive: skipped on this PR path, job `77835939394`.
+
 ## Launch Recommendations
 
 - Deploy this branch to staging only after the Cloudflare/GCP deploy secret blockers are cleared.
