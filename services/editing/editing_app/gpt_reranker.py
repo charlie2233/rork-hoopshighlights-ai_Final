@@ -649,6 +649,7 @@ def _build_openai_payload(
                         "madeShotRequiresSetupReleaseBallPathRimAndOutcome": True,
                         "madeOrMissedShotRequiresVisibleReleaseAndRimResult": True,
                         "madeOrMissedShotRequiresVisibleShotArc": True,
+                        "madeShotRequiresExplicitMadeResultEvidence": True,
                         "doNotKeepIfOutcomeIsOnlyImplied": True,
                         "requiredShotContextKeyframes": sorted(_required_shot_context_roles(settings.limits_for(request.planTier)[1])),
                     },
@@ -671,6 +672,7 @@ def _build_openai_payload(
             "outcome sanity, boring/duplicate rejection, concise captions, story order, and safe edit suggestions. "
             "Act like a basketball shot-tracker: for made shots, verify visible setup, release, ball path, rim/result, and aftermath. "
             "For made or missed shots, releaseVisible, shotArcVisible, and rimResultVisible must all be true; do not infer a make from a label or late rim-only aftermath. "
+            "A made outcome requires shotResultEvidence.rimResultEvidence=made_visible with confident visible rim/net proof; use unclear if the result is guessed. "
             "reject clips that start right before the basket, clips shorter than the supplied quality minimum, or clips where the outcome is only implied. "
             "Honor userEditIntent only when it is compatible with the supplied template, plan tier, candidate clips, and safety constraints. "
             "Use only supplied candidate clip IDs and sampled keyframes. Do not replace FFmpeg extraction, CV tracking, rendering, or exact timestamps. "
@@ -767,6 +769,17 @@ def _response_schema() -> Dict[str, Any]:
             "reason",
         ],
     }
+    shot_result_evidence = {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "releaseToRimContinuity": {"type": "string", "enum": ["continuous", "partial", "missing"]},
+            "rimResultEvidence": {"type": "string", "enum": ["made_visible", "clear_miss", "blocked", "unclear"]},
+            "outcomeConfidence": {"type": "number", "minimum": 0, "maximum": 1},
+            "reason": {"type": "string", "maxLength": 160},
+        },
+        "required": ["releaseToRimContinuity", "rimResultEvidence", "outcomeConfidence", "reason"],
+    }
     suggested_edit = {
         "type": "object",
         "additionalProperties": False,
@@ -795,6 +808,7 @@ def _response_schema() -> Dict[str, Any]:
             "reason": {"type": "string"},
             "storyRole": {"type": "string", "enum": ["opener", "peak", "filler", "closer"]},
             "qualitySignals": quality_signals,
+            "shotResultEvidence": shot_result_evidence,
             "suggestedEdit": suggested_edit,
         },
         "required": [
@@ -809,6 +823,7 @@ def _response_schema() -> Dict[str, Any]:
             "reason",
             "storyRole",
             "qualitySignals",
+            "shotResultEvidence",
             "suggestedEdit",
         ],
     }

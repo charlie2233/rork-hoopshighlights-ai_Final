@@ -62,6 +62,17 @@ def _quality_signals(**overrides) -> dict:
     return payload
 
 
+def _shot_result_evidence(**overrides) -> dict:
+    payload = {
+        "releaseToRimContinuity": "continuous",
+        "rimResultEvidence": "made_visible",
+        "outcomeConfidence": 0.92,
+        "reason": "Ball flight and rim result are visible.",
+    }
+    payload.update(overrides)
+    return payload
+
+
 class EditingServiceTests(unittest.TestCase):
     def setUp(self) -> None:
         self._temp_dir = Path(tempfile.mkdtemp(prefix="hoopclips-editing-tests-"))
@@ -953,6 +964,7 @@ class EditingServiceTests(unittest.TestCase):
                     caption="SKIP",
                     reason="GPT judged this candidate unclear or boring.",
                     qualitySignals=_quality_signals(outcomeVisible=False, ballPathVisible=False, fullPlayContext=False),
+                    shotResultEvidence=_shot_result_evidence(),
                     suggestedEdit=GPTHighlightSuggestedEdit(),
                 )
                 for clip in request.clips
@@ -1008,6 +1020,7 @@ class EditingServiceTests(unittest.TestCase):
                     caption="BUCKET",
                     reason="Clean shot outcome and watchable finish.",
                     qualitySignals=_quality_signals(),
+                    shotResultEvidence=_shot_result_evidence(),
                     suggestedEdit=GPTHighlightSuggestedEdit(
                         slowMotion=True,
                         slowMotionCenter=10.4,
@@ -1027,6 +1040,7 @@ class EditingServiceTests(unittest.TestCase):
                     caption="SKIP",
                     reason="Less clear than the made shot.",
                     qualitySignals=_quality_signals(outcomeVisible=False, ballPathVisible=False, fullPlayContext=False),
+                    shotResultEvidence=_shot_result_evidence(),
                     suggestedEdit=GPTHighlightSuggestedEdit(),
                 ),
             ]

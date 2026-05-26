@@ -989,6 +989,13 @@ class GPTHighlightQualitySignals(APIModel):
     reason: str = Field(min_length=1, max_length=160)
 
 
+class GPTShotResultEvidence(APIModel):
+    releaseToRimContinuity: Literal["continuous", "partial", "missing"]
+    rimResultEvidence: Literal["made_visible", "clear_miss", "blocked", "unclear"]
+    outcomeConfidence: float = Field(ge=0.0, le=1.0)
+    reason: str = Field(min_length=1, max_length=160)
+
+
 class GPTHighlightClipDecision(APIModel):
     clipId: str = Field(min_length=1, max_length=80)
     keep: bool
@@ -1001,6 +1008,14 @@ class GPTHighlightClipDecision(APIModel):
     reason: str = Field(min_length=1, max_length=180)
     storyRole: StoryRole = "filler"
     qualitySignals: GPTHighlightQualitySignals
+    shotResultEvidence: GPTShotResultEvidence = Field(
+        default_factory=lambda: GPTShotResultEvidence(
+            releaseToRimContinuity="missing",
+            rimResultEvidence="unclear",
+            outcomeConfidence=0.0,
+            reason="No explicit shot result evidence supplied.",
+        )
+    )
     suggestedEdit: GPTHighlightSuggestedEdit
 
 
@@ -2572,6 +2587,24 @@ def _gpt_decision_rejection_reason(decision: GPTHighlightClipDecision, clip: Edi
         return "missing_made_shot_ball_path"
     if not signals.playerControlVisible and decision.outcome in {"made", "missed"}:
         return "missing_player_control"
+    result_evidence = decision.shotResultEvidence
+    if decision.outcome in {"made", "missed"} and result_evidence.releaseToRimContinuity == "missing":
+        return "missing_release_to_rim_continuity"
+    if decision.outcome == "made":
+        if result_evidence.rimResultEvidence != "made_visible":
+            return "made_outcome_not_visible"
+        if result_evidence.outcomeConfidence < 0.72:
+            return "low_shot_result_confidence"
+    if decision.outcome == "missed":
+        if result_evidence.rimResultEvidence != "clear_miss":
+            return "miss_outcome_not_visible"
+        if result_evidence.outcomeConfidence < 0.65:
+            return "low_shot_result_confidence"
+    if decision.outcome == "blocked":
+        if result_evidence.rimResultEvidence != "blocked":
+            return "blocked_outcome_not_visible"
+        if result_evidence.outcomeConfidence < 0.65:
+            return "low_shot_result_confidence"
     return None
 
 
