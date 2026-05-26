@@ -401,9 +401,27 @@ PR #10 CI after partial keyframe-pruning commit `650bda9`:
   - No-secret internal staging codecheck: success, job `77835938993`.
   - Build internal staging TestFlight archive: skipped on this PR path, job `77835939394`.
 
+Additional validation before conservative partial GPT-decision commit:
+
+```sh
+python3 -m py_compile services/editing/editing_app/gpt_reranker.py services/editing/tests/test_gpt_reranker.py
+PYTHONPATH=ios/backend:services/editing /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest services.editing.tests.test_gpt_reranker.GPTHighlightRerankerTests.test_incomplete_gpt_decisions_apply_valid_subset_without_reintroducing_missing_candidates services.editing.tests.test_gpt_reranker.GPTHighlightRerankerTests.test_duplicate_gpt_decisions_fall_back services.editing.tests.test_gpt_reranker.GPTHighlightRerankerTests.test_tiny_and_pre_basket_candidates_are_not_sent_to_gpt -v
+PYTHONPATH=ios/backend /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest discover ios/backend/tests -v
+PYTHONPATH=ios/backend:services/editing /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest discover services/editing/tests -v
+```
+
+Results:
+
+- Python compile: passed.
+- New partial GPT-decision focused checks: 3 tests passed.
+- iOS backend Python discovery: 66 tests passed.
+- Services editing discovery: 64 tests passed.
+- Added regression coverage so a partial GPT response with at least one valid sampled clip decision is applied instead of discarded, while sampled clips missing a GPT decision remain rejected by the deterministic rerank merge. Duplicate GPT decisions still fall back.
+
 ## Launch Recommendations
 
 - Deploy this branch to staging only after the Cloudflare/GCP deploy secret blockers are cleared.
+- Cloudflare deploy-token creation is still externally blocked on account/zone selection and explicit TTL start/end dates in the Cloudflare dashboard form.
 - Run a live cloud smoke using a real basketball sample with GPT enabled:
   - upload/import
   - cloud analysis candidate generation

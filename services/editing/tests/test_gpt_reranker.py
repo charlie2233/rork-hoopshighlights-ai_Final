@@ -760,7 +760,7 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertEqual(result.gptRerankSummary.keptClipIds, ["c1"])
         self.assertIn("c0", result.gptRerankSummary.rejectedClipIds)
 
-    def test_incomplete_gpt_decisions_fall_back(self) -> None:
+    def test_incomplete_gpt_decisions_apply_valid_subset_without_reintroducing_missing_candidates(self) -> None:
         settings = GPTHighlightRerankerSettings(
             enabled=True,
             api_key="unit-test-key",
@@ -835,8 +835,10 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         finally:
             gpt_reranker._extract_candidate_keyframes = original_extract
 
-        self.assertEqual(result.gptRerankSummary.status, "fallback")
-        self.assertEqual(result.gptRerankSummary.fallbackReason, "incomplete_gpt_decisions")
+        self.assertEqual(result.gptRerankSummary.status, "applied")
+        self.assertEqual(result.gptRerankSummary.keptClipIds, [observed_clip_ids[0]])
+        self.assertIn(observed_clip_ids[1], result.gptRerankSummary.rejectedClipIds)
+        self.assertEqual([clip.id for clip in result.clips], [observed_clip_ids[0]])
 
     def test_duplicate_gpt_decisions_fall_back(self) -> None:
         settings = GPTHighlightRerankerSettings(

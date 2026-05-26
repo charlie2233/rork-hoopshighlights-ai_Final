@@ -189,7 +189,7 @@ def rerank_edit_request_with_gpt(
     if duplicate_decision_ids:
         return _with_fallback(request, "fallback", settings.model, "duplicate_gpt_decisions", len(sampled_clips), len(sampled_frames))
     valid_decision_id_set = set(valid_decision_ids)
-    if valid_decision_id_set != sampled_clip_ids:
+    if not valid_decision_id_set:
         return _with_fallback(request, "fallback", settings.model, "incomplete_gpt_decisions", len(sampled_clips), len(sampled_frames))
 
     return apply_gpt_highlight_rerank(
