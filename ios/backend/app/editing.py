@@ -1686,7 +1686,7 @@ def remove_duplicate_moments(clips: Sequence[EditCandidateClip]) -> List[EditCan
             unique.append(clip)
             continue
         current = best_by_group.get(clip.duplicateGroup)
-        if current is None or clip.planning_score > current.planning_score:
+        if current is None or _duplicate_choice_key(clip) > _duplicate_choice_key(current):
             best_by_group[clip.duplicateGroup] = clip
     unique.extend(best_by_group.values())
     return rank_clips(unique)
@@ -1756,9 +1756,7 @@ def select_best_clips(
     for clip in remove_duplicate_moments(clips):
         if duration_so_far >= target_seconds:
             break
-        if clip.duration < MIN_PLAN_CLIP_SECONDS:
-            continue
-        if is_shot_like_clip(clip) and not has_minimum_shot_context(clip):
+        if not is_plan_quality_eligible_clip(clip):
             continue
         selected.append(clip)
         duration_so_far += min(max_clip_seconds, clip.duration)
@@ -1787,6 +1785,24 @@ def has_minimum_shot_context(clip: EditCandidateClip) -> bool:
     lead_in = max(0.0, clip.eventCenter - clip.start)
     follow_through = max(0.0, clip.end - clip.eventCenter)
     return lead_in >= MIN_SHOT_CONTEXT_LEAD_IN_SECONDS and follow_through >= MIN_SHOT_CONTEXT_FOLLOW_THROUGH_SECONDS
+
+
+def is_plan_quality_eligible_clip(clip: EditCandidateClip) -> bool:
+    if clip.duration < MIN_PLAN_CLIP_SECONDS:
+        return False
+    if is_shot_like_clip(clip) and not has_minimum_shot_context(clip):
+        return False
+    return True
+
+
+def _duplicate_choice_key(clip: EditCandidateClip) -> Tuple[int, float, float, float, float]:
+    return (
+        1 if is_plan_quality_eligible_clip(clip) else 0,
+        clip.planning_score,
+        clip.watchability,
+        clip.excitement,
+        -clip.start,
+    )
 
 
 def _caption_for(label: str, preset: EditPreset) -> str:
@@ -2219,6 +2235,8 @@ def _gpt_decision_rejection_reason(decision: GPTHighlightClipDecision, clip: Edi
         return decision.rejectReason or "gpt_rejected"
     if clip.duration < MIN_PLAN_CLIP_SECONDS:
         return "clip_too_short"
+    if not is_plan_quality_eligible_clip(clip):
+        return "candidate_missing_minimum_quality_context"
     if decision.highlightScore < MIN_GPT_HIGHLIGHT_SCORE:
         return "low_highlight_score"
     if decision.watchabilityScore < MIN_GPT_WATCHABILITY_SCORE:

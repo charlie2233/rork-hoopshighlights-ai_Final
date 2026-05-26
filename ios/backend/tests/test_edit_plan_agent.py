@@ -367,6 +367,25 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertNotIn("pre_basket", [clip.clipId for clip in plan.clips])
         self.assertIn("complete_shot", [clip.clipId for clip in plan.clips])
 
+    def test_duplicate_group_prefers_complete_shot_context_over_higher_scored_pre_basket_window(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=15,
+                clips=[
+                    {
+                        **_clip("late_duplicate", 8.0, "Made Shot", 0.99, "shot_1"),
+                        "end": 10.2,
+                        "eventCenter": 8.1,
+                    },
+                    _clip("complete_duplicate", 6.0, "Made Shot", 0.82, "shot_1"),
+                ],
+            )
+        )
+
+        plan = build_edit_plan(request, "edit_duplicate_quality")
+
+        self.assertEqual([clip.clipId for clip in plan.clips], ["complete_duplicate"])
+
     def test_gpt_highlight_rerank_uses_existing_clip_ids_only(self) -> None:
         request = CreateEditJobRequest(**_request_payload())
         decisions = [
