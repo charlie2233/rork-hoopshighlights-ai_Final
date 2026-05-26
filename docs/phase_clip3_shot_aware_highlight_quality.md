@@ -102,6 +102,17 @@ Results:
 - Scripts discovery: 34 tests passed.
 - Launch backend config preflight: `pass=63 warn=12 fail=0`.
 
+PR #10 CI after commit `0177890846230ccef9570e30349b09e7fb77096f`:
+
+- Merge state: `CLEAN`.
+- Cloud Edit Deploy Preflight run `26431727456`:
+  - Worker typecheck and dry run: success, job `77806149088`.
+  - Editing backend Python tests: success, job `77806149099`.
+  - Verify cloud edit deploy secrets: skipped on this PR path, job `77806384152`.
+- iOS Internal TestFlight Upload run `26431727445`:
+  - No-secret internal staging codecheck: success, job `77806149212`.
+  - Build internal staging TestFlight archive: skipped on this PR path, job `77806159114`.
+
 ## Launch Recommendations
 
 - Deploy this branch to staging only after the Cloudflare/GCP deploy secret blockers are cleared.
