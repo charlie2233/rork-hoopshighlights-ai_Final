@@ -12,8 +12,9 @@ Make the 85% selected-team/highlight quality target measurable before we claim i
   - selected-team highlight recall with uncertain clips included for Review
   - highlight precision and recall for the requested team scope
   - defensive-event recall for blocks, steals, forced turnovers, and defensive stops
+  - clip timing/context quality for kept or review-included clips
   - uncertain review count
-- Default thresholds are `0.85` for selected-team precision, selected-team recall with uncertain clips, highlight precision, highlight recall, and defensive-event recall.
+- Default thresholds are `0.85` for selected-team precision, selected-team recall with uncertain clips, highlight precision, highlight recall, defensive-event recall, and clip timing/context quality.
 
 ## Input Shape
 
@@ -32,6 +33,9 @@ The script accepts either a top-level `clips` list or a `cases` list:
       },
       "prediction": {
         "keep": true,
+        "start": 10.0,
+        "end": 14.0,
+        "eventCenter": 12.0,
         "teamAttribution": {
           "teamId": "team_dark",
           "confidence": 0.94
@@ -43,6 +47,8 @@ The script accepts either a top-level `clips` list or a `cases` list:
 ```
 
 For uncertain but plausible clips, set `keep: true`, `includeForReview: true`, and either `teamAttributionStatus: "uncertain"` or a confidence below the case threshold. Those clips count toward recall-with-review, not confident precision.
+
+For timing quality, include `start`, `end`, and `eventCenter` for every kept or review-included prediction. The evaluator fails tiny clips, shot clips without enough setup/outcome context, defensive clips without useful event context, and clips whose `nativeShotSignals.timingWindowOk` is explicitly false.
 
 ## How To Run
 
@@ -56,11 +62,11 @@ Use the default thresholds for internal beta. If an eval set is intentionally na
 
 Commands run on branch `codex/phase-clip28-cloud-team-quick-scan`:
 
-- `python3 -m unittest scripts.test_team_highlight_accuracy_eval -v` -> 5 tests passed.
+- `python3 -m unittest scripts.test_team_highlight_accuracy_eval -v` -> 7 tests passed.
 - `python3 -m py_compile scripts/evaluate_team_highlight_accuracy.py scripts/test_team_highlight_accuracy_eval.py` -> passed.
-- `python3 -m unittest discover -s scripts -p 'test_*.py' -v` -> 40 tests passed.
+- `python3 -m unittest discover -s scripts -p 'test_*.py' -v` -> 42 tests passed.
 - `git diff --check` -> passed.
 
 ## Launch Recommendation
 
-Do not claim 85% real-world selected-team or highlight accuracy until this harness passes on a labeled internal footage set that includes makes, misses, blocks, steals, forced turnovers, uncertain jersey-color cases, and opponent highlights. Keep uncertain clips reviewable while collecting the set.
+Do not claim 85% real-world selected-team or highlight accuracy until this harness passes on a labeled internal footage set that includes makes, misses, blocks, steals, forced turnovers, uncertain jersey-color cases, opponent highlights, and bad-window negatives such as tiny clips and pre-basket-only clips. Keep uncertain clips reviewable while collecting the set.

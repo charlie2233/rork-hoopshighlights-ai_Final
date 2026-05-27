@@ -8,6 +8,15 @@ from pathlib import Path
 from scripts.evaluate_team_highlight_accuracy import AccuracyThresholds, evaluate_accuracy
 
 
+def timed_prediction(prediction: dict, start: float = 10.0, end: float = 14.0, event_center: float = 12.0) -> dict:
+    return {
+        **prediction,
+        "start": start,
+        "end": end,
+        "eventCenter": event_center,
+    }
+
+
 class TeamHighlightAccuracyEvalTests(unittest.TestCase):
     def test_selected_team_eval_counts_uncertain_review_and_defensive_events(self) -> None:
         report = evaluate_accuracy(
@@ -16,24 +25,39 @@ class TeamHighlightAccuracyEvalTests(unittest.TestCase):
                 "clips": [
                     {
                         "expected": {"teamId": "team_dark", "isHighlight": True, "eventType": "made_three"},
-                        "prediction": {"keep": True, "teamAttribution": {"teamId": "team_dark", "confidence": 0.94}},
+                        "prediction": timed_prediction({"keep": True, "teamAttribution": {"teamId": "team_dark", "confidence": 0.94}}),
                     },
                     {
                         "expected": {"teamId": "team_dark", "isHighlight": True, "eventType": "block"},
-                        "prediction": {"keep": True, "teamAttribution": {"teamId": "team_dark", "confidence": 0.91}},
+                        "prediction": timed_prediction(
+                            {"keep": True, "teamAttribution": {"teamId": "team_dark", "confidence": 0.91}},
+                            start=20.0,
+                            end=23.0,
+                            event_center=21.2,
+                        ),
                     },
                     {
                         "expected": {"teamId": "team_dark", "isHighlight": True, "eventType": "steal"},
-                        "prediction": {
-                            "keep": True,
-                            "includeForReview": True,
-                            "teamAttributionStatus": "uncertain",
-                            "teamAttribution": {"teamId": "team_dark", "confidence": 0.7},
-                        },
+                        "prediction": timed_prediction(
+                            {
+                                "keep": True,
+                                "includeForReview": True,
+                                "teamAttributionStatus": "uncertain",
+                                "teamAttribution": {"teamId": "team_dark", "confidence": 0.7},
+                            },
+                            start=30.0,
+                            end=33.0,
+                            event_center=31.3,
+                        ),
                     },
                     {
                         "expected": {"teamId": "team_dark", "isHighlight": True, "eventType": "forced turnover"},
-                        "prediction": {"keep": True, "teamAttribution": {"teamId": "team_dark", "confidence": 0.9}},
+                        "prediction": timed_prediction(
+                            {"keep": True, "teamAttribution": {"teamId": "team_dark", "confidence": 0.9}},
+                            start=40.0,
+                            end=43.2,
+                            event_center=41.4,
+                        ),
                     },
                     {
                         "expected": {"teamId": "team_light", "isHighlight": True, "eventType": "layup"},
@@ -53,6 +77,7 @@ class TeamHighlightAccuracyEvalTests(unittest.TestCase):
         self.assertEqual(report.metrics.highlightPrecision, 1.0)
         self.assertEqual(report.metrics.highlightRecall, 1.0)
         self.assertEqual(report.metrics.defensiveEventRecall, 1.0)
+        self.assertEqual(report.metrics.clipTimingQuality, 1.0)
         self.assertEqual(report.metrics.defensiveEventCount, 3)
         self.assertEqual(report.metrics.uncertainReviewCount, 1)
 
@@ -63,7 +88,12 @@ class TeamHighlightAccuracyEvalTests(unittest.TestCase):
                 "clips": [
                     {
                         "expected": {"teamId": "team_dark", "isHighlight": True, "eventType": "forced-turnover"},
-                        "prediction": {"keep": True, "teamAttribution": {"teamId": "team_dark", "confidence": 0.94}},
+                        "prediction": timed_prediction(
+                            {"keep": True, "teamAttribution": {"teamId": "team_dark", "confidence": 0.94}},
+                            start=10.0,
+                            end=13.0,
+                            event_center=11.2,
+                        ),
                     },
                     {
                         "expected": {"teamId": "team_dark", "isHighlight": True, "eventType": "turnover_forced"},
@@ -90,11 +120,16 @@ class TeamHighlightAccuracyEvalTests(unittest.TestCase):
                 "clips": [
                     {
                         "expected": {"teamId": "team_dark", "isHighlight": True, "eventType": "made_three"},
-                        "prediction": {"keep": True, "teamAttribution": {"teamId": "team_dark", "confidence": 0.92}},
+                        "prediction": timed_prediction({"keep": True, "teamAttribution": {"teamId": "team_dark", "confidence": 0.92}}),
                     },
                     {
                         "expected": {"teamId": "team_light", "isHighlight": True, "eventType": "layup"},
-                        "prediction": {"keep": True, "teamAttribution": {"teamId": "team_dark", "confidence": 0.91}},
+                        "prediction": timed_prediction(
+                            {"keep": True, "teamAttribution": {"teamId": "team_dark", "confidence": 0.91}},
+                            start=20.0,
+                            end=24.0,
+                            event_center=22.0,
+                        ),
                     },
                 ],
             },
@@ -117,7 +152,12 @@ class TeamHighlightAccuracyEvalTests(unittest.TestCase):
             "clips": [
                 {
                     "expected": {"teamId": "team_dark", "isHighlight": True, "eventType": "block"},
-                    "prediction": {"keep": True, "teamAttribution": {"teamId": "team_dark", "confidence": 0.95}},
+                    "prediction": timed_prediction(
+                        {"keep": True, "teamAttribution": {"teamId": "team_dark", "confidence": 0.95}},
+                        start=8.0,
+                        end=11.0,
+                        event_center=9.2,
+                    ),
                 }
             ],
         }
@@ -136,6 +176,81 @@ class TeamHighlightAccuracyEvalTests(unittest.TestCase):
         parsed = json.loads(result.stdout)
         self.assertEqual(parsed["status"], "pass")
         self.assertEqual(parsed["metrics"]["defensiveEventRecall"], 1.0)
+        self.assertEqual(parsed["metrics"]["clipTimingQuality"], 1.0)
+
+    def test_tiny_or_pre_basket_kept_clip_fails_timing_quality(self) -> None:
+        report = evaluate_accuracy(
+            {
+                "selectedTeamId": "team_dark",
+                "clips": [
+                    {
+                        "expected": {"teamId": "team_dark", "isHighlight": True, "eventType": "made_three"},
+                        "prediction": timed_prediction(
+                            {"keep": True, "teamAttribution": {"teamId": "team_dark", "confidence": 0.95}},
+                            start=10.0,
+                            end=10.1,
+                            event_center=10.05,
+                        ),
+                    },
+                    {
+                        "expected": {"teamId": "team_dark", "isHighlight": True, "eventType": "layup"},
+                        "prediction": timed_prediction(
+                            {"keep": True, "teamAttribution": {"teamId": "team_dark", "confidence": 0.95}},
+                            start=20.0,
+                            end=23.0,
+                            event_center=20.2,
+                        ),
+                    },
+                ],
+            },
+            thresholds=AccuracyThresholds(
+                selectedTeamPrecision=0.0,
+                selectedTeamRecallWithUncertain=0.0,
+                highlightPrecision=0.0,
+                highlightRecall=0.0,
+                defensiveEventRecall=0.0,
+                clipTimingQuality=0.85,
+            ),
+        )
+
+        self.assertEqual(report.status, "fail")
+        self.assertEqual(report.metrics.clipTimingQuality, 0.0)
+        self.assertEqual(report.metrics.badTimingClipCount, 2)
+        self.assertTrue(any("clipTimingQuality" in failure for failure in report.failures))
+
+    def test_kept_shot_missing_native_timing_window_fails_timing_quality(self) -> None:
+        report = evaluate_accuracy(
+            {
+                "selectedTeamId": "team_dark",
+                "clips": [
+                    {
+                        "expected": {"teamId": "team_dark", "isHighlight": True, "eventType": "jumper"},
+                        "prediction": timed_prediction(
+                            {
+                                "keep": True,
+                                "teamAttribution": {"teamId": "team_dark", "confidence": 0.95},
+                                "nativeShotSignals": {"timingWindowOk": False},
+                            },
+                            start=10.0,
+                            end=14.0,
+                            event_center=12.0,
+                        ),
+                    }
+                ],
+            },
+            thresholds=AccuracyThresholds(
+                selectedTeamPrecision=0.0,
+                selectedTeamRecallWithUncertain=0.0,
+                highlightPrecision=0.0,
+                highlightRecall=0.0,
+                defensiveEventRecall=0.0,
+                clipTimingQuality=0.85,
+            ),
+        )
+
+        self.assertEqual(report.status, "fail")
+        self.assertEqual(report.metrics.clipTimingQuality, 0.0)
+        self.assertEqual(report.metrics.badTimingClipCount, 1)
 
 
 if __name__ == "__main__":
