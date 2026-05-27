@@ -482,6 +482,10 @@ struct VideoPlayerView: View {
                         return
                     }
                     guard !viewModel.isCloudTeamScanInProgress else { return }
+                    guard !viewModel.requiresHighlightTeamSelectionConfirmation else {
+                        HoopsAccessibility.announce("Choose a highlight team or All teams before analysis.")
+                        return
+                    }
                     analysisStarted = true
                     Task {
                         await viewModel.startAnalysis()
@@ -507,8 +511,8 @@ struct VideoPlayerView: View {
                     .padding(16)
                     .background(AppTheme.purpleGradient, in: .rect(cornerRadius: 16))
                 }
-                .disabled(viewModel.isCloudTeamScanInProgress)
-                .opacity(viewModel.isCloudTeamScanInProgress ? 0.72 : 1)
+                .disabled(viewModel.isCloudTeamScanInProgress || viewModel.requiresHighlightTeamSelectionConfirmation)
+                .opacity(viewModel.isCloudTeamScanInProgress || viewModel.requiresHighlightTeamSelectionConfirmation ? 0.72 : 1)
                 .sensoryFeedback(.impact(weight: .medium), trigger: analysisStarted)
 
                 if AppConstants.requiresCloudVideoPipeline {
@@ -567,10 +571,11 @@ struct VideoPlayerView: View {
 
     private func teamTargetButton(_ selection: HighlightTeamSelection) -> some View {
         let isSelected = viewModel.settings.highlightTeamSelection.selectionKey == selection.selectionKey
+        let isConfirmedSelection = isSelected && !viewModel.requiresHighlightTeamSelectionConfirmation
 
         return Button {
             HoopsAccessibility.animate(reduceMotion: reduceMotion, .snappy(duration: 0.18)) {
-                viewModel.settings.highlightTeamSelection = selection
+                viewModel.confirmHighlightTeamSelection(selection)
             }
         } label: {
             VStack(spacing: 4) {
@@ -583,7 +588,7 @@ struct VideoPlayerView: View {
                         .frame(width: 14, height: 14)
                         .overlay(
                             Circle()
-                                .stroke(isSelected ? AppTheme.darkBg.opacity(0.25) : AppTheme.neonPurple.opacity(0.35), lineWidth: 1)
+                                .stroke(isConfirmedSelection ? AppTheme.darkBg.opacity(0.25) : AppTheme.neonPurple.opacity(0.35), lineWidth: 1)
                         )
                 }
                 Text(selection.displayTitle)
@@ -591,28 +596,31 @@ struct VideoPlayerView: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.78)
             }
-            .foregroundStyle(isSelected ? AppTheme.darkBg : AppTheme.neonPurple)
+            .foregroundStyle(isConfirmedSelection ? AppTheme.darkBg : AppTheme.neonPurple)
             .frame(maxWidth: .infinity, minHeight: 48)
             .padding(.horizontal, 6)
             .background(
-                isSelected ? AppTheme.neonPurple : AppTheme.neonPurple.opacity(0.10),
+                isConfirmedSelection ? AppTheme.neonPurple : AppTheme.neonPurple.opacity(0.10),
                 in: .rect(cornerRadius: 12)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 12)
-                    .stroke(AppTheme.neonPurple.opacity(isSelected ? 0 : 0.28), lineWidth: 1)
+                    .stroke(AppTheme.neonPurple.opacity(isConfirmedSelection ? 0 : 0.28), lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Target \(selection.displayTitle)")
-        .accessibilityValue(isSelected ? "Selected" : "Not selected")
+        .accessibilityValue(isConfirmedSelection ? "Selected" : isSelected ? "Tap to confirm" : "Not selected")
         .accessibilityHint(selection.displaySubtitle)
-        .hoopsSelectedState(isSelected)
+        .hoopsSelectedState(isConfirmedSelection)
     }
 
     private var teamTargetSubtitle: String {
         if viewModel.isCloudTeamScanInProgress {
             return viewModel.cloudTeamScanStatusMessage ?? "Scanning jersey colors before analysis."
+        }
+        if viewModel.requiresHighlightTeamSelectionConfirmation {
+            return "Choose a jersey-color team or tap All teams before analysis."
         }
         if !viewModel.cloudDetectedTeams.isEmpty {
             return "Detected teams are labeled by jersey color. Uncertain plays stay in Review."
@@ -630,12 +638,12 @@ struct VideoPlayerView: View {
                     .font(.caption.weight(.medium))
                     .foregroundStyle(AppTheme.neonPurple)
             } else if !viewModel.cloudDetectedTeams.isEmpty {
-                Image(systemName: "checkmark.seal.fill")
+                Image(systemName: viewModel.requiresHighlightTeamSelectionConfirmation ? "hand.tap.fill" : "checkmark.seal.fill")
                     .font(.caption)
-                    .foregroundStyle(AppTheme.successGreen)
-                Text(viewModel.cloudDetectedTeams.map(\.label).joined(separator: " vs "))
+                    .foregroundStyle(viewModel.requiresHighlightTeamSelectionConfirmation ? AppTheme.warningYellow : AppTheme.successGreen)
+                Text(teamScanDetectedStatusText)
                     .font(.caption.weight(.medium))
-                    .foregroundStyle(AppTheme.successGreen)
+                    .foregroundStyle(viewModel.requiresHighlightTeamSelectionConfirmation ? AppTheme.warningYellow : AppTheme.successGreen)
                     .lineLimit(1)
             } else if viewModel.cloudTeamScanErrorMessage != nil {
                 Image(systemName: "exclamationmark.triangle.fill")
@@ -662,6 +670,13 @@ struct VideoPlayerView: View {
         }
         .frame(minHeight: 20)
         .accessibilityElement(children: .combine)
+    }
+
+    private var teamScanDetectedStatusText: String {
+        if viewModel.requiresHighlightTeamSelectionConfirmation {
+            return "Choose target team"
+        }
+        return viewModel.cloudDetectedTeams.map(\.label).joined(separator: " vs ")
     }
 
     private func teamSwatchColor(for selection: HighlightTeamSelection) -> Color {
@@ -975,6 +990,9 @@ struct VideoPlayerView: View {
         }
         if viewModel.isCloudTeamScanInProgress {
             return viewModel.cloudTeamScanStatusMessage ?? "Scanning teams first"
+        }
+        if viewModel.requiresHighlightTeamSelectionConfirmation {
+            return "Choose a team or All teams first"
         }
         return languageStore.text(.analysisButtonSubtitle)
     }

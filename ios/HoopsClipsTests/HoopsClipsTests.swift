@@ -469,6 +469,7 @@ struct HoopsClipsTests {
 
         let fallbackChoices = viewModel.availableHighlightTeamChoices
         #expect(fallbackChoices.map(\.mode) == [.all])
+        #expect(viewModel.requiresHighlightTeamSelectionConfirmation == false)
 
         viewModel.cloudDetectedTeams = [
             CloudTeamOption(
@@ -486,6 +487,11 @@ struct HoopsClipsTests {
         #expect(scannedChoices[1].confidenceThreshold == 0.85)
         #expect(scannedChoices[1].includeUncertain)
         #expect(scannedChoices[1].primaryColorHex == "#0057FF")
+        #expect(viewModel.requiresHighlightTeamSelectionConfirmation)
+
+        viewModel.confirmHighlightTeamSelection(scannedChoices[1])
+        #expect(viewModel.requiresHighlightTeamSelectionConfirmation == false)
+        #expect(viewModel.settings.highlightTeamSelection.teamId == "team_blue")
     }
 
     @Test @MainActor func testCloudEditRequestSendsStrongestCandidatesBeforeFortyClipCap() throws {

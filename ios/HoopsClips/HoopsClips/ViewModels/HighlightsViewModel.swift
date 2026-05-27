@@ -65,6 +65,7 @@ final class HighlightsViewModel {
     var cloudAnalysisJobID: String?
     var cloudEditSourceObjectKey: String?
     var cloudDetectedTeams: [CloudTeamOption] = []
+    var hasConfirmedHighlightTeamSelection = false
     var isCloudTeamScanInProgress = false
     var cloudTeamScanStatusMessage: String?
     var cloudTeamScanErrorMessage: String?
@@ -119,6 +120,12 @@ final class HighlightsViewModel {
         }
 
         return [.allTeams] + scannedChoices
+    }
+
+    var requiresHighlightTeamSelectionConfirmation: Bool {
+        AppConstants.cloudAnalysisEnabled
+            && !cloudDetectedTeams.isEmpty
+            && !hasConfirmedHighlightTeamSelection
     }
 
     var historyProjects: [PersistedProjectRecord] {
@@ -203,6 +210,10 @@ final class HighlightsViewModel {
 
     func startAnalysis() async {
         guard let url = videoURL else { return }
+        guard !requiresHighlightTeamSelectionConfirmation else {
+            cloudTeamScanStatusMessage = "Choose a team before analysis"
+            return
+        }
         await AnalysisNotificationService.shared.prepareForAnalysis()
         beginBackgroundAnalysisTask()
         defer { endBackgroundAnalysisTask() }
@@ -274,6 +285,7 @@ final class HighlightsViewModel {
         cloudTeamScanErrorMessage = nil
         cloudTeamScanStatusMessage = "Preparing team scan"
         settings.highlightTeamSelection = .allTeams
+        hasConfirmedHighlightTeamSelection = false
         analysisMode = .cloud
 
         do {
@@ -290,6 +302,7 @@ final class HighlightsViewModel {
             pendingCloudAnalysisJob = preparedJob
             cloudDetectedTeams = preparedJob.detectedTeams
             resetStaleHighlightTeamSelection(against: preparedJob.detectedTeams)
+            hasConfirmedHighlightTeamSelection = preparedJob.detectedTeams.isEmpty
             cloudTeamScanStatusMessage = preparedJob.detectedTeams.isEmpty
                 ? "No clear jersey colors found yet"
                 : "Choose a team before analysis"
@@ -308,6 +321,7 @@ final class HighlightsViewModel {
             pendingCloudAnalysisJob = nil
             cloudDetectedTeams = []
             settings.highlightTeamSelection = .allTeams
+            hasConfirmedHighlightTeamSelection = true
         } catch {
             guard videoURL?.standardizedFileURL == scanSourceURL else { return }
             cloudTeamScanErrorMessage = error.localizedDescription
@@ -315,9 +329,20 @@ final class HighlightsViewModel {
             pendingCloudAnalysisJob = nil
             cloudDetectedTeams = []
             settings.highlightTeamSelection = .allTeams
+            hasConfirmedHighlightTeamSelection = true
         }
 
         isCloudTeamScanInProgress = false
+    }
+
+    func confirmHighlightTeamSelection(_ selection: HighlightTeamSelection) {
+        settings.highlightTeamSelection = selection
+        hasConfirmedHighlightTeamSelection = true
+        if !cloudDetectedTeams.isEmpty {
+            cloudTeamScanStatusMessage = selection.mode == .all
+                ? "All teams selected"
+                : "\(selection.displayTitle) selected"
+        }
     }
 
     private func runPrimaryLocalAnalysis(for url: URL, status: String) async {
@@ -755,6 +780,7 @@ final class HighlightsViewModel {
         cloudAnalysisJobID = project.cloudAnalysisJobID
         cloudEditSourceObjectKey = project.cloudEditSourceObjectKey
         cloudDetectedTeams = []
+        hasConfirmedHighlightTeamSelection = false
         clearPendingCloudAnalysisJob()
         lastAnalysisStatusSummary = project.analysisStatusSummary
         lastAnalyzedAt = project.lastAnalyzedAt
@@ -799,6 +825,7 @@ final class HighlightsViewModel {
         cloudAnalysisJobID = nil
         cloudEditSourceObjectKey = nil
         cloudDetectedTeams = []
+        hasConfirmedHighlightTeamSelection = false
         clearPendingCloudAnalysisJob()
         lastAnalyzedAt = nil
         lastExportedAt = nil
