@@ -52,3 +52,20 @@ Commands run on branch `codex/phase-clip28-cloud-team-quick-scan`:
 ## Launch Recommendation
 
 Keep this fail-closed gate for internal TestFlight. Do not claim the selected-team 85% target until labeled video evals prove team ownership, shot outcome, blocks, steals, and uncertain-review behavior. Before using selected-team mode through the Worker in staging/prod, connect `team-scan` to a cloud-owned scan provider or route that request to the backend that can materialize the upload and run the scan.
+
+## CI Evidence
+
+After commit `2710235484d189b72475b3496f945cc6883c5f1e`, GitHub Actions created these PR runs:
+
+- `Cloud Edit Deploy Preflight` run `26504067320`
+  - Failed before any workflow steps were allocated.
+  - Failed jobs: `Editing backend Python tests`, `Worker typecheck and dry run`.
+  - GitHub annotation: `The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings`.
+  - `Verify cloud edit deploy secrets` was skipped because prerequisite jobs did not start.
+- `iOS Internal TestFlight Upload` run `26504067321`
+  - Failed before any workflow steps were allocated.
+  - Failed job: `No-secret internal staging codecheck`.
+  - GitHub annotation: `The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings`.
+  - `Build internal staging TestFlight archive` was skipped because this was a pull request codecheck run and the codecheck job did not start.
+
+No failed-step logs were available because GitHub did not allocate runners.
