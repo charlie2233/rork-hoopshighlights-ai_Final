@@ -150,6 +150,38 @@ test("control plane preserves selected team intent through queued inference", as
 
   await uploadObject(harness, createJson.uploadUrl, new TextEncoder().encode("selected team basketball clip"));
 
+  const scanResponse = await invokePublicRoute(
+    harness,
+    "POST",
+    `/jobs/${createJson.jobId}/team-scan`,
+    {
+      installId: "install-local-team",
+      detectedTeams: [
+        {
+          teamId: "team_dark",
+          label: "Dark jerseys",
+          colorLabel: "black",
+          primaryColorHex: "#111111",
+          confidence: 0.93,
+          source: "quick_scan"
+        },
+        {
+          teamId: "team_light",
+          label: "Light jerseys",
+          colorLabel: "white",
+          primaryColorHex: "#f4f4f4",
+          confidence: 0.91,
+          source: "quick_scan"
+        }
+      ]
+    },
+    { "x-trace-id": "trace-selected-team" }
+  );
+  assert.equal(scanResponse.status, 200);
+  const scanJson = await parseJsonResponse<{ status: string; detectedTeams: Array<{ teamId: string }> }>(scanResponse);
+  assert.equal(scanJson.status, "scanned");
+  assert.deepEqual(scanJson.detectedTeams.map((team) => team.teamId), ["team_dark", "team_light"]);
+
   const startResponse = await invokePublicRoute(
     harness,
     "POST",
@@ -164,6 +196,8 @@ test("control plane preserves selected team intent through queued inference", as
 
   const storedJob = harness.state.jobs.get(createJson.jobId);
   assert.deepEqual(storedJob?.teamSelection, teamSelection);
+  assert.equal(storedJob?.teamScanStatus, "scanned");
+  assert.deepEqual(storedJob?.detectedTeams?.map((team) => team.teamId), ["team_dark", "team_light"]);
   assert.equal(harness.state.queueMessages.length, 1);
   assert.deepEqual(harness.state.queueMessages[0]?.teamSelection, teamSelection);
 
@@ -179,6 +213,133 @@ test("control plane preserves selected team intent through queued inference", as
   }>(finalResponse);
   assert.equal(finalJson.status, "completed");
   assert.deepEqual(finalJson.results?.teamSelection, teamSelection);
+});
+
+test("control plane rejects selected team start until a team scan stores detected teams", async () => {
+  const harness = createControlPlaneHarness();
+  const createResponse = await invokePublicRoute(
+    harness,
+    "POST",
+    "/uploads/presign",
+    {
+      filename: "selected-team-no-scan.mp4",
+      contentType: "video/mp4",
+      fileSizeBytes: 10485760,
+      durationSeconds: 24,
+      installId: "install-no-scan",
+      appVersion: "1.0.0",
+      analysisVersion: "phase-team"
+    }
+  );
+  const createJson = await parseJsonResponse<{ jobId: string; uploadUrl: string }>(createResponse);
+  await uploadObject(harness, createJson.uploadUrl, new TextEncoder().encode("selected team no scan"));
+
+  const startResponse = await invokePublicRoute(harness, "POST", `/jobs/${createJson.jobId}/start`, {
+    installId: "install-no-scan",
+    teamSelection: {
+      mode: "team",
+      teamId: "team_dark",
+      label: "Dark jerseys",
+      colorLabel: "black",
+      confidenceThreshold: 0.85,
+      includeUncertain: true
+    }
+  });
+
+  assert.equal(startResponse.status, 400);
+  const startJson = await parseJsonResponse<{ errorCode: string }>(startResponse);
+  assert.equal(startJson.errorCode, "team_scan_required");
+  assert.equal(harness.state.queueMessages.length, 0);
+  assert.equal(harness.state.jobs.get(createJson.jobId)?.status, "upload_pending");
+});
+
+test("control plane rejects selected team start when the chosen team was not scanned", async () => {
+  const harness = createControlPlaneHarness();
+  const createResponse = await invokePublicRoute(
+    harness,
+    "POST",
+    "/uploads/presign",
+    {
+      filename: "selected-team-mismatch.mp4",
+      contentType: "video/mp4",
+      fileSizeBytes: 10485760,
+      durationSeconds: 24,
+      installId: "install-team-mismatch",
+      appVersion: "1.0.0",
+      analysisVersion: "phase-team"
+    }
+  );
+  const createJson = await parseJsonResponse<{ jobId: string; uploadUrl: string }>(createResponse);
+  await uploadObject(harness, createJson.uploadUrl, new TextEncoder().encode("selected team mismatch"));
+
+  const scanResponse = await invokePublicRoute(harness, "POST", `/jobs/${createJson.jobId}/team-scan`, {
+    installId: "install-team-mismatch",
+    detectedTeams: [
+      {
+        teamId: "team_dark",
+        label: "Dark jerseys",
+        colorLabel: "black",
+        primaryColorHex: "#111111",
+        confidence: 0.93,
+        source: "quick_scan"
+      }
+    ]
+  });
+  assert.equal(scanResponse.status, 200);
+
+  const startResponse = await invokePublicRoute(harness, "POST", `/jobs/${createJson.jobId}/start`, {
+    installId: "install-team-mismatch",
+    teamSelection: {
+      mode: "team",
+      teamId: "team_light",
+      label: "Light jerseys",
+      colorLabel: "white",
+      confidenceThreshold: 0.85,
+      includeUncertain: true
+    }
+  });
+
+  assert.equal(startResponse.status, 400);
+  const startJson = await parseJsonResponse<{ errorCode: string }>(startResponse);
+  assert.equal(startJson.errorCode, "team_selection_unavailable");
+  assert.equal(harness.state.queueMessages.length, 0);
+});
+
+test("control plane allows all-teams analysis without a team scan", async () => {
+  const harness = createControlPlaneHarness();
+  const createResponse = await invokePublicRoute(
+    harness,
+    "POST",
+    "/uploads/presign",
+    {
+      filename: "all-teams-no-scan.mp4",
+      contentType: "video/mp4",
+      fileSizeBytes: 10485760,
+      durationSeconds: 24,
+      installId: "install-all-teams",
+      appVersion: "1.0.0",
+      analysisVersion: "phase-team"
+    }
+  );
+  const createJson = await parseJsonResponse<{ jobId: string; uploadUrl: string }>(createResponse);
+  await uploadObject(harness, createJson.uploadUrl, new TextEncoder().encode("all teams no scan"));
+
+  const startResponse = await invokePublicRoute(harness, "POST", `/jobs/${createJson.jobId}/start`, {
+    installId: "install-all-teams",
+    teamSelection: {
+      mode: "all"
+    }
+  });
+  assert.equal(startResponse.status, 200);
+  assert.equal(harness.state.queueMessages.length, 1);
+  assert.deepEqual(harness.state.queueMessages[0]?.teamSelection, {
+    mode: "all",
+    teamId: null,
+    label: null,
+    colorLabel: null,
+    confidenceThreshold: 0.85,
+    includeUncertain: true
+  });
 });
 
 test("legacy inference manifest preserves team and timing metadata", async () => {
@@ -214,6 +375,26 @@ test("legacy inference manifest preserves team and timing metadata", async () =>
   }>(createResponse);
 
   await uploadObject(harness, createJson.uploadUrl, new TextEncoder().encode("legacy team manifest basketball clip"));
+
+  const scanResponse = await invokePublicRoute(
+    harness,
+    "POST",
+    `/jobs/${createJson.jobId}/team-scan`,
+    {
+      installId: "install-legacy-team",
+      detectedTeams: [
+        {
+          teamId: "team_light",
+          label: "Light jerseys",
+          colorLabel: "white",
+          primaryColorHex: "#f4f4f4",
+          confidence: 0.93,
+          source: "quick_scan"
+        }
+      ]
+    }
+  );
+  assert.equal(scanResponse.status, 200);
 
   const startResponse = await invokePublicRoute(
     harness,

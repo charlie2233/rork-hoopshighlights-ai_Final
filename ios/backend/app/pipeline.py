@@ -180,8 +180,6 @@ def _team_quick_scan_candidate_pool_limit(settings: Settings) -> int:
 
 def _analysis_candidate_pool_limit(settings: Settings, team_selection: Optional[TeamSelection]) -> int:
     base_limit = max(1, int(settings.max_returned_clips))
-    if team_selection is None or team_selection.mode == "all":
-        return base_limit
     return min(TEAM_SELECTION_PREFILTER_MAX_CLIPS, max(base_limit, base_limit * TEAM_SELECTION_PREFILTER_MULTIPLIER))
 
 
@@ -254,8 +252,10 @@ def _defensive_review_reserve_limit(max_clips: int, defensive_count: int) -> int
     defensive_count = max(0, int(defensive_count))
     if max_clips < 3 or defensive_count == 0:
         return 0
-    if max_clips < 8:
+    if max_clips < 4:
         return 1
+    if max_clips < 8:
+        return min(defensive_count, 2)
     return min(defensive_count, max(2, max_clips // 5))
 
 

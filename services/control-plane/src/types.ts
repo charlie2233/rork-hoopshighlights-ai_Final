@@ -55,6 +55,16 @@ export interface StartCloudAnalysisJobResponse extends ResponseEnvelope {
   status: JobStatus;
 }
 
+export interface ScanCloudAnalysisTeamsRequest {
+  installId: string;
+}
+
+export interface ScanCloudAnalysisTeamsResponse extends ResponseEnvelope {
+  jobId: string;
+  status: "scanned" | "unavailable";
+  detectedTeams: TeamOption[];
+}
+
 export interface UploadPresignRequest extends CreateCloudAnalysisJobRequest {}
 
 export interface UploadPresignResponse extends ResponseEnvelope {
@@ -284,6 +294,8 @@ export interface JobRecord extends ResponseEnvelope {
   analysisVersion: string;
   analysisMode: "cloud";
   teamSelection?: TeamSelection | null;
+  detectedTeams?: TeamOption[] | null;
+  teamScanStatus?: "scanned" | "unavailable" | null;
   status: JobStatus;
   stage: string;
   progress: number;

@@ -316,6 +316,44 @@ class PipelineQualityTests(unittest.TestCase):
         self.assertEqual([clip.label for clip in result.clips], ["Three Pointer", "Steal", "Block"])
         self.assertTrue(any(clip.teamAttribution and clip.teamAttribution.confidence < 0.85 for clip in result.clips))
 
+    def test_all_teams_analysis_expands_pool_before_review_trim_for_defense(self) -> None:
+        native = [
+            _clip(start=0.0, end=4.5, label="Made Shot 0", combined=0.96, event_center=2.4, auto_keep=True),
+            _clip(start=6.0, end=10.5, label="Made Shot 1", combined=0.95, event_center=8.4, auto_keep=True),
+            _clip(start=12.0, end=16.5, label="Made Shot 2", combined=0.94, event_center=14.4, auto_keep=True),
+            _clip(start=18.0, end=22.5, label="Made Shot 3", combined=0.93, event_center=20.4, auto_keep=True),
+            _clip(start=24.0, end=28.5, label="Steal", combined=0.82, event_center=26.0, auto_keep=True),
+            _clip(start=30.0, end=34.5, label="Block", combined=0.8, event_center=32.0, auto_keep=True),
+        ]
+        settings = _analysis_settings("hybrid")
+        external_limits: list[int] = []
+        native_limits: list[int | None] = []
+
+        def fake_external_detection(source_path, duration_seconds, settings):
+            external_limits.append(settings.max_returned_clips)
+            return [], None
+
+        def fake_native_detection(source_path, duration_seconds, native_settings, clip_limit=None):
+            native_limits.append(clip_limit)
+            return native[: clip_limit or native_settings.max_returned_clips], len(native)
+
+        with tempfile.TemporaryDirectory(prefix="hoopclips-all-teams-prefilter-") as temp_dir:
+            source_path = Path(temp_dir) / "source.mp4"
+            source_path.write_bytes(b"video")
+            with (
+                patch("app.pipeline._probe_duration", return_value=60.0),
+                patch("app.pipeline.detect_with_optional_external_provider", side_effect=fake_external_detection),
+                patch("app.pipeline._run_native_candidate_detection", side_effect=fake_native_detection),
+                patch("app.pipeline.apply_team_quick_scan", return_value=(native, [], False)),
+            ):
+                result = run_analysis(_job(team_selection=TeamSelection(mode="all")), settings, source_path)
+
+        self.assertEqual(external_limits, [settings.max_returned_clips * TEAM_SELECTION_PREFILTER_MULTIPLIER])
+        self.assertEqual(native_limits, [settings.max_returned_clips * TEAM_SELECTION_PREFILTER_MULTIPLIER])
+        self.assertEqual(len(result.clips), settings.max_returned_clips)
+        self.assertIn("Steal", [clip.label for clip in result.clips])
+        self.assertIn("Block", [clip.label for clip in result.clips])
+
     def test_selected_team_visible_results_reserve_uncertain_review_clips(self) -> None:
         team_selection = TeamSelection(mode="team", teamId="team_dark", colorLabel="black", includeUncertain=True)
         clips = [
@@ -513,8 +551,9 @@ class PipelineQualityTests(unittest.TestCase):
 
         self.assertEqual([clip.label for clip in trimmed], ["Made Shot"])
 
-    def test_selected_team_candidate_pool_limit_is_expanded_but_bounded(self) -> None:
-        self.assertEqual(_analysis_candidate_pool_limit(_analysis_settings("hybrid"), None), 4)
+    def test_analysis_candidate_pool_limit_is_expanded_for_quality_but_bounded(self) -> None:
+        self.assertEqual(_analysis_candidate_pool_limit(_analysis_settings("hybrid"), None), 16)
+        self.assertEqual(_analysis_candidate_pool_limit(_analysis_settings("hybrid"), TeamSelection(mode="all")), 16)
         selected = TeamSelection(mode="team", teamId="team_dark", colorLabel="black")
         self.assertEqual(_analysis_candidate_pool_limit(_analysis_settings("hybrid"), selected), 16)
         large_settings = _analysis_settings("hybrid")
