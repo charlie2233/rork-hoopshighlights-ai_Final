@@ -32,6 +32,7 @@ from app.editing import (  # noqa: E402
     derive_user_prompt_intent,
     filter_clips_for_team_selection,
     get_template_pack_for_plan,
+    is_defensive_event_like_clip,
     is_plan_quality_eligible_clip,
     is_shot_like_clip,
     native_shot_signals_for_clip,
@@ -57,21 +58,6 @@ DEFENSIVE_CONTEXT_EXPANSION_LEAD_SECONDS = 1.6
 DEFENSIVE_CONTEXT_EXPANSION_FOLLOW_THROUGH_SECONDS = 1.2
 DEFENSIVE_CONTEXT_EXPANSION_TARGET_SECONDS = 4.5
 DEFENSIVE_CONTEXT_EXPANSION_MAX_SECONDS = 7.0
-DEFENSIVE_SAMPLING_LABEL_TOKENS = (
-    "defense",
-    "defensive",
-    "block",
-    "blocked",
-    "steal",
-    "strip",
-    "contest",
-    "turnover",
-    "forced",
-    "stop",
-    "pressure",
-    "lockdown",
-)
-
 
 @dataclass(frozen=True)
 class GPTHighlightRerankerSettings:
@@ -304,12 +290,10 @@ def expand_shot_candidate_windows_for_source_context(
 
 
 def _expand_candidate_clip_for_source_context(clip: EditCandidateClip, source_duration_seconds: float) -> EditCandidateClip:
-    if _is_block_like_candidate_clip(clip):
+    if _is_defensive_candidate_clip(clip):
         return _expand_defensive_candidate_clip(clip, source_duration_seconds)
     if is_shot_like_clip(clip):
         return _expand_shot_candidate_clip(clip, source_duration_seconds)
-    if _is_defensive_candidate_clip(clip):
-        return _expand_defensive_candidate_clip(clip, source_duration_seconds)
     return clip
 
 
@@ -423,7 +407,8 @@ def _candidate_quality_hints(clip: EditCandidateClip) -> Dict[str, Any]:
     duration = round(clip.duration, 3)
     is_shot_like = is_shot_like_clip(clip)
     is_defensive = _is_defensive_candidate_clip(clip)
-    min_duration = max(MIN_PLAN_CLIP_SECONDS, MIN_GPT_SHOT_LIKE_CANDIDATE_SECONDS if is_shot_like else 2.5)
+    requires_shot_timing = is_shot_like and not is_defensive
+    min_duration = max(MIN_PLAN_CLIP_SECONDS, MIN_GPT_SHOT_LIKE_CANDIDATE_SECONDS if requires_shot_timing else 2.5)
     return {
         "durationSeconds": duration,
         "defensiveEventLike": is_defensive,
@@ -515,13 +500,7 @@ def _defensive_sampling_reserve_limit(request: Optional[CreateEditJobRequest], m
 
 
 def _is_defensive_candidate_clip(clip: EditCandidateClip) -> bool:
-    normalized = clip.label.strip().lower()
-    return any(token in normalized for token in DEFENSIVE_SAMPLING_LABEL_TOKENS)
-
-
-def _is_block_like_candidate_clip(clip: EditCandidateClip) -> bool:
-    normalized = clip.label.strip().lower()
-    return any(token in normalized for token in ("block", "blocked", "contest"))
+    return is_defensive_event_like_clip(clip)
 
 
 def _extract_candidate_keyframes(
@@ -593,7 +572,11 @@ def _missing_shot_context_keyframes(
     required_roles = _required_shot_context_roles(frames_per_clip)
     if not required_roles:
         return {}
-    roles_by_clip_id: Dict[str, set[str]] = {clip.id: set() for clip in clips if is_shot_like_clip(clip)}
+    roles_by_clip_id: Dict[str, set[str]] = {
+        clip.id: set()
+        for clip in clips
+        if is_shot_like_clip(clip) and not _is_defensive_candidate_clip(clip)
+    }
     for frame in frames:
         if frame.clip_id in roles_by_clip_id:
             roles_by_clip_id[frame.clip_id].add(frame.role)
@@ -614,7 +597,7 @@ def _sampled_frame_roles_by_clip(frames: Sequence[SampledFrame]) -> Dict[str, Li
 
 
 def _sample_times_for_clip(clip: EditCandidateClip, frames_per_clip: int) -> List[tuple[str, float]]:
-    if _is_block_like_candidate_clip(clip) or (_is_defensive_candidate_clip(clip) and not is_shot_like_clip(clip)):
+    if _is_defensive_candidate_clip(clip):
         return _defensive_sample_times_for_clip(clip, frames_per_clip)
 
     finish = max(clip.start, clip.end - 0.05)

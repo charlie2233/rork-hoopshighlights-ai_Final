@@ -657,6 +657,52 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertNotIn("shotArcEarly", sampled_roles)
         self.assertNotIn("rimEntry", sampled_roles)
 
+    def test_mixed_defensive_shot_labels_use_defensive_context_before_gpt(self) -> None:
+        request = CreateEditJobRequest(
+            videoId="video_expand_mixed_defense",
+            analysisJobId="analysis_expand_mixed_defense",
+            installId="install-123",
+            sourceObjectKey="uploads/source.mp4",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="free",
+            clips=[
+                {
+                    **_clip("steal_finish", 24.3, 0.91),
+                    "label": "Steal Finish",
+                    "end": 24.95,
+                    "eventCenter": 24.42,
+                    "watchability": 0.91,
+                    "motionScore": 0.93,
+                    "audioPeak": 0.62,
+                },
+            ],
+        )
+
+        expanded = expand_shot_candidate_windows_for_source_context(request, source_duration_seconds=60.0)
+        steal_finish = expanded.clips[0]
+        hints = gpt_reranker._candidate_quality_hints(steal_finish)
+        sampled = gpt_reranker._quality_filtered_sampled_clips(expanded.clips, max_clips=1)
+        sample_times = gpt_reranker._sample_times_for_clip(steal_finish, 10)
+        sampled_roles = [role for role, _ in sample_times]
+        sampled_frames = [
+            SampledFrame(clip_id="steal_finish", role=role, time_seconds=second, data_url="data:image/jpeg;base64,ZA==")
+            for role, second in sample_times
+        ]
+
+        self.assertLess(steal_finish.start, 24.3)
+        self.assertGreater(steal_finish.end, 24.95)
+        self.assertTrue(hints["shotLike"])
+        self.assertTrue(hints["defensiveEventLike"])
+        self.assertTrue(hints["timingWindowOk"])
+        self.assertEqual([clip.id for clip in sampled], ["steal_finish"])
+        self.assertIn("challenge", sampled_roles)
+        self.assertIn("possessionChange", sampled_roles)
+        self.assertIn("defenseOutcome", sampled_roles)
+        self.assertNotIn("shotArcEarly", sampled_roles)
+        self.assertNotIn("rimEntry", sampled_roles)
+        self.assertEqual(gpt_reranker._missing_shot_context_keyframes([steal_finish], sampled_frames, 10), {})
+
     def test_payload_resolves_preset_default_template_for_agent_cookbook(self) -> None:
         settings = GPTHighlightRerankerSettings.from_env()
         request = _request().model_copy(update={"preset": "full_game_highlight", "templateId": None, "targetDurationSeconds": 60})

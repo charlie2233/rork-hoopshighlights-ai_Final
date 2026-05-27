@@ -35,6 +35,7 @@ from app.editing import (
     clip_context_quality_score,
     filter_clips_for_team_selection,
     get_template_pack_for_plan,
+    is_defensive_event_like_clip,
     is_plan_quality_eligible_clip,
     native_shot_signals_for_clip,
     rank_clips,
@@ -1030,6 +1031,69 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertEqual(reranked.gptRerankSummary.status, "applied")
         self.assertEqual([clip.id for clip in reranked.clips], ["dark_steal", "uncertain_steal"])
         self.assertNotIn("light_steal", reranked.gptRerankSummary.keptClipIds)
+
+    def test_gpt_highlight_rerank_keeps_mixed_steal_finish_as_defensive_outcome(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=15,
+                clips=[_clip("steal_finish", 6.0, "Steal Finish", 0.93)],
+            )
+        )
+        decisions = [
+            GPTHighlightClipDecision(
+                clipId="steal_finish",
+                keep=True,
+                highlightScore=0.9,
+                watchabilityScore=0.86,
+                basketballEvent="Steal",
+                outcome="steal",
+                caption="COOKIES",
+                reason="Shows a clean steal before the finish attempt.",
+                qualitySignals=_quality_signals(
+                    releaseVisible=False,
+                    shotArcVisible=False,
+                    rimResultVisible=False,
+                    reason="Defender takes the ball cleanly before the finish.",
+                ),
+                shotResultEvidence=_defensive_result_evidence(),
+                shotTrackingEvidence=_shot_tracking_evidence(
+                    ballVisibleFrameRoles=["challenge", "possessionChange", "finish"],
+                    rimVisibleFrameRoles=[],
+                    releaseFrameRole=None,
+                    resultFrameRole="possessionChange",
+                    ballEntersRimFrameRole=None,
+                    trajectoryContinuity="partial",
+                    reason="Sampled defensive frames show the challenge and possession change.",
+                ),
+                suggestedEdit=GPTHighlightSuggestedEdit(cropFocus="ball"),
+            )
+        ]
+
+        reranked = apply_gpt_highlight_rerank(
+            request,
+            decisions,
+            "gpt-test",
+            1,
+            8,
+            sampled_frame_roles_by_clip={"steal_finish": ["start", "eventCenter", "finish", "challenge", "possessionChange", "recovery"]},
+        )
+
+        self.assertTrue(is_defensive_event_like_clip(request.clips[0]))
+        self.assertTrue(is_plan_quality_eligible_clip(request.clips[0]))
+        self.assertEqual(reranked.gptRerankSummary.status, "applied")
+        self.assertEqual([clip.id for clip in reranked.clips], ["steal_finish"])
+        self.assertEqual(reranked.clips[0].label, "Steal (steal)")
+
+    def test_defensive_event_classifier_ignores_stop_and_pop_shot_label(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=15,
+                clips=[_clip("stop_pop", 6.0, "Stop and Pop Jumper", 0.93)],
+            )
+        )
+
+        self.assertFalse(is_defensive_event_like_clip(request.clips[0]))
+        self.assertTrue(is_plan_quality_eligible_clip(request.clips[0]))
 
     def test_gpt_highlight_rerank_rejects_missed_shot_without_ball_path(self) -> None:
         request = CreateEditJobRequest(

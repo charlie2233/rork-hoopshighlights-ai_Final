@@ -115,6 +115,20 @@ MIN_GENERIC_HIGHLIGHT_WATCHABILITY_SCORE = 0.5
 MIN_NATIVE_OUTCOME_CONFLICT_CONFIDENCE = 0.65
 GPT_NON_SCORING_DEFENSIVE_OUTCOMES = {"steal", "forced_turnover", "defensive_stop"}
 GPT_SHOT_RESULT_OUTCOMES = {"made", "missed", "blocked"}
+DEFENSIVE_EVENT_LABEL_TOKENS = (
+    "defense",
+    "defensive",
+    "block",
+    "blocked",
+    "steal",
+    "strip",
+    "contest",
+    "turnover",
+    "forced",
+    "stop",
+    "pressure",
+    "lockdown",
+)
 BLOCKED_SHOT_TRACKING_ROLES = {"eventCenter", "finish", "challenge", "defenseOutcome", "recovery", "possessionChange"}
 SHOT_TRACKING_RELEASE_ROLES = {"preEvent", "release", "eventCenter"}
 SHOT_TRACKING_BALL_FLIGHT_ROLES = {
@@ -1979,6 +1993,15 @@ def is_shot_like_clip(clip: EditCandidateClip) -> bool:
     )
 
 
+def is_defensive_event_like_clip(clip: EditCandidateClip) -> bool:
+    normalized = clip.label.strip().lower()
+    tokens = set(re.findall(r"[a-z0-9]+", normalized))
+    strong_tokens = set(DEFENSIVE_EVENT_LABEL_TOKENS) - {"stop"}
+    if tokens & strong_tokens:
+        return True
+    return "stop" in tokens and (normalized == "stop" or "defensive stop" in normalized or "defense stop" in normalized)
+
+
 def native_shot_signals_for_clip(clip: EditCandidateClip) -> NativeShotSignals:
     is_shot_like = is_shot_like_clip(clip)
     lead_in = round(max(0.0, clip.eventCenter - clip.start), 3)
@@ -2050,6 +2073,8 @@ def has_minimum_shot_context(clip: EditCandidateClip) -> bool:
 def clip_context_quality_score(clip: EditCandidateClip) -> float:
     if clip.duration < MIN_PLAN_CLIP_SECONDS:
         return 0.0
+    if is_defensive_event_like_clip(clip):
+        return non_shot_clip_quality_score(clip)
     if not is_shot_like_clip(clip):
         return non_shot_clip_quality_score(clip)
 
@@ -2108,6 +2133,8 @@ def has_minimum_non_shot_quality(clip: EditCandidateClip) -> bool:
 def is_plan_quality_eligible_clip(clip: EditCandidateClip) -> bool:
     if clip.duration < MIN_PLAN_CLIP_SECONDS:
         return False
+    if is_defensive_event_like_clip(clip):
+        return has_minimum_non_shot_quality(clip)
     if not is_shot_like_clip(clip):
         return has_minimum_non_shot_quality(clip)
     if native_shot_signals_for_clip(clip).outcome == "not_shot":
@@ -2938,18 +2965,13 @@ def _gpt_outcome_conflicts_with_native_signal(decision: GPTHighlightClipDecision
 
 def _source_supports_gpt_outcome_claim(decision: GPTHighlightClipDecision, clip: EditCandidateClip) -> bool:
     if decision.outcome in GPT_NON_SCORING_DEFENSIVE_OUTCOMES:
-        if is_shot_like_clip(clip):
-            return False
         if not has_minimum_non_shot_quality(clip):
             return False
 
-        normalized_label = clip.label.strip().lower()
-        defensive_label = any(
-            token in normalized_label
-            for token in ("defense", "defensive", "steal", "strip", "turnover", "forced", "stop", "pressure", "lockdown")
-        )
-        if defensive_label:
+        if is_defensive_event_like_clip(clip):
             return True
+        if is_shot_like_clip(clip):
+            return False
         if not is_generic_filler_clip(clip):
             return max(clip.watchability, clip.motionScore) >= 0.55 and clip.confidence >= 0.55
         return max(clip.watchability, clip.motionScore) >= 0.72 and clip.confidence >= 0.65 and clip.planning_score >= 0.7
