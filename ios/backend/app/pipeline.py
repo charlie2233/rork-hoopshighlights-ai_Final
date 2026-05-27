@@ -218,6 +218,8 @@ def _analysis_team_status(
     clip_color = _team_key(attribution.colorLabel)
     if selected_team_id and clip_team_id and selected_team_id == clip_team_id:
         return "matched"
+    if selected_team_id and clip_team_id and selected_team_id != clip_team_id:
+        return "opponent"
     if selected_color and clip_color and selected_color == clip_color:
         return "matched"
     return "opponent"

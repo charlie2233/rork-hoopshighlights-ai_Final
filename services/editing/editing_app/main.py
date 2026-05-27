@@ -58,6 +58,7 @@ from app.editing import (  # noqa: E402
     build_revision_response,
     default_ai_edit_feature_flags,
     estimate_render_cost,
+    filter_clips_for_team_selection,
     get_plan_tier_policy,
     get_template_pack,
     policy_summary_for_client,
@@ -368,7 +369,7 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             planTier=job.plan_tier,
             revenueCatAppUserID=edit_job.request.revenueCatAppUserID,
             editPlan=plan,
-            sourceClips=edit_job.request.clips,
+            sourceClips=filter_clips_for_team_selection(edit_job.request.clips, edit_job.request.teamSelection),
             gptRerankSummary=edit_job.request.gptRerankSummary,
             idempotencyKey=job.idempotency_key,
         )
@@ -1033,7 +1034,7 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
                     planTier=stored_edit_job.request.planTier,
                     revenueCatAppUserID=stored_edit_job.request.revenueCatAppUserID,
                     editPlan=revision.revisedPlan,
-                    sourceClips=stored_edit_job.request.clips,
+                    sourceClips=filter_clips_for_team_selection(stored_edit_job.request.clips, stored_edit_job.request.teamSelection),
                     gptRerankSummary=stored_edit_job.request.gptRerankSummary,
                     revisionId=revision_id,
                     idempotencyKey=request.idempotencyKey or f"{edit_job_id}:{revision_id}:render",
@@ -1074,7 +1075,11 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
                 require_edit_owner(stored_edit_job, request.installId)
 
             edit_plan = request.editPlan or (stored_edit_job.plan if stored_edit_job is not None else None)
-            source_clips = request.sourceClips or (stored_edit_job.request.clips if stored_edit_job is not None else [])
+            source_clips = request.sourceClips or (
+                filter_clips_for_team_selection(stored_edit_job.request.clips, stored_edit_job.request.teamSelection)
+                if stored_edit_job is not None
+                else []
+            )
             source_object_key = request.sourceObjectKey or (stored_edit_job.request.sourceObjectKey if stored_edit_job is not None else None)
             plan_tier = request.planTier or (stored_edit_job.request.planTier if stored_edit_job is not None else "free")
             if edit_plan is None:

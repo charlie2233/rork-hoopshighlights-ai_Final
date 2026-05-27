@@ -10,6 +10,7 @@ nonisolated struct HighlightTeamSelection: Codable, Sendable, Equatable {
     var teamId: String?
     var label: String?
     var colorLabel: String?
+    var primaryColorHex: String?
     var confidenceThreshold: Double = 0.85
     var includeUncertain: Bool = true
 
@@ -52,6 +53,7 @@ nonisolated struct HighlightTeamSelection: Codable, Sendable, Equatable {
         teamId: String? = nil,
         label: String? = nil,
         colorLabel: String? = nil,
+        primaryColorHex: String? = nil,
         confidenceThreshold: Double = 0.85,
         includeUncertain: Bool = true
     ) {
@@ -59,6 +61,7 @@ nonisolated struct HighlightTeamSelection: Codable, Sendable, Equatable {
         self.teamId = teamId
         self.label = label
         self.colorLabel = colorLabel
+        self.primaryColorHex = primaryColorHex
         self.confidenceThreshold = confidenceThreshold
         self.includeUncertain = includeUncertain
     }
@@ -69,6 +72,7 @@ nonisolated struct HighlightTeamSelection: Codable, Sendable, Equatable {
         teamId = try container.decodeIfPresent(String.self, forKey: .teamId)
         label = try container.decodeIfPresent(String.self, forKey: .label)
         colorLabel = try container.decodeIfPresent(String.self, forKey: .colorLabel)
+        primaryColorHex = nil
         confidenceThreshold = try container.decodeIfPresent(Double.self, forKey: .confidenceThreshold) ?? 0.85
         includeUncertain = try container.decodeIfPresent(Bool.self, forKey: .includeUncertain) ?? true
     }

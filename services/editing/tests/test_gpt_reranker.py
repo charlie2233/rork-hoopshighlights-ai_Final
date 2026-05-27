@@ -773,6 +773,86 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertNotIn("downloadUrl", serialized)
         self.assertNotIn("https://", serialized)
 
+    def test_revision_patch_payload_filters_selected_team_candidates(self) -> None:
+        settings = GPTHighlightRerankerSettings.from_env()
+        request = _team_targeted_request()
+        job = build_edit_job(request, "edit_revision_team_payload")
+
+        payload = _build_revision_patch_payload(job, ReviseEditJobRequest(command="make_more_hype"), settings)
+        compact_input = json.loads(payload["input"][0]["content"][0]["text"])
+        compact_clip_ids = [clip["clipId"] for clip in compact_input["candidateClips"]]
+        by_id = {clip["clipId"]: clip for clip in compact_input["candidateClips"]}
+
+        self.assertEqual(compact_input["teamTargeting"]["teamId"], "team_dark")
+        self.assertIn("dark_make", compact_clip_ids)
+        self.assertIn("uncertain_make", compact_clip_ids)
+        self.assertNotIn("light_make", compact_clip_ids)
+        self.assertEqual(by_id["dark_make"]["teamAttributionStatus"], "matched")
+        self.assertEqual(by_id["uncertain_make"]["teamAttributionStatus"], "uncertain")
+        self.assertEqual(compact_input["agentTemplateCookbook"]["teamTargeting"]["teamId"], "team_dark")
+
+    def test_revision_patch_request_rejects_opponent_clip_for_selected_team(self) -> None:
+        settings = GPTHighlightRerankerSettings(
+            enabled=True,
+            api_key="unit-test-key",
+            model="gpt-test",
+            endpoint="https://api.openai.test/v1/responses",
+            timeout_seconds=1.0,
+            max_output_tokens=512,
+            free_max_clips=8,
+            paid_max_clips=24,
+            free_frames_per_clip=3,
+            paid_frames_per_clip=5,
+            frame_width=512,
+            jpeg_quality=5,
+            max_image_bytes=180_000,
+            image_detail="low",
+            revision_enabled=True,
+        )
+        request = _team_targeted_request()
+        job = build_edit_job(request, "edit_revision_team_patch_guard")
+        opponent_clip = next(clip for clip in job.request.clips if clip.id == "light_make")
+        opponent_plan_clip = job.plan.clips[0].model_dump(mode="json")
+        opponent_plan_clip.update(
+            {
+                "clipId": opponent_clip.id,
+                "sourceStart": opponent_clip.start,
+                "sourceEnd": opponent_clip.end,
+                "eventCenter": opponent_clip.eventCenter,
+                "label": opponent_clip.label,
+                "caption": "BUCKET",
+                "timelineStart": 0.0,
+                "timelineEnd": opponent_clip.duration,
+            }
+        )
+
+        def fake_response_client(payload, api_key, endpoint, timeout_seconds):
+            compact_input = json.loads(payload["input"][0]["content"][0]["text"])
+            self.assertNotIn("light_make", [clip["clipId"] for clip in compact_input["candidateClips"]])
+            return {
+                "output_text": json.dumps(
+                    {
+                        "version": "edit-plan-patch-v1",
+                        "baseEditPlanId": job.edit_job_id,
+                        "revisionIntent": "make_more_hype",
+                        "summary": "Invalid opponent clip should be rejected.",
+                        "operations": [
+                            {
+                                "op": "replace",
+                                "path": "/clips",
+                                "value": [opponent_plan_clip],
+                                "reason": "Use the strongest-looking clip.",
+                            }
+                        ],
+                        "requiresRerender": True,
+                    }
+                )
+            }
+
+        patch = request_gpt_edit_plan_patch(job, ReviseEditJobRequest(command="make_more_hype"), settings, fake_response_client)
+
+        self.assertIsNone(patch)
+
     def test_revision_patch_request_rejects_unsafe_gpt_output(self) -> None:
         settings = GPTHighlightRerankerSettings(
             enabled=True,

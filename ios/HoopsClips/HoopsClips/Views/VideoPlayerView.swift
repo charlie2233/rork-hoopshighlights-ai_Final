@@ -665,6 +665,10 @@ struct VideoPlayerView: View {
     }
 
     private func teamSwatchColor(for selection: HighlightTeamSelection) -> Color {
+        if let hexColor = colorFromHex(selection.primaryColorHex) {
+            return hexColor
+        }
+
         switch selection.colorLabel?.lowercased() {
         case "black", "dark":
             return .black
@@ -687,6 +691,17 @@ struct VideoPlayerView: View {
         default:
             return AppTheme.neonPurple
         }
+    }
+
+    private func colorFromHex(_ value: String?) -> Color? {
+        guard let value else { return nil }
+        let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = normalized.hasPrefix("#") ? String(normalized.dropFirst()) : normalized
+        guard trimmed.count == 6, let integer = UInt64(trimmed, radix: 16) else { return nil }
+        let red = Double((integer >> 16) & 0xff) / 255.0
+        let green = Double((integer >> 8) & 0xff) / 255.0
+        let blue = Double(integer & 0xff) / 255.0
+        return Color(red: red, green: green, blue: blue)
     }
 
     private var targetHighlightLengthControl: some View {

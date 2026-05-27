@@ -107,6 +107,7 @@ final class HighlightsViewModel {
                 teamId: team.teamId,
                 label: team.label,
                 colorLabel: team.colorLabel,
+                primaryColorHex: team.primaryColorHex,
                 confidenceThreshold: 0.85,
                 includeUncertain: true
             )
@@ -184,6 +185,7 @@ final class HighlightsViewModel {
         do {
             try Task.checkCancellation()
             clearPendingCloudAnalysisJob()
+            settings.highlightTeamSelection = .allTeams
             let project = try await projectStore.createProjectFromImportedVideo(sourceURL: url.standardizedFileURL)
             try Task.checkCancellation()
             insertProject(project, makeCurrent: true)
@@ -270,6 +272,7 @@ final class HighlightsViewModel {
         isCloudTeamScanInProgress = true
         cloudTeamScanErrorMessage = nil
         cloudTeamScanStatusMessage = "Preparing team scan"
+        settings.highlightTeamSelection = .allTeams
         analysisMode = .cloud
 
         do {
@@ -285,6 +288,7 @@ final class HighlightsViewModel {
             guard videoURL?.standardizedFileURL == scanSourceURL else { return }
             pendingCloudAnalysisJob = preparedJob
             cloudDetectedTeams = preparedJob.detectedTeams
+            resetStaleHighlightTeamSelection(against: preparedJob.detectedTeams)
             cloudTeamScanStatusMessage = preparedJob.detectedTeams.isEmpty
                 ? "No clear jersey colors found yet"
                 : "Choose a team before analysis"
@@ -302,12 +306,14 @@ final class HighlightsViewModel {
             cloudTeamScanStatusMessage = "Team scan unavailable"
             pendingCloudAnalysisJob = nil
             cloudDetectedTeams = []
+            settings.highlightTeamSelection = .allTeams
         } catch {
             guard videoURL?.standardizedFileURL == scanSourceURL else { return }
             cloudTeamScanErrorMessage = error.localizedDescription
             cloudTeamScanStatusMessage = "Team scan unavailable"
             pendingCloudAnalysisJob = nil
             cloudDetectedTeams = []
+            settings.highlightTeamSelection = .allTeams
         }
 
         isCloudTeamScanInProgress = false
@@ -802,6 +808,21 @@ final class HighlightsViewModel {
         isCloudTeamScanInProgress = false
         cloudTeamScanStatusMessage = nil
         cloudTeamScanErrorMessage = nil
+    }
+
+    private func resetStaleHighlightTeamSelection(against detectedTeams: [CloudTeamOption]) {
+        guard settings.highlightTeamSelection.mode == .team else { return }
+        let selectedKey = settings.highlightTeamSelection.selectionKey
+        let detectedKeys = Set(detectedTeams.flatMap { team in
+            [
+                team.teamId,
+                team.colorLabel,
+                team.label
+            ].compactMap { $0 }
+        })
+        if !detectedKeys.contains(selectedKey) {
+            settings.highlightTeamSelection = .allTeams
+        }
     }
 
     private func insertProject(_ project: PersistedProjectRecord, makeCurrent: Bool) {

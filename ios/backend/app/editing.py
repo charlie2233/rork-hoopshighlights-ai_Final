@@ -1736,6 +1736,8 @@ def team_attribution_status(
     clip_color = _team_key(attribution.colorLabel)
     if selected_team_id and clip_team_id and selected_team_id == clip_team_id:
         return "matched"
+    if selected_team_id and clip_team_id and selected_team_id != clip_team_id:
+        return "opponent"
     if selected_color and clip_color and selected_color == clip_color:
         return "matched"
     return "opponent"
@@ -2742,6 +2744,7 @@ def _gpt_decision_rejection_reason(
 
     signals = decision.qualitySignals
     tracking_evidence = decision.shotTrackingEvidence
+    result_evidence = decision.shotResultEvidence
     if not signals.eventVisible or not signals.outcomeVisible or not signals.cleanCamera:
         return "unclear_event_or_outcome"
     if not signals.fullPlayContext or not signals.setupVisible:
@@ -2761,6 +2764,8 @@ def _gpt_decision_rejection_reason(
             defensive_role_rejection = _defensive_sampled_tracking_rejection_reason(tracking_evidence, sampled_frame_roles)
             if defensive_role_rejection is not None:
                 return defensive_role_rejection
+            if _unsampled_gpt_result_roles(result_evidence, sampled_frame_roles):
+                return "gpt_cited_unsampled_frame_role"
         if not signals.playerControlVisible:
             return "missing_defensive_player_control"
         if not signals.ballPathVisible:
@@ -2770,7 +2775,6 @@ def _gpt_decision_rejection_reason(
         return None
     if not signals.playerControlVisible and decision.outcome in {"made", "missed"}:
         return "missing_player_control"
-    result_evidence = decision.shotResultEvidence
     if decision.outcome in {"made", "missed"} and result_evidence.releaseToRimContinuity == "missing":
         return "missing_release_to_rim_continuity"
     if decision.outcome == "made":
@@ -2860,11 +2864,11 @@ def _defensive_sampled_tracking_rejection_reason(
     sampled_frame_roles: Sequence[str],
 ) -> Optional[str]:
     sampled_roles = set(sampled_frame_roles)
-    cited_roles = set(tracking_evidence.ballVisibleFrameRoles)
-    for role in (tracking_evidence.resultFrameRole, tracking_evidence.ballEntersRimFrameRole):
+    cited_roles = set(tracking_evidence.ballVisibleFrameRoles) | set(tracking_evidence.rimVisibleFrameRoles)
+    for role in (tracking_evidence.releaseFrameRole, tracking_evidence.resultFrameRole, tracking_evidence.ballEntersRimFrameRole):
         if role is not None:
             cited_roles.add(role)
-    unsampled_roles = (cited_roles & DEFENSIVE_TRACKING_EVENT_ROLES) - sampled_roles
+    unsampled_roles = cited_roles - sampled_roles
     if unsampled_roles:
         return "gpt_cited_unsampled_frame_role"
     if "possessionChange" in sampled_roles and "possessionChange" not in cited_roles:
@@ -3255,7 +3259,8 @@ def _build_revised_edit_job(job: StoredEditJob, revision: ReviseEditJobRequest) 
             clip["cropMode"] = "center_action"
 
     revised.plan = repair_edit_plan(EditPlan(**data), revised.request.planTier)
-    revised.validation_errors = validate_edit_plan(revised.plan, revised.request.clips, revised.request.planTier)
+    revised_source_clips = filter_clips_for_team_selection(revised.request.clips, revised.request.teamSelection)
+    revised.validation_errors = validate_edit_plan(revised.plan, revised_source_clips, revised.request.planTier)
     revised.status = "plan_ready" if not revised.validation_errors else "failed"
 
     return StoredEditJob(
@@ -3419,7 +3424,8 @@ def build_revision_response(
     proposed_patch: Optional[EditPlanPatch] = None,
 ) -> Tuple[StoredEditJob, EditRevisionResponse]:
     if proposed_patch is not None:
-        patched_plan, errors = validate_edit_plan_patch(job.plan, proposed_patch, job.request.clips, job.request.planTier)
+        source_clips = filter_clips_for_team_selection(job.request.clips, job.request.teamSelection)
+        patched_plan, errors = validate_edit_plan_patch(job.plan, proposed_patch, source_clips, job.request.planTier)
         if patched_plan is None:
             patched_plan = job.plan
         revised = StoredEditJob(
@@ -3448,7 +3454,8 @@ def build_revision_response(
 
     revised = _build_revised_edit_job(job, revision)
     patch = build_edit_plan_patch(job, revision, revised.plan)
-    patched_plan, errors = validate_edit_plan_patch(job.plan, patch, revised.request.clips, revised.request.planTier)
+    source_clips = filter_clips_for_team_selection(revised.request.clips, revised.request.teamSelection)
+    patched_plan, errors = validate_edit_plan_patch(job.plan, patch, source_clips, revised.request.planTier)
     if patched_plan is None:
         patched_plan = revised.plan
     revised.plan = patched_plan
@@ -3472,7 +3479,8 @@ def build_revision_response(
 def build_edit_job(request: CreateEditJobRequest, edit_job_id: str) -> StoredEditJob:
     plan = build_edit_plan(request, edit_job_id)
     plan = repair_edit_plan(plan, request.planTier)
-    errors = validate_edit_plan(plan, request.clips, request.planTier)
+    source_clips = filter_clips_for_team_selection(request.clips, request.teamSelection)
+    errors = validate_edit_plan(plan, source_clips, request.planTier)
     return StoredEditJob(
         edit_job_id=edit_job_id,
         install_id=request.installId,

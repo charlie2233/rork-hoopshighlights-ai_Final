@@ -318,6 +318,47 @@ class EditPlanAgentTests(unittest.TestCase):
 
         self.assertEqual([clip.id for clip in filtered], ["dark_bucket", "uncertain_bucket"])
 
+    def test_selected_team_filter_rejects_conflicting_team_id_even_when_color_matches(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                teamSelection={
+                    "mode": "team",
+                    "teamId": "team_dark",
+                    "label": "Dark jerseys",
+                    "colorLabel": "black",
+                    "confidenceThreshold": 0.85,
+                    "includeUncertain": True,
+                },
+                clips=[
+                    {
+                        **_clip("bad_color_alias", 0.0, "Made Shot", 0.93),
+                        "teamAttribution": {
+                            "teamId": "team_light",
+                            "label": "Light jerseys",
+                            "colorLabel": "black",
+                            "confidence": 0.95,
+                            "source": "quick_scan",
+                        },
+                    },
+                    {
+                        **_clip("missing_id_color_match", 9.0, "Made Shot", 0.91),
+                        "teamAttribution": {
+                            "label": "Dark jerseys",
+                            "colorLabel": "black",
+                            "confidence": 0.91,
+                            "source": "quick_scan",
+                        },
+                    },
+                ],
+            )
+        )
+
+        filtered = filter_clips_for_team_selection(request.clips, request.teamSelection)
+
+        self.assertEqual(team_attribution_status(request.clips[0], request.teamSelection), "opponent")
+        self.assertEqual(team_attribution_status(request.clips[1], request.teamSelection), "matched")
+        self.assertEqual([clip.id for clip in filtered], ["missing_id_color_match"])
+
     def test_explicit_uncertain_team_status_survives_edit_context(self) -> None:
         request = CreateEditJobRequest(
             **_request_payload(
@@ -1083,6 +1124,57 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertEqual(reranked.gptRerankSummary.status, "applied")
         self.assertEqual([clip.id for clip in reranked.clips], ["steal_finish"])
         self.assertEqual(reranked.clips[0].label, "Steal (steal)")
+
+    def test_gpt_defensive_decision_citing_unsampled_shot_role_is_rejected(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=15,
+                clips=[_clip("steal_finish", 6.0, "Steal Finish", 0.93)],
+            )
+        )
+        decisions = [
+            GPTHighlightClipDecision(
+                clipId="steal_finish",
+                keep=True,
+                highlightScore=0.9,
+                watchabilityScore=0.86,
+                basketballEvent="Steal",
+                outcome="steal",
+                caption="COOKIES",
+                reason="Claims a release frame that was never sampled for this defensive clip.",
+                qualitySignals=_quality_signals(
+                    releaseVisible=False,
+                    shotArcVisible=False,
+                    rimResultVisible=False,
+                    reason="Defender takes the ball cleanly before the finish.",
+                ),
+                shotResultEvidence=_defensive_result_evidence(),
+                shotTrackingEvidence=_shot_tracking_evidence(
+                    ballVisibleFrameRoles=["release", "possessionChange", "finish"],
+                    rimVisibleFrameRoles=[],
+                    releaseFrameRole="release",
+                    resultFrameRole="possessionChange",
+                    ballEntersRimFrameRole=None,
+                    trajectoryContinuity="partial",
+                    reason="The GPT response cites a role outside the sampled frame set.",
+                ),
+                suggestedEdit=GPTHighlightSuggestedEdit(cropFocus="ball"),
+            )
+        ]
+
+        reranked = apply_gpt_highlight_rerank(
+            request,
+            decisions,
+            "gpt-test",
+            1,
+            8,
+            sampled_frame_roles_by_clip={"steal_finish": ["start", "eventCenter", "finish", "challenge", "possessionChange", "recovery"]},
+        )
+
+        self.assertEqual(reranked.gptRerankSummary.status, "applied")
+        self.assertEqual(reranked.gptRerankSummary.keptClipIds, [])
+        self.assertEqual(reranked.gptRerankSummary.fallbackReason, "all_clips_rejected")
+        self.assertEqual(reranked.gptRerankSummary.rejectedReasonCounts.get("gpt_cited_unsampled_frame_role"), 1)
 
     def test_defensive_event_classifier_ignores_stop_and_pop_shot_label(self) -> None:
         request = CreateEditJobRequest(
@@ -2361,6 +2453,62 @@ class EditPlanAgentTests(unittest.TestCase):
 
                 self.assertIsNone(patched)
                 self.assertTrue(any(error.code == "invalid_gpt_patch" for error in errors))
+
+    def test_gpt_revision_patch_rejects_opponent_clip_for_selected_team(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                teamSelection={
+                    "mode": "team",
+                    "teamId": "team_dark",
+                    "label": "Dark jerseys",
+                    "colorLabel": "black",
+                    "confidenceThreshold": 0.85,
+                    "includeUncertain": True,
+                },
+                clips=[
+                    {
+                        **_clip("dark_make", 0.0, "Made Shot", 0.95),
+                        "teamAttribution": {"teamId": "team_dark", "colorLabel": "black", "confidence": 0.94},
+                    },
+                    {
+                        **_clip("light_make", 8.0, "Made Shot", 0.98),
+                        "teamAttribution": {"teamId": "team_light", "colorLabel": "white", "confidence": 0.96},
+                    },
+                ],
+            )
+        )
+        job = build_edit_job(request, "edit_selected_team_patch_guard")
+        opponent = next(clip for clip in job.request.clips if clip.id == "light_make")
+        opponent_plan_clip = job.plan.clips[0].model_dump()
+        opponent_plan_clip.update(
+            {
+                "clipId": opponent.id,
+                "sourceStart": opponent.start,
+                "sourceEnd": opponent.end,
+                "eventCenter": opponent.eventCenter,
+                "label": opponent.label,
+                "caption": "BUCKET",
+                "timelineStart": 0.0,
+                "timelineEnd": opponent.duration,
+            }
+        )
+        patch = EditPlanPatch(
+            baseEditPlanId=job.edit_job_id,
+            revisionIntent="make_more_hype",
+            summary="GPT tried to add a confident opponent clip.",
+            operations=[EditPlanPatchOperation(op="replace", path="/clips", value=[opponent_plan_clip])],
+        )
+
+        revised, response = build_revision_response(
+            job,
+            ReviseEditJobRequest(command="make_more_hype"),
+            "rev_selected_team_patch_guard",
+            proposed_patch=patch,
+        )
+
+        self.assertEqual(revised.status, "failed")
+        self.assertEqual(response.status, "revision_failed")
+        self.assertTrue(any(error.code == "unknown_clip" for error in response.validationResult.errors))
 
     def test_revision_commands_are_deterministic_patches(self) -> None:
         request = CreateEditJobRequest(**_request_payload())

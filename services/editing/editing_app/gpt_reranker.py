@@ -232,7 +232,8 @@ def request_gpt_edit_plan_patch(
         patch = EditPlanPatch(**json.loads(output_text))
         if patch.revisionIntent != revision.command or patch.baseEditPlanId != job.edit_job_id:
             return None
-        patched_plan, errors = validate_edit_plan_patch(job.plan, patch, job.request.clips, job.request.planTier)
+        source_clips = filter_clips_for_team_selection(job.request.clips, job.request.teamSelection)
+        patched_plan, errors = validate_edit_plan_patch(job.plan, patch, source_clips, job.request.planTier)
         if patched_plan is None or errors:
             return None
         return patch
@@ -930,11 +931,21 @@ def _build_revision_patch_payload(
     settings: GPTHighlightRerankerSettings,
 ) -> Dict[str, Any]:
     template = get_template_pack_for_plan(job.request.preset, job.plan.templateId or job.request.templateId)
+    source_clips = filter_clips_for_team_selection(job.request.clips, job.request.teamSelection)
     agent_template_context = build_agent_editing_context(
         template.templateId,
-        summarize_clip_pool(job.request.clips),
-        job.request.clips,
+        summarize_clip_pool(source_clips),
+        source_clips,
+        teamSelection=job.request.teamSelection,
     )
+    team_targeting = job.request.teamSelection.model_dump(mode="json") if job.request.teamSelection is not None else {
+        "mode": "all",
+        "teamId": None,
+        "label": None,
+        "colorLabel": None,
+        "confidenceThreshold": 0.85,
+        "includeUncertain": True,
+    }
     compact_context = {
         "task": "Create an EditPlanPatch JSON for this HoopClips revision command. Use only existing clip IDs and safe patch paths.",
         "revision": {
@@ -945,6 +956,7 @@ def _build_revision_patch_payload(
         },
         "planTier": job.request.planTier,
         "templateId": template.templateId,
+        "teamTargeting": team_targeting,
         "agentTemplateCookbook": agent_template_context,
         "currentPlan": job.plan.model_dump(mode="json"),
         "candidateClips": [
@@ -958,9 +970,11 @@ def _build_revision_patch_payload(
                 "motionScore": clip.motionScore,
                 "watchabilityScore": clip.watchability,
                 "duplicateGroup": clip.duplicateGroup,
+                "teamAttribution": clip.teamAttribution.model_dump(mode="json") if clip.teamAttribution is not None else None,
+                "teamAttributionStatus": team_attribution_status(clip, job.request.teamSelection),
                 "nativeShotSignals": native_shot_signals_for_clip(clip).model_dump(mode="json"),
             }
-            for clip in job.request.clips
+            for clip in source_clips
         ],
     }
     return {
