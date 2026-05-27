@@ -521,6 +521,7 @@ final class HighlightsViewModel {
     }
 
     nonisolated static func rankedCloudEditCandidateClips(from clips: [Clip], limit: Int = 40) -> [Clip] {
+        let cappedLimit = max(0, limit)
         let ranked = clips.sorted { lhs, rhs in
             let lhsEligible = isCloudEditCandidateQualityEligible(lhs)
             let rhsEligible = isCloudEditCandidateQualityEligible(rhs)
@@ -541,7 +542,45 @@ final class HighlightsViewModel {
             return lhs.startTime < rhs.startTime
         }
 
-        return ranked.prefix(max(0, limit)).sorted { $0.startTime < $1.startTime }
+        guard cappedLimit > 0 else { return [] }
+
+        var selected = Array(ranked.prefix(cappedLimit))
+        var selectedIDs = Set(selected.map(\.id))
+        var reserveIDs = Set<UUID>()
+        let eligibleRanked = ranked.filter(isCloudEditCandidateQualityEligible)
+
+        func reserveFirstMissing(where predicate: (Clip) -> Bool) {
+            guard selected.contains(where: predicate) == false else { return }
+            guard let candidate = eligibleRanked.first(where: { predicate($0) && !selectedIDs.contains($0.id) }) else { return }
+            reserveIDs.insert(candidate.id)
+            selectedIDs.insert(candidate.id)
+        }
+
+        for family in ["block", "steal", "forced_turnover", "defensive_stop"] {
+            reserveFirstMissing { defensiveCloudEditCandidateFamily($0) == family }
+        }
+        reserveFirstMissing(where: \.needsUserReview)
+
+        if !reserveIDs.isEmpty {
+            selected.append(contentsOf: ranked.filter { reserveIDs.contains($0.id) })
+            selected = selected.sorted { lhs, rhs in
+                let lhsReserved = reserveIDs.contains(lhs.id)
+                let rhsReserved = reserveIDs.contains(rhs.id)
+                if lhsReserved != rhsReserved {
+                    return lhsReserved
+                }
+
+                let lhsScore = cloudEditCandidateScore(lhs)
+                let rhsScore = cloudEditCandidateScore(rhs)
+                if lhsScore != rhsScore {
+                    return lhsScore > rhsScore
+                }
+
+                return lhs.startTime < rhs.startTime
+            }
+        }
+
+        return selected.prefix(cappedLimit).sorted { $0.startTime < $1.startTime }
     }
 
     nonisolated private static func isCloudEditCandidateQualityEligible(_ clip: Clip) -> Bool {
@@ -580,6 +619,24 @@ final class HighlightsViewModel {
     nonisolated private static func isShotLikeCloudEditCandidate(_ clip: Clip) -> Bool {
         let text = "\(clip.label) \(clip.action.rawValue)".lowercased()
         return ["shot", "bucket", "basket", "layup", "dunk", "finish", "jumper", "three", "3pt"].contains { text.contains($0) }
+    }
+
+    nonisolated private static func defensiveCloudEditCandidateFamily(_ clip: Clip) -> String? {
+        let text = "\(clip.label) \(clip.action.rawValue)".lowercased()
+        let tokens = Set(text.split { !$0.isLetter && !$0.isNumber }.map(String.init))
+        if tokens.contains("block") || tokens.contains("blocked") || tokens.contains("contest") || text.contains("blocked shot") {
+            return "block"
+        }
+        if tokens.contains("steal") || tokens.contains("strip") {
+            return "steal"
+        }
+        if tokens.contains("turnover") && !tokens.isDisjoint(with: ["forced", "force", "defensive", "defense"]) {
+            return "forced_turnover"
+        }
+        if text.contains("defensive stop") || text.contains("defense stop") {
+            return "defensive_stop"
+        }
+        return nil
     }
 
     func attachCloudRenderedExport(from temporaryURL: URL) {

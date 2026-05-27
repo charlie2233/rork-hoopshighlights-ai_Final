@@ -531,6 +531,82 @@ struct HoopsClipsTests {
         #expect(!candidateStarts.contains(390.0))
     }
 
+    @Test func testCloudEditCandidateRankingReservesDefenseAndReviewClipsBeforeCap() {
+        var clips: [Clip] = []
+        for index in 0..<42 {
+            clips.append(
+                Clip(
+                    startTime: Double(index * 8),
+                    endTime: Double(index * 8) + 6,
+                    eventCenter: Double(index * 8) + 3,
+                    action: .madeShot,
+                    confidence: 0.99,
+                    isKept: true,
+                    label: "Made Shot",
+                    audioScore: 0.95,
+                    visualScore: 0.95,
+                    motionScore: 0.95,
+                    combinedScore: 0.99,
+                    detectionMethod: .cloud
+                )
+            )
+        }
+        let selectedTeamBlock = Clip(
+            startTime: 400.0,
+            endTime: 405.0,
+            eventCenter: 402.5,
+            action: .block,
+            confidence: 0.68,
+            isKept: true,
+            label: "Block",
+            audioScore: 0.2,
+            visualScore: 0.62,
+            motionScore: 0.66,
+            combinedScore: 0.64,
+            detectionMethod: .cloud
+        )
+        let selectedTeamSteal = Clip(
+            startTime: 410.0,
+            endTime: 415.0,
+            eventCenter: 412.5,
+            action: .steal,
+            confidence: 0.67,
+            isKept: true,
+            label: "Steal",
+            audioScore: 0.2,
+            visualScore: 0.61,
+            motionScore: 0.65,
+            combinedScore: 0.63,
+            detectionMethod: .cloud
+        )
+        let reviewClip = Clip(
+            startTime: 420.0,
+            endTime: 425.0,
+            eventCenter: 422.5,
+            action: .madeShot,
+            confidence: 0.66,
+            isKept: true,
+            label: "Possible Team Finish",
+            audioScore: 0.2,
+            visualScore: 0.6,
+            motionScore: 0.64,
+            combinedScore: 0.62,
+            detectionMethod: .cloud,
+            teamAttributionStatus: "uncertain"
+        )
+
+        let ranked = HighlightsViewModel.rankedCloudEditCandidateClips(
+            from: clips + [selectedTeamBlock, selectedTeamSteal, reviewClip],
+            limit: 40
+        )
+        let labels = Set(ranked.map(\.label))
+
+        #expect(ranked.count == 40)
+        #expect(labels.contains("Block"))
+        #expect(labels.contains("Steal"))
+        #expect(labels.contains("Possible Team Finish"))
+    }
+
     @Test func testCloudEditCandidateRankingPrefersCompleteShotContextOverLatePreBasketWindow() {
         let preBasketOnly = Clip(
             startTime: 10.0,
