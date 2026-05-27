@@ -60,6 +60,27 @@ git diff --check
 # Result: passed
 ```
 
+## CI Evidence
+
+Latest pushed SHA checked: `6beeddb3acbbcbb6bf64085d8e82afbe5ff24dcf`.
+
+```bash
+gh pr checks 32 --repo charlie2233/rork-hoopshighlights-ai_Final
+# Editing backend Python tests: failed in 3s
+# Worker typecheck and dry run: failed in 3s
+# No-secret internal staging codecheck: failed in 4s
+# Build internal staging TestFlight archive: skipped
+# Verify cloud edit deploy secrets: skipped
+
+gh run view 26506158460 --repo charlie2233/rork-hoopshighlights-ai_Final --json jobs
+# Cloud Edit Deploy Preflight jobs failed/skipped with steps: []
+
+gh run view 26506158589 --repo charlie2233/rork-hoopshighlights-ai_Final --json jobs
+# iOS Internal TestFlight Upload jobs failed/skipped with steps: []
+```
+
+This matches the existing GitHub Actions runner/account blocker shape rather than a code-level test failure: the failing jobs exit before any workflow step executes.
+
 ## Launch Note
 
 This improves the quality of the team-choice contract, but it is not an 85% real-footage accuracy proof. The labeled evaluation set still needs to pass across selected-team ownership, uncertain review clips, made/missed outcomes, blocks, steals, forced turnovers, and bad-window negatives before making the accuracy claim or treating TestFlight submission as ready.
