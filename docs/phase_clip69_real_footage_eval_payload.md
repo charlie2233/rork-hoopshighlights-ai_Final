@@ -58,6 +58,27 @@ git diff --check
 # Result: passed
 ```
 
+## CI Evidence
+
+Latest pushed SHA checked: `c61f324e7c4b6f98c8115826ef587cf583423a4c`.
+
+```bash
+gh pr checks 32 --repo charlie2233/rork-hoopshighlights-ai_Final
+# Editing backend Python tests: failed in 3s
+# Worker typecheck and dry run: failed in 3s
+# No-secret internal staging codecheck: failed in 3s
+# Build internal staging TestFlight archive: skipped
+# Verify cloud edit deploy secrets: skipped
+
+gh run view 26506875917 --repo charlie2233/rork-hoopshighlights-ai_Final --json jobs
+# Cloud Edit Deploy Preflight jobs failed/skipped with steps: []
+
+gh run view 26506875859 --repo charlie2233/rork-hoopshighlights-ai_Final --json jobs
+# iOS Internal TestFlight Upload jobs failed/skipped with steps: []
+```
+
+The failing jobs exited before workflow steps ran, matching the existing GitHub Actions runner/account blocker rather than a script or evaluator failure.
+
 ## Launch Note
 
 This creates the artifact path for the real-footage proof, but it is not itself the proof. Internal launch still needs actual labeled footage run through this builder/evaluator with selected-team makes, misses, blocks, steals, forced turnovers, uncertain review clips, opponent highlights, and bad-window negatives.
