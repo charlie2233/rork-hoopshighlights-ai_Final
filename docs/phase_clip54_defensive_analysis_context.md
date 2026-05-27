@@ -30,6 +30,13 @@ The user chooses a team before analysis, and HoopClips must keep that team's def
 - `python3 -m unittest discover -s scripts -p 'test_*.py' -v` passed, 42 tests.
 - `git diff --check` passed before staging.
 
+## CI Evidence
+
+- PR #32 functional phase head: `47c63e7351b149d9989fb1a3e61dd8ebc17704b6`.
+- `iOS Internal TestFlight Upload` run `26497159842` failed before steps started. Job annotation: GitHub account payments failed or the Actions spending limit needs to be increased.
+- `Cloud Edit Deploy Preflight` run `26497159840` failed before steps started. Failed jobs: `Editing backend Python tests` and `Worker typecheck and dry run`; both have the same billing/spending-limit annotation.
+- No workflow logs were available for the failed jobs because GitHub never started the runner steps.
+
 ## Launch Recommendation
 
 Add labeled internal clips where `Blocked Shot` and `Steal Finish` happen near the beginning of the uploaded video or source segment. The 85% eval should prove they remain reviewable for the selected team while true shot labels like `Stop and Pop Jumper` still use shot timing.
