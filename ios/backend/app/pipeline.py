@@ -28,6 +28,8 @@ NATIVE_SHOT_SIGNAL_MIN_DURATION_SECONDS = 3.0
 NATIVE_DEFENSIVE_CONTEXT_TARGET_LEAD_SECONDS = 1.5
 NATIVE_DEFENSIVE_CONTEXT_TARGET_FOLLOW_THROUGH_SECONDS = 1.2
 NATIVE_DEFENSIVE_CONTEXT_TARGET_SECONDS = 4.0
+NATIVE_DEFENSIVE_CONTEXT_MIN_LEAD_SECONDS = 0.6
+NATIVE_DEFENSIVE_CONTEXT_MIN_FOLLOW_THROUGH_SECONDS = 0.5
 HYBRID_OVERLAP_DEDUPE_RATIO = 0.55
 VISUAL_EVENT_SAMPLE_FPS = 2.0
 VISUAL_EVENT_FRAME_WIDTH = 64
@@ -391,7 +393,13 @@ def _normalize_clip_for_analysis_context(
             "eventCenter": round(event_center, 3) if event_center is not None else None,
         }
     )
-    if _is_shot_like_label(normalized.label):
+    defensive_event_like = _is_defensive_label(normalized.label)
+    shot_like = _is_shot_like_label(normalized.label)
+    if defensive_event_like:
+        normalized = _expand_defensive_clip_for_analysis_context(normalized, duration_seconds, settings)
+        if normalized is None:
+            return None
+    elif shot_like:
         normalized = _expand_shot_clip_for_analysis_context(normalized, duration_seconds, settings)
         if normalized is None:
             return None
@@ -405,11 +413,6 @@ def _normalize_clip_for_analysis_context(
                 "nativeShotSignals": _native_shot_signals_for_analysis_clip(normalized),
             }
         )
-
-    if _is_defensive_label(normalized.label):
-        normalized = _expand_defensive_clip_for_analysis_context(normalized, duration_seconds, settings)
-        if normalized is None:
-            return None
 
     if normalized.endTime - normalized.startTime < settings.min_clip_duration_seconds:
         return None
@@ -546,6 +549,7 @@ def _analysis_clip_context_score(clip: CloudClip) -> float:
 
 def _native_shot_signals_for_analysis_clip(clip: CloudClip) -> CloudNativeShotSignals:
     is_shot_like = _is_shot_like_label(clip.label)
+    defensive_event_like = _is_defensive_label(clip.label)
     duration = max(0.0, clip.endTime - clip.startTime)
     event_center = clip.eventCenter
     if event_center is None:
@@ -556,7 +560,26 @@ def _native_shot_signals_for_analysis_clip(clip: CloudClip) -> CloudNativeShotSi
         lead_in = max(0.0, bounded_center - clip.startTime)
         follow_through = max(0.0, clip.endTime - bounded_center)
 
-    if not is_shot_like:
+    if defensive_event_like:
+        setup_context_score = min(1.0, lead_in / NATIVE_DEFENSIVE_CONTEXT_TARGET_LEAD_SECONDS)
+        outcome_context_score = min(1.0, follow_through / NATIVE_DEFENSIVE_CONTEXT_TARGET_FOLLOW_THROUGH_SECONDS)
+        duration_score = min(1.0, duration / max(4.0, NATIVE_DEFENSIVE_CONTEXT_TARGET_SECONDS))
+        if lead_in <= 0.0 or follow_through <= 0.0:
+            balance_score = 0.0
+        else:
+            balance_score = min(lead_in, follow_through) / max(lead_in, follow_through)
+        event_center_quality = (
+            (setup_context_score * 0.3)
+            + (outcome_context_score * 0.3)
+            + (duration_score * 0.25)
+            + (balance_score * 0.15)
+        )
+        timing_window_ok = (
+            duration >= NATIVE_SHOT_SIGNAL_MIN_DURATION_SECONDS
+            and lead_in >= NATIVE_DEFENSIVE_CONTEXT_MIN_LEAD_SECONDS
+            and follow_through >= NATIVE_DEFENSIVE_CONTEXT_MIN_FOLLOW_THROUGH_SECONDS
+        )
+    elif not is_shot_like:
         setup_context_score = 0.0
         outcome_context_score = 0.0
         event_center_quality = 0.0
@@ -651,6 +674,8 @@ def _hybrid_clip_context_score(clip: CloudClip) -> float:
     duration = max(0.0, clip.endTime - clip.startTime)
     if duration < 2.0:
         return 0.0
+    if _is_defensive_label(clip.label):
+        return min(1.0, duration / 4.5)
     if not _is_shot_like_label(clip.label):
         return min(1.0, duration / 4.5)
     if clip.eventCenter is None:

@@ -395,6 +395,7 @@ class PipelineQualityTests(unittest.TestCase):
 
     def test_defensive_label_classifier_ignores_stop_and_pop_jumpers(self) -> None:
         self.assertFalse(_is_defensive_label("Stop and Pop Jumper"))
+        self.assertTrue(_is_defensive_label("Blocked Shot"))
         self.assertTrue(_is_defensive_label("Defensive Stop"))
         self.assertTrue(_is_defensive_label("Steal Finish"))
 
@@ -622,6 +623,54 @@ class PipelineQualityTests(unittest.TestCase):
         self.assertFalse(normalized.nativeShotSignals.isShotLike)
         self.assertTrue(normalized.nativeShotSignals.timingWindowOk)
         self.assertEqual(normalized.nativeShotSignals.outcome, "not_shot")
+
+    def test_analysis_normalization_keeps_early_blocked_shot_as_defensive_context(self) -> None:
+        early_block = _clip(
+            start=1.15,
+            end=1.25,
+            label="Blocked Shot",
+            combined=0.86,
+            confidence=0.84,
+            event_center=1.2,
+            auto_keep=True,
+        )
+
+        normalized = _normalize_clip_for_analysis_context(early_block, duration_seconds=8.0, settings=_settings())
+
+        self.assertIsNotNone(normalized)
+        assert normalized is not None
+        self.assertEqual(normalized.startTime, 0.0)
+        self.assertGreaterEqual(normalized.endTime, 3.0)
+        self.assertTrue(normalized.shouldAutoKeep)
+        self.assertIsNotNone(normalized.nativeShotSignals)
+        assert normalized.nativeShotSignals is not None
+        self.assertTrue(normalized.nativeShotSignals.isShotLike)
+        self.assertTrue(normalized.nativeShotSignals.timingWindowOk)
+        self.assertEqual(normalized.nativeShotSignals.outcome, "blocked")
+
+    def test_analysis_normalization_keeps_early_steal_finish_as_defensive_context(self) -> None:
+        early_steal_finish = _clip(
+            start=0.6,
+            end=0.78,
+            label="Steal Finish",
+            combined=0.83,
+            confidence=0.8,
+            event_center=0.65,
+            auto_keep=True,
+        )
+
+        normalized = _normalize_clip_for_analysis_context(early_steal_finish, duration_seconds=8.0, settings=_settings())
+
+        self.assertIsNotNone(normalized)
+        assert normalized is not None
+        self.assertEqual(normalized.startTime, 0.0)
+        self.assertGreaterEqual(normalized.endTime, 3.0)
+        self.assertTrue(normalized.shouldAutoKeep)
+        self.assertIsNotNone(normalized.nativeShotSignals)
+        assert normalized.nativeShotSignals is not None
+        self.assertTrue(normalized.nativeShotSignals.isShotLike)
+        self.assertTrue(normalized.nativeShotSignals.timingWindowOk)
+        self.assertEqual(normalized.nativeShotSignals.outcome, "uncertain")
 
     def test_native_outcome_hints_do_not_treat_ambiguous_finishes_as_makes(self) -> None:
         for label in ("Layup", "Tough Finish"):
