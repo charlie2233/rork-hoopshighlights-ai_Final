@@ -299,6 +299,87 @@ class TeamQuickScanTests(unittest.TestCase):
         self.assertEqual(scanned[74].teamAttribution.teamId, "team_dark")
         self.assertNotIn("videoUrl", json.dumps(captured_payload))
 
+    def test_detected_team_options_are_normalized_to_jersey_colors(self) -> None:
+        clips = [
+            _clip("Made Shot", 8.0, 12.5, 10.0),
+            _clip("Steal", 18.0, 22.0, 20.0),
+        ]
+        frames = [
+            QuickScanFrame(frame_ref="clip_0_release", role="release", time_seconds=9.0, data_url="data:image/jpeg;base64,aaa", clip_ref="clip_0"),
+            QuickScanFrame(frame_ref="clip_1_possession", role="possessionChange", time_seconds=20.0, data_url="data:image/jpeg;base64,bbb", clip_ref="clip_1"),
+        ]
+
+        def fake_client(*_args):
+            return _response(
+                {
+                    "teams": [
+                        {
+                            "teamId": "home",
+                            "label": "Home team",
+                            "colorLabel": None,
+                            "primaryColorHex": None,
+                            "confidence": 0.99,
+                            "reason": "This is not a jersey-color label and should not be selectable.",
+                        },
+                        {
+                            "teamId": "home",
+                            "label": "Home team",
+                            "colorLabel": "black",
+                            "primaryColorHex": "#111111",
+                            "confidence": 0.94,
+                            "reason": "Home players wear black jerseys.",
+                        },
+                        {
+                            "teamId": "away",
+                            "label": "Away team",
+                            "colorLabel": "white",
+                            "primaryColorHex": "#ffffff",
+                            "confidence": 0.91,
+                            "reason": "Away players wear white jerseys.",
+                        },
+                    ],
+                    "clipAttributions": [
+                        {
+                            "clipRef": "clip_0",
+                            "teamId": "home",
+                            "label": "Home team",
+                            "colorLabel": None,
+                            "confidence": 0.93,
+                            "reason": "Shooter is on the home team.",
+                        },
+                        {
+                            "clipRef": "clip_1",
+                            "teamId": "away",
+                            "label": "Away team",
+                            "colorLabel": "white",
+                            "confidence": 0.9,
+                            "reason": "Defender in white steals the ball.",
+                        },
+                    ],
+                }
+            )
+
+        with tempfile.TemporaryDirectory(prefix="hoopclips-team-scan-colors-") as temp_dir:
+            source_path = Path(temp_dir) / "source.mp4"
+            source_path.write_bytes(b"video")
+            with patch("app.team_quick_scan._extract_quick_scan_frames", return_value=frames):
+                scanned, teams, applied = apply_team_quick_scan(
+                    source_path,
+                    30.0,
+                    clips,
+                    _settings(),
+                    response_client=fake_client,
+                )
+
+        self.assertTrue(applied)
+        self.assertEqual([team.teamId for team in teams], ["team_black", "team_white"])
+        self.assertEqual([team.label for team in teams], ["Black jerseys", "White jerseys"])
+        self.assertEqual([team.colorLabel for team in teams], ["black", "white"])
+        self.assertEqual(scanned[0].teamAttribution.teamId, "team_black")
+        self.assertEqual(scanned[0].teamAttribution.label, "Black jerseys")
+        self.assertEqual(scanned[0].teamAttribution.colorLabel, "black")
+        self.assertEqual(scanned[1].teamAttribution.teamId, "team_white")
+
     def test_defensive_quick_scan_samples_possession_change_roles(self) -> None:
         steal = _clip("Steal", 18.0, 22.0, 20.0)
         block = _clip("Block", 6.0, 10.5, 8.0)

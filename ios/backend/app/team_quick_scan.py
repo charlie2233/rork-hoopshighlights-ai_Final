@@ -24,6 +24,25 @@ TEAM_QUICK_SCAN_COMPACT_FRAMES_PER_CANDIDATE = 3
 TEAM_QUICK_SCAN_RICH_CANDIDATE_CLIPS = 60
 TEAM_QUICK_SCAN_DEFAULT_TOTAL_CLIP_FRAMES = 720
 TEAM_QUICK_SCAN_MAX_TOTAL_CLIP_FRAMES = 900
+JERSEY_COLOR_ALIASES = {
+    "black": "black",
+    "dark": "black",
+    "navy": "blue",
+    "blue": "blue",
+    "teal": "blue",
+    "red": "red",
+    "maroon": "red",
+    "white": "white",
+    "light": "white",
+    "yellow": "yellow",
+    "gold": "yellow",
+    "green": "green",
+    "orange": "orange",
+    "purple": "purple",
+    "gray": "gray",
+    "grey": "gray",
+    "pink": "pink",
+}
 
 
 @dataclass(frozen=True)
@@ -211,24 +230,29 @@ def _parse_quick_scan_output(output: object, settings: Settings) -> tuple[list[T
         confidence = clamp(_coerce_float(item.get("confidence"), 0.0), 0.0, 1.0)
         if confidence < min_team_confidence:
             continue
-        label = _clean_text(item.get("label")) or _clean_text(item.get("colorLabel")) or "Unknown jerseys"
-        color_label = _clean_color_label(item.get("colorLabel"))
-        team_id = _clean_team_id(item.get("teamId")) or _team_id_from_label(color_label or label)
+        raw_label = _clean_text(item.get("label"))
+        color_label = _resolve_jersey_color(item.get("colorLabel"), raw_label, item.get("teamId"))
+        if color_label is None:
+            continue
+        label = _color_labeled_team_name(color_label, raw_label)
+        raw_team_id = _clean_team_id(item.get("teamId"))
+        raw_team_id_color = _resolve_jersey_color(raw_team_id)
+        team_id = raw_team_id if raw_team_id_color == color_label else _team_id_from_label(color_label)
         if not team_id or team_id in seen_team_ids:
             continue
         seen_team_ids.add(team_id)
-        teams.append(
-            TeamOption(
-                teamId=team_id,
-                label=label,
-                colorLabel=color_label,
-                primaryColorHex=_clean_hex_color(item.get("primaryColorHex")),
-                confidence=round(confidence, 4),
-                source="quick_scan",
-            )
+        team = TeamOption(
+            teamId=team_id,
+            label=label,
+            colorLabel=color_label,
+            primaryColorHex=_clean_hex_color(item.get("primaryColorHex")),
+            confidence=round(confidence, 4),
+            source="quick_scan",
         )
+        teams.append(team)
 
     team_confidence_by_key = _team_confidence_by_key(teams)
+    team_aliases_by_key = _team_aliases_by_key(output.get("teams", []), teams)
     attributions: dict[str, ClipTeamAttribution] = {}
     for item in output.get("clipAttributions", []):
         if not isinstance(item, dict):
@@ -237,9 +261,22 @@ def _parse_quick_scan_output(output: object, settings: Settings) -> tuple[list[T
         if clip_ref is None or not re.fullmatch(r"clip_[0-9]+", clip_ref):
             continue
         confidence = clamp(_coerce_float(item.get("confidence"), 0.0), 0.0, 1.0)
-        label = _clean_text(item.get("label"))
-        color_label = _clean_color_label(item.get("colorLabel"))
-        team_id = _clean_team_id(item.get("teamId")) or (_team_id_from_label(color_label) if color_label else None)
+        raw_label = _clean_text(item.get("label"))
+        color_label = _resolve_jersey_color(item.get("colorLabel"), raw_label, item.get("teamId"))
+        matched_team = _matching_team_alias(item, team_aliases_by_key)
+        if matched_team is not None and (color_label is None or color_label == matched_team.colorLabel):
+            team_id = matched_team.teamId
+            label = matched_team.label
+            color_label = matched_team.colorLabel
+        else:
+            label = _color_labeled_team_name(color_label, raw_label) if color_label else raw_label
+            raw_team_id = _clean_team_id(item.get("teamId"))
+            raw_team_id_color = _resolve_jersey_color(raw_team_id)
+            team_id = (
+                raw_team_id
+                if raw_team_id and (color_label is None or raw_team_id_color == color_label)
+                else (_team_id_from_label(color_label) if color_label else raw_team_id)
+            )
         if team_id is None and label is None and color_label is None:
             continue
         confidence = _cap_attribution_confidence_by_detected_team(
@@ -257,6 +294,47 @@ def _parse_quick_scan_output(output: object, settings: Settings) -> tuple[list[T
             source="gpt_frame_review",
         )
     return teams, attributions
+
+
+def _team_aliases_by_key(raw_teams: object, teams: Sequence[TeamOption]) -> dict[str, TeamOption]:
+    aliases: dict[str, TeamOption] = {}
+    if not isinstance(raw_teams, list):
+        return aliases
+    team_by_id = {team.teamId: team for team in teams}
+    for item in raw_teams:
+        if not isinstance(item, dict):
+            continue
+        color_label = _resolve_jersey_color(item.get("colorLabel"), item.get("label"), item.get("teamId"))
+        if color_label is None:
+            continue
+        raw_team_id = _clean_team_id(item.get("teamId"))
+        raw_team_id_color = _resolve_jersey_color(raw_team_id)
+        team_id = raw_team_id if raw_team_id_color == color_label else _team_id_from_label(color_label)
+        team = team_by_id.get(team_id or "")
+        if team is None:
+            continue
+        for key in (
+            _team_key(item.get("teamId") if isinstance(item.get("teamId"), str) else None),
+            _team_key(item.get("label") if isinstance(item.get("label"), str) else None),
+            _team_key(item.get("colorLabel") if isinstance(item.get("colorLabel"), str) else None),
+            _team_key(team.teamId),
+            _team_key(team.label),
+            _team_key(team.colorLabel),
+        ):
+            if key is not None:
+                aliases[key] = team
+    return aliases
+
+
+def _matching_team_alias(item: dict[str, object], aliases: dict[str, TeamOption]) -> Optional[TeamOption]:
+    for key in (
+        _team_key(item.get("teamId") if isinstance(item.get("teamId"), str) else None),
+        _team_key(item.get("label") if isinstance(item.get("label"), str) else None),
+        _team_key(item.get("colorLabel") if isinstance(item.get("colorLabel"), str) else None),
+    ):
+        if key is not None and key in aliases:
+            return aliases[key]
+    return None
 
 
 def _team_confidence_by_key(teams: Sequence[TeamOption]) -> dict[str, float]:
@@ -585,11 +663,22 @@ def _clean_text(value: object, max_length: int = 80) -> Optional[str]:
     return cleaned[:max_length]
 
 
-def _clean_color_label(value: object) -> Optional[str]:
-    cleaned = _clean_text(value)
-    if cleaned is None:
-        return None
-    return cleaned.lower()
+def _resolve_jersey_color(*values: object) -> Optional[str]:
+    for value in values:
+        cleaned = _clean_text(value, max_length=120)
+        if cleaned is None:
+            continue
+        words = re.findall(r"[a-z]+", cleaned.lower())
+        for word in words:
+            if word in JERSEY_COLOR_ALIASES:
+                return JERSEY_COLOR_ALIASES[word]
+    return None
+
+
+def _color_labeled_team_name(color_label: str, raw_label: Optional[str]) -> str:
+    if raw_label and _resolve_jersey_color(raw_label) == color_label:
+        return raw_label
+    return f"{color_label.title()} jerseys"
 
 
 def _clean_team_id(value: object) -> Optional[str]:
