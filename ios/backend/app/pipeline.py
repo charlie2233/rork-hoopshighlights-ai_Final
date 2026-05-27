@@ -247,6 +247,16 @@ def _uncertain_review_reserve_limit(max_clips: int, uncertain_count: int) -> int
     return min(uncertain_count, max(2, max_clips // 6))
 
 
+def _defensive_review_reserve_limit(max_clips: int, defensive_count: int) -> int:
+    max_clips = max(0, int(max_clips))
+    defensive_count = max(0, int(defensive_count))
+    if max_clips < 3 or defensive_count == 0:
+        return 0
+    if max_clips < 8:
+        return 1
+    return min(defensive_count, max(2, max_clips // 5))
+
+
 def _trim_analysis_clips_for_review(
     clips: Sequence[CloudClip],
     team_selection: Optional[TeamSelection],
@@ -255,19 +265,8 @@ def _trim_analysis_clips_for_review(
     max_clips = max(0, int(max_clips))
     if max_clips == 0:
         return []
-    if team_selection is None or team_selection.mode == "all" or not team_selection.includeUncertain:
-        return list(clips)[:max_clips]
 
     indexed_clips = list(enumerate(clips))
-    uncertain = [
-        (index, clip)
-        for index, clip in indexed_clips
-        if _analysis_team_status(clip, team_selection) == "uncertain"
-    ]
-    reserve = _uncertain_review_reserve_limit(max_clips, len(uncertain))
-    if reserve == 0:
-        return list(clips)[:max_clips]
-
     selected: list[tuple[int, CloudClip]] = []
     selected_indexes: set[int] = set()
 
@@ -277,11 +276,34 @@ def _trim_analysis_clips_for_review(
         selected.append((index, clip))
         selected_indexes.add(index)
 
+    defensive = [
+        (index, clip)
+        for index, clip in indexed_clips
+        if _is_defensive_label(clip.label) and _analysis_clip_auto_keep_allowed(clip)
+    ]
+    defensive_reserve = _defensive_review_reserve_limit(max_clips, len(defensive))
+    for index, clip in sorted(
+        defensive,
+        key=_review_reserved_clip_quality_key,
+        reverse=True,
+    )[:defensive_reserve]:
+        add_clip(index, clip)
+
+    uncertain: list[tuple[int, CloudClip]] = []
+    uncertain_reserve = 0
+    if team_selection is not None and team_selection.mode == "team" and team_selection.includeUncertain:
+        uncertain = [
+            (index, clip)
+            for index, clip in indexed_clips
+            if _analysis_team_status(clip, team_selection) == "uncertain"
+        ]
+        uncertain_reserve = _uncertain_review_reserve_limit(max_clips, len(uncertain))
+
     for index, clip in sorted(
         uncertain,
-        key=_uncertain_review_clip_quality_key,
+        key=_review_reserved_clip_quality_key,
         reverse=True,
-    )[:reserve]:
+    )[:uncertain_reserve]:
         add_clip(index, clip)
 
     for index, clip in indexed_clips:
@@ -292,7 +314,7 @@ def _trim_analysis_clips_for_review(
     return [clip for _, clip in sorted(selected, key=lambda item: item[0])]
 
 
-def _uncertain_review_clip_quality_key(
+def _review_reserved_clip_quality_key(
     item: tuple[int, CloudClip],
 ) -> tuple[float, float, float, float, float, float, float, int]:
     index, clip = item

@@ -395,6 +395,44 @@ class PipelineQualityTests(unittest.TestCase):
         self.assertNotIn("Uncertain weak rebound", labels)
         self.assertNotIn("Made Shot 4", labels)
 
+    def test_review_trim_reserves_strong_defensive_clip_when_scoring_fills_cap(self) -> None:
+        scoring = [
+            _clip(
+                start=float(index * 5),
+                end=float(index * 5 + 4),
+                label=f"Made Shot {index}",
+                combined=0.95 - (index * 0.01),
+                event_center=float(index * 5 + 2),
+                auto_keep=True,
+            )
+            for index in range(5)
+        ]
+        weak_defense = _clip(
+            start=30.0,
+            end=34.0,
+            label="Weak block",
+            combined=0.5,
+            confidence=0.5,
+            event_center=32.0,
+            auto_keep=False,
+        )
+        strong_defense = _clip(
+            start=35.0,
+            end=39.5,
+            label="Steal",
+            combined=0.84,
+            confidence=0.82,
+            event_center=37.0,
+            auto_keep=True,
+        )
+
+        trimmed = _trim_analysis_clips_for_review([*scoring, weak_defense, strong_defense], None, max_clips=4)
+        labels = [clip.label for clip in trimmed]
+
+        self.assertIn("Steal", labels)
+        self.assertNotIn("Weak block", labels)
+        self.assertNotIn("Made Shot 4", labels)
+
     def test_defensive_label_classifier_ignores_stop_and_pop_jumpers(self) -> None:
         self.assertFalse(_is_defensive_label("Stop and Pop Jumper"))
         self.assertTrue(_is_defensive_label("Blocked Shot"))
