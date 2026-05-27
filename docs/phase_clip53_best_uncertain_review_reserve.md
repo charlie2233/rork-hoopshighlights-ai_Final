@@ -29,6 +29,13 @@ The goal is high recall with reviewable uncertainty. If HoopClips is not sure wh
 - `python3 -m unittest discover -s scripts -p 'test_*.py' -v` passed, 42 tests.
 - `git diff --check` passed.
 
+## CI Evidence
+
+- PR #32 latest head after this phase: `e2d07ef50cd497ace19dfa5da5c4c055eae7299c`.
+- `iOS Internal TestFlight Upload` run `26496689636` failed before steps started. Job annotation: GitHub account payments failed or the Actions spending limit needs to be increased.
+- `Cloud Edit Deploy Preflight` run `26496689637` failed before steps started. Failed jobs: `Editing backend Python tests` and `Worker typecheck and dry run`; both have the same billing/spending-limit annotation.
+- No workflow logs were available for the failed jobs because GitHub never started the runner steps.
+
 ## Launch Recommendation
 
 Add labeled internal footage with weak uncertain moments before strong uncertain steals/blocks. The 85% eval should prove the strong uncertain defensive clip is retained for review while confident opponent clips stay excluded.
