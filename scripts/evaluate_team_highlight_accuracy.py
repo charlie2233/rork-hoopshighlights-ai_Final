@@ -37,6 +37,7 @@ MIN_EVAL_SHOT_LEAD_IN_SECONDS = 0.9
 MIN_EVAL_SHOT_FOLLOW_THROUGH_SECONDS = 0.6
 MIN_EVAL_DEFENSIVE_LEAD_IN_SECONDS = 0.6
 MIN_EVAL_DEFENSIVE_FOLLOW_THROUGH_SECONDS = 0.5
+MIN_EVAL_SHOT_OUTCOME_CONFIDENCE = 0.65
 
 
 @dataclass(frozen=True)
@@ -47,6 +48,10 @@ class AccuracyThresholds:
     highlightRecall: float = 0.85
     defensiveEventRecall: float = 0.85
     clipTimingQuality: float = 0.85
+    shotOutcomeEvidenceQuality: float = 0.85
+    minSelectedTeamDefensiveEvents: int = 2
+    minSelectedTeamBlocks: int = 1
+    minSelectedTeamSteals: int = 1
 
 
 @dataclass(frozen=True)
@@ -59,11 +64,16 @@ class AccuracyMetrics:
     highlightRecall: float
     defensiveEventRecall: float
     clipTimingQuality: float
+    shotOutcomeEvidenceQuality: float
     uncertainReviewCount: int
     selectedTeamHighlightCount: int
     defensiveEventCount: int
     timingQualityClipCount: int
     badTimingClipCount: int
+    shotOutcomeEvidenceClipCount: int
+    badShotOutcomeEvidenceCount: int
+    selectedTeamBlockCount: int
+    selectedTeamStealCount: int
 
 
 @dataclass(frozen=True)
@@ -83,6 +93,10 @@ def main() -> int:
         highlightRecall=args.min_highlight_recall,
         defensiveEventRecall=args.min_defensive_event_recall,
         clipTimingQuality=args.min_clip_timing_quality,
+        shotOutcomeEvidenceQuality=args.min_shot_outcome_evidence,
+        minSelectedTeamDefensiveEvents=args.min_selected_team_defensive_events,
+        minSelectedTeamBlocks=args.min_selected_team_blocks,
+        minSelectedTeamSteals=args.min_selected_team_steals,
     )
     report = evaluate_accuracy(load_json(Path(args.input)), thresholds=thresholds)
 
@@ -109,6 +123,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--min-highlight-recall", type=float, default=0.85)
     parser.add_argument("--min-defensive-event-recall", type=float, default=0.85)
     parser.add_argument("--min-clip-timing-quality", type=float, default=0.85)
+    parser.add_argument("--min-shot-outcome-evidence", type=float, default=0.85)
+    parser.add_argument("--min-selected-team-defensive-events", type=int, default=2)
+    parser.add_argument("--min-selected-team-blocks", type=int, default=1)
+    parser.add_argument("--min-selected-team-steals", type=int, default=1)
     return parser.parse_args()
 
 
@@ -124,7 +142,7 @@ def evaluate_accuracy(payload: dict[str, Any], thresholds: AccuracyThresholds | 
     thresholds = thresholds or AccuracyThresholds()
     cases = normalize_cases(payload)
     if not cases:
-        metrics = AccuracyMetrics(0, 0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0, 0, 0, 0)
+        metrics = AccuracyMetrics(0, 0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
         return AccuracyReport("fail", metrics, thresholds, ["No eval cases found."])
 
     counts = {
@@ -142,6 +160,10 @@ def evaluate_accuracy(payload: dict[str, Any], thresholds: AccuracyThresholds | 
         "uncertain_review": 0,
         "timing_quality_clips": 0,
         "good_timing_quality_clips": 0,
+        "shot_outcome_evidence_clips": 0,
+        "good_shot_outcome_evidence_clips": 0,
+        "selected_team_blocks": 0,
+        "selected_team_steals": 0,
     }
 
     for case in cases:
@@ -158,6 +180,7 @@ def evaluate_accuracy(payload: dict[str, Any], thresholds: AccuracyThresholds | 
             expected_team_id = string_or_none(clip["expected"].get("teamId"))
             expected_highlight = bool(clip["expected"].get("isHighlight"))
             event_type = normalize_event_type(clip["expected"].get("eventType"))
+            expected_shot_outcome = expected_outcome_for_clip(clip["expected"])
             prediction = clip["prediction"]
             keep = bool(prediction.get("keep"))
             include_for_review = bool(prediction.get("includeForReview") or keep)
@@ -191,6 +214,10 @@ def evaluate_accuracy(payload: dict[str, Any], thresholds: AccuracyThresholds | 
                 counts["timing_quality_clips"] += 1
                 if clip_timing_is_valid(prediction, event_type):
                     counts["good_timing_quality_clips"] += 1
+                if in_scope_highlight and expected_shot_outcome is not None:
+                    counts["shot_outcome_evidence_clips"] += 1
+                    if shot_outcome_evidence_is_valid(prediction, expected_shot_outcome):
+                        counts["good_shot_outcome_evidence_clips"] += 1
 
             if in_scope_highlight:
                 counts["highlights"] += 1
@@ -209,6 +236,11 @@ def evaluate_accuracy(payload: dict[str, Any], thresholds: AccuracyThresholds | 
 
             if event_type in DEFENSIVE_EVENTS and has_selected_team:
                 counts["defensive_events"] += 1
+                defensive_subtype = defensive_event_subtype(event_type)
+                if defensive_subtype == "block":
+                    counts["selected_team_blocks"] += 1
+                elif defensive_subtype == "steal":
+                    counts["selected_team_steals"] += 1
                 if keep and (confident_selected or uncertain_review):
                     counts["kept_defensive_events"] += 1
 
@@ -227,11 +259,21 @@ def evaluate_accuracy(payload: dict[str, Any], thresholds: AccuracyThresholds | 
         highlightRecall=ratio(counts["kept_highlights"], counts["highlights"]),
         defensiveEventRecall=ratio(counts["kept_defensive_events"], counts["defensive_events"]),
         clipTimingQuality=ratio(counts["good_timing_quality_clips"], counts["timing_quality_clips"]),
+        shotOutcomeEvidenceQuality=ratio(
+            counts["good_shot_outcome_evidence_clips"],
+            counts["shot_outcome_evidence_clips"],
+        ),
         uncertainReviewCount=counts["uncertain_review"],
         selectedTeamHighlightCount=counts["selected_team_highlights"],
         defensiveEventCount=counts["defensive_events"],
         timingQualityClipCount=counts["timing_quality_clips"],
         badTimingClipCount=counts["timing_quality_clips"] - counts["good_timing_quality_clips"],
+        shotOutcomeEvidenceClipCount=counts["shot_outcome_evidence_clips"],
+        badShotOutcomeEvidenceCount=(
+            counts["shot_outcome_evidence_clips"] - counts["good_shot_outcome_evidence_clips"]
+        ),
+        selectedTeamBlockCount=counts["selected_team_blocks"],
+        selectedTeamStealCount=counts["selected_team_steals"],
     )
     failures = threshold_failures(metrics, thresholds)
     if metrics.clipCount == 0:
@@ -268,7 +310,20 @@ def normalize_clip(raw_clip: dict[str, Any]) -> dict[str, dict[str, Any]] | None
         "teamId": expected.get("teamId") or expected.get("groundTruthTeamId"),
         "isHighlight": bool(expected.get("isHighlight") if "isHighlight" in expected else expected.get("groundTruthHighlight")),
         "eventType": expected.get("eventType") or expected.get("basketballEvent") or expected.get("label"),
+        "outcome": expected.get("outcome") or expected.get("shotOutcome") or expected.get("result"),
     }
+    native_shot_signals = prediction.get("nativeShotSignals")
+    if not isinstance(native_shot_signals, dict):
+        native_shot_signals = {}
+    shot_result_evidence = prediction.get("shotResultEvidence")
+    if not isinstance(shot_result_evidence, dict):
+        shot_result_evidence = {}
+    shot_tracking_evidence = prediction.get("shotTrackingEvidence")
+    if not isinstance(shot_tracking_evidence, dict):
+        shot_tracking_evidence = {}
+    quality_signals = prediction.get("qualitySignals")
+    if not isinstance(quality_signals, dict):
+        quality_signals = {}
     normalized_prediction = {
         "keep": bool(prediction.get("keep") if "keep" in prediction else prediction.get("shouldAutoKeep")),
         "includeForReview": bool(prediction.get("includeForReview", prediction.get("keep", prediction.get("shouldAutoKeep", False)))),
@@ -281,6 +336,11 @@ def normalize_clip(raw_clip: dict[str, Any]) -> dict[str, dict[str, Any]] | None
         "duration": number_or_none(prediction.get("duration", prediction.get("durationSeconds", raw_clip.get("duration", raw_clip.get("durationSeconds"))))),
         "eventCenter": number_or_none(prediction.get("eventCenter", raw_clip.get("eventCenter"))),
         "nativeShotTimingWindowOk": native_timing_window_ok(prediction),
+        "outcome": prediction.get("outcome") or prediction.get("basketballOutcome") or native_shot_signals.get("outcome"),
+        "nativeShotSignals": native_shot_signals,
+        "shotResultEvidence": shot_result_evidence,
+        "shotTrackingEvidence": shot_tracking_evidence,
+        "qualitySignals": quality_signals,
     }
     return {"expected": normalized_expected, "prediction": normalized_prediction}
 
@@ -325,11 +385,118 @@ def threshold_failures(metrics: AccuracyMetrics, thresholds: AccuracyThresholds)
         ("highlightRecall", metrics.highlightRecall, thresholds.highlightRecall),
         ("defensiveEventRecall", metrics.defensiveEventRecall, thresholds.defensiveEventRecall),
         ("clipTimingQuality", metrics.clipTimingQuality, thresholds.clipTimingQuality),
+        (
+            "shotOutcomeEvidenceQuality",
+            metrics.shotOutcomeEvidenceQuality,
+            thresholds.shotOutcomeEvidenceQuality,
+        ),
     )
     for name, value, minimum in checks:
         if value < minimum:
             failures.append(f"{name} {value:.3f} is below required {minimum:.3f}.")
+    coverage_checks = (
+        ("selectedTeamDefensiveEventCoverage", metrics.defensiveEventCount, thresholds.minSelectedTeamDefensiveEvents),
+        ("selectedTeamBlockCoverage", metrics.selectedTeamBlockCount, thresholds.minSelectedTeamBlocks),
+        ("selectedTeamStealCoverage", metrics.selectedTeamStealCount, thresholds.minSelectedTeamSteals),
+    )
+    for name, value, minimum in coverage_checks:
+        if value < minimum:
+            failures.append(f"{name} {value} is below required {minimum}.")
     return failures
+
+
+def defensive_event_subtype(event_type: str) -> str | None:
+    normalized = normalize_event_type(event_type)
+    if "block" in normalized or "blocked" in normalized:
+        return "block"
+    if "steal" in normalized or "strip" in normalized:
+        return "steal"
+    if "turnover" in normalized or normalized in {"forced_to", "forced_turnover"}:
+        return "forced_turnover"
+    if "stop" in normalized:
+        return "defensive_stop"
+    return None
+
+
+def expected_outcome_for_clip(expected: dict[str, Any]) -> str | None:
+    explicit = normalize_shot_outcome(expected.get("outcome") or expected.get("shotOutcome") or expected.get("result"))
+    if explicit is not None:
+        return explicit
+    event_type = normalize_event_type(expected.get("eventType"))
+    if any(token in event_type for token in ("miss", "missed")):
+        return "missed"
+    if "block" in event_type or "blocked" in event_type:
+        return "blocked"
+    if any(token in event_type for token in ("made", "bucket", "basket", "dunk", "three", "3pt")):
+        return "made"
+    return None
+
+
+def shot_outcome_evidence_is_valid(prediction: dict[str, Any], expected_outcome: str) -> bool:
+    predicted_outcome = normalize_shot_outcome(prediction.get("outcome"))
+    if predicted_outcome != expected_outcome:
+        return False
+
+    result_evidence = prediction.get("shotResultEvidence")
+    if not isinstance(result_evidence, dict):
+        result_evidence = {}
+    tracking_evidence = prediction.get("shotTrackingEvidence")
+    if not isinstance(tracking_evidence, dict):
+        tracking_evidence = {}
+    quality_signals = prediction.get("qualitySignals")
+    if not isinstance(quality_signals, dict):
+        quality_signals = {}
+
+    evidence_confidence = number_or_default(result_evidence.get("outcomeConfidence"), 0.0)
+    if evidence_confidence < MIN_EVAL_SHOT_OUTCOME_CONFIDENCE:
+        return False
+
+    rim_result = str(result_evidence.get("rimResultEvidence") or "").strip().lower()
+    rim_sequence = str(result_evidence.get("rimEntrySequence") or "").strip().lower()
+    ball_roles = string_set(tracking_evidence.get("ballVisibleFrameRoles"))
+    rim_roles = string_set(tracking_evidence.get("rimVisibleFrameRoles"))
+    result_role = string_or_none(tracking_evidence.get("resultFrameRole"))
+    entry_role = string_or_none(tracking_evidence.get("ballEntersRimFrameRole"))
+
+    if expected_outcome == "made":
+        return (
+            rim_result == "made_visible"
+            and rim_sequence == "visible_entry"
+            and all(string_or_none(result_evidence.get(field)) for field in ("ballApproachFrameRole", "rimEntryFrameRole", "ballBelowRimOrNetFrameRole"))
+            and entry_role is not None
+            and bool(ball_roles)
+            and bool(rim_roles)
+            and quality_signals.get("ballPathVisible") is not False
+            and quality_signals.get("rimResultVisible") is not False
+        )
+    if expected_outcome == "missed":
+        return (
+            rim_result == "clear_miss"
+            and rim_sequence in {"visible_miss", "unclear"}
+            and (result_role is not None or bool(rim_roles))
+            and quality_signals.get("ballPathVisible") is not False
+            and quality_signals.get("rimResultVisible") is not False
+        )
+    if expected_outcome == "blocked":
+        defensive_roles = {"challenge", "defenseoutcome", "possessionchange", "eventcenter"}
+        return (
+            rim_result == "blocked"
+            and rim_sequence == "blocked"
+            and bool(ball_roles & defensive_roles)
+            and quality_signals.get("ballPathVisible") is not False
+        )
+    return False
+
+
+def normalize_shot_outcome(value: Any) -> str | None:
+    text = normalize_event_type(value)
+    if text in {"made", "make", "bucket", "basket", "score", "scored", "visible_entry"}:
+        return "made"
+    if text in {"miss", "missed", "clear_miss", "visible_miss"}:
+        return "missed"
+    if text in {"block", "blocked", "blocked_shot"}:
+        return "blocked"
+    return None
 
 
 def print_text_report(report: AccuracyReport) -> None:
@@ -365,6 +532,12 @@ def string_or_none(value: Any) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def string_set(value: Any) -> set[str]:
+    if not isinstance(value, list):
+        return set()
+    return {normalize_event_type(item) for item in value if normalize_event_type(item)}
 
 
 def number_or_none(value: Any) -> float | None:

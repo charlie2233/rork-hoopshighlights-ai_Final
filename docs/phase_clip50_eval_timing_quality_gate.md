@@ -28,12 +28,12 @@ The product goal is not just selected-team precision/recall. The eval must also 
 - `python3 -m py_compile scripts/evaluate_team_highlight_accuracy.py scripts/test_team_highlight_accuracy_eval.py`
   - Passed with no compiler output.
 - `python3 -m unittest scripts.test_team_highlight_accuracy_eval -v`
-  - Passed: 7 tests.
+  - Passed: 10 tests.
 - `python3 -m unittest discover -s scripts -p 'test_*.py' -v`
-  - Passed: 42 tests.
+  - Passed: 46 tests.
 - `git diff --check`
   - Passed with no whitespace errors.
 
 ## Launch Recommendation
 
-Do not claim the 85% quality target unless the labeled internal eval passes `clipTimingQuality` alongside selected-team precision, selected-team recall with uncertain review, highlight precision/recall, and defensive-event recall.
+Do not claim the 85% quality target unless the labeled internal eval passes `clipTimingQuality` alongside selected-team precision, selected-team recall with uncertain review, highlight precision/recall, defensive-event recall, shot-outcome evidence quality, and selected-team defensive coverage for both blocks and steals.

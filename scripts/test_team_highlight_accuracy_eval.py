@@ -17,6 +17,68 @@ def timed_prediction(prediction: dict, start: float = 10.0, end: float = 14.0, e
     }
 
 
+def made_shot_evidence() -> dict:
+    return {
+        "outcome": "made",
+        "qualitySignals": {"ballPathVisible": True, "rimResultVisible": True},
+        "shotResultEvidence": {
+            "releaseToRimContinuity": "continuous",
+            "rimResultEvidence": "made_visible",
+            "outcomeConfidence": 0.9,
+            "rimEntrySequence": "visible_entry",
+            "ballApproachFrameRole": "rimApproach",
+            "rimEntryFrameRole": "rimEntry",
+            "ballBelowRimOrNetFrameRole": "belowRim",
+            "rimEntrySequenceConfidence": 0.9,
+        },
+        "shotTrackingEvidence": {
+            "ballVisibleFrameRoles": ["release", "rimApproach", "rimEntry", "belowRim"],
+            "rimVisibleFrameRoles": ["rimApproach", "rimEntry", "belowRim"],
+            "resultFrameRole": "rimEntry",
+            "ballEntersRimFrameRole": "rimEntry",
+        },
+    }
+
+
+def blocked_shot_evidence() -> dict:
+    return {
+        "outcome": "blocked",
+        "qualitySignals": {"ballPathVisible": True, "rimResultVisible": True},
+        "shotResultEvidence": {
+            "releaseToRimContinuity": "partial",
+            "rimResultEvidence": "blocked",
+            "outcomeConfidence": 0.88,
+            "rimEntrySequence": "blocked",
+            "ballApproachFrameRole": None,
+            "rimEntryFrameRole": None,
+            "ballBelowRimOrNetFrameRole": None,
+            "rimEntrySequenceConfidence": 0.88,
+        },
+        "shotTrackingEvidence": {
+            "ballVisibleFrameRoles": ["challenge", "defenseOutcome"],
+            "rimVisibleFrameRoles": [],
+            "resultFrameRole": "defenseOutcome",
+            "ballEntersRimFrameRole": None,
+        },
+    }
+
+
+def weak_made_shot_evidence() -> dict:
+    return {
+        "outcome": "made",
+        "qualitySignals": {"ballPathVisible": False, "rimResultVisible": False},
+        "shotResultEvidence": {
+            "rimResultEvidence": "unclear",
+            "outcomeConfidence": 0.4,
+            "rimEntrySequence": "unclear",
+        },
+        "shotTrackingEvidence": {
+            "ballVisibleFrameRoles": [],
+            "rimVisibleFrameRoles": [],
+        },
+    }
+
+
 class TeamHighlightAccuracyEvalTests(unittest.TestCase):
     def test_selected_team_eval_counts_uncertain_review_and_defensive_events(self) -> None:
         report = evaluate_accuracy(
@@ -25,12 +87,22 @@ class TeamHighlightAccuracyEvalTests(unittest.TestCase):
                 "clips": [
                     {
                         "expected": {"teamId": "team_dark", "isHighlight": True, "eventType": "made_three"},
-                        "prediction": timed_prediction({"keep": True, "teamAttribution": {"teamId": "team_dark", "confidence": 0.94}}),
+                        "prediction": timed_prediction(
+                            {
+                                "keep": True,
+                                "teamAttribution": {"teamId": "team_dark", "confidence": 0.94},
+                                **made_shot_evidence(),
+                            }
+                        ),
                     },
                     {
                         "expected": {"teamId": "team_dark", "isHighlight": True, "eventType": "block"},
                         "prediction": timed_prediction(
-                            {"keep": True, "teamAttribution": {"teamId": "team_dark", "confidence": 0.91}},
+                            {
+                                "keep": True,
+                                "teamAttribution": {"teamId": "team_dark", "confidence": 0.91},
+                                **blocked_shot_evidence(),
+                            },
                             start=20.0,
                             end=23.0,
                             event_center=21.2,
@@ -78,8 +150,118 @@ class TeamHighlightAccuracyEvalTests(unittest.TestCase):
         self.assertEqual(report.metrics.highlightRecall, 1.0)
         self.assertEqual(report.metrics.defensiveEventRecall, 1.0)
         self.assertEqual(report.metrics.clipTimingQuality, 1.0)
+        self.assertEqual(report.metrics.shotOutcomeEvidenceQuality, 1.0)
         self.assertEqual(report.metrics.defensiveEventCount, 3)
+        self.assertEqual(report.metrics.shotOutcomeEvidenceClipCount, 2)
+        self.assertEqual(report.metrics.selectedTeamBlockCount, 1)
+        self.assertEqual(report.metrics.selectedTeamStealCount, 1)
         self.assertEqual(report.metrics.uncertainReviewCount, 1)
+
+    def test_eval_without_selected_team_defensive_coverage_cannot_pass_readiness(self) -> None:
+        report = evaluate_accuracy(
+            {
+                "selectedTeamId": "team_dark",
+                "clips": [
+                    {
+                        "expected": {"teamId": "team_dark", "isHighlight": True, "eventType": "made_three"},
+                        "prediction": timed_prediction(
+                            {
+                                "keep": True,
+                                "teamAttribution": {"teamId": "team_dark", "confidence": 0.94},
+                                **made_shot_evidence(),
+                            }
+                        ),
+                    }
+                ],
+            }
+        )
+
+        self.assertEqual(report.status, "fail")
+        self.assertEqual(report.metrics.defensiveEventCount, 0)
+        self.assertTrue(any("selectedTeamDefensiveEventCoverage" in failure for failure in report.failures))
+
+    def test_eval_with_block_but_no_steal_cannot_pass_readiness(self) -> None:
+        report = evaluate_accuracy(
+            {
+                "selectedTeamId": "team_dark",
+                "clips": [
+                    {
+                        "expected": {"teamId": "team_dark", "isHighlight": True, "eventType": "block"},
+                        "prediction": timed_prediction(
+                            {
+                                "keep": True,
+                                "teamAttribution": {"teamId": "team_dark", "confidence": 0.91},
+                                **blocked_shot_evidence(),
+                            },
+                            start=20.0,
+                            end=23.0,
+                            event_center=21.2,
+                        ),
+                    },
+                    {
+                        "expected": {"teamId": "team_dark", "isHighlight": True, "eventType": "forced turnover"},
+                        "prediction": timed_prediction(
+                            {"keep": True, "teamAttribution": {"teamId": "team_dark", "confidence": 0.9}},
+                            start=40.0,
+                            end=43.2,
+                            event_center=41.4,
+                        ),
+                    },
+                ],
+            }
+        )
+
+        self.assertEqual(report.status, "fail")
+        self.assertEqual(report.metrics.defensiveEventCount, 2)
+        self.assertEqual(report.metrics.selectedTeamBlockCount, 1)
+        self.assertEqual(report.metrics.selectedTeamStealCount, 0)
+        self.assertTrue(any("selectedTeamStealCoverage" in failure for failure in report.failures))
+
+    def test_made_shot_without_visible_rim_entry_evidence_fails_outcome_quality(self) -> None:
+        report = evaluate_accuracy(
+            {
+                "selectedTeamId": "team_dark",
+                "clips": [
+                    {
+                        "expected": {"teamId": "team_dark", "isHighlight": True, "eventType": "made_three"},
+                        "prediction": timed_prediction(
+                            {
+                                "keep": True,
+                                "teamAttribution": {"teamId": "team_dark", "confidence": 0.94},
+                                **weak_made_shot_evidence(),
+                            }
+                        ),
+                    },
+                    {
+                        "expected": {"teamId": "team_dark", "isHighlight": True, "eventType": "block"},
+                        "prediction": timed_prediction(
+                            {
+                                "keep": True,
+                                "teamAttribution": {"teamId": "team_dark", "confidence": 0.91},
+                                **blocked_shot_evidence(),
+                            },
+                            start=20.0,
+                            end=23.0,
+                            event_center=21.2,
+                        ),
+                    },
+                    {
+                        "expected": {"teamId": "team_dark", "isHighlight": True, "eventType": "steal"},
+                        "prediction": timed_prediction(
+                            {"keep": True, "teamAttribution": {"teamId": "team_dark", "confidence": 0.91}},
+                            start=30.0,
+                            end=33.0,
+                            event_center=31.3,
+                        ),
+                    },
+                ],
+            }
+        )
+
+        self.assertEqual(report.status, "fail")
+        self.assertEqual(report.metrics.shotOutcomeEvidenceClipCount, 2)
+        self.assertEqual(report.metrics.badShotOutcomeEvidenceCount, 1)
+        self.assertTrue(any("shotOutcomeEvidenceQuality" in failure for failure in report.failures))
 
     def test_defensive_event_recall_normalizes_forced_turnover_labels(self) -> None:
         report = evaluate_accuracy(
@@ -153,12 +335,25 @@ class TeamHighlightAccuracyEvalTests(unittest.TestCase):
                 {
                     "expected": {"teamId": "team_dark", "isHighlight": True, "eventType": "block"},
                     "prediction": timed_prediction(
-                        {"keep": True, "teamAttribution": {"teamId": "team_dark", "confidence": 0.95}},
+                        {
+                            "keep": True,
+                            "teamAttribution": {"teamId": "team_dark", "confidence": 0.95},
+                            **blocked_shot_evidence(),
+                        },
                         start=8.0,
                         end=11.0,
                         event_center=9.2,
                     ),
-                }
+                },
+                {
+                    "expected": {"teamId": "team_dark", "isHighlight": True, "eventType": "steal"},
+                    "prediction": timed_prediction(
+                        {"keep": True, "teamAttribution": {"teamId": "team_dark", "confidence": 0.95}},
+                        start=18.0,
+                        end=21.4,
+                        event_center=19.3,
+                    ),
+                },
             ],
         }
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -177,6 +372,7 @@ class TeamHighlightAccuracyEvalTests(unittest.TestCase):
         self.assertEqual(parsed["status"], "pass")
         self.assertEqual(parsed["metrics"]["defensiveEventRecall"], 1.0)
         self.assertEqual(parsed["metrics"]["clipTimingQuality"], 1.0)
+        self.assertEqual(parsed["metrics"]["shotOutcomeEvidenceQuality"], 1.0)
 
     def test_tiny_or_pre_basket_kept_clip_fails_timing_quality(self) -> None:
         report = evaluate_accuracy(
