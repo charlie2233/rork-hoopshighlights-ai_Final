@@ -20,6 +20,7 @@ from app.pipeline import (
     _native_shot_signals_for_analysis_clip,
     _normalize_clip_for_analysis_context,
     _shot_context_score_for_window,
+    build_team_quick_scan_candidate_clips,
     _trim_analysis_clips_for_review,
     _visual_event_boundaries_from_signals,
     run_analysis,
@@ -324,6 +325,33 @@ class PipelineQualityTests(unittest.TestCase):
         large_settings = _analysis_settings("hybrid")
         large_settings.max_returned_clips = 60
         self.assertEqual(_analysis_candidate_pool_limit(large_settings, selected), 120)
+
+    def test_team_quick_scan_uses_action_anchored_candidate_pool(self) -> None:
+        settings = _analysis_settings("hybrid")
+        settings.team_quick_scan_max_candidate_clips = 6
+        native = [
+            _clip(start=8.0, end=12.5, label="Three Pointer", combined=0.9, event_center=10.2, auto_keep=True),
+            _clip(start=16.0, end=20.5, label="Steal", combined=0.82, event_center=18.0, auto_keep=True),
+            _clip(start=24.0, end=24.1, label="Made Shot", combined=0.99, event_center=None, auto_keep=True),
+        ]
+        clip_limits: list[int | None] = []
+
+        def fake_native_detection(source_path, duration_seconds, native_settings, clip_limit=None):
+            clip_limits.append(clip_limit)
+            return native, len(native)
+
+        with tempfile.TemporaryDirectory(prefix="hoopclips-team-scan-candidates-") as temp_dir:
+            source_path = Path(temp_dir) / "source.mp4"
+            source_path.write_bytes(b"video")
+            with (
+                patch("app.pipeline._probe_duration", return_value=45.0),
+                patch("app.pipeline._run_native_candidate_detection", side_effect=fake_native_detection),
+            ):
+                candidates = build_team_quick_scan_candidate_clips(source_path, 45.0, settings)
+
+        self.assertEqual(clip_limits, [6])
+        self.assertEqual([clip.label for clip in candidates], ["Three Pointer", "Steal"])
+        self.assertTrue(all(clip.endTime - clip.startTime >= settings.min_clip_duration_seconds for clip in candidates))
 
     def test_run_analysis_hybrid_merges_native_pool_when_provider_returns_limited_clips(self) -> None:
         external = [

@@ -382,9 +382,21 @@ class TeamQuickScanTests(unittest.TestCase):
                     teamSelection=job.team_selection,
                 )
 
+            quick_scan_candidates = [_clip("Block", 12.0, 16.5, 14.0)]
+            helper_calls = []
+
+            def fake_candidate_helper(source_path, duration_seconds, helper_settings):
+                helper_calls.append((source_path.name, duration_seconds, helper_settings.max_returned_clips))
+                return quick_scan_candidates
+
+            def fake_team_scan(source_path, duration_seconds, clips, scan_settings):
+                self.assertEqual(clips, quick_scan_candidates)
+                return [], detected, True
+
             job_payload = None
             with (
-                patch("app.api.apply_team_quick_scan", return_value=([], detected, True)),
+                patch("app.api.build_team_quick_scan_candidate_clips", side_effect=fake_candidate_helper),
+                patch("app.api.apply_team_quick_scan", side_effect=fake_team_scan),
                 patch("app.api.run_analysis", side_effect=fake_run_analysis),
             ):
                 scan_response = client.post(
@@ -394,6 +406,7 @@ class TeamQuickScanTests(unittest.TestCase):
                 self.assertEqual(scan_response.status_code, 200)
                 self.assertEqual(scan_response.json()["status"], "scanned")
                 self.assertEqual(scan_response.json()["detectedTeams"][0]["teamId"], "team_dark")
+                self.assertEqual(helper_calls, [("game.mp4", 30.0, 8)])
 
                 start_response = client.post(
                     f"/v1/analysis/jobs/{created['jobId']}/start",

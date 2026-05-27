@@ -139,6 +139,38 @@ def run_analysis(job: StoredJob, settings: Settings, source_path: Path) -> Cloud
     )
 
 
+def build_team_quick_scan_candidate_clips(
+    source_path: Path,
+    duration_seconds: float,
+    settings: Settings,
+) -> list[CloudClip]:
+    if not source_path.exists():
+        return []
+    candidate_limit = _team_quick_scan_candidate_pool_limit(settings)
+    try:
+        probed_duration = _probe_duration(source_path, fallback=duration_seconds)
+        clips, _ = _run_native_candidate_detection(
+            source_path,
+            probed_duration,
+            settings,
+            clip_limit=candidate_limit,
+        )
+        return _normalize_analysis_clips(
+            clips,
+            probed_duration,
+            settings,
+            clip_limit=candidate_limit,
+        )
+    except Exception:
+        return []
+
+
+def _team_quick_scan_candidate_pool_limit(settings: Settings) -> int:
+    configured = int(getattr(settings, "team_quick_scan_max_candidate_clips", TEAM_SELECTION_PREFILTER_MAX_CLIPS))
+    base_limit = max(1, int(getattr(settings, "max_returned_clips", 1)))
+    return min(TEAM_SELECTION_PREFILTER_MAX_CLIPS, max(base_limit, configured))
+
+
 def _analysis_candidate_pool_limit(settings: Settings, team_selection: Optional[TeamSelection]) -> int:
     base_limit = max(1, int(settings.max_returned_clips))
     if team_selection is None or team_selection.mode == "all":

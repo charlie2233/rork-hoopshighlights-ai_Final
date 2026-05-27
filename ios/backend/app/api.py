@@ -36,7 +36,7 @@ from .models import (
     StartCloudAnalysisJobResponse,
     now_utc,
 )
-from .pipeline import run_analysis
+from .pipeline import build_team_quick_scan_candidate_clips, run_analysis
 from .render_storage import RenderStorage
 from .renderers.ffmpeg_renderer import FfmpegRenderer
 from .rendering import (
@@ -317,11 +317,17 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
             await runtime.job_store.update_job(job_id, stage="Scanning teams", progress=max(job.progress, 0.18))
             job = await _require_job(job_id)
             source = await runtime.storage.materialize_source(job)
+            candidate_clips = await run_in_threadpool(
+                build_team_quick_scan_candidate_clips,
+                source.local_path,
+                job.duration_seconds,
+                resolved_settings,
+            )
             _, detected_teams, applied = await run_in_threadpool(
                 apply_team_quick_scan,
                 source.local_path,
                 job.duration_seconds,
-                [],
+                candidate_clips,
                 resolved_settings,
             )
             status = "scanned" if applied and detected_teams else "unavailable"
