@@ -1028,6 +1028,64 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertEqual(reranked.gptRerankSummary.fallbackReason, "all_clips_rejected")
         self.assertEqual(reranked.gptRerankSummary.rejectedReasonCounts["missing_missed_shot_ball_path"], 1)
 
+    def test_gpt_highlight_rerank_rejects_block_without_visible_ball_control(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=15,
+                clips=[_clip("block_no_ball_path", 12.0, "Block", 0.9)],
+            )
+        )
+        decisions = [
+            GPTHighlightClipDecision(
+                clipId="block_no_ball_path",
+                keep=True,
+                highlightScore=0.88,
+                watchabilityScore=0.82,
+                basketballEvent="Block",
+                outcome="blocked",
+                caption="LOCKDOWN",
+                reason="GPT claims a block but cannot see the ball path.",
+                qualitySignals=_quality_signals(
+                    releaseVisible=False,
+                    shotArcVisible=False,
+                    ballPathVisible=False,
+                    reason="The challenge is visible, but the ball path is not.",
+                ),
+                shotResultEvidence=_shot_result_evidence(
+                    releaseToRimContinuity="partial",
+                    rimResultEvidence="blocked",
+                    outcomeConfidence=0.78,
+                    rimEntrySequence="blocked",
+                    ballApproachFrameRole=None,
+                    rimEntryFrameRole=None,
+                    ballBelowRimOrNetFrameRole=None,
+                    rimEntrySequenceConfidence=0.0,
+                ),
+                shotTrackingEvidence=_shot_tracking_evidence(
+                    ballVisibleFrameRoles=["eventCenter", "finish"],
+                    rimVisibleFrameRoles=[],
+                    releaseFrameRole=None,
+                    resultFrameRole="finish",
+                    ballEntersRimFrameRole=None,
+                    trajectoryContinuity="partial",
+                ),
+                suggestedEdit=GPTHighlightSuggestedEdit(cropFocus="ball"),
+            )
+        ]
+
+        reranked = apply_gpt_highlight_rerank(
+            request,
+            decisions,
+            "gpt-test",
+            1,
+            5,
+            sampled_frame_roles_by_clip={"block_no_ball_path": ["start", "eventCenter", "finish"]},
+        )
+
+        self.assertEqual(reranked.clips, [])
+        self.assertEqual(reranked.gptRerankSummary.fallbackReason, "all_clips_rejected")
+        self.assertEqual(reranked.gptRerankSummary.rejectedReasonCounts["missing_block_ball_control"], 1)
+
     def test_gpt_highlight_decision_requires_quality_signals(self) -> None:
         with self.assertRaises(ValidationError):
             GPTHighlightClipDecision(

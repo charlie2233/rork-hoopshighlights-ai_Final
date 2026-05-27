@@ -848,6 +848,7 @@ def _build_openai_payload(
                         "madeOrMissedShotRequiresVisibleBallPath": True,
                         "defensiveOutcomeRequiresEventOutcomePlayerControlBallAndCleanCamera": True,
                         "defensiveOutcomeUsesPossessionChangeRolesWhenSampled": True,
+                        "blockedShotRequiresVisibleChallengeBallPathPlayerControlAndOutcome": True,
                         "madeShotRequiresExplicitMadeResultEvidence": True,
                         "madeShotRequiresFrameRoleTrackingEvidence": True,
                         "madeShotRequiresRimEntrySequenceEvidence": True,
@@ -917,7 +918,7 @@ def _build_openai_payload(
             "When sampled roles include release, shot-arc, rim, or post-outcome frames, cite those specific rich roles instead of generic eventCenter/finish proof. "
             "reject clips that start right before the basket, clips shorter than the supplied quality minimum, or clips where the outcome is only implied. "
             "For steals, forced turnovers, or defensive stops, use outcome=steal, outcome=forced_turnover, or outcome=defensive_stop; do not force those plays into unclear or blocked. "
-            "For blocks or blocked shots, use outcome=blocked only when the challenge and blocked-shot outcome are visible; cite sampled challenge/defenseOutcome roles when present. "
+            "For blocks or blocked shots, use outcome=blocked only when the challenge, ball path/control, defender/player control, and blocked-shot outcome are visible; cite sampled challenge/defenseOutcome roles when present. "
             "Non-scoring defensive outcomes must show the defensive event, possession/control change or stop, visible ball/player control, clean camera, and full play context. "
             "When defensive roles like challenge, possessionChange, recovery, or defenseOutcome are sampled, cite those roles in shotTrackingEvidence instead of shot-arc or rim roles. "
             "Honor userEditIntent only when it is compatible with the supplied template, plan tier, candidate clips, and safety constraints. "

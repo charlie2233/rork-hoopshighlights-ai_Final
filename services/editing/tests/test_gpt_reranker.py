@@ -321,6 +321,7 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertEqual(shot_rules["nonScoringDefensiveOutcomes"], ["steal", "forced_turnover", "defensive_stop"])
         self.assertTrue(shot_rules["madeOrMissedShotRequiresVisibleBallPath"])
         self.assertTrue(shot_rules["defensiveOutcomeRequiresEventOutcomePlayerControlBallAndCleanCamera"])
+        self.assertTrue(shot_rules["blockedShotRequiresVisibleChallengeBallPathPlayerControlAndOutcome"])
         self.assertTrue(shot_rules["richSampledShotRoleRules"]["ifRimEntryIsSampledUseItAsBallEntersRimFrameRole"])
         self.assertTrue(shot_rules["madeOrMissedShotRequiresVisibleReleaseAndRimResult"])
         self.assertTrue(shot_rules["madeOrMissedShotRequiresVisibleShotArc"])
@@ -333,6 +334,7 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertIn("outcome=steal", payload["instructions"])
         self.assertIn("forced_turnover", payload["instructions"])
         self.assertIn("defensive_stop", payload["instructions"])
+        self.assertIn("ball path/control", payload["instructions"])
         self.assertEqual(
             decision_properties["outcome"]["enum"],
             ["made", "missed", "blocked", "steal", "forced_turnover", "defensive_stop", "unclear", "not_basketball"],
@@ -1964,7 +1966,6 @@ class GPTHighlightRerankerTests(unittest.TestCase):
                 ),
             }
         )
-
         rejected = apply_gpt_highlight_rerank(
             request,
             [weak_decision],
@@ -2044,10 +2045,29 @@ class GPTHighlightRerankerTests(unittest.TestCase):
                 ),
             }
         )
+        no_ball_path_decision = GPTHighlightClipDecision(
+            **{
+                **complete_decision.model_dump(mode="json"),
+                "qualitySignals": _quality_signals(
+                    releaseVisible=False,
+                    shotArcVisible=False,
+                    ballPathVisible=False,
+                    reason="The challenge is visible, but the ball path is not.",
+                ),
+            }
+        )
 
         rejected = apply_gpt_highlight_rerank(
             request,
             [weak_decision],
+            "gpt-test",
+            1,
+            len(sampled_roles),
+            sampled_frame_roles_by_clip={"block": sampled_roles},
+        )
+        rejected_no_ball_path = apply_gpt_highlight_rerank(
+            request,
+            [no_ball_path_decision],
             "gpt-test",
             1,
             len(sampled_roles),
@@ -2064,6 +2084,8 @@ class GPTHighlightRerankerTests(unittest.TestCase):
 
         self.assertEqual(rejected.clips, [])
         self.assertEqual(rejected.gptRerankSummary.rejectedReasonCounts["missing_block_challenge_frame"], 1)
+        self.assertEqual(rejected_no_ball_path.clips, [])
+        self.assertEqual(rejected_no_ball_path.gptRerankSummary.rejectedReasonCounts["missing_block_ball_control"], 1)
         self.assertEqual([clip.id for clip in kept.clips], ["block"])
 
     def test_free_and_pro_sampling_limits(self) -> None:

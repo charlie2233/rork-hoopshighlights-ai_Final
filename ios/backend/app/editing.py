@@ -115,6 +115,7 @@ MIN_GENERIC_HIGHLIGHT_WATCHABILITY_SCORE = 0.5
 MIN_NATIVE_OUTCOME_CONFLICT_CONFIDENCE = 0.65
 GPT_NON_SCORING_DEFENSIVE_OUTCOMES = {"steal", "forced_turnover", "defensive_stop"}
 GPT_SHOT_RESULT_OUTCOMES = {"made", "missed", "blocked"}
+BLOCKED_SHOT_TRACKING_ROLES = {"eventCenter", "finish", "challenge", "defenseOutcome", "recovery", "possessionChange"}
 SHOT_TRACKING_RELEASE_ROLES = {"preEvent", "release", "eventCenter"}
 SHOT_TRACKING_BALL_FLIGHT_ROLES = {
     "release",
@@ -2765,10 +2766,16 @@ def _gpt_decision_rejection_reason(
             blocked_role_rejection = _blocked_sampled_tracking_rejection_reason(tracking_evidence, sampled_frame_roles)
             if blocked_role_rejection is not None:
                 return blocked_role_rejection
+        if not signals.playerControlVisible:
+            return "missing_block_player_control"
+        if not signals.ballPathVisible:
+            return "missing_block_ball_control"
         if result_evidence.rimResultEvidence != "blocked":
             return "blocked_outcome_not_visible"
         if result_evidence.outcomeConfidence < 0.65:
             return "low_shot_result_confidence"
+        if not (set(tracking_evidence.ballVisibleFrameRoles) & BLOCKED_SHOT_TRACKING_ROLES):
+            return "missing_block_ball_tracking_frame"
     ball_roles = set(tracking_evidence.ballVisibleFrameRoles)
     rim_roles = set(tracking_evidence.rimVisibleFrameRoles)
     if decision.outcome in {"made", "missed"} and sampled_frame_roles is not None:
@@ -2842,11 +2849,11 @@ def _blocked_sampled_tracking_rejection_reason(
     sampled_frame_roles: Sequence[str],
 ) -> Optional[str]:
     sampled_roles = set(sampled_frame_roles)
-    cited_roles = set(tracking_evidence.ballVisibleFrameRoles)
-    for role in (tracking_evidence.resultFrameRole, tracking_evidence.ballEntersRimFrameRole):
+    cited_roles = set(tracking_evidence.ballVisibleFrameRoles) | set(tracking_evidence.rimVisibleFrameRoles)
+    for role in (tracking_evidence.releaseFrameRole, tracking_evidence.resultFrameRole, tracking_evidence.ballEntersRimFrameRole):
         if role is not None:
             cited_roles.add(role)
-    unsampled_roles = (cited_roles & DEFENSIVE_TRACKING_EVENT_ROLES) - sampled_roles
+    unsampled_roles = cited_roles - sampled_roles
     if unsampled_roles:
         return "gpt_cited_unsampled_frame_role"
     if "challenge" in sampled_roles and "challenge" not in cited_roles:
