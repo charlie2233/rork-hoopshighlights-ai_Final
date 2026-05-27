@@ -221,17 +221,17 @@ def evaluate_accuracy(payload: dict[str, Any], thresholds: AccuracyThresholds | 
 
             if in_scope_highlight:
                 counts["highlights"] += 1
-                if keep:
+                if include_for_review:
                     counts["kept_highlights"] += 1
 
-            if keep:
+            if include_for_review:
                 counts["kept_predictions"] += 1
                 if in_scope_highlight:
                     counts["correct_kept_predictions"] += 1
 
             if has_selected_team and expected_highlight:
                 counts["selected_team_highlights"] += 1
-                if keep and (confident_selected or uncertain_review):
+                if confident_selected or uncertain_review:
                     counts["selected_team_highlights_kept_or_uncertain"] += 1
 
             if event_type in DEFENSIVE_EVENTS and has_selected_team:
@@ -241,7 +241,7 @@ def evaluate_accuracy(payload: dict[str, Any], thresholds: AccuracyThresholds | 
                     counts["selected_team_blocks"] += 1
                 elif defensive_subtype == "steal":
                     counts["selected_team_steals"] += 1
-                if keep and (confident_selected or uncertain_review):
+                if confident_selected or uncertain_review:
                     counts["kept_defensive_events"] += 1
 
     metrics = AccuracyMetrics(

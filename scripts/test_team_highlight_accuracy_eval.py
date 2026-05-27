@@ -180,6 +180,46 @@ class TeamHighlightAccuracyEvalTests(unittest.TestCase):
         self.assertEqual(report.metrics.defensiveEventCount, 0)
         self.assertTrue(any("selectedTeamDefensiveEventCoverage" in failure for failure in report.failures))
 
+    def test_uncertain_review_without_auto_keep_counts_for_selected_team_recall(self) -> None:
+        report = evaluate_accuracy(
+            {
+                "selectedTeamId": "team_dark",
+                "clips": [
+                    {
+                        "expected": {"teamId": "team_dark", "isHighlight": True, "eventType": "steal"},
+                        "prediction": timed_prediction(
+                            {
+                                "keep": False,
+                                "includeForReview": True,
+                                "teamAttributionStatus": "uncertain",
+                                "teamAttribution": {"teamId": "team_dark", "confidence": 0.64},
+                            },
+                            start=30.0,
+                            end=33.2,
+                            event_center=31.4,
+                        ),
+                    }
+                ],
+            },
+            thresholds=AccuracyThresholds(
+                selectedTeamPrecision=0.0,
+                selectedTeamRecallWithUncertain=1.0,
+                highlightPrecision=0.0,
+                highlightRecall=0.0,
+                defensiveEventRecall=1.0,
+                clipTimingQuality=1.0,
+                shotOutcomeEvidenceQuality=0.0,
+                minSelectedTeamDefensiveEvents=1,
+                minSelectedTeamBlocks=0,
+                minSelectedTeamSteals=1,
+            ),
+        )
+
+        self.assertEqual(report.status, "pass")
+        self.assertEqual(report.metrics.selectedTeamRecallWithUncertain, 1.0)
+        self.assertEqual(report.metrics.defensiveEventRecall, 1.0)
+        self.assertEqual(report.metrics.uncertainReviewCount, 1)
+
     def test_eval_with_block_but_no_steal_cannot_pass_readiness(self) -> None:
         report = evaluate_accuracy(
             {
