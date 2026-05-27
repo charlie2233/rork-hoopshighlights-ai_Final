@@ -406,6 +406,8 @@ struct ReviewView: View {
                                 .font(.caption.monospacedDigit())
                         }
                         .foregroundStyle(AppTheme.subtleText)
+
+                        clipReviewBadges(clip)
                     }
 
                     Spacer()
@@ -558,6 +560,23 @@ struct ReviewView: View {
             .accessibilityValue("\(Int(value * 100)) percent, \(level.rawValue)")
     }
 
+    @ViewBuilder
+    private func clipReviewBadges(_ clip: Clip) -> some View {
+        if !clip.reviewBadges.isEmpty {
+            HStack(spacing: 6) {
+                ForEach(clip.reviewBadges, id: \.self) { badge in
+                    Label(badge.title, systemImage: badge.systemImage)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(AppTheme.warningYellow)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(AppTheme.warningYellow.opacity(0.14), in: .capsule)
+                        .accessibilityLabel(badge.accessibilityLabel)
+                }
+            }
+        }
+    }
+
     private func actionColor(for action: HighlightAction) -> Color {
         switch action {
         case .dunk, .posterize: return .red
@@ -663,6 +682,8 @@ struct ReviewView: View {
                                         .padding(.vertical, 2)
                                         .background(AppTheme.neonPurple, in: .capsule)
                                 }
+
+                                clipReviewBadges(clip)
                                 
                                 Spacer()
                                 confidenceBadge(level: clip.confidenceLevel, value: clip.confidence)
@@ -715,6 +736,8 @@ struct ReviewView: View {
 
     private func clipAccessibilityValue(_ clip: Clip) -> String {
         let keepState = clip.isKept ? "Kept" : "Discarded"
-        return "\(keepState). Confidence \(Int(clip.confidence * 100)) percent. Duration \(clip.formattedDuration)."
+        let reviewNotes = clip.reviewBadges.map(\.accessibilityLabel)
+        let reviewText = reviewNotes.isEmpty ? "" : " Review flags: \(reviewNotes.joined(separator: ", "))."
+        return "\(keepState). Confidence \(Int(clip.confidence * 100)) percent. Duration \(clip.formattedDuration).\(reviewText)"
     }
 }

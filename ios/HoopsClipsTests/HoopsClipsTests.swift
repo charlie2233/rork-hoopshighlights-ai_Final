@@ -650,6 +650,13 @@ struct HoopsClipsTests {
             outcome: "made",
             outcomeConfidence: 0.82
         )
+        let teamAttribution = ClipTeamAttribution(
+            teamId: "team_dark",
+            label: "Dark jerseys",
+            colorLabel: "black",
+            confidence: 0.91,
+            source: "quick_scan"
+        )
         let cloudClip = CloudClip(
             startTime: 12.5,
             endTime: 17.0,
@@ -664,7 +671,8 @@ struct HoopsClipsTests {
             detectionMethod: "Cloud",
             shouldAutoKeep: true,
             shouldEnableSlowMotion: true,
-            nativeShotSignals: nativeSignals
+            nativeShotSignals: nativeSignals,
+            teamAttribution: teamAttribution
         )
 
         let mapped = cloudClip.makeClip()
@@ -676,6 +684,48 @@ struct HoopsClipsTests {
         #expect(abs(mapped.duration - 4.5) < 0.001)
         #expect(mapped.eventCenter == 15.2)
         #expect(mapped.nativeShotSignals == nativeSignals)
+        #expect(mapped.teamAttribution == teamAttribution)
+    }
+
+    @Test func testClipReviewBadgesMarkUncertainTeamOutcomeAndTiming() {
+        let nativeSignals = NativeShotSignals(
+            isShotLike: true,
+            leadInSeconds: 0.2,
+            followThroughSeconds: 0.1,
+            setupContextScore: 0.12,
+            outcomeContextScore: 0.08,
+            eventCenterQuality: 0.2,
+            contextQualityScore: 0.25,
+            timingWindowOk: false,
+            outcome: "uncertain",
+            outcomeConfidence: 0.0
+        )
+        let clip = Clip(
+            startTime: 10.0,
+            endTime: 12.2,
+            eventCenter: 10.1,
+            action: .madeShot,
+            confidence: 0.74,
+            isKept: false,
+            label: "Shot Attempt",
+            audioScore: 0.4,
+            visualScore: 0.5,
+            motionScore: 0.62,
+            combinedScore: 0.7,
+            detectionMethod: .cloud,
+            nativeShotSignals: nativeSignals,
+            teamAttribution: ClipTeamAttribution(
+                teamId: "team_dark",
+                label: "Dark jerseys",
+                colorLabel: "black",
+                confidence: 0.64,
+                source: "gpt_frame_review"
+            )
+        )
+
+        #expect(clip.needsUserReview)
+        #expect(clip.reviewBadges == [.teamUncertain, .outcomeUncertain, .timingUncertain])
+        #expect(clip.reviewBadges.map(\.title) == ["Team?", "Outcome?", "Timing?"])
     }
 
     @Test func testCloudJobResponseDecodesNestedResults() throws {
