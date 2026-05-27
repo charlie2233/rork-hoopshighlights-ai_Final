@@ -513,7 +513,7 @@ class GPTHighlightRerankerTests(unittest.TestCase):
                 },
                 {
                     **_clip("non_shot_context", 20.0, 0.8),
-                    "label": "Defense",
+                    "label": "Crowd Reaction",
                     "end": 21.8,
                     "eventCenter": 20.9,
                 },
@@ -537,6 +537,43 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertIn("thin_make", [clip.id for clip in sampled])
         self.assertEqual(plan.clips[0].clipId, "thin_make")
         self.assertLessEqual(plan.clips[0].sourceStart, 8.8)
+
+    def test_source_context_expansion_salvages_thin_defensive_windows_before_gpt(self) -> None:
+        request = CreateEditJobRequest(
+            videoId="video_expand_defense",
+            analysisJobId="analysis_expand_defense",
+            installId="install-123",
+            sourceObjectKey="uploads/source.mp4",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="free",
+            clips=[
+                {
+                    **_clip("thin_steal", 20.4, 0.91),
+                    "label": "Steal",
+                    "end": 20.95,
+                    "eventCenter": 20.5,
+                    "watchability": 0.9,
+                    "motionScore": 0.92,
+                    "audioPeak": 0.62,
+                },
+            ],
+        )
+
+        expanded = expand_shot_candidate_windows_for_source_context(request, source_duration_seconds=60.0)
+        steal = expanded.clips[0]
+        hints = gpt_reranker._candidate_quality_hints(steal)
+        sampled = gpt_reranker._quality_filtered_sampled_clips(expanded.clips, max_clips=1)
+        sampled_roles = [role for role, _ in gpt_reranker._sample_times_for_clip(steal, 6)]
+
+        self.assertLess(steal.start, 20.4)
+        self.assertGreater(steal.end, 20.95)
+        self.assertGreaterEqual(steal.eventCenter - steal.start, 1.6)
+        self.assertGreaterEqual(steal.end - steal.eventCenter, 1.2)
+        self.assertTrue(hints["defensiveEventLike"])
+        self.assertTrue(hints["timingWindowOk"])
+        self.assertEqual([clip.id for clip in sampled], ["thin_steal"])
+        self.assertIn("possessionChange", sampled_roles)
 
     def test_payload_resolves_preset_default_template_for_agent_cookbook(self) -> None:
         settings = GPTHighlightRerankerSettings.from_env()

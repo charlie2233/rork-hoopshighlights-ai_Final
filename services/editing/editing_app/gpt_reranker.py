@@ -53,6 +53,10 @@ SHOT_CONTEXT_EXPANSION_LEAD_SECONDS = 2.0
 SHOT_CONTEXT_EXPANSION_FOLLOW_THROUGH_SECONDS = 1.25
 SHOT_CONTEXT_EXPANSION_TARGET_SECONDS = 5.5
 SHOT_CONTEXT_EXPANSION_MAX_SECONDS = 8.0
+DEFENSIVE_CONTEXT_EXPANSION_LEAD_SECONDS = 1.6
+DEFENSIVE_CONTEXT_EXPANSION_FOLLOW_THROUGH_SECONDS = 1.2
+DEFENSIVE_CONTEXT_EXPANSION_TARGET_SECONDS = 4.5
+DEFENSIVE_CONTEXT_EXPANSION_MAX_SECONDS = 7.0
 DEFENSIVE_SAMPLING_LABEL_TOKENS = (
     "defense",
     "defensive",
@@ -290,13 +294,21 @@ def expand_shot_candidate_windows_for_source_context(
     expanded_clips: List[EditCandidateClip] = []
     changed = False
     for clip in request.clips:
-        expanded = _expand_shot_candidate_clip(clip, source_duration_seconds)
+        expanded = _expand_candidate_clip_for_source_context(clip, source_duration_seconds)
         expanded_clips.append(expanded)
         changed = changed or expanded.start != clip.start or expanded.end != clip.end
 
     if not changed:
         return request
     return request.model_copy(update={"clips": expanded_clips})
+
+
+def _expand_candidate_clip_for_source_context(clip: EditCandidateClip, source_duration_seconds: float) -> EditCandidateClip:
+    if is_shot_like_clip(clip):
+        return _expand_shot_candidate_clip(clip, source_duration_seconds)
+    if _is_defensive_candidate_clip(clip):
+        return _expand_defensive_candidate_clip(clip, source_duration_seconds)
+    return clip
 
 
 def _expand_shot_candidate_clip(clip: EditCandidateClip, source_duration_seconds: float) -> EditCandidateClip:
@@ -321,6 +333,38 @@ def _expand_shot_candidate_clip(clip: EditCandidateClip, source_duration_seconds
         )
         start = event_center - preferred_lead
         end = start + SHOT_CONTEXT_EXPANSION_MAX_SECONDS
+        start, end = _clamp_expanded_window(start, end, source_duration)
+
+    if end - start <= clip.duration:
+        return clip
+    return clip.model_copy(
+        update={
+            "start": round(start, 3),
+            "end": round(end, 3),
+            "eventCenter": round(event_center, 3),
+        }
+    )
+
+
+def _expand_defensive_candidate_clip(clip: EditCandidateClip, source_duration_seconds: float) -> EditCandidateClip:
+    source_duration = max(source_duration_seconds, clip.end)
+    event_center = min(max(clip.eventCenter, 0.0), source_duration)
+    start = min(clip.start, event_center - DEFENSIVE_CONTEXT_EXPANSION_LEAD_SECONDS)
+    end = max(clip.end, event_center + DEFENSIVE_CONTEXT_EXPANSION_FOLLOW_THROUGH_SECONDS)
+
+    if end - start < DEFENSIVE_CONTEXT_EXPANSION_TARGET_SECONDS:
+        missing = DEFENSIVE_CONTEXT_EXPANSION_TARGET_SECONDS - (end - start)
+        start -= missing * 0.55
+        end += missing * 0.45
+
+    start, end = _clamp_expanded_window(start, end, source_duration)
+    if end - start > DEFENSIVE_CONTEXT_EXPANSION_MAX_SECONDS:
+        preferred_lead = min(
+            DEFENSIVE_CONTEXT_EXPANSION_MAX_SECONDS - DEFENSIVE_CONTEXT_EXPANSION_FOLLOW_THROUGH_SECONDS,
+            max(DEFENSIVE_CONTEXT_EXPANSION_LEAD_SECONDS, DEFENSIVE_CONTEXT_EXPANSION_MAX_SECONDS * 0.55),
+        )
+        start = event_center - preferred_lead
+        end = start + DEFENSIVE_CONTEXT_EXPANSION_MAX_SECONDS
         start, end = _clamp_expanded_window(start, end, source_duration)
 
     if end - start <= clip.duration:
@@ -376,9 +420,11 @@ def _candidate_quality_hints(clip: EditCandidateClip) -> Dict[str, Any]:
     follow_through = round(max(0.0, clip.end - clip.eventCenter), 3)
     duration = round(clip.duration, 3)
     is_shot_like = is_shot_like_clip(clip)
+    is_defensive = _is_defensive_candidate_clip(clip)
     min_duration = max(MIN_PLAN_CLIP_SECONDS, MIN_GPT_SHOT_LIKE_CANDIDATE_SECONDS if is_shot_like else 2.5)
     return {
         "durationSeconds": duration,
+        "defensiveEventLike": is_defensive,
         "leadInSeconds": lead_in,
         "followThroughSeconds": follow_through,
         "minRecommendedDurationSeconds": min_duration,

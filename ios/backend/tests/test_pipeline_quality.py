@@ -507,6 +507,31 @@ class PipelineQualityTests(unittest.TestCase):
         self.assertGreaterEqual(normalized.nativeShotSignals.setupContextScore, 1.0)
         self.assertGreaterEqual(normalized.nativeShotSignals.outcomeContextScore, 1.0)
 
+    def test_analysis_normalization_expands_tiny_defensive_clip_with_event_center(self) -> None:
+        tiny_steal = _clip(
+            start=20.42,
+            end=20.8,
+            label="Steal",
+            combined=0.84,
+            confidence=0.82,
+            event_center=20.5,
+            auto_keep=True,
+        )
+
+        normalized = _normalize_clip_for_analysis_context(tiny_steal, duration_seconds=40.0, settings=_settings())
+
+        self.assertIsNotNone(normalized)
+        assert normalized is not None
+        self.assertLessEqual(normalized.startTime, 19.0)
+        self.assertGreaterEqual(normalized.endTime, 21.7)
+        self.assertGreaterEqual(normalized.endTime - normalized.startTime, _settings().min_clip_duration_seconds)
+        self.assertTrue(normalized.shouldAutoKeep)
+        self.assertIsNotNone(normalized.nativeShotSignals)
+        assert normalized.nativeShotSignals is not None
+        self.assertFalse(normalized.nativeShotSignals.isShotLike)
+        self.assertTrue(normalized.nativeShotSignals.timingWindowOk)
+        self.assertEqual(normalized.nativeShotSignals.outcome, "not_shot")
+
     def test_native_outcome_hints_do_not_treat_ambiguous_finishes_as_makes(self) -> None:
         for label in ("Layup", "Tough Finish"):
             with self.subTest(label=label):

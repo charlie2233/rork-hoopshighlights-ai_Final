@@ -24,6 +24,9 @@ from .team_quick_scan import apply_team_quick_scan
 NATIVE_SHOT_CONTEXT_TARGET_LEAD_SECONDS = 2.0
 NATIVE_SHOT_CONTEXT_TARGET_FOLLOW_THROUGH_SECONDS = 1.25
 NATIVE_SHOT_SIGNAL_MIN_DURATION_SECONDS = 3.0
+NATIVE_DEFENSIVE_CONTEXT_TARGET_LEAD_SECONDS = 1.5
+NATIVE_DEFENSIVE_CONTEXT_TARGET_FOLLOW_THROUGH_SECONDS = 1.2
+NATIVE_DEFENSIVE_CONTEXT_TARGET_SECONDS = 4.0
 HYBRID_OVERLAP_DEDUPE_RATIO = 0.55
 VISUAL_EVENT_SAMPLE_FPS = 2.0
 VISUAL_EVENT_FRAME_WIDTH = 64
@@ -380,6 +383,11 @@ def _normalize_clip_for_analysis_context(
             }
         )
 
+    if _is_defensive_label(normalized.label):
+        normalized = _expand_defensive_clip_for_analysis_context(normalized, duration_seconds, settings)
+        if normalized is None:
+            return None
+
     if normalized.endTime - normalized.startTime < settings.min_clip_duration_seconds:
         return None
     if normalized.endTime - normalized.startTime > settings.max_clip_duration_seconds:
@@ -438,6 +446,54 @@ def _expand_shot_clip_for_analysis_context(
     if lead_in < NATIVE_SHOT_CONTEXT_TARGET_LEAD_SECONDS:
         return None
     if follow_through < NATIVE_SHOT_CONTEXT_TARGET_FOLLOW_THROUGH_SECONDS:
+        return None
+    if end - start < settings.min_clip_duration_seconds:
+        return None
+
+    return clip.model_copy(
+        update={
+            "startTime": round(start, 3),
+            "endTime": round(end, 3),
+            "eventCenter": round(event_center, 3),
+        }
+    )
+
+
+def _expand_defensive_clip_for_analysis_context(
+    clip: CloudClip,
+    duration_seconds: float,
+    settings: Settings,
+) -> CloudClip | None:
+    event_center = clip.eventCenter
+    if event_center is None:
+        event_center = (clip.startTime + clip.endTime) / 2.0
+    event_center = clamp(event_center, 0.0, duration_seconds)
+    desired_start = min(clip.startTime, event_center - NATIVE_DEFENSIVE_CONTEXT_TARGET_LEAD_SECONDS)
+    desired_end = max(clip.endTime, event_center + NATIVE_DEFENSIVE_CONTEXT_TARGET_FOLLOW_THROUGH_SECONDS)
+    start = max(0.0, desired_start)
+    end = min(duration_seconds, desired_end)
+
+    target_duration = min(settings.max_clip_duration_seconds, max(settings.min_clip_duration_seconds, NATIVE_DEFENSIVE_CONTEXT_TARGET_SECONDS))
+    if end - start < target_duration:
+        missing = target_duration - (end - start)
+        start = max(0.0, start - (missing * 0.55))
+        end = min(duration_seconds, end + (missing * 0.45))
+        if end - start < target_duration:
+            start = max(0.0, min(start, duration_seconds - target_duration))
+            end = min(duration_seconds, start + target_duration)
+
+    if end - start > settings.max_clip_duration_seconds:
+        preferred_lead = min(
+            settings.max_clip_duration_seconds - NATIVE_DEFENSIVE_CONTEXT_TARGET_FOLLOW_THROUGH_SECONDS,
+            max(NATIVE_DEFENSIVE_CONTEXT_TARGET_LEAD_SECONDS, settings.max_clip_duration_seconds * 0.55),
+        )
+        start = max(0.0, event_center - preferred_lead)
+        end = min(duration_seconds, start + settings.max_clip_duration_seconds)
+        if end < event_center + NATIVE_DEFENSIVE_CONTEXT_TARGET_FOLLOW_THROUGH_SECONDS:
+            end = min(duration_seconds, event_center + NATIVE_DEFENSIVE_CONTEXT_TARGET_FOLLOW_THROUGH_SECONDS)
+            start = max(0.0, end - settings.max_clip_duration_seconds)
+
+    if end <= start:
         return None
     if end - start < settings.min_clip_duration_seconds:
         return None
@@ -603,6 +659,27 @@ def _is_shot_like_label(label: str) -> bool:
     return any(
         token in normalized
         for token in ("shot", "bucket", "basket", "layup", "dunk", "finish", "jumper", "three", "3pt")
+    )
+
+
+def _is_defensive_label(label: str) -> bool:
+    normalized = label.strip().lower()
+    return any(
+        token in normalized
+        for token in (
+            "defense",
+            "defensive",
+            "block",
+            "blocked",
+            "steal",
+            "strip",
+            "contest",
+            "turnover",
+            "forced",
+            "stop",
+            "pressure",
+            "lockdown",
+        )
     )
 
 
