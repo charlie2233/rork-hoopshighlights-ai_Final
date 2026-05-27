@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import json
 from pathlib import Path
 import tempfile
@@ -12,7 +13,7 @@ from fastapi.testclient import TestClient
 
 from app.config import Settings
 from app.main import create_app
-from app.models import CloudAnalysisResult, CloudClip, CloudDiagnostics, TeamOption
+from app.models import CloudAnalysisResult, CloudClip, CloudDiagnostics, MaterializedSource, TeamOption
 from app.team_quick_scan import (
     QuickScanFrame,
     _clip_sample_times,
@@ -773,6 +774,73 @@ class TeamQuickScanTests(unittest.TestCase):
             assert job_payload is not None
             self.assertEqual(job_payload["status"], "succeeded")
             self.assertEqual(job_payload["results"]["teamSelection"]["teamId"], "team_dark")
+
+    def test_scan_source_endpoint_uses_presigned_source_url_without_job_store(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="hoopclips-team-scan-source-") as temp_dir:
+            root = Path(temp_dir)
+            settings = replace(_local_settings(root), internal_process_secret="scan-secret")
+            app = create_app(settings)
+            client = TestClient(app)
+            source_path = root / "downloaded-source.mp4"
+            source_path.write_bytes(b"fakevideo")
+            detected = [
+                TeamOption(teamId="team_dark", label="Dark jerseys", colorLabel="black", confidence=0.92, source="quick_scan"),
+                TeamOption(teamId="team_light", label="Light jerseys", colorLabel="white", confidence=0.9, source="quick_scan"),
+            ]
+            materialize_calls = []
+
+            async def fake_materialize_remote_source(source_url, filename, max_file_size_bytes, upload_root):
+                materialize_calls.append((source_url, filename, max_file_size_bytes, upload_root))
+                return MaterializedSource(local_path=source_path, cleanup_after_use=False)
+
+            with (
+                patch("app.api.materialize_remote_source", side_effect=fake_materialize_remote_source),
+                patch("app.api.build_team_quick_scan_candidate_clips", return_value=[_clip("Steal", 4.0, 8.0, 6.0)]),
+                patch("app.api.apply_team_quick_scan", return_value=([], detected, True)),
+            ):
+                response = client.post(
+                    "/v1/team-scan",
+                    json={
+                        "jobId": "job_worker_scan",
+                        "installId": "install-123456",
+                        "sourceUrl": "https://r2.local/hoopsclips-uploads/uploads/job_worker_scan/game.mp4?signature=redacted",
+                        "sourceObjectKey": "uploads/job_worker_scan/game.mp4",
+                        "filename": "game.mp4",
+                        "contentType": "video/mp4",
+                        "durationSeconds": 30.0,
+                        "appVersion": "1.0",
+                        "analysisVersion": "cloud-v1",
+                    },
+                    headers={"x-hoops-inference-secret": "scan-secret"},
+                )
+
+            self.assertEqual(response.status_code, 200)
+            payload = response.json()
+            self.assertEqual(payload["jobId"], "job_worker_scan")
+            self.assertEqual(payload["status"], "scanned")
+            self.assertEqual([team["teamId"] for team in payload["detectedTeams"]], ["team_dark", "team_light"])
+            self.assertEqual(len(materialize_calls), 1)
+            self.assertEqual(materialize_calls[0][1], "game.mp4")
+
+    def test_scan_source_endpoint_requires_internal_secret_when_configured(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="hoopclips-team-scan-secret-") as temp_dir:
+            settings = replace(_local_settings(Path(temp_dir)), internal_process_secret="scan-secret")
+            app = create_app(settings)
+            client = TestClient(app)
+
+            response = client.post(
+                "/v1/team-scan",
+                json={
+                    "jobId": "job_worker_scan",
+                    "installId": "install-123456",
+                    "sourceUrl": "https://r2.local/source.mp4",
+                    "filename": "game.mp4",
+                    "durationSeconds": 30.0,
+                },
+            )
+
+            self.assertEqual(response.status_code, 403)
+            self.assertEqual(response.json()["errorCode"], "forbidden")
 
 
 if __name__ == "__main__":

@@ -65,6 +65,23 @@ export interface ScanCloudAnalysisTeamsResponse extends ResponseEnvelope {
   detectedTeams: TeamOption[];
 }
 
+export interface InferenceTeamScanRequest {
+  jobId: string;
+  requestId: string;
+  uploadTraceId: string;
+  traceId: string;
+  sourceObjectKey: string;
+  sourceUrl: string;
+  filename: string;
+  contentType: string;
+  durationSeconds: number;
+  installId: string;
+  appVersion: string;
+  analysisVersion: string;
+  schemaVersion: string;
+  modelVersion?: string | null;
+}
+
 export interface UploadPresignRequest extends CreateCloudAnalysisJobRequest {}
 
 export interface UploadPresignResponse extends ResponseEnvelope {

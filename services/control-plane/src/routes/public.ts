@@ -4,6 +4,7 @@ import type {
   CreateCloudAnalysisJobRequest,
   CreateCloudAnalysisJobResponse,
   CreateCloudJobRequest,
+  InferenceTeamScanRequest,
   JobRecord,
   JobStatus,
   QueueJobMessage,
@@ -32,7 +33,7 @@ import {
   renderEditingRevision,
   reviseEditingEditJob
 } from "../editing/client";
-import { createPresignedUploadTarget } from "../r2/presign";
+import { createPresignedReadTarget, createPresignedUploadTarget } from "../r2/presign";
 import { emptyResponse, jsonResponse, readJson } from "../utils/request-id";
 import { resolveRuntimeConfig } from "../env";
 import { recoverStaleProcessingJob } from "../recovery";
@@ -248,7 +249,6 @@ async function handlePresign(
         eventType: "job.upload_pending",
         message: "Upload presign created.",
         payload: {
-          uploadUrl: upload.uploadUrl,
           sourceObjectKey: upload.objectKey,
           resultObjectKey: record.resultObjectKey,
           uploadTraceId
@@ -700,10 +700,18 @@ async function handleTeamScanJob(
   }
 
   const runtime = resolveRuntimeConfig(env);
-  // Local harnesses seed scan results here; staging/prod must use cloud-owned scan output.
   const localDetectedTeams = (body as ScanCloudAnalysisTeamsRequest & { detectedTeams?: unknown }).detectedTeams;
-  const detectedTeams = normalizeTeamOptions(runtime.appEnv === "local" ? localDetectedTeams : undefined);
-  const status: ScanCloudAnalysisTeamsResponse["status"] = detectedTeams.length > 0 ? "scanned" : "unavailable";
+  const normalizedLocalDetectedTeams = normalizeTeamOptions(localDetectedTeams);
+  const scanResult =
+    runtime.appEnv === "local" && localDetectedTeams !== undefined
+      ? {
+          status: normalizedLocalDetectedTeams.length > 0 ? ("scanned" as const) : ("unavailable" as const),
+          detectedTeams: normalizedLocalDetectedTeams,
+          modelVersion: job.modelVersion ?? null
+        }
+      : await requestInferenceTeamScan(env, job, requestId, schemaVersion);
+  const detectedTeams = scanResult.detectedTeams;
+  const status = scanResult.status;
   const now = new Date().toISOString();
   const updated = await updateJobState(
     env,
@@ -731,7 +739,7 @@ async function handleTeamScanJob(
     requestId,
     schemaVersion,
     confidence: null,
-    modelVersion: updated.modelVersion ?? null,
+    modelVersion: scanResult.modelVersion ?? updated.modelVersion ?? null,
     failureReason: null,
     uploadTraceId: updated.uploadTraceId ?? null,
     inferenceAttemptId: updated.inferenceAttemptId ?? null,
@@ -740,6 +748,72 @@ async function handleTeamScanJob(
     detectedTeams
   };
   return jsonResponse(response, { status: 200 }, requestId);
+}
+
+async function requestInferenceTeamScan(
+  env: Env,
+  job: JobRecord,
+  requestId: string,
+  schemaVersion: string
+): Promise<{
+  status: ScanCloudAnalysisTeamsResponse["status"];
+  detectedTeams: TeamOption[];
+  modelVersion?: string | null;
+}> {
+  if (!env.INFERENCE_BASE_URL) {
+    return { status: "unavailable", detectedTeams: [], modelVersion: job.modelVersion ?? null };
+  }
+
+  try {
+    const readTarget = await createPresignedReadTarget(env, {
+      objectKey: job.sourceObjectKey,
+      expiresInSeconds: Math.max(resolveRuntimeConfig(env).jobTtlSeconds, 3600),
+      bucketName: env.R2_UPLOAD_BUCKET_NAME
+    });
+    const secret = env.INFERENCE_SHARED_SECRET || env.CONTROL_PLANE_SHARED_SECRET;
+    const payload: InferenceTeamScanRequest = {
+      jobId: job.jobId,
+      requestId,
+      uploadTraceId: job.uploadTraceId ?? requestId,
+      traceId: job.traceId,
+      sourceObjectKey: job.sourceObjectKey,
+      sourceUrl: readTarget.sourceUrl,
+      filename: job.filename,
+      contentType: job.contentType,
+      durationSeconds: job.durationSeconds,
+      installId: job.installId,
+      appVersion: job.appVersion,
+      analysisVersion: job.analysisVersion,
+      schemaVersion,
+      modelVersion: job.modelVersion ?? null
+    };
+    const response = await fetch(new URL("/v1/team-scan", env.INFERENCE_BASE_URL).toString(), {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-hoops-inference-secret": secret,
+        "x-request-id": requestId,
+        "x-trace-id": job.traceId,
+        "x-hoops-upload-trace-id": job.uploadTraceId ?? requestId
+      },
+      body: JSON.stringify(payload)
+    });
+    if (!response.ok) {
+      return { status: "unavailable", detectedTeams: [], modelVersion: job.modelVersion ?? null };
+    }
+
+    const parsed = (await response.json()) as Partial<ScanCloudAnalysisTeamsResponse>;
+    const detectedTeams = normalizeTeamOptions(parsed.detectedTeams);
+    const status: ScanCloudAnalysisTeamsResponse["status"] =
+      parsed.status === "scanned" && detectedTeams.length > 0 ? "scanned" : "unavailable";
+    const modelVersion =
+      typeof parsed.modelVersion === "string" && parsed.modelVersion.trim().length > 0
+        ? parsed.modelVersion.trim()
+        : job.modelVersion ?? null;
+    return { status, detectedTeams, modelVersion };
+  } catch {
+    return { status: "unavailable", detectedTeams: [], modelVersion: job.modelVersion ?? null };
+  }
 }
 
 async function handleGetJob(env: Env, ctx: ExecutionContext, requestId: string, jobId: string): Promise<Response> {

@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import timedelta
+import httpx
 import os
 from pathlib import Path
+import re
 import tempfile
 from uuid import uuid4
 from typing import Dict, Optional
@@ -30,6 +32,8 @@ from .models import (
     ErrorResponse,
     JobStatus,
     PipelineError,
+    MaterializedSource,
+    ScanCloudAnalysisSourceRequest,
     ScanCloudAnalysisTeamsRequest,
     ScanCloudAnalysisTeamsResponse,
     StartCloudAnalysisJobRequest,
@@ -53,6 +57,55 @@ from .rendering import (
 from .storage import GCSStorageProvider, LocalStorageProvider, StorageProvider
 from .task_dispatcher import CloudTasksDispatcher, InlineTaskDispatcher, TaskDispatcher
 from .team_quick_scan import apply_team_quick_scan
+
+
+async def materialize_remote_source(
+    source_url: str,
+    filename: str,
+    max_file_size_bytes: int,
+    upload_root: Path,
+) -> MaterializedSource:
+    if not source_url.startswith(("https://", "http://")):
+        raise APIError(400, "invalid_source_url", "Source video URL is invalid.")
+
+    temp_dir = Path(tempfile.mkdtemp(prefix="hoops-source-url-", dir=str(upload_root)))
+    local_path = temp_dir / _sanitize_remote_filename(filename)
+    materialized = MaterializedSource(local_path=local_path, cleanup_after_use=True)
+    written = 0
+
+    try:
+        timeout = httpx.Timeout(90.0, connect=15.0)
+        async with httpx.AsyncClient(follow_redirects=True, timeout=timeout) as client:
+            async with client.stream("GET", source_url) as response:
+                if response.status_code >= 400:
+                    raise APIError(400, "source_unavailable", "Source video could not be fetched for team scan.")
+                with local_path.open("wb") as output:
+                    async for chunk in response.aiter_bytes():
+                        if not chunk:
+                            continue
+                        written += len(chunk)
+                        if written > max_file_size_bytes:
+                            raise APIError(413, "file_too_large", "Videos larger than 500 MB are not supported in cloud analysis v1.")
+                        output.write(chunk)
+
+        if written <= 0:
+            raise APIError(400, "empty_source", "Source video was empty.")
+        return materialized
+    except APIError:
+        materialized.cleanup()
+        raise
+    except httpx.TimeoutException as error:
+        materialized.cleanup()
+        raise APIError(504, "source_fetch_timeout", "Source video fetch timed out before team scan.") from error
+    except httpx.HTTPError as error:
+        materialized.cleanup()
+        raise APIError(400, "source_unavailable", "Source video could not be fetched for team scan.") from error
+
+
+def _sanitize_remote_filename(filename: str) -> str:
+    name = Path(filename).name or "source.mp4"
+    normalized = re.sub(r"[^A-Za-z0-9._-]", "_", name)
+    return normalized[:120] or "source.mp4"
 
 
 @dataclass(frozen=True)
@@ -107,6 +160,10 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
 
     def _request_install_id(query_install_id: Optional[str], header_install_id: Optional[str]) -> Optional[str]:
         return query_install_id or header_install_id
+
+    def _require_internal_process_secret(secret: Optional[str]) -> None:
+        if resolved_settings.internal_process_secret and secret != resolved_settings.internal_process_secret:
+            raise APIError(403, "forbidden", "Invalid internal processing secret.")
 
     def _validate_scan_backed_team_selection(job: StoredJob, selection: Optional[TeamSelection]) -> None:
         if selection is None or selection.mode != "team":
@@ -372,6 +429,46 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
                 source.cleanup()
 
     @router.post(
+        "/v1/team-scan",
+        response_model=ScanCloudAnalysisTeamsResponse,
+        responses={400: {"model": ErrorResponse}, 403: {"model": ErrorResponse}},
+    )
+    async def scan_source_teams(
+        request: ScanCloudAnalysisSourceRequest,
+        x_hoops_inference_secret: Optional[str] = Header(default=None),
+        x_hoops_internal_secret: Optional[str] = Header(default=None),
+    ):
+        source = None
+        try:
+            _require_internal_process_secret(x_hoops_inference_secret or x_hoops_internal_secret)
+            source = await materialize_remote_source(
+                request.sourceUrl,
+                request.filename,
+                resolved_settings.max_file_size_bytes,
+                resolved_settings.upload_root,
+            )
+            candidate_clips = await run_in_threadpool(
+                build_team_quick_scan_candidate_clips,
+                source.local_path,
+                request.durationSeconds,
+                resolved_settings,
+            )
+            _, detected_teams, applied = await run_in_threadpool(
+                apply_team_quick_scan,
+                source.local_path,
+                request.durationSeconds,
+                candidate_clips,
+                resolved_settings,
+            )
+            status = "scanned" if applied and detected_teams else "unavailable"
+            return ScanCloudAnalysisTeamsResponse(jobId=request.jobId, status=status, detectedTeams=detected_teams)
+        except APIError as error:
+            return _error_response(error)
+        finally:
+            if source is not None:
+                source.cleanup()
+
+    @router.post(
         "/v1/analysis/jobs/{job_id}/start",
         response_model=StartCloudAnalysisJobResponse,
         responses={400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
@@ -597,8 +694,7 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
     )
     async def process_job(job_id: str, x_hoops_internal_secret: Optional[str] = Header(default=None)):
         try:
-            if resolved_settings.internal_process_secret and x_hoops_internal_secret != resolved_settings.internal_process_secret:
-                raise APIError(403, "forbidden", "Invalid internal processing secret.")
+            _require_internal_process_secret(x_hoops_internal_secret)
             await _require_job(job_id)
             await _process_job(job_id)
             job = await _require_job(job_id)

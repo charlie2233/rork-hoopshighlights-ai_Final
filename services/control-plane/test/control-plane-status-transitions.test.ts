@@ -41,6 +41,8 @@ test("control plane happy path advances upload_pending -> uploaded -> queued -> 
   assert.equal(createJson.sourceObjectKey.length > 0, true);
   assert.equal(createJson.status, "upload_pending");
   assert.equal(typeof createJson.uploadTraceId, "string");
+  const uploadPendingEvent = harness.state.events.find((event) => event.eventType === "job.upload_pending");
+  assert.equal(JSON.stringify(uploadPendingEvent?.payload ?? {}).includes("uploadUrl"), false);
 
   const finalizeResponse = await invokePublicRoute(
     harness,
@@ -213,6 +215,91 @@ test("control plane preserves selected team intent through queued inference", as
   }>(finalResponse);
   assert.equal(finalJson.status, "completed");
   assert.deepEqual(finalJson.results?.teamSelection, teamSelection);
+});
+
+test("control plane proxies team scan to inference service before selected team start", async () => {
+  const harness = createControlPlaneHarness({ APP_ENV: "staging" });
+  const createResponse = await invokePublicRoute(
+    harness,
+    "POST",
+    "/uploads/presign",
+    {
+      filename: "worker-team-scan.mp4",
+      contentType: "video/mp4",
+      fileSizeBytes: 10485760,
+      durationSeconds: 24,
+      installId: "install-worker-team",
+      appVersion: "1.0.0",
+      analysisVersion: "phase-team"
+    },
+    { "x-trace-id": "trace-worker-team-scan" }
+  );
+  const createJson = await parseJsonResponse<{ jobId: string; uploadUrl: string }>(createResponse);
+  await uploadObject(harness, createJson.uploadUrl, new TextEncoder().encode("worker team scan basketball clip"));
+
+  const providerRequests: Array<{ url: string; headers: Record<string, string>; body: Record<string, unknown> }> = [];
+  const originalFetch = globalThis.fetch.bind(globalThis);
+  globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const request = input instanceof Request ? input : new Request(input, init);
+    const url = new URL(request.url);
+    if (url.origin === harness.env.INFERENCE_BASE_URL && url.pathname === "/v1/team-scan") {
+      const body = (await request.json()) as Record<string, unknown>;
+      providerRequests.push({
+        url: url.toString(),
+        headers: Object.fromEntries(request.headers.entries()),
+        body
+      });
+      assert.equal(body.jobId, createJson.jobId);
+      assert.equal(body.installId, "install-worker-team");
+      assert.equal(body.filename, "worker-team-scan.mp4");
+      assert.equal(body.durationSeconds, 24);
+      assert.equal(typeof body.sourceUrl, "string");
+      assert.equal(String(body.sourceUrl).includes("/uploads/"), true);
+      assert.equal(request.headers.get("x-hoops-inference-secret"), harness.env.INFERENCE_SHARED_SECRET);
+      return Response.json({
+        jobId: createJson.jobId,
+        status: "scanned",
+        detectedTeams: [
+          {
+            teamId: "team_dark",
+            label: "Dark jerseys",
+            colorLabel: "black",
+            primaryColorHex: "#111111",
+            confidence: 0.93,
+            source: "quick_scan"
+          }
+        ]
+      });
+    }
+    return originalFetch(input, init);
+  };
+
+  try {
+    const scanResponse = await invokePublicRoute(harness, "POST", `/jobs/${createJson.jobId}/team-scan`, {
+      installId: "install-worker-team"
+    });
+    assert.equal(scanResponse.status, 200);
+    const scanJson = await parseJsonResponse<{ status: string; detectedTeams: Array<{ teamId: string }> }>(scanResponse);
+    assert.equal(scanJson.status, "scanned");
+    assert.deepEqual(scanJson.detectedTeams.map((team) => team.teamId), ["team_dark"]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(providerRequests.length, 1);
+  const startResponse = await invokePublicRoute(harness, "POST", `/jobs/${createJson.jobId}/start`, {
+    installId: "install-worker-team",
+    teamSelection: {
+      mode: "team",
+      teamId: "team_dark",
+      label: "Dark jerseys",
+      colorLabel: "black",
+      includeUncertain: true
+    }
+  });
+  assert.equal(startResponse.status, 200);
+  assert.equal(harness.state.queueMessages.length, 1);
+  assert.deepEqual(harness.state.queueMessages[0]?.teamSelection?.teamId, "team_dark");
 });
 
 test("control plane rejects selected team start until a team scan stores detected teams", async () => {

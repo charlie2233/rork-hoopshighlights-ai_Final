@@ -94,6 +94,18 @@ class ScanCloudAnalysisTeamsRequest(APIModel):
     installId: str = Field(min_length=8, max_length=128)
 
 
+class ScanCloudAnalysisSourceRequest(APIModel):
+    jobId: str = Field(min_length=1, max_length=128)
+    installId: str = Field(min_length=8, max_length=128)
+    sourceUrl: str = Field(min_length=8)
+    sourceObjectKey: Optional[str] = Field(default=None, max_length=512)
+    filename: str = Field(default="source.mp4", min_length=1, max_length=255)
+    contentType: Optional[str] = Field(default=None, max_length=120)
+    durationSeconds: float = Field(gt=0.0)
+    appVersion: Optional[str] = Field(default=None, max_length=64)
+    analysisVersion: Optional[str] = Field(default=None, max_length=64)
+
+
 class ScanCloudAnalysisTeamsResponse(APIModel):
     jobId: str
     status: Literal["scanned", "unavailable"]
