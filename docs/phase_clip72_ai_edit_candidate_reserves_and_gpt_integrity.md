@@ -73,8 +73,32 @@ npm --prefix services/control-plane run deploy:staging:dry-run
 
 Result: passed with exit code 0. Wrangler validated the staging Worker bundle and bindings locally; no deploy was performed.
 
+## Post-Push CI
+
+PR #32 was updated to commit `e07e9b0`.
+
+```bash
+gh pr view 32 --json number,title,headRefName,headRefOid,baseRefName,url,mergeStateStatus,statusCheckRollup
+```
+
+Result: PR #32 remained `UNSTABLE`.
+
+- Cloud Edit Deploy Preflight run `26530977305` failed before recording steps.
+- Failed jobs: `Editing backend Python tests` job `78147236886`, `Worker typecheck and dry run` job `78147236909`.
+- Skipped job: `Verify cloud edit deploy secrets` job `78147247152`.
+- iOS Internal TestFlight Upload run `26530978176` failed before recording steps.
+- Failed job: `No-secret internal staging codecheck` job `78147238762`.
+- Skipped job: `Build internal staging TestFlight archive` job `78147239541`.
+
+```bash
+gh run view 26530977305 --json conclusion,status,name,createdAt,updatedAt,jobs
+gh run view 26530978176 --json conclusion,status,name,createdAt,updatedAt,jobs
+```
+
+Result: both failed jobs reported `steps: []`. Fetching per-job logs returned `log not found`, so there is still no actionable CI command output from GitHub to debug in-repo.
+
 ## Remaining Blockers
 
 - Real labeled basketball footage is still required before claiming the 85% selected-team/highlight quality target.
 - Wired-iPhone/TestFlight smoke is still required before Apple submission.
-- PR CI still needs fresh post-push evidence; earlier runs failed before recording job steps.
+- PR CI is blocked before job steps/logs, despite local equivalents passing.
