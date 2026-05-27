@@ -8,6 +8,7 @@ from statistics import mean
 from time import perf_counter
 import json
 import math
+import re
 import shutil
 import subprocess
 import tempfile
@@ -274,7 +275,11 @@ def _trim_analysis_clips_for_review(
         selected.append((index, clip))
         selected_indexes.add(index)
 
-    for index, clip in uncertain[:reserve]:
+    for index, clip in sorted(
+        uncertain,
+        key=_uncertain_review_clip_quality_key,
+        reverse=True,
+    )[:reserve]:
         add_clip(index, clip)
 
     for index, clip in indexed_clips:
@@ -283,6 +288,13 @@ def _trim_analysis_clips_for_review(
             break
 
     return [clip for _, clip in sorted(selected, key=lambda item: item[0])]
+
+
+def _uncertain_review_clip_quality_key(
+    item: tuple[int, CloudClip],
+) -> tuple[float, float, float, float, float, float, float, int]:
+    index, clip = item
+    return (*_hybrid_clip_quality_key(clip), -index)
 
 
 def _annotate_analysis_team_status(
@@ -675,23 +687,23 @@ def _is_shot_like_label(label: str) -> bool:
 
 def _is_defensive_label(label: str) -> bool:
     normalized = label.strip().lower()
-    return any(
-        token in normalized
-        for token in (
-            "defense",
-            "defensive",
-            "block",
-            "blocked",
-            "steal",
-            "strip",
-            "contest",
-            "turnover",
-            "forced",
-            "stop",
-            "pressure",
-            "lockdown",
-        )
-    )
+    tokens = set(re.findall(r"[a-z0-9]+", normalized))
+    strong_tokens = {
+        "defense",
+        "defensive",
+        "block",
+        "blocked",
+        "steal",
+        "strip",
+        "contest",
+        "turnover",
+        "forced",
+        "pressure",
+        "lockdown",
+    }
+    if tokens & strong_tokens:
+        return True
+    return "stop" in tokens and (normalized == "stop" or "defensive stop" in normalized or "defense stop" in normalized)
 
 
 def _probe_duration(path: Path, fallback: float) -> float:

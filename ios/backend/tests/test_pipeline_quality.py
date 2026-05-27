@@ -17,6 +17,7 @@ from app.pipeline import (
     _annotate_analysis_team_status,
     _analysis_candidate_pool_limit,
     _detect_shot_boundaries,
+    _is_defensive_label,
     _merge_hybrid_detection_clips,
     _native_shot_signals_for_analysis_clip,
     _normalize_clip_for_analysis_context,
@@ -322,6 +323,80 @@ class PipelineQualityTests(unittest.TestCase):
         self.assertEqual(len(trimmed), 4)
         self.assertIn("Uncertain block", [clip.label for clip in trimmed])
         self.assertNotIn("Made Shot 4", [clip.label for clip in trimmed])
+
+    def test_selected_team_visible_results_reserve_best_uncertain_review_clip(self) -> None:
+        team_selection = TeamSelection(mode="team", teamId="team_dark", colorLabel="black", includeUncertain=True)
+        matched = [
+            _clip(
+                start=float(index * 5),
+                end=float(index * 5 + 4),
+                label=f"Made Shot {index}",
+                combined=0.95 - (index * 0.01),
+                event_center=float(index * 5 + 2),
+                auto_keep=True,
+            ).model_copy(
+                update={
+                    "teamAttribution": ClipTeamAttribution(
+                        teamId="team_dark",
+                        label="Dark jerseys",
+                        colorLabel="black",
+                        confidence=0.94,
+                        source="gpt_frame_review",
+                    )
+                }
+            )
+            for index in range(5)
+        ]
+        weak_uncertain = _clip(
+            start=30.0,
+            end=34.0,
+            label="Uncertain weak rebound",
+            combined=0.52,
+            confidence=0.54,
+            event_center=32.0,
+            auto_keep=False,
+        ).model_copy(
+            update={
+                "teamAttribution": ClipTeamAttribution(
+                    teamId="team_dark",
+                    label="Dark jerseys",
+                    colorLabel="black",
+                    confidence=0.55,
+                    source="gpt_frame_review",
+                )
+            }
+        )
+        strong_uncertain = _clip(
+            start=35.0,
+            end=39.0,
+            label="Uncertain steal",
+            combined=0.82,
+            confidence=0.76,
+            event_center=37.0,
+            auto_keep=True,
+        ).model_copy(
+            update={
+                "teamAttribution": ClipTeamAttribution(
+                    teamId="team_dark",
+                    label="Dark jerseys",
+                    colorLabel="black",
+                    confidence=0.64,
+                    source="gpt_frame_review",
+                )
+            }
+        )
+
+        trimmed = _trim_analysis_clips_for_review([*matched, weak_uncertain, strong_uncertain], team_selection, max_clips=4)
+        labels = [clip.label for clip in trimmed]
+
+        self.assertIn("Uncertain steal", labels)
+        self.assertNotIn("Uncertain weak rebound", labels)
+        self.assertNotIn("Made Shot 4", labels)
+
+    def test_defensive_label_classifier_ignores_stop_and_pop_jumpers(self) -> None:
+        self.assertFalse(_is_defensive_label("Stop and Pop Jumper"))
+        self.assertTrue(_is_defensive_label("Defensive Stop"))
+        self.assertTrue(_is_defensive_label("Steal Finish"))
 
     def test_selected_team_visible_results_can_exclude_uncertain_when_requested(self) -> None:
         team_selection = TeamSelection(mode="team", teamId="team_dark", colorLabel="black", includeUncertain=False)
