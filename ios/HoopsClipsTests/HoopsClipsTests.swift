@@ -281,7 +281,8 @@ struct HoopsClipsTests {
                     combinedScore: 0.9,
                     duplicateGroup: nil,
                     nativeShotSignals: nativeSignals,
-                    teamAttribution: teamAttribution
+                    teamAttribution: teamAttribution,
+                    teamAttributionStatus: "matched"
                 )
             ]
         )
@@ -302,6 +303,7 @@ struct HoopsClipsTests {
         let encodedTeamAttribution = try #require(clips.first?["teamAttribution"] as? [String: Any])
         #expect(encodedTeamAttribution["teamId"] as? String == "team_dark")
         #expect(encodedTeamAttribution["confidence"] as? Double == 0.91)
+        #expect(clips.first?["teamAttributionStatus"] as? String == "matched")
     }
 
     @Test func testCloudAnalysisRequestEncodesPreAnalysisTeamChoice() throws {

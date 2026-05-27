@@ -466,7 +466,8 @@ final class HighlightsViewModel {
                 combinedScore: clip.combinedScore,
                 duplicateGroup: nil,
                 nativeShotSignals: clip.nativeShotSignals,
-                teamAttribution: clip.teamAttribution
+                teamAttribution: clip.teamAttribution,
+                teamAttributionStatus: clip.teamAttributionStatus
             )
         }
 

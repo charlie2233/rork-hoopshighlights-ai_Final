@@ -587,6 +587,7 @@ struct CloudEditCandidateClip: Codable, Sendable {
     let duplicateGroup: String?
     var nativeShotSignals: NativeShotSignals? = nil
     var teamAttribution: ClipTeamAttribution? = nil
+    var teamAttributionStatus: String? = nil
 }
 
 struct CreateCloudEditJobRequest: Codable, Sendable {

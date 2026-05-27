@@ -242,6 +242,47 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertEqual(by_id["uncertain_make"]["teamAttributionStatus"], "uncertain")
         self.assertIn("Keep uncertain team-attribution clips", payload["instructions"])
 
+    def test_payload_preserves_explicit_uncertain_team_status(self) -> None:
+        settings = GPTHighlightRerankerSettings.from_env()
+        request = CreateEditJobRequest(
+            videoId="video_123",
+            analysisJobId="analysis_123",
+            installId="install-123",
+            sourceObjectKey="uploads/source.mp4",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="free",
+            teamSelection={
+                "mode": "team",
+                "teamId": "team_dark",
+                "label": "Dark jerseys",
+                "colorLabel": "black",
+                "confidenceThreshold": 0.85,
+                "includeUncertain": True,
+            },
+            clips=[
+                {
+                    **_clip("review_block", 0.0, 0.9),
+                    "label": "Blocked Shot",
+                    "teamAttribution": {
+                        "teamId": "team_dark",
+                        "label": "Dark jerseys",
+                        "colorLabel": "black",
+                        "confidence": 0.91,
+                        "source": "quick_scan",
+                    },
+                    "teamAttributionStatus": "uncertain",
+                }
+            ],
+        )
+        frames = [SampledFrame(clip_id="review_block", role="start", time_seconds=0.0, data_url="data:image/jpeg;base64,ZA==")]
+
+        payload = _build_openai_payload(request, request.clips, frames, settings)
+        compact_input = json.loads(payload["input"][0]["content"][0]["text"])
+
+        self.assertEqual(compact_input["clips"][0]["clipId"], "review_block")
+        self.assertEqual(compact_input["clips"][0]["teamAttributionStatus"], "uncertain")
+
     def test_payload_requires_shot_quality_signals_and_context_judgment(self) -> None:
         settings = GPTHighlightRerankerSettings.from_env()
         request = _request()

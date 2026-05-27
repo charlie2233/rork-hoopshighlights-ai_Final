@@ -42,6 +42,7 @@ from app.editing import (
     repair_edit_plan,
     revise_edit_job,
     summarize_clip_pool,
+    team_attribution_status,
     validate_agent_template_cookbook_registry,
     validate_edit_plan,
     validate_edit_plan_patch,
@@ -315,6 +316,50 @@ class EditPlanAgentTests(unittest.TestCase):
         filtered = filter_clips_for_team_selection(request.clips, request.teamSelection)
 
         self.assertEqual([clip.id for clip in filtered], ["dark_bucket", "uncertain_bucket"])
+
+    def test_explicit_uncertain_team_status_survives_edit_context(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                teamSelection={
+                    "mode": "team",
+                    "teamId": "team_dark",
+                    "label": "Dark jerseys",
+                    "colorLabel": "black",
+                    "confidenceThreshold": 0.85,
+                    "includeUncertain": True,
+                },
+                clips=[
+                    {
+                        **_clip("review_block", 0.0, "Blocked Shot", 0.9),
+                        "teamAttribution": {
+                            "teamId": "team_dark",
+                            "label": "Dark jerseys",
+                            "colorLabel": "black",
+                            "confidence": 0.91,
+                            "source": "quick_scan",
+                        },
+                        "teamAttributionStatus": "uncertain",
+                    },
+                    {
+                        **_clip("claimed_match", 9.0, "Made Shot", 0.88),
+                        "teamAttributionStatus": "matched",
+                    },
+                ],
+            )
+        )
+
+        self.assertEqual(team_attribution_status(request.clips[0], request.teamSelection), "uncertain")
+        self.assertEqual(team_attribution_status(request.clips[1], request.teamSelection), "uncertain")
+        context = build_agent_editing_context(
+            request.templateId,
+            summarize_clip_pool(request.clips),
+            request.clips,
+            teamSelection=request.teamSelection,
+        )
+        by_id = {clip["clipId"]: clip for clip in context["candidateClips"]}
+
+        self.assertEqual(by_id["review_block"]["teamAttributionStatus"], "uncertain")
+        self.assertEqual(by_id["claimed_match"]["teamAttributionStatus"], "uncertain")
 
     def test_all_teams_selection_does_not_filter_opponent_clips(self) -> None:
         request = CreateEditJobRequest(

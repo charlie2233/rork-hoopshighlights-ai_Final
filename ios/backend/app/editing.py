@@ -325,6 +325,7 @@ class EditCandidateClip(APIModel):
     duplicateGroup: Optional[str] = Field(default=None, max_length=80)
     nativeShotSignals: Optional[NativeShotSignals] = None
     teamAttribution: Optional[ClipTeamAttribution] = None
+    teamAttributionStatus: Optional[Literal["all", "matched", "opponent", "uncertain"]] = None
     captionHint: Optional[str] = Field(default=None, max_length=MAX_CAPTION_LENGTH)
     gptHighlightScore: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     gptWatchabilityScore: Optional[float] = Field(default=None, ge=0.0, le=1.0)
@@ -1707,6 +1708,8 @@ def team_attribution_status(
 ) -> Literal["all", "matched", "opponent", "uncertain"]:
     if team_selection is None or team_selection.mode == "all":
         return "all"
+    if clip.teamAttributionStatus == "uncertain":
+        return "uncertain"
     attribution = clip.teamAttribution
     if attribution is None:
         return "uncertain"
