@@ -32,6 +32,7 @@ from app.editing import (
     build_revision_response,
     build_edit_job,
     build_edit_plan,
+    clip_outcome_reliability_score,
     clip_context_quality_score,
     filter_clips_for_team_selection,
     get_template_pack_for_plan,
@@ -796,6 +797,66 @@ class EditPlanAgentTests(unittest.TestCase):
 
         self.assertEqual(ranked[0].id, "complete_make")
         self.assertGreater(clip_context_quality_score(ranked[0]), clip_context_quality_score(request.clips[0]))
+
+    def test_rank_clips_prefers_supported_outcome_over_higher_scored_uncertain_shot(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                clips=[
+                    {
+                        **_clip("provider_overclaimed_uncertain_make", 6.0, "Made Shot", 0.99),
+                        "nativeShotSignals": {
+                            "isShotLike": True,
+                            "leadInSeconds": 3.4,
+                            "followThroughSeconds": 3.6,
+                            "setupContextScore": 1.0,
+                            "outcomeContextScore": 1.0,
+                            "eventCenterQuality": 1.0,
+                            "contextQualityScore": 1.0,
+                            "timingWindowOk": True,
+                            "outcome": "uncertain",
+                            "outcomeConfidence": 0.0,
+                        },
+                    },
+                    _clip("native_supported_make", 18.0, "Made Shot", 0.82),
+                ],
+            )
+        )
+
+        ranked = rank_clips(request.clips)
+
+        self.assertEqual(ranked[0].id, "native_supported_make")
+        self.assertGreater(
+            clip_outcome_reliability_score(ranked[0]),
+            clip_outcome_reliability_score(request.clips[0]),
+        )
+
+    def test_duplicate_cleanup_prefers_supported_outcome_over_overclaimed_duplicate(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                clips=[
+                    {
+                        **_clip("overclaimed_duplicate", 6.0, "Made Shot", 0.99, "same_play"),
+                        "nativeShotSignals": {
+                            "isShotLike": True,
+                            "leadInSeconds": 3.4,
+                            "followThroughSeconds": 3.6,
+                            "setupContextScore": 1.0,
+                            "outcomeContextScore": 1.0,
+                            "eventCenterQuality": 1.0,
+                            "contextQualityScore": 1.0,
+                            "timingWindowOk": True,
+                            "outcome": "uncertain",
+                            "outcomeConfidence": 0.0,
+                        },
+                    },
+                    _clip("supported_duplicate", 6.2, "Made Shot", 0.82, "same_play"),
+                ],
+            )
+        )
+
+        clips = remove_duplicate_moments(request.clips)
+
+        self.assertEqual([clip.id for clip in clips], ["supported_duplicate"])
 
     def test_deterministic_plan_rejects_weak_generic_filler_when_gpt_falls_back(self) -> None:
         request = CreateEditJobRequest(

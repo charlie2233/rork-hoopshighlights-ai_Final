@@ -1876,6 +1876,7 @@ def rank_clips(clips: Sequence[EditCandidateClip]) -> List[EditCandidateClip]:
         key=lambda clip: (
             1 if is_plan_quality_eligible_clip(clip) else 0,
             clip_context_quality_score(clip),
+            clip_outcome_reliability_score(clip),
             clip.planning_score,
             clip.watchability,
             clip.excitement,
@@ -1897,6 +1898,19 @@ def remove_duplicate_moments(clips: Sequence[EditCandidateClip]) -> List[EditCan
             best_by_group[clip.duplicateGroup] = clip
     unique.extend(best_by_group.values())
     return rank_clips(unique)
+
+
+def clip_outcome_reliability_score(clip: EditCandidateClip) -> float:
+    if is_defensive_event_like_clip(clip):
+        return 0.9
+    if not is_shot_like_clip(clip):
+        return 0.82
+    signals = native_shot_signals_for_clip(clip)
+    if signals.outcome == "not_shot":
+        return 0.0
+    if signals.outcome == "uncertain":
+        return 0.35
+    return round(0.58 + (min(max(signals.outcomeConfidence, 0.0), 1.0) * 0.42), 4)
 
 
 def order_by_gpt_story_order(clips: Sequence[EditCandidateClip]) -> List[EditCandidateClip]:
@@ -2153,10 +2167,11 @@ def is_plan_quality_eligible_clip(clip: EditCandidateClip) -> bool:
     return True
 
 
-def _duplicate_choice_key(clip: EditCandidateClip) -> Tuple[int, float, float, float, float, float]:
+def _duplicate_choice_key(clip: EditCandidateClip) -> Tuple[int, float, float, float, float, float, float]:
     return (
         1 if is_plan_quality_eligible_clip(clip) else 0,
         clip_context_quality_score(clip),
+        clip_outcome_reliability_score(clip),
         clip.planning_score,
         clip.watchability,
         clip.excitement,
