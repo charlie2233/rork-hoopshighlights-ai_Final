@@ -86,6 +86,7 @@ def _build_openai_payload(
             "selectedTeamAccuracyTarget": TEAM_QUICK_SCAN_CONFIDENT_ATTRIBUTION,
             "uncertainPolicy": "If ball control, defender, or jersey color is unclear, return lower confidence instead of guessing. The backend keeps uncertain clips for review.",
             "highlightOwnership": "For made shots, ownership is the shooter/finisher team. For blocks, steals, defensive stops, or forced turnovers, ownership is the defender who made the play.",
+            "defensiveFrameRoles": "For defensive clips, defenseSetup shows the defender before the event, challenge or possessionChange shows the defensive action, and recovery or defenseOutcome shows the result.",
         },
         "durationSeconds": round(duration_seconds, 3),
         "candidateClips": [
@@ -125,6 +126,7 @@ def _build_openai_payload(
             "then assign each candidate clip to the team responsible for the highlight moment. Use confidence >=0.85 only "
             "when team ownership is visually clear. Use lower confidence for occlusion, camera blur, mixed jerseys, or ambiguous possession. "
             "Blocks, steals, defensive stops, and forced turnovers belong to the defending player who made the play. "
+            "For defensive frame roles, use defenseSetup plus challenge/possessionChange and recovery/defenseOutcome to judge the defender's team. "
             "Use only supplied frames and candidate clip refs. Do not output prose, commands, file paths, URLs, storage keys, or FFmpeg instructions. "
             "Return strict JSON only."
         ),
@@ -292,12 +294,28 @@ def _clip_sample_times(clip: CloudClip, count: int) -> list[tuple[str, float]]:
     duration = max(end - start, 0.001)
     event_center = clip.eventCenter if clip.eventCenter is not None else (start + end) / 2.0
     event_center = min(max(event_center, start), end)
-    candidates = [
-        ("startContext", start + (duration * 0.18)),
-        ("eventCenter", event_center),
-        ("finishContext", end - (duration * 0.12)),
-        ("midAction", (start + end) / 2.0),
-    ]
+    label = clip.label.strip().lower()
+    if _is_block_like_label(label):
+        candidates = [
+            ("defenseSetup", start + (duration * 0.16)),
+            ("challenge", event_center),
+            ("defenseOutcome", max(event_center, end - (duration * 0.12))),
+            ("recovery", end - (duration * 0.06)),
+        ]
+    elif _is_non_scoring_defensive_label(label):
+        candidates = [
+            ("defenseSetup", start + (duration * 0.16)),
+            ("possessionChange", event_center),
+            ("recovery", max(event_center, end - (duration * 0.12))),
+            ("defenseOutcome", end - (duration * 0.06)),
+        ]
+    else:
+        candidates = [
+            ("startContext", start + (duration * 0.18)),
+            ("eventCenter", event_center),
+            ("finishContext", end - (duration * 0.12)),
+            ("midAction", (start + end) / 2.0),
+        ]
     deduped: list[tuple[str, float]] = []
     for role, time_seconds in candidates:
         bounded = min(max(time_seconds, start), end)
@@ -306,6 +324,27 @@ def _clip_sample_times(clip: CloudClip, count: int) -> list[tuple[str, float]]:
         if len(deduped) >= max(1, count):
             break
     return deduped
+
+
+def _is_block_like_label(label: str) -> bool:
+    return any(token in label for token in ("block", "blocked", "contest"))
+
+
+def _is_non_scoring_defensive_label(label: str) -> bool:
+    return any(
+        token in label
+        for token in (
+            "defense",
+            "defensive",
+            "steal",
+            "strip",
+            "turnover",
+            "forced",
+            "stop",
+            "pressure",
+            "lockdown",
+        )
+    )
 
 
 def _dedupe_times(times: Sequence[float], duration_seconds: float) -> list[float]:

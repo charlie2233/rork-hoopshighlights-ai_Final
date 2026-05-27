@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 from app.config import Settings
 from app.main import create_app
 from app.models import CloudAnalysisResult, CloudClip, CloudDiagnostics, TeamOption
-from app.team_quick_scan import QuickScanFrame, _extract_quick_scan_frames, apply_team_quick_scan
+from app.team_quick_scan import QuickScanFrame, _clip_sample_times, _extract_quick_scan_frames, apply_team_quick_scan
 
 
 def _settings(**overrides):
@@ -223,6 +223,7 @@ class TeamQuickScanTests(unittest.TestCase):
             context = json.loads(payload["input"][0]["content"][0]["text"])
             self.assertEqual(len(context["candidateClips"]), 75)
             self.assertEqual(context["candidateClips"][-1]["clipRef"], "clip_74")
+            self.assertIn("defensiveFrameRoles", context["rules"])
             self.assertEqual(payload["text"]["format"]["schema"]["properties"]["clipAttributions"]["maxItems"], 75)
             self.assertEqual(payload["max_output_tokens"], 6000)
             return _response(
@@ -268,6 +269,16 @@ class TeamQuickScanTests(unittest.TestCase):
         self.assertEqual(scanned[74].teamAttribution.teamId, "team_dark")
         self.assertNotIn("videoUrl", json.dumps(captured_payload))
 
+    def test_defensive_quick_scan_samples_possession_change_roles(self) -> None:
+        steal = _clip("Steal", 18.0, 22.0, 20.0)
+        block = _clip("Block", 6.0, 10.5, 8.0)
+
+        steal_roles = [role for role, _ in _clip_sample_times(steal, 3)]
+        block_roles = [role for role, _ in _clip_sample_times(block, 3)]
+
+        self.assertEqual(steal_roles, ["defenseSetup", "possessionChange", "recovery"])
+        self.assertEqual(block_roles, ["defenseSetup", "challenge", "defenseOutcome"])
+
     def test_frame_extraction_respects_configurable_candidate_limit(self) -> None:
         clips = [_clip("Highlight", index * 4.0, (index * 4.0) + 3.0, (index * 4.0) + 1.5) for index in range(50)]
         settings = _settings(
@@ -286,6 +297,31 @@ class TeamQuickScanTests(unittest.TestCase):
         self.assertIn("clip_11", clip_refs)
         self.assertNotIn("clip_12", clip_refs)
         self.assertEqual(len([frame for frame in frames if frame.clip_ref is not None]), 12)
+
+    def test_frame_extraction_uses_defensive_roles_for_blocks_and_steals(self) -> None:
+        clips = [
+            _clip("Steal", 18.0, 22.0, 20.0),
+            _clip("Block", 26.0, 30.0, 28.0),
+        ]
+
+        with tempfile.TemporaryDirectory(prefix="hoopclips-team-scan-defense-") as temp_dir:
+            source_path = Path(temp_dir) / "source.mp4"
+            source_path.write_bytes(b"video")
+            with patch("app.team_quick_scan._extract_frame_data_url", return_value="data:image/jpeg;base64,frame"):
+                frames = _extract_quick_scan_frames(
+                    source_path,
+                    40.0,
+                    clips,
+                    _settings(team_quick_scan_video_frame_count=0, team_quick_scan_clip_frames_per_clip=3),
+                )
+
+        roles_by_clip = {}
+        for frame in frames:
+            if frame.clip_ref is not None:
+                roles_by_clip.setdefault(frame.clip_ref, []).append(frame.role)
+
+        self.assertEqual(roles_by_clip["clip_0"], ["defenseSetup", "possessionChange", "recovery"])
+        self.assertEqual(roles_by_clip["clip_1"], ["defenseSetup", "challenge", "defenseOutcome"])
 
     def test_low_confidence_clip_attribution_is_kept_as_uncertain_signal(self) -> None:
         clips = [_clip("Block", 6.0, 10.5, 8.0)]
