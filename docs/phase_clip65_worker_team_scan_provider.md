@@ -56,3 +56,20 @@ Commands run on branch `codex/phase-clip28-cloud-team-quick-scan`:
 ## Launch Recommendation
 
 Set Worker `INFERENCE_BASE_URL` to the Cloud Run inference/backend service that includes `/v1/team-scan`, and set Worker `INFERENCE_SHARED_SECRET` to match that service's internal secret. Then run a live staging team-scan smoke with a real uploaded MP4 before claiming selected-team TestFlight readiness. The 85% target still requires labeled footage evaluation across team ownership, made/missed shot outcome, blocks, steals, and uncertain-review cases.
+
+## CI Evidence
+
+After commit `97a3a2d5199c6d328cba35206b0ff2038233802a`, GitHub Actions created these PR runs:
+
+- `Cloud Edit Deploy Preflight` run `26504643215`
+  - Failed before any workflow steps were allocated.
+  - Failed jobs: `Worker typecheck and dry run`, `Editing backend Python tests`.
+  - GitHub annotation: `The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings`.
+  - `Verify cloud edit deploy secrets` was skipped because prerequisite jobs did not start.
+- `iOS Internal TestFlight Upload` run `26504643094`
+  - Failed before any workflow steps were allocated.
+  - Failed job: `No-secret internal staging codecheck`.
+  - GitHub annotation: `The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings`.
+  - `Build internal staging TestFlight archive` was skipped because this was a pull request codecheck run and the codecheck job did not start.
+
+No failed-step logs were available because GitHub did not allocate runners.
