@@ -10,7 +10,21 @@ from .backend_imports import ensure_ios_backend_on_path
 
 ensure_ios_backend_on_path()
 
-from app.editing import CreateEditJobRequest, EditCandidateClip, EditPlan, EditPlanValidationIssue, EditRevisionResponse, GPTHighlightRerankSummary, PlanTier, get_plan_tier_policy, get_template_pack, policy_summary_for_client  # noqa: E402
+from app.editing import (  # noqa: E402
+    CreateEditJobRequest,
+    EditCandidateClip,
+    EditPlan,
+    EditPlanValidationIssue,
+    EditRevisionResponse,
+    GPTHighlightRerankSummary,
+    MIN_PLAN_CLIP_SECONDS,
+    PlanTier,
+    get_plan_tier_policy,
+    get_template_pack,
+    is_shot_like_clip,
+    native_shot_signals_for_clip,
+    policy_summary_for_client,
+)
 
 
 class APIModel(BaseModel):
@@ -19,6 +33,8 @@ class APIModel(BaseModel):
 
 RenderStatus = Literal["render_requested", "created", "queued", "rendering", "rendered", "failed", "failed_timeout", "cancelled"]
 AIWorkStepStatus = Literal["pending", "running", "complete", "failed"]
+MIN_RECEIPT_DEFENSIVE_LEAD_IN_SECONDS = 0.6
+MIN_RECEIPT_DEFENSIVE_FOLLOW_THROUGH_SECONDS = 0.5
 
 
 class CreateRenderJobRequest(APIModel):
@@ -98,6 +114,9 @@ class AIWorkReceipt(APIModel):
     teamUncertainCandidateCount: Optional[int] = None
     teamUncertainSelectedClipCount: Optional[int] = None
     defensiveSelectedClipCount: Optional[int] = None
+    timingQualitySelectedClipCount: Optional[int] = None
+    timingIssueCandidateCount: Optional[int] = None
+    timingIssueSelectedClipCount: Optional[int] = None
     summaryRows: List[str] = Field(default_factory=list)
 
 
@@ -357,6 +376,26 @@ def _defensive_clip_ids(source_clips: Optional[List[EditCandidateClip]]) -> set[
     }
 
 
+def _timing_issue_clip_ids(source_clips: Optional[List[EditCandidateClip]]) -> set[str]:
+    if source_clips is None:
+        return set()
+    defensive_ids = _defensive_clip_ids(source_clips)
+    issue_ids: set[str] = set()
+    for clip in source_clips:
+        if clip.duration < MIN_PLAN_CLIP_SECONDS:
+            issue_ids.add(clip.id)
+            continue
+        if clip.id in defensive_ids:
+            lead_in = max(0.0, clip.eventCenter - clip.start)
+            follow_through = max(0.0, clip.end - clip.eventCenter)
+            if lead_in < MIN_RECEIPT_DEFENSIVE_LEAD_IN_SECONDS or follow_through < MIN_RECEIPT_DEFENSIVE_FOLLOW_THROUGH_SECONDS:
+                issue_ids.add(clip.id)
+            continue
+        if is_shot_like_clip(clip) and not native_shot_signals_for_clip(clip).timingWindowOk:
+            issue_ids.add(clip.id)
+    return issue_ids
+
+
 def _step_status_for_render(render_status: RenderStatus) -> AIWorkStepStatus:
     if render_status == "rendered":
         return "complete"
@@ -497,9 +536,13 @@ def build_ai_work_receipt(
     selected_clip_ids = {clip.clipId for clip in edit_plan.clips} if edit_plan is not None else set()
     uncertain_clip_ids = _team_uncertain_clip_ids(source_clips)
     defensive_clip_ids = _defensive_clip_ids(source_clips)
+    timing_issue_clip_ids = _timing_issue_clip_ids(source_clips)
     team_uncertain_candidate_count = len(uncertain_clip_ids) if source_clips is not None else None
     team_uncertain_selected_count = len(selected_clip_ids & uncertain_clip_ids) if edit_plan is not None and source_clips is not None else None
     defensive_selected_count = len(selected_clip_ids & defensive_clip_ids) if edit_plan is not None and source_clips is not None else None
+    timing_issue_candidate_count = len(timing_issue_clip_ids) if source_clips is not None else None
+    timing_issue_selected_count = len(selected_clip_ids & timing_issue_clip_ids) if edit_plan is not None and source_clips is not None else None
+    timing_quality_selected_count = (selected_count - timing_issue_selected_count) if selected_count is not None and timing_issue_selected_count is not None else None
     summary_rows: List[str] = []
     if selected_count is not None and candidate_count is not None:
         summary_rows.append(f"Selected {selected_count} clips from {candidate_count} candidates.")
@@ -534,6 +577,14 @@ def build_ai_work_receipt(
     if defensive_selected_count:
         summary_rows.append(
             f"Included {defensive_selected_count} defensive highlight{'s' if defensive_selected_count != 1 else ''}."
+        )
+    if timing_issue_selected_count:
+        summary_rows.append(
+            f"Flagged {timing_issue_selected_count} selected clip{'s' if timing_issue_selected_count != 1 else ''} with weak timing/context."
+        )
+    elif timing_quality_selected_count:
+        summary_rows.append(
+            f"Timing quality: {timing_quality_selected_count} selected clip{'s' if timing_quality_selected_count != 1 else ''} passed context checks."
         )
     summary_rows.append(f"Applied {template.displayName} template.")
     summary_rows.append(f"Added {slow_motion_count} slow-motion moments.")
@@ -586,6 +637,9 @@ def build_ai_work_receipt(
         teamUncertainCandidateCount=team_uncertain_candidate_count,
         teamUncertainSelectedClipCount=team_uncertain_selected_count,
         defensiveSelectedClipCount=defensive_selected_count,
+        timingQualitySelectedClipCount=timing_quality_selected_count,
+        timingIssueCandidateCount=timing_issue_candidate_count,
+        timingIssueSelectedClipCount=timing_issue_selected_count,
         summaryRows=summary_rows,
     )
 

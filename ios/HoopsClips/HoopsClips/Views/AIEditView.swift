@@ -1295,6 +1295,9 @@ struct AIEditView: View {
             teamUncertainCandidateCount: nil,
             teamUncertainSelectedClipCount: nil,
             defensiveSelectedClipCount: nil,
+            timingQualitySelectedClipCount: nil,
+            timingIssueCandidateCount: nil,
+            timingIssueSelectedClipCount: nil,
             summaryRows: rows
         )
     }

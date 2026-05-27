@@ -22,7 +22,7 @@ from app.editing import CreateEditJobRequest, GPTHighlightClipDecision, GPTHighl
 import editing_app.main as editing_main  # noqa: E402
 from editing_app.config import EditingSettings  # noqa: E402
 from editing_app.main import create_app  # noqa: E402
-from editing_app.models import StoredRenderJob, now_utc  # noqa: E402
+from editing_app.models import StoredRenderJob, build_ai_work_receipt, now_utc  # noqa: E402
 from editing_app.render_state import DurableRenderStateStore  # noqa: E402
 from editing_app.render_storage import RenderStorage  # noqa: E402
 from editing_app.retention_cleanup import run_cleanup  # noqa: E402
@@ -941,6 +941,9 @@ class EditingServiceTests(unittest.TestCase):
         self.assertEqual(render_payload["workReceipt"]["outputResolution"], "720p")
         self.assertTrue(render_payload["workReceipt"]["watermarkIncluded"])
         self.assertTrue(render_payload["workReceipt"]["outroIncluded"])
+        self.assertEqual(render_payload["workReceipt"]["timingQualitySelectedClipCount"], 2)
+        self.assertEqual(render_payload["workReceipt"]["timingIssueCandidateCount"], 0)
+        self.assertEqual(render_payload["workReceipt"]["timingIssueSelectedClipCount"], 0)
         output_path = self._temp_dir / render_payload["outputObjectKey"]
         log_path = self._temp_dir / render_payload["renderLogObjectKey"]
         metadata_path = output_path.with_suffix(output_path.suffix + ".metadata.json")
@@ -961,10 +964,59 @@ class EditingServiceTests(unittest.TestCase):
         self.assertEqual(render_log["workTimeline"]["steps"][0]["stepId"], "video_uploaded")
         self.assertEqual(render_log["workReceipt"]["candidateClipCount"], 2)
         self.assertFalse(render_log["workReceipt"]["gptRerankApplied"])
+        self.assertEqual(render_log["workReceipt"]["timingQualitySelectedClipCount"], 2)
 
         download_response = client.get(f"/v1/render-jobs/{render_payload['renderJobId']}/download-url", params={"installId": "install-123"})
         self.assertEqual(download_response.status_code, 200)
         self.assertEqual(download_response.json()["contentType"], "video/mp4")
+
+    def test_ai_work_receipt_flags_selected_timing_context_issues(self) -> None:
+        base_request = self._edit_request()
+        edit_request = base_request.model_copy(
+            update={
+                "clips": [
+                    base_request.clips[0].model_copy(
+                        update={
+                            "id": "late_steal",
+                            "start": 10.0,
+                            "end": 13.0,
+                            "eventCenter": 10.1,
+                            "label": "Steal",
+                        }
+                    )
+                ],
+                "targetDurationSeconds": 15,
+            }
+        )
+        edit_job = build_edit_job(edit_request, "edit_timing_receipt")
+        self.assertFalse(edit_job.validation_errors)
+        created_at = now_utc()
+        render_job = StoredRenderJob(
+            edit_job_id="edit_timing_receipt",
+            render_job_id="render_timing_receipt",
+            install_id=edit_request.installId,
+            trace_id="trace_timing_receipt",
+            status="rendered",
+            aspect_ratio="9:16",
+            created_at=created_at,
+            updated_at=created_at,
+            completed_at=created_at,
+            source_object_key=edit_request.sourceObjectKey,
+            output_object_key="edits/edit_timing_receipt/render_jobs/render_timing_receipt/final.mp4",
+            render_log_object_key="edits/edit_timing_receipt/render_jobs/render_timing_receipt/render_log.json",
+            duration_seconds=3.0,
+            plan_version="edit-plan-v1",
+            template_id="personal_highlight_v1",
+            plan_tier="free",
+            idempotency_key="idem-timing-receipt",
+        )
+
+        receipt = build_ai_work_receipt(render_job, edit_job.plan, edit_request.clips)
+
+        self.assertEqual(receipt.timingIssueCandidateCount, 1)
+        self.assertEqual(receipt.timingIssueSelectedClipCount, 1)
+        self.assertEqual(receipt.timingQualitySelectedClipCount, 0)
+        self.assertIn("Flagged 1 selected clip with weak timing/context.", receipt.summaryRows)
 
     def test_create_edit_job_gpt_all_rejected_returns_empty_clip_validation_error(self) -> None:
         original_reranker = editing_main.rerank_edit_request_with_gpt
@@ -1112,11 +1164,15 @@ class EditingServiceTests(unittest.TestCase):
             self.assertEqual(render_payload["workReceipt"]["teamUncertainCandidateCount"], 1)
             self.assertEqual(render_payload["workReceipt"]["teamUncertainSelectedClipCount"], 1)
             self.assertEqual(render_payload["workReceipt"]["defensiveSelectedClipCount"], 1)
+            self.assertEqual(render_payload["workReceipt"]["timingQualitySelectedClipCount"], 1)
+            self.assertEqual(render_payload["workReceipt"]["timingIssueCandidateCount"], 0)
+            self.assertEqual(render_payload["workReceipt"]["timingIssueSelectedClipCount"], 0)
             self.assertIn("GPT reranked 2 clips from 6 keyframes.", render_payload["workReceipt"]["summaryRows"])
             self.assertIn("GPT rejected clips: unclear_or_non_basketball_outcome x1.", render_payload["workReceipt"]["summaryRows"])
             self.assertIn("GPT story order applied to 1 candidate clip.", render_payload["workReceipt"]["summaryRows"])
             self.assertIn("Kept 1 uncertain team clip for review.", render_payload["workReceipt"]["summaryRows"])
             self.assertIn("Included 1 defensive highlight.", render_payload["workReceipt"]["summaryRows"])
+            self.assertIn("Timing quality: 1 selected clip passed context checks.", render_payload["workReceipt"]["summaryRows"])
         finally:
             editing_main.rerank_edit_request_with_gpt = original_reranker
             if old_enabled is None:

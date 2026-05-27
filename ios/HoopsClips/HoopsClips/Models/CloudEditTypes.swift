@@ -489,6 +489,9 @@ struct CloudEditWorkReceipt: Codable, Sendable {
     let teamUncertainCandidateCount: Int?
     let teamUncertainSelectedClipCount: Int?
     let defensiveSelectedClipCount: Int?
+    let timingQualitySelectedClipCount: Int?
+    let timingIssueCandidateCount: Int?
+    let timingIssueSelectedClipCount: Int?
     let summaryRows: [String]
 }
 
