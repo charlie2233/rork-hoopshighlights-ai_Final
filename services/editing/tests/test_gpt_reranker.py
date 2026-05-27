@@ -618,6 +618,45 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertEqual([clip.id for clip in sampled], ["thin_steal"])
         self.assertIn("possessionChange", sampled_roles)
 
+    def test_blocked_shot_uses_defensive_context_and_keyframes_before_gpt(self) -> None:
+        request = CreateEditJobRequest(
+            videoId="video_expand_blocked_shot",
+            analysisJobId="analysis_expand_blocked_shot",
+            installId="install-123",
+            sourceObjectKey="uploads/source.mp4",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="free",
+            clips=[
+                {
+                    **_clip("thin_blocked_shot", 32.4, 0.91),
+                    "label": "Blocked Shot",
+                    "end": 33.05,
+                    "eventCenter": 32.55,
+                    "watchability": 0.9,
+                    "motionScore": 0.93,
+                    "audioPeak": 0.64,
+                },
+            ],
+        )
+
+        expanded = expand_shot_candidate_windows_for_source_context(request, source_duration_seconds=60.0)
+        block = expanded.clips[0]
+        hints = gpt_reranker._candidate_quality_hints(block)
+        sampled_roles = [role for role, _ in gpt_reranker._sample_times_for_clip(block, 10)]
+
+        self.assertLess(block.start, 32.4)
+        self.assertGreater(block.end, 33.05)
+        self.assertGreaterEqual(block.eventCenter - block.start, 1.6)
+        self.assertGreaterEqual(block.end - block.eventCenter, 1.2)
+        self.assertTrue(hints["shotLike"])
+        self.assertTrue(hints["defensiveEventLike"])
+        self.assertTrue(hints["timingWindowOk"])
+        self.assertIn("challenge", sampled_roles)
+        self.assertIn("defenseOutcome", sampled_roles)
+        self.assertNotIn("shotArcEarly", sampled_roles)
+        self.assertNotIn("rimEntry", sampled_roles)
+
     def test_payload_resolves_preset_default_template_for_agent_cookbook(self) -> None:
         settings = GPTHighlightRerankerSettings.from_env()
         request = _request().model_copy(update={"preset": "full_game_highlight", "templateId": None, "targetDurationSeconds": 60})
@@ -1939,6 +1978,24 @@ class GPTHighlightRerankerTests(unittest.TestCase):
             targetDurationSeconds=30,
             planTier="free",
             clips=[{**_clip("block", 10.0, 0.86), "label": "Block"}],
+        )
+
+        roles = [role for role, _ in gpt_reranker._sample_times_for_clip(request.clips[0], 10)]
+
+        self.assertIn("challenge", roles)
+        self.assertIn("defenseOutcome", roles)
+        self.assertNotIn("shotArcEarly", roles)
+        self.assertNotIn("rimEntry", roles)
+
+    def test_blocked_shot_candidates_use_defensive_challenge_keyframes(self) -> None:
+        request = CreateEditJobRequest(
+            videoId="video_blocked_shot_roles",
+            analysisJobId="analysis_blocked_shot_roles",
+            installId="install-123",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="free",
+            clips=[{**_clip("blocked_shot", 10.0, 0.86), "label": "Blocked Shot"}],
         )
 
         roles = [role for role, _ in gpt_reranker._sample_times_for_clip(request.clips[0], 10)]

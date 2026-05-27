@@ -304,6 +304,8 @@ def expand_shot_candidate_windows_for_source_context(
 
 
 def _expand_candidate_clip_for_source_context(clip: EditCandidateClip, source_duration_seconds: float) -> EditCandidateClip:
+    if _is_block_like_candidate_clip(clip):
+        return _expand_defensive_candidate_clip(clip, source_duration_seconds)
     if is_shot_like_clip(clip):
         return _expand_shot_candidate_clip(clip, source_duration_seconds)
     if _is_defensive_candidate_clip(clip):
@@ -517,6 +519,11 @@ def _is_defensive_candidate_clip(clip: EditCandidateClip) -> bool:
     return any(token in normalized for token in DEFENSIVE_SAMPLING_LABEL_TOKENS)
 
 
+def _is_block_like_candidate_clip(clip: EditCandidateClip) -> bool:
+    normalized = clip.label.strip().lower()
+    return any(token in normalized for token in ("block", "blocked", "contest"))
+
+
 def _extract_candidate_keyframes(
     source_path: Path,
     clips: Sequence[EditCandidateClip],
@@ -607,7 +614,7 @@ def _sampled_frame_roles_by_clip(frames: Sequence[SampledFrame]) -> Dict[str, Li
 
 
 def _sample_times_for_clip(clip: EditCandidateClip, frames_per_clip: int) -> List[tuple[str, float]]:
-    if _is_defensive_candidate_clip(clip) and not is_shot_like_clip(clip):
+    if _is_block_like_candidate_clip(clip) or (_is_defensive_candidate_clip(clip) and not is_shot_like_clip(clip)):
         return _defensive_sample_times_for_clip(clip, frames_per_clip)
 
     finish = max(clip.start, clip.end - 0.05)
