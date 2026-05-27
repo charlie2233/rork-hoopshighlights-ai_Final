@@ -6,7 +6,7 @@ Improve selected-team highlight accuracy after the expanded recall pool by makin
 
 ## Change
 
-- Added `HOOPS_TEAM_QUICK_SCAN_MAX_CANDIDATE_CLIPS`, default `120`, clamped to `1..120`.
+- Added `HOOPS_TEAM_QUICK_SCAN_MAX_CANDIDATE_CLIPS`; Phase Clip63 raises the quality-beta default to `160`, clamped to `1..160`.
 - Added `HOOPS_TEAM_QUICK_SCAN_MAX_OUTPUT_TOKENS`, default `6000`, clamped to `512..12000`.
 - The team quick-scan payload now includes candidate metadata only up to the configured candidate cap.
 - The sampled frame extraction loop now samples clip frames up to the same configured candidate cap.
@@ -22,7 +22,7 @@ Uncertain clips are still preserved for user review when `includeUncertain=true`
 
 - GPT still receives sampled JPEG frames and compact candidate metadata only.
 - No full videos, source paths, presigned URLs, storage keys, credentials, or FFmpeg commands are sent to GPT.
-- The payload remains bounded at 120 candidate clips.
+- The payload remains bounded at 160 candidate clips.
 - Low-confidence team ownership still remains uncertain instead of selected-team proof.
 
 ## Validation
@@ -38,4 +38,4 @@ Commands run on branch `codex/phase-clip28-cloud-team-quick-scan`:
 
 ## Launch Recommendation
 
-Use the default 120-candidate scan cap for internal beta while collecting labeled footage. If payload size or latency becomes painful, lower `HOOPS_TEAM_QUICK_SCAN_MAX_CANDIDATE_CLIPS` in staging, but do not claim selected-team 85% accuracy until the labeled team/highlight eval proves it.
+Use the default 160-candidate scan cap for internal beta while collecting labeled footage. If payload size or latency becomes painful, lower `HOOPS_TEAM_QUICK_SCAN_MAX_CANDIDATE_CLIPS` in staging, but do not claim selected-team 85% accuracy until the labeled team/highlight eval proves it.

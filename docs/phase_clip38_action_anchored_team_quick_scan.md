@@ -7,7 +7,7 @@ Make the pre-analysis jersey-color team picker more accurate by showing GPT fram
 ## Change
 
 - The `/v1/analysis/jobs/{job_id}/team-scan` endpoint now builds a cloud-owned native candidate pool before calling Team Quick Scan.
-- Candidate generation runs in the backend only and is bounded by `team_quick_scan_max_candidate_clips` with the existing `120` hard cap.
+- Candidate generation runs in the backend only and is bounded by `team_quick_scan_max_candidate_clips`; Phase Clip63 raises the quality-beta cap to `160`.
 - Team Quick Scan receives candidate clip metadata plus sampled keyframes from those candidate windows, improving jersey/color detection around makes, blocks, steals, and other real play moments.
 - If action candidate generation fails, the endpoint can still fall back to video-context-only quick scan behavior.
 

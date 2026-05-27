@@ -37,6 +37,13 @@ def _clip(clip_id: str, start: float, score: float) -> dict:
     }
 
 
+def _labeled_clip(clip_id: str, start: float, score: float, label: str) -> dict:
+    return {
+        **_clip(clip_id, start, score),
+        "label": label,
+    }
+
+
 def _request(plan_tier: str = "free", clip_count: int = 10) -> CreateEditJobRequest:
     return CreateEditJobRequest(
         videoId="video_123",
@@ -2353,6 +2360,42 @@ class GPTHighlightRerankerTests(unittest.TestCase):
                     os.environ[key] = old_value
 
         self.assertEqual(settings.limits_for("free")[0], 40)
+
+    def test_sampling_reserves_block_and_steal_families_for_gpt_review(self) -> None:
+        scoring = [
+            _clip(f"score_{index}", float(index * 7), 0.99 - (index * 0.01))
+            for index in range(8)
+        ]
+        clips = [
+            *scoring,
+            _labeled_clip("block_1", 80.0, 0.91, "Block"),
+            _labeled_clip("block_2", 87.0, 0.90, "Blocked shot"),
+            _labeled_clip("block_3", 94.0, 0.89, "Contest block"),
+            _labeled_clip("steal_1", 101.0, 0.70, "Steal"),
+        ]
+        request = CreateEditJobRequest(
+            videoId="video_123",
+            analysisJobId="analysis_123",
+            installId="install-123",
+            sourceObjectKey="uploads/source.mp4",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="free",
+            clips=clips,
+        )
+
+        sampled = gpt_reranker._quality_filtered_sampled_clips(
+            gpt_reranker.rank_clips(request.clips),
+            8,
+            request=request,
+        )
+        sampled_ids = {clip.id for clip in sampled}
+
+        self.assertIn("block_1", sampled_ids)
+        self.assertIn("steal_1", sampled_ids)
+        self.assertIn("block_2", sampled_ids)
+        self.assertNotIn("block_3", sampled_ids)
+        self.assertNotIn("score_5", sampled_ids)
 
     def test_default_model_prioritizes_full_quality_vision_editor(self) -> None:
         model_env_keys = ("HOOPS_AI_CLIP_GPT_MODEL", "HOOPS_GPT_HIGHLIGHT_RERANK_MODEL")

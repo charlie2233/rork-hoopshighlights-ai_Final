@@ -40,8 +40,8 @@ VISUAL_EVENT_MIN_GAP_SECONDS = 1.4
 VISUAL_EVENT_MAX_BOUNDARIES = 24
 VISUAL_EVENT_SEQUENCE_GAP_SECONDS = 1.1
 VISUAL_EVENT_CONTEXT_SECONDS = 1.25
-TEAM_SELECTION_PREFILTER_MULTIPLIER = 3
-TEAM_SELECTION_PREFILTER_MAX_CLIPS = 120
+TEAM_SELECTION_PREFILTER_MULTIPLIER = 4
+TEAM_SELECTION_PREFILTER_MAX_CLIPS = 160
 VisualFrameSignal = Tuple[float, float, float, float]
 
 
@@ -284,12 +284,32 @@ def _trim_analysis_clips_for_review(
         if _is_defensive_label(clip.label) and _analysis_clip_auto_keep_allowed(clip)
     ]
     defensive_reserve = _defensive_review_reserve_limit(max_clips, len(defensive))
-    for index, clip in sorted(
-        defensive,
-        key=_review_reserved_clip_quality_key,
-        reverse=True,
-    )[:defensive_reserve]:
-        add_clip(index, clip)
+    if defensive_reserve == 1:
+        for index, clip in sorted(defensive, key=_review_reserved_clip_quality_key, reverse=True)[:1]:
+            add_clip(index, clip)
+    elif defensive_reserve > 1:
+        reserved_defensive_count = 0
+        for family in ("block", "steal", "forced_turnover", "defensive_stop", "defensive"):
+            family_candidates = [
+                (index, clip)
+                for index, clip in defensive
+                if index not in selected_indexes and _defensive_label_family(clip.label) == family
+            ]
+            if not family_candidates:
+                continue
+            index, clip = max(family_candidates, key=_review_reserved_clip_quality_key)
+            add_clip(index, clip)
+            reserved_defensive_count += 1
+            if reserved_defensive_count >= defensive_reserve:
+                break
+
+        for index, clip in sorted(defensive, key=_review_reserved_clip_quality_key, reverse=True):
+            if reserved_defensive_count >= defensive_reserve:
+                break
+            if index in selected_indexes:
+                continue
+            add_clip(index, clip)
+            reserved_defensive_count += 1
 
     uncertain: list[tuple[int, CloudClip]] = []
     uncertain_reserve = 0
@@ -753,6 +773,27 @@ def _is_defensive_label(label: str) -> bool:
     if tokens & strong_tokens:
         return True
     return "stop" in tokens and (normalized == "stop" or "defensive stop" in normalized or "defense stop" in normalized)
+
+
+def _defensive_label_family(label: str) -> Optional[str]:
+    normalized = label.strip().lower()
+    tokens = set(re.findall(r"[a-z0-9]+", normalized))
+    if tokens & {"block", "blocked", "contest"}:
+        return "block"
+    if tokens & {"steal", "strip"}:
+        return "steal"
+    if "turnover" in tokens and (tokens & {"forced", "force", "defensive", "defense"}):
+        return "forced_turnover"
+    if "stop" in tokens and ("defensive stop" in normalized or "defense stop" in normalized or normalized == "stop"):
+        return "defensive_stop"
+    if tokens & {
+        "defense",
+        "defensive",
+        "pressure",
+        "lockdown",
+    }:
+        return "defensive"
+    return None
 
 
 def _probe_duration(path: Path, fallback: float) -> float:

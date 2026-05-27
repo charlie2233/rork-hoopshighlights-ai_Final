@@ -10,8 +10,8 @@ Improve selected-team highlight accuracy by giving GPT more visual evidence for 
 - Top quick-scan candidates receive richer six-frame ownership sampling.
 - Later candidates use a compact three-frame ownership set so the high-recall candidate pool can stay broad.
 - Added configurable guards:
-  - `HOOPS_TEAM_QUICK_SCAN_RICH_CANDIDATE_CLIPS` default `40`
-  - `HOOPS_TEAM_QUICK_SCAN_MAX_TOTAL_CLIP_FRAMES` default `480`
+  - `HOOPS_TEAM_QUICK_SCAN_RICH_CANDIDATE_CLIPS` default `60` as of Phase Clip63
+  - `HOOPS_TEAM_QUICK_SCAN_MAX_TOTAL_CLIP_FRAMES` default `720` as of Phase Clip63
 - Scoring clips can now sample `ballHandlerSetup`, `preRelease`, `release`, `rimApproach`, `rimResult`, and `followThrough`.
 - Blocks can now sample `defenseSetup`, `preChallenge`, `challenge`, `defenseOutcome`, `recovery`, and `finishContext`.
 - Steals/forced-turnover style clips can now sample `defenseSetup`, `prePossessionChange`, `possessionChange`, `recovery`, `defenseOutcome`, and `finishContext`.
@@ -30,7 +30,7 @@ The user chooses a target team before full analysis, so team ownership needs mor
 ## Validation
 
 - `PYTHONPATH=ios/backend /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m py_compile ios/backend/app/config.py ios/backend/app/team_quick_scan.py ios/backend/tests/test_team_quick_scan.py ios/backend/tests/test_pipeline_quality.py` passed.
-- Focused backend tests passed: 5 tests covering default frame budget config, rich scoring roles, rich defensive roles, rich/compact tail frame allocation, and the 600-frame beta ceiling.
+- Focused backend tests passed: 5 tests covering default frame budget config, rich scoring roles, rich defensive roles, rich/compact tail frame allocation, and the frame-budget beta ceiling. Phase Clip63 raises that ceiling to `900`.
 - `PYTHONPATH=ios/backend /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest discover ios/backend/tests -v` passed: 141 tests.
 - `PYTHONPATH=services/editing:ios/backend /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest discover services/editing/tests -v` passed: 90 tests.
 - `python3 -m unittest discover -s scripts -p 'test_*.py' -v` passed: 42 tests.

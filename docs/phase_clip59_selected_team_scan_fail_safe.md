@@ -24,8 +24,8 @@ Prevent HoopClips from offering selected-team highlights unless cloud analysis h
 
 - `HOOPS_MAX_RETURNED_CLIPS=${_MAX_RETURNED_CLIPS}` with `_MAX_RETURNED_CLIPS: "40"`.
 - `HOOPS_TEAM_QUICK_SCAN_ENABLED=${_TEAM_QUICK_SCAN_ENABLED}` with `_TEAM_QUICK_SCAN_ENABLED: "true"`.
-- Rich per-candidate frame budget: 6 frames per rich clip, 40 rich candidates, 480 total candidate frames.
-- Expanded selected-team recall cap: 120 candidate clips.
+- Rich per-candidate frame budget: 6 frames per rich clip, 60 rich candidates, 720 total candidate frames.
+- Expanded selected-team recall cap: 160 candidate clips.
 - Team quick-scan response budget: 6000 output tokens.
 - GPT highlight editing response budget: 8000 output tokens with a 60 second request timeout.
 - `HOOPS_OPENAI_API_KEY=HOOPS_OPENAI_API_KEY:latest` as a secret reference only.

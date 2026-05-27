@@ -127,8 +127,9 @@ class PipelineQualityTests(unittest.TestCase):
 
         self.assertEqual(settings.max_returned_clips, 40)
         self.assertEqual(settings.team_quick_scan_clip_frames_per_clip, 6)
-        self.assertEqual(settings.team_quick_scan_rich_candidate_clips, 40)
-        self.assertEqual(settings.team_quick_scan_max_total_clip_frames, 480)
+        self.assertEqual(settings.team_quick_scan_rich_candidate_clips, 60)
+        self.assertEqual(settings.team_quick_scan_max_total_clip_frames, 720)
+        self.assertEqual(settings.team_quick_scan_max_candidate_clips, 160)
 
     def test_backend_candidate_pool_env_is_clamped_for_review_safety(self) -> None:
         with tempfile.TemporaryDirectory(prefix="hoopclips-settings-") as temp_dir:
@@ -465,6 +466,36 @@ class PipelineQualityTests(unittest.TestCase):
         self.assertNotIn("Weak block", labels)
         self.assertNotIn("Made Shot 4", labels)
 
+    def test_review_trim_reserves_block_and_steal_families_when_available(self) -> None:
+        scoring = [
+            _clip(
+                start=float(index * 5),
+                end=float(index * 5 + 4),
+                label=f"Made Shot {index}",
+                combined=0.99 - (index * 0.01),
+                event_center=float(index * 5 + 2),
+                auto_keep=True,
+            )
+            for index in range(9)
+        ]
+        block_one = _clip(start=50.0, end=54.0, label="Block", combined=0.91, event_center=52.0, auto_keep=True)
+        block_two = _clip(start=55.0, end=59.0, label="Blocked shot", combined=0.90, event_center=57.0, auto_keep=True)
+        block_three = _clip(start=60.0, end=64.0, label="Contest block", combined=0.89, event_center=62.0, auto_keep=True)
+        steal = _clip(start=65.0, end=69.0, label="Steal", combined=0.70, event_center=67.0, auto_keep=True)
+
+        trimmed = _trim_analysis_clips_for_review(
+            [*scoring, block_one, block_two, block_three, steal],
+            None,
+            max_clips=8,
+        )
+        labels = [clip.label for clip in trimmed]
+
+        self.assertIn("Block", labels)
+        self.assertIn("Steal", labels)
+        self.assertNotIn("Blocked shot", labels)
+        self.assertNotIn("Contest block", labels)
+        self.assertNotIn("Made Shot 6", labels)
+
     def test_defensive_label_classifier_ignores_stop_and_pop_jumpers(self) -> None:
         self.assertFalse(_is_defensive_label("Stop and Pop Jumper"))
         self.assertTrue(_is_defensive_label("Blocked Shot"))
@@ -485,10 +516,10 @@ class PipelineQualityTests(unittest.TestCase):
     def test_selected_team_candidate_pool_limit_is_expanded_but_bounded(self) -> None:
         self.assertEqual(_analysis_candidate_pool_limit(_analysis_settings("hybrid"), None), 4)
         selected = TeamSelection(mode="team", teamId="team_dark", colorLabel="black")
-        self.assertEqual(_analysis_candidate_pool_limit(_analysis_settings("hybrid"), selected), 12)
+        self.assertEqual(_analysis_candidate_pool_limit(_analysis_settings("hybrid"), selected), 16)
         large_settings = _analysis_settings("hybrid")
         large_settings.max_returned_clips = 60
-        self.assertEqual(_analysis_candidate_pool_limit(large_settings, selected), 120)
+        self.assertEqual(_analysis_candidate_pool_limit(large_settings, selected), 160)
 
     def test_team_quick_scan_uses_action_anchored_candidate_pool(self) -> None:
         settings = _analysis_settings("hybrid")

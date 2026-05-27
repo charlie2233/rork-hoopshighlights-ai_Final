@@ -468,12 +468,32 @@ def _quality_filtered_sampled_clips(
         selected_ids.add(clip.id)
 
     defense_reserve = _defensive_sampling_reserve_limit(request, max_clips)
-    if defense_reserve > 0:
+    if defense_reserve == 1:
         for clip in eligible:
             if _is_defensive_candidate_clip(clip):
                 add_clip(clip)
-                if sum(1 for item in selected if _is_defensive_candidate_clip(item)) >= defense_reserve:
-                    break
+                break
+    elif defense_reserve > 1:
+        reserved_defensive_count = 0
+        for family in ("block", "steal", "forced_turnover", "defensive_stop", "defensive"):
+            for clip in eligible:
+                if clip.id in selected_ids:
+                    continue
+                if _defensive_candidate_family(clip) != family:
+                    continue
+                add_clip(clip)
+                reserved_defensive_count += 1
+                break
+            if reserved_defensive_count >= defense_reserve:
+                break
+
+        for clip in eligible:
+            if reserved_defensive_count >= defense_reserve:
+                break
+            if clip.id in selected_ids or not _is_defensive_candidate_clip(clip):
+                continue
+            add_clip(clip)
+            reserved_defensive_count += 1
 
     if request and request.teamSelection is not None and request.teamSelection.mode == "team":
         team_reserve = min(max(2, max_clips // 6), max_clips)
@@ -513,6 +533,22 @@ def _defensive_sampling_reserve_limit(request: Optional[CreateEditJobRequest], m
 
 def _is_defensive_candidate_clip(clip: EditCandidateClip) -> bool:
     return is_defensive_event_like_clip(clip)
+
+
+def _defensive_candidate_family(clip: EditCandidateClip) -> Optional[str]:
+    label = clip.label.strip().lower()
+    tokens = set(label.replace("-", " ").replace("_", " ").split())
+    if tokens & {"block", "blocked", "contest"} or "blocked shot" in label:
+        return "block"
+    if tokens & {"steal", "strip"}:
+        return "steal"
+    if "turnover" in tokens and (tokens & {"forced", "force", "defensive", "defense"}):
+        return "forced_turnover"
+    if "stop" in tokens and ("defensive stop" in label or "defense stop" in label or label == "stop"):
+        return "defensive_stop"
+    if tokens & {"defense", "defensive", "pressure", "lockdown"}:
+        return "defensive"
+    return None
 
 
 def _extract_candidate_keyframes(
