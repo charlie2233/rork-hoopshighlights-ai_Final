@@ -1292,6 +1292,9 @@ struct AIEditView: View {
             gptRerankKeptClipCount: nil,
             gptRerankRejectedClipCount: nil,
             gptRerankFallbackReason: nil,
+            teamUncertainCandidateCount: nil,
+            teamUncertainSelectedClipCount: nil,
+            defensiveSelectedClipCount: nil,
             summaryRows: rows
         )
     }

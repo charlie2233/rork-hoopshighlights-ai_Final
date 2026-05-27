@@ -1036,10 +1036,10 @@ class EditingServiceTests(unittest.TestCase):
                     keep=True,
                     highlightScore=0.99,
                     watchabilityScore=0.95,
-                    basketballEvent="Made Shot",
-                    outcome="made",
-                    caption="BUCKET",
-                    reason="Clean shot outcome and watchable finish.",
+                    basketballEvent="Steal",
+                    outcome="steal",
+                    caption="PICKED",
+                    reason="Clean defensive possession change and watchable finish.",
                     qualitySignals=_quality_signals(),
                     shotResultEvidence=_shot_result_evidence(),
                     shotTrackingEvidence=_shot_tracking_evidence(),
@@ -1074,7 +1074,20 @@ class EditingServiceTests(unittest.TestCase):
             os.environ["HOOPS_OPENAI_API_KEY"] = "test-key"
             editing_main.rerank_edit_request_with_gpt = fake_reranker
             client = TestClient(editing_main.create_app(self._settings()))
-            edit_request = self._edit_request()
+            base_request = self._edit_request()
+            edit_request = base_request.model_copy(
+                update={
+                    "clips": [
+                        base_request.clips[0],
+                        base_request.clips[1].model_copy(
+                            update={
+                                "label": "Steal",
+                                "teamAttributionStatus": "uncertain",
+                            }
+                        ),
+                    ]
+                }
+            )
             create_payload = client.post("/v1/edit-jobs", json=edit_request.model_dump()).json()
 
             render_response = client.post(
@@ -1096,9 +1109,14 @@ class EditingServiceTests(unittest.TestCase):
             self.assertEqual(render_payload["workReceipt"]["gptRerankRejectedClipCount"], 1)
             self.assertEqual(render_payload["workReceipt"]["gptRerankRejectedReasonCounts"]["unclear_or_non_basketball_outcome"], 1)
             self.assertEqual(render_payload["workReceipt"]["gptRerankStoryOrderClipIds"], ["c2"])
+            self.assertEqual(render_payload["workReceipt"]["teamUncertainCandidateCount"], 1)
+            self.assertEqual(render_payload["workReceipt"]["teamUncertainSelectedClipCount"], 1)
+            self.assertEqual(render_payload["workReceipt"]["defensiveSelectedClipCount"], 1)
             self.assertIn("GPT reranked 2 clips from 6 keyframes.", render_payload["workReceipt"]["summaryRows"])
             self.assertIn("GPT rejected clips: unclear_or_non_basketball_outcome x1.", render_payload["workReceipt"]["summaryRows"])
             self.assertIn("GPT story order applied to 1 candidate clip.", render_payload["workReceipt"]["summaryRows"])
+            self.assertIn("Kept 1 uncertain team clip for review.", render_payload["workReceipt"]["summaryRows"])
+            self.assertIn("Included 1 defensive highlight.", render_payload["workReceipt"]["summaryRows"])
         finally:
             editing_main.rerank_edit_request_with_gpt = original_reranker
             if old_enabled is None:

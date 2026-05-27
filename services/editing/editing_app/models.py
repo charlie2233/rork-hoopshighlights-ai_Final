@@ -95,6 +95,9 @@ class AIWorkReceipt(APIModel):
     gptRerankStoryOrderClipIds: List[str] = Field(default_factory=list)
     gptPlanEditApplied: bool = False
     gptRerankFallbackReason: Optional[str] = None
+    teamUncertainCandidateCount: Optional[int] = None
+    teamUncertainSelectedClipCount: Optional[int] = None
+    defensiveSelectedClipCount: Optional[int] = None
     summaryRows: List[str] = Field(default_factory=list)
 
 
@@ -320,6 +323,40 @@ def _duplicate_group_count(source_clips: Optional[List[EditCandidateClip]]) -> O
     return len({clip.duplicateGroup for clip in source_clips if clip.duplicateGroup})
 
 
+def _team_uncertain_clip_ids(source_clips: Optional[List[EditCandidateClip]]) -> set[str]:
+    if source_clips is None:
+        return set()
+    return {
+        clip.id
+        for clip in source_clips
+        if clip.teamAttributionStatus == "uncertain"
+        or (clip.teamAttribution is not None and clip.teamAttribution.confidence < 0.85)
+    }
+
+
+def _defensive_clip_ids(source_clips: Optional[List[EditCandidateClip]]) -> set[str]:
+    if source_clips is None:
+        return set()
+    defensive_tokens = {
+        "block",
+        "blocked",
+        "steal",
+        "strip",
+        "turnover",
+        "forced",
+        "defense",
+        "defensive",
+        "stop",
+        "pressure",
+        "lockdown",
+    }
+    return {
+        clip.id
+        for clip in source_clips
+        if any(token in clip.label.strip().lower() for token in defensive_tokens)
+    }
+
+
 def _step_status_for_render(render_status: RenderStatus) -> AIWorkStepStatus:
     if render_status == "rendered":
         return "complete"
@@ -457,6 +494,12 @@ def build_ai_work_receipt(
     storage_expires_at = parse_datetime(render_job.retention_metadata.get("expiresAt") if render_job.retention_metadata else None) or render_job.expires_at
     watermark_included = edit_plan.watermark.enabled if edit_plan is not None else None
     outro_included = edit_plan.outro.enabled if edit_plan is not None else None
+    selected_clip_ids = {clip.clipId for clip in edit_plan.clips} if edit_plan is not None else set()
+    uncertain_clip_ids = _team_uncertain_clip_ids(source_clips)
+    defensive_clip_ids = _defensive_clip_ids(source_clips)
+    team_uncertain_candidate_count = len(uncertain_clip_ids) if source_clips is not None else None
+    team_uncertain_selected_count = len(selected_clip_ids & uncertain_clip_ids) if edit_plan is not None and source_clips is not None else None
+    defensive_selected_count = len(selected_clip_ids & defensive_clip_ids) if edit_plan is not None and source_clips is not None else None
     summary_rows: List[str] = []
     if selected_count is not None and candidate_count is not None:
         summary_rows.append(f"Selected {selected_count} clips from {candidate_count} candidates.")
@@ -484,6 +527,14 @@ def build_ai_work_receipt(
                 summary_rows.append("GPT plan edit applied after deterministic validation.")
         elif gpt_rerank_summary.status == "fallback" and gpt_rerank_summary.fallbackReason:
             summary_rows.append(f"GPT rerank fallback: {gpt_rerank_summary.fallbackReason}.")
+    if team_uncertain_selected_count:
+        summary_rows.append(
+            f"Kept {team_uncertain_selected_count} uncertain team clip{'s' if team_uncertain_selected_count != 1 else ''} for review."
+        )
+    if defensive_selected_count:
+        summary_rows.append(
+            f"Included {defensive_selected_count} defensive highlight{'s' if defensive_selected_count != 1 else ''}."
+        )
     summary_rows.append(f"Applied {template.displayName} template.")
     summary_rows.append(f"Added {slow_motion_count} slow-motion moments.")
     if render_job.duration_seconds is not None:
@@ -532,6 +583,9 @@ def build_ai_work_receipt(
         gptRerankStoryOrderClipIds=gpt_rerank_summary.storyOrderClipIds if gpt_rerank_summary is not None else [],
         gptPlanEditApplied=gpt_rerank_summary.planEditApplied if gpt_rerank_summary is not None else False,
         gptRerankFallbackReason=gpt_rerank_summary.fallbackReason if gpt_rerank_summary is not None else None,
+        teamUncertainCandidateCount=team_uncertain_candidate_count,
+        teamUncertainSelectedClipCount=team_uncertain_selected_count,
+        defensiveSelectedClipCount=defensive_selected_count,
         summaryRows=summary_rows,
     )
 
