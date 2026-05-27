@@ -223,6 +223,7 @@ class TeamQuickScanTests(unittest.TestCase):
             context = json.loads(payload["input"][0]["content"][0]["text"])
             self.assertEqual(len(context["candidateClips"]), 75)
             self.assertEqual(context["candidateClips"][-1]["clipRef"], "clip_74")
+            self.assertIn("scoringFrameRoles", context["rules"])
             self.assertIn("defensiveFrameRoles", context["rules"])
             self.assertEqual(payload["text"]["format"]["schema"]["properties"]["clipAttributions"]["maxItems"], 75)
             self.assertEqual(payload["max_output_tokens"], 6000)
@@ -279,6 +280,13 @@ class TeamQuickScanTests(unittest.TestCase):
         self.assertEqual(steal_roles, ["defenseSetup", "possessionChange", "recovery"])
         self.assertEqual(block_roles, ["defenseSetup", "challenge", "defenseOutcome"])
 
+    def test_scoring_quick_scan_samples_shooter_release_roles(self) -> None:
+        made_shot = _clip("Made Shot", 8.0, 12.5, 10.0)
+
+        roles = [role for role, _ in _clip_sample_times(made_shot, 4)]
+
+        self.assertEqual(roles, ["ballHandlerSetup", "release", "rimResult", "followThrough"])
+
     def test_frame_extraction_respects_configurable_candidate_limit(self) -> None:
         clips = [_clip("Highlight", index * 4.0, (index * 4.0) + 3.0, (index * 4.0) + 1.5) for index in range(50)]
         settings = _settings(
@@ -322,6 +330,24 @@ class TeamQuickScanTests(unittest.TestCase):
 
         self.assertEqual(roles_by_clip["clip_0"], ["defenseSetup", "possessionChange", "recovery"])
         self.assertEqual(roles_by_clip["clip_1"], ["defenseSetup", "challenge", "defenseOutcome"])
+
+    def test_frame_extraction_uses_scoring_roles_for_made_shots(self) -> None:
+        clips = [_clip("Made Shot", 8.0, 12.5, 10.0)]
+
+        with tempfile.TemporaryDirectory(prefix="hoopclips-team-scan-scoring-") as temp_dir:
+            source_path = Path(temp_dir) / "source.mp4"
+            source_path.write_bytes(b"video")
+            with patch("app.team_quick_scan._extract_frame_data_url", return_value="data:image/jpeg;base64,frame"):
+                frames = _extract_quick_scan_frames(
+                    source_path,
+                    40.0,
+                    clips,
+                    _settings(team_quick_scan_video_frame_count=0, team_quick_scan_clip_frames_per_clip=4),
+                )
+
+        roles = [frame.role for frame in frames if frame.clip_ref == "clip_0"]
+
+        self.assertEqual(roles, ["ballHandlerSetup", "release", "rimResult", "followThrough"])
 
     def test_low_confidence_clip_attribution_is_kept_as_uncertain_signal(self) -> None:
         clips = [_clip("Block", 6.0, 10.5, 8.0)]

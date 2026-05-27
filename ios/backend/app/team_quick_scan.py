@@ -86,6 +86,7 @@ def _build_openai_payload(
             "selectedTeamAccuracyTarget": TEAM_QUICK_SCAN_CONFIDENT_ATTRIBUTION,
             "uncertainPolicy": "If ball control, defender, or jersey color is unclear, return lower confidence instead of guessing. The backend keeps uncertain clips for review.",
             "highlightOwnership": "For made shots, ownership is the shooter/finisher team. For blocks, steals, defensive stops, or forced turnovers, ownership is the defender who made the play.",
+            "scoringFrameRoles": "For scoring clips, ballHandlerSetup and release show the offensive player/team, rimResult shows the outcome, and followThrough shows the finisher after the play.",
             "defensiveFrameRoles": "For defensive clips, defenseSetup shows the defender before the event, challenge or possessionChange shows the defensive action, and recovery or defenseOutcome shows the result.",
         },
         "durationSeconds": round(duration_seconds, 3),
@@ -125,6 +126,7 @@ def _build_openai_payload(
             "You are HoopClips Team Quick Scan. Identify the teams in sampled basketball frames by visible jersey color, "
             "then assign each candidate clip to the team responsible for the highlight moment. Use confidence >=0.85 only "
             "when team ownership is visually clear. Use lower confidence for occlusion, camera blur, mixed jerseys, or ambiguous possession. "
+            "For scoring frame roles, use ballHandlerSetup plus release to judge the shooter/finisher team, then rimResult/followThrough to confirm the play. "
             "Blocks, steals, defensive stops, and forced turnovers belong to the defending player who made the play. "
             "For defensive frame roles, use defenseSetup plus challenge/possessionChange and recovery/defenseOutcome to judge the defender's team. "
             "Use only supplied frames and candidate clip refs. Do not output prose, commands, file paths, URLs, storage keys, or FFmpeg instructions. "
@@ -309,6 +311,15 @@ def _clip_sample_times(clip: CloudClip, count: int) -> list[tuple[str, float]]:
             ("recovery", max(event_center, end - (duration * 0.12))),
             ("defenseOutcome", end - (duration * 0.06)),
         ]
+    elif _is_scoring_or_shot_like_label(label):
+        release_offset = min(1.05, duration * 0.35)
+        follow_through_offset = min(0.65, duration * 0.18)
+        candidates = [
+            ("ballHandlerSetup", start + (duration * 0.16)),
+            ("release", max(start, event_center - release_offset)),
+            ("rimResult", event_center),
+            ("followThrough", min(end, event_center + follow_through_offset)),
+        ]
     else:
         candidates = [
             ("startContext", start + (duration * 0.18)),
@@ -343,6 +354,25 @@ def _is_non_scoring_defensive_label(label: str) -> bool:
             "stop",
             "pressure",
             "lockdown",
+        )
+    )
+
+
+def _is_scoring_or_shot_like_label(label: str) -> bool:
+    return any(
+        token in label
+        for token in (
+            "shot",
+            "made",
+            "make",
+            "bucket",
+            "basket",
+            "layup",
+            "dunk",
+            "finish",
+            "jumper",
+            "three",
+            "3pt",
         )
     )
 
