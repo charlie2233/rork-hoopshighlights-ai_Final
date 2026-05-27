@@ -112,7 +112,7 @@ def run_analysis(job: StoredJob, settings: Settings, source_path: Path) -> Cloud
     if not detected_teams:
         detected_teams = _detected_teams_from_clips(clips)
     clips = _filter_analysis_clips_for_team_selection(clips, job.team_selection)
-    clips = clips[: settings.max_returned_clips]
+    clips = _trim_analysis_clips_for_review(clips, job.team_selection, settings.max_returned_clips)
 
     elapsed_ms = int((perf_counter() - started_at) * 1000)
     model_version = settings.backend_model_version
@@ -196,6 +196,57 @@ def _filter_analysis_clips_for_team_selection(
         if status == "matched" or (status == "uncertain" and team_selection.includeUncertain):
             filtered.append(clip)
     return filtered
+
+
+def _uncertain_review_reserve_limit(max_clips: int, uncertain_count: int) -> int:
+    max_clips = max(0, int(max_clips))
+    uncertain_count = max(0, int(uncertain_count))
+    if max_clips == 0 or uncertain_count == 0:
+        return 0
+    if max_clips < 6:
+        return 1
+    return min(uncertain_count, max(2, max_clips // 6))
+
+
+def _trim_analysis_clips_for_review(
+    clips: Sequence[CloudClip],
+    team_selection: Optional[TeamSelection],
+    max_clips: int,
+) -> list[CloudClip]:
+    max_clips = max(0, int(max_clips))
+    if max_clips == 0:
+        return []
+    if team_selection is None or team_selection.mode == "all" or not team_selection.includeUncertain:
+        return list(clips)[:max_clips]
+
+    indexed_clips = list(enumerate(clips))
+    uncertain = [
+        (index, clip)
+        for index, clip in indexed_clips
+        if _analysis_team_status(clip, team_selection) == "uncertain"
+    ]
+    reserve = _uncertain_review_reserve_limit(max_clips, len(uncertain))
+    if reserve == 0:
+        return list(clips)[:max_clips]
+
+    selected: list[tuple[int, CloudClip]] = []
+    selected_indexes: set[int] = set()
+
+    def add_clip(index: int, clip: CloudClip) -> None:
+        if index in selected_indexes or len(selected) >= max_clips:
+            return
+        selected.append((index, clip))
+        selected_indexes.add(index)
+
+    for index, clip in uncertain[:reserve]:
+        add_clip(index, clip)
+
+    for index, clip in indexed_clips:
+        add_clip(index, clip)
+        if len(selected) >= max_clips:
+            break
+
+    return [clip for _, clip in sorted(selected, key=lambda item: item[0])]
 
 
 def _detected_teams_from_clips(clips: Sequence[CloudClip]) -> list[TeamOption]:

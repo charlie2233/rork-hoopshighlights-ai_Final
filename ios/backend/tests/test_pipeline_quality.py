@@ -20,6 +20,7 @@ from app.pipeline import (
     _native_shot_signals_for_analysis_clip,
     _normalize_clip_for_analysis_context,
     _shot_context_score_for_window,
+    _trim_analysis_clips_for_review,
     _visual_event_boundaries_from_signals,
     run_analysis,
 )
@@ -261,6 +262,60 @@ class PipelineQualityTests(unittest.TestCase):
         self.assertLessEqual(len(result.clips), settings.max_returned_clips)
         self.assertEqual([clip.label for clip in result.clips], ["Three Pointer", "Steal", "Block"])
         self.assertTrue(any(clip.teamAttribution and clip.teamAttribution.confidence < 0.85 for clip in result.clips))
+
+    def test_selected_team_visible_results_reserve_uncertain_review_clips(self) -> None:
+        team_selection = TeamSelection(mode="team", teamId="team_dark", colorLabel="black", includeUncertain=True)
+        clips = [
+            _clip(
+                start=float(index * 5),
+                end=float(index * 5 + 4),
+                label=f"Made Shot {index}",
+                combined=0.95 - (index * 0.01),
+                event_center=float(index * 5 + 2),
+                auto_keep=True,
+            ).model_copy(
+                update={
+                    "teamAttribution": ClipTeamAttribution(
+                        teamId="team_dark",
+                        label="Dark jerseys",
+                        colorLabel="black",
+                        confidence=0.94,
+                        source="gpt_frame_review",
+                    )
+                }
+            )
+            for index in range(5)
+        ]
+        clips.append(
+            _clip(start=30.0, end=34.0, label="Uncertain block", combined=0.7, event_center=32.0, auto_keep=True).model_copy(
+                update={
+                    "teamAttribution": ClipTeamAttribution(
+                        teamId="team_dark",
+                        label="Dark jerseys",
+                        colorLabel="black",
+                        confidence=0.62,
+                        source="gpt_frame_review",
+                    )
+                }
+            )
+        )
+
+        trimmed = _trim_analysis_clips_for_review(clips, team_selection, max_clips=4)
+
+        self.assertEqual(len(trimmed), 4)
+        self.assertIn("Uncertain block", [clip.label for clip in trimmed])
+        self.assertNotIn("Made Shot 4", [clip.label for clip in trimmed])
+
+    def test_selected_team_visible_results_can_exclude_uncertain_when_requested(self) -> None:
+        team_selection = TeamSelection(mode="team", teamId="team_dark", colorLabel="black", includeUncertain=False)
+        clips = [
+            _clip(start=0.0, end=4.0, label="Made Shot", combined=0.95, event_center=2.0, auto_keep=True),
+            _clip(start=5.0, end=9.0, label="Uncertain steal", combined=0.7, event_center=7.0, auto_keep=True),
+        ]
+
+        trimmed = _trim_analysis_clips_for_review(clips, team_selection, max_clips=1)
+
+        self.assertEqual([clip.label for clip in trimmed], ["Made Shot"])
 
     def test_selected_team_candidate_pool_limit_is_expanded_but_bounded(self) -> None:
         self.assertEqual(_analysis_candidate_pool_limit(_analysis_settings("hybrid"), None), 4)
