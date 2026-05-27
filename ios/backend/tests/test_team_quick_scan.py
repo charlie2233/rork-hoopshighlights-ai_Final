@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 
 from app.config import Settings
 from app.main import create_app
-from app.models import CloudAnalysisResult, CloudClip, CloudDiagnostics, MaterializedSource, TeamOption
+from app.models import CloudAnalysisResult, CloudClip, CloudDiagnostics, MaterializedSource, TeamOption, TeamSelection
 from app.team_quick_scan import (
     QuickScanFrame,
     _clip_sample_times,
@@ -725,6 +725,92 @@ class TeamQuickScanTests(unittest.TestCase):
                 },
             )
 
+            self.assertEqual(start_response.status_code, 400)
+            self.assertEqual(start_response.json()["errorCode"], "team_selection_unavailable")
+
+    def test_start_accepts_selected_team_with_equivalent_jersey_color_alias(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="hoopclips-team-scan-color-alias-start-") as temp_dir:
+            settings = _local_settings(Path(temp_dir))
+            app = create_app(settings)
+            client = TestClient(app)
+            created = _create_uploaded_job(client)
+            detected = [
+                TeamOption(teamId="team_black", label="Black jerseys", colorLabel="black", confidence=0.92, source="quick_scan"),
+            ]
+
+            with (
+                patch("app.api.build_team_quick_scan_candidate_clips", return_value=[_clip("Made Shot", 12.0, 16.5, 14.0)]),
+                patch("app.api.apply_team_quick_scan", return_value=([], detected, True)),
+                patch("app.api.run_analysis") as fake_run_analysis,
+            ):
+                fake_run_analysis.return_value = CloudAnalysisResult(
+                    clipCount=0,
+                    clips=[],
+                    diagnostics=CloudDiagnostics(
+                        processingMs=1,
+                        backendModelVersion="cloud-v1",
+                        usedVideoIntelligence=False,
+                        usedGeminiRelabeling=False,
+                        candidateSegments=0,
+                        finalSegments=0,
+                    ),
+                    detectedTeams=detected,
+                    teamSelection=TeamSelection(mode="team", teamId="team_dark", label="Dark jerseys", colorLabel="black", includeUncertain=True),
+                )
+                scan_response = client.post(
+                    f"/v1/analysis/jobs/{created['jobId']}/team-scan",
+                    json={"installId": "install-123456"},
+                )
+                start_response = client.post(
+                    f"/v1/analysis/jobs/{created['jobId']}/start",
+                    json={
+                        "installId": "install-123456",
+                        "teamSelection": {
+                            "mode": "team",
+                            "teamId": "team_dark",
+                            "label": "Dark jerseys",
+                            "colorLabel": "black",
+                            "includeUncertain": True,
+                        },
+                    },
+                )
+
+            self.assertEqual(scan_response.status_code, 200)
+            self.assertEqual(start_response.status_code, 200)
+
+    def test_start_rejects_selected_team_with_conflicting_color_label(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="hoopclips-team-scan-conflicting-color-start-") as temp_dir:
+            settings = _local_settings(Path(temp_dir))
+            app = create_app(settings)
+            client = TestClient(app)
+            created = _create_uploaded_job(client)
+            detected = [
+                TeamOption(teamId="team_dark", label="Dark jerseys", colorLabel="black", confidence=0.92, source="quick_scan"),
+            ]
+
+            with (
+                patch("app.api.build_team_quick_scan_candidate_clips", return_value=[_clip("Made Shot", 12.0, 16.5, 14.0)]),
+                patch("app.api.apply_team_quick_scan", return_value=([], detected, True)),
+            ):
+                scan_response = client.post(
+                    f"/v1/analysis/jobs/{created['jobId']}/team-scan",
+                    json={"installId": "install-123456"},
+                )
+                start_response = client.post(
+                    f"/v1/analysis/jobs/{created['jobId']}/start",
+                    json={
+                        "installId": "install-123456",
+                        "teamSelection": {
+                            "mode": "team",
+                            "teamId": "team_dark",
+                            "label": "Light jerseys",
+                            "colorLabel": "white",
+                            "includeUncertain": True,
+                        },
+                    },
+                )
+
+            self.assertEqual(scan_response.status_code, 200)
             self.assertEqual(start_response.status_code, 400)
             self.assertEqual(start_response.json()["errorCode"], "team_selection_unavailable")
 

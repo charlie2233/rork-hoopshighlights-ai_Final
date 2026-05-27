@@ -19,6 +19,7 @@ from .classifier import classify_window, maybe_relabel_with_gemini
 from .config import Settings
 from .external_providers import detect_with_optional_external_provider, rerank_with_optional_external_provider
 from .models import CandidateWindow, CloudAnalysisResult, CloudClip, CloudDiagnostics, CloudNativeShotSignals, PipelineError, StoredJob, TeamOption, TeamSelection, clamp
+from .team_identity import team_identity_matches, team_key
 from .team_quick_scan import apply_team_quick_scan
 
 
@@ -194,10 +195,7 @@ def _settings_with_candidate_limit(settings: Settings, clip_limit: int) -> Setti
 
 
 def _team_key(value: Optional[str]) -> Optional[str]:
-    if value is None:
-        return None
-    normalized = " ".join(value.strip().lower().split())
-    return normalized or None
+    return team_key(value)
 
 
 def _analysis_team_status(
@@ -211,15 +209,18 @@ def _analysis_team_status(
         return "uncertain"
 
     selected_team_id = _team_key(team_selection.teamId)
-    selected_color = _team_key(team_selection.colorLabel)
     clip_team_id = _team_key(attribution.teamId)
-    clip_color = _team_key(attribution.colorLabel)
-    if selected_team_id and clip_team_id and selected_team_id == clip_team_id:
+    if team_identity_matches(
+        selected_team_id=team_selection.teamId,
+        selected_color_label=team_selection.colorLabel,
+        selected_label=team_selection.label,
+        candidate_team_id=attribution.teamId,
+        candidate_color_label=attribution.colorLabel,
+        candidate_label=attribution.label,
+    ):
         return "matched"
     if selected_team_id and clip_team_id and selected_team_id != clip_team_id:
         return "opponent"
-    if selected_color and clip_color and selected_color == clip_color:
-        return "matched"
     return "opponent"
 
 

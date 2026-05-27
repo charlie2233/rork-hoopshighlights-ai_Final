@@ -56,6 +56,7 @@ from .rendering import (
 )
 from .storage import GCSStorageProvider, LocalStorageProvider, StorageProvider
 from .task_dispatcher import CloudTasksDispatcher, InlineTaskDispatcher, TaskDispatcher
+from .team_identity import team_identity_matches
 from .team_quick_scan import apply_team_quick_scan
 
 
@@ -175,12 +176,15 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
                 "Run the cloud team scan and choose one of the detected jersey-color teams before selected-team analysis.",
             )
 
-        selected_team_id = selection.teamId.strip() if selection.teamId else None
-        selected_color = selection.colorLabel.strip().lower() if selection.colorLabel else None
         for team in job.detected_teams:
-            team_id_matches = bool(selected_team_id and team.teamId == selected_team_id)
-            color_matches = bool(selected_color and team.colorLabel and team.colorLabel.strip().lower() == selected_color)
-            if team_id_matches or color_matches:
+            if team_identity_matches(
+                selected_team_id=selection.teamId,
+                selected_color_label=selection.colorLabel,
+                selected_label=selection.label,
+                candidate_team_id=team.teamId,
+                candidate_color_label=team.colorLabel,
+                candidate_label=team.label,
+            ):
                 return
 
         raise APIError(

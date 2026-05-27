@@ -263,6 +263,46 @@ class PipelineQualityTests(unittest.TestCase):
         self.assertEqual(annotated[0].teamAttributionStatus, "opponent")
         self.assertEqual(annotated[1].teamAttributionStatus, "matched")
 
+    def test_analysis_team_status_matches_jersey_color_alias_team_ids(self) -> None:
+        team_selection = TeamSelection(mode="team", teamId="team_dark", label="Dark jerseys", colorLabel="black", includeUncertain=True)
+        clips = [
+            _clip(start=8.0, end=12.5, label="Black jersey bucket", combined=0.88, event_center=10.2, auto_keep=True).model_copy(
+                update={
+                    "teamAttribution": ClipTeamAttribution(
+                        teamId="team_black",
+                        label="Black jerseys",
+                        colorLabel="black",
+                        confidence=0.94,
+                        source="gpt_frame_review",
+                    )
+                }
+            )
+        ]
+
+        annotated = _annotate_analysis_team_status(clips, team_selection)
+
+        self.assertEqual(annotated[0].teamAttributionStatus, "matched")
+
+    def test_analysis_team_status_rejects_exact_team_id_with_color_conflict(self) -> None:
+        team_selection = TeamSelection(mode="team", teamId="team_dark", label="Dark jerseys", colorLabel="black", includeUncertain=True)
+        clips = [
+            _clip(start=8.0, end=12.5, label="Bad exact id", combined=0.88, event_center=10.2, auto_keep=True).model_copy(
+                update={
+                    "teamAttribution": ClipTeamAttribution(
+                        teamId="team_dark",
+                        label="Light jerseys",
+                        colorLabel="white",
+                        confidence=0.94,
+                        source="gpt_frame_review",
+                    )
+                }
+            )
+        ]
+
+        annotated = _annotate_analysis_team_status(clips, team_selection)
+
+        self.assertEqual(annotated[0].teamAttributionStatus, "opponent")
+
     def test_selected_team_analysis_expands_pool_before_filtering(self) -> None:
         native = [
             _clip(start=0.0, end=4.5, label="Made Shot", combined=0.96, event_center=2.4, auto_keep=True),

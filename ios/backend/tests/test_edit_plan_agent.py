@@ -359,6 +359,68 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertEqual(team_attribution_status(request.clips[1], request.teamSelection), "matched")
         self.assertEqual([clip.id for clip in filtered], ["missing_id_color_match"])
 
+    def test_selected_team_filter_matches_jersey_color_alias_team_ids(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                teamSelection={
+                    "mode": "team",
+                    "teamId": "team_dark",
+                    "label": "Dark jerseys",
+                    "colorLabel": "black",
+                    "confidenceThreshold": 0.85,
+                    "includeUncertain": True,
+                },
+                clips=[
+                    {
+                        **_clip("black_alias_bucket", 0.0, "Made Shot", 0.93),
+                        "teamAttribution": {
+                            "teamId": "team_black",
+                            "label": "Black jerseys",
+                            "colorLabel": "black",
+                            "confidence": 0.91,
+                            "source": "quick_scan",
+                        },
+                    }
+                ],
+            )
+        )
+
+        filtered = filter_clips_for_team_selection(request.clips, request.teamSelection)
+
+        self.assertEqual(team_attribution_status(request.clips[0], request.teamSelection), "matched")
+        self.assertEqual([clip.id for clip in filtered], ["black_alias_bucket"])
+
+    def test_selected_team_filter_rejects_exact_team_id_with_color_conflict(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                teamSelection={
+                    "mode": "team",
+                    "teamId": "team_dark",
+                    "label": "Dark jerseys",
+                    "colorLabel": "black",
+                    "confidenceThreshold": 0.85,
+                    "includeUncertain": True,
+                },
+                clips=[
+                    {
+                        **_clip("bad_exact_id", 0.0, "Made Shot", 0.93),
+                        "teamAttribution": {
+                            "teamId": "team_dark",
+                            "label": "Light jerseys",
+                            "colorLabel": "white",
+                            "confidence": 0.95,
+                            "source": "quick_scan",
+                        },
+                    }
+                ],
+            )
+        )
+
+        filtered = filter_clips_for_team_selection(request.clips, request.teamSelection)
+
+        self.assertEqual(team_attribution_status(request.clips[0], request.teamSelection), "opponent")
+        self.assertEqual(filtered, [])
+
     def test_explicit_uncertain_team_status_survives_edit_context(self) -> None:
         request = CreateEditJobRequest(
             **_request_payload(
