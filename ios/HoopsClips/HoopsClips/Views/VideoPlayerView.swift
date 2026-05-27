@@ -617,7 +617,7 @@ struct VideoPlayerView: View {
         if !viewModel.cloudDetectedTeams.isEmpty {
             return "Detected teams are labeled by jersey color. Uncertain plays stay in Review."
         }
-        return "Cloud AI targets this team and keeps uncertain clips for Review."
+        return "Team targeting unlocks after the cloud scan finds jersey colors. Use All teams for now."
     }
 
     private var teamScanStatusRow: some View {
@@ -654,7 +654,7 @@ struct VideoPlayerView: View {
                 Image(systemName: "sparkles")
                     .font(.caption)
                     .foregroundStyle(AppTheme.subtleText)
-                Text("All teams is always available")
+                Text("All teams is available until jersey colors are detected")
                     .font(.caption.weight(.medium))
                     .foregroundStyle(AppTheme.subtleText)
             }

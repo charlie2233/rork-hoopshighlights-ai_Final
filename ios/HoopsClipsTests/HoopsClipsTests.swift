@@ -464,6 +464,30 @@ struct HoopsClipsTests {
         #expect(requestedPaths.contains("POST /v1/analysis/jobs/job_team_scan/start"))
     }
 
+    @Test @MainActor func testTeamTargetChoicesRequireDetectedTeams() {
+        let viewModel = HighlightsViewModel()
+
+        let fallbackChoices = viewModel.availableHighlightTeamChoices
+        #expect(fallbackChoices.map(\.mode) == [.all])
+
+        viewModel.cloudDetectedTeams = [
+            CloudTeamOption(
+                teamId: "team_blue",
+                label: "Blue jerseys",
+                colorLabel: "blue",
+                primaryColorHex: "#0057FF",
+                confidence: 0.94,
+                source: "quick_scan"
+            )
+        ]
+
+        let scannedChoices = viewModel.availableHighlightTeamChoices
+        #expect(scannedChoices.map(\.selectionKey) == ["all", "team_blue"])
+        #expect(scannedChoices[1].confidenceThreshold == 0.85)
+        #expect(scannedChoices[1].includeUncertain)
+        #expect(scannedChoices[1].primaryColorHex == "#0057FF")
+    }
+
     @Test @MainActor func testCloudEditRequestSendsStrongestCandidatesBeforeThirtyClipCap() throws {
         let viewModel = HighlightsViewModel()
         viewModel.cloudEditSourceObjectKey = "uploads/source.mp4"

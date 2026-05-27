@@ -39,7 +39,7 @@ Move team targeting from a schema-only contract toward real cloud-owned team det
 - `HOOPS_TEAM_QUICK_SCAN_MAX_CANDIDATE_CLIPS`
 - `HOOPS_TEAM_QUICK_SCAN_MAX_OUTPUT_TOKENS`
 
-If `HOOPS_TEAM_QUICK_SCAN_ENABLED` is unset, the backend follows the existing GPT editor/reranker flags. If the flag is enabled but no OpenAI key is configured, analysis falls back safely without team attribution.
+If `HOOPS_TEAM_QUICK_SCAN_ENABLED` is unset, the backend follows the existing GPT editor/reranker flags. If the flag is enabled but no OpenAI key is configured, analysis falls back without team attribution, so selected-team UI must stay on All teams until real jersey-color scan results are available.
 
 ## Safety
 

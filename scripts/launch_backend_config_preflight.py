@@ -41,6 +41,16 @@ REQUIRED_GPT_RERANK_SUBSTITUTIONS = {
     "_GPT_HIGHLIGHT_RERANKER_ENABLED": "true",
 }
 
+REQUIRED_ANALYSIS_TEAM_SCAN_SUBSTITUTIONS = {
+    "_MAX_RETURNED_CLIPS": "30",
+    "_TEAM_QUICK_SCAN_ENABLED": "true",
+    "_TEAM_QUICK_SCAN_CLIP_FRAMES_PER_CLIP": "6",
+    "_TEAM_QUICK_SCAN_RICH_CANDIDATE_CLIPS": "40",
+    "_TEAM_QUICK_SCAN_MAX_TOTAL_CLIP_FRAMES": "480",
+    "_TEAM_QUICK_SCAN_MAX_CANDIDATE_CLIPS": "120",
+    "_TEAM_QUICK_SCAN_MAX_OUTPUT_TOKENS": "6000",
+}
+
 REQUIRED_DEPLOY_INPUTS = {
     "CLOUDFLARE_API_TOKEN",
     "GCP_WORKLOAD_IDENTITY_PROVIDER",
@@ -106,6 +116,7 @@ def run_checks(repo_root: Path) -> list[Finding]:
     collector = Collector()
     check_control_plane_wrangler(repo_root, collector)
     check_editing_cloudbuild(repo_root, collector)
+    check_analysis_cloudbuild(repo_root, collector)
     check_workflows(repo_root, collector)
     check_ios_configs(repo_root, collector)
     check_observability_and_flags(repo_root, collector)
@@ -299,6 +310,42 @@ def check_editing_cloudbuild(repo_root: Path, collector: Collector) -> None:
             collector.warn("editing ingress posture", rel(path, repo_root), "Cloud Run allows unauthenticated ingress; staging relies on shared-secret enforcement and Worker mediation.")
         else:
             collector.fail("editing ingress posture", rel(path, repo_root), "Unauthenticated Cloud Run ingress requires shared-secret enforcement.")
+
+
+def check_analysis_cloudbuild(repo_root: Path, collector: Collector) -> None:
+    path = repo_root / "ios/backend/cloudbuild.yaml"
+    text = read_text(path, collector)
+    if text is None:
+        return
+
+    substitutions = parse_simple_substitutions(text)
+    for key, expected in REQUIRED_ANALYSIS_TEAM_SCAN_SUBSTITUTIONS.items():
+        if substitutions.get(key) == expected:
+            collector.pass_("analysis team scan substitution", rel(path, repo_root), f"{key} is explicit for selected-team beta quality.")
+        else:
+            collector.fail("analysis team scan substitution", rel(path, repo_root), f"{key} must be explicit for selected-team beta quality.")
+
+    env_line = find_arg_value_after(text, "--set-env-vars")
+    required_env_mappings = [
+        "HOOPS_MAX_RETURNED_CLIPS=${_MAX_RETURNED_CLIPS}",
+        "HOOPS_TEAM_QUICK_SCAN_ENABLED=${_TEAM_QUICK_SCAN_ENABLED}",
+        "HOOPS_TEAM_QUICK_SCAN_CLIP_FRAMES_PER_CLIP=${_TEAM_QUICK_SCAN_CLIP_FRAMES_PER_CLIP}",
+        "HOOPS_TEAM_QUICK_SCAN_RICH_CANDIDATE_CLIPS=${_TEAM_QUICK_SCAN_RICH_CANDIDATE_CLIPS}",
+        "HOOPS_TEAM_QUICK_SCAN_MAX_TOTAL_CLIP_FRAMES=${_TEAM_QUICK_SCAN_MAX_TOTAL_CLIP_FRAMES}",
+        "HOOPS_TEAM_QUICK_SCAN_MAX_CANDIDATE_CLIPS=${_TEAM_QUICK_SCAN_MAX_CANDIDATE_CLIPS}",
+        "HOOPS_TEAM_QUICK_SCAN_MAX_OUTPUT_TOKENS=${_TEAM_QUICK_SCAN_MAX_OUTPUT_TOKENS}",
+    ]
+    missing_env_mappings = [name for name in required_env_mappings if not env_line or name not in env_line]
+    if missing_env_mappings:
+        collector.fail("analysis team scan env mapping", rel(path, repo_root), f"Missing env mappings: {', '.join(missing_env_mappings)}.")
+    else:
+        collector.pass_("analysis team scan env mapping", rel(path, repo_root), "Selected-team scan limits map into Cloud Run env.")
+
+    secret_line = find_arg_value_after(text, "--set-secrets")
+    if secret_line and "HOOPS_OPENAI_API_KEY=HOOPS_OPENAI_API_KEY:latest" in secret_line:
+        collector.pass_("analysis openai secret gate", rel(path, repo_root), "OpenAI key secret name is configured for team scan without a source value.")
+    else:
+        collector.fail("analysis openai secret gate", rel(path, repo_root), "Selected-team scan requires the HOOPS_OPENAI_API_KEY secret name in Cloud Run deploy config.")
 
 
 def check_workflows(repo_root: Path, collector: Collector) -> None:
@@ -549,6 +596,13 @@ def find_arg_value_after(text: str, flag: str) -> str | None:
     for index, line in enumerate(lines):
         if line.strip() == f"- {flag}" and index + 1 < len(lines):
             value = lines[index + 1].strip()
+            if value in {"- >-", "- >", "- |", "- |-"}:
+                block_lines: list[str] = []
+                for block_line in lines[index + 2 :]:
+                    if block_line.strip().startswith("- "):
+                        break
+                    block_lines.append(block_line.strip())
+                return " ".join(block_lines)
             if value.startswith("- "):
                 return value[2:].strip()
     return None

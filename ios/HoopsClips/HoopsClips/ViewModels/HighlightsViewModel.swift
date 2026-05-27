@@ -114,7 +114,7 @@ final class HighlightsViewModel {
         }
 
         if scannedChoices.isEmpty {
-            return HighlightTeamSelection.defaultChoices
+            return [.allTeams]
         }
 
         return [.allTeams] + scannedChoices
