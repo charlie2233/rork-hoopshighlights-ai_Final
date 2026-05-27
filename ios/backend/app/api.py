@@ -34,6 +34,8 @@ from .models import (
     ScanCloudAnalysisTeamsResponse,
     StartCloudAnalysisJobRequest,
     StartCloudAnalysisJobResponse,
+    StoredJob,
+    TeamSelection,
     now_utc,
 )
 from .pipeline import build_team_quick_scan_candidate_clips, run_analysis
@@ -105,6 +107,30 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
 
     def _request_install_id(query_install_id: Optional[str], header_install_id: Optional[str]) -> Optional[str]:
         return query_install_id or header_install_id
+
+    def _validate_scan_backed_team_selection(job: StoredJob, selection: Optional[TeamSelection]) -> None:
+        if selection is None or selection.mode != "team":
+            return
+        if not job.detected_teams:
+            raise APIError(
+                400,
+                "team_scan_required",
+                "Run the cloud team scan and choose one of the detected jersey-color teams before selected-team analysis.",
+            )
+
+        selected_team_id = selection.teamId.strip() if selection.teamId else None
+        selected_color = selection.colorLabel.strip().lower() if selection.colorLabel else None
+        for team in job.detected_teams:
+            team_id_matches = bool(selected_team_id and team.teamId == selected_team_id)
+            color_matches = bool(selected_color and team.colorLabel and team.colorLabel.strip().lower() == selected_color)
+            if team_id_matches or color_matches:
+                return
+
+        raise APIError(
+            400,
+            "team_selection_unavailable",
+            "Selected team must match a jersey-color team from the cloud scan.",
+        )
 
     def _now():
         return now_utc()
@@ -331,7 +357,13 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
                 resolved_settings,
             )
             status = "scanned" if applied and detected_teams else "unavailable"
-            await runtime.job_store.update_job(job_id, stage="Team scan complete", progress=max(job.progress, 0.22))
+            await runtime.job_store.update_job(
+                job_id,
+                stage="Team scan complete",
+                progress=max(job.progress, 0.22),
+                detected_teams=detected_teams,
+                team_scan_status=status,
+            )
             return ScanCloudAnalysisTeamsResponse(jobId=job.job_id, status=status, detectedTeams=detected_teams)
         except APIError as error:
             return _error_response(error)
@@ -356,6 +388,8 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
             if not await runtime.storage.object_exists(job):
                 raise APIError(400, "upload_missing", "Upload is missing. Complete the signed upload before starting analysis.")
 
+            effective_selection = request.teamSelection if request.teamSelection is not None else job.team_selection
+            _validate_scan_backed_team_selection(job, effective_selection)
             if request.teamSelection is not None:
                 job = await runtime.job_store.update_job(job_id, team_selection=request.teamSelection)
             job = await runtime.job_store.mark_queued(job_id)

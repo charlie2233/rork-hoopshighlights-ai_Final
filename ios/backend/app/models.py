@@ -219,6 +219,8 @@ class StoredJob:
     object_key: str
     upload_headers: Dict[str, str] = field(default_factory=dict)
     team_selection: Optional[TeamSelection] = None
+    detected_teams: List[TeamOption] = field(default_factory=list)
+    team_scan_status: Optional[str] = None
     status: JobStatus = JobStatus.CREATED
     progress: float = 0.0
     stage: str = "Preparing upload"

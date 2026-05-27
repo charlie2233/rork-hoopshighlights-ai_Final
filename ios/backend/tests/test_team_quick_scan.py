@@ -107,6 +107,26 @@ def _local_settings(upload_root: Path) -> Settings:
     )
 
 
+def _create_uploaded_job(client: TestClient) -> dict:
+    create_response = client.post(
+        "/v1/analysis/jobs",
+        json={
+            "filename": "game.mp4",
+            "contentType": "video/mp4",
+            "fileSizeBytes": 9,
+            "durationSeconds": 30.0,
+            "installId": "install-123456",
+            "appVersion": "1.0",
+            "analysisVersion": "cloud-v1",
+        },
+    )
+    assert create_response.status_code == 200
+    created = create_response.json()
+    upload_response = client.put(created["uploadUrl"], content=b"fakevideo")
+    assert upload_response.status_code == 204
+    return created
+
+
 class TeamQuickScanTests(unittest.TestCase):
     def test_disabled_scan_falls_back_without_calling_gpt(self) -> None:
         clips = [_clip("Three Pointer", 8.0, 12.5, 10.2)]
@@ -561,6 +581,98 @@ class TeamQuickScanTests(unittest.TestCase):
         self.assertEqual(teams, [])
         self.assertEqual(scanned[0].teamAttribution.teamId, "team_dark")
         self.assertLess(scanned[0].teamAttribution.confidence, 0.85)
+
+    def test_start_rejects_selected_team_without_scan_backed_option(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="hoopclips-team-scan-required-") as temp_dir:
+            settings = _local_settings(Path(temp_dir))
+            app = create_app(settings)
+            client = TestClient(app)
+            created = _create_uploaded_job(client)
+
+            start_response = client.post(
+                f"/v1/analysis/jobs/{created['jobId']}/start",
+                json={
+                    "installId": "install-123456",
+                    "teamSelection": {
+                        "mode": "team",
+                        "teamId": "team_dark",
+                        "label": "Dark jerseys",
+                        "colorLabel": "black",
+                        "includeUncertain": True,
+                    },
+                },
+            )
+
+            self.assertEqual(start_response.status_code, 400)
+            self.assertEqual(start_response.json()["errorCode"], "team_scan_required")
+
+    def test_start_rejects_selected_team_not_returned_by_scan(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="hoopclips-team-scan-mismatch-") as temp_dir:
+            settings = _local_settings(Path(temp_dir))
+            app = create_app(settings)
+            client = TestClient(app)
+            created = _create_uploaded_job(client)
+            detected = [
+                TeamOption(teamId="team_dark", label="Dark jerseys", colorLabel="black", confidence=0.92, source="quick_scan"),
+            ]
+
+            with (
+                patch("app.api.build_team_quick_scan_candidate_clips", return_value=[_clip("Block", 12.0, 16.5, 14.0)]),
+                patch("app.api.apply_team_quick_scan", return_value=([], detected, True)),
+            ):
+                scan_response = client.post(
+                    f"/v1/analysis/jobs/{created['jobId']}/team-scan",
+                    json={"installId": "install-123456"},
+                )
+
+            self.assertEqual(scan_response.status_code, 200)
+            self.assertEqual(scan_response.json()["detectedTeams"][0]["teamId"], "team_dark")
+
+            start_response = client.post(
+                f"/v1/analysis/jobs/{created['jobId']}/start",
+                json={
+                    "installId": "install-123456",
+                    "teamSelection": {
+                        "mode": "team",
+                        "teamId": "team_light",
+                        "label": "Light jerseys",
+                        "colorLabel": "white",
+                        "includeUncertain": True,
+                    },
+                },
+            )
+
+            self.assertEqual(start_response.status_code, 400)
+            self.assertEqual(start_response.json()["errorCode"], "team_selection_unavailable")
+
+    def test_start_all_teams_does_not_require_team_scan(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="hoopclips-all-teams-no-scan-") as temp_dir:
+            settings = _local_settings(Path(temp_dir))
+            app = create_app(settings)
+            client = TestClient(app)
+            created = _create_uploaded_job(client)
+
+            with patch("app.api.run_analysis") as fake_run_analysis:
+                fake_run_analysis.return_value = CloudAnalysisResult(
+                    clipCount=0,
+                    clips=[],
+                    diagnostics=CloudDiagnostics(
+                        processingMs=1,
+                        backendModelVersion="cloud-v1",
+                        usedVideoIntelligence=False,
+                        usedGeminiRelabeling=False,
+                        candidateSegments=0,
+                        finalSegments=0,
+                    ),
+                    detectedTeams=[],
+                    teamSelection=None,
+                )
+                start_response = client.post(
+                    f"/v1/analysis/jobs/{created['jobId']}/start",
+                    json={"installId": "install-123456", "teamSelection": {"mode": "all"}},
+                )
+
+            self.assertEqual(start_response.status_code, 200)
 
     def test_team_scan_endpoint_runs_before_start_and_start_accepts_selection(self) -> None:
         with tempfile.TemporaryDirectory(prefix="hoopclips-team-scan-api-") as temp_dir:
