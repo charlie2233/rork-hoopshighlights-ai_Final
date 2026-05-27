@@ -11,7 +11,7 @@ Make the 85% selected-team/highlight quality target measurable before we claim i
   - selected-team precision for confident team attribution
   - selected-team highlight recall with uncertain clips included for Review
   - highlight precision and recall for the requested team scope
-  - defensive-event recall for blocks, steals, and defensive stops
+  - defensive-event recall for blocks, steals, forced turnovers, and defensive stops
   - uncertain review count
 - Default thresholds are `0.85` for selected-team precision, selected-team recall with uncertain clips, highlight precision, highlight recall, and defensive-event recall.
 
@@ -28,7 +28,7 @@ The script accepts either a top-level `clips` list or a `cases` list:
       "expected": {
         "teamId": "team_dark",
         "isHighlight": true,
-        "eventType": "block"
+        "eventType": "forced turnover"
       },
       "prediction": {
         "keep": true,
@@ -56,11 +56,11 @@ Use the default thresholds for internal beta. If an eval set is intentionally na
 
 Commands run on branch `codex/phase-clip28-cloud-team-quick-scan`:
 
-- `python3 -m unittest scripts.test_team_highlight_accuracy_eval -v` -> 4 tests passed.
+- `python3 -m unittest scripts.test_team_highlight_accuracy_eval -v` -> 5 tests passed.
 - `python3 -m py_compile scripts/evaluate_team_highlight_accuracy.py scripts/test_team_highlight_accuracy_eval.py` -> passed.
-- `python3 -m unittest discover -s scripts -p 'test_*.py' -v` -> 39 tests passed.
+- `python3 -m unittest discover -s scripts -p 'test_*.py' -v` -> 40 tests passed.
 - `git diff --check` -> passed.
 
 ## Launch Recommendation
 
-Do not claim 85% real-world selected-team or highlight accuracy until this harness passes on a labeled internal footage set that includes makes, misses, blocks, steals, uncertain jersey-color cases, and opponent highlights. Keep uncertain clips reviewable while collecting the set.
+Do not claim 85% real-world selected-team or highlight accuracy until this harness passes on a labeled internal footage set that includes makes, misses, blocks, steals, forced turnovers, uncertain jersey-color cases, and opponent highlights. Keep uncertain clips reviewable while collecting the set.

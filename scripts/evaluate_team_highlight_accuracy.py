@@ -9,7 +9,15 @@ from pathlib import Path
 from typing import Any
 
 
-DEFENSIVE_EVENTS = {"block", "blocked_shot", "steal", "defensive_stop"}
+DEFENSIVE_EVENTS = {
+    "block",
+    "blocked_shot",
+    "defensive_stop",
+    "forced_to",
+    "forced_turnover",
+    "steal",
+    "turnover_forced",
+}
 
 
 @dataclass(frozen=True)
@@ -122,7 +130,7 @@ def evaluate_accuracy(payload: dict[str, Any], thresholds: AccuracyThresholds | 
 
             expected_team_id = string_or_none(clip["expected"].get("teamId"))
             expected_highlight = bool(clip["expected"].get("isHighlight"))
-            event_type = str(clip["expected"].get("eventType") or "").strip().lower()
+            event_type = normalize_event_type(clip["expected"].get("eventType"))
             prediction = clip["prediction"]
             keep = bool(prediction.get("keep"))
             include_for_review = bool(prediction.get("includeForReview") or keep)
@@ -269,6 +277,14 @@ def ratio(numerator: int, denominator: int) -> float:
 
 def ensure_list(value: Any) -> list[Any]:
     return value if isinstance(value, list) else []
+
+
+def normalize_event_type(value: Any) -> str:
+    text = str(value or "").strip().lower()
+    if not text:
+        return ""
+    normalized = "".join(character if character.isalnum() else "_" for character in text)
+    return "_".join(part for part in normalized.split("_") if part)
 
 
 def string_or_none(value: Any) -> str | None:

@@ -32,6 +32,10 @@ class TeamHighlightAccuracyEvalTests(unittest.TestCase):
                         },
                     },
                     {
+                        "expected": {"teamId": "team_dark", "isHighlight": True, "eventType": "forced turnover"},
+                        "prediction": {"keep": True, "teamAttribution": {"teamId": "team_dark", "confidence": 0.9}},
+                    },
+                    {
                         "expected": {"teamId": "team_light", "isHighlight": True, "eventType": "layup"},
                         "prediction": {"keep": False, "teamAttribution": {"teamId": "team_light", "confidence": 0.95}},
                     },
@@ -49,7 +53,35 @@ class TeamHighlightAccuracyEvalTests(unittest.TestCase):
         self.assertEqual(report.metrics.highlightPrecision, 1.0)
         self.assertEqual(report.metrics.highlightRecall, 1.0)
         self.assertEqual(report.metrics.defensiveEventRecall, 1.0)
+        self.assertEqual(report.metrics.defensiveEventCount, 3)
         self.assertEqual(report.metrics.uncertainReviewCount, 1)
+
+    def test_defensive_event_recall_normalizes_forced_turnover_labels(self) -> None:
+        report = evaluate_accuracy(
+            {
+                "selectedTeamId": "team_dark",
+                "clips": [
+                    {
+                        "expected": {"teamId": "team_dark", "isHighlight": True, "eventType": "forced-turnover"},
+                        "prediction": {"keep": True, "teamAttribution": {"teamId": "team_dark", "confidence": 0.94}},
+                    },
+                    {
+                        "expected": {"teamId": "team_dark", "isHighlight": True, "eventType": "turnover_forced"},
+                        "prediction": {"keep": False, "teamAttribution": {"teamId": "team_dark", "confidence": 0.93}},
+                    },
+                ],
+            },
+            thresholds=AccuracyThresholds(
+                highlightRecall=0.0,
+                selectedTeamRecallWithUncertain=0.0,
+                defensiveEventRecall=0.85,
+            ),
+        )
+
+        self.assertEqual(report.status, "fail")
+        self.assertEqual(report.metrics.defensiveEventCount, 2)
+        self.assertEqual(report.metrics.defensiveEventRecall, 0.5)
+        self.assertTrue(any("defensiveEventRecall" in failure for failure in report.failures))
 
     def test_confident_opponent_attributed_to_selected_team_fails_precision(self) -> None:
         report = evaluate_accuracy(
