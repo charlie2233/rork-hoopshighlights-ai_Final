@@ -38,6 +38,25 @@ When the defensive reserve has room for multiple plays, the backend takes the be
   - Passed: 93 tests.
 - `python3 -m unittest discover -s scripts -p 'test_*.py' -v`
   - Passed: 46 tests.
+- `git diff --check`
+  - Passed.
+
+## CI Evidence
+
+After commit `de3d9c641915fc44ef9600e6def24482de74f505`, GitHub Actions created these PR runs:
+
+- `iOS Internal TestFlight Upload` run `26503068187`
+  - Failed before any runner step started.
+  - Failed job: `No-secret internal staging codecheck`.
+  - GitHub annotation: `The job was not started because recent account payments have failed or your spending limit needs to be increased.`
+  - `Build internal staging TestFlight archive` was skipped because this was a pull request codecheck run, not a manual archive/upload operation.
+- `Cloud Edit Deploy Preflight` run `26503068195`
+  - Failed before any runner step started.
+  - Failed jobs: `Worker typecheck and dry run`, `Editing backend Python tests`.
+  - GitHub annotation on both failed jobs: `The job was not started because recent account payments have failed or your spending limit needs to be increased.`
+  - `Verify cloud edit deploy secrets` was skipped because the codecheck jobs did not start and the run was not a manual deploy/preflight operation.
+
+No failed-step logs were available for these jobs because GitHub did not allocate runners.
 
 ## Launch Recommendation
 
