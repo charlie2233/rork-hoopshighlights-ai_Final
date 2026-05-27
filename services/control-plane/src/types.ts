@@ -28,6 +28,7 @@ export interface CreateCloudAnalysisJobRequest {
   installId: string;
   appVersion: string;
   analysisVersion: string;
+  teamSelection?: TeamSelection | null;
 }
 
 export interface CreateCloudAnalysisJobResponse extends ResponseEnvelope {
@@ -46,6 +47,7 @@ export interface CreateCloudAnalysisJobResponse extends ResponseEnvelope {
 
 export interface StartCloudAnalysisJobRequest {
   installId: string;
+  teamSelection?: TeamSelection | null;
 }
 
 export interface StartCloudAnalysisJobResponse extends ResponseEnvelope {
@@ -73,6 +75,33 @@ export interface CreateCloudJobRequest {
   sourceObjectKey?: string;
   uploadObjectKey?: string;
   resultObjectKey?: string;
+  teamSelection?: TeamSelection | null;
+}
+
+export interface TeamSelection {
+  mode: "all" | "team";
+  teamId?: string | null;
+  label?: string | null;
+  colorLabel?: string | null;
+  confidenceThreshold?: number | null;
+  includeUncertain?: boolean | null;
+}
+
+export interface TeamOption {
+  teamId: string;
+  label: string;
+  colorLabel?: string | null;
+  primaryColorHex?: string | null;
+  confidence: number;
+  source?: string | null;
+}
+
+export interface ClipTeamAttribution {
+  teamId?: string | null;
+  label?: string | null;
+  colorLabel?: string | null;
+  confidence: number;
+  source?: string | null;
 }
 
 export interface CloudLabelScore {
@@ -92,6 +121,7 @@ export interface CloudRawLabelScore {
 export interface CloudClip {
   startTime: number;
   endTime: number;
+  eventCenter?: number | null;
   confidence: number;
   label: string;
   action: string;
@@ -128,6 +158,8 @@ export interface CloudClip {
   rawTopLabels?: CloudRawLabelScore[] | null;
   comparisonRawTopLabels?: CloudRawLabelScore[] | null;
   nativeShotSignals?: NativeShotSignals | null;
+  teamAttribution?: ClipTeamAttribution | null;
+  teamAttributionStatus?: "all" | "matched" | "opponent" | "uncertain" | null;
 }
 
 export interface NativeShotSignals {
@@ -157,6 +189,8 @@ export interface CloudAnalysisResult extends ResponseEnvelope {
   clips: CloudClip[];
   diagnostics: CloudDiagnostics;
   resultConfidence: number;
+  detectedTeams?: TeamOption[] | null;
+  teamSelection?: TeamSelection | null;
 }
 
 export interface CloudAnalysisJobResponse extends ResponseEnvelope {
@@ -198,6 +232,7 @@ export interface QueueJobMessage {
   sourceObjectKey: string;
   resultObjectKey: string;
   modelVersion?: string | null;
+  teamSelection?: TeamSelection | null;
 }
 
 export interface DeadLetterQueueMessage {
@@ -248,6 +283,7 @@ export interface JobRecord extends ResponseEnvelope {
   appVersion: string;
   analysisVersion: string;
   analysisMode: "cloud";
+  teamSelection?: TeamSelection | null;
   status: JobStatus;
   stage: string;
   progress: number;
@@ -304,6 +340,7 @@ export interface InferenceDispatchRequest {
   installId: string;
   appVersion: string;
   analysisVersion: string;
+  teamSelection?: TeamSelection | null;
   requestedModel?: string | null;
   attemptCount?: number | null;
 }
@@ -371,6 +408,8 @@ export interface EditCandidateClip {
   combinedScore?: number | null;
   duplicateGroup?: string | null;
   nativeShotSignals?: NativeShotSignals | null;
+  teamAttribution?: ClipTeamAttribution | null;
+  teamAttributionStatus?: "all" | "matched" | "opponent" | "uncertain" | null;
 }
 
 export interface CreateEditJobRequest {
@@ -394,6 +433,7 @@ export interface CreateEditJobRequest {
   planTier?: EditPlanTier;
   revenueCatAppUserID?: string | null;
   userPrompt?: string | null;
+  teamSelection?: TeamSelection | null;
   clips: EditCandidateClip[];
 }
 

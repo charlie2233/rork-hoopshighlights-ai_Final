@@ -4,6 +4,7 @@ import harness from "../../../scripts/control-plane-harness";
 
 const {
   createControlPlaneHarness,
+  invokeInternalRoute,
   invokePublicRoute,
   parseJsonResponse,
   uploadObject
@@ -68,6 +69,7 @@ test("control plane happy path advances upload_pending -> uploaded -> queued -> 
     "resultObjectKey",
     "schemaVersion",
     "sourceObjectKey",
+    "teamSelection",
     "traceId",
     "uploadTraceId"
   ]);
@@ -111,4 +113,205 @@ test("control plane happy path advances upload_pending -> uploaded -> queued -> 
   assert.equal(typeof finalJson.processingStartedAt, "string");
   assert.equal(finalJson.results?.clipCount, 1);
   assert.equal(typeof finalJson.results?.resultConfidence, "number");
+});
+
+test("control plane preserves selected team intent through queued inference", async () => {
+  const harness = createControlPlaneHarness();
+  const teamSelection = {
+    mode: "team",
+    teamId: "team_dark",
+    label: "Dark jerseys",
+    colorLabel: "black",
+    confidenceThreshold: 0.85,
+    includeUncertain: true
+  };
+
+  const createResponse = await invokePublicRoute(
+    harness,
+    "POST",
+    "/uploads/presign",
+    {
+      filename: "selected-team-game.mp4",
+      contentType: "video/mp4",
+      fileSizeBytes: 10485760,
+      durationSeconds: 24,
+      installId: "install-local-team",
+      appVersion: "1.0.0",
+      analysisVersion: "phase-team"
+    },
+    { "x-trace-id": "trace-selected-team" }
+  );
+  assert.equal(createResponse.status, 201);
+  const createJson = await parseJsonResponse<{
+    jobId: string;
+    sourceObjectKey: string;
+    uploadUrl: string;
+  }>(createResponse);
+
+  await uploadObject(harness, createJson.uploadUrl, new TextEncoder().encode("selected team basketball clip"));
+
+  const startResponse = await invokePublicRoute(
+    harness,
+    "POST",
+    `/jobs/${createJson.jobId}/start`,
+    {
+      installId: "install-local-team",
+      teamSelection
+    },
+    { "x-trace-id": "trace-selected-team" }
+  );
+  assert.equal(startResponse.status, 200);
+
+  const storedJob = harness.state.jobs.get(createJson.jobId);
+  assert.deepEqual(storedJob?.teamSelection, teamSelection);
+  assert.equal(harness.state.queueMessages.length, 1);
+  assert.deepEqual(harness.state.queueMessages[0]?.teamSelection, teamSelection);
+
+  const processedMessages = await harness.drainQueue();
+  assert.equal(processedMessages, 1);
+  assert.deepEqual(harness.state.inferenceDispatches[0]?.body.teamSelection, teamSelection);
+
+  const finalResponse = await invokePublicRoute(harness, "GET", `/jobs/${createJson.jobId}`);
+  assert.equal(finalResponse.status, 200);
+  const finalJson = await parseJsonResponse<{
+    status: string;
+    results: { teamSelection?: typeof teamSelection | null } | null;
+  }>(finalResponse);
+  assert.equal(finalJson.status, "completed");
+  assert.deepEqual(finalJson.results?.teamSelection, teamSelection);
+});
+
+test("legacy inference manifest preserves team and timing metadata", async () => {
+  const harness = createControlPlaneHarness();
+  const teamSelection = {
+    mode: "team",
+    teamId: "team_light",
+    label: "Light jerseys",
+    colorLabel: "white",
+    confidenceThreshold: 0.85,
+    includeUncertain: true
+  };
+
+  const createResponse = await invokePublicRoute(
+    harness,
+    "POST",
+    "/uploads/presign",
+    {
+      filename: "legacy-team-manifest.mp4",
+      contentType: "video/mp4",
+      fileSizeBytes: 10485760,
+      durationSeconds: 24,
+      installId: "install-legacy-team",
+      appVersion: "1.0.0",
+      analysisVersion: "phase-team-manifest",
+      teamSelection
+    }
+  );
+  const createJson = await parseJsonResponse<{
+    jobId: string;
+    sourceObjectKey: string;
+    uploadUrl: string;
+  }>(createResponse);
+
+  await uploadObject(harness, createJson.uploadUrl, new TextEncoder().encode("legacy team manifest basketball clip"));
+
+  const startResponse = await invokePublicRoute(
+    harness,
+    "POST",
+    "/jobs",
+    {
+      jobId: createJson.jobId,
+      installId: "install-legacy-team",
+      sourceObjectKey: createJson.sourceObjectKey
+    }
+  );
+  assert.equal(startResponse.status, 200);
+
+  const callbackResponse = await invokeInternalRoute(
+    harness,
+    "POST",
+    "/internal/inference/callback",
+    {
+      jobId: createJson.jobId,
+      status: "succeeded",
+      requestId: "legacy-team-manifest",
+      modelVersion: "legacy-manifest-v1",
+      resultConfidence: 0.92,
+      result: {
+        modelVersion: "legacy-manifest-v1",
+        resultConfidence: 0.92,
+        teamSelection,
+        detectedTeams: [
+          {
+            teamId: "team_light",
+            label: "Light jerseys",
+            colorLabel: "white",
+            primaryColorHex: "#f4f4f4",
+            confidence: 0.93,
+            source: "quick_scan"
+          }
+        ],
+        clips: [
+          {
+            startTime: 4,
+            endTime: 9,
+            eventCenter: 6.25,
+            confidence: 0.91,
+            label: "Steal",
+            action: "Steal",
+            audioScore: 0.44,
+            visualScore: 0.86,
+            motionScore: 0.82,
+            combinedScore: 0.88,
+            detectionMethod: "cloud",
+            shouldAutoKeep: true,
+            shouldEnableSlowMotion: false,
+            nativeShotSignals: {
+              isShotLike: false,
+              leadInSeconds: 1.8,
+              followThroughSeconds: 2.7,
+              setupContextScore: 0.9,
+              outcomeContextScore: 0.85,
+              eventCenterQuality: 0.88,
+              contextQualityScore: 0.9,
+              timingWindowOk: true,
+              outcome: "not_shot",
+              outcomeConfidence: 1
+            },
+            teamAttribution: {
+              teamId: "team_light",
+              label: "Light jerseys",
+              colorLabel: "white",
+              confidence: 0.89,
+              source: "gpt_frame_review"
+            },
+            teamAttributionStatus: "matched"
+          }
+        ]
+      }
+    },
+    { "x-hoops-inference-secret": harness.env.INFERENCE_SHARED_SECRET }
+  );
+  assert.equal(callbackResponse.status, 200);
+
+  const finalResponse = await invokePublicRoute(harness, "GET", `/jobs/${createJson.jobId}`);
+  const finalJson = await parseJsonResponse<{
+    results: {
+      detectedTeams?: Array<{ primaryColorHex?: string | null }> | null;
+      teamSelection?: typeof teamSelection | null;
+      clips: Array<{
+        eventCenter?: number | null;
+        nativeShotSignals?: { timingWindowOk: boolean } | null;
+        teamAttribution?: { teamId?: string | null } | null;
+        teamAttributionStatus?: string | null;
+      }>;
+    } | null;
+  }>(finalResponse);
+
+  assert.deepEqual(finalJson.results?.teamSelection, teamSelection);
+  assert.equal(finalJson.results?.detectedTeams?.[0]?.primaryColorHex, "#f4f4f4");
+  assert.equal(finalJson.results?.clips[0]?.eventCenter, 6.25);
+  assert.equal(finalJson.results?.clips[0]?.nativeShotSignals?.timingWindowOk, true);
+  assert.equal(finalJson.results?.clips[0]?.teamAttribution?.teamId, "team_light");
+  assert.equal(finalJson.results?.clips[0]?.teamAttributionStatus, "matched");
 });

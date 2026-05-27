@@ -9,6 +9,7 @@ import type {
   QueueJobMessage,
   StartCloudAnalysisJobRequest,
   StartCloudAnalysisJobResponse,
+  TeamSelection,
   UploadPresignResponse
 } from "../types";
 import { bootstrapJob, deleteJobState, getJobSnapshot, updateJobState } from "../do/job-state-client";
@@ -131,7 +132,8 @@ export async function routePublicRequest(
       runtime.schemaVersion,
       url,
       jobMatch.jobId,
-      body.installId
+      body.installId,
+      body
     );
   }
 
@@ -156,6 +158,7 @@ async function handlePresign(
   try {
     const body = await readJson<CreateCloudAnalysisJobRequest>(request);
     validateCreateRequest(body, resolveRuntimeConfig(env).maxFileSizeBytes, resolveRuntimeConfig(env).maxDurationSeconds);
+    const teamSelection = normalizeTeamSelection(body.teamSelection);
 
     const jobId = crypto.randomUUID().replace(/-/g, "");
     const traceId = request.headers.get("x-trace-id")?.trim() || requestId;
@@ -189,6 +192,7 @@ async function handlePresign(
       appVersion: body.appVersion,
       analysisVersion: body.analysisVersion,
       analysisMode: "cloud",
+      teamSelection,
       status: "created",
       stage: "Created upload record",
       progress: 0,
@@ -299,19 +303,24 @@ async function handleFinalizeJob(
   schemaVersion: string,
   url: URL,
   pathJobId?: string,
-  pathInstallId?: string
+  pathInstallId?: string,
+  preReadBody?: CreateCloudJobRequest | StartCloudAnalysisJobRequest
 ): Promise<Response> {
   try {
-    const body = await readJson<CreateCloudJobRequest | StartCloudAnalysisJobRequest>(request);
+    const body: CreateCloudJobRequest | StartCloudAnalysisJobRequest =
+      preReadBody ?? (await readJson<CreateCloudJobRequest | StartCloudAnalysisJobRequest>(request));
     const requestedSourceObjectKey =
-      "sourceObjectKey" in body
+      "sourceObjectKey" in body && typeof body.sourceObjectKey === "string"
         ? body.sourceObjectKey
-        : "uploadObjectKey" in body
+        : "uploadObjectKey" in body && typeof body.uploadObjectKey === "string"
           ? body.uploadObjectKey
           : undefined;
-    const jobId = pathJobId ?? ("jobId" in body ? body.jobId : undefined) ?? deriveJobIdFromObjectKey(requestedSourceObjectKey);
-    const installId = pathInstallId ?? ("installId" in body ? body.installId : undefined);
-    const requestedResultObjectKey = "resultObjectKey" in body ? body.resultObjectKey : undefined;
+    const bodyJobId = "jobId" in body && typeof body.jobId === "string" ? body.jobId : undefined;
+    const bodyInstallId = "installId" in body && typeof body.installId === "string" ? body.installId : undefined;
+    const jobId = pathJobId ?? bodyJobId ?? deriveJobIdFromObjectKey(requestedSourceObjectKey);
+    const installId = pathInstallId ?? bodyInstallId;
+    const requestedResultObjectKey = "resultObjectKey" in body && typeof body.resultObjectKey === "string" ? body.resultObjectKey : undefined;
+    const requestedTeamSelection = normalizeTeamSelection("teamSelection" in body ? body.teamSelection : undefined);
 
     if (!jobId || !installId) {
       return jsonResponse(
@@ -439,33 +448,59 @@ async function handleFinalizeJob(
       );
     }
 
-    const uploadedAt = job.uploadedAt ?? new Date().toISOString();
-    const uploadedJob =
-      job.status === "uploaded"
-      ? job
-      : await updateJobState(
+    const teamSelection = requestedTeamSelection ?? job.teamSelection ?? null;
+    const teamSelectionPatchNeeded = JSON.stringify(job.teamSelection ?? null) !== JSON.stringify(teamSelection);
+    const teamSelectionJob = teamSelectionPatchNeeded
+      ? await updateJobState(
           env,
           job.jobId,
           {
-            status: "uploaded",
-            stage: "Upload verified",
-            progress: Math.max(job.progress, 0.35),
-            uploadedAt,
-            updatedAt: uploadedAt
+            teamSelection,
+            updatedAt: new Date().toISOString()
           },
-        {
-          requestId,
-          traceId: job.traceId,
-          eventType: "job.uploaded",
-          message: "Upload verified before queue dispatch.",
-          payload: {
-              sourceObjectKey: job.sourceObjectKey,
-              resultObjectKey: job.resultObjectKey,
-              uploadTraceId: job.uploadTraceId ?? null
+          {
+            requestId,
+            traceId: job.traceId,
+            eventType: "job.team_selection.updated",
+            message: "Team selection stored for analysis dispatch.",
+            payload: {
+              mode: teamSelection?.mode ?? "all",
+              includeUncertain: teamSelection?.includeUncertain ?? null,
+              confidenceThreshold: teamSelection?.confidenceThreshold ?? null
             }
           }
-        );
-    const uploadedSnapshot = (await getJobSnapshot(env, job.jobId)) ?? uploadedJob;
+        )
+      : job;
+
+    const uploadedAt = teamSelectionJob.uploadedAt ?? new Date().toISOString();
+    const uploadedJob =
+      teamSelectionJob.status === "uploaded"
+        ? teamSelectionJob
+        : await updateJobState(
+            env,
+            teamSelectionJob.jobId,
+            {
+              status: "uploaded",
+              stage: "Upload verified",
+              progress: Math.max(teamSelectionJob.progress, 0.35),
+              uploadedAt,
+              teamSelection,
+              updatedAt: uploadedAt
+            },
+            {
+              requestId,
+              traceId: teamSelectionJob.traceId,
+              eventType: "job.uploaded",
+              message: "Upload verified before queue dispatch.",
+              payload: {
+                sourceObjectKey: teamSelectionJob.sourceObjectKey,
+                resultObjectKey: teamSelectionJob.resultObjectKey,
+                uploadTraceId: teamSelectionJob.uploadTraceId ?? null,
+                teamSelectionMode: teamSelection?.mode ?? "all"
+              }
+            }
+          );
+    const uploadedSnapshot = (await getJobSnapshot(env, teamSelectionJob.jobId)) ?? uploadedJob;
 
     if (uploadedSnapshot.queuedAt == null) {
       const queuedAt = new Date().toISOString();
@@ -478,7 +513,8 @@ async function handleFinalizeJob(
         schemaVersion,
         sourceObjectKey: uploadedSnapshot.sourceObjectKey,
         resultObjectKey: uploadedSnapshot.resultObjectKey,
-        modelVersion: uploadedSnapshot.modelVersion ?? null
+        modelVersion: uploadedSnapshot.modelVersion ?? null,
+        teamSelection: uploadedSnapshot.teamSelection ?? null
       };
 
       const queuedJob = await updateJobState(
@@ -630,6 +666,36 @@ function validateCreateRequest(
   if (body.durationSeconds <= 0 || body.durationSeconds > maxDurationSeconds) {
     throw new Error("Duration exceeds control plane limits.");
   }
+}
+
+function normalizeTeamSelection(value: unknown): TeamSelection | null {
+  if (value === null || typeof value !== "object") {
+    return null;
+  }
+  const input = value as {
+    mode?: unknown;
+    teamId?: unknown;
+    label?: unknown;
+    colorLabel?: unknown;
+    confidenceThreshold?: unknown;
+    includeUncertain?: unknown;
+  };
+  if (input.mode !== "all" && input.mode !== "team") {
+    return null;
+  }
+
+  const confidenceThreshold =
+    typeof input.confidenceThreshold === "number" && Number.isFinite(input.confidenceThreshold)
+      ? Math.min(Math.max(input.confidenceThreshold, 0), 1)
+      : 0.85;
+  return {
+    mode: input.mode,
+    teamId: typeof input.teamId === "string" && input.teamId.length > 0 ? input.teamId : null,
+    label: typeof input.label === "string" && input.label.length > 0 ? input.label : null,
+    colorLabel: typeof input.colorLabel === "string" && input.colorLabel.length > 0 ? input.colorLabel : null,
+    confidenceThreshold,
+    includeUncertain: typeof input.includeUncertain === "boolean" ? input.includeUncertain : true
+  };
 }
 
 function normalizePublicPath(pathname: string): string {
@@ -785,7 +851,12 @@ function toCloudAnalysisJobResponse(
     errorCode: job.errorCode ?? null,
     errorMessage: job.errorMessage ?? null,
     analysisVersion: job.analysisVersion,
-    results: job.results ?? null,
+    results: job.results
+      ? {
+          ...job.results,
+          teamSelection: job.results.teamSelection ?? job.teamSelection ?? null
+        }
+      : null,
     sourceObjectKey: job.sourceObjectKey,
     resultObjectKey: job.resultObjectKey,
     createdAt: job.createdAt,
