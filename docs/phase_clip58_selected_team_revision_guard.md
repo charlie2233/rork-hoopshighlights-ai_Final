@@ -36,6 +36,9 @@ This phase tightens selected-team highlight quality for the cloud-owned HoopClip
   - `python3 -m py_compile ios/backend/app/editing.py ios/backend/app/pipeline.py ios/backend/tests/test_edit_plan_agent.py ios/backend/tests/test_pipeline_quality.py services/editing/editing_app/gpt_reranker.py services/editing/editing_app/main.py services/editing/tests/test_gpt_reranker.py`
 - Diff hygiene:
   - `git diff --check` -> passed.
+- Submission readiness:
+  - `python3 scripts/submission_readiness_preflight.py` -> NO-GO: `pass=20 warn=0 fail=12`.
+  - Current blockers reported by the preflight: missing local signing team, no archive/IPA artifact, connected iPhone unavailable for smoke testing, staging Worker `/v1/editing/version` returns `404`, direct editing `/version` is stale/missing required AI edit/GPT flags, required main-branch workflow runs are stale for this checkout, installed TestFlight smoke remains unproven, Cloudflare deploy credential proof is missing, and live iOS kill-switch state is not proven through the Worker.
 
 Known warnings from iOS builds are pre-existing: `CloudAnalysisService.swift` has several "no async operations occur within await expression" warnings and `VideoExportService.swift` uses deprecated `export()` on iOS 18.0.
 
