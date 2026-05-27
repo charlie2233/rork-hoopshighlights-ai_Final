@@ -21,6 +21,7 @@ from app.editing import (  # noqa: E402
     DEFENSIVE_TRACKING_RESULT_ROLES,
     EditPlanPatch,
     EditCandidateClip,
+    GPT_CANDIDATE_REVIEW_LIMIT,
     GPTHighlightClipDecision,
     GPTPlanEdit,
     GPTHighlightRerankSummary,
@@ -89,10 +90,20 @@ class GPTHighlightRerankerSettings:
             api_key=os.getenv("HOOPS_OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY") or None,
             model=os.getenv("HOOPS_AI_CLIP_GPT_MODEL", os.getenv("HOOPS_GPT_HIGHLIGHT_RERANK_MODEL", "gpt-4.1")),
             endpoint=os.getenv("HOOPS_AI_CLIP_GPT_ENDPOINT", os.getenv("HOOPS_GPT_HIGHLIGHT_RERANK_ENDPOINT", "https://api.openai.com/v1/responses")),
-            timeout_seconds=_env_float("HOOPS_AI_CLIP_GPT_TIMEOUT_SECONDS", _env_float("HOOPS_GPT_HIGHLIGHT_RERANK_TIMEOUT_SECONDS", 45.0, 1.0, 60.0), 1.0, 60.0),
-            max_output_tokens=_env_int("HOOPS_AI_CLIP_GPT_MAX_OUTPUT_TOKENS", _env_int("HOOPS_GPT_HIGHLIGHT_RERANK_MAX_OUTPUT_TOKENS", 6000, 256, 12000), 256, 12000),
-            free_max_clips=_env_int("HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_FREE", _env_int("HOOPS_GPT_HIGHLIGHT_RERANK_FREE_MAX_CLIPS", 30, 1, 30), 1, 30),
-            paid_max_clips=_env_int("HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_PRO", _env_int("HOOPS_GPT_HIGHLIGHT_RERANK_PAID_MAX_CLIPS", 30, 20, 30), 20, 30),
+            timeout_seconds=_env_float("HOOPS_AI_CLIP_GPT_TIMEOUT_SECONDS", _env_float("HOOPS_GPT_HIGHLIGHT_RERANK_TIMEOUT_SECONDS", 60.0, 1.0, 60.0), 1.0, 60.0),
+            max_output_tokens=_env_int("HOOPS_AI_CLIP_GPT_MAX_OUTPUT_TOKENS", _env_int("HOOPS_GPT_HIGHLIGHT_RERANK_MAX_OUTPUT_TOKENS", 8000, 256, 12000), 256, 12000),
+            free_max_clips=_env_int(
+                "HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_FREE",
+                _env_int("HOOPS_GPT_HIGHLIGHT_RERANK_FREE_MAX_CLIPS", GPT_CANDIDATE_REVIEW_LIMIT, 1, GPT_CANDIDATE_REVIEW_LIMIT),
+                1,
+                GPT_CANDIDATE_REVIEW_LIMIT,
+            ),
+            paid_max_clips=_env_int(
+                "HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_PRO",
+                _env_int("HOOPS_GPT_HIGHLIGHT_RERANK_PAID_MAX_CLIPS", GPT_CANDIDATE_REVIEW_LIMIT, 20, GPT_CANDIDATE_REVIEW_LIMIT),
+                20,
+                GPT_CANDIDATE_REVIEW_LIMIT,
+            ),
             free_frames_per_clip=_env_int("HOOPS_AI_CLIP_GPT_KEYFRAMES_PER_CLIP", _env_int("HOOPS_GPT_HIGHLIGHT_RERANK_FREE_FRAMES_PER_CLIP", 10, 3, 10), 3, 10),
             paid_frames_per_clip=_env_int("HOOPS_AI_CLIP_GPT_KEYFRAMES_PER_CLIP", _env_int("HOOPS_GPT_HIGHLIGHT_RERANK_PAID_FRAMES_PER_CLIP", 10, 5, 10), 3, 10),
             frame_width=_env_int("HOOPS_GPT_HIGHLIGHT_RERANK_FRAME_WIDTH", 1024, 256, 1280),
@@ -1147,11 +1158,11 @@ def _response_schema() -> Dict[str, Any]:
         "type": "object",
         "additionalProperties": False,
         "properties": {
-            "orderedClipIds": {"type": "array", "items": {"type": "string"}, "maxItems": 30},
+            "orderedClipIds": {"type": "array", "items": {"type": "string"}, "maxItems": GPT_CANDIDATE_REVIEW_LIMIT},
             "pacing": {"type": "string", "enum": ["fast", "balanced", "cinematic", "chronological", "coach_review"]},
             "captions": {
                 "type": "array",
-                "maxItems": 30,
+                "maxItems": GPT_CANDIDATE_REVIEW_LIMIT,
                 "items": {
                     "type": "object",
                     "additionalProperties": False,
@@ -1165,7 +1176,7 @@ def _response_schema() -> Dict[str, Any]:
             },
             "slowMotionMoments": {
                 "type": "array",
-                "maxItems": 30,
+                "maxItems": GPT_CANDIDATE_REVIEW_LIMIT,
                 "items": {
                     "type": "object",
                     "additionalProperties": False,

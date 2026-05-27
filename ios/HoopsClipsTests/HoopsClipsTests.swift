@@ -488,12 +488,12 @@ struct HoopsClipsTests {
         #expect(scannedChoices[1].primaryColorHex == "#0057FF")
     }
 
-    @Test @MainActor func testCloudEditRequestSendsStrongestCandidatesBeforeThirtyClipCap() throws {
+    @Test @MainActor func testCloudEditRequestSendsStrongestCandidatesBeforeFortyClipCap() throws {
         let viewModel = HighlightsViewModel()
         viewModel.cloudEditSourceObjectKey = "uploads/source.mp4"
         var clips: [Clip] = []
-        for index in 0..<31 {
-            let isStrongCandidate = index == 30
+        for index in 0..<41 {
+            let isStrongCandidate = index == 40
             let startTime = Double(index * 10)
             clips.append(
                 Clip(
@@ -520,9 +520,9 @@ struct HoopsClipsTests {
         )
         let candidateStarts = request.clips.map(\.start)
 
-        #expect(request.clips.count == 30)
-        #expect(candidateStarts.contains(300.0))
-        #expect(!candidateStarts.contains(290.0))
+        #expect(request.clips.count == 40)
+        #expect(candidateStarts.contains(400.0))
+        #expect(!candidateStarts.contains(390.0))
     }
 
     @Test func testCloudEditCandidateRankingPrefersCompleteShotContextOverLatePreBasketWindow() {

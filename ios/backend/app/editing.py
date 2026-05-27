@@ -113,6 +113,7 @@ MIN_NON_SHOT_WATCHABILITY_SCORE = 0.42
 MIN_GENERIC_HIGHLIGHT_PLANNING_SCORE = 0.62
 MIN_GENERIC_HIGHLIGHT_WATCHABILITY_SCORE = 0.5
 MIN_NATIVE_OUTCOME_CONFLICT_CONFIDENCE = 0.65
+GPT_CANDIDATE_REVIEW_LIMIT = 40
 GPT_NON_SCORING_DEFENSIVE_OUTCOMES = {"steal", "forced_turnover", "defensive_stop"}
 GPT_SHOT_RESULT_OUTCOMES = {"made", "missed", "blocked"}
 DEFENSIVE_EVENT_LABEL_TOKENS = (
@@ -993,7 +994,7 @@ class CreateEditJobRequest(APIModel):
     revenueCatAppUserID: Optional[str] = Field(default=None, min_length=1, max_length=160)
     userPrompt: Optional[str] = Field(default=None, max_length=240)
     teamSelection: Optional[TeamSelection] = None
-    clips: List[EditCandidateClip] = Field(min_length=1, max_length=30)
+    clips: List[EditCandidateClip] = Field(min_length=1, max_length=GPT_CANDIDATE_REVIEW_LIMIT)
     gptRerankSummary: Optional["GPTHighlightRerankSummary"] = None
 
     @field_validator("userPrompt")
@@ -1114,10 +1115,10 @@ class GPTPlanEditSlowMotionMoment(APIModel):
 
 
 class GPTPlanEdit(APIModel):
-    orderedClipIds: List[str] = Field(default_factory=list, max_length=30)
+    orderedClipIds: List[str] = Field(default_factory=list, max_length=GPT_CANDIDATE_REVIEW_LIMIT)
     pacing: Literal["fast", "balanced", "cinematic", "chronological", "coach_review"] = "balanced"
-    captions: List[GPTPlanEditCaption] = Field(default_factory=list, max_length=30)
-    slowMotionMoments: List[GPTPlanEditSlowMotionMoment] = Field(default_factory=list, max_length=30)
+    captions: List[GPTPlanEditCaption] = Field(default_factory=list, max_length=GPT_CANDIDATE_REVIEW_LIMIT)
+    slowMotionMoments: List[GPTPlanEditSlowMotionMoment] = Field(default_factory=list, max_length=GPT_CANDIDATE_REVIEW_LIMIT)
     summary: Optional[str] = Field(default=None, max_length=240)
 
 
@@ -1127,10 +1128,10 @@ class GPTHighlightRerankSummary(APIModel):
     sampledClipCount: int = Field(default=0, ge=0)
     sampledFrameCount: int = Field(default=0, ge=0)
     returnedDecisionCount: int = Field(default=0, ge=0)
-    keptClipIds: List[str] = Field(default_factory=list, max_length=30)
-    rejectedClipIds: List[str] = Field(default_factory=list, max_length=30)
+    keptClipIds: List[str] = Field(default_factory=list, max_length=GPT_CANDIDATE_REVIEW_LIMIT)
+    rejectedClipIds: List[str] = Field(default_factory=list, max_length=GPT_CANDIDATE_REVIEW_LIMIT)
     rejectedReasonCounts: Dict[str, int] = Field(default_factory=dict)
-    storyOrderClipIds: List[str] = Field(default_factory=list, max_length=30)
+    storyOrderClipIds: List[str] = Field(default_factory=list, max_length=GPT_CANDIDATE_REVIEW_LIMIT)
     planEditApplied: bool = False
     fallbackReason: Optional[str] = Field(default=None, max_length=120)
 
@@ -1839,7 +1840,10 @@ def build_agent_editing_context(
         },
         "teamTargeting": _team_selection_payload(teamSelection),
         "clipPoolSummary": _clip_pool_summary_payload(clipPoolSummary),
-        "candidateClips": [_compact_agent_candidate_clip(clip, teamSelection) for clip in rank_clips(filtered_candidates)[:30]],
+        "candidateClips": [
+            _compact_agent_candidate_clip(clip, teamSelection)
+            for clip in rank_clips(filtered_candidates)[:GPT_CANDIDATE_REVIEW_LIMIT]
+        ],
     }
 
 
@@ -2547,8 +2551,8 @@ def apply_gpt_highlight_rerank(
             sampledClipCount=sampled_clip_count,
             sampledFrameCount=sampled_frame_count,
             returnedDecisionCount=len(decisions),
-            keptClipIds=[clip.id for clip in fallback_clips[:30]],
-            rejectedClipIds=rejected_clip_ids[:30],
+            keptClipIds=[clip.id for clip in fallback_clips[:GPT_CANDIDATE_REVIEW_LIMIT]],
+            rejectedClipIds=rejected_clip_ids[:GPT_CANDIDATE_REVIEW_LIMIT],
             rejectedReasonCounts=rejected_reason_counts,
             fallbackReason="no_valid_decisions",
         )
@@ -2617,7 +2621,7 @@ def apply_gpt_highlight_rerank(
             sampledFrameCount=sampled_frame_count,
             returnedDecisionCount=len(valid_decisions),
             keptClipIds=[],
-            rejectedClipIds=(rejected_clip_ids + missing_decision_clip_ids)[:30],
+            rejectedClipIds=(rejected_clip_ids + missing_decision_clip_ids)[:GPT_CANDIDATE_REVIEW_LIMIT],
             rejectedReasonCounts=rejected_reason_counts,
             fallbackReason="all_clips_rejected",
             storyOrderClipIds=[],
@@ -2649,7 +2653,7 @@ def apply_gpt_highlight_rerank(
         sampledFrameCount=sampled_frame_count,
         returnedDecisionCount=len(valid_decisions),
         keptClipIds=[clip.id for clip in reranked if clip.id in valid_decisions],
-        rejectedClipIds=(rejected_clip_ids + missing_decision_clip_ids)[:30],
+        rejectedClipIds=(rejected_clip_ids + missing_decision_clip_ids)[:GPT_CANDIDATE_REVIEW_LIMIT],
         rejectedReasonCounts=rejected_reason_counts,
         storyOrderClipIds=applied_story_order,
         planEditApplied=plan_edit_applied,

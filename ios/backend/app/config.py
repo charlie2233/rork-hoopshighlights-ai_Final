@@ -236,7 +236,7 @@ def get_settings() -> Settings:
         min_clip_duration_seconds=float(os.getenv("HOOPS_MIN_CLIP_SECONDS", "2.0")),
         max_clip_duration_seconds=float(os.getenv("HOOPS_MAX_CLIP_SECONDS", "15.0")),
         clip_padding_seconds=float(os.getenv("HOOPS_CLIP_PADDING_SECONDS", "0.35")),
-        max_returned_clips=_env_int("HOOPS_MAX_RETURNED_CLIPS", 30, 8, 40),
+        max_returned_clips=_env_int("HOOPS_MAX_RETURNED_CLIPS", 40, 8, 40),
         backend_model_version=os.getenv("HOOPS_BACKEND_MODEL_VERSION", "cloud-v1"),
         use_gemini_relabeling=os.getenv("HOOPS_USE_GEMINI_RELABELING", "false").lower() == "true",
         team_quick_scan_enabled=team_quick_scan_enabled,

@@ -16,6 +16,7 @@ from app.editing import (  # noqa: E402
     EditPlan,
     EditPlanValidationIssue,
     EditRevisionResponse,
+    GPT_CANDIDATE_REVIEW_LIMIT,
     GPTHighlightRerankSummary,
     MIN_PLAN_CLIP_SECONDS,
     PlanTier,
@@ -45,7 +46,7 @@ class CreateRenderJobRequest(APIModel):
     planTier: PlanTier = "free"
     revenueCatAppUserID: Optional[str] = Field(default=None, min_length=1, max_length=160)
     editPlan: EditPlan
-    sourceClips: List[EditCandidateClip] = Field(default_factory=list, max_length=30)
+    sourceClips: List[EditCandidateClip] = Field(default_factory=list, max_length=GPT_CANDIDATE_REVIEW_LIMIT)
     gptRerankSummary: Optional[GPTHighlightRerankSummary] = None
     idempotencyKey: Optional[str] = Field(default=None, min_length=8, max_length=160)
 
@@ -56,7 +57,7 @@ class StartEditJobRenderRequest(APIModel):
     planTier: Optional[PlanTier] = None
     revenueCatAppUserID: Optional[str] = Field(default=None, min_length=1, max_length=160)
     editPlan: Optional[EditPlan] = None
-    sourceClips: List[EditCandidateClip] = Field(default_factory=list, max_length=30)
+    sourceClips: List[EditCandidateClip] = Field(default_factory=list, max_length=GPT_CANDIDATE_REVIEW_LIMIT)
     idempotencyKey: Optional[str] = Field(default=None, min_length=8, max_length=160)
     forceNew: bool = False
 

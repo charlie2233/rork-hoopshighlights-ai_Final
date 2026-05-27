@@ -494,7 +494,7 @@ final class HighlightsViewModel {
         )
     }
 
-    nonisolated static func rankedCloudEditCandidateClips(from clips: [Clip], limit: Int = 30) -> [Clip] {
+    nonisolated static func rankedCloudEditCandidateClips(from clips: [Clip], limit: Int = 40) -> [Clip] {
         let ranked = clips.sorted { lhs, rhs in
             let lhsEligible = isCloudEditCandidateQualityEligible(lhs)
             let rhsEligible = isCloudEditCandidateQualityEligible(rhs)

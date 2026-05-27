@@ -22,11 +22,12 @@ Prevent HoopClips from offering selected-team highlights unless cloud analysis h
 
 `scripts/launch_backend_config_preflight.py` now checks the analysis Cloud Run config for:
 
-- `HOOPS_MAX_RETURNED_CLIPS=${_MAX_RETURNED_CLIPS}` with `_MAX_RETURNED_CLIPS: "30"`.
+- `HOOPS_MAX_RETURNED_CLIPS=${_MAX_RETURNED_CLIPS}` with `_MAX_RETURNED_CLIPS: "40"`.
 - `HOOPS_TEAM_QUICK_SCAN_ENABLED=${_TEAM_QUICK_SCAN_ENABLED}` with `_TEAM_QUICK_SCAN_ENABLED: "true"`.
 - Rich per-candidate frame budget: 6 frames per rich clip, 40 rich candidates, 480 total candidate frames.
 - Expanded selected-team recall cap: 120 candidate clips.
-- GPT response budget: 6000 output tokens.
+- Team quick-scan response budget: 6000 output tokens.
+- GPT highlight editing response budget: 8000 output tokens with a 60 second request timeout.
 - `HOOPS_OPENAI_API_KEY=HOOPS_OPENAI_API_KEY:latest` as a secret reference only.
 
 ## Validation
