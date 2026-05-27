@@ -49,7 +49,7 @@ class Settings:
     team_quick_scan_endpoint: str = "https://api.openai.com/v1/responses"
     team_quick_scan_timeout_seconds: float = 24.0
     team_quick_scan_video_frame_count: int = 8
-    team_quick_scan_clip_frames_per_clip: int = 3
+    team_quick_scan_clip_frames_per_clip: int = 4
     team_quick_scan_frame_width: int = 720
     team_quick_scan_jpeg_quality: int = 4
     team_quick_scan_max_image_bytes: int = 600_000
@@ -243,7 +243,7 @@ def get_settings() -> Settings:
         team_quick_scan_endpoint=os.getenv("HOOPS_TEAM_QUICK_SCAN_ENDPOINT", "https://api.openai.com/v1/responses"),
         team_quick_scan_timeout_seconds=_env_float("HOOPS_TEAM_QUICK_SCAN_TIMEOUT_SECONDS", 24.0, 2.0, 90.0),
         team_quick_scan_video_frame_count=_env_int("HOOPS_TEAM_QUICK_SCAN_VIDEO_FRAME_COUNT", 8, 2, 16),
-        team_quick_scan_clip_frames_per_clip=_env_int("HOOPS_TEAM_QUICK_SCAN_CLIP_FRAMES_PER_CLIP", 3, 1, 4),
+        team_quick_scan_clip_frames_per_clip=_env_int("HOOPS_TEAM_QUICK_SCAN_CLIP_FRAMES_PER_CLIP", 4, 1, 4),
         team_quick_scan_frame_width=_env_int("HOOPS_TEAM_QUICK_SCAN_FRAME_WIDTH", 720, 320, 1280),
         team_quick_scan_jpeg_quality=_env_int("HOOPS_TEAM_QUICK_SCAN_JPEG_QUALITY", 4, 2, 12),
         team_quick_scan_max_image_bytes=_env_int("HOOPS_TEAM_QUICK_SCAN_MAX_IMAGE_BYTES", 600_000, 40_000, 1_000_000),

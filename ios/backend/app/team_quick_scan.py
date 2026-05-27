@@ -256,7 +256,7 @@ def _extract_quick_scan_frames(
         if data_url:
             frames.append(QuickScanFrame(frame_ref=f"video_{index}", role="videoContext", time_seconds=time_seconds, data_url=data_url))
 
-    frames_per_clip = int(getattr(settings, "team_quick_scan_clip_frames_per_clip", 3))
+    frames_per_clip = int(getattr(settings, "team_quick_scan_clip_frames_per_clip", 4))
     candidate_clip_limit = _max_quick_scan_candidate_clips(settings, len(clips))
     for index, clip in enumerate(clips[:candidate_clip_limit]):
         for role, time_seconds in _clip_sample_times(clip, frames_per_clip):

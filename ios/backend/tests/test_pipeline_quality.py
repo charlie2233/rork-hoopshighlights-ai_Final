@@ -124,6 +124,7 @@ class PipelineQualityTests(unittest.TestCase):
                 settings = get_settings()
 
         self.assertEqual(settings.max_returned_clips, 30)
+        self.assertEqual(settings.team_quick_scan_clip_frames_per_clip, 4)
 
     def test_backend_candidate_pool_env_is_clamped_for_review_safety(self) -> None:
         with tempfile.TemporaryDirectory(prefix="hoopclips-settings-") as temp_dir:
