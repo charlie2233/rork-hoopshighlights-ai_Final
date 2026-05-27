@@ -30,6 +30,27 @@ git diff --check
 # Result: passed
 ```
 
+## CI Evidence
+
+Latest pushed SHA checked: `f587d8729e80492de7453fc5741913adf4507a5a`.
+
+```bash
+gh pr checks 32 --repo charlie2233/rork-hoopshighlights-ai_Final
+# Editing backend Python tests: failed in 3s
+# Worker typecheck and dry run: failed in 2s
+# No-secret internal staging codecheck: failed in 3s
+# Build internal staging TestFlight archive: skipped
+# Verify cloud edit deploy secrets: skipped
+
+gh run view 26506508170 --repo charlie2233/rork-hoopshighlights-ai_Final --json jobs
+# Cloud Edit Deploy Preflight jobs failed/skipped with steps: []
+
+gh run view 26506508218 --repo charlie2233/rork-hoopshighlights-ai_Final --json jobs
+# iOS Internal TestFlight Upload jobs failed/skipped with steps: []
+```
+
+The failing jobs exited before workflow steps ran, matching the existing GitHub Actions runner/account blocker rather than a control-plane code failure.
+
 ## Launch Note
 
 This closes a Worker/Python parity gap in selected-team validation, but it is still not the 85% real-footage accuracy proof. Internal launch still needs green CI, staging Worker smoke, installed iPhone smoke, and labeled eval coverage for selected-team ownership, uncertain review clips, made/missed outcomes, blocks, steals, forced turnovers, and bad-window negatives.
