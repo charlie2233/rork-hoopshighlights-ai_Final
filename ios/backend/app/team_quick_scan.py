@@ -19,6 +19,11 @@ ResponseClient = Callable[[Dict[str, Any], str, str, float], Dict[str, Any]]
 TEAM_QUICK_SCAN_CONFIDENT_ATTRIBUTION = 0.85
 TEAM_QUICK_SCAN_UNVERIFIED_ATTRIBUTION_MAX_CONFIDENCE = TEAM_QUICK_SCAN_CONFIDENT_ATTRIBUTION - 0.01
 TEAM_QUICK_SCAN_MAX_CANDIDATE_CLIPS = 120
+TEAM_QUICK_SCAN_MAX_FRAMES_PER_CANDIDATE = 6
+TEAM_QUICK_SCAN_COMPACT_FRAMES_PER_CANDIDATE = 3
+TEAM_QUICK_SCAN_RICH_CANDIDATE_CLIPS = 40
+TEAM_QUICK_SCAN_DEFAULT_TOTAL_CLIP_FRAMES = 480
+TEAM_QUICK_SCAN_MAX_TOTAL_CLIP_FRAMES = 600
 
 
 @dataclass(frozen=True)
@@ -87,8 +92,9 @@ def _build_openai_payload(
             "selectedTeamAccuracyTarget": TEAM_QUICK_SCAN_CONFIDENT_ATTRIBUTION,
             "uncertainPolicy": "If ball control, defender, or jersey color is unclear, return lower confidence instead of guessing. The backend keeps uncertain clips for review.",
             "highlightOwnership": "For made shots, ownership is the shooter/finisher team. For blocks, steals, defensive stops, or forced turnovers, ownership is the defender who made the play.",
-            "scoringFrameRoles": "For scoring clips, ballHandlerSetup and release show the offensive player/team, rimResult shows the outcome, and followThrough shows the finisher after the play.",
-            "defensiveFrameRoles": "For defensive clips, defenseSetup shows the defender before the event, challenge or possessionChange shows the defensive action, and recovery or defenseOutcome shows the result.",
+            "scoringFrameRoles": "For scoring clips, ballHandlerSetup, preRelease, and release show the offensive player/team; rimApproach and rimResult show the outcome; followThrough shows the finisher after the play.",
+            "defensiveFrameRoles": "For defensive clips, defenseSetup and preChallenge/prePossessionChange show the defender before the event, challenge or possessionChange shows the defensive action, and recovery/defenseOutcome/finishContext show the result.",
+            "frameBudgetPolicy": "Higher-ranked candidates may include up to six role frames; later candidates may include a compact three-frame ownership set. Use every supplied role for confidence.",
         },
         "durationSeconds": round(duration_seconds, 3),
         "candidateClips": [
@@ -127,9 +133,9 @@ def _build_openai_payload(
             "You are HoopClips Team Quick Scan. Identify the teams in sampled basketball frames by visible jersey color, "
             "then assign each candidate clip to the team responsible for the highlight moment. Use confidence >=0.85 only "
             "when team ownership is visually clear. Use lower confidence for occlusion, camera blur, mixed jerseys, or ambiguous possession. "
-            "For scoring frame roles, use ballHandlerSetup plus release to judge the shooter/finisher team, then rimResult/followThrough to confirm the play. "
+            "For scoring frame roles, use ballHandlerSetup, preRelease, and release to judge the shooter/finisher team, then rimApproach/rimResult/followThrough to confirm the play. "
             "Blocks, steals, defensive stops, and forced turnovers belong to the defending player who made the play. "
-            "For defensive frame roles, use defenseSetup plus challenge/possessionChange and recovery/defenseOutcome to judge the defender's team. "
+            "For defensive frame roles, use defenseSetup plus preChallenge/prePossessionChange, challenge/possessionChange, and recovery/defenseOutcome/finishContext to judge the defender's team. "
             "Use only supplied frames and candidate clip refs. Do not output prose, commands, file paths, URLs, storage keys, or FFmpeg instructions. "
             "Return strict JSON only."
         ),
@@ -303,10 +309,17 @@ def _extract_quick_scan_frames(
         if data_url:
             frames.append(QuickScanFrame(frame_ref=f"video_{index}", role="videoContext", time_seconds=time_seconds, data_url=data_url))
 
-    frames_per_clip = int(getattr(settings, "team_quick_scan_clip_frames_per_clip", 4))
+    frames_per_clip = _quick_scan_frames_per_clip(settings)
     candidate_clip_limit = _max_quick_scan_candidate_clips(settings, len(clips))
+    rich_candidate_limit = _rich_quick_scan_candidate_clip_limit(settings, candidate_clip_limit, frames_per_clip)
+    max_total_clip_frames = _max_quick_scan_total_clip_frames(settings)
+    clip_frame_count = 0
     for index, clip in enumerate(clips[:candidate_clip_limit]):
-        for role, time_seconds in _clip_sample_times(clip, frames_per_clip):
+        per_clip_frame_count = _quick_scan_frames_for_candidate_index(index, frames_per_clip, rich_candidate_limit)
+        remaining_clip_frames = max_total_clip_frames - clip_frame_count
+        if remaining_clip_frames <= 0:
+            break
+        for role, time_seconds in _clip_sample_times(clip, min(per_clip_frame_count, remaining_clip_frames)):
             data_url = _extract_frame_data_url(source_path, time_seconds, settings)
             if data_url:
                 frame_ref = f"clip_{index}_{role}"
@@ -319,6 +332,7 @@ def _extract_quick_scan_frames(
                         clip_ref=f"clip_{index}",
                     )
                 )
+                clip_frame_count += 1
     return frames
 
 
@@ -328,6 +342,43 @@ def _max_quick_scan_candidate_clips(settings: Settings, clip_count: int | None =
     if clip_count is None:
         return bounded
     return max(1, min(bounded, max(1, int(clip_count))))
+
+
+def _quick_scan_frames_per_clip(settings: Settings) -> int:
+    configured = int(getattr(settings, "team_quick_scan_clip_frames_per_clip", TEAM_QUICK_SCAN_MAX_FRAMES_PER_CANDIDATE))
+    return max(1, min(configured, TEAM_QUICK_SCAN_MAX_FRAMES_PER_CANDIDATE))
+
+
+def _max_quick_scan_total_clip_frames(settings: Settings) -> int:
+    configured = int(getattr(settings, "team_quick_scan_max_total_clip_frames", TEAM_QUICK_SCAN_DEFAULT_TOTAL_CLIP_FRAMES))
+    return max(1, min(configured, TEAM_QUICK_SCAN_MAX_TOTAL_CLIP_FRAMES))
+
+
+def _rich_quick_scan_candidate_clip_limit(settings: Settings, candidate_clip_limit: int, frames_per_clip: int) -> int:
+    configured = int(getattr(settings, "team_quick_scan_rich_candidate_clips", TEAM_QUICK_SCAN_RICH_CANDIDATE_CLIPS))
+    configured = max(0, min(configured, candidate_clip_limit))
+    compact_frames = _compact_quick_scan_frames_per_clip(frames_per_clip)
+    if frames_per_clip <= compact_frames:
+        return candidate_clip_limit
+
+    max_total_clip_frames = _max_quick_scan_total_clip_frames(settings)
+    available_extra_frames = max_total_clip_frames - (candidate_clip_limit * compact_frames)
+    if available_extra_frames <= 0:
+        return 0
+    max_rich_by_budget = available_extra_frames // max(frames_per_clip - compact_frames, 1)
+    return max(0, min(configured, max_rich_by_budget))
+
+
+def _compact_quick_scan_frames_per_clip(frames_per_clip: int) -> int:
+    return min(frames_per_clip, TEAM_QUICK_SCAN_COMPACT_FRAMES_PER_CANDIDATE)
+
+
+def _quick_scan_frames_for_candidate_index(index: int, frames_per_clip: int, rich_candidate_limit: int) -> int:
+    if frames_per_clip <= TEAM_QUICK_SCAN_COMPACT_FRAMES_PER_CANDIDATE:
+        return frames_per_clip
+    if index < rich_candidate_limit:
+        return frames_per_clip
+    return _compact_quick_scan_frames_per_clip(frames_per_clip)
 
 
 def _video_sample_times(duration_seconds: float, count: int) -> list[float]:
@@ -345,28 +396,58 @@ def _clip_sample_times(clip: CloudClip, count: int) -> list[tuple[str, float]]:
     event_center = min(max(event_center, start), end)
     label = clip.label.strip().lower()
     if _is_block_like_label(label):
-        candidates = [
-            ("defenseSetup", start + (duration * 0.16)),
-            ("challenge", event_center),
-            ("defenseOutcome", max(event_center, end - (duration * 0.12))),
-            ("recovery", end - (duration * 0.06)),
-        ]
+        if count > 4:
+            candidates = [
+                ("defenseSetup", start + (duration * 0.1)),
+                ("preChallenge", max(start, event_center - min(0.8, duration * 0.28))),
+                ("challenge", event_center),
+                ("defenseOutcome", max(event_center, end - (duration * 0.12))),
+                ("recovery", end - (duration * 0.06)),
+                ("finishContext", end - (duration * 0.01)),
+            ]
+        else:
+            candidates = [
+                ("defenseSetup", start + (duration * 0.16)),
+                ("challenge", event_center),
+                ("defenseOutcome", max(event_center, end - (duration * 0.12))),
+                ("recovery", end - (duration * 0.06)),
+            ]
     elif _is_non_scoring_defensive_label(label):
-        candidates = [
-            ("defenseSetup", start + (duration * 0.16)),
-            ("possessionChange", event_center),
-            ("recovery", max(event_center, end - (duration * 0.12))),
-            ("defenseOutcome", end - (duration * 0.06)),
-        ]
+        if count > 4:
+            candidates = [
+                ("defenseSetup", start + (duration * 0.1)),
+                ("prePossessionChange", max(start, event_center - min(0.8, duration * 0.28))),
+                ("possessionChange", event_center),
+                ("recovery", max(event_center, end - (duration * 0.12))),
+                ("defenseOutcome", end - (duration * 0.06)),
+                ("finishContext", end - (duration * 0.01)),
+            ]
+        else:
+            candidates = [
+                ("defenseSetup", start + (duration * 0.16)),
+                ("possessionChange", event_center),
+                ("recovery", max(event_center, end - (duration * 0.12))),
+                ("defenseOutcome", end - (duration * 0.06)),
+            ]
     elif _is_scoring_or_shot_like_label(label):
-        release_offset = min(1.05, duration * 0.35)
-        follow_through_offset = min(0.65, duration * 0.18)
-        candidates = [
-            ("ballHandlerSetup", start + (duration * 0.16)),
-            ("release", max(start, event_center - release_offset)),
-            ("rimResult", event_center),
-            ("followThrough", min(end, event_center + follow_through_offset)),
-        ]
+        release_offset = min(0.85, duration * 0.28)
+        follow_through_offset = min(0.75, duration * 0.2)
+        if count > 4:
+            candidates = [
+                ("ballHandlerSetup", start + (duration * 0.1)),
+                ("preRelease", max(start, event_center - min(1.35, duration * 0.42))),
+                ("release", max(start, event_center - release_offset)),
+                ("rimApproach", max(start, event_center - min(0.32, duration * 0.1))),
+                ("rimResult", event_center),
+                ("followThrough", min(end, event_center + follow_through_offset)),
+            ]
+        else:
+            candidates = [
+                ("ballHandlerSetup", start + (duration * 0.16)),
+                ("release", max(start, event_center - min(1.05, duration * 0.35))),
+                ("rimResult", event_center),
+                ("followThrough", min(end, event_center + min(0.65, duration * 0.18))),
+            ]
     else:
         candidates = [
             ("startContext", start + (duration * 0.18)),
