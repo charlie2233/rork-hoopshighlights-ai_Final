@@ -399,6 +399,97 @@ class TeamQuickScanTests(unittest.TestCase):
         self.assertEqual(scanned[0].teamAttribution.teamId, "team_dark")
         self.assertLess(scanned[0].teamAttribution.confidence, 0.85)
 
+    def test_clip_attribution_is_capped_by_detected_team_confidence(self) -> None:
+        clips = [_clip("Made Shot", 8.0, 12.5, 10.0)]
+        frames = [
+            QuickScanFrame(frame_ref="clip_0_release", role="release", time_seconds=9.0, data_url="data:image/jpeg;base64,aaa", clip_ref="clip_0"),
+            QuickScanFrame(frame_ref="clip_0_result", role="rimResult", time_seconds=10.0, data_url="data:image/jpeg;base64,bbb", clip_ref="clip_0"),
+        ]
+
+        def fake_client(*_args):
+            return _response(
+                {
+                    "teams": [
+                        {
+                            "teamId": "team_dark",
+                            "label": "Dark jerseys",
+                            "colorLabel": "black",
+                            "primaryColorHex": None,
+                            "confidence": 0.62,
+                            "reason": "Dark jerseys are visible but several frames are blurry.",
+                        }
+                    ],
+                    "clipAttributions": [
+                        {
+                            "clipRef": "clip_0",
+                            "teamId": "team_dark",
+                            "label": "Dark jerseys",
+                            "colorLabel": "black",
+                            "confidence": 0.96,
+                            "reason": "Shooter appears to wear black.",
+                        }
+                    ],
+                }
+            )
+
+        with tempfile.TemporaryDirectory(prefix="hoopclips-team-scan-teamcap-") as temp_dir:
+            source_path = Path(temp_dir) / "source.mp4"
+            source_path.write_bytes(b"video")
+            with patch("app.team_quick_scan._extract_quick_scan_frames", return_value=frames):
+                scanned, teams, applied = apply_team_quick_scan(
+                    source_path,
+                    18.0,
+                    clips,
+                    _settings(),
+                    response_client=fake_client,
+                )
+
+        self.assertTrue(applied)
+        self.assertEqual(teams[0].confidence, 0.62)
+        self.assertEqual(scanned[0].teamAttribution.teamId, "team_dark")
+        self.assertEqual(scanned[0].teamAttribution.confidence, 0.62)
+
+    def test_clip_attribution_without_detected_team_stays_uncertain(self) -> None:
+        clips = [_clip("Made Shot", 8.0, 12.5, 10.0)]
+        frames = [
+            QuickScanFrame(frame_ref="clip_0_release", role="release", time_seconds=9.0, data_url="data:image/jpeg;base64,aaa", clip_ref="clip_0"),
+            QuickScanFrame(frame_ref="clip_0_result", role="rimResult", time_seconds=10.0, data_url="data:image/jpeg;base64,bbb", clip_ref="clip_0"),
+        ]
+
+        def fake_client(*_args):
+            return _response(
+                {
+                    "teams": [],
+                    "clipAttributions": [
+                        {
+                            "clipRef": "clip_0",
+                            "teamId": "team_dark",
+                            "label": "Dark jerseys",
+                            "colorLabel": "black",
+                            "confidence": 0.96,
+                            "reason": "Shooter appears to wear black, but team list was not detected.",
+                        }
+                    ],
+                }
+            )
+
+        with tempfile.TemporaryDirectory(prefix="hoopclips-team-scan-missingteam-") as temp_dir:
+            source_path = Path(temp_dir) / "source.mp4"
+            source_path.write_bytes(b"video")
+            with patch("app.team_quick_scan._extract_quick_scan_frames", return_value=frames):
+                scanned, teams, applied = apply_team_quick_scan(
+                    source_path,
+                    18.0,
+                    clips,
+                    _settings(),
+                    response_client=fake_client,
+                )
+
+        self.assertTrue(applied)
+        self.assertEqual(teams, [])
+        self.assertEqual(scanned[0].teamAttribution.teamId, "team_dark")
+        self.assertLess(scanned[0].teamAttribution.confidence, 0.85)
+
     def test_team_scan_endpoint_runs_before_start_and_start_accepts_selection(self) -> None:
         with tempfile.TemporaryDirectory(prefix="hoopclips-team-scan-api-") as temp_dir:
             settings = _local_settings(Path(temp_dir))

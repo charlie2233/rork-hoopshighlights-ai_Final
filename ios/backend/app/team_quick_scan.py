@@ -17,6 +17,7 @@ from .models import ClipTeamAttribution, CloudClip, TeamOption, clamp
 
 ResponseClient = Callable[[Dict[str, Any], str, str, float], Dict[str, Any]]
 TEAM_QUICK_SCAN_CONFIDENT_ATTRIBUTION = 0.85
+TEAM_QUICK_SCAN_UNVERIFIED_ATTRIBUTION_MAX_CONFIDENCE = TEAM_QUICK_SCAN_CONFIDENT_ATTRIBUTION - 0.01
 TEAM_QUICK_SCAN_MAX_CANDIDATE_CLIPS = 120
 
 
@@ -221,6 +222,7 @@ def _parse_quick_scan_output(output: object, settings: Settings) -> tuple[list[T
             )
         )
 
+    team_confidence_by_key = _team_confidence_by_key(teams)
     attributions: dict[str, ClipTeamAttribution] = {}
     for item in output.get("clipAttributions", []):
         if not isinstance(item, dict):
@@ -234,6 +236,13 @@ def _parse_quick_scan_output(output: object, settings: Settings) -> tuple[list[T
         team_id = _clean_team_id(item.get("teamId")) or (_team_id_from_label(color_label) if color_label else None)
         if team_id is None and label is None and color_label is None:
             continue
+        confidence = _cap_attribution_confidence_by_detected_team(
+            confidence,
+            team_id=team_id,
+            color_label=color_label,
+            label=label,
+            team_confidence_by_key=team_confidence_by_key,
+        )
         attributions[clip_ref] = ClipTeamAttribution(
             teamId=team_id,
             label=label,
@@ -242,6 +251,44 @@ def _parse_quick_scan_output(output: object, settings: Settings) -> tuple[list[T
             source="gpt_frame_review",
         )
     return teams, attributions
+
+
+def _team_confidence_by_key(teams: Sequence[TeamOption]) -> dict[str, float]:
+    confidence_by_key: dict[str, float] = {}
+    for team in teams:
+        for key in (_team_key(team.teamId), _team_key(team.colorLabel), _team_key(team.label)):
+            if key is None:
+                continue
+            confidence_by_key[key] = max(confidence_by_key.get(key, 0.0), team.confidence)
+    return confidence_by_key
+
+
+def _team_key(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    normalized = " ".join(value.strip().lower().split())
+    return normalized or None
+
+
+def _cap_attribution_confidence_by_detected_team(
+    confidence: float,
+    *,
+    team_id: Optional[str],
+    color_label: Optional[str],
+    label: Optional[str],
+    team_confidence_by_key: dict[str, float],
+) -> float:
+    matched_team_confidence = max(
+        (
+            team_confidence_by_key[key]
+            for key in (_team_key(team_id), _team_key(color_label), _team_key(label))
+            if key is not None and key in team_confidence_by_key
+        ),
+        default=None,
+    )
+    if matched_team_confidence is None:
+        return min(confidence, TEAM_QUICK_SCAN_UNVERIFIED_ATTRIBUTION_MAX_CONFIDENCE)
+    return min(confidence, matched_team_confidence)
 
 
 def _extract_quick_scan_frames(
