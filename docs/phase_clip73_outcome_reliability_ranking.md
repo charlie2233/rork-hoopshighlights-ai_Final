@@ -76,8 +76,20 @@ git diff --check
 
 Result: passed with exit code 0.
 
+## Post-Push CI Observation
+
+PR #32 commit `4b5fd70f99c023469f10a1b7a61e4ac09393631c` was checked after push.
+
+- Cloud Edit Deploy Preflight run `26534405534` failed before exposing step logs.
+- `Worker typecheck and dry run` job `78159296953`: failure, `steps: null`, `logs_url: null`.
+- `Editing backend Python tests` job `78159297026`: failure, `steps: null`, `logs_url: null`.
+- `Verify cloud edit deploy secrets` job `78159307818`: skipped.
+- iOS Internal TestFlight Upload run `26534405536` failed before exposing step logs.
+- `No-secret internal staging codecheck` job `78159297114`: failure, `steps: null`, `logs_url: null`.
+- `Build internal staging TestFlight archive` job `78159297792`: skipped.
+
 ## Remaining Blockers
 
 - Real labeled basketball footage is still required before claiming the 85% selected-team/highlight quality target.
 - Wired-iPhone/TestFlight smoke is still required before Apple submission.
-- PR CI remains blocked by GitHub jobs that fail before recording steps/logs. The last observed failure before this patch had empty `steps`, empty `runner_name`, and no downloadable logs, while equivalent local checks passed.
+- PR CI remains blocked by GitHub jobs that fail before recording steps/logs, while equivalent local checks passed.
