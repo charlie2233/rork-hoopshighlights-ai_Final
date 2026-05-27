@@ -55,6 +55,7 @@ final class HighlightsViewModel {
 
     var keptClips: [Clip] { clips.filter(\.isKept) }
     var discardedClips: [Clip] { clips.filter { !$0.isKept } }
+    var needsReviewClips: [Clip] { clips.filter(\.needsUserReview) }
 
     var showingVideoPicker = false
     var showingSaveSuccess = false

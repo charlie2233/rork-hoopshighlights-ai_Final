@@ -779,6 +779,58 @@ struct HoopsClipsTests {
         #expect(clip.reviewBadges == [.teamUncertain])
     }
 
+    @Test @MainActor func testViewModelExposesNeedsReviewClipsForReviewFilter() {
+        let viewModel = HighlightsViewModel()
+        let cleanClip = Clip(
+            startTime: 4.0,
+            endTime: 8.0,
+            eventCenter: 6.0,
+            action: .madeShot,
+            confidence: 0.93,
+            isKept: true,
+            label: "Made Shot",
+            audioScore: 0.72,
+            visualScore: 0.88,
+            motionScore: 0.82,
+            combinedScore: 0.9,
+            detectionMethod: .cloud,
+            teamAttribution: ClipTeamAttribution(
+                teamId: "team_dark",
+                label: "Dark jerseys",
+                colorLabel: "black",
+                confidence: 0.93,
+                source: "quick_scan"
+            ),
+            teamAttributionStatus: "matched"
+        )
+        let uncertainClip = Clip(
+            startTime: 18.0,
+            endTime: 22.0,
+            eventCenter: 20.0,
+            action: .steal,
+            confidence: 0.71,
+            isKept: true,
+            label: "Possible Steal",
+            audioScore: 0.42,
+            visualScore: 0.72,
+            motionScore: 0.69,
+            combinedScore: 0.76,
+            detectionMethod: .cloud,
+            teamAttribution: ClipTeamAttribution(
+                teamId: "team_dark",
+                label: "Dark jerseys",
+                colorLabel: "black",
+                confidence: 0.64,
+                source: "gpt_frame_review"
+            ),
+            teamAttributionStatus: "uncertain"
+        )
+
+        viewModel.analysisService.clips = [cleanClip, uncertainClip]
+
+        #expect(viewModel.needsReviewClips.map(\.label) == ["Possible Steal"])
+    }
+
     @Test func testCloudJobResponseDecodesNestedResults() throws {
         let payload = """
         {

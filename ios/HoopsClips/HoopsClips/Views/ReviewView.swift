@@ -17,6 +17,7 @@ struct ReviewView: View {
 
     private enum FilterOption: String, CaseIterable {
         case all = "All"
+        case needsReview = "Needs Review"
         case kept = "Kept"
         case discarded = "Discarded"
     }
@@ -25,6 +26,7 @@ struct ReviewView: View {
         let base: [Clip]
         switch filterOption {
         case .all: base = viewModel.clips
+        case .needsReview: base = viewModel.needsReviewClips
         case .kept: base = viewModel.keptClips
         case .discarded: base = viewModel.discardedClips
         }
@@ -113,10 +115,16 @@ struct ReviewView: View {
                 color: AppTheme.dangerRed
             )
             reviewStatCard(
+                value: "\(viewModel.needsReviewClips.count)",
+                label: "Review",
+                icon: "exclamationmark.triangle.fill",
+                color: AppTheme.warningYellow
+            )
+            reviewStatCard(
                 value: Clip.formatTime(viewModel.keptClips.reduce(0) { $0 + $1.duration }),
                 label: "Total Time",
                 icon: "clock.fill",
-                color: AppTheme.warningYellow
+                color: AppTheme.neonPurple
             )
         }
     }
@@ -331,43 +339,103 @@ struct ReviewView: View {
     }
 
     private var filterBar: some View {
-        HStack(spacing: 8) {
-            ForEach(FilterOption.allCases, id: \.self) { option in
-                Button {
-                    HoopsAccessibility.animate(reduceMotion: reduceMotion) { filterOption = option }
-                } label: {
-                    Text(option.rawValue)
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(filterOption == option ? .white : AppTheme.subtleText)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                        .background(
-                            filterOption == option ? AppTheme.accentPurple : AppTheme.cardBg,
-                            in: .capsule
-                        )
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(FilterOption.allCases, id: \.self) { option in
+                    Button {
+                        HoopsAccessibility.animate(reduceMotion: reduceMotion) { filterOption = option }
+                    } label: {
+                        Text(filterTitle(for: option))
+                            .font(.subheadline.weight(.medium))
+                            .lineLimit(1)
+                            .foregroundStyle(filterOption == option ? .white : AppTheme.subtleText)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .background(
+                                filterOption == option ? AppTheme.accentPurple : AppTheme.cardBg,
+                                in: .capsule
+                            )
+                    }
+                    .accessibilityLabel("\(option.rawValue) clips")
+                    .accessibilityValue(filterAccessibilityValue(for: option))
+                    .accessibilityHint("Filters the review list.")
+                    .hoopsSelectedState(filterOption == option)
                 }
-                .accessibilityLabel("\(option.rawValue) clips")
-                .accessibilityValue(filterOption == option ? "Selected" : "Not selected")
-                .accessibilityHint("Filters the review list.")
-                .hoopsSelectedState(filterOption == option)
             }
-            Spacer()
         }
         .padding(10)
         .rorkCard(cornerRadius: 14, fill: AnyShapeStyle(AppTheme.surfaceBg.opacity(0.45)), stroke: AppTheme.softBorder, glowOpacity: 0.03)
     }
 
     private var clipsList: some View {
-        LazyVStack(spacing: 12) {
-            ForEach(filteredClips) { clip in
-                clipCard(clip: clip)
-                    .transition(.asymmetric(
-                        insertion: .scale.combined(with: .opacity),
-                        removal: .opacity
-                    ))
+        Group {
+            if filteredClips.isEmpty {
+                filteredEmptyState
+            } else {
+                LazyVStack(spacing: 12) {
+                    ForEach(filteredClips) { clip in
+                        clipCard(clip: clip)
+                            .transition(.asymmetric(
+                                insertion: .scale.combined(with: .opacity),
+                                removal: .opacity
+                            ))
+                    }
+                }
             }
         }
         .animation(.snappy, value: filterOption)
+    }
+
+    private var filteredEmptyState: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "checkmark.seal.fill")
+                .font(.title2)
+                .foregroundStyle(AppTheme.successGreen)
+            Text(emptyStateTitle)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.white)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 24)
+        .rorkCard(
+            cornerRadius: 14,
+            fill: AnyShapeStyle(AppTheme.surfaceBg.opacity(0.45)),
+            stroke: AppTheme.softBorder,
+            glowOpacity: 0.03
+        )
+        .accessibilityElement(children: .combine)
+    }
+
+    private var emptyStateTitle: String {
+        switch filterOption {
+        case .all:
+            return "No clips"
+        case .needsReview:
+            return "No needs review clips"
+        case .kept:
+            return "No kept clips"
+        case .discarded:
+            return "No discarded clips"
+        }
+    }
+
+    private func filterTitle(for option: FilterOption) -> String {
+        switch option {
+        case .needsReview:
+            return "\(option.rawValue) \(viewModel.needsReviewClips.count)"
+        default:
+            return option.rawValue
+        }
+    }
+
+    private func filterAccessibilityValue(for option: FilterOption) -> String {
+        let count = switch option {
+        case .all: viewModel.clips.count
+        case .needsReview: viewModel.needsReviewClips.count
+        case .kept: viewModel.keptClips.count
+        case .discarded: viewModel.discardedClips.count
+        }
+        return filterOption == option ? "Selected, \(count) clips" : "\(count) clips"
     }
 
     private func clipCard(clip: Clip) -> some View {
