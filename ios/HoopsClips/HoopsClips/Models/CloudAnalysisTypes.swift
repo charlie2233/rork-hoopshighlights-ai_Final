@@ -298,6 +298,7 @@ nonisolated struct CloudClip: Codable, Sendable {
     let shouldEnableSlowMotion: Bool
     var nativeShotSignals: NativeShotSignals? = nil
     var teamAttribution: ClipTeamAttribution? = nil
+    var teamAttributionStatus: String? = nil
 
     func makeClip() -> Clip {
         let resolvedAction = HighlightAction(rawValue: action)
@@ -319,7 +320,8 @@ nonisolated struct CloudClip: Codable, Sendable {
             isSlowMotionEnabled: shouldEnableSlowMotion,
             detectionMethod: resolvedMethod,
             nativeShotSignals: nativeShotSignals,
-            teamAttribution: teamAttribution
+            teamAttribution: teamAttribution,
+            teamAttributionStatus: teamAttributionStatus
         )
     }
 }

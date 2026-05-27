@@ -129,6 +129,7 @@ class CloudClip(APIModel):
     shouldEnableSlowMotion: bool
     nativeShotSignals: Optional[CloudNativeShotSignals] = None
     teamAttribution: Optional[ClipTeamAttribution] = None
+    teamAttributionStatus: Optional[Literal["all", "matched", "opponent", "uncertain"]] = None
 
 
 class CloudDiagnostics(APIModel):

@@ -672,7 +672,8 @@ struct HoopsClipsTests {
             shouldAutoKeep: true,
             shouldEnableSlowMotion: true,
             nativeShotSignals: nativeSignals,
-            teamAttribution: teamAttribution
+            teamAttribution: teamAttribution,
+            teamAttributionStatus: "matched"
         )
 
         let mapped = cloudClip.makeClip()
@@ -685,6 +686,7 @@ struct HoopsClipsTests {
         #expect(mapped.eventCenter == 15.2)
         #expect(mapped.nativeShotSignals == nativeSignals)
         #expect(mapped.teamAttribution == teamAttribution)
+        #expect(mapped.teamAttributionStatus == "matched")
     }
 
     @Test func testClipReviewBadgesMarkUncertainTeamOutcomeAndTiming() {
@@ -720,12 +722,35 @@ struct HoopsClipsTests {
                 colorLabel: "black",
                 confidence: 0.64,
                 source: "gpt_frame_review"
-            )
+            ),
+            teamAttributionStatus: "uncertain"
         )
 
         #expect(clip.needsUserReview)
         #expect(clip.reviewBadges == [.teamUncertain, .outcomeUncertain, .timingUncertain])
         #expect(clip.reviewBadges.map(\.title) == ["Team?", "Outcome?", "Timing?"])
+    }
+
+    @Test func testClipReviewBadgesMarkMissingTeamAttributionStatusUncertain() {
+        let clip = Clip(
+            startTime: 18.0,
+            endTime: 22.0,
+            eventCenter: 20.0,
+            action: .block,
+            confidence: 0.71,
+            isKept: true,
+            label: "Possible Block",
+            audioScore: 0.42,
+            visualScore: 0.72,
+            motionScore: 0.69,
+            combinedScore: 0.76,
+            detectionMethod: .cloud,
+            teamAttribution: nil,
+            teamAttributionStatus: "uncertain"
+        )
+
+        #expect(clip.needsUserReview)
+        #expect(clip.reviewBadges == [.teamUncertain])
     }
 
     @Test func testCloudJobResponseDecodesNestedResults() throws {

@@ -18,6 +18,7 @@ nonisolated struct Clip: Identifiable, Codable, Sendable {
     var detectionMethod: DetectionMethod
     var nativeShotSignals: NativeShotSignals?
     var teamAttribution: ClipTeamAttribution?
+    var teamAttributionStatus: String?
 
     var duration: Double { endTime - startTime }
 
@@ -33,7 +34,7 @@ nonisolated struct Clip: Identifiable, Codable, Sendable {
 
     var reviewBadges: [ClipReviewBadge] {
         var badges: [ClipReviewBadge] = []
-        if let teamAttribution, teamAttribution.confidence < 0.85 {
+        if teamAttributionStatus == "uncertain" || (teamAttribution?.confidence ?? 1.0) < 0.85 {
             badges.append(.teamUncertain)
         }
         if let nativeShotSignals {
@@ -68,7 +69,8 @@ nonisolated struct Clip: Identifiable, Codable, Sendable {
         isSlowMotionEnabled: Bool = false,
         detectionMethod: DetectionMethod = .heuristic,
         nativeShotSignals: NativeShotSignals? = nil,
-        teamAttribution: ClipTeamAttribution? = nil
+        teamAttribution: ClipTeamAttribution? = nil,
+        teamAttributionStatus: String? = nil
     ) {
         self.id = id
         self.startTime = startTime
@@ -87,6 +89,7 @@ nonisolated struct Clip: Identifiable, Codable, Sendable {
         self.detectionMethod = detectionMethod
         self.nativeShotSignals = nativeShotSignals
         self.teamAttribution = teamAttribution
+        self.teamAttributionStatus = teamAttributionStatus
     }
 
     static func formatTime(_ time: Double) -> String {

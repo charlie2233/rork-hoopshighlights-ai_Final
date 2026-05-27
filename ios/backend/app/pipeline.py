@@ -116,6 +116,7 @@ def run_analysis(job: StoredJob, settings: Settings, source_path: Path) -> Cloud
         detected_teams = _detected_teams_from_clips(clips)
     clips = _filter_analysis_clips_for_team_selection(clips, job.team_selection)
     clips = _trim_analysis_clips_for_review(clips, job.team_selection, settings.max_returned_clips)
+    clips = _annotate_analysis_team_status(clips, job.team_selection)
 
     elapsed_ms = int((perf_counter() - started_at) * 1000)
     model_version = settings.backend_model_version
@@ -282,6 +283,16 @@ def _trim_analysis_clips_for_review(
             break
 
     return [clip for _, clip in sorted(selected, key=lambda item: item[0])]
+
+
+def _annotate_analysis_team_status(
+    clips: Sequence[CloudClip],
+    team_selection: Optional[TeamSelection],
+) -> list[CloudClip]:
+    return [
+        clip.model_copy(update={"teamAttributionStatus": _analysis_team_status(clip, team_selection)})
+        for clip in clips
+    ]
 
 
 def _detected_teams_from_clips(clips: Sequence[CloudClip]) -> list[TeamOption]:

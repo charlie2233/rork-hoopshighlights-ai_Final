@@ -14,6 +14,7 @@ from app.config import get_settings
 from app.pipeline import (
     TEAM_SELECTION_PREFILTER_MULTIPLIER,
     _build_candidate_windows,
+    _annotate_analysis_team_status,
     _analysis_candidate_pool_limit,
     _detect_shot_boundaries,
     _merge_hybrid_detection_clips,
@@ -209,8 +210,22 @@ class PipelineQualityTests(unittest.TestCase):
         self.assertIn("Three Pointer", labels)
         self.assertIn("Block", labels)
         self.assertNotIn("Steal", labels)
+        status_by_label = {clip.label: clip.teamAttributionStatus for clip in result.clips}
+        self.assertEqual(status_by_label["Three Pointer"], "matched")
+        self.assertEqual(status_by_label["Block"], "uncertain")
         self.assertEqual([team.teamId for team in result.detectedTeams], ["team_dark", "team_light"])
         self.assertEqual(result.diagnostics.backendModelVersion, "test-cloud+team-scan")
+
+    def test_analysis_team_status_marks_missing_attribution_uncertain_for_review(self) -> None:
+        team_selection = TeamSelection(mode="team", teamId="team_dark", colorLabel="black", includeUncertain=True)
+        clips = [
+            _clip(start=8.0, end=12.5, label="Possible block", combined=0.76, event_center=10.2, auto_keep=True)
+        ]
+
+        annotated = _annotate_analysis_team_status(clips, team_selection)
+
+        self.assertEqual(annotated[0].teamAttributionStatus, "uncertain")
+        self.assertIsNone(annotated[0].teamAttribution)
 
     def test_selected_team_analysis_expands_pool_before_filtering(self) -> None:
         native = [
