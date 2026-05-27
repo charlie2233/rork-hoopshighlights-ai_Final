@@ -87,3 +87,18 @@ PYTHONPATH=services/editing:ios/backend /Users/hanfei/rork-hoopshighlights-ai_Fi
 `git diff --check` passed before staging. A direct worktree-local `ios/backend/.venv/bin/python` path does not exist in this worktree, and system `python3` lacks `fastapi`/`pydantic`, so the backend suites were run with the existing repo venv from the main checkout while loading this worktree's source paths.
 
 Live staging smoke remains blocked until CI/deploy billing is unblocked and staging Worker/backend settings are verified current.
+
+## CI Evidence After Push
+
+Pushed commit: `f21ff85aedda64ad84cb0690f18c9b4e7a8925a0`
+
+- PR: `https://github.com/charlie2233/rork-hoopshighlights-ai_Final/pull/32`
+- `Cloud Edit Deploy Preflight`: run `26505121132`
+  - `Editing backend Python tests`: job `78055378258`, failed before steps, no failed log available
+  - `Worker typecheck and dry run`: job `78055378272`, failed before steps
+  - `Verify cloud edit deploy secrets`: job `78055387670`, skipped
+- `iOS Internal TestFlight Upload`: run `26505121057`
+  - `No-secret internal staging codecheck`: job `78055378209`, failed before steps, no failed log available
+  - `Build internal staging TestFlight archive`: job `78055379021`, skipped
+
+This still blocks internal TestFlight submission and live staging team-scan smoke evidence. The prior runs on this branch exposed the GitHub account billing/spend-limit message; the fresh run has the same no-steps/no-logs failure shape.
