@@ -37,6 +37,7 @@ import { createPresignedReadTarget, createPresignedUploadTarget } from "../r2/pr
 import { emptyResponse, jsonResponse, readJson } from "../utils/request-id";
 import { resolveRuntimeConfig } from "../env";
 import { recoverStaleProcessingJob } from "../recovery";
+import { teamIdentityMatches } from "../team-identity";
 
 const DEFAULT_FREE_DAILY_QUOTA = 3;
 
@@ -981,12 +982,15 @@ function validateScanBackedTeamSelection(
     );
   }
 
-  const selectedTeamId = selection.teamId?.trim() || null;
-  const selectedColor = selection.colorLabel?.trim().toLowerCase() || null;
   const matchesDetectedTeam = detectedTeams.some((team) => {
-    const teamIdMatches = Boolean(selectedTeamId && team.teamId === selectedTeamId);
-    const colorMatches = Boolean(selectedColor && team.colorLabel && team.colorLabel.trim().toLowerCase() === selectedColor);
-    return teamIdMatches || colorMatches;
+    return teamIdentityMatches({
+      selectedTeamId: selection.teamId,
+      selectedColorLabel: selection.colorLabel,
+      selectedLabel: selection.label,
+      candidateTeamId: team.teamId,
+      candidateColorLabel: team.colorLabel,
+      candidateLabel: team.label
+    });
   });
 
   if (matchesDetectedTeam) {

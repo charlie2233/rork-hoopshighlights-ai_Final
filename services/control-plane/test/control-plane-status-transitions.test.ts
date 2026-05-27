@@ -392,6 +392,110 @@ test("control plane rejects selected team start when the chosen team was not sca
   assert.equal(harness.state.queueMessages.length, 0);
 });
 
+test("control plane accepts selected team with equivalent jersey color alias", async () => {
+  const harness = createControlPlaneHarness();
+  const createResponse = await invokePublicRoute(
+    harness,
+    "POST",
+    "/uploads/presign",
+    {
+      filename: "selected-team-alias.mp4",
+      contentType: "video/mp4",
+      fileSizeBytes: 10485760,
+      durationSeconds: 24,
+      installId: "install-team-alias",
+      appVersion: "1.0.0",
+      analysisVersion: "phase-team"
+    }
+  );
+  const createJson = await parseJsonResponse<{ jobId: string; uploadUrl: string }>(createResponse);
+  await uploadObject(harness, createJson.uploadUrl, new TextEncoder().encode("selected team alias"));
+
+  const scanResponse = await invokePublicRoute(harness, "POST", `/jobs/${createJson.jobId}/team-scan`, {
+    installId: "install-team-alias",
+    detectedTeams: [
+      {
+        teamId: "team_black",
+        label: "Black jerseys",
+        colorLabel: "black",
+        primaryColorHex: "#111111",
+        confidence: 0.93,
+        source: "quick_scan"
+      }
+    ]
+  });
+  assert.equal(scanResponse.status, 200);
+
+  const startResponse = await invokePublicRoute(harness, "POST", `/jobs/${createJson.jobId}/start`, {
+    installId: "install-team-alias",
+    teamSelection: {
+      mode: "team",
+      teamId: "team_dark",
+      label: "Dark jerseys",
+      colorLabel: "dark",
+      confidenceThreshold: 0.85,
+      includeUncertain: true
+    }
+  });
+
+  assert.equal(startResponse.status, 200);
+  assert.equal(harness.state.queueMessages.length, 1);
+  assert.equal(harness.state.queueMessages[0]?.teamSelection?.teamId, "team_dark");
+  assert.equal(harness.state.queueMessages[0]?.teamSelection?.colorLabel, "dark");
+});
+
+test("control plane rejects selected team when team id has an explicit color conflict", async () => {
+  const harness = createControlPlaneHarness();
+  const createResponse = await invokePublicRoute(
+    harness,
+    "POST",
+    "/uploads/presign",
+    {
+      filename: "selected-team-conflict.mp4",
+      contentType: "video/mp4",
+      fileSizeBytes: 10485760,
+      durationSeconds: 24,
+      installId: "install-team-conflict",
+      appVersion: "1.0.0",
+      analysisVersion: "phase-team"
+    }
+  );
+  const createJson = await parseJsonResponse<{ jobId: string; uploadUrl: string }>(createResponse);
+  await uploadObject(harness, createJson.uploadUrl, new TextEncoder().encode("selected team conflict"));
+
+  const scanResponse = await invokePublicRoute(harness, "POST", `/jobs/${createJson.jobId}/team-scan`, {
+    installId: "install-team-conflict",
+    detectedTeams: [
+      {
+        teamId: "team_dark",
+        label: "Dark jerseys",
+        colorLabel: "black",
+        primaryColorHex: "#111111",
+        confidence: 0.93,
+        source: "quick_scan"
+      }
+    ]
+  });
+  assert.equal(scanResponse.status, 200);
+
+  const startResponse = await invokePublicRoute(harness, "POST", `/jobs/${createJson.jobId}/start`, {
+    installId: "install-team-conflict",
+    teamSelection: {
+      mode: "team",
+      teamId: "team_dark",
+      label: "Light jerseys",
+      colorLabel: "white",
+      confidenceThreshold: 0.85,
+      includeUncertain: true
+    }
+  });
+
+  assert.equal(startResponse.status, 400);
+  const startJson = await parseJsonResponse<{ errorCode: string }>(startResponse);
+  assert.equal(startJson.errorCode, "team_selection_unavailable");
+  assert.equal(harness.state.queueMessages.length, 0);
+});
+
 test("control plane allows all-teams analysis without a team scan", async () => {
   const harness = createControlPlaneHarness();
   const createResponse = await invokePublicRoute(
