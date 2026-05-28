@@ -2332,28 +2332,28 @@ class GPTHighlightRerankerTests(unittest.TestCase):
     def test_free_and_pro_sampling_limits(self) -> None:
         settings = GPTHighlightRerankerSettings.from_env()
 
-        self.assertEqual(settings.limits_for("free"), (40, 10))
+        self.assertEqual(settings.limits_for("free"), (60, 10))
         self.assertGreaterEqual(settings.limits_for("pro")[0], 20)
-        self.assertLessEqual(settings.limits_for("pro")[0], 40)
+        self.assertLessEqual(settings.limits_for("pro")[0], 60)
         self.assertGreaterEqual(settings.limits_for("pro")[1], 5)
         self.assertLessEqual(settings.limits_for("pro")[1], 10)
         self.assertEqual(settings.timeout_seconds, 60.0)
-        self.assertEqual(settings.max_output_tokens, 8000)
+        self.assertEqual(settings.max_output_tokens, 12000)
 
     def test_free_sampling_reviews_full_analysis_pool_by_default(self) -> None:
         settings = GPTHighlightRerankerSettings.from_env()
         max_clips, _ = settings.limits_for("free")
-        request = _request("free", 40)
+        request = _request("free", 60)
 
         sampled = gpt_reranker._quality_filtered_sampled_clips(
             gpt_reranker.rank_clips(request.clips),
             max_clips,
         )
 
-        self.assertEqual(max_clips, 40)
-        self.assertEqual(len(sampled), 40)
+        self.assertEqual(max_clips, 60)
+        self.assertEqual(len(sampled), 60)
         self.assertEqual(sampled[0].id, "c0")
-        self.assertEqual(sampled[-1].id, "c39")
+        self.assertEqual(sampled[-1].id, "c59")
 
     def test_free_sampling_candidate_cap_is_generous_but_bounded(self) -> None:
         env_keys = ("HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_FREE", "HOOPS_GPT_HIGHLIGHT_RERANK_FREE_MAX_CLIPS")
@@ -2369,7 +2369,7 @@ class GPTHighlightRerankerTests(unittest.TestCase):
                 else:
                     os.environ[key] = old_value
 
-        self.assertEqual(settings.limits_for("free")[0], 40)
+        self.assertEqual(settings.limits_for("free")[0], 60)
 
     def test_sampling_reserves_block_and_steal_families_for_gpt_review(self) -> None:
         scoring = [

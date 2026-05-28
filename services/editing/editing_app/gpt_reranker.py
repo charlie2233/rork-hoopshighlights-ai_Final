@@ -93,7 +93,7 @@ class GPTHighlightRerankerSettings:
             model=os.getenv("HOOPS_AI_CLIP_GPT_MODEL", os.getenv("HOOPS_GPT_HIGHLIGHT_RERANK_MODEL", "gpt-4.1")),
             endpoint=os.getenv("HOOPS_AI_CLIP_GPT_ENDPOINT", os.getenv("HOOPS_GPT_HIGHLIGHT_RERANK_ENDPOINT", "https://api.openai.com/v1/responses")),
             timeout_seconds=_env_float("HOOPS_AI_CLIP_GPT_TIMEOUT_SECONDS", _env_float("HOOPS_GPT_HIGHLIGHT_RERANK_TIMEOUT_SECONDS", 60.0, 1.0, 60.0), 1.0, 60.0),
-            max_output_tokens=_env_int("HOOPS_AI_CLIP_GPT_MAX_OUTPUT_TOKENS", _env_int("HOOPS_GPT_HIGHLIGHT_RERANK_MAX_OUTPUT_TOKENS", 8000, 256, 12000), 256, 12000),
+            max_output_tokens=_env_int("HOOPS_AI_CLIP_GPT_MAX_OUTPUT_TOKENS", _env_int("HOOPS_GPT_HIGHLIGHT_RERANK_MAX_OUTPUT_TOKENS", 12000, 256, 12000), 256, 12000),
             free_max_clips=_env_int(
                 "HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_FREE",
                 _env_int("HOOPS_GPT_HIGHLIGHT_RERANK_FREE_MAX_CLIPS", GPT_CANDIDATE_REVIEW_LIMIT, 1, GPT_CANDIDATE_REVIEW_LIMIT),

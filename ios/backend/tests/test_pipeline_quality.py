@@ -119,13 +119,13 @@ class PipelineQualityTests(unittest.TestCase):
     def tearDown(self) -> None:
         get_settings.cache_clear()
 
-    def test_default_backend_candidate_pool_feeds_gpt_internal_top_forty(self) -> None:
+    def test_default_backend_candidate_pool_feeds_gpt_internal_top_sixty(self) -> None:
         with tempfile.TemporaryDirectory(prefix="hoopclips-settings-") as temp_dir:
             with patch.dict(os.environ, {"HOOPS_ENVIRONMENT": "local", "HOOPS_UPLOAD_ROOT": temp_dir}, clear=True):
                 get_settings.cache_clear()
                 settings = get_settings()
 
-        self.assertEqual(settings.max_returned_clips, 40)
+        self.assertEqual(settings.max_returned_clips, 60)
         self.assertEqual(settings.team_quick_scan_clip_frames_per_clip, 6)
         self.assertEqual(settings.team_quick_scan_rich_candidate_clips, 60)
         self.assertEqual(settings.team_quick_scan_max_total_clip_frames, 720)
@@ -149,7 +149,7 @@ class PipelineQualityTests(unittest.TestCase):
                 get_settings.cache_clear()
                 low_settings = get_settings()
 
-        self.assertEqual(high_settings.max_returned_clips, 40)
+        self.assertEqual(high_settings.max_returned_clips, 60)
         self.assertEqual(low_settings.max_returned_clips, 8)
 
     def test_run_analysis_applies_quick_scan_before_selected_team_filter(self) -> None:
