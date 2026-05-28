@@ -46,3 +46,7 @@ Make GPT-led selection and revision prompts understand why a selected-team candi
 ## Remaining Proof
 
 This improves GPT context quality and selected-team auditability, but it is not a substitute for the labeled real-footage 85% evaluation or installed TestFlight smoke.
+
+## Remote CI Blocker
+
+After commit `c4e446d`, PR #32 remote GitHub checks did not enter their job steps. Check-run annotations for `Editing backend Python tests`, `Worker typecheck and dry run`, and `No-secret internal staging codecheck` all reported: "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings". This is an account billing/spending-limit blocker, not a local test failure.
