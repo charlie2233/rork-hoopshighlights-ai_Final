@@ -29,6 +29,8 @@ Allowed `outcomeEvidenceSource` values:
 - `label_only`
 - `native_shot_signals`
 - `defensive_event`
+- `gpt_shot_tracking`
+- `gpt_defensive_tracking`
 - `non_shot`
 - `uncertain`
 - `not_shot`
@@ -41,6 +43,8 @@ Allowed `outcomeEvidenceSource` values:
 - Ambiguous labels (`Layup`, `Finish`, `Attempt`) stay `uncertain` with reliability `0.35`.
 - Blocks are marked `blocked` with `defensive_event` evidence when the defensive context is present.
 - Steals and other non-shot defensive clips are marked `not_shot` with `defensive_event` evidence and high reliability.
+- Accepted GPT decisions now stamp retained clips with `gpt_shot_tracking` or `gpt_defensive_tracking` evidence after the structured output passes deterministic validation.
+- The AI Work Receipt counts selected clips with trusted shot/rim evidence, selected shot outcomes that still need review, and selected label-only shot outcomes.
 - Control-plane callbacks preserve the new metadata without exposing storage internals.
 - Swift cloud-analysis types decode the new optional fields without changing iOS ownership of the pipeline.
 
@@ -49,7 +53,8 @@ Allowed `outcomeEvidenceSource` values:
 Completed locally:
 
 ```bash
-python3 -m py_compile ios/backend/app/models.py ios/backend/app/pipeline.py ios/backend/app/editing.py
+python3 -m py_compile ios/backend/app/models.py ios/backend/app/pipeline.py ios/backend/app/editing.py services/editing/editing_app/models.py
+PYTHONPATH=ios/backend:services/editing /tmp/hoopclips-py312-venv/bin/python -m unittest ios.backend.tests.test_edit_plan_agent.EditPlanAgentTests.test_gpt_highlight_rerank_uses_existing_clip_ids_only services.editing.tests.test_editing_service.EditingServiceTests.test_ai_work_receipt_summarizes_validated_shot_outcome_evidence services.editing.tests.test_editing_service.EditingServiceTests.test_ai_work_receipt_flags_selected_timing_context_issues -v
 PYTHONPATH=ios/backend:services/editing /tmp/hoopclips-py312-venv/bin/python -m unittest ios.backend.tests.test_pipeline_quality ios.backend.tests.test_edit_plan_agent services.editing.tests.test_gpt_reranker -v
 PYTHONPATH=ios/backend:services/editing /tmp/hoopclips-py312-venv/bin/python -m unittest discover -s ios/backend/tests -p 'test_*.py' -v
 PYTHONPATH=ios/backend:services/editing /tmp/hoopclips-py312-venv/bin/python -m unittest discover -s services/editing/tests -p 'test_*.py' -v
@@ -64,13 +69,14 @@ npm --prefix services/control-plane run typecheck
 Results:
 
 - Python compile passed.
+- Focused GPT evidence/receipt tests passed: 3 tests.
 - Focused backend/GPT suite passed: 173 tests.
 - iOS backend discovery passed: 165 tests.
-- Editing-service discovery passed: 93 tests, including local render exercises.
+- Editing-service discovery passed: 94 tests, including local render exercises.
 - Scripts discovery passed: 57 tests.
 - Control-plane suite passed: 28 tests.
 - Control-plane typecheck passed.
-- iOS Debug simulator build passed. Build log: `/Users/hanfei/Library/Developer/XcodeBuildMCP/workspaces/rork-hoopshighlights-ai_Final-b63ced5e161c/logs/build_sim_2026-05-28T06-28-23-321Z_pid97875_5305bcd7.log`.
+- iOS Debug simulator build passed. Build log: `/Users/hanfei/Library/Developer/XcodeBuildMCP/workspaces/rork-hoopshighlights-ai_Final-b63ced5e161c/logs/build_sim_2026-05-28T06-41-08-453Z_pid97875_5518f45e.log`.
 
 ## Launch Notes
 

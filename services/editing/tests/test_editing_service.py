@@ -1018,6 +1018,77 @@ class EditingServiceTests(unittest.TestCase):
         self.assertEqual(receipt.timingQualitySelectedClipCount, 0)
         self.assertIn("Flagged 1 selected clip with weak timing/context.", receipt.summaryRows)
 
+    def test_ai_work_receipt_summarizes_validated_shot_outcome_evidence(self) -> None:
+        payload = self._edit_request().model_dump()
+        payload["targetDurationSeconds"] = 15
+        payload["clips"] = [
+            {
+                **_clip("gpt_tracked_make", 0.0, "Made Shot", 0.95),
+                "nativeShotSignals": {
+                    "isShotLike": True,
+                    "leadInSeconds": 2.4,
+                    "followThroughSeconds": 2.6,
+                    "setupContextScore": 1.0,
+                    "outcomeContextScore": 1.0,
+                    "eventCenterQuality": 1.0,
+                    "contextQualityScore": 1.0,
+                    "timingWindowOk": True,
+                    "outcome": "made",
+                    "outcomeConfidence": 0.92,
+                    "outcomeEvidenceSource": "gpt_shot_tracking",
+                    "outcomeReliabilityScore": 0.93,
+                },
+            },
+            {
+                **_clip("label_only_make", 8.0, "Bucket", 0.9),
+                "nativeShotSignals": {
+                    "isShotLike": True,
+                    "leadInSeconds": 2.4,
+                    "followThroughSeconds": 2.6,
+                    "setupContextScore": 1.0,
+                    "outcomeContextScore": 1.0,
+                    "eventCenterQuality": 1.0,
+                    "contextQualityScore": 1.0,
+                    "timingWindowOk": True,
+                    "outcome": "made",
+                    "outcomeConfidence": 0.82,
+                    "outcomeEvidenceSource": "label_only",
+                    "outcomeReliabilityScore": 0.58,
+                },
+            },
+        ]
+        edit_request = CreateEditJobRequest(**payload)
+        edit_job = build_edit_job(edit_request, "edit_outcome_receipt")
+        self.assertFalse(edit_job.validation_errors)
+        created_at = now_utc()
+        render_job = StoredRenderJob(
+            edit_job_id="edit_outcome_receipt",
+            render_job_id="render_outcome_receipt",
+            install_id=edit_request.installId,
+            trace_id="trace_outcome_receipt",
+            status="rendered",
+            aspect_ratio="9:16",
+            created_at=created_at,
+            updated_at=created_at,
+            completed_at=created_at,
+            source_object_key=edit_request.sourceObjectKey,
+            output_object_key="edits/edit_outcome_receipt/render_jobs/render_outcome_receipt/final.mp4",
+            render_log_object_key="edits/edit_outcome_receipt/render_jobs/render_outcome_receipt/render_log.json",
+            duration_seconds=10.0,
+            plan_version="edit-plan-v1",
+            template_id="personal_highlight_v1",
+            plan_tier="free",
+            idempotency_key="idem-outcome-receipt",
+        )
+
+        receipt = build_ai_work_receipt(render_job, edit_job.plan, edit_request.clips)
+
+        self.assertEqual(receipt.shotOutcomeEvidenceSelectedClipCount, 1)
+        self.assertEqual(receipt.shotOutcomeIssueSelectedClipCount, 1)
+        self.assertEqual(receipt.labelOnlyOutcomeSelectedClipCount, 1)
+        self.assertIn("Shot outcome evidence: 1 selected clip passed rim/result tracking checks.", receipt.summaryRows)
+        self.assertIn("Needs review: 1 selected shot outcome came from label-only evidence.", receipt.summaryRows)
+
     def test_create_edit_job_gpt_all_rejected_returns_empty_clip_validation_error(self) -> None:
         original_reranker = editing_main.rerank_edit_request_with_gpt
         old_enabled = os.environ.get("HOOPS_GPT_HIGHLIGHT_RERANKER_ENABLED")

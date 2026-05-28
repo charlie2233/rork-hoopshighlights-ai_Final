@@ -127,6 +127,8 @@ class CloudNativeShotSignals(APIModel):
         "label_only",
         "native_shot_signals",
         "defensive_event",
+        "gpt_shot_tracking",
+        "gpt_defensive_tracking",
         "non_shot",
         "uncertain",
         "not_shot",

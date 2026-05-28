@@ -1298,6 +1298,9 @@ struct AIEditView: View {
             timingQualitySelectedClipCount: nil,
             timingIssueCandidateCount: nil,
             timingIssueSelectedClipCount: nil,
+            shotOutcomeEvidenceSelectedClipCount: nil,
+            shotOutcomeIssueSelectedClipCount: nil,
+            labelOnlyOutcomeSelectedClipCount: nil,
             summaryRows: rows
         )
     }
@@ -1393,6 +1396,14 @@ struct AIEditView: View {
         }
         if let planTier = receipt.planTier {
             rows.appendIfMissing(planTier.isFree ? "Rendered on the standard queue." : "Priority queue enabled when available.")
+        }
+        if let evidenceCount = receipt.shotOutcomeEvidenceSelectedClipCount, evidenceCount > 0 {
+            rows.appendIfMissing("Shot outcome evidence: \(evidenceCount) selected \(evidenceCount == 1 ? "clip" : "clips") passed rim/result tracking checks.")
+        }
+        if let labelOnlyCount = receipt.labelOnlyOutcomeSelectedClipCount, labelOnlyCount > 0 {
+            rows.appendIfMissing("Needs review: \(labelOnlyCount) selected shot \(labelOnlyCount == 1 ? "outcome" : "outcomes") came from label-only evidence.")
+        } else if let issueCount = receipt.shotOutcomeIssueSelectedClipCount, issueCount > 0 {
+            rows.appendIfMissing("Needs review: \(issueCount) selected shot \(issueCount == 1 ? "outcome" : "outcomes") had weak result evidence.")
         }
         return rows
     }

@@ -631,6 +631,8 @@ function normalizeNativeShotSignals(value: unknown): CloudClip["nativeShotSignal
       outcomeEvidenceSource === "label_only" ||
       outcomeEvidenceSource === "native_shot_signals" ||
       outcomeEvidenceSource === "defensive_event" ||
+      outcomeEvidenceSource === "gpt_shot_tracking" ||
+      outcomeEvidenceSource === "gpt_defensive_tracking" ||
       outcomeEvidenceSource === "non_shot" ||
       outcomeEvidenceSource === "uncertain" ||
       outcomeEvidenceSource === "not_shot"

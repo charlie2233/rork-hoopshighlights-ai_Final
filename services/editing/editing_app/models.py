@@ -118,6 +118,9 @@ class AIWorkReceipt(APIModel):
     timingQualitySelectedClipCount: Optional[int] = None
     timingIssueCandidateCount: Optional[int] = None
     timingIssueSelectedClipCount: Optional[int] = None
+    shotOutcomeEvidenceSelectedClipCount: Optional[int] = None
+    shotOutcomeIssueSelectedClipCount: Optional[int] = None
+    labelOnlyOutcomeSelectedClipCount: Optional[int] = None
     summaryRows: List[str] = Field(default_factory=list)
 
 
@@ -397,6 +400,44 @@ def _timing_issue_clip_ids(source_clips: Optional[List[EditCandidateClip]]) -> s
     return issue_ids
 
 
+def _shot_outcome_evidence_clip_ids(source_clips: Optional[List[EditCandidateClip]]) -> set[str]:
+    if source_clips is None:
+        return set()
+    evidence_sources = {"gpt_shot_tracking", "gpt_defensive_tracking", "native_shot_signals", "defensive_event"}
+    evidence_ids: set[str] = set()
+    for clip in source_clips:
+        signals = native_shot_signals_for_clip(clip)
+        if signals.outcome not in {"made", "missed", "blocked"}:
+            continue
+        if signals.outcomeEvidenceSource in evidence_sources and signals.outcomeReliabilityScore >= 0.72:
+            evidence_ids.add(clip.id)
+    return evidence_ids
+
+
+def _shot_outcome_issue_clip_ids(source_clips: Optional[List[EditCandidateClip]]) -> set[str]:
+    if source_clips is None:
+        return set()
+    issue_ids: set[str] = set()
+    for clip in source_clips:
+        signals = native_shot_signals_for_clip(clip)
+        if signals.outcome not in {"made", "missed", "blocked"}:
+            continue
+        if signals.outcomeEvidenceSource == "label_only" or signals.outcomeReliabilityScore < 0.72:
+            issue_ids.add(clip.id)
+    return issue_ids
+
+
+def _label_only_outcome_clip_ids(source_clips: Optional[List[EditCandidateClip]]) -> set[str]:
+    if source_clips is None:
+        return set()
+    return {
+        clip.id
+        for clip in source_clips
+        if native_shot_signals_for_clip(clip).outcomeEvidenceSource == "label_only"
+        and native_shot_signals_for_clip(clip).outcome in {"made", "missed", "blocked"}
+    }
+
+
 def _step_status_for_render(render_status: RenderStatus) -> AIWorkStepStatus:
     if render_status == "rendered":
         return "complete"
@@ -538,12 +579,24 @@ def build_ai_work_receipt(
     uncertain_clip_ids = _team_uncertain_clip_ids(source_clips)
     defensive_clip_ids = _defensive_clip_ids(source_clips)
     timing_issue_clip_ids = _timing_issue_clip_ids(source_clips)
+    shot_outcome_evidence_clip_ids = _shot_outcome_evidence_clip_ids(source_clips)
+    shot_outcome_issue_clip_ids = _shot_outcome_issue_clip_ids(source_clips)
+    label_only_outcome_clip_ids = _label_only_outcome_clip_ids(source_clips)
     team_uncertain_candidate_count = len(uncertain_clip_ids) if source_clips is not None else None
     team_uncertain_selected_count = len(selected_clip_ids & uncertain_clip_ids) if edit_plan is not None and source_clips is not None else None
     defensive_selected_count = len(selected_clip_ids & defensive_clip_ids) if edit_plan is not None and source_clips is not None else None
     timing_issue_candidate_count = len(timing_issue_clip_ids) if source_clips is not None else None
     timing_issue_selected_count = len(selected_clip_ids & timing_issue_clip_ids) if edit_plan is not None and source_clips is not None else None
     timing_quality_selected_count = (selected_count - timing_issue_selected_count) if selected_count is not None and timing_issue_selected_count is not None else None
+    shot_outcome_evidence_selected_count = (
+        len(selected_clip_ids & shot_outcome_evidence_clip_ids) if edit_plan is not None and source_clips is not None else None
+    )
+    shot_outcome_issue_selected_count = (
+        len(selected_clip_ids & shot_outcome_issue_clip_ids) if edit_plan is not None and source_clips is not None else None
+    )
+    label_only_outcome_selected_count = (
+        len(selected_clip_ids & label_only_outcome_clip_ids) if edit_plan is not None and source_clips is not None else None
+    )
     summary_rows: List[str] = []
     if selected_count is not None and candidate_count is not None:
         summary_rows.append(f"Selected {selected_count} clips from {candidate_count} candidates.")
@@ -586,6 +639,18 @@ def build_ai_work_receipt(
     elif timing_quality_selected_count:
         summary_rows.append(
             f"Timing quality: {timing_quality_selected_count} selected clip{'s' if timing_quality_selected_count != 1 else ''} passed context checks."
+        )
+    if shot_outcome_evidence_selected_count:
+        summary_rows.append(
+            f"Shot outcome evidence: {shot_outcome_evidence_selected_count} selected clip{'s' if shot_outcome_evidence_selected_count != 1 else ''} passed rim/result tracking checks."
+        )
+    if label_only_outcome_selected_count:
+        summary_rows.append(
+            f"Needs review: {label_only_outcome_selected_count} selected shot outcome{'s' if label_only_outcome_selected_count != 1 else ''} came from label-only evidence."
+        )
+    elif shot_outcome_issue_selected_count:
+        summary_rows.append(
+            f"Needs review: {shot_outcome_issue_selected_count} selected shot outcome{'s' if shot_outcome_issue_selected_count != 1 else ''} had weak result evidence."
         )
     summary_rows.append(f"Applied {template.displayName} template.")
     summary_rows.append(f"Added {slow_motion_count} slow-motion moments.")
@@ -641,6 +706,9 @@ def build_ai_work_receipt(
         timingQualitySelectedClipCount=timing_quality_selected_count,
         timingIssueCandidateCount=timing_issue_candidate_count,
         timingIssueSelectedClipCount=timing_issue_selected_count,
+        shotOutcomeEvidenceSelectedClipCount=shot_outcome_evidence_selected_count,
+        shotOutcomeIssueSelectedClipCount=shot_outcome_issue_selected_count,
+        labelOnlyOutcomeSelectedClipCount=label_only_outcome_selected_count,
         summaryRows=summary_rows,
     )
 

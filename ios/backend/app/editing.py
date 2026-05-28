@@ -328,6 +328,8 @@ class NativeShotSignals(APIModel):
         "label_only",
         "native_shot_signals",
         "defensive_event",
+        "gpt_shot_tracking",
+        "gpt_defensive_tracking",
         "non_shot",
         "uncertain",
         "not_shot",
@@ -364,6 +366,11 @@ class EditCandidateClip(APIModel):
     gptStoryOrderIndex: Optional[int] = Field(default=None, ge=0)
     gptStoryRole: Optional[StoryRole] = None
     rerankSource: Optional[str] = Field(default=None, max_length=80)
+    gptOutcome: Optional[
+        Literal["made", "missed", "blocked", "steal", "forced_turnover", "defensive_stop"]
+    ] = None
+    gptOutcomeReliabilityScore: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    gptOutcomeEvidenceSource: Optional[Literal["gpt_shot_tracking", "gpt_defensive_tracking"]] = None
 
     @model_validator(mode="after")
     def validate_bounds(self) -> "EditCandidateClip":
@@ -1802,6 +1809,9 @@ def _compact_agent_candidate_clip(
         "nativeShotSignals": native_shot_signals_for_clip(clip).model_dump(mode="json"),
         "outcomeEvidenceSource": clip_outcome_evidence_source(clip),
         "outcomeReliabilityScore": clip_outcome_reliability_score(clip),
+        "gptOutcome": clip.gptOutcome,
+        "gptOutcomeEvidenceSource": clip.gptOutcomeEvidenceSource,
+        "gptOutcomeReliabilityScore": clip.gptOutcomeReliabilityScore,
     }
 
 
@@ -1912,6 +1922,8 @@ def remove_duplicate_moments(clips: Sequence[EditCandidateClip]) -> List[EditCan
 
 
 def clip_outcome_reliability_score(clip: EditCandidateClip) -> float:
+    if clip.gptOutcomeReliabilityScore is not None:
+        return clip.gptOutcomeReliabilityScore
     signals = native_shot_signals_for_clip(clip)
     if signals.outcomeReliabilityScore > 0.0:
         return signals.outcomeReliabilityScore
@@ -1929,6 +1941,8 @@ def clip_outcome_reliability_score(clip: EditCandidateClip) -> float:
 
 
 def clip_outcome_evidence_source(clip: EditCandidateClip) -> str:
+    if clip.gptOutcomeEvidenceSource is not None:
+        return clip.gptOutcomeEvidenceSource
     signals = native_shot_signals_for_clip(clip)
     return signals.outcomeEvidenceSource
 
@@ -2659,6 +2673,10 @@ def apply_gpt_highlight_rerank(
                 "label": event_label[:80],
                 "captionHint": caption[:MAX_CAPTION_LENGTH],
                 "combinedScore": round((clip.planning_score * 0.25) + (decision.highlightScore * 0.55) + (decision.watchabilityScore * 0.2), 4),
+                "nativeShotSignals": _validated_gpt_native_shot_signals(clip, decision),
+                "gptOutcome": _validated_gpt_outcome(decision),
+                "gptOutcomeReliabilityScore": _validated_gpt_outcome_reliability_score(decision),
+                "gptOutcomeEvidenceSource": _validated_gpt_outcome_evidence_source(decision),
                 "gptHighlightScore": decision.highlightScore,
                 "gptWatchabilityScore": decision.watchabilityScore,
                 "gptReason": decision.reason,
@@ -2727,6 +2745,66 @@ def apply_gpt_highlight_rerank(
 
 def _increment_reason_count(counts: Dict[str, int], reason: str, amount: int = 1) -> None:
     counts[reason] = counts.get(reason, 0) + amount
+
+
+def _validated_gpt_outcome(
+    decision: GPTHighlightClipDecision,
+) -> Optional[Literal["made", "missed", "blocked", "steal", "forced_turnover", "defensive_stop"]]:
+    if decision.outcome in GPT_SHOT_RESULT_OUTCOMES or decision.outcome in GPT_NON_SCORING_DEFENSIVE_OUTCOMES:
+        return decision.outcome  # type: ignore[return-value]
+    return None
+
+
+def _validated_gpt_outcome_evidence_source(
+    decision: GPTHighlightClipDecision,
+) -> Optional[Literal["gpt_shot_tracking", "gpt_defensive_tracking"]]:
+    if decision.outcome in {"made", "missed"}:
+        return "gpt_shot_tracking"
+    if decision.outcome == "blocked" or decision.outcome in GPT_NON_SCORING_DEFENSIVE_OUTCOMES:
+        return "gpt_defensive_tracking"
+    return None
+
+
+def _validated_gpt_outcome_reliability_score(decision: GPTHighlightClipDecision) -> Optional[float]:
+    if _validated_gpt_outcome(decision) is None:
+        return None
+    result_confidence = decision.shotResultEvidence.outcomeConfidence
+    evidence_weight = 0.72 if decision.outcome in {"made", "missed"} else 0.62
+    score = (
+        (result_confidence * evidence_weight)
+        + (decision.highlightScore * 0.16)
+        + (decision.watchabilityScore * 0.12)
+        + (decision.shotResultEvidence.rimEntrySequenceConfidence * (0.0 if decision.outcome in GPT_NON_SCORING_DEFENSIVE_OUTCOMES else 0.12))
+    )
+    floor = 0.72 if decision.outcome in {"made", "missed"} else 0.7
+    return round(max(floor, min(1.0, score)), 4)
+
+
+def _validated_gpt_native_shot_signals(
+    clip: EditCandidateClip,
+    decision: GPTHighlightClipDecision,
+) -> NativeShotSignals:
+    signals = native_shot_signals_for_clip(clip)
+    evidence_source = _validated_gpt_outcome_evidence_source(decision)
+    reliability_score = _validated_gpt_outcome_reliability_score(decision)
+    if evidence_source is None or reliability_score is None:
+        return signals
+
+    if decision.outcome in GPT_SHOT_RESULT_OUTCOMES:
+        outcome = decision.outcome
+        outcome_confidence = max(signals.outcomeConfidence, decision.shotResultEvidence.outcomeConfidence)
+    else:
+        outcome = "not_shot"
+        outcome_confidence = max(signals.outcomeConfidence, decision.shotResultEvidence.outcomeConfidence, 0.9)
+
+    return signals.model_copy(
+        update={
+            "outcome": outcome,
+            "outcomeConfidence": round(min(1.0, outcome_confidence), 4),
+            "outcomeEvidenceSource": evidence_source,
+            "outcomeReliabilityScore": reliability_score,
+        }
+    )
 
 
 def _dedupe_gpt_kept_moments(clips: Sequence[EditCandidateClip]) -> Tuple[List[EditCandidateClip], List[str]]:
