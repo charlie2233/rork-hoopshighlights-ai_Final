@@ -703,13 +703,15 @@ function normalizeClipTeamAttribution(value: unknown): CloudClip["teamAttributio
     colorLabel?: unknown;
     confidence?: unknown;
     source?: unknown;
+    evidenceFrameRefs?: unknown;
   };
   return {
     teamId: coerceString(input.teamId),
     label: coerceString(input.label),
     colorLabel: coerceString(input.colorLabel),
     confidence: clamp01(coerceNumber(input.confidence) ?? 0),
-    source: coerceString(input.source)
+    source: coerceString(input.source),
+    evidenceFrameRefs: coerceStringList(input.evidenceFrameRefs, 8, 120)
   };
 }
 
@@ -722,6 +724,30 @@ function normalizeTeamAttributionStatus(value: unknown): CloudClip["teamAttribut
 
 function coerceString(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function coerceStringList(value: unknown, maxItems: number, maxLength: number): string[] | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+  const output: string[] = [];
+  const seen = new Set<string>();
+  for (const entry of value) {
+    const text = coerceString(entry);
+    if (!text) {
+      continue;
+    }
+    const bounded = text.slice(0, maxLength);
+    if (seen.has(bounded)) {
+      continue;
+    }
+    seen.add(bounded);
+    output.push(bounded);
+    if (output.length >= maxItems) {
+      break;
+    }
+  }
+  return output;
 }
 
 function coerceNumber(value: unknown): number | null {

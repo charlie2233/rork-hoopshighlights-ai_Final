@@ -288,6 +288,7 @@ def _parse_quick_scan_output(
             colorLabel=color_label,
             confidence=round(confidence, 4),
             source="gpt_frame_review",
+            evidenceFrameRefs=evidence_frame_refs,
         )
     return teams, attributions
 

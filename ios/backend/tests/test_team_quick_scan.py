@@ -709,6 +709,7 @@ class TeamQuickScanTests(unittest.TestCase):
         self.assertEqual(teams[0].confidence, 0.93)
         self.assertEqual(scanned[0].teamAttribution.teamId, "team_dark")
         self.assertLess(scanned[0].teamAttribution.confidence, 0.85)
+        self.assertEqual(scanned[0].teamAttribution.evidenceFrameRefs, [])
 
     def test_high_confidence_clip_attribution_accepts_matching_sampled_frame_evidence(self) -> None:
         clips = [_clip("Made Shot", 8.0, 12.5, 10.0)]
@@ -759,6 +760,7 @@ class TeamQuickScanTests(unittest.TestCase):
         self.assertTrue(applied)
         self.assertEqual(scanned[0].teamAttribution.teamId, "team_dark")
         self.assertEqual(scanned[0].teamAttribution.confidence, 0.91)
+        self.assertEqual(scanned[0].teamAttribution.evidenceFrameRefs, ["clip_0_release", "clip_0_result"])
 
     def test_clip_attribution_without_detected_team_stays_uncertain(self) -> None:
         clips = [_clip("Made Shot", 8.0, 12.5, 10.0)]

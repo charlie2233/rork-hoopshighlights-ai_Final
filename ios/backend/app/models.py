@@ -56,6 +56,7 @@ class ClipTeamAttribution(APIModel):
     colorLabel: Optional[str] = Field(default=None, min_length=1, max_length=80)
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     source: Literal["quick_scan", "gpt_frame_review", "provider", "manual", "unknown"] = "unknown"
+    evidenceFrameRefs: List[str] = Field(default_factory=list, max_length=8)
 
 
 class CreateCloudAnalysisJobRequest(APIModel):

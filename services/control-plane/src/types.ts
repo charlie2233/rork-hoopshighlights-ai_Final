@@ -129,6 +129,7 @@ export interface ClipTeamAttribution {
   colorLabel?: string | null;
   confidence: number;
   source?: string | null;
+  evidenceFrameRefs?: string[] | null;
 }
 
 export interface CloudLabelScore {

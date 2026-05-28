@@ -11,6 +11,7 @@ Improve selected-team attribution precision by making GPT cite the sampled frame
 - Added `evidenceFrameRefs` to the strict team quick-scan structured output schema for every clip attribution.
 - Added prompt/context rules telling GPT that high-confidence ownership requires cited sampled frames from that clip.
 - Added backend validation that checks `evidenceFrameRefs` against actual sampled frame refs for the same clip.
+- Preserved validated `evidenceFrameRefs` on `ClipTeamAttribution` and through the Worker normalizer as bounded, non-secret metadata.
 - If a clip attribution has no matching sampled-frame evidence, the backend caps confidence below the selected-team threshold so the clip remains uncertain/reviewable instead of becoming a confident match.
 - Added tests proving:
   - schema requires `evidenceFrameRefs`
@@ -33,6 +34,7 @@ PYTHONPATH=ios/backend:services/editing /tmp/hoopclips-py312-venv/bin/python -m 
 PYTHONPATH=ios/backend:services/editing /tmp/hoopclips-py312-venv/bin/python -m unittest ios.backend.tests.test_team_quick_scan -v
 PYTHONPATH=ios/backend:services/editing /tmp/hoopclips-py312-venv/bin/python -m unittest discover -s ios/backend/tests -p 'test_*.py' -v
 python3 -m unittest discover -s scripts -p 'test_*.py' -v
+cd services/control-plane && npm run typecheck
 git diff --check
 ```
 
@@ -42,6 +44,7 @@ Results:
 - `ios.backend.tests.test_team_quick_scan`: 26 passed
 - backend discovery suite: 168 passed
 - scripts discovery suite: 57 passed
+- control-plane typecheck: passed
 - `git diff --check`: passed
 
 ## Remaining Proof
