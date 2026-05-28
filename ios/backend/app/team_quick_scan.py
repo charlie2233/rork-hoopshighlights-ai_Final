@@ -68,7 +68,7 @@ def apply_team_quick_scan(
     except (HTTPError, URLError, OSError, TimeoutError, ValueError, json.JSONDecodeError):
         return list(clips), [], False
 
-    teams, attributions = _parse_quick_scan_output(output, settings)
+    teams, attributions = _parse_quick_scan_output(output, settings, _evidence_frame_refs_by_clip(frames))
     scanned: list[CloudClip] = []
     for index, clip in enumerate(clips):
         attribution = attributions.get(f"clip_{index}")
@@ -96,6 +96,7 @@ def _build_openai_payload(
             "scoringFrameRoles": "For scoring clips, ballHandlerSetup, preRelease, release, and shotArc show the offensive player/team; rimApproach and rimResult show the outcome; followThrough/finishContext show the finisher after the play.",
             "defensiveFrameRoles": "For defensive clips, defenseSetup and preChallenge/prePossessionChange show the defender before the event, challenge/ballDeflection or possessionChange/ballControlChange shows the defensive action, and recovery/defenseOutcome/finishContext show the result.",
             "frameBudgetPolicy": "Higher-ranked candidates may include up to eight role frames; later candidates may include a compact three-frame ownership set. Use every supplied role for confidence.",
+            "evidencePolicy": "Every clip attribution must cite evidenceFrameRefs from that clip. Use confidence >=0.85 only when cited frames clearly show jersey color and ownership.",
         },
         "durationSeconds": round(duration_seconds, 3),
         "candidateClips": [
@@ -137,6 +138,7 @@ def _build_openai_payload(
             "For scoring frame roles, use ballHandlerSetup, preRelease, release, and shotArc to judge the shooter/finisher team, then rimApproach/rimResult/followThrough/finishContext to confirm the play. "
             "Blocks, steals, defensive stops, and forced turnovers belong to the defending player who made the play. "
             "For defensive frame roles, use defenseSetup plus preChallenge/prePossessionChange, challenge/ballDeflection or possessionChange/ballControlChange, and recovery/defenseOutcome/finishContext to judge the defender's team. "
+            "For each clip attribution, include evidenceFrameRefs that exactly match supplied frameRef values for that clip; high-confidence ownership requires cited frames. "
             "Use only supplied frames and candidate clip refs. Do not output prose, commands, file paths, URLs, storage keys, or FFmpeg instructions. "
             "Return strict JSON only."
         ),
@@ -190,8 +192,13 @@ def _response_schema(max_clip_attributions: int = 40) -> Dict[str, Any]:
                         "colorLabel": nullable_string,
                         "confidence": {"type": "number", "minimum": 0, "maximum": 1},
                         "reason": {"type": "string", "maxLength": 180},
+                        "evidenceFrameRefs": {
+                            "type": "array",
+                            "maxItems": 8,
+                            "items": {"type": "string", "maxLength": 120},
+                        },
                     },
-                    "required": ["clipRef", "teamId", "label", "colorLabel", "confidence", "reason"],
+                    "required": ["clipRef", "teamId", "label", "colorLabel", "confidence", "reason", "evidenceFrameRefs"],
                 },
             },
         },
@@ -199,7 +206,11 @@ def _response_schema(max_clip_attributions: int = 40) -> Dict[str, Any]:
     }
 
 
-def _parse_quick_scan_output(output: object, settings: Settings) -> tuple[list[TeamOption], dict[str, ClipTeamAttribution]]:
+def _parse_quick_scan_output(
+    output: object,
+    settings: Settings,
+    evidence_frame_refs_by_clip: Optional[dict[str, set[str]]] = None,
+) -> tuple[list[TeamOption], dict[str, ClipTeamAttribution]]:
     if not isinstance(output, dict):
         return [], {}
     min_team_confidence = float(getattr(settings, "team_quick_scan_min_team_confidence", 0.55))
@@ -261,6 +272,9 @@ def _parse_quick_scan_output(output: object, settings: Settings) -> tuple[list[T
             )
         if team_id is None and label is None and color_label is None:
             continue
+        evidence_frame_refs = _valid_evidence_frame_refs(item.get("evidenceFrameRefs"), evidence_frame_refs_by_clip, clip_ref)
+        if not evidence_frame_refs:
+            confidence = min(confidence, TEAM_QUICK_SCAN_UNVERIFIED_ATTRIBUTION_MAX_CONFIDENCE)
         confidence = _cap_attribution_confidence_by_detected_team(
             confidence,
             team_id=team_id,
@@ -276,6 +290,36 @@ def _parse_quick_scan_output(output: object, settings: Settings) -> tuple[list[T
             source="gpt_frame_review",
         )
     return teams, attributions
+
+
+def _evidence_frame_refs_by_clip(frames: Sequence[QuickScanFrame]) -> dict[str, set[str]]:
+    refs_by_clip: dict[str, set[str]] = {}
+    for frame in frames:
+        if frame.clip_ref is None:
+            continue
+        refs_by_clip.setdefault(frame.clip_ref, set()).add(frame.frame_ref)
+    return refs_by_clip
+
+
+def _valid_evidence_frame_refs(
+    value: object,
+    evidence_frame_refs_by_clip: Optional[dict[str, set[str]]],
+    clip_ref: str,
+) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    allowed_refs = evidence_frame_refs_by_clip.get(clip_ref, set()) if evidence_frame_refs_by_clip is not None else None
+    valid_refs: list[str] = []
+    seen: set[str] = set()
+    for item in value:
+        frame_ref = clean_text(item)
+        if frame_ref is None or frame_ref in seen:
+            continue
+        if allowed_refs is not None and frame_ref not in allowed_refs:
+            continue
+        seen.add(frame_ref)
+        valid_refs.append(frame_ref)
+    return valid_refs
 
 
 def _team_aliases_by_key(raw_teams: object, teams: Sequence[TeamOption]) -> dict[str, TeamOption]:
