@@ -40,6 +40,7 @@ MIN_EVAL_DEFENSIVE_FOLLOW_THROUGH_SECONDS = 0.5
 MIN_EVAL_SHOT_OUTCOME_CONFIDENCE = 0.65
 MIN_EVAL_RIM_ENTRY_SEQUENCE_CONFIDENCE = 0.72
 MIN_EVAL_OUTCOME_RELIABILITY = 0.72
+MIN_EVAL_TEAM_EVIDENCE_FRAME_REFS = 2
 
 MADE_APPROACH_FRAME_ROLES = {"release", "shotarcearly", "eventcenter", "shotarclate", "rimapproach"}
 MADE_ENTRY_FRAME_ROLES = {"outcome", "shotarclate", "rim", "rimentry"}
@@ -62,6 +63,7 @@ MADE_BALL_FLIGHT_FRAME_ROLES = {
 @dataclass(frozen=True)
 class AccuracyThresholds:
     selectedTeamPrecision: float = 0.85
+    selectedTeamEvidenceQuality: float = 0.85
     selectedTeamRecallWithUncertain: float = 0.85
     highlightPrecision: float = 0.85
     highlightRecall: float = 0.85
@@ -78,6 +80,7 @@ class AccuracyMetrics:
     caseCount: int
     clipCount: int
     selectedTeamPrecision: float
+    selectedTeamEvidenceQuality: float
     selectedTeamRecallWithUncertain: float
     highlightPrecision: float
     highlightRecall: float
@@ -93,6 +96,8 @@ class AccuracyMetrics:
     badShotOutcomeEvidenceCount: int
     selectedTeamBlockCount: int
     selectedTeamStealCount: int
+    selectedTeamEvidenceClipCount: int
+    badSelectedTeamEvidenceCount: int
 
 
 @dataclass(frozen=True)
@@ -107,6 +112,7 @@ def main() -> int:
     args = parse_args()
     thresholds = AccuracyThresholds(
         selectedTeamPrecision=args.min_selected_team_precision,
+        selectedTeamEvidenceQuality=args.min_selected_team_evidence,
         selectedTeamRecallWithUncertain=args.min_selected_team_recall,
         highlightPrecision=args.min_highlight_precision,
         highlightRecall=args.min_highlight_recall,
@@ -137,6 +143,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("input", help="JSON file with cases/clips and ground-truth labels.")
     parser.add_argument("--json", action="store_true", help="Emit machine-readable report.")
     parser.add_argument("--min-selected-team-precision", type=float, default=0.85)
+    parser.add_argument("--min-selected-team-evidence", type=float, default=0.85)
     parser.add_argument("--min-selected-team-recall", type=float, default=0.85)
     parser.add_argument("--min-highlight-precision", type=float, default=0.85)
     parser.add_argument("--min-highlight-recall", type=float, default=0.85)
@@ -161,13 +168,15 @@ def evaluate_accuracy(payload: dict[str, Any], thresholds: AccuracyThresholds | 
     thresholds = thresholds or AccuracyThresholds()
     cases = normalize_cases(payload)
     if not cases:
-        metrics = AccuracyMetrics(0, 0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+        metrics = AccuracyMetrics(0, 0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
         return AccuracyReport("fail", metrics, thresholds, ["No eval cases found."])
 
     counts = {
         "clips": 0,
         "confident_selected_predictions": 0,
         "correct_confident_selected_predictions": 0,
+        "selected_team_evidence_predictions": 0,
+        "good_selected_team_evidence_predictions": 0,
         "selected_team_highlights": 0,
         "selected_team_highlights_kept_or_uncertain": 0,
         "kept_predictions": 0,
@@ -223,6 +232,9 @@ def evaluate_accuracy(payload: dict[str, Any], thresholds: AccuracyThresholds | 
 
             if confident_selected:
                 counts["confident_selected_predictions"] += 1
+                counts["selected_team_evidence_predictions"] += 1
+                if team_attribution_evidence_is_valid(prediction):
+                    counts["good_selected_team_evidence_predictions"] += 1
                 if has_selected_team:
                     counts["correct_confident_selected_predictions"] += 1
 
@@ -270,6 +282,10 @@ def evaluate_accuracy(payload: dict[str, Any], thresholds: AccuracyThresholds | 
             counts["correct_confident_selected_predictions"],
             counts["confident_selected_predictions"],
         ),
+        selectedTeamEvidenceQuality=ratio(
+            counts["good_selected_team_evidence_predictions"],
+            counts["selected_team_evidence_predictions"],
+        ),
         selectedTeamRecallWithUncertain=ratio(
             counts["selected_team_highlights_kept_or_uncertain"],
             counts["selected_team_highlights"],
@@ -293,6 +309,10 @@ def evaluate_accuracy(payload: dict[str, Any], thresholds: AccuracyThresholds | 
         ),
         selectedTeamBlockCount=counts["selected_team_blocks"],
         selectedTeamStealCount=counts["selected_team_steals"],
+        selectedTeamEvidenceClipCount=counts["selected_team_evidence_predictions"],
+        badSelectedTeamEvidenceCount=(
+            counts["selected_team_evidence_predictions"] - counts["good_selected_team_evidence_predictions"]
+        ),
     )
     failures = threshold_failures(metrics, thresholds)
     if metrics.clipCount == 0:
@@ -349,6 +369,7 @@ def normalize_clip(raw_clip: dict[str, Any]) -> dict[str, dict[str, Any]] | None
         "teamId": prediction.get("teamId") or team_attribution.get("teamId"),
         "teamConfidence": prediction.get("teamConfidence") or team_attribution.get("confidence"),
         "teamAttributionStatus": prediction.get("teamAttributionStatus") or team_attribution.get("status"),
+        "teamEvidenceFrameRefs": string_list(prediction.get("evidenceFrameRefs") or team_attribution.get("evidenceFrameRefs")),
         "eventType": prediction.get("eventType") or prediction.get("basketballEvent") or prediction.get("label") or normalized_expected["eventType"],
         "start": number_or_none(prediction.get("start", raw_clip.get("start"))),
         "end": number_or_none(prediction.get("end", raw_clip.get("end"))),
@@ -401,6 +422,7 @@ def threshold_failures(metrics: AccuracyMetrics, thresholds: AccuracyThresholds)
     failures: list[str] = []
     checks = (
         ("selectedTeamPrecision", metrics.selectedTeamPrecision, thresholds.selectedTeamPrecision),
+        ("selectedTeamEvidenceQuality", metrics.selectedTeamEvidenceQuality, thresholds.selectedTeamEvidenceQuality),
         ("selectedTeamRecallWithUncertain", metrics.selectedTeamRecallWithUncertain, thresholds.selectedTeamRecallWithUncertain),
         ("highlightPrecision", metrics.highlightPrecision, thresholds.highlightPrecision),
         ("highlightRecall", metrics.highlightRecall, thresholds.highlightRecall),
@@ -424,6 +446,10 @@ def threshold_failures(metrics: AccuracyMetrics, thresholds: AccuracyThresholds)
         if value < minimum:
             failures.append(f"{name} {value} is below required {minimum}.")
     return failures
+
+
+def team_attribution_evidence_is_valid(prediction: dict[str, Any]) -> bool:
+    return len(string_set(prediction.get("teamEvidenceFrameRefs"))) >= MIN_EVAL_TEAM_EVIDENCE_FRAME_REFS
 
 
 def defensive_event_subtype(event_type: str) -> str | None:
@@ -574,6 +600,20 @@ def string_set(value: Any) -> set[str]:
     if not isinstance(value, list):
         return set()
     return {normalize_event_type(item) for item in value if normalize_event_type(item)}
+
+
+def string_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    items: list[str] = []
+    seen: set[str] = set()
+    for item in value:
+        text = string_or_none(item)
+        if text is None or text in seen:
+            continue
+        seen.add(text)
+        items.append(text)
+    return items
 
 
 def number_or_none(value: Any) -> float | None:

@@ -20,7 +20,11 @@ def analysis_clip(start: float, end: float, label: str, keep: bool, team_id: str
         "combinedScore": 0.82,
         "shouldAutoKeep": keep,
         "shouldEnableSlowMotion": False,
-        "teamAttribution": {"teamId": team_id, "confidence": confidence},
+        "teamAttribution": {
+            "teamId": team_id,
+            "confidence": confidence,
+            "evidenceFrameRefs": [f"{label.lower().replace(' ', '_')}_setup", f"{label.lower().replace(' ', '_')}_result"],
+        },
         "teamAttributionStatus": "matched" if confidence >= 0.85 else "uncertain",
         "nativeShotSignals": {
             "timingWindowOk": True,

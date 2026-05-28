@@ -9,6 +9,7 @@ Make the 85% selected-team/highlight quality target measurable before we claim i
 - `scripts/evaluate_team_highlight_accuracy.py` scores labeled JSON exports without reading videos or calling providers.
 - The evaluator measures:
   - selected-team precision for confident team attribution
+  - selected-team evidence quality for confident team attribution
   - selected-team highlight recall with uncertain clips included for Review
   - highlight precision and recall for the requested team scope
   - defensive-event recall for blocks, steals, forced turnovers, and defensive stops
@@ -16,7 +17,7 @@ Make the 85% selected-team/highlight quality target measurable before we claim i
   - shot-outcome evidence quality for made, missed, and blocked shot clips
   - minimum selected-team defensive coverage, including at least one block and one steal
   - uncertain review count
-- Default thresholds are `0.85` for selected-team precision, selected-team recall with uncertain clips, highlight precision, highlight recall, defensive-event recall, clip timing/context quality, and shot-outcome evidence quality. Default coverage also requires at least two selected-team defensive events with at least one block and one steal.
+- Default thresholds are `0.85` for selected-team precision, selected-team evidence quality, selected-team recall with uncertain clips, highlight precision, highlight recall, defensive-event recall, clip timing/context quality, and shot-outcome evidence quality. Default coverage also requires at least two selected-team defensive events with at least one block and one steal.
 
 ## Input Shape
 
@@ -50,6 +51,8 @@ The script accepts either a top-level `clips` list or a `cases` list:
 
 For uncertain but plausible clips, set `keep: true`, `includeForReview: true`, and either `teamAttributionStatus: "uncertain"` or a confidence below the case threshold. Those clips count toward recall-with-review, not confident precision.
 
+For selected-team evidence quality, confident selected-team predictions should include at least two unique `teamAttribution.evidenceFrameRefs` values. These are sampled-frame IDs from the cloud quick scan, not images or URLs.
+
 For timing quality, include `start`, `end`, and `eventCenter` for every kept or review-included prediction. The evaluator fails tiny clips, shot clips without enough setup/outcome context, defensive clips without useful event context, and clips whose `nativeShotSignals.timingWindowOk` is explicitly false.
 
 For shot-outcome evidence, kept or review-included shot clips should include a normalized `outcome`, `shotResultEvidence`, `shotTrackingEvidence`, and `qualitySignals`. Made shots must show visible rim entry and follow-through, blocked shots must show defensive ball disruption, and low-confidence or unclear outcome evidence fails the readiness gate.
@@ -66,9 +69,9 @@ Use the default thresholds for internal beta. If an eval set is intentionally na
 
 Commands run on branch `codex/phase-clip28-cloud-team-quick-scan`:
 
-- `python3 -m unittest scripts.test_team_highlight_accuracy_eval -v` -> 10 tests passed.
+- `python3 -m unittest scripts.test_team_highlight_accuracy_eval -v` -> 14 tests passed after the team evidence-quality gate.
 - `python3 -m py_compile scripts/evaluate_team_highlight_accuracy.py scripts/test_team_highlight_accuracy_eval.py` -> passed.
-- `python3 -m unittest discover -s scripts -p 'test_*.py' -v` -> 46 tests passed.
+- `python3 -m unittest discover -s scripts -p 'test_*.py' -v` -> 58 tests passed after the team evidence-quality gate.
 - `git diff --check` -> passed.
 
 ## Launch Recommendation

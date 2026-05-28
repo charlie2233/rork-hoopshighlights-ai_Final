@@ -7,6 +7,7 @@ Tighten the selected-team launch eval so HoopClips cannot claim the 85% highligh
 ## Change
 
 - `scripts/evaluate_team_highlight_accuracy.py` adds `shotOutcomeEvidenceQuality` with a default `0.85` threshold.
+- The evaluator now also requires confident selected-team predictions to meet `selectedTeamEvidenceQuality` with sampled-frame refs, so team ownership cannot pass from confidence alone.
 - Readiness coverage now requires at least two selected-team defensive events, at least one selected-team block, and at least one selected-team steal.
 - Made shots require visible rim-entry evidence, ball/rim frame roles, an outcome confidence of at least `0.65`, and non-false ball/rim visibility signals.
 - Blocked shots require a blocked outcome, blocked rim sequence, defensive ball-role evidence, and visible ball path.
