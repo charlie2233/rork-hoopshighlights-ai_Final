@@ -888,6 +888,46 @@ class TeamHighlightAccuracyEvalTests(unittest.TestCase):
         self.assertEqual(report.metrics.badTimingClipCount, 2)
         self.assertTrue(any("clipTimingQuality" in failure for failure in report.failures))
 
+    def test_barely_contextual_shot_windows_fail_timing_quality(self) -> None:
+        report = evaluate_accuracy(
+            {
+                "selectedTeamId": "team_dark",
+                "clips": [
+                    {
+                        "expected": {"teamId": "team_dark", "isHighlight": True, "eventType": "made_three"},
+                        "prediction": timed_prediction(
+                            {"keep": True, "teamAttribution": {"teamId": "team_dark", "confidence": 0.95}},
+                            start=10.0,
+                            end=14.0,
+                            event_center=11.0,
+                        ),
+                    },
+                    {
+                        "expected": {"teamId": "team_dark", "isHighlight": True, "eventType": "jumper"},
+                        "prediction": timed_prediction(
+                            {"keep": True, "teamAttribution": {"teamId": "team_dark", "confidence": 0.95}},
+                            start=20.0,
+                            end=24.0,
+                            event_center=23.3,
+                        ),
+                    },
+                ],
+            },
+            thresholds=AccuracyThresholds(
+                selectedTeamPrecision=0.0,
+                selectedTeamRecallWithUncertain=0.0,
+                highlightPrecision=0.0,
+                highlightRecall=0.0,
+                defensiveEventRecall=0.0,
+                clipTimingQuality=0.85,
+            ),
+        )
+
+        self.assertEqual(report.status, "fail")
+        self.assertEqual(report.metrics.clipTimingQuality, 0.0)
+        self.assertEqual(report.metrics.badTimingClipCount, 2)
+        self.assertTrue(any("clipTimingQuality" in failure for failure in report.failures))
+
     def test_kept_shot_missing_native_timing_window_fails_timing_quality(self) -> None:
         report = evaluate_accuracy(
             {
