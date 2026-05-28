@@ -200,6 +200,8 @@ export interface NativeShotSignals {
   timingWindowOk: boolean;
   outcome: "made" | "missed" | "blocked" | "uncertain" | "not_shot";
   outcomeConfidence: number;
+  outcomeEvidenceSource?: "label_only" | "native_shot_signals" | "defensive_event" | "non_shot" | "uncertain" | "not_shot";
+  outcomeReliabilityScore?: number;
 }
 
 export interface CloudDiagnostics {

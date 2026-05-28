@@ -284,6 +284,8 @@ nonisolated struct NativeShotSignals: Codable, Sendable, Equatable {
     let timingWindowOk: Bool
     let outcome: String
     let outcomeConfidence: Double
+    var outcomeEvidenceSource: String? = nil
+    var outcomeReliabilityScore: Double? = nil
 }
 
 nonisolated struct CloudClip: Codable, Sendable {

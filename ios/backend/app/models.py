@@ -123,6 +123,15 @@ class CloudNativeShotSignals(APIModel):
     timingWindowOk: bool = False
     outcome: Literal["made", "missed", "blocked", "uncertain", "not_shot"] = "uncertain"
     outcomeConfidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    outcomeEvidenceSource: Literal[
+        "label_only",
+        "native_shot_signals",
+        "defensive_event",
+        "non_shot",
+        "uncertain",
+        "not_shot",
+    ] = "uncertain"
+    outcomeReliabilityScore: float = Field(default=0.0, ge=0.0, le=1.0)
 
 
 class CloudClip(APIModel):

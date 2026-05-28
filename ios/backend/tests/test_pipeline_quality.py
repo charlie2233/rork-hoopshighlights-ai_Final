@@ -778,6 +778,9 @@ class PipelineQualityTests(unittest.TestCase):
         assert normalized.nativeShotSignals is not None
         self.assertTrue(normalized.nativeShotSignals.timingWindowOk)
         self.assertEqual(normalized.nativeShotSignals.outcome, "made")
+        self.assertEqual(normalized.nativeShotSignals.outcomeEvidenceSource, "label_only")
+        self.assertGreater(normalized.nativeShotSignals.outcomeReliabilityScore, 0.0)
+        self.assertLessEqual(normalized.nativeShotSignals.outcomeReliabilityScore, 0.68)
         self.assertGreaterEqual(normalized.nativeShotSignals.setupContextScore, 1.0)
         self.assertGreaterEqual(normalized.nativeShotSignals.outcomeContextScore, 1.0)
 
@@ -805,6 +808,8 @@ class PipelineQualityTests(unittest.TestCase):
         self.assertFalse(normalized.nativeShotSignals.isShotLike)
         self.assertTrue(normalized.nativeShotSignals.timingWindowOk)
         self.assertEqual(normalized.nativeShotSignals.outcome, "not_shot")
+        self.assertEqual(normalized.nativeShotSignals.outcomeEvidenceSource, "defensive_event")
+        self.assertGreaterEqual(normalized.nativeShotSignals.outcomeReliabilityScore, 0.9)
 
     def test_analysis_normalization_keeps_early_blocked_shot_as_defensive_context(self) -> None:
         early_block = _clip(
@@ -829,6 +834,8 @@ class PipelineQualityTests(unittest.TestCase):
         self.assertTrue(normalized.nativeShotSignals.isShotLike)
         self.assertTrue(normalized.nativeShotSignals.timingWindowOk)
         self.assertEqual(normalized.nativeShotSignals.outcome, "blocked")
+        self.assertEqual(normalized.nativeShotSignals.outcomeEvidenceSource, "defensive_event")
+        self.assertGreater(normalized.nativeShotSignals.outcomeReliabilityScore, 0.7)
 
     def test_analysis_normalization_keeps_early_steal_finish_as_defensive_context(self) -> None:
         early_steal_finish = _clip(
@@ -853,6 +860,8 @@ class PipelineQualityTests(unittest.TestCase):
         self.assertTrue(normalized.nativeShotSignals.isShotLike)
         self.assertTrue(normalized.nativeShotSignals.timingWindowOk)
         self.assertEqual(normalized.nativeShotSignals.outcome, "uncertain")
+        self.assertEqual(normalized.nativeShotSignals.outcomeEvidenceSource, "uncertain")
+        self.assertEqual(normalized.nativeShotSignals.outcomeReliabilityScore, 0.35)
 
     def test_native_outcome_hints_do_not_treat_ambiguous_finishes_as_makes(self) -> None:
         for label in ("Layup", "Tough Finish"):
@@ -873,6 +882,8 @@ class PipelineQualityTests(unittest.TestCase):
                 self.assertTrue(signals.timingWindowOk)
                 self.assertEqual(signals.outcome, "uncertain")
                 self.assertEqual(signals.outcomeConfidence, 0.0)
+                self.assertEqual(signals.outcomeEvidenceSource, "uncertain")
+                self.assertEqual(signals.outcomeReliabilityScore, 0.35)
 
     def test_native_outcome_hints_keep_explicit_made_labels(self) -> None:
         for label in ("Made Layup", "Bucket", "Basket", "Dunk"):
@@ -891,6 +902,8 @@ class PipelineQualityTests(unittest.TestCase):
 
                 self.assertEqual(signals.outcome, "made")
                 self.assertGreaterEqual(signals.outcomeConfidence, 0.8)
+                self.assertEqual(signals.outcomeEvidenceSource, "label_only")
+                self.assertLessEqual(signals.outcomeReliabilityScore, 0.68)
 
     def test_shot_context_score_rewards_setup_and_outcome_around_boundary(self) -> None:
         complete_score, event_time = _shot_context_score_for_window(

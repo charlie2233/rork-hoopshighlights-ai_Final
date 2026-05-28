@@ -644,6 +644,7 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertEqual(context["candidateClips"][0]["nativeShotSignals"]["outcome"], "made")
         self.assertEqual(context["candidateClips"][0]["outcomeEvidenceSource"], "label_only")
         self.assertGreater(context["candidateClips"][0]["outcomeReliabilityScore"], 0.0)
+        self.assertLessEqual(context["candidateClips"][0]["outcomeReliabilityScore"], 0.68)
         serialized = str(context)
         self.assertNotIn("sourceObjectKey", serialized)
         self.assertNotIn("downloadUrl", serialized)
@@ -667,6 +668,8 @@ class EditPlanAgentTests(unittest.TestCase):
                             "timingWindowOk": True,
                             "outcome": "blocked",
                             "outcomeConfidence": 0.88,
+                            "outcomeEvidenceSource": "defensive_event",
+                            "outcomeReliabilityScore": 0.74,
                         },
                     }
                 ],
@@ -676,6 +679,8 @@ class EditPlanAgentTests(unittest.TestCase):
         signals = native_shot_signals_for_clip(request.clips[0])
 
         self.assertEqual(signals.outcome, "blocked")
+        self.assertEqual(signals.outcomeEvidenceSource, "defensive_event")
+        self.assertEqual(signals.outcomeReliabilityScore, 0.74)
         self.assertEqual(signals.leadInSeconds, 0.2)
         self.assertFalse(signals.timingWindowOk)
         self.assertLess(signals.setupContextScore, 1.0)
@@ -1066,6 +1071,8 @@ class EditPlanAgentTests(unittest.TestCase):
         plan = build_edit_plan(request, "edit_native_uncertain_caption")
 
         self.assertEqual(signals.outcome, "uncertain")
+        self.assertEqual(signals.outcomeEvidenceSource, "uncertain")
+        self.assertEqual(signals.outcomeReliabilityScore, 0.35)
         self.assertEqual([clip.clipId for clip in plan.clips], ["provider_overclaimed_make"])
         self.assertEqual(plan.clips[0].caption, "GOOD LOOK")
         self.assertNotEqual(plan.clips[0].caption, "BUCKET")
@@ -1095,6 +1102,10 @@ class EditPlanAgentTests(unittest.TestCase):
             )
         )
 
+        signals = native_shot_signals_for_clip(request.clips[0])
+
+        self.assertEqual(signals.outcomeEvidenceSource, "not_shot")
+        self.assertEqual(signals.outcomeReliabilityScore, 0.82)
         self.assertFalse(is_plan_quality_eligible_clip(request.clips[0]))
         plan = build_edit_plan(request, "edit_native_not_shot_reject")
 

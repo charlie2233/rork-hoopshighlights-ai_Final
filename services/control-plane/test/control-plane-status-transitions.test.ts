@@ -648,7 +648,9 @@ test("legacy inference manifest preserves team and timing metadata", async () =>
               contextQualityScore: 0.9,
               timingWindowOk: true,
               outcome: "not_shot",
-              outcomeConfidence: 1
+              outcomeConfidence: 1,
+              outcomeEvidenceSource: "defensive_event",
+              outcomeReliabilityScore: 0.9
             },
             teamAttribution: {
               teamId: "team_light",
@@ -673,7 +675,11 @@ test("legacy inference manifest preserves team and timing metadata", async () =>
       teamSelection?: typeof teamSelection | null;
       clips: Array<{
         eventCenter?: number | null;
-        nativeShotSignals?: { timingWindowOk: boolean } | null;
+        nativeShotSignals?: {
+          timingWindowOk: boolean;
+          outcomeEvidenceSource?: string | null;
+          outcomeReliabilityScore?: number | null;
+        } | null;
         teamAttribution?: { teamId?: string | null } | null;
         teamAttributionStatus?: string | null;
       }>;
@@ -684,6 +690,8 @@ test("legacy inference manifest preserves team and timing metadata", async () =>
   assert.equal(finalJson.results?.detectedTeams?.[0]?.primaryColorHex, "#f4f4f4");
   assert.equal(finalJson.results?.clips[0]?.eventCenter, 6.25);
   assert.equal(finalJson.results?.clips[0]?.nativeShotSignals?.timingWindowOk, true);
+  assert.equal(finalJson.results?.clips[0]?.nativeShotSignals?.outcomeEvidenceSource, "defensive_event");
+  assert.equal(finalJson.results?.clips[0]?.nativeShotSignals?.outcomeReliabilityScore, 0.9);
   assert.equal(finalJson.results?.clips[0]?.teamAttribution?.teamId, "team_light");
   assert.equal(finalJson.results?.clips[0]?.teamAttributionStatus, "matched");
 });

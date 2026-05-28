@@ -611,6 +611,8 @@ function normalizeNativeShotSignals(value: unknown): CloudClip["nativeShotSignal
   }
   const input = value as Record<string, unknown>;
   const outcome = input.outcome;
+  const outcomeEvidenceSource = input.outcomeEvidenceSource;
+  const outcomeReliabilityScore = coerceNumber(input.outcomeReliabilityScore);
   return {
     isShotLike: coerceBoolean(input.isShotLike) ?? false,
     leadInSeconds: coerceNumber(input.leadInSeconds) ?? 0,
@@ -624,7 +626,17 @@ function normalizeNativeShotSignals(value: unknown): CloudClip["nativeShotSignal
       outcome === "made" || outcome === "missed" || outcome === "blocked" || outcome === "uncertain" || outcome === "not_shot"
         ? outcome
         : "uncertain",
-    outcomeConfidence: clamp01(coerceNumber(input.outcomeConfidence) ?? 0)
+    outcomeConfidence: clamp01(coerceNumber(input.outcomeConfidence) ?? 0),
+    outcomeEvidenceSource:
+      outcomeEvidenceSource === "label_only" ||
+      outcomeEvidenceSource === "native_shot_signals" ||
+      outcomeEvidenceSource === "defensive_event" ||
+      outcomeEvidenceSource === "non_shot" ||
+      outcomeEvidenceSource === "uncertain" ||
+      outcomeEvidenceSource === "not_shot"
+        ? outcomeEvidenceSource
+        : undefined,
+    outcomeReliabilityScore: outcomeReliabilityScore === null ? undefined : clamp01(outcomeReliabilityScore)
   };
 }
 

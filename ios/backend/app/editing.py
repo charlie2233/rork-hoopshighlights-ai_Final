@@ -324,6 +324,15 @@ class NativeShotSignals(APIModel):
     timingWindowOk: bool = False
     outcome: Literal["made", "missed", "blocked", "uncertain", "not_shot"] = "uncertain"
     outcomeConfidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    outcomeEvidenceSource: Literal[
+        "label_only",
+        "native_shot_signals",
+        "defensive_event",
+        "non_shot",
+        "uncertain",
+        "not_shot",
+    ] = "uncertain"
+    outcomeReliabilityScore: float = Field(default=0.0, ge=0.0, le=1.0)
 
 
 class EditCandidateClip(APIModel):
@@ -1903,11 +1912,13 @@ def remove_duplicate_moments(clips: Sequence[EditCandidateClip]) -> List[EditCan
 
 
 def clip_outcome_reliability_score(clip: EditCandidateClip) -> float:
+    signals = native_shot_signals_for_clip(clip)
+    if signals.outcomeReliabilityScore > 0.0:
+        return signals.outcomeReliabilityScore
     if is_defensive_event_like_clip(clip):
         return 0.9
     if not is_shot_like_clip(clip):
         return 0.82
-    signals = native_shot_signals_for_clip(clip)
     if signals.outcome == "not_shot":
         return 0.0
     if signals.outcome == "uncertain":
@@ -1918,18 +1929,8 @@ def clip_outcome_reliability_score(clip: EditCandidateClip) -> float:
 
 
 def clip_outcome_evidence_source(clip: EditCandidateClip) -> str:
-    if is_defensive_event_like_clip(clip):
-        return "defensive_event"
-    if not is_shot_like_clip(clip):
-        return "non_shot"
     signals = native_shot_signals_for_clip(clip)
-    if signals.outcome == "not_shot":
-        return "not_shot"
-    if signals.outcome == "uncertain":
-        return "uncertain"
-    if clip.nativeShotSignals is None:
-        return "label_only"
-    return "native_shot_signals"
+    return signals.outcomeEvidenceSource
 
 
 def order_by_gpt_story_order(clips: Sequence[EditCandidateClip]) -> List[EditCandidateClip]:
@@ -2065,14 +2066,28 @@ def native_shot_signals_for_clip(clip: EditCandidateClip) -> NativeShotSignals:
         event_center_quality = 0.0
         timing_window_ok = clip.duration >= MIN_PLAN_CLIP_SECONDS
 
-    outcome, outcome_confidence = _native_outcome_hint_for_clip(clip, is_shot_like)
+    outcome, outcome_confidence, evidence_source, reliability_score = _native_outcome_hint_for_clip(clip, is_shot_like)
     incoming = clip.nativeShotSignals
     if incoming is not None and incoming.outcome in {"uncertain", "not_shot"}:
         outcome = incoming.outcome
         outcome_confidence = min(incoming.outcomeConfidence, clip.confidence)
+        if incoming.outcomeEvidenceSource != "uncertain":
+            evidence_source = incoming.outcomeEvidenceSource
+        elif incoming.outcome == "not_shot":
+            evidence_source = "defensive_event" if is_defensive_event_like_clip(clip) else "not_shot"
+        else:
+            evidence_source = "uncertain"
+        if incoming.outcomeReliabilityScore > 0.0:
+            reliability_score = incoming.outcomeReliabilityScore
+        elif incoming.outcome == "not_shot":
+            reliability_score = 0.9 if evidence_source == "defensive_event" else 0.82
+        else:
+            reliability_score = 0.35
     elif incoming is not None and incoming.outcome not in {"uncertain", "not_shot"}:
         outcome = incoming.outcome
         outcome_confidence = min(1.0, max(outcome_confidence, min(incoming.outcomeConfidence, clip.confidence)))
+        evidence_source = incoming.outcomeEvidenceSource if incoming.outcomeEvidenceSource != "uncertain" else "native_shot_signals"
+        reliability_score = incoming.outcomeReliabilityScore if incoming.outcomeReliabilityScore > 0.0 else min(1.0, 0.58 + (outcome_confidence * 0.42))
 
     return NativeShotSignals(
         isShotLike=is_shot_like,
@@ -2085,23 +2100,30 @@ def native_shot_signals_for_clip(clip: EditCandidateClip) -> NativeShotSignals:
         timingWindowOk=timing_window_ok,
         outcome=outcome,
         outcomeConfidence=round(outcome_confidence, 4),
+        outcomeEvidenceSource=evidence_source,
+        outcomeReliabilityScore=round(reliability_score, 4),
     )
 
 
-def _native_outcome_hint_for_clip(clip: EditCandidateClip, is_shot_like: bool) -> tuple[str, float]:
+def _native_outcome_hint_for_clip(clip: EditCandidateClip, is_shot_like: bool) -> tuple[str, float, str, float]:
+    confidence = min(max(clip.confidence, 0.0), 1.0)
+    if is_defensive_event_like_clip(clip):
+        if "block" in clip.label.strip().lower():
+            return "blocked", confidence, "defensive_event", min(0.78, 0.52 + (confidence * 0.26))
+        return "not_shot", 1.0, "defensive_event", 0.9
     if not is_shot_like:
-        return "not_shot", 1.0
+        return "not_shot", 1.0, "non_shot", 0.82
 
     normalized = clip.label.strip().lower()
     if "block" in normalized:
-        return "blocked", min(1.0, clip.confidence)
+        return "blocked", confidence, "label_only", min(0.68, 0.42 + (confidence * 0.18))
     if "miss" in normalized:
-        return "missed", min(1.0, clip.confidence * 0.85)
+        return "missed", min(1.0, confidence * 0.85), "label_only", min(0.68, 0.42 + (confidence * 0.18))
     if any(token in normalized for token in ("made", "bucket", "basket", "dunk")):
-        return "made", min(1.0, clip.confidence * 0.9)
+        return "made", min(1.0, confidence * 0.9), "label_only", min(0.68, 0.42 + (confidence * 0.18))
     if any(token in normalized for token in ("attempt", "layup", "finish")):
-        return "uncertain", 0.0
-    return "uncertain", 0.0
+        return "uncertain", 0.0, "uncertain", 0.35
+    return "uncertain", 0.0, "uncertain", 0.35
 
 
 def has_minimum_shot_context(clip: EditCandidateClip) -> bool:

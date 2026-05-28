@@ -644,7 +644,12 @@ def _native_shot_signals_for_analysis_clip(clip: CloudClip) -> CloudNativeShotSi
             and follow_through >= NATIVE_SHOT_CONTEXT_TARGET_FOLLOW_THROUGH_SECONDS
         )
 
-    outcome, outcome_confidence = _native_outcome_hint_for_label(clip.label, clip.confidence, is_shot_like)
+    outcome, outcome_confidence, evidence_source, reliability_score = _native_outcome_hint_for_label(
+        clip.label,
+        clip.confidence,
+        is_shot_like,
+        defensive_event_like,
+    )
     return CloudNativeShotSignals(
         isShotLike=is_shot_like,
         leadInSeconds=round(lead_in, 3),
@@ -656,23 +661,35 @@ def _native_shot_signals_for_analysis_clip(clip: CloudClip) -> CloudNativeShotSi
         timingWindowOk=timing_window_ok,
         outcome=outcome,
         outcomeConfidence=round(outcome_confidence, 4),
+        outcomeEvidenceSource=evidence_source,
+        outcomeReliabilityScore=round(reliability_score, 4),
     )
 
 
-def _native_outcome_hint_for_label(label: str, confidence: float, is_shot_like: bool) -> tuple[str, float]:
+def _native_outcome_hint_for_label(
+    label: str,
+    confidence: float,
+    is_shot_like: bool,
+    defensive_event_like: bool = False,
+) -> tuple[str, float, str, float]:
+    confidence = min(max(confidence, 0.0), 1.0)
+    if defensive_event_like and any(token in label.strip().lower() for token in ("block", "blocked")):
+        return "blocked", confidence, "defensive_event", min(0.78, 0.52 + (confidence * 0.26))
+    if defensive_event_like and not is_shot_like:
+        return "not_shot", 1.0, "defensive_event", 0.9
     if not is_shot_like:
-        return "not_shot", 1.0
+        return "not_shot", 1.0, "non_shot", 0.82
 
     normalized = label.strip().lower()
     if any(token in normalized for token in ("block", "blocked")):
-        return "blocked", min(1.0, confidence)
+        return "blocked", confidence, "label_only", min(0.68, 0.42 + (confidence * 0.18))
     if any(token in normalized for token in ("miss", "missed")):
-        return "missed", min(1.0, confidence * 0.85)
+        return "missed", min(1.0, confidence * 0.85), "label_only", min(0.68, 0.42 + (confidence * 0.18))
     if any(token in normalized for token in ("made", "bucket", "basket", "dunk")):
-        return "made", min(1.0, confidence * 0.9)
+        return "made", min(1.0, confidence * 0.9), "label_only", min(0.68, 0.42 + (confidence * 0.18))
     if any(token in normalized for token in ("attempt", "layup", "finish")):
-        return "uncertain", 0.0
-    return "uncertain", 0.0
+        return "uncertain", 0.0, "uncertain", 0.35
+    return "uncertain", 0.0, "uncertain", 0.35
 
 
 def _merge_hybrid_detection_clips(
