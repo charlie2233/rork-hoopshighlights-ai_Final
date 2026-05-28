@@ -162,6 +162,16 @@ class CloudDiagnostics(APIModel):
     usedGeminiRelabeling: bool
     candidateSegments: int
     finalSegments: int
+    usedTeamQuickScan: bool = False
+    preTeamFilterSegments: int = 0
+    teamMatchedCandidateSegments: int = 0
+    teamUncertainCandidateSegments: int = 0
+    teamOpponentFilteredSegments: int = 0
+    teamMatchedReviewSegments: int = 0
+    teamUncertainReviewSegments: int = 0
+    defensiveReviewSegments: int = 0
+    blockReviewSegments: int = 0
+    stealReviewSegments: int = 0
 
 
 class CloudAnalysisResult(APIModel):

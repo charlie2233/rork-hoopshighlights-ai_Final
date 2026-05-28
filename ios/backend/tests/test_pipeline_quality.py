@@ -355,6 +355,16 @@ class PipelineQualityTests(unittest.TestCase):
         self.assertLessEqual(len(result.clips), settings.max_returned_clips)
         self.assertEqual([clip.label for clip in result.clips], ["Three Pointer", "Steal", "Block"])
         self.assertTrue(any(clip.teamAttribution and clip.teamAttribution.confidence < 0.85 for clip in result.clips))
+        self.assertTrue(result.diagnostics.usedTeamQuickScan)
+        self.assertEqual(result.diagnostics.preTeamFilterSegments, 7)
+        self.assertEqual(result.diagnostics.teamMatchedCandidateSegments, 2)
+        self.assertEqual(result.diagnostics.teamUncertainCandidateSegments, 1)
+        self.assertEqual(result.diagnostics.teamOpponentFilteredSegments, 4)
+        self.assertEqual(result.diagnostics.teamMatchedReviewSegments, 2)
+        self.assertEqual(result.diagnostics.teamUncertainReviewSegments, 1)
+        self.assertEqual(result.diagnostics.defensiveReviewSegments, 2)
+        self.assertEqual(result.diagnostics.blockReviewSegments, 1)
+        self.assertEqual(result.diagnostics.stealReviewSegments, 1)
 
     def test_all_teams_analysis_expands_pool_before_review_trim_for_defense(self) -> None:
         native = [

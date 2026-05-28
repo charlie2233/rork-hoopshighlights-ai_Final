@@ -118,9 +118,16 @@ def run_analysis(job: StoredJob, settings: Settings, source_path: Path) -> Cloud
         provider_tags.append("team-scan")
     if not detected_teams:
         detected_teams = _detected_teams_from_clips(clips)
+    pre_team_filter_clips = list(clips)
     clips = _filter_analysis_clips_for_team_selection(clips, job.team_selection)
     clips = _trim_analysis_clips_for_review(clips, job.team_selection, settings.max_returned_clips)
     clips = _annotate_analysis_team_status(clips, job.team_selection)
+    team_diagnostics = _analysis_team_diagnostic_counts(
+        candidate_clips=pre_team_filter_clips,
+        review_clips=clips,
+        team_selection=job.team_selection,
+        used_team_quick_scan=used_team_quick_scan,
+    )
 
     elapsed_ms = int((perf_counter() - started_at) * 1000)
     model_version = settings.backend_model_version
@@ -136,6 +143,7 @@ def run_analysis(job: StoredJob, settings: Settings, source_path: Path) -> Cloud
         usedGeminiRelabeling=used_gemini,
         candidateSegments=candidate_segments,
         finalSegments=len(clips),
+        **team_diagnostics,
     )
 
     return CloudAnalysisResult(
@@ -145,6 +153,29 @@ def run_analysis(job: StoredJob, settings: Settings, source_path: Path) -> Cloud
         detectedTeams=detected_teams,
         teamSelection=job.team_selection,
     )
+
+
+def _analysis_team_diagnostic_counts(
+    *,
+    candidate_clips: Sequence[CloudClip],
+    review_clips: Sequence[CloudClip],
+    team_selection: Optional[TeamSelection],
+    used_team_quick_scan: bool,
+) -> dict[str, int | bool]:
+    candidate_statuses = [_analysis_team_status(clip, team_selection) for clip in candidate_clips]
+    review_statuses = [_analysis_team_status(clip, team_selection) for clip in review_clips]
+    return {
+        "usedTeamQuickScan": bool(used_team_quick_scan),
+        "preTeamFilterSegments": len(candidate_clips),
+        "teamMatchedCandidateSegments": sum(1 for status in candidate_statuses if status == "matched"),
+        "teamUncertainCandidateSegments": sum(1 for status in candidate_statuses if status == "uncertain"),
+        "teamOpponentFilteredSegments": sum(1 for status in candidate_statuses if status == "opponent"),
+        "teamMatchedReviewSegments": sum(1 for status in review_statuses if status == "matched"),
+        "teamUncertainReviewSegments": sum(1 for status in review_statuses if status == "uncertain"),
+        "defensiveReviewSegments": sum(1 for clip in review_clips if _is_defensive_label(clip.label)),
+        "blockReviewSegments": sum(1 for clip in review_clips if _defensive_label_family(clip.label) == "block"),
+        "stealReviewSegments": sum(1 for clip in review_clips if _defensive_label_family(clip.label) == "steal"),
+    }
 
 
 def build_team_quick_scan_candidate_clips(
