@@ -41,8 +41,14 @@ Results:
 - Scripts discovery passed: 57 tests.
 - `git diff --check` passed.
 
+Remote CI after push to `e350ff2`:
+
+- Cloud Edit Deploy Preflight: run `26559820561`, failed before useful job logs were available (`log not found` for failed job `78239827963`).
+- iOS Internal TestFlight Upload: run `26559820578`, failed before useful job logs were available (`log not found` for failed job `78239827903`).
+- PR #32 remained `UNSTABLE` from those remote checks.
+
 ## Remaining Proof
 
 - The 85% accuracy target still requires real labeled-footage evaluation, not just unit tests.
 - Internal TestFlight launch readiness still needs a post-install smoke on a real install.
-- GitHub Actions remain provider-blocked if the account billing/spending-limit issue is still active.
+- GitHub Actions remain provider-blocked if the account billing/spending-limit issue is still active; the latest failed jobs did not produce logs, so no code-level CI failure was available to debug from this push.
