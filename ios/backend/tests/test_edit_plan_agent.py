@@ -32,6 +32,7 @@ from app.editing import (
     build_revision_response,
     build_edit_job,
     build_edit_plan,
+    clip_outcome_evidence_source,
     clip_outcome_reliability_score,
     clip_context_quality_score,
     filter_clips_for_team_selection,
@@ -641,6 +642,8 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertIn("COLD.", context["templateCookbookRules"]["captionRules"]["examples"])
         self.assertEqual(context["candidateClips"][0]["clipId"], "c3")
         self.assertEqual(context["candidateClips"][0]["nativeShotSignals"]["outcome"], "made")
+        self.assertEqual(context["candidateClips"][0]["outcomeEvidenceSource"], "label_only")
+        self.assertGreater(context["candidateClips"][0]["outcomeReliabilityScore"], 0.0)
         serialized = str(context)
         self.assertNotIn("sourceObjectKey", serialized)
         self.assertNotIn("downloadUrl", serialized)
@@ -817,7 +820,21 @@ class EditPlanAgentTests(unittest.TestCase):
                             "outcomeConfidence": 0.0,
                         },
                     },
-                    _clip("native_supported_make", 18.0, "Made Shot", 0.82),
+                    {
+                        **_clip("native_supported_make", 18.0, "Made Shot", 0.82),
+                        "nativeShotSignals": {
+                            "isShotLike": True,
+                            "leadInSeconds": 3.4,
+                            "followThroughSeconds": 3.6,
+                            "setupContextScore": 1.0,
+                            "outcomeContextScore": 1.0,
+                            "eventCenterQuality": 1.0,
+                            "contextQualityScore": 1.0,
+                            "timingWindowOk": True,
+                            "outcome": "made",
+                            "outcomeConfidence": 0.78,
+                        },
+                    },
                 ],
             )
         )
@@ -825,6 +842,40 @@ class EditPlanAgentTests(unittest.TestCase):
         ranked = rank_clips(request.clips)
 
         self.assertEqual(ranked[0].id, "native_supported_make")
+        self.assertGreater(
+            clip_outcome_reliability_score(ranked[0]),
+            clip_outcome_reliability_score(request.clips[0]),
+        )
+
+    def test_rank_clips_prefers_native_outcome_evidence_over_label_only_make_claim(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                clips=[
+                    _clip("label_only_make", 6.0, "Made Shot", 0.99),
+                    {
+                        **_clip("native_evidence_make", 18.0, "Made Shot", 0.78),
+                        "nativeShotSignals": {
+                            "isShotLike": True,
+                            "leadInSeconds": 3.4,
+                            "followThroughSeconds": 3.6,
+                            "setupContextScore": 1.0,
+                            "outcomeContextScore": 1.0,
+                            "eventCenterQuality": 1.0,
+                            "contextQualityScore": 1.0,
+                            "timingWindowOk": True,
+                            "outcome": "made",
+                            "outcomeConfidence": 0.74,
+                        },
+                    },
+                ],
+            )
+        )
+
+        ranked = rank_clips(request.clips)
+
+        self.assertEqual(ranked[0].id, "native_evidence_make")
+        self.assertEqual(clip_outcome_evidence_source(request.clips[0]), "label_only")
+        self.assertEqual(clip_outcome_evidence_source(ranked[0]), "native_shot_signals")
         self.assertGreater(
             clip_outcome_reliability_score(ranked[0]),
             clip_outcome_reliability_score(request.clips[0]),
@@ -849,7 +900,21 @@ class EditPlanAgentTests(unittest.TestCase):
                             "outcomeConfidence": 0.0,
                         },
                     },
-                    _clip("supported_duplicate", 6.2, "Made Shot", 0.82, "same_play"),
+                    {
+                        **_clip("supported_duplicate", 6.2, "Made Shot", 0.82, "same_play"),
+                        "nativeShotSignals": {
+                            "isShotLike": True,
+                            "leadInSeconds": 3.4,
+                            "followThroughSeconds": 3.6,
+                            "setupContextScore": 1.0,
+                            "outcomeContextScore": 1.0,
+                            "eventCenterQuality": 1.0,
+                            "contextQualityScore": 1.0,
+                            "timingWindowOk": True,
+                            "outcome": "made",
+                            "outcomeConfidence": 0.78,
+                        },
+                    },
                 ],
             )
         )

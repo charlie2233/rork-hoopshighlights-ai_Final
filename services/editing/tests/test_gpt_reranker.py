@@ -206,6 +206,8 @@ class GPTHighlightRerankerTests(unittest.TestCase):
                 "planTier",
                 "qualityHints",
                 "nativeShotSignals",
+                "outcomeEvidenceSource",
+                "outcomeReliabilityScore",
                 "sampledKeyframes",
             },
         )
@@ -213,11 +215,16 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertEqual(compact_clip["nativeShotSignals"]["outcome"], "made")
         self.assertTrue(compact_clip["nativeShotSignals"]["timingWindowOk"])
         self.assertEqual(compact_clip["qualityHints"]["nativeShotSignals"]["outcome"], "made")
+        self.assertEqual(compact_clip["outcomeEvidenceSource"], "label_only")
+        self.assertEqual(compact_clip["qualityHints"]["outcomeEvidenceSource"], "label_only")
+        self.assertGreater(compact_clip["outcomeReliabilityScore"], 0.0)
+        self.assertEqual(compact_clip["qualityHints"]["outcomeReliabilityScore"], compact_clip["outcomeReliabilityScore"])
         self.assertEqual(agent_cookbook["templateId"], "personal_highlight_v1")
         self.assertIn("templateCookbookRules", agent_cookbook)
         self.assertEqual(agent_cookbook["templateCookbookRules"]["captionRules"]["tone"], "hype")
         self.assertEqual(agent_cookbook["candidateClips"][0]["clipId"], "c0")
         self.assertEqual(agent_cookbook["candidateClips"][0]["nativeShotSignals"]["contextQualityScore"], 1.0)
+        self.assertEqual(agent_cookbook["candidateClips"][0]["outcomeEvidenceSource"], "label_only")
         self.assertEqual(len(image_items), 1)
         self.assertTrue(image_items[0]["image_url"].startswith("data:image/jpeg;base64,"))
         self.assertNotIn("c999", json.dumps(payload))

@@ -1791,6 +1791,8 @@ def _compact_agent_candidate_clip(
         "teamAttribution": clip.teamAttribution.model_dump(mode="json") if clip.teamAttribution is not None else None,
         "teamAttributionStatus": team_attribution_status(clip, team_selection),
         "nativeShotSignals": native_shot_signals_for_clip(clip).model_dump(mode="json"),
+        "outcomeEvidenceSource": clip_outcome_evidence_source(clip),
+        "outcomeReliabilityScore": clip_outcome_reliability_score(clip),
     }
 
 
@@ -1910,7 +1912,24 @@ def clip_outcome_reliability_score(clip: EditCandidateClip) -> float:
         return 0.0
     if signals.outcome == "uncertain":
         return 0.35
+    if clip.nativeShotSignals is None:
+        return round(0.42 + (min(max(clip.confidence, 0.0), 1.0) * 0.18), 4)
     return round(0.58 + (min(max(signals.outcomeConfidence, 0.0), 1.0) * 0.42), 4)
+
+
+def clip_outcome_evidence_source(clip: EditCandidateClip) -> str:
+    if is_defensive_event_like_clip(clip):
+        return "defensive_event"
+    if not is_shot_like_clip(clip):
+        return "non_shot"
+    signals = native_shot_signals_for_clip(clip)
+    if signals.outcome == "not_shot":
+        return "not_shot"
+    if signals.outcome == "uncertain":
+        return "uncertain"
+    if clip.nativeShotSignals is None:
+        return "label_only"
+    return "native_shot_signals"
 
 
 def order_by_gpt_story_order(clips: Sequence[EditCandidateClip]) -> List[EditCandidateClip]:

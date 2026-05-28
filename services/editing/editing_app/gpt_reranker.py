@@ -30,6 +30,8 @@ from app.editing import (  # noqa: E402
     StoredEditJob,
     apply_gpt_highlight_rerank,
     build_agent_editing_context,
+    clip_outcome_evidence_source,
+    clip_outcome_reliability_score,
     derive_user_prompt_intent,
     filter_clips_for_team_selection,
     get_template_pack_for_plan,
@@ -431,6 +433,8 @@ def _candidate_quality_hints(clip: EditCandidateClip) -> Dict[str, Any]:
         "minFollowThroughSeconds": MIN_GPT_CANDIDATE_FOLLOW_THROUGH_SECONDS,
         "shotLike": is_shot_like,
         "nativeShotSignals": native_shot_signals_for_clip(clip).model_dump(mode="json"),
+        "outcomeEvidenceSource": clip_outcome_evidence_source(clip),
+        "outcomeReliabilityScore": clip_outcome_reliability_score(clip),
         "timingWindowOk": (
             duration >= min_duration
             and lead_in >= MIN_GPT_CANDIDATE_LEAD_IN_SECONDS
@@ -850,6 +854,8 @@ def _build_openai_payload(
             "planTier": request.planTier,
             "qualityHints": _candidate_quality_hints(clip),
             "nativeShotSignals": native_shot_signals_for_clip(clip).model_dump(mode="json"),
+            "outcomeEvidenceSource": clip_outcome_evidence_source(clip),
+            "outcomeReliabilityScore": clip_outcome_reliability_score(clip),
             "sampledKeyframes": [
                 {"role": frame.role, "time": frame.time_seconds}
                 for frame in candidate_frames
