@@ -20,11 +20,11 @@ ResponseClient = Callable[[Dict[str, Any], str, str, float], Dict[str, Any]]
 TEAM_QUICK_SCAN_CONFIDENT_ATTRIBUTION = 0.85
 TEAM_QUICK_SCAN_UNVERIFIED_ATTRIBUTION_MAX_CONFIDENCE = TEAM_QUICK_SCAN_CONFIDENT_ATTRIBUTION - 0.01
 TEAM_QUICK_SCAN_MAX_CANDIDATE_CLIPS = 160
-TEAM_QUICK_SCAN_MAX_FRAMES_PER_CANDIDATE = 6
+TEAM_QUICK_SCAN_MAX_FRAMES_PER_CANDIDATE = 8
 TEAM_QUICK_SCAN_COMPACT_FRAMES_PER_CANDIDATE = 3
-TEAM_QUICK_SCAN_RICH_CANDIDATE_CLIPS = 60
-TEAM_QUICK_SCAN_DEFAULT_TOTAL_CLIP_FRAMES = 720
-TEAM_QUICK_SCAN_MAX_TOTAL_CLIP_FRAMES = 900
+TEAM_QUICK_SCAN_RICH_CANDIDATE_CLIPS = 120
+TEAM_QUICK_SCAN_DEFAULT_TOTAL_CLIP_FRAMES = 1200
+TEAM_QUICK_SCAN_MAX_TOTAL_CLIP_FRAMES = 1280
 
 
 @dataclass(frozen=True)
@@ -93,9 +93,9 @@ def _build_openai_payload(
             "selectedTeamAccuracyTarget": TEAM_QUICK_SCAN_CONFIDENT_ATTRIBUTION,
             "uncertainPolicy": "If ball control, defender, or jersey color is unclear, return lower confidence instead of guessing. The backend keeps uncertain clips for review.",
             "highlightOwnership": "For made shots, ownership is the shooter/finisher team. For blocks, steals, defensive stops, or forced turnovers, ownership is the defender who made the play.",
-            "scoringFrameRoles": "For scoring clips, ballHandlerSetup, preRelease, and release show the offensive player/team; rimApproach and rimResult show the outcome; followThrough shows the finisher after the play.",
-            "defensiveFrameRoles": "For defensive clips, defenseSetup and preChallenge/prePossessionChange show the defender before the event, challenge or possessionChange shows the defensive action, and recovery/defenseOutcome/finishContext show the result.",
-            "frameBudgetPolicy": "Higher-ranked candidates may include up to six role frames; later candidates may include a compact three-frame ownership set. Use every supplied role for confidence.",
+            "scoringFrameRoles": "For scoring clips, ballHandlerSetup, preRelease, release, and shotArc show the offensive player/team; rimApproach and rimResult show the outcome; followThrough/finishContext show the finisher after the play.",
+            "defensiveFrameRoles": "For defensive clips, defenseSetup and preChallenge/prePossessionChange show the defender before the event, challenge/ballDeflection or possessionChange/ballControlChange shows the defensive action, and recovery/defenseOutcome/finishContext show the result.",
+            "frameBudgetPolicy": "Higher-ranked candidates may include up to eight role frames; later candidates may include a compact three-frame ownership set. Use every supplied role for confidence.",
         },
         "durationSeconds": round(duration_seconds, 3),
         "candidateClips": [
@@ -134,9 +134,9 @@ def _build_openai_payload(
             "You are HoopClips Team Quick Scan. Identify the teams in sampled basketball frames by visible jersey color, "
             "then assign each candidate clip to the team responsible for the highlight moment. Use confidence >=0.85 only "
             "when team ownership is visually clear. Use lower confidence for occlusion, camera blur, mixed jerseys, or ambiguous possession. "
-            "For scoring frame roles, use ballHandlerSetup, preRelease, and release to judge the shooter/finisher team, then rimApproach/rimResult/followThrough to confirm the play. "
+            "For scoring frame roles, use ballHandlerSetup, preRelease, release, and shotArc to judge the shooter/finisher team, then rimApproach/rimResult/followThrough/finishContext to confirm the play. "
             "Blocks, steals, defensive stops, and forced turnovers belong to the defending player who made the play. "
-            "For defensive frame roles, use defenseSetup plus preChallenge/prePossessionChange, challenge/possessionChange, and recovery/defenseOutcome/finishContext to judge the defender's team. "
+            "For defensive frame roles, use defenseSetup plus preChallenge/prePossessionChange, challenge/ballDeflection or possessionChange/ballControlChange, and recovery/defenseOutcome/finishContext to judge the defender's team. "
             "Use only supplied frames and candidate clip refs. Do not output prose, commands, file paths, URLs, storage keys, or FFmpeg instructions. "
             "Return strict JSON only."
         ),
@@ -149,7 +149,7 @@ def _build_openai_payload(
                 "schema": _response_schema(candidate_clip_limit),
             }
         },
-        "max_output_tokens": int(getattr(settings, "team_quick_scan_max_output_tokens", 6000)),
+        "max_output_tokens": int(getattr(settings, "team_quick_scan_max_output_tokens", 12000)),
     }
 
 
@@ -449,7 +449,18 @@ def _clip_sample_times(clip: CloudClip, count: int) -> list[tuple[str, float]]:
     event_center = min(max(event_center, start), end)
     label = clip.label.strip().lower()
     if _is_block_like_label(label):
-        if count > 4:
+        if count >= 8:
+            candidates = [
+                ("defenseSetup", start + (duration * 0.08)),
+                ("preChallenge", max(start, event_center - min(1.0, duration * 0.34))),
+                ("challenge", max(start, event_center - min(0.22, duration * 0.08))),
+                ("ballDeflection", event_center),
+                ("defenseOutcome", min(end, event_center + min(0.28, duration * 0.1))),
+                ("recovery", max(event_center, end - (duration * 0.18))),
+                ("finishContext", end - (duration * 0.06)),
+                ("aftermath", end - (duration * 0.01)),
+            ]
+        elif count > 4:
             candidates = [
                 ("defenseSetup", start + (duration * 0.1)),
                 ("preChallenge", max(start, event_center - min(0.8, duration * 0.28))),
@@ -466,7 +477,18 @@ def _clip_sample_times(clip: CloudClip, count: int) -> list[tuple[str, float]]:
                 ("recovery", end - (duration * 0.06)),
             ]
     elif _is_non_scoring_defensive_label(label):
-        if count > 4:
+        if count >= 8:
+            candidates = [
+                ("defenseSetup", start + (duration * 0.08)),
+                ("prePossessionChange", max(start, event_center - min(1.0, duration * 0.34))),
+                ("possessionPressure", max(start, event_center - min(0.22, duration * 0.08))),
+                ("possessionChange", event_center),
+                ("ballControlChange", min(end, event_center + min(0.28, duration * 0.1))),
+                ("recovery", max(event_center, end - (duration * 0.18))),
+                ("defenseOutcome", end - (duration * 0.06)),
+                ("finishContext", end - (duration * 0.01)),
+            ]
+        elif count > 4:
             candidates = [
                 ("defenseSetup", start + (duration * 0.1)),
                 ("prePossessionChange", max(start, event_center - min(0.8, duration * 0.28))),
@@ -485,7 +507,18 @@ def _clip_sample_times(clip: CloudClip, count: int) -> list[tuple[str, float]]:
     elif _is_scoring_or_shot_like_label(label):
         release_offset = min(0.85, duration * 0.28)
         follow_through_offset = min(0.75, duration * 0.2)
-        if count > 4:
+        if count >= 8:
+            candidates = [
+                ("ballHandlerSetup", start + (duration * 0.08)),
+                ("preRelease", max(start, event_center - min(1.35, duration * 0.42))),
+                ("release", max(start, event_center - release_offset)),
+                ("shotArc", max(start, event_center - min(0.45, duration * 0.14))),
+                ("rimApproach", max(start, event_center - min(0.22, duration * 0.08))),
+                ("rimResult", event_center),
+                ("followThrough", min(end, event_center + follow_through_offset)),
+                ("finishContext", end - (duration * 0.01)),
+            ]
+        elif count > 4:
             candidates = [
                 ("ballHandlerSetup", start + (duration * 0.1)),
                 ("preRelease", max(start, event_center - min(1.35, duration * 0.42))),

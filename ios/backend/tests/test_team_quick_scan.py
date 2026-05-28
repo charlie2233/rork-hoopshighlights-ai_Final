@@ -31,15 +31,15 @@ def _settings(**overrides):
         "team_quick_scan_endpoint": "https://api.openai.com/v1/responses",
         "team_quick_scan_timeout_seconds": 12.0,
         "team_quick_scan_video_frame_count": 6,
-        "team_quick_scan_clip_frames_per_clip": 6,
-        "team_quick_scan_rich_candidate_clips": 60,
-        "team_quick_scan_max_total_clip_frames": 720,
+        "team_quick_scan_clip_frames_per_clip": 8,
+        "team_quick_scan_rich_candidate_clips": 120,
+        "team_quick_scan_max_total_clip_frames": 1200,
         "team_quick_scan_frame_width": 720,
         "team_quick_scan_jpeg_quality": 4,
         "team_quick_scan_max_image_bytes": 500_000,
         "team_quick_scan_min_team_confidence": 0.55,
         "team_quick_scan_max_candidate_clips": 160,
-        "team_quick_scan_max_output_tokens": 6000,
+        "team_quick_scan_max_output_tokens": 12000,
     }
     values.update(overrides)
     return SimpleNamespace(**values)
@@ -255,7 +255,7 @@ class TeamQuickScanTests(unittest.TestCase):
             self.assertIn("scoringFrameRoles", context["rules"])
             self.assertIn("defensiveFrameRoles", context["rules"])
             self.assertEqual(payload["text"]["format"]["schema"]["properties"]["clipAttributions"]["maxItems"], 75)
-            self.assertEqual(payload["max_output_tokens"], 6000)
+            self.assertEqual(payload["max_output_tokens"], 12000)
             return _response(
                 {
                     "teams": [
@@ -394,16 +394,34 @@ class TeamQuickScanTests(unittest.TestCase):
         steal = _clip("Steal", 18.0, 22.0, 20.0)
         block = _clip("Block", 6.0, 10.5, 8.0)
 
-        steal_roles = [role for role, _ in _clip_sample_times(steal, 6)]
-        block_roles = [role for role, _ in _clip_sample_times(block, 6)]
+        steal_roles = [role for role, _ in _clip_sample_times(steal, 8)]
+        block_roles = [role for role, _ in _clip_sample_times(block, 8)]
 
         self.assertEqual(
             steal_roles,
-            ["defenseSetup", "prePossessionChange", "possessionChange", "recovery", "defenseOutcome", "finishContext"],
+            [
+                "defenseSetup",
+                "prePossessionChange",
+                "possessionPressure",
+                "possessionChange",
+                "ballControlChange",
+                "recovery",
+                "defenseOutcome",
+                "finishContext",
+            ],
         )
         self.assertEqual(
             block_roles,
-            ["defenseSetup", "preChallenge", "challenge", "defenseOutcome", "recovery", "finishContext"],
+            [
+                "defenseSetup",
+                "preChallenge",
+                "challenge",
+                "ballDeflection",
+                "defenseOutcome",
+                "recovery",
+                "finishContext",
+                "aftermath",
+            ],
         )
 
     def test_scoring_quick_scan_samples_shooter_release_roles(self) -> None:
@@ -416,9 +434,21 @@ class TeamQuickScanTests(unittest.TestCase):
     def test_rich_scoring_quick_scan_samples_full_shooter_and_result_roles(self) -> None:
         made_shot = _clip("Made Shot", 8.0, 12.5, 10.0)
 
-        roles = [role for role, _ in _clip_sample_times(made_shot, 6)]
+        roles = [role for role, _ in _clip_sample_times(made_shot, 8)]
 
-        self.assertEqual(roles, ["ballHandlerSetup", "preRelease", "release", "rimApproach", "rimResult", "followThrough"])
+        self.assertEqual(
+            roles,
+            [
+                "ballHandlerSetup",
+                "preRelease",
+                "release",
+                "shotArc",
+                "rimApproach",
+                "rimResult",
+                "followThrough",
+                "finishContext",
+            ],
+        )
 
     def test_frame_extraction_respects_configurable_candidate_limit(self) -> None:
         clips = [_clip("Highlight", index * 4.0, (index * 4.0) + 3.0, (index * 4.0) + 1.5) for index in range(50)]
@@ -522,7 +552,8 @@ class TeamQuickScanTests(unittest.TestCase):
     def test_total_clip_frame_budget_allows_configured_beta_ceiling(self) -> None:
         self.assertEqual(_max_quick_scan_total_clip_frames(_settings(team_quick_scan_max_total_clip_frames=600)), 600)
         self.assertEqual(_max_quick_scan_total_clip_frames(_settings(team_quick_scan_max_total_clip_frames=720)), 720)
-        self.assertEqual(_max_quick_scan_total_clip_frames(_settings(team_quick_scan_max_total_clip_frames=1200)), 900)
+        self.assertEqual(_max_quick_scan_total_clip_frames(_settings(team_quick_scan_max_total_clip_frames=1200)), 1200)
+        self.assertEqual(_max_quick_scan_total_clip_frames(_settings(team_quick_scan_max_total_clip_frames=2000)), 1280)
 
     def test_low_confidence_clip_attribution_is_kept_as_uncertain_signal(self) -> None:
         clips = [_clip("Block", 6.0, 10.5, 8.0)]

@@ -126,9 +126,9 @@ class PipelineQualityTests(unittest.TestCase):
                 settings = get_settings()
 
         self.assertEqual(settings.max_returned_clips, 60)
-        self.assertEqual(settings.team_quick_scan_clip_frames_per_clip, 6)
-        self.assertEqual(settings.team_quick_scan_rich_candidate_clips, 60)
-        self.assertEqual(settings.team_quick_scan_max_total_clip_frames, 720)
+        self.assertEqual(settings.team_quick_scan_clip_frames_per_clip, 8)
+        self.assertEqual(settings.team_quick_scan_rich_candidate_clips, 120)
+        self.assertEqual(settings.team_quick_scan_max_total_clip_frames, 1200)
         self.assertEqual(settings.team_quick_scan_max_candidate_clips, 160)
 
     def test_backend_candidate_pool_env_is_clamped_for_review_safety(self) -> None:
