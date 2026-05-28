@@ -19,6 +19,7 @@ from .team_identity import clean_text, color_labeled_team_name, resolve_jersey_c
 ResponseClient = Callable[[Dict[str, Any], str, str, float], Dict[str, Any]]
 TEAM_QUICK_SCAN_CONFIDENT_ATTRIBUTION = 0.85
 TEAM_QUICK_SCAN_UNVERIFIED_ATTRIBUTION_MAX_CONFIDENCE = TEAM_QUICK_SCAN_CONFIDENT_ATTRIBUTION - 0.01
+TEAM_QUICK_SCAN_MIN_CONFIDENT_EVIDENCE_FRAME_REFS = 2
 TEAM_QUICK_SCAN_MAX_CANDIDATE_CLIPS = 160
 TEAM_QUICK_SCAN_MAX_FRAMES_PER_CANDIDATE = 8
 TEAM_QUICK_SCAN_COMPACT_FRAMES_PER_CANDIDATE = 3
@@ -96,7 +97,7 @@ def _build_openai_payload(
             "scoringFrameRoles": "For scoring clips, ballHandlerSetup, preRelease, release, and shotArc show the offensive player/team; rimApproach and rimResult show the outcome; followThrough/finishContext show the finisher after the play.",
             "defensiveFrameRoles": "For defensive clips, defenseSetup and preChallenge/prePossessionChange show the defender before the event, challenge/ballDeflection or possessionChange/ballControlChange shows the defensive action, and recovery/defenseOutcome/finishContext show the result.",
             "frameBudgetPolicy": "Higher-ranked candidates may include up to eight role frames; later candidates may include a compact three-frame ownership set. Use every supplied role for confidence.",
-            "evidencePolicy": "Every clip attribution must cite evidenceFrameRefs from that clip. Use confidence >=0.85 only when cited frames clearly show jersey color and ownership.",
+            "evidencePolicy": "Every clip attribution must cite evidenceFrameRefs from that clip. Use confidence >=0.85 only when at least two cited frames clearly show jersey color and ownership.",
         },
         "durationSeconds": round(duration_seconds, 3),
         "candidateClips": [
@@ -138,7 +139,7 @@ def _build_openai_payload(
             "For scoring frame roles, use ballHandlerSetup, preRelease, release, and shotArc to judge the shooter/finisher team, then rimApproach/rimResult/followThrough/finishContext to confirm the play. "
             "Blocks, steals, defensive stops, and forced turnovers belong to the defending player who made the play. "
             "For defensive frame roles, use defenseSetup plus preChallenge/prePossessionChange, challenge/ballDeflection or possessionChange/ballControlChange, and recovery/defenseOutcome/finishContext to judge the defender's team. "
-            "For each clip attribution, include evidenceFrameRefs that exactly match supplied frameRef values for that clip; high-confidence ownership requires cited frames. "
+            "For each clip attribution, include evidenceFrameRefs that exactly match supplied frameRef values for that clip; high-confidence ownership requires at least two cited frames. "
             "Use only supplied frames and candidate clip refs. Do not output prose, commands, file paths, URLs, storage keys, or FFmpeg instructions. "
             "Return strict JSON only."
         ),
@@ -273,7 +274,7 @@ def _parse_quick_scan_output(
         if team_id is None and label is None and color_label is None:
             continue
         evidence_frame_refs = _valid_evidence_frame_refs(item.get("evidenceFrameRefs"), evidence_frame_refs_by_clip, clip_ref)
-        if not evidence_frame_refs:
+        if len(evidence_frame_refs) < TEAM_QUICK_SCAN_MIN_CONFIDENT_EVIDENCE_FRAME_REFS:
             confidence = min(confidence, TEAM_QUICK_SCAN_UNVERIFIED_ATTRIBUTION_MAX_CONFIDENCE)
         confidence = _cap_attribution_confidence_by_detected_team(
             confidence,
