@@ -339,6 +339,16 @@ nonisolated struct CloudDiagnostics: Codable, Sendable {
     let usedGeminiRelabeling: Bool
     let candidateSegments: Int
     let finalSegments: Int
+    let usedTeamQuickScan: Bool?
+    let preTeamFilterSegments: Int?
+    let teamMatchedCandidateSegments: Int?
+    let teamUncertainCandidateSegments: Int?
+    let teamOpponentFilteredSegments: Int?
+    let teamMatchedReviewSegments: Int?
+    let teamUncertainReviewSegments: Int?
+    let defensiveReviewSegments: Int?
+    let blockReviewSegments: Int?
+    let stealReviewSegments: Int?
 }
 
 nonisolated struct CloudAnalysisAPIError: Codable, Sendable {

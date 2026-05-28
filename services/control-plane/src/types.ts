@@ -211,6 +211,16 @@ export interface CloudDiagnostics {
   usedGeminiRelabeling: boolean;
   candidateSegments: number;
   finalSegments: number;
+  usedTeamQuickScan?: boolean;
+  preTeamFilterSegments?: number;
+  teamMatchedCandidateSegments?: number;
+  teamUncertainCandidateSegments?: number;
+  teamOpponentFilteredSegments?: number;
+  teamMatchedReviewSegments?: number;
+  teamUncertainReviewSegments?: number;
+  defensiveReviewSegments?: number;
+  blockReviewSegments?: number;
+  stealReviewSegments?: number;
 }
 
 export interface CloudAnalysisResult extends ResponseEnvelope {

@@ -818,6 +818,7 @@ final class HighlightsViewModel {
         analysisService.progress = 0
         analysisService.clips = project.clips
         analysisService.lastRunDiagnostics = nil
+        analysisService.lastCloudDiagnostics = nil
         analysisService.statusMessage = project.analysisStatusSummary
             ?? (project.clips.isEmpty ? "" : "Found \(project.clips.count) highlight\(project.clips.count == 1 ? "" : "s")")
 
@@ -861,6 +862,7 @@ final class HighlightsViewModel {
         analysisService.statusMessage = ""
         analysisService.clips = []
         analysisService.lastRunDiagnostics = nil
+        analysisService.lastCloudDiagnostics = nil
 
         exportService.isExporting = false
         exportService.exportedURL = nil

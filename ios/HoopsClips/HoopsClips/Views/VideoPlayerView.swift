@@ -849,6 +849,22 @@ struct VideoPlayerView: View {
                 statBadge(value: "\(viewModel.keptClips.count)", label: languageStore.text(.kept), color: AppTheme.successGreen)
                 statBadge(value: formatDuration(viewModel.keptClips.reduce(0) { $0 + $1.duration }), label: languageStore.text(.duration), color: AppTheme.warningYellow)
             }
+
+            if !analysisQualitySummaryRows.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(analysisQualitySummaryRows, id: \.self) { row in
+                        Label(row, systemImage: "checkmark.seal.fill")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(AppTheme.subtleText)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Analysis quality summary")
+                .accessibilityValue(analysisQualitySummaryRows.joined(separator: " "))
+            }
         }
         .padding(16)
         .rorkCard(cornerRadius: 16, stroke: AppTheme.successGreen.opacity(0.28), glow: AppTheme.successGreen, glowOpacity: 0.10)
@@ -879,6 +895,36 @@ struct VideoPlayerView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
         .rorkCard(cornerRadius: 12, fill: AnyShapeStyle(AppTheme.surfaceBg.opacity(0.65)), stroke: AppTheme.softBorder, glowOpacity: 0.03)
+    }
+
+    private var analysisQualitySummaryRows: [String] {
+        guard let diagnostics = viewModel.analysisService.lastCloudDiagnostics else { return [] }
+        var rows: [String] = []
+
+        if diagnostics.usedTeamQuickScan == true {
+            let candidates = diagnostics.preTeamFilterSegments ?? diagnostics.candidateSegments
+            rows.append("Team scan reviewed \(candidates) candidate \(candidates == 1 ? "clip" : "clips") before filtering.")
+        }
+
+        let matched = diagnostics.teamMatchedReviewSegments ?? 0
+        let uncertain = diagnostics.teamUncertainReviewSegments ?? 0
+        if matched > 0 || uncertain > 0 {
+            rows.append("\(matched) selected-team \(matched == 1 ? "clip" : "clips") and \(uncertain) uncertain \(uncertain == 1 ? "clip" : "clips") are in Review.")
+        }
+
+        let opponentFiltered = diagnostics.teamOpponentFilteredSegments ?? 0
+        if opponentFiltered > 0 {
+            rows.append("\(opponentFiltered) opponent \(opponentFiltered == 1 ? "clip was" : "clips were") filtered before Review.")
+        }
+
+        let defensive = diagnostics.defensiveReviewSegments ?? 0
+        if defensive > 0 {
+            let blocks = diagnostics.blockReviewSegments ?? 0
+            let steals = diagnostics.stealReviewSegments ?? 0
+            rows.append("Defense kept \(defensive) \(defensive == 1 ? "clip" : "clips"), including \(blocks) \(blocks == 1 ? "block" : "blocks") and \(steals) \(steals == 1 ? "steal" : "steals").")
+        }
+
+        return rows
     }
 
     private var cloudAnalysisPathView: some View {
