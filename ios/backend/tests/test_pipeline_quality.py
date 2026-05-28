@@ -115,6 +115,26 @@ def _clip(
     )
 
 
+def _team_attr(
+    *,
+    team_id: str | None,
+    label: str,
+    color_label: str,
+    confidence: float,
+    source: str = "gpt_frame_review",
+    evidence: bool = True,
+) -> ClipTeamAttribution:
+    return ClipTeamAttribution(
+        teamId=team_id,
+        label=label,
+        colorLabel=color_label,
+        confidence=confidence,
+        source=source,
+        evidenceFrameRefs=["clip_0_setup", "clip_0_result"] if evidence else [],
+        evidenceRoleGroups=["setup", "outcome"] if evidence else [],
+    )
+
+
 class PipelineQualityTests(unittest.TestCase):
     def tearDown(self) -> None:
         get_settings.cache_clear()
@@ -171,6 +191,8 @@ class PipelineQualityTests(unittest.TestCase):
                         colorLabel="black",
                         confidence=0.92,
                         source="gpt_frame_review",
+                        evidenceFrameRefs=["clip_0_setup", "clip_0_result"],
+                        evidenceRoleGroups=["setup", "outcome"],
                     )
                 }
             ),
@@ -182,6 +204,8 @@ class PipelineQualityTests(unittest.TestCase):
                         colorLabel="white",
                         confidence=0.93,
                         source="gpt_frame_review",
+                        evidenceFrameRefs=["clip_1_setup", "clip_1_result"],
+                        evidenceRoleGroups=["setup", "outcome"],
                     )
                 }
             ),
@@ -231,28 +255,57 @@ class PipelineQualityTests(unittest.TestCase):
         self.assertEqual(annotated[0].teamAttributionStatus, "uncertain")
         self.assertIsNone(annotated[0].teamAttribution)
 
+    def test_analysis_team_status_requires_scan_evidence_for_confident_match(self) -> None:
+        team_selection = TeamSelection(mode="team", teamId="team_dark", colorLabel="black", includeUncertain=True)
+        clips = [
+            _clip(start=8.0, end=12.5, label="Weak evidence make", combined=0.88, event_center=10.2, auto_keep=True).model_copy(
+                update={
+                    "teamAttribution": _team_attr(
+                        team_id="team_dark",
+                        label="Dark jerseys",
+                        color_label="black",
+                        confidence=0.94,
+                        evidence=False,
+                    )
+                }
+            ),
+            _clip(start=14.0, end=18.5, label="Evidence-backed make", combined=0.86, event_center=16.2, auto_keep=True).model_copy(
+                update={
+                    "teamAttribution": _team_attr(
+                        team_id="team_dark",
+                        label="Dark jerseys",
+                        color_label="black",
+                        confidence=0.91,
+                    )
+                }
+            ),
+        ]
+
+        annotated = _annotate_analysis_team_status(clips, team_selection)
+
+        self.assertEqual(annotated[0].teamAttributionStatus, "uncertain")
+        self.assertEqual(annotated[1].teamAttributionStatus, "matched")
+
     def test_analysis_team_status_rejects_conflicting_team_id_even_when_color_matches(self) -> None:
         team_selection = TeamSelection(mode="team", teamId="team_dark", colorLabel="black", includeUncertain=True)
         clips = [
             _clip(start=8.0, end=12.5, label="Wrong color alias", combined=0.88, event_center=10.2, auto_keep=True).model_copy(
                 update={
-                    "teamAttribution": ClipTeamAttribution(
-                        teamId="team_light",
+                    "teamAttribution": _team_attr(
+                        team_id="team_light",
                         label="Light jerseys",
-                        colorLabel="black",
+                        color_label="black",
                         confidence=0.94,
-                        source="gpt_frame_review",
                     )
                 }
             ),
             _clip(start=14.0, end=18.5, label="Color fallback", combined=0.86, event_center=16.2, auto_keep=True).model_copy(
                 update={
-                    "teamAttribution": ClipTeamAttribution(
-                        teamId=None,
+                    "teamAttribution": _team_attr(
+                        team_id=None,
                         label="Dark jerseys",
-                        colorLabel="black",
+                        color_label="black",
                         confidence=0.91,
-                        source="gpt_frame_review",
                     )
                 }
             ),
@@ -268,12 +321,11 @@ class PipelineQualityTests(unittest.TestCase):
         clips = [
             _clip(start=8.0, end=12.5, label="Black jersey bucket", combined=0.88, event_center=10.2, auto_keep=True).model_copy(
                 update={
-                    "teamAttribution": ClipTeamAttribution(
-                        teamId="team_black",
+                    "teamAttribution": _team_attr(
+                        team_id="team_black",
                         label="Black jerseys",
-                        colorLabel="black",
+                        color_label="black",
                         confidence=0.94,
-                        source="gpt_frame_review",
                     )
                 }
             )
@@ -288,12 +340,11 @@ class PipelineQualityTests(unittest.TestCase):
         clips = [
             _clip(start=8.0, end=12.5, label="Bad exact id", combined=0.88, event_center=10.2, auto_keep=True).model_copy(
                 update={
-                    "teamAttribution": ClipTeamAttribution(
-                        teamId="team_dark",
+                    "teamAttribution": _team_attr(
+                        team_id="team_dark",
                         label="Light jerseys",
-                        colorLabel="white",
+                        color_label="white",
                         confidence=0.94,
-                        source="gpt_frame_review",
                     )
                 }
             )
@@ -316,11 +367,11 @@ class PipelineQualityTests(unittest.TestCase):
         attributed = []
         for index, clip in enumerate(native):
             if index < 4:
-                attribution = ClipTeamAttribution(teamId="team_light", label="Light jerseys", colorLabel="white", confidence=0.94, source="gpt_frame_review")
+                attribution = _team_attr(team_id="team_light", label="Light jerseys", color_label="white", confidence=0.94)
             elif index == 6:
-                attribution = ClipTeamAttribution(teamId="team_light", label="Light jerseys", colorLabel="white", confidence=0.62, source="gpt_frame_review")
+                attribution = _team_attr(team_id="team_light", label="Light jerseys", color_label="white", confidence=0.62, evidence=False)
             else:
-                attribution = ClipTeamAttribution(teamId="team_dark", label="Dark jerseys", colorLabel="black", confidence=0.93, source="gpt_frame_review")
+                attribution = _team_attr(team_id="team_dark", label="Dark jerseys", color_label="black", confidence=0.93)
             attributed.append(clip.model_copy(update={"teamAttribution": attribution}))
         detected = [
             TeamOption(teamId="team_dark", label="Dark jerseys", colorLabel="black", confidence=0.93, source="quick_scan"),
@@ -422,6 +473,8 @@ class PipelineQualityTests(unittest.TestCase):
                         colorLabel="black",
                         confidence=0.94,
                         source="gpt_frame_review",
+                        evidenceFrameRefs=["clip_0_setup", "clip_0_result"],
+                        evidenceRoleGroups=["setup", "outcome"],
                     )
                 }
             )
@@ -465,6 +518,8 @@ class PipelineQualityTests(unittest.TestCase):
                         colorLabel="black",
                         confidence=0.94,
                         source="gpt_frame_review",
+                        evidenceFrameRefs=["clip_0_setup", "clip_0_result"],
+                        evidenceRoleGroups=["setup", "outcome"],
                     )
                 }
             )
@@ -528,12 +583,11 @@ class PipelineQualityTests(unittest.TestCase):
                 auto_keep=True,
             ).model_copy(
                 update={
-                    "teamAttribution": ClipTeamAttribution(
-                        teamId="team_dark",
+                    "teamAttribution": _team_attr(
+                        team_id="team_dark",
                         label="Dark jerseys",
-                        colorLabel="black",
+                        color_label="black",
                         confidence=0.94,
-                        source="gpt_frame_review",
                     )
                 }
             )

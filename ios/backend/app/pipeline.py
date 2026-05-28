@@ -43,6 +43,9 @@ VISUAL_EVENT_SEQUENCE_GAP_SECONDS = 1.1
 VISUAL_EVENT_CONTEXT_SECONDS = 1.25
 TEAM_SELECTION_PREFILTER_MULTIPLIER = 4
 TEAM_SELECTION_PREFILTER_MAX_CLIPS = 160
+TEAM_EVIDENCE_REQUIRED_SOURCES = {"quick_scan", "gpt_frame_review"}
+MIN_CONFIDENT_TEAM_EVIDENCE_FRAME_REFS = 2
+MIN_CONFIDENT_TEAM_EVIDENCE_ROLE_GROUPS = 2
 VisualFrameSignal = Tuple[float, float, float, float]
 
 
@@ -238,6 +241,8 @@ def _analysis_team_status(
     attribution = clip.teamAttribution
     if attribution is None or attribution.confidence < team_selection.confidenceThreshold:
         return "uncertain"
+    if _analysis_team_evidence_required(attribution) and not _analysis_has_confident_team_evidence(attribution):
+        return "uncertain"
 
     selected_team_id = _team_key(team_selection.teamId)
     clip_team_id = _team_key(attribution.teamId)
@@ -253,6 +258,20 @@ def _analysis_team_status(
     if selected_team_id and clip_team_id and selected_team_id != clip_team_id:
         return "opponent"
     return "opponent"
+
+
+def _analysis_team_evidence_required(attribution: ClipTeamAttribution) -> bool:
+    source = (attribution.source or "").strip().lower()
+    return source in TEAM_EVIDENCE_REQUIRED_SOURCES
+
+
+def _analysis_has_confident_team_evidence(attribution: ClipTeamAttribution) -> bool:
+    frame_refs = {ref for ref in attribution.evidenceFrameRefs if ref}
+    role_groups = {group for group in attribution.evidenceRoleGroups if group}
+    return (
+        len(frame_refs) >= MIN_CONFIDENT_TEAM_EVIDENCE_FRAME_REFS
+        and len(role_groups) >= MIN_CONFIDENT_TEAM_EVIDENCE_ROLE_GROUPS
+    )
 
 
 def _filter_analysis_clips_for_team_selection(
