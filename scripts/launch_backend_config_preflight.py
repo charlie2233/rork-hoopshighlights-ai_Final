@@ -41,6 +41,18 @@ REQUIRED_GPT_RERANK_SUBSTITUTIONS = {
     "_GPT_HIGHLIGHT_RERANKER_ENABLED": "true",
 }
 
+REQUIRED_GPT_RERANK_ENV_MAPPINGS = (
+    "HOOPS_AI_CLIP_GPT_EDITOR_ENABLED=${_AI_CLIP_GPT_EDITOR_ENABLED}",
+    "HOOPS_AI_CLIP_GPT_PLAN_EDIT_ENABLED=${_AI_CLIP_GPT_PLAN_EDIT_ENABLED}",
+    "HOOPS_AI_CLIP_GPT_REVISION_ENABLED=${_AI_CLIP_GPT_REVISION_ENABLED}",
+    "HOOPS_AI_CLIP_GPT_KEYFRAMES_PER_CLIP=${_AI_CLIP_GPT_KEYFRAMES_PER_CLIP}",
+    "HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_FREE=${_AI_CLIP_GPT_MAX_CANDIDATES_FREE}",
+    "HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_PRO=${_AI_CLIP_GPT_MAX_CANDIDATES_PRO}",
+    "HOOPS_AI_CLIP_GPT_TIMEOUT_SECONDS=${_AI_CLIP_GPT_TIMEOUT_SECONDS}",
+    "HOOPS_AI_CLIP_GPT_MAX_OUTPUT_TOKENS=${_AI_CLIP_GPT_MAX_OUTPUT_TOKENS}",
+    "HOOPS_GPT_HIGHLIGHT_RERANKER_ENABLED=${_GPT_HIGHLIGHT_RERANKER_ENABLED}",
+)
+
 REQUIRED_ANALYSIS_TEAM_SCAN_SUBSTITUTIONS = {
     "_MAX_RETURNED_CLIPS": "60",
     "_TEAM_QUICK_SCAN_ENABLED": "true",
@@ -50,6 +62,18 @@ REQUIRED_ANALYSIS_TEAM_SCAN_SUBSTITUTIONS = {
     "_TEAM_QUICK_SCAN_MAX_CANDIDATE_CLIPS": "160",
     "_TEAM_QUICK_SCAN_MAX_OUTPUT_TOKENS": "12000",
 }
+
+REQUIRED_ANALYSIS_TEAM_SCAN_ENV_MAPPINGS = (
+    "HOOPS_MAX_RETURNED_CLIPS=${_MAX_RETURNED_CLIPS}",
+    "HOOPS_TEAM_QUICK_SCAN_ENABLED=${_TEAM_QUICK_SCAN_ENABLED}",
+    "HOOPS_TEAM_QUICK_SCAN_CLIP_FRAMES_PER_CLIP=${_TEAM_QUICK_SCAN_CLIP_FRAMES_PER_CLIP}",
+    "HOOPS_TEAM_QUICK_SCAN_RICH_CANDIDATE_CLIPS=${_TEAM_QUICK_SCAN_RICH_CANDIDATE_CLIPS}",
+    "HOOPS_TEAM_QUICK_SCAN_MAX_TOTAL_CLIP_FRAMES=${_TEAM_QUICK_SCAN_MAX_TOTAL_CLIP_FRAMES}",
+    "HOOPS_TEAM_QUICK_SCAN_MAX_CANDIDATE_CLIPS=${_TEAM_QUICK_SCAN_MAX_CANDIDATE_CLIPS}",
+    "HOOPS_TEAM_QUICK_SCAN_MAX_OUTPUT_TOKENS=${_TEAM_QUICK_SCAN_MAX_OUTPUT_TOKENS}",
+)
+
+REQUIRED_FREE_DAILY_EDIT_CHANCES = 3
 
 REQUIRED_DEPLOY_INPUTS = {
     "CLOUDFLARE_API_TOKEN",
@@ -117,6 +141,7 @@ def run_checks(repo_root: Path) -> list[Finding]:
     check_control_plane_wrangler(repo_root, collector)
     check_editing_cloudbuild(repo_root, collector)
     check_analysis_cloudbuild(repo_root, collector)
+    check_free_daily_edit_chances(repo_root, collector)
     check_workflows(repo_root, collector)
     check_ios_configs(repo_root, collector)
     check_observability_and_flags(repo_root, collector)
@@ -253,28 +278,20 @@ def check_editing_cloudbuild(repo_root: Path, collector: Collector) -> None:
     else:
         collector.fail("editing cloud env", rel(path, repo_root), "Cloud Run deploy must set staging R2 render environment.")
 
-    missing_env_mappings = [
-        name
-        for name in (
-            "HOOPS_AI_EDIT_ENABLED=${_AI_EDIT_ENABLED}",
-            "HOOPS_AI_EDIT_LIVE_RENDER_ENABLED=${_AI_EDIT_LIVE_RENDER_ENABLED}",
-            "HOOPS_AI_EDIT_REVISION_ENABLED=${_AI_EDIT_REVISION_ENABLED}",
-            "HOOPS_AI_EDIT_TEMPLATE_PACK_ENABLED=${_AI_EDIT_TEMPLATE_PACK_ENABLED}",
-            "HOOPS_AI_CLIP_GPT_EDITOR_ENABLED=${_AI_CLIP_GPT_EDITOR_ENABLED}",
-            "HOOPS_AI_CLIP_GPT_PLAN_EDIT_ENABLED=${_AI_CLIP_GPT_PLAN_EDIT_ENABLED}",
-            "HOOPS_AI_CLIP_GPT_REVISION_ENABLED=${_AI_CLIP_GPT_REVISION_ENABLED}",
-            "HOOPS_AI_CLIP_GPT_KEYFRAMES_PER_CLIP=${_AI_CLIP_GPT_KEYFRAMES_PER_CLIP}",
-            "HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_FREE=${_AI_CLIP_GPT_MAX_CANDIDATES_FREE}",
-            "HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_PRO=${_AI_CLIP_GPT_MAX_CANDIDATES_PRO}",
-        )
-        if not env_line or name not in env_line
-    ]
+    required_ai_edit_env_mappings = (
+        "HOOPS_AI_EDIT_ENABLED=${_AI_EDIT_ENABLED}",
+        "HOOPS_AI_EDIT_LIVE_RENDER_ENABLED=${_AI_EDIT_LIVE_RENDER_ENABLED}",
+        "HOOPS_AI_EDIT_REVISION_ENABLED=${_AI_EDIT_REVISION_ENABLED}",
+        "HOOPS_AI_EDIT_TEMPLATE_PACK_ENABLED=${_AI_EDIT_TEMPLATE_PACK_ENABLED}",
+        *REQUIRED_GPT_RERANK_ENV_MAPPINGS,
+    )
+    missing_env_mappings = [name for name in required_ai_edit_env_mappings if not env_line or name not in env_line]
     if missing_env_mappings:
         collector.fail("editing ai edit env mapping", rel(path, repo_root), f"Missing env mappings: {', '.join(missing_env_mappings)}.")
     else:
-        collector.pass_("editing ai edit env mapping", rel(path, repo_root), "AI Edit kill switches map into Cloud Run env.")
+        collector.pass_("editing ai edit env mapping", rel(path, repo_root), "AI Edit kill switches and GPT quality limits map into Cloud Run env.")
 
-    if env_line and "HOOPS_GPT_HIGHLIGHT_RERANKER_ENABLED=${_GPT_HIGHLIGHT_RERANKER_ENABLED}" in env_line:
+    if env_line and REQUIRED_GPT_RERANK_ENV_MAPPINGS[-1] in env_line:
         collector.pass_("editing gpt reranker env mapping", rel(path, repo_root), "GPT highlight reranker launch switch maps into Cloud Run env.")
     else:
         collector.fail("editing gpt reranker env mapping", rel(path, repo_root), "Cloud Run deploy must map the GPT highlight reranker launch switch.")
@@ -326,16 +343,7 @@ def check_analysis_cloudbuild(repo_root: Path, collector: Collector) -> None:
             collector.fail("analysis team scan substitution", rel(path, repo_root), f"{key} must be explicit for selected-team beta quality.")
 
     env_line = find_arg_value_after(text, "--set-env-vars")
-    required_env_mappings = [
-        "HOOPS_MAX_RETURNED_CLIPS=${_MAX_RETURNED_CLIPS}",
-        "HOOPS_TEAM_QUICK_SCAN_ENABLED=${_TEAM_QUICK_SCAN_ENABLED}",
-        "HOOPS_TEAM_QUICK_SCAN_CLIP_FRAMES_PER_CLIP=${_TEAM_QUICK_SCAN_CLIP_FRAMES_PER_CLIP}",
-        "HOOPS_TEAM_QUICK_SCAN_RICH_CANDIDATE_CLIPS=${_TEAM_QUICK_SCAN_RICH_CANDIDATE_CLIPS}",
-        "HOOPS_TEAM_QUICK_SCAN_MAX_TOTAL_CLIP_FRAMES=${_TEAM_QUICK_SCAN_MAX_TOTAL_CLIP_FRAMES}",
-        "HOOPS_TEAM_QUICK_SCAN_MAX_CANDIDATE_CLIPS=${_TEAM_QUICK_SCAN_MAX_CANDIDATE_CLIPS}",
-        "HOOPS_TEAM_QUICK_SCAN_MAX_OUTPUT_TOKENS=${_TEAM_QUICK_SCAN_MAX_OUTPUT_TOKENS}",
-    ]
-    missing_env_mappings = [name for name in required_env_mappings if not env_line or name not in env_line]
+    missing_env_mappings = [name for name in REQUIRED_ANALYSIS_TEAM_SCAN_ENV_MAPPINGS if not env_line or name not in env_line]
     if missing_env_mappings:
         collector.fail("analysis team scan env mapping", rel(path, repo_root), f"Missing env mappings: {', '.join(missing_env_mappings)}.")
     else:
@@ -346,6 +354,55 @@ def check_analysis_cloudbuild(repo_root: Path, collector: Collector) -> None:
         collector.pass_("analysis openai secret gate", rel(path, repo_root), "OpenAI key secret name is configured for team scan without a source value.")
     else:
         collector.fail("analysis openai secret gate", rel(path, repo_root), "Selected-team scan requires the HOOPS_OPENAI_API_KEY secret name in Cloud Run deploy config.")
+
+
+def check_free_daily_edit_chances(repo_root: Path, collector: Collector) -> None:
+    checks = [
+        (
+            repo_root / "services/control-plane/src/routes/public.ts",
+            rf"const\s+DEFAULT_FREE_DAILY_QUOTA\s*=\s*{REQUIRED_FREE_DAILY_EDIT_CHANCES}\s*;",
+            "control-plane free quota fallback",
+            "Control-plane fallback quota returns 3 Free analyses/edits per day.",
+            "Control-plane DEFAULT_FREE_DAILY_QUOTA must stay at 3 for internal beta.",
+        ),
+        (
+            repo_root / "ios/backend/app/config.py",
+            rf'daily_quota=int\(os\.getenv\("HOOPS_DAILY_QUOTA", "{REQUIRED_FREE_DAILY_EDIT_CHANCES}"\)\)',
+            "analysis backend free quota default",
+            "Local analysis backend defaults Free daily quota to 3.",
+            "Analysis backend HOOPS_DAILY_QUOTA default must stay at 3.",
+        ),
+        (
+            repo_root / "ios/backend/app/editing.py",
+            rf'"free":\s*PlanTierPolicy\([^)]*maxDailyRenders={REQUIRED_FREE_DAILY_EDIT_CHANCES}\s*,',
+            "editing free render quota",
+            "Editing backend Free policy allows 3 AI renders per day.",
+            "Editing backend Free maxDailyRenders must stay at 3.",
+        ),
+        (
+            repo_root / "ios/HoopsClips/HoopsClips/Models/CloudEditTypes.swift",
+            rf"static\s+let\s+freeDefault\s*=\s*CloudEditPolicySummary\([^)]*maxDailyRenders:\s*{REQUIRED_FREE_DAILY_EDIT_CHANCES}\s*,",
+            "ios free policy copy",
+            "iOS Free policy default shows 3 AI edits per day.",
+            "iOS CloudEditPolicySummary.freeDefault must stay at 3.",
+        ),
+        (
+            repo_root / "ios/HoopsClipsUITests/HoopsClipsUITests.swift",
+            rf'"{REQUIRED_FREE_DAILY_EDIT_CHANCES} AI edits/day"',
+            "ios free policy ui smoke",
+            "iOS UI smoke expects 3 AI edits/day copy.",
+            "iOS Free/Pro UI smoke must assert 3 AI edits/day copy.",
+        ),
+    ]
+
+    for path, pattern, check_name, pass_detail, fail_detail in checks:
+        text = read_text(path, collector)
+        if text is None:
+            continue
+        if re.search(pattern, text, flags=re.DOTALL):
+            collector.pass_(check_name, rel(path, repo_root), pass_detail)
+        else:
+            collector.fail(check_name, rel(path, repo_root), fail_detail)
 
 
 def check_workflows(repo_root: Path, collector: Collector) -> None:
