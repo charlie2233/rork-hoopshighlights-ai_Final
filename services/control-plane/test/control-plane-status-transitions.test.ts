@@ -32,6 +32,7 @@ test("control plane happy path advances upload_pending -> uploaded -> queued -> 
   const createJson = await parseJsonResponse<{
     jobId: string;
     sourceObjectKey: string;
+    resultObjectKey: string;
     uploadUrl: string;
     status: string;
     uploadTraceId: string | null;
@@ -43,6 +44,10 @@ test("control plane happy path advances upload_pending -> uploaded -> queued -> 
   assert.equal(typeof createJson.uploadTraceId, "string");
   const uploadPendingEvent = harness.state.events.find((event) => event.eventType === "job.upload_pending");
   assert.equal(JSON.stringify(uploadPendingEvent?.payload ?? {}).includes("uploadUrl"), false);
+  const createEventPayloads = JSON.stringify(harness.state.events.map((event) => event.payload));
+  assert.equal(createEventPayloads.includes(createJson.uploadUrl), false);
+  assert.equal(createEventPayloads.includes(createJson.sourceObjectKey), false);
+  assert.equal(createEventPayloads.includes(createJson.resultObjectKey), false);
 
   const finalizeResponse = await invokePublicRoute(
     harness,
@@ -90,6 +95,11 @@ test("control plane happy path advances upload_pending -> uploaded -> queued -> 
   assert.equal(typeof harness.state.jobs.get(createJson.jobId)?.processingStartedAt, "string");
   assert.equal(typeof harness.state.jobs.get(createJson.jobId)?.uploadTraceId, "string");
   assert.equal(typeof harness.state.jobs.get(createJson.jobId)?.inferenceAttemptId, "string");
+  const serializedEventPayloads = JSON.stringify(harness.state.events.map((event) => event.payload));
+  assert.equal(serializedEventPayloads.includes(createJson.uploadUrl), false);
+  assert.equal(serializedEventPayloads.includes(createJson.sourceObjectKey), false);
+  assert.equal(serializedEventPayloads.includes(createJson.resultObjectKey), false);
+  assert.equal(serializedEventPayloads.includes("[redacted]"), true);
 
   const finalResponse = await invokePublicRoute(harness, "GET", `/jobs/${createJson.jobId}`);
   assert.equal(finalResponse.status, 200);
