@@ -976,6 +976,51 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertEqual(plan.clips[0].caption, "GOOD LOOK")
         self.assertNotEqual(plan.clips[0].caption, "BUCKET")
 
+    def test_deterministic_plan_does_not_caption_label_only_made_claim_as_bucket(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=15,
+                clips=[_clip("label_only_make", 12.0, "Made Shot", 0.92)],
+            )
+        )
+
+        plan = build_edit_plan(request, "edit_label_only_caption")
+
+        self.assertEqual([clip.clipId for clip in plan.clips], ["label_only_make"])
+        self.assertEqual(clip_outcome_evidence_source(request.clips[0]), "label_only")
+        self.assertEqual(plan.clips[0].caption, "GOOD LOOK")
+        self.assertNotEqual(plan.clips[0].caption, "BUCKET")
+
+    def test_deterministic_plan_can_caption_native_supported_make_as_bucket(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=15,
+                clips=[
+                    {
+                        **_clip("native_supported_make", 12.0, "Made Shot", 0.82),
+                        "nativeShotSignals": {
+                            "isShotLike": True,
+                            "leadInSeconds": 3.4,
+                            "followThroughSeconds": 3.6,
+                            "setupContextScore": 1.0,
+                            "outcomeContextScore": 1.0,
+                            "eventCenterQuality": 1.0,
+                            "contextQualityScore": 1.0,
+                            "timingWindowOk": True,
+                            "outcome": "made",
+                            "outcomeConfidence": 0.82,
+                        },
+                    }
+                ],
+            )
+        )
+
+        plan = build_edit_plan(request, "edit_native_supported_caption")
+
+        self.assertEqual([clip.clipId for clip in plan.clips], ["native_supported_make"])
+        self.assertEqual(clip_outcome_evidence_source(request.clips[0]), "native_shot_signals")
+        self.assertEqual(plan.clips[0].caption, "BUCKET")
+
     def test_native_shot_signals_do_not_treat_ambiguous_finish_labels_as_made(self) -> None:
         for label in ("Layup", "Tough Finish"):
             with self.subTest(label=label):

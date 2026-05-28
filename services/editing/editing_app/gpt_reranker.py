@@ -885,6 +885,7 @@ def _build_openai_payload(
                         "preferCompletePlayContext": True,
                         "rejectTinyClips": True,
                         "rejectPreBasketOnlyClips": True,
+                        "treatLabelOnlyOutcomeEvidenceAsUnverified": True,
                         "nonScoringDefensiveOutcomes": ["steal", "forced_turnover", "defensive_stop"],
                         "madeShotRequiresSetupReleaseBallPathRimAndOutcome": True,
                         "madeOrMissedShotRequiresVisibleReleaseAndRimResult": True,
@@ -954,6 +955,7 @@ def _build_openai_payload(
             "You are HoopClips GPT Highlight Reranker. Judge basketball highlight worthiness, watchability, event clarity, "
             "outcome sanity, boring/duplicate rejection, concise captions, story order, and safe edit suggestions. "
             "Act like a basketball shot-tracker: for made shots, verify visible setup, release, ball path, rim/result, and aftermath. "
+            "Treat outcomeEvidenceSource=label_only as unverified until the sampled frames visibly prove the result. "
             "For made or missed shots, releaseVisible, shotArcVisible, and rimResultVisible must all be true; do not infer a make from a label or late rim-only aftermath. "
             "A made outcome requires shotResultEvidence.rimResultEvidence=made_visible with confident visible rim/net proof; use unclear if the result is guessed. "
             "A made outcome also requires shotResultEvidence.rimEntrySequence=visible_entry with approach, rim-entry, and below-rim/net frame roles. "

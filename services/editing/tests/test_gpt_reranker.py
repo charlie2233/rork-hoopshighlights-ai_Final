@@ -219,6 +219,8 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertEqual(compact_clip["qualityHints"]["outcomeEvidenceSource"], "label_only")
         self.assertGreater(compact_clip["outcomeReliabilityScore"], 0.0)
         self.assertEqual(compact_clip["qualityHints"]["outcomeReliabilityScore"], compact_clip["outcomeReliabilityScore"])
+        self.assertTrue(compact_input["shotTrackerRules"]["treatLabelOnlyOutcomeEvidenceAsUnverified"])
+        self.assertIn("outcomeEvidenceSource=label_only", payload["instructions"])
         self.assertEqual(agent_cookbook["templateId"], "personal_highlight_v1")
         self.assertIn("templateCookbookRules", agent_cookbook)
         self.assertEqual(agent_cookbook["templateCookbookRules"]["captionRules"]["tone"], "hype")

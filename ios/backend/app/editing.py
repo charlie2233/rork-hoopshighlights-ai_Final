@@ -2224,6 +2224,8 @@ def _caption_for_clip(clip: EditCandidateClip, preset: EditPreset) -> str:
         signals = native_shot_signals_for_clip(clip)
         if signals.outcome in {"uncertain", "not_shot"} and _shot_label_overclaims_outcome(clip.label):
             return "GOOD LOOK"
+        if clip_outcome_evidence_source(clip) == "label_only" and _shot_label_asserts_scoring_result(clip.label):
+            return "GOOD LOOK"
         if signals.outcome == "missed":
             return "GOOD LOOK"
         if signals.outcome == "blocked":
@@ -2234,6 +2236,11 @@ def _caption_for_clip(clip: EditCandidateClip, preset: EditPreset) -> str:
 def _shot_label_overclaims_outcome(label: str) -> bool:
     normalized = label.strip().lower()
     return any(token in normalized for token in ("made", "bucket", "basket", "shot", "jumper", "attempt", "dunk", "finish"))
+
+
+def _shot_label_asserts_scoring_result(label: str) -> bool:
+    normalized = label.strip().lower()
+    return any(token in normalized for token in ("made", "bucket", "basket", "shot", "jumper", "three", "3pt"))
 
 
 def add_caption(label: str, preset: EditPreset) -> str:
