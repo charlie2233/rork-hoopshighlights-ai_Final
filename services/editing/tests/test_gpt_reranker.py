@@ -528,6 +528,45 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertFalse(hints[0]["nativeShotSignals"]["timingWindowOk"])
         self.assertLess(hints[0]["nativeShotSignals"]["contextQualityScore"], hints[1]["nativeShotSignals"]["contextQualityScore"])
 
+    def test_quality_filter_keeps_defensive_window_with_event_context_before_gpt(self) -> None:
+        request = CreateEditJobRequest(
+            videoId="video_defensive_event_context_filter",
+            analysisJobId="analysis_defensive_event_context_filter",
+            installId="install-123",
+            sourceObjectKey="uploads/source.mp4",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="free",
+            clips=[
+                {
+                    **_clip("contextual_block", 20.0, 0.88),
+                    "label": "Block",
+                    "end": 22.4,
+                    "eventCenter": 20.7,
+                },
+                {
+                    **_clip("same_window_make", 30.0, 0.92),
+                    "label": "Made Shot",
+                    "end": 32.4,
+                    "eventCenter": 30.7,
+                },
+            ],
+        )
+
+        sampled = gpt_reranker._quality_filtered_sampled_clips(request.clips, max_clips=2)
+        block_hints = gpt_reranker._candidate_quality_hints(request.clips[0])
+        shot_hints = gpt_reranker._candidate_quality_hints(request.clips[1])
+
+        self.assertEqual([clip.id for clip in sampled], ["contextual_block"])
+        self.assertTrue(block_hints["defensiveEventLike"])
+        self.assertTrue(block_hints["timingWindowOk"])
+        self.assertEqual(block_hints["minLeadInSeconds"], gpt_reranker.MIN_GPT_DEFENSIVE_LEAD_IN_SECONDS)
+        self.assertEqual(block_hints["minFollowThroughSeconds"], gpt_reranker.MIN_GPT_DEFENSIVE_FOLLOW_THROUGH_SECONDS)
+        self.assertFalse(shot_hints["defensiveEventLike"])
+        self.assertFalse(shot_hints["timingWindowOk"])
+        self.assertEqual(shot_hints["minLeadInSeconds"], gpt_reranker.MIN_GPT_CANDIDATE_LEAD_IN_SECONDS)
+        self.assertEqual(shot_hints["minFollowThroughSeconds"], gpt_reranker.MIN_GPT_CANDIDATE_FOLLOW_THROUGH_SECONDS)
+
     def test_quality_filter_excludes_native_not_shot_overclaimed_provider_clip(self) -> None:
         request = CreateEditJobRequest(
             videoId="video_native_not_shot_filter",

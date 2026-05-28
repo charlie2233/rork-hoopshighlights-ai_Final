@@ -26,6 +26,8 @@ from app.editing import (  # noqa: E402
     GPTPlanEdit,
     GPTHighlightRerankSummary,
     MIN_PLAN_CLIP_SECONDS,
+    MIN_SHOT_CONTEXT_FOLLOW_THROUGH_SECONDS,
+    MIN_SHOT_CONTEXT_LEAD_IN_SECONDS,
     ReviseEditJobRequest,
     StoredEditJob,
     apply_gpt_highlight_rerank,
@@ -51,9 +53,13 @@ ResponseClient = Callable[[Dict[str, Any], str, str, float], Dict[str, Any]]
 ALLOWED_IMAGE_DETAIL_LEVELS = {"low", "high", "original", "auto"}
 REQUIRED_KEYFRAME_ROLES = {"start", "eventCenter", "finish"}
 SHOT_CONTEXT_KEYFRAME_ROLES = ("preEvent", "release", "shotArcEarly", "shotArcLate", "rimApproach", "rimEntry", "belowRim")
-MIN_GPT_CANDIDATE_LEAD_IN_SECONDS = 1.2
-MIN_GPT_CANDIDATE_FOLLOW_THROUGH_SECONDS = 0.75
+MIN_GPT_CANDIDATE_LEAD_IN_SECONDS = MIN_SHOT_CONTEXT_LEAD_IN_SECONDS
+MIN_GPT_CANDIDATE_FOLLOW_THROUGH_SECONDS = MIN_SHOT_CONTEXT_FOLLOW_THROUGH_SECONDS
 MIN_GPT_SHOT_LIKE_CANDIDATE_SECONDS = 3.0
+MIN_GPT_DEFENSIVE_CANDIDATE_SECONDS = 2.0
+MIN_GPT_DEFENSIVE_LEAD_IN_SECONDS = 0.6
+MIN_GPT_DEFENSIVE_FOLLOW_THROUGH_SECONDS = 0.5
+MIN_GPT_NON_SHOT_CANDIDATE_SECONDS = 2.5
 SHOT_CONTEXT_EXPANSION_LEAD_SECONDS = 2.0
 SHOT_CONTEXT_EXPANSION_FOLLOW_THROUGH_SECONDS = 1.25
 SHOT_CONTEXT_EXPANSION_TARGET_SECONDS = 5.5
@@ -432,23 +438,34 @@ def _candidate_quality_hints(clip: EditCandidateClip) -> Dict[str, Any]:
     is_shot_like = is_shot_like_clip(clip)
     is_defensive = _is_defensive_candidate_clip(clip)
     requires_shot_timing = is_shot_like and not is_defensive
-    min_duration = max(MIN_PLAN_CLIP_SECONDS, MIN_GPT_SHOT_LIKE_CANDIDATE_SECONDS if requires_shot_timing else 2.5)
+    if requires_shot_timing:
+        min_duration = max(MIN_PLAN_CLIP_SECONDS, MIN_GPT_SHOT_LIKE_CANDIDATE_SECONDS)
+        min_lead_in = MIN_GPT_CANDIDATE_LEAD_IN_SECONDS
+        min_follow_through = MIN_GPT_CANDIDATE_FOLLOW_THROUGH_SECONDS
+    elif is_defensive:
+        min_duration = max(MIN_PLAN_CLIP_SECONDS, MIN_GPT_DEFENSIVE_CANDIDATE_SECONDS)
+        min_lead_in = MIN_GPT_DEFENSIVE_LEAD_IN_SECONDS
+        min_follow_through = MIN_GPT_DEFENSIVE_FOLLOW_THROUGH_SECONDS
+    else:
+        min_duration = max(MIN_PLAN_CLIP_SECONDS, MIN_GPT_NON_SHOT_CANDIDATE_SECONDS)
+        min_lead_in = MIN_GPT_DEFENSIVE_LEAD_IN_SECONDS
+        min_follow_through = MIN_GPT_DEFENSIVE_FOLLOW_THROUGH_SECONDS
     return {
         "durationSeconds": duration,
         "defensiveEventLike": is_defensive,
         "leadInSeconds": lead_in,
         "followThroughSeconds": follow_through,
         "minRecommendedDurationSeconds": min_duration,
-        "minLeadInSeconds": MIN_GPT_CANDIDATE_LEAD_IN_SECONDS,
-        "minFollowThroughSeconds": MIN_GPT_CANDIDATE_FOLLOW_THROUGH_SECONDS,
+        "minLeadInSeconds": min_lead_in,
+        "minFollowThroughSeconds": min_follow_through,
         "shotLike": is_shot_like,
         "nativeShotSignals": native_shot_signals_for_clip(clip).model_dump(mode="json"),
         "outcomeEvidenceSource": clip_outcome_evidence_source(clip),
         "outcomeReliabilityScore": clip_outcome_reliability_score(clip),
         "timingWindowOk": (
             duration >= min_duration
-            and lead_in >= MIN_GPT_CANDIDATE_LEAD_IN_SECONDS
-            and follow_through >= MIN_GPT_CANDIDATE_FOLLOW_THROUGH_SECONDS
+            and lead_in >= min_lead_in
+            and follow_through >= min_follow_through
         ),
         "requiresVisibleOutcome": True,
         "rejectIfOnlyBasketOrAftermath": True,
