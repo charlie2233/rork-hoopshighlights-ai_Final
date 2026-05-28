@@ -228,6 +228,8 @@ def prediction_from_cloud_clip(clip: dict[str, Any]) -> dict[str, Any]:
         "duration": duration,
         "eventCenter": number_or_none(clip.get("eventCenter")),
         "outcome": clip.get("outcome") or native_shot_signals.get("outcome"),
+        "outcomeEvidenceSource": clip.get("outcomeEvidenceSource") or native_shot_signals.get("outcomeEvidenceSource"),
+        "outcomeReliabilityScore": clip.get("outcomeReliabilityScore") or native_shot_signals.get("outcomeReliabilityScore"),
         "nativeShotSignals": native_shot_signals,
     }
     for key in ("shotResultEvidence", "shotTrackingEvidence", "qualitySignals"):

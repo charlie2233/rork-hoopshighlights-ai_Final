@@ -36,6 +36,7 @@ def made_shot_evidence() -> dict:
             "rimVisibleFrameRoles": ["rimApproach", "rimEntry", "belowRim"],
             "resultFrameRole": "rimEntry",
             "ballEntersRimFrameRole": "rimEntry",
+            "trajectoryContinuity": "continuous",
         },
     }
 
@@ -300,6 +301,85 @@ class TeamHighlightAccuracyEvalTests(unittest.TestCase):
 
         self.assertEqual(report.status, "fail")
         self.assertEqual(report.metrics.shotOutcomeEvidenceClipCount, 2)
+        self.assertEqual(report.metrics.badShotOutcomeEvidenceCount, 1)
+        self.assertTrue(any("shotOutcomeEvidenceQuality" in failure for failure in report.failures))
+
+    def test_label_only_made_shot_evidence_fails_outcome_quality(self) -> None:
+        report = evaluate_accuracy(
+            {
+                "selectedTeamId": "team_dark",
+                "clips": [
+                    {
+                        "expected": {"teamId": "team_dark", "isHighlight": True, "eventType": "made_three"},
+                        "prediction": timed_prediction(
+                            {
+                                "keep": True,
+                                "teamAttribution": {"teamId": "team_dark", "confidence": 0.94},
+                                "outcomeEvidenceSource": "label_only",
+                                **made_shot_evidence(),
+                            }
+                        ),
+                    }
+                ],
+            },
+            thresholds=AccuracyThresholds(
+                selectedTeamPrecision=0.0,
+                selectedTeamRecallWithUncertain=0.0,
+                highlightPrecision=0.0,
+                highlightRecall=0.0,
+                defensiveEventRecall=0.0,
+                clipTimingQuality=0.0,
+                shotOutcomeEvidenceQuality=0.85,
+                minSelectedTeamDefensiveEvents=0,
+                minSelectedTeamBlocks=0,
+                minSelectedTeamSteals=0,
+            ),
+        )
+
+        self.assertEqual(report.status, "fail")
+        self.assertEqual(report.metrics.shotOutcomeEvidenceClipCount, 1)
+        self.assertEqual(report.metrics.badShotOutcomeEvidenceCount, 1)
+        self.assertTrue(any("shotOutcomeEvidenceQuality" in failure for failure in report.failures))
+
+    def test_made_shot_low_rim_entry_sequence_confidence_fails_outcome_quality(self) -> None:
+        weak_entry = made_shot_evidence()
+        weak_entry["shotResultEvidence"] = {
+            **weak_entry["shotResultEvidence"],
+            "rimEntrySequenceConfidence": 0.4,
+        }
+
+        report = evaluate_accuracy(
+            {
+                "selectedTeamId": "team_dark",
+                "clips": [
+                    {
+                        "expected": {"teamId": "team_dark", "isHighlight": True, "eventType": "made_three"},
+                        "prediction": timed_prediction(
+                            {
+                                "keep": True,
+                                "teamAttribution": {"teamId": "team_dark", "confidence": 0.94},
+                                **weak_entry,
+                            }
+                        ),
+                    }
+                ],
+            },
+            thresholds=AccuracyThresholds(
+                selectedTeamPrecision=0.0,
+                selectedTeamRecallWithUncertain=0.0,
+                highlightPrecision=0.0,
+                highlightRecall=0.0,
+                defensiveEventRecall=0.0,
+                clipTimingQuality=0.0,
+                shotOutcomeEvidenceQuality=0.85,
+                minSelectedTeamDefensiveEvents=0,
+                minSelectedTeamBlocks=0,
+                minSelectedTeamSteals=0,
+            ),
+        )
+
+        self.assertEqual(report.status, "fail")
+        self.assertEqual(report.metrics.shotOutcomeEvidenceClipCount, 1)
         self.assertEqual(report.metrics.badShotOutcomeEvidenceCount, 1)
         self.assertTrue(any("shotOutcomeEvidenceQuality" in failure for failure in report.failures))
 

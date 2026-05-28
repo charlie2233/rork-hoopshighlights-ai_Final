@@ -38,6 +38,25 @@ MIN_EVAL_SHOT_FOLLOW_THROUGH_SECONDS = 0.6
 MIN_EVAL_DEFENSIVE_LEAD_IN_SECONDS = 0.6
 MIN_EVAL_DEFENSIVE_FOLLOW_THROUGH_SECONDS = 0.5
 MIN_EVAL_SHOT_OUTCOME_CONFIDENCE = 0.65
+MIN_EVAL_RIM_ENTRY_SEQUENCE_CONFIDENCE = 0.72
+MIN_EVAL_OUTCOME_RELIABILITY = 0.72
+
+MADE_APPROACH_FRAME_ROLES = {"release", "shotarcearly", "eventcenter", "shotarclate", "rimapproach"}
+MADE_ENTRY_FRAME_ROLES = {"outcome", "shotarclate", "rim", "rimentry"}
+MADE_FOLLOW_THROUGH_FRAME_ROLES = {"belowrim", "postoutcome", "finish"}
+MADE_BALL_FLIGHT_FRAME_ROLES = {
+    "release",
+    "shotarcearly",
+    "eventcenter",
+    "outcome",
+    "shotarclate",
+    "rimapproach",
+    "rim",
+    "rimentry",
+    "belowrim",
+    "postoutcome",
+    "finish",
+}
 
 
 @dataclass(frozen=True)
@@ -337,6 +356,8 @@ def normalize_clip(raw_clip: dict[str, Any]) -> dict[str, dict[str, Any]] | None
         "eventCenter": number_or_none(prediction.get("eventCenter", raw_clip.get("eventCenter"))),
         "nativeShotTimingWindowOk": native_timing_window_ok(prediction),
         "outcome": prediction.get("outcome") or prediction.get("basketballOutcome") or native_shot_signals.get("outcome"),
+        "outcomeEvidenceSource": prediction.get("outcomeEvidenceSource") or native_shot_signals.get("outcomeEvidenceSource"),
+        "outcomeReliabilityScore": prediction.get("outcomeReliabilityScore") or native_shot_signals.get("outcomeReliabilityScore"),
         "nativeShotSignals": native_shot_signals,
         "shotResultEvidence": shot_result_evidence,
         "shotTrackingEvidence": shot_tracking_evidence,
@@ -450,32 +471,47 @@ def shot_outcome_evidence_is_valid(prediction: dict[str, Any], expected_outcome:
     evidence_confidence = number_or_default(result_evidence.get("outcomeConfidence"), 0.0)
     if evidence_confidence < MIN_EVAL_SHOT_OUTCOME_CONFIDENCE:
         return False
+    if str(prediction.get("outcomeEvidenceSource") or "").strip().lower() == "label_only":
+        return False
+    reliability_score = number_or_none(prediction.get("outcomeReliabilityScore"))
+    if reliability_score is not None and reliability_score < MIN_EVAL_OUTCOME_RELIABILITY:
+        return False
 
     rim_result = str(result_evidence.get("rimResultEvidence") or "").strip().lower()
     rim_sequence = str(result_evidence.get("rimEntrySequence") or "").strip().lower()
+    rim_sequence_confidence = number_or_default(result_evidence.get("rimEntrySequenceConfidence"), 0.0)
+    approach_role = normalize_event_type(result_evidence.get("ballApproachFrameRole"))
+    rim_entry_role = normalize_event_type(result_evidence.get("rimEntryFrameRole"))
+    below_rim_role = normalize_event_type(result_evidence.get("ballBelowRimOrNetFrameRole"))
     ball_roles = string_set(tracking_evidence.get("ballVisibleFrameRoles"))
     rim_roles = string_set(tracking_evidence.get("rimVisibleFrameRoles"))
-    result_role = string_or_none(tracking_evidence.get("resultFrameRole"))
-    entry_role = string_or_none(tracking_evidence.get("ballEntersRimFrameRole"))
+    result_role = normalize_event_type(tracking_evidence.get("resultFrameRole"))
+    entry_role = normalize_event_type(tracking_evidence.get("ballEntersRimFrameRole"))
+    trajectory = str(tracking_evidence.get("trajectoryContinuity") or "").strip().lower()
 
     if expected_outcome == "made":
         return (
             rim_result == "made_visible"
             and rim_sequence == "visible_entry"
-            and all(string_or_none(result_evidence.get(field)) for field in ("ballApproachFrameRole", "rimEntryFrameRole", "ballBelowRimOrNetFrameRole"))
-            and entry_role is not None
-            and bool(ball_roles)
-            and bool(rim_roles)
-            and quality_signals.get("ballPathVisible") is not False
-            and quality_signals.get("rimResultVisible") is not False
+            and rim_sequence_confidence >= MIN_EVAL_RIM_ENTRY_SEQUENCE_CONFIDENCE
+            and approach_role in MADE_APPROACH_FRAME_ROLES
+            and rim_entry_role in MADE_ENTRY_FRAME_ROLES
+            and below_rim_role in MADE_FOLLOW_THROUGH_FRAME_ROLES
+            and entry_role in MADE_ENTRY_FRAME_ROLES
+            and result_role in MADE_ENTRY_FRAME_ROLES | MADE_FOLLOW_THROUGH_FRAME_ROLES
+            and len(ball_roles & MADE_BALL_FLIGHT_FRAME_ROLES) >= 2
+            and bool(rim_roles & (MADE_ENTRY_FRAME_ROLES | MADE_FOLLOW_THROUGH_FRAME_ROLES))
+            and trajectory == "continuous"
+            and quality_signals.get("ballPathVisible") is True
+            and quality_signals.get("rimResultVisible") is True
         )
     if expected_outcome == "missed":
         return (
             rim_result == "clear_miss"
             and rim_sequence in {"visible_miss", "unclear"}
-            and (result_role is not None or bool(rim_roles))
-            and quality_signals.get("ballPathVisible") is not False
-            and quality_signals.get("rimResultVisible") is not False
+            and (bool(result_role) or bool(rim_roles))
+            and quality_signals.get("ballPathVisible") is True
+            and quality_signals.get("rimResultVisible") is True
         )
     if expected_outcome == "blocked":
         defensive_roles = {"challenge", "defenseoutcome", "possessionchange", "eventcenter"}
@@ -483,7 +519,7 @@ def shot_outcome_evidence_is_valid(prediction: dict[str, Any], expected_outcome:
             rim_result == "blocked"
             and rim_sequence == "blocked"
             and bool(ball_roles & defensive_roles)
-            and quality_signals.get("ballPathVisible") is not False
+            and quality_signals.get("ballPathVisible") is True
         )
     return False
 
