@@ -50,6 +50,17 @@ python3 scripts/submission_readiness_preflight.py --team-accuracy-report artifac
 
 - `python3 -m py_compile scripts/submission_readiness_preflight.py scripts/test_submission_readiness_preflight.py` passed.
 - `python3 -m unittest scripts.test_submission_readiness_preflight -v` passed: 20 tests.
+- `python3 -m py_compile scripts/submission_readiness_preflight.py scripts/test_submission_readiness_preflight.py scripts/launch_provider_input_handoff.py scripts/test_launch_provider_input_handoff.py` passed.
+- `python3 -m unittest scripts.test_submission_readiness_preflight scripts.test_launch_provider_input_handoff -v` passed: 23 tests.
+- `python3 -m unittest discover -s scripts -p 'test_*.py' -v` passed: 67 tests.
+- `git diff --check` passed.
+- `python3 scripts/submission_readiness_preflight.py --skip-live` exited `1` with `pass=22 warn=2 fail=8` after commit. Repo hygiene passed, and the new expected failure was `Missing --team-accuracy-report from a launch-grade labeled footage run; 85% selected-team/highlight quality is unproven.`
+
+## PR Evidence
+
+- PR #32 head after push: `654953bd1fabe86d8c83e2e8cbb14bc05bb225fc`.
+- GitHub Actions checks did not execute code steps. `Cloud Edit Deploy Preflight` and `iOS Internal TestFlight Upload` check jobs had empty `steps` arrays.
+- Check annotations said: `The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings`.
 
 ## Remaining Proof
 
