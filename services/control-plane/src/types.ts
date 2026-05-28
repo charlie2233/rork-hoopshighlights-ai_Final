@@ -130,6 +130,7 @@ export interface ClipTeamAttribution {
   confidence: number;
   source?: string | null;
   evidenceFrameRefs?: string[] | null;
+  evidenceRoleGroups?: string[] | null;
 }
 
 export interface CloudLabelScore {

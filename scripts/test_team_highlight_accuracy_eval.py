@@ -17,11 +17,17 @@ def timed_prediction(prediction: dict, start: float = 10.0, end: float = 14.0, e
     }
 
 
-def team_attribution(confidence: float, team_id: str = "team_dark", refs: list[str] | None = None) -> dict:
+def team_attribution(
+    confidence: float,
+    team_id: str = "team_dark",
+    refs: list[str] | None = None,
+    role_groups: list[str] | None = None,
+) -> dict:
     return {
         "teamId": team_id,
         "confidence": confidence,
         "evidenceFrameRefs": refs or ["clip_0_release", "clip_0_result"],
+        "evidenceRoleGroups": role_groups or ["action", "outcome"],
     }
 
 
@@ -463,6 +469,63 @@ class TeamHighlightAccuracyEvalTests(unittest.TestCase):
                         "expected": {"teamId": "team_dark", "isHighlight": True, "eventType": "steal"},
                         "prediction": timed_prediction(
                             {"keep": True, "teamAttribution": {"teamId": "team_dark", "confidence": 0.94}},
+                            start=18.0,
+                            end=21.4,
+                            event_center=19.3,
+                        ),
+                    },
+                    {
+                        "expected": {"teamId": "team_dark", "isHighlight": True, "eventType": "block"},
+                        "prediction": timed_prediction(
+                            {
+                                "keep": True,
+                                "teamAttribution": team_attribution(0.95),
+                                **blocked_shot_evidence(),
+                            },
+                            start=28.0,
+                            end=31.2,
+                            event_center=29.2,
+                        ),
+                    },
+                ],
+            },
+            thresholds=AccuracyThresholds(
+                selectedTeamPrecision=0.0,
+                selectedTeamEvidenceQuality=0.85,
+                selectedTeamRecallWithUncertain=0.0,
+                highlightPrecision=0.0,
+                highlightRecall=0.0,
+                defensiveEventRecall=0.0,
+                clipTimingQuality=0.0,
+                shotOutcomeEvidenceQuality=0.0,
+                minSelectedTeamDefensiveEvents=0,
+                minSelectedTeamBlocks=0,
+                minSelectedTeamSteals=0,
+            ),
+        )
+
+        self.assertEqual(report.status, "fail")
+        self.assertEqual(report.metrics.selectedTeamEvidenceClipCount, 2)
+        self.assertEqual(report.metrics.badSelectedTeamEvidenceCount, 1)
+        self.assertEqual(report.metrics.selectedTeamEvidenceQuality, 0.5)
+        self.assertTrue(any("selectedTeamEvidenceQuality" in failure for failure in report.failures))
+
+    def test_confident_selected_team_without_role_diversity_fails_evidence_quality(self) -> None:
+        report = evaluate_accuracy(
+            {
+                "selectedTeamId": "team_dark",
+                "clips": [
+                    {
+                        "expected": {"teamId": "team_dark", "isHighlight": True, "eventType": "steal"},
+                        "prediction": timed_prediction(
+                            {
+                                "keep": True,
+                                "teamAttribution": team_attribution(
+                                    0.94,
+                                    refs=["clip_0_release", "clip_0_arc"],
+                                    role_groups=["action"],
+                                ),
+                            },
                             start=18.0,
                             end=21.4,
                             event_center=19.3,

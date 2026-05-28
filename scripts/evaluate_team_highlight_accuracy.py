@@ -41,6 +41,7 @@ MIN_EVAL_SHOT_OUTCOME_CONFIDENCE = 0.65
 MIN_EVAL_RIM_ENTRY_SEQUENCE_CONFIDENCE = 0.72
 MIN_EVAL_OUTCOME_RELIABILITY = 0.72
 MIN_EVAL_TEAM_EVIDENCE_FRAME_REFS = 2
+MIN_EVAL_TEAM_EVIDENCE_ROLE_GROUPS = 2
 
 MADE_APPROACH_FRAME_ROLES = {"release", "shotarcearly", "eventcenter", "shotarclate", "rimapproach"}
 MADE_ENTRY_FRAME_ROLES = {"outcome", "shotarclate", "rim", "rimentry"}
@@ -370,6 +371,7 @@ def normalize_clip(raw_clip: dict[str, Any]) -> dict[str, dict[str, Any]] | None
         "teamConfidence": prediction.get("teamConfidence") or team_attribution.get("confidence"),
         "teamAttributionStatus": prediction.get("teamAttributionStatus") or team_attribution.get("status"),
         "teamEvidenceFrameRefs": string_list(prediction.get("evidenceFrameRefs") or team_attribution.get("evidenceFrameRefs")),
+        "teamEvidenceRoleGroups": string_list(prediction.get("evidenceRoleGroups") or team_attribution.get("evidenceRoleGroups")),
         "eventType": prediction.get("eventType") or prediction.get("basketballEvent") or prediction.get("label") or normalized_expected["eventType"],
         "start": number_or_none(prediction.get("start", raw_clip.get("start"))),
         "end": number_or_none(prediction.get("end", raw_clip.get("end"))),
@@ -449,7 +451,10 @@ def threshold_failures(metrics: AccuracyMetrics, thresholds: AccuracyThresholds)
 
 
 def team_attribution_evidence_is_valid(prediction: dict[str, Any]) -> bool:
-    return len(string_set(prediction.get("teamEvidenceFrameRefs"))) >= MIN_EVAL_TEAM_EVIDENCE_FRAME_REFS
+    return (
+        len(string_set(prediction.get("teamEvidenceFrameRefs"))) >= MIN_EVAL_TEAM_EVIDENCE_FRAME_REFS
+        and len(string_set(prediction.get("teamEvidenceRoleGroups"))) >= MIN_EVAL_TEAM_EVIDENCE_ROLE_GROUPS
+    )
 
 
 def defensive_event_subtype(event_type: str) -> str | None:

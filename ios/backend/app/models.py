@@ -57,6 +57,7 @@ class ClipTeamAttribution(APIModel):
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     source: Literal["quick_scan", "gpt_frame_review", "provider", "manual", "unknown"] = "unknown"
     evidenceFrameRefs: List[str] = Field(default_factory=list, max_length=8)
+    evidenceRoleGroups: List[str] = Field(default_factory=list, max_length=3)
 
 
 class CreateCloudAnalysisJobRequest(APIModel):

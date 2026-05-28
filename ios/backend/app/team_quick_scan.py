@@ -281,9 +281,10 @@ def _parse_quick_scan_output(
         if team_id is None and label is None and color_label is None:
             continue
         evidence_frame_refs = _valid_evidence_frame_refs(item.get("evidenceFrameRefs"), evidence_frame_refs_by_clip, clip_ref)
+        evidence_role_groups = _evidence_role_groups_for_refs(evidence_frame_refs, evidence_frame_roles_by_clip, clip_ref)
         if (
             len(evidence_frame_refs) < TEAM_QUICK_SCAN_MIN_CONFIDENT_EVIDENCE_FRAME_REFS
-            or not _has_confident_evidence_role_diversity(evidence_frame_refs, evidence_frame_roles_by_clip, clip_ref)
+            or len(evidence_role_groups) < TEAM_QUICK_SCAN_MIN_CONFIDENT_EVIDENCE_ROLE_GROUPS
         ):
             confidence = min(confidence, TEAM_QUICK_SCAN_UNVERIFIED_ATTRIBUTION_MAX_CONFIDENCE)
         confidence = _cap_attribution_confidence_by_detected_team(
@@ -300,6 +301,7 @@ def _parse_quick_scan_output(
             confidence=round(confidence, 4),
             source="gpt_frame_review",
             evidenceFrameRefs=evidence_frame_refs,
+            evidenceRoleGroups=evidence_role_groups,
         )
     return teams, attributions
 
@@ -350,14 +352,26 @@ def _has_confident_evidence_role_diversity(
 ) -> bool:
     if evidence_frame_roles_by_clip is None:
         return True
+    return len(_evidence_role_groups_for_refs(evidence_frame_refs, evidence_frame_roles_by_clip, clip_ref)) >= TEAM_QUICK_SCAN_MIN_CONFIDENT_EVIDENCE_ROLE_GROUPS
+
+
+def _evidence_role_groups_for_refs(
+    evidence_frame_refs: Sequence[str],
+    evidence_frame_roles_by_clip: Optional[dict[str, dict[str, str]]],
+    clip_ref: str,
+) -> list[str]:
+    if evidence_frame_roles_by_clip is None:
+        return []
     roles_by_ref = evidence_frame_roles_by_clip.get(clip_ref, {})
-    role_groups = {
-        group
-        for frame_ref in evidence_frame_refs
-        for group in [_team_evidence_role_group(roles_by_ref.get(frame_ref))]
-        if group is not None
-    }
-    return len(role_groups) >= TEAM_QUICK_SCAN_MIN_CONFIDENT_EVIDENCE_ROLE_GROUPS
+    groups: list[str] = []
+    seen: set[str] = set()
+    for frame_ref in evidence_frame_refs:
+        group = _team_evidence_role_group(roles_by_ref.get(frame_ref))
+        if group is None or group in seen:
+            continue
+        seen.add(group)
+        groups.append(group)
+    return groups
 
 
 def _team_evidence_role_group(role: object) -> Optional[str]:

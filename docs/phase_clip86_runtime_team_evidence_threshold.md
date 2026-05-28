@@ -14,6 +14,7 @@ Align runtime team quick-scan validation with the launch evaluator: a confident 
 - Preserves the valid evidence refs even when confidence is capped, so the clip can stay uncertain/reviewable with audit metadata.
 - Added regression coverage for one valid frame ref: confidence is capped below `0.85`, while the single valid ref is retained.
 - Added regression coverage for two valid refs from the same role group: confidence is capped below `0.85`, while both refs are retained.
+- Added follow-up metadata support in Phase Clip87 so exported analysis results include `evidenceRoleGroups` for launch evaluation.
 
 ## Guardrails
 

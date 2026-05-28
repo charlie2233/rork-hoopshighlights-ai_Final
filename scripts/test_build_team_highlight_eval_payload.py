@@ -24,6 +24,7 @@ def analysis_clip(start: float, end: float, label: str, keep: bool, team_id: str
             "teamId": team_id,
             "confidence": confidence,
             "evidenceFrameRefs": [f"{label.lower().replace(' ', '_')}_setup", f"{label.lower().replace(' ', '_')}_result"],
+            "evidenceRoleGroups": ["setup", "outcome"],
         },
         "teamAttributionStatus": "matched" if confidence >= 0.85 else "uncertain",
         "nativeShotSignals": {

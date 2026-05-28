@@ -704,6 +704,7 @@ function normalizeClipTeamAttribution(value: unknown): CloudClip["teamAttributio
     confidence?: unknown;
     source?: unknown;
     evidenceFrameRefs?: unknown;
+    evidenceRoleGroups?: unknown;
   };
   return {
     teamId: coerceString(input.teamId),
@@ -711,7 +712,8 @@ function normalizeClipTeamAttribution(value: unknown): CloudClip["teamAttributio
     colorLabel: coerceString(input.colorLabel),
     confidence: clamp01(coerceNumber(input.confidence) ?? 0),
     source: coerceString(input.source),
-    evidenceFrameRefs: coerceStringList(input.evidenceFrameRefs, 8, 120)
+    evidenceFrameRefs: coerceStringList(input.evidenceFrameRefs, 8, 120),
+    evidenceRoleGroups: coerceStringList(input.evidenceRoleGroups, 3, 40)
   };
 }
 

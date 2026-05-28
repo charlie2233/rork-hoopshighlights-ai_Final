@@ -11,11 +11,12 @@ Prevent HoopClips from claiming the selected-team 85% quality target when confid
 - Added `selectedTeamEvidenceQuality` to `scripts/evaluate_team_highlight_accuracy.py`.
 - Added default `0.85` threshold and CLI override `--min-selected-team-evidence`.
 - Counted every confident selected-team prediction as evidence-scored.
-- A confident selected-team prediction only passes evidence quality when it includes at least two unique `evidenceFrameRefs`.
+- A confident selected-team prediction only passes evidence quality when it includes at least two unique `evidenceFrameRefs` and at least two unique `evidenceRoleGroups`.
 - Added metrics:
   - `selectedTeamEvidenceClipCount`
   - `badSelectedTeamEvidenceCount`
 - Added a regression test where one confident selected-team prediction has no evidence refs and the eval fails.
+- Added a regression test where one confident selected-team prediction has two refs but only one role group and the eval fails.
 
 ## Architecture Guardrails
 
@@ -43,4 +44,4 @@ Results:
 
 ## Launch Recommendation
 
-Internal launch evidence should now include `evidenceFrameRefs` for confident selected-team clips exported from the cloud analysis quick scan. If a clip is plausible but evidence is weak or missing, keep it uncertain/reviewable instead of treating it as a confident selected-team match.
+Internal launch evidence should now include `evidenceFrameRefs` and `evidenceRoleGroups` for confident selected-team clips exported from the cloud analysis quick scan. If a clip is plausible but evidence is weak or missing, keep it uncertain/reviewable instead of treating it as a confident selected-team match.

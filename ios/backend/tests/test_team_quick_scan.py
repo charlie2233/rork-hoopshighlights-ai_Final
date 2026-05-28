@@ -710,6 +710,7 @@ class TeamQuickScanTests(unittest.TestCase):
         self.assertEqual(scanned[0].teamAttribution.teamId, "team_dark")
         self.assertLess(scanned[0].teamAttribution.confidence, 0.85)
         self.assertEqual(scanned[0].teamAttribution.evidenceFrameRefs, [])
+        self.assertEqual(scanned[0].teamAttribution.evidenceRoleGroups, [])
 
     def test_high_confidence_clip_attribution_accepts_matching_sampled_frame_evidence(self) -> None:
         clips = [_clip("Made Shot", 8.0, 12.5, 10.0)]
@@ -761,6 +762,7 @@ class TeamQuickScanTests(unittest.TestCase):
         self.assertEqual(scanned[0].teamAttribution.teamId, "team_dark")
         self.assertEqual(scanned[0].teamAttribution.confidence, 0.91)
         self.assertEqual(scanned[0].teamAttribution.evidenceFrameRefs, ["clip_0_release", "clip_0_result"])
+        self.assertEqual(scanned[0].teamAttribution.evidenceRoleGroups, ["action", "outcome"])
 
     def test_high_confidence_clip_attribution_requires_two_sampled_frame_refs(self) -> None:
         clips = [_clip("Made Shot", 8.0, 12.5, 10.0)]
@@ -812,6 +814,7 @@ class TeamQuickScanTests(unittest.TestCase):
         self.assertEqual(scanned[0].teamAttribution.teamId, "team_dark")
         self.assertLess(scanned[0].teamAttribution.confidence, 0.85)
         self.assertEqual(scanned[0].teamAttribution.evidenceFrameRefs, ["clip_0_release"])
+        self.assertEqual(scanned[0].teamAttribution.evidenceRoleGroups, ["action"])
 
     def test_high_confidence_clip_attribution_requires_distinct_evidence_role_groups(self) -> None:
         clips = [_clip("Made Shot", 8.0, 12.5, 10.0)]
@@ -864,6 +867,7 @@ class TeamQuickScanTests(unittest.TestCase):
         self.assertEqual(scanned[0].teamAttribution.teamId, "team_dark")
         self.assertLess(scanned[0].teamAttribution.confidence, 0.85)
         self.assertEqual(scanned[0].teamAttribution.evidenceFrameRefs, ["clip_0_release", "clip_0_arc"])
+        self.assertEqual(scanned[0].teamAttribution.evidenceRoleGroups, ["action"])
 
     def test_clip_attribution_without_detected_team_stays_uncertain(self) -> None:
         clips = [_clip("Made Shot", 8.0, 12.5, 10.0)]
