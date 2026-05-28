@@ -16,9 +16,10 @@ Make the 85% selected-team/highlight quality target measurable before we claim i
   - clip timing/context quality for kept or review-included clips
   - shot-outcome evidence quality for made, missed, and blocked shot clips
   - minimum labeled-footage sample size
+  - minimum hard-case coverage for opponent highlights, negative clips, bad-window negatives, and uncertain review clips
   - minimum selected-team defensive coverage, including at least one block and one steal
   - uncertain review count
-- Default thresholds are `0.85` for selected-team precision, selected-team evidence quality, selected-team recall with uncertain clips, highlight precision, highlight recall, defensive-event recall, clip timing/context quality, and shot-outcome evidence quality. Default coverage also requires at least two cases, 12 scored clips, six selected-team highlights, three shot-outcome evidence clips, and two selected-team defensive events with at least one block and one steal.
+- Default thresholds are `0.85` for selected-team precision, selected-team evidence quality, selected-team recall with uncertain clips, highlight precision, highlight recall, defensive-event recall, clip timing/context quality, and shot-outcome evidence quality. Default coverage also requires at least two cases, 12 scored clips, six selected-team highlights, three shot-outcome evidence clips, two opponent highlights, two negative clips, two bad-window negatives, one uncertain review clip, and two selected-team defensive events with at least one block and one steal.
 
 ## Input Shape
 
@@ -70,9 +71,9 @@ Use the default thresholds for internal beta. If an eval set is intentionally na
 
 Commands run on branch `codex/phase-clip28-cloud-team-quick-scan`:
 
-- `python3 -m unittest scripts.test_team_highlight_accuracy_eval -v` -> 18 tests passed after the sample-size and evidence-summary gates.
+- `python3 -m unittest scripts.test_team_highlight_accuracy_eval -v` -> 19 tests passed after the sample-size, hard-case coverage, and evidence-summary gates.
 - `python3 -m py_compile scripts/evaluate_team_highlight_accuracy.py scripts/test_team_highlight_accuracy_eval.py` -> passed.
-- `python3 -m unittest discover -s scripts -p 'test_*.py' -v` -> 62 tests passed after the sample-size and team evidence-quality gates.
+- `python3 -m unittest discover -s scripts -p 'test_*.py' -v` -> 63 tests passed after the sample-size, hard-case coverage, and team evidence-quality gates.
 - `git diff --check` -> passed.
 
 ## Launch Recommendation

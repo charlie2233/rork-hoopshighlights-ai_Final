@@ -13,12 +13,20 @@ Prevent HoopClips from claiming the 85% selected-team/highlight target from a ti
   - `minScoredClips`: 12
   - `minSelectedTeamHighlights`: 6
   - `minShotOutcomeEvidenceClips`: 3
+  - `minOpponentHighlights`: 2
+  - `minNegativeClips`: 2
+  - `minBadWindowNegatives`: 2
+  - `minUncertainReviewClips`: 1
 - Added CLI overrides:
   - `--min-cases`
   - `--min-clips`
   - `--min-selected-team-highlights`
   - `--min-shot-outcome-evidence-clips`
-- The default evaluator now fails if a labeled payload is too small, even when every scored clip is correct.
+  - `--min-opponent-highlights`
+  - `--min-negative-clips`
+  - `--min-bad-window-negatives`
+  - `--min-uncertain-review-clips`
+- The default evaluator now fails if a labeled payload is too small or misses hard cases, even when every scored clip is correct.
 - Narrow unit fixtures can still lower these thresholds explicitly, but those runs are not launch-readiness evidence.
 
 ## Why It Matters
@@ -28,8 +36,8 @@ The user goal is not just a local passing metric; it is a believable internal be
 ## Validation
 
 - `python3 -m py_compile scripts/evaluate_team_highlight_accuracy.py scripts/test_team_highlight_accuracy_eval.py` passed.
-- `python3 -m unittest scripts.test_team_highlight_accuracy_eval -v` passed: 18 tests.
-- `python3 -m unittest discover -s scripts -p 'test_*.py' -v` passed: 62 tests.
+- `python3 -m unittest scripts.test_team_highlight_accuracy_eval -v` passed: 19 tests after the follow-up hard-case coverage gate.
+- `python3 -m unittest discover -s scripts -p 'test_*.py' -v` passed: 63 tests after the follow-up hard-case coverage gate.
 - `git diff --check` passed.
 
 ## Remaining Proof

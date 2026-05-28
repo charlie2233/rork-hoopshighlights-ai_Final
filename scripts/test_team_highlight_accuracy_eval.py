@@ -150,10 +150,49 @@ def readiness_coverage_clips(offset: float = 0.0) -> list[dict]:
             "prediction": {"keep": False, "teamAttribution": {"teamId": "team_light", "confidence": 0.95}},
         },
         {
-            "expected": {"teamId": "team_dark", "isHighlight": False, "eventType": "dead_ball"},
+            "expected": {
+                "teamId": "team_dark",
+                "isHighlight": False,
+                "eventType": "tiny_clip" if offset < 50.0 else "pre_basket_only",
+            },
             "prediction": {"keep": False, "teamAttribution": {"teamId": "team_dark", "confidence": 0.9}},
         },
     ]
+
+
+def easy_selected_only_clips(offset: float = 0.0) -> list[dict]:
+    clips = readiness_coverage_clips(offset=offset)[:4]
+    clips.extend(
+        [
+            {
+                "expected": {"teamId": "team_dark", "isHighlight": True, "eventType": "made_layup"},
+                "prediction": timed_prediction(
+                    {
+                        "keep": True,
+                        "teamAttribution": team_attribution(0.93),
+                        **made_shot_evidence(),
+                    },
+                    start=50.0 + offset,
+                    end=54.0 + offset,
+                    event_center=52.0 + offset,
+                ),
+            },
+            {
+                "expected": {"teamId": "team_dark", "isHighlight": True, "eventType": "block"},
+                "prediction": timed_prediction(
+                    {
+                        "keep": True,
+                        "teamAttribution": team_attribution(0.92),
+                        **blocked_shot_evidence(),
+                    },
+                    start=60.0 + offset,
+                    end=63.4 + offset,
+                    event_center=61.2 + offset,
+                ),
+            },
+        ]
+    )
+    return clips
 
 
 class TeamHighlightAccuracyEvalTests(unittest.TestCase):
@@ -183,6 +222,9 @@ class TeamHighlightAccuracyEvalTests(unittest.TestCase):
         self.assertEqual(report.metrics.shotOutcomeEvidenceClipCount, 4)
         self.assertEqual(report.metrics.selectedTeamBlockCount, 2)
         self.assertEqual(report.metrics.selectedTeamStealCount, 2)
+        self.assertEqual(report.metrics.opponentHighlightCount, 2)
+        self.assertEqual(report.metrics.negativeClipCount, 2)
+        self.assertEqual(report.metrics.badWindowNegativeCount, 2)
         self.assertEqual(report.metrics.selectedTeamEvidenceClipCount, 6)
         self.assertEqual(report.metrics.badSelectedTeamEvidenceCount, 0)
         self.assertEqual(report.metrics.uncertainReviewCount, 2)
@@ -200,6 +242,26 @@ class TeamHighlightAccuracyEvalTests(unittest.TestCase):
         self.assertEqual(report.metrics.clipCount, 2)
         self.assertTrue(any("caseCoverage" in failure for failure in report.failures))
         self.assertTrue(any("scoredClipCoverage" in failure for failure in report.failures))
+
+    def test_eval_without_opponent_and_bad_window_coverage_cannot_pass_readiness(self) -> None:
+        report = evaluate_accuracy(
+            {
+                "cases": [
+                    {"caseId": "game_001", "selectedTeamId": "team_dark", "clips": easy_selected_only_clips()},
+                    {"caseId": "game_002", "selectedTeamId": "team_dark", "clips": easy_selected_only_clips(offset=100.0)},
+                ]
+            }
+        )
+
+        self.assertEqual(report.status, "fail")
+        self.assertEqual(report.metrics.caseCount, 2)
+        self.assertEqual(report.metrics.clipCount, 12)
+        self.assertEqual(report.metrics.opponentHighlightCount, 0)
+        self.assertEqual(report.metrics.negativeClipCount, 0)
+        self.assertEqual(report.metrics.badWindowNegativeCount, 0)
+        self.assertTrue(any("opponentHighlightCoverage" in failure for failure in report.failures))
+        self.assertTrue(any("negativeClipCoverage" in failure for failure in report.failures))
+        self.assertTrue(any("badWindowNegativeCoverage" in failure for failure in report.failures))
 
     def test_eval_without_selected_team_defensive_coverage_cannot_pass_readiness(self) -> None:
         report = evaluate_accuracy(
@@ -257,6 +319,9 @@ class TeamHighlightAccuracyEvalTests(unittest.TestCase):
                 minScoredClips=1,
                 minSelectedTeamHighlights=1,
                 minShotOutcomeEvidenceClips=0,
+                minOpponentHighlights=0,
+                minNegativeClips=0,
+                minBadWindowNegatives=0,
                 minSelectedTeamDefensiveEvents=1,
                 minSelectedTeamBlocks=0,
                 minSelectedTeamSteals=1,
@@ -760,6 +825,14 @@ class TeamHighlightAccuracyEvalTests(unittest.TestCase):
                     "--min-selected-team-highlights",
                     "2",
                     "--min-shot-outcome-evidence-clips",
+                    "0",
+                    "--min-opponent-highlights",
+                    "0",
+                    "--min-negative-clips",
+                    "0",
+                    "--min-bad-window-negatives",
+                    "0",
+                    "--min-uncertain-review-clips",
                     "0",
                 ],
                 check=False,

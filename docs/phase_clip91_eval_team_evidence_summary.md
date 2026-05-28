@@ -26,7 +26,7 @@ Make the 85% selected-team quality proof score the same evidence contract used b
 
 - `python3 -m py_compile scripts/evaluate_team_highlight_accuracy.py scripts/build_team_highlight_eval_payload.py scripts/test_team_highlight_accuracy_eval.py scripts/test_build_team_highlight_eval_payload.py` passed.
 - `python3 -m unittest scripts.test_team_highlight_accuracy_eval scripts.test_build_team_highlight_eval_payload -v` passed: 19 tests.
-- `python3 -m unittest discover -s scripts -p 'test_*.py' -v` passed: 62 tests after the follow-up sample-size gate.
+- `python3 -m unittest discover -s scripts -p 'test_*.py' -v` passed: 63 tests after the follow-up sample-size and hard-case coverage gates.
 - `git diff --check` passed.
 
 ## Remaining Proof
