@@ -9,10 +9,11 @@ Align runtime team quick-scan validation with the launch evaluator: a confident 
 ## Change
 
 - Added `TEAM_QUICK_SCAN_MIN_CONFIDENT_EVIDENCE_FRAME_REFS = 2`.
-- Updated the GPT team quick-scan prompt/context so high-confidence clip ownership requires at least two cited sampled frames.
-- Runtime validation now caps attribution confidence below `0.85` when fewer than two valid sampled frame refs are cited.
+- Updated the GPT team quick-scan prompt/context so high-confidence clip ownership requires at least two cited sampled frames from different play phases.
+- Runtime validation now caps attribution confidence below `0.85` when fewer than two valid sampled frame refs are cited, or when the cited refs come from only one phase such as action-only frames.
 - Preserves the valid evidence refs even when confidence is capped, so the clip can stay uncertain/reviewable with audit metadata.
 - Added regression coverage for one valid frame ref: confidence is capped below `0.85`, while the single valid ref is retained.
+- Added regression coverage for two valid refs from the same role group: confidence is capped below `0.85`, while both refs are retained.
 
 ## Guardrails
 
@@ -36,8 +37,8 @@ git diff --check
 Results:
 
 - `py_compile`: passed
-- `ios.backend.tests.test_team_quick_scan`: 27 passed
-- backend discovery suite: 169 passed
+- `ios.backend.tests.test_team_quick_scan`: 28 passed
+- backend discovery suite: 170 passed
 - scripts discovery suite: 58 passed
 - `git diff --check`: passed
 

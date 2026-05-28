@@ -20,6 +20,7 @@ ResponseClient = Callable[[Dict[str, Any], str, str, float], Dict[str, Any]]
 TEAM_QUICK_SCAN_CONFIDENT_ATTRIBUTION = 0.85
 TEAM_QUICK_SCAN_UNVERIFIED_ATTRIBUTION_MAX_CONFIDENCE = TEAM_QUICK_SCAN_CONFIDENT_ATTRIBUTION - 0.01
 TEAM_QUICK_SCAN_MIN_CONFIDENT_EVIDENCE_FRAME_REFS = 2
+TEAM_QUICK_SCAN_MIN_CONFIDENT_EVIDENCE_ROLE_GROUPS = 2
 TEAM_QUICK_SCAN_MAX_CANDIDATE_CLIPS = 160
 TEAM_QUICK_SCAN_MAX_FRAMES_PER_CANDIDATE = 8
 TEAM_QUICK_SCAN_COMPACT_FRAMES_PER_CANDIDATE = 3
@@ -69,7 +70,12 @@ def apply_team_quick_scan(
     except (HTTPError, URLError, OSError, TimeoutError, ValueError, json.JSONDecodeError):
         return list(clips), [], False
 
-    teams, attributions = _parse_quick_scan_output(output, settings, _evidence_frame_refs_by_clip(frames))
+    teams, attributions = _parse_quick_scan_output(
+        output,
+        settings,
+        _evidence_frame_refs_by_clip(frames),
+        _evidence_frame_roles_by_clip(frames),
+    )
     scanned: list[CloudClip] = []
     for index, clip in enumerate(clips):
         attribution = attributions.get(f"clip_{index}")
@@ -97,7 +103,7 @@ def _build_openai_payload(
             "scoringFrameRoles": "For scoring clips, ballHandlerSetup, preRelease, release, and shotArc show the offensive player/team; rimApproach and rimResult show the outcome; followThrough/finishContext show the finisher after the play.",
             "defensiveFrameRoles": "For defensive clips, defenseSetup and preChallenge/prePossessionChange show the defender before the event, challenge/ballDeflection or possessionChange/ballControlChange shows the defensive action, and recovery/defenseOutcome/finishContext show the result.",
             "frameBudgetPolicy": "Higher-ranked candidates may include up to eight role frames; later candidates may include a compact three-frame ownership set. Use every supplied role for confidence.",
-            "evidencePolicy": "Every clip attribution must cite evidenceFrameRefs from that clip. Use confidence >=0.85 only when at least two cited frames clearly show jersey color and ownership.",
+            "evidencePolicy": "Every clip attribution must cite evidenceFrameRefs from that clip. Use confidence >=0.85 only when at least two cited frames from different play phases clearly show jersey color and ownership.",
         },
         "durationSeconds": round(duration_seconds, 3),
         "candidateClips": [
@@ -139,7 +145,7 @@ def _build_openai_payload(
             "For scoring frame roles, use ballHandlerSetup, preRelease, release, and shotArc to judge the shooter/finisher team, then rimApproach/rimResult/followThrough/finishContext to confirm the play. "
             "Blocks, steals, defensive stops, and forced turnovers belong to the defending player who made the play. "
             "For defensive frame roles, use defenseSetup plus preChallenge/prePossessionChange, challenge/ballDeflection or possessionChange/ballControlChange, and recovery/defenseOutcome/finishContext to judge the defender's team. "
-            "For each clip attribution, include evidenceFrameRefs that exactly match supplied frameRef values for that clip; high-confidence ownership requires at least two cited frames. "
+            "For each clip attribution, include evidenceFrameRefs that exactly match supplied frameRef values for that clip; high-confidence ownership requires at least two cited frames from different phases such as setup/action/outcome. "
             "Use only supplied frames and candidate clip refs. Do not output prose, commands, file paths, URLs, storage keys, or FFmpeg instructions. "
             "Return strict JSON only."
         ),
@@ -211,6 +217,7 @@ def _parse_quick_scan_output(
     output: object,
     settings: Settings,
     evidence_frame_refs_by_clip: Optional[dict[str, set[str]]] = None,
+    evidence_frame_roles_by_clip: Optional[dict[str, dict[str, str]]] = None,
 ) -> tuple[list[TeamOption], dict[str, ClipTeamAttribution]]:
     if not isinstance(output, dict):
         return [], {}
@@ -274,7 +281,10 @@ def _parse_quick_scan_output(
         if team_id is None and label is None and color_label is None:
             continue
         evidence_frame_refs = _valid_evidence_frame_refs(item.get("evidenceFrameRefs"), evidence_frame_refs_by_clip, clip_ref)
-        if len(evidence_frame_refs) < TEAM_QUICK_SCAN_MIN_CONFIDENT_EVIDENCE_FRAME_REFS:
+        if (
+            len(evidence_frame_refs) < TEAM_QUICK_SCAN_MIN_CONFIDENT_EVIDENCE_FRAME_REFS
+            or not _has_confident_evidence_role_diversity(evidence_frame_refs, evidence_frame_roles_by_clip, clip_ref)
+        ):
             confidence = min(confidence, TEAM_QUICK_SCAN_UNVERIFIED_ATTRIBUTION_MAX_CONFIDENCE)
         confidence = _cap_attribution_confidence_by_detected_team(
             confidence,
@@ -303,6 +313,15 @@ def _evidence_frame_refs_by_clip(frames: Sequence[QuickScanFrame]) -> dict[str, 
     return refs_by_clip
 
 
+def _evidence_frame_roles_by_clip(frames: Sequence[QuickScanFrame]) -> dict[str, dict[str, str]]:
+    roles_by_clip: dict[str, dict[str, str]] = {}
+    for frame in frames:
+        if frame.clip_ref is None:
+            continue
+        roles_by_clip.setdefault(frame.clip_ref, {})[frame.frame_ref] = frame.role
+    return roles_by_clip
+
+
 def _valid_evidence_frame_refs(
     value: object,
     evidence_frame_refs_by_clip: Optional[dict[str, set[str]]],
@@ -322,6 +341,62 @@ def _valid_evidence_frame_refs(
         seen.add(frame_ref)
         valid_refs.append(frame_ref)
     return valid_refs
+
+
+def _has_confident_evidence_role_diversity(
+    evidence_frame_refs: Sequence[str],
+    evidence_frame_roles_by_clip: Optional[dict[str, dict[str, str]]],
+    clip_ref: str,
+) -> bool:
+    if evidence_frame_roles_by_clip is None:
+        return True
+    roles_by_ref = evidence_frame_roles_by_clip.get(clip_ref, {})
+    role_groups = {
+        group
+        for frame_ref in evidence_frame_refs
+        for group in [_team_evidence_role_group(roles_by_ref.get(frame_ref))]
+        if group is not None
+    }
+    return len(role_groups) >= TEAM_QUICK_SCAN_MIN_CONFIDENT_EVIDENCE_ROLE_GROUPS
+
+
+def _team_evidence_role_group(role: object) -> Optional[str]:
+    normalized = clean_text(role)
+    if normalized is None:
+        return None
+    key = normalized.lower()
+    if key in {
+        "ballhandlersetup",
+        "defensesetup",
+        "startcontext",
+        "prerelease",
+        "prechallenge",
+        "prepossessionchange",
+        "possessionpressure",
+    }:
+        return "setup"
+    if key in {
+        "release",
+        "shotarc",
+        "rimapproach",
+        "challenge",
+        "balldeflection",
+        "possessionchange",
+        "ballcontrolchange",
+        "eventcenter",
+        "midaction",
+    }:
+        return "action"
+    if key in {
+        "rimresult",
+        "followthrough",
+        "finishcontext",
+        "defenseoutcome",
+        "recovery",
+        "aftermath",
+    }:
+        return "outcome"
+    return None
 
 
 def _team_aliases_by_key(raw_teams: object, teams: Sequence[TeamOption]) -> dict[str, TeamOption]:

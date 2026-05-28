@@ -12,10 +12,10 @@ Improve selected-team attribution precision by making GPT cite the sampled frame
 - Added prompt/context rules telling GPT that high-confidence ownership requires cited sampled frames from that clip.
 - Added backend validation that checks `evidenceFrameRefs` against actual sampled frame refs for the same clip.
 - Preserved validated `evidenceFrameRefs` on `ClipTeamAttribution` and through the Worker normalizer as bounded, non-secret metadata.
-- If a clip attribution has fewer than two matching sampled-frame evidence refs, the backend caps confidence below the selected-team threshold so the clip remains uncertain/reviewable instead of becoming a confident match.
+- If a clip attribution has fewer than two matching sampled-frame evidence refs, or cites refs from only one play phase, the backend caps confidence below the selected-team threshold so the clip remains uncertain/reviewable instead of becoming a confident match.
 - Added tests proving:
   - schema requires `evidenceFrameRefs`
-  - unsampled, missing, or single-frame evidence caps high confidence below `0.85`
+  - unsampled, missing, single-frame, or same-phase evidence caps high confidence below `0.85`
   - matching sampled-frame evidence preserves high confidence
 
 ## Architecture Guardrails
