@@ -129,6 +129,36 @@ charlie的iPhone   charliedeiPhone.coredevice.local   E5786BB6-0095-5509-8B85-11
         self.assertEqual(devices[0]["state"], "unavailable")
         self.assertEqual(devices[0]["model"], "iPhone 15 Pro (iPhone16,1)")
 
+    def test_parse_devicectl_devices_handles_available_paired_state(self) -> None:
+        output = """
+Name             Hostname                           Identifier                             State                Model
+--------------   --------------------------------   ------------------------------------   ------------------   --------------------------
+charlie的iPhone   charliedeiPhone.coredevice.local   E5786BB6-0095-5509-8B85-110C0B5CE6D3   available (paired)   iPhone 15 Pro (iPhone16,1)
+"""
+
+        devices = parse_devicectl_devices(output)
+
+        self.assertEqual(len(devices), 1)
+        self.assertEqual(devices[0]["state"], "available (paired)")
+        self.assertEqual(devices[0]["model"], "iPhone 15 Pro (iPhone16,1)")
+
+    def test_connected_ios_device_passes_when_detected_iphone_is_available_paired(self) -> None:
+        output = """
+Name             Hostname                           Identifier                             State                Model
+--------------   --------------------------------   ------------------------------------   ------------------   --------------------------
+charlie的iPhone   charliedeiPhone.coredevice.local   E5786BB6-0095-5509-8B85-110C0B5CE6D3   available (paired)   iPhone 15 Pro (iPhone16,1)
+"""
+        collector = Collector()
+
+        with patch(
+            "scripts.submission_readiness_preflight.subprocess.run",
+            return_value=SimpleNamespace(returncode=0, stdout=output),
+        ):
+            check_connected_ios_device(collector)
+
+        self.assertFalse(has_failures(collector.findings))
+        self.assertIn("available iPhone", collector.findings[0].detail)
+
     def test_connected_ios_device_fails_when_detected_iphone_is_unavailable(self) -> None:
         output = """
 Name             Hostname                           Identifier                             State         Model

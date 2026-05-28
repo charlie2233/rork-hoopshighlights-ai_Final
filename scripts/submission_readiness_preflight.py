@@ -382,8 +382,8 @@ def check_connected_ios_device(collector: Collector) -> None:
         return
 
     devices = parse_devicectl_devices(result.stdout)
-    available_iphones = [device for device in devices if device["model"].startswith("iPhone") and device["state"].lower() == "available"]
-    unavailable_iphones = [device for device in devices if device["model"].startswith("iPhone") and device["state"].lower() != "available"]
+    available_iphones = [device for device in devices if device["model"].startswith("iPhone") and device["state"].lower().startswith("available")]
+    unavailable_iphones = [device for device in devices if device["model"].startswith("iPhone") and not device["state"].lower().startswith("available")]
     if available_iphones:
         collector.pass_("connected ios device", "xcrun devicectl", f"{len(available_iphones)} available iPhone device(s) detected for TestFlight smoke.")
     elif unavailable_iphones:
@@ -403,8 +403,13 @@ def parse_devicectl_devices(output: str) -> list[dict[str, str]]:
         identifier_index = next((index for index, part in enumerate(parts) if UUID_RE.match(part)), None)
         if identifier_index is None or len(parts) <= identifier_index + 2:
             continue
-        state = parts[identifier_index + 1]
-        model = " ".join(parts[identifier_index + 2 :])
+        state_tokens = [parts[identifier_index + 1]]
+        model_start = identifier_index + 2
+        while model_start < len(parts) and parts[model_start].startswith("(") and parts[model_start].endswith(")"):
+            state_tokens.append(parts[model_start])
+            model_start += 1
+        state = " ".join(state_tokens)
+        model = " ".join(parts[model_start:])
         identifier = parts[identifier_index]
         hostname = parts[identifier_index - 1] if identifier_index >= 1 else ""
         name = " ".join(parts[: max(0, identifier_index - 1)])
