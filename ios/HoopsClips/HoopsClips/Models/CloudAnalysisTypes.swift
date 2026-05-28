@@ -93,6 +93,8 @@ nonisolated struct ClipTeamAttribution: Codable, Sendable, Equatable {
     var colorLabel: String?
     var confidence: Double
     var source: String?
+    var evidenceFrameRefs: [String]? = nil
+    var evidenceRoleGroups: [String]? = nil
 }
 
 nonisolated enum AnalysisExecutionMode: String, Codable, Sendable {

@@ -251,7 +251,9 @@ struct HoopsClipsTests {
             label: "Dark jerseys",
             colorLabel: "black",
             confidence: 0.91,
-            source: "quick_scan"
+            source: "quick_scan",
+            evidenceFrameRefs: ["clip_1_release", "clip_1_result"],
+            evidenceRoleGroups: ["action", "outcome"]
         )
         let request = CreateCloudEditJobRequest(
             videoId: "video_123",
@@ -303,6 +305,8 @@ struct HoopsClipsTests {
         let encodedTeamAttribution = try #require(clips.first?["teamAttribution"] as? [String: Any])
         #expect(encodedTeamAttribution["teamId"] as? String == "team_dark")
         #expect(encodedTeamAttribution["confidence"] as? Double == 0.91)
+        #expect(encodedTeamAttribution["evidenceFrameRefs"] as? [String] == ["clip_1_release", "clip_1_result"])
+        #expect(encodedTeamAttribution["evidenceRoleGroups"] as? [String] == ["action", "outcome"])
         #expect(clips.first?["teamAttributionStatus"] as? String == "matched")
     }
 
@@ -763,7 +767,9 @@ struct HoopsClipsTests {
             label: "Dark jerseys",
             colorLabel: "black",
             confidence: 0.91,
-            source: "quick_scan"
+            source: "quick_scan",
+            evidenceFrameRefs: ["clip_0_release", "clip_0_result"],
+            evidenceRoleGroups: ["action", "outcome"]
         )
         let cloudClip = CloudClip(
             startTime: 12.5,
@@ -794,7 +800,29 @@ struct HoopsClipsTests {
         #expect(mapped.eventCenter == 15.2)
         #expect(mapped.nativeShotSignals == nativeSignals)
         #expect(mapped.teamAttribution == teamAttribution)
+        #expect(mapped.teamAttribution?.evidenceFrameRefs == ["clip_0_release", "clip_0_result"])
+        #expect(mapped.teamAttribution?.evidenceRoleGroups == ["action", "outcome"])
         #expect(mapped.teamAttributionStatus == "matched")
+    }
+
+    @Test func testClipTeamAttributionDecodesWithoutEvidenceMetadataForCachedResults() throws {
+        let data = Data(
+            """
+            {
+              "teamId": "team_dark",
+              "label": "Dark jerseys",
+              "colorLabel": "black",
+              "confidence": 0.91,
+              "source": "quick_scan"
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(ClipTeamAttribution.self, from: data)
+
+        #expect(decoded.teamId == "team_dark")
+        #expect(decoded.evidenceFrameRefs == nil)
+        #expect(decoded.evidenceRoleGroups == nil)
     }
 
     @Test func testClipReviewBadgesMarkUncertainTeamOutcomeAndTiming() {
@@ -1288,7 +1316,17 @@ struct HoopsClipsTests {
                 usedVideoIntelligence: false,
                 usedGeminiRelabeling: false,
                 candidateSegments: 3,
-                finalSegments: 3
+                finalSegments: 3,
+                usedTeamQuickScan: nil,
+                preTeamFilterSegments: nil,
+                teamMatchedCandidateSegments: nil,
+                teamUncertainCandidateSegments: nil,
+                teamOpponentFilteredSegments: nil,
+                teamMatchedReviewSegments: nil,
+                teamUncertainReviewSegments: nil,
+                defensiveReviewSegments: nil,
+                blockReviewSegments: nil,
+                stealReviewSegments: nil
             )
         )
 
