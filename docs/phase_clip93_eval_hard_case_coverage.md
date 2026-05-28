@@ -33,7 +33,7 @@ Make the default 85% selected-team eval require the hard cases that matter for r
 
 - `python3 -m py_compile scripts/evaluate_team_highlight_accuracy.py scripts/build_team_highlight_eval_payload.py scripts/test_team_highlight_accuracy_eval.py scripts/test_build_team_highlight_eval_payload.py` passed.
 - `python3 -m unittest scripts.test_team_highlight_accuracy_eval -v` passed: 19 tests.
-- `python3 -m unittest discover -s scripts -p 'test_*.py' -v` passed: 63 tests.
+- `python3 -m unittest discover -s scripts -p 'test_*.py' -v` passed: 67 tests after the submission accuracy evidence gate was added.
 - `git diff --check` passed.
 
 ## Remaining Proof

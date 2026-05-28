@@ -51,6 +51,14 @@ class LaunchProviderInputHandoffTests(unittest.TestCase):
         self.assertTrue(any(item["name"] == "APP_STORE_CONNECT_API_KEY_BASE64" for item in payload["githubSecrets"]))
         self.assertTrue(any(item["name"] == "HOOPS_TERMS_OF_SERVICE_URL" for item in payload["githubVariables"]))
         self.assertIn("python3 scripts/configure_github_staging_public_variables.py", payload["verificationCommands"])
+        self.assertIn(
+            "python3 -m scripts.evaluate_team_highlight_accuracy artifacts/team_highlight_eval.json --json > artifacts/team_highlight_accuracy_report.json",
+            payload["verificationCommands"],
+        )
+        self.assertIn(
+            "python3 scripts/submission_readiness_preflight.py --team-accuracy-report artifacts/team_highlight_accuracy_report.json",
+            payload["verificationCommands"],
+        )
         self.assertIn("python3 scripts/configure_github_staging_public_variables.py --apply", payload["verificationCommands"])
         self.assertIn("python3 scripts/staging_version_probe.py", payload["verificationCommands"])
 

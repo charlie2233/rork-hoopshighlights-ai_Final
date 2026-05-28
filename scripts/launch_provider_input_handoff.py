@@ -77,13 +77,14 @@ def build_handoff() -> Handoff:
     ]
     verification_commands = [
         "python3 scripts/configure_github_staging_public_variables.py",
-        "python3 scripts/submission_readiness_preflight.py",
+        "python3 -m scripts.evaluate_team_highlight_accuracy artifacts/team_highlight_eval.json --json > artifacts/team_highlight_accuracy_report.json",
+        "python3 scripts/submission_readiness_preflight.py --team-accuracy-report artifacts/team_highlight_accuracy_report.json",
         "python3 scripts/configure_github_staging_public_variables.py --apply",
         "gh workflow run cloud-edit-deploy-preflight.yml --repo charlie2233/rork-hoopshighlights-ai_Final --ref main -f operation=preflight",
         "gh workflow run ios-testflight-upload.yml --repo charlie2233/rork-hoopshighlights-ai_Final --ref main -f operation=preflight",
         "gh workflow run cloud-edit-deploy-preflight.yml --repo charlie2233/rork-hoopshighlights-ai_Final --ref main -f operation=deploy",
         "python3 scripts/staging_version_probe.py",
-        "python3 scripts/submission_readiness_preflight.py",
+        "python3 scripts/submission_readiness_preflight.py --team-accuracy-report artifacts/team_highlight_accuracy_report.json",
     ]
     manual_gates = [
         "Unlock and trust the wired iPhone, then confirm `xcrun devicectl list devices` shows an available iPhone.",

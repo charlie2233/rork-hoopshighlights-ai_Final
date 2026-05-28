@@ -37,7 +37,7 @@ The user goal is not just a local passing metric; it is a believable internal be
 
 - `python3 -m py_compile scripts/evaluate_team_highlight_accuracy.py scripts/test_team_highlight_accuracy_eval.py` passed.
 - `python3 -m unittest scripts.test_team_highlight_accuracy_eval -v` passed: 19 tests after the follow-up hard-case coverage gate.
-- `python3 -m unittest discover -s scripts -p 'test_*.py' -v` passed: 63 tests after the follow-up hard-case coverage gate.
+- `python3 -m unittest discover -s scripts -p 'test_*.py' -v` passed: 67 tests after the follow-up hard-case coverage and submission accuracy evidence gates.
 - `git diff --check` passed.
 
 ## Remaining Proof

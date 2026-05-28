@@ -3,10 +3,12 @@ import json
 import plistlib
 import tempfile
 import unittest
+from dataclasses import asdict
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from scripts.evaluate_team_highlight_accuracy import AccuracyThresholds
 from scripts.submission_readiness_preflight import (
     BLOCKER_DOCS,
     Collector,
@@ -23,6 +25,7 @@ from scripts.submission_readiness_preflight import (
     check_github_workflow_runs,
     check_ios_upload_inputs,
     check_live_editing_version,
+    check_team_highlight_accuracy_report,
     has_failures,
     parse_devicectl_devices,
     redacted_endpoint_label,
@@ -35,6 +38,8 @@ class SubmissionReadinessPreflightTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             repo_root = Path(temp_dir)
             archive_path = create_ready_fixture(repo_root)
+            team_accuracy_report_path = repo_root / "artifacts/team_accuracy_report.json"
+            write_json(team_accuracy_report_path, launch_grade_team_accuracy_report())
 
             with patch(
                 "scripts.submission_readiness_preflight.run_backend_config_checks",
@@ -83,12 +88,74 @@ class SubmissionReadinessPreflightTests(unittest.TestCase):
                 },
                 clear=True,
             ):
-                findings = run_checks(repo_root, archive_path=archive_path)
+                findings = run_checks(repo_root, archive_path=archive_path, team_accuracy_report_path=team_accuracy_report_path)
 
             self.assertFalse(has_failures(findings), "\n".join(f"{item.check}: {item.detail}" for item in findings if item.status == "fail"))
             details = "\n".join(item.detail for item in findings)
             self.assertNotIn("TEAM123456", details)
             self.assertNotIn("K99RADPB9G", details)
+
+    def test_team_accuracy_report_is_required_for_submission_readiness(self) -> None:
+        collector = Collector()
+
+        check_team_highlight_accuracy_report(Path.cwd(), collector, None)
+
+        self.assertTrue(has_failures(collector.findings))
+        self.assertIn("--team-accuracy-report", collector.findings[0].detail)
+
+    def test_team_accuracy_report_rejects_relaxed_launch_thresholds(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            report_path = repo_root / "team_accuracy_report.json"
+            report = launch_grade_team_accuracy_report(
+                threshold_overrides={
+                    "minScoredClips": 2,
+                    "minOpponentHighlights": 0,
+                }
+            )
+            write_json(report_path, report)
+            collector = Collector()
+
+            check_team_highlight_accuracy_report(repo_root, collector, report_path)
+
+        self.assertTrue(has_failures(collector.findings))
+        self.assertIn("minScoredClips threshold", collector.findings[0].detail)
+        self.assertIn("minOpponentHighlights threshold", collector.findings[0].detail)
+
+    def test_team_accuracy_report_requires_hard_case_metrics(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            report_path = repo_root / "team_accuracy_report.json"
+            report = launch_grade_team_accuracy_report(
+                metric_overrides={
+                    "opponentHighlightCount": 0,
+                    "negativeClipCount": 0,
+                    "badWindowNegativeCount": 0,
+                    "uncertainReviewCount": 0,
+                }
+            )
+            write_json(report_path, report)
+            collector = Collector()
+
+            check_team_highlight_accuracy_report(repo_root, collector, report_path)
+
+        self.assertTrue(has_failures(collector.findings))
+        detail = collector.findings[0].detail
+        self.assertIn("opponentHighlightCount", detail)
+        self.assertIn("badWindowNegativeCount", detail)
+        self.assertIn("uncertainReviewCount", detail)
+
+    def test_team_accuracy_report_passes_launch_grade_default_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            report_path = repo_root / "team_accuracy_report.json"
+            write_json(report_path, launch_grade_team_accuracy_report())
+            collector = Collector()
+
+            check_team_highlight_accuracy_report(repo_root, collector, report_path)
+
+        self.assertFalse(has_failures(collector.findings))
+        self.assertIn("default-or-stricter", collector.findings[0].detail)
 
     def test_blocker_docs_fail_when_known_no_go_markers_remain(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -374,6 +441,54 @@ charlie的iPhone   charliedeiPhone.coredevice.local   E5786BB6-0095-5509-8B85-11
             self.assertEqual(len(failures), 1)
             self.assertEqual(failures[0].check, "live editing git sha")
             self.assertIn("does not match", failures[0].detail)
+
+
+def launch_grade_team_accuracy_report(
+    *,
+    metric_overrides: dict[str, object] | None = None,
+    threshold_overrides: dict[str, object] | None = None,
+    status: str = "pass",
+) -> dict[str, object]:
+    thresholds = asdict(AccuracyThresholds())
+    thresholds.update(threshold_overrides or {})
+    metrics: dict[str, object] = {
+        "caseCount": 2,
+        "clipCount": 12,
+        "selectedTeamPrecision": 0.92,
+        "selectedTeamEvidenceQuality": 0.92,
+        "selectedTeamRecallWithUncertain": 0.92,
+        "highlightPrecision": 0.92,
+        "highlightRecall": 0.92,
+        "defensiveEventRecall": 0.92,
+        "clipTimingQuality": 0.92,
+        "shotOutcomeEvidenceQuality": 0.92,
+        "uncertainReviewCount": 1,
+        "selectedTeamHighlightCount": 6,
+        "defensiveEventCount": 2,
+        "timingQualityClipCount": 12,
+        "badTimingClipCount": 0,
+        "shotOutcomeEvidenceClipCount": 3,
+        "badShotOutcomeEvidenceCount": 0,
+        "selectedTeamBlockCount": 1,
+        "selectedTeamStealCount": 1,
+        "opponentHighlightCount": 2,
+        "negativeClipCount": 2,
+        "badWindowNegativeCount": 2,
+        "selectedTeamEvidenceClipCount": 6,
+        "badSelectedTeamEvidenceCount": 0,
+    }
+    metrics.update(metric_overrides or {})
+    return {
+        "status": status,
+        "metrics": metrics,
+        "thresholds": thresholds,
+        "failures": [],
+    }
+
+
+def write_json(path: Path, payload: object) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload), encoding="utf-8")
 
 
 def create_ready_fixture(repo_root: Path) -> Path:

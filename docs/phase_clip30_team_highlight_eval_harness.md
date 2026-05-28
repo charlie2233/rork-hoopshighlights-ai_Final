@@ -67,13 +67,23 @@ python3 -m scripts.evaluate_team_highlight_accuracy path/to/labeled_eval.json --
 
 Use the default thresholds for internal beta. If an eval set is intentionally narrower for a unit test or targeted investigation, pass explicit `--min-*` thresholds in the command and record that the result is not launch-readiness evidence.
 
+For submission readiness, save the default-threshold report and pass it to the preflight:
+
+```bash
+python3 -m scripts.evaluate_team_highlight_accuracy artifacts/team_highlight_eval.json --json > artifacts/team_highlight_accuracy_report.json
+python3 scripts/submission_readiness_preflight.py --team-accuracy-report artifacts/team_highlight_accuracy_report.json
+```
+
+The submission preflight rejects missing reports, failing reports, reports with thresholds below the launch defaults, and reports whose hard-case metrics do not meet the default coverage gates.
+
 ## Validation Evidence
 
 Commands run on branch `codex/phase-clip28-cloud-team-quick-scan`:
 
 - `python3 -m unittest scripts.test_team_highlight_accuracy_eval -v` -> 19 tests passed after the sample-size, hard-case coverage, and evidence-summary gates.
 - `python3 -m py_compile scripts/evaluate_team_highlight_accuracy.py scripts/test_team_highlight_accuracy_eval.py` -> passed.
-- `python3 -m unittest discover -s scripts -p 'test_*.py' -v` -> 63 tests passed after the sample-size, hard-case coverage, and team evidence-quality gates.
+- `python3 -m unittest scripts.test_submission_readiness_preflight -v` -> 20 tests passed after adding the submission accuracy evidence gate.
+- `python3 -m unittest discover -s scripts -p 'test_*.py' -v` -> 67 tests passed after the sample-size, hard-case coverage, team evidence-quality, and submission accuracy evidence gates.
 - `git diff --check` -> passed.
 
 ## Launch Recommendation
