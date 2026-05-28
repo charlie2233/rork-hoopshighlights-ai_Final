@@ -83,8 +83,26 @@ git diff --check
 
 Result: passed with exit code 0.
 
+```bash
+# Build iOS Apps plugin / XcodeBuildMCP
+session_show_defaults
+build_sim -quiet
+```
+
+Result: passed. Debug simulator build for `HoopsClips` on `iPhone 17 Pro` succeeded with 0 warnings and 0 errors.
+
+```bash
+# Build iOS Apps plugin / XcodeBuildMCP
+test_sim -quiet
+xcrun xcresulttool get test-results summary --path /Users/hanfei/Library/Developer/XcodeBuildMCP/workspaces/rork-hoopshighlights-ai_Final-b63ced5e161c/result-bundles/test_sim_2026-05-28T05-49-37-465Z_pid97875_31c706f0.xcresult
+```
+
+Result: passed. The plugin call exceeded its 120s tool timeout, but the underlying Xcode test run completed and the `.xcresult` summary reported `result=Passed`, `totalTestCount=81`, `passedTests=78`, `skippedTests=3`, and `failedTests=0`.
+
 ## Remaining Blockers
 
 - Real labeled basketball footage is still required before claiming the 85% selected-team/highlight quality target.
 - Wired-iPhone/TestFlight smoke is still required before Apple submission.
-- GitHub Actions PR checks are still blocked by no-step/no-log runner failures in the current branch history, despite equivalent local checks passing.
+- GitHub Actions PR checks are still blocked by no-step/no-log runner failures in the current branch history, despite equivalent local checks passing. After commit `bec7fe03bca46732a3d9fe725e1e44e1edfb3ce8`, both failed workflows were rerun once:
+  - `Cloud Edit Deploy Preflight` run `26557205205`, attempt 2: `Editing backend Python tests` and `Worker typecheck and dry run` failed with `steps=[]`.
+  - `iOS Internal TestFlight Upload` run `26557205120`, attempt 2: `No-secret internal staging codecheck` failed with `steps=[]`; TestFlight archive remained skipped.
