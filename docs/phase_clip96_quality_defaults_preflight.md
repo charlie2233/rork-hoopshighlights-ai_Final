@@ -34,7 +34,11 @@ Keep the internal beta biased toward highlight quality and customer acquisition 
 - `npm --prefix services/control-plane run typecheck` passed.
 - `PYTHONPATH=services/editing:ios/backend /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest services.editing.tests.test_gpt_reranker.GPTHighlightRerankerTests.test_free_and_pro_sampling_limits services.editing.tests.test_gpt_reranker.GPTHighlightRerankerTests.test_free_sampling_reviews_full_analysis_pool_by_default services.editing.tests.test_gpt_reranker.GPTHighlightRerankerTests.test_default_model_prioritizes_full_quality_vision_editor services.editing.tests.test_gpt_reranker.GPTHighlightRerankerTests.test_default_visual_sampling_prioritizes_ball_and_rim_detail -v` passed: 4 tests.
 - `PYTHONPATH=services/editing:ios/backend /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest services.editing.tests.test_editing_service.EditingServiceTests.test_plan_tier_policy_defaults_are_safe_without_statsig services.editing.tests.test_editing_service.EditingServiceTests.test_render_job_writes_output_log_and_download_url services.editing.tests.test_editing_service.EditingServiceTests.test_daily_render_limit_uses_feature_flag_default_override -v` passed: 3 tests.
+- XcodeBuildMCP `build_sim` for `HoopsClips` Debug on iPhone 17 Pro simulator passed.
+- XcodeBuildMCP `test_sim -only-testing:HoopsClipsTests/HoopsClipsTests` passed: 45 tests.
 - `git diff --check` passed.
+- `python3 scripts/submission_readiness_preflight.py --skip-live` exited `1` with `22 pass`, `2 warn`, `8 fail` after the code commit. Repo hygiene passed; remaining failures were missing launch-grade team accuracy report, unavailable physical iPhone, stale main-branch workflow evidence, unproven installed TestFlight smoke, unproven live Worker version route, missing Cloudflare deploy credential proof, and unproven live iOS kill-switch status through the Worker.
+- PR #32 CI re-ran for commit `a3dae2d`, but GitHub Actions failed before steps started because account payments failed or the Actions spending limit needs to be increased.
 
 ## Remaining Proof
 
