@@ -83,6 +83,8 @@ def _team_targeted_request() -> CreateEditJobRequest:
                     "colorLabel": "black",
                     "confidence": 0.92,
                     "source": "quick_scan",
+                    "evidenceFrameRefs": ["clip_0_release", "clip_0_result"],
+                    "evidenceRoleGroups": ["action", "outcome"],
                 },
             },
             {
@@ -93,6 +95,8 @@ def _team_targeted_request() -> CreateEditJobRequest:
                     "colorLabel": "white",
                     "confidence": 0.94,
                     "source": "quick_scan",
+                    "evidenceFrameRefs": ["clip_1_release", "clip_1_result"],
+                    "evidenceRoleGroups": ["action", "outcome"],
                 },
             },
             {
