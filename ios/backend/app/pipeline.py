@@ -245,7 +245,7 @@ def _uncertain_review_reserve_limit(max_clips: int, uncertain_count: int) -> int
         return 0
     if max_clips < 6:
         return 1
-    return min(uncertain_count, max(2, max_clips // 6))
+    return min(uncertain_count, max(3, max_clips // 4))
 
 
 def _defensive_review_reserve_limit(max_clips: int, defensive_count: int) -> int:
