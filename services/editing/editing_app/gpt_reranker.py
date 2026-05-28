@@ -62,6 +62,15 @@ DEFENSIVE_CONTEXT_EXPANSION_LEAD_SECONDS = 1.6
 DEFENSIVE_CONTEXT_EXPANSION_FOLLOW_THROUGH_SECONDS = 1.2
 DEFENSIVE_CONTEXT_EXPANSION_TARGET_SECONDS = 4.5
 DEFENSIVE_CONTEXT_EXPANSION_MAX_SECONDS = 7.0
+TEAM_EVIDENCE_GPT_GUIDANCE = (
+    "Treat teamEvidence as authoritative for selected-team confidence: teamEvidence.status=evidence_backed means the "
+    "jersey-color attribution has enough cited frame and role evidence; teamEvidence.status=weak_evidence, "
+    "teamEvidence.status=missing_attribution, or teamAttributionStatus=uncertain must never be promoted to a confident "
+    "selected-team match from raw teamAttribution.confidence alone. For selected-team edits, exclude evidence-backed "
+    "confident opponent clips; keep weak or uncertain team-attribution clips only as review-worthy candidates when the "
+    "play is otherwise strong and not confidently the opponent. "
+)
+
 
 @dataclass(frozen=True)
 class GPTHighlightRerankerSettings:
@@ -971,7 +980,8 @@ def _build_openai_payload(
             "When defensive roles like challenge, possessionChange, recovery, or defenseOutcome are sampled, cite those roles in shotTrackingEvidence instead of shot-arc or rim roles. "
             "Honor userEditIntent only when it is compatible with the supplied template, plan tier, candidate clips, and safety constraints. "
             "When a selected team is supplied, keep highlights for that team only; exclude confident opponent clips. Keep uncertain team-attribution clips for user review. "
-            "Selected-team blocks, steals, defensive stops, and forced turnovers can be highlights even when they are not scoring plays. "
+            + TEAM_EVIDENCE_GPT_GUIDANCE
+            + "Selected-team blocks, steals, defensive stops, and forced turnovers can be highlights even when they are not scoring plays. "
             "Use only supplied candidate clip IDs and sampled keyframes. Do not replace FFmpeg extraction, CV tracking, rendering, or exact timestamps. "
             "Do not output FFmpeg commands, shell commands, file paths, source video URLs, or storage keys. "
             "Return strict JSON only."
@@ -1041,7 +1051,8 @@ def _build_revision_patch_payload(
         "instructions": (
             "You are HoopClips GPT Edit Cool. Return an EditPlanPatch JSON only. "
             "Do not output free-form prose. Do not generate FFmpeg commands, shell commands, render instructions, file paths, URLs, or storage keys. "
-            "Use only provided clip IDs and safe patch paths; the backend will validate and repair before rendering."
+            + TEAM_EVIDENCE_GPT_GUIDANCE
+            + "Use only provided clip IDs and safe patch paths; the backend will validate and repair before rendering."
         ),
         "input": [{"role": "user", "content": [{"type": "input_text", "text": json.dumps(compact_context, separators=(",", ":"))}]}],
         "text": {"format": {"type": "json_schema", "name": "hoopclips_gpt_edit_plan_patch", "strict": True, "schema": _edit_plan_patch_schema()}},

@@ -21,6 +21,7 @@ Make GPT-led selection and revision prompts understand why a selected-team candi
   - `requiresEvidence`
   - `reasons`
 - Weak quick-scan evidence remains reviewable when `includeUncertain=true`, but GPT sees why it should not treat the clip as a confident selected-team match.
+- GPT highlight rerank and revision patch prompts now say `teamEvidence` is authoritative for selected-team confidence. Raw `teamAttribution.confidence` cannot promote weak or missing evidence to a confident match, evidence-backed confident opponent clips must be excluded, and weak/uncertain clips are review-worthy only when the play itself is strong.
 
 ## Guardrails
 
@@ -28,10 +29,12 @@ Make GPT-led selection and revision prompts understand why a selected-team candi
 - iOS still only relays metadata and user selection.
 - GPT still receives sampled keyframes and compact candidate metadata, not full video.
 - Renderer behavior is unchanged and remains deterministic.
+- GPT still cannot generate FFmpeg commands, render instructions, file paths, URLs, storage keys, or full-video references.
 
 ## Validation
 
 - `python3 -m py_compile ios/backend/app/editing.py services/editing/editing_app/gpt_reranker.py ios/backend/tests/test_edit_plan_agent.py services/editing/tests/test_gpt_reranker.py` passed.
+- `PYTHONPATH=services/editing:ios/backend /tmp/hoopclips-py312-venv/bin/python -m unittest services.editing.tests.test_gpt_reranker.GPTHighlightRerankerTests.test_payload_includes_team_targeting_and_excludes_confident_opponent_clips services.editing.tests.test_gpt_reranker.GPTHighlightRerankerTests.test_revision_patch_payload_filters_selected_team_candidates -v` passed: 2 prompt evidence tests.
 - `PYTHONPATH=ios/backend:services/editing /tmp/hoopclips-py312-venv/bin/python -m unittest ios.backend.tests.test_edit_plan_agent.EditPlanAgentTests.test_selected_team_quick_scan_match_requires_evidence_metadata ios.backend.tests.test_edit_plan_agent.EditPlanAgentTests.test_agent_editing_context_includes_team_targeting_and_attribution -v` passed: 2 tests.
 - `PYTHONPATH=services/editing:ios/backend /tmp/hoopclips-py312-venv/bin/python -m unittest services.editing.tests.test_gpt_reranker.GPTHighlightRerankerTests.test_payload_is_strict_structured_output_and_not_stored services.editing.tests.test_gpt_reranker.GPTHighlightRerankerTests.test_payload_includes_team_targeting_and_excludes_confident_opponent_clips services.editing.tests.test_gpt_reranker.GPTHighlightRerankerTests.test_revision_patch_payload_filters_selected_team_candidates -v` passed: 3 tests.
 - `PYTHONPATH=ios/backend:services/editing /tmp/hoopclips-py312-venv/bin/python -m unittest discover -s ios/backend/tests -p 'test_*.py' -v` passed: 171 tests.

@@ -267,6 +267,9 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertEqual(by_id["uncertain_make"]["teamEvidence"]["status"], "weak_evidence")
         self.assertIn("insufficient_evidence_frame_refs", by_id["uncertain_make"]["teamEvidence"]["reasons"])
         self.assertIn("Keep uncertain team-attribution clips", payload["instructions"])
+        self.assertIn("teamEvidence.status=evidence_backed", payload["instructions"])
+        self.assertIn("must never be promoted to a confident selected-team match", payload["instructions"])
+        self.assertIn("raw teamAttribution.confidence", payload["instructions"])
 
     def test_payload_preserves_explicit_uncertain_team_status(self) -> None:
         settings = GPTHighlightRerankerSettings.from_env()
@@ -818,6 +821,8 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertEqual(by_id["uncertain_make"]["teamAttributionStatus"], "uncertain")
         self.assertEqual(by_id["uncertain_make"]["teamEvidence"]["status"], "weak_evidence")
         self.assertEqual(compact_input["agentTemplateCookbook"]["teamTargeting"]["teamId"], "team_dark")
+        self.assertIn("teamEvidence.status=evidence_backed", payload["instructions"])
+        self.assertIn("weak or uncertain team-attribution clips only as review-worthy candidates", payload["instructions"])
 
     def test_revision_patch_request_rejects_opponent_clip_for_selected_team(self) -> None:
         settings = GPTHighlightRerankerSettings(
