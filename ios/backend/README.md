@@ -104,8 +104,9 @@ Then you can selectively install dependencies into isolated virtualenvs:
 - `HOOPS_TEAM_QUICK_SCAN_MODEL`: vision-capable model for team quick scan (default follows `HOOPS_AI_CLIP_GPT_MODEL`, then `gpt-4.1`)
 - `HOOPS_TEAM_QUICK_SCAN_VIDEO_FRAME_COUNT`: whole-video frame samples for team color detection, clamped to `2...16` (default `8`)
 - `HOOPS_TEAM_QUICK_SCAN_CLIP_FRAMES_PER_CLIP`: rich per-candidate clip frames for team ownership, clamped to `1...6` (default `6`)
-- `HOOPS_TEAM_QUICK_SCAN_RICH_CANDIDATE_CLIPS`: number of top candidate clips that receive the rich frame budget before the compact tail budget is used (default `40`)
-- `HOOPS_TEAM_QUICK_SCAN_MAX_TOTAL_CLIP_FRAMES`: total per-clip frame budget for team quick scan, excluding whole-video context frames (default `480`)
+- `HOOPS_TEAM_QUICK_SCAN_RICH_CANDIDATE_CLIPS`: number of top candidate clips that receive the rich frame budget before the compact tail budget is used (default `60`)
+- `HOOPS_TEAM_QUICK_SCAN_MAX_TOTAL_CLIP_FRAMES`: total per-clip frame budget for team quick scan, excluding whole-video context frames (default `720`)
+- `HOOPS_TEAM_QUICK_SCAN_MAX_CANDIDATE_CLIPS`: maximum analysis candidates included in team quick scan attribution, clamped to `1...160` (default `160`)
 - `HOOPS_TEAM_QUICK_SCAN_MIN_TEAM_CONFIDENCE`: minimum confidence to expose a detected team option (default `0.55`). Clip filtering still treats attribution below `0.85` as uncertain.
 - `HOOPS_RENDER_STORAGE_PROVIDER`: `local` or `r2` (default `local`)
 - `HOOPS_RENDER_DOWNLOAD_TTL_SECONDS`: signed/local render download URL TTL (default `900`)
