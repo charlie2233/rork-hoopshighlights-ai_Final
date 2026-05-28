@@ -82,3 +82,4 @@ Results:
 
 - This improves GPT/editor inputs and fallback ranking, but it does not claim launch readiness by itself.
 - Remaining launch proof still requires live staging deploy, real labeled-footage accuracy evaluation, installed TestFlight smoke, and App Store/TestFlight submission checks.
+- Post-push GitHub checks for commit `c267fbc` did not start any runner steps. The check-run annotations report: `The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings`.
