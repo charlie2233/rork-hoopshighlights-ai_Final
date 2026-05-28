@@ -15,9 +15,10 @@ Make the 85% selected-team/highlight quality target measurable before we claim i
   - defensive-event recall for blocks, steals, forced turnovers, and defensive stops
   - clip timing/context quality for kept or review-included clips
   - shot-outcome evidence quality for made, missed, and blocked shot clips
+  - minimum labeled-footage sample size
   - minimum selected-team defensive coverage, including at least one block and one steal
   - uncertain review count
-- Default thresholds are `0.85` for selected-team precision, selected-team evidence quality, selected-team recall with uncertain clips, highlight precision, highlight recall, defensive-event recall, clip timing/context quality, and shot-outcome evidence quality. Default coverage also requires at least two selected-team defensive events with at least one block and one steal.
+- Default thresholds are `0.85` for selected-team precision, selected-team evidence quality, selected-team recall with uncertain clips, highlight precision, highlight recall, defensive-event recall, clip timing/context quality, and shot-outcome evidence quality. Default coverage also requires at least two cases, 12 scored clips, six selected-team highlights, three shot-outcome evidence clips, and two selected-team defensive events with at least one block and one steal.
 
 ## Input Shape
 
@@ -63,15 +64,15 @@ For shot-outcome evidence, kept or review-included shot clips should include a n
 python3 -m scripts.evaluate_team_highlight_accuracy path/to/labeled_eval.json --json
 ```
 
-Use the default thresholds for internal beta. If an eval set is intentionally narrower, pass explicit `--min-*` thresholds in the command and record that in the launch notes.
+Use the default thresholds for internal beta. If an eval set is intentionally narrower for a unit test or targeted investigation, pass explicit `--min-*` thresholds in the command and record that the result is not launch-readiness evidence.
 
 ## Validation Evidence
 
 Commands run on branch `codex/phase-clip28-cloud-team-quick-scan`:
 
-- `python3 -m unittest scripts.test_team_highlight_accuracy_eval -v` -> 14 tests passed after the team evidence-quality gate.
+- `python3 -m unittest scripts.test_team_highlight_accuracy_eval -v` -> 18 tests passed after the sample-size and evidence-summary gates.
 - `python3 -m py_compile scripts/evaluate_team_highlight_accuracy.py scripts/test_team_highlight_accuracy_eval.py` -> passed.
-- `python3 -m unittest discover -s scripts -p 'test_*.py' -v` -> 58 tests passed after the team evidence-quality gate.
+- `python3 -m unittest discover -s scripts -p 'test_*.py' -v` -> 62 tests passed after the sample-size and team evidence-quality gates.
 - `git diff --check` -> passed.
 
 ## Launch Recommendation

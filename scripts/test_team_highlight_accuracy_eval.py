@@ -94,71 +94,82 @@ def weak_made_shot_evidence() -> dict:
     }
 
 
+def readiness_coverage_clips(offset: float = 0.0) -> list[dict]:
+    return [
+        {
+            "expected": {"teamId": "team_dark", "isHighlight": True, "eventType": "made_three"},
+            "prediction": timed_prediction(
+                {
+                    "keep": True,
+                    "teamAttribution": team_attribution(0.94),
+                    **made_shot_evidence(),
+                },
+                start=10.0 + offset,
+                end=14.0 + offset,
+                event_center=12.0 + offset,
+            ),
+        },
+        {
+            "expected": {"teamId": "team_dark", "isHighlight": True, "eventType": "block"},
+            "prediction": timed_prediction(
+                {
+                    "keep": True,
+                    "teamAttribution": team_attribution(0.91),
+                    **blocked_shot_evidence(),
+                },
+                start=20.0 + offset,
+                end=23.0 + offset,
+                event_center=21.2 + offset,
+            ),
+        },
+        {
+            "expected": {"teamId": "team_dark", "isHighlight": True, "eventType": "steal"},
+            "prediction": timed_prediction(
+                {
+                    "keep": True,
+                    "includeForReview": True,
+                    "teamAttributionStatus": "uncertain",
+                    "teamAttribution": {"teamId": "team_dark", "confidence": 0.7},
+                },
+                start=30.0 + offset,
+                end=33.0 + offset,
+                event_center=31.3 + offset,
+            ),
+        },
+        {
+            "expected": {"teamId": "team_dark", "isHighlight": True, "eventType": "forced turnover"},
+            "prediction": timed_prediction(
+                {"keep": True, "teamAttribution": team_attribution(0.9)},
+                start=40.0 + offset,
+                end=43.2 + offset,
+                event_center=41.4 + offset,
+            ),
+        },
+        {
+            "expected": {"teamId": "team_light", "isHighlight": True, "eventType": "layup", "outcome": "made"},
+            "prediction": {"keep": False, "teamAttribution": {"teamId": "team_light", "confidence": 0.95}},
+        },
+        {
+            "expected": {"teamId": "team_dark", "isHighlight": False, "eventType": "dead_ball"},
+            "prediction": {"keep": False, "teamAttribution": {"teamId": "team_dark", "confidence": 0.9}},
+        },
+    ]
+
+
 class TeamHighlightAccuracyEvalTests(unittest.TestCase):
     def test_selected_team_eval_counts_uncertain_review_and_defensive_events(self) -> None:
         report = evaluate_accuracy(
             {
-                "selectedTeamId": "team_dark",
-                "clips": [
-                    {
-                        "expected": {"teamId": "team_dark", "isHighlight": True, "eventType": "made_three"},
-                        "prediction": timed_prediction(
-                            {
-                                "keep": True,
-                                "teamAttribution": team_attribution(0.94),
-                                **made_shot_evidence(),
-                            }
-                        ),
-                    },
-                    {
-                        "expected": {"teamId": "team_dark", "isHighlight": True, "eventType": "block"},
-                        "prediction": timed_prediction(
-                            {
-                                "keep": True,
-                                "teamAttribution": team_attribution(0.91),
-                                **blocked_shot_evidence(),
-                            },
-                            start=20.0,
-                            end=23.0,
-                            event_center=21.2,
-                        ),
-                    },
-                    {
-                        "expected": {"teamId": "team_dark", "isHighlight": True, "eventType": "steal"},
-                        "prediction": timed_prediction(
-                            {
-                                "keep": True,
-                                "includeForReview": True,
-                                "teamAttributionStatus": "uncertain",
-                                "teamAttribution": {"teamId": "team_dark", "confidence": 0.7},
-                            },
-                            start=30.0,
-                            end=33.0,
-                            event_center=31.3,
-                        ),
-                    },
-                    {
-                        "expected": {"teamId": "team_dark", "isHighlight": True, "eventType": "forced turnover"},
-                        "prediction": timed_prediction(
-                            {"keep": True, "teamAttribution": team_attribution(0.9)},
-                            start=40.0,
-                            end=43.2,
-                            event_center=41.4,
-                        ),
-                    },
-                    {
-                        "expected": {"teamId": "team_light", "isHighlight": True, "eventType": "layup"},
-                        "prediction": {"keep": False, "teamAttribution": {"teamId": "team_light", "confidence": 0.95}},
-                    },
-                    {
-                        "expected": {"teamId": "team_dark", "isHighlight": False, "eventType": "dead_ball"},
-                        "prediction": {"keep": False, "teamAttribution": {"teamId": "team_dark", "confidence": 0.9}},
-                    },
-                ],
+                "cases": [
+                    {"caseId": "game_001", "selectedTeamId": "team_dark", "clips": readiness_coverage_clips()},
+                    {"caseId": "game_002", "selectedTeamId": "team_dark", "clips": readiness_coverage_clips(offset=100.0)},
+                ]
             }
         )
 
         self.assertEqual(report.status, "pass")
+        self.assertEqual(report.metrics.caseCount, 2)
+        self.assertEqual(report.metrics.clipCount, 12)
         self.assertEqual(report.metrics.selectedTeamPrecision, 1.0)
         self.assertEqual(report.metrics.selectedTeamEvidenceQuality, 1.0)
         self.assertEqual(report.metrics.selectedTeamRecallWithUncertain, 1.0)
@@ -167,13 +178,28 @@ class TeamHighlightAccuracyEvalTests(unittest.TestCase):
         self.assertEqual(report.metrics.defensiveEventRecall, 1.0)
         self.assertEqual(report.metrics.clipTimingQuality, 1.0)
         self.assertEqual(report.metrics.shotOutcomeEvidenceQuality, 1.0)
-        self.assertEqual(report.metrics.defensiveEventCount, 3)
-        self.assertEqual(report.metrics.shotOutcomeEvidenceClipCount, 2)
-        self.assertEqual(report.metrics.selectedTeamBlockCount, 1)
-        self.assertEqual(report.metrics.selectedTeamStealCount, 1)
-        self.assertEqual(report.metrics.selectedTeamEvidenceClipCount, 3)
+        self.assertEqual(report.metrics.selectedTeamHighlightCount, 8)
+        self.assertEqual(report.metrics.defensiveEventCount, 6)
+        self.assertEqual(report.metrics.shotOutcomeEvidenceClipCount, 4)
+        self.assertEqual(report.metrics.selectedTeamBlockCount, 2)
+        self.assertEqual(report.metrics.selectedTeamStealCount, 2)
+        self.assertEqual(report.metrics.selectedTeamEvidenceClipCount, 6)
         self.assertEqual(report.metrics.badSelectedTeamEvidenceCount, 0)
-        self.assertEqual(report.metrics.uncertainReviewCount, 1)
+        self.assertEqual(report.metrics.uncertainReviewCount, 2)
+
+    def test_tiny_eval_set_cannot_pass_default_readiness(self) -> None:
+        report = evaluate_accuracy(
+            {
+                "selectedTeamId": "team_dark",
+                "clips": readiness_coverage_clips()[:2],
+            }
+        )
+
+        self.assertEqual(report.status, "fail")
+        self.assertEqual(report.metrics.caseCount, 1)
+        self.assertEqual(report.metrics.clipCount, 2)
+        self.assertTrue(any("caseCoverage" in failure for failure in report.failures))
+        self.assertTrue(any("scoredClipCoverage" in failure for failure in report.failures))
 
     def test_eval_without_selected_team_defensive_coverage_cannot_pass_readiness(self) -> None:
         report = evaluate_accuracy(
@@ -227,6 +253,10 @@ class TeamHighlightAccuracyEvalTests(unittest.TestCase):
                 defensiveEventRecall=1.0,
                 clipTimingQuality=1.0,
                 shotOutcomeEvidenceQuality=0.0,
+                minCases=1,
+                minScoredClips=1,
+                minSelectedTeamHighlights=1,
+                minShotOutcomeEvidenceClips=0,
                 minSelectedTeamDefensiveEvents=1,
                 minSelectedTeamBlocks=0,
                 minSelectedTeamSteals=1,
@@ -640,7 +670,7 @@ class TeamHighlightAccuracyEvalTests(unittest.TestCase):
         self.assertEqual(report.status, "fail")
         self.assertIn("No eval cases found.", report.failures)
 
-    def test_cli_json_output_is_machine_readable(self) -> None:
+    def test_cli_json_output_reports_default_sample_size_failure(self) -> None:
         payload = {
             "selectedTeamId": "team_dark",
             "clips": [
@@ -674,6 +704,64 @@ class TeamHighlightAccuracyEvalTests(unittest.TestCase):
 
             result = subprocess.run(
                 [sys.executable, "-m", "scripts.evaluate_team_highlight_accuracy", str(path), "--json"],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+
+        self.assertEqual(result.returncode, 1)
+        parsed = json.loads(result.stdout)
+        self.assertEqual(parsed["status"], "fail")
+        self.assertTrue(any("caseCoverage" in failure for failure in parsed["failures"]))
+
+    def test_cli_json_output_allows_explicit_small_fixture_thresholds(self) -> None:
+        payload = {
+            "selectedTeamId": "team_dark",
+            "clips": [
+                {
+                    "expected": {"teamId": "team_dark", "isHighlight": True, "eventType": "block"},
+                    "prediction": timed_prediction(
+                        {
+                            "keep": True,
+                            "teamAttribution": team_attribution(0.95),
+                            **blocked_shot_evidence(),
+                        },
+                        start=8.0,
+                        end=11.0,
+                        event_center=9.2,
+                    ),
+                },
+                {
+                    "expected": {"teamId": "team_dark", "isHighlight": True, "eventType": "steal"},
+                    "prediction": timed_prediction(
+                        {"keep": True, "teamAttribution": team_attribution(0.95)},
+                        start=18.0,
+                        end=21.4,
+                        event_center=19.3,
+                    ),
+                },
+            ],
+        }
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "labels.json"
+            path.write_text(json.dumps(payload), encoding="utf-8")
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "scripts.evaluate_team_highlight_accuracy",
+                    str(path),
+                    "--json",
+                    "--min-cases",
+                    "1",
+                    "--min-clips",
+                    "2",
+                    "--min-selected-team-highlights",
+                    "2",
+                    "--min-shot-outcome-evidence-clips",
+                    "0",
+                ],
                 check=False,
                 capture_output=True,
                 text=True,

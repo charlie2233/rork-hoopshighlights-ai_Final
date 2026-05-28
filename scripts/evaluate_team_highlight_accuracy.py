@@ -71,6 +71,10 @@ class AccuracyThresholds:
     defensiveEventRecall: float = 0.85
     clipTimingQuality: float = 0.85
     shotOutcomeEvidenceQuality: float = 0.85
+    minCases: int = 2
+    minScoredClips: int = 12
+    minSelectedTeamHighlights: int = 6
+    minShotOutcomeEvidenceClips: int = 3
     minSelectedTeamDefensiveEvents: int = 2
     minSelectedTeamBlocks: int = 1
     minSelectedTeamSteals: int = 1
@@ -120,6 +124,10 @@ def main() -> int:
         defensiveEventRecall=args.min_defensive_event_recall,
         clipTimingQuality=args.min_clip_timing_quality,
         shotOutcomeEvidenceQuality=args.min_shot_outcome_evidence,
+        minCases=args.min_cases,
+        minScoredClips=args.min_clips,
+        minSelectedTeamHighlights=args.min_selected_team_highlights,
+        minShotOutcomeEvidenceClips=args.min_shot_outcome_evidence_clips,
         minSelectedTeamDefensiveEvents=args.min_selected_team_defensive_events,
         minSelectedTeamBlocks=args.min_selected_team_blocks,
         minSelectedTeamSteals=args.min_selected_team_steals,
@@ -151,6 +159,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--min-defensive-event-recall", type=float, default=0.85)
     parser.add_argument("--min-clip-timing-quality", type=float, default=0.85)
     parser.add_argument("--min-shot-outcome-evidence", type=float, default=0.85)
+    parser.add_argument("--min-cases", type=int, default=2)
+    parser.add_argument("--min-clips", type=int, default=12)
+    parser.add_argument("--min-selected-team-highlights", type=int, default=6)
+    parser.add_argument("--min-shot-outcome-evidence-clips", type=int, default=3)
     parser.add_argument("--min-selected-team-defensive-events", type=int, default=2)
     parser.add_argument("--min-selected-team-blocks", type=int, default=1)
     parser.add_argument("--min-selected-team-steals", type=int, default=1)
@@ -447,6 +459,10 @@ def threshold_failures(metrics: AccuracyMetrics, thresholds: AccuracyThresholds)
         if value < minimum:
             failures.append(f"{name} {value:.3f} is below required {minimum:.3f}.")
     coverage_checks = (
+        ("caseCoverage", metrics.caseCount, thresholds.minCases),
+        ("scoredClipCoverage", metrics.clipCount, thresholds.minScoredClips),
+        ("selectedTeamHighlightCoverage", metrics.selectedTeamHighlightCount, thresholds.minSelectedTeamHighlights),
+        ("shotOutcomeEvidenceClipCoverage", metrics.shotOutcomeEvidenceClipCount, thresholds.minShotOutcomeEvidenceClips),
         ("selectedTeamDefensiveEventCoverage", metrics.defensiveEventCount, thresholds.minSelectedTeamDefensiveEvents),
         ("selectedTeamBlockCoverage", metrics.selectedTeamBlockCount, thresholds.minSelectedTeamBlocks),
         ("selectedTeamStealCoverage", metrics.selectedTeamStealCount, thresholds.minSelectedTeamSteals),

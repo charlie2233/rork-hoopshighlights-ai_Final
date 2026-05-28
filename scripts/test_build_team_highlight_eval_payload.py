@@ -79,6 +79,10 @@ class BuildTeamHighlightEvalPayloadTests(unittest.TestCase):
         report = evaluate_accuracy(
             payload,
             thresholds=AccuracyThresholds(
+                minCases=1,
+                minScoredClips=2,
+                minSelectedTeamHighlights=2,
+                minShotOutcomeEvidenceClips=1,
                 minSelectedTeamBlocks=0,
                 minSelectedTeamSteals=1,
                 minSelectedTeamDefensiveEvents=1,
