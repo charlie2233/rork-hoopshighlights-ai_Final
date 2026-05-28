@@ -491,6 +491,20 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertEqual(team_attribution_status(request.clips[1], request.teamSelection), "uncertain")
         self.assertEqual(team_attribution_status(request.clips[2], request.teamSelection), "matched")
         self.assertEqual([clip.id for clip in filtered], ["legacy_match", "single_phase_match", "evidence_backed_match"])
+        context = build_agent_editing_context(
+            request.templateId,
+            summarize_clip_pool(request.clips),
+            request.clips,
+            teamSelection=request.teamSelection,
+        )
+        by_id = {clip["clipId"]: clip for clip in context["candidateClips"]}
+
+        self.assertEqual(by_id["legacy_match"]["teamEvidence"]["status"], "weak_evidence")
+        self.assertEqual(by_id["legacy_match"]["teamEvidence"]["reasons"], ["insufficient_evidence_frame_refs", "insufficient_evidence_role_groups"])
+        self.assertEqual(by_id["single_phase_match"]["teamEvidence"]["status"], "weak_evidence")
+        self.assertEqual(by_id["single_phase_match"]["teamEvidence"]["reasons"], ["insufficient_evidence_role_groups"])
+        self.assertEqual(by_id["evidence_backed_match"]["teamEvidence"]["status"], "evidence_backed")
+        self.assertEqual(by_id["evidence_backed_match"]["teamEvidence"]["reasons"], [])
 
     def test_explicit_uncertain_team_status_survives_edit_context(self) -> None:
         request = CreateEditJobRequest(

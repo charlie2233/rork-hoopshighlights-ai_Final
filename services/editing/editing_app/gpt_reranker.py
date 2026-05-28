@@ -42,6 +42,7 @@ from app.editing import (  # noqa: E402
     rank_clips,
     summarize_clip_pool,
     team_attribution_status,
+    team_evidence_summary,
     validate_edit_plan_patch,
 )
 
@@ -850,6 +851,7 @@ def _build_openai_payload(
             "duplicateGroup": clip.duplicateGroup,
             "teamAttribution": clip.teamAttribution.model_dump(mode="json") if clip.teamAttribution is not None else None,
             "teamAttributionStatus": team_attribution_status(clip, request.teamSelection),
+            "teamEvidence": team_evidence_summary(clip),
             "templateId": template.templateId,
             "planTier": request.planTier,
             "qualityHints": _candidate_quality_hints(clip),
@@ -1027,6 +1029,7 @@ def _build_revision_patch_payload(
                 "duplicateGroup": clip.duplicateGroup,
                 "teamAttribution": clip.teamAttribution.model_dump(mode="json") if clip.teamAttribution is not None else None,
                 "teamAttributionStatus": team_attribution_status(clip, job.request.teamSelection),
+                "teamEvidence": team_evidence_summary(clip),
                 "nativeShotSignals": native_shot_signals_for_clip(clip).model_dump(mode="json"),
             }
             for clip in source_clips

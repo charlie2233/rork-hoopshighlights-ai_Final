@@ -206,6 +206,7 @@ class GPTHighlightRerankerTests(unittest.TestCase):
                 "duplicateGroup",
                 "teamAttribution",
                 "teamAttributionStatus",
+                "teamEvidence",
                 "templateId",
                 "planTier",
                 "qualityHints",
@@ -223,6 +224,8 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertEqual(compact_clip["qualityHints"]["outcomeEvidenceSource"], "label_only")
         self.assertGreater(compact_clip["outcomeReliabilityScore"], 0.0)
         self.assertEqual(compact_clip["qualityHints"]["outcomeReliabilityScore"], compact_clip["outcomeReliabilityScore"])
+        self.assertEqual(compact_clip["teamEvidence"]["status"], "missing_attribution")
+        self.assertFalse(compact_clip["teamEvidence"]["evidenceBacked"])
         self.assertTrue(compact_input["shotTrackerRules"]["treatLabelOnlyOutcomeEvidenceAsUnverified"])
         self.assertIn("outcomeEvidenceSource=label_only", payload["instructions"])
         self.assertEqual(agent_cookbook["templateId"], "personal_highlight_v1")
@@ -259,7 +262,10 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertIn("uncertain_make", compact_clip_ids)
         self.assertNotIn("light_make", compact_clip_ids)
         self.assertEqual(by_id["dark_make"]["teamAttributionStatus"], "matched")
+        self.assertEqual(by_id["dark_make"]["teamEvidence"]["status"], "evidence_backed")
         self.assertEqual(by_id["uncertain_make"]["teamAttributionStatus"], "uncertain")
+        self.assertEqual(by_id["uncertain_make"]["teamEvidence"]["status"], "weak_evidence")
+        self.assertIn("insufficient_evidence_frame_refs", by_id["uncertain_make"]["teamEvidence"]["reasons"])
         self.assertIn("Keep uncertain team-attribution clips", payload["instructions"])
 
     def test_payload_preserves_explicit_uncertain_team_status(self) -> None:
@@ -808,7 +814,9 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertIn("uncertain_make", compact_clip_ids)
         self.assertNotIn("light_make", compact_clip_ids)
         self.assertEqual(by_id["dark_make"]["teamAttributionStatus"], "matched")
+        self.assertEqual(by_id["dark_make"]["teamEvidence"]["status"], "evidence_backed")
         self.assertEqual(by_id["uncertain_make"]["teamAttributionStatus"], "uncertain")
+        self.assertEqual(by_id["uncertain_make"]["teamEvidence"]["status"], "weak_evidence")
         self.assertEqual(compact_input["agentTemplateCookbook"]["teamTargeting"]["teamId"], "team_dark")
 
     def test_revision_patch_request_rejects_opponent_clip_for_selected_team(self) -> None:

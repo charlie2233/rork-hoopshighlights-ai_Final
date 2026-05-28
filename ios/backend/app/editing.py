@@ -1780,6 +1780,38 @@ def _has_confident_team_evidence(attribution: ClipTeamAttribution) -> bool:
     )
 
 
+def team_evidence_summary(clip: EditCandidateClip) -> Dict[str, object]:
+    attribution = clip.teamAttribution
+    if attribution is None:
+        return {
+            "status": "missing_attribution",
+            "evidenceBacked": False,
+            "frameRefCount": 0,
+            "roleGroupCount": 0,
+            "requiresEvidence": False,
+            "reasons": ["missing_attribution"],
+        }
+
+    frame_ref_count = len({ref for ref in attribution.evidenceFrameRefs if ref})
+    role_group_count = len({group for group in attribution.evidenceRoleGroups if group})
+    requires_evidence = _team_evidence_required(attribution)
+    evidence_backed = not requires_evidence or _has_confident_team_evidence(attribution)
+    reasons: list[str] = []
+    if requires_evidence and frame_ref_count < MIN_CONFIDENT_TEAM_EVIDENCE_FRAME_REFS:
+        reasons.append("insufficient_evidence_frame_refs")
+    if requires_evidence and role_group_count < MIN_CONFIDENT_TEAM_EVIDENCE_ROLE_GROUPS:
+        reasons.append("insufficient_evidence_role_groups")
+    status = "evidence_backed" if evidence_backed else "weak_evidence"
+    return {
+        "status": status,
+        "evidenceBacked": evidence_backed,
+        "frameRefCount": frame_ref_count,
+        "roleGroupCount": role_group_count,
+        "requiresEvidence": requires_evidence,
+        "reasons": reasons,
+    }
+
+
 def filter_clips_for_team_selection(
     clips: Sequence[EditCandidateClip],
     team_selection: Optional[TeamSelection],
@@ -1825,6 +1857,7 @@ def _compact_agent_candidate_clip(
         "duplicateGroup": clip.duplicateGroup,
         "teamAttribution": clip.teamAttribution.model_dump(mode="json") if clip.teamAttribution is not None else None,
         "teamAttributionStatus": team_attribution_status(clip, team_selection),
+        "teamEvidence": team_evidence_summary(clip),
         "nativeShotSignals": native_shot_signals_for_clip(clip).model_dump(mode="json"),
         "outcomeEvidenceSource": clip_outcome_evidence_source(clip),
         "outcomeReliabilityScore": clip_outcome_reliability_score(clip),
