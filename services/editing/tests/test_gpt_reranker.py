@@ -501,6 +501,33 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertTrue(hints[2]["timingWindowOk"])
         self.assertGreaterEqual(hints[2]["minRecommendedDurationSeconds"], 3.0)
 
+    def test_quality_filter_excludes_barely_contextual_shot_windows_before_gpt(self) -> None:
+        request = CreateEditJobRequest(
+            videoId="video_barely_contextual_filter",
+            analysisJobId="analysis_barely_contextual_filter",
+            installId="install-123",
+            sourceObjectKey="uploads/source.mp4",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="free",
+            clips=[
+                {
+                    **_clip("barely_contextual_make", 8.0, 0.98),
+                    "end": 11.3,
+                    "eventCenter": 9.0,
+                },
+                _clip("complete_make", 18.0, 0.82),
+            ],
+        )
+
+        sampled = gpt_reranker._quality_filtered_sampled_clips(request.clips, max_clips=2)
+        hints = [gpt_reranker._candidate_quality_hints(clip) for clip in request.clips]
+
+        self.assertEqual([clip.id for clip in sampled], ["complete_make"])
+        self.assertFalse(hints[0]["timingWindowOk"])
+        self.assertFalse(hints[0]["nativeShotSignals"]["timingWindowOk"])
+        self.assertLess(hints[0]["nativeShotSignals"]["contextQualityScore"], hints[1]["nativeShotSignals"]["contextQualityScore"])
+
     def test_quality_filter_excludes_native_not_shot_overclaimed_provider_clip(self) -> None:
         request = CreateEditJobRequest(
             videoId="video_native_not_shot_filter",

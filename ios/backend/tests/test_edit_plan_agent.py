@@ -1269,6 +1269,28 @@ class EditPlanAgentTests(unittest.TestCase):
 
         self.assertIn("shot_context_missing_setup", [error.code for error in errors])
 
+    def test_validate_edit_plan_rejects_barely_contextual_shot_render_window(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=15,
+                clips=[_clip("barely_contextual_make", 20.0, "Made Shot", 0.93)],
+            )
+        )
+        plan = build_edit_plan(request, "edit_barely_contextual_window")
+        clipped = plan.clips[0].model_copy(
+            update={
+                "sourceStart": round(plan.clips[0].eventCenter - 1.0, 3),
+                "sourceEnd": round(plan.clips[0].eventCenter + 0.7, 3),
+            }
+        )
+        invalid_plan = plan.model_copy(update={"clips": [clipped]})
+
+        errors = validate_edit_plan(invalid_plan, request.clips, request.planTier)
+        error_codes = [error.code for error in errors]
+
+        self.assertIn("shot_context_missing_setup", error_codes)
+        self.assertIn("shot_context_missing_outcome", error_codes)
+
     def test_gpt_highlight_rerank_uses_existing_clip_ids_only(self) -> None:
         request = CreateEditJobRequest(**_request_payload())
         decisions = [
