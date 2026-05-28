@@ -8,7 +8,7 @@ Improve selected-team recall for blocks, steals, and defensive stops without reo
 
 - GPT candidate quality hints now use the production shot-context floor for true shot clips: `1.2s` setup, `0.8s` outcome, and at least `3.0s` duration.
 - Defensive candidates now use a separate defensive event-context floor: at least `2.0s` duration, `0.6s` before the defensive event, and `0.5s` after it.
-- Generic non-shot clips still need useful context and quality, but defensive labels no longer get silently dropped just because they do not look like a shot-tracker sequence.
+- Generic non-shot clips stay on the stricter context floor; only defensive labels get the defensive event-context floor so they do not get silently dropped just because they do not look like a shot-tracker sequence.
 
 ## Why
 

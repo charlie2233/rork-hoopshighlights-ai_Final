@@ -567,6 +567,33 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertEqual(shot_hints["minLeadInSeconds"], gpt_reranker.MIN_GPT_CANDIDATE_LEAD_IN_SECONDS)
         self.assertEqual(shot_hints["minFollowThroughSeconds"], gpt_reranker.MIN_GPT_CANDIDATE_FOLLOW_THROUGH_SECONDS)
 
+    def test_quality_filter_keeps_generic_non_shot_on_strict_context_floor(self) -> None:
+        clip = CreateEditJobRequest(
+            videoId="video_generic_non_shot_floor",
+            analysisJobId="analysis_generic_non_shot_floor",
+            installId="install-123",
+            sourceObjectKey="uploads/source.mp4",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="free",
+            clips=[
+                {
+                    **_clip("generic_moment", 40.0, 0.88),
+                    "label": "Highlight",
+                    "end": 43.0,
+                    "eventCenter": 40.8,
+                },
+            ],
+        ).clips[0]
+
+        hints = gpt_reranker._candidate_quality_hints(clip)
+
+        self.assertFalse(hints["defensiveEventLike"])
+        self.assertFalse(hints["shotLike"])
+        self.assertEqual(hints["minLeadInSeconds"], gpt_reranker.MIN_GPT_CANDIDATE_LEAD_IN_SECONDS)
+        self.assertEqual(hints["minFollowThroughSeconds"], gpt_reranker.MIN_GPT_CANDIDATE_FOLLOW_THROUGH_SECONDS)
+        self.assertFalse(hints["timingWindowOk"])
+
     def test_quality_filter_excludes_native_not_shot_overclaimed_provider_clip(self) -> None:
         request = CreateEditJobRequest(
             videoId="video_native_not_shot_filter",

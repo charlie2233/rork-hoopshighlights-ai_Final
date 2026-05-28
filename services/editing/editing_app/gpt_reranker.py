@@ -448,8 +448,8 @@ def _candidate_quality_hints(clip: EditCandidateClip) -> Dict[str, Any]:
         min_follow_through = MIN_GPT_DEFENSIVE_FOLLOW_THROUGH_SECONDS
     else:
         min_duration = max(MIN_PLAN_CLIP_SECONDS, MIN_GPT_NON_SHOT_CANDIDATE_SECONDS)
-        min_lead_in = MIN_GPT_DEFENSIVE_LEAD_IN_SECONDS
-        min_follow_through = MIN_GPT_DEFENSIVE_FOLLOW_THROUGH_SECONDS
+        min_lead_in = MIN_GPT_CANDIDATE_LEAD_IN_SECONDS
+        min_follow_through = MIN_GPT_CANDIDATE_FOLLOW_THROUGH_SECONDS
     return {
         "durationSeconds": duration,
         "defensiveEventLike": is_defensive,
