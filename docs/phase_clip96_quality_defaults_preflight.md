@@ -38,7 +38,7 @@ Keep the internal beta biased toward highlight quality and customer acquisition 
 - XcodeBuildMCP `test_sim -only-testing:HoopsClipsTests/HoopsClipsTests` passed: 45 tests.
 - `git diff --check` passed.
 - `python3 scripts/submission_readiness_preflight.py --skip-live` exited `1` with `22 pass`, `2 warn`, `8 fail` after the code commit. Repo hygiene passed; remaining failures were missing launch-grade team accuracy report, unavailable physical iPhone, stale main-branch workflow evidence, unproven installed TestFlight smoke, unproven live Worker version route, missing Cloudflare deploy credential proof, and unproven live iOS kill-switch status through the Worker.
-- PR #32 CI re-ran for commit `a3dae2d`, but GitHub Actions failed before steps started because account payments failed or the Actions spending limit needs to be increased.
+- PR #32 CI re-ran for this branch, but GitHub Actions failed before steps started because account payments failed or the Actions spending limit needs to be increased.
 
 ## Remaining Proof
 
