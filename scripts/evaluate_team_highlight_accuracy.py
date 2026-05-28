@@ -364,12 +364,19 @@ def normalize_clip(raw_clip: dict[str, Any]) -> dict[str, dict[str, Any]] | None
     quality_signals = prediction.get("qualitySignals")
     if not isinstance(quality_signals, dict):
         quality_signals = {}
+    team_evidence = prediction.get("teamEvidence")
+    if not isinstance(team_evidence, dict):
+        team_evidence = {}
     normalized_prediction = {
         "keep": bool(prediction.get("keep") if "keep" in prediction else prediction.get("shouldAutoKeep")),
         "includeForReview": bool(prediction.get("includeForReview", prediction.get("keep", prediction.get("shouldAutoKeep", False)))),
         "teamId": prediction.get("teamId") or team_attribution.get("teamId"),
         "teamConfidence": prediction.get("teamConfidence") or team_attribution.get("confidence"),
         "teamAttributionStatus": prediction.get("teamAttributionStatus") or team_attribution.get("status"),
+        "teamEvidenceStatus": string_or_none(team_evidence.get("status")),
+        "teamEvidenceBacked": team_evidence.get("evidenceBacked") if isinstance(team_evidence.get("evidenceBacked"), bool) else None,
+        "teamEvidenceFrameRefCount": number_or_none(team_evidence.get("frameRefCount")),
+        "teamEvidenceRoleGroupCount": number_or_none(team_evidence.get("roleGroupCount")),
         "teamEvidenceFrameRefs": string_list(prediction.get("evidenceFrameRefs") or team_attribution.get("evidenceFrameRefs")),
         "teamEvidenceRoleGroups": string_list(prediction.get("evidenceRoleGroups") or team_attribution.get("evidenceRoleGroups")),
         "eventType": prediction.get("eventType") or prediction.get("basketballEvent") or prediction.get("label") or normalized_expected["eventType"],
@@ -451,6 +458,17 @@ def threshold_failures(metrics: AccuracyMetrics, thresholds: AccuracyThresholds)
 
 
 def team_attribution_evidence_is_valid(prediction: dict[str, Any]) -> bool:
+    evidence_status = normalize_event_type(prediction.get("teamEvidenceStatus"))
+    if evidence_status and evidence_status != "evidence_backed":
+        return False
+    if prediction.get("teamEvidenceBacked") is False:
+        return False
+    frame_ref_count = number_or_none(prediction.get("teamEvidenceFrameRefCount"))
+    if frame_ref_count is not None and frame_ref_count < MIN_EVAL_TEAM_EVIDENCE_FRAME_REFS:
+        return False
+    role_group_count = number_or_none(prediction.get("teamEvidenceRoleGroupCount"))
+    if role_group_count is not None and role_group_count < MIN_EVAL_TEAM_EVIDENCE_ROLE_GROUPS:
+        return False
     return (
         len(string_set(prediction.get("teamEvidenceFrameRefs"))) >= MIN_EVAL_TEAM_EVIDENCE_FRAME_REFS
         and len(string_set(prediction.get("teamEvidenceRoleGroups"))) >= MIN_EVAL_TEAM_EVIDENCE_ROLE_GROUPS

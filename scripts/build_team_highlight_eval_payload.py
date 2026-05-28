@@ -232,7 +232,7 @@ def prediction_from_cloud_clip(clip: dict[str, Any]) -> dict[str, Any]:
         "outcomeReliabilityScore": clip.get("outcomeReliabilityScore") or native_shot_signals.get("outcomeReliabilityScore"),
         "nativeShotSignals": native_shot_signals,
     }
-    for key in ("shotResultEvidence", "shotTrackingEvidence", "qualitySignals"):
+    for key in ("teamEvidence", "shotResultEvidence", "shotTrackingEvidence", "qualitySignals"):
         value = clip.get(key)
         if isinstance(value, dict):
             prediction[key] = value

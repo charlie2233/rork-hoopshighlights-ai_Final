@@ -8,6 +8,8 @@ from scripts.test_team_highlight_accuracy_eval import made_shot_evidence
 
 
 def analysis_clip(start: float, end: float, label: str, keep: bool, team_id: str, confidence: float) -> dict:
+    evidence_frame_refs = [f"{label.lower().replace(' ', '_')}_setup", f"{label.lower().replace(' ', '_')}_result"]
+    evidence_role_groups = ["setup", "outcome"]
     return {
         "startTime": start,
         "endTime": end,
@@ -23,8 +25,16 @@ def analysis_clip(start: float, end: float, label: str, keep: bool, team_id: str
         "teamAttribution": {
             "teamId": team_id,
             "confidence": confidence,
-            "evidenceFrameRefs": [f"{label.lower().replace(' ', '_')}_setup", f"{label.lower().replace(' ', '_')}_result"],
-            "evidenceRoleGroups": ["setup", "outcome"],
+            "evidenceFrameRefs": evidence_frame_refs,
+            "evidenceRoleGroups": evidence_role_groups,
+        },
+        "teamEvidence": {
+            "status": "evidence_backed" if confidence >= 0.85 else "weak_evidence",
+            "evidenceBacked": confidence >= 0.85,
+            "frameRefCount": len(evidence_frame_refs),
+            "roleGroupCount": len(evidence_role_groups),
+            "requiresEvidence": True,
+            "reasons": [] if confidence >= 0.85 else ["low_confidence"],
         },
         "teamAttributionStatus": "matched" if confidence >= 0.85 else "uncertain",
         "nativeShotSignals": {
@@ -76,8 +86,10 @@ class BuildTeamHighlightEvalPayloadTests(unittest.TestCase):
         )
 
         self.assertEqual(payload["cases"][0]["caseId"], "real_game_001")
+        self.assertEqual(payload["cases"][0]["clips"][0]["prediction"]["teamEvidence"]["status"], "evidence_backed")
         self.assertEqual(payload["cases"][0]["clips"][1]["prediction"]["keep"], False)
         self.assertEqual(payload["cases"][0]["clips"][1]["prediction"]["includeForReview"], True)
+        self.assertEqual(payload["cases"][0]["clips"][1]["prediction"]["teamEvidence"]["status"], "weak_evidence")
         self.assertEqual(report.status, "pass")
         self.assertEqual(report.metrics.selectedTeamRecallWithUncertain, 1.0)
         self.assertEqual(report.metrics.uncertainReviewCount, 1)

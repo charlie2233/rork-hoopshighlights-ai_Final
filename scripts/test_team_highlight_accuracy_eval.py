@@ -567,6 +567,73 @@ class TeamHighlightAccuracyEvalTests(unittest.TestCase):
         self.assertEqual(report.metrics.selectedTeamEvidenceQuality, 0.5)
         self.assertTrue(any("selectedTeamEvidenceQuality" in failure for failure in report.failures))
 
+    def test_weak_team_evidence_summary_fails_even_with_frame_refs(self) -> None:
+        report = evaluate_accuracy(
+            {
+                "selectedTeamId": "team_dark",
+                "clips": [
+                    {
+                        "expected": {"teamId": "team_dark", "isHighlight": True, "eventType": "steal"},
+                        "prediction": timed_prediction(
+                            {
+                                "keep": True,
+                                "teamAttribution": team_attribution(0.94),
+                                "teamEvidence": {
+                                    "status": "weak_evidence",
+                                    "evidenceBacked": False,
+                                    "frameRefCount": 2,
+                                    "roleGroupCount": 2,
+                                    "reasons": ["manual_regression"],
+                                },
+                            },
+                            start=18.0,
+                            end=21.4,
+                            event_center=19.3,
+                        ),
+                    },
+                    {
+                        "expected": {"teamId": "team_dark", "isHighlight": True, "eventType": "block"},
+                        "prediction": timed_prediction(
+                            {
+                                "keep": True,
+                                "teamAttribution": team_attribution(0.95),
+                                "teamEvidence": {
+                                    "status": "evidence_backed",
+                                    "evidenceBacked": True,
+                                    "frameRefCount": 2,
+                                    "roleGroupCount": 2,
+                                    "reasons": [],
+                                },
+                                **blocked_shot_evidence(),
+                            },
+                            start=28.0,
+                            end=31.2,
+                            event_center=29.2,
+                        ),
+                    },
+                ],
+            },
+            thresholds=AccuracyThresholds(
+                selectedTeamPrecision=0.0,
+                selectedTeamEvidenceQuality=0.85,
+                selectedTeamRecallWithUncertain=0.0,
+                highlightPrecision=0.0,
+                highlightRecall=0.0,
+                defensiveEventRecall=0.0,
+                clipTimingQuality=0.0,
+                shotOutcomeEvidenceQuality=0.0,
+                minSelectedTeamDefensiveEvents=0,
+                minSelectedTeamBlocks=0,
+                minSelectedTeamSteals=0,
+            ),
+        )
+
+        self.assertEqual(report.status, "fail")
+        self.assertEqual(report.metrics.selectedTeamEvidenceClipCount, 2)
+        self.assertEqual(report.metrics.badSelectedTeamEvidenceCount, 1)
+        self.assertEqual(report.metrics.selectedTeamEvidenceQuality, 0.5)
+        self.assertTrue(any("selectedTeamEvidenceQuality" in failure for failure in report.failures))
+
     def test_empty_input_fails_instead_of_claiming_accuracy(self) -> None:
         report = evaluate_accuracy({"cases": []})
 

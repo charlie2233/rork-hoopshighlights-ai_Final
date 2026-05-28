@@ -51,7 +51,7 @@ The script accepts either a top-level `clips` list or a `cases` list:
 
 For uncertain but plausible clips, set `keep: true`, `includeForReview: true`, and either `teamAttributionStatus: "uncertain"` or a confidence below the case threshold. Those clips count toward recall-with-review, not confident precision.
 
-For selected-team evidence quality, confident selected-team predictions should include at least two unique `teamAttribution.evidenceFrameRefs` values and two unique `teamAttribution.evidenceRoleGroups` values. These are sampled-frame IDs and phase labels from the cloud quick scan, not images or URLs.
+For selected-team evidence quality, confident selected-team predictions should include at least two unique `teamAttribution.evidenceFrameRefs` values and two unique `teamAttribution.evidenceRoleGroups` values. These are sampled-frame IDs and phase labels from the cloud quick scan, not images or URLs. When a prediction includes `teamEvidence`, the evaluator also treats `teamEvidence.status`, `teamEvidence.evidenceBacked`, `teamEvidence.frameRefCount`, and `teamEvidence.roleGroupCount` as authoritative summary checks, so `weak_evidence` cannot pass as confident selected-team proof.
 
 For timing quality, include `start`, `end`, and `eventCenter` for every kept or review-included prediction. The evaluator fails tiny clips, shot clips without enough setup/outcome context, defensive clips without useful event context, and clips whose `nativeShotSignals.timingWindowOk` is explicitly false.
 
