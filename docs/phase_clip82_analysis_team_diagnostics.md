@@ -53,7 +53,14 @@ Results:
 - Scripts discovery passed: 57 tests.
 - `git diff --check` passed.
 
+Remote CI after push to `b9cb45a`:
+
+- Cloud Edit Deploy Preflight: run `26560094018`, failed before useful logs were available (`log not found` for failed job `78240736462`).
+- iOS Internal TestFlight Upload: run `26560093945`, failed before useful logs were available (`log not found` for failed job `78240736617`).
+- PR #32 remained `UNSTABLE` from those remote checks.
+
 ## Remaining Proof
 
 - These counters make the proof easier to inspect, but they are not a substitute for the labeled-footage 85% eval.
 - Internal launch still needs a real cloud run with manual labels covering selected-team makes, misses, blocks, steals, forced turnovers, uncertain review clips, opponent clips, and bad timing negatives.
+- GitHub Actions still need the provider/account-side runner failure cleared before remote CI can prove this branch.
