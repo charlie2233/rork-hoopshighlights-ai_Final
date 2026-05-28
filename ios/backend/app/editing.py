@@ -131,6 +131,9 @@ DEFENSIVE_EVENT_LABEL_TOKENS = (
     "pressure",
     "lockdown",
 )
+TEAM_EVIDENCE_REQUIRED_SOURCES = {"quick_scan", "gpt_frame_review"}
+MIN_CONFIDENT_TEAM_EVIDENCE_FRAME_REFS = 2
+MIN_CONFIDENT_TEAM_EVIDENCE_ROLE_GROUPS = 2
 BLOCKED_SHOT_TRACKING_ROLES = {"eventCenter", "finish", "challenge", "defenseOutcome", "recovery", "possessionChange"}
 SHOT_TRACKING_RELEASE_ROLES = {"preEvent", "release", "eventCenter"}
 SHOT_TRACKING_BALL_FLIGHT_ROLES = {
@@ -1744,6 +1747,8 @@ def team_attribution_status(
         return "uncertain"
     if attribution.confidence < team_selection.confidenceThreshold:
         return "uncertain"
+    if _team_evidence_required(attribution) and not _has_confident_team_evidence(attribution):
+        return "uncertain"
 
     selected_team_id = _team_key(team_selection.teamId)
     clip_team_id = _team_key(attribution.teamId)
@@ -1759,6 +1764,20 @@ def team_attribution_status(
     if selected_team_id and clip_team_id and selected_team_id != clip_team_id:
         return "opponent"
     return "opponent"
+
+
+def _team_evidence_required(attribution: ClipTeamAttribution) -> bool:
+    source = (attribution.source or "").strip().lower()
+    return source in TEAM_EVIDENCE_REQUIRED_SOURCES
+
+
+def _has_confident_team_evidence(attribution: ClipTeamAttribution) -> bool:
+    frame_refs = {ref for ref in attribution.evidenceFrameRefs if ref}
+    role_groups = {group for group in attribution.evidenceRoleGroups if group}
+    return (
+        len(frame_refs) >= MIN_CONFIDENT_TEAM_EVIDENCE_FRAME_REFS
+        and len(role_groups) >= MIN_CONFIDENT_TEAM_EVIDENCE_ROLE_GROUPS
+    )
 
 
 def filter_clips_for_team_selection(

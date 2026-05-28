@@ -290,6 +290,8 @@ class EditPlanAgentTests(unittest.TestCase):
                             "colorLabel": "black",
                             "confidence": 0.91,
                             "source": "quick_scan",
+                            "evidenceFrameRefs": ["clip_0_release", "clip_0_result"],
+                            "evidenceRoleGroups": ["action", "outcome"],
                         },
                     },
                     {
@@ -300,6 +302,8 @@ class EditPlanAgentTests(unittest.TestCase):
                             "colorLabel": "white",
                             "confidence": 0.92,
                             "source": "quick_scan",
+                            "evidenceFrameRefs": ["clip_1_release", "clip_1_result"],
+                            "evidenceRoleGroups": ["action", "outcome"],
                         },
                     },
                     {
@@ -340,6 +344,8 @@ class EditPlanAgentTests(unittest.TestCase):
                             "colorLabel": "black",
                             "confidence": 0.95,
                             "source": "quick_scan",
+                            "evidenceFrameRefs": ["clip_0_release", "clip_0_result"],
+                            "evidenceRoleGroups": ["action", "outcome"],
                         },
                     },
                     {
@@ -349,6 +355,8 @@ class EditPlanAgentTests(unittest.TestCase):
                             "colorLabel": "black",
                             "confidence": 0.91,
                             "source": "quick_scan",
+                            "evidenceFrameRefs": ["clip_1_release", "clip_1_result"],
+                            "evidenceRoleGroups": ["action", "outcome"],
                         },
                     },
                 ],
@@ -381,6 +389,8 @@ class EditPlanAgentTests(unittest.TestCase):
                             "colorLabel": "black",
                             "confidence": 0.91,
                             "source": "quick_scan",
+                            "evidenceFrameRefs": ["clip_0_release", "clip_0_result"],
+                            "evidenceRoleGroups": ["action", "outcome"],
                         },
                     }
                 ],
@@ -412,6 +422,8 @@ class EditPlanAgentTests(unittest.TestCase):
                             "colorLabel": "white",
                             "confidence": 0.95,
                             "source": "quick_scan",
+                            "evidenceFrameRefs": ["clip_0_release", "clip_0_result"],
+                            "evidenceRoleGroups": ["action", "outcome"],
                         },
                     }
                 ],
@@ -422,6 +434,63 @@ class EditPlanAgentTests(unittest.TestCase):
 
         self.assertEqual(team_attribution_status(request.clips[0], request.teamSelection), "opponent")
         self.assertEqual(filtered, [])
+
+    def test_selected_team_quick_scan_match_requires_evidence_metadata(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                teamSelection={
+                    "mode": "team",
+                    "teamId": "team_dark",
+                    "label": "Dark jerseys",
+                    "colorLabel": "black",
+                    "confidenceThreshold": 0.85,
+                    "includeUncertain": True,
+                },
+                clips=[
+                    {
+                        **_clip("legacy_match", 0.0, "Made Shot", 0.93),
+                        "teamAttribution": {
+                            "teamId": "team_dark",
+                            "label": "Dark jerseys",
+                            "colorLabel": "black",
+                            "confidence": 0.94,
+                            "source": "quick_scan",
+                        },
+                    },
+                    {
+                        **_clip("single_phase_match", 9.0, "Steal", 0.88),
+                        "teamAttribution": {
+                            "teamId": "team_dark",
+                            "label": "Dark jerseys",
+                            "colorLabel": "black",
+                            "confidence": 0.92,
+                            "source": "gpt_frame_review",
+                            "evidenceFrameRefs": ["clip_1_release", "clip_1_arc"],
+                            "evidenceRoleGroups": ["action"],
+                        },
+                    },
+                    {
+                        **_clip("evidence_backed_match", 18.0, "Block", 0.91),
+                        "teamAttribution": {
+                            "teamId": "team_dark",
+                            "label": "Dark jerseys",
+                            "colorLabel": "black",
+                            "confidence": 0.91,
+                            "source": "gpt_frame_review",
+                            "evidenceFrameRefs": ["clip_2_challenge", "clip_2_result"],
+                            "evidenceRoleGroups": ["action", "outcome"],
+                        },
+                    },
+                ],
+            )
+        )
+
+        filtered = filter_clips_for_team_selection(request.clips, request.teamSelection)
+
+        self.assertEqual(team_attribution_status(request.clips[0], request.teamSelection), "uncertain")
+        self.assertEqual(team_attribution_status(request.clips[1], request.teamSelection), "uncertain")
+        self.assertEqual(team_attribution_status(request.clips[2], request.teamSelection), "matched")
+        self.assertEqual([clip.id for clip in filtered], ["legacy_match", "single_phase_match", "evidence_backed_match"])
 
     def test_explicit_uncertain_team_status_survives_edit_context(self) -> None:
         request = CreateEditJobRequest(
