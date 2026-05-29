@@ -543,6 +543,8 @@ def launch_grade_team_accuracy_report(
         "badShotOutcomeEvidenceCount": 0,
         "selectedTeamBlockCount": 1,
         "selectedTeamStealCount": 1,
+        "selectedTeamForcedTurnoverCount": 1,
+        "selectedTeamDefensiveStopCount": 1,
         "opponentHighlightCount": 2,
         "negativeClipCount": 2,
         "badWindowNegativeCount": 2,

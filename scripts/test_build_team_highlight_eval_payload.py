@@ -95,6 +95,8 @@ class BuildTeamHighlightEvalPayloadTests(unittest.TestCase):
                 minBadWindowNegatives=0,
                 minSelectedTeamBlocks=0,
                 minSelectedTeamSteals=1,
+                minSelectedTeamForcedTurnovers=0,
+                minSelectedTeamDefensiveStops=0,
                 minSelectedTeamDefensiveEvents=1,
                 minAllTeamsCases=0,
             ),

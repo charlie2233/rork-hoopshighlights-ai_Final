@@ -97,6 +97,8 @@ class AccuracyThresholds:
     minSelectedTeamDefensiveEvents: int = 2
     minSelectedTeamBlocks: int = 1
     minSelectedTeamSteals: int = 1
+    minSelectedTeamForcedTurnovers: int = 1
+    minSelectedTeamDefensiveStops: int = 1
     minAllTeamsCases: int = 1
 
 
@@ -124,6 +126,8 @@ class AccuracyMetrics:
     badShotOutcomeEvidenceCount: int
     selectedTeamBlockCount: int
     selectedTeamStealCount: int
+    selectedTeamForcedTurnoverCount: int
+    selectedTeamDefensiveStopCount: int
     opponentHighlightCount: int
     negativeClipCount: int
     badWindowNegativeCount: int
@@ -182,6 +186,8 @@ def main() -> int:
         minSelectedTeamDefensiveEvents=args.min_selected_team_defensive_events,
         minSelectedTeamBlocks=args.min_selected_team_blocks,
         minSelectedTeamSteals=args.min_selected_team_steals,
+        minSelectedTeamForcedTurnovers=args.min_selected_team_forced_turnovers,
+        minSelectedTeamDefensiveStops=args.min_selected_team_defensive_stops,
         minAllTeamsCases=args.min_all_teams_cases,
     )
     report = evaluate_accuracy(load_json(Path(args.input)), thresholds=thresholds)
@@ -224,6 +230,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--min-selected-team-defensive-events", type=int, default=2)
     parser.add_argument("--min-selected-team-blocks", type=int, default=1)
     parser.add_argument("--min-selected-team-steals", type=int, default=1)
+    parser.add_argument("--min-selected-team-forced-turnovers", type=int, default=1)
+    parser.add_argument("--min-selected-team-defensive-stops", type=int, default=1)
     parser.add_argument("--min-all-teams-cases", type=int, default=1)
     return parser.parse_args()
 
@@ -264,6 +272,8 @@ def evaluate_accuracy(payload: dict[str, Any], thresholds: AccuracyThresholds | 
             badShotOutcomeEvidenceCount=0,
             selectedTeamBlockCount=0,
             selectedTeamStealCount=0,
+            selectedTeamForcedTurnoverCount=0,
+            selectedTeamDefensiveStopCount=0,
             opponentHighlightCount=0,
             negativeClipCount=0,
             badWindowNegativeCount=0,
@@ -296,6 +306,8 @@ def evaluate_accuracy(payload: dict[str, Any], thresholds: AccuracyThresholds | 
         "good_shot_outcome_evidence_clips": 0,
         "selected_team_blocks": 0,
         "selected_team_steals": 0,
+        "selected_team_forced_turnovers": 0,
+        "selected_team_defensive_stops": 0,
         "opponent_highlights": 0,
         "negative_clips": 0,
         "bad_window_negative_clips": 0,
@@ -401,6 +413,10 @@ def evaluate_accuracy(payload: dict[str, Any], thresholds: AccuracyThresholds | 
                     counts["selected_team_blocks"] += 1
                 elif has_selected_team and defensive_subtype == "steal":
                     counts["selected_team_steals"] += 1
+                elif has_selected_team and defensive_subtype == "forced_turnover":
+                    counts["selected_team_forced_turnovers"] += 1
+                elif has_selected_team and defensive_subtype == "defensive_stop":
+                    counts["selected_team_defensive_stops"] += 1
                 if include_for_review and (team_mode == "all" or confident_selected or uncertain_review):
                     counts["kept_defensive_events"] += 1
 
@@ -441,6 +457,8 @@ def evaluate_accuracy(payload: dict[str, Any], thresholds: AccuracyThresholds | 
         ),
         selectedTeamBlockCount=counts["selected_team_blocks"],
         selectedTeamStealCount=counts["selected_team_steals"],
+        selectedTeamForcedTurnoverCount=counts["selected_team_forced_turnovers"],
+        selectedTeamDefensiveStopCount=counts["selected_team_defensive_stops"],
         opponentHighlightCount=counts["opponent_highlights"],
         negativeClipCount=counts["negative_clips"],
         badWindowNegativeCount=counts["bad_window_negative_clips"],
@@ -735,6 +753,16 @@ def threshold_failures(metrics: AccuracyMetrics, thresholds: AccuracyThresholds)
         ("selectedTeamDefensiveEventCoverage", metrics.defensiveEventCount, thresholds.minSelectedTeamDefensiveEvents),
         ("selectedTeamBlockCoverage", metrics.selectedTeamBlockCount, thresholds.minSelectedTeamBlocks),
         ("selectedTeamStealCoverage", metrics.selectedTeamStealCount, thresholds.minSelectedTeamSteals),
+        (
+            "selectedTeamForcedTurnoverCoverage",
+            metrics.selectedTeamForcedTurnoverCount,
+            thresholds.minSelectedTeamForcedTurnovers,
+        ),
+        (
+            "selectedTeamDefensiveStopCoverage",
+            metrics.selectedTeamDefensiveStopCount,
+            thresholds.minSelectedTeamDefensiveStops,
+        ),
         ("allTeamsCaseCoverage", metrics.allTeamsCaseCount, thresholds.minAllTeamsCases),
     )
     for name, value, minimum in coverage_checks:

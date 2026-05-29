@@ -125,6 +125,8 @@ TEAM_ACCURACY_THRESHOLD_TO_METRIC = (
     ("minSelectedTeamDefensiveEvents", "defensiveEventCount"),
     ("minSelectedTeamBlocks", "selectedTeamBlockCount"),
     ("minSelectedTeamSteals", "selectedTeamStealCount"),
+    ("minSelectedTeamForcedTurnovers", "selectedTeamForcedTurnoverCount"),
+    ("minSelectedTeamDefensiveStops", "selectedTeamDefensiveStopCount"),
     ("minAllTeamsCases", "allTeamsCaseCount"),
 )
 EXPECTED_TEAM_ACCURACY_INPUT_SCHEMA = "team-highlight-eval-v1"
