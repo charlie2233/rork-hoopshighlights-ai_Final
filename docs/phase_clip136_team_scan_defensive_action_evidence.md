@@ -113,3 +113,89 @@ OK
 - No full video is sent to GPT; this remains sampled-frame quick-scan logic.
 - No secrets, R2 credentials, or full presigned URLs were printed or stored.
 - This is an accuracy hardening change, not final evidence that HoopClips is ready for App Store/TestFlight submission. Real-device TestFlight smoke and staging render proof are still launch gates.
+
+## Post-Commit Readiness Refresh
+
+Clean local preflight with live probes skipped:
+
+```bash
+python3 scripts/submission_readiness_preflight.py --skip-live
+```
+
+Result:
+
+```text
+pass=22 warn=2 fail=8
+```
+
+Remaining failures:
+
+- missing launch-grade labeled-footage team-highlight accuracy report
+- wired iPhone detected but unavailable to CoreDevice
+- main-branch workflow evidence is stale relative to `2c57e20`
+- installed TestFlight smoke remains unproven
+- staging Worker version proof and live iOS kill-switch proof remain documented blockers
+- Cloudflare deploy credential proof remains documented as blocked
+
+Full live preflight:
+
+```bash
+python3 scripts/submission_readiness_preflight.py
+```
+
+Result:
+
+```text
+pass=22 warn=0 fail=11
+```
+
+Additional live failures:
+
+- Worker `GET /v1/editing/version` returned HTTP `404`
+- direct editing `/version` is stale and missing required GPT/live-render flags
+
+Current wired device state:
+
+```bash
+xcrun devicectl list devices
+```
+
+Result:
+
+```text
+charlie's iPhone: unavailable, iPhone 15 Pro
+```
+
+Staging deploy attempt:
+
+```bash
+gh workflow run "Cloud Edit Deploy Preflight" \
+  --repo charlie2233/rork-hoopshighlights-ai_Final \
+  --ref codex/phase-clip28-cloud-team-quick-scan \
+  -f operation=deploy
+```
+
+Run:
+
+```text
+https://github.com/charlie2233/rork-hoopshighlights-ai_Final/actions/runs/26635719986
+```
+
+Result:
+
+```text
+failure before workflow steps started
+```
+
+Annotation:
+
+```text
+The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings
+```
+
+Impact:
+
+- no Worker deploy occurred
+- no Cloud Run editing deploy occurred
+- no rollback version or Cloud Run revision was produced
+- this is a GitHub account billing/spending-limit blocker, not a source-code test failure
