@@ -36,6 +36,7 @@ class LaunchProviderInputHandoffTests(unittest.TestCase):
         self.assertIn("Workers R2 Storage: Edit", handoff.cloudflareTokenFormGuide.permissions)
         self.assertTrue(any("missing Secret Manager secret is a repair action" in item for item in handoff.gcpSecretRepairPolicy))
         self.assertTrue(any("HOOPS_OPENAI_API_KEY" in item for item in handoff.gcpSecretRepairPolicy))
+        self.assertTrue(any("Secret Manager Viewer" in item for item in handoff.gcpSecretRepairPolicy))
         self.assertEqual([item.name for item in handoff.localInputs], ["HOOPS_DEVELOPMENT_TEAM"])
 
     def test_markdown_uses_placeholders_without_secret_values(self) -> None:
@@ -55,8 +56,11 @@ class LaunchProviderInputHandoffTests(unittest.TestCase):
         self.assertIn("Atlas / Browser Agent Prompt", markdown)
         self.assertIn("GCP Secret Repair Policy", markdown)
         self.assertIn("A missing Secret Manager secret is a repair action", markdown)
+        self.assertIn("Secret Manager Viewer", markdown)
+        self.assertIn("metadata and latest-version state checks", markdown)
         self.assertIn("HOOPS_OPENAI_API_KEY present and enabled: yes/no", markdown)
         self.assertIn("Do not stop after reporting the missing secret", markdown)
+        self.assertIn("deploy service account has Secret Manager Viewer metadata access: yes/no", markdown)
         self.assertIn("Cloud deploy preflight triggered: yes/no", markdown)
         self.assertIn("GitHub run URL:", markdown)
         self.assertIn("Final conclusion:", markdown)
@@ -98,6 +102,8 @@ class LaunchProviderInputHandoffTests(unittest.TestCase):
         self.assertIn("Cloud deploy preflight triggered: yes/no", payload["atlasAgentPrompt"])
         self.assertIn("GitHub run URL:", payload["atlasAgentPrompt"])
         self.assertIn("Final conclusion:", payload["atlasAgentPrompt"])
+        self.assertIn("Secret Manager Viewer", payload["atlasAgentPrompt"])
+        self.assertIn("deploy service account has Secret Manager Viewer metadata access: yes/no", payload["atlasAgentPrompt"])
         self.assertIn(
             "gh workflow run cloud-edit-deploy-preflight.yml --repo charlie2233/rork-hoopshighlights-ai_Final --ref codex/test-ref -f operation=preflight",
             payload["atlasAgentPrompt"],

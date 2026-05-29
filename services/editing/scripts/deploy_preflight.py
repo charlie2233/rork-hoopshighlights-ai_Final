@@ -233,7 +233,7 @@ def classify_secret_manager_secret(secret_name: str, project: str) -> ProbeResul
         if failure == "permission":
             return ProbeResult(
                 False,
-                f"Secret Manager secret {secret_name} is not readable by the deploy identity; grant Secret Manager Secret Accessor.",
+                f"Secret Manager secret {secret_name} metadata is not readable by the deploy identity; grant Secret Manager Viewer plus Secret Manager Secret Accessor.",
             )
         return ProbeResult(
             False,
@@ -261,7 +261,7 @@ def classify_secret_manager_secret(secret_name: str, project: str) -> ProbeResul
         if failure == "permission":
             return ProbeResult(
                 False,
-                f"Secret Manager secret {secret_name} latest version is not readable by the deploy identity.",
+                f"Secret Manager secret {secret_name} latest version metadata is not readable by the deploy identity; grant Secret Manager Viewer plus Secret Manager Secret Accessor.",
             )
         return ProbeResult(False, f"Secret Manager secret {secret_name} latest version state could not be verified.")
 

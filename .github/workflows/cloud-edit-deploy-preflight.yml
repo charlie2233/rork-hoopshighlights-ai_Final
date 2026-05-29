@@ -351,7 +351,8 @@ jobs:
             - Cloud Run Admin
             - Artifact Registry Writer
             - Cloud Build submit permissions
-            - Secret Manager Secret Accessor for deploy-time checks
+            - Secret Manager Secret Accessor for deploy/runtime secret payload access
+            - Secret Manager Viewer for deploy-time metadata and latest-version state checks
             - Service Account User for the Cloud Run runtime service account, if required
           CHECKLIST
 
