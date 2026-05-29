@@ -298,6 +298,18 @@ def _with_fallback(
     return request.model_copy(update={"gptRerankSummary": summary})
 
 
+def with_gpt_fallback_summary(
+    request: CreateEditJobRequest,
+    *,
+    status: str,
+    model: Optional[str],
+    reason: str,
+    sampled_clip_count: int = 0,
+    sampled_frame_count: int = 0,
+) -> CreateEditJobRequest:
+    return _with_fallback(request, status, model, reason, sampled_clip_count, sampled_frame_count)
+
+
 def _fallback_quality_receipt(request: CreateEditJobRequest) -> tuple[List[str], List[str], Dict[str, int]]:
     render_clips = filter_clips_for_team_selection(
         request.clips,

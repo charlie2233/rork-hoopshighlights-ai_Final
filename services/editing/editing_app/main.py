@@ -21,6 +21,7 @@ from .gpt_reranker import (
     expand_shot_candidate_windows_from_source_path,
     request_gpt_edit_plan_patch,
     rerank_edit_request_with_gpt,
+    with_gpt_fallback_summary,
 )
 from .models import (
     AIWorkReceipt,
@@ -51,7 +52,6 @@ from app.editing import (  # noqa: E402
     EditPlan,
     EditPlanValidationIssue,
     EditRevisionResponse,
-    GPTHighlightRerankSummary,
     ReviseEditJobRequest,
     StoredEditJob,
     build_edit_job,
@@ -618,17 +618,15 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
                 source = None
 
         if not feature_flags.gptHighlightRerankerEnabled:
+            fallback = with_gpt_fallback_summary(
+                source_context_request,
+                status="disabled",
+                model=gpt_reranker_settings.model,
+                reason="feature_flag_disabled",
+            )
             if source is not None:
                 source.cleanup()
-            return source_context_request.model_copy(
-                update={
-                    "gptRerankSummary": GPTHighlightRerankSummary(
-                        status="disabled",
-                        model=gpt_reranker_settings.model,
-                        fallbackReason="feature_flag_disabled",
-                    )
-                }
-            )
+            return fallback
         if not request.sourceObjectKey:
             return rerank_edit_request_with_gpt(source_context_request, Path("__missing_source__"), gpt_reranker_settings)
         if not gpt_reranker_settings.configured:

@@ -18,7 +18,17 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO_ROOT / "services" / "editing"))
 sys.path.insert(0, str(REPO_ROOT / "ios" / "backend"))
 
-from app.editing import CreateEditJobRequest, GPTHighlightClipDecision, GPTHighlightSuggestedEdit, TEMPLATE_PACK_REGISTRY, apply_gpt_highlight_rerank, build_edit_job, get_plan_tier_policy, validate_template_registry  # noqa: E402
+from app.editing import (  # noqa: E402
+    CreateEditJobRequest,
+    GPTHighlightClipDecision,
+    GPTHighlightRerankSummary,
+    GPTHighlightSuggestedEdit,
+    TEMPLATE_PACK_REGISTRY,
+    apply_gpt_highlight_rerank,
+    build_edit_job,
+    get_plan_tier_policy,
+    validate_template_registry,
+)
 import editing_app.main as editing_main  # noqa: E402
 from editing_app.config import EditingSettings  # noqa: E402
 from editing_app.main import create_app  # noqa: E402
@@ -1089,6 +1099,57 @@ class EditingServiceTests(unittest.TestCase):
         self.assertIn("Shot outcome evidence: 1 selected clip passed rim/result tracking checks.", receipt.summaryRows)
         self.assertIn("Needs review: 1 selected shot outcome came from label-only evidence.", receipt.summaryRows)
 
+    def test_ai_work_receipt_summarizes_gpt_fallback_quality_rejections(self) -> None:
+        payload = self._edit_request().model_dump()
+        payload["targetDurationSeconds"] = 15
+        payload["clips"] = [
+            {**_clip("tiny", 0.0, "Made Shot", 0.99), "end": 0.1, "eventCenter": 0.05},
+            {**_clip("pre_basket", 6.0, "Made Shot", 0.98), "end": 12.0, "eventCenter": 6.1},
+            _clip("complete_make", 14.0, "Made Shot", 0.82),
+        ]
+        edit_request = CreateEditJobRequest(**payload)
+        edit_job = build_edit_job(
+            edit_request.model_copy(update={"clips": [edit_request.clips[2]]}),
+            "edit_fallback_receipt",
+        )
+        self.assertFalse(edit_job.validation_errors)
+        created_at = now_utc()
+        render_job = StoredRenderJob(
+            edit_job_id="edit_fallback_receipt",
+            render_job_id="render_fallback_receipt",
+            install_id=edit_request.installId,
+            trace_id="trace_fallback_receipt",
+            status="rendered",
+            aspect_ratio="9:16",
+            created_at=created_at,
+            updated_at=created_at,
+            completed_at=created_at,
+            source_object_key=edit_request.sourceObjectKey,
+            output_object_key="edits/edit_fallback_receipt/render_jobs/render_fallback_receipt/final.mp4",
+            render_log_object_key="edits/edit_fallback_receipt/render_jobs/render_fallback_receipt/render_log.json",
+            duration_seconds=5.0,
+            plan_version="edit-plan-v1",
+            template_id="personal_highlight_v1",
+            plan_tier="free",
+            idempotency_key="idem-fallback-receipt",
+        )
+        summary = GPTHighlightRerankSummary(
+            status="fallback",
+            model="gpt-test",
+            keptClipIds=["complete_make"],
+            rejectedClipIds=["tiny", "pre_basket"],
+            rejectedReasonCounts={"candidate_missing_minimum_quality_context": 2},
+            fallbackReason="openai_unavailable",
+        )
+
+        receipt = build_ai_work_receipt(render_job, edit_job.plan, edit_request.clips, summary)
+
+        self.assertEqual(receipt.gptRerankKeptClipCount, 1)
+        self.assertEqual(receipt.gptRerankRejectedClipCount, 2)
+        self.assertIn("GPT rerank fallback: openai_unavailable.", receipt.summaryRows)
+        self.assertIn("Fallback kept 1 render-worthy clip after quality checks.", receipt.summaryRows)
+        self.assertIn("Fallback rejected clips: candidate_missing_minimum_quality_context x2.", receipt.summaryRows)
+
     def test_create_edit_job_gpt_all_rejected_returns_empty_clip_validation_error(self) -> None:
         original_reranker = editing_main.rerank_edit_request_with_gpt
         old_enabled = os.environ.get("HOOPS_GPT_HIGHLIGHT_RERANKER_ENABLED")
@@ -1306,6 +1367,13 @@ class EditingServiceTests(unittest.TestCase):
         self.assertEqual(render_payload["aspectRatio"], "9:16")
         self.assertFalse(render_payload["workReceipt"]["gptRerankApplied"])
         self.assertEqual(render_payload["workReceipt"]["gptRerankFallbackReason"], "feature_flag_disabled")
+        self.assertEqual(render_payload["workReceipt"]["gptRerankKeptClipCount"], 2)
+        self.assertEqual(render_payload["workReceipt"]["gptRerankRejectedClipCount"], 0)
+        self.assertIn("GPT rerank disabled: feature_flag_disabled.", render_payload["workReceipt"]["summaryRows"])
+        self.assertIn(
+            "Fallback kept 2 render-worthy clips after quality checks.",
+            render_payload["workReceipt"]["summaryRows"],
+        )
 
         rerender_response = client.post(
             f"/v1/edit-jobs/{create_payload['editJobId']}/render",

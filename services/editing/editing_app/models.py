@@ -629,8 +629,30 @@ def build_ai_work_receipt(
                 )
             if gpt_rerank_summary.planEditApplied:
                 summary_rows.append("GPT plan edit applied after deterministic validation.")
-        elif gpt_rerank_summary.status == "fallback" and gpt_rerank_summary.fallbackReason:
-            summary_rows.append(f"GPT rerank fallback: {gpt_rerank_summary.fallbackReason}.")
+        elif gpt_rerank_summary.status in {"disabled", "fallback"}:
+            if gpt_rerank_summary.fallbackReason:
+                label = "disabled" if gpt_rerank_summary.status == "disabled" else "fallback"
+                summary_rows.append(f"GPT rerank {label}: {gpt_rerank_summary.fallbackReason}.")
+            if gpt_rerank_summary.keptClipIds:
+                kept_count = len(gpt_rerank_summary.keptClipIds)
+                summary_rows.append(
+                    f"Fallback kept {kept_count} render-worthy clip{'s' if kept_count != 1 else ''} after quality checks."
+                )
+            if gpt_rerank_summary.rejectedReasonCounts:
+                summary_rows.append(
+                    "Fallback rejected clips: "
+                    + ", ".join(
+                        f"{reason} x{count}"
+                        for reason, count in sorted(gpt_rerank_summary.rejectedReasonCounts.items())
+                        if count > 0
+                    )
+                    + "."
+                )
+            if gpt_rerank_summary.uncertainReviewClipIds:
+                review_count = len(gpt_rerank_summary.uncertainReviewClipIds)
+                summary_rows.append(
+                    f"Kept {review_count} uncertain team candidate{'s' if review_count != 1 else ''} available for Review."
+                )
     if team_uncertain_selected_count:
         summary_rows.append(
             f"Kept {team_uncertain_selected_count} uncertain team clip{'s' if team_uncertain_selected_count != 1 else ''} for review."
