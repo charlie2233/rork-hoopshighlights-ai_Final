@@ -42,6 +42,15 @@ The user wants blocks and steals included, but not weak or guessed highlights. S
 - Whitespace:
   - `git diff --check`
   - Result: passed.
+- Submission readiness preflight:
+  - `python3 scripts/submission_readiness_preflight.py --skip-live`
+  - Result: `pass=22 warn=2 fail=8`.
+  - Remaining blockers:
+    - Missing launch-grade labeled footage team/highlight accuracy report; 85% selected-team/highlight quality is still unproven.
+    - Connected iPhone is detected but unavailable for install/smoke testing.
+    - Live Worker and direct editing probes were intentionally skipped.
+    - Main-branch Cloud Edit Deploy Preflight and iOS Internal TestFlight Upload workflow runs are stale relative to checkout `59b9917`.
+    - Installed TestFlight smoke, live Worker route, Cloudflare deploy credential proof, and live iOS kill-switch proof remain documented launch blockers.
 
 ## Launch Notes
 
