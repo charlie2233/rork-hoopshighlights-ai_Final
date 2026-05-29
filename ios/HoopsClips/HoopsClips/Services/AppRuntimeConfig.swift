@@ -147,7 +147,7 @@ struct AppRuntimeConfig {
     }
 
     var requiresCloudVideoPipeline: Bool {
-        !isDebug && cloudLaunchMode.allowsCloudRequests
+        !isDebug
     }
 
     var launchAnalysisMode: AnalysisExecutionMode {
@@ -176,10 +176,13 @@ struct AppRuntimeConfig {
         if resolvedTermsOfServiceURL == nil {
             missing.append("HOOPSTermsOfServiceURL")
         }
-        if cloudLaunchMode.allowsCloudRequests && resolvedCloudAnalysisBaseURL == nil {
+        if !cloudLaunchMode.allowsCloudRequests {
+            missing.append("HOOPSCloudLaunchMode")
+        }
+        if resolvedCloudAnalysisBaseURL == nil {
             missing.append("HOOPSCloudAnalysisBaseURL")
         }
-        if cloudLaunchMode.allowsCloudRequests && !cloudEditBaseURL.isEmpty && resolvedCloudEditBaseURL == nil {
+        if resolvedCloudEditBaseURL == nil {
             missing.append("HOOPSCloudEditBaseURL")
         }
         return missing

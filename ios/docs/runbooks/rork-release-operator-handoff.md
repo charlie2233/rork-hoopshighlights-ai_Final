@@ -3,17 +3,17 @@
 ## Current release posture
 - Product name for handoff: Hoopclips.
 - Release source: `main` on `https://github.com/charlie2233/rork-hoopshighlights-ai_Final`.
-- Public App Store path: on-device analysis only.
-- Cloud ML path: gated/internal until Phase 4h confirmed-label gates clear.
+- Public App Store path: cloud analysis, cloud AI edit planning, cloud rendering, and iOS control surface only.
+- If the production cloud path is not proven, public App Store submission is no-go.
 - Release operations owner: Rork.
 
 ## What is already done
-- `main` contains the public-launch cloud-gated release plumbing.
+- `main` contains the public-launch cloud-required release plumbing.
 - GitHub Actions has a `production` environment.
 - GitHub `production` variables are populated for:
   - `HOOPS_PRIVACY_POLICY_URL=https://rork.com/privacy`
   - `HOOPS_TERMS_OF_SERVICE_URL=https://rork.com/terms`
-- The Release build is configured to keep `HOOPS_CLOUD_LAUNCH_MODE=disabled` and `HOOPS_CLOUD_ANALYSIS_BASE_URL` empty.
+- The Release build is configured to require `HOOPS_CLOUD_LAUNCH_MODE=enabled`, `HOOPS_CLOUD_ANALYSIS_BASE_URL`, and `HOOPS_CLOUD_EDIT_BASE_URL`.
 - Google callback routing, RevenueCat readiness checks, legal links, and launch-status UI are wired in app code.
 
 ## Rork inputs required
@@ -25,6 +25,8 @@ Rork must provide or confirm these production values before the Release smoke ca
 - `HOOPS_GOOGLE_REVERSED_CLIENT_ID`
 - `HOOPS_FIREBASE_AUTH_API_KEY`
 - `HOOPS_SENTRY_DSN`
+- `HOOPS_CLOUD_ANALYSIS_BASE_URL`
+- `HOOPS_CLOUD_EDIT_BASE_URL`
 
 Rork also needs:
 
@@ -43,6 +45,8 @@ gh secret set HOOPS_GOOGLE_CLIENT_ID -e production -b "$HOOPS_GOOGLE_CLIENT_ID"
 gh secret set HOOPS_GOOGLE_REVERSED_CLIENT_ID -e production -b "$HOOPS_GOOGLE_REVERSED_CLIENT_ID"
 gh secret set HOOPS_FIREBASE_AUTH_API_KEY -e production -b "$HOOPS_FIREBASE_AUTH_API_KEY"
 gh secret set HOOPS_SENTRY_DSN -e production -b "$HOOPS_SENTRY_DSN"
+gh variable set HOOPS_CLOUD_ANALYSIS_BASE_URL -e production --body "$HOOPS_CLOUD_ANALYSIS_BASE_URL"
+gh variable set HOOPS_CLOUD_EDIT_BASE_URL -e production --body "$HOOPS_CLOUD_EDIT_BASE_URL"
 
 gh variable list -e production
 gh secret list -e production
@@ -73,6 +77,8 @@ export HOOPS_FIREBASE_AUTH_API_KEY="..."
 export HOOPS_SENTRY_DSN="..."
 export HOOPS_PRIVACY_POLICY_URL="https://rork.com/privacy"
 export HOOPS_TERMS_OF_SERVICE_URL="https://rork.com/terms"
+export HOOPS_CLOUD_ANALYSIS_BASE_URL="https://..."
+export HOOPS_CLOUD_EDIT_BASE_URL="https://..."
 
 ./ios/scripts/materialize_local_secrets.sh
 ```
@@ -89,11 +95,11 @@ Update `ios/docs/reports/release-device-smoke-report.md` with pass/fail evidence
 - restore purchase
 - Photos import
 - Files import
-- on-device analysis without cloud states
+- cloud upload and analysis without local fallback
 - review flow
-- export render
+- cloud AI Edit plan, render, revision, preview, download, share/open-in
 - save to Photos
-- Settings > Launch Status showing on-device-only
+- Settings > Launch Status showing cloud-enabled status
 - Privacy Policy and Terms links opening correctly
 
 If any row fails, fix only that concrete release blocker and rerun the smoke.

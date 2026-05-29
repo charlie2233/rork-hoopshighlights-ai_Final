@@ -1,7 +1,6 @@
 #include "Base.xcconfig"
 
 HOOPS_APP_ENV = production
-// Public GA ships on-device analysis only until cloud cutover gates clear.
-HOOPS_CLOUD_LAUNCH_MODE = disabled
-HOOPS_CLOUD_ANALYSIS_BASE_URL =
-HOOPS_CLOUD_EDIT_BASE_URL =
+// Public GA cannot ship as an on-device video product. Production Release
+// builds must receive production cloud analysis/edit URLs from LocalSecrets or CI.
+HOOPS_CLOUD_LAUNCH_MODE = enabled

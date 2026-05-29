@@ -432,12 +432,14 @@ def check_workflows(repo_root: Path, collector: Collector) -> None:
     release_text = read_text(release_path, collector)
     if release_text is not None:
         for snippet, label in (
-            ('require_exact "HOOPS_CLOUD_LAUNCH_MODE" "disabled"', "Release cloud-disabled build setting"),
-            ('require_exact "HOOPS_CLOUD_ANALYSIS_BASE_URL" ""', "blank Release analysis URL"),
-            ('require_exact "HOOPS_CLOUD_EDIT_BASE_URL" ""', "blank Release edit URL"),
-            ('require_plist_exact "HOOPSCloudLaunchMode" "disabled"', "built Info.plist cloud-disabled mode"),
-            ('require_plist_exact "HOOPSCloudAnalysisBaseURL" ""', "built Info.plist blank analysis URL"),
-            ('require_plist_exact "HOOPSCloudEditBaseURL" ""', "built Info.plist blank edit URL"),
+            ('HOOPS_CLOUD_ANALYSIS_BASE_URL: ${{ vars.HOOPS_CLOUD_ANALYSIS_BASE_URL }}', "production cloud analysis URL input"),
+            ('HOOPS_CLOUD_EDIT_BASE_URL: ${{ vars.HOOPS_CLOUD_EDIT_BASE_URL }}', "production cloud edit URL input"),
+            ('require_non_empty "HOOPS_CLOUD_ANALYSIS_BASE_URL"', "non-empty Release analysis URL"),
+            ('require_non_empty "HOOPS_CLOUD_EDIT_BASE_URL"', "non-empty Release edit URL"),
+            ('require_exact "HOOPS_CLOUD_LAUNCH_MODE" "enabled"', "Release cloud-enabled build setting"),
+            ('require_plist_exact "HOOPSCloudLaunchMode" "enabled"', "built Info.plist cloud-enabled mode"),
+            ('require_plist_non_empty "HOOPSCloudAnalysisBaseURL"', "built Info.plist analysis URL"),
+            ('require_plist_non_empty "HOOPSCloudEditBaseURL"', "built Info.plist edit URL"),
         ):
             if snippet in release_text:
                 collector.pass_("release cloud gate", rel(release_path, repo_root), f"Release preflight enforces {label}.")
@@ -451,14 +453,20 @@ def check_ios_configs(repo_root: Path, collector: Collector) -> None:
     if release_text is not None:
         for pattern, label in (
             (r"HOOPS_APP_ENV\s*=\s*production", "production app env"),
-            (r"HOOPS_CLOUD_LAUNCH_MODE\s*=\s*disabled", "cloud launch disabled"),
-            (r"HOOPS_CLOUD_ANALYSIS_BASE_URL\s*=\s*$", "blank cloud analysis URL"),
-            (r"HOOPS_CLOUD_EDIT_BASE_URL\s*=\s*$", "blank cloud edit URL"),
+            (r"HOOPS_CLOUD_LAUNCH_MODE\s*=\s*enabled", "cloud launch enabled"),
         ):
             if re.search(pattern, release_text, flags=re.MULTILINE):
                 collector.pass_("ios release cloud gate", rel(release_path, repo_root), f"Release config keeps {label}.")
             else:
                 collector.fail("ios release cloud gate", rel(release_path, repo_root), f"Release config must keep {label}.")
+        for pattern, label in (
+            (r"HOOPS_CLOUD_ANALYSIS_BASE_URL\s*=", "cloud analysis URL override"),
+            (r"HOOPS_CLOUD_EDIT_BASE_URL\s*=", "cloud edit URL override"),
+        ):
+            if re.search(pattern, release_text, flags=re.MULTILINE):
+                collector.fail("ios release cloud gate", rel(release_path, repo_root), f"Release config must not hardcode {label}; CI/LocalSecrets must provide it.")
+            else:
+                collector.pass_("ios release cloud gate", rel(release_path, repo_root), f"Release config does not hardcode {label}.")
 
     internal_path = repo_root / "ios/HoopsClips/HoopsClips/Config/InternalStaging.xcconfig"
     internal_text = read_text(internal_path, collector)

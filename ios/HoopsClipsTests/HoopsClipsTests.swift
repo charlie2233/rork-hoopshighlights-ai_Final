@@ -11,6 +11,7 @@ import CoreML
 import Vision
 @testable import HoopsClips
 
+@Suite(.serialized)
 struct HoopsClipsTests {
 
     // Test removed because it relies on local JSON files that were cleaned up
