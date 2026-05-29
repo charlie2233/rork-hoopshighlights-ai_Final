@@ -577,13 +577,7 @@ final class HighlightsViewModel {
 
     nonisolated static func rankedCloudEditCandidateClips(from clips: [Clip], limit: Int = 40) -> [Clip] {
         let cappedLimit = max(0, limit)
-        let ranked = clips.sorted { lhs, rhs in
-            let lhsEligible = isCloudEditCandidateQualityEligible(lhs)
-            let rhsEligible = isCloudEditCandidateQualityEligible(rhs)
-            if lhsEligible != rhsEligible {
-                return lhsEligible
-            }
-
+        let ranked = clips.filter(isCloudEditCandidateQualityEligible).sorted { lhs, rhs in
             let lhsScore = cloudEditCandidateScore(lhs)
             let rhsScore = cloudEditCandidateScore(rhs)
             if lhsScore != rhsScore {
@@ -602,11 +596,10 @@ final class HighlightsViewModel {
         var selected = Array(ranked.prefix(cappedLimit))
         var selectedIDs = Set(selected.map(\.id))
         var reserveIDs = Set<UUID>()
-        let eligibleRanked = ranked.filter(isCloudEditCandidateQualityEligible)
 
         func reserveFirstMissing(where predicate: (Clip) -> Bool) {
             guard selected.contains(where: predicate) == false else { return }
-            guard let candidate = eligibleRanked.first(where: { predicate($0) && !selectedIDs.contains($0.id) }) else { return }
+            guard let candidate = ranked.first(where: { predicate($0) && !selectedIDs.contains($0.id) }) else { return }
             reserveIDs.insert(candidate.id)
             selectedIDs.insert(candidate.id)
         }
@@ -641,10 +634,11 @@ final class HighlightsViewModel {
     nonisolated private static func isCloudEditCandidateQualityEligible(_ clip: Clip) -> Bool {
         guard clip.duration >= 2.0 else { return false }
         guard isShotLikeCloudEditCandidate(clip) else { return true }
+        guard clip.duration >= 3.0 else { return false }
         let center = clip.eventCenter ?? (clip.startTime + (clip.duration / 2.0))
         let leadIn = center - clip.startTime
         let followThrough = clip.endTime - center
-        return leadIn >= 0.75 && followThrough >= 0.45
+        return leadIn >= 1.2 && followThrough >= 0.8
     }
 
     nonisolated private static func cloudEditCandidateScore(_ clip: Clip) -> Double {
@@ -659,7 +653,7 @@ final class HighlightsViewModel {
         if let eventCenter = clip.eventCenter {
             let leadIn = eventCenter - clip.startTime
             let followThrough = clip.endTime - eventCenter
-            if leadIn >= 0.75 && followThrough >= 0.45 {
+            if leadIn >= 1.2 && followThrough >= 0.8 {
                 score += 0.08
             } else if isShotLikeCloudEditCandidate(clip) {
                 score -= 0.30

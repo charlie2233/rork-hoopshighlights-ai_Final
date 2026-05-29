@@ -826,6 +826,86 @@ struct HoopsClipsTests {
         #expect(ranked.first?.startTime == 20.0)
     }
 
+    @Test func testCloudEditCandidateRankingUsesBackendMinimumShotContext() {
+        let marginalPreBasketWindow = Clip(
+            startTime: 10.0,
+            endTime: 13.0,
+            eventCenter: 10.9,
+            action: .madeShot,
+            confidence: 0.99,
+            isKept: true,
+            label: "Made Shot",
+            audioScore: 0.95,
+            visualScore: 0.95,
+            motionScore: 0.95,
+            combinedScore: 0.99,
+            detectionMethod: .cloud
+        )
+        let completeShot = Clip(
+            startTime: 20.0,
+            endTime: 25.0,
+            eventCenter: 22.0,
+            action: .madeShot,
+            confidence: 0.76,
+            isKept: true,
+            label: "Made Shot",
+            audioScore: 0.46,
+            visualScore: 0.68,
+            motionScore: 0.7,
+            combinedScore: 0.7,
+            detectionMethod: .cloud
+        )
+
+        let ranked = HighlightsViewModel.rankedCloudEditCandidateClips(
+            from: [marginalPreBasketWindow, completeShot],
+            limit: 1
+        )
+
+        #expect(ranked.first?.startTime == 20.0)
+    }
+
+    @Test @MainActor func testCloudEditRequestDoesNotSendLatePreBasketShotCandidate() throws {
+        let viewModel = HighlightsViewModel()
+        viewModel.cloudEditSourceObjectKey = "uploads/source.mp4"
+        let latePreBasketOnly = Clip(
+            startTime: 10.0,
+            endTime: 16.0,
+            eventCenter: 10.1,
+            action: .madeShot,
+            confidence: 0.99,
+            isKept: true,
+            label: "Made Shot",
+            audioScore: 0.95,
+            visualScore: 0.95,
+            motionScore: 0.95,
+            combinedScore: 0.99,
+            detectionMethod: .cloud
+        )
+        let completeShot = Clip(
+            startTime: 20.0,
+            endTime: 26.0,
+            eventCenter: 23.0,
+            action: .madeShot,
+            confidence: 0.78,
+            isKept: true,
+            label: "Made Shot",
+            audioScore: 0.55,
+            visualScore: 0.7,
+            motionScore: 0.72,
+            combinedScore: 0.72,
+            detectionMethod: .cloud
+        )
+        viewModel.analysisService.clips = [latePreBasketOnly, completeShot]
+
+        let request = try viewModel.createCloudEditRequest(
+            preset: .personalHighlight,
+            targetDurationSeconds: 30,
+            isProUser: false
+        )
+
+        #expect(request.clips.map(\.start) == [20.0])
+    }
+
     @Test func testCloudEditProTemplatesAreRealAndDistinct() {
         let templates = CloudEditProTemplate.allCases
         let identifiers = templates.map(\.accessibilityIdentifier)
