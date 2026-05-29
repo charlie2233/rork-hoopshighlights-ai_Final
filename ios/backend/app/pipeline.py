@@ -37,6 +37,8 @@ VISUAL_EVENT_FRAME_WIDTH = 64
 VISUAL_EVENT_FRAME_HEIGHT = 36
 VISUAL_EVENT_MIN_SCORE = 0.46
 VISUAL_EVENT_MIN_VISUAL_SCORE = 0.28
+VISUAL_EVENT_MIN_SETUP_CONTEXT_SCORE = 0.18
+VISUAL_EVENT_MIN_OUTCOME_CONTEXT_SCORE = 0.12
 VISUAL_EVENT_MIN_GAP_SECONDS = 1.4
 VISUAL_EVENT_MAX_BOUNDARIES = 24
 VISUAL_EVENT_SEQUENCE_GAP_SECONDS = 1.1
@@ -1066,12 +1068,20 @@ def _visual_event_boundaries_from_signals(
             )
         )
 
-    candidates = [
-        frame
-        for frame in scored_frames
-        if frame.visual_score >= VISUAL_EVENT_MIN_VISUAL_SCORE
-        and _outcome_aware_visual_event_score(frame, scored_frames) >= VISUAL_EVENT_MIN_SCORE
-    ]
+    candidates: List[VisualEventFrame] = []
+    for frame in scored_frames:
+        setup_score, outcome_score = _visual_event_context_scores(frame, scored_frames)
+        if frame.visual_score < VISUAL_EVENT_MIN_VISUAL_SCORE:
+            continue
+        if setup_score < VISUAL_EVENT_MIN_SETUP_CONTEXT_SCORE:
+            continue
+        if outcome_score < VISUAL_EVENT_MIN_OUTCOME_CONTEXT_SCORE:
+            continue
+        if _visual_event_is_setup_before_stronger_result(frame, scored_frames, setup_score, outcome_score):
+            continue
+        if _outcome_aware_visual_event_score(frame, scored_frames) < VISUAL_EVENT_MIN_SCORE:
+            continue
+        candidates.append(frame)
     clusters = _cluster_visual_event_frames(candidates)
 
     selected: List[tuple[float, float]] = []
@@ -1109,6 +1119,19 @@ def _cluster_visual_event_frames(frames: Sequence[VisualEventFrame]) -> List[Lis
 
 
 def _outcome_aware_visual_event_score(frame: VisualEventFrame, frames: Sequence[VisualEventFrame]) -> float:
+    setup_score, outcome_score = _visual_event_context_scores(frame, frames)
+    # A release-only spike should not beat the rim/result frame when the
+    # surrounding frames show setup and follow-through. Setup distinguishes a
+    # real shot sequence from random camera motion; outcome context keeps the
+    # anchor close to the basket/result instead of the release.
+    context_bonus = min(
+        (setup_score * 0.28) + (outcome_score * 0.12) + (min(setup_score, outcome_score) * 0.08),
+        0.36,
+    )
+    return round(clamp(frame.score + context_bonus, 0.0, 1.0), 4)
+
+
+def _visual_event_context_scores(frame: VisualEventFrame, frames: Sequence[VisualEventFrame]) -> tuple[float, float]:
     setup_score = max(
         (
             _shot_context_visual_score(candidate)
@@ -1125,15 +1148,27 @@ def _outcome_aware_visual_event_score(frame: VisualEventFrame, frames: Sequence[
         ),
         default=0.0,
     )
-    # A release-only spike should not beat the rim/result frame when the
-    # surrounding frames show setup and follow-through. Setup carries the
-    # strongest weight because it distinguishes a real shot sequence from a
-    # random aftermath spike; outcome follow-through breaks close ties.
-    context_bonus = min(
-        (setup_score * 0.32) + (outcome_score * 0.04) + (min(setup_score, outcome_score) * 0.04),
-        0.34,
+    return setup_score, outcome_score
+
+
+def _visual_event_is_setup_before_stronger_result(
+    frame: VisualEventFrame,
+    frames: Sequence[VisualEventFrame],
+    setup_score: float,
+    outcome_score: float,
+) -> bool:
+    if outcome_score < max(VISUAL_EVENT_MIN_OUTCOME_CONTEXT_SCORE, setup_score * 1.45):
+        return False
+    later_peak = max(
+        (
+            _shot_context_visual_score(candidate)
+            for candidate in frames
+            if frame.time_seconds + 0.25 <= candidate.time_seconds <= frame.time_seconds + 0.75
+        ),
+        default=0.0,
     )
-    return round(clamp(frame.score + context_bonus, 0.0, 1.0), 4)
+    current_context_score = _shot_context_visual_score(frame)
+    return later_peak > current_context_score * 0.6
 
 
 def _shot_context_visual_score(frame: VisualEventFrame) -> float:

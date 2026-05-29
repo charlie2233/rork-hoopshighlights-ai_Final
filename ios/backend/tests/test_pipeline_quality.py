@@ -1306,6 +1306,7 @@ class PipelineQualityTests(unittest.TestCase):
             (7.5, 0.1, 0.12, 0.1),
             (9.5, 0.62, 0.82, 0.6),
             (10.0, 0.58, 0.78, 0.62),
+            (10.5, 0.32, 0.4, 0.3),
             (17.0, 0.08, 0.06, 0.07),
             (17.5, 0.1, 0.08, 0.08),
         ]
@@ -1364,6 +1365,25 @@ class PipelineQualityTests(unittest.TestCase):
         )
 
         self.assertEqual(boundaries, [10.0])
+
+    def test_visual_event_detector_rejects_release_only_spike_without_followthrough(self) -> None:
+        audio_profile = [0.08] * 40
+        for index in range(18, 22):
+            audio_profile[index] = 0.62
+        frame_signals = [
+            (8.0, 0.2, 0.32, 0.2),
+            (9.0, 0.22, 0.36, 0.22),
+            (9.5, 0.88, 0.96, 0.84),
+            (10.5, 0.05, 0.06, 0.05),
+        ]
+
+        boundaries = _visual_event_boundaries_from_signals(
+            frame_signals,
+            audio_profile,
+            duration_seconds=20.0,
+        )
+
+        self.assertEqual(boundaries, [])
 
     def test_visual_event_detector_does_not_shift_to_dead_aftermath(self) -> None:
         audio_profile = [0.08] * 40
@@ -1458,7 +1478,13 @@ class PipelineQualityTests(unittest.TestCase):
                     "-i",
                     "color=c=black:s=160x90:r=12:d=8",
                     "-vf",
-                    "drawbox=x=72:y=14:w=36:h=36:color=white@1:t=fill:enable='between(t,3,3.8)'",
+                    ",".join(
+                        [
+                            "drawbox=x=72:y=14:w=36:h=36:color=white@1:t=fill:enable='between(t,2.5,3.2)'",
+                            "drawbox=x=72:y=28:w=36:h=20:color=white@1:t=fill:enable='between(t,3.5,4.2)'",
+                            "drawbox=x=76:y=44:w=28:h=14:color=white@1:t=fill:enable='between(t,4.5,5.2)'",
+                        ]
+                    ),
                     "-pix_fmt",
                     "yuv420p",
                     str(video_path),
@@ -1470,7 +1496,7 @@ class PipelineQualityTests(unittest.TestCase):
 
             boundaries = _detect_shot_boundaries(video_path, duration_seconds=8.0, audio_profile=[0.05] * 16)
 
-        self.assertTrue(any(3.8 <= boundary <= 4.2 for boundary in boundaries))
+        self.assertTrue(any(4.0 <= boundary <= 4.8 for boundary in boundaries))
 
 
 if __name__ == "__main__":
