@@ -49,6 +49,7 @@ from app.editing import (  # noqa: E402
     is_shot_like_clip,
     native_shot_signals_for_clip,
     rank_clips,
+    remove_duplicate_moments,
     summarize_clip_pool,
     team_attribution_status,
     team_evidence_summary,
@@ -197,6 +198,7 @@ def rerank_edit_request_with_gpt(
     sampled_clips = _quality_filtered_sampled_clips(rank_clips(request.clips), max_clips, request=request)
     if not sampled_clips:
         return _with_fallback(request, "fallback", settings.model, "no_quality_candidates", 0, 0)
+    initial_candidate_clip_ids = {clip.id for clip in sampled_clips}
     sampled_frames = _extract_candidate_keyframes(source_path, sampled_clips, frames_per_clip, settings)
     if not sampled_frames:
         return _with_fallback(request, "fallback", settings.model, "keyframe_extraction_failed", len(sampled_clips), 0)
@@ -241,7 +243,7 @@ def rerank_edit_request_with_gpt(
         return _with_fallback(request, "fallback", settings.model, "incomplete_gpt_decisions", len(sampled_clips), len(sampled_frames))
     sampled_decisions = [decision for decision in decisions if decision.clipId in sampled_clip_ids]
 
-    return apply_gpt_highlight_rerank(
+    initial_result = apply_gpt_highlight_rerank(
         request,
         sampled_decisions,
         model=settings.model,
@@ -250,6 +252,21 @@ def rerank_edit_request_with_gpt(
         story_order=story_order,
         plan_edit=plan_edit,
         sampled_frame_roles_by_clip=_sampled_frame_roles_by_clip(sampled_frames),
+    )
+    return _backfill_underfilled_gpt_result(
+        request,
+        source_path,
+        settings,
+        client,
+        initial_result,
+        sampled_decisions,
+        initial_candidate_clip_ids,
+        sampled_clips,
+        sampled_frames,
+        story_order,
+        plan_edit,
+        max_clips,
+        frames_per_clip,
     )
 
 
@@ -355,6 +372,239 @@ def _fallback_rejection_reason(
         if status == "uncertain" and clip.id not in render_clip_ids:
             return "needs_manual_team_review"
     return "candidate_missing_minimum_quality_context"
+
+
+def _backfill_underfilled_gpt_result(
+    request: CreateEditJobRequest,
+    source_path: Path,
+    settings: GPTHighlightRerankerSettings,
+    client: ResponseClient,
+    initial_result: CreateEditJobRequest,
+    initial_decisions: Sequence[GPTHighlightClipDecision],
+    initial_sampled_clip_ids: set[str],
+    initial_sampled_clips: Sequence[EditCandidateClip],
+    initial_sampled_frames: Sequence[SampledFrame],
+    initial_story_order: Sequence[str],
+    initial_plan_edit: Optional[GPTPlanEdit],
+    max_clips: int,
+    frames_per_clip: int,
+) -> CreateEditJobRequest:
+    backfill_candidates = _gpt_backfill_candidate_clips(
+        request,
+        exclude_clip_ids=initial_sampled_clip_ids,
+        max_clips=max_clips,
+    )
+    available_before_backfill = list(initial_sampled_clips) + backfill_candidates
+    if not _is_underfilled_gpt_result(request, initial_result, available_before_backfill):
+        return initial_result
+    if not backfill_candidates:
+        return initial_result
+
+    backfill_frames = _extract_candidate_keyframes(source_path, backfill_candidates, frames_per_clip, settings)
+    if not backfill_frames:
+        return _with_fallback(
+            request,
+            "fallback",
+            settings.model,
+            "underfilled_gpt_backfill_keyframe_extraction_failed",
+            len(initial_sampled_clips) + len(backfill_candidates),
+            len(initial_sampled_frames),
+        )
+
+    backfill_candidates, backfill_frames = _drop_incomplete_backfill_keyframes(backfill_candidates, backfill_frames, frames_per_clip)
+    available_after_backfill = list(initial_sampled_clips) + backfill_candidates
+    if not _is_underfilled_gpt_result(request, initial_result, available_after_backfill):
+        return initial_result
+    if not backfill_candidates:
+        return _with_fallback(
+            request,
+            "fallback",
+            settings.model,
+            "underfilled_gpt_backfill_keyframe_extraction_incomplete",
+            len(initial_sampled_clips),
+            len(initial_sampled_frames) + len(backfill_frames),
+        )
+
+    payload = _build_openai_payload(request, backfill_candidates, backfill_frames, settings)
+    try:
+        response_payload = client(payload, settings.api_key or "", settings.endpoint, settings.timeout_seconds)
+        output_text = _extract_output_text(response_payload)
+        output = json.loads(output_text)
+        backfill_decisions = [GPTHighlightClipDecision(**item) for item in output.get("decisions", [])]
+        raw_story_order = output.get("storyOrder", [])
+        backfill_story_order = [str(item) for item in raw_story_order if isinstance(item, str)] if isinstance(raw_story_order, list) else []
+        backfill_plan_edit = GPTPlanEdit(**output["planEdit"]) if settings.plan_edit_enabled and isinstance(output.get("planEdit"), dict) else None
+    except (HTTPError, URLError, TimeoutError, OSError, ValueError, json.JSONDecodeError, TypeError) as error:
+        reason = "underfilled_gpt_backfill_unavailable"
+        if isinstance(error, HTTPError):
+            reason = f"underfilled_gpt_backfill_http_{error.code}"
+        return _with_fallback(
+            request,
+            "fallback",
+            settings.model,
+            reason,
+            len(initial_sampled_clips) + len(backfill_candidates),
+            len(initial_sampled_frames) + len(backfill_frames),
+        )
+
+    backfill_clip_ids = {clip.id for clip in backfill_candidates}
+    valid_backfill_decision_ids = [decision.clipId for decision in backfill_decisions if decision.clipId in backfill_clip_ids]
+    duplicate_backfill_ids = {clip_id for clip_id in valid_backfill_decision_ids if valid_backfill_decision_ids.count(clip_id) > 1}
+    if duplicate_backfill_ids:
+        return _with_fallback(
+            request,
+            "fallback",
+            settings.model,
+            "underfilled_gpt_backfill_duplicate_decisions",
+            len(initial_sampled_clips) + len(backfill_candidates),
+            len(initial_sampled_frames) + len(backfill_frames),
+        )
+    if set(valid_backfill_decision_ids) != backfill_clip_ids:
+        return _with_fallback(
+            request,
+            "fallback",
+            settings.model,
+            "underfilled_gpt_backfill_incomplete_decisions",
+            len(initial_sampled_clips) + len(backfill_candidates),
+            len(initial_sampled_frames) + len(backfill_frames),
+        )
+
+    merged_decisions = list(initial_decisions) + [decision for decision in backfill_decisions if decision.clipId in backfill_clip_ids]
+    merged_story_order = [*initial_story_order, *backfill_story_order]
+    merged_plan_edit = _merge_gpt_plan_edits(initial_plan_edit, backfill_plan_edit)
+    merged_frames = [*initial_sampled_frames, *backfill_frames]
+    result = apply_gpt_highlight_rerank(
+        request,
+        merged_decisions,
+        model=settings.model,
+        sampled_clip_count=len(initial_sampled_clips) + len(backfill_candidates),
+        sampled_frame_count=len(merged_frames),
+        story_order=merged_story_order,
+        plan_edit=merged_plan_edit,
+        sampled_frame_roles_by_clip=_sampled_frame_roles_by_clip(merged_frames),
+    )
+    if _is_underfilled_gpt_result(request, result, available_after_backfill):
+        return _with_fallback(
+            request,
+            "fallback",
+            settings.model,
+            "underfilled_gpt_result_after_backfill",
+            len(initial_sampled_clips) + len(backfill_candidates),
+            len(merged_frames),
+        )
+    return result
+
+
+def _gpt_backfill_candidate_clips(
+    request: CreateEditJobRequest,
+    *,
+    exclude_clip_ids: set[str],
+    max_clips: int,
+) -> List[EditCandidateClip]:
+    render_source_clips = filter_clips_for_team_selection(
+        request.clips,
+        request.teamSelection,
+        include_review_only_uncertain=False,
+    )
+    candidates = [
+        clip
+        for clip in rank_clips(render_source_clips)
+        if clip.id not in exclude_clip_ids
+        and is_plan_quality_eligible_clip(clip)
+        and _candidate_quality_hints(clip)["timingWindowOk"]
+    ]
+    return candidates[:max_clips]
+
+
+def _drop_incomplete_backfill_keyframes(
+    clips: Sequence[EditCandidateClip],
+    frames: Sequence[SampledFrame],
+    frames_per_clip: int,
+) -> tuple[List[EditCandidateClip], List[SampledFrame]]:
+    missing_ids = set(_missing_required_keyframes(clips, frames))
+    if not missing_ids:
+        missing_ids = set(_missing_shot_context_keyframes(clips, frames, frames_per_clip))
+    else:
+        complete_clips = [clip for clip in clips if clip.id not in missing_ids]
+        complete_frames = [frame for frame in frames if frame.clip_id not in missing_ids]
+        missing_ids.update(_missing_shot_context_keyframes(complete_clips, complete_frames, frames_per_clip))
+    if not missing_ids:
+        return list(clips), list(frames)
+    return (
+        [clip for clip in clips if clip.id not in missing_ids],
+        [frame for frame in frames if frame.clip_id not in missing_ids],
+    )
+
+
+def _is_underfilled_gpt_result(
+    request: CreateEditJobRequest,
+    result: CreateEditJobRequest,
+    available_clips: Sequence[EditCandidateClip],
+) -> bool:
+    summary = result.gptRerankSummary
+    if summary is None or summary.status != "applied":
+        return False
+    available_unique = remove_duplicate_moments([clip for clip in available_clips if is_plan_quality_eligible_clip(clip)])
+    if not available_unique:
+        return False
+    min_clip_count, min_duration = _gpt_underfill_floor(request, available_unique)
+    kept_unique = remove_duplicate_moments([clip for clip in result.clips if is_plan_quality_eligible_clip(clip)])
+    kept_duration = sum(_bounded_gpt_clip_duration(request, clip) for clip in kept_unique)
+    return len(kept_unique) < min_clip_count or kept_duration < min_duration
+
+
+def _gpt_underfill_floor(request: CreateEditJobRequest, available_clips: Sequence[EditCandidateClip]) -> tuple[int, float]:
+    template = get_template_pack_for_plan(request.preset, request.templateId)
+    target_seconds = max(float(request.targetDurationSeconds), template.clipLength.minSeconds)
+    desired_count = 2 if target_seconds <= 15 else 3
+    if request.planTier != "free" and target_seconds >= 45:
+        desired_count = 4
+    min_clip_count = min(desired_count, len(available_clips))
+    available_duration = sum(_bounded_gpt_clip_duration(request, clip) for clip in available_clips)
+    duration_floor = max(template.clipLength.minSeconds * min_clip_count * 0.8, target_seconds * 0.35)
+    return min_clip_count, min(duration_floor, available_duration)
+
+
+def _bounded_gpt_clip_duration(request: CreateEditJobRequest, clip: EditCandidateClip) -> float:
+    template = get_template_pack_for_plan(request.preset, request.templateId)
+    return min(max(0.0, clip.duration), template.clipLength.maxSeconds)
+
+
+def _merge_gpt_plan_edits(
+    initial_plan_edit: Optional[GPTPlanEdit],
+    backfill_plan_edit: Optional[GPTPlanEdit],
+) -> Optional[GPTPlanEdit]:
+    if initial_plan_edit is None:
+        return backfill_plan_edit
+    if backfill_plan_edit is None:
+        return initial_plan_edit
+
+    ordered_clip_ids = _unique_preserving_order([*initial_plan_edit.orderedClipIds, *backfill_plan_edit.orderedClipIds])
+    captions_by_id = {item.clipId: item for item in initial_plan_edit.captions}
+    captions_by_id.update({item.clipId: item for item in backfill_plan_edit.captions})
+    slow_motion_by_id = {item.clipId: item for item in initial_plan_edit.slowMotionMoments}
+    slow_motion_by_id.update({item.clipId: item for item in backfill_plan_edit.slowMotionMoments})
+    summary = initial_plan_edit.summary or backfill_plan_edit.summary
+    if initial_plan_edit.summary and backfill_plan_edit.summary:
+        summary = f"{initial_plan_edit.summary} Backfill: {backfill_plan_edit.summary}"[:240]
+    return GPTPlanEdit(
+        orderedClipIds=ordered_clip_ids,
+        pacing=initial_plan_edit.pacing,
+        captions=list(captions_by_id.values()),
+        slowMotionMoments=list(slow_motion_by_id.values()),
+        summary=summary,
+    )
+
+
+def _unique_preserving_order(values: Sequence[str]) -> List[str]:
+    seen: set[str] = set()
+    unique: List[str] = []
+    for value in values:
+        if value in seen:
+            continue
+        unique.append(value)
+        seen.add(value)
+    return unique
 
 
 def expand_shot_candidate_windows_from_source_path(
@@ -596,7 +846,6 @@ def _quality_filtered_sampled_clips(
             reserved_defensive_count += 1
 
     if request and request.teamSelection is not None and request.teamSelection.mode == "team":
-        team_reserve = min(max(2, max_clips // 6), max_clips)
         render_eligible_ids = {
             clip.id
             for clip in filter_clips_for_team_selection(
@@ -605,19 +854,35 @@ def _quality_filtered_sampled_clips(
                 include_review_only_uncertain=False,
             )
         }
-        review_only_uncertain_ids: set[str] = set()
-        for clip in eligible:
-            if team_attribution_status(clip, request.teamSelection) == "uncertain" and clip.id not in render_eligible_ids:
-                add_clip(clip)
-                review_only_uncertain_ids.add(clip.id)
-                if len(review_only_uncertain_ids) >= team_reserve:
-                    break
+        review_only_uncertain = [
+            clip
+            for clip in eligible
+            if team_attribution_status(clip, request.teamSelection) == "uncertain"
+            and clip.id not in render_eligible_ids
+            and clip.id not in selected_ids
+        ]
+        review_only_reserve = min(len(review_only_uncertain), max(1, max_clips // 10), max_clips)
+        render_slot_limit = max(0, max_clips - review_only_reserve)
 
         for clip in eligible:
             if clip.id in render_eligible_ids:
                 add_clip(clip)
-                if len(selected) >= max_clips:
+                if len(selected) >= render_slot_limit:
                     break
+
+        review_only_uncertain_ids: set[str] = set()
+        for clip in review_only_uncertain:
+            add_clip(clip)
+            review_only_uncertain_ids.add(clip.id)
+            if len(review_only_uncertain_ids) >= review_only_reserve:
+                break
+
+        if len(selected) < max_clips:
+            for clip in eligible:
+                if clip.id in render_eligible_ids:
+                    add_clip(clip)
+                    if len(selected) >= max_clips:
+                        break
 
         if len(selected) >= max_clips:
             return rank_clips(selected)

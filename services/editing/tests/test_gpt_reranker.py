@@ -162,6 +162,42 @@ def _shot_tracking_evidence(**overrides) -> dict:
     return payload
 
 
+def _gpt_decision_payload(clip_id: str, *, keep: bool = True, score: float = 0.9, story_role: str = "filler") -> dict:
+    return {
+        "clipId": clip_id,
+        "keep": keep,
+        "rejectReason": None if keep else "boring_or_duplicate",
+        "highlightScore": score if keep else 0.2,
+        "watchabilityScore": score if keep else 0.35,
+        "basketballEvent": "Made Shot",
+        "outcome": "made" if keep else "unclear",
+        "caption": "BUCKET" if keep else "",
+        "reason": "Clear complete highlight." if keep else "Not strong enough for the final edit.",
+        "storyRole": story_role,
+        "qualitySignals": _quality_signals(),
+        "shotResultEvidence": _shot_result_evidence(
+            ballApproachFrameRole="release",
+            rimEntryFrameRole="rim",
+            ballBelowRimOrNetFrameRole="postOutcome",
+        ),
+        "shotTrackingEvidence": _shot_tracking_evidence(
+            ballVisibleFrameRoles=["release", "outcome", "rim"],
+            rimVisibleFrameRoles=["rim", "postOutcome"],
+            releaseFrameRole="release",
+            resultFrameRole="rim",
+            ballEntersRimFrameRole="rim",
+        ),
+        "suggestedEdit": {
+            "slowMotion": keep,
+            "slowMotionCenter": None,
+            "captionMoment": None,
+            "cropFocus": "center_action",
+            "extendBeforeSeconds": 0,
+            "extendAfterSeconds": 0,
+        },
+    }
+
+
 class GPTHighlightRerankerTests(unittest.TestCase):
     def test_payload_is_strict_structured_output_and_not_stored(self) -> None:
         settings = GPTHighlightRerankerSettings.from_env()
@@ -1901,6 +1937,77 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertEqual(result.gptRerankSummary.keptClipIds, ["c1"])
         self.assertIn("c0", result.gptRerankSummary.rejectedClipIds)
 
+    def test_underfilled_gpt_result_uses_keyframe_only_backfill_pass(self) -> None:
+        settings = GPTHighlightRerankerSettings(
+            enabled=True,
+            api_key="unit-test-key",
+            model="gpt-test",
+            endpoint="https://api.openai.test/v1/responses",
+            timeout_seconds=1.0,
+            max_output_tokens=512,
+            free_max_clips=4,
+            paid_max_clips=24,
+            free_frames_per_clip=8,
+            paid_frames_per_clip=8,
+            frame_width=512,
+            jpeg_quality=5,
+            max_image_bytes=180_000,
+            image_detail="low",
+            plan_edit_enabled=True,
+        )
+        original_extract = gpt_reranker._extract_candidate_keyframes
+        call_payload_clip_ids: list[list[str]] = []
+
+        def fake_extract(source_path, clips, frames_per_clip, rerank_settings):
+            frames = []
+            for clip in clips:
+                for role, second in gpt_reranker._sample_times_for_clip(clip, frames_per_clip):
+                    frames.append(SampledFrame(clip_id=clip.id, role=role, time_seconds=second, data_url="data:image/jpeg;base64,ZmFrZQ=="))
+            return frames
+
+        def fake_response_client(payload, api_key, endpoint, timeout_seconds):
+            compact_input = json.loads(payload["input"][0]["content"][0]["text"])
+            clip_ids = [clip["clipId"] for clip in compact_input["clips"]]
+            call_payload_clip_ids.append(clip_ids)
+            kept_ids = {"c0"} if len(call_payload_clip_ids) == 1 else {"c4", "c5"}
+            return {
+                "output_text": json.dumps(
+                    {
+                        "decisions": [
+                            _gpt_decision_payload(
+                                clip_id,
+                                keep=clip_id in kept_ids,
+                                score=0.92 if clip_id in kept_ids else 0.24,
+                                story_role="opener" if clip_id == "c0" else "closer" if clip_id == "c5" else "filler",
+                            )
+                            for clip_id in clip_ids
+                        ],
+                        "storyOrder": [clip_id for clip_id in clip_ids if clip_id in kept_ids],
+                        "planEdit": {
+                            "orderedClipIds": [clip_id for clip_id in clip_ids if clip_id in kept_ids],
+                            "pacing": "fast",
+                            "captions": [],
+                            "slowMotionMoments": [],
+                            "summary": "ok",
+                        },
+                        "summary": "ok",
+                    }
+                )
+            }
+
+        try:
+            gpt_reranker._extract_candidate_keyframes = fake_extract
+            with tempfile.NamedTemporaryFile(suffix=".mp4") as source:
+                result = gpt_reranker.rerank_edit_request_with_gpt(_request("free", 10), Path(source.name), settings, fake_response_client)
+        finally:
+            gpt_reranker._extract_candidate_keyframes = original_extract
+
+        self.assertEqual(call_payload_clip_ids, [["c0", "c1", "c2", "c3"], ["c4", "c5", "c6", "c7"]])
+        self.assertEqual(result.gptRerankSummary.status, "applied")
+        self.assertEqual(result.gptRerankSummary.sampledClipCount, 8)
+        self.assertEqual(result.gptRerankSummary.keptClipIds, ["c0", "c4", "c5"])
+        self.assertEqual([clip.id for clip in result.clips[:3]], ["c0", "c4", "c5"])
+
     def test_incomplete_gpt_decisions_fallback_without_dropping_sampled_candidates(self) -> None:
         settings = GPTHighlightRerankerSettings(
             enabled=True,
@@ -2700,8 +2807,8 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         sampled_ids = [clip.id for clip in sampled]
 
         self.assertEqual(len(sampled), 8)
-        self.assertEqual(len([clip_id for clip_id in sampled_ids if clip_id.startswith("uncertain_")]), 2)
-        self.assertEqual(len([clip_id for clip_id in sampled_ids if clip_id.startswith("matched_")]), 6)
+        self.assertEqual(len([clip_id for clip_id in sampled_ids if clip_id.startswith("uncertain_")]), 1)
+        self.assertEqual(len([clip_id for clip_id in sampled_ids if clip_id.startswith("matched_")]), 7)
 
     def test_default_model_prioritizes_full_quality_vision_editor(self) -> None:
         model_env_keys = ("HOOPS_AI_CLIP_GPT_MODEL", "HOOPS_GPT_HIGHLIGHT_RERANK_MODEL")
