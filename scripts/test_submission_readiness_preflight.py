@@ -343,6 +343,39 @@ charlie的iPhone   charliedeiPhone.coredevice.local   E5786BB6-0095-5509-8B85-11
         self.assertEqual(len(failures), 2)
         self.assertTrue(all("conclusion=failure" in finding.detail for finding in failures))
 
+    def test_github_workflow_runs_fail_when_runners_cannot_start(self) -> None:
+        payload = [
+            {
+                "workflowName": "iOS Internal TestFlight Upload",
+                "headSha": "abc1234567890",
+                "status": "completed",
+                "conclusion": "startup_failure",
+                "createdAt": "2026-05-23T21:27:18Z",
+            },
+            {
+                "workflowName": "Cloud Edit Deploy Preflight",
+                "headSha": "abc1234567890",
+                "status": "completed",
+                "conclusion": "action_required",
+                "createdAt": "2026-05-23T20:31:19Z",
+            },
+        ]
+        collector = Collector()
+
+        with patch(
+            "scripts.submission_readiness_preflight.subprocess.run",
+            return_value=SimpleNamespace(returncode=0, stdout=json.dumps(payload)),
+        ), patch(
+            "scripts.submission_readiness_preflight.run_git",
+            return_value="abc1234567890\n",
+        ):
+            check_github_workflow_runs(Path.cwd(), collector)
+
+        failures = [finding for finding in collector.findings if finding.status == "fail"]
+        self.assertEqual(len(failures), 2)
+        self.assertTrue(all(finding.check == "github actions startability" for finding in failures))
+        self.assertTrue(all("billing/spending/action-required" in finding.detail for finding in failures))
+
     def test_github_workflow_runs_fail_when_latest_required_runs_are_stale(self) -> None:
         payload = [
             {

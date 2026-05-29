@@ -79,6 +79,7 @@ REQUIRED_MAIN_WORKFLOWS = (
     "Cloud Edit Deploy Preflight",
     "iOS Internal TestFlight Upload",
 )
+GITHUB_ACTIONS_STARTABILITY_CONCLUSIONS = {"action_required", "startup_failure"}
 BLOCKER_DOCS = (
     (
         "docs/phase_edit7g_post_testflight_internal_smoke.md",
@@ -763,7 +764,13 @@ def check_github_workflow_runs(repo_root: Path, collector: Collector) -> None:
         status = str(latest.get("status") or "unknown")
         conclusion = str(latest.get("conclusion") or "unknown")
         created_at = str(latest.get("createdAt") or "unknown")
-        if current_sha and head_sha != current_sha:
+        if status == "completed" and conclusion in GITHUB_ACTIONS_STARTABILITY_CONCLUSIONS:
+            collector.fail(
+                "github actions startability",
+                workflow_name,
+                f"Latest main-branch run conclusion={conclusion} at {created_at}; repair GitHub Actions billing/spending/action-required account state before deploy/upload proof.",
+            )
+        elif current_sha and head_sha != current_sha:
             short_latest = head_sha[:7] if head_sha else "unknown"
             short_current = current_sha[:7]
             collector.fail(
