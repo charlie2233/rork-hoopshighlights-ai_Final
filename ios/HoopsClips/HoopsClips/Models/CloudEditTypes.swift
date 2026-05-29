@@ -486,6 +486,8 @@ struct CloudEditWorkReceipt: Codable, Sendable {
     let gptRerankKeptClipCount: Int?
     let gptRerankRejectedClipCount: Int?
     let gptRerankFallbackReason: String?
+    let gptUncertainReviewClipCount: Int?
+    let gptUncertainReviewClipIds: [String]?
     let teamUncertainCandidateCount: Int?
     let teamUncertainSelectedClipCount: Int?
     let defensiveSelectedClipCount: Int?
@@ -628,6 +630,8 @@ struct CloudEditJobResponse: Codable, Sendable {
     let aspectRatio: CloudEditAspectRatio
     let clipCount: Int
     let validationErrors: [CloudEditValidationIssue]?
+    let gptUncertainReviewClipIds: [String]?
+    let gptUncertainReviewClipCount: Int?
 }
 
 struct CloudEditPlanResponse: Codable, Sendable {

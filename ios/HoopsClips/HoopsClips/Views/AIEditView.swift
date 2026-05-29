@@ -1292,6 +1292,8 @@ struct AIEditView: View {
             gptRerankKeptClipCount: nil,
             gptRerankRejectedClipCount: nil,
             gptRerankFallbackReason: nil,
+            gptUncertainReviewClipCount: nil,
+            gptUncertainReviewClipIds: nil,
             teamUncertainCandidateCount: nil,
             teamUncertainSelectedClipCount: nil,
             defensiveSelectedClipCount: nil,
@@ -1396,6 +1398,10 @@ struct AIEditView: View {
         }
         if let planTier = receipt.planTier {
             rows.appendIfMissing(planTier.isFree ? "Rendered on the standard queue." : "Priority queue enabled when available.")
+        }
+        let uncertainReviewCount = receipt.gptUncertainReviewClipCount ?? receipt.gptUncertainReviewClipIds?.count
+        if let uncertainReviewCount, uncertainReviewCount > 0 {
+            rows.appendIfMissing("Kept \(uncertainReviewCount) uncertain team candidate\(uncertainReviewCount == 1 ? "" : "s") available for Review.")
         }
         if let evidenceCount = receipt.shotOutcomeEvidenceSelectedClipCount, evidenceCount > 0 {
             rows.appendIfMissing("Shot outcome evidence: \(evidenceCount) selected \(evidenceCount == 1 ? "clip" : "clips") passed rim/result tracking checks.")

@@ -271,6 +271,36 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertIn("must never be promoted to a confident selected-team match", payload["instructions"])
         self.assertIn("raw teamAttribution.confidence", payload["instructions"])
 
+    def test_disabled_gpt_fallback_preserves_uncertain_team_review_ids(self) -> None:
+        settings = GPTHighlightRerankerSettings(
+            enabled=False,
+            api_key=None,
+            model="gpt-test",
+            endpoint="https://api.openai.test/v1/responses",
+            timeout_seconds=1.0,
+            max_output_tokens=512,
+            free_max_clips=8,
+            paid_max_clips=24,
+            free_frames_per_clip=3,
+            paid_frames_per_clip=5,
+            frame_width=512,
+            jpeg_quality=5,
+            max_image_bytes=180_000,
+            image_detail="low",
+        )
+
+        result = gpt_reranker.rerank_edit_request_with_gpt(
+            _team_targeted_request(),
+            Path("/tmp/hoopclips-missing-source.mp4"),
+            settings,
+        )
+
+        self.assertIsNotNone(result.gptRerankSummary)
+        self.assertEqual(result.gptRerankSummary.status, "disabled")
+        self.assertEqual(result.gptRerankSummary.fallbackReason, "disabled")
+        self.assertEqual(result.gptRerankSummary.uncertainReviewClipIds, ["uncertain_make"])
+        self.assertNotIn("light_make", result.gptRerankSummary.uncertainReviewClipIds)
+
     def test_payload_preserves_explicit_uncertain_team_status(self) -> None:
         settings = GPTHighlightRerankerSettings.from_env()
         request = CreateEditJobRequest(

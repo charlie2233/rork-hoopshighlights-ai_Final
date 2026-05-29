@@ -45,6 +45,7 @@ from app.editing import (  # noqa: E402
     summarize_clip_pool,
     team_attribution_status,
     team_evidence_summary,
+    uncertain_review_clip_ids_for_team_selection,
     validate_edit_plan_patch,
 )
 
@@ -283,6 +284,7 @@ def _with_fallback(
         model=model,
         sampledClipCount=sampled_clip_count,
         sampledFrameCount=sampled_frame_count,
+        uncertainReviewClipIds=uncertain_review_clip_ids_for_team_selection(request.clips, request.teamSelection),
         fallbackReason=reason,
     )
     return request.model_copy(update={"gptRerankSummary": summary})

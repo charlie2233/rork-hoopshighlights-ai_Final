@@ -2661,7 +2661,7 @@ def apply_gpt_highlight_rerank(
     sampled_frame_roles_by_clip: Optional[Mapping[str, Sequence[str]]] = None,
 ) -> CreateEditJobRequest:
     source_clips = filter_clips_for_team_selection(request.clips, request.teamSelection)
-    uncertain_review_clip_ids = _uncertain_review_clip_ids(source_clips, request.teamSelection)
+    uncertain_review_clip_ids = uncertain_review_clip_ids_for_team_selection(source_clips, request.teamSelection)
     source_by_id = {clip.id: clip for clip in source_clips}
     valid_decisions: Dict[str, GPTHighlightClipDecision] = {
         decision.clipId: decision for decision in decisions if decision.clipId in source_by_id
@@ -2812,7 +2812,7 @@ def apply_gpt_highlight_rerank(
     return request.model_copy(update={"clips": reranked, "gptRerankSummary": summary})
 
 
-def _uncertain_review_clip_ids(
+def uncertain_review_clip_ids_for_team_selection(
     clips: Sequence[EditCandidateClip],
     team_selection: Optional[TeamSelection],
 ) -> List[str]:

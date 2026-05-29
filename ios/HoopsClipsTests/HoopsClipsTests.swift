@@ -1070,8 +1070,11 @@ struct HoopsClipsTests {
             "storageExpiresAt": "2026-05-31T00:00:00Z",
             "planTier": "free",
             "priorityQueue": false,
+            "gptUncertainReviewClipCount": 1,
+            "gptUncertainReviewClipIds": ["uncertain_steal"],
             "summaryRows": [
               "Selected 2 clips from 3 candidates.",
+              "Kept 1 uncertain team candidate available for Review.",
               "Applied Personal Highlight template."
             ]
           }
@@ -1087,7 +1090,36 @@ struct HoopsClipsTests {
         #expect(response.workTimeline?.steps.first?.status == .complete)
         #expect(response.workReceipt?.selectedClipCount == 2)
         #expect(response.workReceipt?.templateName == "Personal Highlight")
-        #expect(response.workReceipt?.summaryRows.count == 2)
+        #expect(response.workReceipt?.gptUncertainReviewClipCount == 1)
+        #expect(response.workReceipt?.gptUncertainReviewClipIds == ["uncertain_steal"])
+        #expect(response.workReceipt?.summaryRows.contains("Kept 1 uncertain team candidate available for Review.") == true)
+    }
+
+    @Test func testCloudEditJobResponseDecodesUncertainReviewClipIds() throws {
+        let payload = """
+        {
+          "editJobId": "edit_123",
+          "videoId": "video_123",
+          "analysisJobId": "analysis_123",
+          "status": "plan_ready",
+          "preset": "personal_highlight",
+          "templateId": "personal_highlight_v1",
+          "planTier": "free",
+          "policy": null,
+          "targetDurationSeconds": 30,
+          "aspectRatio": "9:16",
+          "clipCount": 2,
+          "validationErrors": [],
+          "gptUncertainReviewClipIds": ["uncertain_steal"],
+          "gptUncertainReviewClipCount": 1
+        }
+        """
+
+        let response = try JSONDecoder().decode(CloudEditJobResponse.self, from: Data(payload.utf8))
+
+        #expect(response.editJobId == "edit_123")
+        #expect(response.gptUncertainReviewClipIds == ["uncertain_steal"])
+        #expect(response.gptUncertainReviewClipCount == 1)
     }
 
     @Test func testAudioFallbackSplitsContinuousSignalIntoBoundedClips() async {
