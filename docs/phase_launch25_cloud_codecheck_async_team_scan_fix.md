@@ -45,10 +45,38 @@ Result:
 - `services/editing/tests`: 107 passed.
 - `scripts` tests: 80 passed.
 
+## GitHub Actions Evidence After Push
+
+Pushed commit: `dfb35b0094effee8f7772bf010888b2fca397137`.
+
+- `Cloud Edit Deploy Preflight` PR codecheck run `26658183568`: success.
+- `Cloud Edit Deploy Preflight` manual `operation=codecheck` run `26658186867`: success.
+- `iOS Internal TestFlight Upload` PR no-secret codecheck run `26658183678`: success.
+
+The old GitHub Actions runner/billing symptom is no longer the current blocker for this branch. Jobs start and the no-secret codecheck lanes are green.
+
+## Staging Deploy Preflight
+
+Manual `Cloud Edit Deploy Preflight` run `26658372197` with `operation=preflight` reached the secret-gated deploy preflight job, but failed before deploy:
+
+- Required GitHub staging inputs were present.
+- Google Cloud authentication succeeded.
+- GCP project `hoopsclips-9d38f`, Artifact Registry repo `hoopsclips`, Cloud Run service `hoopclips-editing-staging`, R2 endpoint configuration, and staging bucket names were detected.
+- Blockers:
+  - Secret Manager secret `HOOPS_EDITING_SERVICE_SECRET` is missing or inaccessible.
+  - Secret Manager secret `HOOPS_R2_ACCESS_KEY_ID` is missing or inaccessible.
+  - Secret Manager secret `HOOPS_R2_SECRET_ACCESS_KEY` is missing or inaccessible.
+  - Secret Manager secret `HOOPS_OPENAI_API_KEY` is missing or inaccessible.
+  - Wrangler auth failed with the provided Cloudflare token.
+
+This means GitHub has the environment input names, but the deploy identity still cannot read required GCP Secret Manager secrets and the Cloudflare token does not authenticate Wrangler.
+
 ## Remaining Launch Blockers
 
-- Re-run `Cloud Edit Deploy Preflight` on the pushed branch and confirm it is green.
-- Run secret-gated staging deploy/preflight after codecheck is green.
+- Fix GCP Secret Manager access or create the missing staging secrets.
+- Replace or rescope GitHub staging `CLOUDFLARE_API_TOKEN` so `wrangler whoami` and staging deploy checks authenticate.
+- Rerun `Cloud Edit Deploy Preflight` with `operation=preflight`.
+- After preflight passes, run staging deploy and capture Worker/Cloud Run version proof.
 - Prove staging Worker `/v1/editing/version` and direct editing `/version` are current for the branch.
 - Produce launch-grade real labeled team-highlight accuracy evidence.
 - Run installed TestFlight smoke on an available iPhone.
