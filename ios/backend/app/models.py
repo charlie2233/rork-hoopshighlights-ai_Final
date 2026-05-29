@@ -174,6 +174,8 @@ class CloudDiagnostics(APIModel):
     defensiveReviewSegments: int = 0
     blockReviewSegments: int = 0
     stealReviewSegments: int = 0
+    forcedTurnoverReviewSegments: int = 0
+    defensiveStopReviewSegments: int = 0
 
 
 class CloudAnalysisResult(APIModel):

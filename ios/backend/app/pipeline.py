@@ -182,6 +182,8 @@ def _analysis_team_diagnostic_counts(
         "defensiveReviewSegments": sum(1 for clip in review_clips if _is_defensive_label(clip.label)),
         "blockReviewSegments": sum(1 for clip in review_clips if _defensive_label_family(clip.label) == "block"),
         "stealReviewSegments": sum(1 for clip in review_clips if _defensive_label_family(clip.label) == "steal"),
+        "forcedTurnoverReviewSegments": sum(1 for clip in review_clips if _defensive_label_family(clip.label) == "forced_turnover"),
+        "defensiveStopReviewSegments": sum(1 for clip in review_clips if _defensive_label_family(clip.label) == "defensive_stop"),
     }
 
 

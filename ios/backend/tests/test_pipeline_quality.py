@@ -13,6 +13,7 @@ from unittest.mock import patch
 from app.config import get_settings
 from app.pipeline import (
     TEAM_SELECTION_PREFILTER_MULTIPLIER,
+    _analysis_team_diagnostic_counts,
     _build_candidate_windows,
     _annotate_analysis_team_status,
     _analysis_candidate_pool_limit,
@@ -948,6 +949,27 @@ class PipelineQualityTests(unittest.TestCase):
         self.assertEqual(clip_limits, [6])
         self.assertEqual([clip.label for clip in candidates], ["Three Pointer", "Steal"])
         self.assertTrue(all(clip.endTime - clip.startTime >= settings.min_clip_duration_seconds for clip in candidates))
+
+    def test_analysis_team_diagnostics_split_forced_turnovers_and_defensive_stops(self) -> None:
+        clips = [
+            _clip(start=0.0, end=4.0, label="Block", combined=0.9, event_center=2.0, auto_keep=True),
+            _clip(start=5.0, end=9.0, label="Steal", combined=0.88, event_center=7.0, auto_keep=True),
+            _clip(start=10.0, end=14.0, label="Forced Turnover", combined=0.86, event_center=12.0, auto_keep=True),
+            _clip(start=15.0, end=19.0, label="Defensive Stop", combined=0.84, event_center=17.0, auto_keep=True),
+        ]
+
+        diagnostics = _analysis_team_diagnostic_counts(
+            candidate_clips=clips,
+            review_clips=clips,
+            team_selection=None,
+            used_team_quick_scan=True,
+        )
+
+        self.assertEqual(diagnostics.get("defensiveReviewSegments"), 4)
+        self.assertEqual(diagnostics.get("blockReviewSegments"), 1)
+        self.assertEqual(diagnostics.get("stealReviewSegments"), 1)
+        self.assertEqual(diagnostics.get("forcedTurnoverReviewSegments"), 1)
+        self.assertEqual(diagnostics.get("defensiveStopReviewSegments"), 1)
 
     def test_run_analysis_hybrid_merges_native_pool_when_provider_returns_limited_clips(self) -> None:
         external = [
