@@ -57,6 +57,10 @@ class LaunchProviderInputHandoffTests(unittest.TestCase):
         self.assertIn("A missing Secret Manager secret is a repair action", markdown)
         self.assertIn("HOOPS_OPENAI_API_KEY present and enabled: yes/no", markdown)
         self.assertIn("Do not stop after reporting the missing secret", markdown)
+        self.assertIn("Cloud deploy preflight triggered: yes/no", markdown)
+        self.assertIn("GitHub run URL:", markdown)
+        self.assertIn("Final conclusion:", markdown)
+        self.assertIn("Do not run operation=deploy yet", markdown)
         self.assertIn("Do not paste, reveal, summarize, screenshot, or return", markdown)
         self.assertIn("HOOPS_DEVELOPMENT_TEAM = <team-id>", markdown)
         self.assertIn("Do not paste secret values", markdown)
@@ -91,6 +95,14 @@ class LaunchProviderInputHandoffTests(unittest.TestCase):
         self.assertIn("Return only this non-secret status", payload["atlasAgentPrompt"])
         self.assertIn("HOOPS_OPENAI_API_KEY present and enabled: yes/no", payload["atlasAgentPrompt"])
         self.assertIn("Do not stop after reporting the missing secret", payload["atlasAgentPrompt"])
+        self.assertIn("Cloud deploy preflight triggered: yes/no", payload["atlasAgentPrompt"])
+        self.assertIn("GitHub run URL:", payload["atlasAgentPrompt"])
+        self.assertIn("Final conclusion:", payload["atlasAgentPrompt"])
+        self.assertIn(
+            "gh workflow run cloud-edit-deploy-preflight.yml --repo charlie2233/rork-hoopshighlights-ai_Final --ref codex/test-ref -f operation=preflight",
+            payload["atlasAgentPrompt"],
+        )
+        self.assertIn("Do not run operation=deploy yet", payload["atlasAgentPrompt"])
         self.assertTrue(any("HOOPS_OPENAI_API_KEY" in item for item in payload["gcpSecretRepairPolicy"]))
         self.assertFalse(any("billing/spending-limit" in item for item in payload["manualGates"]))
         self.assertIn("python3 scripts/configure_github_staging_public_variables.py", payload["verificationCommands"])

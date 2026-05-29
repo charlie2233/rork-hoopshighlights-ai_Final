@@ -3,7 +3,7 @@ import Testing
 @testable import HoopsClips
 
 struct LaunchRuntimeConfigTests {
-    @Test func testProductionDisabledCloudLaunchModeDoesNotRequireCloudURL() {
+    @Test func testProductionDisabledCloudLaunchModeFailsCloudReadiness() {
         let config = AppRuntimeConfig(
             environmentName: "production",
             revenueCatAPIKey: "prod_key",
@@ -17,12 +17,15 @@ struct LaunchRuntimeConfigTests {
             cloudLaunchMode: .disabled
         )
 
-        #expect(config.missingRequiredKeys.isEmpty)
+        #expect(config.missingRequiredKeys.contains("HOOPSCloudLaunchMode"))
+        #expect(config.missingRequiredKeys.contains("HOOPSCloudAnalysisBaseURL"))
+        #expect(config.missingRequiredKeys.contains("HOOPSCloudEditBaseURL"))
         #expect(config.cloudLaunchMode == .disabled)
         #expect(config.allowsCloudAnalysisRequests == false)
         #expect(config.googleSignInConfigured)
         #expect(config.emailPasswordAuthConfigured)
-        #expect(config.launchAnalysisMode == .local)
+        #expect(config.requiresCloudVideoPipeline)
+        #expect(config.launchAnalysisMode == .cloud)
     }
 
     @Test func testProductionEnabledCloudLaunchModeRequiresSecureURL() {
@@ -35,6 +38,7 @@ struct LaunchRuntimeConfigTests {
             privacyPolicyURL: "https://example.com/privacy",
             termsOfServiceURL: "https://example.com/terms",
             cloudAnalysisBaseURL: "http://example.com",
+            cloudEditBaseURL: "https://edit.hoopsclips.example",
             sentryDSN: "",
             cloudLaunchMode: .enabled
         )
@@ -55,12 +59,14 @@ struct LaunchRuntimeConfigTests {
             privacyPolicyURL: "https://example.com/privacy",
             termsOfServiceURL: "https://example.com/terms",
             cloudAnalysisBaseURL: "https://api.hoopsclips.example",
+            cloudEditBaseURL: "https://edit.hoopsclips.example",
             sentryDSN: "https://dsn.ingest.sentry.io/1",
             cloudLaunchMode: .enabled
         )
 
         #expect(config.missingRequiredKeys.isEmpty)
         #expect(config.allowsCloudAnalysisRequests)
+        #expect(config.allowsCloudEditRequests)
         #expect(config.requiresCloudVideoPipeline)
         #expect(config.launchAnalysisMode == .cloud)
     }
@@ -113,7 +119,7 @@ struct LaunchRuntimeConfigTests {
         #expect(service.statusMessage == "Cloud rendering is required for this build.")
     }
 
-    @Test func testCloudEditEndpointIsOptionalAndRequiresSecureURLInProduction() {
+    @Test func testCloudEditEndpointIsRequiredAndRequiresSecureURLInProduction() {
         let disabledConfig = AppRuntimeConfig(
             environmentName: "production",
             revenueCatAPIKey: "prod_key",
@@ -128,7 +134,8 @@ struct LaunchRuntimeConfigTests {
             cloudLaunchMode: .disabled
         )
         #expect(disabledConfig.allowsCloudEditRequests == false)
-        #expect(disabledConfig.missingRequiredKeys.isEmpty)
+        #expect(disabledConfig.missingRequiredKeys.contains("HOOPSCloudLaunchMode"))
+        #expect(disabledConfig.missingRequiredKeys.contains("HOOPSCloudEditBaseURL"))
 
         let disabledWithEditURLConfig = AppRuntimeConfig(
             environmentName: "production",
@@ -145,6 +152,7 @@ struct LaunchRuntimeConfigTests {
         )
         #expect(disabledWithEditURLConfig.allowsCloudAnalysisRequests == false)
         #expect(disabledWithEditURLConfig.allowsCloudEditRequests == false)
+        #expect(disabledWithEditURLConfig.missingRequiredKeys.contains("HOOPSCloudLaunchMode"))
 
         let enabledConfig = AppRuntimeConfig(
             environmentName: "production",
@@ -172,9 +180,10 @@ struct LaunchRuntimeConfigTests {
             firebaseAuthAPIKey: "firebase_key",
             privacyPolicyURL: "https://example.com/privacy",
             termsOfServiceURL: "https://example.com/terms",
-            cloudAnalysisBaseURL: "",
+            cloudAnalysisBaseURL: "https://api.hoopsclips.example",
+            cloudEditBaseURL: "https://edit.hoopsclips.example",
             sentryDSN: "",
-            cloudLaunchMode: .disabled
+            cloudLaunchMode: .enabled
         )
 
         #expect(config.googleSignInConfigured == false)
@@ -190,9 +199,10 @@ struct LaunchRuntimeConfigTests {
             firebaseAuthAPIKey: "",
             privacyPolicyURL: "https://example.com/privacy",
             termsOfServiceURL: "https://example.com/terms",
-            cloudAnalysisBaseURL: "",
+            cloudAnalysisBaseURL: "https://api.hoopsclips.example",
+            cloudEditBaseURL: "https://edit.hoopsclips.example",
             sentryDSN: "",
-            cloudLaunchMode: .disabled
+            cloudLaunchMode: .enabled
         )
 
         #expect(config.emailPasswordAuthConfigured == false)
@@ -208,9 +218,10 @@ struct LaunchRuntimeConfigTests {
             firebaseAuthAPIKey: "firebase_key",
             privacyPolicyURL: "not-a-url",
             termsOfServiceURL: "",
-            cloudAnalysisBaseURL: "",
+            cloudAnalysisBaseURL: "https://api.hoopsclips.example",
+            cloudEditBaseURL: "https://edit.hoopsclips.example",
             sentryDSN: "",
-            cloudLaunchMode: .disabled
+            cloudLaunchMode: .enabled
         )
 
         #expect(config.legalLinksConfigured == false)

@@ -316,6 +316,7 @@ def build_atlas_agent_prompt(ref: str, cloudflare_guide: CloudflareTokenFormGuid
     cloudflare_requirements = "\n".join(f"   - {item}" for item in CLOUDFLARE_TOKEN_REQUIREMENTS)
     cloudflare_permissions = "\n".join(f"   - {item}" for item in cloudflare_guide.permissions)
     cloudflare_notes = "\n".join(f"   - {item}" for item in cloudflare_guide.notes)
+    workflow_command = f"gh workflow run cloud-edit-deploy-preflight.yml --repo {REPO} --ref {shlex.quote(ref)} -f operation=preflight"
     return f"""For repo {REPO}, GitHub environment {ENVIRONMENT}, repair only provider-side launch deploy blockers.
 Use GitHub Actions workflow ref {ref} for verification/deploy reruns, not stale main, unless the operator explicitly asks to validate main.
 
@@ -340,7 +341,10 @@ Do not paste, reveal, summarize, screenshot, or return private key material, API
    Notes:
 {cloudflare_notes}
 4. Set that token directly as GitHub environment secret staging / CLOUDFLARE_API_TOKEN for {REPO}.
-5. Return only this non-secret status:
+5. After the GCP secrets, Secret Manager access, and Cloudflare token are repaired, trigger the cloud deploy preflight with operation=preflight:
+   {workflow_command}
+   Do not run operation=deploy yet. If GitHub Actions cannot be triggered, return the non-secret blocker instead of guessing.
+6. Return only this non-secret status:
    - HOOPS_EDITING_SERVICE_SECRET present and enabled: yes/no
    - HOOPS_R2_ACCESS_KEY_ID present and enabled: yes/no
    - HOOPS_R2_SECRET_ACCESS_KEY present and enabled: yes/no
@@ -349,6 +353,9 @@ Do not paste, reveal, summarize, screenshot, or return private key material, API
    - deploy service account has Secret Manager access: yes/no
    - Cloudflare token replaced or rescope completed: yes/no
    - GitHub staging CLOUDFLARE_API_TOKEN updated: yes/no
+   - Cloud deploy preflight triggered: yes/no
+   - GitHub run URL:
+   - Final conclusion:
    - Any provider-side blocker that remains, by name only
 """
 

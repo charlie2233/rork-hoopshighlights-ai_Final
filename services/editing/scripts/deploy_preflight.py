@@ -7,6 +7,7 @@ import os
 import shutil
 import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +28,12 @@ SMOKE_ENV_KEYS = [
 ]
 
 DEFAULT_R2_ENDPOINT_URL = "https://78fb4442e6e37b2c46d7e539c6e79172.r2.cloudflarestorage.com"
+
+
+@dataclass(frozen=True)
+class ProbeResult:
+    ok: bool
+    detail: str
 
 
 def main() -> int:
@@ -100,21 +107,11 @@ def main() -> int:
         )
 
         for secret_name in REQUIRED_GCP_SECRETS:
-            secret = run(
-                [
-                    "gcloud",
-                    "secrets",
-                    "describe",
-                    secret_name,
-                    "--project",
-                    project,
-                    "--format=value(name)",
-                ]
-            )
+            secret = classify_secret_manager_secret(secret_name, project)
             check(
                 f"secret-manager-{secret_name}",
-                secret.returncode == 0,
-                f"Secret Manager secret {secret_name} {'exists' if secret.returncode == 0 else 'is missing or inaccessible'}.",
+                secret.ok,
+                secret.detail,
                 blocker=True,
             )
 
@@ -153,19 +150,19 @@ def main() -> int:
 
     whoami = run(["npx", "wrangler", "whoami"], cwd=control_plane_dir)
     if os.getenv("CLOUDFLARE_API_TOKEN"):
+        wrangler = classify_wrangler_auth(whoami, token_present=True)
         check(
             "wrangler-auth",
-            whoami.returncode == 0,
-            "Wrangler auth is valid with CLOUDFLARE_API_TOKEN." if whoami.returncode == 0 else "Wrangler auth failed with the provided Cloudflare token.",
+            wrangler.ok,
+            wrangler.detail,
             blocker=True,
         )
     else:
+        wrangler = classify_wrangler_auth(whoami, token_present=False)
         check(
             "wrangler-auth",
-            whoami.returncode == 0,
-            "Wrangler auth is valid through local OAuth. Set CLOUDFLARE_API_TOKEN for CI automation."
-            if whoami.returncode == 0
-            else "CLOUDFLARE_API_TOKEN is not set and local Wrangler OAuth is not valid.",
+            wrangler.ok,
+            wrangler.detail,
             blocker=True,
         )
         if whoami.returncode == 0:
@@ -215,6 +212,99 @@ def active_gcloud_account() -> str:
     if result.returncode != 0:
         return ""
     return result.stdout.strip().splitlines()[0] if result.stdout.strip() else ""
+
+
+def classify_secret_manager_secret(secret_name: str, project: str) -> ProbeResult:
+    secret = run(
+        [
+            "gcloud",
+            "secrets",
+            "describe",
+            secret_name,
+            "--project",
+            project,
+            "--format=value(name)",
+        ]
+    )
+    if secret.returncode != 0:
+        failure = classify_gcloud_failure(secret)
+        if failure == "missing":
+            return ProbeResult(False, f"Secret Manager secret {secret_name} is missing.")
+        if failure == "permission":
+            return ProbeResult(
+                False,
+                f"Secret Manager secret {secret_name} is not readable by the deploy identity; grant Secret Manager Secret Accessor.",
+            )
+        return ProbeResult(
+            False,
+            f"Secret Manager secret {secret_name} could not be verified; inspect GCP Secret Manager access for this name.",
+        )
+
+    version = run(
+        [
+            "gcloud",
+            "secrets",
+            "versions",
+            "describe",
+            "latest",
+            "--secret",
+            secret_name,
+            "--project",
+            project,
+            "--format=value(state)",
+        ]
+    )
+    if version.returncode != 0:
+        failure = classify_gcloud_failure(version)
+        if failure == "missing":
+            return ProbeResult(False, f"Secret Manager secret {secret_name} has no latest version.")
+        if failure == "permission":
+            return ProbeResult(
+                False,
+                f"Secret Manager secret {secret_name} latest version is not readable by the deploy identity.",
+            )
+        return ProbeResult(False, f"Secret Manager secret {secret_name} latest version state could not be verified.")
+
+    state = version.stdout.strip()
+    if state == "ENABLED":
+        return ProbeResult(True, f"Secret Manager secret {secret_name} exists and latest version is ENABLED.")
+    if state:
+        return ProbeResult(
+            False,
+            f"Secret Manager secret {secret_name} latest version is {state}; add or enable a latest version.",
+        )
+    return ProbeResult(False, f"Secret Manager secret {secret_name} latest version state is empty.")
+
+
+def classify_gcloud_failure(result: subprocess.CompletedProcess[str]) -> str:
+    text = f"{result.stdout}\n{result.stderr}".lower()
+    if "permission_denied" in text or "permission denied" in text or "access denied" in text or "does not have permission" in text:
+        return "permission"
+    if "not_found" in text or "not found" in text or "not exist" in text or "could not be found" in text:
+        return "missing"
+    return "unknown"
+
+
+def classify_wrangler_auth(result: subprocess.CompletedProcess[str], *, token_present: bool) -> ProbeResult:
+    if result.returncode == 0:
+        if token_present:
+            return ProbeResult(True, "Wrangler auth is valid with CLOUDFLARE_API_TOKEN.")
+        return ProbeResult(True, "Wrangler auth is valid through local OAuth. Set CLOUDFLARE_API_TOKEN for CI automation.")
+
+    text = f"{result.stdout}\n{result.stderr}".lower()
+    if token_present:
+        if "invalid api token" in text or "authentication error" in text or "unable to authenticate" in text:
+            return ProbeResult(False, "Wrangler auth failed because CLOUDFLARE_API_TOKEN was rejected.")
+        if "permission" in text or "not authorized" in text or "unauthorized" in text or "scope" in text or "account" in text:
+            return ProbeResult(
+                False,
+                "Wrangler auth failed because CLOUDFLARE_API_TOKEN is missing required account scope or permissions.",
+            )
+        return ProbeResult(False, "Wrangler auth failed with CLOUDFLARE_API_TOKEN; verify token account, scope, and expiration.")
+
+    if "not logged in" in text or "not authenticated" in text or "login" in text:
+        return ProbeResult(False, "CLOUDFLARE_API_TOKEN is not set and local Wrangler OAuth is not authenticated.")
+    return ProbeResult(False, "CLOUDFLARE_API_TOKEN is not set and local Wrangler OAuth could not be verified.")
 
 
 def run(command: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess[str]:

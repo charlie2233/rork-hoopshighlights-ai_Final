@@ -47,4 +47,12 @@ HOOPS_TERMS_OF_SERVICE_URL = $(xcconfig_escape "${HOOPS_TERMS_OF_SERVICE_URL}")
 HOOPS_SENTRY_DSN = $(xcconfig_escape "${HOOPS_SENTRY_DSN}")
 EOF
 
+if [[ -n "${HOOPS_CLOUD_ANALYSIS_BASE_URL:-}" ]]; then
+  printf 'HOOPS_CLOUD_ANALYSIS_BASE_URL = %s\n' "$(xcconfig_escape "${HOOPS_CLOUD_ANALYSIS_BASE_URL}")" >> "$OUTPUT_PATH"
+fi
+
+if [[ -n "${HOOPS_CLOUD_EDIT_BASE_URL:-}" ]]; then
+  printf 'HOOPS_CLOUD_EDIT_BASE_URL = %s\n' "$(xcconfig_escape "${HOOPS_CLOUD_EDIT_BASE_URL}")" >> "$OUTPUT_PATH"
+fi
+
 printf 'Wrote %s\n' "$OUTPUT_PATH"

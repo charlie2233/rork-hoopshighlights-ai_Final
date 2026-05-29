@@ -268,6 +268,9 @@ final class HighlightsViewModel {
                 usedFallback: false
             )
             recordAnalysisCompleted()
+        } catch let error where error.isTaskCancellation {
+            analysisService.finishExternalAnalysis(with: "Analysis cancelled")
+            return
         } catch let error as CloudAnalysisError {
             switch error {
             case .quotaExceeded(let remaining):
@@ -321,7 +324,7 @@ final class HighlightsViewModel {
             cloudTeamScanStatusMessage = preparedJob.detectedTeams.isEmpty
                 ? "No clear jersey colors found yet"
                 : "Choose a team before analysis"
-        } catch is CancellationError {
+        } catch let error where error.isTaskCancellation {
             if videoURL?.standardizedFileURL == scanSourceURL {
                 clearPendingCloudAnalysisJob()
             }
@@ -1293,4 +1296,31 @@ internal func isPreferredRedundantClipCandidate(_ lhs: Clip, over rhs: Clip) -> 
     }
 
     return lhs.startTime < rhs.startTime
+}
+
+private extension Error {
+    var isTaskCancellation: Bool {
+        if self is CancellationError {
+            return true
+        }
+
+        if let urlError = self as? URLError, urlError.code == .cancelled {
+            return true
+        }
+
+        let nsError = self as NSError
+        if nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled {
+            return true
+        }
+
+        if nsError.localizedDescription.localizedCaseInsensitiveContains("cancel") {
+            return true
+        }
+
+        if let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? Error {
+            return underlying.isTaskCancellation
+        }
+
+        return false
+    }
 }
