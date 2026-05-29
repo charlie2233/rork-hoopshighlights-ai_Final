@@ -107,6 +107,22 @@ Ran 107 tests in 23.431s
 OK
 ```
 
+Launch scripts and control-plane local codecheck:
+
+```bash
+python3 -m unittest discover -s scripts -p 'test_*.py' -v
+npm --prefix services/control-plane run typecheck
+npm --prefix services/control-plane test
+```
+
+Result:
+
+```text
+scripts: Ran 80 tests in 0.661s, OK
+control-plane typecheck: passed
+control-plane tests: 28 passed, 0 failed
+```
+
 ## Launch Notes
 
 - No iOS rendering, local video analysis, or FFmpeg behavior changed.
