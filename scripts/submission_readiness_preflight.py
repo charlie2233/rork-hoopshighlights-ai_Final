@@ -116,6 +116,8 @@ TEAM_ACCURACY_THRESHOLD_TO_METRIC = (
     ("minScoredClips", "clipCount"),
     ("minSelectedTeamHighlights", "selectedTeamHighlightCount"),
     ("minShotOutcomeEvidenceClips", "shotOutcomeEvidenceClipCount"),
+    ("minMadeShotOutcomeEvidenceClips", "madeShotOutcomeEvidenceClipCount"),
+    ("minMissedShotOutcomeEvidenceClips", "missedShotOutcomeEvidenceClipCount"),
     ("minOpponentHighlights", "opponentHighlightCount"),
     ("minNegativeClips", "negativeClipCount"),
     ("minBadWindowNegatives", "badWindowNegativeCount"),

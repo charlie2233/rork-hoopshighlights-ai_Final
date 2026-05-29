@@ -84,6 +84,8 @@ class AccuracyThresholds:
     minScoredClips: int = 12
     minSelectedTeamHighlights: int = 6
     minShotOutcomeEvidenceClips: int = 3
+    minMadeShotOutcomeEvidenceClips: int = 1
+    minMissedShotOutcomeEvidenceClips: int = 1
     minOpponentHighlights: int = 2
     minNegativeClips: int = 2
     minBadWindowNegatives: int = 2
@@ -113,6 +115,8 @@ class AccuracyMetrics:
     timingQualityClipCount: int
     badTimingClipCount: int
     shotOutcomeEvidenceClipCount: int
+    madeShotOutcomeEvidenceClipCount: int
+    missedShotOutcomeEvidenceClipCount: int
     badShotOutcomeEvidenceCount: int
     selectedTeamBlockCount: int
     selectedTeamStealCount: int
@@ -165,6 +169,8 @@ def main() -> int:
         minScoredClips=args.min_clips,
         minSelectedTeamHighlights=args.min_selected_team_highlights,
         minShotOutcomeEvidenceClips=args.min_shot_outcome_evidence_clips,
+        minMadeShotOutcomeEvidenceClips=args.min_made_shot_outcome_evidence_clips,
+        minMissedShotOutcomeEvidenceClips=args.min_missed_shot_outcome_evidence_clips,
         minOpponentHighlights=args.min_opponent_highlights,
         minNegativeClips=args.min_negative_clips,
         minBadWindowNegatives=args.min_bad_window_negatives,
@@ -205,6 +211,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--min-clips", type=int, default=12)
     parser.add_argument("--min-selected-team-highlights", type=int, default=6)
     parser.add_argument("--min-shot-outcome-evidence-clips", type=int, default=3)
+    parser.add_argument("--min-made-shot-outcome-evidence-clips", type=int, default=1)
+    parser.add_argument("--min-missed-shot-outcome-evidence-clips", type=int, default=1)
     parser.add_argument("--min-opponent-highlights", type=int, default=2)
     parser.add_argument("--min-negative-clips", type=int, default=2)
     parser.add_argument("--min-bad-window-negatives", type=int, default=2)
@@ -247,6 +255,8 @@ def evaluate_accuracy(payload: dict[str, Any], thresholds: AccuracyThresholds | 
             timingQualityClipCount=0,
             badTimingClipCount=0,
             shotOutcomeEvidenceClipCount=0,
+            madeShotOutcomeEvidenceClipCount=0,
+            missedShotOutcomeEvidenceClipCount=0,
             badShotOutcomeEvidenceCount=0,
             selectedTeamBlockCount=0,
             selectedTeamStealCount=0,
@@ -277,6 +287,8 @@ def evaluate_accuracy(payload: dict[str, Any], thresholds: AccuracyThresholds | 
         "timing_quality_clips": 0,
         "good_timing_quality_clips": 0,
         "shot_outcome_evidence_clips": 0,
+        "made_shot_outcome_evidence_clips": 0,
+        "missed_shot_outcome_evidence_clips": 0,
         "good_shot_outcome_evidence_clips": 0,
         "selected_team_blocks": 0,
         "selected_team_steals": 0,
@@ -355,8 +367,13 @@ def evaluate_accuracy(payload: dict[str, Any], thresholds: AccuracyThresholds | 
                     counts["good_timing_quality_clips"] += 1
                 if in_scope_highlight and expected_shot_outcome is not None:
                     counts["shot_outcome_evidence_clips"] += 1
-                    if shot_outcome_evidence_is_valid(prediction, expected_shot_outcome):
+                    valid_shot_outcome_evidence = shot_outcome_evidence_is_valid(prediction, expected_shot_outcome)
+                    if valid_shot_outcome_evidence:
                         counts["good_shot_outcome_evidence_clips"] += 1
+                        if expected_shot_outcome == "made":
+                            counts["made_shot_outcome_evidence_clips"] += 1
+                        elif expected_shot_outcome == "missed":
+                            counts["missed_shot_outcome_evidence_clips"] += 1
 
             if in_scope_highlight:
                 counts["highlights"] += 1
@@ -413,6 +430,8 @@ def evaluate_accuracy(payload: dict[str, Any], thresholds: AccuracyThresholds | 
         timingQualityClipCount=counts["timing_quality_clips"],
         badTimingClipCount=counts["timing_quality_clips"] - counts["good_timing_quality_clips"],
         shotOutcomeEvidenceClipCount=counts["shot_outcome_evidence_clips"],
+        madeShotOutcomeEvidenceClipCount=counts["made_shot_outcome_evidence_clips"],
+        missedShotOutcomeEvidenceClipCount=counts["missed_shot_outcome_evidence_clips"],
         badShotOutcomeEvidenceCount=(
             counts["shot_outcome_evidence_clips"] - counts["good_shot_outcome_evidence_clips"]
         ),
@@ -703,6 +722,8 @@ def threshold_failures(metrics: AccuracyMetrics, thresholds: AccuracyThresholds)
         ("scoredClipCoverage", metrics.clipCount, thresholds.minScoredClips),
         ("selectedTeamHighlightCoverage", metrics.selectedTeamHighlightCount, thresholds.minSelectedTeamHighlights),
         ("shotOutcomeEvidenceClipCoverage", metrics.shotOutcomeEvidenceClipCount, thresholds.minShotOutcomeEvidenceClips),
+        ("madeShotOutcomeEvidenceCoverage", metrics.madeShotOutcomeEvidenceClipCount, thresholds.minMadeShotOutcomeEvidenceClips),
+        ("missedShotOutcomeEvidenceCoverage", metrics.missedShotOutcomeEvidenceClipCount, thresholds.minMissedShotOutcomeEvidenceClips),
         ("opponentHighlightCoverage", metrics.opponentHighlightCount, thresholds.minOpponentHighlights),
         ("negativeClipCoverage", metrics.negativeClipCount, thresholds.minNegativeClips),
         ("badWindowNegativeCoverage", metrics.badWindowNegativeCount, thresholds.minBadWindowNegatives),

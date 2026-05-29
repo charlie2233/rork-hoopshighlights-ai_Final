@@ -78,6 +78,30 @@ def blocked_shot_evidence() -> dict:
     }
 
 
+def missed_shot_evidence() -> dict:
+    return {
+        "outcome": "missed",
+        "qualitySignals": {"ballPathVisible": True, "rimResultVisible": True},
+        "shotResultEvidence": {
+            "releaseToRimContinuity": "continuous",
+            "rimResultEvidence": "clear_miss",
+            "outcomeConfidence": 0.86,
+            "rimEntrySequence": "visible_miss",
+            "ballApproachFrameRole": "rimApproach",
+            "rimEntryFrameRole": "rim",
+            "ballBelowRimOrNetFrameRole": None,
+            "rimEntrySequenceConfidence": 0.86,
+        },
+        "shotTrackingEvidence": {
+            "ballVisibleFrameRoles": ["release", "rimApproach", "rim"],
+            "rimVisibleFrameRoles": ["rimApproach", "rim"],
+            "resultFrameRole": "rim",
+            "ballEntersRimFrameRole": None,
+            "trajectoryContinuity": "continuous",
+        },
+    }
+
+
 def weak_made_shot_evidence() -> dict:
     return {
         "outcome": "made",
@@ -224,6 +248,19 @@ def all_teams_coverage_clips(offset: float = 0.0) -> list[dict]:
             ),
         },
         {
+            "expected": {"teamId": "team_dark", "isHighlight": True, "eventType": "missed_jumper", "outcome": "missed"},
+            "prediction": timed_prediction(
+                {
+                    "keep": True,
+                    "teamAttribution": team_attribution(0.91),
+                    **missed_shot_evidence(),
+                },
+                start=30.0 + offset,
+                end=34.0 + offset,
+                event_center=32.0 + offset,
+            ),
+        },
+        {
             "expected": {"teamId": "team_light", "isHighlight": False, "eventType": "too_short"},
             "prediction": {"keep": False, "teamAttribution": {"teamId": "team_light", "confidence": 0.9}},
         },
@@ -283,7 +320,7 @@ class TeamHighlightAccuracyEvalTests(unittest.TestCase):
 
         self.assertEqual(report.status, "pass")
         self.assertEqual(report.metrics.caseCount, 3)
-        self.assertEqual(report.metrics.clipCount, 15)
+        self.assertEqual(report.metrics.clipCount, 16)
         self.assertEqual(report.metrics.allTeamsCaseCount, 1)
         self.assertEqual(report.metrics.selectedTeamPrecision, 1.0)
         self.assertEqual(report.metrics.selectedTeamEvidenceQuality, 1.0)
@@ -295,7 +332,9 @@ class TeamHighlightAccuracyEvalTests(unittest.TestCase):
         self.assertEqual(report.metrics.shotOutcomeEvidenceQuality, 1.0)
         self.assertEqual(report.metrics.selectedTeamHighlightCount, 8)
         self.assertEqual(report.metrics.defensiveEventCount, 6)
-        self.assertEqual(report.metrics.shotOutcomeEvidenceClipCount, 6)
+        self.assertEqual(report.metrics.shotOutcomeEvidenceClipCount, 7)
+        self.assertEqual(report.metrics.madeShotOutcomeEvidenceClipCount, 4)
+        self.assertEqual(report.metrics.missedShotOutcomeEvidenceClipCount, 1)
         self.assertEqual(report.metrics.selectedTeamBlockCount, 2)
         self.assertEqual(report.metrics.selectedTeamStealCount, 2)
         self.assertEqual(report.metrics.opponentHighlightCount, 2)
@@ -353,6 +392,120 @@ class TeamHighlightAccuracyEvalTests(unittest.TestCase):
         self.assertEqual(report.metrics.allTeamsCaseCount, 0)
         self.assertTrue(any("allTeamsCaseCoverage" in failure for failure in report.failures))
 
+    def test_default_readiness_requires_missed_shot_outcome_coverage(self) -> None:
+        report = evaluate_accuracy(
+            {
+                "cases": [
+                    {
+                        "caseId": "game_001",
+                        "videoId": "video_001",
+                        "analysisJobId": "analysis_001",
+                        "teamScanJobId": "scan_001",
+                        "teamMode": "team",
+                        "selectedTeamId": "team_dark",
+                        "selectedTeamColorLabel": "black",
+                        "detectedTeams": [
+                            {"teamId": "team_dark", "label": "Black jerseys", "colorLabel": "black", "confidence": 0.93},
+                            {"teamId": "team_light", "label": "White jerseys", "colorLabel": "white", "confidence": 0.91},
+                        ],
+                        "clips": readiness_coverage_clips(),
+                    },
+                    {
+                        "caseId": "game_002",
+                        "videoId": "video_002",
+                        "analysisJobId": "analysis_002",
+                        "teamScanJobId": "scan_002",
+                        "teamMode": "team",
+                        "selectedTeamId": "team_dark",
+                        "selectedTeamColorLabel": "black",
+                        "detectedTeams": [
+                            {"teamId": "team_dark", "label": "Black jerseys", "colorLabel": "black", "confidence": 0.94},
+                            {"teamId": "team_light", "label": "White jerseys", "colorLabel": "white", "confidence": 0.9},
+                        ],
+                        "clips": readiness_coverage_clips(offset=100.0),
+                    },
+                    {
+                        "caseId": "game_all_001",
+                        "videoId": "video_all_001",
+                        "analysisJobId": "analysis_all_001",
+                        "teamScanJobId": "scan_all_001",
+                        "teamMode": "all",
+                        "detectedTeams": [
+                            {"teamId": "team_dark", "label": "Black jerseys", "colorLabel": "black", "confidence": 0.94},
+                            {"teamId": "team_light", "label": "White jerseys", "colorLabel": "white", "confidence": 0.91},
+                        ],
+                        "clips": [
+                            clip for clip in all_teams_coverage_clips(offset=200.0)
+                            if clip["expected"].get("outcome") != "missed"
+                        ],
+                    },
+                ]
+            }
+        )
+
+        self.assertEqual(report.status, "fail")
+        self.assertEqual(report.metrics.missedShotOutcomeEvidenceClipCount, 0)
+        self.assertTrue(any("missedShotOutcomeEvidenceCoverage" in failure for failure in report.failures))
+
+    def test_default_readiness_requires_valid_missed_shot_outcome_evidence(self) -> None:
+        all_teams_clips = all_teams_coverage_clips(offset=200.0)
+        for clip in all_teams_clips:
+            if clip["expected"].get("outcome") == "missed":
+                clip["prediction"]["shotResultEvidence"]["rimResultEvidence"] = "unclear"
+                clip["prediction"]["qualitySignals"]["rimResultVisible"] = False
+
+        report = evaluate_accuracy(
+            {
+                "cases": [
+                    {
+                        "caseId": "game_001",
+                        "videoId": "video_001",
+                        "analysisJobId": "analysis_001",
+                        "teamScanJobId": "scan_001",
+                        "teamMode": "team",
+                        "selectedTeamId": "team_dark",
+                        "selectedTeamColorLabel": "black",
+                        "detectedTeams": [
+                            {"teamId": "team_dark", "label": "Black jerseys", "colorLabel": "black", "confidence": 0.93},
+                            {"teamId": "team_light", "label": "White jerseys", "colorLabel": "white", "confidence": 0.91},
+                        ],
+                        "clips": readiness_coverage_clips(),
+                    },
+                    {
+                        "caseId": "game_002",
+                        "videoId": "video_002",
+                        "analysisJobId": "analysis_002",
+                        "teamScanJobId": "scan_002",
+                        "teamMode": "team",
+                        "selectedTeamId": "team_dark",
+                        "selectedTeamColorLabel": "black",
+                        "detectedTeams": [
+                            {"teamId": "team_dark", "label": "Black jerseys", "colorLabel": "black", "confidence": 0.94},
+                            {"teamId": "team_light", "label": "White jerseys", "colorLabel": "white", "confidence": 0.9},
+                        ],
+                        "clips": readiness_coverage_clips(offset=100.0),
+                    },
+                    {
+                        "caseId": "game_all_001",
+                        "videoId": "video_all_001",
+                        "analysisJobId": "analysis_all_001",
+                        "teamScanJobId": "scan_all_001",
+                        "teamMode": "all",
+                        "detectedTeams": [
+                            {"teamId": "team_dark", "label": "Black jerseys", "colorLabel": "black", "confidence": 0.94},
+                            {"teamId": "team_light", "label": "White jerseys", "colorLabel": "white", "confidence": 0.91},
+                        ],
+                        "clips": all_teams_clips,
+                    },
+                ]
+            }
+        )
+
+        self.assertEqual(report.status, "fail")
+        self.assertEqual(report.metrics.missedShotOutcomeEvidenceClipCount, 0)
+        self.assertEqual(report.metrics.badShotOutcomeEvidenceCount, 1)
+        self.assertTrue(any("missedShotOutcomeEvidenceCoverage" in failure for failure in report.failures))
+
     def test_all_teams_defensive_recall_uses_keep_without_selected_team_gate(self) -> None:
         report = evaluate_accuracy(
             {
@@ -407,6 +560,8 @@ class TeamHighlightAccuracyEvalTests(unittest.TestCase):
                 minScoredClips=2,
                 minSelectedTeamHighlights=0,
                 minShotOutcomeEvidenceClips=0,
+                minMadeShotOutcomeEvidenceClips=0,
+                minMissedShotOutcomeEvidenceClips=0,
                 minOpponentHighlights=0,
                 minNegativeClips=0,
                 minBadWindowNegatives=0,
@@ -512,6 +667,8 @@ class TeamHighlightAccuracyEvalTests(unittest.TestCase):
                 minScoredClips=1,
                 minSelectedTeamHighlights=1,
                 minShotOutcomeEvidenceClips=0,
+                minMadeShotOutcomeEvidenceClips=0,
+                minMissedShotOutcomeEvidenceClips=0,
                 minOpponentHighlights=0,
                 minNegativeClips=0,
                 minBadWindowNegatives=0,
@@ -1029,6 +1186,10 @@ class TeamHighlightAccuracyEvalTests(unittest.TestCase):
                     "--min-uncertain-review-clips",
                     "0",
                     "--min-all-teams-cases",
+                    "0",
+                    "--min-made-shot-outcome-evidence-clips",
+                    "0",
+                    "--min-missed-shot-outcome-evidence-clips",
                     "0",
                 ],
                 check=False,

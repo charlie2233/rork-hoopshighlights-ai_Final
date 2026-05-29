@@ -89,6 +89,7 @@ class BuildTeamHighlightEvalPayloadTests(unittest.TestCase):
                 minScoredClips=2,
                 minSelectedTeamHighlights=2,
                 minShotOutcomeEvidenceClips=1,
+                minMissedShotOutcomeEvidenceClips=0,
                 minOpponentHighlights=0,
                 minNegativeClips=0,
                 minBadWindowNegatives=0,

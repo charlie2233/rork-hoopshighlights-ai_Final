@@ -192,6 +192,8 @@ class SubmissionReadinessPreflightTests(unittest.TestCase):
             report_path = repo_root / "team_accuracy_report.json"
             report = launch_grade_team_accuracy_report(
                 metric_overrides={
+                    "madeShotOutcomeEvidenceClipCount": 0,
+                    "missedShotOutcomeEvidenceClipCount": 0,
                     "opponentHighlightCount": 0,
                     "negativeClipCount": 0,
                     "badWindowNegativeCount": 0,
@@ -205,6 +207,8 @@ class SubmissionReadinessPreflightTests(unittest.TestCase):
 
         self.assertTrue(has_failures(collector.findings))
         detail = collector.findings[0].detail
+        self.assertIn("madeShotOutcomeEvidenceClipCount", detail)
+        self.assertIn("missedShotOutcomeEvidenceClipCount", detail)
         self.assertIn("opponentHighlightCount", detail)
         self.assertIn("badWindowNegativeCount", detail)
         self.assertIn("uncertainReviewCount", detail)
@@ -534,6 +538,8 @@ def launch_grade_team_accuracy_report(
         "timingQualityClipCount": 12,
         "badTimingClipCount": 0,
         "shotOutcomeEvidenceClipCount": 3,
+        "madeShotOutcomeEvidenceClipCount": 1,
+        "missedShotOutcomeEvidenceClipCount": 1,
         "badShotOutcomeEvidenceCount": 0,
         "selectedTeamBlockCount": 1,
         "selectedTeamStealCount": 1,
