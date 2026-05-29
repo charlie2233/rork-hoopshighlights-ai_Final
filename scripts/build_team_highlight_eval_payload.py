@@ -94,13 +94,26 @@ def build_eval_payload(
 
     cases: list[dict[str, Any]] = []
     for index, label_case in enumerate(label_cases):
-        selected = selected_team_id or string_or_none(label_case.get("selectedTeamId")) or selected_team_from_analysis(result)
-        case_detected_teams = normalize_detected_teams(label_case.get("detectedTeams")) or detected_teams
-        selected_color_label = (
-            string_or_none(label_case.get("selectedTeamColorLabel") or label_case.get("colorLabel"))
-            or selected_team_color_from_analysis(result)
-            or selected_team_color_from_detected_options(selected, case_detected_teams)
+        label_selected_team_id = string_or_none(label_case.get("selectedTeamId"))
+        analysis_selected_team_id = selected_team_from_analysis(result)
+        case_team_mode = (
+            normalize_team_mode(label_case.get("teamMode"))
+            or team_mode_from_analysis(result)
+            or ("team" if selected_team_id or label_selected_team_id or analysis_selected_team_id else "all")
         )
+        selected = (
+            selected_team_id or label_selected_team_id or analysis_selected_team_id
+            if case_team_mode == "team"
+            else None
+        )
+        case_detected_teams = normalize_detected_teams(label_case.get("detectedTeams")) or detected_teams
+        selected_color_label = None
+        if case_team_mode == "team":
+            selected_color_label = (
+                string_or_none(label_case.get("selectedTeamColorLabel") or label_case.get("colorLabel"))
+                or selected_team_color_from_analysis(result)
+                or selected_team_color_from_detected_options(selected, case_detected_teams)
+            )
         threshold = (
             confidence_threshold
             if confidence_threshold is not None
@@ -146,6 +159,7 @@ def build_eval_payload(
                 "videoId": string_or_none(label_case.get("videoId") or labels.get("videoId")),
                 "analysisJobId": analysis_job_id,
                 "teamScanJobId": string_or_none(label_case.get("teamScanJobId") or label_case.get("scanJobId")) or team_scan_job_id,
+                "teamMode": case_team_mode,
                 "selectedTeamId": selected,
                 "selectedTeamColorLabel": selected_color_label,
                 "detectedTeams": case_detected_teams,
@@ -271,6 +285,20 @@ def selected_team_from_analysis(result: dict[str, Any]) -> str | None:
     team_selection = result.get("teamSelection")
     if isinstance(team_selection, dict) and team_selection.get("mode") == "team":
         return string_or_none(team_selection.get("teamId"))
+    return None
+
+
+def team_mode_from_analysis(result: dict[str, Any]) -> str | None:
+    team_selection = result.get("teamSelection")
+    if isinstance(team_selection, dict):
+        return normalize_team_mode(team_selection.get("mode"))
+    return None
+
+
+def normalize_team_mode(value: Any) -> str | None:
+    text = normalized_key(value)
+    if text in {"all", "team"}:
+        return text
     return None
 
 

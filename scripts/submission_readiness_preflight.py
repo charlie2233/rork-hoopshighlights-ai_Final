@@ -123,6 +123,7 @@ TEAM_ACCURACY_THRESHOLD_TO_METRIC = (
     ("minSelectedTeamDefensiveEvents", "defensiveEventCount"),
     ("minSelectedTeamBlocks", "selectedTeamBlockCount"),
     ("minSelectedTeamSteals", "selectedTeamStealCount"),
+    ("minAllTeamsCases", "allTeamsCaseCount"),
 )
 EXPECTED_TEAM_ACCURACY_INPUT_SCHEMA = "team-highlight-eval-v1"
 EXPECTED_TEAM_ACCURACY_INPUT_SOURCE = "real_cloud_analysis_with_manual_labels"
@@ -339,6 +340,7 @@ def check_team_highlight_accuracy_report(repo_root: Path, collector: Collector, 
     if distinct_video_count is None or distinct_video_count < default_min_cases:
         failures.append(f"distinctVideoCount is below launch default {default_min_cases}")
     for evidence_name in (
+        "casesMissingTeamMode",
         "casesMissingCaseId",
         "casesMissingVideoId",
         "casesMissingSelectedTeamId",

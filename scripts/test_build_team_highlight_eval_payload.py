@@ -95,6 +95,7 @@ class BuildTeamHighlightEvalPayloadTests(unittest.TestCase):
                 minSelectedTeamBlocks=0,
                 minSelectedTeamSteals=1,
                 minSelectedTeamDefensiveEvents=1,
+                minAllTeamsCases=0,
             ),
         )
 
@@ -102,6 +103,7 @@ class BuildTeamHighlightEvalPayloadTests(unittest.TestCase):
         self.assertEqual(payload["cases"][0]["videoId"], "video_real_001")
         self.assertEqual(payload["cases"][0]["analysisJobId"], "job_real_001")
         self.assertEqual(payload["cases"][0]["teamScanJobId"], "scan_real_001")
+        self.assertEqual(payload["cases"][0]["teamMode"], "team")
         self.assertEqual(payload["cases"][0]["selectedTeamColorLabel"], "black")
         self.assertEqual(payload["cases"][0]["detectedTeams"][0]["teamId"], "team_dark")
         self.assertEqual(payload["cases"][0]["detectedTeams"][0]["colorLabel"], "black")
@@ -113,6 +115,7 @@ class BuildTeamHighlightEvalPayloadTests(unittest.TestCase):
         self.assertEqual(report.evidence.inputSchemaVersion, "team-highlight-eval-v1")
         self.assertEqual(report.evidence.inputSource, "real_cloud_analysis_with_manual_labels")
         self.assertEqual(report.evidence.casesMissingAnalysisJobId, 0)
+        self.assertEqual(report.evidence.casesMissingTeamMode, 0)
         self.assertEqual(report.evidence.casesMissingTeamScanJobId, 0)
         self.assertEqual(report.evidence.casesMissingDetectedTeamOptions, 0)
         self.assertEqual(report.evidence.casesMissingSelectedTeamColorLabel, 0)

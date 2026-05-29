@@ -519,6 +519,7 @@ def launch_grade_team_accuracy_report(
     metrics: dict[str, object] = {
         "caseCount": 2,
         "clipCount": 12,
+        "allTeamsCaseCount": 1,
         "selectedTeamPrecision": 0.92,
         "selectedTeamEvidenceQuality": 0.92,
         "selectedTeamRecallWithUncertain": 0.92,
@@ -547,7 +548,9 @@ def launch_grade_team_accuracy_report(
         "inputSchemaVersion": "team-highlight-eval-v1",
         "inputSource": "real_cloud_analysis_with_manual_labels",
         "caseCount": metrics["caseCount"],
+        "allTeamsCaseCount": metrics["allTeamsCaseCount"],
         "distinctVideoCount": 2,
+        "casesMissingTeamMode": 0,
         "casesMissingCaseId": 0,
         "casesMissingVideoId": 0,
         "casesMissingSelectedTeamId": 0,

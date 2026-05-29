@@ -91,12 +91,14 @@ class AccuracyThresholds:
     minSelectedTeamDefensiveEvents: int = 2
     minSelectedTeamBlocks: int = 1
     minSelectedTeamSteals: int = 1
+    minAllTeamsCases: int = 1
 
 
 @dataclass(frozen=True)
 class AccuracyMetrics:
     caseCount: int
     clipCount: int
+    allTeamsCaseCount: int
     selectedTeamPrecision: float
     selectedTeamEvidenceQuality: float
     selectedTeamRecallWithUncertain: float
@@ -126,7 +128,9 @@ class AccuracyEvidenceSummary:
     inputSchemaVersion: str | None
     inputSource: str | None
     caseCount: int
+    allTeamsCaseCount: int
     distinctVideoCount: int
+    casesMissingTeamMode: int
     casesMissingCaseId: int
     casesMissingVideoId: int
     casesMissingSelectedTeamId: int
@@ -168,6 +172,7 @@ def main() -> int:
         minSelectedTeamDefensiveEvents=args.min_selected_team_defensive_events,
         minSelectedTeamBlocks=args.min_selected_team_blocks,
         minSelectedTeamSteals=args.min_selected_team_steals,
+        minAllTeamsCases=args.min_all_teams_cases,
     )
     report = evaluate_accuracy(load_json(Path(args.input)), thresholds=thresholds)
 
@@ -207,6 +212,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--min-selected-team-defensive-events", type=int, default=2)
     parser.add_argument("--min-selected-team-blocks", type=int, default=1)
     parser.add_argument("--min-selected-team-steals", type=int, default=1)
+    parser.add_argument("--min-all-teams-cases", type=int, default=1)
     return parser.parse_args()
 
 
@@ -226,6 +232,7 @@ def evaluate_accuracy(payload: dict[str, Any], thresholds: AccuracyThresholds | 
         metrics = AccuracyMetrics(
             caseCount=0,
             clipCount=0,
+            allTeamsCaseCount=0,
             selectedTeamPrecision=0.0,
             selectedTeamEvidenceQuality=0.0,
             selectedTeamRecallWithUncertain=0.0,
@@ -252,6 +259,7 @@ def evaluate_accuracy(payload: dict[str, Any], thresholds: AccuracyThresholds | 
         return AccuracyReport("fail", metrics, thresholds, ["No eval cases found."], evidence)
 
     counts = {
+        "all_teams_cases": 0,
         "clips": 0,
         "confident_selected_predictions": 0,
         "correct_confident_selected_predictions": 0,
@@ -278,7 +286,10 @@ def evaluate_accuracy(payload: dict[str, Any], thresholds: AccuracyThresholds | 
     }
 
     for case in cases:
-        selected_team_id = string_or_none(case.get("selectedTeamId") or case.get("teamId"))
+        team_mode = team_mode_for_case(case)
+        if team_mode == "all":
+            counts["all_teams_cases"] += 1
+        selected_team_id = None if team_mode == "all" else string_or_none(case.get("selectedTeamId") or case.get("teamId"))
         confidence_threshold = number_or_default(case.get("confidenceThreshold"), 0.85)
         for raw_clip in ensure_list(case.get("clips")):
             if not isinstance(raw_clip, dict):
@@ -362,19 +373,20 @@ def evaluate_accuracy(payload: dict[str, Any], thresholds: AccuracyThresholds | 
                 if confident_selected or uncertain_review:
                     counts["selected_team_highlights_kept_or_uncertain"] += 1
 
-            if event_type in DEFENSIVE_EVENTS and has_selected_team:
+            if event_type in DEFENSIVE_EVENTS and in_scope_highlight:
                 counts["defensive_events"] += 1
                 defensive_subtype = defensive_event_subtype(event_type)
-                if defensive_subtype == "block":
+                if has_selected_team and defensive_subtype == "block":
                     counts["selected_team_blocks"] += 1
-                elif defensive_subtype == "steal":
+                elif has_selected_team and defensive_subtype == "steal":
                     counts["selected_team_steals"] += 1
-                if confident_selected or uncertain_review:
+                if include_for_review and (team_mode == "all" or confident_selected or uncertain_review):
                     counts["kept_defensive_events"] += 1
 
     metrics = AccuracyMetrics(
         caseCount=len(cases),
         clipCount=counts["clips"],
+        allTeamsCaseCount=counts["all_teams_cases"],
         selectedTeamPrecision=ratio(
             counts["correct_confident_selected_predictions"],
             counts["confident_selected_predictions"],
@@ -430,6 +442,7 @@ def normalize_cases(payload: dict[str, Any]) -> list[dict[str, Any]]:
                 "videoId": payload.get("videoId"),
                 "analysisJobId": payload.get("analysisJobId") or payload.get("jobId"),
                 "teamScanJobId": payload.get("teamScanJobId") or payload.get("scanJobId"),
+                "teamMode": payload.get("teamMode"),
                 "selectedTeamId": payload.get("selectedTeamId") or payload.get("teamId"),
                 "selectedTeamColorLabel": payload.get("selectedTeamColorLabel") or payload.get("colorLabel"),
                 "detectedTeams": payload.get("detectedTeams"),
@@ -442,6 +455,8 @@ def normalize_cases(payload: dict[str, Any]) -> list[dict[str, Any]]:
 
 def summarize_evidence(payload: dict[str, Any], cases: list[dict[str, Any]]) -> AccuracyEvidenceSummary:
     video_ids: set[str] = set()
+    all_teams_case_count = 0
+    missing_team_mode = 0
     missing_case_id = 0
     missing_video_id = 0
     missing_selected_team_id = 0
@@ -451,6 +466,12 @@ def summarize_evidence(payload: dict[str, Any], cases: list[dict[str, Any]]) -> 
     missing_selected_team_color_label = 0
     missing_selected_team_detected_option = 0
     for case in cases:
+        explicit_team_mode = explicit_team_mode_for_case(case)
+        team_mode = team_mode_for_case(case)
+        if explicit_team_mode is None:
+            missing_team_mode += 1
+        if team_mode == "all":
+            all_teams_case_count += 1
         case_id = string_or_none(case.get("caseId"))
         if case_id is None:
             missing_case_id += 1
@@ -459,7 +480,7 @@ def summarize_evidence(payload: dict[str, Any], cases: list[dict[str, Any]]) -> 
             missing_video_id += 1
         else:
             video_ids.add(video_id)
-        if string_or_none(case.get("selectedTeamId") or case.get("teamId")) is None:
+        if team_mode == "team" and string_or_none(case.get("selectedTeamId") or case.get("teamId")) is None:
             missing_selected_team_id += 1
         analysis_job_id = string_or_none(case.get("analysisJobId") or case.get("jobId"))
         if analysis_job_id is None:
@@ -472,9 +493,9 @@ def summarize_evidence(payload: dict[str, Any], cases: list[dict[str, Any]]) -> 
             missing_detected_team_options += 1
         selected_team_id = string_or_none(case.get("selectedTeamId") or case.get("teamId"))
         selected_color_label = selected_team_color_label(case, detected_teams)
-        if selected_color_label is None:
+        if team_mode == "team" and selected_color_label is None:
             missing_selected_team_color_label += 1
-        if selected_team_id is not None and not detected_team_matches_selection(
+        if team_mode == "team" and selected_team_id is not None and not detected_team_matches_selection(
             detected_teams,
             selected_team_id=selected_team_id,
             selected_color_label=selected_color_label,
@@ -485,7 +506,9 @@ def summarize_evidence(payload: dict[str, Any], cases: list[dict[str, Any]]) -> 
         inputSchemaVersion=string_or_none(payload.get("schemaVersion")),
         inputSource=string_or_none(payload.get("source")),
         caseCount=len(cases),
+        allTeamsCaseCount=all_teams_case_count,
         distinctVideoCount=len(video_ids),
+        casesMissingTeamMode=missing_team_mode,
         casesMissingCaseId=missing_case_id,
         casesMissingVideoId=missing_video_id,
         casesMissingSelectedTeamId=missing_selected_team_id,
@@ -495,6 +518,29 @@ def summarize_evidence(payload: dict[str, Any], cases: list[dict[str, Any]]) -> 
         casesMissingSelectedTeamColorLabel=missing_selected_team_color_label,
         casesMissingSelectedTeamDetectedOption=missing_selected_team_detected_option,
     )
+
+
+def explicit_team_mode_for_case(case: dict[str, Any]) -> str | None:
+    explicit = string_or_none(case.get("teamMode"))
+    if explicit is not None:
+        normalized = normalize_event_type(explicit)
+        if normalized in {"all", "team"}:
+            return normalized
+    team_selection = case.get("teamSelection")
+    if isinstance(team_selection, dict):
+        normalized = normalize_event_type(team_selection.get("mode"))
+        if normalized in {"all", "team"}:
+            return normalized
+    return None
+
+
+def team_mode_for_case(case: dict[str, Any]) -> str:
+    explicit = explicit_team_mode_for_case(case)
+    if explicit is not None:
+        return explicit
+    if string_or_none(case.get("selectedTeamId") or case.get("teamId")) is not None:
+        return "team"
+    return "all"
 
 
 def detected_team_options(value: Any) -> list[dict[str, Any]]:
@@ -664,6 +710,7 @@ def threshold_failures(metrics: AccuracyMetrics, thresholds: AccuracyThresholds)
         ("selectedTeamDefensiveEventCoverage", metrics.defensiveEventCount, thresholds.minSelectedTeamDefensiveEvents),
         ("selectedTeamBlockCoverage", metrics.selectedTeamBlockCount, thresholds.minSelectedTeamBlocks),
         ("selectedTeamStealCoverage", metrics.selectedTeamStealCount, thresholds.minSelectedTeamSteals),
+        ("allTeamsCaseCoverage", metrics.allTeamsCaseCount, thresholds.minAllTeamsCases),
     )
     for name, value, minimum in coverage_checks:
         if value < minimum:
