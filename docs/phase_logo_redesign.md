@@ -5,13 +5,14 @@ Branch: `codex/redesign-hoopclips-logo`
 
 ## Change
 
-Replaced the HoopClips iOS app icon with a cleaner basketball-video mark:
+Replaced the HoopClips iOS app icon with a cleaner sports-product monogram:
 
-- centered orange basketball silhouette
-- purple play-button/video clipping shape
+- bold `HC` mark inspired by real basketball circuit/event branding
+- integrated play triangle inside the `C`
+- orange diagonal highlight-cut accent
+- restrained teal crop-corner accents
 - deep navy app-icon background
-- fewer tiny decorative elements so the mark reads better at home-screen sizes
-- no text, no watermark, no transparency
+- no photoreal texture, smoky background, AI-style glow, watermark, or transparency
 
 Updated asset files:
 
@@ -22,13 +23,9 @@ The second path appears to be a legacy/duplicate asset copy; both files were kep
 
 ## Generation Note
 
-The source concept was generated through Codex image generation and then resized/cropped to a 1024x1024 RGB PNG for the iOS app icon slot.
+The final app icon was manually rendered as a product-style monogram using the local `DIN Condensed Bold` system font and vector geometry, then exported to a 1024x1024 RGB PNG for the iOS app icon slot.
 
-Source concept path:
-
-```text
-/Users/hanfei/.codex/generated_images/019e50ad-9458-7070-8d38-0de1019964b8/ig_03334e97135d5eb1016a197f4245a48198ad512caac4ae4d9a.png
-```
+Earlier image-generation explorations were intentionally not used as the final asset because they looked too much like AI concept art.
 
 ## Validation
 
@@ -66,5 +63,5 @@ log: /Users/hanfei/Library/Developer/XcodeBuildMCP/workspaces/rork-hoopshighligh
 
 Notes:
 
-- Build warnings were pre-existing Swift concurrency/deprecation warnings in analysis/export files.
+- The final validation build log after the monogram refinement is `/Users/hanfei/Library/Developer/XcodeBuildMCP/workspaces/rork-hoopshighlights-ai_Final-b63ced5e161c/logs/build_sim_2026-05-29T18-48-01-701Z_pid52682_b1cf5e5e.log`.
 - No production rendering, analysis, backend, or secret-related behavior changed.
