@@ -1521,6 +1521,102 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertEqual([clip.id for clip in reranked.clips], ["dark_steal", "uncertain_steal"])
         self.assertNotIn("light_steal", reranked.gptRerankSummary.keptClipIds)
 
+    def test_gpt_highlight_rerank_preserves_rejected_uncertain_review_clip_ids(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                teamSelection={
+                    "mode": "team",
+                    "teamId": "team_dark",
+                    "label": "Dark jerseys",
+                    "colorLabel": "black",
+                    "confidenceThreshold": 0.85,
+                    "includeUncertain": True,
+                },
+                clips=[
+                    {
+                        **_clip("dark_make", 0.0, "Made Shot", 0.94),
+                        "teamAttribution": _team_attribution(team_id="team_dark", color_label="black", confidence=0.93),
+                    },
+                    {
+                        **_clip("uncertain_steal", 9.0, "Steal", 0.86),
+                        "teamAttribution": {
+                            "teamId": "team_light",
+                            "label": "Light jerseys",
+                            "colorLabel": "white",
+                            "confidence": 0.62,
+                            "source": "quick_scan",
+                        },
+                    },
+                    {
+                        **_clip("late_uncertain_make", 18.0, "Made Shot", 0.9),
+                        "end": 19.4,
+                        "eventCenter": 19.0,
+                        "teamAttribution": {
+                            "teamId": "team_dark",
+                            "label": "Dark jerseys",
+                            "colorLabel": "black",
+                            "confidence": 0.6,
+                            "source": "quick_scan",
+                        },
+                    },
+                ],
+            )
+        )
+        decisions = [
+            GPTHighlightClipDecision(
+                clipId="dark_make",
+                keep=True,
+                highlightScore=0.93,
+                watchabilityScore=0.9,
+                basketballEvent="Made jumper",
+                outcome="made",
+                caption="BUCKET",
+                reason="Clear made shot with complete setup and result.",
+                qualitySignals=_quality_signals(),
+                shotResultEvidence=_shot_result_evidence(),
+                shotTrackingEvidence=_shot_tracking_evidence(),
+                suggestedEdit=GPTHighlightSuggestedEdit(),
+            ),
+            GPTHighlightClipDecision(
+                clipId="uncertain_steal",
+                keep=False,
+                rejectReason="needs_manual_team_review",
+                highlightScore=0.7,
+                watchabilityScore=0.72,
+                basketballEvent="Steal",
+                outcome="steal",
+                caption="REVIEW",
+                reason="Good defensive moment but team ownership is still uncertain.",
+                qualitySignals=_quality_signals(
+                    releaseVisible=False,
+                    shotArcVisible=False,
+                    rimResultVisible=False,
+                    reason="Defensive play is visible but team attribution is uncertain.",
+                ),
+                shotResultEvidence=_defensive_result_evidence(),
+                shotTrackingEvidence=_shot_tracking_evidence(
+                    ballVisibleFrameRoles=["eventCenter", "finish"],
+                    rimVisibleFrameRoles=[],
+                    releaseFrameRole=None,
+                    resultFrameRole=None,
+                    ballEntersRimFrameRole=None,
+                    trajectoryContinuity="partial",
+                    reason="Ball control changes during the steal.",
+                ),
+                suggestedEdit=GPTHighlightSuggestedEdit(cropFocus="ball"),
+            ),
+        ]
+
+        reranked = apply_gpt_highlight_rerank(request, decisions, "gpt-test", 2, 8)
+        response = build_edit_job(reranked, "edit_uncertain_review_ids").to_response()
+
+        self.assertEqual([clip.id for clip in reranked.clips], ["dark_make"])
+        self.assertIn("uncertain_steal", reranked.gptRerankSummary.rejectedClipIds)
+        self.assertEqual(reranked.gptRerankSummary.uncertainReviewClipIds, ["uncertain_steal"])
+        self.assertNotIn("late_uncertain_make", reranked.gptRerankSummary.uncertainReviewClipIds)
+        self.assertEqual(response.gptUncertainReviewClipIds, ["uncertain_steal"])
+        self.assertEqual(response.gptUncertainReviewClipCount, 1)
+
     def test_gpt_highlight_rerank_keeps_mixed_steal_finish_as_defensive_outcome(self) -> None:
         request = CreateEditJobRequest(
             **_request_payload(

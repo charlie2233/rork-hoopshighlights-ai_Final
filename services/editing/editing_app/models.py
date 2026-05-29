@@ -108,6 +108,8 @@ class AIWorkReceipt(APIModel):
     gptRerankSampledFrameCount: Optional[int] = None
     gptRerankKeptClipCount: Optional[int] = None
     gptRerankRejectedClipCount: Optional[int] = None
+    gptUncertainReviewClipCount: Optional[int] = None
+    gptUncertainReviewClipIds: List[str] = Field(default_factory=list)
     gptRerankRejectedReasonCounts: Dict[str, int] = Field(default_factory=dict)
     gptRerankStoryOrderClipIds: List[str] = Field(default_factory=list)
     gptPlanEditApplied: bool = False
@@ -620,6 +622,11 @@ def build_ai_work_receipt(
             if gpt_rerank_summary.storyOrderClipIds:
                 story_count = len(gpt_rerank_summary.storyOrderClipIds)
                 summary_rows.append(f"GPT story order applied to {story_count} candidate clip{'s' if story_count != 1 else ''}.")
+            if gpt_rerank_summary.uncertainReviewClipIds:
+                review_count = len(gpt_rerank_summary.uncertainReviewClipIds)
+                summary_rows.append(
+                    f"Kept {review_count} uncertain team candidate{'s' if review_count != 1 else ''} available for Review."
+                )
             if gpt_rerank_summary.planEditApplied:
                 summary_rows.append("GPT plan edit applied after deterministic validation.")
         elif gpt_rerank_summary.status == "fallback" and gpt_rerank_summary.fallbackReason:
@@ -696,6 +703,8 @@ def build_ai_work_receipt(
         gptRerankSampledFrameCount=gpt_rerank_summary.sampledFrameCount if gpt_rerank_summary is not None else None,
         gptRerankKeptClipCount=len(gpt_rerank_summary.keptClipIds) if gpt_rerank_summary is not None else None,
         gptRerankRejectedClipCount=len(gpt_rerank_summary.rejectedClipIds) if gpt_rerank_summary is not None else None,
+        gptUncertainReviewClipCount=len(gpt_rerank_summary.uncertainReviewClipIds) if gpt_rerank_summary is not None else None,
+        gptUncertainReviewClipIds=gpt_rerank_summary.uncertainReviewClipIds if gpt_rerank_summary is not None else [],
         gptRerankRejectedReasonCounts=gpt_rerank_summary.rejectedReasonCounts if gpt_rerank_summary is not None else {},
         gptRerankStoryOrderClipIds=gpt_rerank_summary.storyOrderClipIds if gpt_rerank_summary is not None else [],
         gptPlanEditApplied=gpt_rerank_summary.planEditApplied if gpt_rerank_summary is not None else False,

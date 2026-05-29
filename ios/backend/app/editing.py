@@ -1150,6 +1150,7 @@ class GPTHighlightRerankSummary(APIModel):
     returnedDecisionCount: int = Field(default=0, ge=0)
     keptClipIds: List[str] = Field(default_factory=list, max_length=GPT_CANDIDATE_REVIEW_LIMIT)
     rejectedClipIds: List[str] = Field(default_factory=list, max_length=GPT_CANDIDATE_REVIEW_LIMIT)
+    uncertainReviewClipIds: List[str] = Field(default_factory=list, max_length=GPT_CANDIDATE_REVIEW_LIMIT)
     rejectedReasonCounts: Dict[str, int] = Field(default_factory=dict)
     storyOrderClipIds: List[str] = Field(default_factory=list, max_length=GPT_CANDIDATE_REVIEW_LIMIT)
     planEditApplied: bool = False
@@ -1635,6 +1636,8 @@ class EditJobResponse(APIModel):
     aspectRatio: AspectRatio
     clipCount: int
     validationErrors: List[EditPlanValidationIssue]
+    gptUncertainReviewClipIds: List[str] = Field(default_factory=list, max_length=GPT_CANDIDATE_REVIEW_LIMIT)
+    gptUncertainReviewClipCount: int = 0
 
 
 class EditPlanResponse(APIModel):
@@ -1689,6 +1692,16 @@ class StoredEditJob:
             aspectRatio=self.plan.aspectRatio,
             clipCount=len(self.plan.clips),
             validationErrors=self.validation_errors,
+            gptUncertainReviewClipIds=(
+                self.request.gptRerankSummary.uncertainReviewClipIds
+                if self.request.gptRerankSummary is not None
+                else []
+            ),
+            gptUncertainReviewClipCount=(
+                len(self.request.gptRerankSummary.uncertainReviewClipIds)
+                if self.request.gptRerankSummary is not None
+                else 0
+            ),
         )
 
     def to_plan_response(self) -> EditPlanResponse:
@@ -2648,6 +2661,7 @@ def apply_gpt_highlight_rerank(
     sampled_frame_roles_by_clip: Optional[Mapping[str, Sequence[str]]] = None,
 ) -> CreateEditJobRequest:
     source_clips = filter_clips_for_team_selection(request.clips, request.teamSelection)
+    uncertain_review_clip_ids = _uncertain_review_clip_ids(source_clips, request.teamSelection)
     source_by_id = {clip.id: clip for clip in source_clips}
     valid_decisions: Dict[str, GPTHighlightClipDecision] = {
         decision.clipId: decision for decision in decisions if decision.clipId in source_by_id
@@ -2683,6 +2697,7 @@ def apply_gpt_highlight_rerank(
             returnedDecisionCount=len(decisions),
             keptClipIds=[clip.id for clip in fallback_clips[:GPT_CANDIDATE_REVIEW_LIMIT]],
             rejectedClipIds=rejected_clip_ids[:GPT_CANDIDATE_REVIEW_LIMIT],
+            uncertainReviewClipIds=uncertain_review_clip_ids,
             rejectedReasonCounts=rejected_reason_counts,
             fallbackReason="no_valid_decisions",
         )
@@ -2756,6 +2771,7 @@ def apply_gpt_highlight_rerank(
             returnedDecisionCount=len(valid_decisions),
             keptClipIds=[],
             rejectedClipIds=(rejected_clip_ids + missing_decision_clip_ids)[:GPT_CANDIDATE_REVIEW_LIMIT],
+            uncertainReviewClipIds=uncertain_review_clip_ids,
             rejectedReasonCounts=rejected_reason_counts,
             fallbackReason="all_clips_rejected",
             storyOrderClipIds=[],
@@ -2788,11 +2804,27 @@ def apply_gpt_highlight_rerank(
         returnedDecisionCount=len(valid_decisions),
         keptClipIds=[clip.id for clip in reranked if clip.id in valid_decisions],
         rejectedClipIds=(rejected_clip_ids + missing_decision_clip_ids)[:GPT_CANDIDATE_REVIEW_LIMIT],
+        uncertainReviewClipIds=uncertain_review_clip_ids,
         rejectedReasonCounts=rejected_reason_counts,
         storyOrderClipIds=applied_story_order,
         planEditApplied=plan_edit_applied,
     )
     return request.model_copy(update={"clips": reranked, "gptRerankSummary": summary})
+
+
+def _uncertain_review_clip_ids(
+    clips: Sequence[EditCandidateClip],
+    team_selection: Optional[TeamSelection],
+) -> List[str]:
+    if team_selection is None or team_selection.mode != "team" or not team_selection.includeUncertain:
+        return []
+    reviewable = [
+        clip
+        for clip in clips
+        if team_attribution_status(clip, team_selection) == "uncertain"
+        and is_plan_quality_eligible_clip(clip)
+    ]
+    return [clip.id for clip in rank_clips(reviewable)[:GPT_CANDIDATE_REVIEW_LIMIT]]
 
 
 def _increment_reason_count(counts: Dict[str, int], reason: str, amount: int = 1) -> None:

@@ -1198,17 +1198,44 @@ class EditingServiceTests(unittest.TestCase):
             editing_main.rerank_edit_request_with_gpt = fake_reranker
             client = TestClient(editing_main.create_app(self._settings()))
             base_request = self._edit_request()
-            edit_request = base_request.model_copy(
-                update={
+            base_payload = base_request.model_dump(mode="json")
+            edit_request = CreateEditJobRequest.model_validate(
+                {
+                    **base_payload,
+                    "teamSelection": {
+                        "mode": "team",
+                        "teamId": "team_dark",
+                        "label": "Dark jerseys",
+                        "colorLabel": "black",
+                        "confidenceThreshold": 0.85,
+                        "includeUncertain": True,
+                    },
                     "clips": [
-                        base_request.clips[0],
-                        base_request.clips[1].model_copy(
-                            update={
-                                "label": "Steal",
-                                "teamAttributionStatus": "uncertain",
-                            }
-                        ),
-                    ]
+                        {
+                            **base_payload["clips"][0],
+                            "teamAttribution": {
+                                "teamId": "team_dark",
+                                "label": "Dark jerseys",
+                                "colorLabel": "black",
+                                "confidence": 0.92,
+                                "source": "quick_scan",
+                                "evidenceFrameRefs": ["clip_0_setup", "clip_0_result"],
+                                "evidenceRoleGroups": ["setup", "outcome"],
+                            },
+                        },
+                        {
+                            **base_payload["clips"][1],
+                            "label": "Steal",
+                            "teamAttribution": {
+                                "teamId": "team_light",
+                                "label": "Light jerseys",
+                                "colorLabel": "white",
+                                "confidence": 0.64,
+                                "source": "quick_scan",
+                            },
+                            "teamAttributionStatus": "uncertain",
+                        },
+                    ],
                 }
             )
             create_payload = client.post("/v1/edit-jobs", json=edit_request.model_dump()).json()
@@ -1230,6 +1257,8 @@ class EditingServiceTests(unittest.TestCase):
             self.assertEqual(render_payload["workReceipt"]["gptRerankSampledFrameCount"], 6)
             self.assertEqual(render_payload["workReceipt"]["gptRerankKeptClipCount"], 1)
             self.assertEqual(render_payload["workReceipt"]["gptRerankRejectedClipCount"], 1)
+            self.assertEqual(render_payload["workReceipt"]["gptUncertainReviewClipCount"], 1)
+            self.assertEqual(render_payload["workReceipt"]["gptUncertainReviewClipIds"], ["c2"])
             self.assertEqual(render_payload["workReceipt"]["gptRerankRejectedReasonCounts"]["unclear_or_non_basketball_outcome"], 1)
             self.assertEqual(render_payload["workReceipt"]["gptRerankStoryOrderClipIds"], ["c2"])
             self.assertEqual(render_payload["workReceipt"]["teamUncertainCandidateCount"], 1)
@@ -1241,6 +1270,7 @@ class EditingServiceTests(unittest.TestCase):
             self.assertIn("GPT reranked 2 clips from 6 keyframes.", render_payload["workReceipt"]["summaryRows"])
             self.assertIn("GPT rejected clips: unclear_or_non_basketball_outcome x1.", render_payload["workReceipt"]["summaryRows"])
             self.assertIn("GPT story order applied to 1 candidate clip.", render_payload["workReceipt"]["summaryRows"])
+            self.assertIn("Kept 1 uncertain team candidate available for Review.", render_payload["workReceipt"]["summaryRows"])
             self.assertIn("Kept 1 uncertain team clip for review.", render_payload["workReceipt"]["summaryRows"])
             self.assertIn("Included 1 defensive highlight.", render_payload["workReceipt"]["summaryRows"])
             self.assertIn("Timing quality: 1 selected clip passed context checks.", render_payload["workReceipt"]["summaryRows"])

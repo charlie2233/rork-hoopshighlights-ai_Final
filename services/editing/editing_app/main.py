@@ -619,6 +619,7 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
                 returnedDecisionCount=summary.returnedDecisionCount,
                 keptClipCount=len(summary.keptClipIds),
                 rejectedClipCount=len(summary.rejectedClipIds),
+                uncertainReviewClipCount=len(summary.uncertainReviewClipIds),
                 fallbackReason=summary.fallbackReason,
             )
         return reranked
