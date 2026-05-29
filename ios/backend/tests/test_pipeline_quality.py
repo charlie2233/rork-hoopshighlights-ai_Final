@@ -343,6 +343,37 @@ class PipelineQualityTests(unittest.TestCase):
         self.assertEqual(annotated[2].teamAttributionStatus, "matched")
         self.assertEqual(annotated[3].teamAttributionStatus, "matched")
 
+    def test_analysis_team_status_preserves_explicit_uncertain_scan_status(self) -> None:
+        team_selection = TeamSelection(mode="team", teamId="team_dark", colorLabel="black", includeUncertain=True)
+        clips = [
+            _clip(start=8.0, end=12.5, label="Review-only block", combined=0.88, event_center=10.2, auto_keep=True).model_copy(
+                update={
+                    "teamAttributionStatus": "uncertain",
+                    "teamAttribution": _team_attr(
+                        team_id="team_dark",
+                        label="Dark jerseys",
+                        color_label="black",
+                        confidence=0.94,
+                    ),
+                }
+            ),
+            _clip(start=14.0, end=18.5, label="Evidence-backed make", combined=0.86, event_center=16.2, auto_keep=True).model_copy(
+                update={
+                    "teamAttribution": _team_attr(
+                        team_id="team_dark",
+                        label="Dark jerseys",
+                        color_label="black",
+                        confidence=0.91,
+                    )
+                }
+            ),
+        ]
+
+        annotated = _annotate_analysis_team_status(clips, team_selection)
+
+        self.assertEqual(annotated[0].teamAttributionStatus, "uncertain")
+        self.assertEqual(annotated[1].teamAttributionStatus, "matched")
+
     def test_analysis_team_status_rejects_conflicting_team_id_even_when_color_matches(self) -> None:
         team_selection = TeamSelection(mode="team", teamId="team_dark", colorLabel="black", includeUncertain=True)
         clips = [

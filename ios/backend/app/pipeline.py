@@ -238,6 +238,8 @@ def _analysis_team_status(
 ) -> str:
     if team_selection is None or team_selection.mode == "all":
         return "all"
+    if clip.teamAttributionStatus == "uncertain":
+        return "uncertain"
     attribution = clip.teamAttribution
     if attribution is None or attribution.confidence < team_selection.confidenceThreshold:
         return "uncertain"
