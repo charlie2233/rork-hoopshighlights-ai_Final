@@ -134,6 +134,75 @@ class BuildTeamHighlightEvalPayloadTests(unittest.TestCase):
                 labels={"selectedTeamId": "team_dark", "clips": []},
             )
 
+    def test_prediction_index_zero_matches_without_clip_id(self) -> None:
+        payload = build_eval_payload(
+            analysis={
+                "clips": [
+                    {**analysis_clip(10.0, 14.0, "Made Shot", True, "team_dark", 0.94), "id": "clip_made_001"},
+                ]
+            },
+            labels={
+                "selectedTeamId": "team_dark",
+                "clips": [
+                    {
+                        "labelId": "made_001",
+                        "predictionIndex": 0,
+                        "start": 10.0,
+                        "end": 14.0,
+                        "expected": {"teamId": "team_dark", "isHighlight": True, "eventType": "made_shot", "outcome": "made"},
+                    }
+                ],
+            },
+        )
+
+        self.assertEqual(payload["cases"][0]["clips"][0]["prediction"]["start"], 10.0)
+
+    def test_prediction_index_rejects_stale_clip_id(self) -> None:
+        with self.assertRaisesRegex(ValueError, "not labeled predictionClipId"):
+            build_eval_payload(
+                analysis={
+                    "clips": [
+                        {**analysis_clip(10.0, 14.0, "Made Shot", True, "team_dark", 0.94), "id": "clip_new_001"},
+                    ]
+                },
+                labels={
+                    "selectedTeamId": "team_dark",
+                    "clips": [
+                        {
+                            "labelId": "made_001",
+                            "predictionIndex": 0,
+                            "predictionClipId": "clip_old_001",
+                            "start": 10.0,
+                            "end": 14.0,
+                            "expected": {"teamId": "team_dark", "isHighlight": True, "eventType": "made_shot", "outcome": "made"},
+                        }
+                    ],
+                },
+            )
+
+    def test_prediction_index_rejects_stale_time_window(self) -> None:
+        with self.assertRaisesRegex(ValueError, "does not overlap analysis clip"):
+            build_eval_payload(
+                analysis={
+                    "clips": [
+                        {**analysis_clip(10.0, 14.0, "Made Shot", True, "team_dark", 0.94), "id": "clip_made_001"},
+                    ]
+                },
+                labels={
+                    "selectedTeamId": "team_dark",
+                    "clips": [
+                        {
+                            "labelId": "made_001",
+                            "predictionIndex": 0,
+                            "predictionClipId": "clip_made_001",
+                            "start": 40.0,
+                            "end": 44.0,
+                            "expected": {"teamId": "team_dark", "isHighlight": True, "eventType": "made_shot", "outcome": "made"},
+                        }
+                    ],
+                },
+            )
+
     def test_label_template_marks_every_prediction_as_needing_human_labels(self) -> None:
         template = build_label_template(
             analysis={

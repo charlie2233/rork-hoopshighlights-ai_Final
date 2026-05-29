@@ -219,10 +219,12 @@ def resolve_prediction_index(
     prediction_clips: list[dict[str, Any]],
     min_overlap_ratio: float,
 ) -> int | None:
-    explicit_index = integer_or_none(label.get("predictionIndex") or label.get("predictionClipIndex"))
+    explicit_index_value = label["predictionIndex"] if "predictionIndex" in label else label.get("predictionClipIndex")
+    explicit_index = integer_or_none(explicit_index_value)
     if explicit_index is not None:
         if explicit_index < 0 or explicit_index >= len(prediction_clips):
             raise ValueError(f"predictionIndex {explicit_index} is outside the analysis clip range.")
+        verify_explicit_prediction_match(label, prediction_clips[explicit_index], explicit_index, min_overlap_ratio)
         return explicit_index
 
     explicit_id = string_or_none(label.get("predictionClipId") or label.get("clipId"))
@@ -251,6 +253,35 @@ def resolve_prediction_index(
             best_index = index
 
     return best_index if best_index is not None and best_ratio >= min_overlap_ratio else None
+
+
+def verify_explicit_prediction_match(label: dict[str, Any], clip: dict[str, Any], index: int, min_overlap_ratio: float) -> None:
+    explicit_id = string_or_none(label.get("predictionClipId") or label.get("clipId"))
+    if explicit_id:
+        clip_id = string_or_none(clip.get("id") or clip.get("clipId"))
+        if clip_id and explicit_id != clip_id:
+            raise ValueError(f"predictionIndex {index} points to clip {clip_id!r}, not labeled predictionClipId {explicit_id!r}.")
+
+    label_start = number_or_none(label.get("start"))
+    label_end = number_or_none(label.get("end"))
+    clip_start = number_or_none(clip.get("startTime", clip.get("start")))
+    clip_end = number_or_none(clip.get("endTime", clip.get("end")))
+    if (
+        label_start is None
+        or label_end is None
+        or clip_start is None
+        or clip_end is None
+        or label_end <= label_start
+        or clip_end <= clip_start
+    ):
+        return
+    overlap = max(0.0, min(label_end, clip_end) - max(label_start, clip_start))
+    overlap_ratio = overlap / max(label_end - label_start, 0.001)
+    if overlap_ratio < min_overlap_ratio:
+        raise ValueError(
+            f"predictionIndex {index} time window {label_start}-{label_end} does not overlap analysis clip "
+            f"{clip_start}-{clip_end} enough for launch evidence."
+        )
 
 
 def expected_from_label(label: dict[str, Any]) -> dict[str, Any]:
