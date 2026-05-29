@@ -88,3 +88,39 @@ Remaining blockers:
 - Staging Worker editing route is not proven live.
 - Cloudflare deploy credential proof is still missing.
 - Live iOS kill-switch state is not proven through the Worker.
+
+Live submission preflight:
+
+```bash
+python3 scripts/submission_readiness_preflight.py
+```
+
+Result:
+
+```text
+pass=22 warn=0 fail=11
+```
+
+Additional live findings:
+
+- Staging Worker `/v1/editing/version` returned HTTP 404.
+- Direct editing `/version` is deployed from a stale git sha.
+- Direct editing `/version` is missing expected GPT/AI Edit feature flag keys in the live response.
+
+Local route and flag-contract validation:
+
+```bash
+npm --prefix services/control-plane exec -- tsx --test services/control-plane/test/control-plane-editing-proxy.test.ts
+PYTHONPATH=ios/backend:services/editing /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest services.editing.tests.test_editing_service.EditingServiceTests.test_version_reports_required_gpt_editor_flags -v
+PYTHONPATH=ios/backend:services/editing /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest services.editing.tests.test_editing_service -v
+```
+
+Results:
+
+```text
+control-plane editing proxy: 11 tests passed
+GPT editor flag-contract focused test: OK
+editing service suite: Ran 49 tests in 23.652s, OK
+```
+
+Conclusion: the Worker route and editing `/version` schema are covered locally; the live failures require deploying current control-plane and editing service sources, then rerunning the workflow/live preflight.

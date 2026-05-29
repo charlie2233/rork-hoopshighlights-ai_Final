@@ -544,6 +544,38 @@ class EditingServiceTests(unittest.TestCase):
             else:
                 os.environ["HOOPS_AI_EDIT_LIVE_RENDER_ENABLED"] = previous
 
+    def test_version_reports_required_gpt_editor_flags(self) -> None:
+        flag_names = (
+            "HOOPS_AI_CLIP_GPT_EDITOR_ENABLED",
+            "HOOPS_AI_CLIP_GPT_PLAN_EDIT_ENABLED",
+            "HOOPS_AI_CLIP_GPT_REVISION_ENABLED",
+        )
+        previous = {name: os.environ.get(name) for name in flag_names}
+        for name in flag_names:
+            os.environ[name] = "true"
+        try:
+            client = TestClient(create_app(self._settings()))
+
+            response = client.get("/version")
+
+            self.assertEqual(response.status_code, 200)
+            payload = response.json()
+            flags = payload["featureFlags"]
+            self.assertTrue(flags["aiClipGptEditorEnabled"])
+            self.assertTrue(flags["aiClipGptPlanEditEnabled"])
+            self.assertTrue(flags["aiClipGptRevisionEnabled"])
+            self.assertTrue(flags["gptHighlightRerankerEnabled"])
+            reranker_status = payload["gptHighlightReranker"]
+            self.assertTrue(reranker_status["enabled"])
+            self.assertTrue(reranker_status["aiClipGptPlanEditEnabled"])
+            self.assertTrue(reranker_status["aiClipGptRevisionEnabled"])
+        finally:
+            for name, value in previous.items():
+                if value is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = value
+
     def test_live_render_kill_switch_rejects_render_without_local_fallback(self) -> None:
         previous = os.environ.get("HOOPS_AI_EDIT_LIVE_RENDER_ENABLED")
         os.environ["HOOPS_AI_EDIT_LIVE_RENDER_ENABLED"] = "false"
