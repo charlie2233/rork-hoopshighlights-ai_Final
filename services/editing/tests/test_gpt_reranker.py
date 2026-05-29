@@ -2604,6 +2604,65 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertNotIn("block_3", sampled_ids)
         self.assertNotIn("score_5", sampled_ids)
 
+    def test_selected_team_sampling_bounds_unreviewed_uncertain_clip_reserve(self) -> None:
+        uncertain = [
+            {
+                **_clip(f"uncertain_{index}", float(index * 7), 0.99 - (index * 0.001)),
+                "teamAttribution": {
+                    "teamId": "team_dark",
+                    "label": "Dark jerseys",
+                    "colorLabel": "black",
+                    "confidence": 0.7,
+                    "source": "quick_scan",
+                },
+            }
+            for index in range(10)
+        ]
+        matched = [
+            {
+                **_clip(f"matched_{index}", 100.0 + float(index * 7), 0.86 - (index * 0.001)),
+                "teamAttribution": {
+                    "teamId": "team_dark",
+                    "label": "Dark jerseys",
+                    "colorLabel": "black",
+                    "confidence": 0.93,
+                    "source": "quick_scan",
+                    "evidenceFrameRefs": [f"matched_{index}_setup", f"matched_{index}_result"],
+                    "evidenceRoleGroups": ["setup", "outcome"],
+                },
+            }
+            for index in range(8)
+        ]
+        request = CreateEditJobRequest(
+            videoId="video_team_sampling",
+            analysisJobId="analysis_team_sampling",
+            installId="install-123",
+            sourceObjectKey="uploads/source.mp4",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="free",
+            teamSelection={
+                "mode": "team",
+                "teamId": "team_dark",
+                "label": "Dark jerseys",
+                "colorLabel": "black",
+                "confidenceThreshold": 0.85,
+                "includeUncertain": True,
+            },
+            clips=[*uncertain, *matched],
+        )
+
+        sampled = gpt_reranker._quality_filtered_sampled_clips(
+            gpt_reranker.rank_clips(request.clips),
+            8,
+            request=request,
+        )
+        sampled_ids = [clip.id for clip in sampled]
+
+        self.assertEqual(len(sampled), 8)
+        self.assertEqual(len([clip_id for clip_id in sampled_ids if clip_id.startswith("uncertain_")]), 2)
+        self.assertEqual(len([clip_id for clip_id in sampled_ids if clip_id.startswith("matched_")]), 6)
+
     def test_default_model_prioritizes_full_quality_vision_editor(self) -> None:
         model_env_keys = ("HOOPS_AI_CLIP_GPT_MODEL", "HOOPS_GPT_HIGHLIGHT_RERANK_MODEL")
         old_values = {key: os.environ.get(key) for key in model_env_keys}

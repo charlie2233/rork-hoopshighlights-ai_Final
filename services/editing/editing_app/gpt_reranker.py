@@ -590,11 +590,30 @@ def _quality_filtered_sampled_clips(
 
     if request and request.teamSelection is not None and request.teamSelection.mode == "team":
         team_reserve = min(max(2, max_clips // 6), max_clips)
+        render_eligible_ids = {
+            clip.id
+            for clip in filter_clips_for_team_selection(
+                eligible,
+                request.teamSelection,
+                include_review_only_uncertain=False,
+            )
+        }
+        review_only_uncertain_ids: set[str] = set()
         for clip in eligible:
-            if team_attribution_status(clip, request.teamSelection) == "uncertain":
+            if team_attribution_status(clip, request.teamSelection) == "uncertain" and clip.id not in render_eligible_ids:
                 add_clip(clip)
-                if sum(1 for item in selected if team_attribution_status(item, request.teamSelection) == "uncertain") >= team_reserve:
+                review_only_uncertain_ids.add(clip.id)
+                if len(review_only_uncertain_ids) >= team_reserve:
                     break
+
+        for clip in eligible:
+            if clip.id in render_eligible_ids:
+                add_clip(clip)
+                if len(selected) >= max_clips:
+                    break
+
+        if len(selected) >= max_clips:
+            return rank_clips(selected)
 
     for clip in eligible:
         add_clip(clip)
