@@ -22,6 +22,7 @@ from app.editing import (  # noqa: E402
     PlanTier,
     get_plan_tier_policy,
     get_template_pack,
+    is_defensive_event_like_clip,
     is_shot_like_clip,
     native_shot_signals_for_clip,
     policy_summary_for_client,
@@ -362,23 +363,11 @@ def _team_uncertain_clip_ids(source_clips: Optional[List[EditCandidateClip]]) ->
 def _defensive_clip_ids(source_clips: Optional[List[EditCandidateClip]]) -> set[str]:
     if source_clips is None:
         return set()
-    defensive_tokens = {
-        "block",
-        "blocked",
-        "steal",
-        "strip",
-        "turnover",
-        "forced",
-        "defense",
-        "defensive",
-        "stop",
-        "pressure",
-        "lockdown",
-    }
     return {
         clip.id
         for clip in source_clips
-        if any(token in clip.label.strip().lower() for token in defensive_tokens)
+        if clip.gptOutcome in {"blocked", "steal", "forced_turnover", "defensive_stop"}
+        or is_defensive_event_like_clip(clip)
     }
 
 

@@ -1028,6 +1028,39 @@ class EditingServiceTests(unittest.TestCase):
         self.assertEqual(receipt.timingQualitySelectedClipCount, 0)
         self.assertIn("Flagged 1 selected clip with weak timing/context.", receipt.summaryRows)
 
+    def test_ai_work_receipt_does_not_count_stop_and_pop_jumper_as_defense(self) -> None:
+        payload = self._edit_request().model_dump()
+        payload["targetDurationSeconds"] = 15
+        payload["clips"] = [_clip("stop_pop", 0.0, "Stop and Pop Jumper", 0.92)]
+        edit_request = CreateEditJobRequest(**payload)
+        edit_job = build_edit_job(edit_request, "edit_stop_pop_receipt")
+        self.assertFalse(edit_job.validation_errors)
+        created_at = now_utc()
+        render_job = StoredRenderJob(
+            edit_job_id="edit_stop_pop_receipt",
+            render_job_id="render_stop_pop_receipt",
+            install_id=edit_request.installId,
+            trace_id="trace_stop_pop_receipt",
+            status="rendered",
+            aspect_ratio="9:16",
+            created_at=created_at,
+            updated_at=created_at,
+            completed_at=created_at,
+            source_object_key=edit_request.sourceObjectKey,
+            output_object_key="edits/edit_stop_pop_receipt/render_jobs/render_stop_pop_receipt/final.mp4",
+            render_log_object_key="edits/edit_stop_pop_receipt/render_jobs/render_stop_pop_receipt/render_log.json",
+            duration_seconds=5.0,
+            plan_version="edit-plan-v1",
+            template_id="personal_highlight_v1",
+            plan_tier="free",
+            idempotency_key="idem-stop-pop-receipt",
+        )
+
+        receipt = build_ai_work_receipt(render_job, edit_job.plan, edit_request.clips)
+
+        self.assertEqual(receipt.defensiveSelectedClipCount, 0)
+        self.assertNotIn("Included 1 defensive highlight.", receipt.summaryRows)
+
     def test_ai_work_receipt_summarizes_validated_shot_outcome_evidence(self) -> None:
         payload = self._edit_request().model_dump()
         payload["targetDurationSeconds"] = 15
