@@ -124,6 +124,8 @@ TEAM_ACCURACY_THRESHOLD_TO_METRIC = (
     ("minSelectedTeamBlocks", "selectedTeamBlockCount"),
     ("minSelectedTeamSteals", "selectedTeamStealCount"),
 )
+EXPECTED_TEAM_ACCURACY_INPUT_SCHEMA = "team-highlight-eval-v1"
+EXPECTED_TEAM_ACCURACY_INPUT_SOURCE = "real_cloud_analysis_with_manual_labels"
 
 
 @dataclass(frozen=True)
@@ -307,8 +309,16 @@ def check_team_highlight_accuracy_report(repo_root: Path, collector: Collector, 
     status = str(report.get("status") or "").strip().lower()
     metrics = report.get("metrics")
     thresholds = report.get("thresholds")
+    evidence = report.get("evidence")
     if not isinstance(metrics, dict) or not isinstance(thresholds, dict):
         collector.fail(check_name, display_path, "Report must include metrics and thresholds objects from the evaluator.")
+        return
+    if not isinstance(evidence, dict):
+        collector.fail(
+            check_name,
+            display_path,
+            "Report must include evaluator evidence from a real cloud-analysis/manual-label payload.",
+        )
         return
 
     failures: list[str] = []
@@ -316,6 +326,30 @@ def check_team_highlight_accuracy_report(repo_root: Path, collector: Collector, 
         failures.append(f"report status is {status or 'missing'}")
 
     default_thresholds = asdict(AccuracyThresholds())
+    default_min_cases = int(default_thresholds["minCases"])
+    if evidence.get("inputSchemaVersion") != EXPECTED_TEAM_ACCURACY_INPUT_SCHEMA:
+        failures.append("evidence inputSchemaVersion is not team-highlight-eval-v1")
+    if evidence.get("inputSource") != EXPECTED_TEAM_ACCURACY_INPUT_SOURCE:
+        failures.append("evidence inputSource is not real cloud analysis with manual labels")
+    evidence_case_count = number_or_none(evidence.get("caseCount"))
+    metric_case_count = number_or_none(metrics.get("caseCount"))
+    if evidence_case_count is None or metric_case_count is None or int(evidence_case_count) != int(metric_case_count):
+        failures.append("evidence caseCount does not match metrics caseCount")
+    distinct_video_count = number_or_none(evidence.get("distinctVideoCount"))
+    if distinct_video_count is None or distinct_video_count < default_min_cases:
+        failures.append(f"distinctVideoCount is below launch default {default_min_cases}")
+    for evidence_name in (
+        "casesMissingCaseId",
+        "casesMissingVideoId",
+        "casesMissingSelectedTeamId",
+        "casesMissingAnalysisJobId",
+    ):
+        missing_count = number_or_none(evidence.get(evidence_name))
+        if missing_count is None:
+            failures.append(f"missing evidence {evidence_name}")
+        elif missing_count > 0:
+            failures.append(f"{evidence_name} must be 0")
+
     for threshold_name, metric_name in TEAM_ACCURACY_THRESHOLD_TO_METRIC:
         default_value = number_or_none(default_thresholds.get(threshold_name))
         threshold_value = number_or_none(thresholds.get(threshold_name))
@@ -341,6 +375,7 @@ def check_team_highlight_accuracy_report(repo_root: Path, collector: Collector, 
         (
             "Launch-grade 85% report passed with default-or-stricter thresholds, "
             f"{int(metrics['caseCount'])} case(s), {int(metrics['clipCount'])} clip(s), "
+            f"{int(evidence['distinctVideoCount'])} distinct video(s), "
             f"{int(metrics['opponentHighlightCount'])} opponent highlight(s), "
             f"{int(metrics['badWindowNegativeCount'])} bad-window negative(s), and "
             f"{int(metrics['uncertainReviewCount'])} uncertain review clip(s)."

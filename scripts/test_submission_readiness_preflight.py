@@ -122,6 +122,44 @@ class SubmissionReadinessPreflightTests(unittest.TestCase):
         self.assertIn("minScoredClips threshold", collector.findings[0].detail)
         self.assertIn("minOpponentHighlights threshold", collector.findings[0].detail)
 
+    def test_team_accuracy_report_requires_real_cloud_label_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            report_path = repo_root / "team_accuracy_report.json"
+            report = launch_grade_team_accuracy_report()
+            report.pop("evidence")
+            write_json(report_path, report)
+            collector = Collector()
+
+            check_team_highlight_accuracy_report(repo_root, collector, report_path)
+
+        self.assertTrue(has_failures(collector.findings))
+        self.assertIn("evaluator evidence", collector.findings[0].detail)
+
+    def test_team_accuracy_report_rejects_synthetic_or_incomplete_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            report_path = repo_root / "team_accuracy_report.json"
+            write_json(
+                report_path,
+                launch_grade_team_accuracy_report(
+                    evidence_overrides={
+                        "inputSource": "unit_test_fixture",
+                        "distinctVideoCount": 1,
+                        "casesMissingAnalysisJobId": 1,
+                    }
+                ),
+            )
+            collector = Collector()
+
+            check_team_highlight_accuracy_report(repo_root, collector, report_path)
+
+        self.assertTrue(has_failures(collector.findings))
+        detail = collector.findings[0].detail
+        self.assertIn("inputSource", detail)
+        self.assertIn("distinctVideoCount", detail)
+        self.assertIn("casesMissingAnalysisJobId", detail)
+
     def test_team_accuracy_report_requires_hard_case_metrics(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             repo_root = Path(temp_dir)
@@ -447,6 +485,7 @@ def launch_grade_team_accuracy_report(
     *,
     metric_overrides: dict[str, object] | None = None,
     threshold_overrides: dict[str, object] | None = None,
+    evidence_overrides: dict[str, object] | None = None,
     status: str = "pass",
 ) -> dict[str, object]:
     thresholds = asdict(AccuracyThresholds())
@@ -478,11 +517,23 @@ def launch_grade_team_accuracy_report(
         "badSelectedTeamEvidenceCount": 0,
     }
     metrics.update(metric_overrides or {})
+    evidence: dict[str, object] = {
+        "inputSchemaVersion": "team-highlight-eval-v1",
+        "inputSource": "real_cloud_analysis_with_manual_labels",
+        "caseCount": metrics["caseCount"],
+        "distinctVideoCount": 2,
+        "casesMissingCaseId": 0,
+        "casesMissingVideoId": 0,
+        "casesMissingSelectedTeamId": 0,
+        "casesMissingAnalysisJobId": 0,
+    }
+    evidence.update(evidence_overrides or {})
     return {
         "status": status,
         "metrics": metrics,
         "thresholds": thresholds,
         "failures": [],
+        "evidence": evidence,
     }
 
 

@@ -58,6 +58,7 @@ class BuildTeamHighlightEvalPayloadTests(unittest.TestCase):
             },
             labels={
                 "caseId": "real_game_001",
+                "videoId": "video_real_001",
                 "selectedTeamId": "team_dark",
                 "clips": [
                     {
@@ -93,11 +94,16 @@ class BuildTeamHighlightEvalPayloadTests(unittest.TestCase):
         )
 
         self.assertEqual(payload["cases"][0]["caseId"], "real_game_001")
+        self.assertEqual(payload["cases"][0]["videoId"], "video_real_001")
+        self.assertEqual(payload["cases"][0]["analysisJobId"], "job_real_001")
         self.assertEqual(payload["cases"][0]["clips"][0]["prediction"]["teamEvidence"]["status"], "evidence_backed")
         self.assertEqual(payload["cases"][0]["clips"][1]["prediction"]["keep"], False)
         self.assertEqual(payload["cases"][0]["clips"][1]["prediction"]["includeForReview"], True)
         self.assertEqual(payload["cases"][0]["clips"][1]["prediction"]["teamEvidence"]["status"], "weak_evidence")
         self.assertEqual(report.status, "pass")
+        self.assertEqual(report.evidence.inputSchemaVersion, "team-highlight-eval-v1")
+        self.assertEqual(report.evidence.inputSource, "real_cloud_analysis_with_manual_labels")
+        self.assertEqual(report.evidence.casesMissingAnalysisJobId, 0)
         self.assertEqual(report.metrics.selectedTeamRecallWithUncertain, 1.0)
         self.assertEqual(report.metrics.uncertainReviewCount, 1)
 

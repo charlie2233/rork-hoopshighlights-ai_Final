@@ -71,6 +71,12 @@ def build_eval_payload(
     allow_unlabeled_predictions: bool = False,
 ) -> dict[str, Any]:
     result = extract_analysis_result(analysis)
+    analysis_job_id = string_or_none(
+        analysis.get("jobId")
+        or analysis.get("analysisJobId")
+        or result.get("jobId")
+        or result.get("analysisJobId")
+    )
     prediction_clips = [clip for clip in ensure_list(result.get("clips")) if isinstance(clip, dict)]
     label_cases = normalize_label_cases(labels)
     if not label_cases:
@@ -124,6 +130,7 @@ def build_eval_payload(
             {
                 "caseId": case_id or string_or_none(label_case.get("caseId")) or string_or_none(analysis.get("jobId")) or f"case_{index + 1}",
                 "videoId": string_or_none(label_case.get("videoId") or labels.get("videoId")),
+                "analysisJobId": analysis_job_id,
                 "selectedTeamId": selected,
                 "confidenceThreshold": threshold if threshold is not None else 0.85,
                 "clips": clips,

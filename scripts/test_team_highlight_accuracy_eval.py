@@ -199,9 +199,23 @@ class TeamHighlightAccuracyEvalTests(unittest.TestCase):
     def test_selected_team_eval_counts_uncertain_review_and_defensive_events(self) -> None:
         report = evaluate_accuracy(
             {
+                "schemaVersion": "team-highlight-eval-v1",
+                "source": "real_cloud_analysis_with_manual_labels",
                 "cases": [
-                    {"caseId": "game_001", "selectedTeamId": "team_dark", "clips": readiness_coverage_clips()},
-                    {"caseId": "game_002", "selectedTeamId": "team_dark", "clips": readiness_coverage_clips(offset=100.0)},
+                    {
+                        "caseId": "game_001",
+                        "videoId": "video_001",
+                        "analysisJobId": "analysis_001",
+                        "selectedTeamId": "team_dark",
+                        "clips": readiness_coverage_clips(),
+                    },
+                    {
+                        "caseId": "game_002",
+                        "videoId": "video_002",
+                        "analysisJobId": "analysis_002",
+                        "selectedTeamId": "team_dark",
+                        "clips": readiness_coverage_clips(offset=100.0),
+                    },
                 ]
             }
         )
@@ -228,6 +242,10 @@ class TeamHighlightAccuracyEvalTests(unittest.TestCase):
         self.assertEqual(report.metrics.selectedTeamEvidenceClipCount, 6)
         self.assertEqual(report.metrics.badSelectedTeamEvidenceCount, 0)
         self.assertEqual(report.metrics.uncertainReviewCount, 2)
+        self.assertEqual(report.evidence.inputSchemaVersion, "team-highlight-eval-v1")
+        self.assertEqual(report.evidence.inputSource, "real_cloud_analysis_with_manual_labels")
+        self.assertEqual(report.evidence.distinctVideoCount, 2)
+        self.assertEqual(report.evidence.casesMissingAnalysisJobId, 0)
 
     def test_tiny_eval_set_cannot_pass_default_readiness(self) -> None:
         report = evaluate_accuracy(

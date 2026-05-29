@@ -122,11 +122,24 @@ class AccuracyMetrics:
 
 
 @dataclass(frozen=True)
+class AccuracyEvidenceSummary:
+    inputSchemaVersion: str | None
+    inputSource: str | None
+    caseCount: int
+    distinctVideoCount: int
+    casesMissingCaseId: int
+    casesMissingVideoId: int
+    casesMissingSelectedTeamId: int
+    casesMissingAnalysisJobId: int
+
+
+@dataclass(frozen=True)
 class AccuracyReport:
     status: str
     metrics: AccuracyMetrics
     thresholds: AccuracyThresholds
     failures: list[str]
+    evidence: AccuracyEvidenceSummary
 
 
 def main() -> int:
@@ -204,6 +217,7 @@ def load_json(path: Path) -> dict[str, Any]:
 def evaluate_accuracy(payload: dict[str, Any], thresholds: AccuracyThresholds | None = None) -> AccuracyReport:
     thresholds = thresholds or AccuracyThresholds()
     cases = normalize_cases(payload)
+    evidence = summarize_evidence(payload, cases)
     if not cases:
         metrics = AccuracyMetrics(
             caseCount=0,
@@ -231,7 +245,7 @@ def evaluate_accuracy(payload: dict[str, Any], thresholds: AccuracyThresholds | 
             selectedTeamEvidenceClipCount=0,
             badSelectedTeamEvidenceCount=0,
         )
-        return AccuracyReport("fail", metrics, thresholds, ["No eval cases found."])
+        return AccuracyReport("fail", metrics, thresholds, ["No eval cases found."], evidence)
 
     counts = {
         "clips": 0,
@@ -399,7 +413,7 @@ def evaluate_accuracy(payload: dict[str, Any], thresholds: AccuracyThresholds | 
     failures = threshold_failures(metrics, thresholds)
     if metrics.clipCount == 0:
         failures.append("No scored clips found.")
-    return AccuracyReport("fail" if failures else "pass", metrics, thresholds, failures)
+    return AccuracyReport("fail" if failures else "pass", metrics, thresholds, failures, evidence)
 
 
 def normalize_cases(payload: dict[str, Any]) -> list[dict[str, Any]]:
@@ -409,12 +423,47 @@ def normalize_cases(payload: dict[str, Any]) -> list[dict[str, Any]]:
         return [
             {
                 "caseId": payload.get("caseId", "default"),
+                "videoId": payload.get("videoId"),
+                "analysisJobId": payload.get("analysisJobId") or payload.get("jobId"),
                 "selectedTeamId": payload.get("selectedTeamId") or payload.get("teamId"),
                 "confidenceThreshold": payload.get("confidenceThreshold"),
                 "clips": payload.get("clips"),
             }
         ]
     return []
+
+
+def summarize_evidence(payload: dict[str, Any], cases: list[dict[str, Any]]) -> AccuracyEvidenceSummary:
+    video_ids: set[str] = set()
+    missing_case_id = 0
+    missing_video_id = 0
+    missing_selected_team_id = 0
+    missing_analysis_job_id = 0
+    for case in cases:
+        case_id = string_or_none(case.get("caseId"))
+        if case_id is None:
+            missing_case_id += 1
+        video_id = string_or_none(case.get("videoId"))
+        if video_id is None:
+            missing_video_id += 1
+        else:
+            video_ids.add(video_id)
+        if string_or_none(case.get("selectedTeamId") or case.get("teamId")) is None:
+            missing_selected_team_id += 1
+        analysis_job_id = string_or_none(case.get("analysisJobId") or case.get("jobId"))
+        if analysis_job_id is None:
+            missing_analysis_job_id += 1
+
+    return AccuracyEvidenceSummary(
+        inputSchemaVersion=string_or_none(payload.get("schemaVersion")),
+        inputSource=string_or_none(payload.get("source")),
+        caseCount=len(cases),
+        distinctVideoCount=len(video_ids),
+        casesMissingCaseId=missing_case_id,
+        casesMissingVideoId=missing_video_id,
+        casesMissingSelectedTeamId=missing_selected_team_id,
+        casesMissingAnalysisJobId=missing_analysis_job_id,
+    )
 
 
 def normalize_clip(raw_clip: dict[str, Any]) -> dict[str, dict[str, Any]] | None:
