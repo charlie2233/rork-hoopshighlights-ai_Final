@@ -42,6 +42,10 @@ This does not make blocks and steals less important. It makes them better: a sel
 - Whitespace:
   - `git diff --check`
   - Result: passed.
+- Submission readiness:
+  - `python3 scripts/submission_readiness_preflight.py --skip-live`
+  - Result: `pass=22 warn=2 fail=8`.
+  - Blocking failures: launch-grade labeled team/highlight accuracy report missing, connected iPhone unavailable for install/smoke, current main-branch CI proof stale for this checkout, installed TestFlight smoke unproven, staging Worker version route unproven, Cloudflare deploy credential proof missing, and live iOS kill-switch state unproven through the Worker.
 
 ## Launch Notes
 
