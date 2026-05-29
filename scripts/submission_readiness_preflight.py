@@ -79,6 +79,8 @@ REQUIRED_MAIN_WORKFLOWS = (
     "Cloud Edit Deploy Preflight",
     "iOS Internal TestFlight Upload",
 )
+SECRET_GATED_DEPLOY_WORKFLOW_FILE = "cloud-edit-deploy-preflight.yml"
+SECRET_GATED_DEPLOY_JOB_NAME = "Verify cloud edit deploy secrets"
 GITHUB_ACTIONS_STARTABILITY_CONCLUSIONS = {"action_required", "startup_failure"}
 BLOCKER_DOCS = (
     (
@@ -233,6 +235,7 @@ def run_checks(
     check_live_editing_version(editing_version_url, collector, repo_root=repo_root, skip_live=skip_live, timeout_seconds=timeout_seconds)
     check_ci_deploy_inputs(collector)
     check_github_workflow_runs(repo_root, collector)
+    check_secret_gated_deploy_preflight(repo_root, collector)
     check_blocker_docs(repo_root, collector)
     check_submission_automation(repo_root, collector)
     check_ios_upload_inputs(collector)
@@ -782,6 +785,151 @@ def check_github_workflow_runs(repo_root: Path, collector: Collector) -> None:
             collector.pass_("github workflow status", workflow_name, f"Latest main-branch run for current checkout completed successfully at {created_at}.")
         else:
             collector.fail("github workflow status", workflow_name, f"Latest main-branch run status={status} conclusion={conclusion} at {created_at}.")
+
+
+def check_secret_gated_deploy_preflight(repo_root: Path, collector: Collector) -> None:
+    check_name = "secret-gated deploy preflight"
+    current_sha = current_git_sha(repo_root)
+    try:
+        result = subprocess.run(
+            [
+                "gh",
+                "run",
+                "list",
+                "--repo",
+                "charlie2233/rork-hoopshighlights-ai_Final",
+                "--workflow",
+                SECRET_GATED_DEPLOY_WORKFLOW_FILE,
+                "--branch",
+                "main",
+                "--limit",
+                "20",
+                "--json",
+                "databaseId,status,conclusion,createdAt,headSha,event,url",
+            ],
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=20,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        collector.warn(check_name, "GitHub Actions", "Could not inspect secret-gated deploy preflight workflow_dispatch runs.")
+        return
+    if result.returncode != 0:
+        collector.warn(check_name, "GitHub Actions", "gh run list did not return secret-gated deploy preflight state.")
+        return
+    try:
+        runs = json.loads(result.stdout or "[]")
+    except json.JSONDecodeError:
+        collector.warn(check_name, "GitHub Actions", "gh run list returned invalid JSON for deploy preflight runs.")
+        return
+    if not isinstance(runs, list):
+        collector.warn(check_name, "GitHub Actions", "gh run list returned an unexpected deploy preflight payload.")
+        return
+
+    dispatch_runs = [run for run in runs if isinstance(run, dict) and run.get("event") == "workflow_dispatch"]
+    if not dispatch_runs:
+        collector.fail(
+            check_name,
+            "Cloud Edit Deploy Preflight",
+            "No manually dispatched deploy preflight run was found; push codechecks do not prove staging secrets or provider auth.",
+        )
+        return
+
+    matching_run = None
+    for run in dispatch_runs:
+        head_sha = str(run.get("headSha") or "")
+        if current_sha and head_sha == current_sha:
+            matching_run = run
+            break
+
+    if matching_run is None:
+        latest = dispatch_runs[0]
+        latest_sha = str(latest.get("headSha") or "")
+        short_latest = latest_sha[:7] if latest_sha else "unknown"
+        short_current = current_sha[:7] if current_sha else "unknown"
+        collector.fail(
+            check_name,
+            "Cloud Edit Deploy Preflight",
+            (
+                f"Latest manually dispatched deploy preflight is for {short_latest}, not current checkout {short_current}; "
+                "rerun workflow_dispatch operation=preflight after provider secrets are repaired."
+            ),
+        )
+        return
+
+    run_id = matching_run.get("databaseId")
+    status = str(matching_run.get("status") or "unknown")
+    conclusion = str(matching_run.get("conclusion") or "unknown")
+    created_at = str(matching_run.get("createdAt") or "unknown")
+    if status != "completed" or conclusion != "success":
+        collector.fail(
+            check_name,
+            "Cloud Edit Deploy Preflight",
+            f"Current-commit workflow_dispatch deploy preflight status={status} conclusion={conclusion} at {created_at}.",
+        )
+        return
+
+    job_result = deploy_preflight_secret_job_result(run_id)
+    if job_result is None:
+        collector.fail(
+            check_name,
+            "Cloud Edit Deploy Preflight",
+            "Could not confirm the secret-gated deploy job; rerun workflow_dispatch operation=preflight and verify provider-auth checks.",
+        )
+        return
+    job_status, job_conclusion = job_result
+    if job_status == "completed" and job_conclusion == "success":
+        collector.pass_(
+            check_name,
+            "Cloud Edit Deploy Preflight",
+            f"Current-commit workflow_dispatch deploy preflight completed successfully with provider-auth job proof at {created_at}.",
+        )
+    else:
+        collector.fail(
+            check_name,
+            "Cloud Edit Deploy Preflight",
+            f"Secret-gated deploy job status={job_status} conclusion={job_conclusion}; provider-auth preflight is not proven.",
+        )
+
+
+def deploy_preflight_secret_job_result(run_id: object) -> tuple[str, str] | None:
+    if run_id in (None, ""):
+        return None
+    try:
+        result = subprocess.run(
+            [
+                "gh",
+                "run",
+                "view",
+                str(run_id),
+                "--repo",
+                "charlie2233/rork-hoopshighlights-ai_Final",
+                "--json",
+                "jobs",
+            ],
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=20,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0:
+        return None
+    try:
+        payload = json.loads(result.stdout or "{}")
+    except json.JSONDecodeError:
+        return None
+    jobs = payload.get("jobs") if isinstance(payload, dict) else None
+    if not isinstance(jobs, list):
+        return None
+    for job in jobs:
+        if isinstance(job, dict) and job.get("name") == SECRET_GATED_DEPLOY_JOB_NAME:
+            return str(job.get("status") or "unknown"), str(job.get("conclusion") or "unknown")
+    return "missing", "missing"
 
 
 def current_git_sha(repo_root: Path) -> str | None:

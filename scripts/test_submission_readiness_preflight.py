@@ -25,6 +25,7 @@ from scripts.submission_readiness_preflight import (
     check_github_workflow_runs,
     check_ios_upload_inputs,
     check_live_editing_version,
+    check_secret_gated_deploy_preflight,
     check_team_highlight_accuracy_report,
     has_failures,
     parse_devicectl_devices,
@@ -74,6 +75,13 @@ class SubmissionReadinessPreflightTests(unittest.TestCase):
                     "github workflow status",
                     "GitHub Actions",
                     "Required main-branch workflow runs are green.",
+                ),
+            ), patch(
+                "scripts.submission_readiness_preflight.check_secret_gated_deploy_preflight",
+                side_effect=lambda _repo_root, collector: collector.pass_(
+                    "secret-gated deploy preflight",
+                    "Cloud Edit Deploy Preflight",
+                    "Current-commit workflow_dispatch deploy preflight completed successfully with provider-auth job proof.",
                 ),
             ), patch.dict(
                 os.environ,
@@ -437,6 +445,113 @@ charlie的iPhone   charliedeiPhone.coredevice.local   E5786BB6-0095-5509-8B85-11
             check_github_workflow_runs(Path.cwd(), collector)
 
         self.assertFalse(has_failures(collector.findings))
+
+    def test_secret_gated_deploy_preflight_fails_when_latest_dispatch_is_stale(self) -> None:
+        payload = [
+            {
+                "databaseId": 222,
+                "headSha": "abc1234567890",
+                "event": "push",
+                "status": "completed",
+                "conclusion": "success",
+                "createdAt": "2026-05-29T22:07:56Z",
+            },
+            {
+                "databaseId": 111,
+                "headSha": "old1234567890",
+                "event": "workflow_dispatch",
+                "status": "completed",
+                "conclusion": "failure",
+                "createdAt": "2026-05-29T22:01:08Z",
+            },
+        ]
+        collector = Collector()
+
+        with patch(
+            "scripts.submission_readiness_preflight.subprocess.run",
+            return_value=SimpleNamespace(returncode=0, stdout=json.dumps(payload)),
+        ), patch(
+            "scripts.submission_readiness_preflight.run_git",
+            return_value="abc1234567890\n",
+        ):
+            check_secret_gated_deploy_preflight(Path.cwd(), collector)
+
+        self.assertTrue(has_failures(collector.findings))
+        self.assertIn("not current checkout", collector.findings[0].detail)
+        self.assertIn("operation=preflight", collector.findings[0].detail)
+
+    def test_secret_gated_deploy_preflight_rejects_dispatch_without_secret_job(self) -> None:
+        run_list_payload = [
+            {
+                "databaseId": 111,
+                "headSha": "abc1234567890",
+                "event": "workflow_dispatch",
+                "status": "completed",
+                "conclusion": "success",
+                "createdAt": "2026-05-29T22:01:08Z",
+            }
+        ]
+        run_view_payload = {
+            "jobs": [
+                {"name": "Worker typecheck and dry run", "status": "completed", "conclusion": "success"},
+                {"name": "Editing backend Python tests", "status": "completed", "conclusion": "success"},
+            ]
+        }
+
+        def fake_run(command: list[str], **_kwargs: object) -> SimpleNamespace:
+            if command[:3] == ["gh", "run", "list"]:
+                return SimpleNamespace(returncode=0, stdout=json.dumps(run_list_payload))
+            if command[:3] == ["gh", "run", "view"]:
+                return SimpleNamespace(returncode=0, stdout=json.dumps(run_view_payload))
+            return SimpleNamespace(returncode=1, stdout="")
+
+        collector = Collector()
+        with patch("scripts.submission_readiness_preflight.subprocess.run", side_effect=fake_run), patch(
+            "scripts.submission_readiness_preflight.run_git",
+            return_value="abc1234567890\n",
+        ):
+            check_secret_gated_deploy_preflight(Path.cwd(), collector)
+
+        self.assertTrue(has_failures(collector.findings))
+        self.assertIn("provider-auth preflight is not proven", collector.findings[0].detail)
+
+    def test_secret_gated_deploy_preflight_passes_with_current_successful_secret_job(self) -> None:
+        run_list_payload = [
+            {
+                "databaseId": 111,
+                "headSha": "abc1234567890",
+                "event": "workflow_dispatch",
+                "status": "completed",
+                "conclusion": "success",
+                "createdAt": "2026-05-29T22:01:08Z",
+            }
+        ]
+        run_view_payload = {
+            "jobs": [
+                {
+                    "name": "Verify cloud edit deploy secrets",
+                    "status": "completed",
+                    "conclusion": "success",
+                }
+            ]
+        }
+
+        def fake_run(command: list[str], **_kwargs: object) -> SimpleNamespace:
+            if command[:3] == ["gh", "run", "list"]:
+                return SimpleNamespace(returncode=0, stdout=json.dumps(run_list_payload))
+            if command[:3] == ["gh", "run", "view"]:
+                return SimpleNamespace(returncode=0, stdout=json.dumps(run_view_payload))
+            return SimpleNamespace(returncode=1, stdout="")
+
+        collector = Collector()
+        with patch("scripts.submission_readiness_preflight.subprocess.run", side_effect=fake_run), patch(
+            "scripts.submission_readiness_preflight.run_git",
+            return_value="abc1234567890\n",
+        ):
+            check_secret_gated_deploy_preflight(Path.cwd(), collector)
+
+        self.assertFalse(has_failures(collector.findings))
+        self.assertIn("provider-auth job proof", collector.findings[0].detail)
 
     def test_deploy_inputs_can_come_from_github_environment_names(self) -> None:
         def fake_github_names(kind: str) -> set[str]:
