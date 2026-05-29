@@ -49,7 +49,7 @@ TEAM_EVIDENCE_REQUIRED_SOURCES = {"quick_scan", "gpt_frame_review", "provider", 
 MIN_CONFIDENT_TEAM_EVIDENCE_FRAME_REFS = 2
 MIN_CONFIDENT_TEAM_EVIDENCE_ROLE_GROUPS = 2
 MIN_DETECTED_TEAM_OPTION_CONFIDENCE = 0.85
-VisualFrameSignal = Tuple[float, float, float, float]
+VisualFrameSignal = Tuple[float, ...]
 
 
 @dataclass(frozen=True)
@@ -60,6 +60,7 @@ class VisualEventFrame:
     full_motion: float
     upper_motion: float
     center_motion: float
+    lower_motion: float
     audio_score: float
 
 
@@ -998,7 +999,17 @@ def _extract_visual_frame_signals(path: Path, duration_seconds: float) -> List[V
             0,
             VISUAL_EVENT_FRAME_HEIGHT,
         )
-        signals.append((round(time_seconds, 3), full_motion, upper_motion, center_motion))
+        lower_motion = _region_motion_score(
+            current,
+            previous,
+            VISUAL_EVENT_FRAME_WIDTH,
+            VISUAL_EVENT_FRAME_HEIGHT,
+            0,
+            VISUAL_EVENT_FRAME_WIDTH,
+            VISUAL_EVENT_FRAME_HEIGHT // 2,
+            VISUAL_EVENT_FRAME_HEIGHT,
+        )
+        signals.append((round(time_seconds, 3), full_motion, upper_motion, center_motion, lower_motion))
         previous = current
 
     return signals
@@ -1045,9 +1056,10 @@ def _visual_event_boundaries_from_signals(
         return []
 
     scored_frames: List[VisualEventFrame] = []
-    for time_seconds, full_motion, upper_motion, center_motion in frame_signals:
+    for signal in frame_signals:
+        time_seconds, full_motion, upper_motion, center_motion, lower_motion = _unpack_visual_frame_signal(signal)
         visual_score = clamp(
-            (upper_motion * 0.48) + (center_motion * 0.34) + (full_motion * 0.18),
+            (upper_motion * 0.44) + (center_motion * 0.32) + (lower_motion * 0.12) + (full_motion * 0.12),
             0.0,
             1.0,
         )
@@ -1064,6 +1076,7 @@ def _visual_event_boundaries_from_signals(
                 full_motion=full_motion,
                 upper_motion=upper_motion,
                 center_motion=center_motion,
+                lower_motion=lower_motion,
                 audio_score=audio_score,
             )
         )
@@ -1108,6 +1121,12 @@ def _visual_event_boundaries_from_signals(
     return sorted(chosen)
 
 
+def _unpack_visual_frame_signal(signal: VisualFrameSignal) -> tuple[float, float, float, float, float]:
+    time_seconds, full_motion, upper_motion, center_motion = signal[:4]
+    lower_motion = signal[4] if len(signal) >= 5 else center_motion
+    return time_seconds, full_motion, upper_motion, center_motion, lower_motion
+
+
 def _cluster_visual_event_frames(frames: Sequence[VisualEventFrame]) -> List[List[VisualEventFrame]]:
     clusters: List[List[VisualEventFrame]] = []
     for frame in sorted(frames, key=lambda item: item.time_seconds):
@@ -1142,7 +1161,7 @@ def _visual_event_context_scores(frame: VisualEventFrame, frames: Sequence[Visua
     )
     outcome_score = max(
         (
-            _shot_context_visual_score(candidate)
+            _shot_result_visual_score(candidate)
             for candidate in frames
             if frame.time_seconds + 0.25 <= candidate.time_seconds <= frame.time_seconds + VISUAL_EVENT_CONTEXT_SECONDS
         ),
@@ -1161,7 +1180,7 @@ def _visual_event_is_setup_before_stronger_result(
         return False
     later_peak = max(
         (
-            _shot_context_visual_score(candidate)
+            _shot_result_visual_score(candidate)
             for candidate in frames
             if frame.time_seconds + 0.25 <= candidate.time_seconds <= frame.time_seconds + 0.75
         ),
@@ -1173,6 +1192,14 @@ def _visual_event_is_setup_before_stronger_result(
 
 def _shot_context_visual_score(frame: VisualEventFrame) -> float:
     return clamp((frame.upper_motion * 0.52) + (frame.center_motion * 0.34) + (frame.full_motion * 0.14), 0.0, 1.0)
+
+
+def _shot_result_visual_score(frame: VisualEventFrame) -> float:
+    return clamp(
+        (frame.center_motion * 0.42) + (frame.lower_motion * 0.38) + (frame.upper_motion * 0.14) + (frame.full_motion * 0.06),
+        0.0,
+        1.0,
+    )
 
 
 def _audio_peak_near_time(audio_profile: Sequence[float], time_seconds: float) -> float:
