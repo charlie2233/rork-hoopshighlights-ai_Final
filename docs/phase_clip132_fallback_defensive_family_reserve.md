@@ -65,3 +65,26 @@ OK
 ## Launch Notes
 
 This improves the non-GPT fallback path for selected-team highlights, especially defensive possessions. It does not prove the full 85% launch accuracy target by itself; that still needs launch-grade labeled footage and an installed TestFlight smoke with wired iPhone evidence.
+
+Clean-commit submission preflight:
+
+```bash
+python3 scripts/submission_readiness_preflight.py --skip-live
+```
+
+Result:
+
+```text
+pass=22 warn=2 fail=8
+```
+
+Remaining blockers:
+
+- Launch-grade selected-team/highlight quality accuracy report is still missing.
+- Wired iPhone is detected but unavailable for install/smoke testing.
+- Live Worker and direct editing service probes were intentionally skipped.
+- Main-branch Cloud Edit Deploy Preflight and iOS Internal TestFlight Upload workflows are stale for this checkout.
+- Installed TestFlight post-install smoke remains unproven.
+- Staging Worker editing route is not proven live.
+- Cloudflare deploy credential proof is still missing.
+- Live iOS kill-switch state is not proven through the Worker.
