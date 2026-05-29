@@ -1,6 +1,35 @@
 import Foundation
 
-struct CloudEditService {
+protocol CloudEditServicing {
+    func fetchVersion() async throws -> CloudEditVersionResponse
+    func createEditJob(_ requestBody: CreateCloudEditJobRequest) async throws -> CloudEditJobResponse
+    func fetchEditPlan(editJobID: String, installID: String) async throws -> CloudEditPlanResponse
+    func pollRenderStatus(editJobID: String, installID: String) async throws -> CloudEditRenderStatusResponse
+    func fetchRenderHistory(installID: String, limit: Int) async throws -> CloudEditRenderHistoryResponse
+    func requestStoredRender(
+        editJobID: String,
+        installID: String,
+        idempotencyKey: String?,
+        forceNew: Bool
+    ) async throws -> CloudEditRenderStatusResponse
+    func requestLockerRerender(render: CloudEditRenderStatusResponse, installID: String) async throws -> CloudEditRenderStatusResponse
+    func fetchDownloadURL(editJobID: String, installID: String) async throws -> CloudEditDownloadResponse
+    func fetchDownloadURL(renderJobID: String, installID: String) async throws -> CloudEditDownloadResponse
+    func requestRevision(
+        editJobID: String,
+        installID: String,
+        command: CloudEditRevisionCommand
+    ) async throws -> CloudEditRevisionResponse
+    func requestRevisionRender(
+        editJobID: String,
+        revisionID: String,
+        installID: String,
+        forceNew: Bool
+    ) async throws -> CloudEditRenderStatusResponse
+    func downloadRenderedVideo(from response: CloudEditDownloadResponse) async throws -> URL
+}
+
+struct CloudEditService: CloudEditServicing {
     private let session: URLSession
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder

@@ -55,9 +55,25 @@ struct AIEditView: View {
     @State private var showingShareSheet = false
     @State private var proInfoSheet: AIEditProInfoSheet?
 
-    private let cloudEditService = CloudEditService()
+    private let cloudEditService: any CloudEditServicing
     private let proUXFlags = CloudEditProUXFlags.safeDefault
     private static let maxUserPromptCharacters = 240
+
+    init(
+        viewModel: HighlightsViewModel,
+        isProUser: Bool,
+        revenueCatAppUserID: String? = nil,
+        presentation: AIEditPresentation = .sheet,
+        cloudEditService: any CloudEditServicing = CloudEditService(),
+        onRequestProUpgrade: (() -> Void)? = nil
+    ) {
+        self.viewModel = viewModel
+        self.isProUser = isProUser
+        self.revenueCatAppUserID = revenueCatAppUserID
+        self.presentation = presentation
+        self.cloudEditService = cloudEditService
+        self.onRequestProUpgrade = onRequestProUpgrade
+    }
 
     var body: some View {
         Group {
@@ -2089,7 +2105,8 @@ struct AIEditView: View {
             let requested = try await cloudEditService.requestRevisionRender(
                 editJobID: editJob.editJobId,
                 revisionID: revisionResponse.revisionId,
-                installID: viewModel.installID
+                installID: viewModel.installID,
+                forceNew: false
             )
             renderStatus = requested
             policySummary = requested.policy ?? policySummary

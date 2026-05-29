@@ -5,6 +5,24 @@ import Testing
 @Suite(.serialized)
 @MainActor
 struct CloudEditServiceTests {
+    @Test func testCloudEditServiceConformsToAIEditViewServiceContract() {
+        let service: any CloudEditServicing = CloudEditService()
+
+        #expect(String(describing: type(of: service)) == "CloudEditService")
+    }
+
+    @Test func testAIEditViewAcceptsInjectedCloudEditService() {
+        let viewModel = HighlightsViewModel()
+        let service = InjectedCloudEditService()
+        let view = AIEditView(
+            viewModel: viewModel,
+            isProUser: false,
+            cloudEditService: service
+        )
+
+        #expect(Mirror(reflecting: view).displayStyle == .struct)
+    }
+
     @Test func testDownloadRenderedVideoMapsExpiredStatusesToDownloadURLExpired() async throws {
         for statusCode in [401, 403, 404, 410] {
             let service = CloudEditService(session: makeSession(statusCode: statusCode))
@@ -365,6 +383,74 @@ struct CloudEditServiceTests {
 private extension [URLQueryItem] {
     func value(named name: String) -> String? {
         first { $0.name == name }?.value
+    }
+}
+
+private final class InjectedCloudEditService: CloudEditServicing {
+    func fetchVersion() async throws -> CloudEditVersionResponse {
+        try unexpectedCall()
+    }
+
+    func createEditJob(_ requestBody: CreateCloudEditJobRequest) async throws -> CloudEditJobResponse {
+        try unexpectedCall()
+    }
+
+    func fetchEditPlan(editJobID: String, installID: String) async throws -> CloudEditPlanResponse {
+        try unexpectedCall()
+    }
+
+    func pollRenderStatus(editJobID: String, installID: String) async throws -> CloudEditRenderStatusResponse {
+        try unexpectedCall()
+    }
+
+    func fetchRenderHistory(installID: String, limit: Int) async throws -> CloudEditRenderHistoryResponse {
+        try unexpectedCall()
+    }
+
+    func requestStoredRender(
+        editJobID: String,
+        installID: String,
+        idempotencyKey: String?,
+        forceNew: Bool
+    ) async throws -> CloudEditRenderStatusResponse {
+        try unexpectedCall()
+    }
+
+    func requestLockerRerender(render: CloudEditRenderStatusResponse, installID: String) async throws -> CloudEditRenderStatusResponse {
+        try unexpectedCall()
+    }
+
+    func fetchDownloadURL(editJobID: String, installID: String) async throws -> CloudEditDownloadResponse {
+        try unexpectedCall()
+    }
+
+    func fetchDownloadURL(renderJobID: String, installID: String) async throws -> CloudEditDownloadResponse {
+        try unexpectedCall()
+    }
+
+    func requestRevision(
+        editJobID: String,
+        installID: String,
+        command: CloudEditRevisionCommand
+    ) async throws -> CloudEditRevisionResponse {
+        try unexpectedCall()
+    }
+
+    func requestRevisionRender(
+        editJobID: String,
+        revisionID: String,
+        installID: String,
+        forceNew: Bool
+    ) async throws -> CloudEditRenderStatusResponse {
+        try unexpectedCall()
+    }
+
+    func downloadRenderedVideo(from response: CloudEditDownloadResponse) async throws -> URL {
+        try unexpectedCall()
+    }
+
+    private func unexpectedCall<T>(function: StaticString = #function) throws -> T {
+        throw CloudEditError.network("Unexpected cloud edit service call in injection test: \(function)")
     }
 }
 
