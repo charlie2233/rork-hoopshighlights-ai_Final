@@ -401,10 +401,15 @@ def _annotate_analysis_team_status(
     clips: Sequence[CloudClip],
     team_selection: Optional[TeamSelection],
 ) -> list[CloudClip]:
-    return [
-        clip.model_copy(update={"teamAttributionStatus": _analysis_team_status(clip, team_selection)})
-        for clip in clips
-    ]
+    annotated: list[CloudClip] = []
+    for clip in clips:
+        status = _analysis_team_status(clip, team_selection)
+        updates: dict[str, object] = {"teamAttributionStatus": status}
+        if team_selection is not None and team_selection.mode == "team" and status == "uncertain":
+            updates["shouldAutoKeep"] = False
+            updates["shouldEnableSlowMotion"] = False
+        annotated.append(clip.model_copy(update=updates))
+    return annotated
 
 
 def _detected_teams_from_clips(clips: Sequence[CloudClip]) -> list[TeamOption]:

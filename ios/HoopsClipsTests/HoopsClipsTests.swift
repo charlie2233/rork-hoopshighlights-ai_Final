@@ -468,6 +468,23 @@ struct HoopsClipsTests {
         #expect(requestedPaths.contains("POST /v1/analysis/jobs/job_team_scan/start"))
     }
 
+    @Test func testHighlightTeamSelectionCodablePreservesPrimaryColorHex() throws {
+        let selection = HighlightTeamSelection(
+            mode: .team,
+            teamId: "team_blue",
+            label: "Blue jerseys",
+            colorLabel: "blue",
+            primaryColorHex: "#0057FF"
+        )
+
+        let data = try JSONEncoder().encode(selection)
+        let payload = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let decoded = try JSONDecoder().decode(HighlightTeamSelection.self, from: data)
+
+        #expect(payload["primaryColorHex"] as? String == "#0057FF")
+        #expect(decoded.primaryColorHex == "#0057FF")
+    }
+
     @Test @MainActor func testTeamTargetChoicesRequireDetectedTeams() {
         let viewModel = HighlightsViewModel()
 
@@ -496,6 +513,66 @@ struct HoopsClipsTests {
         viewModel.confirmHighlightTeamSelection(scannedChoices[1])
         #expect(viewModel.requiresHighlightTeamSelectionConfirmation == false)
         #expect(viewModel.settings.highlightTeamSelection.teamId == "team_blue")
+    }
+
+    @Test func testPersistedProjectRecordStoresCloudTeamSelectionAndDiagnostics() throws {
+        let now = Date(timeIntervalSince1970: 1_777_000_000)
+        let project = PersistedProjectRecord(
+            title: "Team Game",
+            sourceFilename: "team-game.mov",
+            sourceRelativePath: "projects/source.mov",
+            sourceDuration: 64,
+            thumbnailRelativePath: "projects/thumb.jpg",
+            createdAt: now,
+            updatedAt: now,
+            lastOpenedAt: now,
+            highlightTeamSelection: HighlightTeamSelection(
+                mode: .team,
+                teamId: "team_blue",
+                label: "Blue jerseys",
+                colorLabel: "blue",
+                primaryColorHex: "#0057FF"
+            ),
+            cloudDetectedTeams: [
+                CloudTeamOption(
+                    teamId: "team_blue",
+                    label: "Blue jerseys",
+                    colorLabel: "blue",
+                    primaryColorHex: "#0057FF",
+                    confidence: 0.94,
+                    source: "quick_scan"
+                )
+            ],
+            cloudDiagnostics: CloudDiagnostics(
+                processingMs: 42,
+                backendModelVersion: "cloud-v1+team-scan",
+                usedVideoIntelligence: false,
+                usedGeminiRelabeling: false,
+                candidateSegments: 12,
+                finalSegments: 4,
+                usedTeamQuickScan: true,
+                preTeamFilterSegments: 12,
+                teamMatchedCandidateSegments: 5,
+                teamUncertainCandidateSegments: 2,
+                teamOpponentFilteredSegments: 5,
+                teamMatchedReviewSegments: 3,
+                teamUncertainReviewSegments: 1,
+                defensiveReviewSegments: 1,
+                blockReviewSegments: 0,
+                stealReviewSegments: 1
+            )
+        )
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+
+        let decoded = try decoder.decode(PersistedProjectRecord.self, from: try encoder.encode(project))
+
+        #expect(decoded.highlightTeamSelection?.teamId == "team_blue")
+        #expect(decoded.highlightTeamSelection?.primaryColorHex == "#0057FF")
+        #expect(decoded.cloudDetectedTeams?.first?.label == "Blue jerseys")
+        #expect(decoded.cloudDiagnostics?.teamUncertainReviewSegments == 1)
     }
 
     @Test @MainActor func testCloudEditRequestSendsStrongestCandidatesBeforeFortyClipCap() throws {

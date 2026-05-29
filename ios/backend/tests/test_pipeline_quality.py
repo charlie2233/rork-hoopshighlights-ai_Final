@@ -722,6 +722,53 @@ class PipelineQualityTests(unittest.TestCase):
         self.assertNotIn("Uncertain weak rebound", labels)
         self.assertNotIn("Made Shot 4", labels)
 
+    def test_uncertain_selected_team_review_clip_is_not_auto_kept(self) -> None:
+        team_selection = TeamSelection(mode="team", teamId="team_dark", colorLabel="black", includeUncertain=True)
+        matched = _clip(
+            start=0.0,
+            end=4.0,
+            label="Made Shot",
+            combined=0.95,
+            event_center=2.0,
+            auto_keep=True,
+        ).model_copy(
+            update={
+                "teamAttribution": _team_attr(
+                    team_id="team_dark",
+                    label="Dark jerseys",
+                    color_label="black",
+                    confidence=0.94,
+                )
+            }
+        )
+        uncertain = _clip(
+            start=5.0,
+            end=9.0,
+            label="Uncertain steal",
+            combined=0.86,
+            event_center=7.0,
+            auto_keep=True,
+        ).model_copy(
+            update={
+                "teamAttribution": ClipTeamAttribution(
+                    teamId="team_dark",
+                    label="Dark jerseys",
+                    colorLabel="black",
+                    confidence=0.64,
+                    source="gpt_frame_review",
+                ),
+                "shouldEnableSlowMotion": True,
+            }
+        )
+
+        annotated = _annotate_analysis_team_status([matched, uncertain], team_selection)
+
+        self.assertEqual(annotated[0].teamAttributionStatus, "matched")
+        self.assertTrue(annotated[0].shouldAutoKeep)
+        self.assertEqual(annotated[1].teamAttributionStatus, "uncertain")
+        self.assertFalse(annotated[1].shouldAutoKeep)
+        self.assertFalse(annotated[1].shouldEnableSlowMotion)
+
     def test_selected_team_visible_results_reserve_multiple_uncertain_review_clips(self) -> None:
         team_selection = TeamSelection(mode="team", teamId="team_dark", colorLabel="black", includeUncertain=True)
         matched = [

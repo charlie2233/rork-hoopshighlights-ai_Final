@@ -254,6 +254,12 @@ final class HighlightsViewModel {
             cloudAnalysisJobID = result.analysisJobId
             cloudEditSourceObjectKey = result.sourceObjectKey
             cloudDetectedTeams = result.detectedTeams
+            if let effectiveTeamSelection = result.teamSelection {
+                settings.highlightTeamSelection = effectiveTeamSelection
+                hasConfirmedHighlightTeamSelection = true
+            } else if result.detectedTeams.isEmpty {
+                hasConfirmedHighlightTeamSelection = true
+            }
             pendingCloudAnalysisJob = nil
             applyDefaultRedundantClipSuppression()
             AnalysisNotificationService.shared.notifyAnalysisCompleted(
@@ -769,6 +775,9 @@ final class HighlightsViewModel {
         project.analysisStatusSummary = lastAnalysisStatusSummary
         project.cloudAnalysisJobID = cloudAnalysisJobID
         project.cloudEditSourceObjectKey = cloudEditSourceObjectKey
+        project.highlightTeamSelection = settings.highlightTeamSelection
+        project.cloudDetectedTeams = cloudDetectedTeams
+        project.cloudDiagnostics = analysisService.lastCloudDiagnostics
         project.lastAnalyzedAt = lastAnalyzedAt
         project.lastExportedAt = lastExportedAt
 
@@ -837,8 +846,10 @@ final class HighlightsViewModel {
         analysisMode = project.analysisMode ?? AppRuntimeConfig.shared.launchAnalysisMode
         cloudAnalysisJobID = project.cloudAnalysisJobID
         cloudEditSourceObjectKey = project.cloudEditSourceObjectKey
-        cloudDetectedTeams = []
-        hasConfirmedHighlightTeamSelection = false
+        settings.highlightTeamSelection = project.highlightTeamSelection ?? .allTeams
+        cloudDetectedTeams = project.cloudDetectedTeams ?? []
+        analysisService.lastCloudDiagnostics = project.cloudDiagnostics
+        hasConfirmedHighlightTeamSelection = project.highlightTeamSelection != nil || cloudDetectedTeams.isEmpty
         clearPendingCloudAnalysisJob()
         lastAnalysisStatusSummary = project.analysisStatusSummary
         lastAnalyzedAt = project.lastAnalyzedAt
