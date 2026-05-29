@@ -104,6 +104,7 @@ RENDER_MODE = "cloud_ffmpeg"
 MIN_PLAN_CLIP_SECONDS = 2.0
 MIN_GPT_HIGHLIGHT_SCORE = 0.55
 MIN_GPT_WATCHABILITY_SCORE = 0.5
+MIN_GPT_DEFENSIVE_OUTCOME_CONFIDENCE = 0.65
 MIN_SHOT_CONTEXT_LEAD_IN_SECONDS = 1.2
 MIN_SHOT_CONTEXT_FOLLOW_THROUGH_SECONDS = 0.8
 MIN_DEFENSIVE_CONTEXT_LEAD_IN_SECONDS = 0.6
@@ -3162,6 +3163,8 @@ def _gpt_decision_rejection_reason(
                 return defensive_role_rejection
             if _unsampled_gpt_result_roles(result_evidence, sampled_frame_roles):
                 return "gpt_cited_unsampled_frame_role"
+        if result_evidence.outcomeConfidence < MIN_GPT_DEFENSIVE_OUTCOME_CONFIDENCE:
+            return "low_defensive_outcome_confidence"
         if not signals.playerControlVisible:
             return "missing_defensive_player_control"
         if not signals.ballPathVisible:

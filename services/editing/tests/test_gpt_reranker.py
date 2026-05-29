@@ -478,6 +478,10 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertEqual(shot_rules["nonScoringDefensiveOutcomes"], ["steal", "forced_turnover", "defensive_stop"])
         self.assertTrue(shot_rules["madeOrMissedShotRequiresVisibleBallPath"])
         self.assertTrue(shot_rules["defensiveOutcomeRequiresEventOutcomePlayerControlBallAndCleanCamera"])
+        self.assertEqual(
+            shot_rules["requiredDefensiveTracking"]["minimumOutcomeConfidence"],
+            gpt_reranker.MIN_GPT_DEFENSIVE_OUTCOME_CONFIDENCE,
+        )
         self.assertTrue(shot_rules["blockedShotRequiresVisibleChallengeBallPathPlayerControlAndOutcome"])
         self.assertTrue(shot_rules["richSampledShotRoleRules"]["ifRimEntryIsSampledUseItAsBallEntersRimFrameRole"])
         self.assertTrue(shot_rules["madeOrMissedShotRequiresVisibleReleaseAndRimResult"])
@@ -492,6 +496,7 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertIn("outcome=steal", payload["instructions"])
         self.assertIn("forced_turnover", payload["instructions"])
         self.assertIn("defensive_stop", payload["instructions"])
+        self.assertIn("shotResultEvidence.outcomeConfidence >= 0.65", payload["instructions"])
         self.assertIn("ball path/control", payload["instructions"])
         self.assertEqual(
             decision_properties["outcome"]["enum"],
@@ -2394,6 +2399,16 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         complete_decision = GPTHighlightClipDecision(
             **{
                 **weak_decision.model_dump(mode="json"),
+                "shotResultEvidence": _shot_result_evidence(
+                    releaseToRimContinuity="missing",
+                    rimResultEvidence="unclear",
+                    outcomeConfidence=0.82,
+                    rimEntrySequence="unclear",
+                    ballApproachFrameRole=None,
+                    rimEntryFrameRole=None,
+                    ballBelowRimOrNetFrameRole=None,
+                    rimEntrySequenceConfidence=0.0,
+                ),
                 "shotTrackingEvidence": _shot_tracking_evidence(
                     ballVisibleFrameRoles=["challenge", "possessionChange", "recovery"],
                     rimVisibleFrameRoles=[],
@@ -2404,9 +2419,32 @@ class GPTHighlightRerankerTests(unittest.TestCase):
                 ),
             }
         )
+        low_confidence_decision = GPTHighlightClipDecision(
+            **{
+                **complete_decision.model_dump(mode="json"),
+                "shotResultEvidence": _shot_result_evidence(
+                    releaseToRimContinuity="missing",
+                    rimResultEvidence="unclear",
+                    outcomeConfidence=0.41,
+                    rimEntrySequence="unclear",
+                    ballApproachFrameRole=None,
+                    rimEntryFrameRole=None,
+                    ballBelowRimOrNetFrameRole=None,
+                    rimEntrySequenceConfidence=0.0,
+                ),
+            }
+        )
         rejected = apply_gpt_highlight_rerank(
             request,
             [weak_decision],
+            "gpt-test",
+            1,
+            len(sampled_roles),
+            sampled_frame_roles_by_clip={"steal": sampled_roles},
+        )
+        rejected_low_confidence = apply_gpt_highlight_rerank(
+            request,
+            [low_confidence_decision],
             "gpt-test",
             1,
             len(sampled_roles),
@@ -2423,6 +2461,8 @@ class GPTHighlightRerankerTests(unittest.TestCase):
 
         self.assertEqual(rejected.clips, [])
         self.assertEqual(rejected.gptRerankSummary.rejectedReasonCounts["missing_defensive_possession_change_frame"], 1)
+        self.assertEqual(rejected_low_confidence.clips, [])
+        self.assertEqual(rejected_low_confidence.gptRerankSummary.rejectedReasonCounts["low_defensive_outcome_confidence"], 1)
         self.assertEqual([clip.id for clip in kept.clips], ["steal"])
 
     def test_blocked_keep_requires_sampled_challenge_and_outcome_roles(self) -> None:

@@ -29,6 +29,7 @@ from app.editing import (  # noqa: E402
     MIN_DEFENSIVE_CONTEXT_FOLLOW_THROUGH_SECONDS,
     MIN_DEFENSIVE_CONTEXT_LEAD_IN_SECONDS,
     MIN_DEFENSIVE_LIKE_CLIP_SECONDS,
+    MIN_GPT_DEFENSIVE_OUTCOME_CONFIDENCE,
     MIN_NON_SHOT_CONTEXT_FOLLOW_THROUGH_SECONDS,
     MIN_NON_SHOT_CONTEXT_LEAD_IN_SECONDS,
     MIN_NON_SHOT_LIKE_CLIP_SECONDS,
@@ -1042,6 +1043,7 @@ def _build_openai_payload(
                         "requiredDefensiveTracking": {
                             "eventFrameRoles": ["challenge", "possessionChange", "recovery", "defenseOutcome"],
                             "resultFrameRoles": ["possessionChange", "recovery", "defenseOutcome", "finish"],
+                            "minimumOutcomeConfidence": MIN_GPT_DEFENSIVE_OUTCOME_CONFIDENCE,
                             "mustCitePossessionChangeWhenSampled": True,
                             "mustCiteRecoveryOrOutcomeWhenSampled": True,
                         },
@@ -1093,6 +1095,7 @@ def _build_openai_payload(
             "For steals, forced turnovers, or defensive stops, use outcome=steal, outcome=forced_turnover, or outcome=defensive_stop; do not force those plays into unclear or blocked. "
             "For blocks or blocked shots, use outcome=blocked only when the challenge, ball path/control, defender/player control, and blocked-shot outcome are visible; cite sampled challenge/defenseOutcome roles when present. "
             "Non-scoring defensive outcomes must show the defensive event, possession/control change or stop, visible ball/player control, clean camera, and full play context. "
+            f"Non-scoring defensive outcomes also require shotResultEvidence.outcomeConfidence >= {MIN_GPT_DEFENSIVE_OUTCOME_CONFIDENCE:.2f}; use unclear or keep=false when the steal, forced turnover, or stop is guessed. "
             "When defensive roles like challenge, possessionChange, recovery, or defenseOutcome are sampled, cite those roles in shotTrackingEvidence instead of shot-arc or rim roles. "
             "Honor userEditIntent only when it is compatible with the supplied template, plan tier, candidate clips, and safety constraints. "
             "When a selected team is supplied, keep highlights for that team only; exclude confident opponent clips. Keep uncertain team-attribution clips for user review. "
