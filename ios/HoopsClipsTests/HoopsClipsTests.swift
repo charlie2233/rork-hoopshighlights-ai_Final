@@ -470,6 +470,127 @@ struct HoopsClipsTests {
         #expect(requestedPaths.contains("POST /v1/analysis/jobs/job_team_scan/start"))
     }
 
+    @Test @MainActor func testCloudTeamScanAllTeamsChoiceStartsPreparedJobInAllTeamsMode() async throws {
+        let tempURL = FileManager.default.temporaryDirectory.appending(path: "team-scan-all-\(UUID().uuidString).mp4")
+        try Data("fake video".utf8).write(to: tempURL)
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+
+        var startPayload: [String: Any]?
+        var requestedPaths: [String] = []
+        let service = CloudAnalysisService(session: makeCloudAnalysisSession { request in
+            let url = try #require(request.url)
+            requestedPaths.append("\(request.httpMethod ?? "GET") \(url.path)")
+
+            if request.httpMethod == "POST", url.path == "/v1/analysis/jobs" {
+                return try cloudAnalysisJSONResponse(for: request, body: """
+                {
+                  "jobId": "job_team_scan_all",
+                  "uploadUrl": "https://analysis.hoopsclips.test/upload/job_team_scan_all",
+                  "uploadMethod": "PUT",
+                  "uploadHeaders": {},
+                  "expiresAt": "2026-05-26T20:00:00Z",
+                  "pollAfterSeconds": 1,
+                  "quotaRemainingToday": 2,
+                  "analysisMode": "cloud",
+                  "sourceObjectKey": "uploads/job_team_scan_all/source.mp4",
+                  "resultObjectKey": null
+                }
+                """)
+            }
+
+            if request.httpMethod == "PUT", url.path == "/upload/job_team_scan_all" {
+                return try cloudAnalysisEmptyResponse(for: request, statusCode: 204)
+            }
+
+            if request.httpMethod == "POST", url.path == "/v1/analysis/jobs/job_team_scan_all/team-scan" {
+                return try cloudAnalysisJSONResponse(for: request, body: """
+                {
+                  "jobId": "job_team_scan_all",
+                  "status": "scanned",
+                  "detectedTeams": [
+                    {"teamId": "team_dark", "label": "Dark jerseys", "colorLabel": "black", "primaryColorHex": "#111111", "confidence": 0.93, "source": "quick_scan"},
+                    {"teamId": "team_light", "label": "Light jerseys", "colorLabel": "white", "primaryColorHex": "#ffffff", "confidence": 0.90, "source": "quick_scan"}
+                  ]
+                }
+                """)
+            }
+
+            if request.httpMethod == "POST", url.path == "/v1/analysis/jobs/job_team_scan_all/start" {
+                startPayload = try cloudAnalysisJSONObject(from: try cloudAnalysisRequestBodyData(from: request))
+                return try cloudAnalysisJSONResponse(for: request, body: """
+                {"jobId": "job_team_scan_all", "status": "queued"}
+                """)
+            }
+
+            if request.httpMethod == "GET", url.path == "/v1/analysis/jobs/job_team_scan_all" {
+                return try cloudAnalysisJSONResponse(for: request, body: """
+                {
+                  "jobId": "job_team_scan_all",
+                  "status": "succeeded",
+                  "progress": 1.0,
+                  "stage": "Finalizing clips",
+                  "errorCode": null,
+                  "errorMessage": null,
+                  "analysisVersion": "v1",
+                  "sourceObjectKey": "uploads/job_team_scan_all/source.mp4",
+                  "resultObjectKey": null,
+                  "results": {
+                    "analysisJobId": "job_team_scan_all",
+                    "sourceObjectKey": "uploads/job_team_scan_all/source.mp4",
+                    "clipCount": 0,
+                    "clips": [],
+                    "diagnostics": {
+                      "processingMs": 1,
+                      "backendModelVersion": "cloud-v1+team-scan",
+                      "usedVideoIntelligence": false,
+                      "usedGeminiRelabeling": false,
+                      "candidateSegments": 0,
+                      "finalSegments": 0
+                    },
+                    "detectedTeams": [
+                      {"teamId": "team_dark", "label": "Dark jerseys", "colorLabel": "black", "primaryColorHex": "#111111", "confidence": 0.93, "source": "quick_scan"},
+                      {"teamId": "team_light", "label": "Light jerseys", "colorLabel": "white", "primaryColorHex": "#ffffff", "confidence": 0.90, "source": "quick_scan"}
+                    ],
+                    "teamSelection": {
+                      "mode": "all",
+                      "confidenceThreshold": 0.85,
+                      "includeUncertain": true
+                    }
+                  }
+                }
+                """)
+            }
+
+            throw CloudAnalysisError.invalidResponse
+        })
+
+        UserDefaults.standard.set("https://analysis.hoopsclips.test", forKey: "hoops.cloudAnalysisBaseURL")
+        defer {
+            UserDefaults.standard.removeObject(forKey: "hoops.cloudAnalysisBaseURL")
+            CloudAnalysisMockURLProtocol.requestHandler = nil
+        }
+
+        let prepared = try await service.prepareTeamScan(
+            url: tempURL,
+            duration: 120,
+            installID: "install-123456"
+        ) { _, _ in }
+        #expect(prepared.detectedTeams.count == 2)
+
+        let result = try await service.analyzePreparedVideo(
+            prepared,
+            teamSelection: .allTeams,
+            installID: "install-123456"
+        ) { _, _ in }
+
+        let encodedSelection = try #require(startPayload?["teamSelection"] as? [String: Any])
+        #expect(encodedSelection["mode"] as? String == "all")
+        #expect(encodedSelection["teamId"] as? String == nil)
+        #expect(result.teamSelection?.mode == .all)
+        #expect(requestedPaths.contains("POST /v1/analysis/jobs/job_team_scan_all/team-scan"))
+        #expect(requestedPaths.contains("POST /v1/analysis/jobs/job_team_scan_all/start"))
+    }
+
     @Test func testHighlightTeamSelectionCodablePreservesPrimaryColorHex() throws {
         let selection = HighlightTeamSelection(
             mode: .team,
@@ -542,6 +663,47 @@ struct HoopsClipsTests {
         #expect(viewModel.cloudDetectedTeams.isEmpty)
         #expect(viewModel.hasConfirmedHighlightTeamSelection == false)
         #expect(viewModel.cloudTeamScanStatusMessage == nil)
+    }
+
+    @Test @MainActor func testStartAnalysisRequiresConfirmedTeamChoiceAfterCloudScan() async throws {
+        let tempURL = FileManager.default.temporaryDirectory.appending(path: "team-choice-required-\(UUID().uuidString).mp4")
+        try Data("fake video".utf8).write(to: tempURL)
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+
+        var requestCount = 0
+        let viewModel = HighlightsViewModel()
+        viewModel.videoURL = tempURL
+        viewModel.videoDuration = 120
+        viewModel.isVideoLoaded = true
+        viewModel.cloudDetectedTeams = [
+            CloudTeamOption(
+                teamId: "team_blue",
+                label: "Blue jerseys",
+                colorLabel: "blue",
+                primaryColorHex: "#0057FF",
+                confidence: 0.94,
+                source: "quick_scan"
+            )
+        ]
+        viewModel.hasConfirmedHighlightTeamSelection = false
+        viewModel.cloudAnalysisService = CloudAnalysisService(session: makeCloudAnalysisSession { _ in
+            requestCount += 1
+            throw CloudAnalysisError.invalidResponse
+        })
+
+        UserDefaults.standard.set("https://analysis.hoopsclips.test", forKey: "hoops.cloudAnalysisBaseURL")
+        defer {
+            UserDefaults.standard.removeObject(forKey: "hoops.cloudAnalysisBaseURL")
+            CloudAnalysisMockURLProtocol.requestHandler = nil
+        }
+
+        await viewModel.startAnalysis()
+
+        #expect(viewModel.requiresHighlightTeamSelectionConfirmation)
+        #expect(viewModel.cloudTeamScanStatusMessage == "Choose a team before analysis")
+        #expect(viewModel.analysisService.isAnalyzing == false)
+        #expect(viewModel.cloudAnalysisJobID == nil)
+        #expect(requestCount == 0)
     }
 
     @Test func testPersistedProjectRecordStoresCloudTeamSelectionAndDiagnostics() throws {
