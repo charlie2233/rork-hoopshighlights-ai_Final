@@ -1,6 +1,9 @@
 from pathlib import Path
+import base64
 import json
 import os
+import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -1299,6 +1302,86 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         samples = gpt_reranker._sample_times_for_clip(request.clips[0], 3)
 
         self.assertEqual([role for role, _ in samples], ["start", "eventCenter", "finish"])
+
+    def test_real_ffmpeg_keyframe_extraction_builds_compact_payload_without_source_video(self) -> None:
+        if shutil.which("ffmpeg") is None:
+            self.skipTest("ffmpeg is required for real keyframe extraction smoke")
+        settings = GPTHighlightRerankerSettings(
+            enabled=True,
+            api_key="unit-test-key",
+            model="gpt-test",
+            endpoint="https://api.openai.test/v1/responses",
+            timeout_seconds=1.0,
+            max_output_tokens=512,
+            free_max_clips=1,
+            paid_max_clips=20,
+            free_frames_per_clip=3,
+            paid_frames_per_clip=5,
+            frame_width=128,
+            jpeg_quality=5,
+            max_image_bytes=120_000,
+            image_detail="low",
+        )
+        with tempfile.TemporaryDirectory(prefix="hoopclips-real-keyframes-") as temp_dir:
+            source_path = Path(temp_dir) / "source.mp4"
+            subprocess.run(
+                [
+                    "ffmpeg",
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-y",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "testsrc=size=160x90:rate=8:duration=6",
+                    "-pix_fmt",
+                    "yuv420p",
+                    "-c:v",
+                    "mpeg4",
+                    str(source_path),
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+            request = CreateEditJobRequest(
+                videoId="video_real_keyframes",
+                analysisJobId="analysis_real_keyframes",
+                installId="install-123",
+                sourceObjectKey="uploads/source.mp4",
+                preset="personal_highlight",
+                targetDurationSeconds=15,
+                planTier="free",
+                clips=[{**_clip("real_frames", 0.0, 0.93), "end": 5.8, "eventCenter": 3.0}],
+            )
+
+            frames = gpt_reranker._extract_candidate_keyframes(source_path, request.clips, 3, settings)
+            payload = _build_openai_payload(request, request.clips, frames, settings)
+
+        self.assertEqual([frame.role for frame in frames], ["start", "eventCenter", "finish"])
+        for frame in frames:
+            self.assertTrue(frame.data_url.startswith("data:image/jpeg;base64,"))
+            jpeg_bytes = base64.b64decode(frame.data_url.split(",", 1)[1])
+            self.assertTrue(jpeg_bytes.startswith(b"\xff\xd8"))
+        compact_input = json.loads(payload["input"][0]["content"][0]["text"])
+        compact_clip = compact_input["clips"][0]
+        self.assertEqual(
+            compact_clip["sampledKeyframes"],
+            [
+                {"role": "start", "time": 0.0},
+                {"role": "eventCenter", "time": 3.0},
+                {"role": "finish", "time": 5.75},
+            ],
+        )
+        image_items = [item for item in payload["input"][0]["content"] if item["type"] == "input_image"]
+        self.assertEqual(len(image_items), 3)
+        serialized_payload = json.dumps(payload)
+        self.assertNotIn("uploads/source.mp4", serialized_payload)
+        self.assertNotIn("sourceObjectKey", serialized_payload)
+        self.assertNotIn("source.mp4", serialized_payload)
+        self.assertNotIn("file://", serialized_payload)
 
     def test_image_detail_env_falls_back_to_high_for_unknown_values(self) -> None:
         old_value = os.environ.get("HOOPS_GPT_HIGHLIGHT_RERANK_IMAGE_DETAIL")
