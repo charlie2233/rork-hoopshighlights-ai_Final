@@ -396,7 +396,8 @@ final class HighlightsViewModel {
     }
 
     func keepHighConfidenceClips() {
-        for index in analysisService.clips.indices where analysisService.clips[index].confidence >= 0.8 {
+        for index in analysisService.clips.indices
+        where analysisService.clips[index].confidence >= 0.8 && !analysisService.clips[index].needsUserReview {
             analysisService.clips[index].isKept = true
         }
         persistCurrentProject()
@@ -503,6 +504,7 @@ final class HighlightsViewModel {
                 audioPeak: clip.audioScore,
                 combinedScore: clip.combinedScore,
                 duplicateGroup: nil,
+                userReviewDecision: "kept",
                 nativeShotSignals: clip.nativeShotSignals,
                 teamAttribution: clip.teamAttribution,
                 teamAttributionStatus: clip.teamAttributionStatus

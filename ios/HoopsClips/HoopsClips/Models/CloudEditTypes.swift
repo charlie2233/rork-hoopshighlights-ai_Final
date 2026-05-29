@@ -596,6 +596,7 @@ struct CloudEditCandidateClip: Codable, Sendable {
     let audioPeak: Double
     let combinedScore: Double?
     let duplicateGroup: String?
+    let userReviewDecision: String?
     var nativeShotSignals: NativeShotSignals? = nil
     var teamAttribution: ClipTeamAttribution? = nil
     var teamAttributionStatus: String? = nil

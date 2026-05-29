@@ -282,6 +282,7 @@ struct HoopsClipsTests {
                     audioPeak: 0.5,
                     combinedScore: 0.9,
                     duplicateGroup: nil,
+                    userReviewDecision: "kept",
                     nativeShotSignals: nativeSignals,
                     teamAttribution: teamAttribution,
                     teamAttributionStatus: "matched"
@@ -308,6 +309,7 @@ struct HoopsClipsTests {
         #expect(encodedTeamAttribution["evidenceFrameRefs"] as? [String] == ["clip_1_release", "clip_1_result"])
         #expect(encodedTeamAttribution["evidenceRoleGroups"] as? [String] == ["action", "outcome"])
         #expect(clips.first?["teamAttributionStatus"] as? String == "matched")
+        #expect(clips.first?["userReviewDecision"] as? String == "kept")
     }
 
     @Test func testCloudAnalysisRequestEncodesPreAnalysisTeamChoice() throws {
@@ -1015,6 +1017,61 @@ struct HoopsClipsTests {
 
         viewModel.analysisService.clips = [cleanClip, uncertainClip]
 
+        #expect(viewModel.needsReviewClips.map(\.label) == ["Possible Steal"])
+    }
+
+    @Test @MainActor func testKeepHighConfidenceDoesNotAutoKeepNeedsReviewClips() {
+        let viewModel = HighlightsViewModel()
+        let cleanHighConfidence = Clip(
+            startTime: 4.0,
+            endTime: 8.5,
+            eventCenter: 6.0,
+            action: .madeShot,
+            confidence: 0.91,
+            isKept: false,
+            label: "Made Shot",
+            audioScore: 0.72,
+            visualScore: 0.88,
+            motionScore: 0.82,
+            combinedScore: 0.9,
+            detectionMethod: .cloud,
+            teamAttribution: ClipTeamAttribution(
+                teamId: "team_dark",
+                label: "Dark jerseys",
+                colorLabel: "black",
+                confidence: 0.93,
+                source: "quick_scan"
+            ),
+            teamAttributionStatus: "matched"
+        )
+        let uncertainHighConfidence = Clip(
+            startTime: 18.0,
+            endTime: 22.5,
+            eventCenter: 20.0,
+            action: .steal,
+            confidence: 0.94,
+            isKept: false,
+            label: "Possible Steal",
+            audioScore: 0.42,
+            visualScore: 0.72,
+            motionScore: 0.69,
+            combinedScore: 0.86,
+            detectionMethod: .cloud,
+            teamAttribution: ClipTeamAttribution(
+                teamId: "team_dark",
+                label: "Dark jerseys",
+                colorLabel: "black",
+                confidence: 0.64,
+                source: "gpt_frame_review"
+            ),
+            teamAttributionStatus: "uncertain"
+        )
+
+        viewModel.analysisService.clips = [cleanHighConfidence, uncertainHighConfidence]
+        viewModel.keepHighConfidenceClips()
+
+        #expect(viewModel.keptClips.map(\.label) == ["Made Shot"])
+        #expect(viewModel.discardedClips.map(\.label) == ["Possible Steal"])
         #expect(viewModel.needsReviewClips.map(\.label) == ["Possible Steal"])
     }
 

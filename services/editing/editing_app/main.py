@@ -369,7 +369,11 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             planTier=job.plan_tier,
             revenueCatAppUserID=edit_job.request.revenueCatAppUserID,
             editPlan=plan,
-            sourceClips=filter_clips_for_team_selection(edit_job.request.clips, edit_job.request.teamSelection),
+            sourceClips=filter_clips_for_team_selection(
+                edit_job.request.clips,
+                edit_job.request.teamSelection,
+                include_review_only_uncertain=False,
+            ),
             gptRerankSummary=edit_job.request.gptRerankSummary,
             idempotencyKey=job.idempotency_key,
         )
@@ -1035,7 +1039,11 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
                     planTier=stored_edit_job.request.planTier,
                     revenueCatAppUserID=stored_edit_job.request.revenueCatAppUserID,
                     editPlan=revision.revisedPlan,
-                    sourceClips=filter_clips_for_team_selection(stored_edit_job.request.clips, stored_edit_job.request.teamSelection),
+                    sourceClips=filter_clips_for_team_selection(
+                        stored_edit_job.request.clips,
+                        stored_edit_job.request.teamSelection,
+                        include_review_only_uncertain=False,
+                    ),
                     gptRerankSummary=stored_edit_job.request.gptRerankSummary,
                     revisionId=revision_id,
                     idempotencyKey=request.idempotencyKey or f"{edit_job_id}:{revision_id}:render",
@@ -1077,7 +1085,11 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
 
             edit_plan = request.editPlan or (stored_edit_job.plan if stored_edit_job is not None else None)
             source_clips = request.sourceClips or (
-                filter_clips_for_team_selection(stored_edit_job.request.clips, stored_edit_job.request.teamSelection)
+                filter_clips_for_team_selection(
+                    stored_edit_job.request.clips,
+                    stored_edit_job.request.teamSelection,
+                    include_review_only_uncertain=False,
+                )
                 if stored_edit_job is not None
                 else []
             )

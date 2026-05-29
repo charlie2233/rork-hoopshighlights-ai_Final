@@ -262,7 +262,11 @@ def request_gpt_edit_plan_patch(
         patch = EditPlanPatch(**json.loads(output_text))
         if patch.revisionIntent != revision.command or patch.baseEditPlanId != job.edit_job_id:
             return None
-        source_clips = filter_clips_for_team_selection(job.request.clips, job.request.teamSelection)
+        source_clips = filter_clips_for_team_selection(
+            job.request.clips,
+            job.request.teamSelection,
+            include_review_only_uncertain=False,
+        )
         patched_plan, errors = validate_edit_plan_patch(job.plan, patch, source_clips, job.request.planTier)
         if patched_plan is None or errors:
             return None
@@ -877,6 +881,7 @@ def _build_openai_payload(
             "confidence": clip.confidence,
             "watchabilityScore": clip.watchability,
             "duplicateGroup": clip.duplicateGroup,
+            "userReviewDecision": clip.userReviewDecision,
             "teamAttribution": clip.teamAttribution.model_dump(mode="json") if clip.teamAttribution is not None else None,
             "teamAttributionStatus": team_attribution_status(clip, request.teamSelection),
             "teamEvidence": team_evidence_summary(clip),
@@ -999,6 +1004,7 @@ def _build_openai_payload(
             "When defensive roles like challenge, possessionChange, recovery, or defenseOutcome are sampled, cite those roles in shotTrackingEvidence instead of shot-arc or rim roles. "
             "Honor userEditIntent only when it is compatible with the supplied template, plan tier, candidate clips, and safety constraints. "
             "When a selected team is supplied, keep highlights for that team only; exclude confident opponent clips. Keep uncertain team-attribution clips for user review. "
+            "For teamAttributionStatus=uncertain, userReviewDecision=kept is the only signal that the user explicitly promoted the clip for final editing; otherwise treat it as review-only. "
             + TEAM_EVIDENCE_GPT_GUIDANCE
             + "Selected-team blocks, steals, defensive stops, and forced turnovers can be highlights even when they are not scoring plays. "
             "Use only supplied candidate clip IDs and sampled keyframes. Do not replace FFmpeg extraction, CV tracking, rendering, or exact timestamps. "
@@ -1017,7 +1023,11 @@ def _build_revision_patch_payload(
     settings: GPTHighlightRerankerSettings,
 ) -> Dict[str, Any]:
     template = get_template_pack_for_plan(job.request.preset, job.plan.templateId or job.request.templateId)
-    source_clips = filter_clips_for_team_selection(job.request.clips, job.request.teamSelection)
+    source_clips = filter_clips_for_team_selection(
+        job.request.clips,
+        job.request.teamSelection,
+        include_review_only_uncertain=False,
+    )
     agent_template_context = build_agent_editing_context(
         template.templateId,
         summarize_clip_pool(source_clips),
@@ -1071,7 +1081,7 @@ def _build_revision_patch_payload(
             "You are HoopClips GPT Edit Cool. Return an EditPlanPatch JSON only. "
             "Do not output free-form prose. Do not generate FFmpeg commands, shell commands, render instructions, file paths, URLs, or storage keys. "
             + TEAM_EVIDENCE_GPT_GUIDANCE
-            + "Use only provided clip IDs and safe patch paths; the backend will validate and repair before rendering."
+            + "Use only provided render-eligible clip IDs and safe patch paths; the backend will validate and repair before rendering."
         ),
         "input": [{"role": "user", "content": [{"type": "input_text", "text": json.dumps(compact_context, separators=(",", ":"))}]}],
         "text": {"format": {"type": "json_schema", "name": "hoopclips_gpt_edit_plan_patch", "strict": True, "schema": _edit_plan_patch_schema()}},

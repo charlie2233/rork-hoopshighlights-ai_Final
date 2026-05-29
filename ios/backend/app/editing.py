@@ -356,6 +356,7 @@ class EditCandidateClip(APIModel):
     nativeShotSignals: Optional[NativeShotSignals] = None
     teamAttribution: Optional[ClipTeamAttribution] = None
     teamAttributionStatus: Optional[Literal["all", "matched", "opponent", "uncertain"]] = None
+    userReviewDecision: Optional[Literal["kept", "discarded", "unreviewed"]] = None
     captionHint: Optional[str] = Field(default=None, max_length=MAX_CAPTION_LENGTH)
     gptHighlightScore: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     gptWatchabilityScore: Optional[float] = Field(default=None, ge=0.0, le=1.0)
@@ -1828,13 +1829,21 @@ def team_evidence_summary(clip: EditCandidateClip) -> Dict[str, object]:
 def filter_clips_for_team_selection(
     clips: Sequence[EditCandidateClip],
     team_selection: Optional[TeamSelection],
+    *,
+    include_review_only_uncertain: bool = True,
 ) -> List[EditCandidateClip]:
     if team_selection is None or team_selection.mode == "all":
         return list(clips)
     filtered: List[EditCandidateClip] = []
     for clip in clips:
         status = team_attribution_status(clip, team_selection)
-        if status == "matched" or (status == "uncertain" and team_selection.includeUncertain):
+        if status == "matched":
+            filtered.append(clip)
+        elif (
+            status == "uncertain"
+            and team_selection.includeUncertain
+            and (include_review_only_uncertain or clip.userReviewDecision == "kept")
+        ):
             filtered.append(clip)
     return filtered
 
@@ -1868,6 +1877,7 @@ def _compact_agent_candidate_clip(
         "audioPeak": clip.audioPeak,
         "watchabilityScore": clip.watchability,
         "duplicateGroup": clip.duplicateGroup,
+        "userReviewDecision": clip.userReviewDecision,
         "teamAttribution": clip.teamAttribution.model_dump(mode="json") if clip.teamAttribution is not None else None,
         "teamAttributionStatus": team_attribution_status(clip, team_selection),
         "teamEvidence": team_evidence_summary(clip),
@@ -1935,7 +1945,11 @@ def build_agent_editing_context(
 
 
 def build_edit_context(request: CreateEditJobRequest) -> EditContext:
-    team_filtered_clips = filter_clips_for_team_selection(request.clips, request.teamSelection)
+    team_filtered_clips = filter_clips_for_team_selection(
+        request.clips,
+        request.teamSelection,
+        include_review_only_uncertain=False,
+    )
     return EditContext(
         videoId=request.videoId,
         analysisJobId=request.analysisJobId,
@@ -2660,18 +2674,24 @@ def apply_gpt_highlight_rerank(
     plan_edit: Optional[GPTPlanEdit] = None,
     sampled_frame_roles_by_clip: Optional[Mapping[str, Sequence[str]]] = None,
 ) -> CreateEditJobRequest:
-    source_clips = filter_clips_for_team_selection(request.clips, request.teamSelection)
-    uncertain_review_clip_ids = uncertain_review_clip_ids_for_team_selection(source_clips, request.teamSelection)
-    source_by_id = {clip.id: clip for clip in source_clips}
+    review_source_clips = filter_clips_for_team_selection(request.clips, request.teamSelection)
+    render_source_clips = filter_clips_for_team_selection(
+        request.clips,
+        request.teamSelection,
+        include_review_only_uncertain=False,
+    )
+    uncertain_review_clip_ids = uncertain_review_clip_ids_for_team_selection(request.clips, request.teamSelection)
+    review_source_by_id = {clip.id: clip for clip in review_source_clips}
+    render_source_by_id = {clip.id: clip for clip in render_source_clips}
     valid_decisions: Dict[str, GPTHighlightClipDecision] = {
-        decision.clipId: decision for decision in decisions if decision.clipId in source_by_id
+        decision.clipId: decision for decision in decisions if decision.clipId in review_source_by_id
     }
     valid_story_order: List[str] = []
     seen_story_ids = set()
     requested_story_order = plan_edit.orderedClipIds if plan_edit and plan_edit.orderedClipIds else list(story_order or [])
     for clip_id in requested_story_order:
         decision = valid_decisions.get(clip_id)
-        if clip_id in source_by_id and decision is not None and decision.keep and clip_id not in seen_story_ids:
+        if clip_id in render_source_by_id and decision is not None and decision.keep and clip_id not in seen_story_ids:
             valid_story_order.append(clip_id)
             seen_story_ids.add(clip_id)
     story_index_by_id = {clip_id: index for index, clip_id in enumerate(valid_story_order)}
@@ -2683,7 +2703,7 @@ def apply_gpt_highlight_rerank(
     applied_plan_slow_motion_clip_ids: set[str] = set()
 
     if not valid_decisions:
-        fallback_clips = rank_clips([clip for clip in source_clips if is_plan_quality_eligible_clip(clip)])
+        fallback_clips = rank_clips([clip for clip in render_source_clips if is_plan_quality_eligible_clip(clip)])
         fallback_clip_ids = {clip.id for clip in fallback_clips}
         rejected_clip_ids = [clip.id for clip in request.clips if clip.id not in fallback_clip_ids]
         rejected_reason_counts = {}
@@ -2707,10 +2727,17 @@ def apply_gpt_highlight_rerank(
     rejected_clip_ids: List[str] = []
     rejected_reason_counts: Dict[str, int] = {}
     missing_decision_clip_ids: List[str] = []
-    for clip in request.clips:
+    for clip in review_source_clips:
         decision = valid_decisions.get(clip.id)
         if decision is None:
             missing_decision_clip_ids.append(clip.id)
+            continue
+        if clip.id not in render_source_by_id:
+            rejected_clip_ids.append(clip.id)
+            _increment_reason_count(
+                rejected_reason_counts,
+                decision.rejectReason or "needs_manual_team_review",
+            )
             continue
         sampled_frame_roles = sampled_frame_roles_by_clip.get(clip.id) if sampled_frame_roles_by_clip is not None else None
         rejection_reason = _gpt_decision_rejection_reason(decision, clip, sampled_frame_roles)
@@ -3489,7 +3516,11 @@ def _build_revised_edit_job(job: StoredEditJob, revision: ReviseEditJobRequest) 
             clip["cropMode"] = "center_action"
 
     revised.plan = repair_edit_plan(EditPlan(**data), revised.request.planTier)
-    revised_source_clips = filter_clips_for_team_selection(revised.request.clips, revised.request.teamSelection)
+    revised_source_clips = filter_clips_for_team_selection(
+        revised.request.clips,
+        revised.request.teamSelection,
+        include_review_only_uncertain=False,
+    )
     revised.validation_errors = validate_edit_plan(revised.plan, revised_source_clips, revised.request.planTier)
     revised.status = "plan_ready" if not revised.validation_errors else "failed"
 
@@ -3654,7 +3685,11 @@ def build_revision_response(
     proposed_patch: Optional[EditPlanPatch] = None,
 ) -> Tuple[StoredEditJob, EditRevisionResponse]:
     if proposed_patch is not None:
-        source_clips = filter_clips_for_team_selection(job.request.clips, job.request.teamSelection)
+        source_clips = filter_clips_for_team_selection(
+            job.request.clips,
+            job.request.teamSelection,
+            include_review_only_uncertain=False,
+        )
         patched_plan, errors = validate_edit_plan_patch(job.plan, proposed_patch, source_clips, job.request.planTier)
         if patched_plan is None:
             patched_plan = job.plan
@@ -3684,7 +3719,11 @@ def build_revision_response(
 
     revised = _build_revised_edit_job(job, revision)
     patch = build_edit_plan_patch(job, revision, revised.plan)
-    source_clips = filter_clips_for_team_selection(revised.request.clips, revised.request.teamSelection)
+    source_clips = filter_clips_for_team_selection(
+        revised.request.clips,
+        revised.request.teamSelection,
+        include_review_only_uncertain=False,
+    )
     patched_plan, errors = validate_edit_plan_patch(job.plan, patch, source_clips, revised.request.planTier)
     if patched_plan is None:
         patched_plan = revised.plan
@@ -3709,7 +3748,11 @@ def build_revision_response(
 def build_edit_job(request: CreateEditJobRequest, edit_job_id: str) -> StoredEditJob:
     plan = build_edit_plan(request, edit_job_id)
     plan = repair_edit_plan(plan, request.planTier)
-    source_clips = filter_clips_for_team_selection(request.clips, request.teamSelection)
+    source_clips = filter_clips_for_team_selection(
+        request.clips,
+        request.teamSelection,
+        include_review_only_uncertain=False,
+    )
     errors = validate_edit_plan(plan, source_clips, request.planTier)
     return StoredEditJob(
         edit_job_id=edit_job_id,

@@ -204,6 +204,7 @@ class GPTHighlightRerankerTests(unittest.TestCase):
                 "confidence",
                 "watchabilityScore",
                 "duplicateGroup",
+                "userReviewDecision",
                 "teamAttribution",
                 "teamAttributionStatus",
                 "teamEvidence",
@@ -217,6 +218,7 @@ class GPTHighlightRerankerTests(unittest.TestCase):
             },
         )
         self.assertEqual(compact_clip["sampledKeyframes"], [{"role": "start", "time": 0.0}])
+        self.assertIsNone(compact_clip["userReviewDecision"])
         self.assertEqual(compact_clip["nativeShotSignals"]["outcome"], "made")
         self.assertTrue(compact_clip["nativeShotSignals"]["timingWindowOk"])
         self.assertEqual(compact_clip["qualityHints"]["nativeShotSignals"]["outcome"], "made")
@@ -937,14 +939,13 @@ class GPTHighlightRerankerTests(unittest.TestCase):
 
         self.assertEqual(compact_input["teamTargeting"]["teamId"], "team_dark")
         self.assertIn("dark_make", compact_clip_ids)
-        self.assertIn("uncertain_make", compact_clip_ids)
+        self.assertNotIn("uncertain_make", compact_clip_ids)
         self.assertNotIn("light_make", compact_clip_ids)
         self.assertEqual(by_id["dark_make"]["teamAttributionStatus"], "matched")
         self.assertEqual(by_id["dark_make"]["teamEvidence"]["status"], "evidence_backed")
-        self.assertEqual(by_id["uncertain_make"]["teamAttributionStatus"], "uncertain")
-        self.assertEqual(by_id["uncertain_make"]["teamEvidence"]["status"], "weak_evidence")
         self.assertEqual(compact_input["agentTemplateCookbook"]["teamTargeting"]["teamId"], "team_dark")
         self.assertIn("teamEvidence.status=evidence_backed", payload["instructions"])
+        self.assertIn("render-eligible clip IDs", payload["instructions"])
         self.assertIn("weak or uncertain team-attribution clips only as review-worthy candidates", payload["instructions"])
 
     def test_revision_patch_request_rejects_opponent_clip_for_selected_team(self) -> None:

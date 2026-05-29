@@ -193,7 +193,7 @@ struct ReviewView: View {
     }
 
     private var highConfidencePendingCount: Int {
-        viewModel.clips.filter { $0.confidence >= 0.8 && !$0.isKept }.count
+        viewModel.clips.filter { $0.confidence >= 0.8 && !$0.isKept && !$0.needsUserReview }.count
     }
 
     private var lowConfidenceKeptCount: Int {

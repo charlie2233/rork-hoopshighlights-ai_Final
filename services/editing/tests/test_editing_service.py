@@ -1234,6 +1234,7 @@ class EditingServiceTests(unittest.TestCase):
                                 "source": "quick_scan",
                             },
                             "teamAttributionStatus": "uncertain",
+                            "userReviewDecision": "kept",
                         },
                     ],
                 }
