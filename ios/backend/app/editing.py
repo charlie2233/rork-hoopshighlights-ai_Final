@@ -124,20 +124,6 @@ MIN_NATIVE_OUTCOME_CONFLICT_CONFIDENCE = 0.65
 GPT_CANDIDATE_REVIEW_LIMIT = 60
 GPT_NON_SCORING_DEFENSIVE_OUTCOMES = {"steal", "forced_turnover", "defensive_stop"}
 GPT_SHOT_RESULT_OUTCOMES = {"made", "missed", "blocked"}
-DEFENSIVE_EVENT_LABEL_TOKENS = (
-    "defense",
-    "defensive",
-    "block",
-    "blocked",
-    "steal",
-    "strip",
-    "contest",
-    "turnover",
-    "forced",
-    "stop",
-    "pressure",
-    "lockdown",
-)
 TEAM_EVIDENCE_REQUIRED_SOURCES = {"quick_scan", "gpt_frame_review", "provider", "unknown"}
 MIN_CONFIDENT_TEAM_EVIDENCE_FRAME_REFS = 2
 MIN_CONFIDENT_TEAM_EVIDENCE_ROLE_GROUPS = 2
@@ -2217,8 +2203,9 @@ def is_shot_like_clip(clip: EditCandidateClip) -> bool:
 def is_defensive_event_like_clip(clip: EditCandidateClip) -> bool:
     normalized = clip.label.strip().lower()
     tokens = set(re.findall(r"[a-z0-9]+", normalized))
-    strong_tokens = set(DEFENSIVE_EVENT_LABEL_TOKENS) - {"stop"}
-    if tokens & strong_tokens:
+    if tokens & {"defense", "defensive", "block", "blocked", "steal", "strip", "contest", "pressure", "lockdown"}:
+        return True
+    if "turnover" in tokens and "unforced" not in tokens and tokens & {"forced", "force", "defensive", "defense"}:
         return True
     return "stop" in tokens and (normalized == "stop" or "defensive stop" in normalized or "defense stop" in normalized)
 

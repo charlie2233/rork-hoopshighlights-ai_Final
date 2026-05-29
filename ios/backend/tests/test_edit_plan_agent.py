@@ -1921,6 +1921,24 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertFalse(is_defensive_event_like_clip(request.clips[0]))
         self.assertTrue(is_plan_quality_eligible_clip(request.clips[0]))
 
+    def test_defensive_event_classifier_requires_forced_or_defensive_turnover_context(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=15,
+                clips=[
+                    _clip("plain_turnover", 12.0, "Turnover", 0.92),
+                    _clip("unforced_turnover", 24.0, "Unforced Turnover", 0.92),
+                    _clip("forced_turnover", 36.0, "Forced Turnover", 0.92),
+                    _clip("defensive_turnover", 48.0, "Defensive Turnover", 0.92),
+                ],
+            )
+        )
+
+        self.assertFalse(is_defensive_event_like_clip(request.clips[0]))
+        self.assertFalse(is_defensive_event_like_clip(request.clips[1]))
+        self.assertTrue(is_defensive_event_like_clip(request.clips[2]))
+        self.assertTrue(is_defensive_event_like_clip(request.clips[3]))
+
     def test_gpt_highlight_rerank_rejects_missed_shot_without_ball_path(self) -> None:
         request = CreateEditJobRequest(
             **_request_payload(

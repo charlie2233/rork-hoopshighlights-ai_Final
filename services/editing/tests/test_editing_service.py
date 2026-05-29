@@ -1079,6 +1079,39 @@ class EditingServiceTests(unittest.TestCase):
         self.assertEqual(receipt.defensiveSelectedClipCount, 0)
         self.assertNotIn("Included 1 defensive highlight.", receipt.summaryRows)
 
+    def test_ai_work_receipt_does_not_count_plain_turnover_as_defense(self) -> None:
+        payload = self._edit_request().model_dump()
+        payload["targetDurationSeconds"] = 15
+        payload["clips"] = [_clip("plain_turnover", 0.0, "Turnover", 0.92)]
+        edit_request = CreateEditJobRequest(**payload)
+        edit_job = build_edit_job(edit_request, "edit_plain_turnover_receipt")
+        self.assertFalse(edit_job.validation_errors)
+        created_at = now_utc()
+        render_job = StoredRenderJob(
+            edit_job_id="edit_plain_turnover_receipt",
+            render_job_id="render_plain_turnover_receipt",
+            install_id=edit_request.installId,
+            trace_id="trace_plain_turnover_receipt",
+            status="rendered",
+            aspect_ratio="9:16",
+            created_at=created_at,
+            updated_at=created_at,
+            completed_at=created_at,
+            source_object_key=edit_request.sourceObjectKey,
+            output_object_key="edits/edit_plain_turnover_receipt/render_jobs/render_plain_turnover_receipt/final.mp4",
+            render_log_object_key="edits/edit_plain_turnover_receipt/render_jobs/render_plain_turnover_receipt/render_log.json",
+            duration_seconds=5.0,
+            plan_version="edit-plan-v1",
+            template_id="personal_highlight_v1",
+            plan_tier="free",
+            idempotency_key="idem-plain-turnover-receipt",
+        )
+
+        receipt = build_ai_work_receipt(render_job, edit_job.plan, edit_request.clips)
+
+        self.assertEqual(receipt.defensiveSelectedClipCount, 0)
+        self.assertNotIn("Included 1 defensive highlight.", receipt.summaryRows)
+
     def test_ai_work_receipt_summarizes_validated_shot_outcome_evidence(self) -> None:
         payload = self._edit_request().model_dump()
         payload["targetDurationSeconds"] = 15
