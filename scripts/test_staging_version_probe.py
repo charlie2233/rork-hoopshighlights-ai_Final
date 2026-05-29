@@ -50,12 +50,29 @@ class StagingVersionProbeTests(unittest.TestCase):
         report = run_probe(
             worker_base_url="https://worker.test",
             editing_version_url="https://editing.test/version",
+            expected_git_sha="abc1234",
             opener=opener,
         )
 
         self.assertEqual(report.status, "pass")
         self.assertEqual(report.diagnosis, "staging_version_ready")
+        self.assertEqual(report.expectedGitSha, "abc1234")
         self.assertEqual(report.worker.featureFlagKeys, sorted(FEATURE_FLAGS.keys()))
+
+    def test_fails_when_reachable_endpoints_are_stale_against_expected_git_sha(self) -> None:
+        def opener(_request: Request, _timeout_seconds: float) -> tuple[int, bytes]:
+            return 200, json.dumps(VERSION_PAYLOAD).encode("utf-8")
+
+        report = run_probe(
+            worker_base_url="https://worker.test",
+            editing_version_url="https://editing.test/version",
+            expected_git_sha="def5678",
+            opener=opener,
+        )
+
+        self.assertEqual(report.status, "fail")
+        self.assertEqual(report.diagnosis, "staging_version_git_sha_not_expected")
+        self.assertEqual(report.expectedGitSha, "def5678")
 
     def test_fails_when_feature_flags_are_missing(self) -> None:
         def opener(_request: Request, _timeout_seconds: float) -> tuple[int, bytes]:
@@ -86,6 +103,7 @@ class StagingVersionProbeTests(unittest.TestCase):
 
         self.assertIn("worker.test/v1/editing/version", text)
         self.assertIn("editing.test/version", text)
+        self.assertIn("expectedGitSha=", text)
         self.assertNotIn("secret-token", text)
         self.assertNotIn("do-not-print", text)
 

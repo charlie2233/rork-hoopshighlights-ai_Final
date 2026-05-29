@@ -2,9 +2,10 @@ import json
 import subprocess
 import sys
 import unittest
+from datetime import date
 from pathlib import Path
 
-from scripts.launch_provider_input_handoff import build_handoff, detect_current_ref, render_markdown
+from scripts.launch_provider_input_handoff import build_cloudflare_token_form_guide, build_handoff, detect_current_ref, render_markdown
 from scripts.submission_readiness_preflight import (
     REQUIRED_DEPLOY_SECRET_INPUTS,
     REQUIRED_DEPLOY_VARIABLE_INPUTS,
@@ -15,7 +16,7 @@ from scripts.submission_readiness_preflight import (
 
 class LaunchProviderInputHandoffTests(unittest.TestCase):
     def test_handoff_includes_every_required_provider_input(self) -> None:
-        handoff = build_handoff()
+        handoff = build_handoff(today=date(2026, 5, 29))
 
         secret_names = {item.name for item in handoff.githubSecrets}
         variable_names = {item.name for item in handoff.githubVariables}
@@ -28,15 +29,27 @@ class LaunchProviderInputHandoffTests(unittest.TestCase):
             {"HOOPS_EDITING_SERVICE_SECRET", "HOOPS_R2_ACCESS_KEY_ID", "HOOPS_R2_SECRET_ACCESS_KEY", "HOOPS_OPENAI_API_KEY"},
         )
         self.assertTrue(any("wrangler whoami" in item for item in handoff.cloudflareTokenRequirements))
+        self.assertEqual(handoff.cloudflareTokenFormGuide.accountId, "78fb4442e6e37b2c46d7e539c6e79172")
+        self.assertEqual(handoff.cloudflareTokenFormGuide.startDate, "2026-05-29")
+        self.assertEqual(handoff.cloudflareTokenFormGuide.endDate, "2026-08-27")
+        self.assertIn("Workers Scripts: Edit", handoff.cloudflareTokenFormGuide.permissions)
+        self.assertIn("Workers R2 Storage: Edit", handoff.cloudflareTokenFormGuide.permissions)
         self.assertEqual([item.name for item in handoff.localInputs], ["HOOPS_DEVELOPMENT_TEAM"])
 
     def test_markdown_uses_placeholders_without_secret_values(self) -> None:
-        markdown = render_markdown(build_handoff())
+        markdown = render_markdown(build_handoff(today=date(2026, 5, 29)))
 
         self.assertIn("gh secret set CLOUDFLARE_API_TOKEN", markdown)
+        self.assertIn("Cloudflare Dashboard Form Guide", markdown)
+        self.assertIn("HoopClips staging CI deploy", markdown)
+        self.assertIn("TTL start date: `2026-05-29`", markdown)
+        self.assertIn("TTL end date: `2026-08-27`", markdown)
+        self.assertIn("Workers R2 Storage: Edit", markdown)
         self.assertIn("gh variable set GCP_PROJECT_ID", markdown)
         self.assertIn("gcloud secrets describe HOOPS_OPENAI_API_KEY", markdown)
         self.assertIn("gcloud secrets versions add HOOPS_OPENAI_API_KEY", markdown)
+        self.assertIn("--format='value(state)'", markdown)
+        self.assertIn("\"ENABLED\"", markdown)
         self.assertIn("GitHub Actions billing/spending/startability fixed", markdown)
         self.assertIn("Atlas / Browser Agent Prompt", markdown)
         self.assertIn("Do not paste, reveal, summarize, screenshot, or return", markdown)
@@ -66,6 +79,10 @@ class LaunchProviderInputHandoffTests(unittest.TestCase):
         self.assertTrue(any(item["name"] == "HOOPS_TERMS_OF_SERVICE_URL" for item in payload["githubVariables"]))
         self.assertTrue(any(item["name"] == "HOOPS_OPENAI_API_KEY" for item in payload["gcpSecretManagerSecrets"]))
         self.assertIn("staging / CLOUDFLARE_API_TOKEN", "\n".join(payload["cloudflareTokenRequirements"]))
+        self.assertEqual(payload["cloudflareTokenFormGuide"]["tokenName"], "HoopClips staging CI deploy")
+        self.assertEqual(payload["cloudflareTokenFormGuide"]["accountId"], "78fb4442e6e37b2c46d7e539c6e79172")
+        self.assertIn("Workers Scripts: Edit", payload["cloudflareTokenFormGuide"]["permissions"])
+        self.assertIn("TTL start date", payload["atlasAgentPrompt"])
         self.assertIn("Return only this non-secret status", payload["atlasAgentPrompt"])
         self.assertIn("GitHub Actions billing/spending/startability fixed", payload["atlasAgentPrompt"])
         self.assertTrue(any("billing/spending-limit" in item for item in payload["manualGates"]))
@@ -79,7 +96,7 @@ class LaunchProviderInputHandoffTests(unittest.TestCase):
             payload["verificationCommands"],
         )
         self.assertIn("python3 scripts/configure_github_staging_public_variables.py --apply", payload["verificationCommands"])
-        self.assertIn("python3 scripts/staging_version_probe.py", payload["verificationCommands"])
+        self.assertTrue(any(command.startswith("python3 scripts/staging_version_probe.py --expected-git-sha ") for command in payload["verificationCommands"]))
         workflow_commands = "\n".join(command for command in payload["verificationCommands"] if command.startswith("gh workflow run"))
         self.assertIn("--ref codex/test-ref", workflow_commands)
         self.assertNotIn("--ref main", workflow_commands)
@@ -92,6 +109,18 @@ class LaunchProviderInputHandoffTests(unittest.TestCase):
         self.assertEqual(handoff.ref, current_ref)
         workflow_commands = "\n".join(command for command in handoff.verificationCommands if command.startswith("gh workflow run"))
         self.assertIn(f"--ref {current_ref}", workflow_commands)
+
+    def test_cloudflare_form_guide_uses_beta_ttl_without_secret_values(self) -> None:
+        guide = build_cloudflare_token_form_guide(today=date(2026, 5, 29))
+
+        self.assertEqual(guide.tokenName, "HoopClips staging CI deploy")
+        self.assertEqual(guide.startDate, "2026-05-29")
+        self.assertEqual(guide.endDate, "2026-08-27")
+        self.assertIn("D1: Edit", guide.permissions)
+        self.assertIn("do not add DNS Edit", guide.zoneResource)
+        serialized = json.dumps(guide.__dict__)
+        self.assertNotIn("BEGIN PRIVATE KEY", serialized)
+        self.assertNotIn("sk-", serialized)
 
 
 if __name__ == "__main__":

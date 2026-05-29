@@ -27,6 +27,8 @@ Updated `scripts/launch_provider_input_handoff.py` so the safe provider handoff 
 
 - Required GCP Secret Manager secret names and local-prompt `gcloud` commands that avoid printing secret values.
 - Cloudflare token requirements for CI Wrangler automation.
+- Exact Cloudflare dashboard form guidance for the staging token, including account ID, token name, 90-day TTL, account/zone resource guidance, and permissions.
+- GCP Secret Manager checks that require the latest secret version to be `ENABLED` before treating it as usable.
 - A GitHub Actions billing/spending/startability gate so deploy and TestFlight workflows cannot be treated as proven if runners cannot start.
 - A ready-to-copy Atlas/browser-agent prompt that forbids returning secret values, API keys, R2 credentials, private key material, or full presigned URLs.
 - Non-secret return fields for provider-side status.
@@ -46,6 +48,7 @@ Expected:
 
 - Handoff JSON includes `gcpSecretManagerSecrets`.
 - Handoff JSON includes `cloudflareTokenRequirements`.
+- Handoff JSON includes `cloudflareTokenFormGuide`.
 - Handoff JSON includes `atlasAgentPrompt`.
 - Handoff JSON includes the GitHub Actions billing/spending/startability status gate.
 - No secret values are emitted.

@@ -44,6 +44,8 @@ The fix stays cloud-first. iOS still only uploads, shows status, and sends the s
 
 `scripts/launch_provider_input_handoff.py` now accepts `--ref` and defaults to the current branch when building safe provider-agent workflow commands. This keeps the next GCP/Cloudflare repair pass from accidentally validating or deploying stale `main` while this launch branch is still ahead.
 
+Follow-up hardening in Phase Launch28 now also includes exact Cloudflare token form fields, requires GCP Secret Manager latest versions to be `ENABLED`, and makes the staging version probe fail when live version metadata is stale relative to the expected branch SHA.
+
 ## Verification
 
 Commands run:

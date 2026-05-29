@@ -42,9 +42,12 @@ class MainWorkflowCodecheckTriggerTests(unittest.TestCase):
                 ".gptHighlightReranker.configured == true",
                 "Roll back staging editing service",
                 "cloud_run_revision is required when operation=rollback",
+                'deploy_ref="${GITHUB_REF_NAME:-main}"',
+                "--ref ${deploy_ref}",
                 "-f cloud_run_revision=<previous-cloud-run-revision>",
             ],
         )
+        self.assertNotIn("--ref main", text)
 
     def test_ios_upload_workflow_runs_unsigned_codecheck_on_every_main_push(self) -> None:
         text = workflow_text("ios-testflight-upload.yml")

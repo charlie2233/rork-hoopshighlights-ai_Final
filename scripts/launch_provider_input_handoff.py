@@ -7,6 +7,7 @@ import shlex
 import subprocess
 import sys
 from dataclasses import asdict, dataclass
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Literal
 
@@ -25,6 +26,8 @@ from scripts.submission_readiness_preflight import (
 REPO = "charlie2233/rork-hoopshighlights-ai_Final"
 ENVIRONMENT = "staging"
 GCP_PROJECT = "hoopsclips-9d38f"
+CLOUDFLARE_ACCOUNT_ID = "78fb4442e6e37b2c46d7e539c6e79172"
+CLOUDFLARE_TOKEN_TTL_DAYS = 90
 LOCAL_SECRETS_PATH = "ios/HoopsClips/HoopsClips/Config/LocalSecrets.xcconfig"
 REQUIRED_SECRET_MANAGER_SECRETS = [
     "HOOPS_EDITING_SERVICE_SECRET",
@@ -34,10 +37,11 @@ REQUIRED_SECRET_MANAGER_SECRETS = [
 ]
 CLOUDFLARE_TOKEN_REQUIREMENTS = [
     "Store only as GitHub environment secret staging / CLOUDFLARE_API_TOKEN.",
-    "Scope to the HoopClips Cloudflare account.",
+    f"Scope to the HoopClips Cloudflare account `{CLOUDFLARE_ACCOUNT_ID}`.",
     "Must authenticate `npx wrangler whoami` in GitHub Actions.",
     "Needs Workers Scripts Edit and Account Settings Read for staging deploy checks.",
-    "Needs R2 Edit when deploy preflight verifies bucket bindings or artifacts.",
+    "Needs Workers R2 Storage Edit when deploy preflight verifies bucket bindings or artifacts.",
+    "Needs D1 Edit for the staging D1 binding used by Wrangler deploys and migrations.",
 ]
 GITHUB_ACTIONS_STARTABILITY_GATE = (
     "Fix GitHub Actions billing/spending-limit state so Cloud Edit Deploy Preflight "
@@ -55,6 +59,19 @@ class HandoffInput:
 
 
 @dataclass(frozen=True)
+class CloudflareTokenFormGuide:
+    tokenName: str
+    accountId: str
+    accountResource: str
+    zoneResource: str
+    permissions: list[str]
+    startDate: str
+    endDate: str
+    githubSecret: str
+    notes: list[str]
+
+
+@dataclass(frozen=True)
 class Handoff:
     repo: str
     environment: str
@@ -63,6 +80,7 @@ class Handoff:
     githubVariables: list[HandoffInput]
     gcpSecretManagerSecrets: list[HandoffInput]
     cloudflareTokenRequirements: list[str]
+    cloudflareTokenFormGuide: CloudflareTokenFormGuide
     localInputs: list[HandoffInput]
     verificationCommands: list[str]
     manualGates: list[str]
@@ -84,9 +102,63 @@ def detect_current_ref() -> str:
     return ref if ref and ref != "HEAD" else "main"
 
 
-def build_handoff(ref: str | None = None) -> Handoff:
+def detect_current_sha() -> str | None:
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=REPO_ROOT_FOR_IMPORTS,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    sha = result.stdout.strip()
+    return sha or None
+
+
+def build_cloudflare_token_form_guide(today: date | None = None) -> CloudflareTokenFormGuide:
+    start = today or date.today()
+    end = start + timedelta(days=CLOUDFLARE_TOKEN_TTL_DAYS)
+    return CloudflareTokenFormGuide(
+        tokenName="HoopClips staging CI deploy",
+        accountId=CLOUDFLARE_ACCOUNT_ID,
+        accountResource=(
+            "Include only the Cloudflare account that owns Worker "
+            "`hoopsclips-control-plane-staging` and R2 buckets "
+            "`hoopsclips-uploads-staging` / `hoopsclips-results-staging`."
+        ),
+        zoneResource=(
+            "No zone permission is needed for the current workers.dev staging route. "
+            "If Cloudflare requires a Zone Resources selection, choose All zones only as a form-required fallback; do not add DNS Edit."
+        ),
+        permissions=[
+            "Account Settings: Read",
+            "Workers Scripts: Edit",
+            "Workers R2 Storage: Edit",
+            "D1: Edit",
+            "Workers Tail: Read (optional, only for log-streaming smoke)",
+        ],
+        startDate=start.isoformat(),
+        endDate=end.isoformat(),
+        githubSecret=f"{ENVIRONMENT} / CLOUDFLARE_API_TOKEN",
+        notes=[
+            "Set the start date to the local creation date and the end date to the 90-day internal beta rotation date.",
+            "Copy the token once directly into GitHub Actions environment secret staging / CLOUDFLARE_API_TOKEN.",
+            "Do not paste, screenshot, summarize, or return the token value.",
+            "If the dashboard requires broader account or zone selection, stop and return the blocker by name only.",
+        ],
+    )
+
+
+def build_handoff(ref: str | None = None, today: date | None = None) -> Handoff:
     workflow_ref = ref or detect_current_ref()
     workflow_ref_arg = shlex.quote(workflow_ref)
+    workflow_sha = detect_current_sha()
+    staging_probe_command = "python3 scripts/staging_version_probe.py"
+    if workflow_sha:
+        staging_probe_command = f"{staging_probe_command} --expected-git-sha {shlex.quote(workflow_sha)}"
+    cloudflare_form_guide = build_cloudflare_token_form_guide(today=today)
     github_secrets = [
         HandoffInput(
             name=name,
@@ -124,8 +196,8 @@ def build_handoff(ref: str | None = None) -> Handoff:
             command=(
                 f"(gcloud secrets describe {name} --project={GCP_PROJECT} >/dev/null "
                 f"|| gcloud secrets create {name} --project={GCP_PROJECT} --replication-policy=automatic) "
-                f"&& (gcloud secrets versions describe latest --secret={name} --project={GCP_PROJECT} "
-                f"--format='value(state)' >/dev/null || (printf 'Enter value for {name}: ' >&2; "
+                f"&& (test \"$(gcloud secrets versions describe latest --secret={name} --project={GCP_PROJECT} "
+                f"--format='value(state)' 2>/dev/null)\" = \"ENABLED\" || (printf 'Enter value for {name}: ' >&2; "
                 f"read -rs SECRET_VALUE; printf '\\n' >&2; printf '%s' \"$SECRET_VALUE\" "
                 f"| gcloud secrets versions add {name} --project={GCP_PROJECT} --data-file=-))"
             ),
@@ -141,7 +213,7 @@ def build_handoff(ref: str | None = None) -> Handoff:
         f"gh workflow run cloud-edit-deploy-preflight.yml --repo {REPO} --ref {workflow_ref_arg} -f operation=preflight",
         f"gh workflow run ios-testflight-upload.yml --repo {REPO} --ref {workflow_ref_arg} -f operation=preflight",
         f"gh workflow run cloud-edit-deploy-preflight.yml --repo {REPO} --ref {workflow_ref_arg} -f operation=deploy",
-        "python3 scripts/staging_version_probe.py",
+        staging_probe_command,
         "python3 scripts/submission_readiness_preflight.py --team-accuracy-report artifacts/team_highlight_accuracy_report.json",
     ]
     manual_gates = [
@@ -153,7 +225,7 @@ def build_handoff(ref: str | None = None) -> Handoff:
         "Create a signed archive/IPA through the iOS internal TestFlight workflow, then run the installed TestFlight smoke.",
         "Do not submit to Apple until upload, processing, installed smoke, cloud render, revision, preview, and share/open-in are all proven.",
     ]
-    atlas_prompt = build_atlas_agent_prompt(workflow_ref)
+    atlas_prompt = build_atlas_agent_prompt(workflow_ref, cloudflare_form_guide)
     return Handoff(
         repo=REPO,
         environment=ENVIRONMENT,
@@ -162,6 +234,7 @@ def build_handoff(ref: str | None = None) -> Handoff:
         githubVariables=github_variables,
         gcpSecretManagerSecrets=gcp_secret_manager_secrets,
         cloudflareTokenRequirements=CLOUDFLARE_TOKEN_REQUIREMENTS,
+        cloudflareTokenFormGuide=cloudflare_form_guide,
         localInputs=local_inputs,
         verificationCommands=verification_commands,
         manualGates=manual_gates,
@@ -189,6 +262,8 @@ def render_markdown(handoff: Handoff) -> str:
     lines.extend(render_input_rows(handoff.gcpSecretManagerSecrets))
     lines.extend(["", "## Cloudflare Token Requirements", ""])
     lines.extend(f"- {requirement}" for requirement in handoff.cloudflareTokenRequirements)
+    lines.extend(["", "## Cloudflare Dashboard Form Guide", ""])
+    lines.extend(render_cloudflare_form_guide(handoff.cloudflareTokenFormGuide))
     lines.extend(["", "## Local Signing Input", ""])
     lines.extend(render_input_rows(handoff.localInputs))
     lines.extend(["", "## Verification Commands", ""])
@@ -213,9 +288,28 @@ def render_input_rows(inputs: list[HandoffInput]) -> list[str]:
     return rows
 
 
-def build_atlas_agent_prompt(ref: str) -> str:
+def render_cloudflare_form_guide(guide: CloudflareTokenFormGuide) -> list[str]:
+    rows = [
+        f"- Token name: `{guide.tokenName}`",
+        f"- Account ID: `{guide.accountId}`",
+        f"- Account resources: {guide.accountResource}",
+        f"- Zone resources: {guide.zoneResource}",
+        f"- TTL start date: `{guide.startDate}`",
+        f"- TTL end date: `{guide.endDate}`",
+        f"- GitHub secret target: `{guide.githubSecret}`",
+        "- Permissions:",
+    ]
+    rows.extend(f"  - {permission}" for permission in guide.permissions)
+    rows.append("- Notes:")
+    rows.extend(f"  - {note}" for note in guide.notes)
+    return rows
+
+
+def build_atlas_agent_prompt(ref: str, cloudflare_guide: CloudflareTokenFormGuide) -> str:
     secret_list = "\n".join(f"   - {name}" for name in REQUIRED_SECRET_MANAGER_SECRETS)
     cloudflare_requirements = "\n".join(f"   - {item}" for item in CLOUDFLARE_TOKEN_REQUIREMENTS)
+    cloudflare_permissions = "\n".join(f"   - {item}" for item in cloudflare_guide.permissions)
+    cloudflare_notes = "\n".join(f"   - {item}" for item in cloudflare_guide.notes)
     return f"""For repo {REPO}, GitHub environment {ENVIRONMENT}, repair only provider-side launch deploy blockers.
 Use GitHub Actions workflow ref {ref} for verification/deploy reruns, not stale main, unless the operator explicitly asks to validate main.
 
@@ -227,6 +321,17 @@ Do not paste, reveal, summarize, screenshot, or return private key material, API
 3. Ensure the GitHub Actions deploy service account configured in staging / GCP_DEPLOY_SERVICE_ACCOUNT has Secret Manager Secret Accessor for those secrets.
 4. In Cloudflare, create or replace a scoped API token:
 {cloudflare_requirements}
+   Dashboard form values:
+   - Token name: {cloudflare_guide.tokenName}
+   - Account ID/resource: {cloudflare_guide.accountId}
+   - Account resources: {cloudflare_guide.accountResource}
+   - Zone resources: {cloudflare_guide.zoneResource}
+   - TTL start date: {cloudflare_guide.startDate}
+   - TTL end date: {cloudflare_guide.endDate}
+   Permissions:
+{cloudflare_permissions}
+   Notes:
+{cloudflare_notes}
 5. Set that token directly as GitHub environment secret staging / CLOUDFLARE_API_TOKEN for {REPO}.
 6. Return only this non-secret status:
    - GCP secrets present and enabled: yes/no

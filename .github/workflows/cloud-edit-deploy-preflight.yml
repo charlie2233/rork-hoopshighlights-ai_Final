@@ -333,12 +333,16 @@ jobs:
           cat <<'CHECKLIST'
           CLOUDFLARE_API_TOKEN requirements:
             - Store as GitHub Actions environment secret: staging / CLOUDFLARE_API_TOKEN
-            - Scope to the HoopClips Cloudflare account
+            - Scope to HoopClips Cloudflare account ID 78fb4442e6e37b2c46d7e539c6e79172
+            - Token name: HoopClips staging CI deploy
+            - TTL: start on creation date, end 90 days later for internal beta rotation
+            - Account resources: only the account that owns Worker hoopsclips-control-plane-staging and staging R2 buckets
+            - Zone resources: no zone permission is needed for the workers.dev staging route; if the dashboard requires a zone choice, use All zones only as a form-required fallback and do not add DNS Edit
             - Workers Scripts: Edit
             - Account Settings: Read
             - Workers Tail: Read, optional for log streaming smoke
             - D1: Edit, when running migrations
-            - R2: Edit, when deploy preflight verifies bucket bindings or artifacts
+            - Workers R2 Storage: Edit, when deploy preflight verifies bucket bindings or artifacts
             - Rotate from Cloudflare dashboard and update the GitHub environment secret
 
           GCP deploy identity requirements:
@@ -354,7 +358,8 @@ jobs:
       - name: Print deploy command checklist
         run: |
           set -euo pipefail
-          cat <<'CHECKLIST'
+          deploy_ref="${GITHUB_REF_NAME:-main}"
+          cat <<CHECKLIST
           Staging Worker deploy:
             cd services/control-plane
             npx wrangler deploy --env staging --keep-vars --message "staging deploy <git-sha>"
@@ -373,12 +378,12 @@ jobs:
 
           GitHub Actions staging deploy:
             gh workflow run "Cloud Edit Deploy Preflight" \
-              --ref main \
+              --ref ${deploy_ref} \
               -f operation=deploy
 
           GitHub Actions staging rollback:
             gh workflow run "Cloud Edit Deploy Preflight" \
-              --ref main \
+              --ref ${deploy_ref} \
               -f operation=rollback \
               -f cloud_run_revision=<previous-cloud-run-revision> \
               -f rollback_version_id=<previous-worker-version-id>
