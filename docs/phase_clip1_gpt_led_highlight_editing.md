@@ -99,13 +99,14 @@ Cost is intentionally not the primary constraint for this phase, but the rollout
 
 ## Fallback Behavior
 
-If GPT is disabled, missing an API key, missing source video, fails keyframe extraction, returns invalid JSON, rejects every clip, or proposes an invalid patch, the backend falls back to deterministic candidate ranking and EditPlan generation. The AI Work Receipt records disabled/fallback/applied status, sampled clip/frame counts, story-order IDs, and whether GPT plan edit was applied.
+If GPT is disabled, missing an API key, missing source video, fails keyframe extraction, returns invalid JSON, returns no valid decisions, or proposes an invalid patch, the backend falls back to deterministic candidate ranking and EditPlan generation. The AI Work Receipt records disabled/fallback/applied status, sampled clip/frame counts, story-order IDs, and whether GPT plan edit was applied.
 
 The 2026-05-23 quality-gate update tightens the applied path:
 
 - Every sampled clip must have `start`, `eventCenter`, and `finish` keyframes before the OpenAI request is sent. Partial extraction now falls back with `keyframe_extraction_incomplete`.
 - Every sampled clip must receive a valid GPT decision. Incomplete GPT output now falls back with `incomplete_gpt_decisions`.
-- Applied GPT reranks no longer carry unjudged clips into the final candidate list. GPT-selected clips are the only applied clips, and an all-rejected result still falls back deterministically.
+- Applied GPT reranks no longer carry unjudged clips into the final candidate list. GPT-selected clips are the only applied clips.
+- If GPT rejects every clip for soft editorial uncertainty such as `not_confident`, `low_hype`, or `not_enough_hype`, the backend can mark the rerank as `fallback` with `all_clips_rejected_rescued` and keep only GPT-reviewed clips that still pass deterministic render-quality gates. Clips rejected as boring, duplicate, unclear, unsafe, unsupported by sampled evidence, team-ineligible, or structurally invalid still produce an empty applied result rather than being rendered.
 - GPT revision patch schemas no longer expose loose arbitrary `object` or `array` values. Patch values are constrained to typed primitives or known EditPlan shapes, with `additionalProperties: false` on every object, matching OpenAI Structured Outputs strict-mode requirements: https://platform.openai.com/docs/guides/structured-outputs
 
 ## Validation

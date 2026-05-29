@@ -517,6 +517,33 @@ struct HoopsClipsTests {
         #expect(viewModel.settings.highlightTeamSelection.teamId == "team_blue")
     }
 
+    @Test @MainActor func testTeamScanCancellationClearsInProgressState() async throws {
+        let tempURL = FileManager.default.temporaryDirectory.appending(path: "team-scan-cancel-\(UUID().uuidString).mp4")
+        try Data("fake video".utf8).write(to: tempURL)
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+
+        let viewModel = HighlightsViewModel()
+        viewModel.videoURL = tempURL
+        viewModel.videoDuration = 120
+        viewModel.isVideoLoaded = true
+        viewModel.cloudAnalysisService = CloudAnalysisService(session: makeCloudAnalysisSession { _ in
+            throw CancellationError()
+        })
+
+        UserDefaults.standard.set("https://analysis.hoopsclips.test", forKey: "hoops.cloudAnalysisBaseURL")
+        defer {
+            UserDefaults.standard.removeObject(forKey: "hoops.cloudAnalysisBaseURL")
+            CloudAnalysisMockURLProtocol.requestHandler = nil
+        }
+
+        await viewModel.scanTeamsBeforeAnalysis()
+
+        #expect(viewModel.isCloudTeamScanInProgress == false)
+        #expect(viewModel.cloudDetectedTeams.isEmpty)
+        #expect(viewModel.hasConfirmedHighlightTeamSelection == false)
+        #expect(viewModel.cloudTeamScanStatusMessage == nil)
+    }
+
     @Test func testPersistedProjectRecordStoresCloudTeamSelectionAndDiagnostics() throws {
         let now = Date(timeIntervalSince1970: 1_777_000_000)
         let project = PersistedProjectRecord(

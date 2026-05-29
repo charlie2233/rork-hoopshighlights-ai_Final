@@ -4,7 +4,7 @@ import sys
 import unittest
 from pathlib import Path
 
-from scripts.launch_provider_input_handoff import build_handoff, render_markdown
+from scripts.launch_provider_input_handoff import build_handoff, detect_current_ref, render_markdown
 from scripts.submission_readiness_preflight import (
     REQUIRED_DEPLOY_SECRET_INPUTS,
     REQUIRED_DEPLOY_VARIABLE_INPUTS,
@@ -51,7 +51,7 @@ class LaunchProviderInputHandoffTests(unittest.TestCase):
     def test_json_output_is_machine_readable(self) -> None:
         repo_root = Path(__file__).resolve().parents[1]
         result = subprocess.run(
-            [sys.executable, "scripts/launch_provider_input_handoff.py", "--json"],
+            [sys.executable, "scripts/launch_provider_input_handoff.py", "--json", "--ref", "codex/test-ref"],
             cwd=repo_root,
             check=True,
             capture_output=True,
@@ -61,6 +61,7 @@ class LaunchProviderInputHandoffTests(unittest.TestCase):
         payload = json.loads(result.stdout)
 
         self.assertEqual(payload["repo"], "charlie2233/rork-hoopshighlights-ai_Final")
+        self.assertEqual(payload["ref"], "codex/test-ref")
         self.assertTrue(any(item["name"] == "APP_STORE_CONNECT_API_KEY_BASE64" for item in payload["githubSecrets"]))
         self.assertTrue(any(item["name"] == "HOOPS_TERMS_OF_SERVICE_URL" for item in payload["githubVariables"]))
         self.assertTrue(any(item["name"] == "HOOPS_OPENAI_API_KEY" for item in payload["gcpSecretManagerSecrets"]))
@@ -79,6 +80,18 @@ class LaunchProviderInputHandoffTests(unittest.TestCase):
         )
         self.assertIn("python3 scripts/configure_github_staging_public_variables.py --apply", payload["verificationCommands"])
         self.assertIn("python3 scripts/staging_version_probe.py", payload["verificationCommands"])
+        workflow_commands = "\n".join(command for command in payload["verificationCommands"] if command.startswith("gh workflow run"))
+        self.assertIn("--ref codex/test-ref", workflow_commands)
+        self.assertNotIn("--ref main", workflow_commands)
+        self.assertIn("workflow ref codex/test-ref", payload["atlasAgentPrompt"])
+
+    def test_handoff_defaults_to_current_branch_ref(self) -> None:
+        current_ref = detect_current_ref()
+        handoff = build_handoff()
+
+        self.assertEqual(handoff.ref, current_ref)
+        workflow_commands = "\n".join(command for command in handoff.verificationCommands if command.startswith("gh workflow run"))
+        self.assertIn(f"--ref {current_ref}", workflow_commands)
 
 
 if __name__ == "__main__":

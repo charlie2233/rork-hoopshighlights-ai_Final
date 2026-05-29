@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import shlex
+import subprocess
 import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -56,6 +58,7 @@ class HandoffInput:
 class Handoff:
     repo: str
     environment: str
+    ref: str
     githubSecrets: list[HandoffInput]
     githubVariables: list[HandoffInput]
     gcpSecretManagerSecrets: list[HandoffInput]
@@ -66,7 +69,24 @@ class Handoff:
     atlasAgentPrompt: str
 
 
-def build_handoff() -> Handoff:
+def detect_current_ref() -> str:
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=REPO_ROOT_FOR_IMPORTS,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return "main"
+    ref = result.stdout.strip()
+    return ref if ref and ref != "HEAD" else "main"
+
+
+def build_handoff(ref: str | None = None) -> Handoff:
+    workflow_ref = ref or detect_current_ref()
+    workflow_ref_arg = shlex.quote(workflow_ref)
     github_secrets = [
         HandoffInput(
             name=name,
@@ -118,9 +138,9 @@ def build_handoff() -> Handoff:
         "python3 -m scripts.evaluate_team_highlight_accuracy artifacts/team_highlight_eval.json --json > artifacts/team_highlight_accuracy_report.json",
         "python3 scripts/submission_readiness_preflight.py --team-accuracy-report artifacts/team_highlight_accuracy_report.json",
         "python3 scripts/configure_github_staging_public_variables.py --apply",
-        "gh workflow run cloud-edit-deploy-preflight.yml --repo charlie2233/rork-hoopshighlights-ai_Final --ref main -f operation=preflight",
-        "gh workflow run ios-testflight-upload.yml --repo charlie2233/rork-hoopshighlights-ai_Final --ref main -f operation=preflight",
-        "gh workflow run cloud-edit-deploy-preflight.yml --repo charlie2233/rork-hoopshighlights-ai_Final --ref main -f operation=deploy",
+        f"gh workflow run cloud-edit-deploy-preflight.yml --repo {REPO} --ref {workflow_ref_arg} -f operation=preflight",
+        f"gh workflow run ios-testflight-upload.yml --repo {REPO} --ref {workflow_ref_arg} -f operation=preflight",
+        f"gh workflow run cloud-edit-deploy-preflight.yml --repo {REPO} --ref {workflow_ref_arg} -f operation=deploy",
         "python3 scripts/staging_version_probe.py",
         "python3 scripts/submission_readiness_preflight.py --team-accuracy-report artifacts/team_highlight_accuracy_report.json",
     ]
@@ -133,10 +153,11 @@ def build_handoff() -> Handoff:
         "Create a signed archive/IPA through the iOS internal TestFlight workflow, then run the installed TestFlight smoke.",
         "Do not submit to Apple until upload, processing, installed smoke, cloud render, revision, preview, and share/open-in are all proven.",
     ]
-    atlas_prompt = build_atlas_agent_prompt()
+    atlas_prompt = build_atlas_agent_prompt(workflow_ref)
     return Handoff(
         repo=REPO,
         environment=ENVIRONMENT,
+        ref=workflow_ref,
         githubSecrets=github_secrets,
         githubVariables=github_variables,
         gcpSecretManagerSecrets=gcp_secret_manager_secrets,
@@ -154,6 +175,7 @@ def render_markdown(handoff: Handoff) -> str:
         "",
         f"Repository: `{handoff.repo}`",
         f"GitHub environment: `{handoff.environment}`",
+        f"GitHub ref for verification workflows: `{handoff.ref}`",
         "",
         "Use these commands locally or in the provider UI. Do not paste secret values into chat, docs, commits, logs, or screenshots.",
         "",
@@ -191,10 +213,11 @@ def render_input_rows(inputs: list[HandoffInput]) -> list[str]:
     return rows
 
 
-def build_atlas_agent_prompt() -> str:
+def build_atlas_agent_prompt(ref: str) -> str:
     secret_list = "\n".join(f"   - {name}" for name in REQUIRED_SECRET_MANAGER_SECRETS)
     cloudflare_requirements = "\n".join(f"   - {item}" for item in CLOUDFLARE_TOKEN_REQUIREMENTS)
     return f"""For repo {REPO}, GitHub environment {ENVIRONMENT}, repair only provider-side launch deploy blockers.
+Use GitHub Actions workflow ref {ref} for verification/deploy reruns, not stale main, unless the operator explicitly asks to validate main.
 
 Do not paste, reveal, summarize, screenshot, or return private key material, API tokens, R2 credentials, OpenAI keys, Secret Manager secret values, or full presigned URLs.
 
@@ -219,9 +242,10 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Print a safe HoopClips provider-input setup handoff.")
     parser.add_argument("--json", action="store_true", help="Emit machine-readable handoff data.")
     parser.add_argument("--output", type=Path, help="Optional file path to write the handoff.")
+    parser.add_argument("--ref", help="GitHub ref to use in verification workflow commands. Defaults to the current branch.")
     args = parser.parse_args()
 
-    handoff = build_handoff()
+    handoff = build_handoff(ref=args.ref)
     output = json.dumps(asdict(handoff), indent=2, sort_keys=True) + "\n" if args.json else render_markdown(handoff)
     if args.output:
         args.output.write_text(output, encoding="utf-8")

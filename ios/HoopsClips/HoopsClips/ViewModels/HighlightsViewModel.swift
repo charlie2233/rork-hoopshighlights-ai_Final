@@ -16,6 +16,7 @@ final class HighlightsViewModel {
     private var projectLibrary: PersistedProjectLibrary
     private var suppressProjectPersistence = false
     private var pendingCloudAnalysisJob: PreparedCloudAnalysisJob?
+    private var activeCloudTeamScanID: UUID?
     private var lastAnalysisStatusSummary: String?
     private var lastAnalyzedAt: Date?
     private var lastExportedAt: Date?
@@ -287,7 +288,15 @@ final class HighlightsViewModel {
         let scanSourceURL = url.standardizedFileURL
         guard pendingCloudAnalysisJob?.sourceURL != scanSourceURL else { return }
 
+        let scanID = UUID()
+        activeCloudTeamScanID = scanID
         isCloudTeamScanInProgress = true
+        defer {
+            if activeCloudTeamScanID == scanID {
+                isCloudTeamScanInProgress = false
+                activeCloudTeamScanID = nil
+            }
+        }
         cloudTeamScanErrorMessage = nil
         cloudTeamScanStatusMessage = "Preparing team scan"
         settings.highlightTeamSelection = .allTeams
@@ -337,8 +346,6 @@ final class HighlightsViewModel {
             settings.highlightTeamSelection = .allTeams
             hasConfirmedHighlightTeamSelection = true
         }
-
-        isCloudTeamScanInProgress = false
     }
 
     func confirmHighlightTeamSelection(_ selection: HighlightTeamSelection) {
@@ -946,6 +953,7 @@ final class HighlightsViewModel {
 
     private func clearPendingCloudAnalysisJob() {
         pendingCloudAnalysisJob = nil
+        activeCloudTeamScanID = nil
         isCloudTeamScanInProgress = false
         cloudTeamScanStatusMessage = nil
         cloudTeamScanErrorMessage = nil

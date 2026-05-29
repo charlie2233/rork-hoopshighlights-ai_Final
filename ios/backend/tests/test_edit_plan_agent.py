@@ -2737,6 +2737,61 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertEqual(job.status, "failed")
         self.assertIn("empty_clip_list", [error.code for error in job.validation_errors])
 
+    def test_gpt_highlight_rerank_soft_all_rejected_rescues_quality_candidates_for_review(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=30,
+                clips=[
+                    _clip("clean_finish", 0.0, "Made Shot", 0.95),
+                    _clip("clear_three", 12.0, "Made Shot", 0.9),
+                ],
+            )
+        )
+        decisions = [
+            GPTHighlightClipDecision(
+                clipId="clean_finish",
+                keep=False,
+                rejectReason="not_confident",
+                highlightScore=0.64,
+                watchabilityScore=0.79,
+                basketballEvent="Made Shot",
+                outcome="made",
+                caption="REVIEW",
+                reason="Playable clip, but GPT was not confident enough to make it a final selected highlight.",
+                qualitySignals=_quality_signals(),
+                shotResultEvidence=_shot_result_evidence(),
+                shotTrackingEvidence=_shot_tracking_evidence(),
+                suggestedEdit=GPTHighlightSuggestedEdit(),
+            ),
+            GPTHighlightClipDecision(
+                clipId="clear_three",
+                keep=False,
+                rejectReason="low_hype",
+                highlightScore=0.61,
+                watchabilityScore=0.76,
+                basketballEvent="Made Shot",
+                outcome="made",
+                caption="REVIEW",
+                reason="The play is visible enough for review, but GPT wanted a more exciting moment.",
+                qualitySignals=_quality_signals(),
+                shotResultEvidence=_shot_result_evidence(),
+                shotTrackingEvidence=_shot_tracking_evidence(),
+                suggestedEdit=GPTHighlightSuggestedEdit(),
+            ),
+        ]
+
+        reranked = apply_gpt_highlight_rerank(request, decisions, "gpt-test", 2, 6)
+        plan = build_edit_plan(reranked, "edit_soft_all_gpt_rejected")
+
+        self.assertEqual(reranked.gptRerankSummary.status, "fallback")
+        self.assertEqual(reranked.gptRerankSummary.fallbackReason, "all_clips_rejected_rescued")
+        self.assertEqual([clip.id for clip in reranked.clips], ["clean_finish", "clear_three"])
+        self.assertEqual(reranked.gptRerankSummary.keptClipIds, ["clean_finish", "clear_three"])
+        self.assertEqual(reranked.gptRerankSummary.rejectedClipIds, [])
+        self.assertEqual(reranked.gptRerankSummary.rejectedReasonCounts.get("not_confident"), 1)
+        self.assertEqual(reranked.gptRerankSummary.rejectedReasonCounts.get("low_hype"), 1)
+        self.assertIn(plan.clips[0].clipId, {"clean_finish", "clear_three"})
+
     def test_gpt_highlight_rerank_rejects_generic_audio_only_scoring_claim(self) -> None:
         request = CreateEditJobRequest(
             **_request_payload(

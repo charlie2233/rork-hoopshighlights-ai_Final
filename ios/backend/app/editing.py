@@ -2873,6 +2873,7 @@ def apply_gpt_highlight_rerank(
     kept: List[EditCandidateClip] = []
     rejected_clip_ids: List[str] = []
     rejected_reason_counts: Dict[str, int] = {}
+    rejected_reason_by_clip_id: Dict[str, str] = {}
     missing_decision_clip_ids: List[str] = []
     for clip in review_source_clips:
         decision = valid_decisions.get(clip.id)
@@ -2880,16 +2881,16 @@ def apply_gpt_highlight_rerank(
             missing_decision_clip_ids.append(clip.id)
             continue
         if clip.id not in render_source_by_id:
+            rejection_reason = decision.rejectReason or "needs_manual_team_review"
             rejected_clip_ids.append(clip.id)
-            _increment_reason_count(
-                rejected_reason_counts,
-                decision.rejectReason or "needs_manual_team_review",
-            )
+            rejected_reason_by_clip_id[clip.id] = rejection_reason
+            _increment_reason_count(rejected_reason_counts, rejection_reason)
             continue
         sampled_frame_roles = sampled_frame_roles_by_clip.get(clip.id) if sampled_frame_roles_by_clip is not None else None
         rejection_reason = _gpt_decision_rejection_reason(decision, clip, sampled_frame_roles)
         if rejection_reason is not None:
             rejected_clip_ids.append(clip.id)
+            rejected_reason_by_clip_id[clip.id] = rejection_reason
             _increment_reason_count(rejected_reason_counts, rejection_reason)
             continue
         event_label = decision.basketballEvent.strip() or clip.label
@@ -2937,6 +2938,26 @@ def apply_gpt_highlight_rerank(
     if not kept:
         if missing_decision_clip_ids:
             _increment_reason_count(rejected_reason_counts, "missing_gpt_decision", len(missing_decision_clip_ids))
+        rescue_clips = _soft_gpt_rejection_rescue_clips(render_source_clips, rejected_reason_by_clip_id)
+        if rescue_clips:
+            rescue_clip_ids = {clip.id for clip in rescue_clips}
+            summary = GPTHighlightRerankSummary(
+                status="fallback",
+                model=model,
+                sampledClipCount=sampled_clip_count,
+                sampledFrameCount=sampled_frame_count,
+                returnedDecisionCount=len(valid_decisions),
+                keptClipIds=[clip.id for clip in rescue_clips[:GPT_CANDIDATE_REVIEW_LIMIT]],
+                rejectedClipIds=[clip_id for clip_id in (rejected_clip_ids + missing_decision_clip_ids) if clip_id not in rescue_clip_ids][
+                    :GPT_CANDIDATE_REVIEW_LIMIT
+                ],
+                uncertainReviewClipIds=uncertain_review_clip_ids,
+                rejectedReasonCounts=rejected_reason_counts,
+                fallbackReason="all_clips_rejected_rescued",
+                storyOrderClipIds=[],
+                planEditApplied=False,
+            )
+            return request.model_copy(update={"clips": rescue_clips, "gptRerankSummary": summary})
         summary = GPTHighlightRerankSummary(
             status="applied",
             model=model,
@@ -3003,6 +3024,42 @@ def uncertain_review_clip_ids_for_team_selection(
 
 def _increment_reason_count(counts: Dict[str, int], reason: str, amount: int = 1) -> None:
     counts[reason] = counts.get(reason, 0) + amount
+
+
+SOFT_GPT_REJECTION_REASONS_FOR_RESCUE = {
+    "gpt_rejected",
+    "low_highlight_score",
+    "low_watchability_score",
+    "low_hype",
+    "low_energy",
+    "not_confident",
+    "not_sure",
+    "uncertain_but_reviewable",
+    "needs_review",
+    "not_enough_hype",
+    "not_top_play",
+    "editorial_reject",
+}
+
+
+def _soft_gpt_rejection_rescue_clips(
+    render_source_clips: Sequence[EditCandidateClip],
+    rejected_reason_by_clip_id: Mapping[str, str],
+) -> List[EditCandidateClip]:
+    rescue_candidates = [
+        clip
+        for clip in render_source_clips
+        if is_plan_quality_eligible_clip(clip)
+        and _is_soft_gpt_rejection_reason(rejected_reason_by_clip_id.get(clip.id))
+    ]
+    return rank_clips(remove_duplicate_moments(rescue_candidates))
+
+
+def _is_soft_gpt_rejection_reason(reason: Optional[str]) -> bool:
+    if reason is None:
+        return False
+    normalized = reason.strip().lower().replace(" ", "_").replace("-", "_")
+    return normalized in SOFT_GPT_REJECTION_REASONS_FOR_RESCUE
 
 
 def _validated_gpt_outcome(
