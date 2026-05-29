@@ -2764,9 +2764,14 @@ def validate_edit_plan(
             add(f"{field_prefix}.source", "clip_too_short", "Clip is shorter than the minimum render duration.")
         if clip.sourceEnd - clip.sourceStart < minimum_template_clip_seconds:
             add(f"{field_prefix}.source", "template_clip_too_short", "Clip is shorter than the selected template minimum.")
-        if is_shot_like_clip(source):
-            lead_in = clip.eventCenter - clip.sourceStart
-            follow_through = clip.sourceEnd - clip.eventCenter
+        lead_in = clip.eventCenter - clip.sourceStart
+        follow_through = clip.sourceEnd - clip.eventCenter
+        if is_defensive_event_like_clip(source):
+            if lead_in < MIN_DEFENSIVE_CONTEXT_LEAD_IN_SECONDS:
+                add(f"{field_prefix}.source", "defensive_context_missing_setup", "Defensive clip starts too close to the basketball event.")
+            if follow_through < MIN_DEFENSIVE_CONTEXT_FOLLOW_THROUGH_SECONDS:
+                add(f"{field_prefix}.source", "defensive_context_missing_outcome", "Defensive clip ends before enough outcome context is visible.")
+        elif is_shot_like_clip(source):
             if lead_in < MIN_SHOT_CONTEXT_LEAD_IN_SECONDS:
                 add(f"{field_prefix}.source", "shot_context_missing_setup", "Shot clip starts too close to the basketball event.")
             if follow_through < MIN_SHOT_CONTEXT_FOLLOW_THROUGH_SECONDS:

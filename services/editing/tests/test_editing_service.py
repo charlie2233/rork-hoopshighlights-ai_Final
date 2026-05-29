@@ -28,6 +28,7 @@ from app.editing import (  # noqa: E402
     apply_gpt_highlight_rerank,
     build_edit_job,
     get_plan_tier_policy,
+    validate_edit_plan,
     validate_template_registry,
 )
 import editing_app.main as editing_main  # noqa: E402
@@ -1045,6 +1046,51 @@ class EditingServiceTests(unittest.TestCase):
         self.assertEqual(receipt.timingIssueSelectedClipCount, 1)
         self.assertEqual(receipt.timingQualitySelectedClipCount, 0)
         self.assertIn("Flagged 1 selected clip with weak timing/context.", receipt.summaryRows)
+
+    def test_edit_plan_validation_rejects_trimmed_defensive_context(self) -> None:
+        payload = self._edit_request().model_dump()
+        payload["targetDurationSeconds"] = 15
+        payload["clips"] = [
+            _clip("late_steal", 10.0, "Steal", 0.92),
+            _clip("cutoff_steal", 20.0, "Steal", 0.91),
+        ]
+        edit_request = CreateEditJobRequest(**payload)
+        edit_job = build_edit_job(edit_request, "edit_defensive_plan_context")
+        self.assertFalse(edit_job.validation_errors)
+        trimmed_plan = edit_job.plan.model_copy(
+            update={
+                "clips": [
+                    EditPlanClip(
+                        clipId="late_steal",
+                        sourceStart=10.0,
+                        sourceEnd=13.0,
+                        eventCenter=10.1,
+                        timelineStart=1.2,
+                        timelineEnd=4.2,
+                        label="Steal",
+                        caption="STEAL",
+                        cropMode="center_action",
+                    ),
+                    EditPlanClip(
+                        clipId="cutoff_steal",
+                        sourceStart=20.0,
+                        sourceEnd=23.0,
+                        eventCenter=22.6,
+                        timelineStart=4.2,
+                        timelineEnd=7.2,
+                        label="Steal",
+                        caption="STEAL",
+                        cropMode="center_action",
+                    )
+                ]
+            }
+        )
+
+        errors = validate_edit_plan(trimmed_plan, edit_request.clips, edit_request.planTier)
+        codes = [error.code for error in errors]
+
+        self.assertIn("defensive_context_missing_setup", codes)
+        self.assertIn("defensive_context_missing_outcome", codes)
 
     def test_ai_work_receipt_does_not_count_stop_and_pop_jumper_as_defense(self) -> None:
         payload = self._edit_request().model_dump()
