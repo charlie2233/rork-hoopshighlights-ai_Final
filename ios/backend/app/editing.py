@@ -2088,6 +2088,7 @@ def select_best_clips(
     _, max_clip_seconds = preset.clipLengthRangeSeconds
     ranked_candidates = [clip for clip in remove_duplicate_moments(clips) if is_plan_quality_eligible_clip(clip)]
     selection_order = ranked_candidates
+    story_ordered: List[EditCandidateClip] = []
     if not preset.ordering.startswith("chronological"):
         story_ordered = [clip for clip in order_by_gpt_story_order(ranked_candidates) if clip.gptStoryOrderIndex is not None]
         if story_ordered:
@@ -2107,12 +2108,91 @@ def select_best_clips(
         selected.append(clip)
         duration_so_far += min(max_clip_seconds, clip.duration)
 
+    if not story_ordered:
+        selected = reserve_defensive_highlight_families(selected, ranked_candidates, target_seconds, max_clip_seconds)
+
     if preset.ordering.startswith("chronological"):
         selected.sort(key=lambda clip: clip.start)
     else:
         selected = order_by_gpt_story_order(selected)
 
     return selected
+
+
+def reserve_defensive_highlight_families(
+    selected: Sequence[EditCandidateClip],
+    ranked_candidates: Sequence[EditCandidateClip],
+    target_seconds: float,
+    max_clip_seconds: float,
+) -> List[EditCandidateClip]:
+    reserved = list(selected)
+    selected_ids = {clip.id for clip in reserved}
+    total_duration = sum(min(max_clip_seconds, clip.duration) for clip in reserved)
+
+    for family in ("block", "steal"):
+        if any(_defensive_highlight_family(clip) == family for clip in reserved):
+            continue
+        candidate = next(
+            (
+                clip
+                for clip in ranked_candidates
+                if clip.id not in selected_ids and _defensive_highlight_family(clip) == family
+            ),
+            None,
+        )
+        if candidate is None:
+            continue
+
+        candidate_duration = min(max_clip_seconds, candidate.duration)
+        if total_duration + candidate_duration <= target_seconds:
+            reserved.append(candidate)
+            selected_ids.add(candidate.id)
+            total_duration += candidate_duration
+            continue
+
+        replace_index = _defensive_reserve_replacement_index(reserved)
+        if replace_index is None:
+            continue
+        replaced = reserved[replace_index]
+        reserved[replace_index] = candidate
+        selected_ids.discard(replaced.id)
+        selected_ids.add(candidate.id)
+        total_duration = total_duration - min(max_clip_seconds, replaced.duration) + candidate_duration
+
+    return reserved
+
+
+def _defensive_reserve_replacement_index(selected: Sequence[EditCandidateClip]) -> Optional[int]:
+    replaceable = [
+        (index, clip)
+        for index, clip in enumerate(selected)
+        if _defensive_highlight_family(clip) is None and clip.gptStoryOrderIndex is None
+    ]
+    if not replaceable:
+        return None
+    index, _ = min(
+        replaceable,
+        key=lambda item: (
+            clip_context_quality_score(item[1]),
+            clip_outcome_reliability_score(item[1]),
+            item[1].planning_score,
+            item[1].watchability,
+            item[1].excitement,
+        ),
+    )
+    return index
+
+
+def _defensive_highlight_family(clip: EditCandidateClip) -> Optional[str]:
+    normalized = clip.label.strip().lower()
+    tokens = set(re.findall(r"[a-z0-9]+", normalized))
+    if tokens & {"block", "blocked", "contest"} or "blocked shot" in normalized:
+        return "block"
+    if tokens & {"steal", "strip"}:
+        return "steal"
+    if "turnover" in tokens and (tokens & {"forced", "force", "defensive", "defense"}):
+        return "steal"
+    return None
 
 
 def fit_to_duration(clips: Sequence[EditCandidateClip], target_seconds: float, preset: EditPreset) -> List[EditCandidateClip]:
