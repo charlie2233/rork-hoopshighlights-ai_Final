@@ -206,14 +206,26 @@ class TeamHighlightAccuracyEvalTests(unittest.TestCase):
                         "caseId": "game_001",
                         "videoId": "video_001",
                         "analysisJobId": "analysis_001",
+                        "teamScanJobId": "scan_001",
                         "selectedTeamId": "team_dark",
+                        "selectedTeamColorLabel": "black",
+                        "detectedTeams": [
+                            {"teamId": "team_dark", "label": "Black jerseys", "colorLabel": "black", "confidence": 0.93},
+                            {"teamId": "team_light", "label": "White jerseys", "colorLabel": "white", "confidence": 0.91},
+                        ],
                         "clips": readiness_coverage_clips(),
                     },
                     {
                         "caseId": "game_002",
                         "videoId": "video_002",
                         "analysisJobId": "analysis_002",
+                        "teamScanJobId": "scan_002",
                         "selectedTeamId": "team_dark",
+                        "selectedTeamColorLabel": "black",
+                        "detectedTeams": [
+                            {"teamId": "team_dark", "label": "Black jerseys", "colorLabel": "black", "confidence": 0.94},
+                            {"teamId": "team_light", "label": "White jerseys", "colorLabel": "white", "confidence": 0.9},
+                        ],
                         "clips": readiness_coverage_clips(offset=100.0),
                     },
                 ]
@@ -246,6 +258,10 @@ class TeamHighlightAccuracyEvalTests(unittest.TestCase):
         self.assertEqual(report.evidence.inputSource, "real_cloud_analysis_with_manual_labels")
         self.assertEqual(report.evidence.distinctVideoCount, 2)
         self.assertEqual(report.evidence.casesMissingAnalysisJobId, 0)
+        self.assertEqual(report.evidence.casesMissingTeamScanJobId, 0)
+        self.assertEqual(report.evidence.casesMissingDetectedTeamOptions, 0)
+        self.assertEqual(report.evidence.casesMissingSelectedTeamColorLabel, 0)
+        self.assertEqual(report.evidence.casesMissingSelectedTeamDetectedOption, 0)
 
     def test_tiny_eval_set_cannot_pass_default_readiness(self) -> None:
         report = evaluate_accuracy(

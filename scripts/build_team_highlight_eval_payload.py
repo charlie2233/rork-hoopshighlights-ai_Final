@@ -77,6 +77,14 @@ def build_eval_payload(
         or result.get("jobId")
         or result.get("analysisJobId")
     )
+    detected_teams = normalize_detected_teams(result.get("detectedTeams") or analysis.get("detectedTeams"))
+    team_scan_job_id = string_or_none(
+        analysis.get("teamScanJobId")
+        or result.get("teamScanJobId")
+        or analysis.get("scanJobId")
+        or result.get("scanJobId")
+        or (analysis_job_id if detected_teams else None)
+    )
     prediction_clips = [clip for clip in ensure_list(result.get("clips")) if isinstance(clip, dict)]
     label_cases = normalize_label_cases(labels)
     if not label_cases:
@@ -87,6 +95,12 @@ def build_eval_payload(
     cases: list[dict[str, Any]] = []
     for index, label_case in enumerate(label_cases):
         selected = selected_team_id or string_or_none(label_case.get("selectedTeamId")) or selected_team_from_analysis(result)
+        case_detected_teams = normalize_detected_teams(label_case.get("detectedTeams")) or detected_teams
+        selected_color_label = (
+            string_or_none(label_case.get("selectedTeamColorLabel") or label_case.get("colorLabel"))
+            or selected_team_color_from_analysis(result)
+            or selected_team_color_from_detected_options(selected, case_detected_teams)
+        )
         threshold = (
             confidence_threshold
             if confidence_threshold is not None
@@ -131,7 +145,10 @@ def build_eval_payload(
                 "caseId": case_id or string_or_none(label_case.get("caseId")) or string_or_none(analysis.get("jobId")) or f"case_{index + 1}",
                 "videoId": string_or_none(label_case.get("videoId") or labels.get("videoId")),
                 "analysisJobId": analysis_job_id,
+                "teamScanJobId": string_or_none(label_case.get("teamScanJobId") or label_case.get("scanJobId")) or team_scan_job_id,
                 "selectedTeamId": selected,
+                "selectedTeamColorLabel": selected_color_label,
+                "detectedTeams": case_detected_teams,
                 "confidenceThreshold": threshold if threshold is not None else 0.85,
                 "clips": clips,
             }
@@ -255,6 +272,56 @@ def selected_team_from_analysis(result: dict[str, Any]) -> str | None:
     if isinstance(team_selection, dict) and team_selection.get("mode") == "team":
         return string_or_none(team_selection.get("teamId"))
     return None
+
+
+def selected_team_color_from_analysis(result: dict[str, Any]) -> str | None:
+    team_selection = result.get("teamSelection")
+    if isinstance(team_selection, dict) and team_selection.get("mode") == "team":
+        return string_or_none(team_selection.get("colorLabel"))
+    return None
+
+
+def selected_team_color_from_detected_options(selected_team_id: str | None, detected_teams: list[dict[str, Any]]) -> str | None:
+    selected_key = normalized_key(selected_team_id)
+    if not selected_key:
+        return None
+    for team in detected_teams:
+        keys = {
+            normalized_key(team.get("teamId")),
+            normalized_key(team.get("label")),
+            normalized_key(team.get("colorLabel")),
+        }
+        if selected_key in keys:
+            return string_or_none(team.get("colorLabel"))
+    return None
+
+
+def normalize_detected_teams(value: Any) -> list[dict[str, Any]]:
+    teams: list[dict[str, Any]] = []
+    for item in ensure_list(value):
+        if not isinstance(item, dict):
+            continue
+        team_id = string_or_none(item.get("teamId"))
+        color_label = string_or_none(item.get("colorLabel"))
+        label = string_or_none(item.get("label"))
+        confidence = number_or_none(item.get("confidence"))
+        teams.append(
+            {
+                "teamId": team_id,
+                "label": label,
+                "colorLabel": color_label,
+                "confidence": confidence,
+                "source": string_or_none(item.get("source")),
+            }
+        )
+    return teams
+
+
+def normalized_key(value: Any) -> str:
+    text = string_or_none(value)
+    if text is None:
+        return ""
+    return "".join(character.lower() for character in text if character.isalnum())
 
 
 def describe_prediction_clip(index: int, clip: dict[str, Any]) -> str:

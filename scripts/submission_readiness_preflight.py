@@ -343,6 +343,10 @@ def check_team_highlight_accuracy_report(repo_root: Path, collector: Collector, 
         "casesMissingVideoId",
         "casesMissingSelectedTeamId",
         "casesMissingAnalysisJobId",
+        "casesMissingTeamScanJobId",
+        "casesMissingDetectedTeamOptions",
+        "casesMissingSelectedTeamColorLabel",
+        "casesMissingSelectedTeamDetectedOption",
     ):
         missing_count = number_or_none(evidence.get(evidence_name))
         if missing_count is None:

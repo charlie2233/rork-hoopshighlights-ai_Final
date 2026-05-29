@@ -51,8 +51,13 @@ class BuildTeamHighlightEvalPayloadTests(unittest.TestCase):
         payload = build_eval_payload(
             analysis={
                 "jobId": "job_real_001",
+                "teamScanJobId": "scan_real_001",
                 "results": {
-                    "teamSelection": {"mode": "team", "teamId": "team_dark"},
+                    "teamSelection": {"mode": "team", "teamId": "team_dark", "colorLabel": "black"},
+                    "detectedTeams": [
+                        {"teamId": "team_dark", "label": "Black jerseys", "colorLabel": "black", "confidence": 0.93},
+                        {"teamId": "team_light", "label": "White jerseys", "colorLabel": "white", "confidence": 0.91},
+                    ],
                     "clips": [made, steal],
                 },
             },
@@ -96,6 +101,10 @@ class BuildTeamHighlightEvalPayloadTests(unittest.TestCase):
         self.assertEqual(payload["cases"][0]["caseId"], "real_game_001")
         self.assertEqual(payload["cases"][0]["videoId"], "video_real_001")
         self.assertEqual(payload["cases"][0]["analysisJobId"], "job_real_001")
+        self.assertEqual(payload["cases"][0]["teamScanJobId"], "scan_real_001")
+        self.assertEqual(payload["cases"][0]["selectedTeamColorLabel"], "black")
+        self.assertEqual(payload["cases"][0]["detectedTeams"][0]["teamId"], "team_dark")
+        self.assertEqual(payload["cases"][0]["detectedTeams"][0]["colorLabel"], "black")
         self.assertEqual(payload["cases"][0]["clips"][0]["prediction"]["teamEvidence"]["status"], "evidence_backed")
         self.assertEqual(payload["cases"][0]["clips"][1]["prediction"]["keep"], False)
         self.assertEqual(payload["cases"][0]["clips"][1]["prediction"]["includeForReview"], True)
@@ -104,6 +113,10 @@ class BuildTeamHighlightEvalPayloadTests(unittest.TestCase):
         self.assertEqual(report.evidence.inputSchemaVersion, "team-highlight-eval-v1")
         self.assertEqual(report.evidence.inputSource, "real_cloud_analysis_with_manual_labels")
         self.assertEqual(report.evidence.casesMissingAnalysisJobId, 0)
+        self.assertEqual(report.evidence.casesMissingTeamScanJobId, 0)
+        self.assertEqual(report.evidence.casesMissingDetectedTeamOptions, 0)
+        self.assertEqual(report.evidence.casesMissingSelectedTeamColorLabel, 0)
+        self.assertEqual(report.evidence.casesMissingSelectedTeamDetectedOption, 0)
         self.assertEqual(report.metrics.selectedTeamRecallWithUncertain, 1.0)
         self.assertEqual(report.metrics.uncertainReviewCount, 1)
 

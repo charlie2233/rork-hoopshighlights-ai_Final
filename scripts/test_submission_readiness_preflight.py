@@ -160,6 +160,32 @@ class SubmissionReadinessPreflightTests(unittest.TestCase):
         self.assertIn("distinctVideoCount", detail)
         self.assertIn("casesMissingAnalysisJobId", detail)
 
+    def test_team_accuracy_report_rejects_missing_quick_scan_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            report_path = repo_root / "team_accuracy_report.json"
+            write_json(
+                report_path,
+                launch_grade_team_accuracy_report(
+                    evidence_overrides={
+                        "casesMissingTeamScanJobId": 1,
+                        "casesMissingDetectedTeamOptions": 1,
+                        "casesMissingSelectedTeamColorLabel": 1,
+                        "casesMissingSelectedTeamDetectedOption": 1,
+                    }
+                ),
+            )
+            collector = Collector()
+
+            check_team_highlight_accuracy_report(repo_root, collector, report_path)
+
+        self.assertTrue(has_failures(collector.findings))
+        detail = collector.findings[0].detail
+        self.assertIn("casesMissingTeamScanJobId", detail)
+        self.assertIn("casesMissingDetectedTeamOptions", detail)
+        self.assertIn("casesMissingSelectedTeamColorLabel", detail)
+        self.assertIn("casesMissingSelectedTeamDetectedOption", detail)
+
     def test_team_accuracy_report_requires_hard_case_metrics(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             repo_root = Path(temp_dir)
@@ -526,6 +552,10 @@ def launch_grade_team_accuracy_report(
         "casesMissingVideoId": 0,
         "casesMissingSelectedTeamId": 0,
         "casesMissingAnalysisJobId": 0,
+        "casesMissingTeamScanJobId": 0,
+        "casesMissingDetectedTeamOptions": 0,
+        "casesMissingSelectedTeamColorLabel": 0,
+        "casesMissingSelectedTeamDetectedOption": 0,
     }
     evidence.update(evidence_overrides or {})
     return {

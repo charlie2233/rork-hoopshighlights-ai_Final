@@ -131,6 +131,10 @@ class AccuracyEvidenceSummary:
     casesMissingVideoId: int
     casesMissingSelectedTeamId: int
     casesMissingAnalysisJobId: int
+    casesMissingTeamScanJobId: int
+    casesMissingDetectedTeamOptions: int
+    casesMissingSelectedTeamColorLabel: int
+    casesMissingSelectedTeamDetectedOption: int
 
 
 @dataclass(frozen=True)
@@ -425,7 +429,10 @@ def normalize_cases(payload: dict[str, Any]) -> list[dict[str, Any]]:
                 "caseId": payload.get("caseId", "default"),
                 "videoId": payload.get("videoId"),
                 "analysisJobId": payload.get("analysisJobId") or payload.get("jobId"),
+                "teamScanJobId": payload.get("teamScanJobId") or payload.get("scanJobId"),
                 "selectedTeamId": payload.get("selectedTeamId") or payload.get("teamId"),
+                "selectedTeamColorLabel": payload.get("selectedTeamColorLabel") or payload.get("colorLabel"),
+                "detectedTeams": payload.get("detectedTeams"),
                 "confidenceThreshold": payload.get("confidenceThreshold"),
                 "clips": payload.get("clips"),
             }
@@ -439,6 +446,10 @@ def summarize_evidence(payload: dict[str, Any], cases: list[dict[str, Any]]) -> 
     missing_video_id = 0
     missing_selected_team_id = 0
     missing_analysis_job_id = 0
+    missing_team_scan_job_id = 0
+    missing_detected_team_options = 0
+    missing_selected_team_color_label = 0
+    missing_selected_team_detected_option = 0
     for case in cases:
         case_id = string_or_none(case.get("caseId"))
         if case_id is None:
@@ -453,6 +464,22 @@ def summarize_evidence(payload: dict[str, Any], cases: list[dict[str, Any]]) -> 
         analysis_job_id = string_or_none(case.get("analysisJobId") or case.get("jobId"))
         if analysis_job_id is None:
             missing_analysis_job_id += 1
+        team_scan_job_id = string_or_none(case.get("teamScanJobId") or case.get("scanJobId"))
+        if team_scan_job_id is None:
+            missing_team_scan_job_id += 1
+        detected_teams = detected_team_options(case.get("detectedTeams"))
+        if not detected_teams:
+            missing_detected_team_options += 1
+        selected_team_id = string_or_none(case.get("selectedTeamId") or case.get("teamId"))
+        selected_color_label = selected_team_color_label(case, detected_teams)
+        if selected_color_label is None:
+            missing_selected_team_color_label += 1
+        if selected_team_id is not None and not detected_team_matches_selection(
+            detected_teams,
+            selected_team_id=selected_team_id,
+            selected_color_label=selected_color_label,
+        ):
+            missing_selected_team_detected_option += 1
 
     return AccuracyEvidenceSummary(
         inputSchemaVersion=string_or_none(payload.get("schemaVersion")),
@@ -463,7 +490,56 @@ def summarize_evidence(payload: dict[str, Any], cases: list[dict[str, Any]]) -> 
         casesMissingVideoId=missing_video_id,
         casesMissingSelectedTeamId=missing_selected_team_id,
         casesMissingAnalysisJobId=missing_analysis_job_id,
+        casesMissingTeamScanJobId=missing_team_scan_job_id,
+        casesMissingDetectedTeamOptions=missing_detected_team_options,
+        casesMissingSelectedTeamColorLabel=missing_selected_team_color_label,
+        casesMissingSelectedTeamDetectedOption=missing_selected_team_detected_option,
     )
+
+
+def detected_team_options(value: Any) -> list[dict[str, Any]]:
+    return [item for item in ensure_list(value) if isinstance(item, dict)]
+
+
+def selected_team_color_label(case: dict[str, Any], detected_teams: list[dict[str, Any]]) -> str | None:
+    explicit = string_or_none(case.get("selectedTeamColorLabel") or case.get("colorLabel"))
+    if explicit is not None:
+        return explicit
+    team_selection = case.get("teamSelection")
+    if isinstance(team_selection, dict):
+        selection_color = string_or_none(team_selection.get("colorLabel"))
+        if selection_color is not None:
+            return selection_color
+    selected_team_id = string_or_none(case.get("selectedTeamId") or case.get("teamId"))
+    if selected_team_id is None:
+        return None
+    for team in detected_teams:
+        if normalize_event_type(team.get("teamId")) == normalize_event_type(selected_team_id):
+            color = string_or_none(team.get("colorLabel"))
+            if color is not None:
+                return color
+    return None
+
+
+def detected_team_matches_selection(
+    detected_teams: list[dict[str, Any]],
+    *,
+    selected_team_id: str,
+    selected_color_label: str | None,
+) -> bool:
+    selected_id_key = normalize_event_type(selected_team_id)
+    selected_color_key = normalize_event_type(selected_color_label)
+    for team in detected_teams:
+        team_keys = {
+            normalize_event_type(team.get("teamId")),
+            normalize_event_type(team.get("colorLabel")),
+            normalize_event_type(team.get("label")),
+        }
+        if selected_id_key and selected_id_key in team_keys:
+            return True
+        if selected_color_key and selected_color_key in team_keys:
+            return True
+    return False
 
 
 def normalize_clip(raw_clip: dict[str, Any]) -> dict[str, dict[str, Any]] | None:
