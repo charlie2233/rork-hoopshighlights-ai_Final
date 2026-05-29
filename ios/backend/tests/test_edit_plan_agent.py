@@ -1214,6 +1214,34 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertEqual(job.status, "plan_ready")
         self.assertEqual([clip.clipId for clip in job.plan.clips], ["defense_stop"])
 
+    def test_deterministic_plan_rejects_contextless_defensive_event_clip(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=15,
+                clips=[
+                    {
+                        **_clip("late_block_blink", 12.0, "Block", 0.98),
+                        "end": 15.0,
+                        "eventCenter": 12.1,
+                    },
+                    {
+                        **_clip("contextual_steal", 24.0, "Steal", 0.82),
+                        "end": 27.4,
+                        "eventCenter": 25.1,
+                    },
+                ],
+            )
+        )
+
+        job = build_edit_job(request, "edit_defensive_context_floor")
+
+        self.assertTrue(is_defensive_event_like_clip(request.clips[0]))
+        self.assertFalse(native_shot_signals_for_clip(request.clips[0]).timingWindowOk)
+        self.assertFalse(is_plan_quality_eligible_clip(request.clips[0]))
+        self.assertTrue(is_plan_quality_eligible_clip(request.clips[1]))
+        self.assertEqual(job.status, "plan_ready")
+        self.assertEqual([clip.clipId for clip in job.plan.clips], ["contextual_steal"])
+
     def test_deterministic_plan_does_not_caption_uncertain_shot_attempt_as_bucket(self) -> None:
         request = CreateEditJobRequest(
             **_request_payload(

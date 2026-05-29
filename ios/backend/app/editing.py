@@ -106,9 +106,12 @@ MIN_GPT_HIGHLIGHT_SCORE = 0.55
 MIN_GPT_WATCHABILITY_SCORE = 0.5
 MIN_SHOT_CONTEXT_LEAD_IN_SECONDS = 1.2
 MIN_SHOT_CONTEXT_FOLLOW_THROUGH_SECONDS = 0.8
+MIN_DEFENSIVE_CONTEXT_LEAD_IN_SECONDS = 0.6
+MIN_DEFENSIVE_CONTEXT_FOLLOW_THROUGH_SECONDS = 0.5
 TARGET_SHOT_CONTEXT_LEAD_IN_SECONDS = 1.6
 TARGET_SHOT_CONTEXT_FOLLOW_THROUGH_SECONDS = 1.0
 MIN_SHOT_LIKE_CLIP_SECONDS = 3.0
+MIN_DEFENSIVE_LIKE_CLIP_SECONDS = 2.0
 MIN_MISSED_RIM_SEQUENCE_CONFIDENCE = 0.65
 MIN_NON_SHOT_PLANNING_SCORE = 0.5
 MIN_NON_SHOT_WATCHABILITY_SCORE = 0.42
@@ -2236,6 +2239,9 @@ def native_shot_signals_for_clip(clip: EditCandidateClip) -> NativeShotSignals:
             + (balance_score * 0.18)
         )
         timing_window_ok = clip.duration >= MIN_SHOT_LIKE_CLIP_SECONDS and has_minimum_shot_context(clip)
+    elif is_defensive_event_like_clip(clip):
+        event_center_quality = defensive_event_context_quality_score(clip)
+        timing_window_ok = clip.duration >= MIN_DEFENSIVE_LIKE_CLIP_SECONDS and has_minimum_defensive_event_context(clip)
     else:
         event_center_quality = 0.0
         timing_window_ok = clip.duration >= MIN_PLAN_CLIP_SECONDS
@@ -2306,11 +2312,20 @@ def has_minimum_shot_context(clip: EditCandidateClip) -> bool:
     return lead_in >= MIN_SHOT_CONTEXT_LEAD_IN_SECONDS and follow_through >= MIN_SHOT_CONTEXT_FOLLOW_THROUGH_SECONDS
 
 
+def has_minimum_defensive_event_context(clip: EditCandidateClip) -> bool:
+    lead_in = max(0.0, clip.eventCenter - clip.start)
+    follow_through = max(0.0, clip.end - clip.eventCenter)
+    return (
+        lead_in >= MIN_DEFENSIVE_CONTEXT_LEAD_IN_SECONDS
+        and follow_through >= MIN_DEFENSIVE_CONTEXT_FOLLOW_THROUGH_SECONDS
+    )
+
+
 def clip_context_quality_score(clip: EditCandidateClip) -> float:
     if clip.duration < MIN_PLAN_CLIP_SECONDS:
         return 0.0
     if is_defensive_event_like_clip(clip):
-        return non_shot_clip_quality_score(clip)
+        return defensive_event_context_quality_score(clip)
     if not is_shot_like_clip(clip):
         return non_shot_clip_quality_score(clip)
 
@@ -2328,6 +2343,24 @@ def clip_context_quality_score(clip: EditCandidateClip) -> float:
         balance_score = min(lead_in, follow_through) / max(lead_in, follow_through)
 
     score = (lead_score * 0.38) + (follow_score * 0.28) + (duration_score * 0.22) + (balance_score * 0.12)
+    return round(max(0.0, min(1.0, score)), 4)
+
+
+def defensive_event_context_quality_score(clip: EditCandidateClip) -> float:
+    if clip.duration < MIN_DEFENSIVE_LIKE_CLIP_SECONDS:
+        return 0.0
+    base_score = non_shot_clip_quality_score(clip)
+    lead_in = max(0.0, clip.eventCenter - clip.start)
+    follow_through = max(0.0, clip.end - clip.eventCenter)
+    lead_score = min(1.0, lead_in / MIN_DEFENSIVE_CONTEXT_LEAD_IN_SECONDS)
+    follow_score = min(1.0, follow_through / MIN_DEFENSIVE_CONTEXT_FOLLOW_THROUGH_SECONDS)
+    if lead_in <= 0.0 or follow_through <= 0.0:
+        balance_score = 0.0
+    else:
+        balance_score = min(lead_in, follow_through) / max(lead_in, follow_through)
+    score = (base_score * 0.55) + (lead_score * 0.2) + (follow_score * 0.15) + (balance_score * 0.1)
+    if not has_minimum_defensive_event_context(clip):
+        score = min(score, 0.49)
     return round(max(0.0, min(1.0, score)), 4)
 
 
@@ -2370,7 +2403,11 @@ def is_plan_quality_eligible_clip(clip: EditCandidateClip) -> bool:
     if clip.duration < MIN_PLAN_CLIP_SECONDS:
         return False
     if is_defensive_event_like_clip(clip):
-        return has_minimum_non_shot_quality(clip)
+        return (
+            clip.duration >= MIN_DEFENSIVE_LIKE_CLIP_SECONDS
+            and has_minimum_defensive_event_context(clip)
+            and has_minimum_non_shot_quality(clip)
+        )
     if not is_shot_like_clip(clip):
         return has_minimum_non_shot_quality(clip)
     if native_shot_signals_for_clip(clip).outcome == "not_shot":

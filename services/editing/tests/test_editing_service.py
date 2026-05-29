@@ -20,6 +20,7 @@ sys.path.insert(0, str(REPO_ROOT / "ios" / "backend"))
 
 from app.editing import (  # noqa: E402
     CreateEditJobRequest,
+    EditPlanClip,
     GPTHighlightClipDecision,
     GPTHighlightRerankSummary,
     GPTHighlightSuggestedEdit,
@@ -999,7 +1000,24 @@ class EditingServiceTests(unittest.TestCase):
             }
         )
         edit_job = build_edit_job(edit_request, "edit_timing_receipt")
-        self.assertFalse(edit_job.validation_errors)
+        self.assertIn("empty_clip_list", [error.code for error in edit_job.validation_errors])
+        receipt_plan = edit_job.plan.model_copy(
+            update={
+                "clips": [
+                    EditPlanClip(
+                        clipId="late_steal",
+                        sourceStart=10.0,
+                        sourceEnd=13.0,
+                        eventCenter=10.1,
+                        timelineStart=1.2,
+                        timelineEnd=4.2,
+                        label="Steal",
+                        caption="STEAL",
+                        cropMode="center_action",
+                    )
+                ]
+            }
+        )
         created_at = now_utc()
         render_job = StoredRenderJob(
             edit_job_id="edit_timing_receipt",
@@ -1021,7 +1039,7 @@ class EditingServiceTests(unittest.TestCase):
             idempotency_key="idem-timing-receipt",
         )
 
-        receipt = build_ai_work_receipt(render_job, edit_job.plan, edit_request.clips)
+        receipt = build_ai_work_receipt(render_job, receipt_plan, edit_request.clips)
 
         self.assertEqual(receipt.timingIssueCandidateCount, 1)
         self.assertEqual(receipt.timingIssueSelectedClipCount, 1)
