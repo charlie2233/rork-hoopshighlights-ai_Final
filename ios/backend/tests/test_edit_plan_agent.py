@@ -163,6 +163,29 @@ def _shot_tracking_evidence(**overrides) -> dict:
     return payload
 
 
+def _team_attribution(
+    *,
+    team_id: str,
+    color_label: str,
+    confidence: float,
+    label: str | None = None,
+    source: str = "quick_scan",
+    evidence: bool = True,
+) -> dict:
+    payload: dict = {
+        "teamId": team_id,
+        "colorLabel": color_label,
+        "confidence": confidence,
+        "source": source,
+    }
+    if label is not None:
+        payload["label"] = label
+    if evidence:
+        payload["evidenceFrameRefs"] = ["clip_0_setup", "clip_0_result"]
+        payload["evidenceRoleGroups"] = ["setup", "outcome"]
+    return payload
+
+
 class EditPlanAgentTests(unittest.TestCase):
     def setUp(self) -> None:
         self._temp_dir = Path(tempfile.mkdtemp(prefix="hoops-edit-agent-"))
@@ -506,6 +529,74 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertEqual(by_id["evidence_backed_match"]["teamEvidence"]["status"], "evidence_backed")
         self.assertEqual(by_id["evidence_backed_match"]["teamEvidence"]["reasons"], [])
 
+    def test_selected_team_unknown_and_provider_sources_need_evidence(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                teamSelection={
+                    "mode": "team",
+                    "teamId": "team_dark",
+                    "label": "Dark jerseys",
+                    "colorLabel": "black",
+                    "confidenceThreshold": 0.85,
+                    "includeUncertain": True,
+                },
+                clips=[
+                    {
+                        **_clip("missing_source_match", 0.0, "Made Shot", 0.93),
+                        "teamAttribution": {"teamId": "team_dark", "colorLabel": "black", "confidence": 0.94},
+                    },
+                    {
+                        **_clip("provider_match", 9.0, "Made Shot", 0.91),
+                        "teamAttribution": _team_attribution(
+                            team_id="team_dark",
+                            color_label="black",
+                            confidence=0.93,
+                            source="provider",
+                            evidence=False,
+                        ),
+                    },
+                    {
+                        **_clip("provider_evidence_match", 18.0, "Steal", 0.9),
+                        "teamAttribution": _team_attribution(
+                            team_id="team_dark",
+                            color_label="black",
+                            confidence=0.92,
+                            source="provider",
+                        ),
+                    },
+                    {
+                        **_clip("manual_match", 27.0, "Block", 0.89),
+                        "teamAttribution": _team_attribution(
+                            team_id="team_dark",
+                            color_label="black",
+                            confidence=0.91,
+                            source="manual",
+                            evidence=False,
+                        ),
+                    },
+                ],
+            )
+        )
+
+        status_by_id = {clip.id: team_attribution_status(clip, request.teamSelection) for clip in request.clips}
+        self.assertEqual(status_by_id["missing_source_match"], "uncertain")
+        self.assertEqual(status_by_id["provider_match"], "uncertain")
+        self.assertEqual(status_by_id["provider_evidence_match"], "matched")
+        self.assertEqual(status_by_id["manual_match"], "matched")
+
+        context = build_agent_editing_context(
+            request.templateId,
+            summarize_clip_pool(request.clips),
+            request.clips,
+            teamSelection=request.teamSelection,
+        )
+        by_id = {clip["clipId"]: clip for clip in context["candidateClips"]}
+
+        self.assertEqual(by_id["missing_source_match"]["teamEvidence"]["status"], "weak_evidence")
+        self.assertEqual(by_id["provider_match"]["teamEvidence"]["status"], "weak_evidence")
+        self.assertEqual(by_id["provider_evidence_match"]["teamEvidence"]["status"], "evidence_backed")
+        self.assertEqual(by_id["manual_match"]["teamEvidence"]["status"], "evidence_backed")
+
     def test_explicit_uncertain_team_status_survives_edit_context(self) -> None:
         request = CreateEditJobRequest(
             **_request_payload(
@@ -557,11 +648,11 @@ class EditPlanAgentTests(unittest.TestCase):
                 clips=[
                     {
                         **_clip("dark_bucket", 0.0, "Made Shot", 0.93),
-                        "teamAttribution": {"teamId": "team_dark", "colorLabel": "black", "confidence": 0.94},
+                        "teamAttribution": _team_attribution(team_id="team_dark", color_label="black", confidence=0.94),
                     },
                     {
                         **_clip("light_bucket", 9.0, "Made Shot", 0.94),
-                        "teamAttribution": {"teamId": "team_light", "colorLabel": "white", "confidence": 0.94},
+                        "teamAttribution": _team_attribution(team_id="team_light", color_label="white", confidence=0.94),
                     },
                 ],
             )
@@ -584,15 +675,15 @@ class EditPlanAgentTests(unittest.TestCase):
                 clips=[
                     {
                         **_clip("dark_block", 0.0, "Blocked Shot", 0.92),
-                        "teamAttribution": {"teamId": "team_dark", "colorLabel": "black", "confidence": 0.91},
+                        "teamAttribution": _team_attribution(team_id="team_dark", color_label="black", confidence=0.91),
                     },
                     {
                         **_clip("dark_steal", 9.0, "Steal", 0.89),
-                        "teamAttribution": {"teamId": "team_dark", "colorLabel": "black", "confidence": 0.9},
+                        "teamAttribution": _team_attribution(team_id="team_dark", color_label="black", confidence=0.9),
                     },
                     {
                         **_clip("light_bucket", 18.0, "Made Shot", 0.97),
-                        "teamAttribution": {"teamId": "team_light", "colorLabel": "white", "confidence": 0.96},
+                        "teamAttribution": _team_attribution(team_id="team_light", color_label="white", confidence=0.96),
                     },
                 ],
             )
@@ -619,7 +710,7 @@ class EditPlanAgentTests(unittest.TestCase):
                 clips=[
                     {
                         **_clip("dark_bucket", 0.0, "Made Shot", 0.93),
-                        "teamAttribution": {"teamId": "team_dark", "colorLabel": "black", "confidence": 0.91},
+                        "teamAttribution": _team_attribution(team_id="team_dark", color_label="black", confidence=0.91),
                     }
                 ],
             )
@@ -1380,7 +1471,7 @@ class EditPlanAgentTests(unittest.TestCase):
                 clips=[
                     {
                         **_clip("dark_steal", 0.0, "Steal", 0.93),
-                        "teamAttribution": {"teamId": "team_dark", "colorLabel": "black", "confidence": 0.93},
+                        "teamAttribution": _team_attribution(team_id="team_dark", color_label="black", confidence=0.93),
                     },
                     {
                         **_clip("uncertain_steal", 9.0, "Steal", 0.82),
@@ -1388,7 +1479,7 @@ class EditPlanAgentTests(unittest.TestCase):
                     },
                     {
                         **_clip("light_steal", 18.0, "Steal", 0.96),
-                        "teamAttribution": {"teamId": "team_light", "colorLabel": "white", "confidence": 0.96},
+                        "teamAttribution": _team_attribution(team_id="team_light", color_label="white", confidence=0.96),
                     },
                 ],
             )
@@ -2825,11 +2916,11 @@ class EditPlanAgentTests(unittest.TestCase):
                 clips=[
                     {
                         **_clip("dark_make", 0.0, "Made Shot", 0.95),
-                        "teamAttribution": {"teamId": "team_dark", "colorLabel": "black", "confidence": 0.94},
+                        "teamAttribution": _team_attribution(team_id="team_dark", color_label="black", confidence=0.94),
                     },
                     {
                         **_clip("light_make", 8.0, "Made Shot", 0.98),
-                        "teamAttribution": {"teamId": "team_light", "colorLabel": "white", "confidence": 0.96},
+                        "teamAttribution": _team_attribution(team_id="team_light", color_label="white", confidence=0.96),
                     },
                 ],
             )

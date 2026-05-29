@@ -131,7 +131,7 @@ DEFENSIVE_EVENT_LABEL_TOKENS = (
     "pressure",
     "lockdown",
 )
-TEAM_EVIDENCE_REQUIRED_SOURCES = {"quick_scan", "gpt_frame_review"}
+TEAM_EVIDENCE_REQUIRED_SOURCES = {"quick_scan", "gpt_frame_review", "provider", "unknown"}
 MIN_CONFIDENT_TEAM_EVIDENCE_FRAME_REFS = 2
 MIN_CONFIDENT_TEAM_EVIDENCE_ROLE_GROUPS = 2
 BLOCKED_SHOT_TRACKING_ROLES = {"eventCenter", "finish", "challenge", "defenseOutcome", "recovery", "possessionChange"}
