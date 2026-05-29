@@ -4,6 +4,7 @@ from pathlib import Path
 
 from scripts.build_team_highlight_eval_payload import build_eval_payload, main
 from scripts.evaluate_team_highlight_accuracy import AccuracyThresholds, evaluate_accuracy
+from scripts.make_team_highlight_label_template import build_label_template
 from scripts.test_team_highlight_accuracy_eval import defensive_outcome_evidence, made_shot_evidence
 
 
@@ -132,6 +133,73 @@ class BuildTeamHighlightEvalPayloadTests(unittest.TestCase):
                 analysis={"clips": [analysis_clip(10.0, 14.0, "Made Shot", True, "team_dark", 0.94)]},
                 labels={"selectedTeamId": "team_dark", "clips": []},
             )
+
+    def test_label_template_marks_every_prediction_as_needing_human_labels(self) -> None:
+        template = build_label_template(
+            analysis={
+                "jobId": "job_real_001",
+                "results": {
+                    "teamSelection": {"mode": "team", "teamId": "team_dark", "colorLabel": "black"},
+                    "detectedTeams": [
+                        {"teamId": "team_dark", "label": "Black jerseys", "colorLabel": "black", "confidence": 0.93},
+                        {"teamId": "team_light", "label": "White jerseys", "colorLabel": "white", "confidence": 0.91},
+                    ],
+                    "clips": [
+                        {**analysis_clip(10.0, 14.0, "Made Shot", True, "team_dark", 0.94), "id": "clip_made_001"},
+                        {**analysis_clip(30.0, 33.2, "Steal", False, "team_dark", 0.64), "id": "clip_steal_001"},
+                    ],
+                },
+            },
+            case_id="real_game_001",
+            video_id="video_real_001",
+        )
+
+        self.assertEqual(template["schemaVersion"], "team-highlight-manual-label-template-v1")
+        self.assertEqual(template["source"], "real_cloud_analysis_label_template")
+        self.assertEqual(template["caseId"], "real_game_001")
+        self.assertEqual(template["videoId"], "video_real_001")
+        self.assertEqual(template["analysisJobId"], "job_real_001")
+        self.assertEqual(template["selectedTeamId"], "team_dark")
+        self.assertEqual(template["selectedTeamColorLabel"], "black")
+        self.assertEqual(len(template["clips"]), 2)
+        self.assertTrue(template["clips"][0]["needsLabel"])
+        self.assertEqual(template["clips"][0]["predictionClipId"], "clip_made_001")
+        self.assertEqual(template["clips"][0]["predicted"]["teamId"], "team_dark")
+
+    def test_build_payload_rejects_unfilled_label_template_rows(self) -> None:
+        labels = build_label_template(
+            analysis={"jobId": "job_real_001", "results": {"clips": [{**analysis_clip(10.0, 14.0, "Made Shot", True, "team_dark", 0.94), "id": "clip_made_001"}]}},
+            case_id="real_game_001",
+            video_id="video_real_001",
+            selected_team_id="team_dark",
+        )
+
+        with self.assertRaisesRegex(ValueError, "still has needsLabel=true"):
+            build_eval_payload(
+                analysis={"jobId": "job_real_001", "results": {"clips": [{**analysis_clip(10.0, 14.0, "Made Shot", True, "team_dark", 0.94), "id": "clip_made_001"}]}},
+                labels=labels,
+            )
+
+        labels["clips"][0]["needsLabel"] = False
+        with self.assertRaisesRegex(ValueError, "is incomplete"):
+            build_eval_payload(
+                analysis={"jobId": "job_real_001", "results": {"clips": [{**analysis_clip(10.0, 14.0, "Made Shot", True, "team_dark", 0.94), "id": "clip_made_001"}]}},
+                labels=labels,
+            )
+
+        labels["clips"][0]["expected"] = {
+            "teamId": "team_dark",
+            "isHighlight": True,
+            "eventType": "made_shot",
+            "outcome": "made",
+        }
+        payload = build_eval_payload(
+            analysis={"jobId": "job_real_001", "results": {"clips": [{**analysis_clip(10.0, 14.0, "Made Shot", True, "team_dark", 0.94), "id": "clip_made_001"}]}},
+            labels=labels,
+        )
+
+        self.assertEqual(payload["cases"][0]["clips"][0]["expected"]["teamId"], "team_dark")
+        self.assertTrue(payload["cases"][0]["clips"][0]["expected"]["isHighlight"])
 
     def test_cli_writes_payload_file(self) -> None:
         with tempfile.TemporaryDirectory(prefix="hoopclips-eval-payload-") as temp_dir:

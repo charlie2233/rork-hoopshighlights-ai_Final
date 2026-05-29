@@ -124,6 +124,7 @@ def build_eval_payload(
         for raw_label in ensure_list(label_case.get("clips")):
             if not isinstance(raw_label, dict):
                 continue
+            validate_manual_label_row(raw_label)
             prediction_index = resolve_prediction_index(raw_label, prediction_clips, min_overlap_ratio)
             prediction = (
                 prediction_from_cloud_clip(prediction_clips[prediction_index])
@@ -173,6 +174,27 @@ def build_eval_payload(
         "source": "real_cloud_analysis_with_manual_labels",
         "cases": cases,
     }
+
+
+def validate_manual_label_row(label: dict[str, Any]) -> None:
+    if "needsLabel" not in label:
+        return
+    label_id = string_or_none(label.get("labelId") or label.get("id") or label.get("predictionClipId")) or "unknown"
+    if label.get("needsLabel") is not False:
+        raise ValueError(f"Manual label row {label_id} still has needsLabel=true; finish labeling before building eval payload.")
+
+    expected = label.get("expected") or label.get("groundTruth") or {}
+    if not isinstance(expected, dict):
+        raise ValueError(f"Manual label row {label_id} expected must be an object.")
+    missing: list[str] = []
+    if not string_or_none(expected.get("teamId") or expected.get("groundTruthTeamId")):
+        missing.append("expected.teamId")
+    if not isinstance(expected.get("isHighlight"), bool) and "groundTruthHighlight" not in expected:
+        missing.append("expected.isHighlight")
+    if not string_or_none(expected.get("eventType") or expected.get("basketballEvent") or expected.get("label")):
+        missing.append("expected.eventType")
+    if missing:
+        raise ValueError(f"Manual label row {label_id} is incomplete: {', '.join(missing)}.")
 
 
 def extract_analysis_result(analysis: dict[str, Any]) -> dict[str, Any]:
