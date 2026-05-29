@@ -52,7 +52,6 @@ class LaunchProviderInputHandoffTests(unittest.TestCase):
         self.assertIn("gcloud secrets versions add HOOPS_OPENAI_API_KEY", markdown)
         self.assertIn("--format='value(state)'", markdown)
         self.assertIn("\"ENABLED\"", markdown)
-        self.assertIn("GitHub Actions billing/spending/startability fixed", markdown)
         self.assertIn("Atlas / Browser Agent Prompt", markdown)
         self.assertIn("GCP Secret Repair Policy", markdown)
         self.assertIn("A missing Secret Manager secret is a repair action", markdown)
@@ -92,9 +91,8 @@ class LaunchProviderInputHandoffTests(unittest.TestCase):
         self.assertIn("Return only this non-secret status", payload["atlasAgentPrompt"])
         self.assertIn("HOOPS_OPENAI_API_KEY present and enabled: yes/no", payload["atlasAgentPrompt"])
         self.assertIn("Do not stop after reporting the missing secret", payload["atlasAgentPrompt"])
-        self.assertIn("GitHub Actions billing/spending/startability fixed", payload["atlasAgentPrompt"])
         self.assertTrue(any("HOOPS_OPENAI_API_KEY" in item for item in payload["gcpSecretRepairPolicy"]))
-        self.assertTrue(any("billing/spending-limit" in item for item in payload["manualGates"]))
+        self.assertFalse(any("billing/spending-limit" in item for item in payload["manualGates"]))
         self.assertIn("python3 scripts/configure_github_staging_public_variables.py", payload["verificationCommands"])
         self.assertIn(
             "python3 scripts/build_launch_team_accuracy_report.py --manifest artifacts/team_highlight_accuracy_manifest.json --eval-output artifacts/team_highlight_eval.json --report-output artifacts/team_highlight_accuracy_report.json --json",
