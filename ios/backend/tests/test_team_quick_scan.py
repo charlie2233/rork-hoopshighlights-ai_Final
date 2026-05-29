@@ -764,6 +764,58 @@ class TeamQuickScanTests(unittest.TestCase):
         self.assertEqual(scanned[0].teamAttribution.evidenceFrameRefs, ["clip_0_release", "clip_0_result"])
         self.assertEqual(scanned[0].teamAttribution.evidenceRoleGroups, ["action", "outcome"])
 
+    def test_high_confidence_scoring_attribution_requires_shooter_ownership_frame(self) -> None:
+        clips = [_clip("Made Shot", 8.0, 12.5, 10.0)]
+        frames = [
+            QuickScanFrame(frame_ref="clip_0_arc", role="shotArc", time_seconds=9.5, data_url="data:image/jpeg;base64,aaa", clip_ref="clip_0"),
+            QuickScanFrame(frame_ref="clip_0_result", role="rimResult", time_seconds=10.0, data_url="data:image/jpeg;base64,bbb", clip_ref="clip_0"),
+        ]
+
+        def fake_client(*_args):
+            return _response(
+                {
+                    "teams": [
+                        {
+                            "teamId": "team_dark",
+                            "label": "Dark jerseys",
+                            "colorLabel": "black",
+                            "primaryColorHex": None,
+                            "confidence": 0.93,
+                            "reason": "Dark jerseys are visible.",
+                        }
+                    ],
+                    "clipAttributions": [
+                        {
+                            "clipRef": "clip_0",
+                            "teamId": "team_dark",
+                            "label": "Dark jerseys",
+                            "colorLabel": "black",
+                            "confidence": 0.91,
+                            "reason": "Shot arc and rim result show a make, but not the shooter jersey.",
+                            "evidenceFrameRefs": ["clip_0_arc", "clip_0_result"],
+                        }
+                    ],
+                }
+            )
+
+        with tempfile.TemporaryDirectory(prefix="hoopclips-team-scan-shotownership-") as temp_dir:
+            source_path = Path(temp_dir) / "source.mp4"
+            source_path.write_bytes(b"video")
+            with patch("app.team_quick_scan._extract_quick_scan_frames", return_value=frames):
+                scanned, _teams, applied = apply_team_quick_scan(
+                    source_path,
+                    18.0,
+                    clips,
+                    _settings(),
+                    response_client=fake_client,
+                )
+
+        self.assertTrue(applied)
+        self.assertEqual(scanned[0].teamAttribution.teamId, "team_dark")
+        self.assertLess(scanned[0].teamAttribution.confidence, 0.85)
+        self.assertEqual(scanned[0].teamAttribution.evidenceFrameRefs, ["clip_0_arc", "clip_0_result"])
+        self.assertEqual(scanned[0].teamAttribution.evidenceRoleGroups, ["action", "outcome"])
+
     def test_high_confidence_clip_attribution_requires_two_sampled_frame_refs(self) -> None:
         clips = [_clip("Made Shot", 8.0, 12.5, 10.0)]
         frames = [

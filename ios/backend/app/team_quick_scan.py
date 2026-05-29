@@ -27,6 +27,17 @@ TEAM_QUICK_SCAN_COMPACT_FRAMES_PER_CANDIDATE = 3
 TEAM_QUICK_SCAN_RICH_CANDIDATE_CLIPS = 120
 TEAM_QUICK_SCAN_DEFAULT_TOTAL_CLIP_FRAMES = 1200
 TEAM_QUICK_SCAN_MAX_TOTAL_CLIP_FRAMES = 1280
+TEAM_QUICK_SCAN_SCORING_OWNERSHIP_ROLES = {"ballhandlersetup", "prerelease", "release"}
+TEAM_QUICK_SCAN_DEFENSIVE_OWNERSHIP_ROLES = {
+    "defensesetup",
+    "prechallenge",
+    "challenge",
+    "balldeflection",
+    "prepossessionchange",
+    "possessionpressure",
+    "possessionchange",
+    "ballcontrolchange",
+}
 
 
 @dataclass(frozen=True)
@@ -75,6 +86,7 @@ def apply_team_quick_scan(
         settings,
         _evidence_frame_refs_by_clip(frames),
         _evidence_frame_roles_by_clip(frames),
+        {f"clip_{index}": clip.label for index, clip in enumerate(clips)},
     )
     scanned: list[CloudClip] = []
     for index, clip in enumerate(clips):
@@ -218,6 +230,7 @@ def _parse_quick_scan_output(
     settings: Settings,
     evidence_frame_refs_by_clip: Optional[dict[str, set[str]]] = None,
     evidence_frame_roles_by_clip: Optional[dict[str, dict[str, str]]] = None,
+    labels_by_clip_ref: Optional[dict[str, str]] = None,
 ) -> tuple[list[TeamOption], dict[str, ClipTeamAttribution]]:
     if not isinstance(output, dict):
         return [], {}
@@ -285,6 +298,12 @@ def _parse_quick_scan_output(
         if (
             len(evidence_frame_refs) < TEAM_QUICK_SCAN_MIN_CONFIDENT_EVIDENCE_FRAME_REFS
             or len(evidence_role_groups) < TEAM_QUICK_SCAN_MIN_CONFIDENT_EVIDENCE_ROLE_GROUPS
+            or not _has_confident_ownership_evidence(
+                labels_by_clip_ref.get(clip_ref) if labels_by_clip_ref is not None else None,
+                evidence_frame_refs,
+                evidence_frame_roles_by_clip,
+                clip_ref,
+            )
         ):
             confidence = min(confidence, TEAM_QUICK_SCAN_UNVERIFIED_ATTRIBUTION_MAX_CONFIDENCE)
         confidence = _cap_attribution_confidence_by_detected_team(
@@ -353,6 +372,28 @@ def _has_confident_evidence_role_diversity(
     if evidence_frame_roles_by_clip is None:
         return True
     return len(_evidence_role_groups_for_refs(evidence_frame_refs, evidence_frame_roles_by_clip, clip_ref)) >= TEAM_QUICK_SCAN_MIN_CONFIDENT_EVIDENCE_ROLE_GROUPS
+
+
+def _has_confident_ownership_evidence(
+    label: Optional[str],
+    evidence_frame_refs: Sequence[str],
+    evidence_frame_roles_by_clip: Optional[dict[str, dict[str, str]]],
+    clip_ref: str,
+) -> bool:
+    if evidence_frame_roles_by_clip is None:
+        return True
+    roles = {
+        normalized
+        for frame_ref in evidence_frame_refs
+        if (normalized := clean_text(evidence_frame_roles_by_clip.get(clip_ref, {}).get(frame_ref))) is not None
+    }
+    role_keys = {role.lower() for role in roles}
+    normalized_label = (label or "").strip().lower()
+    if _is_scoring_or_shot_like_label(normalized_label) and not _is_block_like_label(normalized_label):
+        return bool(role_keys & TEAM_QUICK_SCAN_SCORING_OWNERSHIP_ROLES)
+    if _is_block_like_label(normalized_label) or _is_non_scoring_defensive_label(normalized_label):
+        return bool(role_keys & TEAM_QUICK_SCAN_DEFENSIVE_OWNERSHIP_ROLES)
+    return True
 
 
 def _evidence_role_groups_for_refs(
