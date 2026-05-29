@@ -577,12 +577,12 @@ struct HoopsClipsTests {
         #expect(decoded.cloudDiagnostics?.teamUncertainReviewSegments == 1)
     }
 
-    @Test @MainActor func testCloudEditRequestSendsStrongestCandidatesBeforeFortyClipCap() throws {
+    @Test @MainActor func testCloudEditRequestSendsStrongestCandidatesBeforeSixtyClipCap() throws {
         let viewModel = HighlightsViewModel()
         viewModel.cloudEditSourceObjectKey = "uploads/source.mp4"
         var clips: [Clip] = []
-        for index in 0..<41 {
-            let isStrongCandidate = index == 40
+        for index in 0..<61 {
+            let isStrongCandidate = index == 60
             let startTime = Double(index * 10)
             clips.append(
                 Clip(
@@ -600,6 +600,23 @@ struct HoopsClipsTests {
                 )
             )
         }
+        clips.append(
+            Clip(
+                startTime: 700,
+                endTime: 705,
+                eventCenter: 702.2,
+                action: .steal,
+                confidence: 0.81,
+                isKept: false,
+                label: "Possible Steal",
+                audioScore: 0.48,
+                visualScore: 0.74,
+                motionScore: 0.78,
+                combinedScore: 0.82,
+                detectionMethod: .cloud,
+                teamAttributionStatus: "uncertain"
+            )
+        )
         viewModel.analysisService.clips = clips
 
         let request = try viewModel.createCloudEditRequest(
@@ -609,9 +626,90 @@ struct HoopsClipsTests {
         )
         let candidateStarts = request.clips.map(\.start)
 
-        #expect(request.clips.count == 40)
-        #expect(candidateStarts.contains(400.0))
-        #expect(!candidateStarts.contains(390.0))
+        #expect(request.clips.count == 60)
+        #expect(candidateStarts.contains(600.0))
+        #expect(candidateStarts.contains(700.0))
+        #expect(!candidateStarts.contains(590.0))
+    }
+
+    @Test @MainActor func testCloudEditRequestIncludesReviewOnlyUncertainCandidatesWithoutAutoKeepingThem() throws {
+        let viewModel = HighlightsViewModel()
+        viewModel.cloudEditSourceObjectKey = "uploads/source.mp4"
+        let keptClip = Clip(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            startTime: 10.0,
+            endTime: 16.0,
+            eventCenter: 13.0,
+            action: .madeShot,
+            confidence: 0.93,
+            isKept: true,
+            label: "Made Shot",
+            audioScore: 0.72,
+            visualScore: 0.88,
+            motionScore: 0.82,
+            combinedScore: 0.9,
+            detectionMethod: .cloud,
+            teamAttribution: ClipTeamAttribution(
+                teamId: "team_dark",
+                label: "Dark jerseys",
+                colorLabel: "black",
+                confidence: 0.93,
+                source: "quick_scan",
+                evidenceFrameRefs: ["kept_setup", "kept_result"],
+                evidenceRoleGroups: ["setup", "outcome"]
+            ),
+            teamAttributionStatus: "matched"
+        )
+        let reviewOnlySteal = Clip(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
+            startTime: 24.0,
+            endTime: 29.0,
+            eventCenter: 26.2,
+            action: .steal,
+            confidence: 0.81,
+            isKept: false,
+            label: "Possible Steal",
+            audioScore: 0.48,
+            visualScore: 0.74,
+            motionScore: 0.78,
+            combinedScore: 0.82,
+            detectionMethod: .cloud,
+            teamAttribution: ClipTeamAttribution(
+                teamId: "team_dark",
+                label: "Dark jerseys",
+                colorLabel: "black",
+                confidence: 0.64,
+                source: "gpt_frame_review"
+            ),
+            teamAttributionStatus: "uncertain"
+        )
+        let ordinaryDiscardedClip = Clip(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!,
+            startTime: 34.0,
+            endTime: 40.0,
+            eventCenter: 37.0,
+            action: .unknown,
+            confidence: 0.45,
+            isKept: false,
+            label: "Generic Clip",
+            audioScore: 0.1,
+            visualScore: 0.2,
+            motionScore: 0.2,
+            combinedScore: 0.18,
+            detectionMethod: .cloud,
+            teamAttributionStatus: "matched"
+        )
+        viewModel.analysisService.clips = [keptClip, reviewOnlySteal, ordinaryDiscardedClip]
+
+        let request = try viewModel.createCloudEditRequest(
+            preset: .personalHighlight,
+            targetDurationSeconds: 30,
+            isProUser: false
+        )
+        #expect(request.clips.map(\.label) == ["Made Shot", "Possible Steal"])
+        #expect(request.clips.first { $0.id == keptClip.id.uuidString }?.userReviewDecision == "kept")
+        #expect(request.clips.first { $0.id == reviewOnlySteal.id.uuidString }?.userReviewDecision == "unreviewed")
+        #expect(request.clips.first { $0.id == ordinaryDiscardedClip.id.uuidString } == nil)
     }
 
     @Test func testCloudEditCandidateRankingReservesDefenseAndReviewClipsBeforeCap() {

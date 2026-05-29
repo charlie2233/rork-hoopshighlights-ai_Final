@@ -426,6 +426,38 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
         for job in list(render_jobs.values()):
             mark_stale_job(job)
 
+    def canonical_render_request_for_stored_edit(request: CreateRenderJobRequest) -> CreateRenderJobRequest:
+        stored_edit_job = load_edit_job(request.editJobId)
+        if stored_edit_job is None:
+            return request
+        require_edit_owner(stored_edit_job, request.installId)
+        if not stored_edit_job.request.sourceObjectKey:
+            raise EditingServiceError(400, "missing_source_object_key", "Render requires a source video object key.")
+
+        edit_plan = stored_edit_job.plan
+        if request.revisionId:
+            revision = load_revision(request.editJobId, request.revisionId)
+            if revision is None or revision.editJobId != request.editJobId:
+                raise EditingServiceError(404, "revision_not_found", "Edit revision was not found.")
+            edit_plan = revision.revisedPlan
+
+        return CreateRenderJobRequest(
+            editJobId=stored_edit_job.edit_job_id,
+            revisionId=request.revisionId,
+            installId=request.installId,
+            sourceObjectKey=stored_edit_job.request.sourceObjectKey,
+            planTier=stored_edit_job.request.planTier,
+            revenueCatAppUserID=stored_edit_job.request.revenueCatAppUserID,
+            editPlan=edit_plan,
+            sourceClips=filter_clips_for_team_selection(
+                stored_edit_job.request.clips,
+                stored_edit_job.request.teamSelection,
+                include_review_only_uncertain=False,
+            ),
+            gptRerankSummary=stored_edit_job.request.gptRerankSummary,
+            idempotencyKey=request.idempotencyKey,
+        )
+
     def render_expires_at(job: StoredRenderJob):
         metadata = job.retention_metadata or {}
         return job.expires_at or parse_datetime(metadata.get("expiresAt"))
@@ -1065,7 +1097,8 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
     ):
         try:
             require_secret(x_hoops_editing_secret)
-            return enqueue_render_job(request, background_tasks)
+            canonical_request = canonical_render_request_for_stored_edit(request)
+            return enqueue_render_job(canonical_request, background_tasks)
         except EditingServiceError as error:
             emit_policy_failed(error, editJobId=request.editJobId, templateId=request.editPlan.templateId, planTier=request.planTier)
             return error_response(error)

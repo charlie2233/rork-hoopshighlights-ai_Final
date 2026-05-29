@@ -1425,6 +1425,87 @@ class EditingServiceTests(unittest.TestCase):
         self.assertEqual(render_payload["workReceipt"]["teamUncertainCandidateCount"], 0)
 
     @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "ffmpeg and ffprobe are required")
+    def test_raw_render_endpoint_uses_stored_cloud_plan_for_edit_jobs(self) -> None:
+        client = TestClient(create_app(self._settings()))
+        edit_request = CreateEditJobRequest(
+            videoId="video_raw_canonical_render_123",
+            analysisJobId="analysis_raw_canonical_render_123",
+            installId="install-123",
+            sourceObjectKey=self._source_key(),
+            preset="personal_highlight",
+            targetDurationSeconds=15,
+            aspectRatio="9:16",
+            planTier="free",
+            teamSelection={
+                "mode": "team",
+                "teamId": "team_dark",
+                "label": "Dark jerseys",
+                "colorLabel": "black",
+                "confidenceThreshold": 0.85,
+                "includeUncertain": True,
+            },
+            clips=[
+                {
+                    **_clip("dark_make", 0.0, "Made Shot", 0.94),
+                    "teamAttribution": {
+                        "teamId": "team_dark",
+                        "label": "Dark jerseys",
+                        "colorLabel": "black",
+                        "confidence": 0.93,
+                        "source": "quick_scan",
+                        "evidenceFrameRefs": ["dark_setup", "dark_result"],
+                        "evidenceRoleGroups": ["setup", "outcome"],
+                    },
+                },
+                {
+                    **_clip("uncertain_steal", 8.0, "Steal", 0.86),
+                    "teamAttribution": {
+                        "teamId": "team_light",
+                        "label": "Light jerseys",
+                        "colorLabel": "white",
+                        "confidence": 0.64,
+                        "source": "quick_scan",
+                    },
+                    "teamAttributionStatus": "uncertain",
+                },
+            ],
+        )
+        create_payload = client.post("/v1/edit-jobs", json=edit_request.model_dump()).json()
+        plan_payload = client.get(
+            f"/v1/edit-jobs/{create_payload['editJobId']}/plan",
+            params={"installId": edit_request.installId},
+        ).json()
+        client_plan_override = dict(plan_payload["plan"])
+        client_plan_override["aspectRatio"] = "16:9"
+
+        render_response = client.post(
+            "/v1/render-jobs",
+            json={
+                "editJobId": create_payload["editJobId"],
+                "installId": edit_request.installId,
+                "sourceObjectKey": "sources/raw-client-override-should-not-render.mp4",
+                "planTier": "pro",
+                "editPlan": client_plan_override,
+                "sourceClips": [edit_request.clips[1].model_dump(mode="json")],
+                "idempotencyKey": "raw-canonical-render-source-001",
+            },
+        )
+
+        self.assertEqual(render_response.status_code, 200)
+        status_response = client.get(
+            f"/v1/render-jobs/{render_response.json()['renderJobId']}",
+            params={"installId": edit_request.installId},
+        )
+        self.assertEqual(status_response.status_code, 200)
+        render_payload = status_response.json()
+        self.assertEqual(render_payload["status"], "rendered")
+        self.assertEqual(render_payload["aspectRatio"], "9:16")
+        self.assertEqual(render_payload["planTier"], "free")
+        self.assertNotEqual(render_payload.get("failureReason"), "source_missing")
+        self.assertEqual(render_payload["workReceipt"]["teamUncertainSelectedClipCount"], 0)
+        self.assertEqual(render_payload["workReceipt"]["teamUncertainCandidateCount"], 0)
+
+    @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "ffmpeg and ffprobe are required")
     def test_render_revision_produces_latest_download_url(self) -> None:
         client = TestClient(create_app(self._settings()))
         edit_request = self._edit_request()

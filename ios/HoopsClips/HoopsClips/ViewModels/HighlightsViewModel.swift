@@ -488,7 +488,7 @@ final class HighlightsViewModel {
             throw CloudEditError.missingSourceObject
         }
 
-        let candidates = Self.rankedCloudEditCandidateClips(from: keptClips).map { clip in
+        let candidates = Self.cloudEditRequestCandidateClips(from: clips).map { clip in
             let inferredCenter = clip.startTime + (clip.duration / 2.0)
             let center = max(clip.startTime, min(clip.endTime, clip.eventCenter ?? inferredCenter))
             return CloudEditCandidateClip(
@@ -504,7 +504,7 @@ final class HighlightsViewModel {
                 audioPeak: clip.audioScore,
                 combinedScore: clip.combinedScore,
                 duplicateGroup: nil,
-                userReviewDecision: "kept",
+                userReviewDecision: Self.cloudEditUserReviewDecision(for: clip),
                 nativeShotSignals: clip.nativeShotSignals,
                 teamAttribution: clip.teamAttribution,
                 teamAttributionStatus: clip.teamAttributionStatus
@@ -526,6 +526,53 @@ final class HighlightsViewModel {
             teamSelection: settings.highlightTeamSelection,
             clips: Array(candidates)
         )
+    }
+
+    nonisolated static func cloudEditRequestCandidateClips(from clips: [Clip], limit: Int = 60) -> [Clip] {
+        let cappedLimit = max(0, limit)
+        guard cappedLimit > 0 else { return [] }
+
+        let keptSource = clips.filter(\.isKept)
+        let keptCandidates = rankedCloudEditCandidateClips(from: keptSource, limit: cappedLimit)
+        let reviewOnlyCandidates = rankedCloudEditCandidateClips(
+            from: clips.filter { !$0.isKept && $0.needsUserReview },
+            limit: cappedLimit
+        )
+
+        guard !reviewOnlyCandidates.isEmpty else {
+            return keptCandidates
+        }
+
+        let reviewReserveLimit = min(reviewOnlyCandidates.count, max(2, cappedLimit / 8))
+        let keptLimit = max(0, cappedLimit - reviewReserveLimit)
+        var selected = rankedCloudEditCandidateClips(from: keptSource, limit: keptLimit)
+        selected.append(contentsOf: reviewOnlyCandidates.prefix(reviewReserveLimit))
+        if selected.count < cappedLimit {
+            var selectedIDs = Set(selected.map(\.id))
+            let extraKeptCandidates = keptCandidates.filter { !selectedIDs.contains($0.id) }
+            let keptSlots = cappedLimit - selected.count
+            selected.append(contentsOf: extraKeptCandidates.prefix(keptSlots))
+            selectedIDs = Set(selected.map(\.id))
+            let extraReviewCandidates = reviewOnlyCandidates.dropFirst(reviewReserveLimit)
+                .filter { !selectedIDs.contains($0.id) }
+            selected.append(contentsOf: extraReviewCandidates.prefix(cappedLimit - selected.count))
+        }
+        return selected.prefix(cappedLimit).sorted { lhs, rhs in
+            if lhs.isKept != rhs.isKept {
+                return lhs.isKept
+            }
+            return lhs.startTime < rhs.startTime
+        }
+    }
+
+    nonisolated private static func cloudEditUserReviewDecision(for clip: Clip) -> String {
+        if clip.isKept {
+            return "kept"
+        }
+        if clip.needsUserReview {
+            return "unreviewed"
+        }
+        return "discarded"
     }
 
     nonisolated static func rankedCloudEditCandidateClips(from clips: [Clip], limit: Int = 40) -> [Clip] {
