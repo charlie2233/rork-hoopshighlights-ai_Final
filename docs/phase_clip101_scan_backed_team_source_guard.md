@@ -32,6 +32,11 @@ Older or loose payloads can omit `teamAttribution.source`, which defaults to `un
 - `git diff --check` passed.
 - `npm run typecheck` in `services/control-plane` passed.
 - `npm test` in `services/control-plane` passed: 28 tests.
+- Build iOS Apps `build_sim` passed for `HoopsClips` Debug on iPhone 17 Pro simulator with no warnings/errors. Log: `/Users/hanfei/Library/Developer/XcodeBuildMCP/workspaces/rork-hoopshighlights-ai_Final-b63ced5e161c/logs/build_sim_2026-05-29T00-11-09-778Z_pid97875_22c98424.log`.
+- `xcodebuild -project ios/HoopsClips.xcodeproj -scheme HoopsClips -configuration Debug -destination 'platform=iOS Simulator,id=7ECBD8FA-B0A2-4C3B-9A5C-EB73D19B99F2' -derivedDataPath /tmp/hoopclips-clip45-dd -quiet build-for-testing` passed.
+- Build iOS Apps `test_sim` did not produce a pass/fail result: the MCP call timed out at 120 seconds and the orphaned `xcodebuild test-without-building` process was terminated after remaining stuck for over three minutes with no test output.
+- Clean `python3 scripts/submission_readiness_preflight.py --skip-live` returned `pass=22 warn=2 fail=8`.
+- PR #32 checks on `b69ac55` failed before job steps started because GitHub Actions account billing/spending limit is blocking runners. GitHub annotation: "The job was not started because recent account payments have failed or your spending limit needs to be increased."
 
 ## Launch Notes
 
