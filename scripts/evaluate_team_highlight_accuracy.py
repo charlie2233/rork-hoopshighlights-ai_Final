@@ -46,6 +46,7 @@ MIN_EVAL_SHOT_LEAD_IN_SECONDS = 1.2
 MIN_EVAL_SHOT_FOLLOW_THROUGH_SECONDS = 0.8
 MIN_EVAL_DEFENSIVE_LEAD_IN_SECONDS = 0.6
 MIN_EVAL_DEFENSIVE_FOLLOW_THROUGH_SECONDS = 0.5
+MIN_EVAL_DEFENSIVE_OUTCOME_CONFIDENCE = 0.65
 MIN_EVAL_SHOT_OUTCOME_CONFIDENCE = 0.65
 MIN_EVAL_RIM_ENTRY_SEQUENCE_CONFIDENCE = 0.72
 MIN_EVAL_OUTCOME_RELIABILITY = 0.72
@@ -68,6 +69,9 @@ MADE_BALL_FLIGHT_FRAME_ROLES = {
     "postoutcome",
     "finish",
 }
+DEFENSIVE_GPT_OUTCOMES = {"steal", "forced_turnover", "defensive_stop"}
+DEFENSIVE_EVIDENCE_EVENT_ROLES = {"challenge", "possessionchange", "recovery", "defenseoutcome", "eventcenter"}
+DEFENSIVE_EVIDENCE_RESULT_ROLES = {"possessionchange", "recovery", "defenseoutcome", "finish"}
 
 
 @dataclass(frozen=True)
@@ -781,6 +785,8 @@ def expected_outcome_for_clip(expected: dict[str, Any]) -> str | None:
         return "blocked"
     if any(token in event_type for token in ("made", "bucket", "basket", "dunk", "three", "3pt")):
         return "made"
+    if event_type in DEFENSIVE_EVENTS:
+        return defensive_event_subtype(event_type)
     return None
 
 
@@ -800,7 +806,12 @@ def shot_outcome_evidence_is_valid(prediction: dict[str, Any], expected_outcome:
         quality_signals = {}
 
     evidence_confidence = number_or_default(result_evidence.get("outcomeConfidence"), 0.0)
-    if evidence_confidence < MIN_EVAL_SHOT_OUTCOME_CONFIDENCE:
+    minimum_evidence_confidence = (
+        MIN_EVAL_DEFENSIVE_OUTCOME_CONFIDENCE
+        if expected_outcome in DEFENSIVE_GPT_OUTCOMES
+        else MIN_EVAL_SHOT_OUTCOME_CONFIDENCE
+    )
+    if evidence_confidence < minimum_evidence_confidence:
         return False
     if str(prediction.get("outcomeEvidenceSource") or "").strip().lower() == "label_only":
         return False
@@ -819,6 +830,21 @@ def shot_outcome_evidence_is_valid(prediction: dict[str, Any], expected_outcome:
     result_role = normalize_event_type(tracking_evidence.get("resultFrameRole"))
     entry_role = normalize_event_type(tracking_evidence.get("ballEntersRimFrameRole"))
     trajectory = str(tracking_evidence.get("trajectoryContinuity") or "").strip().lower()
+
+    if expected_outcome in DEFENSIVE_GPT_OUTCOMES:
+        return (
+            quality_signals.get("eventVisible") is True
+            and quality_signals.get("outcomeVisible") is True
+            and quality_signals.get("ballPathVisible") is True
+            and quality_signals.get("playerControlVisible") is True
+            and quality_signals.get("cleanCamera") is True
+            and quality_signals.get("fullPlayContext") is True
+            and bool(ball_roles & DEFENSIVE_EVIDENCE_EVENT_ROLES)
+            and (
+                result_role in DEFENSIVE_EVIDENCE_RESULT_ROLES
+                or bool(ball_roles & DEFENSIVE_EVIDENCE_RESULT_ROLES)
+            )
+        )
 
     if expected_outcome == "made":
         return (
@@ -863,6 +889,12 @@ def normalize_shot_outcome(value: Any) -> str | None:
         return "missed"
     if text in {"block", "blocked", "blocked_shot"}:
         return "blocked"
+    if text in {"steal", "strip"}:
+        return "steal"
+    if text in {"forced_to", "forced_turnover", "turnover_forced"}:
+        return "forced_turnover"
+    if text in {"defensive_stop", "defense_stop"}:
+        return "defensive_stop"
     return None
 
 

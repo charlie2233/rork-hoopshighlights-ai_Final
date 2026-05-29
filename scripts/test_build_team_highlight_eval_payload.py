@@ -4,7 +4,7 @@ from pathlib import Path
 
 from scripts.build_team_highlight_eval_payload import build_eval_payload, main
 from scripts.evaluate_team_highlight_accuracy import AccuracyThresholds, evaluate_accuracy
-from scripts.test_team_highlight_accuracy_eval import made_shot_evidence
+from scripts.test_team_highlight_accuracy_eval import defensive_outcome_evidence, made_shot_evidence
 
 
 def analysis_clip(start: float, end: float, label: str, keep: bool, team_id: str, confidence: float) -> dict:
@@ -47,7 +47,7 @@ def analysis_clip(start: float, end: float, label: str, keep: bool, team_id: str
 class BuildTeamHighlightEvalPayloadTests(unittest.TestCase):
     def test_build_payload_matches_real_analysis_predictions_and_review_uncertain_clip(self) -> None:
         made = {**analysis_clip(10.0, 14.0, "Made Shot", True, "team_dark", 0.94), **made_shot_evidence()}
-        steal = analysis_clip(30.0, 33.2, "Steal", False, "team_dark", 0.64)
+        steal = {**analysis_clip(30.0, 33.2, "Steal", False, "team_dark", 0.64), **defensive_outcome_evidence("steal")}
         payload = build_eval_payload(
             analysis={
                 "jobId": "job_real_001",
