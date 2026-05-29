@@ -2123,7 +2123,7 @@ def reserve_defensive_highlight_families(
     selected_ids = {clip.id for clip in reserved}
     total_duration = sum(min(max_clip_seconds, clip.duration) for clip in reserved)
 
-    for family in ("block", "steal"):
+    for family in ("block", "steal", "forced_turnover", "defensive_stop"):
         if any(_defensive_highlight_family(clip) == family for clip in reserved):
             continue
         candidate = next(
@@ -2184,8 +2184,10 @@ def _defensive_highlight_family(clip: EditCandidateClip) -> Optional[str]:
         return "block"
     if tokens & {"steal", "strip"}:
         return "steal"
-    if "turnover" in tokens and (tokens & {"forced", "force", "defensive", "defense"}):
-        return "steal"
+    if "turnover" in tokens and "unforced" not in tokens and tokens & {"forced", "force", "defensive", "defense"}:
+        return "forced_turnover"
+    if "stop" in tokens and (normalized == "stop" or "defensive stop" in normalized or "defense stop" in normalized):
+        return "defensive_stop"
     return None
 
 

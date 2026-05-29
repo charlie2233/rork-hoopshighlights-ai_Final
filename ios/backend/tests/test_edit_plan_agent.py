@@ -769,6 +769,37 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertIn("dark_steal", planned_clip_ids)
         self.assertLessEqual(len(planned_clip_ids), 4)
 
+    def test_short_selected_team_plan_reserves_turnovers_and_defensive_stops_when_scoring_fills_reel(self) -> None:
+        dark_team = _team_attribution(team_id="team_dark", color_label="black", confidence=0.92)
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=30,
+                teamSelection={
+                    "mode": "team",
+                    "teamId": "team_dark",
+                    "label": "Dark jerseys",
+                    "colorLabel": "black",
+                    "confidenceThreshold": 0.85,
+                },
+                clips=[
+                    {**_clip("dark_make_1", 0.0, "Made Shot", 0.99), "teamAttribution": dark_team},
+                    {**_clip("dark_make_2", 9.0, "Dunk", 0.98), "teamAttribution": dark_team},
+                    {**_clip("dark_make_3", 18.0, "Three Pointer", 0.97), "teamAttribution": dark_team},
+                    {**_clip("dark_make_4", 27.0, "Fast Break", 0.96), "teamAttribution": dark_team},
+                    {**_clip("dark_make_5", 36.0, "Made Shot", 0.95), "teamAttribution": dark_team},
+                    {**_clip("dark_forced_turnover", 45.0, "Forced Turnover", 0.81), "teamAttribution": dark_team},
+                    {**_clip("dark_defensive_stop", 54.0, "Defensive Stop", 0.8), "teamAttribution": dark_team},
+                ],
+            )
+        )
+
+        plan = build_edit_plan(request, "edit_team_defense_turnover_reserve")
+
+        planned_clip_ids = [clip.clipId for clip in plan.clips]
+        self.assertIn("dark_forced_turnover", planned_clip_ids)
+        self.assertIn("dark_defensive_stop", planned_clip_ids)
+        self.assertLessEqual(len(planned_clip_ids), 4)
+
     def test_agent_editing_context_includes_team_targeting_and_attribution(self) -> None:
         request = CreateEditJobRequest(
             **_request_payload(
