@@ -27,8 +27,15 @@ The product flow asks users to choose from teams detected by a quick scan and la
   - Result: passed.
 - `git diff --check`
   - Result: passed.
+- `python3 scripts/submission_readiness_preflight.py --skip-live`
+  - Result: `pass=22 warn=2 fail=8`.
+  - Expected launch blockers remain: missing launch-grade labeled team-highlight accuracy report, unavailable wired iPhone, skipped live Worker/editing probes, stale main-branch workflow proof, unproven TestFlight post-install smoke, unproven live Worker kill-switch state, and missing Cloudflare deploy credential proof.
+- PR #32 GitHub Actions after commit `eb86bd9`
+  - `Cloud Edit Deploy Preflight / Worker typecheck and dry run`: failed before runner steps with the GitHub billing/spending-limit annotation.
+  - `Cloud Edit Deploy Preflight / Editing backend Python tests`: failed before runner steps with the same annotation.
+  - `iOS Internal TestFlight Upload / No-secret internal staging codecheck`: failed before runner steps with the same annotation.
 
 ## Remaining Launch Blockers
 
 - This change is covered by unit tests only. Internal submission still needs the launch-grade labeled team-highlight accuracy report, a real iPhone/TestFlight smoke, live staging Worker/version checks, and green GitHub Actions.
-- GitHub Actions for the open PR remained blocked before this patch by account billing/spending-limit status, so CI cannot be treated as green until billing is fixed and the checks run on this branch.
+- GitHub Actions for the open PR remain blocked by account billing/spending-limit status, so CI cannot be treated as green until billing is fixed and the checks run on this branch.
