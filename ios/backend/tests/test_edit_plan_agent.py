@@ -1909,6 +1909,113 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertEqual(reranked.gptRerankSummary.fallbackReason, "all_clips_rejected")
         self.assertEqual(reranked.gptRerankSummary.rejectedReasonCounts["missing_missed_shot_ball_path"], 1)
 
+    def test_gpt_highlight_rerank_rejects_missed_shot_without_visible_miss_sequence(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=15,
+                clips=[_clip("miss_unclear_result_sequence", 12.0, "Missed Shot", 0.9)],
+            )
+        )
+        decisions = [
+            GPTHighlightClipDecision(
+                clipId="miss_unclear_result_sequence",
+                keep=True,
+                highlightScore=0.88,
+                watchabilityScore=0.84,
+                basketballEvent="Missed shot",
+                outcome="missed",
+                caption="GOOD LOOK",
+                reason="GPT claims a clear miss but does not cite a visible miss sequence.",
+                qualitySignals=_quality_signals(reason="Release, ball path, and rim are visible."),
+                shotResultEvidence=_shot_result_evidence(
+                    rimResultEvidence="clear_miss",
+                    outcomeConfidence=0.82,
+                    rimEntrySequence="unclear",
+                    rimEntryFrameRole=None,
+                    ballBelowRimOrNetFrameRole=None,
+                    rimEntrySequenceConfidence=0.24,
+                ),
+                shotTrackingEvidence=_shot_tracking_evidence(
+                    ballVisibleFrameRoles=["eventCenter", "finish"],
+                    rimVisibleFrameRoles=["finish"],
+                    releaseFrameRole="eventCenter",
+                    resultFrameRole="finish",
+                    ballEntersRimFrameRole=None,
+                    trajectoryContinuity="partial",
+                ),
+                suggestedEdit=GPTHighlightSuggestedEdit(),
+            )
+        ]
+
+        reranked = apply_gpt_highlight_rerank(request, decisions, "gpt-test", 1, 5)
+
+        self.assertEqual(reranked.clips, [])
+        self.assertEqual(reranked.gptRerankSummary.fallbackReason, "all_clips_rejected")
+        self.assertEqual(reranked.gptRerankSummary.rejectedReasonCounts["miss_rim_sequence_not_visible"], 1)
+
+    def test_gpt_highlight_rerank_accepts_visible_miss_without_ball_entry_frame(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=15,
+                clips=[_clip("clean_visible_miss", 12.0, "Missed Shot", 0.9)],
+            )
+        )
+        decisions = [
+            GPTHighlightClipDecision(
+                clipId="clean_visible_miss",
+                keep=True,
+                highlightScore=0.88,
+                watchabilityScore=0.84,
+                basketballEvent="Missed shot",
+                outcome="missed",
+                caption="GOOD LOOK",
+                reason="Full shot context and a visible miss off the rim.",
+                qualitySignals=_quality_signals(reason="Release, ball path, rim, and clear miss are visible."),
+                shotResultEvidence=_shot_result_evidence(
+                    rimResultEvidence="clear_miss",
+                    outcomeConfidence=0.82,
+                    rimEntrySequence="visible_miss",
+                    ballApproachFrameRole="rimApproach",
+                    rimEntryFrameRole="rim",
+                    ballBelowRimOrNetFrameRole="finish",
+                    rimEntrySequenceConfidence=0.78,
+                ),
+                shotTrackingEvidence=_shot_tracking_evidence(
+                    ballVisibleFrameRoles=["release", "shotArcLate", "rimApproach", "rim", "finish"],
+                    rimVisibleFrameRoles=["rim", "finish"],
+                    releaseFrameRole="release",
+                    resultFrameRole="rim",
+                    ballEntersRimFrameRole=None,
+                    trajectoryContinuity="continuous",
+                ),
+                suggestedEdit=GPTHighlightSuggestedEdit(cropFocus="rim"),
+            )
+        ]
+
+        reranked = apply_gpt_highlight_rerank(
+            request,
+            decisions,
+            "gpt-test",
+            1,
+            10,
+            sampled_frame_roles_by_clip={
+                "clean_visible_miss": [
+                    "start",
+                    "preEvent",
+                    "release",
+                    "shotArcEarly",
+                    "shotArcLate",
+                    "rimApproach",
+                    "rim",
+                    "finish",
+                ]
+            },
+        )
+
+        self.assertEqual(reranked.gptRerankSummary.keptClipIds, ["clean_visible_miss"])
+        self.assertEqual(reranked.clips[0].gptOutcome, "missed")
+        self.assertEqual(reranked.clips[0].gptOutcomeEvidenceSource, "gpt_shot_tracking")
+
     def test_gpt_highlight_rerank_rejects_block_without_visible_ball_control(self) -> None:
         request = CreateEditJobRequest(
             **_request_payload(

@@ -988,6 +988,8 @@ def _build_openai_payload(
                         "madeShotRequiresExplicitMadeResultEvidence": True,
                         "madeShotRequiresFrameRoleTrackingEvidence": True,
                         "madeShotRequiresRimEntrySequenceEvidence": True,
+                        "missedShotRequiresExplicitMissResultEvidence": True,
+                        "missedShotRequiresVisibleMissSequenceEvidence": True,
                         "mustUseRichSampledShotRolesWhenPresent": True,
                         "doNotKeepIfOutcomeIsOnlyImplied": True,
                         "netOrRimReactionDoesNotReplaceEntryFrameRoles": True,
@@ -1003,6 +1005,14 @@ def _build_openai_payload(
                             "ballBelowRimOrNetFrameRole": ["belowRim", "postOutcome", "finish"],
                             "minimumRimEntrySequenceConfidence": 0.72,
                             "dedicatedRimEntryPathRoles": ["rimApproach", "rimEntry", "belowRim"],
+                        },
+                        "requiredMissedShotTracking": {
+                            "rimResultEvidence": "clear_miss",
+                            "rimEntrySequence": "visible_miss",
+                            "minimumRimMissSequenceConfidence": 0.65,
+                            "ballApproachFrameRole": ["release", "shotArcEarly", "eventCenter", "shotArcLate", "rimApproach"],
+                            "rimResultFrameRole": ["outcome", "shotArcLate", "rimApproach", "rim", "rimEntry", "belowRim", "postOutcome", "finish"],
+                            "ballEntersRimFrameRole": None,
                         },
                         "requiredDefensiveTracking": {
                             "eventFrameRoles": ["challenge", "possessionChange", "recovery", "defenseOutcome"],
@@ -1050,6 +1060,7 @@ def _build_openai_payload(
             "For made or missed shots, releaseVisible, shotArcVisible, and rimResultVisible must all be true; do not infer a make from a label or late rim-only aftermath. "
             "A made outcome requires shotResultEvidence.rimResultEvidence=made_visible with confident visible rim/net proof; use unclear if the result is guessed. "
             "A made outcome also requires shotResultEvidence.rimEntrySequence=visible_entry with approach, rim-entry, and below-rim/net frame roles. "
+            "A missed outcome requires shotResultEvidence.rimResultEvidence=clear_miss plus rimEntrySequence=visible_miss, confident miss-sequence evidence, and release-to-rim frame roles; do not set a ball-entry frame for a miss. "
             "When rimApproach, rimEntry, and belowRim frames are sampled, use those dedicated roles for the made-basket entry path, and cite rimEntry as shotTrackingEvidence.ballEntersRimFrameRole. "
             "A made outcome also requires shotTrackingEvidence with release/result frame roles, ball-visible frame roles, continuous trajectory, and cited entry/follow-through frame roles; net/rim reaction can support evidence but must not replace those frame-role citations. "
             "When sampled roles include release, shot-arc, rim, or post-outcome frames, cite those specific rich roles instead of generic eventCenter/finish proof. "

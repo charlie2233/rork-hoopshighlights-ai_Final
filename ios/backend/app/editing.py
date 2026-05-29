@@ -109,6 +109,7 @@ MIN_SHOT_CONTEXT_FOLLOW_THROUGH_SECONDS = 0.8
 TARGET_SHOT_CONTEXT_LEAD_IN_SECONDS = 1.6
 TARGET_SHOT_CONTEXT_FOLLOW_THROUGH_SECONDS = 1.0
 MIN_SHOT_LIKE_CLIP_SECONDS = 3.0
+MIN_MISSED_RIM_SEQUENCE_CONFIDENCE = 0.65
 MIN_NON_SHOT_PLANNING_SCORE = 0.5
 MIN_NON_SHOT_WATCHABILITY_SCORE = 0.42
 MIN_GENERIC_HIGHLIGHT_PLANNING_SCORE = 0.62
@@ -3132,6 +3133,14 @@ def _gpt_decision_rejection_reason(
             return "miss_outcome_not_visible"
         if result_evidence.outcomeConfidence < 0.65:
             return "low_shot_result_confidence"
+        if result_evidence.rimEntrySequence != "visible_miss":
+            return "miss_rim_sequence_not_visible"
+        if result_evidence.rimEntrySequenceConfidence < MIN_MISSED_RIM_SEQUENCE_CONFIDENCE:
+            return "low_miss_sequence_confidence"
+        if result_evidence.ballApproachFrameRole not in SHOT_TRACKING_RIM_ENTRY_APPROACH_ROLES:
+            return "missing_miss_approach_frame"
+        if result_evidence.rimEntryFrameRole not in SHOT_TRACKING_RESULT_ROLES:
+            return "missing_miss_result_frame"
     if decision.outcome == "blocked":
         if sampled_frame_roles is not None:
             blocked_role_rejection = _blocked_sampled_tracking_rejection_reason(tracking_evidence, sampled_frame_roles)
