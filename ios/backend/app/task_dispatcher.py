@@ -23,6 +23,8 @@ class InlineTaskDispatcher:
     def _consume_background_exception(self, task: "asyncio.Task[None]") -> None:
         try:
             task.result()
+        except asyncio.CancelledError:
+            pass
         except Exception:
             pass
 
