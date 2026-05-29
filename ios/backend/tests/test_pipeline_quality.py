@@ -17,6 +17,7 @@ from app.pipeline import (
     _annotate_analysis_team_status,
     _analysis_candidate_pool_limit,
     _detect_shot_boundaries,
+    _detected_teams_from_clips,
     _is_defensive_label,
     _merge_hybrid_detection_clips,
     _native_shot_signals_for_analysis_clip,
@@ -373,6 +374,68 @@ class PipelineQualityTests(unittest.TestCase):
 
         self.assertEqual(annotated[0].teamAttributionStatus, "uncertain")
         self.assertEqual(annotated[1].teamAttributionStatus, "matched")
+
+    def test_detected_team_fallback_requires_confident_evidence_backed_attribution(self) -> None:
+        clips = [
+            _clip(start=8.0, end=12.5, label="Weak unknown team", combined=0.88, event_center=10.2, auto_keep=True).model_copy(
+                update={
+                    "teamAttribution": ClipTeamAttribution(
+                        teamId="team_dark",
+                        label="Dark jerseys",
+                        colorLabel="black",
+                        confidence=0.94,
+                    )
+                }
+            ),
+            _clip(start=14.0, end=18.5, label="Explicit uncertain team", combined=0.87, event_center=16.2, auto_keep=True).model_copy(
+                update={
+                    "teamAttributionStatus": "uncertain",
+                    "teamAttribution": _team_attr(
+                        team_id="team_light",
+                        label="Light jerseys",
+                        color_label="white",
+                        confidence=0.94,
+                    ),
+                }
+            ),
+            _clip(start=20.0, end=24.5, label="Low confidence team", combined=0.86, event_center=22.2, auto_keep=True).model_copy(
+                update={
+                    "teamAttribution": _team_attr(
+                        team_id="team_red",
+                        label="Red jerseys",
+                        color_label="red",
+                        confidence=0.72,
+                    )
+                }
+            ),
+            _clip(start=26.0, end=30.5, label="Manual team", combined=0.85, event_center=28.2, auto_keep=True).model_copy(
+                update={
+                    "teamAttribution": _team_attr(
+                        team_id="team_blue",
+                        label="Blue jerseys",
+                        color_label="blue",
+                        confidence=0.91,
+                        source="manual",
+                        evidence=False,
+                    )
+                }
+            ),
+            _clip(start=32.0, end=36.5, label="Provider evidence team", combined=0.84, event_center=34.2, auto_keep=True).model_copy(
+                update={
+                    "teamAttribution": _team_attr(
+                        team_id="team_green",
+                        label="Green jerseys",
+                        color_label="green",
+                        confidence=0.9,
+                        source="provider",
+                    )
+                }
+            ),
+        ]
+
+        detected = _detected_teams_from_clips(clips)
+
+        self.assertEqual([team.teamId for team in detected], ["team_blue", "team_green"])
 
     def test_analysis_team_status_rejects_conflicting_team_id_even_when_color_matches(self) -> None:
         team_selection = TeamSelection(mode="team", teamId="team_dark", colorLabel="black", includeUncertain=True)

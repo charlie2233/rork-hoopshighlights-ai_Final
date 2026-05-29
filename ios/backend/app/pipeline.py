@@ -46,6 +46,7 @@ TEAM_SELECTION_PREFILTER_MAX_CLIPS = 160
 TEAM_EVIDENCE_REQUIRED_SOURCES = {"quick_scan", "gpt_frame_review", "provider", "unknown"}
 MIN_CONFIDENT_TEAM_EVIDENCE_FRAME_REFS = 2
 MIN_CONFIDENT_TEAM_EVIDENCE_ROLE_GROUPS = 2
+MIN_DETECTED_TEAM_OPTION_CONFIDENCE = 0.85
 VisualFrameSignal = Tuple[float, float, float, float]
 
 
@@ -409,8 +410,14 @@ def _annotate_analysis_team_status(
 def _detected_teams_from_clips(clips: Sequence[CloudClip]) -> list[TeamOption]:
     best_by_key: dict[str, TeamOption] = {}
     for clip in clips:
+        if clip.teamAttributionStatus == "uncertain":
+            continue
         attribution = clip.teamAttribution
         if attribution is None:
+            continue
+        if attribution.confidence < MIN_DETECTED_TEAM_OPTION_CONFIDENCE:
+            continue
+        if _analysis_team_evidence_required(attribution) and not _analysis_has_confident_team_evidence(attribution):
             continue
         team_id = attribution.teamId or attribution.colorLabel
         label = attribution.label or attribution.colorLabel or attribution.teamId
