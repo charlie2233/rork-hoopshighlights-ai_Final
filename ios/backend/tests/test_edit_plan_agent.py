@@ -1195,6 +1195,32 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertEqual(job.status, "failed")
         self.assertIn("empty_clip_list", [error.code for error in job.validation_errors])
 
+    def test_deterministic_plan_rejects_contextless_non_shot_action_clip(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=15,
+                clips=[
+                    {
+                        **_clip("late_fast_break", 8.0, "Fast Break", 0.98),
+                        "end": 11.0,
+                        "eventCenter": 8.2,
+                    },
+                    {
+                        **_clip("contextual_fast_break", 20.0, "Fast Break", 0.82),
+                        "end": 24.2,
+                        "eventCenter": 22.0,
+                    },
+                ],
+            )
+        )
+
+        job = build_edit_job(request, "edit_non_shot_context_floor")
+
+        self.assertFalse(is_plan_quality_eligible_clip(request.clips[0]))
+        self.assertTrue(is_plan_quality_eligible_clip(request.clips[1]))
+        self.assertEqual(job.status, "plan_ready")
+        self.assertEqual([clip.clipId for clip in job.plan.clips], ["contextual_fast_break"])
+
     def test_deterministic_plan_keeps_clear_non_shot_defense_clip(self) -> None:
         request = CreateEditJobRequest(
             **_request_payload(
