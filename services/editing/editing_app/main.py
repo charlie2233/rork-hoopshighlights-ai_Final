@@ -1083,18 +1083,22 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             if stored_edit_job is not None:
                 require_edit_owner(stored_edit_job, request.installId)
 
-            edit_plan = request.editPlan or (stored_edit_job.plan if stored_edit_job is not None else None)
-            source_clips = request.sourceClips or (
-                filter_clips_for_team_selection(
+            if stored_edit_job is not None:
+                edit_plan = stored_edit_job.plan
+                source_clips = filter_clips_for_team_selection(
                     stored_edit_job.request.clips,
                     stored_edit_job.request.teamSelection,
                     include_review_only_uncertain=False,
                 )
-                if stored_edit_job is not None
-                else []
-            )
-            source_object_key = request.sourceObjectKey or (stored_edit_job.request.sourceObjectKey if stored_edit_job is not None else None)
-            plan_tier = request.planTier or (stored_edit_job.request.planTier if stored_edit_job is not None else "free")
+                source_object_key = stored_edit_job.request.sourceObjectKey
+                plan_tier = stored_edit_job.request.planTier
+                revenuecat_app_user_id = stored_edit_job.request.revenueCatAppUserID
+            else:
+                edit_plan = request.editPlan
+                source_clips = request.sourceClips
+                source_object_key = request.sourceObjectKey
+                plan_tier = request.planTier or "free"
+                revenuecat_app_user_id = request.revenueCatAppUserID
             if edit_plan is None:
                 raise EditingServiceError(400, "missing_edit_plan", "Render request must include an EditPlan or reference a stored edit job.")
             if not source_object_key:
@@ -1106,7 +1110,7 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
                     installId=request.installId,
                     sourceObjectKey=source_object_key,
                     planTier=plan_tier,
-                    revenueCatAppUserID=request.revenueCatAppUserID or (stored_edit_job.request.revenueCatAppUserID if stored_edit_job is not None else None),
+                    revenueCatAppUserID=revenuecat_app_user_id,
                     editPlan=edit_plan,
                     sourceClips=source_clips,
                     gptRerankSummary=stored_edit_job.request.gptRerankSummary if stored_edit_job is not None else None,

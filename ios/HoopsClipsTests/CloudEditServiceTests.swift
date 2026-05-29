@@ -111,6 +111,34 @@ struct CloudEditServiceTests {
         }
     }
 
+    @Test func testRequestStoredRenderCanUseStableInitialRenderKeyWithoutSourceOrPlanPayload() async throws {
+        try await withCloudEditBaseURL {
+            let service = CloudEditService(session: makeSession { request in
+                #expect(request.httpMethod == "POST")
+                #expect(request.url?.path == "/v1/edit-jobs/edit_123/render")
+                let payload = try jsonObject(from: try requestBodyData(from: request))
+                #expect(payload["installId"] as? String == "install_test")
+                #expect(payload["forceNew"] as? Bool == false)
+                #expect(payload["idempotencyKey"] as? String == "ios-render-edit_123")
+                #expect(payload["sourceObjectKey"] == nil)
+                #expect(payload["planTier"] == nil)
+                #expect(payload["editPlan"] == nil)
+                #expect(payload["sourceClips"] == nil)
+
+                return try jsonResponse(for: request, body: renderStatusJSON(editJobId: "edit_123", renderJobId: "render_initial"))
+            })
+
+            let status = try await service.requestStoredRender(
+                editJobID: "edit_123",
+                installID: "install_test",
+                idempotencyKey: "ios-render-edit_123",
+                forceNew: false
+            )
+            #expect(status.editJobId == "edit_123")
+            #expect(status.renderJobId == "render_initial")
+        }
+    }
+
     @Test func testLockerRerenderUsesRevisionEndpointForRevisionRows() async throws {
         try await withCloudEditBaseURL {
             let service = CloudEditService(session: makeSession { request in

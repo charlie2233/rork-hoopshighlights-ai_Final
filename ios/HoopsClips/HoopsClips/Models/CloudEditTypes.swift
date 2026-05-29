@@ -705,16 +705,6 @@ struct CloudEditWatermark: Codable, Sendable {
     let assetId: String?
 }
 
-struct CloudEditRenderRequest: Codable, Sendable {
-    let installId: String
-    let sourceObjectKey: String
-    let planTier: CloudEditPlanTier
-    let revenueCatAppUserID: String?
-    let editPlan: CloudEditPlanSummary
-    let sourceClips: [CloudEditCandidateClip]
-    let idempotencyKey: String?
-}
-
 struct CloudEditStoredRenderRequest: Codable, Sendable {
     let installId: String
     let idempotencyKey: String?

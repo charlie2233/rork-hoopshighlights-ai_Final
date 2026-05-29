@@ -1975,17 +1975,14 @@ struct AIEditView: View {
             )
             HoopsAccessibility.announce("HoopClips built the edit plan and is rendering your highlight reel.")
 
-            guard let sourceObjectKey = viewModel.cloudEditSourceObjectKey else {
+            guard viewModel.cloudEditSourceObjectKey != nil else {
                 throw CloudEditError.missingSourceObject
             }
-            let requested = try await cloudEditService.requestRender(
+            let requested = try await cloudEditService.requestStoredRender(
                 editJobID: job.editJobId,
                 installID: viewModel.installID,
-                sourceObjectKey: sourceObjectKey,
-                planTier: request.planTier,
-                revenueCatAppUserID: revenueCatAppUserID,
-                editPlan: planResponse.plan,
-                sourceClips: request.clips
+                idempotencyKey: "ios-render-\(job.editJobId)",
+                forceNew: false
             )
             renderStatus = requested
             policySummary = requested.policy ?? policySummary

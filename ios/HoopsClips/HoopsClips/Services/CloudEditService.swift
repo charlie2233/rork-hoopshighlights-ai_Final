@@ -46,37 +46,6 @@ struct CloudEditService {
         return try decodeResponse(data: data, response: response, successType: CloudEditPlanResponse.self)
     }
 
-    func requestRender(
-        editJobID: String,
-        installID: String,
-        sourceObjectKey: String,
-        planTier: CloudEditPlanTier,
-        revenueCatAppUserID: String?,
-        editPlan: CloudEditPlanSummary,
-        sourceClips: [CloudEditCandidateClip]
-    ) async throws -> CloudEditRenderStatusResponse {
-        let baseURL = try configuredBaseURL()
-        var request = URLRequest(url: baseURL.appending(path: "v1/edit-jobs/\(editJobID)/render"))
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Hoopclips-iOS/1.0", forHTTPHeaderField: "User-Agent")
-        request.setValue(UUID().uuidString, forHTTPHeaderField: "x-trace-id")
-        request.httpBody = try encoder.encode(
-            CloudEditRenderRequest(
-                installId: installID,
-                sourceObjectKey: sourceObjectKey,
-                planTier: planTier,
-                revenueCatAppUserID: revenueCatAppUserID,
-                editPlan: editPlan,
-                sourceClips: sourceClips,
-                idempotencyKey: "ios-render-\(editJobID)"
-            )
-        )
-
-        let (data, response) = try await session.data(for: request)
-        return try decodeResponse(data: data, response: response, successType: CloudEditRenderStatusResponse.self)
-    }
-
     func pollRenderStatus(editJobID: String, installID: String) async throws -> CloudEditRenderStatusResponse {
         let timeoutNanos: UInt64 = 240 * 1_000_000_000
         let start = DispatchTime.now().uptimeNanoseconds
@@ -121,7 +90,12 @@ struct CloudEditService {
         return try decodeResponse(data: data, response: response, successType: CloudEditRenderHistoryResponse.self)
     }
 
-    func requestStoredRender(editJobID: String, installID: String) async throws -> CloudEditRenderStatusResponse {
+    func requestStoredRender(
+        editJobID: String,
+        installID: String,
+        idempotencyKey: String? = nil,
+        forceNew: Bool = true
+    ) async throws -> CloudEditRenderStatusResponse {
         let baseURL = try configuredBaseURL()
         var request = URLRequest(url: baseURL.appending(path: "v1/edit-jobs/\(editJobID)/render"))
         request.httpMethod = "POST"
@@ -131,8 +105,8 @@ struct CloudEditService {
         request.httpBody = try encoder.encode(
             CloudEditStoredRenderRequest(
                 installId: installID,
-                idempotencyKey: "ios-locker-rerender-\(UUID().uuidString)",
-                forceNew: true
+                idempotencyKey: idempotencyKey ?? "ios-locker-rerender-\(UUID().uuidString)",
+                forceNew: forceNew
             )
         )
 
