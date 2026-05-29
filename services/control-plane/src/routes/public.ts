@@ -4,11 +4,16 @@ import type {
   CreateCloudAnalysisJobRequest,
   CreateCloudAnalysisJobResponse,
   CreateCloudJobRequest,
+  InferenceTeamScanRequest,
   JobRecord,
   JobStatus,
   QueueJobMessage,
+  ScanCloudAnalysisTeamsRequest,
+  ScanCloudAnalysisTeamsResponse,
   StartCloudAnalysisJobRequest,
   StartCloudAnalysisJobResponse,
+  TeamOption,
+  TeamSelection,
   UploadPresignResponse
 } from "../types";
 import { bootstrapJob, deleteJobState, getJobSnapshot, updateJobState } from "../do/job-state-client";
@@ -28,10 +33,11 @@ import {
   renderEditingRevision,
   reviseEditingEditJob
 } from "../editing/client";
-import { createPresignedUploadTarget } from "../r2/presign";
+import { createPresignedReadTarget, createPresignedUploadTarget } from "../r2/presign";
 import { emptyResponse, jsonResponse, readJson } from "../utils/request-id";
 import { resolveRuntimeConfig } from "../env";
 import { recoverStaleProcessingJob } from "../recovery";
+import { teamIdentityMatches } from "../team-identity";
 
 const DEFAULT_FREE_DAILY_QUOTA = 3;
 
@@ -121,6 +127,11 @@ export async function routePublicRequest(
     return null;
   }
 
+  if (request.method === "POST" && jobMatch.kind === "team-scan") {
+    const body = await readJson<ScanCloudAnalysisTeamsRequest>(request);
+    return handleTeamScanJob(env, requestId, runtime.schemaVersion, jobMatch.jobId, body);
+  }
+
   if (request.method === "POST" && jobMatch.kind === "start") {
     const body = await readJson<StartCloudAnalysisJobRequest>(request);
     return handleFinalizeJob(
@@ -131,7 +142,8 @@ export async function routePublicRequest(
       runtime.schemaVersion,
       url,
       jobMatch.jobId,
-      body.installId
+      body.installId,
+      body
     );
   }
 
@@ -156,6 +168,7 @@ async function handlePresign(
   try {
     const body = await readJson<CreateCloudAnalysisJobRequest>(request);
     validateCreateRequest(body, resolveRuntimeConfig(env).maxFileSizeBytes, resolveRuntimeConfig(env).maxDurationSeconds);
+    const teamSelection = normalizeTeamSelection(body.teamSelection);
 
     const jobId = crypto.randomUUID().replace(/-/g, "");
     const traceId = request.headers.get("x-trace-id")?.trim() || requestId;
@@ -189,6 +202,9 @@ async function handlePresign(
       appVersion: body.appVersion,
       analysisVersion: body.analysisVersion,
       analysisMode: "cloud",
+      teamSelection,
+      detectedTeams: null,
+      teamScanStatus: null,
       status: "created",
       stage: "Created upload record",
       progress: 0,
@@ -234,7 +250,6 @@ async function handlePresign(
         eventType: "job.upload_pending",
         message: "Upload presign created.",
         payload: {
-          uploadUrl: upload.uploadUrl,
           sourceObjectKey: upload.objectKey,
           resultObjectKey: record.resultObjectKey,
           uploadTraceId
@@ -299,19 +314,24 @@ async function handleFinalizeJob(
   schemaVersion: string,
   url: URL,
   pathJobId?: string,
-  pathInstallId?: string
+  pathInstallId?: string,
+  preReadBody?: CreateCloudJobRequest | StartCloudAnalysisJobRequest
 ): Promise<Response> {
   try {
-    const body = await readJson<CreateCloudJobRequest | StartCloudAnalysisJobRequest>(request);
+    const body: CreateCloudJobRequest | StartCloudAnalysisJobRequest =
+      preReadBody ?? (await readJson<CreateCloudJobRequest | StartCloudAnalysisJobRequest>(request));
     const requestedSourceObjectKey =
-      "sourceObjectKey" in body
+      "sourceObjectKey" in body && typeof body.sourceObjectKey === "string"
         ? body.sourceObjectKey
-        : "uploadObjectKey" in body
+        : "uploadObjectKey" in body && typeof body.uploadObjectKey === "string"
           ? body.uploadObjectKey
           : undefined;
-    const jobId = pathJobId ?? ("jobId" in body ? body.jobId : undefined) ?? deriveJobIdFromObjectKey(requestedSourceObjectKey);
-    const installId = pathInstallId ?? ("installId" in body ? body.installId : undefined);
-    const requestedResultObjectKey = "resultObjectKey" in body ? body.resultObjectKey : undefined;
+    const bodyJobId = "jobId" in body && typeof body.jobId === "string" ? body.jobId : undefined;
+    const bodyInstallId = "installId" in body && typeof body.installId === "string" ? body.installId : undefined;
+    const jobId = pathJobId ?? bodyJobId ?? deriveJobIdFromObjectKey(requestedSourceObjectKey);
+    const installId = pathInstallId ?? bodyInstallId;
+    const requestedResultObjectKey = "resultObjectKey" in body && typeof body.resultObjectKey === "string" ? body.resultObjectKey : undefined;
+    const requestedTeamSelection = normalizeTeamSelection("teamSelection" in body ? body.teamSelection : undefined);
 
     if (!jobId || !installId) {
       return jsonResponse(
@@ -439,33 +459,63 @@ async function handleFinalizeJob(
       );
     }
 
-    const uploadedAt = job.uploadedAt ?? new Date().toISOString();
-    const uploadedJob =
-      job.status === "uploaded"
-      ? job
-      : await updateJobState(
+    const teamSelection = requestedTeamSelection ?? job.teamSelection ?? null;
+    const teamSelectionError = validateScanBackedTeamSelection(job, teamSelection, requestId, schemaVersion);
+    if (teamSelectionError) {
+      return teamSelectionError;
+    }
+    const teamSelectionPatchNeeded = JSON.stringify(job.teamSelection ?? null) !== JSON.stringify(teamSelection);
+    const teamSelectionJob = teamSelectionPatchNeeded
+      ? await updateJobState(
           env,
           job.jobId,
           {
-            status: "uploaded",
-            stage: "Upload verified",
-            progress: Math.max(job.progress, 0.35),
-            uploadedAt,
-            updatedAt: uploadedAt
+            teamSelection,
+            updatedAt: new Date().toISOString()
           },
-        {
-          requestId,
-          traceId: job.traceId,
-          eventType: "job.uploaded",
-          message: "Upload verified before queue dispatch.",
-          payload: {
-              sourceObjectKey: job.sourceObjectKey,
-              resultObjectKey: job.resultObjectKey,
-              uploadTraceId: job.uploadTraceId ?? null
+          {
+            requestId,
+            traceId: job.traceId,
+            eventType: "job.team_selection.updated",
+            message: "Team selection stored for analysis dispatch.",
+            payload: {
+              mode: teamSelection?.mode ?? "all",
+              includeUncertain: teamSelection?.includeUncertain ?? null,
+              confidenceThreshold: teamSelection?.confidenceThreshold ?? null
             }
           }
-        );
-    const uploadedSnapshot = (await getJobSnapshot(env, job.jobId)) ?? uploadedJob;
+        )
+      : job;
+
+    const uploadedAt = teamSelectionJob.uploadedAt ?? new Date().toISOString();
+    const uploadedJob =
+      teamSelectionJob.status === "uploaded"
+        ? teamSelectionJob
+        : await updateJobState(
+            env,
+            teamSelectionJob.jobId,
+            {
+              status: "uploaded",
+              stage: "Upload verified",
+              progress: Math.max(teamSelectionJob.progress, 0.35),
+              uploadedAt,
+              teamSelection,
+              updatedAt: uploadedAt
+            },
+            {
+              requestId,
+              traceId: teamSelectionJob.traceId,
+              eventType: "job.uploaded",
+              message: "Upload verified before queue dispatch.",
+              payload: {
+                sourceObjectKey: teamSelectionJob.sourceObjectKey,
+                resultObjectKey: teamSelectionJob.resultObjectKey,
+                uploadTraceId: teamSelectionJob.uploadTraceId ?? null,
+                teamSelectionMode: teamSelection?.mode ?? "all"
+              }
+            }
+          );
+    const uploadedSnapshot = (await getJobSnapshot(env, teamSelectionJob.jobId)) ?? uploadedJob;
 
     if (uploadedSnapshot.queuedAt == null) {
       const queuedAt = new Date().toISOString();
@@ -478,7 +528,8 @@ async function handleFinalizeJob(
         schemaVersion,
         sourceObjectKey: uploadedSnapshot.sourceObjectKey,
         resultObjectKey: uploadedSnapshot.resultObjectKey,
-        modelVersion: uploadedSnapshot.modelVersion ?? null
+        modelVersion: uploadedSnapshot.modelVersion ?? null,
+        teamSelection: uploadedSnapshot.teamSelection ?? null
       };
 
       const queuedJob = await updateJobState(
@@ -560,6 +611,212 @@ async function handleFinalizeJob(
   }
 }
 
+async function handleTeamScanJob(
+  env: Env,
+  requestId: string,
+  schemaVersion: string,
+  jobId: string,
+  body: ScanCloudAnalysisTeamsRequest
+): Promise<Response> {
+  if (!body || typeof body.installId !== "string" || body.installId.trim().length === 0) {
+    return jsonResponse(
+      {
+        requestId,
+        schemaVersion,
+        confidence: null,
+        modelVersion: null,
+        errorCode: "invalid_request",
+        errorMessage: "installId is required.",
+        failureReason: "installId is required."
+      },
+      { status: 400 },
+      requestId
+    );
+  }
+
+  const job = await getJobSnapshot(env, jobId);
+  if (!job) {
+    return jsonResponse(
+      {
+        requestId,
+        schemaVersion,
+        confidence: null,
+        modelVersion: null,
+        errorCode: "job_not_found",
+        errorMessage: "Cloud analysis job was not found.",
+        failureReason: "Cloud analysis job was not found."
+      },
+      { status: 404 },
+      requestId
+    );
+  }
+
+  if (job.installId !== body.installId) {
+    return jsonResponse(
+      {
+        requestId,
+        schemaVersion,
+        confidence: null,
+        modelVersion: job.modelVersion ?? null,
+        errorCode: "install_mismatch",
+        errorMessage: "Install ID does not own this analysis job.",
+        failureReason: "Install ID does not own this analysis job."
+      },
+      { status: 403 },
+      requestId
+    );
+  }
+
+  if (job.status !== "created" && job.status !== "upload_pending") {
+    return jsonResponse(
+      {
+        requestId,
+        schemaVersion,
+        confidence: null,
+        modelVersion: job.modelVersion ?? null,
+        errorCode: "job_already_started",
+        errorMessage: "Team scan is only available before analysis starts.",
+        failureReason: "Team scan is only available before analysis starts."
+      },
+      { status: 400 },
+      requestId
+    );
+  }
+
+  const uploadExists = await env.R2_UPLOADS.head(job.sourceObjectKey);
+  if (!uploadExists) {
+    return jsonResponse(
+      {
+        requestId,
+        schemaVersion,
+        confidence: null,
+        modelVersion: job.modelVersion ?? null,
+        errorCode: "upload_missing",
+        errorMessage: "Upload is missing. Complete the signed upload before scanning teams.",
+        failureReason: "Upload is missing. Complete the signed upload before scanning teams."
+      },
+      { status: 400 },
+      requestId
+    );
+  }
+
+  const runtime = resolveRuntimeConfig(env);
+  const localDetectedTeams = (body as ScanCloudAnalysisTeamsRequest & { detectedTeams?: unknown }).detectedTeams;
+  const normalizedLocalDetectedTeams = normalizeTeamOptions(localDetectedTeams);
+  const scanResult =
+    runtime.appEnv === "local" && localDetectedTeams !== undefined
+      ? {
+          status: normalizedLocalDetectedTeams.length > 0 ? ("scanned" as const) : ("unavailable" as const),
+          detectedTeams: normalizedLocalDetectedTeams,
+          modelVersion: job.modelVersion ?? null
+        }
+      : await requestInferenceTeamScan(env, job, requestId, schemaVersion);
+  const detectedTeams = scanResult.detectedTeams;
+  const status = scanResult.status;
+  const now = new Date().toISOString();
+  const updated = await updateJobState(
+    env,
+    job.jobId,
+    {
+      detectedTeams,
+      teamScanStatus: status,
+      stage: status === "scanned" ? "Team scan complete" : "Team scan unavailable",
+      progress: Math.max(job.progress, 0.24),
+      updatedAt: now
+    },
+    {
+      requestId,
+      traceId: job.traceId,
+      eventType: "job.team_scan.completed",
+      message: status === "scanned" ? "Team scan detected jersey-color teams." : "Team scan did not detect selectable teams.",
+      payload: {
+        status,
+        detectedTeamCount: detectedTeams.length
+      }
+    }
+  );
+
+  const response: ScanCloudAnalysisTeamsResponse = {
+    requestId,
+    schemaVersion,
+    confidence: null,
+    modelVersion: scanResult.modelVersion ?? updated.modelVersion ?? null,
+    failureReason: null,
+    uploadTraceId: updated.uploadTraceId ?? null,
+    inferenceAttemptId: updated.inferenceAttemptId ?? null,
+    jobId: updated.jobId,
+    status,
+    detectedTeams
+  };
+  return jsonResponse(response, { status: 200 }, requestId);
+}
+
+async function requestInferenceTeamScan(
+  env: Env,
+  job: JobRecord,
+  requestId: string,
+  schemaVersion: string
+): Promise<{
+  status: ScanCloudAnalysisTeamsResponse["status"];
+  detectedTeams: TeamOption[];
+  modelVersion?: string | null;
+}> {
+  if (!env.INFERENCE_BASE_URL) {
+    return { status: "unavailable", detectedTeams: [], modelVersion: job.modelVersion ?? null };
+  }
+
+  try {
+    const readTarget = await createPresignedReadTarget(env, {
+      objectKey: job.sourceObjectKey,
+      expiresInSeconds: Math.max(resolveRuntimeConfig(env).jobTtlSeconds, 3600),
+      bucketName: env.R2_UPLOAD_BUCKET_NAME
+    });
+    const secret = env.INFERENCE_SHARED_SECRET || env.CONTROL_PLANE_SHARED_SECRET;
+    const payload: InferenceTeamScanRequest = {
+      jobId: job.jobId,
+      requestId,
+      uploadTraceId: job.uploadTraceId ?? requestId,
+      traceId: job.traceId,
+      sourceObjectKey: job.sourceObjectKey,
+      sourceUrl: readTarget.sourceUrl,
+      filename: job.filename,
+      contentType: job.contentType,
+      durationSeconds: job.durationSeconds,
+      installId: job.installId,
+      appVersion: job.appVersion,
+      analysisVersion: job.analysisVersion,
+      schemaVersion,
+      modelVersion: job.modelVersion ?? null
+    };
+    const response = await fetch(new URL("/v1/team-scan", env.INFERENCE_BASE_URL).toString(), {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-hoops-inference-secret": secret,
+        "x-request-id": requestId,
+        "x-trace-id": job.traceId,
+        "x-hoops-upload-trace-id": job.uploadTraceId ?? requestId
+      },
+      body: JSON.stringify(payload)
+    });
+    if (!response.ok) {
+      return { status: "unavailable", detectedTeams: [], modelVersion: job.modelVersion ?? null };
+    }
+
+    const parsed = (await response.json()) as Partial<ScanCloudAnalysisTeamsResponse>;
+    const detectedTeams = normalizeTeamOptions(parsed.detectedTeams);
+    const status: ScanCloudAnalysisTeamsResponse["status"] =
+      parsed.status === "scanned" && detectedTeams.length > 0 ? "scanned" : "unavailable";
+    const modelVersion =
+      typeof parsed.modelVersion === "string" && parsed.modelVersion.trim().length > 0
+        ? parsed.modelVersion.trim()
+        : job.modelVersion ?? null;
+    return { status, detectedTeams, modelVersion };
+  } catch {
+    return { status: "unavailable", detectedTeams: [], modelVersion: job.modelVersion ?? null };
+  }
+}
+
 async function handleGetJob(env: Env, ctx: ExecutionContext, requestId: string, jobId: string): Promise<Response> {
   const job = await getJobSnapshot(env, jobId);
   if (!job) {
@@ -632,6 +889,137 @@ function validateCreateRequest(
   }
 }
 
+function normalizeTeamSelection(value: unknown): TeamSelection | null {
+  if (value === null || typeof value !== "object") {
+    return null;
+  }
+  const input = value as {
+    mode?: unknown;
+    teamId?: unknown;
+    label?: unknown;
+    colorLabel?: unknown;
+    confidenceThreshold?: unknown;
+    includeUncertain?: unknown;
+  };
+  if (input.mode !== "all" && input.mode !== "team") {
+    return null;
+  }
+
+  const confidenceThreshold =
+    typeof input.confidenceThreshold === "number" && Number.isFinite(input.confidenceThreshold)
+      ? Math.min(Math.max(input.confidenceThreshold, 0), 1)
+      : 0.85;
+  return {
+    mode: input.mode,
+    teamId: typeof input.teamId === "string" && input.teamId.length > 0 ? input.teamId : null,
+    label: typeof input.label === "string" && input.label.length > 0 ? input.label : null,
+    colorLabel: typeof input.colorLabel === "string" && input.colorLabel.length > 0 ? input.colorLabel : null,
+    confidenceThreshold,
+    includeUncertain: typeof input.includeUncertain === "boolean" ? input.includeUncertain : true
+  };
+}
+
+function normalizeTeamOptions(value: unknown): TeamOption[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const teams: TeamOption[] = [];
+  for (const entry of value) {
+    if (entry === null || typeof entry !== "object") {
+      continue;
+    }
+    const input = entry as {
+      teamId?: unknown;
+      label?: unknown;
+      colorLabel?: unknown;
+      primaryColorHex?: unknown;
+      confidence?: unknown;
+      source?: unknown;
+    };
+    const teamId = coerceString(input.teamId);
+    const label = coerceString(input.label);
+    if (!teamId || !label) {
+      continue;
+    }
+
+    teams.push({
+      teamId,
+      label,
+      colorLabel: coerceString(input.colorLabel),
+      primaryColorHex: coerceString(input.primaryColorHex),
+      confidence: clamp01(typeof input.confidence === "number" && Number.isFinite(input.confidence) ? input.confidence : 0),
+      source: coerceString(input.source)
+    });
+  }
+  return teams;
+}
+
+function validateScanBackedTeamSelection(
+  job: JobRecord,
+  selection: TeamSelection | null,
+  requestId: string,
+  schemaVersion: string
+): Response | null {
+  if (!selection || selection.mode !== "team") {
+    return null;
+  }
+
+  const detectedTeams = job.detectedTeams ?? job.results?.detectedTeams ?? [];
+  if (detectedTeams.length === 0) {
+    return jsonResponse(
+      {
+        requestId,
+        schemaVersion,
+        confidence: null,
+        modelVersion: job.modelVersion ?? null,
+        errorCode: "team_scan_required",
+        errorMessage: "Run the cloud team scan and choose one of the detected jersey-color teams before selected-team analysis.",
+        failureReason: "Run the cloud team scan and choose one of the detected jersey-color teams before selected-team analysis."
+      },
+      { status: 400 },
+      requestId
+    );
+  }
+
+  const matchesDetectedTeam = detectedTeams.some((team) => {
+    return teamIdentityMatches({
+      selectedTeamId: selection.teamId,
+      selectedColorLabel: selection.colorLabel,
+      selectedLabel: selection.label,
+      candidateTeamId: team.teamId,
+      candidateColorLabel: team.colorLabel,
+      candidateLabel: team.label
+    });
+  });
+
+  if (matchesDetectedTeam) {
+    return null;
+  }
+
+  return jsonResponse(
+    {
+      requestId,
+      schemaVersion,
+      confidence: null,
+      modelVersion: job.modelVersion ?? null,
+      errorCode: "team_selection_unavailable",
+      errorMessage: "Selected team must match a jersey-color team from the cloud scan.",
+      failureReason: "Selected team must match a jersey-color team from the cloud scan."
+    },
+    { status: 400 },
+    requestId
+  );
+}
+
+function coerceString(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+function clamp01(value: number): number {
+  return Math.min(Math.max(value, 0), 1);
+}
+
 function normalizePublicPath(pathname: string): string {
   if (pathname.startsWith("/v1/analysis/")) {
     return pathname.replace(/^\/v1\/analysis/, "");
@@ -642,7 +1030,12 @@ function normalizePublicPath(pathname: string): string {
   return pathname;
 }
 
-function matchJobPath(pathname: string): { jobId: string; kind: "get" | "delete" | "start" } | null {
+function matchJobPath(pathname: string): { jobId: string; kind: "get" | "delete" | "start" | "team-scan" } | null {
+  const teamScanMatch = pathname.match(/^\/jobs\/([^/]+)\/team-scan$/);
+  if (teamScanMatch) {
+    return { jobId: teamScanMatch[1]!, kind: "team-scan" };
+  }
+
   const startMatch = pathname.match(/^\/jobs\/([^/]+)\/start$/);
   if (startMatch) {
     return { jobId: startMatch[1]!, kind: "start" };
@@ -785,7 +1178,12 @@ function toCloudAnalysisJobResponse(
     errorCode: job.errorCode ?? null,
     errorMessage: job.errorMessage ?? null,
     analysisVersion: job.analysisVersion,
-    results: job.results ?? null,
+    results: job.results
+      ? {
+          ...job.results,
+          teamSelection: job.results.teamSelection ?? job.teamSelection ?? null
+        }
+      : null,
     sourceObjectKey: job.sourceObjectKey,
     resultObjectKey: job.resultObjectKey,
     createdAt: job.createdAt,

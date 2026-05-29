@@ -295,6 +295,7 @@ async function buildInferenceDispatchRequest(
     installId: job.installId,
     appVersion: job.appVersion,
     analysisVersion: job.analysisVersion,
+    teamSelection: job.teamSelection ?? message.teamSelection ?? null,
     requestedModel: modelVersion.startsWith("xclip:") ? "xclip" : "videomae"
   };
 

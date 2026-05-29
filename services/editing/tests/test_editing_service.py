@@ -18,11 +18,23 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO_ROOT / "services" / "editing"))
 sys.path.insert(0, str(REPO_ROOT / "ios" / "backend"))
 
-from app.editing import CreateEditJobRequest, GPTHighlightClipDecision, GPTHighlightSuggestedEdit, TEMPLATE_PACK_REGISTRY, apply_gpt_highlight_rerank, build_edit_job, get_plan_tier_policy, validate_template_registry  # noqa: E402
+from app.editing import (  # noqa: E402
+    CreateEditJobRequest,
+    EditPlanClip,
+    GPTHighlightClipDecision,
+    GPTHighlightRerankSummary,
+    GPTHighlightSuggestedEdit,
+    TEMPLATE_PACK_REGISTRY,
+    apply_gpt_highlight_rerank,
+    build_edit_job,
+    get_plan_tier_policy,
+    validate_edit_plan,
+    validate_template_registry,
+)
 import editing_app.main as editing_main  # noqa: E402
 from editing_app.config import EditingSettings  # noqa: E402
 from editing_app.main import create_app  # noqa: E402
-from editing_app.models import StoredRenderJob, now_utc  # noqa: E402
+from editing_app.models import StoredRenderJob, build_ai_work_receipt, now_utc  # noqa: E402
 from editing_app.render_state import DurableRenderStateStore  # noqa: E402
 from editing_app.render_storage import RenderStorage  # noqa: E402
 from editing_app.retention_cleanup import run_cleanup  # noqa: E402
@@ -532,6 +544,38 @@ class EditingServiceTests(unittest.TestCase):
             else:
                 os.environ["HOOPS_AI_EDIT_LIVE_RENDER_ENABLED"] = previous
 
+    def test_version_reports_required_gpt_editor_flags(self) -> None:
+        flag_names = (
+            "HOOPS_AI_CLIP_GPT_EDITOR_ENABLED",
+            "HOOPS_AI_CLIP_GPT_PLAN_EDIT_ENABLED",
+            "HOOPS_AI_CLIP_GPT_REVISION_ENABLED",
+        )
+        previous = {name: os.environ.get(name) for name in flag_names}
+        for name in flag_names:
+            os.environ[name] = "true"
+        try:
+            client = TestClient(create_app(self._settings()))
+
+            response = client.get("/version")
+
+            self.assertEqual(response.status_code, 200)
+            payload = response.json()
+            flags = payload["featureFlags"]
+            self.assertTrue(flags["aiClipGptEditorEnabled"])
+            self.assertTrue(flags["aiClipGptPlanEditEnabled"])
+            self.assertTrue(flags["aiClipGptRevisionEnabled"])
+            self.assertTrue(flags["gptHighlightRerankerEnabled"])
+            reranker_status = payload["gptHighlightReranker"]
+            self.assertTrue(reranker_status["enabled"])
+            self.assertTrue(reranker_status["aiClipGptPlanEditEnabled"])
+            self.assertTrue(reranker_status["aiClipGptRevisionEnabled"])
+        finally:
+            for name, value in previous.items():
+                if value is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = value
+
     def test_live_render_kill_switch_rejects_render_without_local_fallback(self) -> None:
         previous = os.environ.get("HOOPS_AI_EDIT_LIVE_RENDER_ENABLED")
         os.environ["HOOPS_AI_EDIT_LIVE_RENDER_ENABLED"] = "false"
@@ -941,6 +985,9 @@ class EditingServiceTests(unittest.TestCase):
         self.assertEqual(render_payload["workReceipt"]["outputResolution"], "720p")
         self.assertTrue(render_payload["workReceipt"]["watermarkIncluded"])
         self.assertTrue(render_payload["workReceipt"]["outroIncluded"])
+        self.assertEqual(render_payload["workReceipt"]["timingQualitySelectedClipCount"], 2)
+        self.assertEqual(render_payload["workReceipt"]["timingIssueCandidateCount"], 0)
+        self.assertEqual(render_payload["workReceipt"]["timingIssueSelectedClipCount"], 0)
         output_path = self._temp_dir / render_payload["outputObjectKey"]
         log_path = self._temp_dir / render_payload["renderLogObjectKey"]
         metadata_path = output_path.with_suffix(output_path.suffix + ".metadata.json")
@@ -961,10 +1008,309 @@ class EditingServiceTests(unittest.TestCase):
         self.assertEqual(render_log["workTimeline"]["steps"][0]["stepId"], "video_uploaded")
         self.assertEqual(render_log["workReceipt"]["candidateClipCount"], 2)
         self.assertFalse(render_log["workReceipt"]["gptRerankApplied"])
+        self.assertEqual(render_log["workReceipt"]["timingQualitySelectedClipCount"], 2)
 
         download_response = client.get(f"/v1/render-jobs/{render_payload['renderJobId']}/download-url", params={"installId": "install-123"})
         self.assertEqual(download_response.status_code, 200)
         self.assertEqual(download_response.json()["contentType"], "video/mp4")
+
+    def test_ai_work_receipt_flags_selected_timing_context_issues(self) -> None:
+        base_request = self._edit_request()
+        edit_request = base_request.model_copy(
+            update={
+                "clips": [
+                    base_request.clips[0].model_copy(
+                        update={
+                            "id": "late_steal",
+                            "start": 10.0,
+                            "end": 13.0,
+                            "eventCenter": 10.1,
+                            "label": "Steal",
+                        }
+                    )
+                ],
+                "targetDurationSeconds": 15,
+            }
+        )
+        edit_job = build_edit_job(edit_request, "edit_timing_receipt")
+        self.assertIn("empty_clip_list", [error.code for error in edit_job.validation_errors])
+        receipt_plan = edit_job.plan.model_copy(
+            update={
+                "clips": [
+                    EditPlanClip(
+                        clipId="late_steal",
+                        sourceStart=10.0,
+                        sourceEnd=13.0,
+                        eventCenter=10.1,
+                        timelineStart=1.2,
+                        timelineEnd=4.2,
+                        label="Steal",
+                        caption="STEAL",
+                        cropMode="center_action",
+                    )
+                ]
+            }
+        )
+        created_at = now_utc()
+        render_job = StoredRenderJob(
+            edit_job_id="edit_timing_receipt",
+            render_job_id="render_timing_receipt",
+            install_id=edit_request.installId,
+            trace_id="trace_timing_receipt",
+            status="rendered",
+            aspect_ratio="9:16",
+            created_at=created_at,
+            updated_at=created_at,
+            completed_at=created_at,
+            source_object_key=edit_request.sourceObjectKey,
+            output_object_key="edits/edit_timing_receipt/render_jobs/render_timing_receipt/final.mp4",
+            render_log_object_key="edits/edit_timing_receipt/render_jobs/render_timing_receipt/render_log.json",
+            duration_seconds=3.0,
+            plan_version="edit-plan-v1",
+            template_id="personal_highlight_v1",
+            plan_tier="free",
+            idempotency_key="idem-timing-receipt",
+        )
+
+        receipt = build_ai_work_receipt(render_job, receipt_plan, edit_request.clips)
+
+        self.assertEqual(receipt.timingIssueCandidateCount, 1)
+        self.assertEqual(receipt.timingIssueSelectedClipCount, 1)
+        self.assertEqual(receipt.timingQualitySelectedClipCount, 0)
+        self.assertIn("Flagged 1 selected clip with weak timing/context.", receipt.summaryRows)
+
+    def test_edit_plan_validation_rejects_trimmed_defensive_context(self) -> None:
+        payload = self._edit_request().model_dump()
+        payload["targetDurationSeconds"] = 15
+        payload["clips"] = [
+            _clip("late_steal", 10.0, "Steal", 0.92),
+            _clip("cutoff_steal", 20.0, "Steal", 0.91),
+        ]
+        edit_request = CreateEditJobRequest(**payload)
+        edit_job = build_edit_job(edit_request, "edit_defensive_plan_context")
+        self.assertFalse(edit_job.validation_errors)
+        trimmed_plan = edit_job.plan.model_copy(
+            update={
+                "clips": [
+                    EditPlanClip(
+                        clipId="late_steal",
+                        sourceStart=10.0,
+                        sourceEnd=13.0,
+                        eventCenter=10.1,
+                        timelineStart=1.2,
+                        timelineEnd=4.2,
+                        label="Steal",
+                        caption="STEAL",
+                        cropMode="center_action",
+                    ),
+                    EditPlanClip(
+                        clipId="cutoff_steal",
+                        sourceStart=20.0,
+                        sourceEnd=23.0,
+                        eventCenter=22.6,
+                        timelineStart=4.2,
+                        timelineEnd=7.2,
+                        label="Steal",
+                        caption="STEAL",
+                        cropMode="center_action",
+                    )
+                ]
+            }
+        )
+
+        errors = validate_edit_plan(trimmed_plan, edit_request.clips, edit_request.planTier)
+        codes = [error.code for error in errors]
+
+        self.assertIn("defensive_context_missing_setup", codes)
+        self.assertIn("defensive_context_missing_outcome", codes)
+
+    def test_ai_work_receipt_does_not_count_stop_and_pop_jumper_as_defense(self) -> None:
+        payload = self._edit_request().model_dump()
+        payload["targetDurationSeconds"] = 15
+        payload["clips"] = [_clip("stop_pop", 0.0, "Stop and Pop Jumper", 0.92)]
+        edit_request = CreateEditJobRequest(**payload)
+        edit_job = build_edit_job(edit_request, "edit_stop_pop_receipt")
+        self.assertFalse(edit_job.validation_errors)
+        created_at = now_utc()
+        render_job = StoredRenderJob(
+            edit_job_id="edit_stop_pop_receipt",
+            render_job_id="render_stop_pop_receipt",
+            install_id=edit_request.installId,
+            trace_id="trace_stop_pop_receipt",
+            status="rendered",
+            aspect_ratio="9:16",
+            created_at=created_at,
+            updated_at=created_at,
+            completed_at=created_at,
+            source_object_key=edit_request.sourceObjectKey,
+            output_object_key="edits/edit_stop_pop_receipt/render_jobs/render_stop_pop_receipt/final.mp4",
+            render_log_object_key="edits/edit_stop_pop_receipt/render_jobs/render_stop_pop_receipt/render_log.json",
+            duration_seconds=5.0,
+            plan_version="edit-plan-v1",
+            template_id="personal_highlight_v1",
+            plan_tier="free",
+            idempotency_key="idem-stop-pop-receipt",
+        )
+
+        receipt = build_ai_work_receipt(render_job, edit_job.plan, edit_request.clips)
+
+        self.assertEqual(receipt.defensiveSelectedClipCount, 0)
+        self.assertNotIn("Included 1 defensive highlight.", receipt.summaryRows)
+
+    def test_ai_work_receipt_does_not_count_plain_turnover_as_defense(self) -> None:
+        payload = self._edit_request().model_dump()
+        payload["targetDurationSeconds"] = 15
+        payload["clips"] = [_clip("plain_turnover", 0.0, "Turnover", 0.92)]
+        edit_request = CreateEditJobRequest(**payload)
+        edit_job = build_edit_job(edit_request, "edit_plain_turnover_receipt")
+        self.assertFalse(edit_job.validation_errors)
+        created_at = now_utc()
+        render_job = StoredRenderJob(
+            edit_job_id="edit_plain_turnover_receipt",
+            render_job_id="render_plain_turnover_receipt",
+            install_id=edit_request.installId,
+            trace_id="trace_plain_turnover_receipt",
+            status="rendered",
+            aspect_ratio="9:16",
+            created_at=created_at,
+            updated_at=created_at,
+            completed_at=created_at,
+            source_object_key=edit_request.sourceObjectKey,
+            output_object_key="edits/edit_plain_turnover_receipt/render_jobs/render_plain_turnover_receipt/final.mp4",
+            render_log_object_key="edits/edit_plain_turnover_receipt/render_jobs/render_plain_turnover_receipt/render_log.json",
+            duration_seconds=5.0,
+            plan_version="edit-plan-v1",
+            template_id="personal_highlight_v1",
+            plan_tier="free",
+            idempotency_key="idem-plain-turnover-receipt",
+        )
+
+        receipt = build_ai_work_receipt(render_job, edit_job.plan, edit_request.clips)
+
+        self.assertEqual(receipt.defensiveSelectedClipCount, 0)
+        self.assertNotIn("Included 1 defensive highlight.", receipt.summaryRows)
+
+    def test_ai_work_receipt_summarizes_validated_shot_outcome_evidence(self) -> None:
+        payload = self._edit_request().model_dump()
+        payload["targetDurationSeconds"] = 15
+        payload["clips"] = [
+            {
+                **_clip("gpt_tracked_make", 0.0, "Made Shot", 0.95),
+                "nativeShotSignals": {
+                    "isShotLike": True,
+                    "leadInSeconds": 2.4,
+                    "followThroughSeconds": 2.6,
+                    "setupContextScore": 1.0,
+                    "outcomeContextScore": 1.0,
+                    "eventCenterQuality": 1.0,
+                    "contextQualityScore": 1.0,
+                    "timingWindowOk": True,
+                    "outcome": "made",
+                    "outcomeConfidence": 0.92,
+                    "outcomeEvidenceSource": "gpt_shot_tracking",
+                    "outcomeReliabilityScore": 0.93,
+                },
+            },
+            {
+                **_clip("label_only_make", 8.0, "Bucket", 0.9),
+                "nativeShotSignals": {
+                    "isShotLike": True,
+                    "leadInSeconds": 2.4,
+                    "followThroughSeconds": 2.6,
+                    "setupContextScore": 1.0,
+                    "outcomeContextScore": 1.0,
+                    "eventCenterQuality": 1.0,
+                    "contextQualityScore": 1.0,
+                    "timingWindowOk": True,
+                    "outcome": "made",
+                    "outcomeConfidence": 0.82,
+                    "outcomeEvidenceSource": "label_only",
+                    "outcomeReliabilityScore": 0.58,
+                },
+            },
+        ]
+        edit_request = CreateEditJobRequest(**payload)
+        edit_job = build_edit_job(edit_request, "edit_outcome_receipt")
+        self.assertFalse(edit_job.validation_errors)
+        created_at = now_utc()
+        render_job = StoredRenderJob(
+            edit_job_id="edit_outcome_receipt",
+            render_job_id="render_outcome_receipt",
+            install_id=edit_request.installId,
+            trace_id="trace_outcome_receipt",
+            status="rendered",
+            aspect_ratio="9:16",
+            created_at=created_at,
+            updated_at=created_at,
+            completed_at=created_at,
+            source_object_key=edit_request.sourceObjectKey,
+            output_object_key="edits/edit_outcome_receipt/render_jobs/render_outcome_receipt/final.mp4",
+            render_log_object_key="edits/edit_outcome_receipt/render_jobs/render_outcome_receipt/render_log.json",
+            duration_seconds=10.0,
+            plan_version="edit-plan-v1",
+            template_id="personal_highlight_v1",
+            plan_tier="free",
+            idempotency_key="idem-outcome-receipt",
+        )
+
+        receipt = build_ai_work_receipt(render_job, edit_job.plan, edit_request.clips)
+
+        self.assertEqual(receipt.shotOutcomeEvidenceSelectedClipCount, 1)
+        self.assertEqual(receipt.shotOutcomeIssueSelectedClipCount, 1)
+        self.assertEqual(receipt.labelOnlyOutcomeSelectedClipCount, 1)
+        self.assertIn("Shot outcome evidence: 1 selected clip passed rim/result tracking checks.", receipt.summaryRows)
+        self.assertIn("Needs review: 1 selected shot outcome came from label-only evidence.", receipt.summaryRows)
+
+    def test_ai_work_receipt_summarizes_gpt_fallback_quality_rejections(self) -> None:
+        payload = self._edit_request().model_dump()
+        payload["targetDurationSeconds"] = 15
+        payload["clips"] = [
+            {**_clip("tiny", 0.0, "Made Shot", 0.99), "end": 0.1, "eventCenter": 0.05},
+            {**_clip("pre_basket", 6.0, "Made Shot", 0.98), "end": 12.0, "eventCenter": 6.1},
+            _clip("complete_make", 14.0, "Made Shot", 0.82),
+        ]
+        edit_request = CreateEditJobRequest(**payload)
+        edit_job = build_edit_job(
+            edit_request.model_copy(update={"clips": [edit_request.clips[2]]}),
+            "edit_fallback_receipt",
+        )
+        self.assertFalse(edit_job.validation_errors)
+        created_at = now_utc()
+        render_job = StoredRenderJob(
+            edit_job_id="edit_fallback_receipt",
+            render_job_id="render_fallback_receipt",
+            install_id=edit_request.installId,
+            trace_id="trace_fallback_receipt",
+            status="rendered",
+            aspect_ratio="9:16",
+            created_at=created_at,
+            updated_at=created_at,
+            completed_at=created_at,
+            source_object_key=edit_request.sourceObjectKey,
+            output_object_key="edits/edit_fallback_receipt/render_jobs/render_fallback_receipt/final.mp4",
+            render_log_object_key="edits/edit_fallback_receipt/render_jobs/render_fallback_receipt/render_log.json",
+            duration_seconds=5.0,
+            plan_version="edit-plan-v1",
+            template_id="personal_highlight_v1",
+            plan_tier="free",
+            idempotency_key="idem-fallback-receipt",
+        )
+        summary = GPTHighlightRerankSummary(
+            status="fallback",
+            model="gpt-test",
+            keptClipIds=["complete_make"],
+            rejectedClipIds=["tiny", "pre_basket"],
+            rejectedReasonCounts={"candidate_missing_minimum_quality_context": 2},
+            fallbackReason="openai_unavailable",
+        )
+
+        receipt = build_ai_work_receipt(render_job, edit_job.plan, edit_request.clips, summary)
+
+        self.assertEqual(receipt.gptRerankKeptClipCount, 1)
+        self.assertEqual(receipt.gptRerankRejectedClipCount, 2)
+        self.assertIn("GPT rerank fallback: openai_unavailable.", receipt.summaryRows)
+        self.assertIn("Fallback kept 1 render-worthy clip after quality checks.", receipt.summaryRows)
+        self.assertIn("Fallback rejected clips: candidate_missing_minimum_quality_context x2.", receipt.summaryRows)
 
     def test_create_edit_job_gpt_all_rejected_returns_empty_clip_validation_error(self) -> None:
         original_reranker = editing_main.rerank_edit_request_with_gpt
@@ -1036,10 +1382,10 @@ class EditingServiceTests(unittest.TestCase):
                     keep=True,
                     highlightScore=0.99,
                     watchabilityScore=0.95,
-                    basketballEvent="Made Shot",
-                    outcome="made",
-                    caption="BUCKET",
-                    reason="Clean shot outcome and watchable finish.",
+                    basketballEvent="Steal",
+                    outcome="steal",
+                    caption="PICKED",
+                    reason="Clean defensive possession change and watchable finish.",
                     qualitySignals=_quality_signals(),
                     shotResultEvidence=_shot_result_evidence(),
                     shotTrackingEvidence=_shot_tracking_evidence(),
@@ -1074,7 +1420,48 @@ class EditingServiceTests(unittest.TestCase):
             os.environ["HOOPS_OPENAI_API_KEY"] = "test-key"
             editing_main.rerank_edit_request_with_gpt = fake_reranker
             client = TestClient(editing_main.create_app(self._settings()))
-            edit_request = self._edit_request()
+            base_request = self._edit_request()
+            base_payload = base_request.model_dump(mode="json")
+            edit_request = CreateEditJobRequest.model_validate(
+                {
+                    **base_payload,
+                    "teamSelection": {
+                        "mode": "team",
+                        "teamId": "team_dark",
+                        "label": "Dark jerseys",
+                        "colorLabel": "black",
+                        "confidenceThreshold": 0.85,
+                        "includeUncertain": True,
+                    },
+                    "clips": [
+                        {
+                            **base_payload["clips"][0],
+                            "teamAttribution": {
+                                "teamId": "team_dark",
+                                "label": "Dark jerseys",
+                                "colorLabel": "black",
+                                "confidence": 0.92,
+                                "source": "quick_scan",
+                                "evidenceFrameRefs": ["clip_0_setup", "clip_0_result"],
+                                "evidenceRoleGroups": ["setup", "outcome"],
+                            },
+                        },
+                        {
+                            **base_payload["clips"][1],
+                            "label": "Steal",
+                            "teamAttribution": {
+                                "teamId": "team_light",
+                                "label": "Light jerseys",
+                                "colorLabel": "white",
+                                "confidence": 0.64,
+                                "source": "quick_scan",
+                            },
+                            "teamAttributionStatus": "uncertain",
+                            "userReviewDecision": "kept",
+                        },
+                    ],
+                }
+            )
             create_payload = client.post("/v1/edit-jobs", json=edit_request.model_dump()).json()
 
             render_response = client.post(
@@ -1094,11 +1481,23 @@ class EditingServiceTests(unittest.TestCase):
             self.assertEqual(render_payload["workReceipt"]["gptRerankSampledFrameCount"], 6)
             self.assertEqual(render_payload["workReceipt"]["gptRerankKeptClipCount"], 1)
             self.assertEqual(render_payload["workReceipt"]["gptRerankRejectedClipCount"], 1)
+            self.assertEqual(render_payload["workReceipt"]["gptUncertainReviewClipCount"], 1)
+            self.assertEqual(render_payload["workReceipt"]["gptUncertainReviewClipIds"], ["c2"])
             self.assertEqual(render_payload["workReceipt"]["gptRerankRejectedReasonCounts"]["unclear_or_non_basketball_outcome"], 1)
             self.assertEqual(render_payload["workReceipt"]["gptRerankStoryOrderClipIds"], ["c2"])
+            self.assertEqual(render_payload["workReceipt"]["teamUncertainCandidateCount"], 1)
+            self.assertEqual(render_payload["workReceipt"]["teamUncertainSelectedClipCount"], 1)
+            self.assertEqual(render_payload["workReceipt"]["defensiveSelectedClipCount"], 1)
+            self.assertEqual(render_payload["workReceipt"]["timingQualitySelectedClipCount"], 1)
+            self.assertEqual(render_payload["workReceipt"]["timingIssueCandidateCount"], 0)
+            self.assertEqual(render_payload["workReceipt"]["timingIssueSelectedClipCount"], 0)
             self.assertIn("GPT reranked 2 clips from 6 keyframes.", render_payload["workReceipt"]["summaryRows"])
             self.assertIn("GPT rejected clips: unclear_or_non_basketball_outcome x1.", render_payload["workReceipt"]["summaryRows"])
             self.assertIn("GPT story order applied to 1 candidate clip.", render_payload["workReceipt"]["summaryRows"])
+            self.assertIn("Kept 1 uncertain team candidate available for Review.", render_payload["workReceipt"]["summaryRows"])
+            self.assertIn("Kept 1 uncertain team clip for review.", render_payload["workReceipt"]["summaryRows"])
+            self.assertIn("Included 1 defensive highlight.", render_payload["workReceipt"]["summaryRows"])
+            self.assertIn("Timing quality: 1 selected clip passed context checks.", render_payload["workReceipt"]["summaryRows"])
         finally:
             editing_main.rerank_edit_request_with_gpt = original_reranker
             if old_enabled is None:
@@ -1130,6 +1529,13 @@ class EditingServiceTests(unittest.TestCase):
         self.assertEqual(render_payload["aspectRatio"], "9:16")
         self.assertFalse(render_payload["workReceipt"]["gptRerankApplied"])
         self.assertEqual(render_payload["workReceipt"]["gptRerankFallbackReason"], "feature_flag_disabled")
+        self.assertEqual(render_payload["workReceipt"]["gptRerankKeptClipCount"], 2)
+        self.assertEqual(render_payload["workReceipt"]["gptRerankRejectedClipCount"], 0)
+        self.assertIn("GPT rerank disabled: feature_flag_disabled.", render_payload["workReceipt"]["summaryRows"])
+        self.assertIn(
+            "Fallback kept 2 render-worthy clips after quality checks.",
+            render_payload["workReceipt"]["summaryRows"],
+        )
 
         rerender_response = client.post(
             f"/v1/edit-jobs/{create_payload['editJobId']}/render",
@@ -1166,6 +1572,168 @@ class EditingServiceTests(unittest.TestCase):
         self.assertIn(rerender_response.json()["renderJobId"], history_ids)
         self.assertIn(rerender_without_key_response.json()["renderJobId"], history_ids)
         self.assertNotIn("downloadUrl", json.dumps(history_payload))
+
+    @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "ffmpeg and ffprobe are required")
+    def test_stored_edit_render_uses_cloud_plan_and_render_eligible_source_clips(self) -> None:
+        client = TestClient(create_app(self._settings()))
+        edit_request = CreateEditJobRequest(
+            videoId="video_canonical_render_123",
+            analysisJobId="analysis_canonical_render_123",
+            installId="install-123",
+            sourceObjectKey=self._source_key(),
+            preset="personal_highlight",
+            targetDurationSeconds=15,
+            aspectRatio="9:16",
+            planTier="free",
+            teamSelection={
+                "mode": "team",
+                "teamId": "team_dark",
+                "label": "Dark jerseys",
+                "colorLabel": "black",
+                "confidenceThreshold": 0.85,
+                "includeUncertain": True,
+            },
+            clips=[
+                {
+                    **_clip("dark_make", 0.0, "Made Shot", 0.94),
+                    "teamAttribution": {
+                        "teamId": "team_dark",
+                        "label": "Dark jerseys",
+                        "colorLabel": "black",
+                        "confidence": 0.93,
+                        "source": "quick_scan",
+                        "evidenceFrameRefs": ["dark_setup", "dark_result"],
+                        "evidenceRoleGroups": ["setup", "outcome"],
+                    },
+                },
+                {
+                    **_clip("uncertain_steal", 8.0, "Steal", 0.86),
+                    "teamAttribution": {
+                        "teamId": "team_light",
+                        "label": "Light jerseys",
+                        "colorLabel": "white",
+                        "confidence": 0.64,
+                        "source": "quick_scan",
+                    },
+                    "teamAttributionStatus": "uncertain",
+                },
+            ],
+        )
+        create_payload = client.post("/v1/edit-jobs", json=edit_request.model_dump()).json()
+        plan_payload = client.get(
+            f"/v1/edit-jobs/{create_payload['editJobId']}/plan",
+            params={"installId": edit_request.installId},
+        ).json()
+        client_plan_override = dict(plan_payload["plan"])
+        client_plan_override["aspectRatio"] = "16:9"
+
+        render_response = client.post(
+            f"/v1/edit-jobs/{create_payload['editJobId']}/render",
+            json={
+                "installId": edit_request.installId,
+                "sourceObjectKey": "sources/client-override-should-not-render.mp4",
+                "planTier": "pro",
+                "editPlan": client_plan_override,
+                "sourceClips": [edit_request.clips[1].model_dump(mode="json")],
+                "idempotencyKey": "canonical-render-source-001",
+                "forceNew": True,
+            },
+        )
+
+        self.assertEqual(render_response.status_code, 200)
+        status_response = client.get(
+            f"/v1/render-jobs/{render_response.json()['renderJobId']}",
+            params={"installId": edit_request.installId},
+        )
+        self.assertEqual(status_response.status_code, 200)
+        render_payload = status_response.json()
+        self.assertEqual(render_payload["status"], "rendered")
+        self.assertEqual(render_payload["aspectRatio"], "9:16")
+        self.assertEqual(render_payload["planTier"], "free")
+        self.assertNotEqual(render_payload.get("failureReason"), "source_missing")
+        self.assertEqual(render_payload["workReceipt"]["teamUncertainSelectedClipCount"], 0)
+        self.assertEqual(render_payload["workReceipt"]["teamUncertainCandidateCount"], 0)
+
+    @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "ffmpeg and ffprobe are required")
+    def test_raw_render_endpoint_uses_stored_cloud_plan_for_edit_jobs(self) -> None:
+        client = TestClient(create_app(self._settings()))
+        edit_request = CreateEditJobRequest(
+            videoId="video_raw_canonical_render_123",
+            analysisJobId="analysis_raw_canonical_render_123",
+            installId="install-123",
+            sourceObjectKey=self._source_key(),
+            preset="personal_highlight",
+            targetDurationSeconds=15,
+            aspectRatio="9:16",
+            planTier="free",
+            teamSelection={
+                "mode": "team",
+                "teamId": "team_dark",
+                "label": "Dark jerseys",
+                "colorLabel": "black",
+                "confidenceThreshold": 0.85,
+                "includeUncertain": True,
+            },
+            clips=[
+                {
+                    **_clip("dark_make", 0.0, "Made Shot", 0.94),
+                    "teamAttribution": {
+                        "teamId": "team_dark",
+                        "label": "Dark jerseys",
+                        "colorLabel": "black",
+                        "confidence": 0.93,
+                        "source": "quick_scan",
+                        "evidenceFrameRefs": ["dark_setup", "dark_result"],
+                        "evidenceRoleGroups": ["setup", "outcome"],
+                    },
+                },
+                {
+                    **_clip("uncertain_steal", 8.0, "Steal", 0.86),
+                    "teamAttribution": {
+                        "teamId": "team_light",
+                        "label": "Light jerseys",
+                        "colorLabel": "white",
+                        "confidence": 0.64,
+                        "source": "quick_scan",
+                    },
+                    "teamAttributionStatus": "uncertain",
+                },
+            ],
+        )
+        create_payload = client.post("/v1/edit-jobs", json=edit_request.model_dump()).json()
+        plan_payload = client.get(
+            f"/v1/edit-jobs/{create_payload['editJobId']}/plan",
+            params={"installId": edit_request.installId},
+        ).json()
+        client_plan_override = dict(plan_payload["plan"])
+        client_plan_override["aspectRatio"] = "16:9"
+
+        render_response = client.post(
+            "/v1/render-jobs",
+            json={
+                "editJobId": create_payload["editJobId"],
+                "installId": edit_request.installId,
+                "sourceObjectKey": "sources/raw-client-override-should-not-render.mp4",
+                "planTier": "pro",
+                "editPlan": client_plan_override,
+                "sourceClips": [edit_request.clips[1].model_dump(mode="json")],
+                "idempotencyKey": "raw-canonical-render-source-001",
+            },
+        )
+
+        self.assertEqual(render_response.status_code, 200)
+        status_response = client.get(
+            f"/v1/render-jobs/{render_response.json()['renderJobId']}",
+            params={"installId": edit_request.installId},
+        )
+        self.assertEqual(status_response.status_code, 200)
+        render_payload = status_response.json()
+        self.assertEqual(render_payload["status"], "rendered")
+        self.assertEqual(render_payload["aspectRatio"], "9:16")
+        self.assertEqual(render_payload["planTier"], "free")
+        self.assertNotEqual(render_payload.get("failureReason"), "source_missing")
+        self.assertEqual(render_payload["workReceipt"]["teamUncertainSelectedClipCount"], 0)
+        self.assertEqual(render_payload["workReceipt"]["teamUncertainCandidateCount"], 0)
 
     @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "ffmpeg and ffprobe are required")
     def test_render_revision_produces_latest_download_url(self) -> None:

@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Literal, Mapping, Optional, Sequence, Tuple
 from pydantic import Field, ValidationError, field_validator, model_validator
 
 from .models import APIModel, ClipTeamAttribution, TeamSelection, now_utc
+from .team_identity import team_identity_matches, team_key
 
 
 PresetId = Literal[
@@ -46,6 +47,11 @@ ShotTrackingFrameRole = Literal[
     "postOutcome",
     "finish",
     "midAction",
+    "defenseSetup",
+    "challenge",
+    "possessionChange",
+    "recovery",
+    "defenseOutcome",
 ]
 UserPromptStyleIntent = Literal[
     "more_hype",
@@ -98,16 +104,31 @@ RENDER_MODE = "cloud_ffmpeg"
 MIN_PLAN_CLIP_SECONDS = 2.0
 MIN_GPT_HIGHLIGHT_SCORE = 0.55
 MIN_GPT_WATCHABILITY_SCORE = 0.5
-MIN_SHOT_CONTEXT_LEAD_IN_SECONDS = 0.9
-MIN_SHOT_CONTEXT_FOLLOW_THROUGH_SECONDS = 0.6
+MIN_GPT_DEFENSIVE_OUTCOME_CONFIDENCE = 0.65
+MIN_SHOT_CONTEXT_LEAD_IN_SECONDS = 1.2
+MIN_SHOT_CONTEXT_FOLLOW_THROUGH_SECONDS = 0.8
+MIN_DEFENSIVE_CONTEXT_LEAD_IN_SECONDS = 0.6
+MIN_DEFENSIVE_CONTEXT_FOLLOW_THROUGH_SECONDS = 0.5
+MIN_NON_SHOT_CONTEXT_LEAD_IN_SECONDS = MIN_SHOT_CONTEXT_LEAD_IN_SECONDS
+MIN_NON_SHOT_CONTEXT_FOLLOW_THROUGH_SECONDS = MIN_SHOT_CONTEXT_FOLLOW_THROUGH_SECONDS
 TARGET_SHOT_CONTEXT_LEAD_IN_SECONDS = 1.6
 TARGET_SHOT_CONTEXT_FOLLOW_THROUGH_SECONDS = 1.0
 MIN_SHOT_LIKE_CLIP_SECONDS = 3.0
+MIN_DEFENSIVE_LIKE_CLIP_SECONDS = 2.0
+MIN_NON_SHOT_LIKE_CLIP_SECONDS = 2.5
+MIN_MISSED_RIM_SEQUENCE_CONFIDENCE = 0.65
 MIN_NON_SHOT_PLANNING_SCORE = 0.5
 MIN_NON_SHOT_WATCHABILITY_SCORE = 0.42
 MIN_GENERIC_HIGHLIGHT_PLANNING_SCORE = 0.62
 MIN_GENERIC_HIGHLIGHT_WATCHABILITY_SCORE = 0.5
 MIN_NATIVE_OUTCOME_CONFLICT_CONFIDENCE = 0.65
+GPT_CANDIDATE_REVIEW_LIMIT = 60
+GPT_NON_SCORING_DEFENSIVE_OUTCOMES = {"steal", "forced_turnover", "defensive_stop"}
+GPT_SHOT_RESULT_OUTCOMES = {"made", "missed", "blocked"}
+TEAM_EVIDENCE_REQUIRED_SOURCES = {"quick_scan", "gpt_frame_review", "provider", "unknown"}
+MIN_CONFIDENT_TEAM_EVIDENCE_FRAME_REFS = 2
+MIN_CONFIDENT_TEAM_EVIDENCE_ROLE_GROUPS = 2
+BLOCKED_SHOT_TRACKING_ROLES = {"eventCenter", "finish", "challenge", "defenseOutcome", "recovery", "possessionChange"}
 SHOT_TRACKING_RELEASE_ROLES = {"preEvent", "release", "eventCenter"}
 SHOT_TRACKING_BALL_FLIGHT_ROLES = {
     "release",
@@ -130,6 +151,8 @@ SHOT_TRACKING_RICH_RELEASE_ROLES = {"release"}
 SHOT_TRACKING_RICH_ARC_ROLES = {"shotArcEarly", "shotArcLate"}
 SHOT_TRACKING_RICH_RESULT_ROLES = {"outcome", "shotArcLate", "rimApproach", "rim", "rimEntry", "belowRim", "postOutcome"}
 SHOT_TRACKING_RICH_RIM_ROLES = {"rimApproach", "rim", "rimEntry", "belowRim", "postOutcome"}
+DEFENSIVE_TRACKING_EVENT_ROLES = {"challenge", "possessionChange", "recovery", "defenseOutcome"}
+DEFENSIVE_TRACKING_RESULT_ROLES = {"possessionChange", "recovery", "defenseOutcome", "finish"}
 TEMPLATE_MIN_CLIP_TOLERANCE = 0.85
 MAX_CAPTION_LENGTH = 24
 MAX_DURATION_OVERRUN_SECONDS = 6.0
@@ -298,6 +321,17 @@ class NativeShotSignals(APIModel):
     timingWindowOk: bool = False
     outcome: Literal["made", "missed", "blocked", "uncertain", "not_shot"] = "uncertain"
     outcomeConfidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    outcomeEvidenceSource: Literal[
+        "label_only",
+        "native_shot_signals",
+        "defensive_event",
+        "gpt_shot_tracking",
+        "gpt_defensive_tracking",
+        "non_shot",
+        "uncertain",
+        "not_shot",
+    ] = "uncertain"
+    outcomeReliabilityScore: float = Field(default=0.0, ge=0.0, le=1.0)
 
 
 class EditCandidateClip(APIModel):
@@ -315,6 +349,8 @@ class EditCandidateClip(APIModel):
     duplicateGroup: Optional[str] = Field(default=None, max_length=80)
     nativeShotSignals: Optional[NativeShotSignals] = None
     teamAttribution: Optional[ClipTeamAttribution] = None
+    teamAttributionStatus: Optional[Literal["all", "matched", "opponent", "uncertain"]] = None
+    userReviewDecision: Optional[Literal["kept", "discarded", "unreviewed"]] = None
     captionHint: Optional[str] = Field(default=None, max_length=MAX_CAPTION_LENGTH)
     gptHighlightScore: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     gptWatchabilityScore: Optional[float] = Field(default=None, ge=0.0, le=1.0)
@@ -328,6 +364,11 @@ class EditCandidateClip(APIModel):
     gptStoryOrderIndex: Optional[int] = Field(default=None, ge=0)
     gptStoryRole: Optional[StoryRole] = None
     rerankSource: Optional[str] = Field(default=None, max_length=80)
+    gptOutcome: Optional[
+        Literal["made", "missed", "blocked", "steal", "forced_turnover", "defensive_stop"]
+    ] = None
+    gptOutcomeReliabilityScore: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    gptOutcomeEvidenceSource: Optional[Literal["gpt_shot_tracking", "gpt_defensive_tracking"]] = None
 
     @model_validator(mode="after")
     def validate_bounds(self) -> "EditCandidateClip":
@@ -968,7 +1009,7 @@ class CreateEditJobRequest(APIModel):
     revenueCatAppUserID: Optional[str] = Field(default=None, min_length=1, max_length=160)
     userPrompt: Optional[str] = Field(default=None, max_length=240)
     teamSelection: Optional[TeamSelection] = None
-    clips: List[EditCandidateClip] = Field(min_length=1, max_length=30)
+    clips: List[EditCandidateClip] = Field(min_length=1, max_length=GPT_CANDIDATE_REVIEW_LIMIT)
     gptRerankSummary: Optional["GPTHighlightRerankSummary"] = None
 
     @field_validator("userPrompt")
@@ -1059,7 +1100,7 @@ class GPTHighlightClipDecision(APIModel):
     highlightScore: float = Field(ge=0.0, le=1.0)
     watchabilityScore: float = Field(ge=0.0, le=1.0)
     basketballEvent: str = Field(min_length=1, max_length=80)
-    outcome: Literal["made", "missed", "blocked", "unclear", "not_basketball"]
+    outcome: Literal["made", "missed", "blocked", "steal", "forced_turnover", "defensive_stop", "unclear", "not_basketball"]
     caption: str = Field(max_length=MAX_CAPTION_LENGTH)
     reason: str = Field(min_length=1, max_length=180)
     storyRole: StoryRole = "filler"
@@ -1089,10 +1130,10 @@ class GPTPlanEditSlowMotionMoment(APIModel):
 
 
 class GPTPlanEdit(APIModel):
-    orderedClipIds: List[str] = Field(default_factory=list, max_length=30)
+    orderedClipIds: List[str] = Field(default_factory=list, max_length=GPT_CANDIDATE_REVIEW_LIMIT)
     pacing: Literal["fast", "balanced", "cinematic", "chronological", "coach_review"] = "balanced"
-    captions: List[GPTPlanEditCaption] = Field(default_factory=list, max_length=30)
-    slowMotionMoments: List[GPTPlanEditSlowMotionMoment] = Field(default_factory=list, max_length=30)
+    captions: List[GPTPlanEditCaption] = Field(default_factory=list, max_length=GPT_CANDIDATE_REVIEW_LIMIT)
+    slowMotionMoments: List[GPTPlanEditSlowMotionMoment] = Field(default_factory=list, max_length=GPT_CANDIDATE_REVIEW_LIMIT)
     summary: Optional[str] = Field(default=None, max_length=240)
 
 
@@ -1102,10 +1143,11 @@ class GPTHighlightRerankSummary(APIModel):
     sampledClipCount: int = Field(default=0, ge=0)
     sampledFrameCount: int = Field(default=0, ge=0)
     returnedDecisionCount: int = Field(default=0, ge=0)
-    keptClipIds: List[str] = Field(default_factory=list, max_length=30)
-    rejectedClipIds: List[str] = Field(default_factory=list, max_length=30)
+    keptClipIds: List[str] = Field(default_factory=list, max_length=GPT_CANDIDATE_REVIEW_LIMIT)
+    rejectedClipIds: List[str] = Field(default_factory=list, max_length=GPT_CANDIDATE_REVIEW_LIMIT)
+    uncertainReviewClipIds: List[str] = Field(default_factory=list, max_length=GPT_CANDIDATE_REVIEW_LIMIT)
     rejectedReasonCounts: Dict[str, int] = Field(default_factory=dict)
-    storyOrderClipIds: List[str] = Field(default_factory=list, max_length=30)
+    storyOrderClipIds: List[str] = Field(default_factory=list, max_length=GPT_CANDIDATE_REVIEW_LIMIT)
     planEditApplied: bool = False
     fallbackReason: Optional[str] = Field(default=None, max_length=120)
 
@@ -1589,6 +1631,8 @@ class EditJobResponse(APIModel):
     aspectRatio: AspectRatio
     clipCount: int
     validationErrors: List[EditPlanValidationIssue]
+    gptUncertainReviewClipIds: List[str] = Field(default_factory=list, max_length=GPT_CANDIDATE_REVIEW_LIMIT)
+    gptUncertainReviewClipCount: int = 0
 
 
 class EditPlanResponse(APIModel):
@@ -1643,6 +1687,16 @@ class StoredEditJob:
             aspectRatio=self.plan.aspectRatio,
             clipCount=len(self.plan.clips),
             validationErrors=self.validation_errors,
+            gptUncertainReviewClipIds=(
+                self.request.gptRerankSummary.uncertainReviewClipIds
+                if self.request.gptRerankSummary is not None
+                else []
+            ),
+            gptUncertainReviewClipCount=(
+                len(self.request.gptRerankSummary.uncertainReviewClipIds)
+                if self.request.gptRerankSummary is not None
+                else 0
+            ),
         )
 
     def to_plan_response(self) -> EditPlanResponse:
@@ -1672,10 +1726,7 @@ def summarize_clip_pool(clips: Sequence[EditCandidateClip]) -> Dict[str, object]
 
 
 def _team_key(value: Optional[str]) -> Optional[str]:
-    if value is None:
-        return None
-    normalized = " ".join(value.strip().lower().split())
-    return normalized or None
+    return team_key(value)
 
 
 def _team_selection_payload(team_selection: Optional[TeamSelection]) -> Dict[str, object]:
@@ -1697,33 +1748,96 @@ def team_attribution_status(
 ) -> Literal["all", "matched", "opponent", "uncertain"]:
     if team_selection is None or team_selection.mode == "all":
         return "all"
+    if clip.teamAttributionStatus == "uncertain":
+        return "uncertain"
     attribution = clip.teamAttribution
     if attribution is None:
         return "uncertain"
     if attribution.confidence < team_selection.confidenceThreshold:
         return "uncertain"
+    if _team_evidence_required(attribution) and not _has_confident_team_evidence(attribution):
+        return "uncertain"
 
     selected_team_id = _team_key(team_selection.teamId)
-    selected_color = _team_key(team_selection.colorLabel)
     clip_team_id = _team_key(attribution.teamId)
-    clip_color = _team_key(attribution.colorLabel)
-    if selected_team_id and clip_team_id and selected_team_id == clip_team_id:
+    if team_identity_matches(
+        selected_team_id=team_selection.teamId,
+        selected_color_label=team_selection.colorLabel,
+        selected_label=team_selection.label,
+        candidate_team_id=attribution.teamId,
+        candidate_color_label=attribution.colorLabel,
+        candidate_label=attribution.label,
+    ):
         return "matched"
-    if selected_color and clip_color and selected_color == clip_color:
-        return "matched"
+    if selected_team_id and clip_team_id and selected_team_id != clip_team_id:
+        return "opponent"
     return "opponent"
+
+
+def _team_evidence_required(attribution: ClipTeamAttribution) -> bool:
+    source = (attribution.source or "").strip().lower()
+    return source in TEAM_EVIDENCE_REQUIRED_SOURCES
+
+
+def _has_confident_team_evidence(attribution: ClipTeamAttribution) -> bool:
+    frame_refs = {ref for ref in attribution.evidenceFrameRefs if ref}
+    role_groups = {group for group in attribution.evidenceRoleGroups if group}
+    return (
+        len(frame_refs) >= MIN_CONFIDENT_TEAM_EVIDENCE_FRAME_REFS
+        and len(role_groups) >= MIN_CONFIDENT_TEAM_EVIDENCE_ROLE_GROUPS
+    )
+
+
+def team_evidence_summary(clip: EditCandidateClip) -> Dict[str, object]:
+    attribution = clip.teamAttribution
+    if attribution is None:
+        return {
+            "status": "missing_attribution",
+            "evidenceBacked": False,
+            "frameRefCount": 0,
+            "roleGroupCount": 0,
+            "requiresEvidence": False,
+            "reasons": ["missing_attribution"],
+        }
+
+    frame_ref_count = len({ref for ref in attribution.evidenceFrameRefs if ref})
+    role_group_count = len({group for group in attribution.evidenceRoleGroups if group})
+    requires_evidence = _team_evidence_required(attribution)
+    evidence_backed = not requires_evidence or _has_confident_team_evidence(attribution)
+    reasons: list[str] = []
+    if requires_evidence and frame_ref_count < MIN_CONFIDENT_TEAM_EVIDENCE_FRAME_REFS:
+        reasons.append("insufficient_evidence_frame_refs")
+    if requires_evidence and role_group_count < MIN_CONFIDENT_TEAM_EVIDENCE_ROLE_GROUPS:
+        reasons.append("insufficient_evidence_role_groups")
+    status = "evidence_backed" if evidence_backed else "weak_evidence"
+    return {
+        "status": status,
+        "evidenceBacked": evidence_backed,
+        "frameRefCount": frame_ref_count,
+        "roleGroupCount": role_group_count,
+        "requiresEvidence": requires_evidence,
+        "reasons": reasons,
+    }
 
 
 def filter_clips_for_team_selection(
     clips: Sequence[EditCandidateClip],
     team_selection: Optional[TeamSelection],
+    *,
+    include_review_only_uncertain: bool = True,
 ) -> List[EditCandidateClip]:
     if team_selection is None or team_selection.mode == "all":
         return list(clips)
     filtered: List[EditCandidateClip] = []
     for clip in clips:
         status = team_attribution_status(clip, team_selection)
-        if status == "matched" or (status == "uncertain" and team_selection.includeUncertain):
+        if status == "matched":
+            filtered.append(clip)
+        elif (
+            status == "uncertain"
+            and team_selection.includeUncertain
+            and (include_review_only_uncertain or clip.userReviewDecision == "kept")
+        ):
             filtered.append(clip)
     return filtered
 
@@ -1757,9 +1871,16 @@ def _compact_agent_candidate_clip(
         "audioPeak": clip.audioPeak,
         "watchabilityScore": clip.watchability,
         "duplicateGroup": clip.duplicateGroup,
+        "userReviewDecision": clip.userReviewDecision,
         "teamAttribution": clip.teamAttribution.model_dump(mode="json") if clip.teamAttribution is not None else None,
         "teamAttributionStatus": team_attribution_status(clip, team_selection),
+        "teamEvidence": team_evidence_summary(clip),
         "nativeShotSignals": native_shot_signals_for_clip(clip).model_dump(mode="json"),
+        "outcomeEvidenceSource": clip_outcome_evidence_source(clip),
+        "outcomeReliabilityScore": clip_outcome_reliability_score(clip),
+        "gptOutcome": clip.gptOutcome,
+        "gptOutcomeEvidenceSource": clip.gptOutcomeEvidenceSource,
+        "gptOutcomeReliabilityScore": clip.gptOutcomeReliabilityScore,
     }
 
 
@@ -1810,12 +1931,19 @@ def build_agent_editing_context(
         },
         "teamTargeting": _team_selection_payload(teamSelection),
         "clipPoolSummary": _clip_pool_summary_payload(clipPoolSummary),
-        "candidateClips": [_compact_agent_candidate_clip(clip, teamSelection) for clip in rank_clips(filtered_candidates)[:30]],
+        "candidateClips": [
+            _compact_agent_candidate_clip(clip, teamSelection)
+            for clip in rank_clips(filtered_candidates)[:GPT_CANDIDATE_REVIEW_LIMIT]
+        ],
     }
 
 
 def build_edit_context(request: CreateEditJobRequest) -> EditContext:
-    team_filtered_clips = filter_clips_for_team_selection(request.clips, request.teamSelection)
+    team_filtered_clips = filter_clips_for_team_selection(
+        request.clips,
+        request.teamSelection,
+        include_review_only_uncertain=False,
+    )
     return EditContext(
         videoId=request.videoId,
         analysisJobId=request.analysisJobId,
@@ -1842,6 +1970,7 @@ def rank_clips(clips: Sequence[EditCandidateClip]) -> List[EditCandidateClip]:
         key=lambda clip: (
             1 if is_plan_quality_eligible_clip(clip) else 0,
             clip_context_quality_score(clip),
+            clip_outcome_reliability_score(clip),
             clip.planning_score,
             clip.watchability,
             clip.excitement,
@@ -1863,6 +1992,32 @@ def remove_duplicate_moments(clips: Sequence[EditCandidateClip]) -> List[EditCan
             best_by_group[clip.duplicateGroup] = clip
     unique.extend(best_by_group.values())
     return rank_clips(unique)
+
+
+def clip_outcome_reliability_score(clip: EditCandidateClip) -> float:
+    if clip.gptOutcomeReliabilityScore is not None:
+        return clip.gptOutcomeReliabilityScore
+    signals = native_shot_signals_for_clip(clip)
+    if signals.outcomeReliabilityScore > 0.0:
+        return signals.outcomeReliabilityScore
+    if is_defensive_event_like_clip(clip):
+        return 0.9
+    if not is_shot_like_clip(clip):
+        return 0.82
+    if signals.outcome == "not_shot":
+        return 0.0
+    if signals.outcome == "uncertain":
+        return 0.35
+    if clip.nativeShotSignals is None:
+        return round(0.42 + (min(max(clip.confidence, 0.0), 1.0) * 0.18), 4)
+    return round(0.58 + (min(max(signals.outcomeConfidence, 0.0), 1.0) * 0.42), 4)
+
+
+def clip_outcome_evidence_source(clip: EditCandidateClip) -> str:
+    if clip.gptOutcomeEvidenceSource is not None:
+        return clip.gptOutcomeEvidenceSource
+    signals = native_shot_signals_for_clip(clip)
+    return signals.outcomeEvidenceSource
 
 
 def order_by_gpt_story_order(clips: Sequence[EditCandidateClip]) -> List[EditCandidateClip]:
@@ -1927,6 +2082,7 @@ def select_best_clips(
     _, max_clip_seconds = preset.clipLengthRangeSeconds
     ranked_candidates = [clip for clip in remove_duplicate_moments(clips) if is_plan_quality_eligible_clip(clip)]
     selection_order = ranked_candidates
+    story_ordered: List[EditCandidateClip] = []
     if not preset.ordering.startswith("chronological"):
         story_ordered = [clip for clip in order_by_gpt_story_order(ranked_candidates) if clip.gptStoryOrderIndex is not None]
         if story_ordered:
@@ -1946,12 +2102,93 @@ def select_best_clips(
         selected.append(clip)
         duration_so_far += min(max_clip_seconds, clip.duration)
 
+    if not story_ordered:
+        selected = reserve_defensive_highlight_families(selected, ranked_candidates, target_seconds, max_clip_seconds)
+
     if preset.ordering.startswith("chronological"):
         selected.sort(key=lambda clip: clip.start)
     else:
         selected = order_by_gpt_story_order(selected)
 
     return selected
+
+
+def reserve_defensive_highlight_families(
+    selected: Sequence[EditCandidateClip],
+    ranked_candidates: Sequence[EditCandidateClip],
+    target_seconds: float,
+    max_clip_seconds: float,
+) -> List[EditCandidateClip]:
+    reserved = list(selected)
+    selected_ids = {clip.id for clip in reserved}
+    total_duration = sum(min(max_clip_seconds, clip.duration) for clip in reserved)
+
+    for family in ("block", "steal", "forced_turnover", "defensive_stop"):
+        if any(_defensive_highlight_family(clip) == family for clip in reserved):
+            continue
+        candidate = next(
+            (
+                clip
+                for clip in ranked_candidates
+                if clip.id not in selected_ids and _defensive_highlight_family(clip) == family
+            ),
+            None,
+        )
+        if candidate is None:
+            continue
+
+        candidate_duration = min(max_clip_seconds, candidate.duration)
+        if total_duration + candidate_duration <= target_seconds:
+            reserved.append(candidate)
+            selected_ids.add(candidate.id)
+            total_duration += candidate_duration
+            continue
+
+        replace_index = _defensive_reserve_replacement_index(reserved)
+        if replace_index is None:
+            continue
+        replaced = reserved[replace_index]
+        reserved[replace_index] = candidate
+        selected_ids.discard(replaced.id)
+        selected_ids.add(candidate.id)
+        total_duration = total_duration - min(max_clip_seconds, replaced.duration) + candidate_duration
+
+    return reserved
+
+
+def _defensive_reserve_replacement_index(selected: Sequence[EditCandidateClip]) -> Optional[int]:
+    replaceable = [
+        (index, clip)
+        for index, clip in enumerate(selected)
+        if _defensive_highlight_family(clip) is None and clip.gptStoryOrderIndex is None
+    ]
+    if not replaceable:
+        return None
+    index, _ = min(
+        replaceable,
+        key=lambda item: (
+            clip_context_quality_score(item[1]),
+            clip_outcome_reliability_score(item[1]),
+            item[1].planning_score,
+            item[1].watchability,
+            item[1].excitement,
+        ),
+    )
+    return index
+
+
+def _defensive_highlight_family(clip: EditCandidateClip) -> Optional[str]:
+    normalized = clip.label.strip().lower()
+    tokens = set(re.findall(r"[a-z0-9]+", normalized))
+    if tokens & {"block", "blocked", "contest"} or "blocked shot" in normalized:
+        return "block"
+    if tokens & {"steal", "strip"}:
+        return "steal"
+    if "turnover" in tokens and "unforced" not in tokens and tokens & {"forced", "force", "defensive", "defense"}:
+        return "forced_turnover"
+    if "stop" in tokens and (normalized == "stop" or "defensive stop" in normalized or "defense stop" in normalized):
+        return "defensive_stop"
+    return None
 
 
 def fit_to_duration(clips: Sequence[EditCandidateClip], target_seconds: float, preset: EditPreset) -> List[EditCandidateClip]:
@@ -1964,6 +2201,16 @@ def is_shot_like_clip(clip: EditCandidateClip) -> bool:
         token in normalized
         for token in ("shot", "bucket", "basket", "layup", "dunk", "finish", "jumper", "three", "3pt")
     )
+
+
+def is_defensive_event_like_clip(clip: EditCandidateClip) -> bool:
+    normalized = clip.label.strip().lower()
+    tokens = set(re.findall(r"[a-z0-9]+", normalized))
+    if tokens & {"defense", "defensive", "block", "blocked", "steal", "strip", "contest", "pressure", "lockdown"}:
+        return True
+    if "turnover" in tokens and "unforced" not in tokens and tokens & {"forced", "force", "defensive", "defense"}:
+        return True
+    return "stop" in tokens and (normalized == "stop" or "defensive stop" in normalized or "defense stop" in normalized)
 
 
 def native_shot_signals_for_clip(clip: EditCandidateClip) -> NativeShotSignals:
@@ -1985,18 +2232,35 @@ def native_shot_signals_for_clip(clip: EditCandidateClip) -> NativeShotSignals:
             + (balance_score * 0.18)
         )
         timing_window_ok = clip.duration >= MIN_SHOT_LIKE_CLIP_SECONDS and has_minimum_shot_context(clip)
+    elif is_defensive_event_like_clip(clip):
+        event_center_quality = defensive_event_context_quality_score(clip)
+        timing_window_ok = clip.duration >= MIN_DEFENSIVE_LIKE_CLIP_SECONDS and has_minimum_defensive_event_context(clip)
     else:
-        event_center_quality = 0.0
-        timing_window_ok = clip.duration >= MIN_PLAN_CLIP_SECONDS
+        event_center_quality = non_shot_event_context_quality_score(clip)
+        timing_window_ok = clip.duration >= MIN_NON_SHOT_LIKE_CLIP_SECONDS and has_minimum_non_shot_event_context(clip)
 
-    outcome, outcome_confidence = _native_outcome_hint_for_clip(clip, is_shot_like)
+    outcome, outcome_confidence, evidence_source, reliability_score = _native_outcome_hint_for_clip(clip, is_shot_like)
     incoming = clip.nativeShotSignals
     if incoming is not None and incoming.outcome in {"uncertain", "not_shot"}:
         outcome = incoming.outcome
         outcome_confidence = min(incoming.outcomeConfidence, clip.confidence)
+        if incoming.outcomeEvidenceSource != "uncertain":
+            evidence_source = incoming.outcomeEvidenceSource
+        elif incoming.outcome == "not_shot":
+            evidence_source = "defensive_event" if is_defensive_event_like_clip(clip) else "not_shot"
+        else:
+            evidence_source = "uncertain"
+        if incoming.outcomeReliabilityScore > 0.0:
+            reliability_score = incoming.outcomeReliabilityScore
+        elif incoming.outcome == "not_shot":
+            reliability_score = 0.9 if evidence_source == "defensive_event" else 0.82
+        else:
+            reliability_score = 0.35
     elif incoming is not None and incoming.outcome not in {"uncertain", "not_shot"}:
         outcome = incoming.outcome
         outcome_confidence = min(1.0, max(outcome_confidence, min(incoming.outcomeConfidence, clip.confidence)))
+        evidence_source = incoming.outcomeEvidenceSource if incoming.outcomeEvidenceSource != "uncertain" else "native_shot_signals"
+        reliability_score = incoming.outcomeReliabilityScore if incoming.outcomeReliabilityScore > 0.0 else min(1.0, 0.58 + (outcome_confidence * 0.42))
 
     return NativeShotSignals(
         isShotLike=is_shot_like,
@@ -2009,23 +2273,30 @@ def native_shot_signals_for_clip(clip: EditCandidateClip) -> NativeShotSignals:
         timingWindowOk=timing_window_ok,
         outcome=outcome,
         outcomeConfidence=round(outcome_confidence, 4),
+        outcomeEvidenceSource=evidence_source,
+        outcomeReliabilityScore=round(reliability_score, 4),
     )
 
 
-def _native_outcome_hint_for_clip(clip: EditCandidateClip, is_shot_like: bool) -> tuple[str, float]:
+def _native_outcome_hint_for_clip(clip: EditCandidateClip, is_shot_like: bool) -> tuple[str, float, str, float]:
+    confidence = min(max(clip.confidence, 0.0), 1.0)
+    if is_defensive_event_like_clip(clip):
+        if "block" in clip.label.strip().lower():
+            return "blocked", confidence, "defensive_event", min(0.78, 0.52 + (confidence * 0.26))
+        return "not_shot", 1.0, "defensive_event", 0.9
     if not is_shot_like:
-        return "not_shot", 1.0
+        return "not_shot", 1.0, "non_shot", 0.82
 
     normalized = clip.label.strip().lower()
     if "block" in normalized:
-        return "blocked", min(1.0, clip.confidence)
+        return "blocked", confidence, "label_only", min(0.68, 0.42 + (confidence * 0.18))
     if "miss" in normalized:
-        return "missed", min(1.0, clip.confidence * 0.85)
+        return "missed", min(1.0, confidence * 0.85), "label_only", min(0.68, 0.42 + (confidence * 0.18))
     if any(token in normalized for token in ("made", "bucket", "basket", "dunk")):
-        return "made", min(1.0, clip.confidence * 0.9)
+        return "made", min(1.0, confidence * 0.9), "label_only", min(0.68, 0.42 + (confidence * 0.18))
     if any(token in normalized for token in ("attempt", "layup", "finish")):
-        return "uncertain", 0.0
-    return "uncertain", 0.0
+        return "uncertain", 0.0, "uncertain", 0.35
+    return "uncertain", 0.0, "uncertain", 0.35
 
 
 def has_minimum_shot_context(clip: EditCandidateClip) -> bool:
@@ -2034,11 +2305,31 @@ def has_minimum_shot_context(clip: EditCandidateClip) -> bool:
     return lead_in >= MIN_SHOT_CONTEXT_LEAD_IN_SECONDS and follow_through >= MIN_SHOT_CONTEXT_FOLLOW_THROUGH_SECONDS
 
 
+def has_minimum_defensive_event_context(clip: EditCandidateClip) -> bool:
+    lead_in = max(0.0, clip.eventCenter - clip.start)
+    follow_through = max(0.0, clip.end - clip.eventCenter)
+    return (
+        lead_in >= MIN_DEFENSIVE_CONTEXT_LEAD_IN_SECONDS
+        and follow_through >= MIN_DEFENSIVE_CONTEXT_FOLLOW_THROUGH_SECONDS
+    )
+
+
+def has_minimum_non_shot_event_context(clip: EditCandidateClip) -> bool:
+    lead_in = max(0.0, clip.eventCenter - clip.start)
+    follow_through = max(0.0, clip.end - clip.eventCenter)
+    return (
+        lead_in >= MIN_NON_SHOT_CONTEXT_LEAD_IN_SECONDS
+        and follow_through >= MIN_NON_SHOT_CONTEXT_FOLLOW_THROUGH_SECONDS
+    )
+
+
 def clip_context_quality_score(clip: EditCandidateClip) -> float:
     if clip.duration < MIN_PLAN_CLIP_SECONDS:
         return 0.0
+    if is_defensive_event_like_clip(clip):
+        return defensive_event_context_quality_score(clip)
     if not is_shot_like_clip(clip):
-        return non_shot_clip_quality_score(clip)
+        return non_shot_event_context_quality_score(clip)
 
     lead_in = max(0.0, clip.eventCenter - clip.start)
     follow_through = max(0.0, clip.end - clip.eventCenter)
@@ -2054,6 +2345,42 @@ def clip_context_quality_score(clip: EditCandidateClip) -> float:
         balance_score = min(lead_in, follow_through) / max(lead_in, follow_through)
 
     score = (lead_score * 0.38) + (follow_score * 0.28) + (duration_score * 0.22) + (balance_score * 0.12)
+    return round(max(0.0, min(1.0, score)), 4)
+
+
+def defensive_event_context_quality_score(clip: EditCandidateClip) -> float:
+    if clip.duration < MIN_DEFENSIVE_LIKE_CLIP_SECONDS:
+        return 0.0
+    base_score = non_shot_clip_quality_score(clip)
+    lead_in = max(0.0, clip.eventCenter - clip.start)
+    follow_through = max(0.0, clip.end - clip.eventCenter)
+    lead_score = min(1.0, lead_in / MIN_DEFENSIVE_CONTEXT_LEAD_IN_SECONDS)
+    follow_score = min(1.0, follow_through / MIN_DEFENSIVE_CONTEXT_FOLLOW_THROUGH_SECONDS)
+    if lead_in <= 0.0 or follow_through <= 0.0:
+        balance_score = 0.0
+    else:
+        balance_score = min(lead_in, follow_through) / max(lead_in, follow_through)
+    score = (base_score * 0.55) + (lead_score * 0.2) + (follow_score * 0.15) + (balance_score * 0.1)
+    if not has_minimum_defensive_event_context(clip):
+        score = min(score, 0.49)
+    return round(max(0.0, min(1.0, score)), 4)
+
+
+def non_shot_event_context_quality_score(clip: EditCandidateClip) -> float:
+    if clip.duration < MIN_NON_SHOT_LIKE_CLIP_SECONDS:
+        return 0.0
+    base_score = non_shot_clip_quality_score(clip)
+    lead_in = max(0.0, clip.eventCenter - clip.start)
+    follow_through = max(0.0, clip.end - clip.eventCenter)
+    lead_score = min(1.0, lead_in / MIN_NON_SHOT_CONTEXT_LEAD_IN_SECONDS)
+    follow_score = min(1.0, follow_through / MIN_NON_SHOT_CONTEXT_FOLLOW_THROUGH_SECONDS)
+    if lead_in <= 0.0 or follow_through <= 0.0:
+        balance_score = 0.0
+    else:
+        balance_score = min(lead_in, follow_through) / max(lead_in, follow_through)
+    score = (base_score * 0.55) + (lead_score * 0.2) + (follow_score * 0.15) + (balance_score * 0.1)
+    if not has_minimum_non_shot_event_context(clip):
+        score = min(score, 0.49)
     return round(max(0.0, min(1.0, score)), 4)
 
 
@@ -2095,8 +2422,18 @@ def has_minimum_non_shot_quality(clip: EditCandidateClip) -> bool:
 def is_plan_quality_eligible_clip(clip: EditCandidateClip) -> bool:
     if clip.duration < MIN_PLAN_CLIP_SECONDS:
         return False
+    if is_defensive_event_like_clip(clip):
+        return (
+            clip.duration >= MIN_DEFENSIVE_LIKE_CLIP_SECONDS
+            and has_minimum_defensive_event_context(clip)
+            and has_minimum_non_shot_quality(clip)
+        )
     if not is_shot_like_clip(clip):
-        return has_minimum_non_shot_quality(clip)
+        return (
+            clip.duration >= MIN_NON_SHOT_LIKE_CLIP_SECONDS
+            and has_minimum_non_shot_event_context(clip)
+            and has_minimum_non_shot_quality(clip)
+        )
     if native_shot_signals_for_clip(clip).outcome == "not_shot":
         return False
     if clip.duration < MIN_SHOT_LIKE_CLIP_SECONDS:
@@ -2106,10 +2443,11 @@ def is_plan_quality_eligible_clip(clip: EditCandidateClip) -> bool:
     return True
 
 
-def _duplicate_choice_key(clip: EditCandidateClip) -> Tuple[int, float, float, float, float, float]:
+def _duplicate_choice_key(clip: EditCandidateClip) -> Tuple[int, float, float, float, float, float, float]:
     return (
         1 if is_plan_quality_eligible_clip(clip) else 0,
         clip_context_quality_score(clip),
+        clip_outcome_reliability_score(clip),
         clip.planning_score,
         clip.watchability,
         clip.excitement,
@@ -2143,6 +2481,8 @@ def _caption_for_clip(clip: EditCandidateClip, preset: EditPreset) -> str:
         signals = native_shot_signals_for_clip(clip)
         if signals.outcome in {"uncertain", "not_shot"} and _shot_label_overclaims_outcome(clip.label):
             return "GOOD LOOK"
+        if clip_outcome_evidence_source(clip) == "label_only" and _shot_label_asserts_scoring_result(clip.label):
+            return "GOOD LOOK"
         if signals.outcome == "missed":
             return "GOOD LOOK"
         if signals.outcome == "blocked":
@@ -2153,6 +2493,11 @@ def _caption_for_clip(clip: EditCandidateClip, preset: EditPreset) -> str:
 def _shot_label_overclaims_outcome(label: str) -> bool:
     normalized = label.strip().lower()
     return any(token in normalized for token in ("made", "bucket", "basket", "shot", "jumper", "attempt", "dunk", "finish"))
+
+
+def _shot_label_asserts_scoring_result(label: str) -> bool:
+    normalized = label.strip().lower()
+    return any(token in normalized for token in ("made", "bucket", "basket", "shot", "jumper", "three", "3pt"))
 
 
 def add_caption(label: str, preset: EditPreset) -> str:
@@ -2421,9 +2766,14 @@ def validate_edit_plan(
             add(f"{field_prefix}.source", "clip_too_short", "Clip is shorter than the minimum render duration.")
         if clip.sourceEnd - clip.sourceStart < minimum_template_clip_seconds:
             add(f"{field_prefix}.source", "template_clip_too_short", "Clip is shorter than the selected template minimum.")
-        if is_shot_like_clip(source):
-            lead_in = clip.eventCenter - clip.sourceStart
-            follow_through = clip.sourceEnd - clip.eventCenter
+        lead_in = clip.eventCenter - clip.sourceStart
+        follow_through = clip.sourceEnd - clip.eventCenter
+        if is_defensive_event_like_clip(source):
+            if lead_in < MIN_DEFENSIVE_CONTEXT_LEAD_IN_SECONDS:
+                add(f"{field_prefix}.source", "defensive_context_missing_setup", "Defensive clip starts too close to the basketball event.")
+            if follow_through < MIN_DEFENSIVE_CONTEXT_FOLLOW_THROUGH_SECONDS:
+                add(f"{field_prefix}.source", "defensive_context_missing_outcome", "Defensive clip ends before enough outcome context is visible.")
+        elif is_shot_like_clip(source):
             if lead_in < MIN_SHOT_CONTEXT_LEAD_IN_SECONDS:
                 add(f"{field_prefix}.source", "shot_context_missing_setup", "Shot clip starts too close to the basketball event.")
             if follow_through < MIN_SHOT_CONTEXT_FOLLOW_THROUGH_SECONDS:
@@ -2471,16 +2821,24 @@ def apply_gpt_highlight_rerank(
     plan_edit: Optional[GPTPlanEdit] = None,
     sampled_frame_roles_by_clip: Optional[Mapping[str, Sequence[str]]] = None,
 ) -> CreateEditJobRequest:
-    source_by_id = {clip.id: clip for clip in request.clips}
+    review_source_clips = filter_clips_for_team_selection(request.clips, request.teamSelection)
+    render_source_clips = filter_clips_for_team_selection(
+        request.clips,
+        request.teamSelection,
+        include_review_only_uncertain=False,
+    )
+    uncertain_review_clip_ids = uncertain_review_clip_ids_for_team_selection(request.clips, request.teamSelection)
+    review_source_by_id = {clip.id: clip for clip in review_source_clips}
+    render_source_by_id = {clip.id: clip for clip in render_source_clips}
     valid_decisions: Dict[str, GPTHighlightClipDecision] = {
-        decision.clipId: decision for decision in decisions if decision.clipId in source_by_id
+        decision.clipId: decision for decision in decisions if decision.clipId in review_source_by_id
     }
     valid_story_order: List[str] = []
     seen_story_ids = set()
     requested_story_order = plan_edit.orderedClipIds if plan_edit and plan_edit.orderedClipIds else list(story_order or [])
     for clip_id in requested_story_order:
         decision = valid_decisions.get(clip_id)
-        if clip_id in source_by_id and decision is not None and decision.keep and clip_id not in seen_story_ids:
+        if clip_id in render_source_by_id and decision is not None and decision.keep and clip_id not in seen_story_ids:
             valid_story_order.append(clip_id)
             seen_story_ids.add(clip_id)
     story_index_by_id = {clip_id: index for index, clip_id in enumerate(valid_story_order)}
@@ -2492,7 +2850,7 @@ def apply_gpt_highlight_rerank(
     applied_plan_slow_motion_clip_ids: set[str] = set()
 
     if not valid_decisions:
-        fallback_clips = rank_clips([clip for clip in request.clips if is_plan_quality_eligible_clip(clip)])
+        fallback_clips = rank_clips([clip for clip in render_source_clips if is_plan_quality_eligible_clip(clip)])
         fallback_clip_ids = {clip.id for clip in fallback_clips}
         rejected_clip_ids = [clip.id for clip in request.clips if clip.id not in fallback_clip_ids]
         rejected_reason_counts = {}
@@ -2504,8 +2862,9 @@ def apply_gpt_highlight_rerank(
             sampledClipCount=sampled_clip_count,
             sampledFrameCount=sampled_frame_count,
             returnedDecisionCount=len(decisions),
-            keptClipIds=[clip.id for clip in fallback_clips[:30]],
-            rejectedClipIds=rejected_clip_ids[:30],
+            keptClipIds=[clip.id for clip in fallback_clips[:GPT_CANDIDATE_REVIEW_LIMIT]],
+            rejectedClipIds=rejected_clip_ids[:GPT_CANDIDATE_REVIEW_LIMIT],
+            uncertainReviewClipIds=uncertain_review_clip_ids,
             rejectedReasonCounts=rejected_reason_counts,
             fallbackReason="no_valid_decisions",
         )
@@ -2514,16 +2873,24 @@ def apply_gpt_highlight_rerank(
     kept: List[EditCandidateClip] = []
     rejected_clip_ids: List[str] = []
     rejected_reason_counts: Dict[str, int] = {}
+    rejected_reason_by_clip_id: Dict[str, str] = {}
     missing_decision_clip_ids: List[str] = []
-    for clip in request.clips:
+    for clip in review_source_clips:
         decision = valid_decisions.get(clip.id)
         if decision is None:
             missing_decision_clip_ids.append(clip.id)
+            continue
+        if clip.id not in render_source_by_id:
+            rejection_reason = decision.rejectReason or "needs_manual_team_review"
+            rejected_clip_ids.append(clip.id)
+            rejected_reason_by_clip_id[clip.id] = rejection_reason
+            _increment_reason_count(rejected_reason_counts, rejection_reason)
             continue
         sampled_frame_roles = sampled_frame_roles_by_clip.get(clip.id) if sampled_frame_roles_by_clip is not None else None
         rejection_reason = _gpt_decision_rejection_reason(decision, clip, sampled_frame_roles)
         if rejection_reason is not None:
             rejected_clip_ids.append(clip.id)
+            rejected_reason_by_clip_id[clip.id] = rejection_reason
             _increment_reason_count(rejected_reason_counts, rejection_reason)
             continue
         event_label = decision.basketballEvent.strip() or clip.label
@@ -2548,6 +2915,10 @@ def apply_gpt_highlight_rerank(
                 "label": event_label[:80],
                 "captionHint": caption[:MAX_CAPTION_LENGTH],
                 "combinedScore": round((clip.planning_score * 0.25) + (decision.highlightScore * 0.55) + (decision.watchabilityScore * 0.2), 4),
+                "nativeShotSignals": _validated_gpt_native_shot_signals(clip, decision),
+                "gptOutcome": _validated_gpt_outcome(decision),
+                "gptOutcomeReliabilityScore": _validated_gpt_outcome_reliability_score(decision),
+                "gptOutcomeEvidenceSource": _validated_gpt_outcome_evidence_source(decision),
                 "gptHighlightScore": decision.highlightScore,
                 "gptWatchabilityScore": decision.watchabilityScore,
                 "gptReason": decision.reason,
@@ -2567,6 +2938,26 @@ def apply_gpt_highlight_rerank(
     if not kept:
         if missing_decision_clip_ids:
             _increment_reason_count(rejected_reason_counts, "missing_gpt_decision", len(missing_decision_clip_ids))
+        rescue_clips = _soft_gpt_rejection_rescue_clips(render_source_clips, rejected_reason_by_clip_id)
+        if rescue_clips:
+            rescue_clip_ids = {clip.id for clip in rescue_clips}
+            summary = GPTHighlightRerankSummary(
+                status="fallback",
+                model=model,
+                sampledClipCount=sampled_clip_count,
+                sampledFrameCount=sampled_frame_count,
+                returnedDecisionCount=len(valid_decisions),
+                keptClipIds=[clip.id for clip in rescue_clips[:GPT_CANDIDATE_REVIEW_LIMIT]],
+                rejectedClipIds=[clip_id for clip_id in (rejected_clip_ids + missing_decision_clip_ids) if clip_id not in rescue_clip_ids][
+                    :GPT_CANDIDATE_REVIEW_LIMIT
+                ],
+                uncertainReviewClipIds=uncertain_review_clip_ids,
+                rejectedReasonCounts=rejected_reason_counts,
+                fallbackReason="all_clips_rejected_rescued",
+                storyOrderClipIds=[],
+                planEditApplied=False,
+            )
+            return request.model_copy(update={"clips": rescue_clips, "gptRerankSummary": summary})
         summary = GPTHighlightRerankSummary(
             status="applied",
             model=model,
@@ -2574,7 +2965,8 @@ def apply_gpt_highlight_rerank(
             sampledFrameCount=sampled_frame_count,
             returnedDecisionCount=len(valid_decisions),
             keptClipIds=[],
-            rejectedClipIds=(rejected_clip_ids + missing_decision_clip_ids)[:30],
+            rejectedClipIds=(rejected_clip_ids + missing_decision_clip_ids)[:GPT_CANDIDATE_REVIEW_LIMIT],
+            uncertainReviewClipIds=uncertain_review_clip_ids,
             rejectedReasonCounts=rejected_reason_counts,
             fallbackReason="all_clips_rejected",
             storyOrderClipIds=[],
@@ -2606,7 +2998,8 @@ def apply_gpt_highlight_rerank(
         sampledFrameCount=sampled_frame_count,
         returnedDecisionCount=len(valid_decisions),
         keptClipIds=[clip.id for clip in reranked if clip.id in valid_decisions],
-        rejectedClipIds=(rejected_clip_ids + missing_decision_clip_ids)[:30],
+        rejectedClipIds=(rejected_clip_ids + missing_decision_clip_ids)[:GPT_CANDIDATE_REVIEW_LIMIT],
+        uncertainReviewClipIds=uncertain_review_clip_ids,
         rejectedReasonCounts=rejected_reason_counts,
         storyOrderClipIds=applied_story_order,
         planEditApplied=plan_edit_applied,
@@ -2614,8 +3007,119 @@ def apply_gpt_highlight_rerank(
     return request.model_copy(update={"clips": reranked, "gptRerankSummary": summary})
 
 
+def uncertain_review_clip_ids_for_team_selection(
+    clips: Sequence[EditCandidateClip],
+    team_selection: Optional[TeamSelection],
+) -> List[str]:
+    if team_selection is None or team_selection.mode != "team" or not team_selection.includeUncertain:
+        return []
+    reviewable = [
+        clip
+        for clip in clips
+        if team_attribution_status(clip, team_selection) == "uncertain"
+        and is_plan_quality_eligible_clip(clip)
+    ]
+    return [clip.id for clip in rank_clips(reviewable)[:GPT_CANDIDATE_REVIEW_LIMIT]]
+
+
 def _increment_reason_count(counts: Dict[str, int], reason: str, amount: int = 1) -> None:
     counts[reason] = counts.get(reason, 0) + amount
+
+
+SOFT_GPT_REJECTION_REASONS_FOR_RESCUE = {
+    "gpt_rejected",
+    "low_highlight_score",
+    "low_watchability_score",
+    "low_hype",
+    "low_energy",
+    "not_confident",
+    "not_sure",
+    "uncertain_but_reviewable",
+    "needs_review",
+    "not_enough_hype",
+    "not_top_play",
+    "editorial_reject",
+}
+
+
+def _soft_gpt_rejection_rescue_clips(
+    render_source_clips: Sequence[EditCandidateClip],
+    rejected_reason_by_clip_id: Mapping[str, str],
+) -> List[EditCandidateClip]:
+    rescue_candidates = [
+        clip
+        for clip in render_source_clips
+        if is_plan_quality_eligible_clip(clip)
+        and _is_soft_gpt_rejection_reason(rejected_reason_by_clip_id.get(clip.id))
+    ]
+    return rank_clips(remove_duplicate_moments(rescue_candidates))
+
+
+def _is_soft_gpt_rejection_reason(reason: Optional[str]) -> bool:
+    if reason is None:
+        return False
+    normalized = reason.strip().lower().replace(" ", "_").replace("-", "_")
+    return normalized in SOFT_GPT_REJECTION_REASONS_FOR_RESCUE
+
+
+def _validated_gpt_outcome(
+    decision: GPTHighlightClipDecision,
+) -> Optional[Literal["made", "missed", "blocked", "steal", "forced_turnover", "defensive_stop"]]:
+    if decision.outcome in GPT_SHOT_RESULT_OUTCOMES or decision.outcome in GPT_NON_SCORING_DEFENSIVE_OUTCOMES:
+        return decision.outcome  # type: ignore[return-value]
+    return None
+
+
+def _validated_gpt_outcome_evidence_source(
+    decision: GPTHighlightClipDecision,
+) -> Optional[Literal["gpt_shot_tracking", "gpt_defensive_tracking"]]:
+    if decision.outcome in {"made", "missed"}:
+        return "gpt_shot_tracking"
+    if decision.outcome == "blocked" or decision.outcome in GPT_NON_SCORING_DEFENSIVE_OUTCOMES:
+        return "gpt_defensive_tracking"
+    return None
+
+
+def _validated_gpt_outcome_reliability_score(decision: GPTHighlightClipDecision) -> Optional[float]:
+    if _validated_gpt_outcome(decision) is None:
+        return None
+    result_confidence = decision.shotResultEvidence.outcomeConfidence
+    evidence_weight = 0.72 if decision.outcome in {"made", "missed"} else 0.62
+    score = (
+        (result_confidence * evidence_weight)
+        + (decision.highlightScore * 0.16)
+        + (decision.watchabilityScore * 0.12)
+        + (decision.shotResultEvidence.rimEntrySequenceConfidence * (0.0 if decision.outcome in GPT_NON_SCORING_DEFENSIVE_OUTCOMES else 0.12))
+    )
+    floor = 0.72 if decision.outcome in {"made", "missed"} else 0.7
+    return round(max(floor, min(1.0, score)), 4)
+
+
+def _validated_gpt_native_shot_signals(
+    clip: EditCandidateClip,
+    decision: GPTHighlightClipDecision,
+) -> NativeShotSignals:
+    signals = native_shot_signals_for_clip(clip)
+    evidence_source = _validated_gpt_outcome_evidence_source(decision)
+    reliability_score = _validated_gpt_outcome_reliability_score(decision)
+    if evidence_source is None or reliability_score is None:
+        return signals
+
+    if decision.outcome in GPT_SHOT_RESULT_OUTCOMES:
+        outcome = decision.outcome
+        outcome_confidence = max(signals.outcomeConfidence, decision.shotResultEvidence.outcomeConfidence)
+    else:
+        outcome = "not_shot"
+        outcome_confidence = max(signals.outcomeConfidence, decision.shotResultEvidence.outcomeConfidence, 0.9)
+
+    return signals.model_copy(
+        update={
+            "outcome": outcome,
+            "outcomeConfidence": round(min(1.0, outcome_confidence), 4),
+            "outcomeEvidenceSource": evidence_source,
+            "outcomeReliabilityScore": reliability_score,
+        }
+    )
 
 
 def _dedupe_gpt_kept_moments(clips: Sequence[EditCandidateClip]) -> Tuple[List[EditCandidateClip], List[str]]:
@@ -2700,6 +3204,8 @@ def _gpt_decision_rejection_reason(
         return "gpt_outcome_conflicts_with_native_signal"
 
     signals = decision.qualitySignals
+    tracking_evidence = decision.shotTrackingEvidence
+    result_evidence = decision.shotResultEvidence
     if not signals.eventVisible or not signals.outcomeVisible or not signals.cleanCamera:
         return "unclear_event_or_outcome"
     if not signals.fullPlayContext or not signals.setupVisible:
@@ -2712,9 +3218,26 @@ def _gpt_decision_rejection_reason(
         return "missing_rim_result"
     if decision.outcome == "made" and not signals.ballPathVisible:
         return "missing_made_shot_ball_path"
+    if decision.outcome == "missed" and not signals.ballPathVisible:
+        return "missing_missed_shot_ball_path"
+    if decision.outcome in GPT_NON_SCORING_DEFENSIVE_OUTCOMES:
+        if sampled_frame_roles is not None:
+            defensive_role_rejection = _defensive_sampled_tracking_rejection_reason(tracking_evidence, sampled_frame_roles)
+            if defensive_role_rejection is not None:
+                return defensive_role_rejection
+            if _unsampled_gpt_result_roles(result_evidence, sampled_frame_roles):
+                return "gpt_cited_unsampled_frame_role"
+        if result_evidence.outcomeConfidence < MIN_GPT_DEFENSIVE_OUTCOME_CONFIDENCE:
+            return "low_defensive_outcome_confidence"
+        if not signals.playerControlVisible:
+            return "missing_defensive_player_control"
+        if not signals.ballPathVisible:
+            return "missing_defensive_ball_control"
+        if not has_minimum_non_shot_quality(clip):
+            return "low_defensive_clip_quality"
+        return None
     if not signals.playerControlVisible and decision.outcome in {"made", "missed"}:
         return "missing_player_control"
-    result_evidence = decision.shotResultEvidence
     if decision.outcome in {"made", "missed"} and result_evidence.releaseToRimContinuity == "missing":
         return "missing_release_to_rim_continuity"
     if decision.outcome == "made":
@@ -2735,12 +3258,29 @@ def _gpt_decision_rejection_reason(
             return "miss_outcome_not_visible"
         if result_evidence.outcomeConfidence < 0.65:
             return "low_shot_result_confidence"
+        if result_evidence.rimEntrySequence != "visible_miss":
+            return "miss_rim_sequence_not_visible"
+        if result_evidence.rimEntrySequenceConfidence < MIN_MISSED_RIM_SEQUENCE_CONFIDENCE:
+            return "low_miss_sequence_confidence"
+        if result_evidence.ballApproachFrameRole not in SHOT_TRACKING_RIM_ENTRY_APPROACH_ROLES:
+            return "missing_miss_approach_frame"
+        if result_evidence.rimEntryFrameRole not in SHOT_TRACKING_RESULT_ROLES:
+            return "missing_miss_result_frame"
     if decision.outcome == "blocked":
+        if sampled_frame_roles is not None:
+            blocked_role_rejection = _blocked_sampled_tracking_rejection_reason(tracking_evidence, sampled_frame_roles)
+            if blocked_role_rejection is not None:
+                return blocked_role_rejection
+        if not signals.playerControlVisible:
+            return "missing_block_player_control"
+        if not signals.ballPathVisible:
+            return "missing_block_ball_control"
         if result_evidence.rimResultEvidence != "blocked":
             return "blocked_outcome_not_visible"
         if result_evidence.outcomeConfidence < 0.65:
             return "low_shot_result_confidence"
-    tracking_evidence = decision.shotTrackingEvidence
+        if not (set(tracking_evidence.ballVisibleFrameRoles) & BLOCKED_SHOT_TRACKING_ROLES):
+            return "missing_block_ball_tracking_frame"
     ball_roles = set(tracking_evidence.ballVisibleFrameRoles)
     rim_roles = set(tracking_evidence.rimVisibleFrameRoles)
     if decision.outcome in {"made", "missed"} and sampled_frame_roles is not None:
@@ -2788,6 +3328,44 @@ def _unsampled_gpt_tracking_roles(
     )
     cited_roles.update(role for role in optional_roles if role is not None)
     return cited_roles - sampled_roles
+
+
+def _defensive_sampled_tracking_rejection_reason(
+    tracking_evidence: GPTShotTrackingEvidence,
+    sampled_frame_roles: Sequence[str],
+) -> Optional[str]:
+    sampled_roles = set(sampled_frame_roles)
+    cited_roles = set(tracking_evidence.ballVisibleFrameRoles) | set(tracking_evidence.rimVisibleFrameRoles)
+    for role in (tracking_evidence.releaseFrameRole, tracking_evidence.resultFrameRole, tracking_evidence.ballEntersRimFrameRole):
+        if role is not None:
+            cited_roles.add(role)
+    unsampled_roles = cited_roles - sampled_roles
+    if unsampled_roles:
+        return "gpt_cited_unsampled_frame_role"
+    if "possessionChange" in sampled_roles and "possessionChange" not in cited_roles:
+        return "missing_defensive_possession_change_frame"
+    if sampled_roles & {"recovery", "defenseOutcome"} and not (cited_roles & DEFENSIVE_TRACKING_RESULT_ROLES):
+        return "missing_defensive_outcome_frame"
+    return None
+
+
+def _blocked_sampled_tracking_rejection_reason(
+    tracking_evidence: GPTShotTrackingEvidence,
+    sampled_frame_roles: Sequence[str],
+) -> Optional[str]:
+    sampled_roles = set(sampled_frame_roles)
+    cited_roles = set(tracking_evidence.ballVisibleFrameRoles) | set(tracking_evidence.rimVisibleFrameRoles)
+    for role in (tracking_evidence.releaseFrameRole, tracking_evidence.resultFrameRole, tracking_evidence.ballEntersRimFrameRole):
+        if role is not None:
+            cited_roles.add(role)
+    unsampled_roles = cited_roles - sampled_roles
+    if unsampled_roles:
+        return "gpt_cited_unsampled_frame_role"
+    if "challenge" in sampled_roles and "challenge" not in cited_roles:
+        return "missing_block_challenge_frame"
+    if sampled_roles & {"recovery", "defenseOutcome"} and not (cited_roles & {"recovery", "defenseOutcome", "finish"}):
+        return "missing_block_outcome_frame"
+    return None
 
 
 def _unsampled_gpt_result_roles(
@@ -2849,11 +3427,11 @@ def _rich_sampled_result_rejection_reason(
 
 
 def _gpt_outcome_conflicts_with_native_signal(decision: GPTHighlightClipDecision, clip: EditCandidateClip) -> bool:
-    if decision.outcome not in {"made", "missed", "blocked"}:
+    if decision.outcome not in GPT_SHOT_RESULT_OUTCOMES:
         return False
 
     native_signals = native_shot_signals_for_clip(clip)
-    if native_signals.outcome not in {"made", "missed", "blocked"}:
+    if native_signals.outcome not in GPT_SHOT_RESULT_OUTCOMES:
         return False
     if native_signals.outcomeConfidence < MIN_NATIVE_OUTCOME_CONFLICT_CONFIDENCE:
         return False
@@ -2861,7 +3439,19 @@ def _gpt_outcome_conflicts_with_native_signal(decision: GPTHighlightClipDecision
 
 
 def _source_supports_gpt_outcome_claim(decision: GPTHighlightClipDecision, clip: EditCandidateClip) -> bool:
-    if decision.outcome not in {"made", "missed", "blocked"}:
+    if decision.outcome in GPT_NON_SCORING_DEFENSIVE_OUTCOMES:
+        if not has_minimum_non_shot_quality(clip):
+            return False
+
+        if is_defensive_event_like_clip(clip):
+            return True
+        if is_shot_like_clip(clip):
+            return False
+        if not is_generic_filler_clip(clip):
+            return max(clip.watchability, clip.motionScore) >= 0.55 and clip.confidence >= 0.55
+        return max(clip.watchability, clip.motionScore) >= 0.72 and clip.confidence >= 0.65 and clip.planning_score >= 0.7
+
+    if decision.outcome not in GPT_SHOT_RESULT_OUTCOMES:
         return True
     if is_shot_like_clip(clip):
         return True
@@ -3140,7 +3730,12 @@ def _build_revised_edit_job(job: StoredEditJob, revision: ReviseEditJobRequest) 
             clip["cropMode"] = "center_action"
 
     revised.plan = repair_edit_plan(EditPlan(**data), revised.request.planTier)
-    revised.validation_errors = validate_edit_plan(revised.plan, revised.request.clips, revised.request.planTier)
+    revised_source_clips = filter_clips_for_team_selection(
+        revised.request.clips,
+        revised.request.teamSelection,
+        include_review_only_uncertain=False,
+    )
+    revised.validation_errors = validate_edit_plan(revised.plan, revised_source_clips, revised.request.planTier)
     revised.status = "plan_ready" if not revised.validation_errors else "failed"
 
     return StoredEditJob(
@@ -3304,7 +3899,12 @@ def build_revision_response(
     proposed_patch: Optional[EditPlanPatch] = None,
 ) -> Tuple[StoredEditJob, EditRevisionResponse]:
     if proposed_patch is not None:
-        patched_plan, errors = validate_edit_plan_patch(job.plan, proposed_patch, job.request.clips, job.request.planTier)
+        source_clips = filter_clips_for_team_selection(
+            job.request.clips,
+            job.request.teamSelection,
+            include_review_only_uncertain=False,
+        )
+        patched_plan, errors = validate_edit_plan_patch(job.plan, proposed_patch, source_clips, job.request.planTier)
         if patched_plan is None:
             patched_plan = job.plan
         revised = StoredEditJob(
@@ -3333,7 +3933,12 @@ def build_revision_response(
 
     revised = _build_revised_edit_job(job, revision)
     patch = build_edit_plan_patch(job, revision, revised.plan)
-    patched_plan, errors = validate_edit_plan_patch(job.plan, patch, revised.request.clips, revised.request.planTier)
+    source_clips = filter_clips_for_team_selection(
+        revised.request.clips,
+        revised.request.teamSelection,
+        include_review_only_uncertain=False,
+    )
+    patched_plan, errors = validate_edit_plan_patch(job.plan, patch, source_clips, revised.request.planTier)
     if patched_plan is None:
         patched_plan = revised.plan
     revised.plan = patched_plan
@@ -3357,7 +3962,12 @@ def build_revision_response(
 def build_edit_job(request: CreateEditJobRequest, edit_job_id: str) -> StoredEditJob:
     plan = build_edit_plan(request, edit_job_id)
     plan = repair_edit_plan(plan, request.planTier)
-    errors = validate_edit_plan(plan, request.clips, request.planTier)
+    source_clips = filter_clips_for_team_selection(
+        request.clips,
+        request.teamSelection,
+        include_review_only_uncertain=False,
+    )
+    errors = validate_edit_plan(plan, source_clips, request.planTier)
     return StoredEditJob(
         edit_job_id=edit_job_id,
         install_id=request.installId,

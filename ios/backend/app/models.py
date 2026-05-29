@@ -56,6 +56,8 @@ class ClipTeamAttribution(APIModel):
     colorLabel: Optional[str] = Field(default=None, min_length=1, max_length=80)
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     source: Literal["quick_scan", "gpt_frame_review", "provider", "manual", "unknown"] = "unknown"
+    evidenceFrameRefs: List[str] = Field(default_factory=list, max_length=8)
+    evidenceRoleGroups: List[str] = Field(default_factory=list, max_length=3)
 
 
 class CreateCloudAnalysisJobRequest(APIModel):
@@ -82,11 +84,34 @@ class CreateCloudAnalysisJobResponse(APIModel):
 
 class StartCloudAnalysisJobRequest(APIModel):
     installId: str = Field(min_length=8, max_length=128)
+    teamSelection: Optional[TeamSelection] = None
 
 
 class StartCloudAnalysisJobResponse(APIModel):
     jobId: str
     status: str
+
+
+class ScanCloudAnalysisTeamsRequest(APIModel):
+    installId: str = Field(min_length=8, max_length=128)
+
+
+class ScanCloudAnalysisSourceRequest(APIModel):
+    jobId: str = Field(min_length=1, max_length=128)
+    installId: str = Field(min_length=8, max_length=128)
+    sourceUrl: str = Field(min_length=8)
+    sourceObjectKey: Optional[str] = Field(default=None, max_length=512)
+    filename: str = Field(default="source.mp4", min_length=1, max_length=255)
+    contentType: Optional[str] = Field(default=None, max_length=120)
+    durationSeconds: float = Field(gt=0.0)
+    appVersion: Optional[str] = Field(default=None, max_length=64)
+    analysisVersion: Optional[str] = Field(default=None, max_length=64)
+
+
+class ScanCloudAnalysisTeamsResponse(APIModel):
+    jobId: str
+    status: Literal["scanned", "unavailable"]
+    detectedTeams: List[TeamOption] = Field(default_factory=list)
 
 
 class CloudNativeShotSignals(APIModel):
@@ -100,6 +125,17 @@ class CloudNativeShotSignals(APIModel):
     timingWindowOk: bool = False
     outcome: Literal["made", "missed", "blocked", "uncertain", "not_shot"] = "uncertain"
     outcomeConfidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    outcomeEvidenceSource: Literal[
+        "label_only",
+        "native_shot_signals",
+        "defensive_event",
+        "gpt_shot_tracking",
+        "gpt_defensive_tracking",
+        "non_shot",
+        "uncertain",
+        "not_shot",
+    ] = "uncertain"
+    outcomeReliabilityScore: float = Field(default=0.0, ge=0.0, le=1.0)
 
 
 class CloudClip(APIModel):
@@ -118,6 +154,7 @@ class CloudClip(APIModel):
     shouldEnableSlowMotion: bool
     nativeShotSignals: Optional[CloudNativeShotSignals] = None
     teamAttribution: Optional[ClipTeamAttribution] = None
+    teamAttributionStatus: Optional[Literal["all", "matched", "opponent", "uncertain"]] = None
 
 
 class CloudDiagnostics(APIModel):
@@ -127,6 +164,18 @@ class CloudDiagnostics(APIModel):
     usedGeminiRelabeling: bool
     candidateSegments: int
     finalSegments: int
+    usedTeamQuickScan: bool = False
+    preTeamFilterSegments: int = 0
+    teamMatchedCandidateSegments: int = 0
+    teamUncertainCandidateSegments: int = 0
+    teamOpponentFilteredSegments: int = 0
+    teamMatchedReviewSegments: int = 0
+    teamUncertainReviewSegments: int = 0
+    defensiveReviewSegments: int = 0
+    blockReviewSegments: int = 0
+    stealReviewSegments: int = 0
+    forcedTurnoverReviewSegments: int = 0
+    defensiveStopReviewSegments: int = 0
 
 
 class CloudAnalysisResult(APIModel):
@@ -207,6 +256,8 @@ class StoredJob:
     object_key: str
     upload_headers: Dict[str, str] = field(default_factory=dict)
     team_selection: Optional[TeamSelection] = None
+    detected_teams: List[TeamOption] = field(default_factory=list)
+    team_scan_status: Optional[str] = None
     status: JobStatus = JobStatus.CREATED
     progress: float = 0.0
     stage: str = "Preparing upload"

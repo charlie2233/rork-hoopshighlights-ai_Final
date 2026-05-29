@@ -194,11 +194,11 @@ Minimum fields:
 
 The agent receives compact clip metadata, not raw video.
 
-- Limit input to the top 20-30 clips for the selected job.
+- Limit input to the top 20-60 clips for the selected job.
 - Use clip IDs, preset IDs, theme IDs, and music profile IDs.
 - Use numeric scores from the backend.
 - Do not include full video files, full inference logs, full transcript/audio payloads, secrets, or full presigned URLs.
-- Optional GPT highlight reranking may send sampled keyframes from existing candidate clip windows only. Quality-beta defaults favor stronger context and visual detail over cost: Free jobs stay capped to 8 clips but can sample up to 10 frames per clip, while Pro/internal jobs can sample up to 30 clips and 10 frames per clip. Sampled keyframes default to 1024px wide with a 750 KB per-frame cap so GPT has more ball/rim detail for semantic editing.
+- Optional GPT highlight reranking may send sampled keyframes from existing candidate clip windows only. Quality-beta defaults favor stronger context and visual detail over cost: Free and Pro/internal jobs can sample up to 60 clips and 10 frames per clip. Sampled keyframes default to 1024px wide with a 750 KB per-frame cap so GPT has more ball/rim detail for semantic editing.
 - Filter out tiny, too-late, or no-follow-through candidates before GPT; require GPT to return strict shot-quality signals plus explicit `shotResultEvidence` and frame-role `shotTrackingEvidence` for release-to-rim continuity, visible rim/net result, ball/rim frame roles, outcome confidence, camera quality, and full play context.
 - GPT reranking can adjust ranking scores, captions, watchability/event metadata, and safe edit suggestions, but it must not invent clip IDs, replace exact timestamps, run CV/tracking, invoke FFmpeg, or render video.
 - Store preset and theme details in backend registries.

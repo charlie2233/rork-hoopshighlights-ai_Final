@@ -1,4 +1,5 @@
 import type { ExecutionContext } from "@cloudflare/workers-types";
+import { redactJobEventPayload } from "../services/control-plane/src/db/index.ts";
 import type { Env } from "../services/control-plane/src/env.ts";
 import type {
   CloudAnalysisResult,
@@ -537,7 +538,7 @@ function createMockJobStateNamespace(state: HarnessState): Env["JOB_STATE"] {
                 traceId: body.record.traceId,
                 eventType: "job.bootstrap",
                 message: "Job bootstrap recorded in Durable Object.",
-                payload: body.record,
+                payload: redactJobEventPayload(body.record),
                 createdAt: body.record.createdAt
               });
             }
@@ -577,7 +578,7 @@ function createMockJobStateNamespace(state: HarnessState): Env["JOB_STATE"] {
               traceId: body.traceId ?? job.traceId,
               eventType: body.eventType ?? "job.patch",
               message: body.message ?? "Job state updated.",
-              payload: body.payload ?? body.patch,
+              payload: redactJobEventPayload(body.payload ?? body.patch),
               createdAt: updated.updatedAt
             });
             return Response.json(updated, { status: 200 });

@@ -1,6 +1,35 @@
 import Foundation
 
-struct CloudEditService {
+protocol CloudEditServicing {
+    func fetchVersion() async throws -> CloudEditVersionResponse
+    func createEditJob(_ requestBody: CreateCloudEditJobRequest) async throws -> CloudEditJobResponse
+    func fetchEditPlan(editJobID: String, installID: String) async throws -> CloudEditPlanResponse
+    func pollRenderStatus(editJobID: String, installID: String) async throws -> CloudEditRenderStatusResponse
+    func fetchRenderHistory(installID: String, limit: Int) async throws -> CloudEditRenderHistoryResponse
+    func requestStoredRender(
+        editJobID: String,
+        installID: String,
+        idempotencyKey: String?,
+        forceNew: Bool
+    ) async throws -> CloudEditRenderStatusResponse
+    func requestLockerRerender(render: CloudEditRenderStatusResponse, installID: String) async throws -> CloudEditRenderStatusResponse
+    func fetchDownloadURL(editJobID: String, installID: String) async throws -> CloudEditDownloadResponse
+    func fetchDownloadURL(renderJobID: String, installID: String) async throws -> CloudEditDownloadResponse
+    func requestRevision(
+        editJobID: String,
+        installID: String,
+        command: CloudEditRevisionCommand
+    ) async throws -> CloudEditRevisionResponse
+    func requestRevisionRender(
+        editJobID: String,
+        revisionID: String,
+        installID: String,
+        forceNew: Bool
+    ) async throws -> CloudEditRenderStatusResponse
+    func downloadRenderedVideo(from response: CloudEditDownloadResponse) async throws -> URL
+}
+
+struct CloudEditService: CloudEditServicing {
     private let session: URLSession
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
@@ -44,37 +73,6 @@ struct CloudEditService {
 
         let (data, response) = try await session.data(for: signedClientRequest(url: url))
         return try decodeResponse(data: data, response: response, successType: CloudEditPlanResponse.self)
-    }
-
-    func requestRender(
-        editJobID: String,
-        installID: String,
-        sourceObjectKey: String,
-        planTier: CloudEditPlanTier,
-        revenueCatAppUserID: String?,
-        editPlan: CloudEditPlanSummary,
-        sourceClips: [CloudEditCandidateClip]
-    ) async throws -> CloudEditRenderStatusResponse {
-        let baseURL = try configuredBaseURL()
-        var request = URLRequest(url: baseURL.appending(path: "v1/edit-jobs/\(editJobID)/render"))
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Hoopclips-iOS/1.0", forHTTPHeaderField: "User-Agent")
-        request.setValue(UUID().uuidString, forHTTPHeaderField: "x-trace-id")
-        request.httpBody = try encoder.encode(
-            CloudEditRenderRequest(
-                installId: installID,
-                sourceObjectKey: sourceObjectKey,
-                planTier: planTier,
-                revenueCatAppUserID: revenueCatAppUserID,
-                editPlan: editPlan,
-                sourceClips: sourceClips,
-                idempotencyKey: "ios-render-\(editJobID)"
-            )
-        )
-
-        let (data, response) = try await session.data(for: request)
-        return try decodeResponse(data: data, response: response, successType: CloudEditRenderStatusResponse.self)
     }
 
     func pollRenderStatus(editJobID: String, installID: String) async throws -> CloudEditRenderStatusResponse {
@@ -121,7 +119,12 @@ struct CloudEditService {
         return try decodeResponse(data: data, response: response, successType: CloudEditRenderHistoryResponse.self)
     }
 
-    func requestStoredRender(editJobID: String, installID: String) async throws -> CloudEditRenderStatusResponse {
+    func requestStoredRender(
+        editJobID: String,
+        installID: String,
+        idempotencyKey: String? = nil,
+        forceNew: Bool = true
+    ) async throws -> CloudEditRenderStatusResponse {
         let baseURL = try configuredBaseURL()
         var request = URLRequest(url: baseURL.appending(path: "v1/edit-jobs/\(editJobID)/render"))
         request.httpMethod = "POST"
@@ -131,8 +134,8 @@ struct CloudEditService {
         request.httpBody = try encoder.encode(
             CloudEditStoredRenderRequest(
                 installId: installID,
-                idempotencyKey: "ios-locker-rerender-\(UUID().uuidString)",
-                forceNew: true
+                idempotencyKey: idempotencyKey ?? "ios-locker-rerender-\(UUID().uuidString)",
+                forceNew: forceNew
             )
         )
 

@@ -32,9 +32,12 @@ from app.editing import (
     build_revision_response,
     build_edit_job,
     build_edit_plan,
+    clip_outcome_evidence_source,
+    clip_outcome_reliability_score,
     clip_context_quality_score,
     filter_clips_for_team_selection,
     get_template_pack_for_plan,
+    is_defensive_event_like_clip,
     is_plan_quality_eligible_clip,
     native_shot_signals_for_clip,
     rank_clips,
@@ -42,6 +45,7 @@ from app.editing import (
     repair_edit_plan,
     revise_edit_job,
     summarize_clip_pool,
+    team_attribution_status,
     validate_agent_template_cookbook_registry,
     validate_edit_plan,
     validate_edit_plan_patch,
@@ -128,6 +132,22 @@ def _shot_result_evidence(**overrides) -> dict:
     return payload
 
 
+def _defensive_result_evidence(**overrides) -> dict:
+    payload = {
+        "releaseToRimContinuity": "missing",
+        "rimResultEvidence": "unclear",
+        "outcomeConfidence": 0.86,
+        "rimEntrySequence": "unclear",
+        "ballApproachFrameRole": None,
+        "rimEntryFrameRole": None,
+        "ballBelowRimOrNetFrameRole": None,
+        "rimEntrySequenceConfidence": 0.0,
+        "reason": "Non-scoring defensive event with visible ball control change.",
+    }
+    payload.update(overrides)
+    return payload
+
+
 def _shot_tracking_evidence(**overrides) -> dict:
     payload = {
         "ballVisibleFrameRoles": ["eventCenter", "finish"],
@@ -140,6 +160,29 @@ def _shot_tracking_evidence(**overrides) -> dict:
         "reason": "Shot action and rim result are visible in sampled frames.",
     }
     payload.update(overrides)
+    return payload
+
+
+def _team_attribution(
+    *,
+    team_id: str,
+    color_label: str,
+    confidence: float,
+    label: str | None = None,
+    source: str = "quick_scan",
+    evidence: bool = True,
+) -> dict:
+    payload: dict = {
+        "teamId": team_id,
+        "colorLabel": color_label,
+        "confidence": confidence,
+        "source": source,
+    }
+    if label is not None:
+        payload["label"] = label
+    if evidence:
+        payload["evidenceFrameRefs"] = ["clip_0_setup", "clip_0_result"]
+        payload["evidenceRoleGroups"] = ["setup", "outcome"]
     return payload
 
 
@@ -270,6 +313,8 @@ class EditPlanAgentTests(unittest.TestCase):
                             "colorLabel": "black",
                             "confidence": 0.91,
                             "source": "quick_scan",
+                            "evidenceFrameRefs": ["clip_0_release", "clip_0_result"],
+                            "evidenceRoleGroups": ["action", "outcome"],
                         },
                     },
                     {
@@ -280,6 +325,8 @@ class EditPlanAgentTests(unittest.TestCase):
                             "colorLabel": "white",
                             "confidence": 0.92,
                             "source": "quick_scan",
+                            "evidenceFrameRefs": ["clip_1_release", "clip_1_result"],
+                            "evidenceRoleGroups": ["action", "outcome"],
                         },
                     },
                     {
@@ -300,6 +347,342 @@ class EditPlanAgentTests(unittest.TestCase):
 
         self.assertEqual([clip.id for clip in filtered], ["dark_bucket", "uncertain_bucket"])
 
+    def test_selected_team_render_filter_requires_explicit_keep_for_uncertain_clip(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                teamSelection={
+                    "mode": "team",
+                    "teamId": "team_dark",
+                    "label": "Dark jerseys",
+                    "colorLabel": "black",
+                    "confidenceThreshold": 0.85,
+                    "includeUncertain": True,
+                },
+                clips=[
+                    {
+                        **_clip("dark_bucket", 0.0, "Made Shot", 0.93),
+                        "teamAttribution": _team_attribution(team_id="team_dark", color_label="black", confidence=0.91),
+                    },
+                    {
+                        **_clip("uncertain_unreviewed_steal", 9.0, "Steal", 0.82),
+                        "teamAttribution": {"teamId": "team_light", "colorLabel": "white", "confidence": 0.62},
+                    },
+                    {
+                        **_clip("uncertain_kept_block", 18.0, "Blocked Shot", 0.86),
+                        "teamAttribution": {"teamId": "team_light", "colorLabel": "white", "confidence": 0.64},
+                        "userReviewDecision": "kept",
+                    },
+                ],
+            )
+        )
+
+        reviewable = filter_clips_for_team_selection(request.clips, request.teamSelection)
+        renderable = filter_clips_for_team_selection(
+            request.clips,
+            request.teamSelection,
+            include_review_only_uncertain=False,
+        )
+
+        self.assertEqual(
+            [clip.id for clip in reviewable],
+            ["dark_bucket", "uncertain_unreviewed_steal", "uncertain_kept_block"],
+        )
+        self.assertEqual([clip.id for clip in renderable], ["dark_bucket", "uncertain_kept_block"])
+
+    def test_selected_team_filter_rejects_conflicting_team_id_even_when_color_matches(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                teamSelection={
+                    "mode": "team",
+                    "teamId": "team_dark",
+                    "label": "Dark jerseys",
+                    "colorLabel": "black",
+                    "confidenceThreshold": 0.85,
+                    "includeUncertain": True,
+                },
+                clips=[
+                    {
+                        **_clip("bad_color_alias", 0.0, "Made Shot", 0.93),
+                        "teamAttribution": {
+                            "teamId": "team_light",
+                            "label": "Light jerseys",
+                            "colorLabel": "black",
+                            "confidence": 0.95,
+                            "source": "quick_scan",
+                            "evidenceFrameRefs": ["clip_0_release", "clip_0_result"],
+                            "evidenceRoleGroups": ["action", "outcome"],
+                        },
+                    },
+                    {
+                        **_clip("missing_id_color_match", 9.0, "Made Shot", 0.91),
+                        "teamAttribution": {
+                            "label": "Dark jerseys",
+                            "colorLabel": "black",
+                            "confidence": 0.91,
+                            "source": "quick_scan",
+                            "evidenceFrameRefs": ["clip_1_release", "clip_1_result"],
+                            "evidenceRoleGroups": ["action", "outcome"],
+                        },
+                    },
+                ],
+            )
+        )
+
+        filtered = filter_clips_for_team_selection(request.clips, request.teamSelection)
+
+        self.assertEqual(team_attribution_status(request.clips[0], request.teamSelection), "opponent")
+        self.assertEqual(team_attribution_status(request.clips[1], request.teamSelection), "matched")
+        self.assertEqual([clip.id for clip in filtered], ["missing_id_color_match"])
+
+    def test_selected_team_filter_matches_jersey_color_alias_team_ids(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                teamSelection={
+                    "mode": "team",
+                    "teamId": "team_dark",
+                    "label": "Dark jerseys",
+                    "colorLabel": "black",
+                    "confidenceThreshold": 0.85,
+                    "includeUncertain": True,
+                },
+                clips=[
+                    {
+                        **_clip("black_alias_bucket", 0.0, "Made Shot", 0.93),
+                        "teamAttribution": {
+                            "teamId": "team_black",
+                            "label": "Black jerseys",
+                            "colorLabel": "black",
+                            "confidence": 0.91,
+                            "source": "quick_scan",
+                            "evidenceFrameRefs": ["clip_0_release", "clip_0_result"],
+                            "evidenceRoleGroups": ["action", "outcome"],
+                        },
+                    }
+                ],
+            )
+        )
+
+        filtered = filter_clips_for_team_selection(request.clips, request.teamSelection)
+
+        self.assertEqual(team_attribution_status(request.clips[0], request.teamSelection), "matched")
+        self.assertEqual([clip.id for clip in filtered], ["black_alias_bucket"])
+
+    def test_selected_team_filter_rejects_exact_team_id_with_color_conflict(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                teamSelection={
+                    "mode": "team",
+                    "teamId": "team_dark",
+                    "label": "Dark jerseys",
+                    "colorLabel": "black",
+                    "confidenceThreshold": 0.85,
+                    "includeUncertain": True,
+                },
+                clips=[
+                    {
+                        **_clip("bad_exact_id", 0.0, "Made Shot", 0.93),
+                        "teamAttribution": {
+                            "teamId": "team_dark",
+                            "label": "Light jerseys",
+                            "colorLabel": "white",
+                            "confidence": 0.95,
+                            "source": "quick_scan",
+                            "evidenceFrameRefs": ["clip_0_release", "clip_0_result"],
+                            "evidenceRoleGroups": ["action", "outcome"],
+                        },
+                    }
+                ],
+            )
+        )
+
+        filtered = filter_clips_for_team_selection(request.clips, request.teamSelection)
+
+        self.assertEqual(team_attribution_status(request.clips[0], request.teamSelection), "opponent")
+        self.assertEqual(filtered, [])
+
+    def test_selected_team_quick_scan_match_requires_evidence_metadata(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                teamSelection={
+                    "mode": "team",
+                    "teamId": "team_dark",
+                    "label": "Dark jerseys",
+                    "colorLabel": "black",
+                    "confidenceThreshold": 0.85,
+                    "includeUncertain": True,
+                },
+                clips=[
+                    {
+                        **_clip("legacy_match", 0.0, "Made Shot", 0.93),
+                        "teamAttribution": {
+                            "teamId": "team_dark",
+                            "label": "Dark jerseys",
+                            "colorLabel": "black",
+                            "confidence": 0.94,
+                            "source": "quick_scan",
+                        },
+                    },
+                    {
+                        **_clip("single_phase_match", 9.0, "Steal", 0.88),
+                        "teamAttribution": {
+                            "teamId": "team_dark",
+                            "label": "Dark jerseys",
+                            "colorLabel": "black",
+                            "confidence": 0.92,
+                            "source": "gpt_frame_review",
+                            "evidenceFrameRefs": ["clip_1_release", "clip_1_arc"],
+                            "evidenceRoleGroups": ["action"],
+                        },
+                    },
+                    {
+                        **_clip("evidence_backed_match", 18.0, "Block", 0.91),
+                        "teamAttribution": {
+                            "teamId": "team_dark",
+                            "label": "Dark jerseys",
+                            "colorLabel": "black",
+                            "confidence": 0.91,
+                            "source": "gpt_frame_review",
+                            "evidenceFrameRefs": ["clip_2_challenge", "clip_2_result"],
+                            "evidenceRoleGroups": ["action", "outcome"],
+                        },
+                    },
+                ],
+            )
+        )
+
+        filtered = filter_clips_for_team_selection(request.clips, request.teamSelection)
+
+        self.assertEqual(team_attribution_status(request.clips[0], request.teamSelection), "uncertain")
+        self.assertEqual(team_attribution_status(request.clips[1], request.teamSelection), "uncertain")
+        self.assertEqual(team_attribution_status(request.clips[2], request.teamSelection), "matched")
+        self.assertEqual([clip.id for clip in filtered], ["legacy_match", "single_phase_match", "evidence_backed_match"])
+        context = build_agent_editing_context(
+            request.templateId,
+            summarize_clip_pool(request.clips),
+            request.clips,
+            teamSelection=request.teamSelection,
+        )
+        by_id = {clip["clipId"]: clip for clip in context["candidateClips"]}
+
+        self.assertEqual(by_id["legacy_match"]["teamEvidence"]["status"], "weak_evidence")
+        self.assertEqual(by_id["legacy_match"]["teamEvidence"]["reasons"], ["insufficient_evidence_frame_refs", "insufficient_evidence_role_groups"])
+        self.assertEqual(by_id["single_phase_match"]["teamEvidence"]["status"], "weak_evidence")
+        self.assertEqual(by_id["single_phase_match"]["teamEvidence"]["reasons"], ["insufficient_evidence_role_groups"])
+        self.assertEqual(by_id["evidence_backed_match"]["teamEvidence"]["status"], "evidence_backed")
+        self.assertEqual(by_id["evidence_backed_match"]["teamEvidence"]["reasons"], [])
+
+    def test_selected_team_unknown_and_provider_sources_need_evidence(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                teamSelection={
+                    "mode": "team",
+                    "teamId": "team_dark",
+                    "label": "Dark jerseys",
+                    "colorLabel": "black",
+                    "confidenceThreshold": 0.85,
+                    "includeUncertain": True,
+                },
+                clips=[
+                    {
+                        **_clip("missing_source_match", 0.0, "Made Shot", 0.93),
+                        "teamAttribution": {"teamId": "team_dark", "colorLabel": "black", "confidence": 0.94},
+                    },
+                    {
+                        **_clip("provider_match", 9.0, "Made Shot", 0.91),
+                        "teamAttribution": _team_attribution(
+                            team_id="team_dark",
+                            color_label="black",
+                            confidence=0.93,
+                            source="provider",
+                            evidence=False,
+                        ),
+                    },
+                    {
+                        **_clip("provider_evidence_match", 18.0, "Steal", 0.9),
+                        "teamAttribution": _team_attribution(
+                            team_id="team_dark",
+                            color_label="black",
+                            confidence=0.92,
+                            source="provider",
+                        ),
+                    },
+                    {
+                        **_clip("manual_match", 27.0, "Block", 0.89),
+                        "teamAttribution": _team_attribution(
+                            team_id="team_dark",
+                            color_label="black",
+                            confidence=0.91,
+                            source="manual",
+                            evidence=False,
+                        ),
+                    },
+                ],
+            )
+        )
+
+        status_by_id = {clip.id: team_attribution_status(clip, request.teamSelection) for clip in request.clips}
+        self.assertEqual(status_by_id["missing_source_match"], "uncertain")
+        self.assertEqual(status_by_id["provider_match"], "uncertain")
+        self.assertEqual(status_by_id["provider_evidence_match"], "matched")
+        self.assertEqual(status_by_id["manual_match"], "matched")
+
+        context = build_agent_editing_context(
+            request.templateId,
+            summarize_clip_pool(request.clips),
+            request.clips,
+            teamSelection=request.teamSelection,
+        )
+        by_id = {clip["clipId"]: clip for clip in context["candidateClips"]}
+
+        self.assertEqual(by_id["missing_source_match"]["teamEvidence"]["status"], "weak_evidence")
+        self.assertEqual(by_id["provider_match"]["teamEvidence"]["status"], "weak_evidence")
+        self.assertEqual(by_id["provider_evidence_match"]["teamEvidence"]["status"], "evidence_backed")
+        self.assertEqual(by_id["manual_match"]["teamEvidence"]["status"], "evidence_backed")
+
+    def test_explicit_uncertain_team_status_survives_edit_context(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                teamSelection={
+                    "mode": "team",
+                    "teamId": "team_dark",
+                    "label": "Dark jerseys",
+                    "colorLabel": "black",
+                    "confidenceThreshold": 0.85,
+                    "includeUncertain": True,
+                },
+                clips=[
+                    {
+                        **_clip("review_block", 0.0, "Blocked Shot", 0.9),
+                        "teamAttribution": {
+                            "teamId": "team_dark",
+                            "label": "Dark jerseys",
+                            "colorLabel": "black",
+                            "confidence": 0.91,
+                            "source": "quick_scan",
+                        },
+                        "teamAttributionStatus": "uncertain",
+                    },
+                    {
+                        **_clip("claimed_match", 9.0, "Made Shot", 0.88),
+                        "teamAttributionStatus": "matched",
+                    },
+                ],
+            )
+        )
+
+        self.assertEqual(team_attribution_status(request.clips[0], request.teamSelection), "uncertain")
+        self.assertEqual(team_attribution_status(request.clips[1], request.teamSelection), "uncertain")
+        context = build_agent_editing_context(
+            request.templateId,
+            summarize_clip_pool(request.clips),
+            request.clips,
+            teamSelection=request.teamSelection,
+        )
+        by_id = {clip["clipId"]: clip for clip in context["candidateClips"]}
+
+        self.assertEqual(by_id["review_block"]["teamAttributionStatus"], "uncertain")
+        self.assertEqual(by_id["claimed_match"]["teamAttributionStatus"], "uncertain")
+
     def test_all_teams_selection_does_not_filter_opponent_clips(self) -> None:
         request = CreateEditJobRequest(
             **_request_payload(
@@ -307,11 +690,11 @@ class EditPlanAgentTests(unittest.TestCase):
                 clips=[
                     {
                         **_clip("dark_bucket", 0.0, "Made Shot", 0.93),
-                        "teamAttribution": {"teamId": "team_dark", "colorLabel": "black", "confidence": 0.94},
+                        "teamAttribution": _team_attribution(team_id="team_dark", color_label="black", confidence=0.94),
                     },
                     {
                         **_clip("light_bucket", 9.0, "Made Shot", 0.94),
-                        "teamAttribution": {"teamId": "team_light", "colorLabel": "white", "confidence": 0.94},
+                        "teamAttribution": _team_attribution(team_id="team_light", color_label="white", confidence=0.94),
                     },
                 ],
             )
@@ -334,15 +717,15 @@ class EditPlanAgentTests(unittest.TestCase):
                 clips=[
                     {
                         **_clip("dark_block", 0.0, "Blocked Shot", 0.92),
-                        "teamAttribution": {"teamId": "team_dark", "colorLabel": "black", "confidence": 0.91},
+                        "teamAttribution": _team_attribution(team_id="team_dark", color_label="black", confidence=0.91),
                     },
                     {
                         **_clip("dark_steal", 9.0, "Steal", 0.89),
-                        "teamAttribution": {"teamId": "team_dark", "colorLabel": "black", "confidence": 0.9},
+                        "teamAttribution": _team_attribution(team_id="team_dark", color_label="black", confidence=0.9),
                     },
                     {
                         **_clip("light_bucket", 18.0, "Made Shot", 0.97),
-                        "teamAttribution": {"teamId": "team_light", "colorLabel": "white", "confidence": 0.96},
+                        "teamAttribution": _team_attribution(team_id="team_light", color_label="white", confidence=0.96),
                     },
                 ],
             )
@@ -354,6 +737,68 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertIn("dark_block", planned_clip_ids)
         self.assertIn("dark_steal", planned_clip_ids)
         self.assertNotIn("light_bucket", planned_clip_ids)
+
+    def test_short_selected_team_plan_reserves_blocks_and_steals_when_scoring_fills_reel(self) -> None:
+        dark_team = _team_attribution(team_id="team_dark", color_label="black", confidence=0.92)
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=30,
+                teamSelection={
+                    "mode": "team",
+                    "teamId": "team_dark",
+                    "label": "Dark jerseys",
+                    "colorLabel": "black",
+                    "confidenceThreshold": 0.85,
+                },
+                clips=[
+                    {**_clip("dark_make_1", 0.0, "Made Shot", 0.99), "teamAttribution": dark_team},
+                    {**_clip("dark_make_2", 9.0, "Dunk", 0.98), "teamAttribution": dark_team},
+                    {**_clip("dark_make_3", 18.0, "Three Pointer", 0.97), "teamAttribution": dark_team},
+                    {**_clip("dark_make_4", 27.0, "Fast Break", 0.96), "teamAttribution": dark_team},
+                    {**_clip("dark_make_5", 36.0, "Made Shot", 0.95), "teamAttribution": dark_team},
+                    {**_clip("dark_block", 45.0, "Blocked Shot", 0.81), "teamAttribution": dark_team},
+                    {**_clip("dark_steal", 54.0, "Steal", 0.8), "teamAttribution": dark_team},
+                ],
+            )
+        )
+
+        plan = build_edit_plan(request, "edit_team_defense_reserve")
+
+        planned_clip_ids = [clip.clipId for clip in plan.clips]
+        self.assertIn("dark_block", planned_clip_ids)
+        self.assertIn("dark_steal", planned_clip_ids)
+        self.assertLessEqual(len(planned_clip_ids), 4)
+
+    def test_short_selected_team_plan_reserves_turnovers_and_defensive_stops_when_scoring_fills_reel(self) -> None:
+        dark_team = _team_attribution(team_id="team_dark", color_label="black", confidence=0.92)
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=30,
+                teamSelection={
+                    "mode": "team",
+                    "teamId": "team_dark",
+                    "label": "Dark jerseys",
+                    "colorLabel": "black",
+                    "confidenceThreshold": 0.85,
+                },
+                clips=[
+                    {**_clip("dark_make_1", 0.0, "Made Shot", 0.99), "teamAttribution": dark_team},
+                    {**_clip("dark_make_2", 9.0, "Dunk", 0.98), "teamAttribution": dark_team},
+                    {**_clip("dark_make_3", 18.0, "Three Pointer", 0.97), "teamAttribution": dark_team},
+                    {**_clip("dark_make_4", 27.0, "Fast Break", 0.96), "teamAttribution": dark_team},
+                    {**_clip("dark_make_5", 36.0, "Made Shot", 0.95), "teamAttribution": dark_team},
+                    {**_clip("dark_forced_turnover", 45.0, "Forced Turnover", 0.81), "teamAttribution": dark_team},
+                    {**_clip("dark_defensive_stop", 54.0, "Defensive Stop", 0.8), "teamAttribution": dark_team},
+                ],
+            )
+        )
+
+        plan = build_edit_plan(request, "edit_team_defense_turnover_reserve")
+
+        planned_clip_ids = [clip.clipId for clip in plan.clips]
+        self.assertIn("dark_forced_turnover", planned_clip_ids)
+        self.assertIn("dark_defensive_stop", planned_clip_ids)
+        self.assertLessEqual(len(planned_clip_ids), 4)
 
     def test_agent_editing_context_includes_team_targeting_and_attribution(self) -> None:
         request = CreateEditJobRequest(
@@ -369,7 +814,7 @@ class EditPlanAgentTests(unittest.TestCase):
                 clips=[
                     {
                         **_clip("dark_bucket", 0.0, "Made Shot", 0.93),
-                        "teamAttribution": {"teamId": "team_dark", "colorLabel": "black", "confidence": 0.91},
+                        "teamAttribution": _team_attribution(team_id="team_dark", color_label="black", confidence=0.91),
                     }
                 ],
             )
@@ -475,6 +920,9 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertIn("COLD.", context["templateCookbookRules"]["captionRules"]["examples"])
         self.assertEqual(context["candidateClips"][0]["clipId"], "c3")
         self.assertEqual(context["candidateClips"][0]["nativeShotSignals"]["outcome"], "made")
+        self.assertEqual(context["candidateClips"][0]["outcomeEvidenceSource"], "label_only")
+        self.assertGreater(context["candidateClips"][0]["outcomeReliabilityScore"], 0.0)
+        self.assertLessEqual(context["candidateClips"][0]["outcomeReliabilityScore"], 0.68)
         serialized = str(context)
         self.assertNotIn("sourceObjectKey", serialized)
         self.assertNotIn("downloadUrl", serialized)
@@ -498,6 +946,8 @@ class EditPlanAgentTests(unittest.TestCase):
                             "timingWindowOk": True,
                             "outcome": "blocked",
                             "outcomeConfidence": 0.88,
+                            "outcomeEvidenceSource": "defensive_event",
+                            "outcomeReliabilityScore": 0.74,
                         },
                     }
                 ],
@@ -507,6 +957,8 @@ class EditPlanAgentTests(unittest.TestCase):
         signals = native_shot_signals_for_clip(request.clips[0])
 
         self.assertEqual(signals.outcome, "blocked")
+        self.assertEqual(signals.outcomeEvidenceSource, "defensive_event")
+        self.assertEqual(signals.outcomeReliabilityScore, 0.74)
         self.assertEqual(signals.leadInSeconds, 0.2)
         self.assertFalse(signals.timingWindowOk)
         self.assertLess(signals.setupContextScore, 1.0)
@@ -632,6 +1084,128 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertEqual(ranked[0].id, "complete_make")
         self.assertGreater(clip_context_quality_score(ranked[0]), clip_context_quality_score(request.clips[0]))
 
+    def test_rank_clips_prefers_supported_outcome_over_higher_scored_uncertain_shot(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                clips=[
+                    {
+                        **_clip("provider_overclaimed_uncertain_make", 6.0, "Made Shot", 0.99),
+                        "nativeShotSignals": {
+                            "isShotLike": True,
+                            "leadInSeconds": 3.4,
+                            "followThroughSeconds": 3.6,
+                            "setupContextScore": 1.0,
+                            "outcomeContextScore": 1.0,
+                            "eventCenterQuality": 1.0,
+                            "contextQualityScore": 1.0,
+                            "timingWindowOk": True,
+                            "outcome": "uncertain",
+                            "outcomeConfidence": 0.0,
+                        },
+                    },
+                    {
+                        **_clip("native_supported_make", 18.0, "Made Shot", 0.82),
+                        "nativeShotSignals": {
+                            "isShotLike": True,
+                            "leadInSeconds": 3.4,
+                            "followThroughSeconds": 3.6,
+                            "setupContextScore": 1.0,
+                            "outcomeContextScore": 1.0,
+                            "eventCenterQuality": 1.0,
+                            "contextQualityScore": 1.0,
+                            "timingWindowOk": True,
+                            "outcome": "made",
+                            "outcomeConfidence": 0.78,
+                        },
+                    },
+                ],
+            )
+        )
+
+        ranked = rank_clips(request.clips)
+
+        self.assertEqual(ranked[0].id, "native_supported_make")
+        self.assertGreater(
+            clip_outcome_reliability_score(ranked[0]),
+            clip_outcome_reliability_score(request.clips[0]),
+        )
+
+    def test_rank_clips_prefers_native_outcome_evidence_over_label_only_make_claim(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                clips=[
+                    _clip("label_only_make", 6.0, "Made Shot", 0.99),
+                    {
+                        **_clip("native_evidence_make", 18.0, "Made Shot", 0.78),
+                        "nativeShotSignals": {
+                            "isShotLike": True,
+                            "leadInSeconds": 3.4,
+                            "followThroughSeconds": 3.6,
+                            "setupContextScore": 1.0,
+                            "outcomeContextScore": 1.0,
+                            "eventCenterQuality": 1.0,
+                            "contextQualityScore": 1.0,
+                            "timingWindowOk": True,
+                            "outcome": "made",
+                            "outcomeConfidence": 0.74,
+                        },
+                    },
+                ],
+            )
+        )
+
+        ranked = rank_clips(request.clips)
+
+        self.assertEqual(ranked[0].id, "native_evidence_make")
+        self.assertEqual(clip_outcome_evidence_source(request.clips[0]), "label_only")
+        self.assertEqual(clip_outcome_evidence_source(ranked[0]), "native_shot_signals")
+        self.assertGreater(
+            clip_outcome_reliability_score(ranked[0]),
+            clip_outcome_reliability_score(request.clips[0]),
+        )
+
+    def test_duplicate_cleanup_prefers_supported_outcome_over_overclaimed_duplicate(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                clips=[
+                    {
+                        **_clip("overclaimed_duplicate", 6.0, "Made Shot", 0.99, "same_play"),
+                        "nativeShotSignals": {
+                            "isShotLike": True,
+                            "leadInSeconds": 3.4,
+                            "followThroughSeconds": 3.6,
+                            "setupContextScore": 1.0,
+                            "outcomeContextScore": 1.0,
+                            "eventCenterQuality": 1.0,
+                            "contextQualityScore": 1.0,
+                            "timingWindowOk": True,
+                            "outcome": "uncertain",
+                            "outcomeConfidence": 0.0,
+                        },
+                    },
+                    {
+                        **_clip("supported_duplicate", 6.2, "Made Shot", 0.82, "same_play"),
+                        "nativeShotSignals": {
+                            "isShotLike": True,
+                            "leadInSeconds": 3.4,
+                            "followThroughSeconds": 3.6,
+                            "setupContextScore": 1.0,
+                            "outcomeContextScore": 1.0,
+                            "eventCenterQuality": 1.0,
+                            "contextQualityScore": 1.0,
+                            "timingWindowOk": True,
+                            "outcome": "made",
+                            "outcomeConfidence": 0.78,
+                        },
+                    },
+                ],
+            )
+        )
+
+        clips = remove_duplicate_moments(request.clips)
+
+        self.assertEqual([clip.id for clip in clips], ["supported_duplicate"])
+
     def test_deterministic_plan_rejects_weak_generic_filler_when_gpt_falls_back(self) -> None:
         request = CreateEditJobRequest(
             **_request_payload(
@@ -652,6 +1226,32 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertEqual(job.status, "failed")
         self.assertIn("empty_clip_list", [error.code for error in job.validation_errors])
 
+    def test_deterministic_plan_rejects_contextless_non_shot_action_clip(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=15,
+                clips=[
+                    {
+                        **_clip("late_fast_break", 8.0, "Fast Break", 0.98),
+                        "end": 11.0,
+                        "eventCenter": 8.2,
+                    },
+                    {
+                        **_clip("contextual_fast_break", 20.0, "Fast Break", 0.82),
+                        "end": 24.2,
+                        "eventCenter": 22.0,
+                    },
+                ],
+            )
+        )
+
+        job = build_edit_job(request, "edit_non_shot_context_floor")
+
+        self.assertFalse(is_plan_quality_eligible_clip(request.clips[0]))
+        self.assertTrue(is_plan_quality_eligible_clip(request.clips[1]))
+        self.assertEqual(job.status, "plan_ready")
+        self.assertEqual([clip.clipId for clip in job.plan.clips], ["contextual_fast_break"])
+
     def test_deterministic_plan_keeps_clear_non_shot_defense_clip(self) -> None:
         request = CreateEditJobRequest(
             **_request_payload(
@@ -671,6 +1271,34 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertEqual(job.status, "plan_ready")
         self.assertEqual([clip.clipId for clip in job.plan.clips], ["defense_stop"])
 
+    def test_deterministic_plan_rejects_contextless_defensive_event_clip(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=15,
+                clips=[
+                    {
+                        **_clip("late_block_blink", 12.0, "Block", 0.98),
+                        "end": 15.0,
+                        "eventCenter": 12.1,
+                    },
+                    {
+                        **_clip("contextual_steal", 24.0, "Steal", 0.82),
+                        "end": 27.4,
+                        "eventCenter": 25.1,
+                    },
+                ],
+            )
+        )
+
+        job = build_edit_job(request, "edit_defensive_context_floor")
+
+        self.assertTrue(is_defensive_event_like_clip(request.clips[0]))
+        self.assertFalse(native_shot_signals_for_clip(request.clips[0]).timingWindowOk)
+        self.assertFalse(is_plan_quality_eligible_clip(request.clips[0]))
+        self.assertTrue(is_plan_quality_eligible_clip(request.clips[1]))
+        self.assertEqual(job.status, "plan_ready")
+        self.assertEqual([clip.clipId for clip in job.plan.clips], ["contextual_steal"])
+
     def test_deterministic_plan_does_not_caption_uncertain_shot_attempt_as_bucket(self) -> None:
         request = CreateEditJobRequest(
             **_request_payload(
@@ -684,6 +1312,51 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertEqual([clip.clipId for clip in plan.clips], ["uncertain_jump_shot"])
         self.assertEqual(plan.clips[0].caption, "GOOD LOOK")
         self.assertNotEqual(plan.clips[0].caption, "BUCKET")
+
+    def test_deterministic_plan_does_not_caption_label_only_made_claim_as_bucket(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=15,
+                clips=[_clip("label_only_make", 12.0, "Made Shot", 0.92)],
+            )
+        )
+
+        plan = build_edit_plan(request, "edit_label_only_caption")
+
+        self.assertEqual([clip.clipId for clip in plan.clips], ["label_only_make"])
+        self.assertEqual(clip_outcome_evidence_source(request.clips[0]), "label_only")
+        self.assertEqual(plan.clips[0].caption, "GOOD LOOK")
+        self.assertNotEqual(plan.clips[0].caption, "BUCKET")
+
+    def test_deterministic_plan_can_caption_native_supported_make_as_bucket(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=15,
+                clips=[
+                    {
+                        **_clip("native_supported_make", 12.0, "Made Shot", 0.82),
+                        "nativeShotSignals": {
+                            "isShotLike": True,
+                            "leadInSeconds": 3.4,
+                            "followThroughSeconds": 3.6,
+                            "setupContextScore": 1.0,
+                            "outcomeContextScore": 1.0,
+                            "eventCenterQuality": 1.0,
+                            "contextQualityScore": 1.0,
+                            "timingWindowOk": True,
+                            "outcome": "made",
+                            "outcomeConfidence": 0.82,
+                        },
+                    }
+                ],
+            )
+        )
+
+        plan = build_edit_plan(request, "edit_native_supported_caption")
+
+        self.assertEqual([clip.clipId for clip in plan.clips], ["native_supported_make"])
+        self.assertEqual(clip_outcome_evidence_source(request.clips[0]), "native_shot_signals")
+        self.assertEqual(plan.clips[0].caption, "BUCKET")
 
     def test_native_shot_signals_do_not_treat_ambiguous_finish_labels_as_made(self) -> None:
         for label in ("Layup", "Tough Finish"):
@@ -730,6 +1403,8 @@ class EditPlanAgentTests(unittest.TestCase):
         plan = build_edit_plan(request, "edit_native_uncertain_caption")
 
         self.assertEqual(signals.outcome, "uncertain")
+        self.assertEqual(signals.outcomeEvidenceSource, "uncertain")
+        self.assertEqual(signals.outcomeReliabilityScore, 0.35)
         self.assertEqual([clip.clipId for clip in plan.clips], ["provider_overclaimed_make"])
         self.assertEqual(plan.clips[0].caption, "GOOD LOOK")
         self.assertNotEqual(plan.clips[0].caption, "BUCKET")
@@ -759,6 +1434,10 @@ class EditPlanAgentTests(unittest.TestCase):
             )
         )
 
+        signals = native_shot_signals_for_clip(request.clips[0])
+
+        self.assertEqual(signals.outcomeEvidenceSource, "not_shot")
+        self.assertEqual(signals.outcomeReliabilityScore, 0.82)
         self.assertFalse(is_plan_quality_eligible_clip(request.clips[0]))
         plan = build_edit_plan(request, "edit_native_not_shot_reject")
 
@@ -839,6 +1518,28 @@ class EditPlanAgentTests(unittest.TestCase):
 
         self.assertIn("shot_context_missing_setup", [error.code for error in errors])
 
+    def test_validate_edit_plan_rejects_barely_contextual_shot_render_window(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=15,
+                clips=[_clip("barely_contextual_make", 20.0, "Made Shot", 0.93)],
+            )
+        )
+        plan = build_edit_plan(request, "edit_barely_contextual_window")
+        clipped = plan.clips[0].model_copy(
+            update={
+                "sourceStart": round(plan.clips[0].eventCenter - 1.0, 3),
+                "sourceEnd": round(plan.clips[0].eventCenter + 0.7, 3),
+            }
+        )
+        invalid_plan = plan.model_copy(update={"clips": [clipped]})
+
+        errors = validate_edit_plan(invalid_plan, request.clips, request.planTier)
+        error_codes = [error.code for error in errors]
+
+        self.assertIn("shot_context_missing_setup", error_codes)
+        self.assertIn("shot_context_missing_outcome", error_codes)
+
     def test_gpt_highlight_rerank_uses_existing_clip_ids_only(self) -> None:
         request = CreateEditJobRequest(**_request_payload())
         decisions = [
@@ -900,11 +1601,581 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertIn("c3", reranked.gptRerankSummary.keptClipIds)
         self.assertIn("c1", reranked.gptRerankSummary.rejectedClipIds)
         self.assertNotIn("c999", [clip.id for clip in reranked.clips])
+        kept_clip = next(clip for clip in reranked.clips if clip.id == "c3")
+        kept_signals = native_shot_signals_for_clip(kept_clip)
+        self.assertEqual(kept_clip.gptOutcome, "made")
+        self.assertEqual(kept_clip.gptOutcomeEvidenceSource, "gpt_shot_tracking")
+        self.assertGreaterEqual(kept_clip.gptOutcomeReliabilityScore or 0.0, 0.72)
+        self.assertEqual(kept_signals.outcome, "made")
+        self.assertEqual(kept_signals.outcomeEvidenceSource, "gpt_shot_tracking")
+        self.assertGreaterEqual(kept_signals.outcomeReliabilityScore, 0.72)
         self.assertEqual(plan.clips[0].clipId, "c3")
         self.assertEqual(plan.clips[0].caption, "BIG FINISH")
         self.assertEqual(plan.clips[0].captionMoment, 15.4)
         self.assertEqual(plan.clips[0].cropMode, "rim")
         self.assertTrue(any(effect.type == "slow_motion" for effect in plan.clips[0].effects))
+
+    def test_gpt_highlight_rerank_keeps_selected_and_uncertain_team_steals(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                teamSelection={
+                    "mode": "team",
+                    "teamId": "team_dark",
+                    "label": "Dark jerseys",
+                    "colorLabel": "black",
+                    "confidenceThreshold": 0.85,
+                    "includeUncertain": True,
+                },
+                clips=[
+                    {
+                        **_clip("dark_steal", 0.0, "Steal", 0.93),
+                        "teamAttribution": _team_attribution(team_id="team_dark", color_label="black", confidence=0.93),
+                    },
+                    {
+                        **_clip("uncertain_steal", 9.0, "Steal", 0.82),
+                        "teamAttribution": {"teamId": "team_light", "colorLabel": "white", "confidence": 0.62},
+                        "userReviewDecision": "kept",
+                    },
+                    {
+                        **_clip("light_steal", 18.0, "Steal", 0.96),
+                        "teamAttribution": _team_attribution(team_id="team_light", color_label="white", confidence=0.96),
+                    },
+                ],
+            )
+        )
+        decisions = [
+            GPTHighlightClipDecision(
+                clipId=clip.id,
+                keep=True,
+                highlightScore=0.9,
+                watchabilityScore=0.84,
+                basketballEvent="Steal",
+                outcome="steal",
+                caption="COOKIES",
+                reason="Shows the defender taking possession cleanly.",
+                qualitySignals=_quality_signals(
+                    releaseVisible=False,
+                    shotArcVisible=False,
+                    rimResultVisible=False,
+                    reason="Ball and defender control are visible through the steal.",
+                ),
+                shotResultEvidence=_defensive_result_evidence(),
+                shotTrackingEvidence=_shot_tracking_evidence(
+                    ballVisibleFrameRoles=["eventCenter", "finish"],
+                    rimVisibleFrameRoles=[],
+                    releaseFrameRole=None,
+                    resultFrameRole=None,
+                    ballEntersRimFrameRole=None,
+                    trajectoryContinuity="partial",
+                    reason="Ball control is visible before and after the steal.",
+                ),
+                suggestedEdit=GPTHighlightSuggestedEdit(cropFocus="ball"),
+            )
+            for clip in request.clips
+        ]
+
+        reranked = apply_gpt_highlight_rerank(request, decisions, "gpt-test", 3, 12)
+
+        self.assertEqual(reranked.gptRerankSummary.status, "applied")
+        self.assertEqual([clip.id for clip in reranked.clips], ["dark_steal", "uncertain_steal"])
+        self.assertNotIn("light_steal", reranked.gptRerankSummary.keptClipIds)
+
+    def test_gpt_highlight_rerank_does_not_render_unreviewed_uncertain_team_clip(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                teamSelection={
+                    "mode": "team",
+                    "teamId": "team_dark",
+                    "label": "Dark jerseys",
+                    "colorLabel": "black",
+                    "confidenceThreshold": 0.85,
+                    "includeUncertain": True,
+                },
+                clips=[
+                    {
+                        **_clip("dark_steal", 0.0, "Steal", 0.93),
+                        "teamAttribution": _team_attribution(team_id="team_dark", color_label="black", confidence=0.93),
+                    },
+                    {
+                        **_clip("uncertain_steal", 9.0, "Steal", 0.82),
+                        "teamAttribution": {"teamId": "team_light", "colorLabel": "white", "confidence": 0.62},
+                    },
+                ],
+            )
+        )
+        decisions = [
+            GPTHighlightClipDecision(
+                clipId=clip.id,
+                keep=True,
+                highlightScore=0.9,
+                watchabilityScore=0.84,
+                basketballEvent="Steal",
+                outcome="steal",
+                caption="COOKIES",
+                reason="Shows the defender taking possession cleanly.",
+                qualitySignals=_quality_signals(
+                    releaseVisible=False,
+                    shotArcVisible=False,
+                    rimResultVisible=False,
+                    reason="Ball and defender control are visible through the steal.",
+                ),
+                shotResultEvidence=_defensive_result_evidence(),
+                shotTrackingEvidence=_shot_tracking_evidence(
+                    ballVisibleFrameRoles=["eventCenter", "finish"],
+                    rimVisibleFrameRoles=[],
+                    releaseFrameRole=None,
+                    resultFrameRole=None,
+                    ballEntersRimFrameRole=None,
+                    trajectoryContinuity="partial",
+                    reason="Ball control is visible before and after the steal.",
+                ),
+                suggestedEdit=GPTHighlightSuggestedEdit(cropFocus="ball"),
+            )
+            for clip in request.clips
+        ]
+
+        reranked = apply_gpt_highlight_rerank(request, decisions, "gpt-test", 2, 8)
+        plan = build_edit_plan(reranked, "edit_review_only_uncertain")
+
+        self.assertEqual([clip.id for clip in reranked.clips], ["dark_steal"])
+        self.assertEqual(reranked.gptRerankSummary.uncertainReviewClipIds, ["uncertain_steal"])
+        self.assertNotIn("uncertain_steal", reranked.gptRerankSummary.keptClipIds)
+        self.assertEqual([clip.clipId for clip in plan.clips], ["dark_steal"])
+
+    def test_gpt_highlight_rerank_preserves_rejected_uncertain_review_clip_ids(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                teamSelection={
+                    "mode": "team",
+                    "teamId": "team_dark",
+                    "label": "Dark jerseys",
+                    "colorLabel": "black",
+                    "confidenceThreshold": 0.85,
+                    "includeUncertain": True,
+                },
+                clips=[
+                    {
+                        **_clip("dark_make", 0.0, "Made Shot", 0.94),
+                        "teamAttribution": _team_attribution(team_id="team_dark", color_label="black", confidence=0.93),
+                    },
+                    {
+                        **_clip("uncertain_steal", 9.0, "Steal", 0.86),
+                        "teamAttribution": {
+                            "teamId": "team_light",
+                            "label": "Light jerseys",
+                            "colorLabel": "white",
+                            "confidence": 0.62,
+                            "source": "quick_scan",
+                        },
+                    },
+                    {
+                        **_clip("late_uncertain_make", 18.0, "Made Shot", 0.9),
+                        "end": 19.4,
+                        "eventCenter": 19.0,
+                        "teamAttribution": {
+                            "teamId": "team_dark",
+                            "label": "Dark jerseys",
+                            "colorLabel": "black",
+                            "confidence": 0.6,
+                            "source": "quick_scan",
+                        },
+                    },
+                ],
+            )
+        )
+        decisions = [
+            GPTHighlightClipDecision(
+                clipId="dark_make",
+                keep=True,
+                highlightScore=0.93,
+                watchabilityScore=0.9,
+                basketballEvent="Made jumper",
+                outcome="made",
+                caption="BUCKET",
+                reason="Clear made shot with complete setup and result.",
+                qualitySignals=_quality_signals(),
+                shotResultEvidence=_shot_result_evidence(),
+                shotTrackingEvidence=_shot_tracking_evidence(),
+                suggestedEdit=GPTHighlightSuggestedEdit(),
+            ),
+            GPTHighlightClipDecision(
+                clipId="uncertain_steal",
+                keep=False,
+                rejectReason="needs_manual_team_review",
+                highlightScore=0.7,
+                watchabilityScore=0.72,
+                basketballEvent="Steal",
+                outcome="steal",
+                caption="REVIEW",
+                reason="Good defensive moment but team ownership is still uncertain.",
+                qualitySignals=_quality_signals(
+                    releaseVisible=False,
+                    shotArcVisible=False,
+                    rimResultVisible=False,
+                    reason="Defensive play is visible but team attribution is uncertain.",
+                ),
+                shotResultEvidence=_defensive_result_evidence(),
+                shotTrackingEvidence=_shot_tracking_evidence(
+                    ballVisibleFrameRoles=["eventCenter", "finish"],
+                    rimVisibleFrameRoles=[],
+                    releaseFrameRole=None,
+                    resultFrameRole=None,
+                    ballEntersRimFrameRole=None,
+                    trajectoryContinuity="partial",
+                    reason="Ball control changes during the steal.",
+                ),
+                suggestedEdit=GPTHighlightSuggestedEdit(cropFocus="ball"),
+            ),
+        ]
+
+        reranked = apply_gpt_highlight_rerank(request, decisions, "gpt-test", 2, 8)
+        response = build_edit_job(reranked, "edit_uncertain_review_ids").to_response()
+
+        self.assertEqual([clip.id for clip in reranked.clips], ["dark_make"])
+        self.assertIn("uncertain_steal", reranked.gptRerankSummary.rejectedClipIds)
+        self.assertEqual(reranked.gptRerankSummary.uncertainReviewClipIds, ["uncertain_steal"])
+        self.assertNotIn("late_uncertain_make", reranked.gptRerankSummary.uncertainReviewClipIds)
+        self.assertEqual(response.gptUncertainReviewClipIds, ["uncertain_steal"])
+        self.assertEqual(response.gptUncertainReviewClipCount, 1)
+
+    def test_gpt_highlight_rerank_keeps_mixed_steal_finish_as_defensive_outcome(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=15,
+                clips=[_clip("steal_finish", 6.0, "Steal Finish", 0.93)],
+            )
+        )
+        decisions = [
+            GPTHighlightClipDecision(
+                clipId="steal_finish",
+                keep=True,
+                highlightScore=0.9,
+                watchabilityScore=0.86,
+                basketballEvent="Steal",
+                outcome="steal",
+                caption="COOKIES",
+                reason="Shows a clean steal before the finish attempt.",
+                qualitySignals=_quality_signals(
+                    releaseVisible=False,
+                    shotArcVisible=False,
+                    rimResultVisible=False,
+                    reason="Defender takes the ball cleanly before the finish.",
+                ),
+                shotResultEvidence=_defensive_result_evidence(),
+                shotTrackingEvidence=_shot_tracking_evidence(
+                    ballVisibleFrameRoles=["challenge", "possessionChange", "finish"],
+                    rimVisibleFrameRoles=[],
+                    releaseFrameRole=None,
+                    resultFrameRole="possessionChange",
+                    ballEntersRimFrameRole=None,
+                    trajectoryContinuity="partial",
+                    reason="Sampled defensive frames show the challenge and possession change.",
+                ),
+                suggestedEdit=GPTHighlightSuggestedEdit(cropFocus="ball"),
+            )
+        ]
+
+        reranked = apply_gpt_highlight_rerank(
+            request,
+            decisions,
+            "gpt-test",
+            1,
+            8,
+            sampled_frame_roles_by_clip={"steal_finish": ["start", "eventCenter", "finish", "challenge", "possessionChange", "recovery"]},
+        )
+
+        self.assertTrue(is_defensive_event_like_clip(request.clips[0]))
+        self.assertTrue(is_plan_quality_eligible_clip(request.clips[0]))
+        self.assertEqual(reranked.gptRerankSummary.status, "applied")
+        self.assertEqual([clip.id for clip in reranked.clips], ["steal_finish"])
+        self.assertEqual(reranked.clips[0].label, "Steal (steal)")
+
+    def test_gpt_defensive_decision_citing_unsampled_shot_role_is_rejected(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=15,
+                clips=[_clip("steal_finish", 6.0, "Steal Finish", 0.93)],
+            )
+        )
+        decisions = [
+            GPTHighlightClipDecision(
+                clipId="steal_finish",
+                keep=True,
+                highlightScore=0.9,
+                watchabilityScore=0.86,
+                basketballEvent="Steal",
+                outcome="steal",
+                caption="COOKIES",
+                reason="Claims a release frame that was never sampled for this defensive clip.",
+                qualitySignals=_quality_signals(
+                    releaseVisible=False,
+                    shotArcVisible=False,
+                    rimResultVisible=False,
+                    reason="Defender takes the ball cleanly before the finish.",
+                ),
+                shotResultEvidence=_defensive_result_evidence(),
+                shotTrackingEvidence=_shot_tracking_evidence(
+                    ballVisibleFrameRoles=["release", "possessionChange", "finish"],
+                    rimVisibleFrameRoles=[],
+                    releaseFrameRole="release",
+                    resultFrameRole="possessionChange",
+                    ballEntersRimFrameRole=None,
+                    trajectoryContinuity="partial",
+                    reason="The GPT response cites a role outside the sampled frame set.",
+                ),
+                suggestedEdit=GPTHighlightSuggestedEdit(cropFocus="ball"),
+            )
+        ]
+
+        reranked = apply_gpt_highlight_rerank(
+            request,
+            decisions,
+            "gpt-test",
+            1,
+            8,
+            sampled_frame_roles_by_clip={"steal_finish": ["start", "eventCenter", "finish", "challenge", "possessionChange", "recovery"]},
+        )
+
+        self.assertEqual(reranked.gptRerankSummary.status, "applied")
+        self.assertEqual(reranked.gptRerankSummary.keptClipIds, [])
+        self.assertEqual(reranked.gptRerankSummary.fallbackReason, "all_clips_rejected")
+        self.assertEqual(reranked.gptRerankSummary.rejectedReasonCounts.get("gpt_cited_unsampled_frame_role"), 1)
+
+    def test_defensive_event_classifier_ignores_stop_and_pop_shot_label(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=15,
+                clips=[_clip("stop_pop", 6.0, "Stop and Pop Jumper", 0.93)],
+            )
+        )
+
+        self.assertFalse(is_defensive_event_like_clip(request.clips[0]))
+        self.assertTrue(is_plan_quality_eligible_clip(request.clips[0]))
+
+    def test_defensive_event_classifier_requires_forced_or_defensive_turnover_context(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=15,
+                clips=[
+                    _clip("plain_turnover", 12.0, "Turnover", 0.92),
+                    _clip("unforced_turnover", 24.0, "Unforced Turnover", 0.92),
+                    _clip("forced_turnover", 36.0, "Forced Turnover", 0.92),
+                    _clip("defensive_turnover", 48.0, "Defensive Turnover", 0.92),
+                ],
+            )
+        )
+
+        self.assertFalse(is_defensive_event_like_clip(request.clips[0]))
+        self.assertFalse(is_defensive_event_like_clip(request.clips[1]))
+        self.assertTrue(is_defensive_event_like_clip(request.clips[2]))
+        self.assertTrue(is_defensive_event_like_clip(request.clips[3]))
+
+    def test_gpt_highlight_rerank_rejects_missed_shot_without_ball_path(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=15,
+                clips=[_clip("miss_no_ball_path", 12.0, "Missed Shot", 0.9)],
+            )
+        )
+        decisions = [
+            GPTHighlightClipDecision(
+                clipId="miss_no_ball_path",
+                keep=True,
+                highlightScore=0.86,
+                watchabilityScore=0.82,
+                basketballEvent="Missed shot",
+                outcome="missed",
+                caption="GOOD LOOK",
+                reason="GPT claims a miss but cannot see the ball path.",
+                qualitySignals=_quality_signals(ballPathVisible=False, reason="Release and rim are visible, but ball path is not."),
+                shotResultEvidence=_shot_result_evidence(
+                    rimResultEvidence="clear_miss",
+                    outcomeConfidence=0.78,
+                    rimEntrySequence="visible_miss",
+                    rimEntrySequenceConfidence=0.76,
+                ),
+                shotTrackingEvidence=_shot_tracking_evidence(
+                    ballVisibleFrameRoles=["eventCenter", "finish"],
+                    rimVisibleFrameRoles=["finish"],
+                    releaseFrameRole="eventCenter",
+                    resultFrameRole="finish",
+                    ballEntersRimFrameRole=None,
+                    trajectoryContinuity="partial",
+                ),
+                suggestedEdit=GPTHighlightSuggestedEdit(),
+            )
+        ]
+
+        reranked = apply_gpt_highlight_rerank(request, decisions, "gpt-test", 1, 5)
+
+        self.assertEqual(reranked.clips, [])
+        self.assertEqual(reranked.gptRerankSummary.fallbackReason, "all_clips_rejected")
+        self.assertEqual(reranked.gptRerankSummary.rejectedReasonCounts["missing_missed_shot_ball_path"], 1)
+
+    def test_gpt_highlight_rerank_rejects_missed_shot_without_visible_miss_sequence(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=15,
+                clips=[_clip("miss_unclear_result_sequence", 12.0, "Missed Shot", 0.9)],
+            )
+        )
+        decisions = [
+            GPTHighlightClipDecision(
+                clipId="miss_unclear_result_sequence",
+                keep=True,
+                highlightScore=0.88,
+                watchabilityScore=0.84,
+                basketballEvent="Missed shot",
+                outcome="missed",
+                caption="GOOD LOOK",
+                reason="GPT claims a clear miss but does not cite a visible miss sequence.",
+                qualitySignals=_quality_signals(reason="Release, ball path, and rim are visible."),
+                shotResultEvidence=_shot_result_evidence(
+                    rimResultEvidence="clear_miss",
+                    outcomeConfidence=0.82,
+                    rimEntrySequence="unclear",
+                    rimEntryFrameRole=None,
+                    ballBelowRimOrNetFrameRole=None,
+                    rimEntrySequenceConfidence=0.24,
+                ),
+                shotTrackingEvidence=_shot_tracking_evidence(
+                    ballVisibleFrameRoles=["eventCenter", "finish"],
+                    rimVisibleFrameRoles=["finish"],
+                    releaseFrameRole="eventCenter",
+                    resultFrameRole="finish",
+                    ballEntersRimFrameRole=None,
+                    trajectoryContinuity="partial",
+                ),
+                suggestedEdit=GPTHighlightSuggestedEdit(),
+            )
+        ]
+
+        reranked = apply_gpt_highlight_rerank(request, decisions, "gpt-test", 1, 5)
+
+        self.assertEqual(reranked.clips, [])
+        self.assertEqual(reranked.gptRerankSummary.fallbackReason, "all_clips_rejected")
+        self.assertEqual(reranked.gptRerankSummary.rejectedReasonCounts["miss_rim_sequence_not_visible"], 1)
+
+    def test_gpt_highlight_rerank_accepts_visible_miss_without_ball_entry_frame(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=15,
+                clips=[_clip("clean_visible_miss", 12.0, "Missed Shot", 0.9)],
+            )
+        )
+        decisions = [
+            GPTHighlightClipDecision(
+                clipId="clean_visible_miss",
+                keep=True,
+                highlightScore=0.88,
+                watchabilityScore=0.84,
+                basketballEvent="Missed shot",
+                outcome="missed",
+                caption="GOOD LOOK",
+                reason="Full shot context and a visible miss off the rim.",
+                qualitySignals=_quality_signals(reason="Release, ball path, rim, and clear miss are visible."),
+                shotResultEvidence=_shot_result_evidence(
+                    rimResultEvidence="clear_miss",
+                    outcomeConfidence=0.82,
+                    rimEntrySequence="visible_miss",
+                    ballApproachFrameRole="rimApproach",
+                    rimEntryFrameRole="rim",
+                    ballBelowRimOrNetFrameRole="finish",
+                    rimEntrySequenceConfidence=0.78,
+                ),
+                shotTrackingEvidence=_shot_tracking_evidence(
+                    ballVisibleFrameRoles=["release", "shotArcLate", "rimApproach", "rim", "finish"],
+                    rimVisibleFrameRoles=["rim", "finish"],
+                    releaseFrameRole="release",
+                    resultFrameRole="rim",
+                    ballEntersRimFrameRole=None,
+                    trajectoryContinuity="continuous",
+                ),
+                suggestedEdit=GPTHighlightSuggestedEdit(cropFocus="rim"),
+            )
+        ]
+
+        reranked = apply_gpt_highlight_rerank(
+            request,
+            decisions,
+            "gpt-test",
+            1,
+            10,
+            sampled_frame_roles_by_clip={
+                "clean_visible_miss": [
+                    "start",
+                    "preEvent",
+                    "release",
+                    "shotArcEarly",
+                    "shotArcLate",
+                    "rimApproach",
+                    "rim",
+                    "finish",
+                ]
+            },
+        )
+
+        self.assertEqual(reranked.gptRerankSummary.keptClipIds, ["clean_visible_miss"])
+        self.assertEqual(reranked.clips[0].gptOutcome, "missed")
+        self.assertEqual(reranked.clips[0].gptOutcomeEvidenceSource, "gpt_shot_tracking")
+
+    def test_gpt_highlight_rerank_rejects_block_without_visible_ball_control(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=15,
+                clips=[_clip("block_no_ball_path", 12.0, "Block", 0.9)],
+            )
+        )
+        decisions = [
+            GPTHighlightClipDecision(
+                clipId="block_no_ball_path",
+                keep=True,
+                highlightScore=0.88,
+                watchabilityScore=0.82,
+                basketballEvent="Block",
+                outcome="blocked",
+                caption="LOCKDOWN",
+                reason="GPT claims a block but cannot see the ball path.",
+                qualitySignals=_quality_signals(
+                    releaseVisible=False,
+                    shotArcVisible=False,
+                    ballPathVisible=False,
+                    reason="The challenge is visible, but the ball path is not.",
+                ),
+                shotResultEvidence=_shot_result_evidence(
+                    releaseToRimContinuity="partial",
+                    rimResultEvidence="blocked",
+                    outcomeConfidence=0.78,
+                    rimEntrySequence="blocked",
+                    ballApproachFrameRole=None,
+                    rimEntryFrameRole=None,
+                    ballBelowRimOrNetFrameRole=None,
+                    rimEntrySequenceConfidence=0.0,
+                ),
+                shotTrackingEvidence=_shot_tracking_evidence(
+                    ballVisibleFrameRoles=["eventCenter", "finish"],
+                    rimVisibleFrameRoles=[],
+                    releaseFrameRole=None,
+                    resultFrameRole="finish",
+                    ballEntersRimFrameRole=None,
+                    trajectoryContinuity="partial",
+                ),
+                suggestedEdit=GPTHighlightSuggestedEdit(cropFocus="ball"),
+            )
+        ]
+
+        reranked = apply_gpt_highlight_rerank(
+            request,
+            decisions,
+            "gpt-test",
+            1,
+            5,
+            sampled_frame_roles_by_clip={"block_no_ball_path": ["start", "eventCenter", "finish"]},
+        )
+
+        self.assertEqual(reranked.clips, [])
+        self.assertEqual(reranked.gptRerankSummary.fallbackReason, "all_clips_rejected")
+        self.assertEqual(reranked.gptRerankSummary.rejectedReasonCounts["missing_block_ball_control"], 1)
 
     def test_gpt_highlight_decision_requires_quality_signals(self) -> None:
         with self.assertRaises(ValidationError):
@@ -1465,6 +2736,61 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertEqual(reranked.clips, [])
         self.assertEqual(job.status, "failed")
         self.assertIn("empty_clip_list", [error.code for error in job.validation_errors])
+
+    def test_gpt_highlight_rerank_soft_all_rejected_rescues_quality_candidates_for_review(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=30,
+                clips=[
+                    _clip("clean_finish", 0.0, "Made Shot", 0.95),
+                    _clip("clear_three", 12.0, "Made Shot", 0.9),
+                ],
+            )
+        )
+        decisions = [
+            GPTHighlightClipDecision(
+                clipId="clean_finish",
+                keep=False,
+                rejectReason="not_confident",
+                highlightScore=0.64,
+                watchabilityScore=0.79,
+                basketballEvent="Made Shot",
+                outcome="made",
+                caption="REVIEW",
+                reason="Playable clip, but GPT was not confident enough to make it a final selected highlight.",
+                qualitySignals=_quality_signals(),
+                shotResultEvidence=_shot_result_evidence(),
+                shotTrackingEvidence=_shot_tracking_evidence(),
+                suggestedEdit=GPTHighlightSuggestedEdit(),
+            ),
+            GPTHighlightClipDecision(
+                clipId="clear_three",
+                keep=False,
+                rejectReason="low_hype",
+                highlightScore=0.61,
+                watchabilityScore=0.76,
+                basketballEvent="Made Shot",
+                outcome="made",
+                caption="REVIEW",
+                reason="The play is visible enough for review, but GPT wanted a more exciting moment.",
+                qualitySignals=_quality_signals(),
+                shotResultEvidence=_shot_result_evidence(),
+                shotTrackingEvidence=_shot_tracking_evidence(),
+                suggestedEdit=GPTHighlightSuggestedEdit(),
+            ),
+        ]
+
+        reranked = apply_gpt_highlight_rerank(request, decisions, "gpt-test", 2, 6)
+        plan = build_edit_plan(reranked, "edit_soft_all_gpt_rejected")
+
+        self.assertEqual(reranked.gptRerankSummary.status, "fallback")
+        self.assertEqual(reranked.gptRerankSummary.fallbackReason, "all_clips_rejected_rescued")
+        self.assertEqual([clip.id for clip in reranked.clips], ["clean_finish", "clear_three"])
+        self.assertEqual(reranked.gptRerankSummary.keptClipIds, ["clean_finish", "clear_three"])
+        self.assertEqual(reranked.gptRerankSummary.rejectedClipIds, [])
+        self.assertEqual(reranked.gptRerankSummary.rejectedReasonCounts.get("not_confident"), 1)
+        self.assertEqual(reranked.gptRerankSummary.rejectedReasonCounts.get("low_hype"), 1)
+        self.assertIn(plan.clips[0].clipId, {"clean_finish", "clear_three"})
 
     def test_gpt_highlight_rerank_rejects_generic_audio_only_scoring_claim(self) -> None:
         request = CreateEditJobRequest(
@@ -2072,6 +3398,62 @@ class EditPlanAgentTests(unittest.TestCase):
 
                 self.assertIsNone(patched)
                 self.assertTrue(any(error.code == "invalid_gpt_patch" for error in errors))
+
+    def test_gpt_revision_patch_rejects_opponent_clip_for_selected_team(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                teamSelection={
+                    "mode": "team",
+                    "teamId": "team_dark",
+                    "label": "Dark jerseys",
+                    "colorLabel": "black",
+                    "confidenceThreshold": 0.85,
+                    "includeUncertain": True,
+                },
+                clips=[
+                    {
+                        **_clip("dark_make", 0.0, "Made Shot", 0.95),
+                        "teamAttribution": _team_attribution(team_id="team_dark", color_label="black", confidence=0.94),
+                    },
+                    {
+                        **_clip("light_make", 8.0, "Made Shot", 0.98),
+                        "teamAttribution": _team_attribution(team_id="team_light", color_label="white", confidence=0.96),
+                    },
+                ],
+            )
+        )
+        job = build_edit_job(request, "edit_selected_team_patch_guard")
+        opponent = next(clip for clip in job.request.clips if clip.id == "light_make")
+        opponent_plan_clip = job.plan.clips[0].model_dump()
+        opponent_plan_clip.update(
+            {
+                "clipId": opponent.id,
+                "sourceStart": opponent.start,
+                "sourceEnd": opponent.end,
+                "eventCenter": opponent.eventCenter,
+                "label": opponent.label,
+                "caption": "BUCKET",
+                "timelineStart": 0.0,
+                "timelineEnd": opponent.duration,
+            }
+        )
+        patch = EditPlanPatch(
+            baseEditPlanId=job.edit_job_id,
+            revisionIntent="make_more_hype",
+            summary="GPT tried to add a confident opponent clip.",
+            operations=[EditPlanPatchOperation(op="replace", path="/clips", value=[opponent_plan_clip])],
+        )
+
+        revised, response = build_revision_response(
+            job,
+            ReviseEditJobRequest(command="make_more_hype"),
+            "rev_selected_team_patch_guard",
+            proposed_patch=patch,
+        )
+
+        self.assertEqual(revised.status, "failed")
+        self.assertEqual(response.status, "revision_failed")
+        self.assertTrue(any(error.code == "unknown_clip" for error in response.validationResult.errors))
 
     def test_revision_commands_are_deterministic_patches(self) -> None:
         request = CreateEditJobRequest(**_request_payload())

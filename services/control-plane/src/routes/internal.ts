@@ -1,5 +1,5 @@
 import type { Env } from "../env";
-import type { CloudAnalysisJobResponse, CloudAnalysisResult, CloudClip, InferenceCallbackPayload, JobRecord, JobStatus } from "../types";
+import type { CloudAnalysisJobResponse, CloudAnalysisResult, CloudClip, InferenceCallbackPayload, JobRecord, JobStatus, TeamSelection } from "../types";
 import { getJobSnapshot, updateJobState } from "../do/job-state-client";
 import { appendJobEvent } from "../db";
 import { isSharedSecretAuthorized } from "../utils/auth";
@@ -423,7 +423,9 @@ function normalizeCallbackResult(payload: InferenceCallbackPayload, requestId: s
       candidateSegments: clips.length,
       finalSegments: clips.length
     },
-    resultConfidence
+    resultConfidence,
+    detectedTeams: normalizeTeamOptions(manifest.detectedTeams),
+    teamSelection: normalizeTeamSelection(manifest.teamSelection ?? (payload as InferenceCallbackPayload & { teamSelection?: unknown }).teamSelection)
   };
 }
 
@@ -437,6 +439,7 @@ function normalizeManifestClip(value: InferenceManifestClipLike): CloudClip {
   return {
     startTime,
     endTime,
+    eventCenter: coerceNumber(value.eventCenter) ?? null,
     confidence,
     label,
     action,
@@ -471,7 +474,10 @@ function normalizeManifestClip(value: InferenceManifestClipLike): CloudClip {
     topLabels: normalizeLabelScores(value.topLabels),
     comparisonTopLabels: normalizeLabelScores(value.comparisonTopLabels),
     rawTopLabels: normalizeRawLabelScores(value.rawTopLabels),
-    comparisonRawTopLabels: normalizeRawLabelScores(value.comparisonRawTopLabels)
+    comparisonRawTopLabels: normalizeRawLabelScores(value.comparisonRawTopLabels),
+    nativeShotSignals: normalizeNativeShotSignals(value.nativeShotSignals),
+    teamAttribution: normalizeClipTeamAttribution(value.teamAttribution),
+    teamAttributionStatus: normalizeTeamAttributionStatus(value.teamAttributionStatus)
   };
 }
 
@@ -483,12 +489,15 @@ type InferenceManifestLike = {
   modelVersion?: unknown;
   resultConfidence?: unknown;
   failureReason?: unknown;
+  detectedTeams?: unknown;
+  teamSelection?: unknown;
   clips: InferenceManifestClipLike[];
 };
 
 type InferenceManifestClipLike = {
   startTime?: unknown;
   endTime?: unknown;
+  eventCenter?: unknown;
   confidence?: unknown;
   resultConfidence?: unknown;
   label?: unknown;
@@ -525,6 +534,9 @@ type InferenceManifestClipLike = {
   comparisonTopLabels?: unknown;
   rawTopLabels?: unknown;
   comparisonRawTopLabels?: unknown;
+  nativeShotSignals?: unknown;
+  teamAttribution?: unknown;
+  teamAttributionStatus?: unknown;
 };
 
 function isInferenceManifest(value: unknown): value is InferenceManifestLike {
@@ -593,8 +605,151 @@ function normalizeRawLabelScores(value: unknown): CloudClip["rawTopLabels"] {
   return scores;
 }
 
+function normalizeNativeShotSignals(value: unknown): CloudClip["nativeShotSignals"] {
+  if (value === null || typeof value !== "object") {
+    return null;
+  }
+  const input = value as Record<string, unknown>;
+  const outcome = input.outcome;
+  const outcomeEvidenceSource = input.outcomeEvidenceSource;
+  const outcomeReliabilityScore = coerceNumber(input.outcomeReliabilityScore);
+  return {
+    isShotLike: coerceBoolean(input.isShotLike) ?? false,
+    leadInSeconds: coerceNumber(input.leadInSeconds) ?? 0,
+    followThroughSeconds: coerceNumber(input.followThroughSeconds) ?? 0,
+    setupContextScore: clamp01(coerceNumber(input.setupContextScore) ?? 0),
+    outcomeContextScore: clamp01(coerceNumber(input.outcomeContextScore) ?? 0),
+    eventCenterQuality: clamp01(coerceNumber(input.eventCenterQuality) ?? 0),
+    contextQualityScore: clamp01(coerceNumber(input.contextQualityScore) ?? 0),
+    timingWindowOk: coerceBoolean(input.timingWindowOk) ?? false,
+    outcome:
+      outcome === "made" || outcome === "missed" || outcome === "blocked" || outcome === "uncertain" || outcome === "not_shot"
+        ? outcome
+        : "uncertain",
+    outcomeConfidence: clamp01(coerceNumber(input.outcomeConfidence) ?? 0),
+    outcomeEvidenceSource:
+      outcomeEvidenceSource === "label_only" ||
+      outcomeEvidenceSource === "native_shot_signals" ||
+      outcomeEvidenceSource === "defensive_event" ||
+      outcomeEvidenceSource === "gpt_shot_tracking" ||
+      outcomeEvidenceSource === "gpt_defensive_tracking" ||
+      outcomeEvidenceSource === "non_shot" ||
+      outcomeEvidenceSource === "uncertain" ||
+      outcomeEvidenceSource === "not_shot"
+        ? outcomeEvidenceSource
+        : undefined,
+    outcomeReliabilityScore: outcomeReliabilityScore === null ? undefined : clamp01(outcomeReliabilityScore)
+  };
+}
+
+function normalizeTeamOptions(value: unknown): CloudAnalysisResult["detectedTeams"] {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+  const teams: NonNullable<CloudAnalysisResult["detectedTeams"]> = [];
+  for (const entry of value) {
+    if (entry === null || typeof entry !== "object") {
+      continue;
+    }
+    const teamId = coerceString((entry as { teamId?: unknown }).teamId);
+    const label = coerceString((entry as { label?: unknown }).label);
+    if (!teamId || !label) {
+      continue;
+    }
+    teams.push({
+      teamId,
+      label,
+      colorLabel: coerceString((entry as { colorLabel?: unknown }).colorLabel) ?? null,
+      primaryColorHex: coerceString((entry as { primaryColorHex?: unknown }).primaryColorHex) ?? null,
+      confidence: clamp01(coerceNumber((entry as { confidence?: unknown }).confidence) ?? 0),
+      source: coerceString((entry as { source?: unknown }).source) ?? null
+    });
+  }
+  return teams;
+}
+
+function normalizeTeamSelection(value: unknown): TeamSelection | null {
+  if (value === null || typeof value !== "object") {
+    return null;
+  }
+  const input = value as {
+    mode?: unknown;
+    teamId?: unknown;
+    label?: unknown;
+    colorLabel?: unknown;
+    confidenceThreshold?: unknown;
+    includeUncertain?: unknown;
+  };
+  if (input.mode !== "all" && input.mode !== "team") {
+    return null;
+  }
+  return {
+    mode: input.mode,
+    teamId: coerceString(input.teamId),
+    label: coerceString(input.label),
+    colorLabel: coerceString(input.colorLabel),
+    confidenceThreshold: clamp01(coerceNumber(input.confidenceThreshold) ?? 0.85),
+    includeUncertain: coerceBoolean(input.includeUncertain) ?? true
+  };
+}
+
+function normalizeClipTeamAttribution(value: unknown): CloudClip["teamAttribution"] {
+  if (value === null || typeof value !== "object") {
+    return null;
+  }
+  const input = value as {
+    teamId?: unknown;
+    label?: unknown;
+    colorLabel?: unknown;
+    confidence?: unknown;
+    source?: unknown;
+    evidenceFrameRefs?: unknown;
+    evidenceRoleGroups?: unknown;
+  };
+  return {
+    teamId: coerceString(input.teamId),
+    label: coerceString(input.label),
+    colorLabel: coerceString(input.colorLabel),
+    confidence: clamp01(coerceNumber(input.confidence) ?? 0),
+    source: coerceString(input.source),
+    evidenceFrameRefs: coerceStringList(input.evidenceFrameRefs, 8, 120),
+    evidenceRoleGroups: coerceStringList(input.evidenceRoleGroups, 3, 40)
+  };
+}
+
+function normalizeTeamAttributionStatus(value: unknown): CloudClip["teamAttributionStatus"] {
+  if (value === "all" || value === "matched" || value === "opponent" || value === "uncertain") {
+    return value;
+  }
+  return null;
+}
+
 function coerceString(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function coerceStringList(value: unknown, maxItems: number, maxLength: number): string[] | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+  const output: string[] = [];
+  const seen = new Set<string>();
+  for (const entry of value) {
+    const text = coerceString(entry);
+    if (!text) {
+      continue;
+    }
+    const bounded = text.slice(0, maxLength);
+    if (seen.has(bounded)) {
+      continue;
+    }
+    seen.add(bounded);
+    output.push(bounded);
+    if (output.length >= maxItems) {
+      break;
+    }
+  }
+  return output;
 }
 
 function coerceNumber(value: unknown): number | null {

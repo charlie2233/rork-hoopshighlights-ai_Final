@@ -486,6 +486,17 @@ struct CloudEditWorkReceipt: Codable, Sendable {
     let gptRerankKeptClipCount: Int?
     let gptRerankRejectedClipCount: Int?
     let gptRerankFallbackReason: String?
+    let gptUncertainReviewClipCount: Int?
+    let gptUncertainReviewClipIds: [String]?
+    let teamUncertainCandidateCount: Int?
+    let teamUncertainSelectedClipCount: Int?
+    let defensiveSelectedClipCount: Int?
+    let timingQualitySelectedClipCount: Int?
+    let timingIssueCandidateCount: Int?
+    let timingIssueSelectedClipCount: Int?
+    let shotOutcomeEvidenceSelectedClipCount: Int?
+    let shotOutcomeIssueSelectedClipCount: Int?
+    let labelOnlyOutcomeSelectedClipCount: Int?
     let summaryRows: [String]
 }
 
@@ -585,8 +596,10 @@ struct CloudEditCandidateClip: Codable, Sendable {
     let audioPeak: Double
     let combinedScore: Double?
     let duplicateGroup: String?
+    let userReviewDecision: String?
     var nativeShotSignals: NativeShotSignals? = nil
     var teamAttribution: ClipTeamAttribution? = nil
+    var teamAttributionStatus: String? = nil
 }
 
 struct CreateCloudEditJobRequest: Codable, Sendable {
@@ -618,6 +631,8 @@ struct CloudEditJobResponse: Codable, Sendable {
     let aspectRatio: CloudEditAspectRatio
     let clipCount: Int
     let validationErrors: [CloudEditValidationIssue]?
+    let gptUncertainReviewClipIds: [String]?
+    let gptUncertainReviewClipCount: Int?
 }
 
 struct CloudEditPlanResponse: Codable, Sendable {
@@ -688,16 +703,6 @@ struct CloudEditWatermark: Codable, Sendable {
     let enabled: Bool
     let position: String
     let assetId: String?
-}
-
-struct CloudEditRenderRequest: Codable, Sendable {
-    let installId: String
-    let sourceObjectKey: String
-    let planTier: CloudEditPlanTier
-    let revenueCatAppUserID: String?
-    let editPlan: CloudEditPlanSummary
-    let sourceClips: [CloudEditCandidateClip]
-    let idempotencyKey: String?
 }
 
 struct CloudEditStoredRenderRequest: Codable, Sendable {

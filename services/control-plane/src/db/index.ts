@@ -9,6 +9,7 @@ import type {
 } from "../types";
 
 type JobRow = Record<string, unknown>;
+const REDACTED_EVENT_VALUE = "[redacted]";
 
 export async function upsertJobIndex(db: D1Database, job: JobRecord): Promise<void> {
   await db
@@ -204,10 +205,36 @@ export async function appendJobEvent(
       event.traceId,
       event.eventType,
       event.message,
-      event.payload ? JSON.stringify(event.payload) : null,
+      event.payload === undefined ? null : JSON.stringify(redactJobEventPayload(event.payload)),
       event.createdAt
     )
     .run();
+}
+
+export function redactJobEventPayload(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(redactJobEventPayload);
+  }
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, child]) => [
+        key,
+        isSensitiveEventPayloadKey(key) ? REDACTED_EVENT_VALUE : redactJobEventPayload(child)
+      ])
+    );
+  }
+  return value;
+}
+
+function isSensitiveEventPayloadKey(key: string): boolean {
+  const normalized = key.toLowerCase();
+  return (
+    normalized.includes("objectkey") ||
+    normalized === "uploadurl" ||
+    normalized === "downloadurl" ||
+    normalized === "sourceurl" ||
+    normalized === "uploadheaders"
+  );
 }
 
 export async function readJobEvents(db: D1Database, jobId: string): Promise<Record<string, unknown>[]> {

@@ -15,6 +15,8 @@ final class HighlightsViewModel {
     private let projectStore: ProjectHistoryStore
     private var projectLibrary: PersistedProjectLibrary
     private var suppressProjectPersistence = false
+    private var pendingCloudAnalysisJob: PreparedCloudAnalysisJob?
+    private var activeCloudTeamScanID: UUID?
     private var lastAnalysisStatusSummary: String?
     private var lastAnalyzedAt: Date?
     private var lastExportedAt: Date?
@@ -54,6 +56,7 @@ final class HighlightsViewModel {
 
     var keptClips: [Clip] { clips.filter(\.isKept) }
     var discardedClips: [Clip] { clips.filter { !$0.isKept } }
+    var needsReviewClips: [Clip] { clips.filter(\.needsUserReview) }
 
     var showingVideoPicker = false
     var showingSaveSuccess = false
@@ -63,6 +66,10 @@ final class HighlightsViewModel {
     var cloudAnalysisJobID: String?
     var cloudEditSourceObjectKey: String?
     var cloudDetectedTeams: [CloudTeamOption] = []
+    var hasConfirmedHighlightTeamSelection = false
+    var isCloudTeamScanInProgress = false
+    var cloudTeamScanStatusMessage: String?
+    var cloudTeamScanErrorMessage: String?
 
     var analysisModeDisplayName: String {
         switch analysisMode {
@@ -94,6 +101,32 @@ final class HighlightsViewModel {
             return "Keep at least one clip before making an AI edit."
         }
         return nil
+    }
+
+    var availableHighlightTeamChoices: [HighlightTeamSelection] {
+        let scannedChoices = cloudDetectedTeams.map { team in
+            HighlightTeamSelection(
+                mode: .team,
+                teamId: team.teamId,
+                label: team.label,
+                colorLabel: team.colorLabel,
+                primaryColorHex: team.primaryColorHex,
+                confidenceThreshold: 0.85,
+                includeUncertain: true
+            )
+        }
+
+        if scannedChoices.isEmpty {
+            return [.allTeams]
+        }
+
+        return [.allTeams] + scannedChoices
+    }
+
+    var requiresHighlightTeamSelectionConfirmation: Bool {
+        AppConstants.cloudAnalysisEnabled
+            && !cloudDetectedTeams.isEmpty
+            && !hasConfirmedHighlightTeamSelection
     }
 
     var historyProjects: [PersistedProjectRecord] {
@@ -160,6 +193,8 @@ final class HighlightsViewModel {
 
         do {
             try Task.checkCancellation()
+            clearPendingCloudAnalysisJob()
+            settings.highlightTeamSelection = .allTeams
             let project = try await projectStore.createProjectFromImportedVideo(sourceURL: url.standardizedFileURL)
             try Task.checkCancellation()
             insertProject(project, makeCurrent: true)
@@ -176,6 +211,10 @@ final class HighlightsViewModel {
 
     func startAnalysis() async {
         guard let url = videoURL else { return }
+        guard !requiresHighlightTeamSelectionConfirmation else {
+            cloudTeamScanStatusMessage = "Choose a team before analysis"
+            return
+        }
         await AnalysisNotificationService.shared.prepareForAnalysis()
         beginBackgroundAnalysisTask()
         defer { endBackgroundAnalysisTask() }
@@ -192,19 +231,37 @@ final class HighlightsViewModel {
         analysisService.beginExternalAnalysis(status: "Preparing upload")
 
         do {
-            let result = try await cloudAnalysisService.analyzeVideo(
-                url: url,
-                duration: videoDuration,
-                installID: installID,
-                teamSelection: settings.highlightTeamSelection
-            ) { [weak service = analysisService] progress, status in
-                service?.updateExternalAnalysis(progress: progress, status: status)
+            let result: CloudAnalysisResult
+            if let preparedJob = pendingCloudAnalysisJob, preparedJob.sourceURL == url.standardizedFileURL {
+                result = try await cloudAnalysisService.analyzePreparedVideo(
+                    preparedJob,
+                    teamSelection: settings.highlightTeamSelection,
+                    installID: installID
+                ) { [weak service = analysisService] progress, status in
+                    service?.updateExternalAnalysis(progress: progress, status: status)
+                }
+            } else {
+                result = try await cloudAnalysisService.analyzeVideo(
+                    url: url,
+                    duration: videoDuration,
+                    installID: installID,
+                    teamSelection: settings.highlightTeamSelection
+                ) { [weak service = analysisService] progress, status in
+                    service?.updateExternalAnalysis(progress: progress, status: status)
+                }
             }
             cloudQuotaRemaining = nil
             analysisService.applyCloudAnalysis(result, duration: videoDuration)
             cloudAnalysisJobID = result.analysisJobId
             cloudEditSourceObjectKey = result.sourceObjectKey
             cloudDetectedTeams = result.detectedTeams
+            if let effectiveTeamSelection = result.teamSelection {
+                settings.highlightTeamSelection = effectiveTeamSelection
+                hasConfirmedHighlightTeamSelection = true
+            } else if result.detectedTeams.isEmpty {
+                hasConfirmedHighlightTeamSelection = true
+            }
+            pendingCloudAnalysisJob = nil
             applyDefaultRedundantClipSuppression()
             AnalysisNotificationService.shared.notifyAnalysisCompleted(
                 clipsCount: analysisService.clips.count,
@@ -224,6 +281,83 @@ final class HighlightsViewModel {
         }
     }
 
+    func scanTeamsBeforeAnalysis() async {
+        guard let url = videoURL else { return }
+        guard AppConstants.cloudAnalysisEnabled else { return }
+        guard !analysisService.isAnalyzing, !isCloudTeamScanInProgress else { return }
+        let scanSourceURL = url.standardizedFileURL
+        guard pendingCloudAnalysisJob?.sourceURL != scanSourceURL else { return }
+
+        let scanID = UUID()
+        activeCloudTeamScanID = scanID
+        isCloudTeamScanInProgress = true
+        defer {
+            if activeCloudTeamScanID == scanID {
+                isCloudTeamScanInProgress = false
+                activeCloudTeamScanID = nil
+            }
+        }
+        cloudTeamScanErrorMessage = nil
+        cloudTeamScanStatusMessage = "Preparing team scan"
+        settings.highlightTeamSelection = .allTeams
+        hasConfirmedHighlightTeamSelection = false
+        analysisMode = .cloud
+
+        do {
+            let preparedJob = try await cloudAnalysisService.prepareTeamScan(
+                url: url,
+                duration: videoDuration,
+                installID: installID
+            ) { [weak self] progress, status in
+                self?.cloudTeamScanStatusMessage = status
+                self?.analysisService.updateExternalAnalysis(progress: progress, status: status)
+            }
+
+            guard videoURL?.standardizedFileURL == scanSourceURL else { return }
+            pendingCloudAnalysisJob = preparedJob
+            cloudDetectedTeams = preparedJob.detectedTeams
+            resetStaleHighlightTeamSelection(against: preparedJob.detectedTeams)
+            hasConfirmedHighlightTeamSelection = preparedJob.detectedTeams.isEmpty
+            cloudTeamScanStatusMessage = preparedJob.detectedTeams.isEmpty
+                ? "No clear jersey colors found yet"
+                : "Choose a team before analysis"
+        } catch is CancellationError {
+            if videoURL?.standardizedFileURL == scanSourceURL {
+                clearPendingCloudAnalysisJob()
+            }
+            return
+        } catch let error as CloudAnalysisError {
+            guard videoURL?.standardizedFileURL == scanSourceURL else { return }
+            if case .quotaExceeded(let remaining) = error {
+                cloudQuotaRemaining = remaining
+            }
+            cloudTeamScanErrorMessage = error.localizedDescription
+            cloudTeamScanStatusMessage = "Team scan unavailable"
+            pendingCloudAnalysisJob = nil
+            cloudDetectedTeams = []
+            settings.highlightTeamSelection = .allTeams
+            hasConfirmedHighlightTeamSelection = true
+        } catch {
+            guard videoURL?.standardizedFileURL == scanSourceURL else { return }
+            cloudTeamScanErrorMessage = error.localizedDescription
+            cloudTeamScanStatusMessage = "Team scan unavailable"
+            pendingCloudAnalysisJob = nil
+            cloudDetectedTeams = []
+            settings.highlightTeamSelection = .allTeams
+            hasConfirmedHighlightTeamSelection = true
+        }
+    }
+
+    func confirmHighlightTeamSelection(_ selection: HighlightTeamSelection) {
+        settings.highlightTeamSelection = selection
+        hasConfirmedHighlightTeamSelection = true
+        if !cloudDetectedTeams.isEmpty {
+            cloudTeamScanStatusMessage = selection.mode == .all
+                ? "All teams selected"
+                : "\(selection.displayTitle) selected"
+        }
+    }
+
     private func runPrimaryLocalAnalysis(for url: URL, status: String) async {
         analysisMode = .local
         isCloudFallbackOffered = false
@@ -231,6 +365,7 @@ final class HighlightsViewModel {
         cloudAnalysisJobID = nil
         cloudEditSourceObjectKey = nil
         cloudDetectedTeams = []
+        clearPendingCloudAnalysisJob()
         analysisService.beginExternalAnalysis(status: status)
         await analysisService.analyze(url: url, settings: settings)
         applyDefaultRedundantClipSuppression()
@@ -268,7 +403,8 @@ final class HighlightsViewModel {
     }
 
     func keepHighConfidenceClips() {
-        for index in analysisService.clips.indices where analysisService.clips[index].confidence >= 0.8 {
+        for index in analysisService.clips.indices
+        where analysisService.clips[index].confidence >= 0.8 && !analysisService.clips[index].needsUserReview {
             analysisService.clips[index].isKept = true
         }
         persistCurrentProject()
@@ -359,7 +495,7 @@ final class HighlightsViewModel {
             throw CloudEditError.missingSourceObject
         }
 
-        let candidates = Self.rankedCloudEditCandidateClips(from: keptClips).map { clip in
+        let candidates = Self.cloudEditRequestCandidateClips(from: clips).map { clip in
             let inferredCenter = clip.startTime + (clip.duration / 2.0)
             let center = max(clip.startTime, min(clip.endTime, clip.eventCenter ?? inferredCenter))
             return CloudEditCandidateClip(
@@ -375,8 +511,10 @@ final class HighlightsViewModel {
                 audioPeak: clip.audioScore,
                 combinedScore: clip.combinedScore,
                 duplicateGroup: nil,
+                userReviewDecision: Self.cloudEditUserReviewDecision(for: clip),
                 nativeShotSignals: clip.nativeShotSignals,
-                teamAttribution: clip.teamAttribution
+                teamAttribution: clip.teamAttribution,
+                teamAttributionStatus: clip.teamAttributionStatus
             )
         }
 
@@ -397,14 +535,56 @@ final class HighlightsViewModel {
         )
     }
 
-    nonisolated static func rankedCloudEditCandidateClips(from clips: [Clip], limit: Int = 30) -> [Clip] {
-        let ranked = clips.sorted { lhs, rhs in
-            let lhsEligible = isCloudEditCandidateQualityEligible(lhs)
-            let rhsEligible = isCloudEditCandidateQualityEligible(rhs)
-            if lhsEligible != rhsEligible {
-                return lhsEligible
-            }
+    nonisolated static func cloudEditRequestCandidateClips(from clips: [Clip], limit: Int = 60) -> [Clip] {
+        let cappedLimit = max(0, limit)
+        guard cappedLimit > 0 else { return [] }
 
+        let keptSource = clips.filter(\.isKept)
+        let keptCandidates = rankedCloudEditCandidateClips(from: keptSource, limit: cappedLimit)
+        let reviewOnlyCandidates = rankedCloudEditCandidateClips(
+            from: clips.filter { !$0.isKept && $0.needsUserReview },
+            limit: cappedLimit
+        )
+
+        guard !reviewOnlyCandidates.isEmpty else {
+            return keptCandidates
+        }
+
+        let reviewReserveLimit = min(reviewOnlyCandidates.count, max(2, cappedLimit / 8))
+        let keptLimit = max(0, cappedLimit - reviewReserveLimit)
+        var selected = rankedCloudEditCandidateClips(from: keptSource, limit: keptLimit)
+        selected.append(contentsOf: reviewOnlyCandidates.prefix(reviewReserveLimit))
+        if selected.count < cappedLimit {
+            var selectedIDs = Set(selected.map(\.id))
+            let extraKeptCandidates = keptCandidates.filter { !selectedIDs.contains($0.id) }
+            let keptSlots = cappedLimit - selected.count
+            selected.append(contentsOf: extraKeptCandidates.prefix(keptSlots))
+            selectedIDs = Set(selected.map(\.id))
+            let extraReviewCandidates = reviewOnlyCandidates.dropFirst(reviewReserveLimit)
+                .filter { !selectedIDs.contains($0.id) }
+            selected.append(contentsOf: extraReviewCandidates.prefix(cappedLimit - selected.count))
+        }
+        return selected.prefix(cappedLimit).sorted { lhs, rhs in
+            if lhs.isKept != rhs.isKept {
+                return lhs.isKept
+            }
+            return lhs.startTime < rhs.startTime
+        }
+    }
+
+    nonisolated private static func cloudEditUserReviewDecision(for clip: Clip) -> String {
+        if clip.isKept {
+            return "kept"
+        }
+        if clip.needsUserReview {
+            return "unreviewed"
+        }
+        return "discarded"
+    }
+
+    nonisolated static func rankedCloudEditCandidateClips(from clips: [Clip], limit: Int = 40) -> [Clip] {
+        let cappedLimit = max(0, limit)
+        let ranked = clips.filter(isCloudEditCandidateQualityEligible).sorted { lhs, rhs in
             let lhsScore = cloudEditCandidateScore(lhs)
             let rhsScore = cloudEditCandidateScore(rhs)
             if lhsScore != rhsScore {
@@ -418,16 +598,54 @@ final class HighlightsViewModel {
             return lhs.startTime < rhs.startTime
         }
 
-        return ranked.prefix(max(0, limit)).sorted { $0.startTime < $1.startTime }
+        guard cappedLimit > 0 else { return [] }
+
+        var selected = Array(ranked.prefix(cappedLimit))
+        var selectedIDs = Set(selected.map(\.id))
+        var reserveIDs = Set<UUID>()
+
+        func reserveFirstMissing(where predicate: (Clip) -> Bool) {
+            guard selected.contains(where: predicate) == false else { return }
+            guard let candidate = ranked.first(where: { predicate($0) && !selectedIDs.contains($0.id) }) else { return }
+            reserveIDs.insert(candidate.id)
+            selectedIDs.insert(candidate.id)
+        }
+
+        for family in ["block", "steal", "forced_turnover", "defensive_stop"] {
+            reserveFirstMissing { defensiveCloudEditCandidateFamily($0) == family }
+        }
+        reserveFirstMissing(where: \.needsUserReview)
+
+        if !reserveIDs.isEmpty {
+            selected.append(contentsOf: ranked.filter { reserveIDs.contains($0.id) })
+            selected = selected.sorted { lhs, rhs in
+                let lhsReserved = reserveIDs.contains(lhs.id)
+                let rhsReserved = reserveIDs.contains(rhs.id)
+                if lhsReserved != rhsReserved {
+                    return lhsReserved
+                }
+
+                let lhsScore = cloudEditCandidateScore(lhs)
+                let rhsScore = cloudEditCandidateScore(rhs)
+                if lhsScore != rhsScore {
+                    return lhsScore > rhsScore
+                }
+
+                return lhs.startTime < rhs.startTime
+            }
+        }
+
+        return selected.prefix(cappedLimit).sorted { $0.startTime < $1.startTime }
     }
 
     nonisolated private static func isCloudEditCandidateQualityEligible(_ clip: Clip) -> Bool {
         guard clip.duration >= 2.0 else { return false }
         guard isShotLikeCloudEditCandidate(clip) else { return true }
+        guard clip.duration >= 3.0 else { return false }
         let center = clip.eventCenter ?? (clip.startTime + (clip.duration / 2.0))
         let leadIn = center - clip.startTime
         let followThrough = clip.endTime - center
-        return leadIn >= 0.75 && followThrough >= 0.45
+        return leadIn >= 1.2 && followThrough >= 0.8
     }
 
     nonisolated private static func cloudEditCandidateScore(_ clip: Clip) -> Double {
@@ -442,7 +660,7 @@ final class HighlightsViewModel {
         if let eventCenter = clip.eventCenter {
             let leadIn = eventCenter - clip.startTime
             let followThrough = clip.endTime - eventCenter
-            if leadIn >= 0.75 && followThrough >= 0.45 {
+            if leadIn >= 1.2 && followThrough >= 0.8 {
                 score += 0.08
             } else if isShotLikeCloudEditCandidate(clip) {
                 score -= 0.30
@@ -457,6 +675,24 @@ final class HighlightsViewModel {
     nonisolated private static func isShotLikeCloudEditCandidate(_ clip: Clip) -> Bool {
         let text = "\(clip.label) \(clip.action.rawValue)".lowercased()
         return ["shot", "bucket", "basket", "layup", "dunk", "finish", "jumper", "three", "3pt"].contains { text.contains($0) }
+    }
+
+    nonisolated private static func defensiveCloudEditCandidateFamily(_ clip: Clip) -> String? {
+        let text = "\(clip.label) \(clip.action.rawValue)".lowercased()
+        let tokens = Set(text.split { !$0.isLetter && !$0.isNumber }.map(String.init))
+        if tokens.contains("block") || tokens.contains("blocked") || tokens.contains("contest") || text.contains("blocked shot") {
+            return "block"
+        }
+        if tokens.contains("steal") || tokens.contains("strip") {
+            return "steal"
+        }
+        if tokens.contains("turnover") && !tokens.isDisjoint(with: ["forced", "force", "defensive", "defense"]) {
+            return "forced_turnover"
+        }
+        if text.contains("defensive stop") || text.contains("defense stop") {
+            return "defensive_stop"
+        }
+        return nil
     }
 
     func attachCloudRenderedExport(from temporaryURL: URL) {
@@ -589,6 +825,9 @@ final class HighlightsViewModel {
         project.analysisStatusSummary = lastAnalysisStatusSummary
         project.cloudAnalysisJobID = cloudAnalysisJobID
         project.cloudEditSourceObjectKey = cloudEditSourceObjectKey
+        project.highlightTeamSelection = settings.highlightTeamSelection
+        project.cloudDetectedTeams = cloudDetectedTeams
+        project.cloudDiagnostics = analysisService.lastCloudDiagnostics
         project.lastAnalyzedAt = lastAnalyzedAt
         project.lastExportedAt = lastExportedAt
 
@@ -638,6 +877,7 @@ final class HighlightsViewModel {
         analysisService.progress = 0
         analysisService.clips = project.clips
         analysisService.lastRunDiagnostics = nil
+        analysisService.lastCloudDiagnostics = nil
         analysisService.statusMessage = project.analysisStatusSummary
             ?? (project.clips.isEmpty ? "" : "Found \(project.clips.count) highlight\(project.clips.count == 1 ? "" : "s")")
 
@@ -656,7 +896,11 @@ final class HighlightsViewModel {
         analysisMode = project.analysisMode ?? AppRuntimeConfig.shared.launchAnalysisMode
         cloudAnalysisJobID = project.cloudAnalysisJobID
         cloudEditSourceObjectKey = project.cloudEditSourceObjectKey
-        cloudDetectedTeams = []
+        settings.highlightTeamSelection = project.highlightTeamSelection ?? .allTeams
+        cloudDetectedTeams = project.cloudDetectedTeams ?? []
+        analysisService.lastCloudDiagnostics = project.cloudDiagnostics
+        hasConfirmedHighlightTeamSelection = project.highlightTeamSelection != nil || cloudDetectedTeams.isEmpty
+        clearPendingCloudAnalysisJob()
         lastAnalysisStatusSummary = project.analysisStatusSummary
         lastAnalyzedAt = project.lastAnalyzedAt
         lastExportedAt = project.lastExportedAt
@@ -679,6 +923,7 @@ final class HighlightsViewModel {
         analysisService.statusMessage = ""
         analysisService.clips = []
         analysisService.lastRunDiagnostics = nil
+        analysisService.lastCloudDiagnostics = nil
 
         exportService.isExporting = false
         exportService.exportedURL = nil
@@ -700,8 +945,33 @@ final class HighlightsViewModel {
         cloudAnalysisJobID = nil
         cloudEditSourceObjectKey = nil
         cloudDetectedTeams = []
+        hasConfirmedHighlightTeamSelection = false
+        clearPendingCloudAnalysisJob()
         lastAnalyzedAt = nil
         lastExportedAt = nil
+    }
+
+    private func clearPendingCloudAnalysisJob() {
+        pendingCloudAnalysisJob = nil
+        activeCloudTeamScanID = nil
+        isCloudTeamScanInProgress = false
+        cloudTeamScanStatusMessage = nil
+        cloudTeamScanErrorMessage = nil
+    }
+
+    private func resetStaleHighlightTeamSelection(against detectedTeams: [CloudTeamOption]) {
+        guard settings.highlightTeamSelection.mode == .team else { return }
+        let selectedKey = settings.highlightTeamSelection.selectionKey
+        let detectedKeys = Set(detectedTeams.flatMap { team in
+            [
+                team.teamId,
+                team.colorLabel,
+                team.label
+            ].compactMap { $0 }
+        })
+        if !detectedKeys.contains(selectedKey) {
+            settings.highlightTeamSelection = .allTeams
+        }
     }
 
     private func insertProject(_ project: PersistedProjectRecord, makeCurrent: Bool) {

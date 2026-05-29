@@ -81,6 +81,7 @@ final class VideoAnalysisService {
     var statusMessage = ""
     var clips: [Clip] = []
     var lastRunDiagnostics: AnalysisRunDiagnostics?
+    var lastCloudDiagnostics: CloudDiagnostics?
 
     private var previousFrameBuffer: CVPixelBuffer?
     private var settings = AnalysisSettings()
@@ -96,6 +97,7 @@ final class VideoAnalysisService {
         self.progress = progress
         statusMessage = status
         clips = []
+        lastCloudDiagnostics = nil
     }
 
     func updateExternalAnalysis(progress: Double, status: String) {
@@ -107,6 +109,7 @@ final class VideoAnalysisService {
         let mappedClips = result.clips.map { $0.makeClip() }
         let normalizedClips = normalizeDetectedClips(mappedClips, duration: duration)
         clips = applyTargetHighlightDurationPreference(to: normalizedClips)
+        lastCloudDiagnostics = result.diagnostics
         progress = 1.0
         statusMessage = "Found \(clips.count) highlight\(clips.count == 1 ? "" : "s")"
         isAnalyzing = false
@@ -122,6 +125,7 @@ final class VideoAnalysisService {
         isAnalyzing = true
         progress = 0.0
         clips = []
+        lastCloudDiagnostics = nil
         lastRunDiagnostics = AnalysisRunDiagnostics()
         statusMessage = "Loading video..."
         

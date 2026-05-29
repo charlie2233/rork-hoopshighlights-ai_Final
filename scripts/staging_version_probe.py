@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -43,6 +44,7 @@ class EndpointProbe:
 class VersionProbeReport:
     status: Literal["pass", "fail"]
     diagnosis: str
+    expectedGitSha: str | None
     worker: EndpointProbe
     editing: EndpointProbe
 
@@ -52,16 +54,18 @@ def run_probe(
     worker_base_url: str = DEFAULT_WORKER_BASE_URL,
     editing_version_url: str = DEFAULT_EDITING_VERSION_URL,
     timeout_seconds: float = 10.0,
+    expected_git_sha: str | None = None,
     opener: Callable[[Request, float], tuple[int, bytes]] | None = None,
 ) -> VersionProbeReport:
     fetcher = opener or fetch_endpoint
+    expected_sha = normalized_optional_sha(expected_git_sha) or current_checkout_git_sha()
     worker_endpoint = endpoint_with_path(worker_base_url, VERSION_ROUTE)
     editing_endpoint = endpoint_without_query(editing_version_url)
     worker = probe_endpoint("worker", worker_endpoint, timeout_seconds, fetcher)
     editing = probe_endpoint("editing", editing_endpoint, timeout_seconds, fetcher)
-    diagnosis = diagnose(worker, editing)
+    diagnosis = diagnose(worker, editing, expected_sha)
     status = "pass" if diagnosis == "staging_version_ready" else "fail"
-    return VersionProbeReport(status=status, diagnosis=diagnosis, worker=worker, editing=editing)
+    return VersionProbeReport(status=status, diagnosis=diagnosis, expectedGitSha=expected_sha, worker=worker, editing=editing)
 
 
 def probe_endpoint(
@@ -143,12 +147,14 @@ def endpoint_without_query(url: str) -> str:
     return urlunparse((parsed.scheme, parsed.netloc, parsed.path.rstrip("/") or "/", "", "", ""))
 
 
-def diagnose(worker: EndpointProbe, editing: EndpointProbe) -> str:
+def diagnose(worker: EndpointProbe, editing: EndpointProbe, expected_git_sha: str | None = None) -> str:
     if worker.status == "pass" and editing.status == "pass":
         if not worker.gitSha or not editing.gitSha or not worker.backendModelVersion or not editing.backendModelVersion:
             return "staging_version_metadata_missing"
         if not git_sha_matches(worker.gitSha, editing.gitSha):
             return "staging_version_git_sha_drift"
+        if expected_git_sha and (not git_sha_matches(worker.gitSha, expected_git_sha) or not git_sha_matches(editing.gitSha, expected_git_sha)):
+            return "staging_version_git_sha_not_expected"
         if worker.backendModelVersion != editing.backendModelVersion:
             return "staging_version_backend_model_drift"
         return "staging_version_ready"
@@ -169,11 +175,36 @@ def git_sha_matches(left: str, right: str) -> bool:
     return left_normalized.startswith(right_normalized) or right_normalized.startswith(left_normalized)
 
 
+def normalized_optional_sha(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = value.strip()
+    return normalized or None
+
+
+def current_checkout_git_sha() -> str | None:
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=REPO_ROOT_FOR_IMPORTS,
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+    except OSError:
+        return None
+    if result.returncode != 0:
+        return None
+    return normalized_optional_sha(result.stdout)
+
+
 def render_text(report: VersionProbeReport) -> str:
     lines = [
         "HoopClips staging version probe",
         f"status={report.status}",
         f"diagnosis={report.diagnosis}",
+        f"expectedGitSha={report.expectedGitSha or 'unknown'}",
         "",
         render_endpoint(report.worker),
         render_endpoint(report.editing),
@@ -201,6 +232,10 @@ def main() -> int:
     parser.add_argument("--worker-base-url", default=DEFAULT_WORKER_BASE_URL)
     parser.add_argument("--editing-version-url", default=DEFAULT_EDITING_VERSION_URL)
     parser.add_argument("--timeout-seconds", type=float, default=10.0)
+    parser.add_argument(
+        "--expected-git-sha",
+        help="Git SHA that both live version endpoints must report. Defaults to the current checkout HEAD.",
+    )
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args()
 
@@ -208,6 +243,7 @@ def main() -> int:
         worker_base_url=args.worker_base_url,
         editing_version_url=args.editing_version_url,
         timeout_seconds=args.timeout_seconds,
+        expected_git_sha=args.expected_git_sha,
     )
     if args.json:
         print(json.dumps(asdict(report), indent=2, sort_keys=True))

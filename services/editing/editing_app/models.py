@@ -10,7 +10,23 @@ from .backend_imports import ensure_ios_backend_on_path
 
 ensure_ios_backend_on_path()
 
-from app.editing import CreateEditJobRequest, EditCandidateClip, EditPlan, EditPlanValidationIssue, EditRevisionResponse, GPTHighlightRerankSummary, PlanTier, get_plan_tier_policy, get_template_pack, policy_summary_for_client  # noqa: E402
+from app.editing import (  # noqa: E402
+    CreateEditJobRequest,
+    EditCandidateClip,
+    EditPlan,
+    EditPlanValidationIssue,
+    EditRevisionResponse,
+    GPT_CANDIDATE_REVIEW_LIMIT,
+    GPTHighlightRerankSummary,
+    MIN_PLAN_CLIP_SECONDS,
+    PlanTier,
+    get_plan_tier_policy,
+    get_template_pack,
+    is_defensive_event_like_clip,
+    is_shot_like_clip,
+    native_shot_signals_for_clip,
+    policy_summary_for_client,
+)
 
 
 class APIModel(BaseModel):
@@ -19,6 +35,8 @@ class APIModel(BaseModel):
 
 RenderStatus = Literal["render_requested", "created", "queued", "rendering", "rendered", "failed", "failed_timeout", "cancelled"]
 AIWorkStepStatus = Literal["pending", "running", "complete", "failed"]
+MIN_RECEIPT_DEFENSIVE_LEAD_IN_SECONDS = 0.6
+MIN_RECEIPT_DEFENSIVE_FOLLOW_THROUGH_SECONDS = 0.5
 
 
 class CreateRenderJobRequest(APIModel):
@@ -29,7 +47,7 @@ class CreateRenderJobRequest(APIModel):
     planTier: PlanTier = "free"
     revenueCatAppUserID: Optional[str] = Field(default=None, min_length=1, max_length=160)
     editPlan: EditPlan
-    sourceClips: List[EditCandidateClip] = Field(default_factory=list, max_length=30)
+    sourceClips: List[EditCandidateClip] = Field(default_factory=list, max_length=GPT_CANDIDATE_REVIEW_LIMIT)
     gptRerankSummary: Optional[GPTHighlightRerankSummary] = None
     idempotencyKey: Optional[str] = Field(default=None, min_length=8, max_length=160)
 
@@ -40,7 +58,7 @@ class StartEditJobRenderRequest(APIModel):
     planTier: Optional[PlanTier] = None
     revenueCatAppUserID: Optional[str] = Field(default=None, min_length=1, max_length=160)
     editPlan: Optional[EditPlan] = None
-    sourceClips: List[EditCandidateClip] = Field(default_factory=list, max_length=30)
+    sourceClips: List[EditCandidateClip] = Field(default_factory=list, max_length=GPT_CANDIDATE_REVIEW_LIMIT)
     idempotencyKey: Optional[str] = Field(default=None, min_length=8, max_length=160)
     forceNew: bool = False
 
@@ -91,10 +109,21 @@ class AIWorkReceipt(APIModel):
     gptRerankSampledFrameCount: Optional[int] = None
     gptRerankKeptClipCount: Optional[int] = None
     gptRerankRejectedClipCount: Optional[int] = None
+    gptUncertainReviewClipCount: Optional[int] = None
+    gptUncertainReviewClipIds: List[str] = Field(default_factory=list)
     gptRerankRejectedReasonCounts: Dict[str, int] = Field(default_factory=dict)
     gptRerankStoryOrderClipIds: List[str] = Field(default_factory=list)
     gptPlanEditApplied: bool = False
     gptRerankFallbackReason: Optional[str] = None
+    teamUncertainCandidateCount: Optional[int] = None
+    teamUncertainSelectedClipCount: Optional[int] = None
+    defensiveSelectedClipCount: Optional[int] = None
+    timingQualitySelectedClipCount: Optional[int] = None
+    timingIssueCandidateCount: Optional[int] = None
+    timingIssueSelectedClipCount: Optional[int] = None
+    shotOutcomeEvidenceSelectedClipCount: Optional[int] = None
+    shotOutcomeIssueSelectedClipCount: Optional[int] = None
+    labelOnlyOutcomeSelectedClipCount: Optional[int] = None
     summaryRows: List[str] = Field(default_factory=list)
 
 
@@ -320,6 +349,86 @@ def _duplicate_group_count(source_clips: Optional[List[EditCandidateClip]]) -> O
     return len({clip.duplicateGroup for clip in source_clips if clip.duplicateGroup})
 
 
+def _team_uncertain_clip_ids(source_clips: Optional[List[EditCandidateClip]]) -> set[str]:
+    if source_clips is None:
+        return set()
+    return {
+        clip.id
+        for clip in source_clips
+        if clip.teamAttributionStatus == "uncertain"
+        or (clip.teamAttribution is not None and clip.teamAttribution.confidence < 0.85)
+    }
+
+
+def _defensive_clip_ids(source_clips: Optional[List[EditCandidateClip]]) -> set[str]:
+    if source_clips is None:
+        return set()
+    return {
+        clip.id
+        for clip in source_clips
+        if clip.gptOutcome in {"blocked", "steal", "forced_turnover", "defensive_stop"}
+        or is_defensive_event_like_clip(clip)
+    }
+
+
+def _timing_issue_clip_ids(source_clips: Optional[List[EditCandidateClip]]) -> set[str]:
+    if source_clips is None:
+        return set()
+    defensive_ids = _defensive_clip_ids(source_clips)
+    issue_ids: set[str] = set()
+    for clip in source_clips:
+        if clip.duration < MIN_PLAN_CLIP_SECONDS:
+            issue_ids.add(clip.id)
+            continue
+        if clip.id in defensive_ids:
+            lead_in = max(0.0, clip.eventCenter - clip.start)
+            follow_through = max(0.0, clip.end - clip.eventCenter)
+            if lead_in < MIN_RECEIPT_DEFENSIVE_LEAD_IN_SECONDS or follow_through < MIN_RECEIPT_DEFENSIVE_FOLLOW_THROUGH_SECONDS:
+                issue_ids.add(clip.id)
+            continue
+        if is_shot_like_clip(clip) and not native_shot_signals_for_clip(clip).timingWindowOk:
+            issue_ids.add(clip.id)
+    return issue_ids
+
+
+def _shot_outcome_evidence_clip_ids(source_clips: Optional[List[EditCandidateClip]]) -> set[str]:
+    if source_clips is None:
+        return set()
+    evidence_sources = {"gpt_shot_tracking", "gpt_defensive_tracking", "native_shot_signals", "defensive_event"}
+    evidence_ids: set[str] = set()
+    for clip in source_clips:
+        signals = native_shot_signals_for_clip(clip)
+        if signals.outcome not in {"made", "missed", "blocked"}:
+            continue
+        if signals.outcomeEvidenceSource in evidence_sources and signals.outcomeReliabilityScore >= 0.72:
+            evidence_ids.add(clip.id)
+    return evidence_ids
+
+
+def _shot_outcome_issue_clip_ids(source_clips: Optional[List[EditCandidateClip]]) -> set[str]:
+    if source_clips is None:
+        return set()
+    issue_ids: set[str] = set()
+    for clip in source_clips:
+        signals = native_shot_signals_for_clip(clip)
+        if signals.outcome not in {"made", "missed", "blocked"}:
+            continue
+        if signals.outcomeEvidenceSource == "label_only" or signals.outcomeReliabilityScore < 0.72:
+            issue_ids.add(clip.id)
+    return issue_ids
+
+
+def _label_only_outcome_clip_ids(source_clips: Optional[List[EditCandidateClip]]) -> set[str]:
+    if source_clips is None:
+        return set()
+    return {
+        clip.id
+        for clip in source_clips
+        if native_shot_signals_for_clip(clip).outcomeEvidenceSource == "label_only"
+        and native_shot_signals_for_clip(clip).outcome in {"made", "missed", "blocked"}
+    }
+
+
 def _step_status_for_render(render_status: RenderStatus) -> AIWorkStepStatus:
     if render_status == "rendered":
         return "complete"
@@ -457,6 +566,28 @@ def build_ai_work_receipt(
     storage_expires_at = parse_datetime(render_job.retention_metadata.get("expiresAt") if render_job.retention_metadata else None) or render_job.expires_at
     watermark_included = edit_plan.watermark.enabled if edit_plan is not None else None
     outro_included = edit_plan.outro.enabled if edit_plan is not None else None
+    selected_clip_ids = {clip.clipId for clip in edit_plan.clips} if edit_plan is not None else set()
+    uncertain_clip_ids = _team_uncertain_clip_ids(source_clips)
+    defensive_clip_ids = _defensive_clip_ids(source_clips)
+    timing_issue_clip_ids = _timing_issue_clip_ids(source_clips)
+    shot_outcome_evidence_clip_ids = _shot_outcome_evidence_clip_ids(source_clips)
+    shot_outcome_issue_clip_ids = _shot_outcome_issue_clip_ids(source_clips)
+    label_only_outcome_clip_ids = _label_only_outcome_clip_ids(source_clips)
+    team_uncertain_candidate_count = len(uncertain_clip_ids) if source_clips is not None else None
+    team_uncertain_selected_count = len(selected_clip_ids & uncertain_clip_ids) if edit_plan is not None and source_clips is not None else None
+    defensive_selected_count = len(selected_clip_ids & defensive_clip_ids) if edit_plan is not None and source_clips is not None else None
+    timing_issue_candidate_count = len(timing_issue_clip_ids) if source_clips is not None else None
+    timing_issue_selected_count = len(selected_clip_ids & timing_issue_clip_ids) if edit_plan is not None and source_clips is not None else None
+    timing_quality_selected_count = (selected_count - timing_issue_selected_count) if selected_count is not None and timing_issue_selected_count is not None else None
+    shot_outcome_evidence_selected_count = (
+        len(selected_clip_ids & shot_outcome_evidence_clip_ids) if edit_plan is not None and source_clips is not None else None
+    )
+    shot_outcome_issue_selected_count = (
+        len(selected_clip_ids & shot_outcome_issue_clip_ids) if edit_plan is not None and source_clips is not None else None
+    )
+    label_only_outcome_selected_count = (
+        len(selected_clip_ids & label_only_outcome_clip_ids) if edit_plan is not None and source_clips is not None else None
+    )
     summary_rows: List[str] = []
     if selected_count is not None and candidate_count is not None:
         summary_rows.append(f"Selected {selected_count} clips from {candidate_count} candidates.")
@@ -480,10 +611,65 @@ def build_ai_work_receipt(
             if gpt_rerank_summary.storyOrderClipIds:
                 story_count = len(gpt_rerank_summary.storyOrderClipIds)
                 summary_rows.append(f"GPT story order applied to {story_count} candidate clip{'s' if story_count != 1 else ''}.")
+            if gpt_rerank_summary.uncertainReviewClipIds:
+                review_count = len(gpt_rerank_summary.uncertainReviewClipIds)
+                summary_rows.append(
+                    f"Kept {review_count} uncertain team candidate{'s' if review_count != 1 else ''} available for Review."
+                )
             if gpt_rerank_summary.planEditApplied:
                 summary_rows.append("GPT plan edit applied after deterministic validation.")
-        elif gpt_rerank_summary.status == "fallback" and gpt_rerank_summary.fallbackReason:
-            summary_rows.append(f"GPT rerank fallback: {gpt_rerank_summary.fallbackReason}.")
+        elif gpt_rerank_summary.status in {"disabled", "fallback"}:
+            if gpt_rerank_summary.fallbackReason:
+                label = "disabled" if gpt_rerank_summary.status == "disabled" else "fallback"
+                summary_rows.append(f"GPT rerank {label}: {gpt_rerank_summary.fallbackReason}.")
+            if gpt_rerank_summary.keptClipIds:
+                kept_count = len(gpt_rerank_summary.keptClipIds)
+                summary_rows.append(
+                    f"Fallback kept {kept_count} render-worthy clip{'s' if kept_count != 1 else ''} after quality checks."
+                )
+            if gpt_rerank_summary.rejectedReasonCounts:
+                summary_rows.append(
+                    "Fallback rejected clips: "
+                    + ", ".join(
+                        f"{reason} x{count}"
+                        for reason, count in sorted(gpt_rerank_summary.rejectedReasonCounts.items())
+                        if count > 0
+                    )
+                    + "."
+                )
+            if gpt_rerank_summary.uncertainReviewClipIds:
+                review_count = len(gpt_rerank_summary.uncertainReviewClipIds)
+                summary_rows.append(
+                    f"Kept {review_count} uncertain team candidate{'s' if review_count != 1 else ''} available for Review."
+                )
+    if team_uncertain_selected_count:
+        summary_rows.append(
+            f"Kept {team_uncertain_selected_count} uncertain team clip{'s' if team_uncertain_selected_count != 1 else ''} for review."
+        )
+    if defensive_selected_count:
+        summary_rows.append(
+            f"Included {defensive_selected_count} defensive highlight{'s' if defensive_selected_count != 1 else ''}."
+        )
+    if timing_issue_selected_count:
+        summary_rows.append(
+            f"Flagged {timing_issue_selected_count} selected clip{'s' if timing_issue_selected_count != 1 else ''} with weak timing/context."
+        )
+    elif timing_quality_selected_count:
+        summary_rows.append(
+            f"Timing quality: {timing_quality_selected_count} selected clip{'s' if timing_quality_selected_count != 1 else ''} passed context checks."
+        )
+    if shot_outcome_evidence_selected_count:
+        summary_rows.append(
+            f"Shot outcome evidence: {shot_outcome_evidence_selected_count} selected clip{'s' if shot_outcome_evidence_selected_count != 1 else ''} passed rim/result tracking checks."
+        )
+    if label_only_outcome_selected_count:
+        summary_rows.append(
+            f"Needs review: {label_only_outcome_selected_count} selected shot outcome{'s' if label_only_outcome_selected_count != 1 else ''} came from label-only evidence."
+        )
+    elif shot_outcome_issue_selected_count:
+        summary_rows.append(
+            f"Needs review: {shot_outcome_issue_selected_count} selected shot outcome{'s' if shot_outcome_issue_selected_count != 1 else ''} had weak result evidence."
+        )
     summary_rows.append(f"Applied {template.displayName} template.")
     summary_rows.append(f"Added {slow_motion_count} slow-motion moments.")
     if render_job.duration_seconds is not None:
@@ -528,10 +714,21 @@ def build_ai_work_receipt(
         gptRerankSampledFrameCount=gpt_rerank_summary.sampledFrameCount if gpt_rerank_summary is not None else None,
         gptRerankKeptClipCount=len(gpt_rerank_summary.keptClipIds) if gpt_rerank_summary is not None else None,
         gptRerankRejectedClipCount=len(gpt_rerank_summary.rejectedClipIds) if gpt_rerank_summary is not None else None,
+        gptUncertainReviewClipCount=len(gpt_rerank_summary.uncertainReviewClipIds) if gpt_rerank_summary is not None else None,
+        gptUncertainReviewClipIds=gpt_rerank_summary.uncertainReviewClipIds if gpt_rerank_summary is not None else [],
         gptRerankRejectedReasonCounts=gpt_rerank_summary.rejectedReasonCounts if gpt_rerank_summary is not None else {},
         gptRerankStoryOrderClipIds=gpt_rerank_summary.storyOrderClipIds if gpt_rerank_summary is not None else [],
         gptPlanEditApplied=gpt_rerank_summary.planEditApplied if gpt_rerank_summary is not None else False,
         gptRerankFallbackReason=gpt_rerank_summary.fallbackReason if gpt_rerank_summary is not None else None,
+        teamUncertainCandidateCount=team_uncertain_candidate_count,
+        teamUncertainSelectedClipCount=team_uncertain_selected_count,
+        defensiveSelectedClipCount=defensive_selected_count,
+        timingQualitySelectedClipCount=timing_quality_selected_count,
+        timingIssueCandidateCount=timing_issue_candidate_count,
+        timingIssueSelectedClipCount=timing_issue_selected_count,
+        shotOutcomeEvidenceSelectedClipCount=shot_outcome_evidence_selected_count,
+        shotOutcomeIssueSelectedClipCount=shot_outcome_issue_selected_count,
+        labelOnlyOutcomeSelectedClipCount=label_only_outcome_selected_count,
         summaryRows=summary_rows,
     )
 

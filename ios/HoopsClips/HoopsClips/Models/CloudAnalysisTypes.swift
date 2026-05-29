@@ -10,6 +10,7 @@ nonisolated struct HighlightTeamSelection: Codable, Sendable, Equatable {
     var teamId: String?
     var label: String?
     var colorLabel: String?
+    var primaryColorHex: String?
     var confidenceThreshold: Double = 0.85
     var includeUncertain: Bool = true
 
@@ -43,6 +44,7 @@ nonisolated struct HighlightTeamSelection: Codable, Sendable, Equatable {
         case teamId
         case label
         case colorLabel
+        case primaryColorHex
         case confidenceThreshold
         case includeUncertain
     }
@@ -52,6 +54,7 @@ nonisolated struct HighlightTeamSelection: Codable, Sendable, Equatable {
         teamId: String? = nil,
         label: String? = nil,
         colorLabel: String? = nil,
+        primaryColorHex: String? = nil,
         confidenceThreshold: Double = 0.85,
         includeUncertain: Bool = true
     ) {
@@ -59,6 +62,7 @@ nonisolated struct HighlightTeamSelection: Codable, Sendable, Equatable {
         self.teamId = teamId
         self.label = label
         self.colorLabel = colorLabel
+        self.primaryColorHex = primaryColorHex
         self.confidenceThreshold = confidenceThreshold
         self.includeUncertain = includeUncertain
     }
@@ -69,6 +73,7 @@ nonisolated struct HighlightTeamSelection: Codable, Sendable, Equatable {
         teamId = try container.decodeIfPresent(String.self, forKey: .teamId)
         label = try container.decodeIfPresent(String.self, forKey: .label)
         colorLabel = try container.decodeIfPresent(String.self, forKey: .colorLabel)
+        primaryColorHex = try container.decodeIfPresent(String.self, forKey: .primaryColorHex)
         confidenceThreshold = try container.decodeIfPresent(Double.self, forKey: .confidenceThreshold) ?? 0.85
         includeUncertain = try container.decodeIfPresent(Bool.self, forKey: .includeUncertain) ?? true
     }
@@ -89,6 +94,8 @@ nonisolated struct ClipTeamAttribution: Codable, Sendable, Equatable {
     var colorLabel: String?
     var confidence: Double
     var source: String?
+    var evidenceFrameRefs: [String]? = nil
+    var evidenceRoleGroups: [String]? = nil
 }
 
 nonisolated enum AnalysisExecutionMode: String, Codable, Sendable {
@@ -147,11 +154,28 @@ nonisolated struct CreateCloudAnalysisJobResponse: Codable, Sendable {
 
 nonisolated struct StartCloudAnalysisJobRequest: Codable, Sendable {
     let installId: String
+    var teamSelection: HighlightTeamSelection? = nil
 }
 
 nonisolated struct StartCloudAnalysisJobResponse: Codable, Sendable {
     let jobId: String
     let status: String
+}
+
+nonisolated struct ScanCloudAnalysisTeamsRequest: Codable, Sendable {
+    let installId: String
+}
+
+nonisolated struct ScanCloudAnalysisTeamsResponse: Codable, Sendable {
+    let jobId: String
+    let status: String
+    let detectedTeams: [CloudTeamOption]
+}
+
+nonisolated struct PreparedCloudAnalysisJob: Sendable {
+    let sourceURL: URL
+    let job: CreateCloudAnalysisJobResponse
+    let detectedTeams: [CloudTeamOption]
 }
 
 nonisolated struct CloudAnalysisJobResponse: Codable, Sendable {
@@ -263,6 +287,8 @@ nonisolated struct NativeShotSignals: Codable, Sendable, Equatable {
     let timingWindowOk: Bool
     let outcome: String
     let outcomeConfidence: Double
+    var outcomeEvidenceSource: String? = nil
+    var outcomeReliabilityScore: Double? = nil
 }
 
 nonisolated struct CloudClip: Codable, Sendable {
@@ -281,6 +307,7 @@ nonisolated struct CloudClip: Codable, Sendable {
     let shouldEnableSlowMotion: Bool
     var nativeShotSignals: NativeShotSignals? = nil
     var teamAttribution: ClipTeamAttribution? = nil
+    var teamAttributionStatus: String? = nil
 
     func makeClip() -> Clip {
         let resolvedAction = HighlightAction(rawValue: action)
@@ -302,7 +329,8 @@ nonisolated struct CloudClip: Codable, Sendable {
             isSlowMotionEnabled: shouldEnableSlowMotion,
             detectionMethod: resolvedMethod,
             nativeShotSignals: nativeShotSignals,
-            teamAttribution: teamAttribution
+            teamAttribution: teamAttribution,
+            teamAttributionStatus: teamAttributionStatus
         )
     }
 }
@@ -314,6 +342,16 @@ nonisolated struct CloudDiagnostics: Codable, Sendable {
     let usedGeminiRelabeling: Bool
     let candidateSegments: Int
     let finalSegments: Int
+    let usedTeamQuickScan: Bool?
+    let preTeamFilterSegments: Int?
+    let teamMatchedCandidateSegments: Int?
+    let teamUncertainCandidateSegments: Int?
+    let teamOpponentFilteredSegments: Int?
+    let teamMatchedReviewSegments: Int?
+    let teamUncertainReviewSegments: Int?
+    let defensiveReviewSegments: Int?
+    let blockReviewSegments: Int?
+    let stealReviewSegments: Int?
 }
 
 nonisolated struct CloudAnalysisAPIError: Codable, Sendable {

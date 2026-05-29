@@ -18,6 +18,7 @@ nonisolated struct Clip: Identifiable, Codable, Sendable {
     var detectionMethod: DetectionMethod
     var nativeShotSignals: NativeShotSignals?
     var teamAttribution: ClipTeamAttribution?
+    var teamAttributionStatus: String?
 
     var duration: Double { endTime - startTime }
 
@@ -29,6 +30,26 @@ nonisolated struct Clip: Identifiable, Codable, Sendable {
         if confidence >= 0.8 { return .high }
         if confidence >= 0.5 { return .medium }
         return .low
+    }
+
+    var reviewBadges: [ClipReviewBadge] {
+        var badges: [ClipReviewBadge] = []
+        if teamAttributionStatus == "uncertain" || (teamAttribution?.confidence ?? 1.0) < 0.85 {
+            badges.append(.teamUncertain)
+        }
+        if let nativeShotSignals {
+            if nativeShotSignals.outcome == "uncertain" {
+                badges.append(.outcomeUncertain)
+            }
+            if nativeShotSignals.isShotLike && !nativeShotSignals.timingWindowOk {
+                badges.append(.timingUncertain)
+            }
+        }
+        return badges
+    }
+
+    var needsUserReview: Bool {
+        !reviewBadges.isEmpty
     }
 
     init(
@@ -48,7 +69,8 @@ nonisolated struct Clip: Identifiable, Codable, Sendable {
         isSlowMotionEnabled: Bool = false,
         detectionMethod: DetectionMethod = .heuristic,
         nativeShotSignals: NativeShotSignals? = nil,
-        teamAttribution: ClipTeamAttribution? = nil
+        teamAttribution: ClipTeamAttribution? = nil,
+        teamAttributionStatus: String? = nil
     ) {
         self.id = id
         self.startTime = startTime
@@ -67,6 +89,7 @@ nonisolated struct Clip: Identifiable, Codable, Sendable {
         self.detectionMethod = detectionMethod
         self.nativeShotSignals = nativeShotSignals
         self.teamAttribution = teamAttribution
+        self.teamAttributionStatus = teamAttributionStatus
     }
 
     static func formatTime(_ time: Double) -> String {
@@ -74,6 +97,36 @@ nonisolated struct Clip: Identifiable, Codable, Sendable {
         let seconds = Int(time) % 60
         let fraction = Int((time.truncatingRemainder(dividingBy: 1)) * 10)
         return String(format: "%d:%02d.%d", minutes, seconds, fraction)
+    }
+}
+
+nonisolated enum ClipReviewBadge: String, Codable, Sendable, Equatable, Hashable, CaseIterable {
+    case teamUncertain
+    case outcomeUncertain
+    case timingUncertain
+
+    var title: String {
+        switch self {
+        case .teamUncertain: return "Team?"
+        case .outcomeUncertain: return "Outcome?"
+        case .timingUncertain: return "Timing?"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .teamUncertain: return "person.2.fill"
+        case .outcomeUncertain: return "questionmark.circle"
+        case .timingUncertain: return "clock.fill"
+        }
+    }
+
+    var accessibilityLabel: String {
+        switch self {
+        case .teamUncertain: return "team attribution needs review"
+        case .outcomeUncertain: return "outcome needs review"
+        case .timingUncertain: return "clip timing needs review"
+        }
     }
 }
 

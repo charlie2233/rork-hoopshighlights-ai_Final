@@ -38,21 +38,23 @@ The service receives a validated `EditPlan`, downloads the source video from ren
 - `HOOPS_AI_CLIP_GPT_PLAN_EDIT_ENABLED`: allows GPT `planEdit` ordering/caption/slow-motion directives to affect EditPlan inputs, default `false`
 - `HOOPS_AI_CLIP_GPT_REVISION_ENABLED`: launch switch for GPT-produced `EditPlanPatch` revision flows, default `false`
 - `HOOPS_AI_CLIP_GPT_KEYFRAMES_PER_CLIP`: shared keyframe cap per clip, clamped to `3...10`; quality-beta default is `10` for stronger shot-arc and rim-entry path context
-- `HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_FREE`: Free candidate cap, clamped to `1...8`
-- `HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_PRO`: Pro/internal candidate cap, clamped to `20...30`; quality-beta default is `30`
+- `HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_FREE`: Free candidate cap, clamped to `1...60`; quality-beta default is `60` so Free exports still get broad GPT review while the daily edit chance count remains limited
+- `HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_PRO`: Pro/internal candidate cap, clamped to `20...60`; quality-beta default is `60`
 - `HOOPS_GPT_HIGHLIGHT_RERANKER_ENABLED`: kill switch for GPT highlight reranking, default `false`
 - `HOOPS_OPENAI_API_KEY`: OpenAI key required only when GPT highlight reranking is enabled
 - `HOOPS_GPT_HIGHLIGHT_RERANK_MODEL`: vision-capable reranker model, default `gpt-4.1` for quality-beta editing; set `HOOPS_AI_CLIP_GPT_MODEL` to override
-- `HOOPS_GPT_HIGHLIGHT_RERANK_FREE_MAX_CLIPS`: Free cap, clamped to `1...8`
+- `HOOPS_GPT_HIGHLIGHT_RERANK_FREE_MAX_CLIPS`: legacy Free cap override, clamped to `1...60`
 - `HOOPS_GPT_HIGHLIGHT_RERANK_FREE_FRAMES_PER_CLIP`: Free frames per clip, clamped to `3...10`; quality-beta default is `10`
-- `HOOPS_GPT_HIGHLIGHT_RERANK_PAID_MAX_CLIPS`: Pro/internal cap, clamped to `20...30`; quality-beta default is `30`
+- `HOOPS_GPT_HIGHLIGHT_RERANK_PAID_MAX_CLIPS`: Pro/internal cap, clamped to `20...60`; quality-beta default is `60`
 - `HOOPS_GPT_HIGHLIGHT_RERANK_PAID_FRAMES_PER_CLIP`: Pro/internal frames per clip, clamped to `5...10`; quality-beta default is `10`
 - `HOOPS_GPT_HIGHLIGHT_RERANK_TIMEOUT_SECONDS`: OpenAI request timeout, clamped to `1...60`
-- `HOOPS_GPT_HIGHLIGHT_RERANK_MAX_OUTPUT_TOKENS`: Structured-output budget, clamped to `256...6000`; quality-beta default is `3500`
+- `HOOPS_GPT_HIGHLIGHT_RERANK_MAX_OUTPUT_TOKENS`: Structured-output budget, clamped to `256...12000`; quality-beta default is `12000`
 - `HOOPS_GPT_HIGHLIGHT_RERANK_FRAME_WIDTH`: sampled keyframe width, clamped to `256...1280`; quality-beta default is `1024`
 - `HOOPS_GPT_HIGHLIGHT_RERANK_JPEG_QUALITY`: FFmpeg JPEG quality, clamped to `2...12`; quality-beta default is `4`
 - `HOOPS_GPT_HIGHLIGHT_RERANK_MAX_IMAGE_BYTES`: per-frame payload cap, clamped to `40000...1000000`; quality-beta default is `750000`
 - `HOOPS_GPT_HIGHLIGHT_RERANK_IMAGE_DETAIL`: OpenAI image detail, one of `low`, `high`, `original`, or `auto`; defaults to `high`
+
+Quality-beta staging deploys set the GPT editor, plan edit, revision, and legacy reranker switches to `true` in `cloudbuild.yaml` and mount `HOOPS_OPENAI_API_KEY` from Secret Manager. Local and ad hoc environments still default those flags off unless explicitly configured.
 
 The `/version` endpoint reports the resolved non-secret feature-flag snapshot and GPT reranker sampling caps. It intentionally does not expose all cost knobs. Use it to verify staging rollout state without exposing R2 credentials, service secrets, OpenAI keys, sampled frames, or presigned URLs. GPT reranker OpenAI requests are built with `store=false`.
 

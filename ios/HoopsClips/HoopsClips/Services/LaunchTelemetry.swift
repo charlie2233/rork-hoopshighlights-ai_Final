@@ -46,8 +46,36 @@ final class LaunchTelemetry {
         planTier: String? = nil,
         failureReason: String? = nil
     ) {
+        let safeFailureReason = Self.redactedAIEditFailureReason(failureReason)
         logger.notice(
-            "AIEdit event=\(name, privacy: .public) editJobId=\(editJobID ?? "none", privacy: .public) renderJobId=\(renderJobID ?? "none", privacy: .public) revisionId=\(revisionID ?? "none", privacy: .public) templateId=\(templateID ?? "none", privacy: .public) planTier=\(planTier ?? "none", privacy: .public) failureReason=\(failureReason ?? "none", privacy: .public)"
+            "AIEdit event=\(name, privacy: .public) editJobId=\(editJobID ?? "none", privacy: .public) renderJobId=\(renderJobID ?? "none", privacy: .public) revisionId=\(revisionID ?? "none", privacy: .public) templateId=\(templateID ?? "none", privacy: .public) planTier=\(planTier ?? "none", privacy: .public) failureReason=\(safeFailureReason, privacy: .public)"
         )
+    }
+
+    static func redactedAIEditFailureReason(_ rawValue: String?) -> String {
+        guard var value = rawValue?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else {
+            return "none"
+        }
+
+        value = value.replacingOccurrences(
+            of: #"https?://[^\s]+"#,
+            with: "[redacted_url]",
+            options: .regularExpression
+        )
+        value = value.replacingOccurrences(
+            of: #"\b(?:uploads|edits)/[A-Za-z0-9._/\-]+"#,
+            with: "[redacted_object_key]",
+            options: .regularExpression
+        )
+        value = value.replacingOccurrences(
+            of: #"(?i)\b(?:X-Amz-[A-Za-z0-9_-]+|AWSAccessKeyId|Signature|Credential|Policy|Expires)=\S+"#,
+            with: "[redacted_query]",
+            options: .regularExpression
+        )
+
+        if value.count > 280 {
+            value = String(value.prefix(280)) + "..."
+        }
+        return value
     }
 }

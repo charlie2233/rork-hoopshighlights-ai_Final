@@ -21,6 +21,7 @@ from .gpt_reranker import (
     expand_shot_candidate_windows_from_source_path,
     request_gpt_edit_plan_patch,
     rerank_edit_request_with_gpt,
+    with_gpt_fallback_summary,
 )
 from .models import (
     AIWorkReceipt,
@@ -51,13 +52,13 @@ from app.editing import (  # noqa: E402
     EditPlan,
     EditPlanValidationIssue,
     EditRevisionResponse,
-    GPTHighlightRerankSummary,
     ReviseEditJobRequest,
     StoredEditJob,
     build_edit_job,
     build_revision_response,
     default_ai_edit_feature_flags,
     estimate_render_cost,
+    filter_clips_for_team_selection,
     get_plan_tier_policy,
     get_template_pack,
     policy_summary_for_client,
@@ -368,7 +369,11 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             planTier=job.plan_tier,
             revenueCatAppUserID=edit_job.request.revenueCatAppUserID,
             editPlan=plan,
-            sourceClips=edit_job.request.clips,
+            sourceClips=filter_clips_for_team_selection(
+                edit_job.request.clips,
+                edit_job.request.teamSelection,
+                include_review_only_uncertain=False,
+            ),
             gptRerankSummary=edit_job.request.gptRerankSummary,
             idempotencyKey=job.idempotency_key,
         )
@@ -420,6 +425,38 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
     def mark_stale_renders() -> None:
         for job in list(render_jobs.values()):
             mark_stale_job(job)
+
+    def canonical_render_request_for_stored_edit(request: CreateRenderJobRequest) -> CreateRenderJobRequest:
+        stored_edit_job = load_edit_job(request.editJobId)
+        if stored_edit_job is None:
+            return request
+        require_edit_owner(stored_edit_job, request.installId)
+        if not stored_edit_job.request.sourceObjectKey:
+            raise EditingServiceError(400, "missing_source_object_key", "Render requires a source video object key.")
+
+        edit_plan = stored_edit_job.plan
+        if request.revisionId:
+            revision = load_revision(request.editJobId, request.revisionId)
+            if revision is None or revision.editJobId != request.editJobId:
+                raise EditingServiceError(404, "revision_not_found", "Edit revision was not found.")
+            edit_plan = revision.revisedPlan
+
+        return CreateRenderJobRequest(
+            editJobId=stored_edit_job.edit_job_id,
+            revisionId=request.revisionId,
+            installId=request.installId,
+            sourceObjectKey=stored_edit_job.request.sourceObjectKey,
+            planTier=stored_edit_job.request.planTier,
+            revenueCatAppUserID=stored_edit_job.request.revenueCatAppUserID,
+            editPlan=edit_plan,
+            sourceClips=filter_clips_for_team_selection(
+                stored_edit_job.request.clips,
+                stored_edit_job.request.teamSelection,
+                include_review_only_uncertain=False,
+            ),
+            gptRerankSummary=stored_edit_job.request.gptRerankSummary,
+            idempotencyKey=request.idempotencyKey,
+        )
 
     def render_expires_at(job: StoredRenderJob):
         metadata = job.retention_metadata or {}
@@ -581,17 +618,15 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
                 source = None
 
         if not feature_flags.gptHighlightRerankerEnabled:
+            fallback = with_gpt_fallback_summary(
+                source_context_request,
+                status="disabled",
+                model=gpt_reranker_settings.model,
+                reason="feature_flag_disabled",
+            )
             if source is not None:
                 source.cleanup()
-            return source_context_request.model_copy(
-                update={
-                    "gptRerankSummary": GPTHighlightRerankSummary(
-                        status="disabled",
-                        model=gpt_reranker_settings.model,
-                        fallbackReason="feature_flag_disabled",
-                    )
-                }
-            )
+            return fallback
         if not request.sourceObjectKey:
             return rerank_edit_request_with_gpt(source_context_request, Path("__missing_source__"), gpt_reranker_settings)
         if not gpt_reranker_settings.configured:
@@ -618,6 +653,7 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
                 returnedDecisionCount=summary.returnedDecisionCount,
                 keptClipCount=len(summary.keptClipIds),
                 rejectedClipCount=len(summary.rejectedClipIds),
+                uncertainReviewClipCount=len(summary.uncertainReviewClipIds),
                 fallbackReason=summary.fallbackReason,
             )
         return reranked
@@ -1033,7 +1069,11 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
                     planTier=stored_edit_job.request.planTier,
                     revenueCatAppUserID=stored_edit_job.request.revenueCatAppUserID,
                     editPlan=revision.revisedPlan,
-                    sourceClips=stored_edit_job.request.clips,
+                    sourceClips=filter_clips_for_team_selection(
+                        stored_edit_job.request.clips,
+                        stored_edit_job.request.teamSelection,
+                        include_review_only_uncertain=False,
+                    ),
                     gptRerankSummary=stored_edit_job.request.gptRerankSummary,
                     revisionId=revision_id,
                     idempotencyKey=request.idempotencyKey or f"{edit_job_id}:{revision_id}:render",
@@ -1055,7 +1095,8 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
     ):
         try:
             require_secret(x_hoops_editing_secret)
-            return enqueue_render_job(request, background_tasks)
+            canonical_request = canonical_render_request_for_stored_edit(request)
+            return enqueue_render_job(canonical_request, background_tasks)
         except EditingServiceError as error:
             emit_policy_failed(error, editJobId=request.editJobId, templateId=request.editPlan.templateId, planTier=request.planTier)
             return error_response(error)
@@ -1073,10 +1114,22 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             if stored_edit_job is not None:
                 require_edit_owner(stored_edit_job, request.installId)
 
-            edit_plan = request.editPlan or (stored_edit_job.plan if stored_edit_job is not None else None)
-            source_clips = request.sourceClips or (stored_edit_job.request.clips if stored_edit_job is not None else [])
-            source_object_key = request.sourceObjectKey or (stored_edit_job.request.sourceObjectKey if stored_edit_job is not None else None)
-            plan_tier = request.planTier or (stored_edit_job.request.planTier if stored_edit_job is not None else "free")
+            if stored_edit_job is not None:
+                edit_plan = stored_edit_job.plan
+                source_clips = filter_clips_for_team_selection(
+                    stored_edit_job.request.clips,
+                    stored_edit_job.request.teamSelection,
+                    include_review_only_uncertain=False,
+                )
+                source_object_key = stored_edit_job.request.sourceObjectKey
+                plan_tier = stored_edit_job.request.planTier
+                revenuecat_app_user_id = stored_edit_job.request.revenueCatAppUserID
+            else:
+                edit_plan = request.editPlan
+                source_clips = request.sourceClips
+                source_object_key = request.sourceObjectKey
+                plan_tier = request.planTier or "free"
+                revenuecat_app_user_id = request.revenueCatAppUserID
             if edit_plan is None:
                 raise EditingServiceError(400, "missing_edit_plan", "Render request must include an EditPlan or reference a stored edit job.")
             if not source_object_key:
@@ -1088,7 +1141,7 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
                     installId=request.installId,
                     sourceObjectKey=source_object_key,
                     planTier=plan_tier,
-                    revenueCatAppUserID=request.revenueCatAppUserID or (stored_edit_job.request.revenueCatAppUserID if stored_edit_job is not None else None),
+                    revenueCatAppUserID=revenuecat_app_user_id,
                     editPlan=edit_plan,
                     sourceClips=source_clips,
                     gptRerankSummary=stored_edit_job.request.gptRerankSummary if stored_edit_job is not None else None,

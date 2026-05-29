@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from array import array
-from dataclasses import dataclass
+from copy import copy
+from dataclasses import dataclass, is_dataclass, replace
 from pathlib import Path
 from statistics import mean
 from time import perf_counter
 import json
 import math
+import re
 import shutil
 import subprocess
 import tempfile
@@ -17,22 +19,37 @@ from .classifier import classify_window, maybe_relabel_with_gemini
 from .config import Settings
 from .external_providers import detect_with_optional_external_provider, rerank_with_optional_external_provider
 from .models import CandidateWindow, CloudAnalysisResult, CloudClip, CloudDiagnostics, CloudNativeShotSignals, PipelineError, StoredJob, TeamOption, TeamSelection, clamp
+from .team_identity import team_identity_matches, team_key
+from .team_quick_scan import apply_team_quick_scan
 
 
 NATIVE_SHOT_CONTEXT_TARGET_LEAD_SECONDS = 2.0
 NATIVE_SHOT_CONTEXT_TARGET_FOLLOW_THROUGH_SECONDS = 1.25
 NATIVE_SHOT_SIGNAL_MIN_DURATION_SECONDS = 3.0
+NATIVE_DEFENSIVE_CONTEXT_TARGET_LEAD_SECONDS = 1.5
+NATIVE_DEFENSIVE_CONTEXT_TARGET_FOLLOW_THROUGH_SECONDS = 1.2
+NATIVE_DEFENSIVE_CONTEXT_TARGET_SECONDS = 4.0
+NATIVE_DEFENSIVE_CONTEXT_MIN_LEAD_SECONDS = 0.6
+NATIVE_DEFENSIVE_CONTEXT_MIN_FOLLOW_THROUGH_SECONDS = 0.5
 HYBRID_OVERLAP_DEDUPE_RATIO = 0.55
 VISUAL_EVENT_SAMPLE_FPS = 2.0
 VISUAL_EVENT_FRAME_WIDTH = 64
 VISUAL_EVENT_FRAME_HEIGHT = 36
 VISUAL_EVENT_MIN_SCORE = 0.46
 VISUAL_EVENT_MIN_VISUAL_SCORE = 0.28
+VISUAL_EVENT_MIN_SETUP_CONTEXT_SCORE = 0.18
+VISUAL_EVENT_MIN_OUTCOME_CONTEXT_SCORE = 0.12
 VISUAL_EVENT_MIN_GAP_SECONDS = 1.4
 VISUAL_EVENT_MAX_BOUNDARIES = 24
 VISUAL_EVENT_SEQUENCE_GAP_SECONDS = 1.1
 VISUAL_EVENT_CONTEXT_SECONDS = 1.25
-VisualFrameSignal = Tuple[float, float, float, float]
+TEAM_SELECTION_PREFILTER_MULTIPLIER = 4
+TEAM_SELECTION_PREFILTER_MAX_CLIPS = 160
+TEAM_EVIDENCE_REQUIRED_SOURCES = {"quick_scan", "gpt_frame_review", "provider", "unknown"}
+MIN_CONFIDENT_TEAM_EVIDENCE_FRAME_REFS = 2
+MIN_CONFIDENT_TEAM_EVIDENCE_ROLE_GROUPS = 2
+MIN_DETECTED_TEAM_OPTION_CONFIDENCE = 0.85
+VisualFrameSignal = Tuple[float, ...]
 
 
 @dataclass(frozen=True)
@@ -43,6 +60,7 @@ class VisualEventFrame:
     full_motion: float
     upper_motion: float
     center_motion: float
+    lower_motion: float
     audio_score: float
 
 
@@ -59,31 +77,39 @@ def run_analysis(job: StoredJob, settings: Settings, source_path: Path) -> Cloud
         raise PipelineError("unsupported_duration", "Videos longer than 30 minutes are not supported in cloud analysis right now.")
 
     provider_tags: list[str] = []
+    candidate_pool_limit = _analysis_candidate_pool_limit(settings, job.team_selection)
+    expanded_settings = _settings_with_candidate_limit(settings, candidate_pool_limit)
+
     external_clips, detection_provider = detect_with_optional_external_provider(
         source_path=source_path,
         duration_seconds=duration_seconds,
-        settings=settings,
+        settings=expanded_settings,
     )
 
     if detection_provider and settings.detection_provider == "hoopcut":
         provider_tags.append(detection_provider)
-        clips = external_clips[: settings.max_returned_clips]
+        clips = external_clips[:candidate_pool_limit]
         candidate_segments = len(external_clips)
     else:
-        native_clips, native_candidate_segments = _run_native_candidate_detection(source_path, duration_seconds, settings)
+        native_clips, native_candidate_segments = _run_native_candidate_detection(
+            source_path,
+            duration_seconds,
+            settings,
+            clip_limit=candidate_pool_limit,
+        )
         if detection_provider:
             provider_tags.append(detection_provider)
             clips = _merge_hybrid_detection_clips(
                 external_clips=external_clips,
                 native_clips=native_clips,
-                clip_limit=settings.max_returned_clips,
+                clip_limit=candidate_pool_limit,
             )
             candidate_segments = len(external_clips) + native_candidate_segments
         else:
             clips = native_clips
             candidate_segments = native_candidate_segments
 
-    clips = _normalize_analysis_clips(clips, duration_seconds, settings)
+    clips = _normalize_analysis_clips(clips, duration_seconds, settings, clip_limit=candidate_pool_limit)
 
     clips, ranking_provider = rerank_with_optional_external_provider(
         clips=clips,
@@ -94,8 +120,21 @@ def run_analysis(job: StoredJob, settings: Settings, source_path: Path) -> Cloud
         provider_tags.append(ranking_provider)
 
     clips, used_gemini = maybe_relabel_with_gemini(clips, settings.use_gemini_relabeling)
-    detected_teams = _detected_teams_from_clips(clips)
+    clips, detected_teams, used_team_quick_scan = apply_team_quick_scan(source_path, duration_seconds, clips, settings)
+    if used_team_quick_scan:
+        provider_tags.append("team-scan")
+    if not detected_teams:
+        detected_teams = _detected_teams_from_clips(clips)
+    pre_team_filter_clips = list(clips)
     clips = _filter_analysis_clips_for_team_selection(clips, job.team_selection)
+    clips = _trim_analysis_clips_for_review(clips, job.team_selection, settings.max_returned_clips)
+    clips = _annotate_analysis_team_status(clips, job.team_selection)
+    team_diagnostics = _analysis_team_diagnostic_counts(
+        candidate_clips=pre_team_filter_clips,
+        review_clips=clips,
+        team_selection=job.team_selection,
+        used_team_quick_scan=used_team_quick_scan,
+    )
 
     elapsed_ms = int((perf_counter() - started_at) * 1000)
     model_version = settings.backend_model_version
@@ -111,6 +150,7 @@ def run_analysis(job: StoredJob, settings: Settings, source_path: Path) -> Cloud
         usedGeminiRelabeling=used_gemini,
         candidateSegments=candidate_segments,
         finalSegments=len(clips),
+        **team_diagnostics,
     )
 
     return CloudAnalysisResult(
@@ -122,11 +162,80 @@ def run_analysis(job: StoredJob, settings: Settings, source_path: Path) -> Cloud
     )
 
 
+def _analysis_team_diagnostic_counts(
+    *,
+    candidate_clips: Sequence[CloudClip],
+    review_clips: Sequence[CloudClip],
+    team_selection: Optional[TeamSelection],
+    used_team_quick_scan: bool,
+) -> dict[str, int | bool]:
+    candidate_statuses = [_analysis_team_status(clip, team_selection) for clip in candidate_clips]
+    review_statuses = [_analysis_team_status(clip, team_selection) for clip in review_clips]
+    return {
+        "usedTeamQuickScan": bool(used_team_quick_scan),
+        "preTeamFilterSegments": len(candidate_clips),
+        "teamMatchedCandidateSegments": sum(1 for status in candidate_statuses if status == "matched"),
+        "teamUncertainCandidateSegments": sum(1 for status in candidate_statuses if status == "uncertain"),
+        "teamOpponentFilteredSegments": sum(1 for status in candidate_statuses if status == "opponent"),
+        "teamMatchedReviewSegments": sum(1 for status in review_statuses if status == "matched"),
+        "teamUncertainReviewSegments": sum(1 for status in review_statuses if status == "uncertain"),
+        "defensiveReviewSegments": sum(1 for clip in review_clips if _is_defensive_label(clip.label)),
+        "blockReviewSegments": sum(1 for clip in review_clips if _defensive_label_family(clip.label) == "block"),
+        "stealReviewSegments": sum(1 for clip in review_clips if _defensive_label_family(clip.label) == "steal"),
+        "forcedTurnoverReviewSegments": sum(1 for clip in review_clips if _defensive_label_family(clip.label) == "forced_turnover"),
+        "defensiveStopReviewSegments": sum(1 for clip in review_clips if _defensive_label_family(clip.label) == "defensive_stop"),
+    }
+
+
+def build_team_quick_scan_candidate_clips(
+    source_path: Path,
+    duration_seconds: float,
+    settings: Settings,
+) -> list[CloudClip]:
+    if not source_path.exists():
+        return []
+    candidate_limit = _team_quick_scan_candidate_pool_limit(settings)
+    try:
+        probed_duration = _probe_duration(source_path, fallback=duration_seconds)
+        clips, _ = _run_native_candidate_detection(
+            source_path,
+            probed_duration,
+            settings,
+            clip_limit=candidate_limit,
+        )
+        return _normalize_analysis_clips(
+            clips,
+            probed_duration,
+            settings,
+            clip_limit=candidate_limit,
+        )
+    except Exception:
+        return []
+
+
+def _team_quick_scan_candidate_pool_limit(settings: Settings) -> int:
+    configured = int(getattr(settings, "team_quick_scan_max_candidate_clips", TEAM_SELECTION_PREFILTER_MAX_CLIPS))
+    base_limit = max(1, int(getattr(settings, "max_returned_clips", 1)))
+    return min(TEAM_SELECTION_PREFILTER_MAX_CLIPS, max(base_limit, configured))
+
+
+def _analysis_candidate_pool_limit(settings: Settings, team_selection: Optional[TeamSelection]) -> int:
+    base_limit = max(1, int(settings.max_returned_clips))
+    return min(TEAM_SELECTION_PREFILTER_MAX_CLIPS, max(base_limit, base_limit * TEAM_SELECTION_PREFILTER_MULTIPLIER))
+
+
+def _settings_with_candidate_limit(settings: Settings, clip_limit: int) -> Settings:
+    if int(settings.max_returned_clips) == clip_limit:
+        return settings
+    if is_dataclass(settings):
+        return replace(settings, max_returned_clips=clip_limit)
+    copied = copy(settings)
+    copied.max_returned_clips = clip_limit
+    return copied
+
+
 def _team_key(value: Optional[str]) -> Optional[str]:
-    if value is None:
-        return None
-    normalized = " ".join(value.strip().lower().split())
-    return normalized or None
+    return team_key(value)
 
 
 def _analysis_team_status(
@@ -135,19 +244,42 @@ def _analysis_team_status(
 ) -> str:
     if team_selection is None or team_selection.mode == "all":
         return "all"
+    if clip.teamAttributionStatus == "uncertain":
+        return "uncertain"
     attribution = clip.teamAttribution
     if attribution is None or attribution.confidence < team_selection.confidenceThreshold:
         return "uncertain"
+    if _analysis_team_evidence_required(attribution) and not _analysis_has_confident_team_evidence(attribution):
+        return "uncertain"
 
     selected_team_id = _team_key(team_selection.teamId)
-    selected_color = _team_key(team_selection.colorLabel)
     clip_team_id = _team_key(attribution.teamId)
-    clip_color = _team_key(attribution.colorLabel)
-    if selected_team_id and clip_team_id and selected_team_id == clip_team_id:
+    if team_identity_matches(
+        selected_team_id=team_selection.teamId,
+        selected_color_label=team_selection.colorLabel,
+        selected_label=team_selection.label,
+        candidate_team_id=attribution.teamId,
+        candidate_color_label=attribution.colorLabel,
+        candidate_label=attribution.label,
+    ):
         return "matched"
-    if selected_color and clip_color and selected_color == clip_color:
-        return "matched"
+    if selected_team_id and clip_team_id and selected_team_id != clip_team_id:
+        return "opponent"
     return "opponent"
+
+
+def _analysis_team_evidence_required(attribution: ClipTeamAttribution) -> bool:
+    source = (attribution.source or "").strip().lower()
+    return source in TEAM_EVIDENCE_REQUIRED_SOURCES
+
+
+def _analysis_has_confident_team_evidence(attribution: ClipTeamAttribution) -> bool:
+    frame_refs = {ref for ref in attribution.evidenceFrameRefs if ref}
+    role_groups = {group for group in attribution.evidenceRoleGroups if group}
+    return (
+        len(frame_refs) >= MIN_CONFIDENT_TEAM_EVIDENCE_FRAME_REFS
+        and len(role_groups) >= MIN_CONFIDENT_TEAM_EVIDENCE_ROLE_GROUPS
+    )
 
 
 def _filter_analysis_clips_for_team_selection(
@@ -164,11 +296,138 @@ def _filter_analysis_clips_for_team_selection(
     return filtered
 
 
+def _uncertain_review_reserve_limit(max_clips: int, uncertain_count: int) -> int:
+    max_clips = max(0, int(max_clips))
+    uncertain_count = max(0, int(uncertain_count))
+    if max_clips == 0 or uncertain_count == 0:
+        return 0
+    if max_clips < 6:
+        return 1
+    return min(uncertain_count, max(3, max_clips // 4))
+
+
+def _defensive_review_reserve_limit(max_clips: int, defensive_count: int) -> int:
+    max_clips = max(0, int(max_clips))
+    defensive_count = max(0, int(defensive_count))
+    if max_clips < 3 or defensive_count == 0:
+        return 0
+    if max_clips < 4:
+        return 1
+    if max_clips < 8:
+        return min(defensive_count, 2)
+    return min(defensive_count, max(2, max_clips // 5))
+
+
+def _trim_analysis_clips_for_review(
+    clips: Sequence[CloudClip],
+    team_selection: Optional[TeamSelection],
+    max_clips: int,
+) -> list[CloudClip]:
+    max_clips = max(0, int(max_clips))
+    if max_clips == 0:
+        return []
+
+    indexed_clips = list(enumerate(clips))
+    selected: list[tuple[int, CloudClip]] = []
+    selected_indexes: set[int] = set()
+
+    def add_clip(index: int, clip: CloudClip) -> None:
+        if index in selected_indexes or len(selected) >= max_clips:
+            return
+        selected.append((index, clip))
+        selected_indexes.add(index)
+
+    defensive = [
+        (index, clip)
+        for index, clip in indexed_clips
+        if _is_defensive_label(clip.label) and _analysis_clip_auto_keep_allowed(clip)
+    ]
+    defensive_reserve = _defensive_review_reserve_limit(max_clips, len(defensive))
+    if defensive_reserve == 1:
+        for index, clip in sorted(defensive, key=_review_reserved_clip_quality_key, reverse=True)[:1]:
+            add_clip(index, clip)
+    elif defensive_reserve > 1:
+        reserved_defensive_count = 0
+        for family in ("block", "steal", "forced_turnover", "defensive_stop", "defensive"):
+            family_candidates = [
+                (index, clip)
+                for index, clip in defensive
+                if index not in selected_indexes and _defensive_label_family(clip.label) == family
+            ]
+            if not family_candidates:
+                continue
+            index, clip = max(family_candidates, key=_review_reserved_clip_quality_key)
+            add_clip(index, clip)
+            reserved_defensive_count += 1
+            if reserved_defensive_count >= defensive_reserve:
+                break
+
+        for index, clip in sorted(defensive, key=_review_reserved_clip_quality_key, reverse=True):
+            if reserved_defensive_count >= defensive_reserve:
+                break
+            if index in selected_indexes:
+                continue
+            add_clip(index, clip)
+            reserved_defensive_count += 1
+
+    uncertain: list[tuple[int, CloudClip]] = []
+    uncertain_reserve = 0
+    if team_selection is not None and team_selection.mode == "team" and team_selection.includeUncertain:
+        uncertain = [
+            (index, clip)
+            for index, clip in indexed_clips
+            if _analysis_team_status(clip, team_selection) == "uncertain"
+        ]
+        uncertain_reserve = _uncertain_review_reserve_limit(max_clips, len(uncertain))
+
+    for index, clip in sorted(
+        uncertain,
+        key=_review_reserved_clip_quality_key,
+        reverse=True,
+    )[:uncertain_reserve]:
+        add_clip(index, clip)
+
+    for index, clip in indexed_clips:
+        add_clip(index, clip)
+        if len(selected) >= max_clips:
+            break
+
+    return [clip for _, clip in sorted(selected, key=lambda item: item[0])]
+
+
+def _review_reserved_clip_quality_key(
+    item: tuple[int, CloudClip],
+) -> tuple[float, float, float, float, float, float, float, int]:
+    index, clip = item
+    return (*_hybrid_clip_quality_key(clip), -index)
+
+
+def _annotate_analysis_team_status(
+    clips: Sequence[CloudClip],
+    team_selection: Optional[TeamSelection],
+) -> list[CloudClip]:
+    annotated: list[CloudClip] = []
+    for clip in clips:
+        status = _analysis_team_status(clip, team_selection)
+        updates: dict[str, object] = {"teamAttributionStatus": status}
+        if team_selection is not None and team_selection.mode == "team" and status == "uncertain":
+            updates["shouldAutoKeep"] = False
+            updates["shouldEnableSlowMotion"] = False
+        annotated.append(clip.model_copy(update=updates))
+    return annotated
+
+
 def _detected_teams_from_clips(clips: Sequence[CloudClip]) -> list[TeamOption]:
     best_by_key: dict[str, TeamOption] = {}
     for clip in clips:
+        if clip.teamAttributionStatus == "uncertain":
+            continue
         attribution = clip.teamAttribution
         if attribution is None:
+            continue
+        if attribution.confidence < MIN_DETECTED_TEAM_OPTION_CONFIDENCE:
+            continue
+        if _analysis_team_evidence_required(attribution) and not _analysis_has_confident_team_evidence(attribution):
             continue
         team_id = attribution.teamId or attribution.colorLabel
         label = attribution.label or attribution.colorLabel or attribution.teamId
@@ -193,6 +452,7 @@ def _run_native_candidate_detection(
     source_path: Path,
     duration_seconds: float,
     settings: Settings,
+    clip_limit: Optional[int] = None,
 ) -> tuple[list[CloudClip], int]:
     audio_profile = _extract_audio_profile(source_path, duration_seconds)
     shot_boundaries = _detect_shot_boundaries(source_path, duration_seconds, audio_profile)
@@ -201,12 +461,14 @@ def _run_native_candidate_detection(
         audio_profile=audio_profile,
         shot_boundaries=shot_boundaries,
         settings=settings,
+        clip_limit=clip_limit,
     )
 
     if not windows:
         windows = [_fallback_window(duration_seconds, audio_profile, settings)]
 
-    clips = [classify_window(window) for window in windows[: settings.max_returned_clips]]
+    resolved_limit = clip_limit or settings.max_returned_clips
+    clips = [classify_window(window) for window in windows[:resolved_limit]]
     return clips, len(windows)
 
 
@@ -214,13 +476,14 @@ def _normalize_analysis_clips(
     clips: Sequence[CloudClip],
     duration_seconds: float,
     settings: Settings,
+    clip_limit: Optional[int] = None,
 ) -> list[CloudClip]:
     normalized: list[CloudClip] = []
     for clip in clips:
         normalized_clip = _normalize_clip_for_analysis_context(clip, duration_seconds, settings)
         if normalized_clip is not None:
             normalized.append(normalized_clip)
-    return normalized[: settings.max_returned_clips]
+    return normalized[: (clip_limit or settings.max_returned_clips)]
 
 
 def _normalize_clip_for_analysis_context(
@@ -244,7 +507,13 @@ def _normalize_clip_for_analysis_context(
             "eventCenter": round(event_center, 3) if event_center is not None else None,
         }
     )
-    if _is_shot_like_label(normalized.label):
+    defensive_event_like = _is_defensive_label(normalized.label)
+    shot_like = _is_shot_like_label(normalized.label)
+    if defensive_event_like:
+        normalized = _expand_defensive_clip_for_analysis_context(normalized, duration_seconds, settings)
+        if normalized is None:
+            return None
+    elif shot_like:
         normalized = _expand_shot_clip_for_analysis_context(normalized, duration_seconds, settings)
         if normalized is None:
             return None
@@ -330,6 +599,54 @@ def _expand_shot_clip_for_analysis_context(
     )
 
 
+def _expand_defensive_clip_for_analysis_context(
+    clip: CloudClip,
+    duration_seconds: float,
+    settings: Settings,
+) -> CloudClip | None:
+    event_center = clip.eventCenter
+    if event_center is None:
+        event_center = (clip.startTime + clip.endTime) / 2.0
+    event_center = clamp(event_center, 0.0, duration_seconds)
+    desired_start = min(clip.startTime, event_center - NATIVE_DEFENSIVE_CONTEXT_TARGET_LEAD_SECONDS)
+    desired_end = max(clip.endTime, event_center + NATIVE_DEFENSIVE_CONTEXT_TARGET_FOLLOW_THROUGH_SECONDS)
+    start = max(0.0, desired_start)
+    end = min(duration_seconds, desired_end)
+
+    target_duration = min(settings.max_clip_duration_seconds, max(settings.min_clip_duration_seconds, NATIVE_DEFENSIVE_CONTEXT_TARGET_SECONDS))
+    if end - start < target_duration:
+        missing = target_duration - (end - start)
+        start = max(0.0, start - (missing * 0.55))
+        end = min(duration_seconds, end + (missing * 0.45))
+        if end - start < target_duration:
+            start = max(0.0, min(start, duration_seconds - target_duration))
+            end = min(duration_seconds, start + target_duration)
+
+    if end - start > settings.max_clip_duration_seconds:
+        preferred_lead = min(
+            settings.max_clip_duration_seconds - NATIVE_DEFENSIVE_CONTEXT_TARGET_FOLLOW_THROUGH_SECONDS,
+            max(NATIVE_DEFENSIVE_CONTEXT_TARGET_LEAD_SECONDS, settings.max_clip_duration_seconds * 0.55),
+        )
+        start = max(0.0, event_center - preferred_lead)
+        end = min(duration_seconds, start + settings.max_clip_duration_seconds)
+        if end < event_center + NATIVE_DEFENSIVE_CONTEXT_TARGET_FOLLOW_THROUGH_SECONDS:
+            end = min(duration_seconds, event_center + NATIVE_DEFENSIVE_CONTEXT_TARGET_FOLLOW_THROUGH_SECONDS)
+            start = max(0.0, end - settings.max_clip_duration_seconds)
+
+    if end <= start:
+        return None
+    if end - start < settings.min_clip_duration_seconds:
+        return None
+
+    return clip.model_copy(
+        update={
+            "startTime": round(start, 3),
+            "endTime": round(end, 3),
+            "eventCenter": round(event_center, 3),
+        }
+    )
+
+
 def _analysis_clip_auto_keep_allowed(clip: CloudClip) -> bool:
     if clip.endTime - clip.startTime < 2.0:
         return False
@@ -346,6 +663,7 @@ def _analysis_clip_context_score(clip: CloudClip) -> float:
 
 def _native_shot_signals_for_analysis_clip(clip: CloudClip) -> CloudNativeShotSignals:
     is_shot_like = _is_shot_like_label(clip.label)
+    defensive_event_like = _is_defensive_label(clip.label)
     duration = max(0.0, clip.endTime - clip.startTime)
     event_center = clip.eventCenter
     if event_center is None:
@@ -356,7 +674,26 @@ def _native_shot_signals_for_analysis_clip(clip: CloudClip) -> CloudNativeShotSi
         lead_in = max(0.0, bounded_center - clip.startTime)
         follow_through = max(0.0, clip.endTime - bounded_center)
 
-    if not is_shot_like:
+    if defensive_event_like:
+        setup_context_score = min(1.0, lead_in / NATIVE_DEFENSIVE_CONTEXT_TARGET_LEAD_SECONDS)
+        outcome_context_score = min(1.0, follow_through / NATIVE_DEFENSIVE_CONTEXT_TARGET_FOLLOW_THROUGH_SECONDS)
+        duration_score = min(1.0, duration / max(4.0, NATIVE_DEFENSIVE_CONTEXT_TARGET_SECONDS))
+        if lead_in <= 0.0 or follow_through <= 0.0:
+            balance_score = 0.0
+        else:
+            balance_score = min(lead_in, follow_through) / max(lead_in, follow_through)
+        event_center_quality = (
+            (setup_context_score * 0.3)
+            + (outcome_context_score * 0.3)
+            + (duration_score * 0.25)
+            + (balance_score * 0.15)
+        )
+        timing_window_ok = (
+            duration >= NATIVE_SHOT_SIGNAL_MIN_DURATION_SECONDS
+            and lead_in >= NATIVE_DEFENSIVE_CONTEXT_MIN_LEAD_SECONDS
+            and follow_through >= NATIVE_DEFENSIVE_CONTEXT_MIN_FOLLOW_THROUGH_SECONDS
+        )
+    elif not is_shot_like:
         setup_context_score = 0.0
         outcome_context_score = 0.0
         event_center_quality = 0.0
@@ -376,7 +713,12 @@ def _native_shot_signals_for_analysis_clip(clip: CloudClip) -> CloudNativeShotSi
             and follow_through >= NATIVE_SHOT_CONTEXT_TARGET_FOLLOW_THROUGH_SECONDS
         )
 
-    outcome, outcome_confidence = _native_outcome_hint_for_label(clip.label, clip.confidence, is_shot_like)
+    outcome, outcome_confidence, evidence_source, reliability_score = _native_outcome_hint_for_label(
+        clip.label,
+        clip.confidence,
+        is_shot_like,
+        defensive_event_like,
+    )
     return CloudNativeShotSignals(
         isShotLike=is_shot_like,
         leadInSeconds=round(lead_in, 3),
@@ -388,23 +730,35 @@ def _native_shot_signals_for_analysis_clip(clip: CloudClip) -> CloudNativeShotSi
         timingWindowOk=timing_window_ok,
         outcome=outcome,
         outcomeConfidence=round(outcome_confidence, 4),
+        outcomeEvidenceSource=evidence_source,
+        outcomeReliabilityScore=round(reliability_score, 4),
     )
 
 
-def _native_outcome_hint_for_label(label: str, confidence: float, is_shot_like: bool) -> tuple[str, float]:
+def _native_outcome_hint_for_label(
+    label: str,
+    confidence: float,
+    is_shot_like: bool,
+    defensive_event_like: bool = False,
+) -> tuple[str, float, str, float]:
+    confidence = min(max(confidence, 0.0), 1.0)
+    if defensive_event_like and any(token in label.strip().lower() for token in ("block", "blocked")):
+        return "blocked", confidence, "defensive_event", min(0.78, 0.52 + (confidence * 0.26))
+    if defensive_event_like and not is_shot_like:
+        return "not_shot", 1.0, "defensive_event", 0.9
     if not is_shot_like:
-        return "not_shot", 1.0
+        return "not_shot", 1.0, "non_shot", 0.82
 
     normalized = label.strip().lower()
     if any(token in normalized for token in ("block", "blocked")):
-        return "blocked", min(1.0, confidence)
+        return "blocked", confidence, "label_only", min(0.68, 0.42 + (confidence * 0.18))
     if any(token in normalized for token in ("miss", "missed")):
-        return "missed", min(1.0, confidence * 0.85)
+        return "missed", min(1.0, confidence * 0.85), "label_only", min(0.68, 0.42 + (confidence * 0.18))
     if any(token in normalized for token in ("made", "bucket", "basket", "dunk")):
-        return "made", min(1.0, confidence * 0.9)
+        return "made", min(1.0, confidence * 0.9), "label_only", min(0.68, 0.42 + (confidence * 0.18))
     if any(token in normalized for token in ("attempt", "layup", "finish")):
-        return "uncertain", 0.0
-    return "uncertain", 0.0
+        return "uncertain", 0.0, "uncertain", 0.35
+    return "uncertain", 0.0, "uncertain", 0.35
 
 
 def _merge_hybrid_detection_clips(
@@ -451,6 +805,8 @@ def _hybrid_clip_context_score(clip: CloudClip) -> float:
     duration = max(0.0, clip.endTime - clip.startTime)
     if duration < 2.0:
         return 0.0
+    if _is_defensive_label(clip.label):
+        return min(1.0, duration / 4.5)
     if not _is_shot_like_label(clip.label):
         return min(1.0, duration / 4.5)
     if clip.eventCenter is None:
@@ -483,6 +839,47 @@ def _is_shot_like_label(label: str) -> bool:
         token in normalized
         for token in ("shot", "bucket", "basket", "layup", "dunk", "finish", "jumper", "three", "3pt")
     )
+
+
+def _is_defensive_label(label: str) -> bool:
+    normalized = label.strip().lower()
+    tokens = set(re.findall(r"[a-z0-9]+", normalized))
+    if tokens & {
+        "defense",
+        "defensive",
+        "block",
+        "blocked",
+        "steal",
+        "strip",
+        "contest",
+        "pressure",
+        "lockdown",
+    }:
+        return True
+    if "turnover" in tokens and "unforced" not in tokens and tokens & {"forced", "force", "defensive", "defense", "steal", "strip"}:
+        return True
+    return "stop" in tokens and (normalized == "stop" or "defensive stop" in normalized or "defense stop" in normalized)
+
+
+def _defensive_label_family(label: str) -> Optional[str]:
+    normalized = label.strip().lower()
+    tokens = set(re.findall(r"[a-z0-9]+", normalized))
+    if tokens & {"block", "blocked", "contest"}:
+        return "block"
+    if tokens & {"steal", "strip"}:
+        return "steal"
+    if "turnover" in tokens and (tokens & {"forced", "force", "defensive", "defense"}):
+        return "forced_turnover"
+    if "stop" in tokens and ("defensive stop" in normalized or "defense stop" in normalized or normalized == "stop"):
+        return "defensive_stop"
+    if tokens & {
+        "defense",
+        "defensive",
+        "pressure",
+        "lockdown",
+    }:
+        return "defensive"
+    return None
 
 
 def _probe_duration(path: Path, fallback: float) -> float:
@@ -603,7 +1000,17 @@ def _extract_visual_frame_signals(path: Path, duration_seconds: float) -> List[V
             0,
             VISUAL_EVENT_FRAME_HEIGHT,
         )
-        signals.append((round(time_seconds, 3), full_motion, upper_motion, center_motion))
+        lower_motion = _region_motion_score(
+            current,
+            previous,
+            VISUAL_EVENT_FRAME_WIDTH,
+            VISUAL_EVENT_FRAME_HEIGHT,
+            0,
+            VISUAL_EVENT_FRAME_WIDTH,
+            VISUAL_EVENT_FRAME_HEIGHT // 2,
+            VISUAL_EVENT_FRAME_HEIGHT,
+        )
+        signals.append((round(time_seconds, 3), full_motion, upper_motion, center_motion, lower_motion))
         previous = current
 
     return signals
@@ -650,9 +1057,10 @@ def _visual_event_boundaries_from_signals(
         return []
 
     scored_frames: List[VisualEventFrame] = []
-    for time_seconds, full_motion, upper_motion, center_motion in frame_signals:
+    for signal in frame_signals:
+        time_seconds, full_motion, upper_motion, center_motion, lower_motion = _unpack_visual_frame_signal(signal)
         visual_score = clamp(
-            (upper_motion * 0.48) + (center_motion * 0.34) + (full_motion * 0.18),
+            (upper_motion * 0.44) + (center_motion * 0.32) + (lower_motion * 0.12) + (full_motion * 0.12),
             0.0,
             1.0,
         )
@@ -669,16 +1077,25 @@ def _visual_event_boundaries_from_signals(
                 full_motion=full_motion,
                 upper_motion=upper_motion,
                 center_motion=center_motion,
+                lower_motion=lower_motion,
                 audio_score=audio_score,
             )
         )
 
-    candidates = [
-        frame
-        for frame in scored_frames
-        if frame.visual_score >= VISUAL_EVENT_MIN_VISUAL_SCORE
-        and _outcome_aware_visual_event_score(frame, scored_frames) >= VISUAL_EVENT_MIN_SCORE
-    ]
+    candidates: List[VisualEventFrame] = []
+    for frame in scored_frames:
+        setup_score, outcome_score = _visual_event_context_scores(frame, scored_frames)
+        if frame.visual_score < VISUAL_EVENT_MIN_VISUAL_SCORE:
+            continue
+        if setup_score < VISUAL_EVENT_MIN_SETUP_CONTEXT_SCORE:
+            continue
+        if outcome_score < VISUAL_EVENT_MIN_OUTCOME_CONTEXT_SCORE:
+            continue
+        if _visual_event_is_setup_before_stronger_result(frame, scored_frames, setup_score, outcome_score):
+            continue
+        if _outcome_aware_visual_event_score(frame, scored_frames) < VISUAL_EVENT_MIN_SCORE:
+            continue
+        candidates.append(frame)
     clusters = _cluster_visual_event_frames(candidates)
 
     selected: List[tuple[float, float]] = []
@@ -705,6 +1122,12 @@ def _visual_event_boundaries_from_signals(
     return sorted(chosen)
 
 
+def _unpack_visual_frame_signal(signal: VisualFrameSignal) -> tuple[float, float, float, float, float]:
+    time_seconds, full_motion, upper_motion, center_motion = signal[:4]
+    lower_motion = signal[4] if len(signal) >= 5 else center_motion
+    return time_seconds, full_motion, upper_motion, center_motion, lower_motion
+
+
 def _cluster_visual_event_frames(frames: Sequence[VisualEventFrame]) -> List[List[VisualEventFrame]]:
     clusters: List[List[VisualEventFrame]] = []
     for frame in sorted(frames, key=lambda item: item.time_seconds):
@@ -716,6 +1139,19 @@ def _cluster_visual_event_frames(frames: Sequence[VisualEventFrame]) -> List[Lis
 
 
 def _outcome_aware_visual_event_score(frame: VisualEventFrame, frames: Sequence[VisualEventFrame]) -> float:
+    setup_score, outcome_score = _visual_event_context_scores(frame, frames)
+    # A release-only spike should not beat the rim/result frame when the
+    # surrounding frames show setup and follow-through. Setup distinguishes a
+    # real shot sequence from random camera motion; outcome context keeps the
+    # anchor close to the basket/result instead of the release.
+    context_bonus = min(
+        (setup_score * 0.28) + (outcome_score * 0.12) + (min(setup_score, outcome_score) * 0.08),
+        0.36,
+    )
+    return round(clamp(frame.score + context_bonus, 0.0, 1.0), 4)
+
+
+def _visual_event_context_scores(frame: VisualEventFrame, frames: Sequence[VisualEventFrame]) -> tuple[float, float]:
     setup_score = max(
         (
             _shot_context_visual_score(candidate)
@@ -726,25 +1162,45 @@ def _outcome_aware_visual_event_score(frame: VisualEventFrame, frames: Sequence[
     )
     outcome_score = max(
         (
-            _shot_context_visual_score(candidate)
+            _shot_result_visual_score(candidate)
             for candidate in frames
             if frame.time_seconds + 0.25 <= candidate.time_seconds <= frame.time_seconds + VISUAL_EVENT_CONTEXT_SECONDS
         ),
         default=0.0,
     )
-    # A release-only spike should not beat the rim/result frame when the
-    # surrounding frames show setup and follow-through. Setup carries the
-    # strongest weight because it distinguishes a real shot sequence from a
-    # random aftermath spike; outcome follow-through breaks close ties.
-    context_bonus = min(
-        (setup_score * 0.32) + (outcome_score * 0.04) + (min(setup_score, outcome_score) * 0.04),
-        0.34,
+    return setup_score, outcome_score
+
+
+def _visual_event_is_setup_before_stronger_result(
+    frame: VisualEventFrame,
+    frames: Sequence[VisualEventFrame],
+    setup_score: float,
+    outcome_score: float,
+) -> bool:
+    if outcome_score < max(VISUAL_EVENT_MIN_OUTCOME_CONTEXT_SCORE, setup_score * 1.45):
+        return False
+    later_peak = max(
+        (
+            _shot_result_visual_score(candidate)
+            for candidate in frames
+            if frame.time_seconds + 0.25 <= candidate.time_seconds <= frame.time_seconds + 0.75
+        ),
+        default=0.0,
     )
-    return round(clamp(frame.score + context_bonus, 0.0, 1.0), 4)
+    current_context_score = _shot_context_visual_score(frame)
+    return later_peak > current_context_score * 0.6
 
 
 def _shot_context_visual_score(frame: VisualEventFrame) -> float:
     return clamp((frame.upper_motion * 0.52) + (frame.center_motion * 0.34) + (frame.full_motion * 0.14), 0.0, 1.0)
+
+
+def _shot_result_visual_score(frame: VisualEventFrame) -> float:
+    return clamp(
+        (frame.center_motion * 0.42) + (frame.lower_motion * 0.38) + (frame.upper_motion * 0.14) + (frame.full_motion * 0.06),
+        0.0,
+        1.0,
+    )
 
 
 def _audio_peak_near_time(audio_profile: Sequence[float], time_seconds: float) -> float:
@@ -814,7 +1270,9 @@ def _build_candidate_windows(
     audio_profile: List[float],
     shot_boundaries: List[float],
     settings: Settings,
+    clip_limit: Optional[int] = None,
 ) -> List[CandidateWindow]:
+    resolved_limit = clip_limit or settings.max_returned_clips
     window_span = min(max(4.5, settings.min_clip_duration_seconds + 1.5), settings.max_clip_duration_seconds)
     stride = 1.5
     windows: List[CandidateWindow] = []
@@ -872,11 +1330,11 @@ def _build_candidate_windows(
 
         time_cursor += stride
 
-    segmented = _segment_with_hysteresis(windows, settings)
+    segmented = _segment_with_hysteresis(windows, settings, clip_limit=resolved_limit)
     if segmented:
         return segmented
 
-    return sorted(windows, key=lambda item: item.combined_score, reverse=True)[: settings.max_returned_clips]
+    return sorted(windows, key=lambda item: item.combined_score, reverse=True)[:resolved_limit]
 
 
 def _shot_context_score_for_window(
@@ -921,7 +1379,8 @@ def _shot_context_score_for_window(
     return round(clamp(best_score, 0.0, 1.0), 4), best_boundary
 
 
-def _segment_with_hysteresis(windows: List[CandidateWindow], settings: Settings) -> List[CandidateWindow]:
+def _segment_with_hysteresis(windows: List[CandidateWindow], settings: Settings, clip_limit: Optional[int] = None) -> List[CandidateWindow]:
+    resolved_limit = clip_limit or settings.max_returned_clips
     high_threshold = 0.66
     low_threshold = 0.48
     active: List[CandidateWindow] = []
@@ -944,7 +1403,7 @@ def _segment_with_hysteresis(windows: List[CandidateWindow], settings: Settings)
         merged.append(_collapse_windows(active, settings))
 
     merged.sort(key=lambda item: item.combined_score, reverse=True)
-    return merged[: settings.max_returned_clips]
+    return merged[:resolved_limit]
 
 
 def _collapse_windows(group: List[CandidateWindow], settings: Settings) -> CandidateWindow:

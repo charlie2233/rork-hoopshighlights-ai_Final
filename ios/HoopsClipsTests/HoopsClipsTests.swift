@@ -251,7 +251,9 @@ struct HoopsClipsTests {
             label: "Dark jerseys",
             colorLabel: "black",
             confidence: 0.91,
-            source: "quick_scan"
+            source: "quick_scan",
+            evidenceFrameRefs: ["clip_1_release", "clip_1_result"],
+            evidenceRoleGroups: ["action", "outcome"]
         )
         let request = CreateCloudEditJobRequest(
             videoId: "video_123",
@@ -280,8 +282,10 @@ struct HoopsClipsTests {
                     audioPeak: 0.5,
                     combinedScore: 0.9,
                     duplicateGroup: nil,
+                    userReviewDecision: "kept",
                     nativeShotSignals: nativeSignals,
-                    teamAttribution: teamAttribution
+                    teamAttribution: teamAttribution,
+                    teamAttributionStatus: "matched"
                 )
             ]
         )
@@ -302,6 +306,10 @@ struct HoopsClipsTests {
         let encodedTeamAttribution = try #require(clips.first?["teamAttribution"] as? [String: Any])
         #expect(encodedTeamAttribution["teamId"] as? String == "team_dark")
         #expect(encodedTeamAttribution["confidence"] as? Double == 0.91)
+        #expect(encodedTeamAttribution["evidenceFrameRefs"] as? [String] == ["clip_1_release", "clip_1_result"])
+        #expect(encodedTeamAttribution["evidenceRoleGroups"] as? [String] == ["action", "outcome"])
+        #expect(clips.first?["teamAttributionStatus"] as? String == "matched")
+        #expect(clips.first?["userReviewDecision"] as? String == "kept")
     }
 
     @Test func testCloudAnalysisRequestEncodesPreAnalysisTeamChoice() throws {
@@ -332,12 +340,438 @@ struct HoopsClipsTests {
         #expect(teamSelection["includeUncertain"] as? Bool == true)
     }
 
-    @Test @MainActor func testCloudEditRequestSendsStrongestCandidatesBeforeThirtyClipCap() throws {
+    @Test @MainActor func testCloudTeamScanPreparesJobThenStartSendsSelectedTeam() async throws {
+        let tempURL = FileManager.default.temporaryDirectory.appending(path: "team-scan-\(UUID().uuidString).mp4")
+        try Data("fake video".utf8).write(to: tempURL)
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+
+        var startPayload: [String: Any]?
+        var requestedPaths: [String] = []
+        let service = CloudAnalysisService(session: makeCloudAnalysisSession { request in
+            let url = try #require(request.url)
+            requestedPaths.append("\(request.httpMethod ?? "GET") \(url.path)")
+
+            if request.httpMethod == "POST", url.path == "/v1/analysis/jobs" {
+                return try cloudAnalysisJSONResponse(for: request, body: """
+                {
+                  "jobId": "job_team_scan",
+                  "uploadUrl": "https://analysis.hoopsclips.test/upload/job_team_scan",
+                  "uploadMethod": "PUT",
+                  "uploadHeaders": {},
+                  "expiresAt": "2026-05-26T20:00:00Z",
+                  "pollAfterSeconds": 1,
+                  "quotaRemainingToday": 2,
+                  "analysisMode": "cloud",
+                  "sourceObjectKey": "uploads/job_team_scan/source.mp4",
+                  "resultObjectKey": null
+                }
+                """)
+            }
+
+            if request.httpMethod == "PUT", url.path == "/upload/job_team_scan" {
+                return try cloudAnalysisEmptyResponse(for: request, statusCode: 204)
+            }
+
+            if request.httpMethod == "POST", url.path == "/v1/analysis/jobs/job_team_scan/team-scan" {
+                let payload = try cloudAnalysisJSONObject(from: try cloudAnalysisRequestBodyData(from: request))
+                #expect(payload["installId"] as? String == "install-123456")
+                return try cloudAnalysisJSONResponse(for: request, body: """
+                {
+                  "jobId": "job_team_scan",
+                  "status": "scanned",
+                  "detectedTeams": [
+                    {"teamId": "team_dark", "label": "Dark jerseys", "colorLabel": "black", "primaryColorHex": "#111111", "confidence": 0.93, "source": "quick_scan"},
+                    {"teamId": "team_light", "label": "Light jerseys", "colorLabel": "white", "primaryColorHex": "#ffffff", "confidence": 0.90, "source": "quick_scan"}
+                  ]
+                }
+                """)
+            }
+
+            if request.httpMethod == "POST", url.path == "/v1/analysis/jobs/job_team_scan/start" {
+                startPayload = try cloudAnalysisJSONObject(from: try cloudAnalysisRequestBodyData(from: request))
+                return try cloudAnalysisJSONResponse(for: request, body: """
+                {"jobId": "job_team_scan", "status": "queued"}
+                """)
+            }
+
+            if request.httpMethod == "GET", url.path == "/v1/analysis/jobs/job_team_scan" {
+                return try cloudAnalysisJSONResponse(for: request, body: """
+                {
+                  "jobId": "job_team_scan",
+                  "status": "succeeded",
+                  "progress": 1.0,
+                  "stage": "Finalizing clips",
+                  "errorCode": null,
+                  "errorMessage": null,
+                  "analysisVersion": "v1",
+                  "sourceObjectKey": "uploads/job_team_scan/source.mp4",
+                  "resultObjectKey": null,
+                  "results": {
+                    "analysisJobId": "job_team_scan",
+                    "sourceObjectKey": "uploads/job_team_scan/source.mp4",
+                    "clipCount": 0,
+                    "clips": [],
+                    "diagnostics": {
+                      "processingMs": 1,
+                      "backendModelVersion": "cloud-v1+team-scan",
+                      "usedVideoIntelligence": false,
+                      "usedGeminiRelabeling": false,
+                      "candidateSegments": 0,
+                      "finalSegments": 0
+                    },
+                    "detectedTeams": [
+                      {"teamId": "team_dark", "label": "Dark jerseys", "colorLabel": "black", "primaryColorHex": "#111111", "confidence": 0.93, "source": "quick_scan"}
+                    ],
+                    "teamSelection": {
+                      "mode": "team",
+                      "teamId": "team_dark",
+                      "label": "Dark jerseys",
+                      "colorLabel": "black",
+                      "confidenceThreshold": 0.85,
+                      "includeUncertain": true
+                    }
+                  }
+                }
+                """)
+            }
+
+            throw CloudAnalysisError.invalidResponse
+        })
+
+        UserDefaults.standard.set("https://analysis.hoopsclips.test", forKey: "hoops.cloudAnalysisBaseURL")
+        defer {
+            UserDefaults.standard.removeObject(forKey: "hoops.cloudAnalysisBaseURL")
+            CloudAnalysisMockURLProtocol.requestHandler = nil
+        }
+
+        let prepared = try await service.prepareTeamScan(
+            url: tempURL,
+            duration: 120,
+            installID: "install-123456"
+        ) { _, _ in }
+        #expect(prepared.detectedTeams.map(\.teamId) == ["team_dark", "team_light"])
+
+        let result = try await service.analyzePreparedVideo(
+            prepared,
+            teamSelection: HighlightTeamSelection(
+                mode: .team,
+                teamId: "team_dark",
+                label: "Dark jerseys",
+                colorLabel: "black"
+            ),
+            installID: "install-123456"
+        ) { _, _ in }
+
+        let encodedSelection = try #require(startPayload?["teamSelection"] as? [String: Any])
+        #expect(encodedSelection["teamId"] as? String == "team_dark")
+        #expect(encodedSelection["includeUncertain"] as? Bool == true)
+        #expect(result.teamSelection?.teamId == "team_dark")
+        #expect(requestedPaths.contains("POST /v1/analysis/jobs/job_team_scan/team-scan"))
+        #expect(requestedPaths.contains("POST /v1/analysis/jobs/job_team_scan/start"))
+    }
+
+    @Test @MainActor func testCloudTeamScanAllTeamsChoiceStartsPreparedJobInAllTeamsMode() async throws {
+        let tempURL = FileManager.default.temporaryDirectory.appending(path: "team-scan-all-\(UUID().uuidString).mp4")
+        try Data("fake video".utf8).write(to: tempURL)
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+
+        var startPayload: [String: Any]?
+        var requestedPaths: [String] = []
+        let service = CloudAnalysisService(session: makeCloudAnalysisSession { request in
+            let url = try #require(request.url)
+            requestedPaths.append("\(request.httpMethod ?? "GET") \(url.path)")
+
+            if request.httpMethod == "POST", url.path == "/v1/analysis/jobs" {
+                return try cloudAnalysisJSONResponse(for: request, body: """
+                {
+                  "jobId": "job_team_scan_all",
+                  "uploadUrl": "https://analysis.hoopsclips.test/upload/job_team_scan_all",
+                  "uploadMethod": "PUT",
+                  "uploadHeaders": {},
+                  "expiresAt": "2026-05-26T20:00:00Z",
+                  "pollAfterSeconds": 1,
+                  "quotaRemainingToday": 2,
+                  "analysisMode": "cloud",
+                  "sourceObjectKey": "uploads/job_team_scan_all/source.mp4",
+                  "resultObjectKey": null
+                }
+                """)
+            }
+
+            if request.httpMethod == "PUT", url.path == "/upload/job_team_scan_all" {
+                return try cloudAnalysisEmptyResponse(for: request, statusCode: 204)
+            }
+
+            if request.httpMethod == "POST", url.path == "/v1/analysis/jobs/job_team_scan_all/team-scan" {
+                return try cloudAnalysisJSONResponse(for: request, body: """
+                {
+                  "jobId": "job_team_scan_all",
+                  "status": "scanned",
+                  "detectedTeams": [
+                    {"teamId": "team_dark", "label": "Dark jerseys", "colorLabel": "black", "primaryColorHex": "#111111", "confidence": 0.93, "source": "quick_scan"},
+                    {"teamId": "team_light", "label": "Light jerseys", "colorLabel": "white", "primaryColorHex": "#ffffff", "confidence": 0.90, "source": "quick_scan"}
+                  ]
+                }
+                """)
+            }
+
+            if request.httpMethod == "POST", url.path == "/v1/analysis/jobs/job_team_scan_all/start" {
+                startPayload = try cloudAnalysisJSONObject(from: try cloudAnalysisRequestBodyData(from: request))
+                return try cloudAnalysisJSONResponse(for: request, body: """
+                {"jobId": "job_team_scan_all", "status": "queued"}
+                """)
+            }
+
+            if request.httpMethod == "GET", url.path == "/v1/analysis/jobs/job_team_scan_all" {
+                return try cloudAnalysisJSONResponse(for: request, body: """
+                {
+                  "jobId": "job_team_scan_all",
+                  "status": "succeeded",
+                  "progress": 1.0,
+                  "stage": "Finalizing clips",
+                  "errorCode": null,
+                  "errorMessage": null,
+                  "analysisVersion": "v1",
+                  "sourceObjectKey": "uploads/job_team_scan_all/source.mp4",
+                  "resultObjectKey": null,
+                  "results": {
+                    "analysisJobId": "job_team_scan_all",
+                    "sourceObjectKey": "uploads/job_team_scan_all/source.mp4",
+                    "clipCount": 0,
+                    "clips": [],
+                    "diagnostics": {
+                      "processingMs": 1,
+                      "backendModelVersion": "cloud-v1+team-scan",
+                      "usedVideoIntelligence": false,
+                      "usedGeminiRelabeling": false,
+                      "candidateSegments": 0,
+                      "finalSegments": 0
+                    },
+                    "detectedTeams": [
+                      {"teamId": "team_dark", "label": "Dark jerseys", "colorLabel": "black", "primaryColorHex": "#111111", "confidence": 0.93, "source": "quick_scan"},
+                      {"teamId": "team_light", "label": "Light jerseys", "colorLabel": "white", "primaryColorHex": "#ffffff", "confidence": 0.90, "source": "quick_scan"}
+                    ],
+                    "teamSelection": {
+                      "mode": "all",
+                      "confidenceThreshold": 0.85,
+                      "includeUncertain": true
+                    }
+                  }
+                }
+                """)
+            }
+
+            throw CloudAnalysisError.invalidResponse
+        })
+
+        UserDefaults.standard.set("https://analysis.hoopsclips.test", forKey: "hoops.cloudAnalysisBaseURL")
+        defer {
+            UserDefaults.standard.removeObject(forKey: "hoops.cloudAnalysisBaseURL")
+            CloudAnalysisMockURLProtocol.requestHandler = nil
+        }
+
+        let prepared = try await service.prepareTeamScan(
+            url: tempURL,
+            duration: 120,
+            installID: "install-123456"
+        ) { _, _ in }
+        #expect(prepared.detectedTeams.count == 2)
+
+        let result = try await service.analyzePreparedVideo(
+            prepared,
+            teamSelection: .allTeams,
+            installID: "install-123456"
+        ) { _, _ in }
+
+        let encodedSelection = try #require(startPayload?["teamSelection"] as? [String: Any])
+        #expect(encodedSelection["mode"] as? String == "all")
+        #expect(encodedSelection["teamId"] as? String == nil)
+        #expect(result.teamSelection?.mode == .all)
+        #expect(requestedPaths.contains("POST /v1/analysis/jobs/job_team_scan_all/team-scan"))
+        #expect(requestedPaths.contains("POST /v1/analysis/jobs/job_team_scan_all/start"))
+    }
+
+    @Test func testHighlightTeamSelectionCodablePreservesPrimaryColorHex() throws {
+        let selection = HighlightTeamSelection(
+            mode: .team,
+            teamId: "team_blue",
+            label: "Blue jerseys",
+            colorLabel: "blue",
+            primaryColorHex: "#0057FF"
+        )
+
+        let data = try JSONEncoder().encode(selection)
+        let payload = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let decoded = try JSONDecoder().decode(HighlightTeamSelection.self, from: data)
+
+        #expect(payload["primaryColorHex"] as? String == "#0057FF")
+        #expect(decoded.primaryColorHex == "#0057FF")
+    }
+
+    @Test @MainActor func testTeamTargetChoicesRequireDetectedTeams() {
+        let viewModel = HighlightsViewModel()
+
+        let fallbackChoices = viewModel.availableHighlightTeamChoices
+        #expect(fallbackChoices.map(\.mode) == [.all])
+        #expect(viewModel.requiresHighlightTeamSelectionConfirmation == false)
+
+        viewModel.cloudDetectedTeams = [
+            CloudTeamOption(
+                teamId: "team_blue",
+                label: "Blue jerseys",
+                colorLabel: "blue",
+                primaryColorHex: "#0057FF",
+                confidence: 0.94,
+                source: "quick_scan"
+            )
+        ]
+
+        let scannedChoices = viewModel.availableHighlightTeamChoices
+        #expect(scannedChoices.map(\.selectionKey) == ["all", "team_blue"])
+        #expect(scannedChoices[1].confidenceThreshold == 0.85)
+        #expect(scannedChoices[1].includeUncertain)
+        #expect(scannedChoices[1].primaryColorHex == "#0057FF")
+        #expect(viewModel.requiresHighlightTeamSelectionConfirmation)
+
+        viewModel.confirmHighlightTeamSelection(scannedChoices[1])
+        #expect(viewModel.requiresHighlightTeamSelectionConfirmation == false)
+        #expect(viewModel.settings.highlightTeamSelection.teamId == "team_blue")
+    }
+
+    @Test @MainActor func testTeamScanCancellationClearsInProgressState() async throws {
+        let tempURL = FileManager.default.temporaryDirectory.appending(path: "team-scan-cancel-\(UUID().uuidString).mp4")
+        try Data("fake video".utf8).write(to: tempURL)
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+
+        let viewModel = HighlightsViewModel()
+        viewModel.videoURL = tempURL
+        viewModel.videoDuration = 120
+        viewModel.isVideoLoaded = true
+        viewModel.cloudAnalysisService = CloudAnalysisService(session: makeCloudAnalysisSession { _ in
+            throw CancellationError()
+        })
+
+        UserDefaults.standard.set("https://analysis.hoopsclips.test", forKey: "hoops.cloudAnalysisBaseURL")
+        defer {
+            UserDefaults.standard.removeObject(forKey: "hoops.cloudAnalysisBaseURL")
+            CloudAnalysisMockURLProtocol.requestHandler = nil
+        }
+
+        await viewModel.scanTeamsBeforeAnalysis()
+
+        #expect(viewModel.isCloudTeamScanInProgress == false)
+        #expect(viewModel.cloudDetectedTeams.isEmpty)
+        #expect(viewModel.hasConfirmedHighlightTeamSelection == false)
+        #expect(viewModel.cloudTeamScanStatusMessage == nil)
+    }
+
+    @Test @MainActor func testStartAnalysisRequiresConfirmedTeamChoiceAfterCloudScan() async throws {
+        let tempURL = FileManager.default.temporaryDirectory.appending(path: "team-choice-required-\(UUID().uuidString).mp4")
+        try Data("fake video".utf8).write(to: tempURL)
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+
+        var requestCount = 0
+        let viewModel = HighlightsViewModel()
+        viewModel.videoURL = tempURL
+        viewModel.videoDuration = 120
+        viewModel.isVideoLoaded = true
+        viewModel.cloudDetectedTeams = [
+            CloudTeamOption(
+                teamId: "team_blue",
+                label: "Blue jerseys",
+                colorLabel: "blue",
+                primaryColorHex: "#0057FF",
+                confidence: 0.94,
+                source: "quick_scan"
+            )
+        ]
+        viewModel.hasConfirmedHighlightTeamSelection = false
+        viewModel.cloudAnalysisService = CloudAnalysisService(session: makeCloudAnalysisSession { _ in
+            requestCount += 1
+            throw CloudAnalysisError.invalidResponse
+        })
+
+        UserDefaults.standard.set("https://analysis.hoopsclips.test", forKey: "hoops.cloudAnalysisBaseURL")
+        defer {
+            UserDefaults.standard.removeObject(forKey: "hoops.cloudAnalysisBaseURL")
+            CloudAnalysisMockURLProtocol.requestHandler = nil
+        }
+
+        await viewModel.startAnalysis()
+
+        #expect(viewModel.requiresHighlightTeamSelectionConfirmation)
+        #expect(viewModel.cloudTeamScanStatusMessage == "Choose a team before analysis")
+        #expect(viewModel.analysisService.isAnalyzing == false)
+        #expect(viewModel.cloudAnalysisJobID == nil)
+        #expect(requestCount == 0)
+    }
+
+    @Test func testPersistedProjectRecordStoresCloudTeamSelectionAndDiagnostics() throws {
+        let now = Date(timeIntervalSince1970: 1_777_000_000)
+        let project = PersistedProjectRecord(
+            title: "Team Game",
+            sourceFilename: "team-game.mov",
+            sourceRelativePath: "projects/source.mov",
+            sourceDuration: 64,
+            thumbnailRelativePath: "projects/thumb.jpg",
+            createdAt: now,
+            updatedAt: now,
+            lastOpenedAt: now,
+            highlightTeamSelection: HighlightTeamSelection(
+                mode: .team,
+                teamId: "team_blue",
+                label: "Blue jerseys",
+                colorLabel: "blue",
+                primaryColorHex: "#0057FF"
+            ),
+            cloudDetectedTeams: [
+                CloudTeamOption(
+                    teamId: "team_blue",
+                    label: "Blue jerseys",
+                    colorLabel: "blue",
+                    primaryColorHex: "#0057FF",
+                    confidence: 0.94,
+                    source: "quick_scan"
+                )
+            ],
+            cloudDiagnostics: CloudDiagnostics(
+                processingMs: 42,
+                backendModelVersion: "cloud-v1+team-scan",
+                usedVideoIntelligence: false,
+                usedGeminiRelabeling: false,
+                candidateSegments: 12,
+                finalSegments: 4,
+                usedTeamQuickScan: true,
+                preTeamFilterSegments: 12,
+                teamMatchedCandidateSegments: 5,
+                teamUncertainCandidateSegments: 2,
+                teamOpponentFilteredSegments: 5,
+                teamMatchedReviewSegments: 3,
+                teamUncertainReviewSegments: 1,
+                defensiveReviewSegments: 1,
+                blockReviewSegments: 0,
+                stealReviewSegments: 1
+            )
+        )
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+
+        let decoded = try decoder.decode(PersistedProjectRecord.self, from: try encoder.encode(project))
+
+        #expect(decoded.highlightTeamSelection?.teamId == "team_blue")
+        #expect(decoded.highlightTeamSelection?.primaryColorHex == "#0057FF")
+        #expect(decoded.cloudDetectedTeams?.first?.label == "Blue jerseys")
+        #expect(decoded.cloudDiagnostics?.teamUncertainReviewSegments == 1)
+    }
+
+    @Test @MainActor func testCloudEditRequestSendsStrongestCandidatesBeforeSixtyClipCap() throws {
         let viewModel = HighlightsViewModel()
         viewModel.cloudEditSourceObjectKey = "uploads/source.mp4"
         var clips: [Clip] = []
-        for index in 0..<31 {
-            let isStrongCandidate = index == 30
+        for index in 0..<61 {
+            let isStrongCandidate = index == 60
             let startTime = Double(index * 10)
             clips.append(
                 Clip(
@@ -355,6 +789,23 @@ struct HoopsClipsTests {
                 )
             )
         }
+        clips.append(
+            Clip(
+                startTime: 700,
+                endTime: 705,
+                eventCenter: 702.2,
+                action: .steal,
+                confidence: 0.81,
+                isKept: false,
+                label: "Possible Steal",
+                audioScore: 0.48,
+                visualScore: 0.74,
+                motionScore: 0.78,
+                combinedScore: 0.82,
+                detectionMethod: .cloud,
+                teamAttributionStatus: "uncertain"
+            )
+        )
         viewModel.analysisService.clips = clips
 
         let request = try viewModel.createCloudEditRequest(
@@ -364,9 +815,166 @@ struct HoopsClipsTests {
         )
         let candidateStarts = request.clips.map(\.start)
 
-        #expect(request.clips.count == 30)
-        #expect(candidateStarts.contains(300.0))
-        #expect(!candidateStarts.contains(290.0))
+        #expect(request.clips.count == 60)
+        #expect(candidateStarts.contains(600.0))
+        #expect(candidateStarts.contains(700.0))
+        #expect(!candidateStarts.contains(590.0))
+    }
+
+    @Test @MainActor func testCloudEditRequestIncludesReviewOnlyUncertainCandidatesWithoutAutoKeepingThem() throws {
+        let viewModel = HighlightsViewModel()
+        viewModel.cloudEditSourceObjectKey = "uploads/source.mp4"
+        let keptClip = Clip(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            startTime: 10.0,
+            endTime: 16.0,
+            eventCenter: 13.0,
+            action: .madeShot,
+            confidence: 0.93,
+            isKept: true,
+            label: "Made Shot",
+            audioScore: 0.72,
+            visualScore: 0.88,
+            motionScore: 0.82,
+            combinedScore: 0.9,
+            detectionMethod: .cloud,
+            teamAttribution: ClipTeamAttribution(
+                teamId: "team_dark",
+                label: "Dark jerseys",
+                colorLabel: "black",
+                confidence: 0.93,
+                source: "quick_scan",
+                evidenceFrameRefs: ["kept_setup", "kept_result"],
+                evidenceRoleGroups: ["setup", "outcome"]
+            ),
+            teamAttributionStatus: "matched"
+        )
+        let reviewOnlySteal = Clip(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
+            startTime: 24.0,
+            endTime: 29.0,
+            eventCenter: 26.2,
+            action: .steal,
+            confidence: 0.81,
+            isKept: false,
+            label: "Possible Steal",
+            audioScore: 0.48,
+            visualScore: 0.74,
+            motionScore: 0.78,
+            combinedScore: 0.82,
+            detectionMethod: .cloud,
+            teamAttribution: ClipTeamAttribution(
+                teamId: "team_dark",
+                label: "Dark jerseys",
+                colorLabel: "black",
+                confidence: 0.64,
+                source: "gpt_frame_review"
+            ),
+            teamAttributionStatus: "uncertain"
+        )
+        let ordinaryDiscardedClip = Clip(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!,
+            startTime: 34.0,
+            endTime: 40.0,
+            eventCenter: 37.0,
+            action: .unknown,
+            confidence: 0.45,
+            isKept: false,
+            label: "Generic Clip",
+            audioScore: 0.1,
+            visualScore: 0.2,
+            motionScore: 0.2,
+            combinedScore: 0.18,
+            detectionMethod: .cloud,
+            teamAttributionStatus: "matched"
+        )
+        viewModel.analysisService.clips = [keptClip, reviewOnlySteal, ordinaryDiscardedClip]
+
+        let request = try viewModel.createCloudEditRequest(
+            preset: .personalHighlight,
+            targetDurationSeconds: 30,
+            isProUser: false
+        )
+        #expect(request.clips.map(\.label) == ["Made Shot", "Possible Steal"])
+        #expect(request.clips.first { $0.id == keptClip.id.uuidString }?.userReviewDecision == "kept")
+        #expect(request.clips.first { $0.id == reviewOnlySteal.id.uuidString }?.userReviewDecision == "unreviewed")
+        #expect(request.clips.first { $0.id == ordinaryDiscardedClip.id.uuidString } == nil)
+    }
+
+    @Test func testCloudEditCandidateRankingReservesDefenseAndReviewClipsBeforeCap() {
+        var clips: [Clip] = []
+        for index in 0..<42 {
+            clips.append(
+                Clip(
+                    startTime: Double(index * 8),
+                    endTime: Double(index * 8) + 6,
+                    eventCenter: Double(index * 8) + 3,
+                    action: .madeShot,
+                    confidence: 0.99,
+                    isKept: true,
+                    label: "Made Shot",
+                    audioScore: 0.95,
+                    visualScore: 0.95,
+                    motionScore: 0.95,
+                    combinedScore: 0.99,
+                    detectionMethod: .cloud
+                )
+            )
+        }
+        let selectedTeamBlock = Clip(
+            startTime: 400.0,
+            endTime: 405.0,
+            eventCenter: 402.5,
+            action: .block,
+            confidence: 0.68,
+            isKept: true,
+            label: "Block",
+            audioScore: 0.2,
+            visualScore: 0.62,
+            motionScore: 0.66,
+            combinedScore: 0.64,
+            detectionMethod: .cloud
+        )
+        let selectedTeamSteal = Clip(
+            startTime: 410.0,
+            endTime: 415.0,
+            eventCenter: 412.5,
+            action: .steal,
+            confidence: 0.67,
+            isKept: true,
+            label: "Steal",
+            audioScore: 0.2,
+            visualScore: 0.61,
+            motionScore: 0.65,
+            combinedScore: 0.63,
+            detectionMethod: .cloud
+        )
+        let reviewClip = Clip(
+            startTime: 420.0,
+            endTime: 425.0,
+            eventCenter: 422.5,
+            action: .madeShot,
+            confidence: 0.66,
+            isKept: true,
+            label: "Possible Team Finish",
+            audioScore: 0.2,
+            visualScore: 0.6,
+            motionScore: 0.64,
+            combinedScore: 0.62,
+            detectionMethod: .cloud,
+            teamAttributionStatus: "uncertain"
+        )
+
+        let ranked = HighlightsViewModel.rankedCloudEditCandidateClips(
+            from: clips + [selectedTeamBlock, selectedTeamSteal, reviewClip],
+            limit: 40
+        )
+        let labels = Set(ranked.map(\.label))
+
+        #expect(ranked.count == 40)
+        #expect(labels.contains("Block"))
+        #expect(labels.contains("Steal"))
+        #expect(labels.contains("Possible Team Finish"))
     }
 
     @Test func testCloudEditCandidateRankingPrefersCompleteShotContextOverLatePreBasketWindow() {
@@ -405,6 +1013,86 @@ struct HoopsClipsTests {
         )
 
         #expect(ranked.first?.startTime == 20.0)
+    }
+
+    @Test func testCloudEditCandidateRankingUsesBackendMinimumShotContext() {
+        let marginalPreBasketWindow = Clip(
+            startTime: 10.0,
+            endTime: 13.0,
+            eventCenter: 10.9,
+            action: .madeShot,
+            confidence: 0.99,
+            isKept: true,
+            label: "Made Shot",
+            audioScore: 0.95,
+            visualScore: 0.95,
+            motionScore: 0.95,
+            combinedScore: 0.99,
+            detectionMethod: .cloud
+        )
+        let completeShot = Clip(
+            startTime: 20.0,
+            endTime: 25.0,
+            eventCenter: 22.0,
+            action: .madeShot,
+            confidence: 0.76,
+            isKept: true,
+            label: "Made Shot",
+            audioScore: 0.46,
+            visualScore: 0.68,
+            motionScore: 0.7,
+            combinedScore: 0.7,
+            detectionMethod: .cloud
+        )
+
+        let ranked = HighlightsViewModel.rankedCloudEditCandidateClips(
+            from: [marginalPreBasketWindow, completeShot],
+            limit: 1
+        )
+
+        #expect(ranked.first?.startTime == 20.0)
+    }
+
+    @Test @MainActor func testCloudEditRequestDoesNotSendLatePreBasketShotCandidate() throws {
+        let viewModel = HighlightsViewModel()
+        viewModel.cloudEditSourceObjectKey = "uploads/source.mp4"
+        let latePreBasketOnly = Clip(
+            startTime: 10.0,
+            endTime: 16.0,
+            eventCenter: 10.1,
+            action: .madeShot,
+            confidence: 0.99,
+            isKept: true,
+            label: "Made Shot",
+            audioScore: 0.95,
+            visualScore: 0.95,
+            motionScore: 0.95,
+            combinedScore: 0.99,
+            detectionMethod: .cloud
+        )
+        let completeShot = Clip(
+            startTime: 20.0,
+            endTime: 26.0,
+            eventCenter: 23.0,
+            action: .madeShot,
+            confidence: 0.78,
+            isKept: true,
+            label: "Made Shot",
+            audioScore: 0.55,
+            visualScore: 0.7,
+            motionScore: 0.72,
+            combinedScore: 0.72,
+            detectionMethod: .cloud
+        )
+        viewModel.analysisService.clips = [latePreBasketOnly, completeShot]
+
+        let request = try viewModel.createCloudEditRequest(
+            preset: .personalHighlight,
+            targetDurationSeconds: 30,
+            isProUser: false
+        )
+
+        #expect(request.clips.map(\.start) == [20.0])
     }
 
     @Test func testCloudEditProTemplatesAreRealAndDistinct() {
@@ -520,6 +1208,15 @@ struct HoopsClipsTests {
             outcome: "made",
             outcomeConfidence: 0.82
         )
+        let teamAttribution = ClipTeamAttribution(
+            teamId: "team_dark",
+            label: "Dark jerseys",
+            colorLabel: "black",
+            confidence: 0.91,
+            source: "quick_scan",
+            evidenceFrameRefs: ["clip_0_release", "clip_0_result"],
+            evidenceRoleGroups: ["action", "outcome"]
+        )
         let cloudClip = CloudClip(
             startTime: 12.5,
             endTime: 17.0,
@@ -534,7 +1231,9 @@ struct HoopsClipsTests {
             detectionMethod: "Cloud",
             shouldAutoKeep: true,
             shouldEnableSlowMotion: true,
-            nativeShotSignals: nativeSignals
+            nativeShotSignals: nativeSignals,
+            teamAttribution: teamAttribution,
+            teamAttributionStatus: "matched"
         )
 
         let mapped = cloudClip.makeClip()
@@ -546,6 +1245,201 @@ struct HoopsClipsTests {
         #expect(abs(mapped.duration - 4.5) < 0.001)
         #expect(mapped.eventCenter == 15.2)
         #expect(mapped.nativeShotSignals == nativeSignals)
+        #expect(mapped.teamAttribution == teamAttribution)
+        #expect(mapped.teamAttribution?.evidenceFrameRefs == ["clip_0_release", "clip_0_result"])
+        #expect(mapped.teamAttribution?.evidenceRoleGroups == ["action", "outcome"])
+        #expect(mapped.teamAttributionStatus == "matched")
+    }
+
+    @Test func testClipTeamAttributionDecodesWithoutEvidenceMetadataForCachedResults() throws {
+        let data = Data(
+            """
+            {
+              "teamId": "team_dark",
+              "label": "Dark jerseys",
+              "colorLabel": "black",
+              "confidence": 0.91,
+              "source": "quick_scan"
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(ClipTeamAttribution.self, from: data)
+
+        #expect(decoded.teamId == "team_dark")
+        #expect(decoded.evidenceFrameRefs == nil)
+        #expect(decoded.evidenceRoleGroups == nil)
+    }
+
+    @Test func testClipReviewBadgesMarkUncertainTeamOutcomeAndTiming() {
+        let nativeSignals = NativeShotSignals(
+            isShotLike: true,
+            leadInSeconds: 0.2,
+            followThroughSeconds: 0.1,
+            setupContextScore: 0.12,
+            outcomeContextScore: 0.08,
+            eventCenterQuality: 0.2,
+            contextQualityScore: 0.25,
+            timingWindowOk: false,
+            outcome: "uncertain",
+            outcomeConfidence: 0.0
+        )
+        let clip = Clip(
+            startTime: 10.0,
+            endTime: 12.2,
+            eventCenter: 10.1,
+            action: .madeShot,
+            confidence: 0.74,
+            isKept: false,
+            label: "Shot Attempt",
+            audioScore: 0.4,
+            visualScore: 0.5,
+            motionScore: 0.62,
+            combinedScore: 0.7,
+            detectionMethod: .cloud,
+            nativeShotSignals: nativeSignals,
+            teamAttribution: ClipTeamAttribution(
+                teamId: "team_dark",
+                label: "Dark jerseys",
+                colorLabel: "black",
+                confidence: 0.64,
+                source: "gpt_frame_review"
+            ),
+            teamAttributionStatus: "uncertain"
+        )
+
+        #expect(clip.needsUserReview)
+        #expect(clip.reviewBadges == [.teamUncertain, .outcomeUncertain, .timingUncertain])
+        #expect(clip.reviewBadges.map(\.title) == ["Team?", "Outcome?", "Timing?"])
+    }
+
+    @Test func testClipReviewBadgesMarkMissingTeamAttributionStatusUncertain() {
+        let clip = Clip(
+            startTime: 18.0,
+            endTime: 22.0,
+            eventCenter: 20.0,
+            action: .block,
+            confidence: 0.71,
+            isKept: true,
+            label: "Possible Block",
+            audioScore: 0.42,
+            visualScore: 0.72,
+            motionScore: 0.69,
+            combinedScore: 0.76,
+            detectionMethod: .cloud,
+            teamAttribution: nil,
+            teamAttributionStatus: "uncertain"
+        )
+
+        #expect(clip.needsUserReview)
+        #expect(clip.reviewBadges == [.teamUncertain])
+    }
+
+    @Test @MainActor func testViewModelExposesNeedsReviewClipsForReviewFilter() {
+        let viewModel = HighlightsViewModel()
+        let cleanClip = Clip(
+            startTime: 4.0,
+            endTime: 8.0,
+            eventCenter: 6.0,
+            action: .madeShot,
+            confidence: 0.93,
+            isKept: true,
+            label: "Made Shot",
+            audioScore: 0.72,
+            visualScore: 0.88,
+            motionScore: 0.82,
+            combinedScore: 0.9,
+            detectionMethod: .cloud,
+            teamAttribution: ClipTeamAttribution(
+                teamId: "team_dark",
+                label: "Dark jerseys",
+                colorLabel: "black",
+                confidence: 0.93,
+                source: "quick_scan"
+            ),
+            teamAttributionStatus: "matched"
+        )
+        let uncertainClip = Clip(
+            startTime: 18.0,
+            endTime: 22.0,
+            eventCenter: 20.0,
+            action: .steal,
+            confidence: 0.71,
+            isKept: true,
+            label: "Possible Steal",
+            audioScore: 0.42,
+            visualScore: 0.72,
+            motionScore: 0.69,
+            combinedScore: 0.76,
+            detectionMethod: .cloud,
+            teamAttribution: ClipTeamAttribution(
+                teamId: "team_dark",
+                label: "Dark jerseys",
+                colorLabel: "black",
+                confidence: 0.64,
+                source: "gpt_frame_review"
+            ),
+            teamAttributionStatus: "uncertain"
+        )
+
+        viewModel.analysisService.clips = [cleanClip, uncertainClip]
+
+        #expect(viewModel.needsReviewClips.map(\.label) == ["Possible Steal"])
+    }
+
+    @Test @MainActor func testKeepHighConfidenceDoesNotAutoKeepNeedsReviewClips() {
+        let viewModel = HighlightsViewModel()
+        let cleanHighConfidence = Clip(
+            startTime: 4.0,
+            endTime: 8.5,
+            eventCenter: 6.0,
+            action: .madeShot,
+            confidence: 0.91,
+            isKept: false,
+            label: "Made Shot",
+            audioScore: 0.72,
+            visualScore: 0.88,
+            motionScore: 0.82,
+            combinedScore: 0.9,
+            detectionMethod: .cloud,
+            teamAttribution: ClipTeamAttribution(
+                teamId: "team_dark",
+                label: "Dark jerseys",
+                colorLabel: "black",
+                confidence: 0.93,
+                source: "quick_scan"
+            ),
+            teamAttributionStatus: "matched"
+        )
+        let uncertainHighConfidence = Clip(
+            startTime: 18.0,
+            endTime: 22.5,
+            eventCenter: 20.0,
+            action: .steal,
+            confidence: 0.94,
+            isKept: false,
+            label: "Possible Steal",
+            audioScore: 0.42,
+            visualScore: 0.72,
+            motionScore: 0.69,
+            combinedScore: 0.86,
+            detectionMethod: .cloud,
+            teamAttribution: ClipTeamAttribution(
+                teamId: "team_dark",
+                label: "Dark jerseys",
+                colorLabel: "black",
+                confidence: 0.64,
+                source: "gpt_frame_review"
+            ),
+            teamAttributionStatus: "uncertain"
+        )
+
+        viewModel.analysisService.clips = [cleanHighConfidence, uncertainHighConfidence]
+        viewModel.keepHighConfidenceClips()
+
+        #expect(viewModel.keptClips.map(\.label) == ["Made Shot"])
+        #expect(viewModel.discardedClips.map(\.label) == ["Possible Steal"])
+        #expect(viewModel.needsReviewClips.map(\.label) == ["Possible Steal"])
     }
 
     @Test func testCloudJobResponseDecodesNestedResults() throws {
@@ -677,8 +1571,11 @@ struct HoopsClipsTests {
             "storageExpiresAt": "2026-05-31T00:00:00Z",
             "planTier": "free",
             "priorityQueue": false,
+            "gptUncertainReviewClipCount": 1,
+            "gptUncertainReviewClipIds": ["uncertain_steal"],
             "summaryRows": [
               "Selected 2 clips from 3 candidates.",
+              "Kept 1 uncertain team candidate available for Review.",
               "Applied Personal Highlight template."
             ]
           }
@@ -694,7 +1591,36 @@ struct HoopsClipsTests {
         #expect(response.workTimeline?.steps.first?.status == .complete)
         #expect(response.workReceipt?.selectedClipCount == 2)
         #expect(response.workReceipt?.templateName == "Personal Highlight")
-        #expect(response.workReceipt?.summaryRows.count == 2)
+        #expect(response.workReceipt?.gptUncertainReviewClipCount == 1)
+        #expect(response.workReceipt?.gptUncertainReviewClipIds == ["uncertain_steal"])
+        #expect(response.workReceipt?.summaryRows.contains("Kept 1 uncertain team candidate available for Review.") == true)
+    }
+
+    @Test func testCloudEditJobResponseDecodesUncertainReviewClipIds() throws {
+        let payload = """
+        {
+          "editJobId": "edit_123",
+          "videoId": "video_123",
+          "analysisJobId": "analysis_123",
+          "status": "plan_ready",
+          "preset": "personal_highlight",
+          "templateId": "personal_highlight_v1",
+          "planTier": "free",
+          "policy": null,
+          "targetDurationSeconds": 30,
+          "aspectRatio": "9:16",
+          "clipCount": 2,
+          "validationErrors": [],
+          "gptUncertainReviewClipIds": ["uncertain_steal"],
+          "gptUncertainReviewClipCount": 1
+        }
+        """
+
+        let response = try JSONDecoder().decode(CloudEditJobResponse.self, from: Data(payload.utf8))
+
+        #expect(response.editJobId == "edit_123")
+        #expect(response.gptUncertainReviewClipIds == ["uncertain_steal"])
+        #expect(response.gptUncertainReviewClipCount == 1)
     }
 
     @Test func testAudioFallbackSplitsContinuousSignalIntoBoundedClips() async {
@@ -923,7 +1849,17 @@ struct HoopsClipsTests {
                 usedVideoIntelligence: false,
                 usedGeminiRelabeling: false,
                 candidateSegments: 3,
-                finalSegments: 3
+                finalSegments: 3,
+                usedTeamQuickScan: nil,
+                preTeamFilterSegments: nil,
+                teamMatchedCandidateSegments: nil,
+                teamUncertainCandidateSegments: nil,
+                teamOpponentFilteredSegments: nil,
+                teamMatchedReviewSegments: nil,
+                teamUncertainReviewSegments: nil,
+                defensiveReviewSegments: nil,
+                blockReviewSegments: nil,
+                stealReviewSegments: nil
             )
         )
 
@@ -1098,4 +2034,102 @@ struct HoopsClipsTests {
         #expect(abs(endBoundaryScale - 1.0) < 0.0001)
     }
 
+}
+
+private func makeCloudAnalysisSession(
+    handler: @escaping (URLRequest) throws -> (HTTPURLResponse, Data)
+) -> URLSession {
+    CloudAnalysisMockURLProtocol.requestHandler = handler
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.protocolClasses = [CloudAnalysisMockURLProtocol.self]
+    return URLSession(configuration: configuration)
+}
+
+private func cloudAnalysisJSONResponse(for request: URLRequest, body: String) throws -> (HTTPURLResponse, Data) {
+    let url = try #require(request.url)
+    let response = try #require(
+        HTTPURLResponse(
+            url: url,
+            statusCode: 200,
+            httpVersion: nil,
+            headerFields: ["Content-Type": "application/json"]
+        )
+    )
+    return (response, Data(body.utf8))
+}
+
+private func cloudAnalysisEmptyResponse(
+    for request: URLRequest,
+    statusCode: Int
+) throws -> (HTTPURLResponse, Data) {
+    let url = try #require(request.url)
+    let response = try #require(
+        HTTPURLResponse(
+            url: url,
+            statusCode: statusCode,
+            httpVersion: nil,
+            headerFields: nil
+        )
+    )
+    return (response, Data())
+}
+
+private func cloudAnalysisJSONObject(from data: Data) throws -> [String: Any] {
+    let value = try JSONSerialization.jsonObject(with: data)
+    return try #require(value as? [String: Any])
+}
+
+private func cloudAnalysisRequestBodyData(from request: URLRequest) throws -> Data {
+    if let body = request.httpBody {
+        return body
+    }
+    guard let stream = request.httpBodyStream else {
+        throw CloudAnalysisError.invalidResponse
+    }
+    stream.open()
+    defer { stream.close() }
+
+    var data = Data()
+    var buffer = [UInt8](repeating: 0, count: 1024)
+    while stream.hasBytesAvailable {
+        let count = stream.read(&buffer, maxLength: buffer.count)
+        if count < 0 {
+            throw stream.streamError ?? CloudAnalysisError.invalidResponse
+        }
+        if count == 0 {
+            break
+        }
+        data.append(buffer, count: count)
+    }
+    return data
+}
+
+private final class CloudAnalysisMockURLProtocol: URLProtocol {
+    static var requestHandler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
+
+    override class func canInit(with request: URLRequest) -> Bool {
+        true
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
+
+    override func startLoading() {
+        guard let handler = Self.requestHandler else {
+            client?.urlProtocol(self, didFailWithError: CloudAnalysisError.network("missing test handler"))
+            return
+        }
+
+        do {
+            let (response, data) = try handler(request)
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: data)
+            client?.urlProtocolDidFinishLoading(self)
+        } catch {
+            client?.urlProtocol(self, didFailWithError: error)
+        }
+    }
+
+    override func stopLoading() {}
 }

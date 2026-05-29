@@ -152,7 +152,8 @@ async function requestQueueDispatchRetry(
     schemaVersion: job.schemaVersion,
     sourceObjectKey: job.sourceObjectKey,
     resultObjectKey: job.resultObjectKey,
-    modelVersion: job.modelVersion ?? null
+    modelVersion: job.modelVersion ?? null,
+    teamSelection: job.teamSelection ?? null
   };
 
   const refreshedJob = await updateJobState(

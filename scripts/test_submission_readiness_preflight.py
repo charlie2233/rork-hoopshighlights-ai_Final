@@ -3,10 +3,12 @@ import json
 import plistlib
 import tempfile
 import unittest
+from dataclasses import asdict
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from scripts.evaluate_team_highlight_accuracy import AccuracyThresholds
 from scripts.submission_readiness_preflight import (
     BLOCKER_DOCS,
     Collector,
@@ -23,6 +25,7 @@ from scripts.submission_readiness_preflight import (
     check_github_workflow_runs,
     check_ios_upload_inputs,
     check_live_editing_version,
+    check_team_highlight_accuracy_report,
     has_failures,
     parse_devicectl_devices,
     redacted_endpoint_label,
@@ -35,6 +38,8 @@ class SubmissionReadinessPreflightTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             repo_root = Path(temp_dir)
             archive_path = create_ready_fixture(repo_root)
+            team_accuracy_report_path = repo_root / "artifacts/team_accuracy_report.json"
+            write_json(team_accuracy_report_path, launch_grade_team_accuracy_report())
 
             with patch(
                 "scripts.submission_readiness_preflight.run_backend_config_checks",
@@ -83,12 +88,142 @@ class SubmissionReadinessPreflightTests(unittest.TestCase):
                 },
                 clear=True,
             ):
-                findings = run_checks(repo_root, archive_path=archive_path)
+                findings = run_checks(repo_root, archive_path=archive_path, team_accuracy_report_path=team_accuracy_report_path)
 
             self.assertFalse(has_failures(findings), "\n".join(f"{item.check}: {item.detail}" for item in findings if item.status == "fail"))
             details = "\n".join(item.detail for item in findings)
             self.assertNotIn("TEAM123456", details)
             self.assertNotIn("K99RADPB9G", details)
+
+    def test_team_accuracy_report_is_required_for_submission_readiness(self) -> None:
+        collector = Collector()
+
+        check_team_highlight_accuracy_report(Path.cwd(), collector, None)
+
+        self.assertTrue(has_failures(collector.findings))
+        self.assertIn("--team-accuracy-report", collector.findings[0].detail)
+
+    def test_team_accuracy_report_rejects_relaxed_launch_thresholds(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            report_path = repo_root / "team_accuracy_report.json"
+            report = launch_grade_team_accuracy_report(
+                threshold_overrides={
+                    "minScoredClips": 2,
+                    "minOpponentHighlights": 0,
+                }
+            )
+            write_json(report_path, report)
+            collector = Collector()
+
+            check_team_highlight_accuracy_report(repo_root, collector, report_path)
+
+        self.assertTrue(has_failures(collector.findings))
+        self.assertIn("minScoredClips threshold", collector.findings[0].detail)
+        self.assertIn("minOpponentHighlights threshold", collector.findings[0].detail)
+
+    def test_team_accuracy_report_requires_real_cloud_label_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            report_path = repo_root / "team_accuracy_report.json"
+            report = launch_grade_team_accuracy_report()
+            report.pop("evidence")
+            write_json(report_path, report)
+            collector = Collector()
+
+            check_team_highlight_accuracy_report(repo_root, collector, report_path)
+
+        self.assertTrue(has_failures(collector.findings))
+        self.assertIn("evaluator evidence", collector.findings[0].detail)
+
+    def test_team_accuracy_report_rejects_synthetic_or_incomplete_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            report_path = repo_root / "team_accuracy_report.json"
+            write_json(
+                report_path,
+                launch_grade_team_accuracy_report(
+                    evidence_overrides={
+                        "inputSource": "unit_test_fixture",
+                        "distinctVideoCount": 1,
+                        "casesMissingAnalysisJobId": 1,
+                    }
+                ),
+            )
+            collector = Collector()
+
+            check_team_highlight_accuracy_report(repo_root, collector, report_path)
+
+        self.assertTrue(has_failures(collector.findings))
+        detail = collector.findings[0].detail
+        self.assertIn("inputSource", detail)
+        self.assertIn("distinctVideoCount", detail)
+        self.assertIn("casesMissingAnalysisJobId", detail)
+
+    def test_team_accuracy_report_rejects_missing_quick_scan_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            report_path = repo_root / "team_accuracy_report.json"
+            write_json(
+                report_path,
+                launch_grade_team_accuracy_report(
+                    evidence_overrides={
+                        "casesMissingTeamScanJobId": 1,
+                        "casesMissingDetectedTeamOptions": 1,
+                        "casesMissingSelectedTeamColorLabel": 1,
+                        "casesMissingSelectedTeamDetectedOption": 1,
+                    }
+                ),
+            )
+            collector = Collector()
+
+            check_team_highlight_accuracy_report(repo_root, collector, report_path)
+
+        self.assertTrue(has_failures(collector.findings))
+        detail = collector.findings[0].detail
+        self.assertIn("casesMissingTeamScanJobId", detail)
+        self.assertIn("casesMissingDetectedTeamOptions", detail)
+        self.assertIn("casesMissingSelectedTeamColorLabel", detail)
+        self.assertIn("casesMissingSelectedTeamDetectedOption", detail)
+
+    def test_team_accuracy_report_requires_hard_case_metrics(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            report_path = repo_root / "team_accuracy_report.json"
+            report = launch_grade_team_accuracy_report(
+                metric_overrides={
+                    "madeShotOutcomeEvidenceClipCount": 0,
+                    "missedShotOutcomeEvidenceClipCount": 0,
+                    "opponentHighlightCount": 0,
+                    "negativeClipCount": 0,
+                    "badWindowNegativeCount": 0,
+                    "uncertainReviewCount": 0,
+                }
+            )
+            write_json(report_path, report)
+            collector = Collector()
+
+            check_team_highlight_accuracy_report(repo_root, collector, report_path)
+
+        self.assertTrue(has_failures(collector.findings))
+        detail = collector.findings[0].detail
+        self.assertIn("madeShotOutcomeEvidenceClipCount", detail)
+        self.assertIn("missedShotOutcomeEvidenceClipCount", detail)
+        self.assertIn("opponentHighlightCount", detail)
+        self.assertIn("badWindowNegativeCount", detail)
+        self.assertIn("uncertainReviewCount", detail)
+
+    def test_team_accuracy_report_passes_launch_grade_default_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            report_path = repo_root / "team_accuracy_report.json"
+            write_json(report_path, launch_grade_team_accuracy_report())
+            collector = Collector()
+
+            check_team_highlight_accuracy_report(repo_root, collector, report_path)
+
+        self.assertFalse(has_failures(collector.findings))
+        self.assertIn("default-or-stricter", collector.findings[0].detail)
 
     def test_blocker_docs_fail_when_known_no_go_markers_remain(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -128,6 +263,36 @@ charlie的iPhone   charliedeiPhone.coredevice.local   E5786BB6-0095-5509-8B85-11
         self.assertEqual(len(devices), 1)
         self.assertEqual(devices[0]["state"], "unavailable")
         self.assertEqual(devices[0]["model"], "iPhone 15 Pro (iPhone16,1)")
+
+    def test_parse_devicectl_devices_handles_available_paired_state(self) -> None:
+        output = """
+Name             Hostname                           Identifier                             State                Model
+--------------   --------------------------------   ------------------------------------   ------------------   --------------------------
+charlie的iPhone   charliedeiPhone.coredevice.local   E5786BB6-0095-5509-8B85-110C0B5CE6D3   available (paired)   iPhone 15 Pro (iPhone16,1)
+"""
+
+        devices = parse_devicectl_devices(output)
+
+        self.assertEqual(len(devices), 1)
+        self.assertEqual(devices[0]["state"], "available (paired)")
+        self.assertEqual(devices[0]["model"], "iPhone 15 Pro (iPhone16,1)")
+
+    def test_connected_ios_device_passes_when_detected_iphone_is_available_paired(self) -> None:
+        output = """
+Name             Hostname                           Identifier                             State                Model
+--------------   --------------------------------   ------------------------------------   ------------------   --------------------------
+charlie的iPhone   charliedeiPhone.coredevice.local   E5786BB6-0095-5509-8B85-110C0B5CE6D3   available (paired)   iPhone 15 Pro (iPhone16,1)
+"""
+        collector = Collector()
+
+        with patch(
+            "scripts.submission_readiness_preflight.subprocess.run",
+            return_value=SimpleNamespace(returncode=0, stdout=output),
+        ):
+            check_connected_ios_device(collector)
+
+        self.assertFalse(has_failures(collector.findings))
+        self.assertIn("available iPhone", collector.findings[0].detail)
 
     def test_connected_ios_device_fails_when_detected_iphone_is_unavailable(self) -> None:
         output = """
@@ -177,6 +342,39 @@ charlie的iPhone   charliedeiPhone.coredevice.local   E5786BB6-0095-5509-8B85-11
         failures = [finding for finding in collector.findings if finding.status == "fail"]
         self.assertEqual(len(failures), 2)
         self.assertTrue(all("conclusion=failure" in finding.detail for finding in failures))
+
+    def test_github_workflow_runs_fail_when_runners_cannot_start(self) -> None:
+        payload = [
+            {
+                "workflowName": "iOS Internal TestFlight Upload",
+                "headSha": "abc1234567890",
+                "status": "completed",
+                "conclusion": "startup_failure",
+                "createdAt": "2026-05-23T21:27:18Z",
+            },
+            {
+                "workflowName": "Cloud Edit Deploy Preflight",
+                "headSha": "abc1234567890",
+                "status": "completed",
+                "conclusion": "action_required",
+                "createdAt": "2026-05-23T20:31:19Z",
+            },
+        ]
+        collector = Collector()
+
+        with patch(
+            "scripts.submission_readiness_preflight.subprocess.run",
+            return_value=SimpleNamespace(returncode=0, stdout=json.dumps(payload)),
+        ), patch(
+            "scripts.submission_readiness_preflight.run_git",
+            return_value="abc1234567890\n",
+        ):
+            check_github_workflow_runs(Path.cwd(), collector)
+
+        failures = [finding for finding in collector.findings if finding.status == "fail"]
+        self.assertEqual(len(failures), 2)
+        self.assertTrue(all(finding.check == "github actions startability" for finding in failures))
+        self.assertTrue(all("billing/spending/action-required" in finding.detail for finding in failures))
 
     def test_github_workflow_runs_fail_when_latest_required_runs_are_stale(self) -> None:
         payload = [
@@ -324,6 +522,10 @@ charlie的iPhone   charliedeiPhone.coredevice.local   E5786BB6-0095-5509-8B85-11
                     "aiEditLiveRenderEnabled": True,
                     "aiEditRevisionEnabled": True,
                     "aiEditTemplatePackEnabled": True,
+                    "aiClipGptEditorEnabled": True,
+                    "aiClipGptPlanEditEnabled": True,
+                    "aiClipGptRevisionEnabled": True,
+                    "gptHighlightRerankerEnabled": True,
                 },
             }
 
@@ -340,6 +542,78 @@ charlie的iPhone   charliedeiPhone.coredevice.local   E5786BB6-0095-5509-8B85-11
             self.assertEqual(len(failures), 1)
             self.assertEqual(failures[0].check, "live editing git sha")
             self.assertIn("does not match", failures[0].detail)
+
+
+def launch_grade_team_accuracy_report(
+    *,
+    metric_overrides: dict[str, object] | None = None,
+    threshold_overrides: dict[str, object] | None = None,
+    evidence_overrides: dict[str, object] | None = None,
+    status: str = "pass",
+) -> dict[str, object]:
+    thresholds = asdict(AccuracyThresholds())
+    thresholds.update(threshold_overrides or {})
+    metrics: dict[str, object] = {
+        "caseCount": 2,
+        "clipCount": 12,
+        "allTeamsCaseCount": 1,
+        "selectedTeamPrecision": 0.92,
+        "selectedTeamEvidenceQuality": 0.92,
+        "selectedTeamRecallWithUncertain": 0.92,
+        "highlightPrecision": 0.92,
+        "highlightRecall": 0.92,
+        "defensiveEventRecall": 0.92,
+        "clipTimingQuality": 0.92,
+        "shotOutcomeEvidenceQuality": 0.92,
+        "uncertainReviewCount": 1,
+        "selectedTeamHighlightCount": 6,
+        "defensiveEventCount": 2,
+        "timingQualityClipCount": 12,
+        "badTimingClipCount": 0,
+        "shotOutcomeEvidenceClipCount": 3,
+        "madeShotOutcomeEvidenceClipCount": 1,
+        "missedShotOutcomeEvidenceClipCount": 1,
+        "badShotOutcomeEvidenceCount": 0,
+        "selectedTeamBlockCount": 1,
+        "selectedTeamStealCount": 1,
+        "selectedTeamForcedTurnoverCount": 1,
+        "selectedTeamDefensiveStopCount": 1,
+        "opponentHighlightCount": 2,
+        "negativeClipCount": 2,
+        "badWindowNegativeCount": 2,
+        "selectedTeamEvidenceClipCount": 6,
+        "badSelectedTeamEvidenceCount": 0,
+    }
+    metrics.update(metric_overrides or {})
+    evidence: dict[str, object] = {
+        "inputSchemaVersion": "team-highlight-eval-v1",
+        "inputSource": "real_cloud_analysis_with_manual_labels",
+        "caseCount": metrics["caseCount"],
+        "allTeamsCaseCount": metrics["allTeamsCaseCount"],
+        "distinctVideoCount": 2,
+        "casesMissingTeamMode": 0,
+        "casesMissingCaseId": 0,
+        "casesMissingVideoId": 0,
+        "casesMissingSelectedTeamId": 0,
+        "casesMissingAnalysisJobId": 0,
+        "casesMissingTeamScanJobId": 0,
+        "casesMissingDetectedTeamOptions": 0,
+        "casesMissingSelectedTeamColorLabel": 0,
+        "casesMissingSelectedTeamDetectedOption": 0,
+    }
+    evidence.update(evidence_overrides or {})
+    return {
+        "status": status,
+        "metrics": metrics,
+        "thresholds": thresholds,
+        "failures": [],
+        "evidence": evidence,
+    }
+
+
+def write_json(path: Path, payload: object) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload), encoding="utf-8")
 
 
 def create_ready_fixture(repo_root: Path) -> Path:

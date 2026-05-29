@@ -18,6 +18,7 @@ REPO_ROOT_FOR_IMPORTS = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT_FOR_IMPORTS) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT_FOR_IMPORTS))
 
+from scripts.evaluate_team_highlight_accuracy import AccuracyThresholds
 from scripts.launch_backend_config_preflight import has_failures as backend_has_failures
 from scripts.launch_backend_config_preflight import run_checks as run_backend_config_checks
 from scripts.launch_backend_config_preflight import summarize as summarize_backend_findings
@@ -35,6 +36,10 @@ REQUIRED_FEATURE_FLAGS = (
     "aiEditLiveRenderEnabled",
     "aiEditRevisionEnabled",
     "aiEditTemplatePackEnabled",
+    "aiClipGptEditorEnabled",
+    "aiClipGptPlanEditEnabled",
+    "aiClipGptRevisionEnabled",
+    "gptHighlightRerankerEnabled",
 )
 REQUIRED_DEPLOY_SECRET_INPUTS = (
     "CLOUDFLARE_API_TOKEN",
@@ -74,6 +79,7 @@ REQUIRED_MAIN_WORKFLOWS = (
     "Cloud Edit Deploy Preflight",
     "iOS Internal TestFlight Upload",
 )
+GITHUB_ACTIONS_STARTABILITY_CONCLUSIONS = {"action_required", "startup_failure"}
 BLOCKER_DOCS = (
     (
         "docs/phase_edit7g_post_testflight_internal_smoke.md",
@@ -98,6 +104,34 @@ BLOCKER_DOCS = (
 )
 PLACEHOLDER_VALUES = {"", "YOUR_TEAM_ID", "$(HOOPS_DEVELOPMENT_TEAM)"}
 UUID_RE = re.compile(r"^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$")
+TEAM_ACCURACY_THRESHOLD_TO_METRIC = (
+    ("selectedTeamPrecision", "selectedTeamPrecision"),
+    ("selectedTeamEvidenceQuality", "selectedTeamEvidenceQuality"),
+    ("selectedTeamRecallWithUncertain", "selectedTeamRecallWithUncertain"),
+    ("highlightPrecision", "highlightPrecision"),
+    ("highlightRecall", "highlightRecall"),
+    ("defensiveEventRecall", "defensiveEventRecall"),
+    ("clipTimingQuality", "clipTimingQuality"),
+    ("shotOutcomeEvidenceQuality", "shotOutcomeEvidenceQuality"),
+    ("minCases", "caseCount"),
+    ("minScoredClips", "clipCount"),
+    ("minSelectedTeamHighlights", "selectedTeamHighlightCount"),
+    ("minShotOutcomeEvidenceClips", "shotOutcomeEvidenceClipCount"),
+    ("minMadeShotOutcomeEvidenceClips", "madeShotOutcomeEvidenceClipCount"),
+    ("minMissedShotOutcomeEvidenceClips", "missedShotOutcomeEvidenceClipCount"),
+    ("minOpponentHighlights", "opponentHighlightCount"),
+    ("minNegativeClips", "negativeClipCount"),
+    ("minBadWindowNegatives", "badWindowNegativeCount"),
+    ("minUncertainReviewClips", "uncertainReviewCount"),
+    ("minSelectedTeamDefensiveEvents", "defensiveEventCount"),
+    ("minSelectedTeamBlocks", "selectedTeamBlockCount"),
+    ("minSelectedTeamSteals", "selectedTeamStealCount"),
+    ("minSelectedTeamForcedTurnovers", "selectedTeamForcedTurnoverCount"),
+    ("minSelectedTeamDefensiveStops", "selectedTeamDefensiveStopCount"),
+    ("minAllTeamsCases", "allTeamsCaseCount"),
+)
+EXPECTED_TEAM_ACCURACY_INPUT_SCHEMA = "team-highlight-eval-v1"
+EXPECTED_TEAM_ACCURACY_INPUT_SOURCE = "real_cloud_analysis_with_manual_labels"
 
 
 @dataclass(frozen=True)
@@ -130,6 +164,7 @@ def main() -> int:
         worker_base_url=args.worker_base_url,
         editing_version_url=args.editing_version_url,
         archive_path=Path(args.archive_path).resolve() if args.archive_path else None,
+        team_accuracy_report_path=Path(args.team_accuracy_report).resolve() if args.team_accuracy_report else None,
         skip_live=args.skip_live,
         timeout_seconds=args.timeout_seconds,
     )
@@ -163,6 +198,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--worker-base-url", default=None, help="Override staging Worker base URL for live /v1/editing/version probe.")
     parser.add_argument("--editing-version-url", default=DEFAULT_EDITING_VERSION_URL, help="Override direct editing Cloud Run /version URL for live version drift probe.")
     parser.add_argument("--archive-path", default=None, help="Optional .xcarchive or .ipa path to require for upload readiness.")
+    parser.add_argument(
+        "--team-accuracy-report",
+        default=None,
+        help="Path to a JSON report from `python3 -m scripts.evaluate_team_highlight_accuracy <labels.json> --json` using launch-grade default thresholds.",
+    )
     parser.add_argument("--timeout-seconds", type=float, default=10.0, help="Timeout for the live Worker version probe.")
     parser.add_argument("--skip-live", action="store_true", help="Skip live Worker probe and report it as a warning.")
     parser.add_argument("--json", action="store_true", help="Emit machine-readable findings.")
@@ -175,12 +215,14 @@ def run_checks(
     worker_base_url: str | None = None,
     editing_version_url: str = DEFAULT_EDITING_VERSION_URL,
     archive_path: Path | None = None,
+    team_accuracy_report_path: Path | None = None,
     skip_live: bool = False,
     timeout_seconds: float = 10.0,
 ) -> list[Finding]:
     collector = Collector()
     check_git_state(repo_root, collector)
     check_backend_config_preflight(repo_root, collector)
+    check_team_highlight_accuracy_report(repo_root, collector, team_accuracy_report_path)
     check_ios_signing(repo_root, collector)
     check_export_options(repo_root, collector)
     check_bundle_id_references(repo_root, collector)
@@ -247,6 +289,109 @@ def check_backend_config_preflight(repo_root: Path, collector: Collector) -> Non
         collector.fail("backend config preflight", "scripts/launch_backend_config_preflight.py", detail)
     else:
         collector.pass_("backend config preflight", "scripts/launch_backend_config_preflight.py", detail)
+
+
+def check_team_highlight_accuracy_report(repo_root: Path, collector: Collector, report_path: Path | None) -> None:
+    check_name = "team highlight accuracy evidence"
+    if report_path is None:
+        collector.fail(
+            check_name,
+            "scripts/evaluate_team_highlight_accuracy.py",
+            "Missing --team-accuracy-report from a launch-grade labeled footage run; 85% selected-team/highlight quality is unproven.",
+        )
+        return
+
+    display_path = rel(report_path, repo_root)
+    try:
+        with report_path.open("r", encoding="utf-8") as handle:
+            report = json.load(handle)
+    except (FileNotFoundError, OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        collector.fail(check_name, display_path, f"Could not read team accuracy JSON report: {type(error).__name__}.")
+        return
+    if not isinstance(report, dict):
+        collector.fail(check_name, display_path, "Team accuracy report must be a JSON object.")
+        return
+
+    status = str(report.get("status") or "").strip().lower()
+    metrics = report.get("metrics")
+    thresholds = report.get("thresholds")
+    evidence = report.get("evidence")
+    if not isinstance(metrics, dict) or not isinstance(thresholds, dict):
+        collector.fail(check_name, display_path, "Report must include metrics and thresholds objects from the evaluator.")
+        return
+    if not isinstance(evidence, dict):
+        collector.fail(
+            check_name,
+            display_path,
+            "Report must include evaluator evidence from a real cloud-analysis/manual-label payload.",
+        )
+        return
+
+    failures: list[str] = []
+    if status != "pass":
+        failures.append(f"report status is {status or 'missing'}")
+
+    default_thresholds = asdict(AccuracyThresholds())
+    default_min_cases = int(default_thresholds["minCases"])
+    if evidence.get("inputSchemaVersion") != EXPECTED_TEAM_ACCURACY_INPUT_SCHEMA:
+        failures.append("evidence inputSchemaVersion is not team-highlight-eval-v1")
+    if evidence.get("inputSource") != EXPECTED_TEAM_ACCURACY_INPUT_SOURCE:
+        failures.append("evidence inputSource is not real cloud analysis with manual labels")
+    evidence_case_count = number_or_none(evidence.get("caseCount"))
+    metric_case_count = number_or_none(metrics.get("caseCount"))
+    if evidence_case_count is None or metric_case_count is None or int(evidence_case_count) != int(metric_case_count):
+        failures.append("evidence caseCount does not match metrics caseCount")
+    distinct_video_count = number_or_none(evidence.get("distinctVideoCount"))
+    if distinct_video_count is None or distinct_video_count < default_min_cases:
+        failures.append(f"distinctVideoCount is below launch default {default_min_cases}")
+    for evidence_name in (
+        "casesMissingTeamMode",
+        "casesMissingCaseId",
+        "casesMissingVideoId",
+        "casesMissingSelectedTeamId",
+        "casesMissingAnalysisJobId",
+        "casesMissingTeamScanJobId",
+        "casesMissingDetectedTeamOptions",
+        "casesMissingSelectedTeamColorLabel",
+        "casesMissingSelectedTeamDetectedOption",
+    ):
+        missing_count = number_or_none(evidence.get(evidence_name))
+        if missing_count is None:
+            failures.append(f"missing evidence {evidence_name}")
+        elif missing_count > 0:
+            failures.append(f"{evidence_name} must be 0")
+
+    for threshold_name, metric_name in TEAM_ACCURACY_THRESHOLD_TO_METRIC:
+        default_value = number_or_none(default_thresholds.get(threshold_name))
+        threshold_value = number_or_none(thresholds.get(threshold_name))
+        metric_value = number_or_none(metrics.get(metric_name))
+        if default_value is None:
+            continue
+        if threshold_value is None:
+            failures.append(f"missing threshold {threshold_name}")
+        elif threshold_value + 1e-9 < default_value:
+            failures.append(f"{threshold_name} threshold {threshold_value:g} is below launch default {default_value:g}")
+        if metric_value is None:
+            failures.append(f"missing metric {metric_name}")
+        elif metric_value + 1e-9 < default_value:
+            failures.append(f"{metric_name} {metric_value:g} is below launch default {default_value:g}")
+
+    if failures:
+        collector.fail(check_name, display_path, "; ".join(failures[:8]) + ("." if len(failures) <= 8 else "; additional failures omitted."))
+        return
+
+    collector.pass_(
+        check_name,
+        display_path,
+        (
+            "Launch-grade 85% report passed with default-or-stricter thresholds, "
+            f"{int(metrics['caseCount'])} case(s), {int(metrics['clipCount'])} clip(s), "
+            f"{int(evidence['distinctVideoCount'])} distinct video(s), "
+            f"{int(metrics['opponentHighlightCount'])} opponent highlight(s), "
+            f"{int(metrics['badWindowNegativeCount'])} bad-window negative(s), and "
+            f"{int(metrics['uncertainReviewCount'])} uncertain review clip(s)."
+        ),
+    )
 
 
 def check_ios_signing(repo_root: Path, collector: Collector) -> None:
@@ -378,8 +523,8 @@ def check_connected_ios_device(collector: Collector) -> None:
         return
 
     devices = parse_devicectl_devices(result.stdout)
-    available_iphones = [device for device in devices if device["model"].startswith("iPhone") and device["state"].lower() == "available"]
-    unavailable_iphones = [device for device in devices if device["model"].startswith("iPhone") and device["state"].lower() != "available"]
+    available_iphones = [device for device in devices if device["model"].startswith("iPhone") and device["state"].lower().startswith("available")]
+    unavailable_iphones = [device for device in devices if device["model"].startswith("iPhone") and not device["state"].lower().startswith("available")]
     if available_iphones:
         collector.pass_("connected ios device", "xcrun devicectl", f"{len(available_iphones)} available iPhone device(s) detected for TestFlight smoke.")
     elif unavailable_iphones:
@@ -399,8 +544,13 @@ def parse_devicectl_devices(output: str) -> list[dict[str, str]]:
         identifier_index = next((index for index, part in enumerate(parts) if UUID_RE.match(part)), None)
         if identifier_index is None or len(parts) <= identifier_index + 2:
             continue
-        state = parts[identifier_index + 1]
-        model = " ".join(parts[identifier_index + 2 :])
+        state_tokens = [parts[identifier_index + 1]]
+        model_start = identifier_index + 2
+        while model_start < len(parts) and parts[model_start].startswith("(") and parts[model_start].endswith(")"):
+            state_tokens.append(parts[model_start])
+            model_start += 1
+        state = " ".join(state_tokens)
+        model = " ".join(parts[model_start:])
         identifier = parts[identifier_index]
         hostname = parts[identifier_index - 1] if identifier_index >= 1 else ""
         name = " ".join(parts[: max(0, identifier_index - 1)])
@@ -614,7 +764,13 @@ def check_github_workflow_runs(repo_root: Path, collector: Collector) -> None:
         status = str(latest.get("status") or "unknown")
         conclusion = str(latest.get("conclusion") or "unknown")
         created_at = str(latest.get("createdAt") or "unknown")
-        if current_sha and head_sha != current_sha:
+        if status == "completed" and conclusion in GITHUB_ACTIONS_STARTABILITY_CONCLUSIONS:
+            collector.fail(
+                "github actions startability",
+                workflow_name,
+                f"Latest main-branch run conclusion={conclusion} at {created_at}; repair GitHub Actions billing/spending/action-required account state before deploy/upload proof.",
+            )
+        elif current_sha and head_sha != current_sha:
             short_latest = head_sha[:7] if head_sha else "unknown"
             short_current = current_sha[:7]
             collector.fail(
@@ -789,6 +945,14 @@ def read_text(path: Path) -> str | None:
         return path.read_text(encoding="utf-8")
     except (FileNotFoundError, UnicodeDecodeError):
         return None
+
+
+def number_or_none(value: object) -> float | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    return None
 
 
 def has_failures(findings: list[Finding]) -> bool:

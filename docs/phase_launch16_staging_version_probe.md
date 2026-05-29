@@ -8,7 +8,7 @@ Branch: `codex/phase-launch16-staging-version-probe`
 - Added `scripts/staging_version_probe.py` to separately probe the staging Worker version proxy and the direct editing Cloud Run version endpoint.
 - Added focused tests in `scripts/test_staging_version_probe.py`.
 - Updated `scripts/launch_provider_input_handoff.py` so the operator handoff runs the staging version probe after deploy and before final submission preflight.
-- The probe prints endpoint labels, HTTP status, non-secret feature-flag keys, `gitSha`, and `backendModelVersion` only.
+- The probe prints endpoint labels, HTTP status, non-secret feature-flag keys, `gitSha`, `backendModelVersion`, and the expected checkout `gitSha` only.
 - It does not print response bodies, secrets, R2 credentials, object keys, or presigned URLs.
 - It does not change cloud deploy, iOS upload, GPT editing, rendering, storage, or app runtime behavior.
 
@@ -25,22 +25,28 @@ The new probe distinguishes between:
 - the Worker source not being deployed or route proxy missing live,
 - the direct editing service being unreachable,
 - the direct editing service being reachable but stale,
-- both endpoints returning the required non-secret AI Edit kill-switch feature flags.
+- both endpoints returning the required non-secret AI Edit kill-switch/GPT feature flags.
+- both endpoints being internally consistent but still stale relative to the current branch commit.
 
 ## Usage
 
 ```sh
 python3 scripts/staging_version_probe.py
 python3 scripts/staging_version_probe.py --json
+python3 scripts/staging_version_probe.py --expected-git-sha <branch-sha>
 python3 scripts/staging_version_probe.py --worker-base-url https://<worker> --editing-version-url https://<editing-service>/version
 ```
 
-The command exits `0` only when both endpoints return all required feature flags:
+When `--expected-git-sha` is omitted, the command uses the current checkout `HEAD`. The command exits `0` only when both endpoints return matching metadata for the expected branch SHA and all required feature flags:
 
 - `aiEditEnabled`
 - `aiEditLiveRenderEnabled`
 - `aiEditRevisionEnabled`
 - `aiEditTemplatePackEnabled`
+- `aiClipGptEditorEnabled`
+- `aiClipGptPlanEditEnabled`
+- `aiClipGptRevisionEnabled`
+- `gptHighlightRerankerEnabled`
 
 ## Current Live Evidence
 

@@ -55,9 +55,25 @@ struct AIEditView: View {
     @State private var showingShareSheet = false
     @State private var proInfoSheet: AIEditProInfoSheet?
 
-    private let cloudEditService = CloudEditService()
+    private let cloudEditService: any CloudEditServicing
     private let proUXFlags = CloudEditProUXFlags.safeDefault
     private static let maxUserPromptCharacters = 240
+
+    init(
+        viewModel: HighlightsViewModel,
+        isProUser: Bool,
+        revenueCatAppUserID: String? = nil,
+        presentation: AIEditPresentation = .sheet,
+        cloudEditService: any CloudEditServicing = CloudEditService(),
+        onRequestProUpgrade: (() -> Void)? = nil
+    ) {
+        self.viewModel = viewModel
+        self.isProUser = isProUser
+        self.revenueCatAppUserID = revenueCatAppUserID
+        self.presentation = presentation
+        self.cloudEditService = cloudEditService
+        self.onRequestProUpgrade = onRequestProUpgrade
+    }
 
     var body: some View {
         Group {
@@ -1292,6 +1308,17 @@ struct AIEditView: View {
             gptRerankKeptClipCount: nil,
             gptRerankRejectedClipCount: nil,
             gptRerankFallbackReason: nil,
+            gptUncertainReviewClipCount: nil,
+            gptUncertainReviewClipIds: nil,
+            teamUncertainCandidateCount: nil,
+            teamUncertainSelectedClipCount: nil,
+            defensiveSelectedClipCount: nil,
+            timingQualitySelectedClipCount: nil,
+            timingIssueCandidateCount: nil,
+            timingIssueSelectedClipCount: nil,
+            shotOutcomeEvidenceSelectedClipCount: nil,
+            shotOutcomeIssueSelectedClipCount: nil,
+            labelOnlyOutcomeSelectedClipCount: nil,
             summaryRows: rows
         )
     }
@@ -1387,6 +1414,18 @@ struct AIEditView: View {
         }
         if let planTier = receipt.planTier {
             rows.appendIfMissing(planTier.isFree ? "Rendered on the standard queue." : "Priority queue enabled when available.")
+        }
+        let uncertainReviewCount = receipt.gptUncertainReviewClipCount ?? receipt.gptUncertainReviewClipIds?.count
+        if let uncertainReviewCount, uncertainReviewCount > 0 {
+            rows.appendIfMissing("Kept \(uncertainReviewCount) uncertain team candidate\(uncertainReviewCount == 1 ? "" : "s") available for Review.")
+        }
+        if let evidenceCount = receipt.shotOutcomeEvidenceSelectedClipCount, evidenceCount > 0 {
+            rows.appendIfMissing("Shot outcome evidence: \(evidenceCount) selected \(evidenceCount == 1 ? "clip" : "clips") passed rim/result tracking checks.")
+        }
+        if let labelOnlyCount = receipt.labelOnlyOutcomeSelectedClipCount, labelOnlyCount > 0 {
+            rows.appendIfMissing("Needs review: \(labelOnlyCount) selected shot \(labelOnlyCount == 1 ? "outcome" : "outcomes") came from label-only evidence.")
+        } else if let issueCount = receipt.shotOutcomeIssueSelectedClipCount, issueCount > 0 {
+            rows.appendIfMissing("Needs review: \(issueCount) selected shot \(issueCount == 1 ? "outcome" : "outcomes") had weak result evidence.")
         }
         return rows
     }
@@ -1952,17 +1991,14 @@ struct AIEditView: View {
             )
             HoopsAccessibility.announce("HoopClips built the edit plan and is rendering your highlight reel.")
 
-            guard let sourceObjectKey = viewModel.cloudEditSourceObjectKey else {
+            guard viewModel.cloudEditSourceObjectKey != nil else {
                 throw CloudEditError.missingSourceObject
             }
-            let requested = try await cloudEditService.requestRender(
+            let requested = try await cloudEditService.requestStoredRender(
                 editJobID: job.editJobId,
                 installID: viewModel.installID,
-                sourceObjectKey: sourceObjectKey,
-                planTier: request.planTier,
-                revenueCatAppUserID: revenueCatAppUserID,
-                editPlan: planResponse.plan,
-                sourceClips: request.clips
+                idempotencyKey: "ios-render-\(job.editJobId)",
+                forceNew: false
             )
             renderStatus = requested
             policySummary = requested.policy ?? policySummary
@@ -2069,7 +2105,8 @@ struct AIEditView: View {
             let requested = try await cloudEditService.requestRevisionRender(
                 editJobID: editJob.editJobId,
                 revisionID: revisionResponse.revisionId,
-                installID: viewModel.installID
+                installID: viewModel.installID,
+                forceNew: false
             )
             renderStatus = requested
             policySummary = requested.policy ?? policySummary

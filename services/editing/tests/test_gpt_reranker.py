@@ -1,6 +1,9 @@
 from pathlib import Path
+import base64
 import json
 import os
+import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -9,7 +12,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO_ROOT / "services" / "editing"))
 sys.path.insert(0, str(REPO_ROOT / "ios" / "backend"))
 
-from app.editing import CreateEditJobRequest, ReviseEditJobRequest, build_edit_job
+from app.editing import CreateEditJobRequest, GPTHighlightClipDecision, GPTHighlightSuggestedEdit, ReviseEditJobRequest, apply_gpt_highlight_rerank, build_edit_job
 import editing_app.gpt_reranker as gpt_reranker
 from editing_app.gpt_reranker import (
     GPTHighlightRerankerSettings,
@@ -34,6 +37,13 @@ def _clip(clip_id: str, start: float, score: float) -> dict:
         "motionScore": score,
         "audioPeak": score / 2.0,
         "combinedScore": score,
+    }
+
+
+def _labeled_clip(clip_id: str, start: float, score: float, label: str) -> dict:
+    return {
+        **_clip(clip_id, start, score),
+        "label": label,
     }
 
 
@@ -76,6 +86,8 @@ def _team_targeted_request() -> CreateEditJobRequest:
                     "colorLabel": "black",
                     "confidence": 0.92,
                     "source": "quick_scan",
+                    "evidenceFrameRefs": ["clip_0_release", "clip_0_result"],
+                    "evidenceRoleGroups": ["action", "outcome"],
                 },
             },
             {
@@ -86,6 +98,8 @@ def _team_targeted_request() -> CreateEditJobRequest:
                     "colorLabel": "white",
                     "confidence": 0.94,
                     "source": "quick_scan",
+                    "evidenceFrameRefs": ["clip_1_release", "clip_1_result"],
+                    "evidenceRoleGroups": ["action", "outcome"],
                 },
             },
             {
@@ -151,6 +165,42 @@ def _shot_tracking_evidence(**overrides) -> dict:
     return payload
 
 
+def _gpt_decision_payload(clip_id: str, *, keep: bool = True, score: float = 0.9, story_role: str = "filler") -> dict:
+    return {
+        "clipId": clip_id,
+        "keep": keep,
+        "rejectReason": None if keep else "boring_or_duplicate",
+        "highlightScore": score if keep else 0.2,
+        "watchabilityScore": score if keep else 0.35,
+        "basketballEvent": "Made Shot",
+        "outcome": "made" if keep else "unclear",
+        "caption": "BUCKET" if keep else "",
+        "reason": "Clear complete highlight." if keep else "Not strong enough for the final edit.",
+        "storyRole": story_role,
+        "qualitySignals": _quality_signals(),
+        "shotResultEvidence": _shot_result_evidence(
+            ballApproachFrameRole="release",
+            rimEntryFrameRole="rim",
+            ballBelowRimOrNetFrameRole="postOutcome",
+        ),
+        "shotTrackingEvidence": _shot_tracking_evidence(
+            ballVisibleFrameRoles=["release", "outcome", "rim"],
+            rimVisibleFrameRoles=["rim", "postOutcome"],
+            releaseFrameRole="release",
+            resultFrameRole="rim",
+            ballEntersRimFrameRole="rim",
+        ),
+        "suggestedEdit": {
+            "slowMotion": keep,
+            "slowMotionCenter": None,
+            "captionMoment": None,
+            "cropFocus": "center_action",
+            "extendBeforeSeconds": 0,
+            "extendAfterSeconds": 0,
+        },
+    }
+
+
 class GPTHighlightRerankerTests(unittest.TestCase):
     def test_payload_is_strict_structured_output_and_not_stored(self) -> None:
         settings = GPTHighlightRerankerSettings.from_env()
@@ -193,24 +243,38 @@ class GPTHighlightRerankerTests(unittest.TestCase):
                 "confidence",
                 "watchabilityScore",
                 "duplicateGroup",
+                "userReviewDecision",
                 "teamAttribution",
                 "teamAttributionStatus",
+                "teamEvidence",
                 "templateId",
                 "planTier",
                 "qualityHints",
                 "nativeShotSignals",
+                "outcomeEvidenceSource",
+                "outcomeReliabilityScore",
                 "sampledKeyframes",
             },
         )
         self.assertEqual(compact_clip["sampledKeyframes"], [{"role": "start", "time": 0.0}])
+        self.assertIsNone(compact_clip["userReviewDecision"])
         self.assertEqual(compact_clip["nativeShotSignals"]["outcome"], "made")
         self.assertTrue(compact_clip["nativeShotSignals"]["timingWindowOk"])
         self.assertEqual(compact_clip["qualityHints"]["nativeShotSignals"]["outcome"], "made")
+        self.assertEqual(compact_clip["outcomeEvidenceSource"], "label_only")
+        self.assertEqual(compact_clip["qualityHints"]["outcomeEvidenceSource"], "label_only")
+        self.assertGreater(compact_clip["outcomeReliabilityScore"], 0.0)
+        self.assertEqual(compact_clip["qualityHints"]["outcomeReliabilityScore"], compact_clip["outcomeReliabilityScore"])
+        self.assertEqual(compact_clip["teamEvidence"]["status"], "missing_attribution")
+        self.assertFalse(compact_clip["teamEvidence"]["evidenceBacked"])
+        self.assertTrue(compact_input["shotTrackerRules"]["treatLabelOnlyOutcomeEvidenceAsUnverified"])
+        self.assertIn("outcomeEvidenceSource=label_only", payload["instructions"])
         self.assertEqual(agent_cookbook["templateId"], "personal_highlight_v1")
         self.assertIn("templateCookbookRules", agent_cookbook)
         self.assertEqual(agent_cookbook["templateCookbookRules"]["captionRules"]["tone"], "hype")
         self.assertEqual(agent_cookbook["candidateClips"][0]["clipId"], "c0")
         self.assertEqual(agent_cookbook["candidateClips"][0]["nativeShotSignals"]["contextQualityScore"], 1.0)
+        self.assertEqual(agent_cookbook["candidateClips"][0]["outcomeEvidenceSource"], "label_only")
         self.assertEqual(len(image_items), 1)
         self.assertTrue(image_items[0]["image_url"].startswith("data:image/jpeg;base64,"))
         self.assertNotIn("c999", json.dumps(payload))
@@ -239,8 +303,135 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertIn("uncertain_make", compact_clip_ids)
         self.assertNotIn("light_make", compact_clip_ids)
         self.assertEqual(by_id["dark_make"]["teamAttributionStatus"], "matched")
+        self.assertEqual(by_id["dark_make"]["teamEvidence"]["status"], "evidence_backed")
         self.assertEqual(by_id["uncertain_make"]["teamAttributionStatus"], "uncertain")
+        self.assertEqual(by_id["uncertain_make"]["teamEvidence"]["status"], "weak_evidence")
+        self.assertIn("insufficient_evidence_frame_refs", by_id["uncertain_make"]["teamEvidence"]["reasons"])
         self.assertIn("Keep uncertain team-attribution clips", payload["instructions"])
+        self.assertIn("teamEvidence.status=evidence_backed", payload["instructions"])
+        self.assertIn("must never be promoted to a confident selected-team match", payload["instructions"])
+        self.assertIn("raw teamAttribution.confidence", payload["instructions"])
+
+    def test_disabled_gpt_fallback_preserves_uncertain_team_review_ids(self) -> None:
+        settings = GPTHighlightRerankerSettings(
+            enabled=False,
+            api_key=None,
+            model="gpt-test",
+            endpoint="https://api.openai.test/v1/responses",
+            timeout_seconds=1.0,
+            max_output_tokens=512,
+            free_max_clips=8,
+            paid_max_clips=24,
+            free_frames_per_clip=3,
+            paid_frames_per_clip=5,
+            frame_width=512,
+            jpeg_quality=5,
+            max_image_bytes=180_000,
+            image_detail="low",
+        )
+
+        result = gpt_reranker.rerank_edit_request_with_gpt(
+            _team_targeted_request(),
+            Path("/tmp/hoopclips-missing-source.mp4"),
+            settings,
+        )
+
+        self.assertIsNotNone(result.gptRerankSummary)
+        self.assertEqual(result.gptRerankSummary.status, "disabled")
+        self.assertEqual(result.gptRerankSummary.fallbackReason, "disabled")
+        self.assertEqual(result.gptRerankSummary.keptClipIds, ["dark_make"])
+        self.assertEqual(result.gptRerankSummary.uncertainReviewClipIds, ["uncertain_make"])
+        self.assertNotIn("light_make", result.gptRerankSummary.uncertainReviewClipIds)
+        self.assertEqual(result.gptRerankSummary.rejectedReasonCounts["opponent_team_candidate"], 1)
+        self.assertEqual(result.gptRerankSummary.rejectedReasonCounts["needs_manual_team_review"], 1)
+
+    def test_disabled_gpt_fallback_receipt_reports_quality_rejections(self) -> None:
+        settings = GPTHighlightRerankerSettings(
+            enabled=False,
+            api_key=None,
+            model="gpt-test",
+            endpoint="https://api.openai.test/v1/responses",
+            timeout_seconds=1.0,
+            max_output_tokens=512,
+            free_max_clips=8,
+            paid_max_clips=24,
+            free_frames_per_clip=3,
+            paid_frames_per_clip=5,
+            frame_width=512,
+            jpeg_quality=5,
+            max_image_bytes=180_000,
+            image_detail="low",
+        )
+        request = CreateEditJobRequest(
+            videoId="video_disabled_quality",
+            analysisJobId="analysis_disabled_quality",
+            installId="install-123",
+            sourceObjectKey="uploads/source.mp4",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="free",
+            clips=[
+                {**_clip("tiny", 0.0, 0.99), "end": 0.1, "eventCenter": 0.05},
+                {**_clip("pre_basket", 10.0, 0.98), "end": 16.0, "eventCenter": 10.1},
+                _clip("complete_make", 20.0, 0.78),
+                _labeled_clip("clear_block", 32.0, 0.74, "Block"),
+            ],
+        )
+
+        result = gpt_reranker.rerank_edit_request_with_gpt(
+            request,
+            Path("/tmp/hoopclips-missing-source.mp4"),
+            settings,
+        )
+
+        self.assertEqual(result.gptRerankSummary.status, "disabled")
+        self.assertEqual(result.gptRerankSummary.keptClipIds, ["complete_make", "clear_block"])
+        self.assertEqual(set(result.gptRerankSummary.rejectedClipIds), {"tiny", "pre_basket"})
+        self.assertEqual(
+            result.gptRerankSummary.rejectedReasonCounts["candidate_missing_minimum_quality_context"],
+            2,
+        )
+
+    def test_payload_preserves_explicit_uncertain_team_status(self) -> None:
+        settings = GPTHighlightRerankerSettings.from_env()
+        request = CreateEditJobRequest(
+            videoId="video_123",
+            analysisJobId="analysis_123",
+            installId="install-123",
+            sourceObjectKey="uploads/source.mp4",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="free",
+            teamSelection={
+                "mode": "team",
+                "teamId": "team_dark",
+                "label": "Dark jerseys",
+                "colorLabel": "black",
+                "confidenceThreshold": 0.85,
+                "includeUncertain": True,
+            },
+            clips=[
+                {
+                    **_clip("review_block", 0.0, 0.9),
+                    "label": "Blocked Shot",
+                    "teamAttribution": {
+                        "teamId": "team_dark",
+                        "label": "Dark jerseys",
+                        "colorLabel": "black",
+                        "confidence": 0.91,
+                        "source": "quick_scan",
+                    },
+                    "teamAttributionStatus": "uncertain",
+                }
+            ],
+        )
+        frames = [SampledFrame(clip_id="review_block", role="start", time_seconds=0.0, data_url="data:image/jpeg;base64,ZA==")]
+
+        payload = _build_openai_payload(request, request.clips, frames, settings)
+        compact_input = json.loads(payload["input"][0]["content"][0]["text"])
+
+        self.assertEqual(compact_input["clips"][0]["clipId"], "review_block")
+        self.assertEqual(compact_input["clips"][0]["teamAttributionStatus"], "uncertain")
 
     def test_payload_requires_shot_quality_signals_and_context_judgment(self) -> None:
         settings = GPTHighlightRerankerSettings.from_env()
@@ -305,6 +496,11 @@ class GPTHighlightRerankerTests(unittest.TestCase):
                 "postOutcome",
                 "finish",
                 "midAction",
+                "defenseSetup",
+                "challenge",
+                "possessionChange",
+                "recovery",
+                "defenseOutcome",
             ],
         )
         self.assertTrue(shot_rules["madeShotRequiresFrameRoleTrackingEvidence"])
@@ -312,16 +508,39 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertEqual(shot_rules["requiredMadeShotTracking"]["trajectoryContinuity"], "continuous")
         self.assertEqual(shot_rules["requiredMadeShotTracking"]["rimEntrySequence"], "visible_entry")
         self.assertEqual(shot_rules["requiredMadeShotTracking"]["dedicatedRimEntryPathRoles"], ["rimApproach", "rimEntry", "belowRim"])
+        self.assertTrue(shot_rules["missedShotRequiresExplicitMissResultEvidence"])
+        self.assertTrue(shot_rules["missedShotRequiresVisibleMissSequenceEvidence"])
+        self.assertEqual(shot_rules["requiredMissedShotTracking"]["rimResultEvidence"], "clear_miss")
+        self.assertEqual(shot_rules["requiredMissedShotTracking"]["rimEntrySequence"], "visible_miss")
+        self.assertIsNone(shot_rules["requiredMissedShotTracking"]["ballEntersRimFrameRole"])
         self.assertTrue(shot_rules["netOrRimReactionDoesNotReplaceEntryFrameRoles"])
+        self.assertEqual(shot_rules["nonScoringDefensiveOutcomes"], ["steal", "forced_turnover", "defensive_stop"])
+        self.assertTrue(shot_rules["madeOrMissedShotRequiresVisibleBallPath"])
+        self.assertTrue(shot_rules["defensiveOutcomeRequiresEventOutcomePlayerControlBallAndCleanCamera"])
+        self.assertEqual(
+            shot_rules["requiredDefensiveTracking"]["minimumOutcomeConfidence"],
+            gpt_reranker.MIN_GPT_DEFENSIVE_OUTCOME_CONFIDENCE,
+        )
+        self.assertTrue(shot_rules["blockedShotRequiresVisibleChallengeBallPathPlayerControlAndOutcome"])
         self.assertTrue(shot_rules["richSampledShotRoleRules"]["ifRimEntryIsSampledUseItAsBallEntersRimFrameRole"])
         self.assertTrue(shot_rules["madeOrMissedShotRequiresVisibleReleaseAndRimResult"])
         self.assertTrue(shot_rules["madeOrMissedShotRequiresVisibleShotArc"])
         self.assertTrue(shot_rules["madeShotRequiresExplicitMadeResultEvidence"])
         self.assertIn("rimEntrySequence=visible_entry", payload["instructions"])
+        self.assertIn("rimEntrySequence=visible_miss", payload["instructions"])
         self.assertIn("ballEntersRimFrameRole", payload["instructions"])
         self.assertIn("must not replace", payload["instructions"])
         self.assertIn("shot-tracker", payload["instructions"])
         self.assertIn("reject clips that start right before the basket", payload["instructions"])
+        self.assertIn("outcome=steal", payload["instructions"])
+        self.assertIn("forced_turnover", payload["instructions"])
+        self.assertIn("defensive_stop", payload["instructions"])
+        self.assertIn("shotResultEvidence.outcomeConfidence >= 0.65", payload["instructions"])
+        self.assertIn("ball path/control", payload["instructions"])
+        self.assertEqual(
+            decision_properties["outcome"]["enum"],
+            ["made", "missed", "blocked", "steal", "forced_turnover", "defensive_stop", "unclear", "not_basketball"],
+        )
 
     def test_payload_preserves_native_uncertain_outcome_over_provider_made_label(self) -> None:
         settings = GPTHighlightRerankerSettings.from_env()
@@ -414,6 +633,99 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertTrue(hints[2]["timingWindowOk"])
         self.assertGreaterEqual(hints[2]["minRecommendedDurationSeconds"], 3.0)
 
+    def test_quality_filter_excludes_barely_contextual_shot_windows_before_gpt(self) -> None:
+        request = CreateEditJobRequest(
+            videoId="video_barely_contextual_filter",
+            analysisJobId="analysis_barely_contextual_filter",
+            installId="install-123",
+            sourceObjectKey="uploads/source.mp4",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="free",
+            clips=[
+                {
+                    **_clip("barely_contextual_make", 8.0, 0.98),
+                    "end": 11.3,
+                    "eventCenter": 9.0,
+                },
+                _clip("complete_make", 18.0, 0.82),
+            ],
+        )
+
+        sampled = gpt_reranker._quality_filtered_sampled_clips(request.clips, max_clips=2)
+        hints = [gpt_reranker._candidate_quality_hints(clip) for clip in request.clips]
+
+        self.assertEqual([clip.id for clip in sampled], ["complete_make"])
+        self.assertFalse(hints[0]["timingWindowOk"])
+        self.assertFalse(hints[0]["nativeShotSignals"]["timingWindowOk"])
+        self.assertLess(hints[0]["nativeShotSignals"]["contextQualityScore"], hints[1]["nativeShotSignals"]["contextQualityScore"])
+
+    def test_quality_filter_keeps_defensive_window_with_event_context_before_gpt(self) -> None:
+        request = CreateEditJobRequest(
+            videoId="video_defensive_event_context_filter",
+            analysisJobId="analysis_defensive_event_context_filter",
+            installId="install-123",
+            sourceObjectKey="uploads/source.mp4",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="free",
+            clips=[
+                {
+                    **_clip("contextual_block", 20.0, 0.88),
+                    "label": "Block",
+                    "end": 22.4,
+                    "eventCenter": 20.7,
+                },
+                {
+                    **_clip("same_window_make", 30.0, 0.92),
+                    "label": "Made Shot",
+                    "end": 32.4,
+                    "eventCenter": 30.7,
+                },
+            ],
+        )
+
+        sampled = gpt_reranker._quality_filtered_sampled_clips(request.clips, max_clips=2)
+        block_hints = gpt_reranker._candidate_quality_hints(request.clips[0])
+        shot_hints = gpt_reranker._candidate_quality_hints(request.clips[1])
+
+        self.assertEqual([clip.id for clip in sampled], ["contextual_block"])
+        self.assertTrue(block_hints["defensiveEventLike"])
+        self.assertTrue(block_hints["timingWindowOk"])
+        self.assertEqual(block_hints["minLeadInSeconds"], gpt_reranker.MIN_GPT_DEFENSIVE_LEAD_IN_SECONDS)
+        self.assertEqual(block_hints["minFollowThroughSeconds"], gpt_reranker.MIN_GPT_DEFENSIVE_FOLLOW_THROUGH_SECONDS)
+        self.assertFalse(shot_hints["defensiveEventLike"])
+        self.assertFalse(shot_hints["timingWindowOk"])
+        self.assertEqual(shot_hints["minLeadInSeconds"], gpt_reranker.MIN_GPT_CANDIDATE_LEAD_IN_SECONDS)
+        self.assertEqual(shot_hints["minFollowThroughSeconds"], gpt_reranker.MIN_GPT_CANDIDATE_FOLLOW_THROUGH_SECONDS)
+
+    def test_quality_filter_keeps_generic_non_shot_on_strict_context_floor(self) -> None:
+        clip = CreateEditJobRequest(
+            videoId="video_generic_non_shot_floor",
+            analysisJobId="analysis_generic_non_shot_floor",
+            installId="install-123",
+            sourceObjectKey="uploads/source.mp4",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="free",
+            clips=[
+                {
+                    **_clip("generic_moment", 40.0, 0.88),
+                    "label": "Highlight",
+                    "end": 43.0,
+                    "eventCenter": 40.8,
+                },
+            ],
+        ).clips[0]
+
+        hints = gpt_reranker._candidate_quality_hints(clip)
+
+        self.assertFalse(hints["defensiveEventLike"])
+        self.assertFalse(hints["shotLike"])
+        self.assertEqual(hints["minLeadInSeconds"], gpt_reranker.MIN_GPT_CANDIDATE_LEAD_IN_SECONDS)
+        self.assertEqual(hints["minFollowThroughSeconds"], gpt_reranker.MIN_GPT_CANDIDATE_FOLLOW_THROUGH_SECONDS)
+        self.assertFalse(hints["timingWindowOk"])
+
     def test_quality_filter_excludes_native_not_shot_overclaimed_provider_clip(self) -> None:
         request = CreateEditJobRequest(
             videoId="video_native_not_shot_filter",
@@ -498,7 +810,7 @@ class GPTHighlightRerankerTests(unittest.TestCase):
                 },
                 {
                     **_clip("non_shot_context", 20.0, 0.8),
-                    "label": "Defense",
+                    "label": "Crowd Reaction",
                     "end": 21.8,
                     "eventCenter": 20.9,
                 },
@@ -522,6 +834,128 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertIn("thin_make", [clip.id for clip in sampled])
         self.assertEqual(plan.clips[0].clipId, "thin_make")
         self.assertLessEqual(plan.clips[0].sourceStart, 8.8)
+
+    def test_source_context_expansion_salvages_thin_defensive_windows_before_gpt(self) -> None:
+        request = CreateEditJobRequest(
+            videoId="video_expand_defense",
+            analysisJobId="analysis_expand_defense",
+            installId="install-123",
+            sourceObjectKey="uploads/source.mp4",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="free",
+            clips=[
+                {
+                    **_clip("thin_steal", 20.4, 0.91),
+                    "label": "Steal",
+                    "end": 20.95,
+                    "eventCenter": 20.5,
+                    "watchability": 0.9,
+                    "motionScore": 0.92,
+                    "audioPeak": 0.62,
+                },
+            ],
+        )
+
+        expanded = expand_shot_candidate_windows_for_source_context(request, source_duration_seconds=60.0)
+        steal = expanded.clips[0]
+        hints = gpt_reranker._candidate_quality_hints(steal)
+        sampled = gpt_reranker._quality_filtered_sampled_clips(expanded.clips, max_clips=1)
+        sampled_roles = [role for role, _ in gpt_reranker._sample_times_for_clip(steal, 6)]
+
+        self.assertLess(steal.start, 20.4)
+        self.assertGreater(steal.end, 20.95)
+        self.assertGreaterEqual(steal.eventCenter - steal.start, 1.6)
+        self.assertGreaterEqual(steal.end - steal.eventCenter, 1.2)
+        self.assertTrue(hints["defensiveEventLike"])
+        self.assertTrue(hints["timingWindowOk"])
+        self.assertEqual([clip.id for clip in sampled], ["thin_steal"])
+        self.assertIn("possessionChange", sampled_roles)
+
+    def test_blocked_shot_uses_defensive_context_and_keyframes_before_gpt(self) -> None:
+        request = CreateEditJobRequest(
+            videoId="video_expand_blocked_shot",
+            analysisJobId="analysis_expand_blocked_shot",
+            installId="install-123",
+            sourceObjectKey="uploads/source.mp4",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="free",
+            clips=[
+                {
+                    **_clip("thin_blocked_shot", 32.4, 0.91),
+                    "label": "Blocked Shot",
+                    "end": 33.05,
+                    "eventCenter": 32.55,
+                    "watchability": 0.9,
+                    "motionScore": 0.93,
+                    "audioPeak": 0.64,
+                },
+            ],
+        )
+
+        expanded = expand_shot_candidate_windows_for_source_context(request, source_duration_seconds=60.0)
+        block = expanded.clips[0]
+        hints = gpt_reranker._candidate_quality_hints(block)
+        sampled_roles = [role for role, _ in gpt_reranker._sample_times_for_clip(block, 10)]
+
+        self.assertLess(block.start, 32.4)
+        self.assertGreater(block.end, 33.05)
+        self.assertGreaterEqual(block.eventCenter - block.start, 1.6)
+        self.assertGreaterEqual(block.end - block.eventCenter, 1.2)
+        self.assertTrue(hints["shotLike"])
+        self.assertTrue(hints["defensiveEventLike"])
+        self.assertTrue(hints["timingWindowOk"])
+        self.assertIn("challenge", sampled_roles)
+        self.assertIn("defenseOutcome", sampled_roles)
+        self.assertNotIn("shotArcEarly", sampled_roles)
+        self.assertNotIn("rimEntry", sampled_roles)
+
+    def test_mixed_defensive_shot_labels_use_defensive_context_before_gpt(self) -> None:
+        request = CreateEditJobRequest(
+            videoId="video_expand_mixed_defense",
+            analysisJobId="analysis_expand_mixed_defense",
+            installId="install-123",
+            sourceObjectKey="uploads/source.mp4",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="free",
+            clips=[
+                {
+                    **_clip("steal_finish", 24.3, 0.91),
+                    "label": "Steal Finish",
+                    "end": 24.95,
+                    "eventCenter": 24.42,
+                    "watchability": 0.91,
+                    "motionScore": 0.93,
+                    "audioPeak": 0.62,
+                },
+            ],
+        )
+
+        expanded = expand_shot_candidate_windows_for_source_context(request, source_duration_seconds=60.0)
+        steal_finish = expanded.clips[0]
+        hints = gpt_reranker._candidate_quality_hints(steal_finish)
+        sampled = gpt_reranker._quality_filtered_sampled_clips(expanded.clips, max_clips=1)
+        sample_times = gpt_reranker._sample_times_for_clip(steal_finish, 10)
+        sampled_roles = [role for role, _ in sample_times]
+        sampled_frames = [
+            SampledFrame(clip_id="steal_finish", role=role, time_seconds=second, data_url="data:image/jpeg;base64,ZA==")
+            for role, second in sample_times
+        ]
+
+        self.assertLess(steal_finish.start, 24.3)
+        self.assertGreater(steal_finish.end, 24.95)
+        self.assertTrue(hints["shotLike"])
+        self.assertTrue(hints["defensiveEventLike"])
+        self.assertTrue(hints["timingWindowOk"])
+        self.assertEqual([clip.id for clip in sampled], ["steal_finish"])
+        self.assertIn("challenge", sampled_roles)
+        self.assertIn("possessionChange", sampled_roles)
+        self.assertIn("defenseOutcome", sampled_roles)
+        self.assertNotIn("shotArcEarly", sampled_roles)
+        self.assertNotIn("rimEntry", sampled_roles)
+        self.assertEqual(gpt_reranker._missing_shot_context_keyframes([steal_finish], sampled_frames, 10), {})
 
     def test_payload_resolves_preset_default_template_for_agent_cookbook(self) -> None:
         settings = GPTHighlightRerankerSettings.from_env()
@@ -592,6 +1026,89 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertNotIn("uploads/source.mp4", serialized)
         self.assertNotIn("downloadUrl", serialized)
         self.assertNotIn("https://", serialized)
+
+    def test_revision_patch_payload_filters_selected_team_candidates(self) -> None:
+        settings = GPTHighlightRerankerSettings.from_env()
+        request = _team_targeted_request()
+        job = build_edit_job(request, "edit_revision_team_payload")
+
+        payload = _build_revision_patch_payload(job, ReviseEditJobRequest(command="make_more_hype"), settings)
+        compact_input = json.loads(payload["input"][0]["content"][0]["text"])
+        compact_clip_ids = [clip["clipId"] for clip in compact_input["candidateClips"]]
+        by_id = {clip["clipId"]: clip for clip in compact_input["candidateClips"]}
+
+        self.assertEqual(compact_input["teamTargeting"]["teamId"], "team_dark")
+        self.assertIn("dark_make", compact_clip_ids)
+        self.assertNotIn("uncertain_make", compact_clip_ids)
+        self.assertNotIn("light_make", compact_clip_ids)
+        self.assertEqual(by_id["dark_make"]["teamAttributionStatus"], "matched")
+        self.assertEqual(by_id["dark_make"]["teamEvidence"]["status"], "evidence_backed")
+        self.assertEqual(compact_input["agentTemplateCookbook"]["teamTargeting"]["teamId"], "team_dark")
+        self.assertIn("teamEvidence.status=evidence_backed", payload["instructions"])
+        self.assertIn("render-eligible clip IDs", payload["instructions"])
+        self.assertIn("weak or uncertain team-attribution clips only as review-worthy candidates", payload["instructions"])
+
+    def test_revision_patch_request_rejects_opponent_clip_for_selected_team(self) -> None:
+        settings = GPTHighlightRerankerSettings(
+            enabled=True,
+            api_key="unit-test-key",
+            model="gpt-test",
+            endpoint="https://api.openai.test/v1/responses",
+            timeout_seconds=1.0,
+            max_output_tokens=512,
+            free_max_clips=8,
+            paid_max_clips=24,
+            free_frames_per_clip=3,
+            paid_frames_per_clip=5,
+            frame_width=512,
+            jpeg_quality=5,
+            max_image_bytes=180_000,
+            image_detail="low",
+            revision_enabled=True,
+        )
+        request = _team_targeted_request()
+        job = build_edit_job(request, "edit_revision_team_patch_guard")
+        opponent_clip = next(clip for clip in job.request.clips if clip.id == "light_make")
+        opponent_plan_clip = job.plan.clips[0].model_dump(mode="json")
+        opponent_plan_clip.update(
+            {
+                "clipId": opponent_clip.id,
+                "sourceStart": opponent_clip.start,
+                "sourceEnd": opponent_clip.end,
+                "eventCenter": opponent_clip.eventCenter,
+                "label": opponent_clip.label,
+                "caption": "BUCKET",
+                "timelineStart": 0.0,
+                "timelineEnd": opponent_clip.duration,
+            }
+        )
+
+        def fake_response_client(payload, api_key, endpoint, timeout_seconds):
+            compact_input = json.loads(payload["input"][0]["content"][0]["text"])
+            self.assertNotIn("light_make", [clip["clipId"] for clip in compact_input["candidateClips"]])
+            return {
+                "output_text": json.dumps(
+                    {
+                        "version": "edit-plan-patch-v1",
+                        "baseEditPlanId": job.edit_job_id,
+                        "revisionIntent": "make_more_hype",
+                        "summary": "Invalid opponent clip should be rejected.",
+                        "operations": [
+                            {
+                                "op": "replace",
+                                "path": "/clips",
+                                "value": [opponent_plan_clip],
+                                "reason": "Use the strongest-looking clip.",
+                            }
+                        ],
+                        "requiresRerender": True,
+                    }
+                )
+            }
+
+        patch = request_gpt_edit_plan_patch(job, ReviseEditJobRequest(command="make_more_hype"), settings, fake_response_client)
+
+        self.assertIsNone(patch)
 
     def test_revision_patch_request_rejects_unsafe_gpt_output(self) -> None:
         settings = GPTHighlightRerankerSettings(
@@ -785,6 +1302,86 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         samples = gpt_reranker._sample_times_for_clip(request.clips[0], 3)
 
         self.assertEqual([role for role, _ in samples], ["start", "eventCenter", "finish"])
+
+    def test_real_ffmpeg_keyframe_extraction_builds_compact_payload_without_source_video(self) -> None:
+        if shutil.which("ffmpeg") is None:
+            self.skipTest("ffmpeg is required for real keyframe extraction smoke")
+        settings = GPTHighlightRerankerSettings(
+            enabled=True,
+            api_key="unit-test-key",
+            model="gpt-test",
+            endpoint="https://api.openai.test/v1/responses",
+            timeout_seconds=1.0,
+            max_output_tokens=512,
+            free_max_clips=1,
+            paid_max_clips=20,
+            free_frames_per_clip=3,
+            paid_frames_per_clip=5,
+            frame_width=128,
+            jpeg_quality=5,
+            max_image_bytes=120_000,
+            image_detail="low",
+        )
+        with tempfile.TemporaryDirectory(prefix="hoopclips-real-keyframes-") as temp_dir:
+            source_path = Path(temp_dir) / "source.mp4"
+            subprocess.run(
+                [
+                    "ffmpeg",
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-y",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "testsrc=size=160x90:rate=8:duration=6",
+                    "-pix_fmt",
+                    "yuv420p",
+                    "-c:v",
+                    "mpeg4",
+                    str(source_path),
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+            request = CreateEditJobRequest(
+                videoId="video_real_keyframes",
+                analysisJobId="analysis_real_keyframes",
+                installId="install-123",
+                sourceObjectKey="uploads/source.mp4",
+                preset="personal_highlight",
+                targetDurationSeconds=15,
+                planTier="free",
+                clips=[{**_clip("real_frames", 0.0, 0.93), "end": 5.8, "eventCenter": 3.0}],
+            )
+
+            frames = gpt_reranker._extract_candidate_keyframes(source_path, request.clips, 3, settings)
+            payload = _build_openai_payload(request, request.clips, frames, settings)
+
+        self.assertEqual([frame.role for frame in frames], ["start", "eventCenter", "finish"])
+        for frame in frames:
+            self.assertTrue(frame.data_url.startswith("data:image/jpeg;base64,"))
+            jpeg_bytes = base64.b64decode(frame.data_url.split(",", 1)[1])
+            self.assertTrue(jpeg_bytes.startswith(b"\xff\xd8"))
+        compact_input = json.loads(payload["input"][0]["content"][0]["text"])
+        compact_clip = compact_input["clips"][0]
+        self.assertEqual(
+            compact_clip["sampledKeyframes"],
+            [
+                {"role": "start", "time": 0.0},
+                {"role": "eventCenter", "time": 3.0},
+                {"role": "finish", "time": 5.75},
+            ],
+        )
+        image_items = [item for item in payload["input"][0]["content"] if item["type"] == "input_image"]
+        self.assertEqual(len(image_items), 3)
+        serialized_payload = json.dumps(payload)
+        self.assertNotIn("uploads/source.mp4", serialized_payload)
+        self.assertNotIn("sourceObjectKey", serialized_payload)
+        self.assertNotIn("source.mp4", serialized_payload)
+        self.assertNotIn("file://", serialized_payload)
 
     def test_image_detail_env_falls_back_to_high_for_unknown_values(self) -> None:
         old_value = os.environ.get("HOOPS_GPT_HIGHLIGHT_RERANK_IMAGE_DETAIL")
@@ -1423,7 +2020,78 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertEqual(result.gptRerankSummary.keptClipIds, ["c1"])
         self.assertIn("c0", result.gptRerankSummary.rejectedClipIds)
 
-    def test_incomplete_gpt_decisions_apply_valid_subset_without_reintroducing_missing_candidates(self) -> None:
+    def test_underfilled_gpt_result_uses_keyframe_only_backfill_pass(self) -> None:
+        settings = GPTHighlightRerankerSettings(
+            enabled=True,
+            api_key="unit-test-key",
+            model="gpt-test",
+            endpoint="https://api.openai.test/v1/responses",
+            timeout_seconds=1.0,
+            max_output_tokens=512,
+            free_max_clips=4,
+            paid_max_clips=24,
+            free_frames_per_clip=8,
+            paid_frames_per_clip=8,
+            frame_width=512,
+            jpeg_quality=5,
+            max_image_bytes=180_000,
+            image_detail="low",
+            plan_edit_enabled=True,
+        )
+        original_extract = gpt_reranker._extract_candidate_keyframes
+        call_payload_clip_ids: list[list[str]] = []
+
+        def fake_extract(source_path, clips, frames_per_clip, rerank_settings):
+            frames = []
+            for clip in clips:
+                for role, second in gpt_reranker._sample_times_for_clip(clip, frames_per_clip):
+                    frames.append(SampledFrame(clip_id=clip.id, role=role, time_seconds=second, data_url="data:image/jpeg;base64,ZmFrZQ=="))
+            return frames
+
+        def fake_response_client(payload, api_key, endpoint, timeout_seconds):
+            compact_input = json.loads(payload["input"][0]["content"][0]["text"])
+            clip_ids = [clip["clipId"] for clip in compact_input["clips"]]
+            call_payload_clip_ids.append(clip_ids)
+            kept_ids = {"c0"} if len(call_payload_clip_ids) == 1 else {"c4", "c5"}
+            return {
+                "output_text": json.dumps(
+                    {
+                        "decisions": [
+                            _gpt_decision_payload(
+                                clip_id,
+                                keep=clip_id in kept_ids,
+                                score=0.92 if clip_id in kept_ids else 0.24,
+                                story_role="opener" if clip_id == "c0" else "closer" if clip_id == "c5" else "filler",
+                            )
+                            for clip_id in clip_ids
+                        ],
+                        "storyOrder": [clip_id for clip_id in clip_ids if clip_id in kept_ids],
+                        "planEdit": {
+                            "orderedClipIds": [clip_id for clip_id in clip_ids if clip_id in kept_ids],
+                            "pacing": "fast",
+                            "captions": [],
+                            "slowMotionMoments": [],
+                            "summary": "ok",
+                        },
+                        "summary": "ok",
+                    }
+                )
+            }
+
+        try:
+            gpt_reranker._extract_candidate_keyframes = fake_extract
+            with tempfile.NamedTemporaryFile(suffix=".mp4") as source:
+                result = gpt_reranker.rerank_edit_request_with_gpt(_request("free", 10), Path(source.name), settings, fake_response_client)
+        finally:
+            gpt_reranker._extract_candidate_keyframes = original_extract
+
+        self.assertEqual(call_payload_clip_ids, [["c0", "c1", "c2", "c3"], ["c4", "c5", "c6", "c7"]])
+        self.assertEqual(result.gptRerankSummary.status, "applied")
+        self.assertEqual(result.gptRerankSummary.sampledClipCount, 8)
+        self.assertEqual(result.gptRerankSummary.keptClipIds, ["c0", "c4", "c5"])
+        self.assertEqual([clip.id for clip in result.clips[:3]], ["c0", "c4", "c5"])
+
+    def test_incomplete_gpt_decisions_fallback_without_dropping_sampled_candidates(self) -> None:
         settings = GPTHighlightRerankerSettings(
             enabled=True,
             api_key="unit-test-key",
@@ -1500,12 +2168,13 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         finally:
             gpt_reranker._extract_candidate_keyframes = original_extract
 
-        self.assertEqual(result.gptRerankSummary.status, "applied")
-        self.assertEqual(result.gptRerankSummary.keptClipIds, [observed_clip_ids[0]])
-        self.assertIn(observed_clip_ids[1], result.gptRerankSummary.rejectedClipIds)
-        self.assertEqual([clip.id for clip in result.clips], [observed_clip_ids[0]])
+        self.assertEqual(result.gptRerankSummary.status, "fallback")
+        self.assertEqual(result.gptRerankSummary.fallbackReason, "incomplete_gpt_decisions")
+        self.assertEqual(result.gptRerankSummary.keptClipIds, observed_clip_ids)
+        self.assertEqual(result.gptRerankSummary.rejectedClipIds, [])
+        self.assertEqual([clip.id for clip in result.clips], observed_clip_ids)
 
-    def test_unsampled_existing_clip_decision_is_rejected(self) -> None:
+    def test_unsampled_existing_clip_decision_falls_back_without_applying_gpt(self) -> None:
         settings = GPTHighlightRerankerSettings(
             enabled=True,
             api_key="unit-test-key",
@@ -1587,11 +2256,11 @@ class GPTHighlightRerankerTests(unittest.TestCase):
             gpt_reranker._extract_candidate_keyframes = original_extract
 
         self.assertEqual(observed_clip_ids, ["c0", "c1"])
-        self.assertEqual(result.gptRerankSummary.status, "applied")
-        self.assertEqual(result.gptRerankSummary.keptClipIds, ["c0"])
-        self.assertIn("c1", result.gptRerankSummary.rejectedClipIds)
-        self.assertIn("c2", result.gptRerankSummary.rejectedClipIds)
-        self.assertEqual([clip.id for clip in result.clips], ["c0"])
+        self.assertEqual(result.gptRerankSummary.status, "fallback")
+        self.assertEqual(result.gptRerankSummary.fallbackReason, "incomplete_gpt_decisions")
+        self.assertEqual(result.gptRerankSummary.keptClipIds, ["c0", "c1", "c2"])
+        self.assertEqual(result.gptRerankSummary.rejectedClipIds, [])
+        self.assertEqual([clip.id for clip in result.clips], ["c0", "c1", "c2"])
 
     def test_duplicate_gpt_decisions_fall_back(self) -> None:
         settings = GPTHighlightRerankerSettings(
@@ -1783,14 +2452,446 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertEqual(result.gptRerankSummary.status, "applied")
         self.assertEqual(result.gptRerankSummary.keptClipIds, ["good_context"])
 
+    def test_sampling_reserves_buried_defensive_candidates_for_gpt_review(self) -> None:
+        scoring_clips = [_clip(f"make_{index}", float(index * 7), 0.99 - (index * 0.001)) for index in range(27)]
+        defensive_clips = [
+            {**_clip("late_block", 222.0, 0.69), "label": "Block"},
+            {**_clip("late_steal", 230.0, 0.68), "label": "Steal"},
+            {**_clip("late_stop", 238.0, 0.66), "label": "Defensive Stop"},
+        ]
+        request = CreateEditJobRequest(
+            videoId="video_defense_pool",
+            analysisJobId="analysis_defense_pool",
+            installId="install-123",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="free",
+            userPrompt="focus on defense",
+            clips=[*scoring_clips, *defensive_clips],
+        )
+
+        sampled = gpt_reranker._quality_filtered_sampled_clips(
+            gpt_reranker.rank_clips(request.clips),
+            20,
+            request=request,
+        )
+        sampled_ids = [clip.id for clip in sampled]
+
+        self.assertEqual(len(sampled), 20)
+        self.assertIn("late_block", sampled_ids)
+        self.assertIn("late_steal", sampled_ids)
+        self.assertIn("late_stop", sampled_ids)
+        self.assertLess(len([clip_id for clip_id in sampled_ids if clip_id.startswith("make_")]), 20)
+
+    def test_defensive_candidates_use_possession_change_keyframes(self) -> None:
+        request = CreateEditJobRequest(
+            videoId="video_defense_roles",
+            analysisJobId="analysis_defense_roles",
+            installId="install-123",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="free",
+            clips=[{**_clip("steal", 10.0, 0.86), "label": "Steal"}],
+        )
+
+        roles = [role for role, _ in gpt_reranker._sample_times_for_clip(request.clips[0], 10)]
+
+        self.assertIn("eventCenter", roles)
+        self.assertIn("challenge", roles)
+        self.assertIn("possessionChange", roles)
+        self.assertIn("recovery", roles)
+        self.assertIn("defenseOutcome", roles)
+        self.assertNotIn("shotArcEarly", roles)
+        self.assertNotIn("rimEntry", roles)
+
+    def test_block_candidates_use_defensive_challenge_keyframes(self) -> None:
+        request = CreateEditJobRequest(
+            videoId="video_block_roles",
+            analysisJobId="analysis_block_roles",
+            installId="install-123",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="free",
+            clips=[{**_clip("block", 10.0, 0.86), "label": "Block"}],
+        )
+
+        roles = [role for role, _ in gpt_reranker._sample_times_for_clip(request.clips[0], 10)]
+
+        self.assertIn("challenge", roles)
+        self.assertIn("defenseOutcome", roles)
+        self.assertNotIn("shotArcEarly", roles)
+        self.assertNotIn("rimEntry", roles)
+
+    def test_blocked_shot_candidates_use_defensive_challenge_keyframes(self) -> None:
+        request = CreateEditJobRequest(
+            videoId="video_blocked_shot_roles",
+            analysisJobId="analysis_blocked_shot_roles",
+            installId="install-123",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="free",
+            clips=[{**_clip("blocked_shot", 10.0, 0.86), "label": "Blocked Shot"}],
+        )
+
+        roles = [role for role, _ in gpt_reranker._sample_times_for_clip(request.clips[0], 10)]
+
+        self.assertIn("challenge", roles)
+        self.assertIn("defenseOutcome", roles)
+        self.assertNotIn("shotArcEarly", roles)
+        self.assertNotIn("rimEntry", roles)
+
+    def test_defensive_keep_requires_sampled_possession_change_roles(self) -> None:
+        request = CreateEditJobRequest(
+            videoId="video_defense_validation",
+            analysisJobId="analysis_defense_validation",
+            installId="install-123",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="free",
+            clips=[{**_clip("steal", 10.0, 0.86), "label": "Steal"}],
+        )
+        sampled_roles = ["start", "eventCenter", "finish", "challenge", "possessionChange", "recovery"]
+        weak_decision = GPTHighlightClipDecision(
+            clipId="steal",
+            keep=True,
+            highlightScore=0.88,
+            watchabilityScore=0.82,
+            basketballEvent="Steal",
+            outcome="steal",
+            caption="COOKIES",
+            reason="GPT says the defender takes the ball but omits the possession-change frame.",
+            qualitySignals=_quality_signals(
+                releaseVisible=False,
+                shotArcVisible=False,
+                rimResultVisible=False,
+                reason="Defender and ball are visible.",
+            ),
+            shotResultEvidence=_shot_result_evidence(
+                releaseToRimContinuity="missing",
+                rimResultEvidence="unclear",
+                outcomeConfidence=0.0,
+                rimEntrySequence="unclear",
+                ballApproachFrameRole=None,
+                rimEntryFrameRole=None,
+                ballBelowRimOrNetFrameRole=None,
+                rimEntrySequenceConfidence=0.0,
+            ),
+            shotTrackingEvidence=_shot_tracking_evidence(
+                ballVisibleFrameRoles=["challenge"],
+                rimVisibleFrameRoles=[],
+                releaseFrameRole=None,
+                resultFrameRole=None,
+                ballEntersRimFrameRole=None,
+                trajectoryContinuity="partial",
+            ),
+            suggestedEdit=GPTHighlightSuggestedEdit(cropFocus="ball"),
+        )
+        complete_decision = GPTHighlightClipDecision(
+            **{
+                **weak_decision.model_dump(mode="json"),
+                "shotResultEvidence": _shot_result_evidence(
+                    releaseToRimContinuity="missing",
+                    rimResultEvidence="unclear",
+                    outcomeConfidence=0.82,
+                    rimEntrySequence="unclear",
+                    ballApproachFrameRole=None,
+                    rimEntryFrameRole=None,
+                    ballBelowRimOrNetFrameRole=None,
+                    rimEntrySequenceConfidence=0.0,
+                ),
+                "shotTrackingEvidence": _shot_tracking_evidence(
+                    ballVisibleFrameRoles=["challenge", "possessionChange", "recovery"],
+                    rimVisibleFrameRoles=[],
+                    releaseFrameRole=None,
+                    resultFrameRole="recovery",
+                    ballEntersRimFrameRole=None,
+                    trajectoryContinuity="partial",
+                ),
+            }
+        )
+        low_confidence_decision = GPTHighlightClipDecision(
+            **{
+                **complete_decision.model_dump(mode="json"),
+                "shotResultEvidence": _shot_result_evidence(
+                    releaseToRimContinuity="missing",
+                    rimResultEvidence="unclear",
+                    outcomeConfidence=0.41,
+                    rimEntrySequence="unclear",
+                    ballApproachFrameRole=None,
+                    rimEntryFrameRole=None,
+                    ballBelowRimOrNetFrameRole=None,
+                    rimEntrySequenceConfidence=0.0,
+                ),
+            }
+        )
+        rejected = apply_gpt_highlight_rerank(
+            request,
+            [weak_decision],
+            "gpt-test",
+            1,
+            len(sampled_roles),
+            sampled_frame_roles_by_clip={"steal": sampled_roles},
+        )
+        rejected_low_confidence = apply_gpt_highlight_rerank(
+            request,
+            [low_confidence_decision],
+            "gpt-test",
+            1,
+            len(sampled_roles),
+            sampled_frame_roles_by_clip={"steal": sampled_roles},
+        )
+        kept = apply_gpt_highlight_rerank(
+            request,
+            [complete_decision],
+            "gpt-test",
+            1,
+            len(sampled_roles),
+            sampled_frame_roles_by_clip={"steal": sampled_roles},
+        )
+
+        self.assertEqual(rejected.clips, [])
+        self.assertEqual(rejected.gptRerankSummary.rejectedReasonCounts["missing_defensive_possession_change_frame"], 1)
+        self.assertEqual(rejected_low_confidence.clips, [])
+        self.assertEqual(rejected_low_confidence.gptRerankSummary.rejectedReasonCounts["low_defensive_outcome_confidence"], 1)
+        self.assertEqual([clip.id for clip in kept.clips], ["steal"])
+
+    def test_blocked_keep_requires_sampled_challenge_and_outcome_roles(self) -> None:
+        request = CreateEditJobRequest(
+            videoId="video_block_validation",
+            analysisJobId="analysis_block_validation",
+            installId="install-123",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="free",
+            clips=[{**_clip("block", 10.0, 0.86), "label": "Block"}],
+        )
+        sampled_roles = ["start", "eventCenter", "finish", "challenge", "defenseOutcome"]
+        weak_decision = GPTHighlightClipDecision(
+            clipId="block",
+            keep=True,
+            highlightScore=0.88,
+            watchabilityScore=0.82,
+            basketballEvent="Block",
+            outcome="blocked",
+            caption="LOCKDOWN",
+            reason="GPT says the shot was blocked but omits the challenge frame.",
+            qualitySignals=_quality_signals(
+                releaseVisible=False,
+                shotArcVisible=False,
+                reason="The block event and outcome are visible.",
+            ),
+            shotResultEvidence=_shot_result_evidence(
+                releaseToRimContinuity="partial",
+                rimResultEvidence="blocked",
+                outcomeConfidence=0.82,
+                rimEntrySequence="blocked",
+                ballApproachFrameRole=None,
+                rimEntryFrameRole=None,
+                ballBelowRimOrNetFrameRole=None,
+                rimEntrySequenceConfidence=0.0,
+            ),
+            shotTrackingEvidence=_shot_tracking_evidence(
+                ballVisibleFrameRoles=["eventCenter"],
+                rimVisibleFrameRoles=[],
+                releaseFrameRole=None,
+                resultFrameRole=None,
+                ballEntersRimFrameRole=None,
+                trajectoryContinuity="partial",
+            ),
+            suggestedEdit=GPTHighlightSuggestedEdit(cropFocus="ball"),
+        )
+        complete_decision = GPTHighlightClipDecision(
+            **{
+                **weak_decision.model_dump(mode="json"),
+                "shotTrackingEvidence": _shot_tracking_evidence(
+                    ballVisibleFrameRoles=["challenge", "defenseOutcome"],
+                    rimVisibleFrameRoles=[],
+                    releaseFrameRole=None,
+                    resultFrameRole="defenseOutcome",
+                    ballEntersRimFrameRole=None,
+                    trajectoryContinuity="partial",
+                ),
+            }
+        )
+        no_ball_path_decision = GPTHighlightClipDecision(
+            **{
+                **complete_decision.model_dump(mode="json"),
+                "qualitySignals": _quality_signals(
+                    releaseVisible=False,
+                    shotArcVisible=False,
+                    ballPathVisible=False,
+                    reason="The challenge is visible, but the ball path is not.",
+                ),
+            }
+        )
+
+        rejected = apply_gpt_highlight_rerank(
+            request,
+            [weak_decision],
+            "gpt-test",
+            1,
+            len(sampled_roles),
+            sampled_frame_roles_by_clip={"block": sampled_roles},
+        )
+        rejected_no_ball_path = apply_gpt_highlight_rerank(
+            request,
+            [no_ball_path_decision],
+            "gpt-test",
+            1,
+            len(sampled_roles),
+            sampled_frame_roles_by_clip={"block": sampled_roles},
+        )
+        kept = apply_gpt_highlight_rerank(
+            request,
+            [complete_decision],
+            "gpt-test",
+            1,
+            len(sampled_roles),
+            sampled_frame_roles_by_clip={"block": sampled_roles},
+        )
+
+        self.assertEqual(rejected.clips, [])
+        self.assertEqual(rejected.gptRerankSummary.rejectedReasonCounts["missing_block_challenge_frame"], 1)
+        self.assertEqual(rejected_no_ball_path.clips, [])
+        self.assertEqual(rejected_no_ball_path.gptRerankSummary.rejectedReasonCounts["missing_block_ball_control"], 1)
+        self.assertEqual([clip.id for clip in kept.clips], ["block"])
+
     def test_free_and_pro_sampling_limits(self) -> None:
         settings = GPTHighlightRerankerSettings.from_env()
 
-        self.assertEqual(settings.limits_for("free"), (8, 10))
+        self.assertEqual(settings.limits_for("free"), (60, 10))
         self.assertGreaterEqual(settings.limits_for("pro")[0], 20)
-        self.assertLessEqual(settings.limits_for("pro")[0], 30)
+        self.assertLessEqual(settings.limits_for("pro")[0], 60)
         self.assertGreaterEqual(settings.limits_for("pro")[1], 5)
         self.assertLessEqual(settings.limits_for("pro")[1], 10)
+        self.assertEqual(settings.timeout_seconds, 60.0)
+        self.assertEqual(settings.max_output_tokens, 12000)
+
+    def test_free_sampling_reviews_full_analysis_pool_by_default(self) -> None:
+        settings = GPTHighlightRerankerSettings.from_env()
+        max_clips, _ = settings.limits_for("free")
+        request = _request("free", 60)
+
+        sampled = gpt_reranker._quality_filtered_sampled_clips(
+            gpt_reranker.rank_clips(request.clips),
+            max_clips,
+        )
+
+        self.assertEqual(max_clips, 60)
+        self.assertEqual(len(sampled), 60)
+        self.assertEqual(sampled[0].id, "c0")
+        self.assertEqual(sampled[-1].id, "c59")
+
+    def test_free_sampling_candidate_cap_is_generous_but_bounded(self) -> None:
+        env_keys = ("HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_FREE", "HOOPS_GPT_HIGHLIGHT_RERANK_FREE_MAX_CLIPS")
+        old_values = {key: os.environ.get(key) for key in env_keys}
+        os.environ["HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_FREE"] = "999"
+        os.environ["HOOPS_GPT_HIGHLIGHT_RERANK_FREE_MAX_CLIPS"] = "999"
+        try:
+            settings = GPTHighlightRerankerSettings.from_env()
+        finally:
+            for key, old_value in old_values.items():
+                if old_value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = old_value
+
+        self.assertEqual(settings.limits_for("free")[0], 60)
+
+    def test_sampling_reserves_block_and_steal_families_for_gpt_review(self) -> None:
+        scoring = [
+            _clip(f"score_{index}", float(index * 7), 0.99 - (index * 0.01))
+            for index in range(8)
+        ]
+        clips = [
+            *scoring,
+            _labeled_clip("block_1", 80.0, 0.91, "Block"),
+            _labeled_clip("block_2", 87.0, 0.90, "Blocked shot"),
+            _labeled_clip("block_3", 94.0, 0.89, "Contest block"),
+            _labeled_clip("steal_1", 101.0, 0.70, "Steal"),
+        ]
+        request = CreateEditJobRequest(
+            videoId="video_123",
+            analysisJobId="analysis_123",
+            installId="install-123",
+            sourceObjectKey="uploads/source.mp4",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="free",
+            clips=clips,
+        )
+
+        sampled = gpt_reranker._quality_filtered_sampled_clips(
+            gpt_reranker.rank_clips(request.clips),
+            8,
+            request=request,
+        )
+        sampled_ids = {clip.id for clip in sampled}
+
+        self.assertIn("block_1", sampled_ids)
+        self.assertIn("steal_1", sampled_ids)
+        self.assertIn("block_2", sampled_ids)
+        self.assertNotIn("block_3", sampled_ids)
+        self.assertNotIn("score_5", sampled_ids)
+
+    def test_selected_team_sampling_bounds_unreviewed_uncertain_clip_reserve(self) -> None:
+        uncertain = [
+            {
+                **_clip(f"uncertain_{index}", float(index * 7), 0.99 - (index * 0.001)),
+                "teamAttribution": {
+                    "teamId": "team_dark",
+                    "label": "Dark jerseys",
+                    "colorLabel": "black",
+                    "confidence": 0.7,
+                    "source": "quick_scan",
+                },
+            }
+            for index in range(10)
+        ]
+        matched = [
+            {
+                **_clip(f"matched_{index}", 100.0 + float(index * 7), 0.86 - (index * 0.001)),
+                "teamAttribution": {
+                    "teamId": "team_dark",
+                    "label": "Dark jerseys",
+                    "colorLabel": "black",
+                    "confidence": 0.93,
+                    "source": "quick_scan",
+                    "evidenceFrameRefs": [f"matched_{index}_setup", f"matched_{index}_result"],
+                    "evidenceRoleGroups": ["setup", "outcome"],
+                },
+            }
+            for index in range(8)
+        ]
+        request = CreateEditJobRequest(
+            videoId="video_team_sampling",
+            analysisJobId="analysis_team_sampling",
+            installId="install-123",
+            sourceObjectKey="uploads/source.mp4",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="free",
+            teamSelection={
+                "mode": "team",
+                "teamId": "team_dark",
+                "label": "Dark jerseys",
+                "colorLabel": "black",
+                "confidenceThreshold": 0.85,
+                "includeUncertain": True,
+            },
+            clips=[*uncertain, *matched],
+        )
+
+        sampled = gpt_reranker._quality_filtered_sampled_clips(
+            gpt_reranker.rank_clips(request.clips),
+            8,
+            request=request,
+        )
+        sampled_ids = [clip.id for clip in sampled]
+
+        self.assertEqual(len(sampled), 8)
+        self.assertEqual(len([clip_id for clip_id in sampled_ids if clip_id.startswith("uncertain_")]), 1)
+        self.assertEqual(len([clip_id for clip_id in sampled_ids if clip_id.startswith("matched_")]), 7)
 
     def test_default_model_prioritizes_full_quality_vision_editor(self) -> None:
         model_env_keys = ("HOOPS_AI_CLIP_GPT_MODEL", "HOOPS_GPT_HIGHLIGHT_RERANK_MODEL")
