@@ -28,12 +28,14 @@ TEAM_QUICK_SCAN_RICH_CANDIDATE_CLIPS = 120
 TEAM_QUICK_SCAN_DEFAULT_TOTAL_CLIP_FRAMES = 1200
 TEAM_QUICK_SCAN_MAX_TOTAL_CLIP_FRAMES = 1280
 TEAM_QUICK_SCAN_SCORING_OWNERSHIP_ROLES = {"ballhandlersetup", "prerelease", "release"}
-TEAM_QUICK_SCAN_DEFENSIVE_OWNERSHIP_ROLES = {
-    "defensesetup",
-    "prechallenge",
-    "challenge",
+TEAM_QUICK_SCAN_BLOCK_ACTION_ROLES = {"challenge", "balldeflection"}
+TEAM_QUICK_SCAN_POSSESSION_CHANGE_ACTION_ROLES = {
     "balldeflection",
-    "prepossessionchange",
+    "possessionchange",
+    "ballcontrolchange",
+}
+TEAM_QUICK_SCAN_DEFENSIVE_STOP_ACTION_ROLES = {
+    "challenge",
     "possessionpressure",
     "possessionchange",
     "ballcontrolchange",
@@ -391,8 +393,12 @@ def _has_confident_ownership_evidence(
     normalized_label = (label or "").strip().lower()
     if _is_scoring_or_shot_like_label(normalized_label) and not _is_block_like_label(normalized_label):
         return bool(role_keys & TEAM_QUICK_SCAN_SCORING_OWNERSHIP_ROLES)
-    if _is_block_like_label(normalized_label) or _is_non_scoring_defensive_label(normalized_label):
-        return bool(role_keys & TEAM_QUICK_SCAN_DEFENSIVE_OWNERSHIP_ROLES)
+    if _is_block_like_label(normalized_label):
+        return bool(role_keys & TEAM_QUICK_SCAN_BLOCK_ACTION_ROLES)
+    if _is_possession_change_defensive_label(normalized_label):
+        return bool(role_keys & TEAM_QUICK_SCAN_POSSESSION_CHANGE_ACTION_ROLES)
+    if _is_non_scoring_defensive_label(normalized_label):
+        return bool(role_keys & TEAM_QUICK_SCAN_DEFENSIVE_STOP_ACTION_ROLES)
     return True
 
 
@@ -739,6 +745,13 @@ def _is_non_scoring_defensive_label(label: str) -> bool:
     if "turnover" in tokens and tokens & {"forced", "force", "defensive", "defense", "steal", "strip"}:
         return True
     return tokens == {"stop"} or "defensive stop" in label or "defense stop" in label
+
+
+def _is_possession_change_defensive_label(label: str) -> bool:
+    tokens = _label_tokens(label)
+    if tokens & {"steal", "strip"}:
+        return True
+    return "turnover" in tokens and tokens & {"forced", "force", "defensive", "defense", "steal", "strip"}
 
 
 def _is_scoring_or_shot_like_label(label: str) -> bool:

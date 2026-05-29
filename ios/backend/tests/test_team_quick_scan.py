@@ -781,6 +781,110 @@ class TeamQuickScanTests(unittest.TestCase):
         self.assertEqual(scanned[0].teamAttribution.evidenceFrameRefs, ["clip_0_release", "clip_0_result"])
         self.assertEqual(scanned[0].teamAttribution.evidenceRoleGroups, ["action", "outcome"])
 
+    def test_high_confidence_steal_attribution_requires_possession_change_evidence(self) -> None:
+        clips = [_clip("Steal", 18.0, 22.0, 20.0)]
+        frames = [
+            QuickScanFrame(frame_ref="clip_0_setup", role="defenseSetup", time_seconds=18.4, data_url="data:image/jpeg;base64,aaa", clip_ref="clip_0"),
+            QuickScanFrame(frame_ref="clip_0_outcome", role="defenseOutcome", time_seconds=21.4, data_url="data:image/jpeg;base64,bbb", clip_ref="clip_0"),
+        ]
+
+        def fake_client(*_args):
+            return _response(
+                {
+                    "teams": [
+                        {
+                            "teamId": "team_dark",
+                            "label": "Dark jerseys",
+                            "colorLabel": "black",
+                            "primaryColorHex": None,
+                            "confidence": 0.93,
+                            "reason": "Dark jerseys are visible.",
+                        }
+                    ],
+                    "clipAttributions": [
+                        {
+                            "clipRef": "clip_0",
+                            "teamId": "team_dark",
+                            "label": "Dark jerseys",
+                            "colorLabel": "black",
+                            "confidence": 0.92,
+                            "reason": "Dark jerseys are defending, but the cited frames miss the steal action.",
+                            "evidenceFrameRefs": ["clip_0_setup", "clip_0_outcome"],
+                        }
+                    ],
+                }
+            )
+
+        with tempfile.TemporaryDirectory(prefix="hoopclips-team-scan-steal-missingaction-") as temp_dir:
+            source_path = Path(temp_dir) / "source.mp4"
+            source_path.write_bytes(b"video")
+            with patch("app.team_quick_scan._extract_quick_scan_frames", return_value=frames):
+                scanned, _teams, applied = apply_team_quick_scan(
+                    source_path,
+                    24.0,
+                    clips,
+                    _settings(),
+                    response_client=fake_client,
+                )
+
+        self.assertTrue(applied)
+        self.assertEqual(scanned[0].teamAttribution.teamId, "team_dark")
+        self.assertLess(scanned[0].teamAttribution.confidence, 0.85)
+        self.assertEqual(scanned[0].teamAttribution.evidenceFrameRefs, ["clip_0_setup", "clip_0_outcome"])
+        self.assertEqual(scanned[0].teamAttribution.evidenceRoleGroups, ["setup", "outcome"])
+
+    def test_high_confidence_steal_attribution_accepts_possession_change_evidence(self) -> None:
+        clips = [_clip("Steal", 18.0, 22.0, 20.0)]
+        frames = [
+            QuickScanFrame(frame_ref="clip_0_change", role="possessionChange", time_seconds=20.0, data_url="data:image/jpeg;base64,aaa", clip_ref="clip_0"),
+            QuickScanFrame(frame_ref="clip_0_outcome", role="defenseOutcome", time_seconds=21.4, data_url="data:image/jpeg;base64,bbb", clip_ref="clip_0"),
+        ]
+
+        def fake_client(*_args):
+            return _response(
+                {
+                    "teams": [
+                        {
+                            "teamId": "team_dark",
+                            "label": "Dark jerseys",
+                            "colorLabel": "black",
+                            "primaryColorHex": None,
+                            "confidence": 0.93,
+                            "reason": "Dark jerseys are visible.",
+                        }
+                    ],
+                    "clipAttributions": [
+                        {
+                            "clipRef": "clip_0",
+                            "teamId": "team_dark",
+                            "label": "Dark jerseys",
+                            "colorLabel": "black",
+                            "confidence": 0.92,
+                            "reason": "Possession-change and outcome frames show the steal by the dark jerseys.",
+                            "evidenceFrameRefs": ["clip_0_change", "clip_0_outcome"],
+                        }
+                    ],
+                }
+            )
+
+        with tempfile.TemporaryDirectory(prefix="hoopclips-team-scan-steal-action-") as temp_dir:
+            source_path = Path(temp_dir) / "source.mp4"
+            source_path.write_bytes(b"video")
+            with patch("app.team_quick_scan._extract_quick_scan_frames", return_value=frames):
+                scanned, _teams, applied = apply_team_quick_scan(
+                    source_path,
+                    24.0,
+                    clips,
+                    _settings(),
+                    response_client=fake_client,
+                )
+
+        self.assertTrue(applied)
+        self.assertEqual(scanned[0].teamAttribution.teamId, "team_dark")
+        self.assertEqual(scanned[0].teamAttribution.confidence, 0.92)
+        self.assertEqual(scanned[0].teamAttribution.evidenceFrameRefs, ["clip_0_change", "clip_0_outcome"])
+        self.assertEqual(scanned[0].teamAttribution.evidenceRoleGroups, ["action", "outcome"])
+
     def test_high_confidence_scoring_attribution_requires_shooter_ownership_frame(self) -> None:
         clips = [_clip("Made Shot", 8.0, 12.5, 10.0)]
         frames = [
