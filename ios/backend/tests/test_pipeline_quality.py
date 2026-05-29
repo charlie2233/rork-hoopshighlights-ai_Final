@@ -896,6 +896,12 @@ class PipelineQualityTests(unittest.TestCase):
         self.assertTrue(_is_defensive_label("Defensive Stop"))
         self.assertTrue(_is_defensive_label("Steal Finish"))
 
+    def test_defensive_label_classifier_requires_forced_turnover_context(self) -> None:
+        self.assertFalse(_is_defensive_label("Turnover"))
+        self.assertFalse(_is_defensive_label("Unforced Turnover"))
+        self.assertTrue(_is_defensive_label("Forced Turnover"))
+        self.assertTrue(_is_defensive_label("Defensive Turnover"))
+
     def test_selected_team_visible_results_can_exclude_uncertain_when_requested(self) -> None:
         team_selection = TeamSelection(mode="team", teamId="team_dark", colorLabel="black", includeUncertain=False)
         clips = [

@@ -842,7 +842,7 @@ def _is_shot_like_label(label: str) -> bool:
 def _is_defensive_label(label: str) -> bool:
     normalized = label.strip().lower()
     tokens = set(re.findall(r"[a-z0-9]+", normalized))
-    strong_tokens = {
+    if tokens & {
         "defense",
         "defensive",
         "block",
@@ -850,12 +850,11 @@ def _is_defensive_label(label: str) -> bool:
         "steal",
         "strip",
         "contest",
-        "turnover",
-        "forced",
         "pressure",
         "lockdown",
-    }
-    if tokens & strong_tokens:
+    }:
+        return True
+    if "turnover" in tokens and "unforced" not in tokens and tokens & {"forced", "force", "defensive", "defense", "steal", "strip"}:
         return True
     return "stop" in tokens and (normalized == "stop" or "defensive stop" in normalized or "defense stop" in normalized)
 
