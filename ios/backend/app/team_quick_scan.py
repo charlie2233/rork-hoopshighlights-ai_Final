@@ -728,24 +728,17 @@ def _clip_sample_times(clip: CloudClip, count: int) -> list[tuple[str, float]]:
 
 
 def _is_block_like_label(label: str) -> bool:
-    return any(token in label for token in ("block", "blocked", "contest"))
+    tokens = _label_tokens(label)
+    return bool(tokens & {"block", "blocked", "contest"})
 
 
 def _is_non_scoring_defensive_label(label: str) -> bool:
-    return any(
-        token in label
-        for token in (
-            "defense",
-            "defensive",
-            "steal",
-            "strip",
-            "turnover",
-            "forced",
-            "stop",
-            "pressure",
-            "lockdown",
-        )
-    )
+    tokens = _label_tokens(label)
+    if tokens & {"defense", "defensive", "steal", "strip", "pressure", "lockdown"}:
+        return True
+    if "turnover" in tokens and tokens & {"forced", "force", "defensive", "defense", "steal", "strip"}:
+        return True
+    return tokens == {"stop"} or "defensive stop" in label or "defense stop" in label
 
 
 def _is_scoring_or_shot_like_label(label: str) -> bool:
@@ -765,6 +758,10 @@ def _is_scoring_or_shot_like_label(label: str) -> bool:
             "3pt",
         )
     )
+
+
+def _label_tokens(label: str) -> set[str]:
+    return set(re.findall(r"[a-z0-9]+", label.lower()))
 
 
 def _dedupe_times(times: Sequence[float], duration_seconds: float) -> list[float]:

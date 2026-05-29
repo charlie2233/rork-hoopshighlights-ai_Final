@@ -387,12 +387,15 @@ class TeamQuickScanTests(unittest.TestCase):
     def test_defensive_quick_scan_samples_possession_change_roles(self) -> None:
         steal = _clip("Steal", 18.0, 22.0, 20.0)
         block = _clip("Block", 6.0, 10.5, 8.0)
+        forced_turnover = _clip("Forced Turnover", 32.0, 36.5, 34.0)
 
         steal_roles = [role for role, _ in _clip_sample_times(steal, 3)]
         block_roles = [role for role, _ in _clip_sample_times(block, 3)]
+        turnover_roles = [role for role, _ in _clip_sample_times(forced_turnover, 3)]
 
         self.assertEqual(steal_roles, ["defenseSetup", "possessionChange", "recovery"])
         self.assertEqual(block_roles, ["defenseSetup", "challenge", "defenseOutcome"])
+        self.assertEqual(turnover_roles, ["defenseSetup", "possessionChange", "recovery"])
 
     def test_rich_defensive_quick_scan_samples_full_ownership_roles(self) -> None:
         steal = _clip("Steal", 18.0, 22.0, 20.0)
@@ -434,6 +437,20 @@ class TeamQuickScanTests(unittest.TestCase):
         roles = [role for role, _ in _clip_sample_times(made_shot, 4)]
 
         self.assertEqual(roles, ["ballHandlerSetup", "release", "rimResult", "followThrough"])
+
+    def test_stop_and_pop_jumper_uses_scoring_roles_not_defensive_stop(self) -> None:
+        jumper = _clip("Stop and Pop Jumper", 8.0, 12.5, 10.0)
+
+        roles = [role for role, _ in _clip_sample_times(jumper, 4)]
+
+        self.assertEqual(roles, ["ballHandlerSetup", "release", "rimResult", "followThrough"])
+
+    def test_plain_turnover_uses_generic_roles_not_defensive_ownership(self) -> None:
+        turnover = _clip("Turnover", 8.0, 12.5, 10.0)
+
+        roles = [role for role, _ in _clip_sample_times(turnover, 4)]
+
+        self.assertEqual(roles, ["startContext", "eventCenter", "finishContext", "midAction"])
 
     def test_rich_scoring_quick_scan_samples_full_shooter_and_result_roles(self) -> None:
         made_shot = _clip("Made Shot", 8.0, 12.5, 10.0)
