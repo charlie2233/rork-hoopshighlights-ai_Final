@@ -34,6 +34,8 @@ class LaunchProviderInputHandoffTests(unittest.TestCase):
         self.assertEqual(handoff.cloudflareTokenFormGuide.endDate, "2026-08-27")
         self.assertIn("Workers Scripts: Edit", handoff.cloudflareTokenFormGuide.permissions)
         self.assertIn("Workers R2 Storage: Edit", handoff.cloudflareTokenFormGuide.permissions)
+        self.assertTrue(any("missing Secret Manager secret is a repair action" in item for item in handoff.gcpSecretRepairPolicy))
+        self.assertTrue(any("HOOPS_OPENAI_API_KEY" in item for item in handoff.gcpSecretRepairPolicy))
         self.assertEqual([item.name for item in handoff.localInputs], ["HOOPS_DEVELOPMENT_TEAM"])
 
     def test_markdown_uses_placeholders_without_secret_values(self) -> None:
@@ -52,6 +54,10 @@ class LaunchProviderInputHandoffTests(unittest.TestCase):
         self.assertIn("\"ENABLED\"", markdown)
         self.assertIn("GitHub Actions billing/spending/startability fixed", markdown)
         self.assertIn("Atlas / Browser Agent Prompt", markdown)
+        self.assertIn("GCP Secret Repair Policy", markdown)
+        self.assertIn("A missing Secret Manager secret is a repair action", markdown)
+        self.assertIn("HOOPS_OPENAI_API_KEY present and enabled: yes/no", markdown)
+        self.assertIn("Do not stop after reporting the missing secret", markdown)
         self.assertIn("Do not paste, reveal, summarize, screenshot, or return", markdown)
         self.assertIn("HOOPS_DEVELOPMENT_TEAM = <team-id>", markdown)
         self.assertIn("Do not paste secret values", markdown)
@@ -84,7 +90,10 @@ class LaunchProviderInputHandoffTests(unittest.TestCase):
         self.assertIn("Workers Scripts: Edit", payload["cloudflareTokenFormGuide"]["permissions"])
         self.assertIn("TTL start date", payload["atlasAgentPrompt"])
         self.assertIn("Return only this non-secret status", payload["atlasAgentPrompt"])
+        self.assertIn("HOOPS_OPENAI_API_KEY present and enabled: yes/no", payload["atlasAgentPrompt"])
+        self.assertIn("Do not stop after reporting the missing secret", payload["atlasAgentPrompt"])
         self.assertIn("GitHub Actions billing/spending/startability fixed", payload["atlasAgentPrompt"])
+        self.assertTrue(any("HOOPS_OPENAI_API_KEY" in item for item in payload["gcpSecretRepairPolicy"]))
         self.assertTrue(any("billing/spending-limit" in item for item in payload["manualGates"]))
         self.assertIn("python3 scripts/configure_github_staging_public_variables.py", payload["verificationCommands"])
         self.assertIn(

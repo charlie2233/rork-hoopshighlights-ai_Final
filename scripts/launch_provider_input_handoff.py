@@ -47,6 +47,12 @@ GITHUB_ACTIONS_STARTABILITY_GATE = (
     "Fix GitHub Actions billing/spending-limit state so Cloud Edit Deploy Preflight "
     "and iOS Internal TestFlight Upload runs can start on GitHub-hosted runners."
 )
+GCP_SECRET_REPAIR_POLICY = [
+    "A missing Secret Manager secret is a repair action, not a terminal failure: create it and add a latest ENABLED version from an operator-held value.",
+    "For HOOPS_OPENAI_API_KEY, store the OpenAI key only in GCP Secret Manager; do not mirror it into GitHub secrets, chat, docs, screenshots, or logs.",
+    "After repair, verify each required secret's latest version state is exactly ENABLED without printing secret payloads.",
+    "After secret versions are enabled, verify the staging deploy service account has Secret Manager Secret Accessor for the required secret names.",
+]
 
 
 @dataclass(frozen=True)
@@ -79,6 +85,7 @@ class Handoff:
     githubSecrets: list[HandoffInput]
     githubVariables: list[HandoffInput]
     gcpSecretManagerSecrets: list[HandoffInput]
+    gcpSecretRepairPolicy: list[str]
     cloudflareTokenRequirements: list[str]
     cloudflareTokenFormGuide: CloudflareTokenFormGuide
     localInputs: list[HandoffInput]
@@ -234,6 +241,7 @@ def build_handoff(ref: str | None = None, today: date | None = None) -> Handoff:
         githubSecrets=github_secrets,
         githubVariables=github_variables,
         gcpSecretManagerSecrets=gcp_secret_manager_secrets,
+        gcpSecretRepairPolicy=GCP_SECRET_REPAIR_POLICY,
         cloudflareTokenRequirements=CLOUDFLARE_TOKEN_REQUIREMENTS,
         cloudflareTokenFormGuide=cloudflare_form_guide,
         localInputs=local_inputs,
@@ -261,6 +269,8 @@ def render_markdown(handoff: Handoff) -> str:
     lines.extend(render_input_rows(handoff.githubVariables))
     lines.extend(["", "## GCP Secret Manager Secrets", ""])
     lines.extend(render_input_rows(handoff.gcpSecretManagerSecrets))
+    lines.extend(["", "## GCP Secret Repair Policy", ""])
+    lines.extend(f"- {policy}" for policy in handoff.gcpSecretRepairPolicy)
     lines.extend(["", "## Cloudflare Token Requirements", ""])
     lines.extend(f"- {requirement}" for requirement in handoff.cloudflareTokenRequirements)
     lines.extend(["", "## Cloudflare Dashboard Form Guide", ""])
@@ -318,6 +328,8 @@ Do not paste, reveal, summarize, screenshot, or return private key material, API
 
 1. In GCP project {GCP_PROJECT}, verify these Secret Manager secrets exist and have an enabled latest version:
 {secret_list}
+   If a secret is missing, including HOOPS_OPENAI_API_KEY, create it and add a latest ENABLED version from an operator-held value. Do not stop after reporting the missing secret unless the operator-held value is unavailable.
+   Never print or return the secret value. For HOOPS_OPENAI_API_KEY, store it only in GCP Secret Manager.
 2. In GitHub billing/settings for the repo owner, verify Actions GitHub-hosted runners can start and repair any failed-payment or spending-limit blocker.
 3. Ensure the GitHub Actions deploy service account configured in staging / GCP_DEPLOY_SERVICE_ACCOUNT has Secret Manager Secret Accessor for those secrets.
 4. In Cloudflare, create or replace a scoped API token:
@@ -335,7 +347,11 @@ Do not paste, reveal, summarize, screenshot, or return private key material, API
 {cloudflare_notes}
 5. Set that token directly as GitHub environment secret staging / CLOUDFLARE_API_TOKEN for {REPO}.
 6. Return only this non-secret status:
-   - GCP secrets present and enabled: yes/no
+   - HOOPS_EDITING_SERVICE_SECRET present and enabled: yes/no
+   - HOOPS_R2_ACCESS_KEY_ID present and enabled: yes/no
+   - HOOPS_R2_SECRET_ACCESS_KEY present and enabled: yes/no
+   - HOOPS_OPENAI_API_KEY present and enabled: yes/no
+   - all required GCP secrets present and enabled: yes/no
    - GitHub Actions billing/spending/startability fixed: yes/no
    - deploy service account has Secret Manager access: yes/no
    - Cloudflare token replaced or rescope completed: yes/no
