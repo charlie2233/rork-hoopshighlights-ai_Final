@@ -283,15 +283,59 @@ def _with_fallback(
     sampled_clip_count: int = 0,
     sampled_frame_count: int = 0,
 ) -> CreateEditJobRequest:
+    kept_clip_ids, rejected_clip_ids, rejected_reason_counts = _fallback_quality_receipt(request)
     summary = GPTHighlightRerankSummary(
         status=status if status in {"disabled", "fallback"} else "fallback",
         model=model,
         sampledClipCount=sampled_clip_count,
         sampledFrameCount=sampled_frame_count,
+        keptClipIds=kept_clip_ids,
+        rejectedClipIds=rejected_clip_ids,
         uncertainReviewClipIds=uncertain_review_clip_ids_for_team_selection(request.clips, request.teamSelection),
+        rejectedReasonCounts=rejected_reason_counts,
         fallbackReason=reason,
     )
     return request.model_copy(update={"gptRerankSummary": summary})
+
+
+def _fallback_quality_receipt(request: CreateEditJobRequest) -> tuple[List[str], List[str], Dict[str, int]]:
+    render_clips = filter_clips_for_team_selection(
+        request.clips,
+        request.teamSelection,
+        include_review_only_uncertain=False,
+    )
+    render_clip_ids = {clip.id for clip in render_clips}
+    eligible_clips = rank_clips([clip for clip in render_clips if is_plan_quality_eligible_clip(clip)])
+    eligible_clip_ids = {clip.id for clip in eligible_clips}
+    rejected_clip_ids: List[str] = []
+    rejected_reason_counts: Dict[str, int] = {}
+
+    for clip in request.clips:
+        if clip.id in eligible_clip_ids:
+            continue
+        reason = _fallback_rejection_reason(clip, request, render_clip_ids)
+        rejected_clip_ids.append(clip.id)
+        rejected_reason_counts[reason] = rejected_reason_counts.get(reason, 0) + 1
+
+    return (
+        [clip.id for clip in eligible_clips[:GPT_CANDIDATE_REVIEW_LIMIT]],
+        rejected_clip_ids[:GPT_CANDIDATE_REVIEW_LIMIT],
+        rejected_reason_counts,
+    )
+
+
+def _fallback_rejection_reason(
+    clip: EditCandidateClip,
+    request: CreateEditJobRequest,
+    render_clip_ids: set[str],
+) -> str:
+    if request.teamSelection is not None and request.teamSelection.mode == "team":
+        status = team_attribution_status(clip, request.teamSelection)
+        if status == "opponent":
+            return "opponent_team_candidate"
+        if status == "uncertain" and clip.id not in render_clip_ids:
+            return "needs_manual_team_review"
+    return "candidate_missing_minimum_quality_context"
 
 
 def expand_shot_candidate_windows_from_source_path(

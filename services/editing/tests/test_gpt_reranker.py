@@ -300,8 +300,58 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertIsNotNone(result.gptRerankSummary)
         self.assertEqual(result.gptRerankSummary.status, "disabled")
         self.assertEqual(result.gptRerankSummary.fallbackReason, "disabled")
+        self.assertEqual(result.gptRerankSummary.keptClipIds, ["dark_make"])
         self.assertEqual(result.gptRerankSummary.uncertainReviewClipIds, ["uncertain_make"])
         self.assertNotIn("light_make", result.gptRerankSummary.uncertainReviewClipIds)
+        self.assertEqual(result.gptRerankSummary.rejectedReasonCounts["opponent_team_candidate"], 1)
+        self.assertEqual(result.gptRerankSummary.rejectedReasonCounts["needs_manual_team_review"], 1)
+
+    def test_disabled_gpt_fallback_receipt_reports_quality_rejections(self) -> None:
+        settings = GPTHighlightRerankerSettings(
+            enabled=False,
+            api_key=None,
+            model="gpt-test",
+            endpoint="https://api.openai.test/v1/responses",
+            timeout_seconds=1.0,
+            max_output_tokens=512,
+            free_max_clips=8,
+            paid_max_clips=24,
+            free_frames_per_clip=3,
+            paid_frames_per_clip=5,
+            frame_width=512,
+            jpeg_quality=5,
+            max_image_bytes=180_000,
+            image_detail="low",
+        )
+        request = CreateEditJobRequest(
+            videoId="video_disabled_quality",
+            analysisJobId="analysis_disabled_quality",
+            installId="install-123",
+            sourceObjectKey="uploads/source.mp4",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="free",
+            clips=[
+                {**_clip("tiny", 0.0, 0.99), "end": 0.1, "eventCenter": 0.05},
+                {**_clip("pre_basket", 10.0, 0.98), "end": 16.0, "eventCenter": 10.1},
+                _clip("complete_make", 20.0, 0.78),
+                _labeled_clip("clear_block", 32.0, 0.74, "Block"),
+            ],
+        )
+
+        result = gpt_reranker.rerank_edit_request_with_gpt(
+            request,
+            Path("/tmp/hoopclips-missing-source.mp4"),
+            settings,
+        )
+
+        self.assertEqual(result.gptRerankSummary.status, "disabled")
+        self.assertEqual(result.gptRerankSummary.keptClipIds, ["complete_make", "clear_block"])
+        self.assertEqual(set(result.gptRerankSummary.rejectedClipIds), {"tiny", "pre_basket"})
+        self.assertEqual(
+            result.gptRerankSummary.rejectedReasonCounts["candidate_missing_minimum_quality_context"],
+            2,
+        )
 
     def test_payload_preserves_explicit_uncertain_team_status(self) -> None:
         settings = GPTHighlightRerankerSettings.from_env()
@@ -1919,7 +1969,7 @@ class GPTHighlightRerankerTests(unittest.TestCase):
 
         self.assertEqual(result.gptRerankSummary.status, "fallback")
         self.assertEqual(result.gptRerankSummary.fallbackReason, "incomplete_gpt_decisions")
-        self.assertEqual(result.gptRerankSummary.keptClipIds, [])
+        self.assertEqual(result.gptRerankSummary.keptClipIds, observed_clip_ids)
         self.assertEqual(result.gptRerankSummary.rejectedClipIds, [])
         self.assertEqual([clip.id for clip in result.clips], observed_clip_ids)
 
@@ -2007,7 +2057,7 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertEqual(observed_clip_ids, ["c0", "c1"])
         self.assertEqual(result.gptRerankSummary.status, "fallback")
         self.assertEqual(result.gptRerankSummary.fallbackReason, "incomplete_gpt_decisions")
-        self.assertEqual(result.gptRerankSummary.keptClipIds, [])
+        self.assertEqual(result.gptRerankSummary.keptClipIds, ["c0", "c1", "c2"])
         self.assertEqual(result.gptRerankSummary.rejectedClipIds, [])
         self.assertEqual([clip.id for clip in result.clips], ["c0", "c1", "c2"])
 
