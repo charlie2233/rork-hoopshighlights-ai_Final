@@ -207,6 +207,7 @@ def build_handoff(ref: str | None = None, today: date | None = None) -> Handoff:
     ]
     verification_commands = [
         "python3 scripts/configure_github_staging_public_variables.py",
+        "python3 scripts/build_launch_team_accuracy_report.py --manifest artifacts/team_highlight_accuracy_manifest.json --eval-output artifacts/team_highlight_eval.json --report-output artifacts/team_highlight_accuracy_report.json --json",
         "python3 -m scripts.evaluate_team_highlight_accuracy artifacts/team_highlight_eval.json --json > artifacts/team_highlight_accuracy_report.json",
         "python3 scripts/submission_readiness_preflight.py --team-accuracy-report artifacts/team_highlight_accuracy_report.json",
         "python3 scripts/configure_github_staging_public_variables.py --apply",

@@ -88,6 +88,10 @@ class LaunchProviderInputHandoffTests(unittest.TestCase):
         self.assertTrue(any("billing/spending-limit" in item for item in payload["manualGates"]))
         self.assertIn("python3 scripts/configure_github_staging_public_variables.py", payload["verificationCommands"])
         self.assertIn(
+            "python3 scripts/build_launch_team_accuracy_report.py --manifest artifacts/team_highlight_accuracy_manifest.json --eval-output artifacts/team_highlight_eval.json --report-output artifacts/team_highlight_accuracy_report.json --json",
+            payload["verificationCommands"],
+        )
+        self.assertIn(
             "python3 -m scripts.evaluate_team_highlight_accuracy artifacts/team_highlight_eval.json --json > artifacts/team_highlight_accuracy_report.json",
             payload["verificationCommands"],
         )
