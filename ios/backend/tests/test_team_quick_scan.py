@@ -1589,6 +1589,122 @@ class TeamQuickScanTests(unittest.TestCase):
             self.assertEqual(len(materialize_calls), 1)
             self.assertEqual(materialize_calls[0][1], "game.mp4")
 
+    def test_analyze_source_endpoint_accepts_worker_dispatch_and_posts_callback(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="hoopclips-worker-analyze-") as temp_dir:
+            root = Path(temp_dir)
+            settings = replace(_local_settings(root), internal_process_secret="dispatch-secret")
+            app = create_app(settings)
+            client = TestClient(app)
+            source_path = root / "downloaded-source.mp4"
+            source_path.write_bytes(b"fakevideo")
+            captured_callbacks = []
+            team_selection = {
+                "mode": "team",
+                "teamId": "team_dark",
+                "label": "Dark jerseys",
+                "colorLabel": "black",
+                "confidenceThreshold": 0.85,
+                "includeUncertain": True,
+            }
+
+            async def fake_materialize_remote_source(source_url, filename, max_file_size_bytes, upload_root):
+                self.assertEqual(filename, "selected-team.mp4")
+                self.assertTrue(source_url.startswith("https://r2.local/"))
+                return MaterializedSource(local_path=source_path, cleanup_after_use=False)
+
+            def fake_run_analysis(job, _settings, local_path):
+                self.assertEqual(local_path, source_path)
+                self.assertEqual(job.job_id, "job_worker_analyze")
+                self.assertEqual(job.filename, "selected-team.mp4")
+                self.assertEqual(job.duration_seconds, 30.0)
+                self.assertIsNotNone(job.team_selection)
+                assert job.team_selection is not None
+                self.assertEqual(job.team_selection.teamId, "team_dark")
+                return CloudAnalysisResult(
+                    clipCount=1,
+                    clips=[
+                        _team_clip(
+                            "Steal",
+                            4.0,
+                            "team_dark",
+                            "black",
+                            0.91,
+                            status="matched",
+                        )
+                    ],
+                    diagnostics=CloudDiagnostics(
+                        processingMs=1200,
+                        backendModelVersion="cloud-v1",
+                        usedVideoIntelligence=False,
+                        usedGeminiRelabeling=False,
+                        candidateSegments=1,
+                        finalSegments=1,
+                        usedTeamQuickScan=True,
+                    ),
+                    detectedTeams=[
+                        TeamOption(teamId="team_dark", label="Dark jerseys", colorLabel="black", confidence=0.93, source="quick_scan")
+                    ],
+                    teamSelection=TeamSelection.model_validate(team_selection),
+                )
+
+            async def fake_post_inference_callback(callback_url, callback_secret, payload):
+                captured_callbacks.append(
+                    {
+                        "callbackUrl": callback_url,
+                        "callbackSecret": callback_secret,
+                        "payload": payload,
+                    }
+                )
+
+            with (
+                patch("app.api.materialize_remote_source", side_effect=fake_materialize_remote_source),
+                patch("app.api.run_analysis", side_effect=fake_run_analysis),
+                patch("app.api._post_inference_callback", side_effect=fake_post_inference_callback),
+            ):
+                response = client.post(
+                    "/v1/analyze",
+                    json={
+                        "jobId": "job_worker_analyze",
+                        "requestId": "req_worker_analyze",
+                        "uploadTraceId": "upload_trace_worker",
+                        "inferenceAttemptId": "attempt_worker",
+                        "traceId": "trace_worker",
+                        "filename": "selected-team.mp4",
+                        "contentType": "video/mp4",
+                        "fileSizeBytes": 9,
+                        "durationSeconds": 30.0,
+                        "sourceObjectKey": "uploads/job_worker_analyze/selected-team.mp4",
+                        "sourceUrl": "https://r2.local/hoopsclips-uploads/uploads/job_worker_analyze/selected-team.mp4?signature=redacted",
+                        "resultObjectKey": "results/job_worker_analyze/result.json",
+                        "callbackUrl": "https://control-plane.local/internal/inference/callback",
+                        "callbackSecret": "callback-secret",
+                        "schemaVersion": "v1",
+                        "modelVersion": "editing-cloud-v1",
+                        "installId": "install-123456",
+                        "appVersion": "1.0",
+                        "analysisVersion": "cloud-v1",
+                        "teamSelection": team_selection,
+                        "requestedModel": "videomae",
+                    },
+                    headers={"x-hoops-inference-secret": "dispatch-secret"},
+                )
+
+            self.assertEqual(response.status_code, 202)
+            self.assertEqual(response.json()["status"], "accepted")
+            self.assertEqual(len(captured_callbacks), 1)
+            callback = captured_callbacks[0]
+            self.assertEqual(callback["callbackSecret"], "callback-secret")
+            payload = callback["payload"]
+            self.assertEqual(payload["jobId"], "job_worker_analyze")
+            self.assertEqual(payload["requestId"], "req_worker_analyze")
+            self.assertEqual(payload["status"], "succeeded")
+            self.assertEqual(payload["inferenceAttemptId"], "attempt_worker")
+            self.assertEqual(payload["results"]["teamSelection"]["teamId"], "team_dark")
+            self.assertEqual(payload["results"]["clips"][0]["teamAttributionStatus"], "matched")
+            serialized_callback = json.dumps(payload)
+            self.assertNotIn("sourceUrl", serialized_callback)
+            self.assertNotIn("signature=redacted", serialized_callback)
+
     def test_scan_source_endpoint_requires_internal_secret_when_configured(self) -> None:
         with tempfile.TemporaryDirectory(prefix="hoopclips-team-scan-secret-") as temp_dir:
             settings = replace(_local_settings(Path(temp_dir)), internal_process_secret="scan-secret")

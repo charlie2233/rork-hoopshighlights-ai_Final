@@ -174,6 +174,17 @@ export function createControlPlaneHarness(overrides: Partial<Env> = {}): Control
             body
           });
 
+          if (env.APP_ENV === "staging" && (body.teamSelection as { mode?: string } | undefined)?.mode === "team") {
+            return Response.json(
+              {
+                requestId,
+                errorCode: "unsupported_team_selection",
+                errorMessage: "Legacy inference does not accept selected-team dispatch."
+              },
+              { status: 422 }
+            );
+          }
+
           const callbackPayload = buildSuccessCallbackPayload({
             jobId: String(body.jobId ?? "unknown"),
             requestId,
