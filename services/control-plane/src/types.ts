@@ -223,6 +223,8 @@ export interface CloudDiagnostics {
   defensiveReviewSegments?: number;
   blockReviewSegments?: number;
   stealReviewSegments?: number;
+  forcedTurnoverReviewSegments?: number;
+  defensiveStopReviewSegments?: number;
 }
 
 export interface CloudAnalysisResult extends ResponseEnvelope {
