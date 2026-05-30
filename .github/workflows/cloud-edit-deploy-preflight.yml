@@ -14,6 +14,7 @@ on:
         type: choice
         options:
           - codecheck
+          - credential-check
           - preflight
           - deploy
           - rollback
@@ -33,6 +34,7 @@ permissions:
 jobs:
   worker-dry-run:
     name: Worker typecheck and dry run
+    if: github.event_name != 'workflow_dispatch' || inputs.operation != 'credential-check'
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -57,6 +59,7 @@ jobs:
 
   editing-backend-codecheck:
     name: Editing backend Python tests
+    if: github.event_name != 'workflow_dispatch' || inputs.operation != 'credential-check'
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -98,12 +101,84 @@ jobs:
       - name: Run launch script tests
         run: python -m unittest discover -s scripts -p 'test_*.py' -v
 
+  deploy-credential-check:
+    name: Verify cloud deploy credentials only
+    if: github.event_name == 'workflow_dispatch' && inputs.operation == 'credential-check'
+    runs-on: ubuntu-latest
+    environment: staging
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_DEPLOY_SERVICE_ACCOUNT: ${{ secrets.GCP_DEPLOY_SERVICE_ACCOUNT }}
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_REGION: ${{ vars.GCP_REGION }}
+      EDITING_SERVICE_NAME: hoopclips-editing-staging
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - name: Install control-plane dependencies
+        run: npm --prefix services/control-plane ci
+
+      - name: Assert cloud deploy inputs are present
+        run: |
+          set -euo pipefail
+          required=(
+            CLOUDFLARE_API_TOKEN
+            GCP_WORKLOAD_IDENTITY_PROVIDER
+            GCP_DEPLOY_SERVICE_ACCOUNT
+            GCP_PROJECT_ID
+            GCP_REGION
+          )
+
+          missing=()
+          for key in "${required[@]}"; do
+            if [[ -z "${!key:-}" ]]; then
+              missing+=("$key")
+            else
+              echo "$key=present"
+            fi
+          done
+
+          if (( ${#missing[@]} > 0 )); then
+            echo "::error::Missing cloud edit deploy inputs: ${missing[*]}"
+            exit 1
+          fi
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Verify editing deploy credential preflight
+        run: |
+          set -euo pipefail
+          if ! python3 services/editing/scripts/deploy_preflight.py \
+            --project "$GCP_PROJECT_ID" \
+            --region "$GCP_REGION" \
+            --require-cloud-run-service \
+            --json >/tmp/editing-deploy-preflight.json; then
+            cat /tmp/editing-deploy-preflight.json
+            exit 1
+          fi
+          echo "credential-only deploy preflight succeeded"
+
   deploy-preflight:
     name: Verify cloud edit deploy secrets
     needs:
       - worker-dry-run
       - editing-backend-codecheck
-    if: github.event_name == 'workflow_dispatch' && inputs.operation != 'codecheck'
+    if: github.event_name == 'workflow_dispatch' && inputs.operation != 'codecheck' && inputs.operation != 'credential-check'
     runs-on: ubuntu-latest
     environment: staging
     env:
@@ -376,6 +451,16 @@ jobs:
               --project="$GCP_PROJECT_ID" \
               --region="$GCP_REGION" \
               --to-revisions <previous-revision>=100
+
+          GitHub Actions staging credential check:
+            gh workflow run "Cloud Edit Deploy Preflight" \
+              --ref ${deploy_ref} \
+              -f operation=credential-check
+
+          GitHub Actions staging full preflight:
+            gh workflow run "Cloud Edit Deploy Preflight" \
+              --ref ${deploy_ref} \
+              -f operation=preflight
 
           GitHub Actions staging deploy:
             gh workflow run "Cloud Edit Deploy Preflight" \

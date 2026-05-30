@@ -20,8 +20,31 @@ class MainWorkflowCodecheckTriggerTests(unittest.TestCase):
                 "python -m unittest discover -s scripts -p 'test_*.py' -v",
             ],
         )
-        self.assertIn("if: github.event_name == 'workflow_dispatch' && inputs.operation != 'codecheck'", text)
+        self.assertIn("if: github.event_name != 'workflow_dispatch' || inputs.operation != 'credential-check'", text)
+        self.assertIn(
+            "if: github.event_name == 'workflow_dispatch' && inputs.operation != 'codecheck' && inputs.operation != 'credential-check'",
+            text,
+        )
         self.assertNotIn("paths:", text)
+
+    def test_cloud_deploy_workflow_has_credential_only_dispatch(self) -> None:
+        text = workflow_text("cloud-edit-deploy-preflight.yml")
+
+        assert_contains_all(
+            self,
+            text,
+            [
+                "- credential-check",
+                "deploy-credential-check:",
+                "Verify cloud deploy credentials only",
+                "if: github.event_name == 'workflow_dispatch' && inputs.operation == 'credential-check'",
+                "npm --prefix services/control-plane ci",
+                "services/editing/scripts/deploy_preflight.py",
+                "credential-only deploy preflight succeeded",
+                "GitHub Actions staging credential check:",
+                "-f operation=credential-check",
+            ],
+        )
 
     def test_cloud_deploy_workflow_deploys_and_verifies_editing_cloud_run(self) -> None:
         text = workflow_text("cloud-edit-deploy-preflight.yml")
