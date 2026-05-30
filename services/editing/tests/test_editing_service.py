@@ -261,6 +261,9 @@ class EditingServiceTests(unittest.TestCase):
                 headers={"x-hoops-inference-secret": "editing-secret"},
                 json={
                     "jobId": "job_team_scan",
+                    "requestId": "request-team-scan",
+                    "uploadTraceId": "upload-trace-team-scan",
+                    "traceId": "trace-team-scan",
                     "installId": "install-team-scan",
                     "sourceUrl": "https://uploads.example.test/signed/video.mp4?secret=hidden",
                     "sourceObjectKey": "uploads/install/video.mp4",
@@ -269,6 +272,8 @@ class EditingServiceTests(unittest.TestCase):
                     "durationSeconds": 24,
                     "appVersion": "1.0.0",
                     "analysisVersion": "phase-team",
+                    "schemaVersion": "2026-05-30",
+                    "modelVersion": "worker-model-v1",
                 },
             )
 

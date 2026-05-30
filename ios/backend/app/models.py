@@ -98,6 +98,9 @@ class ScanCloudAnalysisTeamsRequest(APIModel):
 
 class ScanCloudAnalysisSourceRequest(APIModel):
     jobId: str = Field(min_length=1, max_length=128)
+    requestId: Optional[str] = Field(default=None, min_length=1, max_length=128)
+    uploadTraceId: Optional[str] = Field(default=None, min_length=1, max_length=128)
+    traceId: Optional[str] = Field(default=None, min_length=1, max_length=128)
     installId: str = Field(min_length=8, max_length=128)
     sourceUrl: str = Field(min_length=8)
     sourceObjectKey: Optional[str] = Field(default=None, max_length=512)
@@ -106,6 +109,8 @@ class ScanCloudAnalysisSourceRequest(APIModel):
     durationSeconds: float = Field(gt=0.0)
     appVersion: Optional[str] = Field(default=None, max_length=64)
     analysisVersion: Optional[str] = Field(default=None, max_length=64)
+    schemaVersion: Optional[str] = Field(default=None, max_length=64)
+    modelVersion: Optional[str] = Field(default=None, max_length=120)
 
 
 class ScanCloudAnalysisTeamsResponse(APIModel):

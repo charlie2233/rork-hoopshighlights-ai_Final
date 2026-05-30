@@ -348,6 +348,11 @@ test("control plane falls back to editing team scan provider when inference scan
       });
       assert.equal(body.jobId, createJson.jobId);
       assert.equal(body.filename, "worker-team-scan-fallback.mp4");
+      assert.equal(typeof body.requestId, "string");
+      assert.equal(typeof body.uploadTraceId, "string");
+      assert.equal(typeof body.traceId, "string");
+      assert.equal(typeof body.schemaVersion, "string");
+      assert.equal(body.modelVersion, null);
       assert.equal(typeof body.sourceUrl, "string");
       assert.equal(String(body.sourceUrl).includes("/uploads/"), true);
       if (url.origin === harness.env.INFERENCE_BASE_URL) {
