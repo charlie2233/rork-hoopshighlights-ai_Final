@@ -518,8 +518,6 @@ struct VideoPlayerView: View {
 
                 if AppConstants.requiresCloudVideoPipeline {
                     cloudAnalysisPathView
-                } else {
-                    estimatedTimeView
                 }
             }
         }
@@ -885,21 +883,6 @@ struct VideoPlayerView: View {
                 .foregroundStyle(AppTheme.subtleText)
         }
         .frame(maxWidth: .infinity)
-    }
-
-    private var estimatedTimeView: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "timer")
-                .foregroundStyle(AppTheme.subtleText)
-            let estimatedSeconds = Int(max(viewModel.videoDuration * 0.42, 12))
-            Text("\(languageStore.text(.estimated)): ~\(estimatedSeconds)s \(languageStore.text(.analysis))")
-                .font(.caption)
-                .foregroundStyle(AppTheme.subtleText)
-            Spacer()
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .rorkCard(cornerRadius: 12, fill: AnyShapeStyle(AppTheme.surfaceBg.opacity(0.65)), stroke: AppTheme.softBorder, glowOpacity: 0.03)
     }
 
     private var analysisQualitySummaryRows: [String] {
