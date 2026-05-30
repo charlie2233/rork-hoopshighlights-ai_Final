@@ -10,6 +10,10 @@ import sys
 import time
 from typing import Any
 
+REPO_ROOT_FOR_IMPORTS = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT_FOR_IMPORTS) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT_FOR_IMPORTS))
+
 from scripts.make_team_highlight_label_template import build_label_template
 from scripts.worker_team_scan_smoke import (
     SmokeError,

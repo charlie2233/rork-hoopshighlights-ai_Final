@@ -8,6 +8,10 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
+REPO_ROOT_FOR_IMPORTS = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT_FOR_IMPORTS) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT_FOR_IMPORTS))
+
 from scripts.build_team_highlight_eval_payload import DEFAULT_MIN_OVERLAP_RATIO, build_eval_payload, load_json, number_or_none, string_or_none
 from scripts.evaluate_team_highlight_accuracy import evaluate_accuracy
 

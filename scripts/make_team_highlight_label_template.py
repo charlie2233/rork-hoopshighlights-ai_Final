@@ -7,6 +7,10 @@ import sys
 from pathlib import Path
 from typing import Any
 
+REPO_ROOT_FOR_IMPORTS = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT_FOR_IMPORTS) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT_FOR_IMPORTS))
+
 from scripts.build_team_highlight_eval_payload import (
     extract_analysis_result,
     load_json,
