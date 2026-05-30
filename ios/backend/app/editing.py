@@ -32,6 +32,7 @@ TemplateId = Literal[
     "team_highlight_pro_v1",
 ]
 StoryRole = Literal["opener", "peak", "filler", "closer"]
+CropFocus = Literal["center_action", "ball", "rim", "shooter", "team", "source"]
 ShotTrackingFrameRole = Literal[
     "start",
     "preEvent",
@@ -520,7 +521,7 @@ class TemplatePack(APIModel):
         return self
 
 
-AgentCropFocus = Literal["center_action", "ball", "rim", "shooter", "team", "source"]
+AgentCropFocus = CropFocus
 
 
 class AgentSelectionRules(APIModel):
@@ -1051,7 +1052,7 @@ class GPTHighlightSuggestedEdit(APIModel):
     slowMotion: bool = False
     slowMotionCenter: Optional[float] = Field(default=None, ge=0.0)
     captionMoment: Optional[float] = Field(default=None, ge=0.0)
-    cropFocus: str = Field(default="center_action", max_length=80)
+    cropFocus: CropFocus = "center_action"
     extendBeforeSeconds: float = Field(default=0.0, ge=0.0, le=3.0)
     extendAfterSeconds: float = Field(default=0.0, ge=0.0, le=3.0)
 
@@ -1381,7 +1382,7 @@ class EditPlanClip(APIModel):
     label: str
     caption: str = Field(max_length=MAX_CAPTION_LENGTH)
     captionMoment: Optional[float] = Field(default=None, ge=0.0)
-    cropMode: str
+    cropMode: CropFocus
     effects: List[EditPlanEffect] = Field(default_factory=list)
 
     @model_validator(mode="after")
@@ -2651,7 +2652,7 @@ def build_edit_plan(request: CreateEditJobRequest, edit_job_id: str) -> EditPlan
                 label=clip.label,
                 caption=_caption_for_clip(clip, preset),
                 captionMoment=caption_moment,
-                cropMode=(clip.suggestedCropFocus or "center_action") if aspect_ratio != "source" else "source",
+                cropMode=_crop_mode_for_clip(clip, aspect_ratio),
                 effects=_effects_for(clip, source_start, source_end, preset),
             )
         )
@@ -3479,6 +3480,23 @@ def _clamp_optional_clip_second(value: Optional[float], clip: EditCandidateClip)
     return round(min(max(value, clip.start), clip.end), 3)
 
 
+def _normalize_crop_focus(value: Optional[str], *, allow_source: bool) -> str:
+    normalized = (value or "center_action").strip().lower()
+    if normalized == "center-action":
+        normalized = "center_action"
+    if normalized not in {"center_action", "ball", "rim", "shooter", "team", "source"}:
+        return "center_action"
+    if normalized == "source" and not allow_source:
+        return "center_action"
+    return normalized
+
+
+def _crop_mode_for_clip(clip: EditCandidateClip, aspect_ratio: AspectRatio) -> str:
+    if aspect_ratio == "source":
+        return "source"
+    return _normalize_crop_focus(clip.suggestedCropFocus, allow_source=False)
+
+
 def add_outro_watermark(plan: EditPlan, plan_tier: PlanTier) -> EditPlan:
     return repair_edit_plan(plan, plan_tier)
 
@@ -3519,6 +3537,10 @@ def repair_edit_plan(plan: EditPlan, plan_tier: PlanTier) -> EditPlan:
 
     for clip in data["clips"]:
         clip["caption"] = (clip.get("caption") or "")[:MAX_CAPTION_LENGTH]
+        clip["cropMode"] = _normalize_crop_focus(
+            clip.get("cropMode"),
+            allow_source=data.get("aspectRatio") == "source",
+        )
         deduped_effects = []
         for effect in clip.get("effects", []):
             if effect.get("type") not in template.effectProfile.allowedEffects:

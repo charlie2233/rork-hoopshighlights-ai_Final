@@ -3283,6 +3283,33 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertLess(plan.clips[0].sourceStart, 6.5)
         self.assertEqual(plan.clips[0].sourceStart, 5.0)
 
+    def test_gpt_suggested_crop_focus_is_renderer_safe_enum(self) -> None:
+        allowed = {"center_action", "ball", "rim", "shooter", "team", "source"}
+
+        for crop_focus in allowed:
+            self.assertEqual(GPTHighlightSuggestedEdit(cropFocus=crop_focus).cropFocus, crop_focus)
+
+        with self.assertRaises(ValidationError):
+            GPTHighlightSuggestedEdit(cropFocus="ffmpeg crop=720:1280")
+
+    def test_vertical_plan_ignores_gpt_source_crop_focus(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=15,
+                clips=[
+                    {
+                        **_clip("source_focus", 10.0, "Made Shot", 0.93),
+                        "suggestedCropFocus": "source",
+                    }
+                ],
+            )
+        )
+
+        plan = build_edit_plan(request, "edit_source_crop_focus")
+
+        self.assertEqual(plan.aspectRatio, "9:16")
+        self.assertEqual(plan.clips[0].cropMode, "center_action")
+
     def test_full_game_highlight_uses_widescreen_and_chronological_selection(self) -> None:
         request = CreateEditJobRequest(**_request_payload(preset="full_game_highlight", targetDurationSeconds=60))
 

@@ -1261,6 +1261,10 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         )
         self.assertFalse(suggested_edit_schema["additionalProperties"])
         self.assertEqual(
+            suggested_edit_schema["properties"]["cropFocus"]["enum"],
+            ["center_action", "ball", "rim", "shooter", "team", "source"],
+        )
+        self.assertEqual(
             suggested_edit_schema["required"],
             [
                 "slowMotion",
