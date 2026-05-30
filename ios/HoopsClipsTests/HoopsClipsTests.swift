@@ -9,6 +9,7 @@ import Testing
 import Foundation
 import CoreML
 import Vision
+import UniformTypeIdentifiers
 @testable import HoopsClips
 
 @Suite(.serialized)
@@ -16,6 +17,17 @@ struct HoopsClipsTests {
 
     // Test removed because it relies on local JSON files that were cleaned up
     // @Test func testModelPipelineWithLayupJson() async throws { ... }
+
+    @Test func testVideoImportPolicyUsesFileBackedVideoTypesOnly() {
+        #expect(VideoImportPolicy.usesFileBackedTransferOnly)
+        #expect(VideoImportPolicy.supportedContentTypes == [
+            .video,
+            .movie,
+            .mpeg4Movie,
+            .quickTimeMovie
+        ])
+        #expect(!VideoImportPolicy.supportedContentTypes.contains(.data))
+    }
 
     @Test func testHeuristicFallback() async {
         // Prepare a Clip that should trigger "Posterize" or "Dunk" via heuristics

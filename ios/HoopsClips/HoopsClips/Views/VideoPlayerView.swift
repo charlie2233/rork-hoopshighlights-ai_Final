@@ -73,7 +73,7 @@ struct VideoPlayerView: View {
                 }
             }
             .photosPicker(isPresented: $viewModel.showingVideoPicker, selection: $selectedPhotoItem, matching: .videos)
-            .fileImporter(isPresented: $showingFilePicker, allowedContentTypes: [.movie, .video, .mpeg4Movie, .quickTimeMovie]) { result in
+            .fileImporter(isPresented: $showingFilePicker, allowedContentTypes: VideoImportPolicy.supportedContentTypes) { result in
                 if case .success(let url) = result {
                     importVideo(from: url)
                 } else if case .failure(let error) = result {
@@ -158,7 +158,7 @@ struct VideoPlayerView: View {
             do {
                 try Task.checkCancellation()
 
-                guard let importedVideo = try await item.loadTransferable(type: ImportedVideoFile.self) else {
+                guard let importedVideo = try await VideoImportTransfer.loadFileBackedVideo(from: item) else {
                     await MainActor.run {
                         importErrorMessage = "Hoopclips could not access a local video file from Photos. Save it to Files and import from there, or choose a shorter downloaded clip."
                     }
@@ -1058,6 +1058,26 @@ struct VideoPlayerView: View {
         guard bucket >= 25, bucket <= 100, bucket != lastAnalysisAnnouncementPercent else { return }
         lastAnalysisAnnouncementPercent = bucket
         HoopsAccessibility.announce("Analysis \(bucket) percent complete.")
+    }
+}
+
+enum VideoImportPolicy {
+    static let supportedContentTypes: [UTType] = [
+        .video,
+        .movie,
+        .mpeg4Movie,
+        .quickTimeMovie
+    ]
+
+    static let usesFileBackedTransferOnly = true
+}
+
+private enum VideoImportTransfer {
+    static func loadFileBackedVideo(from item: PhotosPickerItem) async throws -> ImportedVideoFile? {
+        try await Task.detached(priority: .userInitiated) {
+            try Task.checkCancellation()
+            return try await item.loadTransferable(type: ImportedVideoFile.self)
+        }.value
     }
 }
 
