@@ -302,10 +302,27 @@ jobs:
         if: inputs.operation == 'deploy'
         run: |
           set -euo pipefail
-          gcloud builds submit . \
+          image="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/hoopsclips/${EDITING_SERVICE_NAME}:${GITHUB_SHA}"
+          gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
+          docker build \
+            -f services/editing/Dockerfile \
+            -t "$image" \
+            .
+          docker push "$image"
+          gcloud run deploy "$EDITING_SERVICE_NAME" \
             --project="$GCP_PROJECT_ID" \
-            --config=services/editing/cloudbuild.yaml \
-            --substitutions="_IMAGE_TAG=$GITHUB_SHA,_REGION=$GCP_REGION,_SERVICE_NAME=$EDITING_SERVICE_NAME"
+            --image="$image" \
+            --region="$GCP_REGION" \
+            --platform=managed \
+            --allow-unauthenticated \
+            --port=8080 \
+            --memory=2Gi \
+            --cpu=2 \
+            --timeout=900 \
+            --max-instances=1 \
+            --no-cpu-throttling \
+            --set-env-vars="HOOPS_ENVIRONMENT=staging,HOOPS_RENDER_STORAGE_PROVIDER=r2,HOOPS_R2_BUCKET=hoopsclips-results-staging,HOOPS_R2_SOURCE_BUCKET=hoopsclips-uploads-staging,HOOPS_R2_OUTPUT_BUCKET=hoopsclips-results-staging,HOOPS_R2_ENDPOINT_URL=https://78fb4442e6e37b2c46d7e539c6e79172.r2.cloudflarestorage.com,HOOPS_GIT_SHA=${GITHUB_SHA},HOOPS_BACKEND_MODEL_VERSION=editing-cloud-v1,HOOPS_AI_EDIT_ENABLED=true,HOOPS_AI_EDIT_LIVE_RENDER_ENABLED=true,HOOPS_AI_EDIT_REVISION_ENABLED=true,HOOPS_AI_EDIT_TEMPLATE_PACK_ENABLED=true,HOOPS_AI_CLIP_GPT_EDITOR_ENABLED=true,HOOPS_AI_CLIP_GPT_PLAN_EDIT_ENABLED=true,HOOPS_AI_CLIP_GPT_REVISION_ENABLED=true,HOOPS_AI_CLIP_GPT_KEYFRAMES_PER_CLIP=10,HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_FREE=60,HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_PRO=60,HOOPS_AI_CLIP_GPT_TIMEOUT_SECONDS=60,HOOPS_AI_CLIP_GPT_MAX_OUTPUT_TOKENS=12000,HOOPS_GPT_HIGHLIGHT_RERANKER_ENABLED=true" \
+            --set-secrets="HOOPS_EDITING_SERVICE_SECRET=HOOPS_EDITING_SERVICE_SECRET:latest,HOOPS_R2_ACCESS_KEY_ID=HOOPS_R2_ACCESS_KEY_ID:latest,HOOPS_R2_SECRET_ACCESS_KEY=HOOPS_R2_SECRET_ACCESS_KEY:latest,HOOPS_OPENAI_API_KEY=HOOPS_OPENAI_API_KEY:latest"
 
       - name: Verify direct editing version after deploy
         if: inputs.operation == 'deploy'
@@ -425,7 +442,6 @@ jobs:
             - Deploy service account configured in GCP_DEPLOY_SERVICE_ACCOUNT
             - Cloud Run Admin
             - Artifact Registry Writer
-            - Cloud Build submit permissions
             - Secret Manager Secret Accessor for deploy/runtime secret payload access
             - Secret Manager Viewer for deploy-time metadata and latest-version state checks
             - Service Account User for the Cloud Run runtime service account, if required
@@ -441,10 +457,13 @@ jobs:
             npx wrangler deploy --env staging --keep-vars --message "staging deploy <git-sha>"
 
           Staging editing service deploy:
-            gcloud builds submit . \
+            gcloud auth configure-docker "$GCP_REGION-docker.pkg.dev" --quiet
+            docker build -f services/editing/Dockerfile -t "$GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/hoopsclips/hoopclips-editing-staging:$GITHUB_SHA" .
+            docker push "$GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/hoopsclips/hoopclips-editing-staging:$GITHUB_SHA"
+            gcloud run deploy hoopclips-editing-staging \
               --project="$GCP_PROJECT_ID" \
-              --config=services/editing/cloudbuild.yaml \
-              --substitutions=_IMAGE_TAG="$GITHUB_SHA"
+              --region="$GCP_REGION" \
+              --image="$GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/hoopsclips/hoopclips-editing-staging:$GITHUB_SHA"
 
           Cloud Run rollback:
             gcloud run services update-traffic hoopclips-editing-staging \
