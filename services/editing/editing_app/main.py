@@ -67,8 +67,18 @@ from app.editing import (  # noqa: E402
     validate_edit_plan,
 )
 from app.config import get_settings as get_analysis_settings  # noqa: E402
-from app.models import APIError, MaterializedSource, ScanCloudAnalysisSourceRequest, ScanCloudAnalysisTeamsResponse  # noqa: E402
-from app.pipeline import build_team_quick_scan_candidate_clips  # noqa: E402
+from app.models import (  # noqa: E402
+    APIError,
+    CloudAnalysisResult,
+    InferenceDispatchRequest,
+    JobStatus,
+    MaterializedSource,
+    PipelineError,
+    ScanCloudAnalysisSourceRequest,
+    ScanCloudAnalysisTeamsResponse,
+    StoredJob,
+)
+from app.pipeline import build_team_quick_scan_candidate_clips, run_analysis  # noqa: E402
 from app.renderers.ffmpeg_renderer import FfmpegRenderer, ffmpeg_diagnostics  # noqa: E402
 from app.team_quick_scan import apply_team_quick_scan  # noqa: E402
 
@@ -120,6 +130,26 @@ def sanitize_team_scan_filename(filename: str) -> str:
     name = Path(filename).name or "source.mp4"
     normalized = re.sub(r"[^A-Za-z0-9._-]", "_", name)
     return normalized[:120] or "source.mp4"
+
+
+def post_inference_callback(callback_url: str, callback_secret: str, payload: dict[str, Any]) -> None:
+    headers = {
+        "content-type": "application/json",
+        "x-hoops-inference-secret": callback_secret,
+        "x-request-id": str(payload.get("requestId") or ""),
+        "x-trace-id": str(payload.get("traceId") or ""),
+        "x-hoops-upload-trace-id": str(payload.get("uploadTraceId") or ""),
+        "x-hoops-inference-attempt-id": str(payload.get("inferenceAttemptId") or ""),
+    }
+    request = Request(callback_url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
+    try:
+        with urlopen(request, timeout=20) as response:
+            if response.status >= 400:
+                raise EditingServiceError(502, "callback_failed", "Inference callback was rejected by the control plane.")
+    except HTTPError as error:
+        raise EditingServiceError(502, "callback_failed", "Inference callback was rejected by the control plane.") from error
+    except (URLError, TimeoutError, OSError) as error:
+        raise EditingServiceError(502, "callback_failed", "Inference callback could not reach the control plane.") from error
 
 
 def resolve_feature_flags() -> AIEditFeatureFlags:
@@ -184,6 +214,122 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
         expected = resolved_settings.shared_secret
         if expected and value != expected:
             raise EditingServiceError(401, "invalid_editing_secret", "Invalid editing service secret.")
+
+    def analysis_result_confidence(result: CloudAnalysisResult) -> float:
+        if not result.clips:
+            return 0.0
+        return round(sum(clip.confidence for clip in result.clips) / len(result.clips), 4)
+
+    def dispatch_job_from_request(request: InferenceDispatchRequest, job_ttl_seconds: int) -> StoredJob:
+        created_at = now_utc()
+        return StoredJob(
+            job_id=request.jobId,
+            install_id=request.installId,
+            filename=request.filename,
+            content_type=request.contentType or "video/mp4",
+            file_size_bytes=request.fileSizeBytes or 1,
+            duration_seconds=request.durationSeconds,
+            app_version=request.appVersion,
+            analysis_version=request.analysisVersion,
+            created_at=created_at,
+            expires_at=created_at + timedelta(seconds=job_ttl_seconds),
+            object_key=request.sourceObjectKey,
+            team_selection=request.teamSelection,
+            status=JobStatus.PROCESSING,
+            progress=0.62,
+            stage="Analyzing in cloud",
+        )
+
+    def inference_callback_payload(
+        request: InferenceDispatchRequest,
+        *,
+        status: str,
+        stage: str,
+        progress: float,
+        result: Optional[CloudAnalysisResult] = None,
+        failure_reason: Optional[str] = None,
+    ) -> dict[str, Any]:
+        result_confidence = analysis_result_confidence(result) if result is not None else 0.0
+        return {
+            "jobId": request.jobId,
+            "requestId": request.requestId,
+            "status": status,
+            "stage": stage,
+            "progress": progress,
+            "schemaVersion": request.schemaVersion,
+            "modelVersion": request.modelVersion,
+            "failureReason": failure_reason,
+            "resultConfidence": result_confidence,
+            "confidence": result_confidence,
+            "uploadTraceId": request.uploadTraceId,
+            "inferenceAttemptId": request.inferenceAttemptId,
+            "traceId": request.traceId,
+            "results": result.model_dump(mode="json") if result is not None else None,
+        }
+
+    async def run_inference_dispatch(request: InferenceDispatchRequest) -> None:
+        source: Optional[MaterializedSource] = None
+        try:
+            try:
+                analysis_settings = get_analysis_settings()
+            except ValueError as error:
+                raise EditingServiceError(503, "analysis_unconfigured", "Cloud analysis is not configured.") from error
+            source = await run_in_threadpool(
+                materialize_team_scan_source,
+                request.sourceUrl,
+                request.filename,
+                analysis_settings.max_file_size_bytes,
+                resolved_settings.upload_root,
+            )
+            job = dispatch_job_from_request(request, analysis_settings.job_ttl_seconds)
+            result = await run_in_threadpool(run_analysis, job, analysis_settings, source.local_path)
+            payload = inference_callback_payload(
+                request,
+                status="succeeded",
+                stage="Finalizing clips",
+                progress=0.98,
+                result=result,
+            )
+        except EditingServiceError as error:
+            payload = inference_callback_payload(
+                request,
+                status="failed",
+                stage="Inference failed",
+                progress=0.77,
+                failure_reason=error.error_code,
+            )
+        except APIError as error:
+            payload = inference_callback_payload(
+                request,
+                status="failed",
+                stage="Inference failed",
+                progress=0.77,
+                failure_reason=error.error_code,
+            )
+        except PipelineError as error:
+            payload = inference_callback_payload(
+                request,
+                status="failed",
+                stage="Inference failed",
+                progress=0.77,
+                failure_reason=error.error_code,
+            )
+        except Exception:
+            payload = inference_callback_payload(
+                request,
+                status="failed",
+                stage="Inference failed",
+                progress=0.77,
+                failure_reason="processing_error",
+            )
+        finally:
+            if source is not None:
+                source.cleanup()
+
+        try:
+            await run_in_threadpool(post_inference_callback, request.callbackUrl, request.callbackSecret, payload)
+        except Exception:
+            pass
 
     def cache_job(job: StoredRenderJob) -> StoredRenderJob:
         render_jobs[job.render_job_id] = job
@@ -968,6 +1114,21 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             "featureFlags": feature_flags.model_dump(),
             "gptHighlightReranker": gpt_reranker_settings.public_status(),
         }
+
+    @app.post("/v1/analyze", status_code=202, responses={400: {"model": ErrorResponse}, 401: {"model": ErrorResponse}})
+    async def analyze_source(
+        request: InferenceDispatchRequest,
+        background_tasks: BackgroundTasks,
+        x_hoops_inference_secret: Optional[str] = Header(default=None),
+        x_hoops_internal_secret: Optional[str] = Header(default=None),
+        x_hoops_editing_secret: Optional[str] = Header(default=None),
+    ):
+        try:
+            require_secret(x_hoops_inference_secret or x_hoops_internal_secret or x_hoops_editing_secret)
+            background_tasks.add_task(run_inference_dispatch, request)
+            return {"jobId": request.jobId, "status": "accepted"}
+        except EditingServiceError as error:
+            return error_response(error)
 
     @app.post("/v1/team-scan", response_model=ScanCloudAnalysisTeamsResponse, responses={400: {"model": ErrorResponse}, 401: {"model": ErrorResponse}})
     async def scan_source_teams(
