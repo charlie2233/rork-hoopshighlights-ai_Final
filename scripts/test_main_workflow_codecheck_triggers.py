@@ -61,6 +61,7 @@ class MainWorkflowCodecheckTriggerTests(unittest.TestCase):
                 "gcloud run deploy \"$EDITING_SERVICE_NAME\"",
                 "HOOPS_GIT_SHA=${GITHUB_SHA}",
                 "--set-secrets=\"HOOPS_EDITING_SERVICE_SECRET=HOOPS_EDITING_SERVICE_SECRET:latest",
+                "HOOPS_INTERNAL_PROCESS_SECRET=HOOPS_EDITING_SERVICE_SECRET:latest",
                 "Verify direct editing version after deploy",
                 "Verify Worker editing version after deploy",
                 ".featureFlags.aiEditLiveRenderEnabled == true",

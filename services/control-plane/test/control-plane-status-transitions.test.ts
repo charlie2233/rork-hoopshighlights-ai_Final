@@ -312,6 +312,110 @@ test("control plane proxies team scan to inference service before selected team 
   assert.deepEqual(harness.state.queueMessages[0]?.teamSelection?.teamId, "team_dark");
 });
 
+test("control plane falls back to editing team scan provider when inference scan is unavailable", async () => {
+  const harness = createControlPlaneHarness({ APP_ENV: "staging" });
+  const createResponse = await invokePublicRoute(
+    harness,
+    "POST",
+    "/uploads/presign",
+    {
+      filename: "worker-team-scan-fallback.mp4",
+      contentType: "video/mp4",
+      fileSizeBytes: 10485760,
+      durationSeconds: 24,
+      installId: "install-worker-team-fallback",
+      appVersion: "1.0.0",
+      analysisVersion: "phase-team"
+    },
+    { "x-trace-id": "trace-worker-team-scan-fallback" }
+  );
+  const createJson = await parseJsonResponse<{ jobId: string; sourceObjectKey: string; uploadUrl: string }>(
+    createResponse
+  );
+  await uploadObject(harness, createJson.uploadUrl, new TextEncoder().encode("worker fallback team scan"));
+
+  const providerRequests: Array<{ url: string; headers: Record<string, string>; body: Record<string, unknown> }> = [];
+  const originalFetch = globalThis.fetch.bind(globalThis);
+  globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const request = input instanceof Request ? input : new Request(input, init);
+    const url = new URL(request.url);
+    if (url.pathname === "/v1/team-scan") {
+      const body = (await request.json()) as Record<string, unknown>;
+      providerRequests.push({
+        url: url.toString(),
+        headers: Object.fromEntries(request.headers.entries()),
+        body
+      });
+      assert.equal(body.jobId, createJson.jobId);
+      assert.equal(body.filename, "worker-team-scan-fallback.mp4");
+      assert.equal(typeof body.sourceUrl, "string");
+      assert.equal(String(body.sourceUrl).includes("/uploads/"), true);
+      if (url.origin === harness.env.INFERENCE_BASE_URL) {
+        return Response.json({ jobId: createJson.jobId, status: "unavailable", detectedTeams: [] });
+      }
+      if (url.origin === harness.env.EDITING_BASE_URL) {
+        assert.equal(request.headers.get("x-hoops-inference-secret"), harness.env.EDITING_SHARED_SECRET);
+        assert.equal(request.headers.get("x-hoops-internal-secret"), harness.env.EDITING_SHARED_SECRET);
+        return Response.json({
+          jobId: createJson.jobId,
+          status: "scanned",
+          detectedTeams: [
+            {
+              teamId: "team_light",
+              label: "Light jerseys",
+              colorLabel: "white",
+              primaryColorHex: "#f4f4f4",
+              confidence: 0.91,
+              source: "quick_scan"
+            }
+          ],
+          modelVersion: "editing-team-scan-v1"
+        });
+      }
+    }
+    return originalFetch(input, init);
+  };
+
+  try {
+    const scanResponse = await invokePublicRoute(harness, "POST", `/jobs/${createJson.jobId}/team-scan`, {
+      installId: "install-worker-team-fallback"
+    });
+    assert.equal(scanResponse.status, 200);
+    const scanJson = await parseJsonResponse<{
+      status: string;
+      modelVersion: string | null;
+      detectedTeams: Array<{ teamId: string }>;
+    }>(scanResponse);
+    assert.equal(scanJson.status, "scanned");
+    assert.equal(scanJson.modelVersion, "editing-team-scan-v1");
+    assert.deepEqual(scanJson.detectedTeams.map((team) => team.teamId), ["team_light"]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.deepEqual(
+    providerRequests.map((request) => new URL(request.url).origin),
+    [harness.env.INFERENCE_BASE_URL, harness.env.EDITING_BASE_URL]
+  );
+  const eventPayloads = JSON.stringify(harness.state.events.map((event) => event.payload));
+  assert.equal(eventPayloads.includes(createJson.uploadUrl), false);
+  assert.equal(eventPayloads.includes(createJson.sourceObjectKey), false);
+
+  const startResponse = await invokePublicRoute(harness, "POST", `/jobs/${createJson.jobId}/start`, {
+    installId: "install-worker-team-fallback",
+    teamSelection: {
+      mode: "team",
+      teamId: "team_light",
+      label: "Light jerseys",
+      colorLabel: "white",
+      includeUncertain: true
+    }
+  });
+  assert.equal(startResponse.status, 200);
+  assert.equal(harness.state.queueMessages.length, 1);
+  assert.deepEqual(harness.state.queueMessages[0]?.teamSelection?.teamId, "team_light");
+});
+
 test("control plane rejects selected team start until a team scan stores detected teams", async () => {
   const harness = createControlPlaneHarness();
   const createResponse = await invokePublicRoute(

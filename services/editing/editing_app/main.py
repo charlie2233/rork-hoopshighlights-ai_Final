@@ -4,6 +4,7 @@ from datetime import timedelta
 import json
 import os
 from pathlib import Path
+import re
 import tempfile
 from typing import Any, Dict, Optional
 from urllib.error import HTTPError, URLError
@@ -12,6 +13,7 @@ from urllib.request import Request, urlopen
 from uuid import uuid4
 
 from fastapi import BackgroundTasks, FastAPI, Header, Query, Response
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, JSONResponse
 
 from .backend_imports import ensure_ios_backend_on_path
@@ -64,8 +66,60 @@ from app.editing import (  # noqa: E402
     policy_summary_for_client,
     validate_edit_plan,
 )
-from app.models import APIError  # noqa: E402
+from app.config import get_settings as get_analysis_settings  # noqa: E402
+from app.models import APIError, MaterializedSource, ScanCloudAnalysisSourceRequest, ScanCloudAnalysisTeamsResponse  # noqa: E402
+from app.pipeline import build_team_quick_scan_candidate_clips  # noqa: E402
 from app.renderers.ffmpeg_renderer import FfmpegRenderer, ffmpeg_diagnostics  # noqa: E402
+from app.team_quick_scan import apply_team_quick_scan  # noqa: E402
+
+
+def materialize_team_scan_source(
+    source_url: str,
+    filename: str,
+    max_file_size_bytes: int,
+    upload_root: Path,
+) -> MaterializedSource:
+    if not source_url.startswith(("https://", "http://")):
+        raise EditingServiceError(400, "invalid_source_url", "Source video URL is invalid.")
+
+    temp_dir = Path(tempfile.mkdtemp(prefix="hoops-team-scan-", dir=str(upload_root)))
+    local_path = temp_dir / sanitize_team_scan_filename(filename)
+    materialized = MaterializedSource(local_path=local_path, cleanup_after_use=True)
+    written = 0
+    try:
+        request = Request(source_url, headers={"User-Agent": "HoopClipsEditingService/1.0"})
+        with urlopen(request, timeout=90) as response:
+            with local_path.open("wb") as output:
+                while True:
+                    chunk = response.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    written += len(chunk)
+                    if written > max_file_size_bytes:
+                        raise EditingServiceError(
+                            413,
+                            "file_too_large",
+                            "Videos larger than 500 MB are not supported for team scan.",
+                        )
+                    output.write(chunk)
+        if written <= 0:
+            raise EditingServiceError(400, "empty_source", "Source video was empty.")
+        return materialized
+    except EditingServiceError:
+        materialized.cleanup()
+        raise
+    except HTTPError as error:
+        materialized.cleanup()
+        raise EditingServiceError(400, "source_unavailable", "Source video could not be fetched for team scan.") from error
+    except (URLError, TimeoutError, OSError) as error:
+        materialized.cleanup()
+        raise EditingServiceError(400, "source_unavailable", "Source video could not be fetched for team scan.") from error
+
+
+def sanitize_team_scan_filename(filename: str) -> str:
+    name = Path(filename).name or "source.mp4"
+    normalized = re.sub(r"[^A-Za-z0-9._-]", "_", name)
+    return normalized[:120] or "source.mp4"
 
 
 def resolve_feature_flags() -> AIEditFeatureFlags:
@@ -914,6 +968,53 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             "featureFlags": feature_flags.model_dump(),
             "gptHighlightReranker": gpt_reranker_settings.public_status(),
         }
+
+    @app.post("/v1/team-scan", response_model=ScanCloudAnalysisTeamsResponse, responses={400: {"model": ErrorResponse}, 401: {"model": ErrorResponse}})
+    async def scan_source_teams(
+        request: ScanCloudAnalysisSourceRequest,
+        x_hoops_inference_secret: Optional[str] = Header(default=None),
+        x_hoops_internal_secret: Optional[str] = Header(default=None),
+        x_hoops_editing_secret: Optional[str] = Header(default=None),
+    ):
+        source: Optional[MaterializedSource] = None
+        try:
+            require_secret(x_hoops_inference_secret or x_hoops_internal_secret or x_hoops_editing_secret)
+            try:
+                analysis_settings = get_analysis_settings()
+            except ValueError as error:
+                raise EditingServiceError(503, "team_scan_unconfigured", "Team scan is not configured.") from error
+            source = await run_in_threadpool(
+                materialize_team_scan_source,
+                request.sourceUrl,
+                request.filename,
+                analysis_settings.max_file_size_bytes,
+                resolved_settings.upload_root,
+            )
+            candidate_clips = await run_in_threadpool(
+                build_team_quick_scan_candidate_clips,
+                source.local_path,
+                request.durationSeconds,
+                analysis_settings,
+            )
+            _, detected_teams, applied = await run_in_threadpool(
+                apply_team_quick_scan,
+                source.local_path,
+                request.durationSeconds,
+                candidate_clips,
+                analysis_settings,
+            )
+            status = "scanned" if applied and detected_teams else "unavailable"
+            return ScanCloudAnalysisTeamsResponse(jobId=request.jobId, status=status, detectedTeams=detected_teams)
+        except EditingServiceError as error:
+            return error_response(error)
+        except APIError as error:
+            return JSONResponse(
+                status_code=error.status_code,
+                content=ErrorResponse(errorCode=error.error_code, errorMessage=error.error_message, failureReason=error.error_message).model_dump(exclude_none=True),
+            )
+        finally:
+            if source is not None:
+                source.cleanup()
 
     def enqueue_render_job(request: CreateRenderJobRequest, background_tasks: BackgroundTasks, force_new: bool = False) -> RenderJobResponse:
         mark_stale_renders()

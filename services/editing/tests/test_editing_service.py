@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
@@ -33,6 +34,7 @@ from app.editing import (  # noqa: E402
     validate_edit_plan,
     validate_template_registry,
 )
+from app.models import TeamOption  # noqa: E402
 import editing_app.main as editing_main  # noqa: E402
 from editing_app.config import EditingSettings  # noqa: E402
 from editing_app.gpt_reranker import GPTEditPlanPatchAttempt  # noqa: E402
@@ -227,6 +229,59 @@ class EditingServiceTests(unittest.TestCase):
         self.assertEqual(payload["status"], "degraded")
         self.assertFalse(payload["renderStorage"]["providerReady"])
         self.assertEqual(payload["renderStorage"]["provider"], "r2")
+
+    def test_team_scan_endpoint_uses_editing_secret_and_redacts_source_details(self) -> None:
+        client = TestClient(create_app(self._settings(shared_secret="editing-secret")))
+        local_source = self._temp_dir / "team-scan-source.mp4"
+        local_source.write_bytes(b"fake video bytes")
+        cleanup_calls: list[bool] = []
+
+        class Source:
+            local_path = local_source
+
+            def cleanup(self) -> None:
+                cleanup_calls.append(True)
+
+        team = TeamOption(
+            teamId="team_light",
+            label="Light jerseys",
+            colorLabel="white",
+            primaryColorHex="#f4f4f4",
+            confidence=0.91,
+            source="quick_scan",
+        )
+
+        with (
+            patch.object(editing_main, "materialize_team_scan_source", return_value=Source(), create=True) as materialize,
+            patch.object(editing_main, "build_team_quick_scan_candidate_clips", return_value=[], create=True) as build_candidates,
+            patch.object(editing_main, "apply_team_quick_scan", return_value=([], [team], True), create=True) as apply_scan,
+        ):
+            response = client.post(
+                "/v1/team-scan",
+                headers={"x-hoops-inference-secret": "editing-secret"},
+                json={
+                    "jobId": "job_team_scan",
+                    "installId": "install-team-scan",
+                    "sourceUrl": "https://uploads.example.test/signed/video.mp4?secret=hidden",
+                    "sourceObjectKey": "uploads/install/video.mp4",
+                    "filename": "video.mp4",
+                    "contentType": "video/mp4",
+                    "durationSeconds": 24,
+                    "appVersion": "1.0.0",
+                    "analysisVersion": "phase-team",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["status"], "scanned")
+        self.assertEqual(payload["detectedTeams"][0]["teamId"], "team_light")
+        self.assertNotIn("sourceUrl", payload)
+        self.assertNotIn("sourceObjectKey", payload)
+        materialize.assert_called_once()
+        build_candidates.assert_called_once()
+        apply_scan.assert_called_once()
+        self.assertEqual(cleanup_calls, [True])
 
     def test_render_requires_secret_outside_local(self) -> None:
         client = TestClient(create_app(self._settings(environment="staging", shared_secret="secret", render_storage_provider="r2")))

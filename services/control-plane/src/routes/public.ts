@@ -761,7 +761,8 @@ async function requestInferenceTeamScan(
   detectedTeams: TeamOption[];
   modelVersion?: string | null;
 }> {
-  if (!env.INFERENCE_BASE_URL) {
+  const providers = teamScanProviders(env);
+  if (providers.length === 0) {
     return { status: "unavailable", detectedTeams: [], modelVersion: job.modelVersion ?? null };
   }
 
@@ -771,7 +772,6 @@ async function requestInferenceTeamScan(
       expiresInSeconds: Math.max(resolveRuntimeConfig(env).jobTtlSeconds, 3600),
       bucketName: env.R2_UPLOAD_BUCKET_NAME
     });
-    const secret = env.INFERENCE_SHARED_SECRET || env.CONTROL_PLANE_SHARED_SECRET;
     const payload: InferenceTeamScanRequest = {
       jobId: job.jobId,
       requestId,
@@ -788,15 +788,68 @@ async function requestInferenceTeamScan(
       schemaVersion,
       modelVersion: job.modelVersion ?? null
     };
-    const response = await fetch(new URL("/v1/team-scan", env.INFERENCE_BASE_URL).toString(), {
+    for (const provider of providers) {
+      const result = await requestTeamScanProvider(provider, payload, job, requestId);
+      if (result.status === "scanned") {
+        return result;
+      }
+    }
+  } catch {
+    // Fall through to the unavailable response below. Do not include source URLs or object keys in public errors.
+  }
+
+  return { status: "unavailable", detectedTeams: [], modelVersion: job.modelVersion ?? null };
+}
+
+interface TeamScanProvider {
+  baseUrl: string;
+  secret: string;
+  includeInternalSecret: boolean;
+}
+
+function teamScanProviders(env: Env): TeamScanProvider[] {
+  const providers: TeamScanProvider[] = [];
+  if (env.INFERENCE_BASE_URL) {
+    providers.push({
+      baseUrl: env.INFERENCE_BASE_URL,
+      secret: env.INFERENCE_SHARED_SECRET || env.CONTROL_PLANE_SHARED_SECRET,
+      includeInternalSecret: false
+    });
+  }
+  if (env.EDITING_BASE_URL) {
+    providers.push({
+      baseUrl: env.EDITING_BASE_URL,
+      secret: env.EDITING_SHARED_SECRET || env.INFERENCE_SHARED_SECRET || env.CONTROL_PLANE_SHARED_SECRET,
+      includeInternalSecret: true
+    });
+  }
+  return providers.filter((provider) => provider.baseUrl.trim().length > 0 && provider.secret.trim().length > 0);
+}
+
+async function requestTeamScanProvider(
+  provider: TeamScanProvider,
+  payload: InferenceTeamScanRequest,
+  job: JobRecord,
+  requestId: string
+): Promise<{
+  status: ScanCloudAnalysisTeamsResponse["status"];
+  detectedTeams: TeamOption[];
+  modelVersion?: string | null;
+}> {
+  try {
+    const headers: Record<string, string> = {
+      "content-type": "application/json",
+      "x-hoops-inference-secret": provider.secret,
+      "x-request-id": requestId,
+      "x-trace-id": job.traceId,
+      "x-hoops-upload-trace-id": job.uploadTraceId ?? requestId
+    };
+    if (provider.includeInternalSecret) {
+      headers["x-hoops-internal-secret"] = provider.secret;
+    }
+    const response = await fetch(new URL("/v1/team-scan", provider.baseUrl).toString(), {
       method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-hoops-inference-secret": secret,
-        "x-request-id": requestId,
-        "x-trace-id": job.traceId,
-        "x-hoops-upload-trace-id": job.uploadTraceId ?? requestId
-      },
+      headers,
       body: JSON.stringify(payload)
     });
     if (!response.ok) {
