@@ -326,6 +326,38 @@ charlie的iPhone   charliedeiPhone.coredevice.local   E5786BB6-0095-5509-8B85-11
         self.assertTrue(has_failures(collector.findings))
         self.assertIn("unavailable", collector.findings[0].detail)
 
+    def test_connected_ios_device_reports_unavailable_tunnel_detail(self) -> None:
+        devices_output = """
+Name             Hostname                           Identifier                             State         Model
+--------------   --------------------------------   ------------------------------------   -----------   --------------------------
+charlie的iPhone   charliedeiPhone.coredevice.local   E5786BB6-0095-5509-8B85-110C0B5CE6D3   unavailable   iPhone 15 Pro (iPhone16,1)
+"""
+        details_output = """
+Current device information:
+▿ deviceProperties:
+    • developerModeStatus: enabled
+    • ddiServicesAvailable: false
+▿ connectionProperties:
+    • lastConnectionDate: 2026-05-30 18:42:41 +0000
+    • pairingState: paired
+    • tunnelState: unavailable
+"""
+        collector = Collector()
+
+        def fake_run(command: list[str], **_kwargs: object) -> SimpleNamespace:
+            if command[:3] == ["xcrun", "devicectl", "list"]:
+                return SimpleNamespace(returncode=0, stdout=devices_output)
+            if command[:4] == ["xcrun", "devicectl", "device", "info"]:
+                return SimpleNamespace(returncode=0, stdout=details_output)
+            return SimpleNamespace(returncode=1, stdout="")
+
+        with patch("scripts.submission_readiness_preflight.subprocess.run", side_effect=fake_run):
+            check_connected_ios_device(collector)
+
+        self.assertTrue(has_failures(collector.findings))
+        self.assertIn("tunnelState=unavailable", collector.findings[0].detail)
+        self.assertIn("developerModeStatus=enabled", collector.findings[0].detail)
+
     def test_github_workflow_runs_fail_when_latest_required_runs_failed(self) -> None:
         payload = [
             {

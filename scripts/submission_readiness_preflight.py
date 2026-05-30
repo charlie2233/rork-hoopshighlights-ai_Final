@@ -680,7 +680,13 @@ def check_connected_ios_device(collector: Collector) -> None:
         collector.pass_("connected ios device", "xcrun devicectl", f"{len(available_iphones)} available iPhone device(s) detected for TestFlight smoke.")
     elif unavailable_iphones:
         states = ", ".join(sorted({device["state"] for device in unavailable_iphones}))
-        collector.fail("connected ios device", "xcrun devicectl", f"iPhone device(s) detected but unavailable for install/smoke testing: {states}.")
+        detail = unavailable_ios_device_detail(unavailable_iphones[0]["identifier"])
+        detail_suffix = f" Device detail: {detail}." if detail else ""
+        collector.fail(
+            "connected ios device",
+            "xcrun devicectl",
+            f"iPhone device(s) detected but unavailable for install/smoke testing: {states}.{detail_suffix}",
+        )
     else:
         collector.fail("connected ios device", "xcrun devicectl", "No available physical iPhone detected for installed TestFlight smoke.")
 
@@ -688,6 +694,38 @@ def check_connected_ios_device(collector: Collector) -> None:
 def ios_device_state_is_smoke_ready(state: str) -> bool:
     normalized = state.lower().strip()
     return normalized.startswith("available") or normalized == "connected"
+
+
+def unavailable_ios_device_detail(identifier: str) -> str | None:
+    try:
+        result = subprocess.run(
+            ["xcrun", "devicectl", "device", "info", "details", "--device", identifier],
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=20,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0:
+        return None
+
+    fields = []
+    for field in ("pairingState", "tunnelState", "developerModeStatus", "ddiServicesAvailable", "lastConnectionDate"):
+        value = devicectl_detail_field(result.stdout, field)
+        if value:
+            fields.append(f"{field}={value}")
+    return ", ".join(fields) or None
+
+
+def devicectl_detail_field(output: str, field: str) -> str | None:
+    pattern = re.compile(rf"•\s+{re.escape(field)}:\s+(.+)")
+    for line in output.splitlines():
+        match = pattern.search(line)
+        if match:
+            return match.group(1).strip()
+    return None
 
 
 def parse_devicectl_devices(output: str) -> list[dict[str, str]]:

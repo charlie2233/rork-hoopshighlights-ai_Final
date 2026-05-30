@@ -686,3 +686,40 @@ python3 scripts/build_launch_team_accuracy_report.py \
 - Focused eval payload/report suite: 14 tests passed.
 - Launch71 label status result: incomplete, 0 / 66 clips complete.
 - Missing fields across Launch71: `needsLabel=false`, `expected.teamId`, `expected.isHighlight`, `expected.eventType`, and `expected.outcome` on all 66 clips.
+
+## Launch72 Device Smoke Blocker Detail
+
+The connected-device preflight now includes safe CoreDevice detail when an iPhone is detected but unavailable:
+
+- It still fails the gate until an available physical iPhone can run the installed TestFlight smoke.
+- It now surfaces non-secret fields such as pairing state, tunnel state, Developer Mode status, DDI service availability, and last connection date.
+- This helps distinguish an unavailable device/tunnel problem from an app build or signing problem.
+
+Current local device diagnostic:
+
+```bash
+xcrun devicectl device info details --device E5786BB6-0095-5509-8B85-110C0B5CE6D3
+system_profiler SPUSBDataType | rg -n -C 5 'iPhone|Apple Mobile|E5786BB6|charlie'
+```
+
+- `charlie的iPhone` is paired.
+- Developer Mode is enabled.
+- `tunnelState=unavailable`.
+- `ddiServicesAvailable=false`.
+- USB system profile did not show the iPhone, so this looks like a physical connection/CoreDevice tunnel issue rather than a HoopClips build issue.
+
+Validation:
+
+```bash
+python3 -m py_compile \
+  scripts/submission_readiness_preflight.py \
+  scripts/test_submission_readiness_preflight.py
+python3 -m unittest \
+  scripts.test_submission_readiness_preflight.SubmissionReadinessPreflightTests.test_connected_ios_device_reports_unavailable_tunnel_detail \
+  scripts.test_submission_readiness_preflight.SubmissionReadinessPreflightTests.test_connected_ios_device_fails_when_detected_iphone_is_unavailable \
+  scripts.test_submission_readiness_preflight.SubmissionReadinessPreflightTests.test_connected_ios_device_passes_when_detected_iphone_is_available_paired \
+  -v
+```
+
+- `py_compile`: passed.
+- Focused device-preflight tests: 3 passed.
