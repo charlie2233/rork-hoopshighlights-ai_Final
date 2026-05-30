@@ -317,10 +317,16 @@ class EditingServiceTests(unittest.TestCase):
         def capture_callback(callback_url: str, callback_secret: str, payload: dict) -> None:
             callbacks.append({"callbackUrl": callback_url, "callbackSecret": callback_secret, "payload": payload})
 
+        heartbeats = []
+
+        def capture_heartbeat(callback_url: str, callback_secret: str, job_id: str, payload: dict) -> None:
+            heartbeats.append({"callbackUrl": callback_url, "callbackSecret": callback_secret, "jobId": job_id, "payload": payload})
+
         with (
             patch.object(editing_main, "materialize_team_scan_source", return_value=Source(), create=True) as materialize,
             patch.object(editing_main, "run_analysis", return_value=result, create=True) as run_cloud_analysis,
             patch.object(editing_main, "post_inference_callback", side_effect=capture_callback, create=True) as post_callback,
+            patch.object(editing_main, "post_inference_heartbeat", side_effect=capture_heartbeat, create=True) as post_heartbeat,
         ):
             response = client.post(
                 "/v1/analyze",
@@ -360,7 +366,11 @@ class EditingServiceTests(unittest.TestCase):
         materialize.assert_called_once()
         run_cloud_analysis.assert_called_once()
         post_callback.assert_called_once()
+        self.assertGreaterEqual(post_heartbeat.call_count, 1)
         self.assertEqual(cleanup_calls, [True])
+        self.assertEqual(heartbeats[0]["callbackSecret"], "callback-secret")
+        self.assertEqual(heartbeats[0]["jobId"], "job_analysis")
+        self.assertEqual(heartbeats[0]["payload"]["stage"], "Preparing cloud analysis input")
         self.assertEqual(callbacks[0]["callbackSecret"], "callback-secret")
         payload = callbacks[0]["payload"]
         self.assertEqual(payload["status"], "succeeded")
@@ -371,6 +381,10 @@ class EditingServiceTests(unittest.TestCase):
         self.assertNotIn("sourceUrl", serialized_callback)
         self.assertNotIn("sourceObjectKey", serialized_callback)
         self.assertNotIn("https://uploads.example.test", serialized_callback)
+        serialized_heartbeats = json.dumps(heartbeats)
+        self.assertNotIn("sourceUrl", serialized_heartbeats)
+        self.assertNotIn("sourceObjectKey", serialized_heartbeats)
+        self.assertNotIn("https://uploads.example.test", serialized_heartbeats)
 
     def test_render_requires_secret_outside_local(self) -> None:
         client = TestClient(create_app(self._settings(environment="staging", shared_secret="secret", render_storage_provider="r2")))

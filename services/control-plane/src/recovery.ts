@@ -10,13 +10,19 @@ export async function recoverStaleProcessingJob(
   ctx: ExecutionContext,
   job: JobRecord,
   requestId: string,
-  trigger: "poll" | "finalize"
+  trigger: "poll" | "finalize",
 ): Promise<JobRecord> {
   const runtime = resolveRuntimeConfig(env);
   const now = new Date().toISOString();
-  const processingStartedAt = job.processingStartedAt ?? job.acceptedAt ?? job.startedAt ?? null;
+  const processingStartedAt =
+    job.processingStartedAt ?? job.acceptedAt ?? job.startedAt ?? null;
+  const lastProgressAt = latestTimestamp(processingStartedAt, job.updatedAt);
 
-  if (job.status === "processing" && processingStartedAt && isOlderThan(processingStartedAt, runtime.processingTimeoutSeconds)) {
+  if (
+    job.status === "processing" &&
+    processingStartedAt &&
+    isOlderThan(lastProgressAt, runtime.processingTimeoutSeconds)
+  ) {
     return scheduleRetryForStaleProcessing(
       env,
       ctx,
@@ -25,7 +31,7 @@ export async function recoverStaleProcessingJob(
       trigger,
       runtime.maxInferenceAttempts,
       processingStartedAt,
-      now
+      now,
     );
   }
 
@@ -40,7 +46,7 @@ async function scheduleRetryForStaleProcessing(
   trigger: "poll" | "finalize",
   maxInferenceAttempts: number,
   processingStartedAt: string,
-  now: string
+  now: string,
 ): Promise<JobRecord> {
   const attemptCount = Math.max(job.attemptCount ?? 0, 1);
 
@@ -57,7 +63,7 @@ async function scheduleRetryForStaleProcessing(
         errorCode: "failed_timeout",
         errorMessage: failureReason,
         finishedAt: now,
-        updatedAt: now
+        updatedAt: now,
       },
       {
         requestId,
@@ -70,9 +76,9 @@ async function scheduleRetryForStaleProcessing(
           traceId: job.traceId,
           trigger,
           attemptCount,
-          maxInferenceAttempts
-        }
-      }
+          maxInferenceAttempts,
+        },
+      },
     );
 
     await env.ANALYSIS_DLQ.send({
@@ -85,7 +91,7 @@ async function scheduleRetryForStaleProcessing(
       resultObjectKey: job.resultObjectKey,
       modelVersion: job.modelVersion ?? null,
       failureReason,
-      attempts: attemptCount
+      attempts: attemptCount,
     });
 
     return failedJob;
@@ -108,27 +114,34 @@ async function scheduleRetryForStaleProcessing(
       errorCode: null,
       errorMessage: null,
       inferenceAttemptId: nextInferenceAttemptId,
-      updatedAt: now
+      updatedAt: now,
     },
     {
       requestId,
+      traceId: job.traceId,
+      eventType: "job.processing.timed_out",
+      message: "Processing timed out; retry scheduled.",
+      payload: {
+        jobId: job.jobId,
+        requestId,
         traceId: job.traceId,
-        eventType: "job.processing.timed_out",
-        message: "Processing timed out; retry scheduled.",
-        payload: {
-          jobId: job.jobId,
-          requestId,
-          traceId: job.traceId,
-          trigger,
-          attemptCount,
-          processingStartedAt,
-          timeoutSeconds: resolveRuntimeConfig(env).processingTimeoutSeconds,
-          inferenceAttemptId: nextInferenceAttemptId
-        }
-      }
+        trigger,
+        attemptCount,
+        processingStartedAt,
+        timeoutSeconds: resolveRuntimeConfig(env).processingTimeoutSeconds,
+        inferenceAttemptId: nextInferenceAttemptId,
+      },
+    },
   );
 
-  return requestQueueDispatchRetry(env, ctx, queuedJob, requestId, trigger, now);
+  return requestQueueDispatchRetry(
+    env,
+    ctx,
+    queuedJob,
+    requestId,
+    trigger,
+    now,
+  );
 }
 
 async function requestQueueDispatchRetry(
@@ -137,7 +150,7 @@ async function requestQueueDispatchRetry(
   job: JobRecord,
   requestId: string,
   trigger: "poll" | "finalize",
-  now: string
+  now: string,
 ): Promise<JobRecord> {
   if (!job.inferenceAttemptId) {
     return job;
@@ -153,7 +166,7 @@ async function requestQueueDispatchRetry(
     sourceObjectKey: job.sourceObjectKey,
     resultObjectKey: job.resultObjectKey,
     modelVersion: job.modelVersion ?? null,
-    teamSelection: job.teamSelection ?? null
+    teamSelection: job.teamSelection ?? null,
   };
 
   const refreshedJob = await updateJobState(
@@ -161,7 +174,7 @@ async function requestQueueDispatchRetry(
     job.jobId,
     {
       queuedAt: now,
-      updatedAt: now
+      updatedAt: now,
     },
     {
       requestId,
@@ -171,27 +184,29 @@ async function requestQueueDispatchRetry(
       payload: {
         ...queueMessage,
         attemptCount: job.attemptCount ?? 0,
-        inferenceAttemptId: job.inferenceAttemptId
-      }
-    }
+        inferenceAttemptId: job.inferenceAttemptId,
+      },
+    },
   );
 
   ctx.waitUntil(
-    env.ANALYSIS_QUEUE
-      .send(queueMessage)
+    env.ANALYSIS_QUEUE.send(queueMessage)
       .then(async () => {
         await appendJobEvent(env.DB, {
           jobId: job.jobId,
           requestId,
           traceId: job.traceId,
-          eventType: trigger === "poll" ? "job.processing.retry_dispatched" : "job.processing.retry_dispatched",
+          eventType:
+            trigger === "poll"
+              ? "job.processing.retry_dispatched"
+              : "job.processing.retry_dispatched",
           message: "Retry dispatch queued after stale processing timeout.",
           payload: {
             ...queueMessage,
             attemptCount: job.attemptCount ?? 0,
-            inferenceAttemptId: job.inferenceAttemptId
+            inferenceAttemptId: job.inferenceAttemptId,
           },
-          createdAt: now
+          createdAt: now,
         });
       })
       .catch(async (error) => {
@@ -200,15 +215,16 @@ async function requestQueueDispatchRetry(
           requestId,
           traceId: job.traceId,
           eventType: "job.processing.retry_dispatch_failed",
-          message: error instanceof Error ? error.message : "Retry dispatch failed.",
+          message:
+            error instanceof Error ? error.message : "Retry dispatch failed.",
           payload: {
             ...queueMessage,
             attemptCount: job.attemptCount ?? 0,
-            inferenceAttemptId: job.inferenceAttemptId
+            inferenceAttemptId: job.inferenceAttemptId,
           },
-          createdAt: now
+          createdAt: now,
         });
-      })
+      }),
   );
 
   return refreshedJob;
@@ -220,4 +236,25 @@ function isOlderThan(timestamp: string, ageSeconds: number): boolean {
     return false;
   }
   return Date.now() - parsed >= ageSeconds * 1000;
+}
+
+function latestTimestamp(
+  ...timestamps: Array<string | null | undefined>
+): string {
+  let latestValue: string | null = null;
+  let latestMs = Number.NEGATIVE_INFINITY;
+  for (const timestamp of timestamps) {
+    if (!timestamp) {
+      continue;
+    }
+    const parsed = Date.parse(timestamp);
+    if (!Number.isFinite(parsed)) {
+      continue;
+    }
+    if (parsed >= latestMs) {
+      latestMs = parsed;
+      latestValue = timestamp;
+    }
+  }
+  return latestValue ?? new Date(0).toISOString();
 }

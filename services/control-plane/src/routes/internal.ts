@@ -1,5 +1,13 @@
 import type { Env } from "../env";
-import type { CloudAnalysisJobResponse, CloudAnalysisResult, CloudClip, InferenceCallbackPayload, JobRecord, JobStatus, TeamSelection } from "../types";
+import type {
+  CloudAnalysisJobResponse,
+  CloudAnalysisResult,
+  CloudClip,
+  InferenceCallbackPayload,
+  JobRecord,
+  JobStatus,
+  TeamSelection,
+} from "../types";
 import { getJobSnapshot, updateJobState } from "../do/job-state-client";
 import { appendJobEvent } from "../db";
 import { isSharedSecretAuthorized } from "../utils/auth";
@@ -8,7 +16,7 @@ import { jsonResponse, readJson } from "../utils/request-id";
 export async function routeInternalRequest(
   request: Request,
   env: Env,
-  requestId: string
+  requestId: string,
 ): Promise<Response | null> {
   const url = new URL(request.url);
   const path = normalizeInternalPath(url.pathname);
@@ -21,12 +29,16 @@ export async function routeInternalRequest(
     return handleCallback(request, env, requestId, null);
   }
 
-  const callbackMatch = path.match(/^\/internal\/inference\/callback\/([^/]+)$/);
+  const callbackMatch = path.match(
+    /^\/internal\/inference\/callback\/([^/]+)$/,
+  );
   if (callbackMatch) {
     return handleCallback(request, env, requestId, callbackMatch[1]!);
   }
 
-  const heartbeatMatch = path.match(/^\/internal\/inference\/heartbeat\/([^/]+)$/);
+  const heartbeatMatch = path.match(
+    /^\/internal\/inference\/heartbeat\/([^/]+)$/,
+  );
   if (heartbeatMatch) {
     return handleHeartbeat(request, env, heartbeatMatch[1]!, requestId);
   }
@@ -38,10 +50,16 @@ async function handleCallback(
   request: Request,
   env: Env,
   requestId: string,
-  pathJobId: string | null
+  pathJobId: string | null,
 ): Promise<Response> {
-  const callbackSecret = env.INFERENCE_SHARED_SECRET || env.CONTROL_PLANE_SHARED_SECRET;
-  if (!isSharedSecretAuthorized(request.headers.get("x-hoops-inference-secret"), callbackSecret)) {
+  const callbackSecret =
+    env.INFERENCE_SHARED_SECRET || env.CONTROL_PLANE_SHARED_SECRET;
+  if (
+    !isSharedSecretAuthorized(
+      request.headers.get("x-hoops-inference-secret"),
+      callbackSecret,
+    )
+  ) {
     return jsonResponse(
       {
         requestId,
@@ -49,10 +67,10 @@ async function handleCallback(
         confidence: null,
         errorCode: "forbidden",
         errorMessage: "Invalid inference callback secret.",
-        failureReason: "Invalid inference callback secret."
+        failureReason: "Invalid inference callback secret.",
       },
       { status: 403 },
-      requestId
+      requestId,
     );
   }
 
@@ -66,10 +84,10 @@ async function handleCallback(
         confidence: null,
         errorCode: "invalid_request",
         errorMessage: "jobId is required for inference callbacks.",
-        failureReason: "jobId is required for inference callbacks."
+        failureReason: "jobId is required for inference callbacks.",
       },
       { status: 400 },
-      requestId
+      requestId,
     );
   }
 
@@ -82,10 +100,10 @@ async function handleCallback(
         confidence: payload.confidence ?? payload.resultConfidence ?? null,
         errorCode: "job_not_found",
         errorMessage: "Cloud analysis job was not found.",
-        failureReason: "Cloud analysis job was not found."
+        failureReason: "Cloud analysis job was not found.",
       },
       { status: 404 },
-      requestId
+      requestId,
     );
   }
 
@@ -105,7 +123,11 @@ async function handleCallback(
   const currentAttemptId = job.inferenceAttemptId ?? null;
   const now = new Date().toISOString();
 
-  if (currentAttemptId && incomingAttemptId && incomingAttemptId !== currentAttemptId) {
+  if (
+    currentAttemptId &&
+    incomingAttemptId &&
+    incomingAttemptId !== currentAttemptId
+  ) {
     console.info(
       JSON.stringify({
         requestId,
@@ -115,10 +137,14 @@ async function handleCallback(
         inferenceAttemptId: incomingAttemptId,
         currentInferenceAttemptId: currentAttemptId,
         event: "inference.callback.stale_attempt",
-        status: currentStatus
-      })
+        status: currentStatus,
+      }),
     );
-    return jsonResponse(toCloudAnalysisJobResponse(job, requestId, responseSchemaVersion), { status: 200 }, requestId);
+    return jsonResponse(
+      toCloudAnalysisJobResponse(job, requestId, responseSchemaVersion),
+      { status: 200 },
+      requestId,
+    );
   }
 
   if (isTerminalStatus(currentStatus) && normalizedStatus !== currentStatus) {
@@ -128,13 +154,18 @@ async function handleCallback(
         jobId,
         traceId: payload.traceId ?? job.traceId,
         uploadTraceId: payload.uploadTraceId ?? job.uploadTraceId ?? null,
-        inferenceAttemptId: payload.inferenceAttemptId ?? job.inferenceAttemptId ?? null,
+        inferenceAttemptId:
+          payload.inferenceAttemptId ?? job.inferenceAttemptId ?? null,
         event: "inference.callback.ignored",
         currentStatus,
-        requestedStatus: normalizedStatus
-      })
+        requestedStatus: normalizedStatus,
+      }),
     );
-    return jsonResponse(toCloudAnalysisJobResponse(job, requestId, responseSchemaVersion), { status: 200 }, requestId);
+    return jsonResponse(
+      toCloudAnalysisJobResponse(job, requestId, responseSchemaVersion),
+      { status: 200 },
+      requestId,
+    );
   }
 
   if (isTerminalStatus(currentStatus) && normalizedStatus === currentStatus) {
@@ -144,26 +175,49 @@ async function handleCallback(
         jobId,
         traceId: payload.traceId ?? job.traceId,
         uploadTraceId: payload.uploadTraceId ?? job.uploadTraceId ?? null,
-        inferenceAttemptId: payload.inferenceAttemptId ?? job.inferenceAttemptId ?? null,
+        inferenceAttemptId:
+          payload.inferenceAttemptId ?? job.inferenceAttemptId ?? null,
         event: "inference.callback.duplicate",
-        status: currentStatus
-      })
+        status: currentStatus,
+      }),
     );
-    return jsonResponse(toCloudAnalysisJobResponse(job, requestId, responseSchemaVersion), { status: 200 }, requestId);
+    return jsonResponse(
+      toCloudAnalysisJobResponse(job, requestId, responseSchemaVersion),
+      { status: 200 },
+      requestId,
+    );
   }
 
-  if (normalizedResult && (!isTerminalStatus(currentStatus) || normalizedStatus === currentStatus || !job.results)) {
-    await env.R2_RESULTS.put(job.resultObjectKey, JSON.stringify(normalizedResult), {
-      httpMetadata: {
-        contentType: "application/json; charset=utf-8"
-      }
-    });
+  if (
+    normalizedResult &&
+    (!isTerminalStatus(currentStatus) ||
+      normalizedStatus === currentStatus ||
+      !job.results)
+  ) {
+    await env.R2_RESULTS.put(
+      job.resultObjectKey,
+      JSON.stringify(normalizedResult),
+      {
+        httpMetadata: {
+          contentType: "application/json; charset=utf-8",
+        },
+      },
+    );
   }
 
   const patched = await updateJobState(
     env,
     jobId,
-    buildCallbackPatch(job, normalizedStatus, now, modelVersion, failureReason, resultConfidence, normalizedResult, payload),
+    buildCallbackPatch(
+      job,
+      normalizedStatus,
+      now,
+      modelVersion,
+      failureReason,
+      resultConfidence,
+      normalizedResult,
+      payload,
+    ),
     {
       requestId: payload.requestId ?? requestId,
       traceId: payload.traceId ?? job.traceId,
@@ -176,8 +230,8 @@ async function handleCallback(
             : normalizedStatus === "processing"
               ? "Inference callback reported progress."
               : "Inference callback reported success.",
-      payload
-    }
+      payload,
+    },
   );
 
   await appendJobEvent(env.DB, {
@@ -194,7 +248,7 @@ async function handleCallback(
             ? "Inference callback reported progress."
             : "Inference callback reported success.",
     payload,
-    createdAt: now
+    createdAt: now,
   });
 
   console.info(
@@ -203,18 +257,34 @@ async function handleCallback(
       jobId,
       traceId: payload.traceId ?? job.traceId,
       uploadTraceId: payload.uploadTraceId ?? job.uploadTraceId ?? null,
-      inferenceAttemptId: payload.inferenceAttemptId ?? job.inferenceAttemptId ?? null,
+      inferenceAttemptId:
+        payload.inferenceAttemptId ?? job.inferenceAttemptId ?? null,
       event: "inference.callback",
-      status: normalizedStatus
-    })
+      status: normalizedStatus,
+    }),
   );
 
-  return jsonResponse(toCloudAnalysisJobResponse(patched, requestId, responseSchemaVersion), { status: 200 }, requestId);
+  return jsonResponse(
+    toCloudAnalysisJobResponse(patched, requestId, responseSchemaVersion),
+    { status: 200 },
+    requestId,
+  );
 }
 
-async function handleHeartbeat(request: Request, env: Env, jobId: string, requestId: string): Promise<Response> {
-  const callbackSecret = env.INFERENCE_SHARED_SECRET || env.CONTROL_PLANE_SHARED_SECRET;
-  if (!isSharedSecretAuthorized(request.headers.get("x-hoops-inference-secret"), callbackSecret)) {
+async function handleHeartbeat(
+  request: Request,
+  env: Env,
+  jobId: string,
+  requestId: string,
+): Promise<Response> {
+  const callbackSecret =
+    env.INFERENCE_SHARED_SECRET || env.CONTROL_PLANE_SHARED_SECRET;
+  if (
+    !isSharedSecretAuthorized(
+      request.headers.get("x-hoops-inference-secret"),
+      callbackSecret,
+    )
+  ) {
     return jsonResponse(
       {
         requestId,
@@ -222,14 +292,16 @@ async function handleHeartbeat(request: Request, env: Env, jobId: string, reques
         confidence: null,
         errorCode: "forbidden",
         errorMessage: "Invalid inference heartbeat secret.",
-        failureReason: "Invalid inference heartbeat secret."
+        failureReason: "Invalid inference heartbeat secret.",
       },
       { status: 403 },
-      requestId
+      requestId,
     );
   }
 
-  const payload = await readJson<{ progress?: number; stage?: string }>(request);
+  const payload = await readJson<{ progress?: number; stage?: string }>(
+    request,
+  );
   const job = await getJobSnapshot(env, jobId);
   if (!job) {
     return jsonResponse(
@@ -239,33 +311,35 @@ async function handleHeartbeat(request: Request, env: Env, jobId: string, reques
         confidence: null,
         errorCode: "job_not_found",
         errorMessage: "Cloud analysis job was not found.",
-        failureReason: "Cloud analysis job was not found."
+        failureReason: "Cloud analysis job was not found.",
       },
       { status: 404 },
-      requestId
+      requestId,
     );
   }
 
-  const startedAt = job.startedAt ?? new Date().toISOString();
+  const now = new Date().toISOString();
+  const startedAt = job.startedAt ?? now;
   const updated = await updateJobState(
     env,
     jobId,
     {
       status: "processing",
       stage: payload.stage ?? job.stage,
-      progress: typeof payload.progress === "number" ? payload.progress : job.progress,
+      progress:
+        typeof payload.progress === "number" ? payload.progress : job.progress,
       acceptedAt: job.acceptedAt ?? startedAt,
       startedAt,
       processingStartedAt: startedAt,
-      updatedAt: startedAt
+      updatedAt: now,
     },
     {
       requestId,
       traceId: job.traceId,
       eventType: "inference.heartbeat",
       message: "Inference heartbeat received.",
-      payload
-    }
+      payload,
+    },
   );
 
   await appendJobEvent(env.DB, {
@@ -275,7 +349,7 @@ async function handleHeartbeat(request: Request, env: Env, jobId: string, reques
     eventType: "inference.heartbeat.received",
     message: "Inference heartbeat received.",
     payload,
-    createdAt: startedAt
+    createdAt: now,
   });
 
   console.info(
@@ -287,11 +361,15 @@ async function handleHeartbeat(request: Request, env: Env, jobId: string, reques
       inferenceAttemptId: job.inferenceAttemptId ?? null,
       event: "inference.heartbeat",
       status: "processing",
-      progress: updated.progress
-    })
+      progress: updated.progress,
+    }),
   );
 
-  return jsonResponse(toCloudAnalysisJobResponse(updated, requestId, updated.schemaVersion), { status: 200 }, requestId);
+  return jsonResponse(
+    toCloudAnalysisJobResponse(updated, requestId, updated.schemaVersion),
+    { status: 200 },
+    requestId,
+  );
 }
 
 function normalizeInternalPath(pathname: string): string {
@@ -301,7 +379,9 @@ function normalizeInternalPath(pathname: string): string {
   return pathname;
 }
 
-function normalizeCallbackStatus(status: InferenceCallbackPayload["status"]): JobStatus {
+function normalizeCallbackStatus(
+  status: InferenceCallbackPayload["status"],
+): JobStatus {
   if (status === "succeeded") {
     return "completed";
   }
@@ -319,7 +399,9 @@ function normalizeStoredStatus(status: JobStatus): JobStatus {
 }
 
 function isTerminalStatus(status: JobStatus): boolean {
-  return status === "completed" || status === "failed" || status === "cancelled";
+  return (
+    status === "completed" || status === "failed" || status === "cancelled"
+  );
 }
 
 function buildCallbackPatch(
@@ -330,7 +412,7 @@ function buildCallbackPatch(
   failureReason: string | null,
   resultConfidence: number | null,
   normalizedResult: CloudAnalysisResult | null,
-  payload: InferenceCallbackPayload
+  payload: InferenceCallbackPayload,
 ): Partial<JobRecord> {
   const patch: Partial<JobRecord> = {
     status,
@@ -356,11 +438,15 @@ function buildCallbackPatch(
     failureReason,
     resultConfidence,
     confidence: resultConfidence,
-    attemptCount: resolveAttemptCount(job.attemptCount ?? 0, payload.attemptCount),
+    attemptCount: resolveAttemptCount(
+      job.attemptCount ?? 0,
+      payload.attemptCount,
+    ),
     results: normalizedResult ?? job.results ?? null,
     uploadTraceId: payload.uploadTraceId ?? job.uploadTraceId ?? null,
-    inferenceAttemptId: payload.inferenceAttemptId ?? job.inferenceAttemptId ?? null,
-    updatedAt: timestamp
+    inferenceAttemptId:
+      payload.inferenceAttemptId ?? job.inferenceAttemptId ?? null,
+    updatedAt: timestamp,
   };
 
   if (status === "processing") {
@@ -382,7 +468,10 @@ function buildCallbackPatch(
   return patch;
 }
 
-function resolveAttemptCount(current: number, incoming: number | null | undefined): number {
+function resolveAttemptCount(
+  current: number,
+  incoming: number | null | undefined,
+): number {
   const normalizedCurrent = Math.max(0, Math.floor(current));
   if (typeof incoming === "number" && Number.isFinite(incoming)) {
     return Math.max(normalizedCurrent, Math.max(0, Math.floor(incoming)));
@@ -390,29 +479,37 @@ function resolveAttemptCount(current: number, incoming: number | null | undefine
   return normalizedCurrent;
 }
 
-function normalizeCallbackResult(payload: InferenceCallbackPayload, requestId: string): CloudAnalysisResult | null {
+function normalizeCallbackResult(
+  payload: InferenceCallbackPayload,
+  requestId: string,
+): CloudAnalysisResult | null {
   if (isCloudAnalysisResult(payload.results)) {
     return payload.results;
   }
 
-  const manifest = (payload as InferenceCallbackPayload & { result?: unknown }).result;
+  const manifest = (payload as InferenceCallbackPayload & { result?: unknown })
+    .result;
   if (!isInferenceManifest(manifest)) {
     return null;
   }
 
   const clips = manifest.clips.map(normalizeManifestClip);
-  const backendModelVersion = coerceString(manifest.modelVersion) ?? payload.modelVersion ?? "unknown";
+  const backendModelVersion =
+    coerceString(manifest.modelVersion) ?? payload.modelVersion ?? "unknown";
   const resultConfidence =
     payload.resultConfidence ??
     payload.confidence ??
     coerceNumber(manifest.resultConfidence) ??
-    (clips.length ? clips.reduce((sum, clip) => sum + clip.confidence, 0) / clips.length : 0);
+    (clips.length
+      ? clips.reduce((sum, clip) => sum + clip.confidence, 0) / clips.length
+      : 0);
 
   return {
     requestId: payload.requestId ?? requestId,
     confidence: resultConfidence,
     modelVersion: backendModelVersion,
-    failureReason: coerceString(manifest.failureReason) ?? payload.failureReason ?? null,
+    failureReason:
+      coerceString(manifest.failureReason) ?? payload.failureReason ?? null,
     clipCount: clips.length,
     clips,
     diagnostics: {
@@ -421,19 +518,26 @@ function normalizeCallbackResult(payload: InferenceCallbackPayload, requestId: s
       usedVideoIntelligence: false,
       usedGeminiRelabeling: false,
       candidateSegments: clips.length,
-      finalSegments: clips.length
+      finalSegments: clips.length,
     },
     resultConfidence,
     detectedTeams: normalizeTeamOptions(manifest.detectedTeams),
-    teamSelection: normalizeTeamSelection(manifest.teamSelection ?? (payload as InferenceCallbackPayload & { teamSelection?: unknown }).teamSelection)
+    teamSelection: normalizeTeamSelection(
+      manifest.teamSelection ??
+        (payload as InferenceCallbackPayload & { teamSelection?: unknown })
+          .teamSelection,
+    ),
   };
 }
 
 function normalizeManifestClip(value: InferenceManifestClipLike): CloudClip {
   const startTime = coerceNumber(value.startTime) ?? 0;
   const endTime = Math.max(coerceNumber(value.endTime) ?? startTime, startTime);
-  const confidence = clamp01(coerceNumber(value.confidence) ?? coerceNumber(value.resultConfidence) ?? 0);
-  const label = coerceString(value.label) ?? coerceString(value.action) ?? "Unknown";
+  const confidence = clamp01(
+    coerceNumber(value.confidence) ?? coerceNumber(value.resultConfidence) ?? 0,
+  );
+  const label =
+    coerceString(value.label) ?? coerceString(value.action) ?? "Unknown";
   const action = coerceString(value.action) ?? label;
 
   return {
@@ -452,17 +556,28 @@ function normalizeManifestClip(value: InferenceManifestClipLike): CloudClip {
     visualScore: clamp01(coerceNumber(value.visualScore) ?? 0),
     motionScore: clamp01(coerceNumber(value.motionScore) ?? 0),
     combinedScore: clamp01(coerceNumber(value.combinedScore) ?? confidence),
-    confidenceBeforeMapping: coerceNumber(value.confidenceBeforeMapping) ?? null,
+    confidenceBeforeMapping:
+      coerceNumber(value.confidenceBeforeMapping) ?? null,
     confidenceAfterMapping: coerceNumber(value.confidenceAfterMapping) ?? null,
-    eventFamilyConfidenceBeforeMapping: coerceNumber(value.eventFamilyConfidenceBeforeMapping) ?? null,
-    eventFamilyConfidenceAfterMapping: coerceNumber(value.eventFamilyConfidenceAfterMapping) ?? null,
-    shotSubtypeConfidenceBeforeMapping: coerceNumber(value.shotSubtypeConfidenceBeforeMapping) ?? null,
-    shotSubtypeConfidenceAfterMapping: coerceNumber(value.shotSubtypeConfidenceAfterMapping) ?? null,
-    outcomeConfidenceBeforeMapping: coerceNumber(value.outcomeConfidenceBeforeMapping) ?? null,
-    outcomeConfidenceAfterMapping: coerceNumber(value.outcomeConfidenceAfterMapping) ?? null,
-    detectionMethod: coerceString(value.detectionMethod) === "heuristic" ? "heuristic" : "cloud",
+    eventFamilyConfidenceBeforeMapping:
+      coerceNumber(value.eventFamilyConfidenceBeforeMapping) ?? null,
+    eventFamilyConfidenceAfterMapping:
+      coerceNumber(value.eventFamilyConfidenceAfterMapping) ?? null,
+    shotSubtypeConfidenceBeforeMapping:
+      coerceNumber(value.shotSubtypeConfidenceBeforeMapping) ?? null,
+    shotSubtypeConfidenceAfterMapping:
+      coerceNumber(value.shotSubtypeConfidenceAfterMapping) ?? null,
+    outcomeConfidenceBeforeMapping:
+      coerceNumber(value.outcomeConfidenceBeforeMapping) ?? null,
+    outcomeConfidenceAfterMapping:
+      coerceNumber(value.outcomeConfidenceAfterMapping) ?? null,
+    detectionMethod:
+      coerceString(value.detectionMethod) === "heuristic"
+        ? "heuristic"
+        : "cloud",
     shouldAutoKeep: coerceBoolean(value.shouldAutoKeep) ?? confidence >= 0.7,
-    shouldEnableSlowMotion: coerceBoolean(value.shouldEnableSlowMotion) ?? false,
+    shouldEnableSlowMotion:
+      coerceBoolean(value.shouldEnableSlowMotion) ?? false,
     isUncertain: coerceBoolean(value.isUncertain) ?? null,
     promptSetVersion: coerceString(value.promptSetVersion) ?? null,
     eventType: coerceString(value.eventType) ?? null,
@@ -474,15 +589,24 @@ function normalizeManifestClip(value: InferenceManifestClipLike): CloudClip {
     topLabels: normalizeLabelScores(value.topLabels),
     comparisonTopLabels: normalizeLabelScores(value.comparisonTopLabels),
     rawTopLabels: normalizeRawLabelScores(value.rawTopLabels),
-    comparisonRawTopLabels: normalizeRawLabelScores(value.comparisonRawTopLabels),
+    comparisonRawTopLabels: normalizeRawLabelScores(
+      value.comparisonRawTopLabels,
+    ),
     nativeShotSignals: normalizeNativeShotSignals(value.nativeShotSignals),
     teamAttribution: normalizeClipTeamAttribution(value.teamAttribution),
-    teamAttributionStatus: normalizeTeamAttributionStatus(value.teamAttributionStatus)
+    teamAttributionStatus: normalizeTeamAttributionStatus(
+      value.teamAttributionStatus,
+    ),
   };
 }
 
 function isCloudAnalysisResult(value: unknown): value is CloudAnalysisResult {
-  return value !== null && typeof value === "object" && "clipCount" in value && "clips" in value;
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    "clipCount" in value &&
+    "clips" in value
+  );
 }
 
 type InferenceManifestLike = {
@@ -540,7 +664,11 @@ type InferenceManifestClipLike = {
 };
 
 function isInferenceManifest(value: unknown): value is InferenceManifestLike {
-  return value !== null && typeof value === "object" && Array.isArray((value as { clips?: unknown }).clips);
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    Array.isArray((value as { clips?: unknown }).clips)
+  );
 }
 
 function normalizeMakeMiss(value: unknown): "make" | "miss" | "unknown" | null {
@@ -556,8 +684,15 @@ function normalizeMakeMiss(value: unknown): "make" | "miss" | "unknown" | null {
   return null;
 }
 
-function normalizeOutcome(value: unknown): "made" | "missed" | "blocked" | "uncertain" | null {
-  if (value === "made" || value === "missed" || value === "blocked" || value === "uncertain") {
+function normalizeOutcome(
+  value: unknown,
+): "made" | "missed" | "blocked" | "uncertain" | null {
+  if (
+    value === "made" ||
+    value === "missed" ||
+    value === "blocked" ||
+    value === "uncertain"
+  ) {
     return value;
   }
   return null;
@@ -574,9 +709,14 @@ function normalizeLabelScores(value: unknown): CloudClip["topLabels"] {
     }
     scores.push({
       label: coerceString((entry as { label?: unknown }).label) ?? "unknown",
-      confidence: clamp01(coerceNumber((entry as { confidence?: unknown }).confidence) ?? 0),
-      rawLabel: coerceString((entry as { rawLabel?: unknown }).rawLabel) ?? null,
-      modelVersion: coerceString((entry as { modelVersion?: unknown }).modelVersion) ?? null
+      confidence: clamp01(
+        coerceNumber((entry as { confidence?: unknown }).confidence) ?? 0,
+      ),
+      rawLabel:
+        coerceString((entry as { rawLabel?: unknown }).rawLabel) ?? null,
+      modelVersion:
+        coerceString((entry as { modelVersion?: unknown }).modelVersion) ??
+        null,
     });
   }
   return scores;
@@ -597,15 +737,23 @@ function normalizeRawLabelScores(value: unknown): CloudClip["rawTopLabels"] {
     }
     scores.push({
       rawLabel,
-      confidence: clamp01(coerceNumber((entry as { confidence?: unknown }).confidence) ?? 0),
-      canonicalLabel: coerceString((entry as { canonicalLabel?: unknown }).canonicalLabel) ?? null,
-      modelVersion: coerceString((entry as { modelVersion?: unknown }).modelVersion) ?? null
+      confidence: clamp01(
+        coerceNumber((entry as { confidence?: unknown }).confidence) ?? 0,
+      ),
+      canonicalLabel:
+        coerceString((entry as { canonicalLabel?: unknown }).canonicalLabel) ??
+        null,
+      modelVersion:
+        coerceString((entry as { modelVersion?: unknown }).modelVersion) ??
+        null,
     });
   }
   return scores;
 }
 
-function normalizeNativeShotSignals(value: unknown): CloudClip["nativeShotSignals"] {
+function normalizeNativeShotSignals(
+  value: unknown,
+): CloudClip["nativeShotSignals"] {
   if (value === null || typeof value !== "object") {
     return null;
   }
@@ -623,7 +771,11 @@ function normalizeNativeShotSignals(value: unknown): CloudClip["nativeShotSignal
     contextQualityScore: clamp01(coerceNumber(input.contextQualityScore) ?? 0),
     timingWindowOk: coerceBoolean(input.timingWindowOk) ?? false,
     outcome:
-      outcome === "made" || outcome === "missed" || outcome === "blocked" || outcome === "uncertain" || outcome === "not_shot"
+      outcome === "made" ||
+      outcome === "missed" ||
+      outcome === "blocked" ||
+      outcome === "uncertain" ||
+      outcome === "not_shot"
         ? outcome
         : "uncertain",
     outcomeConfidence: clamp01(coerceNumber(input.outcomeConfidence) ?? 0),
@@ -638,11 +790,16 @@ function normalizeNativeShotSignals(value: unknown): CloudClip["nativeShotSignal
       outcomeEvidenceSource === "not_shot"
         ? outcomeEvidenceSource
         : undefined,
-    outcomeReliabilityScore: outcomeReliabilityScore === null ? undefined : clamp01(outcomeReliabilityScore)
+    outcomeReliabilityScore:
+      outcomeReliabilityScore === null
+        ? undefined
+        : clamp01(outcomeReliabilityScore),
   };
 }
 
-function normalizeTeamOptions(value: unknown): CloudAnalysisResult["detectedTeams"] {
+function normalizeTeamOptions(
+  value: unknown,
+): CloudAnalysisResult["detectedTeams"] {
   if (!Array.isArray(value)) {
     return null;
   }
@@ -659,10 +816,16 @@ function normalizeTeamOptions(value: unknown): CloudAnalysisResult["detectedTeam
     teams.push({
       teamId,
       label,
-      colorLabel: coerceString((entry as { colorLabel?: unknown }).colorLabel) ?? null,
-      primaryColorHex: coerceString((entry as { primaryColorHex?: unknown }).primaryColorHex) ?? null,
-      confidence: clamp01(coerceNumber((entry as { confidence?: unknown }).confidence) ?? 0),
-      source: coerceString((entry as { source?: unknown }).source) ?? null
+      colorLabel:
+        coerceString((entry as { colorLabel?: unknown }).colorLabel) ?? null,
+      primaryColorHex:
+        coerceString(
+          (entry as { primaryColorHex?: unknown }).primaryColorHex,
+        ) ?? null,
+      confidence: clamp01(
+        coerceNumber((entry as { confidence?: unknown }).confidence) ?? 0,
+      ),
+      source: coerceString((entry as { source?: unknown }).source) ?? null,
     });
   }
   return teams;
@@ -688,12 +851,16 @@ function normalizeTeamSelection(value: unknown): TeamSelection | null {
     teamId: coerceString(input.teamId),
     label: coerceString(input.label),
     colorLabel: coerceString(input.colorLabel),
-    confidenceThreshold: clamp01(coerceNumber(input.confidenceThreshold) ?? 0.85),
-    includeUncertain: coerceBoolean(input.includeUncertain) ?? true
+    confidenceThreshold: clamp01(
+      coerceNumber(input.confidenceThreshold) ?? 0.85,
+    ),
+    includeUncertain: coerceBoolean(input.includeUncertain) ?? true,
   };
 }
 
-function normalizeClipTeamAttribution(value: unknown): CloudClip["teamAttribution"] {
+function normalizeClipTeamAttribution(
+  value: unknown,
+): CloudClip["teamAttribution"] {
   if (value === null || typeof value !== "object") {
     return null;
   }
@@ -713,12 +880,19 @@ function normalizeClipTeamAttribution(value: unknown): CloudClip["teamAttributio
     confidence: clamp01(coerceNumber(input.confidence) ?? 0),
     source: coerceString(input.source),
     evidenceFrameRefs: coerceStringList(input.evidenceFrameRefs, 8, 120),
-    evidenceRoleGroups: coerceStringList(input.evidenceRoleGroups, 3, 40)
+    evidenceRoleGroups: coerceStringList(input.evidenceRoleGroups, 3, 40),
   };
 }
 
-function normalizeTeamAttributionStatus(value: unknown): CloudClip["teamAttributionStatus"] {
-  if (value === "all" || value === "matched" || value === "opponent" || value === "uncertain") {
+function normalizeTeamAttributionStatus(
+  value: unknown,
+): CloudClip["teamAttributionStatus"] {
+  if (
+    value === "all" ||
+    value === "matched" ||
+    value === "opponent" ||
+    value === "uncertain"
+  ) {
     return value;
   }
   return null;
@@ -728,7 +902,11 @@ function coerceString(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
 }
 
-function coerceStringList(value: unknown, maxItems: number, maxLength: number): string[] | null {
+function coerceStringList(
+  value: unknown,
+  maxItems: number,
+  maxLength: number,
+): string[] | null {
   if (!Array.isArray(value)) {
     return null;
   }
@@ -767,7 +945,7 @@ function clamp01(value: number): number {
 function toCloudAnalysisJobResponse(
   job: JobRecord,
   requestId: string,
-  schemaVersion: string | null
+  schemaVersion: string | null,
 ): CloudAnalysisJobResponse {
   return {
     requestId,
@@ -796,6 +974,6 @@ function toCloudAnalysisJobResponse(
     queuedAt: job.queuedAt ?? null,
     startedAt: job.startedAt ?? null,
     finishedAt: job.finishedAt ?? null,
-    cancelledAt: job.cancelledAt ?? null
+    cancelledAt: job.cancelledAt ?? null,
   };
 }

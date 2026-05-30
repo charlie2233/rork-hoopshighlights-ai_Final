@@ -8,10 +8,13 @@ const {
   invokeInternalRoute,
   invokePublicRoute,
   parseJsonResponse,
-  uploadObject
+  uploadObject,
 } = harness;
 
-function promoteQueuedJobToStaleProcessing(harness: ReturnType<typeof createControlPlaneHarness>, jobId: string): {
+function promoteQueuedJobToStaleProcessing(
+  harness: ReturnType<typeof createControlPlaneHarness>,
+  jobId: string,
+): {
   oldAttemptId: string;
 } {
   const job = harness.state.jobs.get(jobId);
@@ -31,7 +34,7 @@ function promoteQueuedJobToStaleProcessing(harness: ReturnType<typeof createCont
     startedAt: staleAt,
     attemptCount: 1,
     inferenceAttemptId: oldAttemptId,
-    updatedAt: staleAt
+    updatedAt: staleAt,
   });
 
   return { oldAttemptId };
@@ -40,7 +43,7 @@ function promoteQueuedJobToStaleProcessing(harness: ReturnType<typeof createCont
 test("stale processing jobs are re-queued and complete on the next accepted attempt", async () => {
   const harness = createControlPlaneHarness({
     PROCESSING_TIMEOUT_SECONDS: "1",
-    MAX_INFERENCE_ATTEMPTS: "2"
+    MAX_INFERENCE_ATTEMPTS: "2",
   });
 
   const createResponse = await invokePublicRoute(
@@ -54,13 +57,21 @@ test("stale processing jobs are re-queued and complete on the next accepted atte
       durationSeconds: 24,
       installId: "install-local-001",
       appVersion: "1.0.0",
-      analysisVersion: "phase2b"
+      analysisVersion: "phase2b",
     },
-    { "x-trace-id": "trace-timeout-retry" }
+    { "x-trace-id": "trace-timeout-retry" },
   );
-  const createJson = await parseJsonResponse<{ jobId: string; sourceObjectKey: string; uploadUrl: string }>(createResponse);
+  const createJson = await parseJsonResponse<{
+    jobId: string;
+    sourceObjectKey: string;
+    uploadUrl: string;
+  }>(createResponse);
 
-  await uploadObject(harness, createJson.uploadUrl, new TextEncoder().encode("sample basketball clip"));
+  await uploadObject(
+    harness,
+    createJson.uploadUrl,
+    new TextEncoder().encode("sample basketball clip"),
+  );
 
   const startResponse = await invokePublicRoute(
     harness,
@@ -69,17 +80,24 @@ test("stale processing jobs are re-queued and complete on the next accepted atte
     {
       jobId: createJson.jobId,
       installId: "install-local-001",
-      sourceObjectKey: createJson.sourceObjectKey
+      sourceObjectKey: createJson.sourceObjectKey,
     },
-    { "x-trace-id": "trace-timeout-retry" }
+    { "x-trace-id": "trace-timeout-retry" },
   );
   assert.equal(startResponse.status, 200);
   await harness.flush();
   harness.state.queueMessages.length = 0;
 
-  const { oldAttemptId } = promoteQueuedJobToStaleProcessing(harness, createJson.jobId);
+  const { oldAttemptId } = promoteQueuedJobToStaleProcessing(
+    harness,
+    createJson.jobId,
+  );
 
-  const recoveryResponse = await invokePublicRoute(harness, "GET", `/jobs/${createJson.jobId}`);
+  const recoveryResponse = await invokePublicRoute(
+    harness,
+    "GET",
+    `/jobs/${createJson.jobId}`,
+  );
   assert.equal(recoveryResponse.status, 200);
   const recoveryJson = await parseJsonResponse<{
     status: string;
@@ -99,15 +117,18 @@ test("stale processing jobs are re-queued and complete on the next accepted atte
     jobId: createJson.jobId,
     requestId: "trace-timeout-retry-stale",
     modelVersion: "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
-    inferenceAttemptId: oldAttemptId
+    inferenceAttemptId: oldAttemptId,
   });
   const staleCallbackResponse = await invokeInternalRoute(
     harness,
     "POST",
     "/internal/inference/callback",
     staleCallbackPayload,
-    { "x-hoops-inference-secret": harness.env.INFERENCE_SHARED_SECRET, "x-trace-id": "trace-timeout-retry-stale" },
-    "trace-timeout-retry-stale"
+    {
+      "x-hoops-inference-secret": harness.env.INFERENCE_SHARED_SECRET,
+      "x-trace-id": "trace-timeout-retry-stale",
+    },
+    "trace-timeout-retry-stale",
   );
   assert.equal(staleCallbackResponse.status, 200);
   assert.equal(harness.state.jobs.get(createJson.jobId)?.status, "queued");
@@ -120,20 +141,33 @@ test("stale processing jobs are re-queued and complete on the next accepted atte
   assert.equal(harness.state.inferenceDispatches[0]?.jobStatus, "queued");
   assert.equal(harness.state.jobs.get(createJson.jobId)?.status, "completed");
   assert.equal(harness.state.jobs.get(createJson.jobId)?.attemptCount, 2);
-  assert.equal(typeof harness.state.jobs.get(createJson.jobId)?.acceptedAt, "string");
-  assert.equal(typeof harness.state.jobs.get(createJson.jobId)?.processingStartedAt, "string");
+  assert.equal(
+    typeof harness.state.jobs.get(createJson.jobId)?.acceptedAt,
+    "string",
+  );
+  assert.equal(
+    typeof harness.state.jobs.get(createJson.jobId)?.processingStartedAt,
+    "string",
+  );
   assert.equal(harness.state.deadLetterMessages.length, 0);
 
-  const finalResponse = await invokePublicRoute(harness, "GET", `/jobs/${createJson.jobId}`);
-  const finalJson = await parseJsonResponse<{ status: string; results: { clipCount: number } | null }>(finalResponse);
+  const finalResponse = await invokePublicRoute(
+    harness,
+    "GET",
+    `/jobs/${createJson.jobId}`,
+  );
+  const finalJson = await parseJsonResponse<{
+    status: string;
+    results: { clipCount: number } | null;
+  }>(finalResponse);
   assert.equal(finalJson.status, "completed");
   assert.equal(finalJson.results?.clipCount, 1);
 });
 
-test("late callbacks do not regress attemptCount after retry acceptance", async () => {
+test("fresh inference heartbeats keep long-running processing jobs alive", async () => {
   const harness = createControlPlaneHarness({
     PROCESSING_TIMEOUT_SECONDS: "1",
-    MAX_INFERENCE_ATTEMPTS: "2"
+    MAX_INFERENCE_ATTEMPTS: "2",
   });
 
   const createResponse = await invokePublicRoute(
@@ -147,13 +181,21 @@ test("late callbacks do not regress attemptCount after retry acceptance", async 
       durationSeconds: 24,
       installId: "install-local-001",
       appVersion: "1.0.0",
-      analysisVersion: "phase2b"
+      analysisVersion: "phase2b",
     },
-    { "x-trace-id": "trace-timeout-late-callback" }
+    { "x-trace-id": "trace-timeout-heartbeat" },
   );
-  const createJson = await parseJsonResponse<{ jobId: string; sourceObjectKey: string; uploadUrl: string }>(createResponse);
+  const createJson = await parseJsonResponse<{
+    jobId: string;
+    sourceObjectKey: string;
+    uploadUrl: string;
+  }>(createResponse);
 
-  await uploadObject(harness, createJson.uploadUrl, new TextEncoder().encode("sample basketball clip"));
+  await uploadObject(
+    harness,
+    createJson.uploadUrl,
+    new TextEncoder().encode("sample basketball clip"),
+  );
   await invokePublicRoute(
     harness,
     "POST",
@@ -161,9 +203,96 @@ test("late callbacks do not regress attemptCount after retry acceptance", async 
     {
       jobId: createJson.jobId,
       installId: "install-local-001",
-      sourceObjectKey: createJson.sourceObjectKey
+      sourceObjectKey: createJson.sourceObjectKey,
     },
-    { "x-trace-id": "trace-timeout-late-callback" }
+    { "x-trace-id": "trace-timeout-heartbeat" },
+  );
+  await harness.flush();
+  harness.state.queueMessages.length = 0;
+
+  promoteQueuedJobToStaleProcessing(harness, createJson.jobId);
+
+  const heartbeatResponse = await invokeInternalRoute(
+    harness,
+    "POST",
+    `/internal/inference/heartbeat/${createJson.jobId}`,
+    { stage: "Analyzing in cloud" },
+    {
+      "x-hoops-inference-secret": harness.env.INFERENCE_SHARED_SECRET,
+      "x-trace-id": "trace-timeout-heartbeat",
+    },
+    "trace-timeout-heartbeat",
+  );
+  assert.equal(heartbeatResponse.status, 200);
+  const heartbeatJson = await parseJsonResponse<{
+    status: string;
+    stage: string;
+    processingStartedAt: string | null;
+  }>(heartbeatResponse);
+  assert.equal(heartbeatJson.status, "processing");
+  assert.equal(heartbeatJson.stage, "Analyzing in cloud");
+  assert.equal(typeof heartbeatJson.processingStartedAt, "string");
+
+  const recoveryResponse = await invokePublicRoute(
+    harness,
+    "GET",
+    `/jobs/${createJson.jobId}`,
+  );
+  assert.equal(recoveryResponse.status, 200);
+  const recoveryJson = await parseJsonResponse<{
+    status: string;
+    attemptCount: number | null;
+    stage: string;
+  }>(recoveryResponse);
+  assert.equal(recoveryJson.status, "processing");
+  assert.equal(recoveryJson.attemptCount, 1);
+  assert.equal(recoveryJson.stage, "Analyzing in cloud");
+  assert.equal(harness.state.queueMessages.length, 0);
+  assert.equal(harness.state.deadLetterMessages.length, 0);
+});
+
+test("late callbacks do not regress attemptCount after retry acceptance", async () => {
+  const harness = createControlPlaneHarness({
+    PROCESSING_TIMEOUT_SECONDS: "1",
+    MAX_INFERENCE_ATTEMPTS: "2",
+  });
+
+  const createResponse = await invokePublicRoute(
+    harness,
+    "POST",
+    "/uploads/presign",
+    {
+      filename: "sample-game.mp4",
+      contentType: "video/mp4",
+      fileSizeBytes: 10485760,
+      durationSeconds: 24,
+      installId: "install-local-001",
+      appVersion: "1.0.0",
+      analysisVersion: "phase2b",
+    },
+    { "x-trace-id": "trace-timeout-late-callback" },
+  );
+  const createJson = await parseJsonResponse<{
+    jobId: string;
+    sourceObjectKey: string;
+    uploadUrl: string;
+  }>(createResponse);
+
+  await uploadObject(
+    harness,
+    createJson.uploadUrl,
+    new TextEncoder().encode("sample basketball clip"),
+  );
+  await invokePublicRoute(
+    harness,
+    "POST",
+    "/jobs",
+    {
+      jobId: createJson.jobId,
+      installId: "install-local-001",
+      sourceObjectKey: createJson.sourceObjectKey,
+    },
+    { "x-trace-id": "trace-timeout-late-callback" },
   );
   await harness.flush();
   harness.state.queueMessages.length = 0;
@@ -185,7 +314,7 @@ test("late callbacks do not regress attemptCount after retry acceptance", async 
     startedAt: staleAt,
     attemptCount: 2,
     inferenceAttemptId: activeAttemptId,
-    updatedAt: staleAt
+    updatedAt: staleAt,
   });
 
   const lateCallbackPayload = buildSuccessCallbackPayload({
@@ -193,7 +322,7 @@ test("late callbacks do not regress attemptCount after retry acceptance", async 
     requestId: "trace-timeout-late-callback-result",
     modelVersion: "videomae:MCG-NJU/videomae-base-finetuned-kinetics",
     inferenceAttemptId: activeAttemptId,
-    attemptCount: 1
+    attemptCount: 1,
   });
 
   const lateCallbackResponse = await invokeInternalRoute(
@@ -201,8 +330,11 @@ test("late callbacks do not regress attemptCount after retry acceptance", async 
     "POST",
     "/internal/inference/callback",
     lateCallbackPayload,
-    { "x-hoops-inference-secret": harness.env.INFERENCE_SHARED_SECRET, "x-trace-id": "trace-timeout-late-callback-result" },
-    "trace-timeout-late-callback-result"
+    {
+      "x-hoops-inference-secret": harness.env.INFERENCE_SHARED_SECRET,
+      "x-trace-id": "trace-timeout-late-callback-result",
+    },
+    "trace-timeout-late-callback-result",
   );
 
   assert.equal(lateCallbackResponse.status, 200);
@@ -224,7 +356,7 @@ test("late callbacks do not regress attemptCount after retry acceptance", async 
 test("exhausted stale processing retries fail terminally with a timeout reason", async () => {
   const harness = createControlPlaneHarness({
     PROCESSING_TIMEOUT_SECONDS: "1",
-    MAX_INFERENCE_ATTEMPTS: "1"
+    MAX_INFERENCE_ATTEMPTS: "1",
   });
 
   const createResponse = await invokePublicRoute(
@@ -238,23 +370,35 @@ test("exhausted stale processing retries fail terminally with a timeout reason",
       durationSeconds: 24,
       installId: "install-local-001",
       appVersion: "1.0.0",
-      analysisVersion: "phase2b"
-    }
+      analysisVersion: "phase2b",
+    },
   );
-  const createJson = await parseJsonResponse<{ jobId: string; sourceObjectKey: string; uploadUrl: string }>(createResponse);
+  const createJson = await parseJsonResponse<{
+    jobId: string;
+    sourceObjectKey: string;
+    uploadUrl: string;
+  }>(createResponse);
 
-  await uploadObject(harness, createJson.uploadUrl, new TextEncoder().encode("sample basketball clip"));
+  await uploadObject(
+    harness,
+    createJson.uploadUrl,
+    new TextEncoder().encode("sample basketball clip"),
+  );
   await invokePublicRoute(harness, "POST", "/jobs", {
     jobId: createJson.jobId,
     installId: "install-local-001",
-    sourceObjectKey: createJson.sourceObjectKey
+    sourceObjectKey: createJson.sourceObjectKey,
   });
   await harness.flush();
   harness.state.queueMessages.length = 0;
 
   promoteQueuedJobToStaleProcessing(harness, createJson.jobId);
 
-  const recoveryResponse = await invokePublicRoute(harness, "GET", `/jobs/${createJson.jobId}`);
+  const recoveryResponse = await invokePublicRoute(
+    harness,
+    "GET",
+    `/jobs/${createJson.jobId}`,
+  );
   assert.equal(recoveryResponse.status, 200);
   const recoveryJson = await parseJsonResponse<{
     status: string;

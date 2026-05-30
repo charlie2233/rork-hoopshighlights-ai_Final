@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import timedelta
 import json
 import os
@@ -8,7 +9,7 @@ import re
 import tempfile
 from typing import Any, Dict, Optional
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote
+from urllib.parse import quote, urljoin
 from urllib.request import Request, urlopen
 from uuid import uuid4
 
@@ -152,6 +153,27 @@ def post_inference_callback(callback_url: str, callback_secret: str, payload: di
         raise EditingServiceError(502, "callback_failed", "Inference callback could not reach the control plane.") from error
 
 
+def post_inference_heartbeat(callback_url: str, callback_secret: str, job_id: str, payload: dict[str, Any]) -> None:
+    heartbeat_url = urljoin(callback_url, f"/internal/inference/heartbeat/{quote(job_id, safe='')}")
+    headers = {
+        "content-type": "application/json",
+        "x-hoops-inference-secret": callback_secret,
+        "x-request-id": str(payload.get("requestId") or ""),
+        "x-trace-id": str(payload.get("traceId") or ""),
+        "x-hoops-upload-trace-id": str(payload.get("uploadTraceId") or ""),
+        "x-hoops-inference-attempt-id": str(payload.get("inferenceAttemptId") or ""),
+    }
+    request = Request(heartbeat_url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
+    try:
+        with urlopen(request, timeout=10) as response:
+            if response.status >= 400:
+                raise EditingServiceError(502, "heartbeat_failed", "Inference heartbeat was rejected by the control plane.")
+    except HTTPError as error:
+        raise EditingServiceError(502, "heartbeat_failed", "Inference heartbeat was rejected by the control plane.") from error
+    except (URLError, TimeoutError, OSError) as error:
+        raise EditingServiceError(502, "heartbeat_failed", "Inference heartbeat could not reach the control plane.") from error
+
+
 def resolve_feature_flags() -> AIEditFeatureFlags:
     import os
 
@@ -267,9 +289,39 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             "results": result.model_dump(mode="json") if result is not None else None,
         }
 
+    def inference_heartbeat_payload(request: InferenceDispatchRequest, *, stage: str) -> dict[str, Any]:
+        return {
+            "jobId": request.jobId,
+            "requestId": request.requestId,
+            "stage": stage,
+            "schemaVersion": request.schemaVersion,
+            "modelVersion": request.modelVersion,
+            "uploadTraceId": request.uploadTraceId,
+            "inferenceAttemptId": request.inferenceAttemptId,
+            "traceId": request.traceId,
+        }
+
+    async def post_inference_heartbeat_safe(request: InferenceDispatchRequest, *, stage: str) -> None:
+        payload = inference_heartbeat_payload(request, stage=stage)
+        try:
+            await run_in_threadpool(post_inference_heartbeat, request.callbackUrl, request.callbackSecret, request.jobId, payload)
+        except Exception:
+            pass
+
+    async def analysis_heartbeat_loop(request: InferenceDispatchRequest, stage_ref: dict[str, str]) -> None:
+        try:
+            while True:
+                await asyncio.sleep(60)
+                await post_inference_heartbeat_safe(request, stage=stage_ref.get("stage") or "Analyzing in cloud")
+        except asyncio.CancelledError:
+            return
+
     async def run_inference_dispatch(request: InferenceDispatchRequest) -> None:
         source: Optional[MaterializedSource] = None
+        stage_ref = {"stage": "Preparing cloud analysis input"}
+        heartbeat_task = asyncio.create_task(analysis_heartbeat_loop(request, stage_ref))
         try:
+            await post_inference_heartbeat_safe(request, stage=stage_ref["stage"])
             try:
                 analysis_settings = get_analysis_settings()
             except ValueError as error:
@@ -281,6 +333,8 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
                 analysis_settings.max_file_size_bytes,
                 resolved_settings.upload_root,
             )
+            stage_ref["stage"] = "Analyzing in cloud"
+            await post_inference_heartbeat_safe(request, stage=stage_ref["stage"])
             job = dispatch_job_from_request(request, analysis_settings.job_ttl_seconds)
             result = await run_in_threadpool(run_analysis, job, analysis_settings, source.local_path)
             payload = inference_callback_payload(
@@ -323,6 +377,11 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
                 failure_reason="processing_error",
             )
         finally:
+            heartbeat_task.cancel()
+            try:
+                await heartbeat_task
+            except asyncio.CancelledError:
+                pass
             if source is not None:
                 source.cleanup()
 
