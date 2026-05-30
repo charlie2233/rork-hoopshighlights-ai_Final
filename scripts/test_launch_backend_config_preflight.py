@@ -44,13 +44,13 @@ class LaunchBackendConfigPreflightTests(unittest.TestCase):
         self.assertNotIn("comment before URL", cleaned)
         self.assertNotIn("block comment", cleaned)
 
-    def test_quality_beta_uses_full_shot_tracker_keyframe_default(self) -> None:
+    def test_gpt_reranker_uses_launch_sampling_contract(self) -> None:
         self.assertEqual(REQUIRED_GPT_RERANK_SUBSTITUTIONS["_AI_CLIP_GPT_EDITOR_ENABLED"], "true")
         self.assertEqual(REQUIRED_GPT_RERANK_SUBSTITUTIONS["_AI_CLIP_GPT_PLAN_EDIT_ENABLED"], "true")
         self.assertEqual(REQUIRED_GPT_RERANK_SUBSTITUTIONS["_AI_CLIP_GPT_REVISION_ENABLED"], "true")
-        self.assertEqual(REQUIRED_GPT_RERANK_SUBSTITUTIONS["_AI_CLIP_GPT_KEYFRAMES_PER_CLIP"], "10")
-        self.assertEqual(REQUIRED_GPT_RERANK_SUBSTITUTIONS["_AI_CLIP_GPT_MAX_CANDIDATES_FREE"], "60")
-        self.assertEqual(REQUIRED_GPT_RERANK_SUBSTITUTIONS["_AI_CLIP_GPT_MAX_CANDIDATES_PRO"], "60")
+        self.assertEqual(REQUIRED_GPT_RERANK_SUBSTITUTIONS["_AI_CLIP_GPT_KEYFRAMES_PER_CLIP"], "8")
+        self.assertEqual(REQUIRED_GPT_RERANK_SUBSTITUTIONS["_AI_CLIP_GPT_MAX_CANDIDATES_FREE"], "8")
+        self.assertEqual(REQUIRED_GPT_RERANK_SUBSTITUTIONS["_AI_CLIP_GPT_MAX_CANDIDATES_PRO"], "30")
         self.assertEqual(REQUIRED_GPT_RERANK_SUBSTITUTIONS["_AI_CLIP_GPT_TIMEOUT_SECONDS"], "60")
         self.assertEqual(REQUIRED_GPT_RERANK_SUBSTITUTIONS["_AI_CLIP_GPT_MAX_OUTPUT_TOKENS"], "12000")
         self.assertEqual(REQUIRED_GPT_RERANK_SUBSTITUTIONS["_GPT_HIGHLIGHT_RERANKER_ENABLED"], "true")
