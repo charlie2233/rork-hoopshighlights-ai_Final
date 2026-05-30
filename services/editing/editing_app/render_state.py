@@ -155,6 +155,13 @@ class DurableRenderStateStore:
         payload = self._storage.get_json(self._edit_job_key(edit_job_id))
         return payload if isinstance(payload, dict) else None
 
+    def save_render_request_payload(self, render_job_id: str, payload: Dict[str, object]) -> None:
+        self._storage.put_json(self._render_request_key(render_job_id), json.dumps(payload, indent=2, sort_keys=True))
+
+    def load_render_request_payload(self, render_job_id: str) -> Optional[Dict[str, object]]:
+        payload = self._storage.get_json(self._render_request_key(render_job_id))
+        return payload if isinstance(payload, dict) else None
+
     def save_edit_plan_payload(self, edit_job_id: str, plan_id: str, payload: Dict[str, object]) -> None:
         self._storage.put_json(self._edit_plan_key(edit_job_id, plan_id), json.dumps(payload, indent=2, sort_keys=True))
 
@@ -251,6 +258,10 @@ class DurableRenderStateStore:
     @staticmethod
     def _edit_job_key(edit_job_id: str) -> str:
         return f"render_state/edit_jobs/{edit_job_id}/edit_job.json"
+
+    @staticmethod
+    def _render_request_key(render_job_id: str) -> str:
+        return f"render_state/render_requests/{render_job_id}.json"
 
     @staticmethod
     def _edit_plan_key(edit_job_id: str, plan_id: str) -> str:

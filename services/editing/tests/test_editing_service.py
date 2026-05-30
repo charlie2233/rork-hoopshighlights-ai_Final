@@ -182,6 +182,38 @@ class EditingServiceTests(unittest.TestCase):
             "sourceClips": [clip.model_dump() for clip in edit_request.clips],
         }
 
+    def _persist_queued_render_job(
+        self,
+        settings: EditingSettings,
+        edit_job_id: str,
+        install_id: str,
+        source_object_key: str,
+        idempotency_key: str,
+        *,
+        render_job_id: str,
+        revision_id: str | None = None,
+        aspect_ratio: str = "9:16",
+    ) -> None:
+        now = now_utc()
+        DurableRenderStateStore(RenderStorage(settings)).save_job(
+            StoredRenderJob(
+                edit_job_id=edit_job_id,
+                render_job_id=render_job_id,
+                install_id=install_id,
+                trace_id=f"trace_{render_job_id}",
+                status="queued",
+                aspect_ratio=aspect_ratio,
+                created_at=now,
+                updated_at=now,
+                source_object_key=source_object_key,
+                plan_version="edit-plan-v1",
+                template_id="personal_highlight_v1",
+                plan_tier="free",
+                idempotency_key=idempotency_key,
+                revision_id=revision_id,
+            )
+        )
+
     def test_readyz_degrades_when_r2_env_is_missing(self) -> None:
         client = TestClient(create_app(self._settings(environment="staging", shared_secret="secret", render_storage_provider="r2")))
 
@@ -1867,6 +1899,76 @@ class EditingServiceTests(unittest.TestCase):
         self.assertEqual(edit_status_response.json()["renderJobId"], render_job_id)
         self.assertEqual(duplicate_response.status_code, 200)
         self.assertEqual(duplicate_response.json()["renderJobId"], render_job_id)
+
+    @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "ffmpeg and ffprobe are required")
+    def test_queued_render_after_reload_restarts_from_stored_edit_job_payload(self) -> None:
+        settings = self._settings()
+        client = TestClient(create_app(settings))
+        edit_request = self._edit_request()
+        create_payload = client.post("/v1/edit-jobs", json=edit_request.model_dump()).json()
+        render_job_id = "render_recover_queued_reload"
+        idempotency_key = "idem-recover-queued-reload"
+        self._persist_queued_render_job(
+            settings,
+            create_payload["editJobId"],
+            edit_request.installId,
+            edit_request.sourceObjectKey or "",
+            idempotency_key,
+            render_job_id=render_job_id,
+        )
+
+        reloaded_client = TestClient(create_app(settings))
+        render_response = reloaded_client.post(
+            f"/v1/edit-jobs/{create_payload['editJobId']}/render",
+            json={"installId": edit_request.installId, "idempotencyKey": idempotency_key},
+        )
+        status_response = reloaded_client.get(f"/v1/render-jobs/{render_job_id}", params={"installId": edit_request.installId})
+
+        self.assertEqual(render_response.status_code, 200)
+        self.assertEqual(render_response.json()["renderJobId"], render_job_id)
+        self.assertEqual(status_response.status_code, 200)
+        status_payload = status_response.json()
+        self.assertEqual(status_payload["status"], "rendered")
+        self.assertEqual(status_payload["renderJobId"], render_job_id)
+        self.assertTrue(status_payload["outputObjectKey"].endswith("/final.mp4"))
+
+    @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "ffmpeg and ffprobe are required")
+    def test_queued_revision_render_after_reload_restarts_from_persisted_revision_plan(self) -> None:
+        settings = self._settings()
+        client = TestClient(create_app(settings))
+        edit_request = self._edit_request()
+        create_payload = client.post("/v1/edit-jobs", json=edit_request.model_dump()).json()
+        revision_payload = client.post(
+            f"/v1/edit-jobs/{create_payload['editJobId']}/revise",
+            json={"installId": edit_request.installId, "command": "switch_format_widescreen"},
+        ).json()
+        render_job_id = "render_recover_revision_reload"
+        idempotency_key = f"{create_payload['editJobId']}:{revision_payload['revisionId']}:render"
+        self._persist_queued_render_job(
+            settings,
+            create_payload["editJobId"],
+            edit_request.installId,
+            edit_request.sourceObjectKey or "",
+            idempotency_key,
+            render_job_id=render_job_id,
+            revision_id=revision_payload["revisionId"],
+            aspect_ratio="16:9",
+        )
+
+        reloaded_client = TestClient(create_app(settings))
+        render_response = reloaded_client.post(
+            f"/v1/edit-jobs/{create_payload['editJobId']}/revisions/{revision_payload['revisionId']}/render",
+            json={"installId": edit_request.installId},
+        )
+        status_response = reloaded_client.get(f"/v1/render-jobs/{render_job_id}", params={"installId": edit_request.installId})
+
+        self.assertEqual(render_response.status_code, 200)
+        self.assertEqual(render_response.json()["renderJobId"], render_job_id)
+        self.assertEqual(status_response.status_code, 200)
+        status_payload = status_response.json()
+        self.assertEqual(status_payload["status"], "rendered")
+        self.assertEqual(status_payload["revisionId"], revision_payload["revisionId"])
+        self.assertEqual(status_payload["aspectRatio"], "16:9")
 
     def test_stale_render_state_transitions_to_failed_timeout_after_reload(self) -> None:
         settings = self._settings()

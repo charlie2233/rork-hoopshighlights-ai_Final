@@ -111,6 +111,7 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
     render_jobs_by_edit_id: Dict[str, str] = {}
     render_jobs_by_idempotency_key: Dict[str, str] = {}
     render_requests: Dict[str, CreateRenderJobRequest] = {}
+    render_recovery_scheduled: set[str] = set()
     render_created_by_install: Dict[str, list] = {}
     edit_jobs: Dict[str, StoredEditJob] = {}
     edit_revisions: Dict[str, list[EditRevisionResponse]] = {}
@@ -351,6 +352,14 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
         request = render_requests.get(job.render_job_id)
         if request is not None:
             return request
+        durable_request = render_state_store.load_render_request_payload(job.render_job_id)
+        if durable_request is not None:
+            try:
+                request = CreateRenderJobRequest(**durable_request)
+                render_requests[job.render_job_id] = request
+                return request
+            except Exception:
+                pass
         edit_job = load_edit_job(job.edit_job_id)
         if edit_job is None:
             return None
@@ -361,7 +370,7 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             revision = load_revision(job.edit_job_id, job.revision_id)
             if revision is not None:
                 plan = revision.revisedPlan
-        return CreateRenderJobRequest(
+        request = CreateRenderJobRequest(
             editJobId=job.edit_job_id,
             revisionId=job.revision_id,
             installId=job.install_id,
@@ -377,6 +386,8 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             gptRerankSummary=edit_job.request.gptRerankSummary,
             idempotencyKey=job.idempotency_key,
         )
+        render_requests[job.render_job_id] = request
+        return request
 
     def work_timeline_for_render_job(job: StoredRenderJob, request: Optional[CreateRenderJobRequest] = None) -> AIWorkTimeline:
         resolved_request = request or request_for_render_job(job)
@@ -414,12 +425,58 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
     def is_returnable_existing(job: StoredRenderJob) -> bool:
         return job.status in active_render_statuses() or job.status == "rendered"
 
-    def mark_stale_job(job: StoredRenderJob) -> None:
+    def render_lease_is_active(job: StoredRenderJob) -> bool:
+        return bool(job.lease_token and job.lease_expires_at and job.lease_expires_at > now_utc())
+
+    def recover_render_request(
+        job: StoredRenderJob,
+        fallback_request: Optional[CreateRenderJobRequest] = None,
+    ) -> Optional[CreateRenderJobRequest]:
+        request = request_for_render_job(job)
+        if request is not None:
+            return request
+        if fallback_request is None:
+            return None
+        render_requests[job.render_job_id] = fallback_request
+        render_state_store.save_render_request_payload(job.render_job_id, fallback_request.model_dump(mode="json"))
+        return fallback_request
+
+    def schedule_render_recovery_if_needed(
+        job: StoredRenderJob,
+        background_tasks: BackgroundTasks,
+        fallback_request: Optional[CreateRenderJobRequest] = None,
+    ) -> Optional[CreateRenderJobRequest]:
         if job.status not in active_render_statuses():
-            return
+            return request_for_render_job(job)
+        request = recover_render_request(job, fallback_request)
+        if request is None:
+            mark_failed(job, "failed_timeout" if render_job_is_stale(job) else "missing_render_request")
+            return None
+        if job.status == "rendering" and render_lease_is_active(job):
+            return request
+        if job.render_job_id in render_recovery_scheduled:
+            return request
+        render_recovery_scheduled.add(job.render_job_id)
+        emit_event(
+            "render.recovery_scheduled",
+            editJobId=job.edit_job_id,
+            renderJobId=job.render_job_id,
+            templateId=job.template_id,
+            planTier=job.plan_tier,
+            status=job.status,
+        )
+        background_tasks.add_task(run_render_job, job.render_job_id)
+        return request
+
+    def render_job_is_stale(job: StoredRenderJob) -> bool:
+        if job.status not in active_render_statuses():
+            return False
         timeout_seconds = effective_policy(job.plan_tier).staleRenderTimeoutSeconds
         lease_expired = bool(job.lease_expires_at and job.lease_expires_at <= now_utc())
-        if lease_expired or (now_utc() - job.updated_at).total_seconds() > timeout_seconds:
+        return lease_expired or (now_utc() - job.updated_at).total_seconds() > timeout_seconds
+
+    def mark_stale_job(job: StoredRenderJob) -> None:
+        if render_job_is_stale(job):
             mark_failed(job, "failed_timeout")
 
     def mark_stale_renders() -> None:
@@ -738,12 +795,16 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
         return leased_job, lease_token
 
     def run_render_job(render_job_id: str) -> None:
-        job = require_job(render_job_id)
-        request = render_requests[render_job_id]
+        job: Optional[StoredRenderJob] = None
+        request: Optional[CreateRenderJobRequest] = None
         source = None
         lease_token: Optional[str] = None
         try:
             job, lease_token = acquire_render_lease(render_job_id)
+            request = request_for_render_job(job)
+            if request is None:
+                raise EditingServiceError(409, "missing_render_request", "Render job request could not be reconstructed after restart.")
+            render_requests[render_job_id] = request
             emit_event("render.started", editJobId=job.edit_job_id, renderJobId=job.render_job_id, templateId=request.editPlan.templateId, planTier=request.planTier)
             source = storage.materialize_source(request.sourceObjectKey)
             with tempfile.TemporaryDirectory(prefix="hoopclips-edit-render-", dir=str(resolved_settings.upload_root)) as temp_dir:
@@ -805,13 +866,16 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
                     outputBytes=output_bytes,
                 )
         except APIError as error:
-            mark_failed(job, error.error_code, lease_token=lease_token)
+            if job is not None:
+                mark_failed(job, error.error_code, lease_token=lease_token)
         except EditingServiceError as error:
-            if error.error_code != "render_lease_active":
+            if job is not None and error.error_code != "render_lease_active":
                 mark_failed(job, error.error_code, lease_token=lease_token)
         except Exception:
-            mark_failed(job, "render_failed", lease_token=lease_token)
+            if job is not None:
+                mark_failed(job, "render_failed", lease_token=lease_token)
         finally:
+            render_recovery_scheduled.discard(render_job_id)
             if source is not None:
                 source.cleanup()
 
@@ -864,11 +928,17 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             idempotency_key = default_idempotency_key
         existing_by_key = load_idempotent_render_job(idempotency_key)
         if existing_by_key is not None:
+            recovered_request = schedule_render_recovery_if_needed(existing_by_key, background_tasks, request)
+            if existing_by_key.status in active_render_statuses():
+                return render_job_response(existing_by_key, recovered_request or request)
             mark_stale_job(existing_by_key)
             if is_returnable_existing(existing_by_key):
                 return render_job_response(existing_by_key, request)
         existing = load_latest_render_job(request.editJobId)
         if existing is not None and not force_new:
+            recovered_request = schedule_render_recovery_if_needed(existing, background_tasks, request)
+            if existing.status in active_render_statuses():
+                return render_job_response(existing, recovered_request or request)
             mark_stale_job(existing)
             if is_returnable_existing(existing):
                 return render_job_response(existing, request)
@@ -903,6 +973,7 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             raise EditingServiceError(409, "render_idempotency_conflict", "A render already reserved this idempotency key.")
         persist_job(job)
         render_requests[render_job_id] = request
+        render_state_store.save_render_request_payload(render_job_id, request.model_dump(mode="json"))
 
         validation_errors = []
         if request.sourceClips:
@@ -1156,6 +1227,7 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
 
     @app.get("/v1/render-jobs", response_model=RenderJobListResponse, responses={400: {"model": ErrorResponse}, 401: {"model": ErrorResponse}})
     async def list_render_jobs(
+        background_tasks: BackgroundTasks,
         installId: Optional[str] = Query(default=None),
         limit: int = Query(default=20, ge=1, le=50),
         x_hoops_install_id: Optional[str] = Header(default=None),
@@ -1168,6 +1240,12 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
                 raise EditingServiceError(400, "missing_install_id", "Install ID is required to list render history.")
             mark_stale_renders()
             jobs = load_render_history_for_install(install_id, limit)
+            for job in jobs:
+                if job.status in active_render_statuses():
+                    schedule_render_recovery_if_needed(job, background_tasks)
+                    if job.status in active_render_statuses():
+                        continue
+                mark_stale_job(job)
             emit_event("render_history.listed", renderCount=len(jobs), limit=limit)
             return RenderJobListResponse(
                 installId=install_id,
@@ -1180,6 +1258,7 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
     @app.get("/v1/render-jobs/{render_job_id}", response_model=RenderJobResponse, responses={403: {"model": ErrorResponse}, 404: {"model": ErrorResponse}})
     async def get_render_job(
         render_job_id: str,
+        background_tasks: BackgroundTasks,
         installId: Optional[str] = Query(default=None),
         x_hoops_install_id: Optional[str] = Header(default=None),
         x_hoops_editing_secret: Optional[str] = Header(default=None),
@@ -1188,15 +1267,18 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             require_secret(x_hoops_editing_secret)
             mark_stale_renders()
             job = require_job(render_job_id)
-            mark_stale_job(job)
             require_owner(job, installId or x_hoops_install_id)
-            return render_job_response(job)
+            recovered_request = schedule_render_recovery_if_needed(job, background_tasks)
+            if job.status not in active_render_statuses():
+                mark_stale_job(job)
+            return render_job_response(job, recovered_request)
         except EditingServiceError as error:
             return error_response(error)
 
     @app.get("/v1/edit-jobs/{edit_job_id}/render-status", response_model=RenderJobResponse, responses={403: {"model": ErrorResponse}, 404: {"model": ErrorResponse}})
     async def get_edit_render_status(
         edit_job_id: str,
+        background_tasks: BackgroundTasks,
         installId: Optional[str] = Query(default=None),
         x_hoops_install_id: Optional[str] = Header(default=None),
         x_hoops_editing_secret: Optional[str] = Header(default=None),
@@ -1207,9 +1289,11 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             job = load_latest_render_job(edit_job_id)
             if job is None:
                 raise EditingServiceError(404, "render_job_not_found", "Render job was not found.")
-            mark_stale_job(job)
             require_owner(job, installId or x_hoops_install_id)
-            return render_job_response(job)
+            recovered_request = schedule_render_recovery_if_needed(job, background_tasks)
+            if job.status not in active_render_statuses():
+                mark_stale_job(job)
+            return render_job_response(job, recovered_request)
         except EditingServiceError as error:
             return error_response(error)
 
