@@ -13,6 +13,11 @@ struct ContentView: View {
     private let lastTabIndex = 4
     private let tabSwipeThreshold: CGFloat = 70
     private let tabSwipeVerticalTolerance: CGFloat = 1.25
+    private let tabSwipeAnimation = Animation.interactiveSpring(
+        response: 0.34,
+        dampingFraction: 0.88,
+        blendDuration: 0.08
+    )
 
     private var needsVerification: Bool {
         guard authService.isAuthenticated else { return false }
@@ -96,6 +101,7 @@ struct ContentView: View {
             .toolbarBackground(AppTheme.cardBg.opacity(0.95), for: .tabBar)
             .toolbarBackground(.visible, for: .tabBar)
             .toolbarColorScheme(.dark, for: .tabBar)
+            .animation(reduceMotion ? nil : tabSwipeAnimation, value: selectedTab)
         }
         .preferredColorScheme(.dark)
         .simultaneousGesture(tabSwipeGesture)
@@ -110,7 +116,10 @@ struct ContentView: View {
     }
 
     private func handleTabSwipe(_ value: DragGesture.Value) {
-        let horizontalDistance = value.translation.width
+        let projectedHorizontalDistance = value.predictedEndTranslation.width
+        let horizontalDistance = abs(projectedHorizontalDistance) > abs(value.translation.width)
+            ? projectedHorizontalDistance
+            : value.translation.width
         let verticalDistance = value.translation.height
         let isHorizontalSwipe = abs(horizontalDistance) >= tabSwipeThreshold
             && abs(horizontalDistance) > abs(verticalDistance) * tabSwipeVerticalTolerance
@@ -126,7 +135,7 @@ struct ContentView: View {
             return
         }
 
-        withAnimation(.easeOut(duration: 0.2)) {
+        withAnimation(tabSwipeAnimation) {
             selectedTab = boundedTab
         }
     }

@@ -14,6 +14,11 @@ struct ReviewView: View {
     @State private var expandedClipID: UUID?
     @State private var keepTrigger = 0
     @State private var discardTrigger = 0
+    private let tabTransitionAnimation = Animation.interactiveSpring(
+        response: 0.34,
+        dampingFraction: 0.88,
+        blendDuration: 0.08
+    )
 
     private enum FilterOption: String, CaseIterable {
         case all = "All"
@@ -287,7 +292,7 @@ struct ReviewView: View {
             return
         }
 
-        withAnimation(.easeOut(duration: 0.2)) {
+        withAnimation(tabTransitionAnimation) {
             selectedTab = 2
         }
     }
