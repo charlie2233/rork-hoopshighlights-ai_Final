@@ -17,11 +17,12 @@ export async function recoverStaleProcessingJob(
   const processingStartedAt =
     job.processingStartedAt ?? job.acceptedAt ?? job.startedAt ?? null;
   const lastProgressAt = latestTimestamp(processingStartedAt, job.updatedAt);
+  const timeoutSeconds = effectiveProcessingTimeoutSeconds(job, runtime);
 
   if (
     job.status === "processing" &&
     processingStartedAt &&
-    isOlderThan(lastProgressAt, runtime.processingTimeoutSeconds)
+    isOlderThan(lastProgressAt, timeoutSeconds)
   ) {
     return scheduleRetryForStaleProcessing(
       env,
@@ -30,6 +31,7 @@ export async function recoverStaleProcessingJob(
       requestId,
       trigger,
       runtime.maxInferenceAttempts,
+      timeoutSeconds,
       processingStartedAt,
       now,
     );
@@ -45,6 +47,7 @@ async function scheduleRetryForStaleProcessing(
   requestId: string,
   trigger: "poll" | "finalize",
   maxInferenceAttempts: number,
+  timeoutSeconds: number,
   processingStartedAt: string,
   now: string,
 ): Promise<JobRecord> {
@@ -128,7 +131,7 @@ async function scheduleRetryForStaleProcessing(
         trigger,
         attemptCount,
         processingStartedAt,
-        timeoutSeconds: resolveRuntimeConfig(env).processingTimeoutSeconds,
+        timeoutSeconds,
         inferenceAttemptId: nextInferenceAttemptId,
       },
     },
@@ -236,6 +239,19 @@ function isOlderThan(timestamp: string, ageSeconds: number): boolean {
     return false;
   }
   return Date.now() - parsed >= ageSeconds * 1000;
+}
+
+function effectiveProcessingTimeoutSeconds(
+  job: JobRecord,
+  runtime: ReturnType<typeof resolveRuntimeConfig>,
+): number {
+  if (job.teamSelection?.mode === "team") {
+    return Math.max(
+      runtime.processingTimeoutSeconds,
+      runtime.selectedTeamProcessingTimeoutSeconds,
+    );
+  }
+  return runtime.processingTimeoutSeconds;
 }
 
 function latestTimestamp(

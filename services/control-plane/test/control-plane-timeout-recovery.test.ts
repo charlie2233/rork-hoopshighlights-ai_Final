@@ -251,6 +251,188 @@ test("fresh inference heartbeats keep long-running processing jobs alive", async
   assert.equal(harness.state.deadLetterMessages.length, 0);
 });
 
+test("fresh processing callbacks keep long-running processing jobs alive", async () => {
+  const harness = createControlPlaneHarness({
+    PROCESSING_TIMEOUT_SECONDS: "1",
+    MAX_INFERENCE_ATTEMPTS: "2",
+  });
+
+  const createResponse = await invokePublicRoute(
+    harness,
+    "POST",
+    "/uploads/presign",
+    {
+      filename: "sample-game.mp4",
+      contentType: "video/mp4",
+      fileSizeBytes: 10485760,
+      durationSeconds: 24,
+      installId: "install-local-001",
+      appVersion: "1.0.0",
+      analysisVersion: "phase2b",
+    },
+    { "x-trace-id": "trace-timeout-processing-callback" },
+  );
+  const createJson = await parseJsonResponse<{
+    jobId: string;
+    sourceObjectKey: string;
+    uploadUrl: string;
+  }>(createResponse);
+
+  await uploadObject(
+    harness,
+    createJson.uploadUrl,
+    new TextEncoder().encode("sample basketball clip"),
+  );
+  await invokePublicRoute(
+    harness,
+    "POST",
+    "/jobs",
+    {
+      jobId: createJson.jobId,
+      installId: "install-local-001",
+      sourceObjectKey: createJson.sourceObjectKey,
+    },
+    { "x-trace-id": "trace-timeout-processing-callback" },
+  );
+  await harness.flush();
+  harness.state.queueMessages.length = 0;
+
+  const { oldAttemptId } = promoteQueuedJobToStaleProcessing(
+    harness,
+    createJson.jobId,
+  );
+
+  const progressResponse = await invokeInternalRoute(
+    harness,
+    "POST",
+    "/internal/inference/callback",
+    {
+      jobId: createJson.jobId,
+      requestId: "trace-timeout-processing-callback-progress",
+      status: "processing",
+      stage: "Analyzing in cloud",
+      progress: 0.72,
+      schemaVersion: "phase2b",
+      modelVersion: "editing-cloud-v1",
+      uploadTraceId: "upload-trace-processing-callback",
+      inferenceAttemptId: oldAttemptId,
+      traceId: "trace-timeout-processing-callback",
+    },
+    {
+      "x-hoops-inference-secret": harness.env.INFERENCE_SHARED_SECRET,
+      "x-trace-id": "trace-timeout-processing-callback-progress",
+    },
+    "trace-timeout-processing-callback-progress",
+  );
+  assert.equal(progressResponse.status, 200);
+  const progressJson = await parseJsonResponse<{
+    status: string;
+    stage: string;
+    progress: number;
+  }>(progressResponse);
+  assert.equal(progressJson.status, "processing");
+  assert.equal(progressJson.stage, "Analyzing in cloud");
+  assert.equal(progressJson.progress, 0.72);
+
+  const recoveryResponse = await invokePublicRoute(
+    harness,
+    "GET",
+    `/jobs/${createJson.jobId}`,
+  );
+  assert.equal(recoveryResponse.status, 200);
+  const recoveryJson = await parseJsonResponse<{
+    status: string;
+    attemptCount: number | null;
+    stage: string;
+  }>(recoveryResponse);
+  assert.equal(recoveryJson.status, "processing");
+  assert.equal(recoveryJson.attemptCount, 1);
+  assert.equal(recoveryJson.stage, "Analyzing in cloud");
+  assert.equal(harness.state.queueMessages.length, 0);
+  assert.equal(harness.state.deadLetterMessages.length, 0);
+});
+
+test("selected-team editing jobs use the longer selected-team processing timeout", async () => {
+  const harness = createControlPlaneHarness({
+    PROCESSING_TIMEOUT_SECONDS: "1",
+    SELECTED_TEAM_PROCESSING_TIMEOUT_SECONDS: "3600",
+    MAX_INFERENCE_ATTEMPTS: "1",
+  });
+
+  const createResponse = await invokePublicRoute(
+    harness,
+    "POST",
+    "/uploads/presign",
+    {
+      filename: "sample-game.mp4",
+      contentType: "video/mp4",
+      fileSizeBytes: 10485760,
+      durationSeconds: 24,
+      installId: "install-local-001",
+      appVersion: "1.0.0",
+      analysisVersion: "phase2b",
+    },
+    { "x-trace-id": "trace-selected-team-timeout" },
+  );
+  const createJson = await parseJsonResponse<{
+    jobId: string;
+    sourceObjectKey: string;
+    uploadUrl: string;
+  }>(createResponse);
+
+  await uploadObject(
+    harness,
+    createJson.uploadUrl,
+    new TextEncoder().encode("sample basketball clip"),
+  );
+  await invokePublicRoute(
+    harness,
+    "POST",
+    "/jobs",
+    {
+      jobId: createJson.jobId,
+      installId: "install-local-001",
+      sourceObjectKey: createJson.sourceObjectKey,
+    },
+    { "x-trace-id": "trace-selected-team-timeout" },
+  );
+  await harness.flush();
+  harness.state.queueMessages.length = 0;
+
+  promoteQueuedJobToStaleProcessing(harness, createJson.jobId);
+  const job = harness.state.jobs.get(createJson.jobId);
+  if (!job) {
+    throw new Error("Job not found.");
+  }
+  harness.state.jobs.set(createJson.jobId, {
+    ...job,
+    teamSelection: {
+      mode: "team",
+      teamId: "team_light",
+      colorLabel: "white",
+      confidenceThreshold: 0.85,
+      includeUncertain: true,
+    },
+  });
+
+  const recoveryResponse = await invokePublicRoute(
+    harness,
+    "GET",
+    `/jobs/${createJson.jobId}`,
+  );
+  assert.equal(recoveryResponse.status, 200);
+  const recoveryJson = await parseJsonResponse<{
+    status: string;
+    attemptCount: number | null;
+    stage: string;
+  }>(recoveryResponse);
+  assert.equal(recoveryJson.status, "processing");
+  assert.equal(recoveryJson.attemptCount, 1);
+  assert.equal(recoveryJson.stage, "Running external inference service");
+  assert.equal(harness.state.queueMessages.length, 0);
+  assert.equal(harness.state.deadLetterMessages.length, 0);
+});
+
 test("late callbacks do not regress attemptCount after retry acceptance", async () => {
   const harness = createControlPlaneHarness({
     PROCESSING_TIMEOUT_SECONDS: "1",

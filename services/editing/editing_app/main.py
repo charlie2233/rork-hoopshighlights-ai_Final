@@ -271,8 +271,7 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
         result: Optional[CloudAnalysisResult] = None,
         failure_reason: Optional[str] = None,
     ) -> dict[str, Any]:
-        result_confidence = analysis_result_confidence(result) if result is not None else 0.0
-        return {
+        payload: dict[str, Any] = {
             "jobId": request.jobId,
             "requestId": request.requestId,
             "status": status,
@@ -281,13 +280,16 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             "schemaVersion": request.schemaVersion,
             "modelVersion": request.modelVersion,
             "failureReason": failure_reason,
-            "resultConfidence": result_confidence,
-            "confidence": result_confidence,
             "uploadTraceId": request.uploadTraceId,
             "inferenceAttemptId": request.inferenceAttemptId,
             "traceId": request.traceId,
             "results": result.model_dump(mode="json") if result is not None else None,
         }
+        if result is not None:
+            result_confidence = analysis_result_confidence(result)
+            payload["resultConfidence"] = result_confidence
+            payload["confidence"] = result_confidence
+        return payload
 
     def inference_heartbeat_payload(request: InferenceDispatchRequest, *, stage: str) -> dict[str, Any]:
         return {
@@ -305,14 +307,30 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
         payload = inference_heartbeat_payload(request, stage=stage)
         try:
             await run_in_threadpool(post_inference_heartbeat, request.callbackUrl, request.callbackSecret, request.jobId, payload)
-        except Exception:
-            pass
+            emit_event("analysis.heartbeat.sent", jobId=request.jobId, stage=stage, teamMode=request.teamSelection.mode if request.teamSelection else "all")
+        except Exception as error:
+            emit_event("analysis.heartbeat.failed", jobId=request.jobId, stage=stage, failureReason=error.__class__.__name__)
+
+    async def post_inference_progress_callback_safe(request: InferenceDispatchRequest, *, stage: str, progress: float) -> None:
+        payload = inference_callback_payload(
+            request,
+            status="processing",
+            stage=stage,
+            progress=progress,
+        )
+        try:
+            await run_in_threadpool(post_inference_callback, request.callbackUrl, request.callbackSecret, payload)
+            emit_event("analysis.progress_callback.sent", jobId=request.jobId, stage=stage, progress=progress, teamMode=request.teamSelection.mode if request.teamSelection else "all")
+        except Exception as error:
+            emit_event("analysis.progress_callback.failed", jobId=request.jobId, stage=stage, progress=progress, failureReason=error.__class__.__name__)
 
     async def analysis_heartbeat_loop(request: InferenceDispatchRequest, stage_ref: dict[str, str]) -> None:
         try:
             while True:
-                await asyncio.sleep(60)
-                await post_inference_heartbeat_safe(request, stage=stage_ref.get("stage") or "Analyzing in cloud")
+                await asyncio.sleep(30)
+                stage = stage_ref.get("stage") or "Analyzing in cloud"
+                await post_inference_heartbeat_safe(request, stage=stage)
+                await post_inference_progress_callback_safe(request, stage=stage, progress=0.72)
         except asyncio.CancelledError:
             return
 
@@ -320,8 +338,10 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
         source: Optional[MaterializedSource] = None
         stage_ref = {"stage": "Preparing cloud analysis input"}
         heartbeat_task = asyncio.create_task(analysis_heartbeat_loop(request, stage_ref))
+        emit_event("analysis.dispatch.started", jobId=request.jobId, teamMode=request.teamSelection.mode if request.teamSelection else "all", modelVersion=request.modelVersion)
         try:
             await post_inference_heartbeat_safe(request, stage=stage_ref["stage"])
+            await post_inference_progress_callback_safe(request, stage=stage_ref["stage"], progress=0.64)
             try:
                 analysis_settings = get_analysis_settings()
             except ValueError as error:
@@ -334,9 +354,13 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
                 resolved_settings.upload_root,
             )
             stage_ref["stage"] = "Analyzing in cloud"
+            emit_event("analysis.source.materialized", jobId=request.jobId, teamMode=request.teamSelection.mode if request.teamSelection else "all")
             await post_inference_heartbeat_safe(request, stage=stage_ref["stage"])
+            await post_inference_progress_callback_safe(request, stage=stage_ref["stage"], progress=0.72)
             job = dispatch_job_from_request(request, analysis_settings.job_ttl_seconds)
+            emit_event("analysis.run.started", jobId=request.jobId, teamMode=request.teamSelection.mode if request.teamSelection else "all")
             result = await run_in_threadpool(run_analysis, job, analysis_settings, source.local_path)
+            emit_event("analysis.run.completed", jobId=request.jobId, teamMode=request.teamSelection.mode if request.teamSelection else "all", clipCount=result.clipCount)
             payload = inference_callback_payload(
                 request,
                 status="succeeded",
@@ -387,8 +411,9 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
 
         try:
             await run_in_threadpool(post_inference_callback, request.callbackUrl, request.callbackSecret, payload)
-        except Exception:
-            pass
+            emit_event("analysis.callback.sent", jobId=request.jobId, status=payload.get("status"), teamMode=request.teamSelection.mode if request.teamSelection else "all")
+        except Exception as error:
+            emit_event("analysis.callback.failed", jobId=request.jobId, status=payload.get("status"), failureReason=error.__class__.__name__)
 
     def cache_job(job: StoredRenderJob) -> StoredRenderJob:
         render_jobs[job.render_job_id] = job

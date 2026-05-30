@@ -365,14 +365,15 @@ class EditingServiceTests(unittest.TestCase):
         self.assertEqual(response.json(), {"jobId": "job_analysis", "status": "accepted"})
         materialize.assert_called_once()
         run_cloud_analysis.assert_called_once()
-        post_callback.assert_called_once()
+        self.assertGreaterEqual(post_callback.call_count, 2)
         self.assertGreaterEqual(post_heartbeat.call_count, 1)
         self.assertEqual(cleanup_calls, [True])
         self.assertEqual(heartbeats[0]["callbackSecret"], "callback-secret")
         self.assertEqual(heartbeats[0]["jobId"], "job_analysis")
         self.assertEqual(heartbeats[0]["payload"]["stage"], "Preparing cloud analysis input")
         self.assertEqual(callbacks[0]["callbackSecret"], "callback-secret")
-        payload = callbacks[0]["payload"]
+        self.assertEqual(callbacks[0]["payload"]["status"], "processing")
+        payload = callbacks[-1]["payload"]
         self.assertEqual(payload["status"], "succeeded")
         self.assertEqual(payload["jobId"], "job_analysis")
         self.assertEqual(payload["inferenceAttemptId"], "attempt-analysis")

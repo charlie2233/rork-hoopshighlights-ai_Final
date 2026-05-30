@@ -7,7 +7,7 @@ import type {
   DeadLetterQueueMessage,
   InferenceCallbackPayload,
   JobRecord,
-  QueueJobMessage
+  QueueJobMessage,
 } from "../services/control-plane/src/types.ts";
 
 export interface HarnessState {
@@ -68,7 +68,9 @@ const INTERNAL_SECRET = "local-control-plane-secret";
 const ADMIN_TOKEN = "local-admin-token";
 let routeModulesPromise: Promise<RouteModules> | null = null;
 
-export function createControlPlaneHarness(overrides: Partial<Env> = {}): ControlPlaneHarness {
+export function createControlPlaneHarness(
+  overrides: Partial<Env> = {},
+): ControlPlaneHarness {
   const state: HarnessState = {
     jobs: new Map(),
     events: [],
@@ -76,7 +78,7 @@ export function createControlPlaneHarness(overrides: Partial<Env> = {}): Control
     queueMessages: [],
     deadLetterMessages: [],
     callbackRequests: [],
-    inferenceDispatches: []
+    inferenceDispatches: [],
   };
   const pending: Promise<unknown>[] = [];
 
@@ -86,6 +88,7 @@ export function createControlPlaneHarness(overrides: Partial<Env> = {}): Control
     SIGNED_UPLOAD_TTL_SECONDS: "900",
     JOB_TTL_SECONDS: "3600",
     PROCESSING_TIMEOUT_SECONDS: "300",
+    SELECTED_TEAM_PROCESSING_TIMEOUT_SECONDS: "1800",
     MAX_INFERENCE_ATTEMPTS: "3",
     MAX_FILE_SIZE_BYTES: "524288000",
     MAX_DURATION_SECONDS: "1800",
@@ -107,7 +110,7 @@ export function createControlPlaneHarness(overrides: Partial<Env> = {}): Control
     ANALYSIS_DLQ: createMockDeadLetterQueue(state),
     R2_UPLOADS: createMockBucket(state.uploads),
     R2_RESULTS: createMockBucket(new Map()),
-    ...overrides
+    ...overrides,
   } as Env;
 
   const ctx: ExecutionContext = {
@@ -116,7 +119,7 @@ export function createControlPlaneHarness(overrides: Partial<Env> = {}): Control
     },
     passThroughOnException(): void {
       return;
-    }
+    },
   } as ExecutionContext;
 
   return {
@@ -136,20 +139,31 @@ export function createControlPlaneHarness(overrides: Partial<Env> = {}): Control
       }
 
       const originalFetch = globalThis.fetch.bind(globalThis);
-      globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-        const request = input instanceof Request ? input : new Request(input, init);
+      globalThis.fetch = async (
+        input: RequestInfo | URL,
+        init?: RequestInit,
+      ): Promise<Response> => {
+        const request =
+          input instanceof Request ? input : new Request(input, init);
         const url = new URL(request.url);
         if (url.origin === BASE_URL) {
-          const requestId = request.headers.get("x-request-id")?.trim() || crypto.randomUUID();
-          const callbackMatch = url.pathname.match(/^\/internal\/inference\/callback(?:\/([^/]+))?$/);
+          const requestId =
+            request.headers.get("x-request-id")?.trim() || crypto.randomUUID();
+          const callbackMatch = url.pathname.match(
+            /^\/internal\/inference\/callback(?:\/([^/]+))?$/,
+          );
           if (callbackMatch) {
             state.callbackRequests.push({
               jobId: callbackMatch[1] ?? "unknown",
               requestId,
-              traceId: request.headers.get("x-trace-id")?.trim() || ""
+              traceId: request.headers.get("x-trace-id")?.trim() || "",
             });
           }
-          const internalResponse = await routeInternalRequest(request, env, requestId);
+          const internalResponse = await routeInternalRequest(
+            request,
+            env,
+            requestId,
+          );
           if (!internalResponse) {
             return new Response("Not found", { status: 404 });
           }
@@ -157,10 +171,24 @@ export function createControlPlaneHarness(overrides: Partial<Env> = {}): Control
         }
         if (url.origin === env.INFERENCE_BASE_URL) {
           const body = (await request.json()) as Record<string, unknown>;
-          const requestId = String(body.requestId ?? request.headers.get("x-request-id") ?? crypto.randomUUID());
-          const uploadTraceId = String(body.uploadTraceId ?? request.headers.get("x-hoops-upload-trace-id") ?? "");
-          const inferenceAttemptId = String(body.inferenceAttemptId ?? request.headers.get("x-hoops-inference-attempt-id") ?? "");
-          const traceId = String(body.traceId ?? request.headers.get("x-trace-id") ?? "");
+          const requestId = String(
+            body.requestId ??
+              request.headers.get("x-request-id") ??
+              crypto.randomUUID(),
+          );
+          const uploadTraceId = String(
+            body.uploadTraceId ??
+              request.headers.get("x-hoops-upload-trace-id") ??
+              "",
+          );
+          const inferenceAttemptId = String(
+            body.inferenceAttemptId ??
+              request.headers.get("x-hoops-inference-attempt-id") ??
+              "",
+          );
+          const traceId = String(
+            body.traceId ?? request.headers.get("x-trace-id") ?? "",
+          );
 
           state.inferenceDispatches.push({
             jobId: String(body.jobId ?? "unknown"),
@@ -171,17 +199,22 @@ export function createControlPlaneHarness(overrides: Partial<Env> = {}): Control
             jobStatus: state.jobs.get(String(body.jobId ?? "unknown"))?.status,
             url: url.toString(),
             headers: Object.fromEntries(request.headers.entries()),
-            body
+            body,
           });
 
-          if (env.APP_ENV === "staging" && (body.teamSelection as { mode?: string } | undefined)?.mode === "team") {
+          if (
+            env.APP_ENV === "staging" &&
+            (body.teamSelection as { mode?: string } | undefined)?.mode ===
+              "team"
+          ) {
             return Response.json(
               {
                 requestId,
                 errorCode: "unsupported_team_selection",
-                errorMessage: "Legacy inference does not accept selected-team dispatch."
+                errorMessage:
+                  "Legacy inference does not accept selected-team dispatch.",
               },
-              { status: 422 }
+              { status: 422 },
             );
           }
 
@@ -190,15 +223,24 @@ export function createControlPlaneHarness(overrides: Partial<Env> = {}): Control
             requestId,
             modelVersion: String(body.modelVersion ?? "external-videomae-v1"),
             resultConfidence: 0.91,
-            attemptCount: typeof body.attemptCount === "number" ? body.attemptCount : undefined
-          }) as InferenceCallbackPayload & { uploadTraceId?: string; inferenceAttemptId?: string };
+            attemptCount:
+              typeof body.attemptCount === "number"
+                ? body.attemptCount
+                : undefined,
+          }) as InferenceCallbackPayload & {
+            uploadTraceId?: string;
+            inferenceAttemptId?: string;
+          };
           callbackPayload.uploadTraceId = uploadTraceId;
           callbackPayload.inferenceAttemptId = inferenceAttemptId;
 
           if (typeof body.callbackUrl === "string") {
             const callbackOrigin = new URL(body.callbackUrl).origin;
             if (callbackOrigin !== BASE_URL) {
-              return Response.json({ error: "callback_unreachable" }, { status: 502 });
+              return Response.json(
+                { error: "callback_unreachable" },
+                { status: 502 },
+              );
             }
 
             const callbackRequest = new Request(body.callbackUrl, {
@@ -209,18 +251,22 @@ export function createControlPlaneHarness(overrides: Partial<Env> = {}): Control
                 "x-request-id": requestId,
                 "x-trace-id": traceId,
                 "x-hoops-upload-trace-id": uploadTraceId,
-                "x-hoops-inference-attempt-id": inferenceAttemptId
+                "x-hoops-inference-attempt-id": inferenceAttemptId,
               },
-              body: JSON.stringify(callbackPayload)
+              body: JSON.stringify(callbackPayload),
             });
-            const callbackResponse = await routeInternalRequest(callbackRequest, env, requestId);
+            const callbackResponse = await routeInternalRequest(
+              callbackRequest,
+              env,
+              requestId,
+            );
             if (!callbackResponse || !callbackResponse.ok) {
               return Response.json(
                 {
                   error: "callback_failed",
-                  status: callbackResponse?.status ?? 500
+                  status: callbackResponse?.status ?? 500,
                 },
-                { status: 502 }
+                { status: 502 },
               );
             }
           }
@@ -232,9 +278,9 @@ export function createControlPlaneHarness(overrides: Partial<Env> = {}): Control
               uploadTraceId,
               inferenceAttemptId,
               modelVersion: String(body.modelVersion ?? "external-videomae-v1"),
-              accepted: true
+              accepted: true,
             },
-            { status: 202 }
+            { status: 202 },
           );
         }
         return originalFetch(input, init);
@@ -253,7 +299,7 @@ export function createControlPlaneHarness(overrides: Partial<Env> = {}): Control
               },
               retry() {
                 return;
-              }
+              },
             })),
             queue: "hoopsclips-analysis",
             retryAll() {
@@ -261,9 +307,9 @@ export function createControlPlaneHarness(overrides: Partial<Env> = {}): Control
             },
             ackAll() {
               return;
-            }
+            },
           } as never,
-          env
+          env,
         );
         await this.flush();
       } finally {
@@ -274,7 +320,7 @@ export function createControlPlaneHarness(overrides: Partial<Env> = {}): Control
     },
     request(path: string, init: RequestInit = {}): Request {
       return buildRequest(path, init);
-    }
+    },
   };
 }
 
@@ -284,11 +330,16 @@ export async function invokePublicRoute(
   path: string,
   body?: unknown,
   headers: HeadersInit = {},
-  requestId = crypto.randomUUID()
+  requestId = crypto.randomUUID(),
 ): Promise<Response> {
   const { routePublicRequest } = await loadRoutes();
   const request = buildRequest(path, { method, body, headers });
-  const response = await routePublicRequest(request, harness.env, harness.ctx, requestId);
+  const response = await routePublicRequest(
+    request,
+    harness.env,
+    harness.ctx,
+    requestId,
+  );
   await harness.flush();
   if (!response) {
     throw new Error(`No public route matched ${method} ${path}`);
@@ -302,7 +353,7 @@ export async function invokeInternalRoute(
   path: string,
   body?: unknown,
   headers: HeadersInit = {},
-  requestId = crypto.randomUUID()
+  requestId = crypto.randomUUID(),
 ): Promise<Response> {
   const { routeInternalRequest } = await loadRoutes();
   const request = buildRequest(path, { method, body, headers });
@@ -317,13 +368,28 @@ export async function invokeInternalRoute(
 async function loadRoutes(): Promise<RouteModules> {
   if (!routeModulesPromise) {
     routeModulesPromise = Promise.all([
-      import(new URL("../services/control-plane/src/routes/public.ts", import.meta.url).href),
-      import(new URL("../services/control-plane/src/routes/internal.ts", import.meta.url).href),
-      import(new URL("../services/control-plane/src/queue/consumer.ts", import.meta.url).href)
+      import(
+        new URL(
+          "../services/control-plane/src/routes/public.ts",
+          import.meta.url,
+        ).href
+      ),
+      import(
+        new URL(
+          "../services/control-plane/src/routes/internal.ts",
+          import.meta.url,
+        ).href
+      ),
+      import(
+        new URL(
+          "../services/control-plane/src/queue/consumer.ts",
+          import.meta.url,
+        ).href
+      ),
     ]).then(([publicModule, internalModule, queueModule]) => ({
       routePublicRequest: publicModule.routePublicRequest,
       routeInternalRequest: internalModule.routeInternalRequest,
-      handleQueueBatch: queueModule.handleQueueBatch
+      handleQueueBatch: queueModule.handleQueueBatch,
     }));
   }
   return routeModulesPromise;
@@ -333,7 +399,11 @@ export function parseJsonResponse<T>(response: Response): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export function uploadObject(harness: ControlPlaneHarness, uploadUrl: string, body: BodyInit): Promise<void> {
+export function uploadObject(
+  harness: ControlPlaneHarness,
+  uploadUrl: string,
+  body: BodyInit,
+): Promise<void> {
   const key = extractObjectKey(uploadUrl);
   return harness.env.R2_UPLOADS.put(key, body);
 }
@@ -376,7 +446,12 @@ export function buildSuccessCallbackPayload(params: {
     attemptCount: params.attemptCount ?? null,
     uploadTraceId: params.uploadTraceId ?? null,
     inferenceAttemptId: params.inferenceAttemptId ?? null,
-    results: buildSampleResult(params.jobId, params.requestId, params.modelVersion, params.resultConfidence ?? 0.91)
+    results: buildSampleResult(
+      params.jobId,
+      params.requestId,
+      params.modelVersion,
+      params.resultConfidence ?? 0.91,
+    ),
   };
 }
 
@@ -401,11 +476,14 @@ export function buildFailureCallbackPayload(params: {
     uploadTraceId: params.uploadTraceId ?? null,
     inferenceAttemptId: params.inferenceAttemptId ?? null,
     resultConfidence: 0,
-    results: null
+    results: null,
   };
 }
 
-export function buildHeartbeatPayload(stage = "Inference running", progress = 0.55): { stage: string; progress: number } {
+export function buildHeartbeatPayload(
+  stage = "Inference running",
+  progress = 0.55,
+): { stage: string; progress: number } {
   return { stage, progress };
 }
 
@@ -413,7 +491,7 @@ export function buildSampleResult(
   jobId: string,
   requestId: string,
   modelVersion: string,
-  resultConfidence = 0.91
+  resultConfidence = 0.91,
 ): CloudAnalysisResult {
   const clip: CloudClip = {
     startTime: 12.4,
@@ -433,7 +511,7 @@ export function buildSampleResult(
     makeMiss: "make",
     rankScore: 0.97,
     reviewState: "unreviewed",
-    reviewerNotes: null
+    reviewerNotes: null,
   };
 
   return {
@@ -449,9 +527,9 @@ export function buildSampleResult(
       usedVideoIntelligence: false,
       usedGeminiRelabeling: false,
       candidateSegments: 1,
-      finalSegments: 1
+      finalSegments: 1,
     },
-    resultConfidence
+    resultConfidence,
   };
 }
 
@@ -459,7 +537,7 @@ function createMockQueue(state: HarnessState): Env["ANALYSIS_QUEUE"] {
   return {
     async send(message: QueueJobMessage): Promise<void> {
       state.queueMessages.push(message);
-    }
+    },
   } as Env["ANALYSIS_QUEUE"];
 }
 
@@ -467,7 +545,7 @@ function createMockDeadLetterQueue(state: HarnessState): Env["ANALYSIS_DLQ"] {
   return {
     async send(message: DeadLetterQueueMessage): Promise<void> {
       state.deadLetterMessages.push(message);
-    }
+    },
   } as Env["ANALYSIS_DLQ"];
 }
 
@@ -481,7 +559,7 @@ function createMockBucket(store: Map<string, Uint8Array>): R2Bucket {
       const text = new TextDecoder().decode(bytes);
       return {
         key,
-        text: async () => text
+        text: async () => text,
       } as R2ObjectBody;
     },
     async head(key: string): Promise<R2ObjectBody | null> {
@@ -496,7 +574,7 @@ function createMockBucket(store: Map<string, Uint8Array>): R2Bucket {
     async put(key: string, value: BodyInit): Promise<R2ObjectBody> {
       store.set(key, await toBytes(value));
       return { key } as R2ObjectBody;
-    }
+    },
   } as R2Bucket;
 }
 
@@ -516,27 +594,35 @@ function createMockDb(state: HarnessState): Env["DB"] {
                   eventType: String(values[3]),
                   message: String(values[4]),
                   payload: payloadJson ? JSON.parse(String(payloadJson)) : null,
-                  createdAt: String(values[6])
+                  createdAt: String(values[6]),
                 });
               }
               return { success: true } as const;
-            }
+            },
           };
-        }
+        },
       };
-    }
+    },
   } as Env["DB"];
 }
 
 function createMockJobStateNamespace(state: HarnessState): Env["JOB_STATE"] {
   return {
     idFromName(name: string) {
-      return { name, toString: () => name, equals: (other: { toString: () => string }) => other.toString() === name } as never;
+      return {
+        name,
+        toString: () => name,
+        equals: (other: { toString: () => string }) =>
+          other.toString() === name,
+      } as never;
     },
     get(id: { name?: string; toString(): string }) {
       const jobId = id.name ?? id.toString();
       return {
-        async fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+        async fetch(
+          input: RequestInfo | URL,
+          init?: RequestInit,
+        ): Promise<Response> {
           const request = new Request(input, init);
           const url = new URL(request.url);
           if (request.method === "POST" && url.pathname === "/bootstrap") {
@@ -550,16 +636,26 @@ function createMockJobStateNamespace(state: HarnessState): Env["JOB_STATE"] {
                 eventType: "job.bootstrap",
                 message: "Job bootstrap recorded in Durable Object.",
                 payload: redactJobEventPayload(body.record),
-                createdAt: body.record.createdAt
+                createdAt: body.record.createdAt,
               });
             }
-            return Response.json(state.jobs.get(body.record.jobId) ?? body.record, { status: 201 });
+            return Response.json(
+              state.jobs.get(body.record.jobId) ?? body.record,
+              { status: 201 },
+            );
           }
 
           if (request.method === "GET" && url.pathname === "/snapshot") {
             const job = state.jobs.get(jobId);
             if (!job) {
-              return Response.json({ requestId: crypto.randomUUID(), errorCode: "job_not_found", errorMessage: "Job not found." }, { status: 404 });
+              return Response.json(
+                {
+                  requestId: crypto.randomUUID(),
+                  errorCode: "job_not_found",
+                  errorMessage: "Job not found.",
+                },
+                { status: 404 },
+              );
             }
             return Response.json(job, { status: 200 });
           }
@@ -575,12 +671,19 @@ function createMockJobStateNamespace(state: HarnessState): Env["JOB_STATE"] {
             };
             const job = state.jobs.get(jobId);
             if (!job) {
-              return Response.json({ requestId: crypto.randomUUID(), errorCode: "job_not_found", errorMessage: "Job not found." }, { status: 404 });
+              return Response.json(
+                {
+                  requestId: crypto.randomUUID(),
+                  errorCode: "job_not_found",
+                  errorMessage: "Job not found.",
+                },
+                { status: 404 },
+              );
             }
             const updated: JobRecord = {
               ...job,
               ...body.patch,
-              updatedAt: body.patch.updatedAt ?? new Date().toISOString()
+              updatedAt: body.patch.updatedAt ?? new Date().toISOString(),
             };
             state.jobs.set(jobId, updated);
             state.events.push({
@@ -590,7 +693,7 @@ function createMockJobStateNamespace(state: HarnessState): Env["JOB_STATE"] {
               eventType: body.eventType ?? "job.patch",
               message: body.message ?? "Job state updated.",
               payload: redactJobEventPayload(body.payload ?? body.patch),
-              createdAt: updated.updatedAt
+              createdAt: updated.updatedAt,
             });
             return Response.json(updated, { status: 200 });
           }
@@ -598,14 +701,21 @@ function createMockJobStateNamespace(state: HarnessState): Env["JOB_STATE"] {
           if (request.method === "DELETE" && url.pathname === "/delete") {
             const job = state.jobs.get(jobId);
             if (!job) {
-              return Response.json({ requestId: crypto.randomUUID(), errorCode: "job_not_found", errorMessage: "Job not found." }, { status: 404 });
+              return Response.json(
+                {
+                  requestId: crypto.randomUUID(),
+                  errorCode: "job_not_found",
+                  errorMessage: "Job not found.",
+                },
+                { status: 404 },
+              );
             }
             const updated: JobRecord = {
               ...job,
               status: "expired",
               failureReason: "Job deleted by caller.",
               finishedAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString()
+              updatedAt: new Date().toISOString(),
             };
             state.jobs.set(jobId, updated);
             state.events.push({
@@ -615,15 +725,22 @@ function createMockJobStateNamespace(state: HarnessState): Env["JOB_STATE"] {
               eventType: "job.deleted",
               message: "Job deleted by caller.",
               payload: null,
-              createdAt: updated.updatedAt
+              createdAt: updated.updatedAt,
             });
             return Response.json(updated, { status: 200 });
           }
 
-          return Response.json({ requestId: crypto.randomUUID(), errorCode: "not_found", errorMessage: "Unknown Durable Object action." }, { status: 404 });
-        }
+          return Response.json(
+            {
+              requestId: crypto.randomUUID(),
+              errorCode: "not_found",
+              errorMessage: "Unknown Durable Object action.",
+            },
+            { status: 404 },
+          );
+        },
       };
-    }
+    },
   } as Env["JOB_STATE"];
 }
 
@@ -632,7 +749,12 @@ function buildRequest(path: string, init: RequestInit = {}): Request {
   const headers = new Headers(init.headers ?? {});
   let body = init.body;
 
-  if (body && !(body instanceof FormData) && !(body instanceof Blob) && typeof body !== "string") {
+  if (
+    body &&
+    !(body instanceof FormData) &&
+    !(body instanceof Blob) &&
+    typeof body !== "string"
+  ) {
     headers.set("content-type", "application/json");
     body = JSON.stringify(body);
   }
@@ -640,7 +762,7 @@ function buildRequest(path: string, init: RequestInit = {}): Request {
   return new Request(url, {
     ...init,
     headers,
-    body
+    body,
   });
 }
 
@@ -671,5 +793,5 @@ export default {
   buildSuccessCallbackPayload,
   buildFailureCallbackPayload,
   buildHeartbeatPayload,
-  buildSampleResult
+  buildSampleResult,
 };
