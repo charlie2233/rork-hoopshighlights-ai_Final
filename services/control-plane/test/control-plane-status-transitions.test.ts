@@ -1151,6 +1151,75 @@ test("control plane allows all-teams analysis without a team scan", async () => 
     confidenceThreshold: 0.85,
     includeUncertain: true,
   });
+
+  const editingDispatches: Array<{ body: Record<string, unknown> }> = [];
+  const originalFetch = globalThis.fetch.bind(globalThis);
+  globalThis.fetch = async (
+    input: RequestInfo | URL,
+    init?: RequestInit,
+  ): Promise<Response> => {
+    const request = input instanceof Request ? input : new Request(input, init);
+    const url = new URL(request.url);
+    if (
+      url.origin === harness.env.EDITING_BASE_URL &&
+      url.pathname === "/v1/analyze"
+    ) {
+      const body = (await request.json()) as Record<string, unknown>;
+      editingDispatches.push({ body });
+      assert.equal(body.jobId, createJson.jobId);
+      assert.equal(body.filename, "all-teams-no-scan.mp4");
+      assert.deepEqual(body.teamSelection, {
+        mode: "all",
+        teamId: null,
+        label: null,
+        colorLabel: null,
+        confidenceThreshold: 0.85,
+        includeUncertain: true,
+      });
+
+      const callbackPayload = buildSuccessCallbackPayload({
+        jobId: createJson.jobId,
+        requestId: String(body.requestId),
+        modelVersion: String(body.modelVersion ?? "editing-cloud-v1"),
+        resultConfidence: 0.92,
+        uploadTraceId: String(body.uploadTraceId),
+        inferenceAttemptId: String(body.inferenceAttemptId),
+      });
+      assert.ok(callbackPayload.results);
+      callbackPayload.results.teamSelection = body.teamSelection;
+      const callbackResponse = await invokeInternalRoute(
+        harness,
+        "POST",
+        "/internal/inference/callback",
+        callbackPayload,
+        {
+          "x-hoops-inference-secret": String(body.callbackSecret),
+          "x-request-id": String(body.requestId),
+          "x-trace-id": String(body.traceId),
+          "x-hoops-upload-trace-id": String(body.uploadTraceId),
+          "x-hoops-inference-attempt-id": String(body.inferenceAttemptId),
+        },
+        String(body.requestId),
+      );
+      assert.equal(callbackResponse.status, 200);
+
+      return Response.json(
+        { jobId: createJson.jobId, accepted: true },
+        { status: 202 },
+      );
+    }
+    return originalFetch(input, init);
+  };
+
+  try {
+    const processedMessages = await harness.drainQueue();
+    assert.equal(processedMessages, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(harness.state.inferenceDispatches.length, 0);
+  assert.equal(editingDispatches.length, 1);
 });
 
 test("legacy inference manifest preserves team and timing metadata", async () => {

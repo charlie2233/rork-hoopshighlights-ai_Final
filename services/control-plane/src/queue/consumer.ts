@@ -357,9 +357,9 @@ async function dispatchAnalysisJob(
 ): Promise<{ provider: AnalysisDispatchProvider["name"]; status: number }> {
   const providers = analysisDispatchProviders(env, dispatchRequest.body);
   if (providers.length === 0) {
-    if (isSelectedTeamAnalysis(dispatchRequest.body)) {
+    if (isTeamAwareAnalysis(dispatchRequest.body)) {
       throw new Error(
-        "Missing editing service base URL for selected-team analysis.",
+        "Missing editing service base URL for team-aware analysis.",
       );
     }
     throw new Error("Missing inference service base URL.");
@@ -478,7 +478,7 @@ function analysisDispatchProviders(
             env.CONTROL_PLANE_SHARED_SECRET,
         }
       : null;
-  const providers = isSelectedTeamAnalysis(body)
+  const providers = isTeamAwareAnalysis(body)
     ? [editingProvider].filter(
         (provider): provider is AnalysisDispatchProvider => provider !== null,
       )
@@ -492,8 +492,10 @@ function analysisDispatchProviders(
   );
 }
 
-function isSelectedTeamAnalysis(body: InferenceDispatchRequest): boolean {
-  return body.teamSelection?.mode === "team";
+function isTeamAwareAnalysis(body: InferenceDispatchRequest): boolean {
+  return (
+    body.teamSelection?.mode === "team" || body.teamSelection?.mode === "all"
+  );
 }
 
 function shouldTryNextAnalysisProvider(status: number): boolean {

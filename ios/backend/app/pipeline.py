@@ -43,6 +43,7 @@ VISUAL_EVENT_MIN_GAP_SECONDS = 1.4
 VISUAL_EVENT_MAX_BOUNDARIES = 24
 VISUAL_EVENT_SEQUENCE_GAP_SECONDS = 1.1
 VISUAL_EVENT_CONTEXT_SECONDS = 1.25
+NATIVE_RECALL_BACKFILL_OVERLAP_RATIO = 0.55
 TEAM_SELECTION_PREFILTER_MULTIPLIER = 4
 TEAM_SELECTION_PREFILTER_MAX_CLIPS = 160
 TEAM_EVIDENCE_REQUIRED_SOURCES = {"quick_scan", "gpt_frame_review", "provider", "unknown"}
@@ -1332,9 +1333,50 @@ def _build_candidate_windows(
 
     segmented = _segment_with_hysteresis(windows, settings, clip_limit=resolved_limit)
     if segmented:
-        return segmented
+        return _backfill_segmented_candidate_windows(segmented, windows, resolved_limit)
 
     return sorted(windows, key=lambda item: item.combined_score, reverse=True)[:resolved_limit]
+
+
+def _backfill_segmented_candidate_windows(
+    segmented: Sequence[CandidateWindow],
+    windows: Sequence[CandidateWindow],
+    resolved_limit: int,
+) -> List[CandidateWindow]:
+    resolved_limit = max(0, int(resolved_limit))
+    if resolved_limit == 0:
+        return []
+
+    kept = list(segmented[:resolved_limit])
+    if len(kept) >= resolved_limit:
+        return sorted(kept, key=_candidate_window_recall_key, reverse=True)[:resolved_limit]
+
+    for window in sorted(windows, key=_candidate_window_recall_key, reverse=True):
+        if len(kept) >= resolved_limit:
+            break
+        if any(_candidate_window_overlap_ratio(window, existing) > NATIVE_RECALL_BACKFILL_OVERLAP_RATIO for existing in kept):
+            continue
+        kept.append(window)
+
+    return sorted(kept, key=_candidate_window_recall_key, reverse=True)[:resolved_limit]
+
+
+def _candidate_window_recall_key(window: CandidateWindow) -> tuple[float, float, float, float, float]:
+    return (
+        window.event_context_score,
+        window.combined_score,
+        window.motion_score,
+        window.visual_score,
+        window.audio_score,
+    )
+
+
+def _candidate_window_overlap_ratio(left: CandidateWindow, right: CandidateWindow) -> float:
+    overlap = max(0.0, min(left.end_time, right.end_time) - max(left.start_time, right.start_time))
+    if overlap <= 0.0:
+        return 0.0
+    shortest = min(max(left.end_time - left.start_time, 0.001), max(right.end_time - right.start_time, 0.001))
+    return overlap / shortest
 
 
 def _shot_context_score_for_window(

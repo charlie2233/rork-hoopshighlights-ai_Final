@@ -1312,6 +1312,23 @@ class PipelineQualityTests(unittest.TestCase):
             max(window.combined_score for window in windows if window.start_time > 10.0),
         )
 
+    def test_native_candidate_backfill_keeps_review_pool_when_hysteresis_finds_few_sequences(self) -> None:
+        audio_profile = [0.08] * 60
+        for index in range(18, 22):
+            audio_profile[index] = 0.72
+
+        windows = _build_candidate_windows(
+            duration_seconds=30.0,
+            audio_profile=audio_profile,
+            shot_boundaries=[10.0],
+            settings=_settings(),
+        )
+
+        self.assertEqual(len(windows), _settings().max_returned_clips)
+        self.assertEqual(windows[0].peak_time, 10.0)
+        self.assertGreater(windows[0].event_context_score, 0.0)
+        self.assertGreaterEqual(len({round(window.start_time, 1) for window in windows}), 4)
+
     def test_native_recall_fallback_returns_configured_candidate_pool(self) -> None:
         audio_profile = [0.08] * 60
         windows = _build_candidate_windows(

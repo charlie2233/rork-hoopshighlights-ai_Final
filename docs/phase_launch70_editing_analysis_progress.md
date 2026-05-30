@@ -208,3 +208,52 @@ Safe Cloud Run event proof for job `36d008a66e454da899a8037721a53d78`:
 - `analysis.callback.sent`, `status=succeeded`
 
 Selected-team analysis now has proven real backend progress callbacks and a final completion callback through the Worker. Manual labels are still needed to score the clips for the target 85%+ team/highlight accuracy gate.
+
+## Candidate Recall Follow-Up
+
+Live Launch70 diagnostics showed selected-team jobs were completing but under-producing the review pool before team filtering:
+
+- black selected-team run: `preTeamFilterSegments=6`, `teamMatchedCandidateSegments=3`, `finalSegments=3`
+- white selected-team run: `preTeamFilterSegments=6`, `teamMatchedCandidateSegments=3`, `finalSegments=3`
+- all-teams run: `candidateSegments=1`, `finalSegments=1`
+
+This made the accuracy gate impossible to prove from the current sample because there were only 7 total clips across the available real cloud cases.
+
+Patch:
+
+- Native candidate generation now keeps the strong hysteresis event segments but backfills with top non-overlapping candidate windows up to the configured candidate pool.
+- This preserves deterministic CV/audio/FFmpeg-backed candidate generation and does not move analysis into iOS.
+- GPT/team scan gets more cloud-generated candidates to judge, including uncertain moments that can remain reviewable.
+- Explicit team-aware analysis now routes through the editing provider for both `mode: "team"` and `mode: "all"`.
+- Normal analysis requests without `teamSelection` still keep the legacy inference-first provider order.
+
+Local validation for the recall patch:
+
+```bash
+PYTHONPATH=ios/backend /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest ios.backend.tests.test_pipeline_quality.PipelineQualityTests.test_native_candidate_backfill_keeps_review_pool_when_hysteresis_finds_few_sequences
+PYTHONPATH=ios/backend /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest ios.backend.tests.test_pipeline_quality
+PYTHONPATH=ios/backend /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest ios.backend.tests.test_team_quick_scan
+PYTHONPATH=ios/backend /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest discover ios/backend/tests
+/Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m py_compile ios/backend/app/pipeline.py ios/backend/tests/test_pipeline_quality.py
+npm --prefix services/control-plane run typecheck
+npm --prefix services/control-plane test
+cd services/control-plane && npx prettier --check src/queue/consumer.ts test/control-plane-status-transitions.test.ts
+npm --prefix services/control-plane run deploy:staging:dry-run
+git diff --check
+```
+
+- Focused recall test: passed.
+- Pipeline quality suite: 51 tests passed.
+- Team quick-scan suite: 38 tests passed.
+- Backend unittest discovery: 206 tests passed.
+- `py_compile`: passed.
+- Control-plane typecheck: passed.
+- Control-plane tests: 33 tests passed.
+- Prettier check: passed.
+- Worker staging dry run: passed.
+- `git diff --check`: passed.
+
+Status:
+
+- Not deployed yet.
+- Next launch proof should deploy this backend change, rerun the three accuracy collection cases, and then generate a real `--team-accuracy-report` from human labels.
