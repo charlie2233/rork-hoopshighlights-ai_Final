@@ -833,7 +833,10 @@ def check_secret_gated_deploy_preflight(repo_root: Path, collector: Collector) -
         collector.fail(
             check_name,
             "Cloud Edit Deploy Preflight",
-            "No manually dispatched deploy preflight run was found; push codechecks do not prove staging secrets or provider auth.",
+            (
+                "No manually dispatched deploy preflight run was found; push codechecks do not prove staging secrets or provider auth. "
+                "Use operation=credential-check first while repairing provider credentials, then operation=preflight for launch readiness."
+            ),
         )
         return
 
@@ -854,7 +857,8 @@ def check_secret_gated_deploy_preflight(repo_root: Path, collector: Collector) -
             "Cloud Edit Deploy Preflight",
             (
                 f"Latest manually dispatched deploy preflight is for {short_latest}, not current checkout {short_current}; "
-                "rerun workflow_dispatch operation=preflight after provider secrets are repaired."
+                "use operation=credential-check first while repairing provider credentials, then rerun workflow_dispatch "
+                "operation=preflight for launch readiness."
             ),
         )
         return
@@ -876,7 +880,10 @@ def check_secret_gated_deploy_preflight(repo_root: Path, collector: Collector) -
         collector.fail(
             check_name,
             "Cloud Edit Deploy Preflight",
-            "Could not confirm the secret-gated deploy job; rerun workflow_dispatch operation=preflight and verify provider-auth checks.",
+            (
+                "Could not confirm the secret-gated deploy job; use operation=credential-check first while repairing provider "
+                "credentials, then rerun workflow_dispatch operation=preflight and verify provider-auth checks."
+            ),
         )
         return
     job_status, job_conclusion = job_result
@@ -890,7 +897,10 @@ def check_secret_gated_deploy_preflight(repo_root: Path, collector: Collector) -
         collector.fail(
             check_name,
             "Cloud Edit Deploy Preflight",
-            f"Secret-gated deploy job status={job_status} conclusion={job_conclusion}; provider-auth preflight is not proven.",
+            (
+                f"Secret-gated deploy job status={job_status} conclusion={job_conclusion}; provider-auth preflight is not proven. "
+                "Use operation=credential-check first while repairing provider credentials, then operation=preflight for launch readiness."
+            ),
         )
 
 

@@ -11,6 +11,7 @@ Keep Cloudflare token repair iterations from burning full GitHub Actions deploy 
 - Changed the Atlas/browser prompt to trigger only `operation=credential-check` after provider repair.
 - Explicitly tells the browser agent not to run `operation=preflight` or `operation=deploy` during token repair.
 - Updated `scripts/test_launch_provider_input_handoff.py` so the safe handoff stays budget-aware.
+- Updated `scripts/submission_readiness_preflight.py` failure copy to point operators at `operation=credential-check` before the full readiness `operation=preflight`.
 
 ## Why
 
@@ -22,6 +23,7 @@ Commands:
 
 ```bash
 python3 scripts/launch_provider_input_handoff.py --json --ref main | python3 -m json.tool | rg -n "operation=credential-check|operation=preflight|Cloud deploy credential check|Do not run operation"
+python3 scripts/submission_readiness_preflight.py --json
 ```
 
 Observed:
@@ -29,6 +31,7 @@ Observed:
 - The Atlas/browser prompt uses `operation=credential-check`.
 - The verification command list keeps `operation=preflight` for the later full proof.
 - The prompt says not to run `operation=preflight` or `operation=deploy` during provider repair.
+- Readiness preflight still fails, as expected before launch proof, with `21` passing checks and `13` failing checks on this branch snapshot.
 
 ## Next Step
 

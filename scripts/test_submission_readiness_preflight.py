@@ -478,6 +478,7 @@ charlie的iPhone   charliedeiPhone.coredevice.local   E5786BB6-0095-5509-8B85-11
 
         self.assertTrue(has_failures(collector.findings))
         self.assertIn("not current checkout", collector.findings[0].detail)
+        self.assertIn("operation=credential-check", collector.findings[0].detail)
         self.assertIn("operation=preflight", collector.findings[0].detail)
 
     def test_secret_gated_deploy_preflight_rejects_dispatch_without_secret_job(self) -> None:
@@ -513,6 +514,8 @@ charlie的iPhone   charliedeiPhone.coredevice.local   E5786BB6-0095-5509-8B85-11
             check_secret_gated_deploy_preflight(Path.cwd(), collector)
 
         self.assertTrue(has_failures(collector.findings))
+        self.assertIn("operation=credential-check", collector.findings[0].detail)
+        self.assertIn("operation=preflight", collector.findings[0].detail)
         self.assertIn("provider-auth preflight is not proven", collector.findings[0].detail)
 
     def test_secret_gated_deploy_preflight_passes_with_current_successful_secret_job(self) -> None:
