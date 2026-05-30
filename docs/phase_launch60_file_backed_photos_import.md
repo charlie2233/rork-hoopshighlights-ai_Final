@@ -84,7 +84,51 @@ Results:
 - App installed on the wired iPhone.
 - App launched with bundle ID `atrak.charlie.hoopsclips`.
 
+Internal staging archive:
+
+```bash
+xcodebuild archive \
+  -project ios/HoopsClips.xcodeproj \
+  -scheme HoopsClips \
+  -configuration Release \
+  -destination 'generic/platform=iOS' \
+  -archivePath ios/build/HoopsClips-Phase60-InternalStaging.xcarchive \
+  -derivedDataPath /tmp/hoopclips-phase60-archive-derived \
+  -allowProvisioningUpdates \
+  -skipPackagePluginValidation \
+  -xcconfig ios/HoopsClips/HoopsClips/Config/InternalStaging.xcconfig \
+  HOOPS_DEVELOPMENT_TEAM=<configured-team-id>
+```
+
+Results:
+
+- `** ARCHIVE SUCCEEDED **`
+- Archive path: `ios/build/HoopsClips-Phase60-InternalStaging.xcarchive`
+- Bundle ID: `atrak.charlie.hoopsclips`
+- Version: `1.0.0`
+- Build: `5`
+- `HOOPSAppEnvironment`: `internal_staging`
+- `HOOPSCloudLaunchMode`: `internal_only`
+
+Main-branch GitHub checks for commit `66baa27`:
+
+- iOS Internal TestFlight Upload push run `26677956763`: success.
+- Cloud Edit Deploy Preflight push run `26677956739`: success.
+
+Submission preflight:
+
+```bash
+python3 scripts/submission_readiness_preflight.py --archive-path ios/build/HoopsClips-Phase60-InternalStaging.xcarchive
+```
+
+Result:
+
+- `31 pass`, `0 warn`, `3 fail`.
+- Current main-branch Cloud and iOS workflow checks pass for `66baa27`.
+- The local phase60 internal-staging archive is accepted as the upload artifact candidate.
+
 ## Remaining Smoke
 
 - Real-device import from Photos still needs manual confirmation on the wired iPhone with a large source video.
 - If the user still sees `Preparing video...` hang after this patch, the next suspect is the project persistence copy/thumbnail generation path, not the Photos transfer fallback.
+- Launch readiness still needs the launch-grade team/highlight accuracy report, fresh secret-gated manual deploy preflight, and installed TestFlight post-install smoke.
