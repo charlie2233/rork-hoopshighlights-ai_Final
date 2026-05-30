@@ -733,6 +733,7 @@ The launch-grade accuracy flow now has an explicit handoff from the local review
 - It looks for review-page downloads named `{caseId}_manual_labels.json`, or accepts explicit `--label caseId=/path/to/file.json` mappings.
 - The review page now also supports a single `Download all labels` bundle named `team_highlight_manual_labels_bundle.json`.
 - The apply helper accepts that bundle with `--bundle`.
+- The review page now saves a local browser draft as labels are filled and restores matching case/clip drafts on reload, so the 66-clip review is less likely to lose work before bundle download.
 - It validates case ID, clip count, label IDs, prediction clip IDs, completion fields, and rejects URL/object-key fields or signed URL markers.
 - It blocks incomplete labels by default so the launch report cannot be generated from partial manual review.
 - This is metadata-only; it does not inspect, upload, analyze, render, compose, or export video.
@@ -765,6 +766,7 @@ python3 scripts/apply_team_highlight_manual_labels.py \
 - `py_compile`: passed.
 - Focused review/apply-helper suite: 7 tests passed.
 - Regenerated Launch71 review page: 66 clip cards, bundle download code present.
+- Review page local draft code present: `team-highlight-manual-label-draft-v1`, `hoopclips-team-label-draft`, restore, and clear actions.
 - Review-page leak scan: no signed URLs, source/upload URLs, object keys, or upload headers found.
 - Current Launch71 bundle apply dry-run: blocked because `~/Downloads/team_highlight_manual_labels_bundle.json` is not present yet.
 

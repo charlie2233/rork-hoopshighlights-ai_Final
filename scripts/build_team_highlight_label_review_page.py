@@ -279,8 +279,12 @@ def render_progress_summary(payload: dict[str, Any]) -> str:
             "<h2>Label Progress</h2>",
             f'<p id="overall-progress"><strong>{reviewed}</strong> / {total} clips reviewed. {remaining} still need labels.</p>',
             '<p class="lede">A clip is complete when it is marked reviewed and has expected team, highlight, event, and outcome fields filled.</p>',
+            '<p class="lede" id="draft-status">Local draft not loaded.</p>',
             "</div>",
+            '<div class="button-row">',
             '<button type="button" onclick="downloadAllCaseLabels()">Download all labels</button>',
+            '<button type="button" onclick="clearSavedDraft()">Clear saved draft</button>',
+            "</div>",
             "</div>",
             "</section>",
         ]
@@ -616,6 +620,28 @@ function boolFromSelect(value) {
   return null;
 }
 
+function draftStorageKey() {
+  const caseIds = reviewData.cases.map(casePayload => casePayload.caseId || casePayload.labelsPayload?.caseId || "case").join("|");
+  return `hoopclips-team-label-draft:${caseIds}`;
+}
+
+function draftStatus(message) {
+  const status = document.getElementById("draft-status");
+  if (status) status.textContent = message;
+}
+
+function safeLocalStorage() {
+  try {
+    const storage = window.localStorage;
+    const probe = "__hoopclips_label_probe__";
+    storage.setItem(probe, "1");
+    storage.removeItem(probe);
+    return storage;
+  } catch (_error) {
+    return null;
+  }
+}
+
 function updateClip(caseIndex, clipIndex) {
   const card = document.querySelector(`[data-case-index="${caseIndex}"][data-clip-index="${clipIndex}"]`);
   const clip = reviewData.cases[caseIndex].labelsPayload.clips[clipIndex];
@@ -651,6 +677,87 @@ function updateCase(caseIndex) {
 
 function updateAllCases() {
   reviewData.cases.forEach((_casePayload, caseIndex) => updateCase(caseIndex));
+}
+
+function setSelectValue(select, value) {
+  if (!select) return;
+  const normalized = value == null ? "" : String(value);
+  select.value = normalized;
+}
+
+function applyClipPayloadToCard(caseIndex, clipIndex, clipPayload) {
+  const card = document.querySelector(`[data-case-index="${caseIndex}"][data-clip-index="${clipIndex}"]`);
+  if (!card || !clipPayload) return;
+  const expected = clipPayload.expected || {};
+  const highlightValue = expected.isHighlight === true ? "true" : expected.isHighlight === false ? "false" : "unknown";
+  card.querySelector(".reviewed").checked = clipPayload.needsLabel === false;
+  setSelectValue(card.querySelector(".expected-team"), expected.teamId);
+  setSelectValue(card.querySelector(".expected-highlight"), highlightValue);
+  setSelectValue(card.querySelector(".expected-event"), expected.eventType);
+  setSelectValue(card.querySelector(".expected-outcome"), expected.outcome);
+  const notes = card.querySelector(".label-notes");
+  if (notes) notes.value = clipPayload.labelingNotes || "";
+  updateClip(caseIndex, clipIndex);
+}
+
+function saveDraft() {
+  updateAllCases();
+  const storage = safeLocalStorage();
+  if (!storage) {
+    draftStatus("Local draft unavailable in this browser.");
+    return;
+  }
+  const payload = {
+    schemaVersion: "team-highlight-manual-label-draft-v1",
+    savedAt: new Date().toISOString(),
+    cases: reviewData.cases.map(casePayload => casePayload.labelsPayload),
+  };
+  storage.setItem(draftStorageKey(), JSON.stringify(payload));
+  draftStatus(`Local draft saved at ${new Date(payload.savedAt).toLocaleTimeString()}.`);
+}
+
+function restoreDraft() {
+  const storage = safeLocalStorage();
+  if (!storage) {
+    draftStatus("Local draft unavailable in this browser.");
+    return;
+  }
+  const raw = storage.getItem(draftStorageKey());
+  if (!raw) {
+    draftStatus("No local draft saved yet.");
+    return;
+  }
+  try {
+    const payload = JSON.parse(raw);
+    if (payload.schemaVersion !== "team-highlight-manual-label-draft-v1" || !Array.isArray(payload.cases)) {
+      draftStatus("Saved draft ignored because it has an unknown format.");
+      return;
+    }
+    payload.cases.forEach((savedCase, caseIndex) => {
+      const currentCase = reviewData.cases[caseIndex]?.labelsPayload;
+      if (!currentCase || savedCase?.caseId !== currentCase.caseId || !Array.isArray(savedCase.clips)) return;
+      savedCase.clips.forEach((savedClip, clipIndex) => {
+        const currentClip = currentCase.clips?.[clipIndex];
+        if (!currentClip) return;
+        if (savedClip.labelId !== currentClip.labelId || savedClip.predictionClipId !== currentClip.predictionClipId) return;
+        Object.assign(currentClip, savedClip);
+        applyClipPayloadToCard(caseIndex, clipIndex, currentClip);
+      });
+    });
+    draftStatus(`Local draft restored from ${new Date(payload.savedAt).toLocaleString()}.`);
+  } catch (_error) {
+    draftStatus("Saved draft ignored because it could not be read.");
+  }
+}
+
+function clearSavedDraft() {
+  const storage = safeLocalStorage();
+  if (!storage) {
+    draftStatus("Local draft unavailable in this browser.");
+    return;
+  }
+  storage.removeItem(draftStorageKey());
+  draftStatus("Local draft cleared.");
 }
 
 function updateProgress() {
@@ -714,6 +821,9 @@ function downloadAllCaseLabels() {
 
 window.addEventListener("input", updateProgress);
 window.addEventListener("change", updateProgress);
+window.addEventListener("input", saveDraft);
+window.addEventListener("change", saveDraft);
+restoreDraft();
 updateProgress();
 """.strip()
 
