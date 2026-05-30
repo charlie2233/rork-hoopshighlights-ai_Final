@@ -52,6 +52,17 @@ gh workflow run cloud-edit-deploy-preflight.yml \
 
 Only run `operation=preflight` or `operation=deploy` after the credential-only run succeeds.
 
-## Remaining Blocker
+## 2026-05-30 Result
 
-Cloudflare Wrangler auth is still the deploy blocker until a staging `CLOUDFLARE_API_TOKEN` scoped to the correct HoopClips Cloudflare account is saved and proven by `operation=credential-check`.
+The credential-only lane is now proven on `main`.
+
+Evidence:
+
+- GitHub Actions run `26672739316`
+- Ref: `main`
+- Head SHA: `cf468745c18875eb5ace858c6a3e46d5c1078df9`
+- Operation: `credential-check`
+- Result: success
+- Successful job: `Verify cloud deploy credentials only`
+
+This clears the cheap Cloudflare/GCP credential proof. It does not replace the required full `operation=preflight`, staging deploy, rollback, live Worker `/v1/editing/version`, installed TestFlight smoke, or labeled team/highlight accuracy proof.

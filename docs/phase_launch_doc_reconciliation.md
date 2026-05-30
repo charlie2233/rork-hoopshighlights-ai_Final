@@ -86,11 +86,24 @@ Observed results:
 ## Remaining Blockers
 
 - Install the internal staging TestFlight build on a trusted online iPhone and run the full post-install smoke: upload/import -> cloud analysis -> Review -> Export -> AI Edit -> render -> preview -> More Hype revision -> revised preview -> share/open-in.
-- Merge or otherwise publish `.github/workflows/cloud-edit-deploy-preflight.yml` to `main` before using GitHub Actions `workflow_dispatch`.
-- Add required GitHub `staging` environment deploy inputs without logging values.
+- Use the already published `.github/workflows/cloud-edit-deploy-preflight.yml` from `main` for GitHub Actions `workflow_dispatch`.
+- GitHub `staging` environment deploy input names are now present, but full preflight/deploy/rollback proof remains required.
 - Run `Cloud Edit Deploy Preflight` with `operation=preflight`, then `operation=deploy`, then `operation=rollback` with a captured previous Worker version ID.
 - Refresh staging Worker and prove `GET /v1/editing/version` returns live editing service flag state through the Worker.
 - Keep production cutover blocked until production Worker, Cloud Run, R2, D1, Sentry, Statsig, RevenueCat, Google config, privacy/storage copy, rollback, and beta proof gates clear.
+
+## 2026-05-30 Credential-Check Reconciliation
+
+Cloudflare/GCP deploy credential names are now installed enough to pass the cheap credential-only lane:
+
+- Workflow: `Cloud Edit Deploy Preflight`
+- Run ID: `26672739316`
+- Ref: `main`
+- Head SHA: `cf468745c18875eb5ace858c6a3e46d5c1078df9`
+- Operation: `credential-check`
+- Result: success
+
+This refresh intentionally did not run full `operation=preflight`, `operation=deploy`, or `operation=rollback` to conserve GitHub Actions budget. The live staging Worker `/v1/editing/version` proof and installed TestFlight smoke remain open launch gates.
 
 ## Validation
 
