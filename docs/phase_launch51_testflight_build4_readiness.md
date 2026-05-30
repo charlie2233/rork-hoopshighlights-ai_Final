@@ -63,8 +63,8 @@ python3 scripts/submission_readiness_preflight.py --skip-live
 Results:
 
 - `git diff --check`: passed.
-- `scripts.test_submission_readiness_preflight`: 31 tests passed.
-- Full script test discovery: 108 tests passed.
+- `scripts.test_submission_readiness_preflight`: 32 tests passed.
+- Full script test discovery: 109 tests passed.
 - `submission_readiness_preflight.py --skip-live`: improved from 7 launch failures to 3 current failures while preserving the real launch gates:
   - tracked/untracked files are dirty because this branch is in progress
   - launch-grade selected-team/highlight accuracy report is missing

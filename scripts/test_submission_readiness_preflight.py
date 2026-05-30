@@ -29,6 +29,7 @@ from scripts.submission_readiness_preflight import (
     check_secret_gated_deploy_preflight,
     check_team_highlight_accuracy_report,
     has_failures,
+    ios_device_state_is_smoke_ready,
     parse_devicectl_devices,
     redacted_endpoint_label,
     run_checks,
@@ -285,6 +286,11 @@ charlie的iPhone   charliedeiPhone.coredevice.local   E5786BB6-0095-5509-8B85-11
         self.assertEqual(len(devices), 1)
         self.assertEqual(devices[0]["state"], "available (paired)")
         self.assertEqual(devices[0]["model"], "iPhone 15 Pro (iPhone16,1)")
+
+    def test_connected_device_state_is_smoke_ready(self) -> None:
+        self.assertTrue(ios_device_state_is_smoke_ready("connected"))
+        self.assertTrue(ios_device_state_is_smoke_ready("available (paired)"))
+        self.assertFalse(ios_device_state_is_smoke_ready("unavailable"))
 
     def test_connected_ios_device_passes_when_detected_iphone_is_available_paired(self) -> None:
         output = """

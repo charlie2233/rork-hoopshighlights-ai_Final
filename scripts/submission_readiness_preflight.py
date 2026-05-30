@@ -655,8 +655,8 @@ def check_connected_ios_device(collector: Collector) -> None:
         return
 
     devices = parse_devicectl_devices(result.stdout)
-    available_iphones = [device for device in devices if device["model"].startswith("iPhone") and device["state"].lower().startswith("available")]
-    unavailable_iphones = [device for device in devices if device["model"].startswith("iPhone") and not device["state"].lower().startswith("available")]
+    available_iphones = [device for device in devices if device["model"].startswith("iPhone") and ios_device_state_is_smoke_ready(device["state"])]
+    unavailable_iphones = [device for device in devices if device["model"].startswith("iPhone") and not ios_device_state_is_smoke_ready(device["state"])]
     if available_iphones:
         collector.pass_("connected ios device", "xcrun devicectl", f"{len(available_iphones)} available iPhone device(s) detected for TestFlight smoke.")
     elif unavailable_iphones:
@@ -664,6 +664,11 @@ def check_connected_ios_device(collector: Collector) -> None:
         collector.fail("connected ios device", "xcrun devicectl", f"iPhone device(s) detected but unavailable for install/smoke testing: {states}.")
     else:
         collector.fail("connected ios device", "xcrun devicectl", "No available physical iPhone detected for installed TestFlight smoke.")
+
+
+def ios_device_state_is_smoke_ready(state: str) -> bool:
+    normalized = state.lower().strip()
+    return normalized.startswith("available") or normalized == "connected"
 
 
 def parse_devicectl_devices(output: str) -> list[dict[str, str]]:
