@@ -19,7 +19,7 @@ from .config import EditingSettings, get_settings
 from .gpt_reranker import (
     GPTHighlightRerankerSettings,
     expand_shot_candidate_windows_from_source_path,
-    request_gpt_edit_plan_patch,
+    request_gpt_edit_plan_patch_attempt,
     rerank_edit_request_with_gpt,
     with_gpt_fallback_summary,
 )
@@ -1066,10 +1066,22 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             require_edit_owner(job, request.installId or x_hoops_install_id)
             validate_revision_policy(edit_job_id, request)
             revision_id = "rev_" + uuid4().hex
+            gpt_patch_status = "disabled"
+            gpt_patch_fallback_reason = "feature_flag_disabled"
             proposed_patch = None
             if feature_flags.aiClipGptRevisionEnabled:
-                proposed_patch = request_gpt_edit_plan_patch(job, request, gpt_reranker_settings)
-            revised_job, revision_response = build_revision_response(job, request, revision_id, proposed_patch=proposed_patch)
+                gpt_patch_attempt = request_gpt_edit_plan_patch_attempt(job, request, gpt_reranker_settings)
+                proposed_patch = gpt_patch_attempt.patch
+                gpt_patch_status = gpt_patch_attempt.status
+                gpt_patch_fallback_reason = gpt_patch_attempt.fallback_reason
+            revised_job, revision_response = build_revision_response(
+                job,
+                request,
+                revision_id,
+                proposed_patch=proposed_patch,
+                gpt_revision_patch_status=gpt_patch_status,
+                gpt_revision_patch_fallback_reason=gpt_patch_fallback_reason,
+            )
             if not revision_response.validationResult.valid:
                 first_error = revision_response.validationResult.errors[0]
                 raise EditingServiceError(400, first_error.code, first_error.message)

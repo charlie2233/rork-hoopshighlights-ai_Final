@@ -20,7 +20,9 @@ sys.path.insert(0, str(REPO_ROOT / "ios" / "backend"))
 
 from app.editing import (  # noqa: E402
     CreateEditJobRequest,
+    EditPlanPatch,
     EditPlanClip,
+    EditPlanPatchOperation,
     GPTHighlightClipDecision,
     GPTHighlightRerankSummary,
     GPTHighlightSuggestedEdit,
@@ -33,6 +35,7 @@ from app.editing import (  # noqa: E402
 )
 import editing_app.main as editing_main  # noqa: E402
 from editing_app.config import EditingSettings  # noqa: E402
+from editing_app.gpt_reranker import GPTEditPlanPatchAttempt  # noqa: E402
 from editing_app.main import create_app  # noqa: E402
 from editing_app.models import StoredRenderJob, build_ai_work_receipt, now_utc  # noqa: E402
 from editing_app.render_state import DurableRenderStateStore  # noqa: E402
@@ -721,6 +724,10 @@ class EditingServiceTests(unittest.TestCase):
         self.assertEqual(revision_payload["revisedPlan"]["templateId"], "full_game_highlight_v1")
         self.assertEqual(revision_payload["revisedPlan"]["captionStyle"], "clean_scorebug")
         self.assertTrue(revision_payload["validationResult"]["valid"])
+        self.assertEqual(revision_payload["revisionPlanner"], "deterministic_patch")
+        self.assertFalse(revision_payload["gptRevisionPatchApplied"])
+        self.assertEqual(revision_payload["gptRevisionPatchStatus"], "disabled")
+        self.assertEqual(revision_payload["gptRevisionPatchFallbackReason"], "feature_flag_disabled")
 
         revisions_response = client.get(
             f"/v1/edit-jobs/{create_payload['editJobId']}/revisions",
@@ -792,8 +799,101 @@ class EditingServiceTests(unittest.TestCase):
         self.assertEqual(get_response.status_code, 200)
         self.assertEqual(get_response.json()["revisionId"], revision_payload["revisionId"])
         self.assertEqual(get_response.json()["newPlanId"], revision_payload["newPlanId"])
+        self.assertEqual(get_response.json()["revisionPlanner"], "deterministic_patch")
         self.assertTrue((self._temp_dir / f"edits/{create_payload['editJobId']}/revisions/{revision_payload['revisionId']}.json").exists())
         self.assertTrue((self._temp_dir / f"edits/{create_payload['editJobId']}/plans/{revision_payload['newPlanId']}.json").exists())
+
+    def test_revise_edit_job_surfaces_gpt_patch_planner_when_applied(self) -> None:
+        previous_revision = os.environ.get("HOOPS_AI_CLIP_GPT_REVISION_ENABLED")
+        previous_editor = os.environ.get("HOOPS_AI_CLIP_GPT_EDITOR_ENABLED")
+        os.environ["HOOPS_AI_CLIP_GPT_REVISION_ENABLED"] = "true"
+        os.environ["HOOPS_AI_CLIP_GPT_EDITOR_ENABLED"] = "true"
+        original_attempt = editing_main.request_gpt_edit_plan_patch_attempt
+        try:
+            client = TestClient(create_app(self._settings()))
+            edit_request = self._edit_request()
+            create_payload = client.post("/v1/edit-jobs", json=edit_request.model_dump()).json()
+
+            def fake_gpt_patch_attempt(job, revision, settings):
+                patch = EditPlanPatch(
+                    baseEditPlanId=job.edit_job_id,
+                    revisionIntent=revision.command,
+                    summary="GPT added a safe hype timing adjustment.",
+                    operations=[
+                        EditPlanPatchOperation(
+                            op="replace",
+                            path="/targetDurationSeconds",
+                            value=30,
+                            reason="Keep the revision fast and punchy.",
+                        )
+                    ],
+                )
+                return GPTEditPlanPatchAttempt(patch=patch, status="applied")
+
+            editing_main.request_gpt_edit_plan_patch_attempt = fake_gpt_patch_attempt
+            revise_response = client.post(
+                f"/v1/edit-jobs/{create_payload['editJobId']}/revise",
+                json={"installId": edit_request.installId, "command": "make_more_hype"},
+            )
+
+            self.assertEqual(revise_response.status_code, 200)
+            revision_payload = revise_response.json()
+            self.assertEqual(revision_payload["revisionPlanner"], "gpt_patch")
+            self.assertTrue(revision_payload["gptRevisionPatchApplied"])
+            self.assertEqual(revision_payload["gptRevisionPatchStatus"], "applied")
+            self.assertIsNone(revision_payload.get("gptRevisionPatchFallbackReason"))
+            self.assertEqual(revision_payload["revisedPlan"]["targetDurationSeconds"], 30)
+        finally:
+            editing_main.request_gpt_edit_plan_patch_attempt = original_attempt
+            if previous_revision is None:
+                os.environ.pop("HOOPS_AI_CLIP_GPT_REVISION_ENABLED", None)
+            else:
+                os.environ["HOOPS_AI_CLIP_GPT_REVISION_ENABLED"] = previous_revision
+            if previous_editor is None:
+                os.environ.pop("HOOPS_AI_CLIP_GPT_EDITOR_ENABLED", None)
+            else:
+                os.environ["HOOPS_AI_CLIP_GPT_EDITOR_ENABLED"] = previous_editor
+
+    def test_revise_edit_job_surfaces_gpt_patch_fallback_reason(self) -> None:
+        previous_revision = os.environ.get("HOOPS_AI_CLIP_GPT_REVISION_ENABLED")
+        previous_editor = os.environ.get("HOOPS_AI_CLIP_GPT_EDITOR_ENABLED")
+        os.environ["HOOPS_AI_CLIP_GPT_REVISION_ENABLED"] = "true"
+        os.environ["HOOPS_AI_CLIP_GPT_EDITOR_ENABLED"] = "true"
+        original_attempt = editing_main.request_gpt_edit_plan_patch_attempt
+        try:
+            client = TestClient(create_app(self._settings()))
+            edit_request = self._edit_request()
+            create_payload = client.post("/v1/edit-jobs", json=edit_request.model_dump()).json()
+
+            def fake_gpt_patch_attempt(job, revision, settings):
+                return GPTEditPlanPatchAttempt(
+                    patch=None,
+                    status="fallback",
+                    fallback_reason="patch_validation_failed",
+                )
+
+            editing_main.request_gpt_edit_plan_patch_attempt = fake_gpt_patch_attempt
+            revise_response = client.post(
+                f"/v1/edit-jobs/{create_payload['editJobId']}/revise",
+                json={"installId": edit_request.installId, "command": "make_more_hype"},
+            )
+
+            self.assertEqual(revise_response.status_code, 200)
+            revision_payload = revise_response.json()
+            self.assertEqual(revision_payload["revisionPlanner"], "deterministic_patch")
+            self.assertFalse(revision_payload["gptRevisionPatchApplied"])
+            self.assertEqual(revision_payload["gptRevisionPatchStatus"], "fallback")
+            self.assertEqual(revision_payload["gptRevisionPatchFallbackReason"], "patch_validation_failed")
+        finally:
+            editing_main.request_gpt_edit_plan_patch_attempt = original_attempt
+            if previous_revision is None:
+                os.environ.pop("HOOPS_AI_CLIP_GPT_REVISION_ENABLED", None)
+            else:
+                os.environ["HOOPS_AI_CLIP_GPT_REVISION_ENABLED"] = previous_revision
+            if previous_editor is None:
+                os.environ.pop("HOOPS_AI_CLIP_GPT_EDITOR_ENABLED", None)
+            else:
+                os.environ["HOOPS_AI_CLIP_GPT_EDITOR_ENABLED"] = previous_editor
 
     def test_render_lease_prevents_double_execution_and_stale_overwrite(self) -> None:
         settings = self._settings()
