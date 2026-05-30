@@ -764,6 +764,45 @@ charlie的iPhone   charliedeiPhone.coredevice.local   E5786BB6-0095-5509-8B85-11
 
             self.assertFalse(has_failures(collector.findings))
 
+    def test_upload_artifact_accepts_prior_ci_upload_when_only_ios_backend_changed(self) -> None:
+        run_list_payload = [
+            {
+                "databaseId": 111,
+                "headSha": "old1234567890",
+                "event": "workflow_dispatch",
+                "status": "completed",
+                "conclusion": "success",
+                "createdAt": "2026-05-30T04:33:01Z",
+            }
+        ]
+        upload_log = "\n".join(
+            [
+                "Progress 21%: Upload succeeded.",
+                "Uploaded HoopsClips",
+                "Internal TestFlight upload command completed",
+            ]
+        )
+
+        def fake_run(command: list[str], **_kwargs: object) -> SimpleNamespace:
+            if command[:3] == ["gh", "run", "list"]:
+                return SimpleNamespace(returncode=0, stdout=json.dumps(run_list_payload))
+            if command[:3] == ["gh", "run", "view"]:
+                return SimpleNamespace(returncode=0, stdout=upload_log)
+            if command[:3] == ["git", "diff", "--name-only"]:
+                return SimpleNamespace(returncode=0, stdout="ios/backend/app/editing.py\nservices/editing/editing_app/gpt_reranker.py\n")
+            return SimpleNamespace(returncode=1, stdout="")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            collector = Collector()
+            with patch("scripts.submission_readiness_preflight.subprocess.run", side_effect=fake_run), patch(
+                "scripts.submission_readiness_preflight.run_git",
+                return_value="abc1234567890\n",
+            ):
+                check_upload_artifact(repo_root, collector, None)
+
+            self.assertFalse(has_failures(collector.findings))
+
     def test_live_editing_version_fails_when_required_flag_missing(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             repo_root = Path(temp_dir)

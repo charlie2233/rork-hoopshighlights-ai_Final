@@ -88,7 +88,17 @@ TESTFLIGHT_UPLOAD_LOG_MARKERS = (
     "Uploaded HoopsClips",
     "Internal TestFlight upload command completed",
 )
-IOS_UPLOAD_RELEVANT_PREFIXES = ("ios/",)
+IOS_UPLOAD_RELEVANT_PREFIXES = (
+    ".github/workflows/ios-testflight-upload.yml",
+    "ios/HoopsClips/",
+    "ios/HoopsClips.xcodeproj/",
+    "ios/HoopsClipsTests/",
+    "ios/HoopsClipsUITests/",
+    "ios/exportOptions.testflight-internal.plist",
+    "ios/exportOptions.testflight-internal.example.plist",
+    "ios/scripts/",
+    "ios/tools/",
+)
 CLOUD_DEPLOY_RELEVANT_PREFIXES = (
     ".github/workflows/cloud-edit-deploy-preflight.yml",
     "services/control-plane/",
