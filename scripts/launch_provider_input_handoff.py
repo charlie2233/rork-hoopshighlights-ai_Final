@@ -47,7 +47,8 @@ GCP_SECRET_REPAIR_POLICY = [
     "A missing Secret Manager secret is a repair action, not a terminal failure: create it and add a latest ENABLED version from an operator-held value.",
     "For HOOPS_OPENAI_API_KEY, store the OpenAI key only in GCP Secret Manager; do not mirror it into GitHub secrets, chat, docs, screenshots, or logs.",
     "After repair, verify each required secret's latest version state is exactly ENABLED without printing secret payloads.",
-    "After secret versions are enabled, verify the staging deploy service account has Secret Manager Secret Accessor for the required secret names.",
+    "After secret versions are enabled, verify the staging deploy service account has Secret Manager Secret Accessor plus Secret Manager Viewer for the required secret names.",
+    "Secret Manager Viewer is required because deploy preflight checks secret and latest-version metadata without reading payload values.",
 ]
 
 
@@ -222,7 +223,7 @@ def build_handoff(ref: str | None = None, today: date | None = None) -> Handoff:
     ]
     manual_gates = [
         "Unlock and trust the wired iPhone, then confirm `xcrun devicectl list devices` shows an available iPhone.",
-        "Repair GCP Secret Manager access for the staging deploy identity before rerunning deploy preflight.",
+        "Repair GCP Secret Manager metadata and payload access for the staging deploy identity before rerunning deploy preflight.",
         "Replace or rescope staging / CLOUDFLARE_API_TOKEN before rerunning deploy preflight.",
         "After staging Worker deploy, verify `GET /v1/editing/version` returns AI Edit feature flags through the Worker.",
         "Create a signed archive/IPA through the iOS internal TestFlight workflow, then run the installed TestFlight smoke.",
@@ -326,7 +327,9 @@ Do not paste, reveal, summarize, screenshot, or return private key material, API
 {secret_list}
    If a secret is missing, including HOOPS_OPENAI_API_KEY, create it and add a latest ENABLED version from an operator-held value. Do not stop after reporting the missing secret unless the operator-held value is unavailable.
    Never print or return the secret value. For HOOPS_OPENAI_API_KEY, store it only in GCP Secret Manager.
-2. Ensure the GitHub Actions deploy service account configured in staging / GCP_DEPLOY_SERVICE_ACCOUNT has Secret Manager Secret Accessor for those secrets.
+2. Ensure the GitHub Actions deploy service account configured in staging / GCP_DEPLOY_SERVICE_ACCOUNT has both roles on those secrets:
+   - Secret Manager Secret Accessor, for deploy/runtime secret payload access.
+   - Secret Manager Viewer, for deploy preflight secret metadata and latest-version state checks.
 3. In Cloudflare, create or replace a scoped API token:
 {cloudflare_requirements}
    Dashboard form values:
@@ -350,7 +353,8 @@ Do not paste, reveal, summarize, screenshot, or return private key material, API
    - HOOPS_R2_SECRET_ACCESS_KEY present and enabled: yes/no
    - HOOPS_OPENAI_API_KEY present and enabled: yes/no
    - all required GCP secrets present and enabled: yes/no
-   - deploy service account has Secret Manager access: yes/no
+   - deploy service account has Secret Manager Secret Accessor: yes/no
+   - deploy service account has Secret Manager Viewer metadata access: yes/no
    - Cloudflare token replaced or rescope completed: yes/no
    - GitHub staging CLOUDFLARE_API_TOKEN updated: yes/no
    - Cloud deploy preflight triggered: yes/no

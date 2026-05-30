@@ -20,6 +20,7 @@ class DeployPreflightDiagnosticsTests(unittest.TestCase):
         self.assertFalse(result.ok)
         self.assertIn("not readable by the deploy identity", result.detail)
         self.assertIn("Secret Manager Secret Accessor", result.detail)
+        self.assertIn("Secret Manager Viewer", result.detail)
 
     def test_secret_classifier_reports_no_latest_version(self) -> None:
         responses = [
