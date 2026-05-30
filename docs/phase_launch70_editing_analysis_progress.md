@@ -503,3 +503,17 @@ python3 -m unittest \
 
 - Result: passed.
 - Test count: 74.
+
+Additional local backend validation:
+
+```bash
+PYTHONPATH=ios/backend \
+  /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python \
+  -m unittest discover ios/backend/tests
+PYTHONPATH=ios/backend:services/editing \
+  /tmp/hoopclips-editing-test-venv/bin/python \
+  -m unittest services.editing.tests.test_editing_service
+```
+
+- Results: passed.
+- Test counts: 207 backend tests, 56 editing-service tests.
