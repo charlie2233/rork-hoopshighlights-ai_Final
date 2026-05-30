@@ -209,13 +209,20 @@ def build_handoff(ref: str | None = None, today: date | None = None) -> Handoff:
         )
         for name in REQUIRED_SECRET_MANAGER_SECRETS
     ]
+    cloud_deploy_credential_check_command = (
+        f"gh workflow run cloud-edit-deploy-preflight.yml --repo {REPO} --ref {workflow_ref_arg} -f operation=credential-check"
+    )
+    cloud_deploy_preflight_command = (
+        f"gh workflow run cloud-edit-deploy-preflight.yml --repo {REPO} --ref {workflow_ref_arg} -f operation=preflight"
+    )
     verification_commands = [
         "python3 scripts/configure_github_staging_public_variables.py",
         "python3 scripts/build_launch_team_accuracy_report.py --manifest artifacts/team_highlight_accuracy_manifest.json --eval-output artifacts/team_highlight_eval.json --report-output artifacts/team_highlight_accuracy_report.json --json",
         "python3 -m scripts.evaluate_team_highlight_accuracy artifacts/team_highlight_eval.json --json > artifacts/team_highlight_accuracy_report.json",
         "python3 scripts/submission_readiness_preflight.py --team-accuracy-report artifacts/team_highlight_accuracy_report.json",
         "python3 scripts/configure_github_staging_public_variables.py --apply",
-        f"gh workflow run cloud-edit-deploy-preflight.yml --repo {REPO} --ref {workflow_ref_arg} -f operation=preflight",
+        cloud_deploy_credential_check_command,
+        cloud_deploy_preflight_command,
         f"gh workflow run ios-testflight-upload.yml --repo {REPO} --ref {workflow_ref_arg} -f operation=preflight",
         f"gh workflow run cloud-edit-deploy-preflight.yml --repo {REPO} --ref {workflow_ref_arg} -f operation=deploy",
         staging_probe_command,
@@ -224,7 +231,7 @@ def build_handoff(ref: str | None = None, today: date | None = None) -> Handoff:
     manual_gates = [
         "Unlock and trust the wired iPhone, then confirm `xcrun devicectl list devices` shows an available iPhone.",
         "Repair GCP Secret Manager metadata and payload access for the staging deploy identity before rerunning deploy preflight.",
-        "Replace or rescope staging / CLOUDFLARE_API_TOKEN before rerunning deploy preflight.",
+        "Replace or rescope staging / CLOUDFLARE_API_TOKEN, then run operation=credential-check before spending a full deploy preflight.",
         "After staging Worker deploy, verify `GET /v1/editing/version` returns AI Edit feature flags through the Worker.",
         "Create a signed archive/IPA through the iOS internal TestFlight workflow, then run the installed TestFlight smoke.",
         "Do not submit to Apple until upload, processing, installed smoke, cloud render, revision, preview, and share/open-in are all proven.",
@@ -317,7 +324,7 @@ def build_atlas_agent_prompt(ref: str, cloudflare_guide: CloudflareTokenFormGuid
     cloudflare_requirements = "\n".join(f"   - {item}" for item in CLOUDFLARE_TOKEN_REQUIREMENTS)
     cloudflare_permissions = "\n".join(f"   - {item}" for item in cloudflare_guide.permissions)
     cloudflare_notes = "\n".join(f"   - {item}" for item in cloudflare_guide.notes)
-    workflow_command = f"gh workflow run cloud-edit-deploy-preflight.yml --repo {REPO} --ref {shlex.quote(ref)} -f operation=preflight"
+    workflow_command = f"gh workflow run cloud-edit-deploy-preflight.yml --repo {REPO} --ref {shlex.quote(ref)} -f operation=credential-check"
     return f"""For repo {REPO}, GitHub environment {ENVIRONMENT}, repair only provider-side launch deploy blockers.
 Use GitHub Actions workflow ref {ref} for verification/deploy reruns, not stale main, unless the operator explicitly asks to validate main.
 
@@ -344,9 +351,9 @@ Do not paste, reveal, summarize, screenshot, or return private key material, API
    Notes:
 {cloudflare_notes}
 4. Set that token directly as GitHub environment secret staging / CLOUDFLARE_API_TOKEN for {REPO}.
-5. After the GCP secrets, Secret Manager access, and Cloudflare token are repaired, trigger the cloud deploy preflight with operation=preflight:
+5. After the GCP secrets, Secret Manager access, and Cloudflare token are repaired, trigger only the cheap cloud deploy credential check with operation=credential-check:
    {workflow_command}
-   Do not run operation=deploy yet. If GitHub Actions cannot be triggered, return the non-secret blocker instead of guessing.
+   Do not run operation=preflight or operation=deploy yet. If GitHub Actions cannot be triggered, return the non-secret blocker instead of guessing.
 6. Return only this non-secret status:
    - HOOPS_EDITING_SERVICE_SECRET present and enabled: yes/no
    - HOOPS_R2_ACCESS_KEY_ID present and enabled: yes/no
@@ -357,7 +364,7 @@ Do not paste, reveal, summarize, screenshot, or return private key material, API
    - deploy service account has Secret Manager Viewer metadata access: yes/no
    - Cloudflare token replaced or rescope completed: yes/no
    - GitHub staging CLOUDFLARE_API_TOKEN updated: yes/no
-   - Cloud deploy preflight triggered: yes/no
+   - Cloud deploy credential check triggered: yes/no
    - GitHub run URL:
    - Final conclusion:
    - Any provider-side blocker that remains, by name only
