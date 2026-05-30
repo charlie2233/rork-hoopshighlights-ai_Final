@@ -339,9 +339,16 @@ charlie的iPhone   charliedeiPhone.coredevice.local   E5786BB6-0095-5509-8B85-11
         ]
         collector = Collector()
 
+        def fake_run(command: list[str], **_kwargs: object) -> SimpleNamespace:
+            if command[:3] == ["gh", "run", "list"]:
+                return SimpleNamespace(returncode=0, stdout=json.dumps(payload))
+            if command[:3] == ["git", "diff", "--name-only"]:
+                return SimpleNamespace(returncode=0, stdout="services/editing/app.py\n")
+            return SimpleNamespace(returncode=1, stdout="")
+
         with patch(
             "scripts.submission_readiness_preflight.subprocess.run",
-            return_value=SimpleNamespace(returncode=0, stdout=json.dumps(payload)),
+            side_effect=fake_run,
         ), patch(
             "scripts.submission_readiness_preflight.run_git",
             return_value="abc1234567890\n",
@@ -371,9 +378,16 @@ charlie的iPhone   charliedeiPhone.coredevice.local   E5786BB6-0095-5509-8B85-11
         ]
         collector = Collector()
 
+        def fake_run(command: list[str], **_kwargs: object) -> SimpleNamespace:
+            if command[:3] == ["gh", "run", "list"]:
+                return SimpleNamespace(returncode=0, stdout=json.dumps(payload))
+            if command[:3] == ["git", "diff", "--name-only"]:
+                return SimpleNamespace(returncode=0, stdout="services/editing/app.py\n")
+            return SimpleNamespace(returncode=1, stdout="")
+
         with patch(
             "scripts.submission_readiness_preflight.subprocess.run",
-            return_value=SimpleNamespace(returncode=0, stdout=json.dumps(payload)),
+            side_effect=fake_run,
         ), patch(
             "scripts.submission_readiness_preflight.run_git",
             return_value="abc1234567890\n",
@@ -468,9 +482,16 @@ charlie的iPhone   charliedeiPhone.coredevice.local   E5786BB6-0095-5509-8B85-11
         ]
         collector = Collector()
 
+        def fake_run(command: list[str], **_kwargs: object) -> SimpleNamespace:
+            if command[:3] == ["gh", "run", "list"]:
+                return SimpleNamespace(returncode=0, stdout=json.dumps(payload))
+            if command[:3] == ["git", "diff", "--name-only"]:
+                return SimpleNamespace(returncode=0, stdout="services/editing/app.py\n")
+            return SimpleNamespace(returncode=1, stdout="")
+
         with patch(
             "scripts.submission_readiness_preflight.subprocess.run",
-            return_value=SimpleNamespace(returncode=0, stdout=json.dumps(payload)),
+            side_effect=fake_run,
         ), patch(
             "scripts.submission_readiness_preflight.run_git",
             return_value="abc1234567890\n",
@@ -559,6 +580,46 @@ charlie的iPhone   charliedeiPhone.coredevice.local   E5786BB6-0095-5509-8B85-11
         self.assertFalse(has_failures(collector.findings))
         self.assertIn("provider-auth job proof", collector.findings[0].detail)
 
+    def test_secret_gated_deploy_preflight_accepts_prior_dispatch_when_only_docs_changed(self) -> None:
+        run_list_payload = [
+            {
+                "databaseId": 111,
+                "headSha": "old1234567890",
+                "event": "workflow_dispatch",
+                "status": "completed",
+                "conclusion": "success",
+                "createdAt": "2026-05-30T04:21:49Z",
+            }
+        ]
+        run_view_payload = {
+            "jobs": [
+                {
+                    "name": "Verify cloud edit deploy secrets",
+                    "status": "completed",
+                    "conclusion": "success",
+                }
+            ]
+        }
+
+        def fake_run(command: list[str], **_kwargs: object) -> SimpleNamespace:
+            if command[:3] == ["gh", "run", "list"]:
+                return SimpleNamespace(returncode=0, stdout=json.dumps(run_list_payload))
+            if command[:3] == ["gh", "run", "view"]:
+                return SimpleNamespace(returncode=0, stdout=json.dumps(run_view_payload))
+            if command[:3] == ["git", "diff", "--name-only"]:
+                return SimpleNamespace(returncode=0, stdout="docs/phase_launch51_testflight_build4_readiness.md\nscripts/submission_readiness_preflight.py\n")
+            return SimpleNamespace(returncode=1, stdout="")
+
+        collector = Collector()
+        with patch("scripts.submission_readiness_preflight.subprocess.run", side_effect=fake_run), patch(
+            "scripts.submission_readiness_preflight.run_git",
+            return_value="abc1234567890\n",
+        ):
+            check_secret_gated_deploy_preflight(Path.cwd(), collector)
+
+        self.assertFalse(has_failures(collector.findings))
+        self.assertIn("no deploy-relevant files changed", collector.findings[0].detail)
+
     def test_deploy_inputs_can_come_from_github_environment_names(self) -> None:
         def fake_github_names(kind: str) -> set[str]:
             if kind == "secret":
@@ -645,6 +706,45 @@ charlie的iPhone   charliedeiPhone.coredevice.local   E5786BB6-0095-5509-8B85-11
                 return SimpleNamespace(returncode=0, stdout=json.dumps(run_list_payload))
             if command[:3] == ["gh", "run", "view"]:
                 return SimpleNamespace(returncode=0, stdout=upload_log)
+            return SimpleNamespace(returncode=1, stdout="")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            collector = Collector()
+            with patch("scripts.submission_readiness_preflight.subprocess.run", side_effect=fake_run), patch(
+                "scripts.submission_readiness_preflight.run_git",
+                return_value="abc1234567890\n",
+            ):
+                check_upload_artifact(repo_root, collector, None)
+
+            self.assertFalse(has_failures(collector.findings))
+
+    def test_upload_artifact_accepts_prior_ci_upload_when_only_docs_changed(self) -> None:
+        run_list_payload = [
+            {
+                "databaseId": 111,
+                "headSha": "old1234567890",
+                "event": "workflow_dispatch",
+                "status": "completed",
+                "conclusion": "success",
+                "createdAt": "2026-05-30T04:33:01Z",
+            }
+        ]
+        upload_log = "\n".join(
+            [
+                "Progress 21%: Upload succeeded.",
+                "Uploaded HoopsClips",
+                "Internal TestFlight upload command completed",
+            ]
+        )
+
+        def fake_run(command: list[str], **_kwargs: object) -> SimpleNamespace:
+            if command[:3] == ["gh", "run", "list"]:
+                return SimpleNamespace(returncode=0, stdout=json.dumps(run_list_payload))
+            if command[:3] == ["gh", "run", "view"]:
+                return SimpleNamespace(returncode=0, stdout=upload_log)
+            if command[:3] == ["git", "diff", "--name-only"]:
+                return SimpleNamespace(returncode=0, stdout="docs/phase_launch51_testflight_build4_readiness.md\nscripts/submission_readiness_preflight.py\n")
             return SimpleNamespace(returncode=1, stdout="")
 
         with tempfile.TemporaryDirectory() as temp_dir:

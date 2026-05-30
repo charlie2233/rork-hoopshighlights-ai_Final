@@ -88,6 +88,13 @@ TESTFLIGHT_UPLOAD_LOG_MARKERS = (
     "Uploaded HoopsClips",
     "Internal TestFlight upload command completed",
 )
+IOS_UPLOAD_RELEVANT_PREFIXES = ("ios/",)
+CLOUD_DEPLOY_RELEVANT_PREFIXES = (
+    ".github/workflows/cloud-edit-deploy-preflight.yml",
+    "services/control-plane/",
+    "services/editing/",
+    "services/inference/",
+)
 BLOCKER_DOCS = (
     (
         "docs/phase_edit7g_post_testflight_internal_smoke.md",
@@ -512,7 +519,7 @@ def check_upload_artifact(repo_root: Path, collector: Collector, archive_path: P
     elif archive_path is not None:
         collector.fail("upload artifact", rel(archive_path, repo_root), "Requested archive/IPA path does not exist.")
     elif current_testflight_upload_proof(repo_root):
-        collector.pass_("upload artifact", "GitHub Actions", "Current checkout has a successful internal TestFlight upload run with upload log proof.")
+        collector.pass_("upload artifact", "GitHub Actions", "Successful internal TestFlight upload log proof exists, and no iOS upload-relevant files changed afterward.")
     else:
         collector.fail("upload artifact", "repo", "No .xcarchive or .ipa upload artifact found under the expected build output locations.")
 
@@ -555,17 +562,17 @@ def current_testflight_upload_proof(repo_root: Path) -> bool:
     if not isinstance(runs, list):
         return False
 
-    matching_ids = [
-        run.get("databaseId")
+    matching_runs = [
+        run
         for run in runs
         if isinstance(run, dict)
         and run.get("event") == "workflow_dispatch"
-        and str(run.get("headSha") or "") == current_sha
         and run.get("status") == "completed"
         and run.get("conclusion") == "success"
+        and commit_is_current_or_unchanged_for_paths(repo_root, str(run.get("headSha") or ""), current_sha, IOS_UPLOAD_RELEVANT_PREFIXES)
     ]
-    for run_id in matching_ids:
-        if testflight_upload_log_has_markers(run_id):
+    for run in matching_runs:
+        if testflight_upload_log_has_markers(run.get("databaseId")):
             return True
     return False
 
@@ -595,6 +602,39 @@ def testflight_upload_log_has_markers(run_id: object) -> bool:
     if result.returncode != 0:
         return False
     return all(marker in result.stdout for marker in TESTFLIGHT_UPLOAD_LOG_MARKERS)
+
+
+def commit_is_current_or_unchanged_for_paths(repo_root: Path, base_sha: str, current_sha: str, path_prefixes: tuple[str, ...]) -> bool:
+    if not base_sha:
+        return False
+    if base_sha == current_sha:
+        return True
+    try:
+        result = subprocess.run(
+            ["git", "diff", "--name-only", f"{base_sha}..{current_sha}"],
+            cwd=repo_root,
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=20,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    if result.returncode != 0:
+        return False
+    changed_paths = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    return not any(path_is_relevant_to_prefixes(path, path_prefixes) for path in changed_paths)
+
+
+def path_is_relevant_to_prefixes(path: str, path_prefixes: tuple[str, ...]) -> bool:
+    for prefix in path_prefixes:
+        if prefix.endswith("/"):
+            if path.startswith(prefix):
+                return True
+        elif path == prefix:
+            return True
+    return False
 
 
 def check_connected_ios_device(collector: Collector) -> None:
@@ -930,7 +970,7 @@ def check_secret_gated_deploy_preflight(repo_root: Path, collector: Collector) -
     matching_run = None
     for run in dispatch_runs:
         head_sha = str(run.get("headSha") or "")
-        if current_sha and head_sha == current_sha:
+        if current_sha and commit_is_current_or_unchanged_for_paths(repo_root, head_sha, current_sha, CLOUD_DEPLOY_RELEVANT_PREFIXES):
             matching_run = run
             break
 
@@ -978,7 +1018,7 @@ def check_secret_gated_deploy_preflight(repo_root: Path, collector: Collector) -
         collector.pass_(
             check_name,
             "Cloud Edit Deploy Preflight",
-            f"Current-commit workflow_dispatch deploy/preflight completed successfully with provider-auth job proof at {created_at}.",
+            f"Workflow_dispatch deploy/preflight completed successfully with provider-auth job proof at {created_at}, and no deploy-relevant files changed afterward.",
         )
     else:
         collector.fail(
