@@ -158,25 +158,21 @@ struct VideoPlayerView: View {
             do {
                 try Task.checkCancellation()
 
-                if let importedVideo = try await item.loadTransferable(type: ImportedVideoFile.self) {
-                    try Task.checkCancellation()
-                    return await viewModel.loadVideo(url: importedVideo.url)
+                guard let importedVideo = try await item.loadTransferable(type: ImportedVideoFile.self) else {
+                    await MainActor.run {
+                        importErrorMessage = "Hoopclips could not access a local video file from Photos. Save it to Files and import from there, or choose a shorter downloaded clip."
+                    }
+                    return false
                 }
 
-                if let data = try await item.loadTransferable(type: Data.self) {
-                    try Task.checkCancellation()
-                    let tempURL = URL.temporaryDirectory.appending(path: "imported_video_\(UUID().uuidString).mov")
-                    try data.write(to: tempURL, options: .atomic)
-                    try Task.checkCancellation()
-                    return await viewModel.loadVideo(url: tempURL)
-                }
-
-                importErrorMessage = "Hoopclips could not access that video from Photos. Try saving it to Files and importing from there."
-                return false
+                try Task.checkCancellation()
+                return await viewModel.loadVideo(url: importedVideo.url)
             } catch is CancellationError {
                 return false
             } catch {
-                importErrorMessage = "Hoopclips could not import that video: \(error.localizedDescription)"
+                await MainActor.run {
+                    importErrorMessage = "Hoopclips could not import that video: \(error.localizedDescription)"
+                }
                 return false
             }
         }
@@ -191,7 +187,7 @@ struct VideoPlayerView: View {
         isImportingVideo = true
         importErrorMessage = nil
 
-        let task = Task { @MainActor in
+        let task = Task {
             let timeoutTask = Task {
                 do {
                     try await Task.sleep(nanoseconds: videoImportTimeoutNanoseconds)
@@ -210,11 +206,13 @@ struct VideoPlayerView: View {
             let didLoadVideo = await operation()
             timeoutTask.cancel()
 
-            guard activeImportID == importID else { return }
+            await MainActor.run {
+                guard activeImportID == importID else { return }
 
-            clearImportState()
-            if importErrorMessage == nil && (!didLoadVideo || !viewModel.isVideoLoaded) {
-                importErrorMessage = "Hoopclips could not read that video. Try importing it from Files or choose another clip."
+                clearImportState()
+                if importErrorMessage == nil && (!didLoadVideo || !viewModel.isVideoLoaded) {
+                    importErrorMessage = "Hoopclips could not read that video. Try importing it from Files or choose another clip."
+                }
             }
         }
 
@@ -1067,14 +1065,35 @@ private struct ImportedVideoFile: Transferable {
     let url: URL
 
     static var transferRepresentation: some TransferRepresentation {
+        FileRepresentation(contentType: .video) { video in
+            SentTransferredFile(video.url)
+        } importing: { received in
+            try copyImportedVideo(from: received.file)
+        }
+
         FileRepresentation(contentType: .movie) { video in
             SentTransferredFile(video.url)
         } importing: { received in
-            let sourceURL = received.file
-            let fileExtension = sourceURL.pathExtension.isEmpty ? "mov" : sourceURL.pathExtension
-            let tempURL = URL.temporaryDirectory.appending(path: "imported_video_\(UUID().uuidString).\(fileExtension)")
-            try FileManager.default.copyItem(at: sourceURL, to: tempURL)
-            return ImportedVideoFile(url: tempURL)
+            try copyImportedVideo(from: received.file)
         }
+
+        FileRepresentation(contentType: .mpeg4Movie) { video in
+            SentTransferredFile(video.url)
+        } importing: { received in
+            try copyImportedVideo(from: received.file)
+        }
+
+        FileRepresentation(contentType: .quickTimeMovie) { video in
+            SentTransferredFile(video.url)
+        } importing: { received in
+            try copyImportedVideo(from: received.file)
+        }
+    }
+
+    private static func copyImportedVideo(from sourceURL: URL) throws -> ImportedVideoFile {
+        let fileExtension = sourceURL.pathExtension.isEmpty ? "mov" : sourceURL.pathExtension
+        let tempURL = URL.temporaryDirectory.appending(path: "imported_video_\(UUID().uuidString).\(fileExtension)")
+        try FileManager.default.copyItem(at: sourceURL, to: tempURL)
+        return ImportedVideoFile(url: tempURL)
     }
 }
