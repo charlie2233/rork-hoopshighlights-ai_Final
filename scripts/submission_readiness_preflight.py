@@ -105,6 +105,15 @@ CLOUD_DEPLOY_RELEVANT_PREFIXES = (
     "services/editing/",
     "services/inference/",
 )
+EDITING_SERVICE_DEPLOY_RELEVANT_PREFIXES = (
+    "ios/backend/",
+    "ios/HoopsClips/HoopsClips/Resources/Audio/",
+    "services/editing/",
+)
+REQUIRED_MAIN_WORKFLOW_RELEVANT_PREFIXES = {
+    "Cloud Edit Deploy Preflight": CLOUD_DEPLOY_RELEVANT_PREFIXES,
+    "iOS Internal TestFlight Upload": IOS_UPLOAD_RELEVANT_PREFIXES,
+}
 BLOCKER_DOCS = (
     (
         "docs/phase_edit7g_post_testflight_internal_smoke.md",
@@ -833,6 +842,17 @@ def check_live_editing_version(editing_version_url: str, collector: Collector, *
         collector.warn("live editing git sha", endpoint_label, "Could not compare live gitSha with the current checkout.")
     elif git_sha_matches(reported_git_sha.strip(), current_git_sha.strip()):
         collector.pass_("live editing git sha", endpoint_label, "Direct editing service gitSha matches the current checkout.")
+    elif commit_is_current_or_unchanged_for_paths(
+        repo_root,
+        reported_git_sha.strip(),
+        current_git_sha.strip(),
+        EDITING_SERVICE_DEPLOY_RELEVANT_PREFIXES,
+    ):
+        collector.pass_(
+            "live editing git sha",
+            endpoint_label,
+            "Direct editing service gitSha is older than the current checkout, but no editing-service deploy-relevant files changed afterward.",
+        )
     else:
         collector.fail("live editing git sha", endpoint_label, "Direct editing service gitSha does not match the current checkout; deploy current source before submission.")
 
@@ -917,18 +937,29 @@ def check_github_workflow_runs(repo_root: Path, collector: Collector) -> None:
                 workflow_name,
                 f"Latest main-branch run conclusion={conclusion} at {created_at}; repair GitHub Actions billing/spending/action-required account state before deploy/upload proof.",
             )
+        elif status != "completed" or conclusion != "success":
+            collector.fail("github workflow status", workflow_name, f"Latest main-branch run status={status} conclusion={conclusion} at {created_at}.")
         elif current_sha and head_sha != current_sha:
             short_latest = head_sha[:7] if head_sha else "unknown"
             short_current = current_sha[:7]
-            collector.fail(
-                "github workflow status",
-                workflow_name,
-                f"Latest main-branch run is for {short_latest}, not current checkout {short_current}; rerun required CI on current main before submission.",
-            )
-        elif status == "completed" and conclusion == "success":
-            collector.pass_("github workflow status", workflow_name, f"Latest main-branch run for current checkout completed successfully at {created_at}.")
+            relevant_prefixes = REQUIRED_MAIN_WORKFLOW_RELEVANT_PREFIXES.get(workflow_name, ())
+            if relevant_prefixes and commit_is_current_or_unchanged_for_paths(repo_root, head_sha, current_sha, relevant_prefixes):
+                collector.pass_(
+                    "github workflow status",
+                    workflow_name,
+                    (
+                        f"Latest main-branch run for {short_latest} completed successfully at {created_at}, "
+                        "and no workflow-relevant files changed afterward."
+                    ),
+                )
+            else:
+                collector.fail(
+                    "github workflow status",
+                    workflow_name,
+                    f"Latest main-branch run is for {short_latest}, not current checkout {short_current}; rerun required CI on current main before submission.",
+                )
         else:
-            collector.fail("github workflow status", workflow_name, f"Latest main-branch run status={status} conclusion={conclusion} at {created_at}.")
+            collector.pass_("github workflow status", workflow_name, f"Latest main-branch run for current checkout completed successfully at {created_at}.")
 
 
 def check_secret_gated_deploy_preflight(repo_root: Path, collector: Collector) -> None:

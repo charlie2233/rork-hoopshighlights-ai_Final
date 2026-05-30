@@ -424,9 +424,19 @@ charlie的iPhone   charliedeiPhone.coredevice.local   E5786BB6-0095-5509-8B85-11
         ]
         collector = Collector()
 
+        def fake_run(command: list[str], **_kwargs: object) -> SimpleNamespace:
+            if command[:3] == ["gh", "run", "list"]:
+                return SimpleNamespace(returncode=0, stdout=json.dumps(payload))
+            if command[:3] == ["git", "diff", "--name-only"]:
+                return SimpleNamespace(
+                    returncode=0,
+                    stdout="ios/HoopsClips/HoopsClips/Views/AIEditView.swift\nservices/editing/editing_app/main.py\n",
+                )
+            return SimpleNamespace(returncode=1, stdout="")
+
         with patch(
             "scripts.submission_readiness_preflight.subprocess.run",
-            return_value=SimpleNamespace(returncode=0, stdout=json.dumps(payload)),
+            side_effect=fake_run,
         ), patch(
             "scripts.submission_readiness_preflight.run_git",
             return_value="abc1234567890\n",
@@ -436,6 +446,44 @@ charlie的iPhone   charliedeiPhone.coredevice.local   E5786BB6-0095-5509-8B85-11
         failures = [finding for finding in collector.findings if finding.status == "fail"]
         self.assertEqual(len(failures), 2)
         self.assertTrue(all("not current checkout" in finding.detail for finding in failures))
+
+    def test_github_workflow_runs_pass_when_only_docs_changed_after_latest_runs(self) -> None:
+        payload = [
+            {
+                "workflowName": "iOS Internal TestFlight Upload",
+                "headSha": "old1234567890",
+                "status": "completed",
+                "conclusion": "success",
+                "createdAt": "2026-05-23T21:27:18Z",
+            },
+            {
+                "workflowName": "Cloud Edit Deploy Preflight",
+                "headSha": "old1234567890",
+                "status": "completed",
+                "conclusion": "success",
+                "createdAt": "2026-05-23T20:31:19Z",
+            },
+        ]
+        collector = Collector()
+
+        def fake_run(command: list[str], **_kwargs: object) -> SimpleNamespace:
+            if command[:3] == ["gh", "run", "list"]:
+                return SimpleNamespace(returncode=0, stdout=json.dumps(payload))
+            if command[:3] == ["git", "diff", "--name-only"]:
+                return SimpleNamespace(returncode=0, stdout="docs/phase_launch58_team_scan_unavailable_debug.md\n")
+            return SimpleNamespace(returncode=1, stdout="")
+
+        with patch(
+            "scripts.submission_readiness_preflight.subprocess.run",
+            side_effect=fake_run,
+        ), patch(
+            "scripts.submission_readiness_preflight.run_git",
+            return_value="abc1234567890\n",
+        ):
+            check_github_workflow_runs(Path.cwd(), collector)
+
+        self.assertFalse(has_failures(collector.findings))
+        self.assertTrue(all("no workflow-relevant files changed afterward" in finding.detail for finding in collector.findings))
 
     def test_github_workflow_runs_pass_when_latest_required_runs_match_current_sha(self) -> None:
         payload = [
@@ -862,6 +910,46 @@ charlie的iPhone   charliedeiPhone.coredevice.local   E5786BB6-0095-5509-8B85-11
             self.assertEqual(len(failures), 1)
             self.assertEqual(failures[0].check, "live editing git sha")
             self.assertIn("does not match", failures[0].detail)
+
+    def test_live_editing_version_passes_when_only_docs_changed_after_deploy(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            collector = Collector()
+            payload = {
+                "gitSha": "old1234567890",
+                "featureFlags": {
+                    "aiEditEnabled": True,
+                    "aiEditLiveRenderEnabled": True,
+                    "aiEditRevisionEnabled": True,
+                    "aiEditTemplatePackEnabled": True,
+                    "aiClipGptEditorEnabled": True,
+                    "aiClipGptPlanEditEnabled": True,
+                    "aiClipGptRevisionEnabled": True,
+                    "gptHighlightRerankerEnabled": True,
+                },
+            }
+
+            def fake_run(command: list[str], **_kwargs: object) -> SimpleNamespace:
+                if command[:3] == ["git", "diff", "--name-only"]:
+                    return SimpleNamespace(returncode=0, stdout="docs/phase_launch58_team_scan_unavailable_debug.md\n")
+                return SimpleNamespace(returncode=1, stdout="")
+
+            with patch(
+                "scripts.submission_readiness_preflight.fetch_version_payload",
+                return_value=(200, json.dumps(payload).encode("utf-8")),
+            ), patch(
+                "scripts.submission_readiness_preflight.run_git",
+                return_value="abc1234567890\n",
+            ), patch(
+                "scripts.submission_readiness_preflight.subprocess.run",
+                side_effect=fake_run,
+            ):
+                check_live_editing_version("https://editing.example.test/version", collector, repo_root=repo_root, skip_live=False, timeout_seconds=1.0)
+
+            self.assertFalse(has_failures(collector.findings))
+            self.assertTrue(
+                any("no editing-service deploy-relevant files changed afterward" in finding.detail for finding in collector.findings)
+            )
 
 
 def launch_grade_team_accuracy_report(
