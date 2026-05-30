@@ -943,7 +943,7 @@ def create_ready_fixture(repo_root: Path) -> Path:
         """
         PRODUCT_BUNDLE_IDENTIFIER = "atrak.charlie.hoopsclips";
         MARKETING_VERSION = 1.0.0;
-        CURRENT_PROJECT_VERSION = 4;
+        CURRENT_PROJECT_VERSION = 5;
         CODE_SIGN_STYLE = Automatic;
         DEVELOPMENT_TEAM = "$(HOOPS_DEVELOPMENT_TEAM)";
         """,
