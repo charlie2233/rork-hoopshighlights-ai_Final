@@ -23,6 +23,46 @@ struct CloudEditServiceTests {
         #expect(Mirror(reflecting: view).displayStyle == .struct)
     }
 
+    @Test func testFetchVersionUsesEditingVersionEndpointAndDecodesGptFlags() async throws {
+        try await withCloudEditBaseURL {
+            let service = CloudEditService(session: makeSession { request in
+                #expect(request.httpMethod == "GET")
+                #expect(request.value(forHTTPHeaderField: "User-Agent") == "Hoopclips-iOS/1.0")
+                #expect(request.value(forHTTPHeaderField: "x-trace-id")?.isEmpty == false)
+                let url = try #require(request.url)
+                #expect(url.path == "/v1/editing/version")
+                #expect(request.httpBody == nil)
+
+                return try jsonResponse(for: request, body: """
+                {
+                  "service": "hoopclips-editing",
+                  "backendModelVersion": "editing-cloud-v1",
+                  "gitSha": "test-sha",
+                  "featureFlags": {
+                    "aiEditEnabled": true,
+                    "aiEditLiveRenderEnabled": true,
+                    "aiEditRevisionEnabled": true,
+                    "aiEditTemplatePackEnabled": true,
+                    "aiClipGptEditorEnabled": true,
+                    "aiClipGptPlanEditEnabled": true,
+                    "aiClipGptRevisionEnabled": true,
+                    "gptHighlightRerankerEnabled": true
+                  }
+                }
+                """)
+            })
+
+            let version = try await service.fetchVersion()
+
+            #expect(version.service == "hoopclips-editing")
+            #expect(version.gitSha == "test-sha")
+            #expect(version.featureFlags?.hasRequiredLaunchReadinessFlags == true)
+            #expect(version.featureFlags?.allowsGptClipEditing == true)
+            #expect(version.featureFlags?.allowsGptPlanEditing == true)
+            #expect(version.featureFlags?.allowsGptRevisionEditing == true)
+        }
+    }
+
     @Test func testDownloadRenderedVideoMapsExpiredStatusesToDownloadURLExpired() async throws {
         for statusCode in [401, 403, 404, 410] {
             let service = CloudEditService(session: makeSession(statusCode: statusCode))

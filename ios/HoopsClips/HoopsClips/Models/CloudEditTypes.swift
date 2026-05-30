@@ -378,6 +378,9 @@ struct CloudEditFeatureFlags: Codable, Sendable {
     let aiEditMaxDailyRenders: Int?
     let aiEditFreeWatermarkRequired: Bool?
     let aiEditProExportsEnabled: Bool?
+    let aiClipGptEditorEnabled: Bool?
+    let aiClipGptPlanEditEnabled: Bool?
+    let aiClipGptRevisionEnabled: Bool?
     let gptHighlightRerankerEnabled: Bool?
 
     var allowsEditPlanning: Bool {
@@ -394,6 +397,35 @@ struct CloudEditFeatureFlags: Codable, Sendable {
 
     var allowsTemplatePacks: Bool {
         aiEditTemplatePackEnabled ?? true
+    }
+
+    var missingLaunchReadinessFlagNames: [String] {
+        var missing: [String] = []
+        if aiEditEnabled == nil { missing.append("aiEditEnabled") }
+        if aiEditLiveRenderEnabled == nil { missing.append("aiEditLiveRenderEnabled") }
+        if aiEditRevisionEnabled == nil { missing.append("aiEditRevisionEnabled") }
+        if aiEditTemplatePackEnabled == nil { missing.append("aiEditTemplatePackEnabled") }
+        if aiClipGptEditorEnabled == nil { missing.append("aiClipGptEditorEnabled") }
+        if aiClipGptPlanEditEnabled == nil { missing.append("aiClipGptPlanEditEnabled") }
+        if aiClipGptRevisionEnabled == nil { missing.append("aiClipGptRevisionEnabled") }
+        if gptHighlightRerankerEnabled == nil { missing.append("gptHighlightRerankerEnabled") }
+        return missing
+    }
+
+    var hasRequiredLaunchReadinessFlags: Bool {
+        missingLaunchReadinessFlagNames.isEmpty
+    }
+
+    var allowsGptClipEditing: Bool {
+        aiClipGptEditorEnabled ?? gptHighlightRerankerEnabled ?? false
+    }
+
+    var allowsGptPlanEditing: Bool {
+        aiClipGptPlanEditEnabled ?? false
+    }
+
+    var allowsGptRevisionEditing: Bool {
+        aiClipGptRevisionEnabled ?? false
     }
 }
 

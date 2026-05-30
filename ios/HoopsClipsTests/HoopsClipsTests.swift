@@ -1140,6 +1140,9 @@ struct HoopsClipsTests {
             "aiEditMaxDailyRenders": 3,
             "aiEditFreeWatermarkRequired": true,
             "aiEditProExportsEnabled": false,
+            "aiClipGptEditorEnabled": true,
+            "aiClipGptPlanEditEnabled": true,
+            "aiClipGptRevisionEnabled": true,
             "gptHighlightRerankerEnabled": true
           }
         }
@@ -1153,7 +1156,42 @@ struct HoopsClipsTests {
         #expect(response.featureFlags?.allowsRevisions == true)
         #expect(response.featureFlags?.allowsTemplatePacks == true)
         #expect(response.featureFlags?.aiEditMaxDailyRenders == 3)
+        #expect(response.featureFlags?.allowsGptClipEditing == true)
+        #expect(response.featureFlags?.allowsGptPlanEditing == true)
+        #expect(response.featureFlags?.allowsGptRevisionEditing == true)
         #expect(response.featureFlags?.gptHighlightRerankerEnabled == true)
+        #expect(response.featureFlags?.hasRequiredLaunchReadinessFlags == true)
+        #expect(response.featureFlags?.missingLaunchReadinessFlagNames.isEmpty == true)
+    }
+
+    @Test @MainActor func testCloudEditVersionFlagsReportMissingLaunchReadinessKeys() throws {
+        let payload = """
+        {
+          "service": "hoopclips-editing",
+          "backendModelVersion": "editing-cloud-v1",
+          "gitSha": "stale-sha",
+          "featureFlags": {
+            "aiEditEnabled": true,
+            "aiEditRevisionEnabled": true,
+            "aiEditTemplatePackEnabled": true,
+            "gptHighlightRerankerEnabled": true
+          }
+        }
+        """.data(using: .utf8)!
+
+        let response = try JSONDecoder().decode(CloudEditVersionResponse.self, from: payload)
+        let flags = try #require(response.featureFlags)
+
+        #expect(flags.hasRequiredLaunchReadinessFlags == false)
+        #expect(flags.missingLaunchReadinessFlagNames == [
+            "aiEditLiveRenderEnabled",
+            "aiClipGptEditorEnabled",
+            "aiClipGptPlanEditEnabled",
+            "aiClipGptRevisionEnabled"
+        ])
+        #expect(flags.allowsGptClipEditing == true)
+        #expect(flags.allowsGptPlanEditing == false)
+        #expect(flags.allowsGptRevisionEditing == false)
     }
 
     @Test func testCloudEditKillSwitchErrorsHaveFriendlyMessages() {

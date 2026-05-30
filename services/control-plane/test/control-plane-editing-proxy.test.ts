@@ -26,7 +26,11 @@ test("editing version route proxies safe feature flags from internal editing ser
         aiEditEnabled: true,
         aiEditLiveRenderEnabled: false,
         aiEditRevisionEnabled: true,
-        aiEditTemplatePackEnabled: true
+        aiEditTemplatePackEnabled: true,
+        aiClipGptEditorEnabled: true,
+        aiClipGptPlanEditEnabled: true,
+        aiClipGptRevisionEnabled: true,
+        gptHighlightRerankerEnabled: true
       }
     });
   };
@@ -43,13 +47,23 @@ test("editing version route proxies safe feature flags from internal editing ser
     const payload = await parseJsonResponse<{
       requestId: string;
       service: string;
-      featureFlags: { aiEditLiveRenderEnabled: boolean };
+      featureFlags: {
+        aiEditLiveRenderEnabled: boolean;
+        aiClipGptEditorEnabled: boolean;
+        aiClipGptPlanEditEnabled: boolean;
+        aiClipGptRevisionEnabled: boolean;
+        gptHighlightRerankerEnabled: boolean;
+      };
     }>(response);
 
     assert.equal(response.status, 200);
     assert.equal(payload.requestId, "trace-editing-version");
     assert.equal(payload.service, "hoopclips-editing");
     assert.equal(payload.featureFlags.aiEditLiveRenderEnabled, false);
+    assert.equal(payload.featureFlags.aiClipGptEditorEnabled, true);
+    assert.equal(payload.featureFlags.aiClipGptPlanEditEnabled, true);
+    assert.equal(payload.featureFlags.aiClipGptRevisionEnabled, true);
+    assert.equal(payload.featureFlags.gptHighlightRerankerEnabled, true);
     assert.equal(seen.length, 1);
     assert.equal(seen[0]!.url, "http://editing.local/version");
     assert.equal(seen[0]!.headers["x-hoops-editing-secret"], controlPlane.env.EDITING_SHARED_SECRET);
