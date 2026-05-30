@@ -126,7 +126,6 @@ enum AppTextKey {
     case analysisComplete
     case clipsFound
     case kept
-    case estimated
     case analysis
     case projectSnapshot
     case projectSnapshotSubtitle
@@ -385,7 +384,6 @@ extension AppLanguage {
         .analysisComplete: "Analysis Complete",
         .clipsFound: "Clips Found",
         .kept: "Kept",
-        .estimated: "Estimated",
         .analysis: "analysis",
         .projectSnapshot: "Project Snapshot",
         .projectSnapshotSubtitle: "Quick context before review and export",
@@ -608,7 +606,6 @@ extension AppLanguage {
         .analysisComplete: "分析完成",
         .clipsFound: "找到片段",
         .kept: "保留",
-        .estimated: "预计",
         .analysis: "分析",
         .projectSnapshot: "项目概览",
         .projectSnapshotSubtitle: "审核和导出前的快速信息",
@@ -831,7 +828,6 @@ extension AppLanguage {
         .analysisComplete: "Análisis completo",
         .clipsFound: "Clips encontrados",
         .kept: "Guardados",
-        .estimated: "Estimado",
         .analysis: "análisis",
         .projectSnapshot: "Resumen del proyecto",
         .projectSnapshotSubtitle: "Contexto rápido antes de revisar y exportar",
@@ -1054,7 +1050,6 @@ extension AppLanguage {
         .analysisComplete: "Analyse terminée",
         .clipsFound: "Clips trouvés",
         .kept: "Gardés",
-        .estimated: "Estimé",
         .analysis: "analyse",
         .projectSnapshot: "Aperçu du projet",
         .projectSnapshotSubtitle: "Contexte rapide avant revue et export",

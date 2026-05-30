@@ -162,7 +162,7 @@ Then run `Cloud Edit Deploy Preflight` from Actions:
 
 ## Remaining Blockers
 
-- `CLOUDFLARE_API_TOKEN` is still missing from the GitHub `staging` environment.
+- At this phase snapshot, the Cloudflare API token had not yet been installed in the GitHub `staging` environment.
 - GCP staging deploy identity inputs are also missing from the GitHub `staging` environment.
 - No real Worker deploy or rollback job ID exists from this branch because the token is absent.
 - The workflow will not be runnable from GitHub Actions until this workflow file exists on the default branch.
@@ -422,3 +422,36 @@ Updated blocker state:
 - Still blocked: installed TestFlight physical-device smoke remains unproven.
 
 No deploy or rollback was attempted because the preflight failed before authentication. No secret values, R2 credentials, storage object keys, or presigned URLs were printed or committed.
+
+## 2026-05-30 Credential-Only Proof Refresh
+
+Branch: `codex/phase-launch47-cloud-token-proof-reconciliation`
+
+The Cloudflare/GCP deploy input-name blocker is now cleared for the cheap credential-check lane. This does not prove a full deploy, live Worker route, rollback, or installed TestFlight smoke.
+
+Commands run without printing secret values:
+
+```sh
+gh secret list --repo charlie2233/rork-hoopshighlights-ai_Final --env staging --json name,updatedAt
+gh variable list --repo charlie2233/rork-hoopshighlights-ai_Final --env staging --json name,updatedAt
+gh workflow run cloud-edit-deploy-preflight.yml --repo charlie2233/rork-hoopshighlights-ai_Final --ref main -f operation=credential-check
+gh run watch 26672739316 --repo charlie2233/rork-hoopshighlights-ai_Final --exit-status
+gh run view 26672739316 --repo charlie2233/rork-hoopshighlights-ai_Final --json headSha,headBranch,event,status,conclusion,url,createdAt,jobs
+```
+
+Evidence:
+
+- GitHub staging secret names include `CLOUDFLARE_API_TOKEN`, `GCP_WORKLOAD_IDENTITY_PROVIDER`, and `GCP_DEPLOY_SERVICE_ACCOUNT`.
+- GitHub staging variable names include `GCP_PROJECT_ID` and `GCP_REGION`.
+- `CLOUDFLARE_API_TOKEN` was updated at `2026-05-30T03:02:50Z`.
+- Credential-only workflow run `26672739316` on `main` at `cf468745c18875eb5ace858c6a3e46d5c1078df9` completed successfully.
+- The successful job was `Verify cloud deploy credentials only`.
+- Full Worker/backend jobs were skipped by design on `operation=credential-check`.
+
+Remaining launch work after this proof:
+
+- Run `Cloud Edit Deploy Preflight` with `operation=preflight` on the release ref when ready to spend the full workflow.
+- Run `operation=deploy` to refresh staging Cloud Run/Worker and prove live Worker `/v1/editing/version`.
+- Capture the previous Worker version ID and run `operation=rollback` to prove rollback scope.
+- Run the installed TestFlight smoke on a trusted iPhone.
+- Produce the launch-grade labeled team/highlight accuracy report.

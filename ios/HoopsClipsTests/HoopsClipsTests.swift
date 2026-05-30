@@ -755,7 +755,9 @@ struct HoopsClipsTests {
                 teamUncertainReviewSegments: 1,
                 defensiveReviewSegments: 1,
                 blockReviewSegments: 0,
-                stealReviewSegments: 1
+                stealReviewSegments: 1,
+                forcedTurnoverReviewSegments: 1,
+                defensiveStopReviewSegments: 1
             )
         )
         let encoder = JSONEncoder()
@@ -768,6 +770,8 @@ struct HoopsClipsTests {
         #expect(decoded.highlightTeamSelection?.teamId == "team_blue")
         #expect(decoded.highlightTeamSelection?.primaryColorHex == "#0057FF")
         #expect(decoded.cloudDetectedTeams?.first?.label == "Blue jerseys")
+        #expect(decoded.cloudDiagnostics?.forcedTurnoverReviewSegments == 1)
+        #expect(decoded.cloudDiagnostics?.defensiveStopReviewSegments == 1)
         #expect(decoded.cloudDiagnostics?.teamUncertainReviewSegments == 1)
     }
 
@@ -1902,7 +1906,9 @@ struct HoopsClipsTests {
                 teamUncertainReviewSegments: nil,
                 defensiveReviewSegments: nil,
                 blockReviewSegments: nil,
-                stealReviewSegments: nil
+                stealReviewSegments: nil,
+                forcedTurnoverReviewSegments: nil,
+                defensiveStopReviewSegments: nil
             )
         )
 

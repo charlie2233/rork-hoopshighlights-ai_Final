@@ -370,6 +370,8 @@ nonisolated struct CloudDiagnostics: Codable, Sendable {
     let defensiveReviewSegments: Int?
     let blockReviewSegments: Int?
     let stealReviewSegments: Int?
+    let forcedTurnoverReviewSegments: Int?
+    let defensiveStopReviewSegments: Int?
 }
 
 nonisolated struct CloudAnalysisAPIError: Codable, Sendable {

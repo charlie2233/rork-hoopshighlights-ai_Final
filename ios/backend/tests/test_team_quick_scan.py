@@ -161,6 +161,19 @@ def _create_uploaded_job(client: TestClient, team_selection: dict | None = None)
     return created
 
 
+def _poll_analysis_job_until_terminal(client: TestClient, job_id: str, *, attempts: int = 240) -> dict:
+    payload: dict | None = None
+    for _ in range(attempts):
+        poll_response = client.get(f"/v1/analysis/jobs/{job_id}")
+        assert poll_response.status_code == 200
+        payload = poll_response.json()
+        if payload["status"] in {"succeeded", "failed", "expired"}:
+            return payload
+        time.sleep(0.05)
+    assert payload is not None
+    return payload
+
+
 class TeamQuickScanTests(unittest.TestCase):
     def test_disabled_scan_falls_back_without_calling_gpt(self) -> None:
         clips = [_clip("Three Pointer", 8.0, 12.5, 10.2)]
@@ -1349,13 +1362,7 @@ class TeamQuickScanTests(unittest.TestCase):
 
                 self.assertEqual(scan_response.status_code, 200)
                 self.assertEqual(start_response.status_code, 200)
-                for _ in range(80):
-                    poll_response = client.get(f"/v1/analysis/jobs/{created['jobId']}")
-                    self.assertEqual(poll_response.status_code, 200)
-                    job_payload = poll_response.json()
-                    if job_payload["status"] == "succeeded":
-                        break
-                    time.sleep(0.05)
+                job_payload = _poll_analysis_job_until_terminal(client, created["jobId"])
 
             self.assertIsNotNone(job_payload)
             assert job_payload is not None
@@ -1528,13 +1535,7 @@ class TeamQuickScanTests(unittest.TestCase):
                     )
                     self.assertEqual(start_response.status_code, 200)
 
-                    for _ in range(80):
-                        poll_response = client.get(f"/v1/analysis/jobs/{created['jobId']}")
-                        self.assertEqual(poll_response.status_code, 200)
-                        job_payload = poll_response.json()
-                        if job_payload["status"] == "succeeded":
-                            break
-                        time.sleep(0.05)
+                    job_payload = _poll_analysis_job_until_terminal(client, created["jobId"])
 
                 self.assertIsNotNone(job_payload)
                 assert job_payload is not None

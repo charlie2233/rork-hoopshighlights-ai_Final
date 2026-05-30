@@ -518,8 +518,6 @@ struct VideoPlayerView: View {
 
                 if AppConstants.requiresCloudVideoPipeline {
                     cloudAnalysisPathView
-                } else {
-                    estimatedTimeView
                 }
             }
         }
@@ -887,21 +885,6 @@ struct VideoPlayerView: View {
         .frame(maxWidth: .infinity)
     }
 
-    private var estimatedTimeView: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "timer")
-                .foregroundStyle(AppTheme.subtleText)
-            let estimatedSeconds = Int(max(viewModel.videoDuration * 0.42, 12))
-            Text("\(languageStore.text(.estimated)): ~\(estimatedSeconds)s \(languageStore.text(.analysis))")
-                .font(.caption)
-                .foregroundStyle(AppTheme.subtleText)
-            Spacer()
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .rorkCard(cornerRadius: 12, fill: AnyShapeStyle(AppTheme.surfaceBg.opacity(0.65)), stroke: AppTheme.softBorder, glowOpacity: 0.03)
-    }
-
     private var analysisQualitySummaryRows: [String] {
         guard let diagnostics = viewModel.analysisService.lastCloudDiagnostics else { return [] }
         var rows: [String] = []
@@ -926,10 +909,24 @@ struct VideoPlayerView: View {
         if defensive > 0 {
             let blocks = diagnostics.blockReviewSegments ?? 0
             let steals = diagnostics.stealReviewSegments ?? 0
-            rows.append("Defense kept \(defensive) \(defensive == 1 ? "clip" : "clips"), including \(blocks) \(blocks == 1 ? "block" : "blocks") and \(steals) \(steals == 1 ? "steal" : "steals").")
+            let forcedTurnovers = diagnostics.forcedTurnoverReviewSegments ?? 0
+            let defensiveStops = diagnostics.defensiveStopReviewSegments ?? 0
+            let defensiveDetails = [
+                countSummary(blocks, singular: "block", plural: "blocks"),
+                countSummary(steals, singular: "steal", plural: "steals"),
+                countSummary(forcedTurnovers, singular: "forced turnover", plural: "forced turnovers"),
+                countSummary(defensiveStops, singular: "defensive stop", plural: "defensive stops"),
+            ].compactMap { $0 }
+            let detailText = defensiveDetails.isEmpty ? "." : ", including \(defensiveDetails.joined(separator: ", "))."
+            rows.append("Defense kept \(defensive) \(defensive == 1 ? "clip" : "clips")\(detailText)")
         }
 
         return rows
+    }
+
+    private func countSummary(_ count: Int, singular: String, plural: String) -> String? {
+        guard count > 0 else { return nil }
+        return "\(count) \(count == 1 ? singular : plural)"
     }
 
     private var cloudAnalysisPathView: some View {
