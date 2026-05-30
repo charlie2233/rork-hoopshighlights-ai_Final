@@ -550,3 +550,52 @@ python3 scripts/submission_readiness_preflight.py \
 - Current summary before committing this doc update: 27 pass, 7 fail, 0 warn.
 - Upload artifact check passed with the local archive.
 - Remaining fails: missing launch-grade team accuracy report, unavailable connected iPhone, current-commit main CI/preflight reruns, current-commit iOS TestFlight upload proof, and installed TestFlight post-install smoke.
+
+## Launch72 Review-Notes Triage
+
+External read-only review notes inspected:
+
+- `/Users/hanfei/Desktop/HoopClips-Review-Notes-2026-05-30_full.txt`
+- `/Users/hanfei/.codex/attachments/a9654658-09e9-4f2e-a6ee-2fcf12f30cda/pasted-text.txt`
+
+Findings checked against the current launch worktree:
+
+- Photo import temp filename interpolation bug: not present in this branch. Current code uses `imported_video_\(UUID().uuidString).\(fileExtension)`.
+- CloudEditService locker rerender request body regression: stale for this branch. Focused tests passed and verified `installId`, `forceNew`, and `idempotencyKey` payloads.
+- Begin video import main-actor concern: current Photos import path keeps file-backed transfer/copy off the main actor and returns UI state updates through `MainActor.run` where needed.
+- Minor ContentView indentation/style: not launch-blocking and not touched in this branch.
+
+Focused iOS test:
+
+```bash
+# Build iOS Apps / XcodeBuildMCP
+# Project: ios/HoopsClips.xcodeproj
+# Scheme: HoopsClips
+# Configuration: Debug
+# Simulator: iPhone 17 Pro, iOS 26.0
+test_sim -only-testing:HoopsClipsTests/CloudEditServiceTests -quiet
+```
+
+- Result: passed.
+- Test count: 11.
+- Result bundle: `/Users/hanfei/Library/Developer/XcodeBuildMCP/workspaces/rork-hoopshighlights-ai_Final-b63ced5e161c/result-bundles/test_sim_2026-05-30T23-11-38-260Z_pid49862_5027249a.xcresult`
+
+GPT-led clipping quality evidence:
+
+```bash
+PYTHONPATH=ios/backend:services/editing \
+  /tmp/hoopclips-editing-test-venv/bin/python \
+  -m unittest services.editing.tests.test_gpt_reranker
+```
+
+- Result: passed.
+- Test count: 61.
+- Coverage includes no-full-video GPT payloads, structured output validation, keyframe sampling, selected-team filtering, uncertain clip review preservation, blocks/steals/defensive-stop handling, defensive context expansion, GPT fallback behavior, and patch validation.
+
+Device status:
+
+```bash
+xcrun devicectl list devices
+```
+
+- Result: `charlie的iPhone` detected but still `unavailable`, so installed TestFlight smoke remains blocked.
