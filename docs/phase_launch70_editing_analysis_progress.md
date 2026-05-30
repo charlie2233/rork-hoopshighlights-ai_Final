@@ -723,3 +723,57 @@ python3 -m unittest \
 
 - `py_compile`: passed.
 - Focused device-preflight tests: 3 passed.
+
+## Launch72 Manual Label Apply Handoff
+
+The launch-grade accuracy flow now has an explicit handoff from the local review page downloads back into the manifest label files:
+
+- Added `scripts/apply_team_highlight_manual_labels.py`.
+- Default mode is dry-run; it only overwrites manifest label files when `--apply` is passed.
+- It looks for review-page downloads named `{caseId}_manual_labels.json`, or accepts explicit `--label caseId=/path/to/file.json` mappings.
+- It validates case ID, clip count, label IDs, prediction clip IDs, completion fields, and rejects URL/object-key fields or signed URL markers.
+- It blocks incomplete labels by default so the launch report cannot be generated from partial manual review.
+- This is metadata-only; it does not inspect, upload, analyze, render, compose, or export video.
+
+Validation:
+
+```bash
+python3 -m py_compile \
+  scripts/apply_team_highlight_manual_labels.py \
+  scripts/test_apply_team_highlight_manual_labels.py
+python3 -m unittest scripts.test_apply_team_highlight_manual_labels -v
+python3 scripts/apply_team_highlight_manual_labels.py \
+  --manifest artifacts/team_highlight_accuracy_launch71_manifest.json \
+  --downloads-dir ~/Downloads \
+  --json
+```
+
+- `py_compile`: passed.
+- Focused apply-helper suite: 4 tests passed.
+- Current Launch71 apply dry-run: blocked because the expected downloaded label files are not present yet:
+  - `~/Downloads/launch71_downloads_326_team_black_manual_labels.json`
+  - `~/Downloads/launch71_downloads_326_team_white_manual_labels.json`
+  - `~/Downloads/launch71_downloads_326_all_manual_labels.json`
+
+Updated manual-label flow after reviewing all 66 clips:
+
+```bash
+python3 scripts/apply_team_highlight_manual_labels.py \
+  --manifest artifacts/team_highlight_accuracy_launch71_manifest.json \
+  --downloads-dir ~/Downloads \
+  --apply \
+  --json
+python3 scripts/build_launch_team_accuracy_report.py \
+  --manifest artifacts/team_highlight_accuracy_launch71_manifest.json \
+  --label-status \
+  --json
+python3 scripts/build_launch_team_accuracy_report.py \
+  --manifest artifacts/team_highlight_accuracy_launch71_manifest.json \
+  --eval-output artifacts/team_highlight_accuracy_launch71_eval.json \
+  --report-output artifacts/team_highlight_accuracy_launch71_report.json \
+  --json
+python3 scripts/submission_readiness_preflight.py \
+  --archive-path ios/archives/HoopsClips-Launch72.xcarchive \
+  --team-accuracy-report artifacts/team_highlight_accuracy_launch71_report.json \
+  --json
+```
