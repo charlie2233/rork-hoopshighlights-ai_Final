@@ -517,3 +517,36 @@ PYTHONPATH=ios/backend:services/editing \
 
 - Results: passed.
 - Test counts: 207 backend tests, 56 editing-service tests.
+
+Local archive:
+
+```bash
+xcodebuild \
+  -project ios/HoopsClips.xcodeproj \
+  -scheme HoopsClips \
+  -configuration Release \
+  -destination 'generic/platform=iOS' \
+  -archivePath ios/archives/HoopsClips-Launch72.xcarchive \
+  archive \
+  DEVELOPMENT_TEAM="$TEAM_ID" \
+  CODE_SIGN_STYLE=Automatic \
+  -allowProvisioningUpdates \
+  -quiet
+```
+
+- Result: passed after injecting the local development team value from the local xcconfig without printing it.
+- Archive: `ios/archives/HoopsClips-Launch72.xcarchive`
+- The archive path is intentionally ignored by git via `ios/.gitignore`.
+
+Preflight with local archive:
+
+```bash
+python3 scripts/submission_readiness_preflight.py \
+  --archive-path ios/archives/HoopsClips-Launch72.xcarchive \
+  --json
+```
+
+- Result: failed as expected until remaining gates are satisfied.
+- Current summary before committing this doc update: 27 pass, 7 fail, 0 warn.
+- Upload artifact check passed with the local archive.
+- Remaining fails: missing launch-grade team accuracy report, unavailable connected iPhone, current-commit main CI/preflight reruns, current-commit iOS TestFlight upload proof, and installed TestFlight post-install smoke.

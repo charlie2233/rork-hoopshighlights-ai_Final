@@ -13,6 +13,7 @@ app.json
 
 # Xcode
 build/
+archives/
 DerivedData/
 HoopsClips/HoopsClips/Config/LocalSecrets.xcconfig
 *.xcuserstate
@@ -24,6 +25,7 @@ xcuserdata/
 *.derivedData
 *.hmap
 *.ipa
+*.xcarchive
 *.dSYM.zip
 *.dSYM
 
