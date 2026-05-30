@@ -46,8 +46,8 @@ final class HoopsClipsUITests: XCTestCase {
             guestButton.tap()
         }
 
-        let settingsTab = app.tabBars.buttons["Settings"]
-        XCTAssertTrue(settingsTab.waitForExistence(timeout: 5), "Settings tab should be available after authentication.")
+        let settingsTab = waitForAppTab(named: "Settings", identifier: "app.tab.settings", in: app, timeout: 5)
+        XCTAssertTrue(settingsTab.exists, "Settings tab should be available after authentication.")
         settingsTab.tap()
 
         XCTAssertTrue(app.staticTexts["Launch Status"].waitForExistence(timeout: 5))
@@ -340,8 +340,8 @@ final class HoopsClipsUITests: XCTestCase {
 
     @MainActor
     private func openAIEditExportFlow(from app: XCUIApplication) {
-        let reviewTab = app.tabBars.buttons["Review"]
-        XCTAssertTrue(reviewTab.waitForExistence(timeout: 10), "Review tab should be available in the smoke guest session.")
+        let reviewTab = waitForAppTab(named: "Review", identifier: "app.tab.review", in: app, timeout: 10)
+        XCTAssertTrue(reviewTab.exists, "Review tab should be available in the smoke guest session.")
         reviewTab.tap()
 
         XCTAssertTrue(app.staticTexts["Make Highlight Reel"].waitForExistence(timeout: 10))
@@ -351,10 +351,34 @@ final class HoopsClipsUITests: XCTestCase {
         attachScreenshot(named: "01 Review Continue To Export", app: app)
         tapWhenReady(entryButton, in: app)
 
-        let exportTab = app.tabBars.buttons["Export"]
-        XCTAssertTrue(exportTab.waitForExistence(timeout: 10), "Export tab should be visible after routing from Review.")
+        let exportTab = waitForAppTab(named: "Export", identifier: "app.tab.export", in: app, timeout: 10)
+        XCTAssertTrue(exportTab.exists, "Export tab should be visible after routing from Review.")
         XCTAssertTrue(app.descendants(matching: .any)["export.aiEdit.section"].waitForExistence(timeout: 10))
         attachScreenshot(named: "02 Export AI Edit Agent", app: app)
+    }
+
+    @MainActor
+    private func waitForAppTab(
+        named name: String,
+        identifier: String,
+        in app: XCUIApplication,
+        timeout: TimeInterval
+    ) -> XCUIElement {
+        let customTab = app.buttons[identifier]
+        let systemTab = app.tabBars.buttons[name]
+        let deadline = Date().addingTimeInterval(timeout)
+
+        while Date() < deadline {
+            if customTab.exists {
+                return customTab
+            }
+            if systemTab.exists {
+                return systemTab
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+        }
+
+        return customTab
     }
 
     @MainActor

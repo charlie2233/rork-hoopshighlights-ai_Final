@@ -228,7 +228,7 @@ final class HighlightsViewModel {
 
         analysisMode = .cloud
         isCloudFallbackOffered = false
-        analysisService.beginExternalAnalysis(status: "Preparing upload")
+        analysisService.beginExternalAnalysis(status: "Preparing cloud upload")
 
         do {
             let result: CloudAnalysisResult
@@ -301,7 +301,7 @@ final class HighlightsViewModel {
             }
         }
         cloudTeamScanErrorMessage = nil
-        cloudTeamScanStatusMessage = "Preparing team scan"
+        cloudTeamScanStatusMessage = "AI is preparing team scan"
         settings.highlightTeamSelection = .allTeams
         hasConfirmedHighlightTeamSelection = false
         analysisMode = .cloud

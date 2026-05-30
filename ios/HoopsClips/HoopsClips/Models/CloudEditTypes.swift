@@ -444,17 +444,17 @@ enum CloudEditRenderState: String, Codable, Sendable {
     var displayLabel: String {
         switch self {
         case .renderRequested:
-            return "HoopClips is starting your edit"
+            return "AI is starting your edit"
         case .planning:
-            return "Building your AI edit"
+            return "AI is building your edit"
         case .planReady:
-            return "Applying your style"
+            return "AI is applying your style"
         case .created:
-            return "Preparing cloud edit"
+            return "AI is preparing cloud edit"
         case .queued:
-            return "Waiting for cloud editing"
+            return "AI edit is queued"
         case .rendering:
-            return "Rendering your highlight reel"
+            return "AI is rendering your reel"
         case .rendered:
             return "Your reel is ready"
         case .failed:
