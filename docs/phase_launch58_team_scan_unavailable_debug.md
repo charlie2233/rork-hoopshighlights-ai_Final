@@ -63,7 +63,73 @@ Results:
 - Launch workflow/config script tests passed: 11 tests.
 - `git diff --check` passed.
 
+## Deploy And Staging Proof
+
+Deployed the fixed editing service image directly through Google Cloud Build to avoid spending an extra GitHub Actions deploy run:
+
+```bash
+gcloud builds submit \
+  --config services/editing/cloudbuild.yaml \
+  --substitutions _IMAGE_TAG=5a6cd281dede0e33aeea208c947145133002313f .
+```
+
+Result:
+
+- Cloud Build ID: `23de68b3-c3f5-4f17-922f-56a3649999dc`
+- status: `SUCCESS`
+- image tag: `5a6cd281dede0e33aeea208c947145133002313f`
+- Cloud Run revision: `hoopclips-editing-staging-00028-tw7`
+- traffic: 100 percent to the new revision
+
+Version probe:
+
+```bash
+python3 scripts/staging_version_probe.py \
+  --expected-git-sha 5a6cd281dede0e33aeea208c947145133002313f \
+  --json
+```
+
+Result:
+
+- `status=pass`
+- Worker git SHA: `5a6cd281dede0e33aeea208c947145133002313f`
+- editing git SHA: `5a6cd281dede0e33aeea208c947145133002313f`
+
+Post-deploy live team scan smoke:
+
+```bash
+python3 scripts/worker_team_scan_smoke.py \
+  --worker-url https://hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev \
+  --video-path /Users/hanfei/Downloads/326_1770329282.mp4 \
+  --duration-seconds 30 \
+  --allow-unavailable
+```
+
+Result:
+
+- `jobId=d9eeae0cbb224ee893165b880aef11cc`
+- `teamScanStatus=scanned`
+- `detectedTeamCount=2`
+- detected teams: black jersey team, white jersey team
+
+Selected-team start smoke:
+
+```bash
+python3 scripts/worker_team_scan_smoke.py \
+  --worker-url https://hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev \
+  --video-path /Users/hanfei/Downloads/326_1770329282.mp4 \
+  --duration-seconds 30 \
+  --start-selected-team
+```
+
+Result:
+
+- `jobId=569827cae0ab4d5eb11daaf7dc986032`
+- `teamScanStatus=scanned`
+- `detectedTeamCount=2`
+- selected team handoff: `mode=team`, `teamId=team_black`, `colorLabel=black`, `status=queued`
+
 ## Launch Notes
 
 - No secrets, R2 credentials, object keys, or full presigned URLs are included in this evidence.
-- This fixes the 422 contract blocker. The next live staging proof after deploy should confirm whether GPT quick scan returns selectable teams for the sample video.
+- This fixes the 422 contract blocker. Staging now returns selectable teams for the sample video and can queue selected-team analysis.
