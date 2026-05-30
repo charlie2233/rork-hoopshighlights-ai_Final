@@ -238,6 +238,22 @@ struct HoopsClipsTests {
         #expect(pro.retentionSummary == "Videos stored for 60 days")
     }
 
+    @Test func testCloudEditStatusCopyUsesRealAIWorkLanguageWithoutFakeThinking() {
+        let inProgressLabels = [
+            CloudEditRenderState.renderRequested,
+            .planning,
+            .planReady,
+            .created,
+            .queued,
+            .rendering
+        ].map(\.displayLabel)
+
+        #expect(inProgressLabels.allSatisfy { $0.localizedCaseInsensitiveContains("AI") })
+        #expect(inProgressLabels.allSatisfy { !$0.localizedCaseInsensitiveContains("thinking") })
+        #expect(CloudEditRenderState.rendering.displayLabel == "AI is rendering your reel")
+        #expect(CloudEditRenderState.rendered.displayLabel == "Your reel is ready")
+    }
+
     @Test @MainActor func testCloudEditRequestEncodesOptionalUserPrompt() throws {
         let nativeSignals = NativeShotSignals(
             isShotLike: true,

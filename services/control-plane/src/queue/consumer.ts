@@ -8,6 +8,12 @@ import { resolveRuntimeConfig } from "../env";
 
 const DEFAULT_INFERENCE_MODEL_VERSION = "videomae:MCG-NJU/videomae-base-finetuned-kinetics";
 
+interface AnalysisDispatchProvider {
+  name: "inference" | "editing";
+  baseUrl: string;
+  ingressSecret: string;
+}
+
 export async function handleQueueBatch(batch: MessageBatch<QueueJobMessage>, env: Env): Promise<void> {
   for (const message of batch.messages) {
     if (message.body.kind !== "process-job") {
@@ -88,15 +94,7 @@ export async function handleQueueBatch(batch: MessageBatch<QueueJobMessage>, env
         message.body,
         inferenceAttemptId
       );
-      const response = await fetch(dispatchRequest.url, {
-        method: "POST",
-        headers: dispatchRequest.headers,
-        body: JSON.stringify(dispatchRequest.body)
-      });
-
-      if (!response.ok) {
-        throw new Error(`External inference dispatch failed with status ${response.status}.`);
-      }
+      const dispatchResult = await dispatchAnalysisJob(env, dispatchRequest);
 
       await appendJobEvent(env.DB, {
         jobId: message.body.jobId,
@@ -105,12 +103,13 @@ export async function handleQueueBatch(batch: MessageBatch<QueueJobMessage>, env
         eventType: "queue.dispatch.accepted",
         message: "External inference service accepted job.",
         payload: {
-          status: response.status,
+          status: dispatchResult.status,
           jobId: message.body.jobId,
           requestId: message.body.requestId,
           uploadTraceId: dispatchingSnapshot.uploadTraceId ?? message.body.uploadTraceId ?? null,
           inferenceAttemptId,
-          modelVersion
+          modelVersion,
+          provider: dispatchResult.provider
         },
         createdAt: new Date().toISOString()
       });
@@ -123,7 +122,8 @@ export async function handleQueueBatch(batch: MessageBatch<QueueJobMessage>, env
           uploadTraceId: dispatchingSnapshot.uploadTraceId ?? message.body.uploadTraceId ?? null,
           inferenceAttemptId,
           event: "queue.dispatch.accepted",
-          status: response.status
+          status: dispatchResult.status,
+          provider: dispatchResult.provider
         })
       );
 
@@ -162,12 +162,13 @@ export async function handleQueueBatch(batch: MessageBatch<QueueJobMessage>, env
             eventType: "queue.dispatch.accepted",
             message: "External inference service accepted job.",
             payload: {
-              status: response.status,
+              status: dispatchResult.status,
               jobId: message.body.jobId,
               requestId: message.body.requestId,
               uploadTraceId: dispatchingSnapshot.uploadTraceId ?? message.body.uploadTraceId ?? null,
               inferenceAttemptId,
-              modelVersion
+              modelVersion,
+              provider: dispatchResult.provider
             }
           }
         );
@@ -265,11 +266,7 @@ async function buildInferenceDispatchRequest(
   job: JobRecord,
   message: QueueJobMessage,
   inferenceAttemptId: string
-): Promise<{ url: string; headers: Record<string, string>; body: InferenceDispatchRequest }> {
-  if (!env.INFERENCE_BASE_URL) {
-    throw new Error("Missing inference service base URL.");
-  }
-
+): Promise<{ callbackSecret: string; body: InferenceDispatchRequest }> {
   const callbackUrl = new URL("/internal/inference/callback", env.CONTROL_PLANE_BASE_URL).toString();
   const callbackSecret = env.INFERENCE_SHARED_SECRET || env.CONTROL_PLANE_SHARED_SECRET;
   const readTarget = await createPresignedReadTarget(env, {
@@ -285,6 +282,10 @@ async function buildInferenceDispatchRequest(
     uploadTraceId: job.uploadTraceId ?? message.uploadTraceId,
     inferenceAttemptId,
     traceId: job.traceId,
+    filename: job.filename,
+    contentType: job.contentType,
+    fileSizeBytes: job.fileSizeBytes,
+    durationSeconds: job.durationSeconds,
     sourceObjectKey: job.sourceObjectKey,
     sourceUrl: readTarget.sourceUrl,
     resultObjectKey: job.resultObjectKey,
@@ -300,17 +301,115 @@ async function buildInferenceDispatchRequest(
   };
 
   return {
-    url: new URL("/v1/analyze", env.INFERENCE_BASE_URL).toString(),
-    headers: {
-      "content-type": "application/json",
-      "x-hoops-inference-secret": callbackSecret,
-      "x-request-id": message.requestId,
-      "x-trace-id": job.traceId,
-      "x-hoops-upload-trace-id": job.uploadTraceId ?? message.uploadTraceId,
-      "x-hoops-inference-attempt-id": inferenceAttemptId
-    },
+    callbackSecret,
     body
   };
+}
+
+async function dispatchAnalysisJob(
+  env: Env,
+  dispatchRequest: { callbackSecret: string; body: InferenceDispatchRequest }
+): Promise<{ provider: AnalysisDispatchProvider["name"]; status: number }> {
+  const providers = analysisDispatchProviders(env);
+  if (providers.length === 0) {
+    throw new Error("Missing inference service base URL.");
+  }
+
+  let lastFailure: { provider: AnalysisDispatchProvider["name"]; status: number } | null = null;
+  for (const provider of providers) {
+    const body = analysisDispatchBodyForProvider(dispatchRequest.body, provider);
+    const response = await fetch(new URL("/v1/analyze", provider.baseUrl).toString(), {
+      method: "POST",
+      headers: analysisDispatchHeaders(dispatchRequest, provider),
+      body: JSON.stringify(body)
+    });
+
+    if (response.ok) {
+      return { provider: provider.name, status: response.status };
+    }
+
+    lastFailure = { provider: provider.name, status: response.status };
+    if (!shouldTryNextAnalysisProvider(response.status)) {
+      break;
+    }
+  }
+
+  if (lastFailure) {
+    throw new Error(`External inference dispatch failed with status ${lastFailure.status}.`);
+  }
+  throw new Error("External inference dispatch failed.");
+}
+
+function analysisDispatchBodyForProvider(
+  body: InferenceDispatchRequest,
+  provider: AnalysisDispatchProvider
+): InferenceDispatchRequest {
+  if (provider.name === "editing") {
+    return body;
+  }
+
+  const legacyBody: InferenceDispatchRequest = {
+    jobId: body.jobId,
+    requestId: body.requestId,
+    uploadTraceId: body.uploadTraceId,
+    inferenceAttemptId: body.inferenceAttemptId,
+    traceId: body.traceId,
+    sourceObjectKey: body.sourceObjectKey,
+    sourceUrl: body.sourceUrl,
+    resultObjectKey: body.resultObjectKey,
+    callbackUrl: body.callbackUrl,
+    callbackSecret: body.callbackSecret,
+    schemaVersion: body.schemaVersion,
+    modelVersion: body.modelVersion,
+    installId: body.installId,
+    appVersion: body.appVersion,
+    analysisVersion: body.analysisVersion,
+    requestedModel: body.requestedModel,
+    attemptCount: body.attemptCount
+  };
+
+  if (body.teamSelection?.mode === "team") {
+    legacyBody.teamSelection = body.teamSelection;
+  }
+
+  return legacyBody;
+}
+
+function analysisDispatchHeaders(
+  dispatchRequest: { callbackSecret: string; body: InferenceDispatchRequest },
+  provider: AnalysisDispatchProvider
+): Record<string, string> {
+  return {
+    "content-type": "application/json",
+    "x-hoops-inference-secret": provider.ingressSecret,
+    "x-request-id": dispatchRequest.body.requestId,
+    "x-trace-id": dispatchRequest.body.traceId,
+    "x-hoops-upload-trace-id": dispatchRequest.body.uploadTraceId,
+    "x-hoops-inference-attempt-id": dispatchRequest.body.inferenceAttemptId
+  };
+}
+
+function analysisDispatchProviders(env: Env): AnalysisDispatchProvider[] {
+  const providers: AnalysisDispatchProvider[] = [];
+  if (env.INFERENCE_BASE_URL && (env.INFERENCE_SHARED_SECRET || env.CONTROL_PLANE_SHARED_SECRET)) {
+    providers.push({
+      name: "inference",
+      baseUrl: env.INFERENCE_BASE_URL,
+      ingressSecret: env.INFERENCE_SHARED_SECRET || env.CONTROL_PLANE_SHARED_SECRET
+    });
+  }
+  if (env.EDITING_BASE_URL && (env.EDITING_SHARED_SECRET || env.INFERENCE_SHARED_SECRET || env.CONTROL_PLANE_SHARED_SECRET)) {
+    providers.push({
+      name: "editing",
+      baseUrl: env.EDITING_BASE_URL,
+      ingressSecret: env.EDITING_SHARED_SECRET || env.INFERENCE_SHARED_SECRET || env.CONTROL_PLANE_SHARED_SECRET
+    });
+  }
+  return providers.filter((provider) => provider.baseUrl.trim().length > 0 && provider.ingressSecret.trim().length > 0);
+}
+
+function shouldTryNextAnalysisProvider(status: number): boolean {
+  return status === 404 || status === 405 || status === 422 || status === 501;
 }
 
 async function sendDeadLetterRecord(

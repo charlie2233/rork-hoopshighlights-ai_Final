@@ -15,9 +15,9 @@ struct ReviewView: View {
     @State private var keepTrigger = 0
     @State private var discardTrigger = 0
     private let tabTransitionAnimation = Animation.interactiveSpring(
-        response: 0.34,
-        dampingFraction: 0.88,
-        blendDuration: 0.08
+        response: 0.42,
+        dampingFraction: 0.96,
+        blendDuration: 0.12
     )
 
     private enum FilterOption: String, CaseIterable {

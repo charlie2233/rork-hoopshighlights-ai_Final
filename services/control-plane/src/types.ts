@@ -375,6 +375,10 @@ export interface InferenceDispatchRequest {
   uploadTraceId: string;
   inferenceAttemptId: string;
   traceId: string;
+  filename?: string;
+  contentType?: string;
+  fileSizeBytes?: number;
+  durationSeconds?: number;
   sourceObjectKey: string;
   sourceUrl: string;
   resultObjectKey: string;

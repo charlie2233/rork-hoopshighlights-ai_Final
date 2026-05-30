@@ -3,6 +3,7 @@ import { test } from "node:test";
 import harness from "../../../scripts/control-plane-harness";
 
 const {
+  buildSuccessCallbackPayload,
   createControlPlaneHarness,
   invokeInternalRoute,
   invokePublicRoute,
@@ -136,7 +137,7 @@ test("control plane preserves selected team intent through queued inference", as
     colorLabel: "black",
     confidenceThreshold: 0.85,
     includeUncertain: true
-  };
+  } as const;
 
   const createResponse = await invokePublicRoute(
     harness,
@@ -216,6 +217,163 @@ test("control plane preserves selected team intent through queued inference", as
   const processedMessages = await harness.drainQueue();
   assert.equal(processedMessages, 1);
   assert.deepEqual(harness.state.inferenceDispatches[0]?.body.teamSelection, teamSelection);
+
+  const finalResponse = await invokePublicRoute(harness, "GET", `/jobs/${createJson.jobId}`);
+  assert.equal(finalResponse.status, 200);
+  const finalJson = await parseJsonResponse<{
+    status: string;
+    results: { teamSelection?: typeof teamSelection | null } | null;
+  }>(finalResponse);
+  assert.equal(finalJson.status, "completed");
+  assert.deepEqual(finalJson.results?.teamSelection, teamSelection);
+});
+
+test("control plane falls back to editing analysis when legacy inference rejects selected team dispatch", async () => {
+  const harness = createControlPlaneHarness({ APP_ENV: "staging" });
+  const teamSelection = {
+    mode: "team",
+    teamId: "team_dark",
+    label: "Dark jerseys",
+    colorLabel: "black",
+    confidenceThreshold: 0.85,
+    includeUncertain: true
+  } as const;
+
+  const createResponse = await invokePublicRoute(
+    harness,
+    "POST",
+    "/uploads/presign",
+    {
+      filename: "selected-team-fallback.mp4",
+      contentType: "video/mp4",
+      fileSizeBytes: 10485760,
+      durationSeconds: 24,
+      installId: "install-editing-fallback",
+      appVersion: "1.0.0",
+      analysisVersion: "phase-team"
+    },
+    { "x-trace-id": "trace-editing-fallback" }
+  );
+  assert.equal(createResponse.status, 201);
+  const createJson = await parseJsonResponse<{
+    jobId: string;
+    sourceObjectKey: string;
+    resultObjectKey: string;
+    uploadTraceId: string | null;
+    uploadUrl: string;
+  }>(createResponse);
+
+  await uploadObject(harness, createJson.uploadUrl, new TextEncoder().encode("selected team fallback clip"));
+
+  const originalTeamScanFetch = globalThis.fetch.bind(globalThis);
+  globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const request = input instanceof Request ? input : new Request(input, init);
+    const url = new URL(request.url);
+    if (url.origin === harness.env.INFERENCE_BASE_URL && url.pathname === "/v1/team-scan") {
+      return Response.json({
+        jobId: createJson.jobId,
+        status: "scanned",
+        detectedTeams: [
+          {
+            teamId: "team_dark",
+            label: "Dark jerseys",
+            colorLabel: "black",
+            primaryColorHex: "#111111",
+            confidence: 0.93,
+            source: "quick_scan"
+          }
+        ]
+      });
+    }
+    return originalTeamScanFetch(input, init);
+  };
+  try {
+    const scanResponse = await invokePublicRoute(harness, "POST", `/jobs/${createJson.jobId}/team-scan`, {
+      installId: "install-editing-fallback"
+    });
+    assert.equal(scanResponse.status, 200);
+  } finally {
+    globalThis.fetch = originalTeamScanFetch;
+  }
+
+  const startResponse = await invokePublicRoute(harness, "POST", `/jobs/${createJson.jobId}/start`, {
+    installId: "install-editing-fallback",
+    teamSelection
+  });
+  assert.equal(startResponse.status, 200);
+
+  const editingDispatches: Array<{ headers: Record<string, string>; body: Record<string, unknown> }> = [];
+  const originalFetch = globalThis.fetch.bind(globalThis);
+  globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const request = input instanceof Request ? input : new Request(input, init);
+    const url = new URL(request.url);
+    if (url.origin === harness.env.EDITING_BASE_URL && url.pathname === "/v1/analyze") {
+      const body = (await request.json()) as Record<string, unknown>;
+      editingDispatches.push({
+        headers: Object.fromEntries(request.headers.entries()),
+        body
+      });
+      assert.equal(request.headers.get("x-hoops-inference-secret"), harness.env.EDITING_SHARED_SECRET);
+      assert.equal(body.jobId, createJson.jobId);
+      assert.equal(body.filename, "selected-team-fallback.mp4");
+      assert.equal(body.contentType, "video/mp4");
+      assert.equal(body.durationSeconds, 24);
+      assert.equal(body.callbackSecret, harness.env.INFERENCE_SHARED_SECRET);
+      assert.deepEqual(body.teamSelection, teamSelection);
+
+      const callbackPayload = buildSuccessCallbackPayload({
+        jobId: createJson.jobId,
+        requestId: String(body.requestId),
+        modelVersion: String(body.modelVersion ?? "editing-cloud-v1"),
+        resultConfidence: 0.92,
+        uploadTraceId: String(body.uploadTraceId),
+        inferenceAttemptId: String(body.inferenceAttemptId)
+      });
+      assert.ok(callbackPayload.results);
+      callbackPayload.results.teamSelection = teamSelection;
+      const callbackResponse = await invokeInternalRoute(
+        harness,
+        "POST",
+        "/internal/inference/callback",
+        callbackPayload,
+        {
+          "x-hoops-inference-secret": String(body.callbackSecret),
+          "x-request-id": String(body.requestId),
+          "x-trace-id": String(body.traceId),
+          "x-hoops-upload-trace-id": String(body.uploadTraceId),
+          "x-hoops-inference-attempt-id": String(body.inferenceAttemptId)
+        },
+        String(body.requestId)
+      );
+      assert.equal(callbackResponse.status, 200);
+
+      return Response.json({ jobId: createJson.jobId, accepted: true }, { status: 202 });
+    }
+    return originalFetch(input, init);
+  };
+
+  try {
+    const processedMessages = await harness.drainQueue();
+    assert.equal(processedMessages, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(harness.state.inferenceDispatches.length, 1);
+  assert.deepEqual(harness.state.inferenceDispatches[0]?.body.teamSelection, teamSelection);
+  assert.equal(harness.state.inferenceDispatches[0]?.body.filename, undefined);
+  assert.equal(harness.state.inferenceDispatches[0]?.body.durationSeconds, undefined);
+  assert.equal(editingDispatches.length, 1);
+
+  const acceptedEvents = harness.state.events.filter((event) => event.eventType === "queue.dispatch.accepted");
+  assert.equal(
+    acceptedEvents.some((event) => (event.payload as { provider?: string }).provider === "editing"),
+    true
+  );
+  const eventPayloads = JSON.stringify(harness.state.events.map((event) => event.payload));
+  assert.equal(eventPayloads.includes(createJson.uploadUrl), false);
+  assert.equal(eventPayloads.includes(createJson.sourceObjectKey), false);
+  assert.equal(eventPayloads.includes(createJson.resultObjectKey), false);
 
   const finalResponse = await invokePublicRoute(harness, "GET", `/jobs/${createJson.jobId}`);
   assert.equal(finalResponse.status, 200);

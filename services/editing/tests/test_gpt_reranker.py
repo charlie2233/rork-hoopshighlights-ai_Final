@@ -455,9 +455,13 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertTrue(compact_clip["qualityHints"]["timingWindowOk"])
         self.assertEqual(compact_clip["nativeShotSignals"]["setupContextScore"], 1.0)
         self.assertEqual(compact_clip["nativeShotSignals"]["outcomeContextScore"], 1.0)
+        self.assertEqual(shot_rules["requiredShotContextKeyframes"], [])
+        pro_request = _request("pro", 1)
+        pro_payload = _build_openai_payload(pro_request, pro_request.clips[:1], frames, settings)
+        pro_input = json.loads(pro_payload["input"][0]["content"][0]["text"])
         self.assertEqual(
-            shot_rules["requiredShotContextKeyframes"],
-            ["belowRim", "preEvent", "release", "rimApproach", "rimEntry", "shotArcEarly", "shotArcLate"],
+            pro_input["shotTrackerRules"]["requiredShotContextKeyframes"],
+            ["outcome", "postOutcome", "preEvent", "release", "rim"],
         )
         self.assertIn("qualitySignals", decision_properties)
         self.assertIn("qualitySignals", decision_schema["required"])
@@ -2832,15 +2836,15 @@ class GPTHighlightRerankerTests(unittest.TestCase):
     def test_free_and_pro_sampling_limits(self) -> None:
         settings = GPTHighlightRerankerSettings.from_env()
 
-        self.assertEqual(settings.limits_for("free"), (60, 10))
+        self.assertEqual(settings.limits_for("free"), (8, 3))
         self.assertGreaterEqual(settings.limits_for("pro")[0], 20)
-        self.assertLessEqual(settings.limits_for("pro")[0], 60)
+        self.assertLessEqual(settings.limits_for("pro")[0], 30)
         self.assertGreaterEqual(settings.limits_for("pro")[1], 5)
-        self.assertLessEqual(settings.limits_for("pro")[1], 10)
+        self.assertLessEqual(settings.limits_for("pro")[1], 8)
         self.assertEqual(settings.timeout_seconds, 60.0)
         self.assertEqual(settings.max_output_tokens, 12000)
 
-    def test_free_sampling_reviews_full_analysis_pool_by_default(self) -> None:
+    def test_free_sampling_uses_launch_contract_candidate_cap(self) -> None:
         settings = GPTHighlightRerankerSettings.from_env()
         max_clips, _ = settings.limits_for("free")
         request = _request("free", 60)
@@ -2850,16 +2854,31 @@ class GPTHighlightRerankerTests(unittest.TestCase):
             max_clips,
         )
 
-        self.assertEqual(max_clips, 60)
-        self.assertEqual(len(sampled), 60)
+        self.assertEqual(max_clips, 8)
+        self.assertEqual(len(sampled), 8)
         self.assertEqual(sampled[0].id, "c0")
-        self.assertEqual(sampled[-1].id, "c59")
+        self.assertEqual(sampled[-1].id, "c7")
 
-    def test_free_sampling_candidate_cap_is_generous_but_bounded(self) -> None:
-        env_keys = ("HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_FREE", "HOOPS_GPT_HIGHLIGHT_RERANK_FREE_MAX_CLIPS")
+    def test_sampling_env_overrides_are_launch_bounded(self) -> None:
+        env_keys = (
+            "HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_FREE",
+            "HOOPS_GPT_HIGHLIGHT_RERANK_FREE_MAX_CLIPS",
+            "HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_PRO",
+            "HOOPS_GPT_HIGHLIGHT_RERANK_PAID_MAX_CLIPS",
+            "HOOPS_AI_CLIP_GPT_KEYFRAMES_PER_CLIP",
+            "HOOPS_AI_CLIP_GPT_FREE_KEYFRAMES_PER_CLIP",
+            "HOOPS_GPT_HIGHLIGHT_RERANK_FREE_FRAMES_PER_CLIP",
+            "HOOPS_GPT_HIGHLIGHT_RERANK_PAID_FRAMES_PER_CLIP",
+        )
         old_values = {key: os.environ.get(key) for key in env_keys}
         os.environ["HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_FREE"] = "999"
         os.environ["HOOPS_GPT_HIGHLIGHT_RERANK_FREE_MAX_CLIPS"] = "999"
+        os.environ["HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_PRO"] = "999"
+        os.environ["HOOPS_GPT_HIGHLIGHT_RERANK_PAID_MAX_CLIPS"] = "999"
+        os.environ["HOOPS_AI_CLIP_GPT_KEYFRAMES_PER_CLIP"] = "999"
+        os.environ["HOOPS_AI_CLIP_GPT_FREE_KEYFRAMES_PER_CLIP"] = "999"
+        os.environ["HOOPS_GPT_HIGHLIGHT_RERANK_FREE_FRAMES_PER_CLIP"] = "999"
+        os.environ["HOOPS_GPT_HIGHLIGHT_RERANK_PAID_FRAMES_PER_CLIP"] = "999"
         try:
             settings = GPTHighlightRerankerSettings.from_env()
         finally:
@@ -2869,7 +2888,8 @@ class GPTHighlightRerankerTests(unittest.TestCase):
                 else:
                     os.environ[key] = old_value
 
-        self.assertEqual(settings.limits_for("free")[0], 60)
+        self.assertEqual(settings.limits_for("free"), (8, 3))
+        self.assertEqual(settings.limits_for("pro"), (30, 8))
 
     def test_sampling_reserves_block_and_steal_families_for_gpt_review(self) -> None:
         scoring = [

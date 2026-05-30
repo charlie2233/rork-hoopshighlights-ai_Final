@@ -606,6 +606,14 @@ struct AIEditView: View {
                     .foregroundStyle(AppTheme.subtleText)
             }
 
+            if let activeAIWorkPhrase {
+                Label(activeAIWorkPhrase, systemImage: "sparkles")
+                    .font(.caption.bold())
+                    .foregroundStyle(AppTheme.warningYellow)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("export.aiEdit.activeWorkPhrase")
+            }
+
             if let renderStatus, let duration = renderStatus.durationSeconds {
                 Text("Rendered duration: \(Clip.formatTime(duration))")
                     .font(.caption.monospacedDigit())
@@ -1763,6 +1771,57 @@ struct AIEditView: View {
             return "Rendering timed out. Try a shorter edit or retry when the backend is ready."
         case .cancelled:
             return "Render was cancelled."
+        }
+    }
+
+    private var activeAIWorkPhrase: String? {
+        guard isWorking || editJob != nil || renderStatus != nil || revisionResponse != nil else { return nil }
+        if phase == .rendered || phase == .failed || phase == .failedTimeout || phase == .cancelled {
+            return nil
+        }
+
+        if let runningStep = activeWorkTimeline.steps.first(where: { $0.status == .running }) {
+            return activeAIWorkPhrase(for: runningStep.stepId)
+        }
+
+        switch phase {
+        case .planning:
+            return "AI is finding candidate clips and choosing the strongest moments."
+        case .planReady:
+            return "AI built the edit plan; cloud render is the next real step."
+        case .renderRequested, .created:
+            return "AI is handing the approved edit plan to the cloud renderer."
+        case .queued:
+            return "AI edit is queued; HoopClips will keep checking real job status."
+        case .rendering:
+            return "AI is rendering the approved timeline into an MP4."
+        case .rendered, .failed, .failedTimeout, .cancelled:
+            return nil
+        }
+    }
+
+    private func activeAIWorkPhrase(for stepID: String) -> String {
+        switch stepID {
+        case "video_uploaded":
+            return "Cloud source is ready for AI editing."
+        case "finding_highlights":
+            return "AI is finding candidate clips."
+        case "selecting_best_clips":
+            return "AI is choosing the strongest highlights."
+        case "removing_duplicates":
+            return "AI is rejecting duplicate or boring moments."
+        case "applying_template":
+            return "AI is matching clips to the selected template."
+        case "adding_slow_motion":
+            return "AI is choosing slow-motion moments."
+        case "adding_watermark_outro":
+            return "AI is applying plan rules and branding."
+        case "rendering_mp4":
+            return "AI is rendering the approved timeline into an MP4."
+        case "finalizing_download":
+            return "AI is finalizing preview and share access."
+        default:
+            return "AI is updating this edit from real cloud job status."
         }
     }
 

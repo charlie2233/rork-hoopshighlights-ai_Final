@@ -29,7 +29,9 @@ from .models import (
     APIError,
     CreateCloudAnalysisJobRequest,
     CreateCloudAnalysisJobResponse,
+    CloudAnalysisResult,
     ErrorResponse,
+    InferenceDispatchRequest,
     JobStatus,
     PipelineError,
     MaterializedSource,
@@ -79,7 +81,7 @@ async def materialize_remote_source(
         async with httpx.AsyncClient(follow_redirects=True, timeout=timeout) as client:
             async with client.stream("GET", source_url) as response:
                 if response.status_code >= 400:
-                    raise APIError(400, "source_unavailable", "Source video could not be fetched for team scan.")
+                    raise APIError(400, "source_unavailable", "Source video could not be fetched for cloud analysis.")
                 with local_path.open("wb") as output:
                     async for chunk in response.aiter_bytes():
                         if not chunk:
@@ -97,16 +99,36 @@ async def materialize_remote_source(
         raise
     except httpx.TimeoutException as error:
         materialized.cleanup()
-        raise APIError(504, "source_fetch_timeout", "Source video fetch timed out before team scan.") from error
+        raise APIError(504, "source_fetch_timeout", "Source video fetch timed out before cloud analysis.") from error
     except httpx.HTTPError as error:
         materialized.cleanup()
-        raise APIError(400, "source_unavailable", "Source video could not be fetched for team scan.") from error
+        raise APIError(400, "source_unavailable", "Source video could not be fetched for cloud analysis.") from error
 
 
 def _sanitize_remote_filename(filename: str) -> str:
     name = Path(filename).name or "source.mp4"
     normalized = re.sub(r"[^A-Za-z0-9._-]", "_", name)
     return normalized[:120] or "source.mp4"
+
+
+async def _post_inference_callback(
+    callback_url: str,
+    callback_secret: str,
+    payload: dict,
+) -> None:
+    headers = {
+        "content-type": "application/json",
+        "x-hoops-inference-secret": callback_secret,
+        "x-request-id": str(payload.get("requestId") or ""),
+        "x-trace-id": str(payload.get("traceId") or ""),
+        "x-hoops-upload-trace-id": str(payload.get("uploadTraceId") or ""),
+        "x-hoops-inference-attempt-id": str(payload.get("inferenceAttemptId") or ""),
+    }
+    timeout = httpx.Timeout(20.0, connect=8.0)
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        response = await client.post(callback_url, json=payload, headers=headers)
+    if response.status_code >= 400:
+        raise APIError(502, "callback_failed", "Inference callback was rejected by the control plane.")
 
 
 @dataclass(frozen=True)
@@ -199,6 +221,109 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
     def _download_url_expires_at():
         ttl_seconds = int(os.getenv("HOOPS_RENDER_DOWNLOAD_TTL_SECONDS", "900"))
         return now_utc() + timedelta(seconds=ttl_seconds)
+
+    def _result_confidence(result: CloudAnalysisResult) -> float:
+        if not result.clips:
+            return 0.0
+        return round(sum(clip.confidence for clip in result.clips) / len(result.clips), 4)
+
+    def _dispatch_job_from_request(request: InferenceDispatchRequest) -> StoredJob:
+        created_at = _now()
+        return StoredJob(
+            job_id=request.jobId,
+            install_id=request.installId,
+            filename=request.filename,
+            content_type=request.contentType or "video/mp4",
+            file_size_bytes=request.fileSizeBytes or 1,
+            duration_seconds=request.durationSeconds,
+            app_version=request.appVersion,
+            analysis_version=request.analysisVersion,
+            created_at=created_at,
+            expires_at=created_at + timedelta(seconds=resolved_settings.job_ttl_seconds),
+            object_key=request.sourceObjectKey,
+            team_selection=request.teamSelection,
+            status=JobStatus.PROCESSING,
+            progress=0.62,
+            stage="Analyzing in cloud",
+        )
+
+    def _inference_callback_payload(
+        request: InferenceDispatchRequest,
+        *,
+        status: str,
+        stage: str,
+        progress: float,
+        result: Optional[CloudAnalysisResult] = None,
+        failure_reason: Optional[str] = None,
+    ) -> dict:
+        result_confidence = _result_confidence(result) if result is not None else 0.0
+        return {
+            "jobId": request.jobId,
+            "requestId": request.requestId,
+            "status": status,
+            "stage": stage,
+            "progress": progress,
+            "schemaVersion": request.schemaVersion,
+            "modelVersion": request.modelVersion,
+            "failureReason": failure_reason,
+            "resultConfidence": result_confidence,
+            "confidence": result_confidence,
+            "uploadTraceId": request.uploadTraceId,
+            "inferenceAttemptId": request.inferenceAttemptId,
+            "traceId": request.traceId,
+            "results": result.model_dump(mode="json") if result is not None else None,
+        }
+
+    async def _run_inference_dispatch(request: InferenceDispatchRequest) -> None:
+        source = None
+        try:
+            source = await materialize_remote_source(
+                request.sourceUrl,
+                request.filename,
+                resolved_settings.max_file_size_bytes,
+                resolved_settings.upload_root,
+            )
+            job = _dispatch_job_from_request(request)
+            result = await run_in_threadpool(run_analysis, job, resolved_settings, source.local_path)
+            payload = _inference_callback_payload(
+                request,
+                status="succeeded",
+                stage="Finalizing clips",
+                progress=0.98,
+                result=result,
+            )
+        except APIError as error:
+            payload = _inference_callback_payload(
+                request,
+                status="failed",
+                stage="Inference failed",
+                progress=0.77,
+                failure_reason=error.error_code,
+            )
+        except PipelineError as error:
+            payload = _inference_callback_payload(
+                request,
+                status="failed",
+                stage="Inference failed",
+                progress=0.77,
+                failure_reason=error.error_code,
+            )
+        except Exception:
+            payload = _inference_callback_payload(
+                request,
+                status="failed",
+                stage="Inference failed",
+                progress=0.77,
+                failure_reason="processing_error",
+            )
+        finally:
+            if source is not None:
+                source.cleanup()
+
+        try:
+            await _post_inference_callback(request.callbackUrl, request.callbackSecret, payload)
+        except Exception:
+            pass
 
     async def _process_job(job_id: str) -> None:
         assert runtime is not None
@@ -471,6 +596,24 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
         finally:
             if source is not None:
                 source.cleanup()
+
+    @router.post(
+        "/v1/analyze",
+        status_code=202,
+        responses={400: {"model": ErrorResponse}, 403: {"model": ErrorResponse}},
+    )
+    async def analyze_source(
+        request: InferenceDispatchRequest,
+        background_tasks: BackgroundTasks,
+        x_hoops_inference_secret: Optional[str] = Header(default=None),
+        x_hoops_internal_secret: Optional[str] = Header(default=None),
+    ):
+        try:
+            _require_internal_process_secret(x_hoops_inference_secret or x_hoops_internal_secret)
+            background_tasks.add_task(_run_inference_dispatch, request)
+            return {"jobId": request.jobId, "status": "accepted"}
+        except APIError as error:
+            return _error_response(error)
 
     @router.post(
         "/v1/analysis/jobs/{job_id}/start",

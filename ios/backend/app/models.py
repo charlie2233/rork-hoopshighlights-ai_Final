@@ -113,6 +113,31 @@ class ScanCloudAnalysisSourceRequest(APIModel):
     modelVersion: Optional[str] = Field(default=None, max_length=120)
 
 
+class InferenceDispatchRequest(APIModel):
+    jobId: str = Field(min_length=1, max_length=128)
+    requestId: str = Field(min_length=1, max_length=128)
+    uploadTraceId: str = Field(min_length=1, max_length=128)
+    inferenceAttemptId: str = Field(min_length=1, max_length=128)
+    traceId: str = Field(min_length=1, max_length=128)
+    filename: str = Field(default="source.mp4", min_length=1, max_length=255)
+    contentType: Optional[str] = Field(default="video/mp4", max_length=120)
+    fileSizeBytes: Optional[int] = Field(default=None, gt=0)
+    durationSeconds: float = Field(gt=0.0)
+    sourceObjectKey: str = Field(min_length=1, max_length=512)
+    sourceUrl: str = Field(min_length=8)
+    resultObjectKey: str = Field(min_length=1, max_length=512)
+    callbackUrl: str = Field(min_length=8)
+    callbackSecret: str = Field(min_length=1, max_length=256)
+    schemaVersion: str = Field(min_length=1, max_length=64)
+    modelVersion: str = Field(min_length=1, max_length=120)
+    installId: str = Field(min_length=8, max_length=128)
+    appVersion: str = Field(min_length=1, max_length=64)
+    analysisVersion: str = Field(min_length=1, max_length=64)
+    teamSelection: Optional[TeamSelection] = None
+    requestedModel: Optional[str] = Field(default=None, max_length=80)
+    attemptCount: Optional[int] = Field(default=None, ge=0)
+
+
 class ScanCloudAnalysisTeamsResponse(APIModel):
     jobId: str
     status: Literal["scanned", "unavailable"]

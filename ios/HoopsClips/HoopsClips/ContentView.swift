@@ -9,15 +9,51 @@ struct ContentView: View {
     @State private var selectedTab = 0
     @State private var showingPaywall = false
 
-    private let firstTabIndex = 0
-    private let lastTabIndex = 4
-    private let tabSwipeThreshold: CGFloat = 70
-    private let tabSwipeVerticalTolerance: CGFloat = 1.25
     private let tabSwipeAnimation = Animation.interactiveSpring(
-        response: 0.34,
-        dampingFraction: 0.88,
-        blendDuration: 0.08
+        response: 0.42,
+        dampingFraction: 0.96,
+        blendDuration: 0.12
     )
+
+    private enum AppTab: Int, CaseIterable, Identifiable {
+        case player
+        case review
+        case export
+        case history
+        case settings
+
+        var id: Int { rawValue }
+
+        var iconName: String {
+            switch self {
+            case .player: return "play.circle.fill"
+            case .review: return "film.stack.fill"
+            case .export: return "square.and.arrow.up.fill"
+            case .history: return "clock.arrow.circlepath"
+            case .settings: return "gearshape.fill"
+            }
+        }
+
+        var accessibilityIdentifier: String {
+            switch self {
+            case .player: return "app.tab.player"
+            case .review: return "app.tab.review"
+            case .export: return "app.tab.export"
+            case .history: return "app.tab.history"
+            case .settings: return "app.tab.settings"
+            }
+        }
+
+        func title(using languageStore: AppLanguageStore) -> String {
+            switch self {
+            case .player: return languageStore.text(.tabPlayer)
+            case .review: return languageStore.text(.tabReview)
+            case .export: return languageStore.text(.tabExport)
+            case .history: return languageStore.text(.tabHistory)
+            case .settings: return languageStore.text(.tabSettings)
+            }
+        }
+    }
 
     private var needsVerification: Bool {
         guard authService.isAuthenticated else { return false }
@@ -77,66 +113,103 @@ struct ContentView: View {
             HoopsMotionBackdrop(glowOpacity: 0.18, courtOpacity: 0.08)
 
             TabView(selection: $selectedTab) {
-                Tab(languageStore.text(.tabPlayer), systemImage: "play.circle.fill", value: 0) {
-                    VideoPlayerView(viewModel: viewModel)
-                        .environment(subscriptionManager)
-                        .environment(authService)
-                }
-                Tab(languageStore.text(.tabReview), systemImage: "film.stack.fill", value: 1) {
-                    ReviewView(viewModel: viewModel, selectedTab: $selectedTab)
-                }
-                Tab(languageStore.text(.tabExport), systemImage: "square.and.arrow.up.fill", value: 2) {
-                    ExportView(viewModel: viewModel)
-                        .environment(subscriptionManager)
-                        .environment(authService)
-                }
-                Tab(languageStore.text(.tabHistory), systemImage: "clock.arrow.circlepath", value: 3) {
-                    HistoryView(viewModel: viewModel)
-                }
-                Tab(languageStore.text(.tabSettings), systemImage: "gearshape.fill", value: 4) {
-                    SettingsView(viewModel: viewModel, authService: authService, subscriptionManager: subscriptionManager)
-                }
+                VideoPlayerView(viewModel: viewModel)
+                    .environment(subscriptionManager)
+                    .environment(authService)
+                    .tag(AppTab.player.rawValue)
+
+                ReviewView(viewModel: viewModel, selectedTab: $selectedTab)
+                    .tag(AppTab.review.rawValue)
+
+                ExportView(viewModel: viewModel)
+                    .environment(subscriptionManager)
+                    .environment(authService)
+                    .tag(AppTab.export.rawValue)
+
+                HistoryView(viewModel: viewModel)
+                    .tag(AppTab.history.rawValue)
+
+                SettingsView(viewModel: viewModel, authService: authService, subscriptionManager: subscriptionManager)
+                    .tag(AppTab.settings.rawValue)
             }
-            .tint(AppTheme.neonPurple)
-            .toolbarBackground(AppTheme.cardBg.opacity(0.95), for: .tabBar)
-            .toolbarBackground(.visible, for: .tabBar)
-            .toolbarColorScheme(.dark, for: .tabBar)
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            .indexViewStyle(.page(backgroundDisplayMode: .never))
             .animation(reduceMotion ? nil : tabSwipeAnimation, value: selectedTab)
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                appTabBar
+            }
         }
         .preferredColorScheme(.dark)
-        .simultaneousGesture(tabSwipeGesture)
         .sheet(isPresented: $showingPaywall) {
             PaywallView(subscriptionManager: subscriptionManager, authService: authService)
         }
     }
 
-    private var tabSwipeGesture: some Gesture {
-        DragGesture(minimumDistance: 35, coordinateSpace: .local)
-            .onEnded(handleTabSwipe)
+    private var appTabBar: some View {
+        HStack(spacing: 6) {
+            ForEach(AppTab.allCases) { tab in
+                appTabButton(tab)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.top, 8)
+        .padding(.bottom, 8)
+        .background(AppTheme.cardBg.opacity(0.96))
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(AppTheme.softBorder.opacity(0.8))
+                .frame(height: 1)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("app.tabBar")
     }
 
-    private func handleTabSwipe(_ value: DragGesture.Value) {
-        let projectedHorizontalDistance = value.predictedEndTranslation.width
-        let horizontalDistance = abs(projectedHorizontalDistance) > abs(value.translation.width)
-            ? projectedHorizontalDistance
-            : value.translation.width
-        let verticalDistance = value.translation.height
-        let isHorizontalSwipe = abs(horizontalDistance) >= tabSwipeThreshold
-            && abs(horizontalDistance) > abs(verticalDistance) * tabSwipeVerticalTolerance
+    private func appTabButton(_ tab: AppTab) -> some View {
+        let isSelected = selectedTab == tab.rawValue
+        let title = tab.title(using: languageStore)
 
-        guard isHorizontalSwipe else { return }
+        return Button {
+            selectTab(tab)
+        } label: {
+            VStack(spacing: 4) {
+                Image(systemName: tab.iconName)
+                    .font(.system(size: 17, weight: isSelected ? .semibold : .medium))
+                Text(title)
+                    .font(.caption2.weight(isSelected ? .semibold : .medium))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+            }
+            .foregroundStyle(isSelected ? .white : AppTheme.subtleText)
+            .frame(maxWidth: .infinity)
+            .frame(height: 50)
+            .background {
+                if isSelected {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(AppTheme.accentPurple.opacity(0.18))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .stroke(AppTheme.neonPurple.opacity(0.28), lineWidth: 1)
+                        }
+                }
+            }
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier(tab.accessibilityIdentifier)
+        .accessibilityLabel(title)
+        .accessibilityHint("Opens \(title).")
+        .hoopsSelectedState(isSelected)
+    }
 
-        let nextTab = selectedTab + (horizontalDistance < 0 ? 1 : -1)
-        let boundedTab = min(max(nextTab, firstTabIndex), lastTabIndex)
-        guard boundedTab != selectedTab else { return }
-
+    private func selectTab(_ tab: AppTab) {
+        guard selectedTab != tab.rawValue else { return }
         guard !reduceMotion else {
-            selectedTab = boundedTab
+            selectedTab = tab.rawValue
             return
         }
 
         withAnimation(tabSwipeAnimation) {
-            selectedTab = boundedTab
+            selectedTab = tab.rawValue
         }
     }
 }
