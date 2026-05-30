@@ -17,16 +17,7 @@ class InlineTaskDispatcher:
         self._process_callback = process_callback
 
     async def enqueue_process(self, job: StoredJob) -> None:
-        task = asyncio.create_task(self._process_callback(job.job_id))
-        task.add_done_callback(self._consume_background_exception)
-
-    def _consume_background_exception(self, task: "asyncio.Task[None]") -> None:
-        try:
-            task.result()
-        except asyncio.CancelledError:
-            pass
-        except Exception:
-            pass
+        await self._process_callback(job.job_id)
 
 
 class CloudTasksDispatcher:
