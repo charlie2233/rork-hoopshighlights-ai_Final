@@ -23,6 +23,9 @@ rg -n "estimatedTimeView|\\.estimated|Estimated|预计|Estimado|Estimé|~[0-9]|~
 git diff --check
 xcodebuild -project ios/HoopsClips.xcodeproj -scheme HoopsClips -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 17' CODE_SIGNING_ALLOWED=NO build
 xcodebuild test -project ios/HoopsClips.xcodeproj -scheme HoopsClips -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 17' CODE_SIGNING_ALLOWED=NO -only-testing:HoopsClipsTests/AppLanguageStoreTests
+python3 -m unittest discover -s scripts -p 'test_*.py' -v
+npm --prefix services/control-plane run typecheck
+xcodebuild test -project ios/HoopsClips.xcodeproj -scheme HoopsClips -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 17' CODE_SIGNING_ALLOWED=NO -only-testing:HoopsClipsTests
 ```
 
 Results:
@@ -31,3 +34,6 @@ Results:
 - Diff check passed.
 - iOS Debug build passed on the available `iPhone 17` simulator.
 - `AppLanguageStoreTests` passed: `exposesLaunchCopyForSupportedLanguages`, `defaultsToEnglish`, and `persistsSelectedLanguage`.
+- Script tests passed: 104 tests.
+- Control-plane TypeScript typecheck passed.
+- Full `HoopsClipsTests` passed on the available `iPhone 17` simulator.
