@@ -36,7 +36,7 @@ Observed results:
 - PR #3, `codex/phase-launch2-ci-deploy-token-unblock-readiness`, is draft, `MERGEABLE`, and `CLEAN`.
 - PR #3 `Worker typecheck and dry run` passed on run `26329438289` after the v6 action update; `Verify cloud edit deploy secrets` was skipped because the workflow was not a manual dispatch.
 - PR #2, `codex/phase4h-calibrated-acceptance-gate-unblocking`, is draft, `CONFLICTING`, and `DIRTY`.
-- Live staging Worker `GET /v1/editing/version` returned `404`, so live iOS kill-switch state remains unproven through the Worker.
+- On 2026-05-23, the staging Worker version route returned not-found, so live iOS kill-switch state was not proven through the Worker yet.
 - `.github/workflows/cloud-edit-deploy-preflight.yml` still returned `404` from `main`, so the manual deploy/rollback workflow is not runnable from the default branch yet.
 - Wrangler help confirmed the current command shapes used by the deploy workflow for `deploy`, `deployments list/status`, `rollback`, and `secret list`.
 - Historical docs still contain older real storage object-key evidence in several smoke reports. This branch redacts only the current launch-decision Phase Edit7e summary and records the broader scan as future cleanup.
@@ -83,13 +83,25 @@ Observed results:
 | Worker version ID | not captured | no Worker deploy proof from this branch |
 | Worker rollback run ID | not captured | rollback scope not proven |
 
+## 2026-05-30 Current Deploy Refresh
+
+The earlier 2026-05-23 Worker version-route blocker is now resolved on staging.
+
+- Branch/commit: `main` at `fd7313e0ca9eb9a53fbd08f03354cb11a96ce42d`.
+- Cloud deploy proof: GitHub Actions run `26674350743` completed the secret-gated deploy job on the same commit, including direct Docker build/push, Cloud Run deploy, Worker deploy, direct editing `/version`, and Worker `/v1/editing/version`.
+- Main push proof: `Cloud Edit Deploy Preflight` run `26674490395` and `iOS Internal TestFlight Upload` codecheck run `26674490386` completed successfully on the same commit.
+- Live probe command:
+
+```sh
+python3 scripts/staging_version_probe.py --expected-git-sha fd7313e0ca9eb9a53fbd08f03354cb11a96ce42d --json
+```
+
+Observed result: pass. Both the direct editing service and the staging Worker returned `gitSha=fd7313e0ca9eb9a53fbd08f03354cb11a96ce42d` and non-secret AI/GPT feature flag keys including `aiEditEnabled`, `aiEditLiveRenderEnabled`, `aiEditRevisionEnabled`, `aiEditTemplatePackEnabled`, `aiClipGptEditorEnabled`, `aiClipGptPlanEditEnabled`, `aiClipGptRevisionEnabled`, and `gptHighlightRerankerEnabled`.
+
 ## Remaining Blockers
 
 - Install the internal staging TestFlight build on a trusted online iPhone and run the full post-install smoke: upload/import -> cloud analysis -> Review -> Export -> AI Edit -> render -> preview -> More Hype revision -> revised preview -> share/open-in.
-- Use the already published `.github/workflows/cloud-edit-deploy-preflight.yml` from `main` for GitHub Actions `workflow_dispatch`.
-- GitHub `staging` environment deploy input names are now present, but full preflight/deploy/rollback proof remains required.
-- Run `Cloud Edit Deploy Preflight` with `operation=preflight`, then `operation=deploy`, then `operation=rollback` with a captured previous Worker version ID.
-- Refresh staging Worker and prove `GET /v1/editing/version` returns live editing service flag state through the Worker.
+- Rollback drill still needs a captured previous Worker version ID before public launch.
 - Keep production cutover blocked until production Worker, Cloud Run, R2, D1, Sentry, Statsig, RevenueCat, Google config, privacy/storage copy, rollback, and beta proof gates clear.
 
 ## 2026-05-30 Credential-Check Reconciliation

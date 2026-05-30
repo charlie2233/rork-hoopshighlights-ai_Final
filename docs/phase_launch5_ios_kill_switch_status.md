@@ -114,18 +114,34 @@ changed-line secret/presigned URL scan: only expected local test URL and secret 
 
 ## 2026-05-23 Live Staging Refresh
 
-The source route and local proxy tests exist, but the live staging Worker still returned `404` for:
+The source route and local proxy tests existed, but the live staging Worker route was not deployed yet and returned a not-found response for:
 
 ```text
 GET https://hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev/v1/editing/version
 ```
 
-Treat this phase as implemented in source but not yet proven live on staging. The installed app cannot rely on live kill-switch state until the staging Worker is refreshed and the route returns the editing service `/version` payload through the Worker.
+At that time, this phase was implemented in source but not proven live on staging.
+
+## 2026-05-30 Live Staging Refresh
+
+The staging Worker version proxy is now deployed and proven live on current `main`.
+
+Evidence:
+
+- Commit: `fd7313e0ca9eb9a53fbd08f03354cb11a96ce42d`.
+- Secret-gated deploy proof: GitHub Actions run `26674350743`.
+- Main push proof: `Cloud Edit Deploy Preflight` run `26674490395`.
+- Live probe:
+
+```sh
+python3 scripts/staging_version_probe.py --expected-git-sha fd7313e0ca9eb9a53fbd08f03354cb11a96ce42d --json
+```
+
+Result: passed. The staging Worker returned the current commit SHA and non-secret AI Edit/GPT feature flag keys through `GET /v1/editing/version`, including `aiEditEnabled`, `aiEditLiveRenderEnabled`, `aiEditRevisionEnabled`, `aiEditTemplatePackEnabled`, `aiClipGptEditorEnabled`, `aiClipGptPlanEditEnabled`, `aiClipGptRevisionEnabled`, and `gptHighlightRerankerEnabled`.
 
 ## Remaining Blockers
 
 - Real post-install TestFlight smoke still needs an online trusted iPhone with the internal staging build installed.
-- The proxied version endpoint must be deployed through the staging Worker before the installed app can display live flag state from staging.
 - Cloudflare/GCP CI credentials are still required for deploy and rollback proof.
 - Statsig is still not the remote production flag source of truth.
 - Production cloud cutover remains blocked by production Worker, Cloud Run, R2, D1, Sentry, Statsig, RevenueCat, Google, rollback, and beta proof gates.

@@ -81,7 +81,13 @@ REQUIRED_MAIN_WORKFLOWS = (
 )
 SECRET_GATED_DEPLOY_WORKFLOW_FILE = "cloud-edit-deploy-preflight.yml"
 SECRET_GATED_DEPLOY_JOB_NAME = "Verify cloud edit deploy secrets"
+IOS_TESTFLIGHT_UPLOAD_WORKFLOW_FILE = "ios-testflight-upload.yml"
 GITHUB_ACTIONS_STARTABILITY_CONCLUSIONS = {"action_required", "startup_failure"}
+TESTFLIGHT_UPLOAD_LOG_MARKERS = (
+    "Upload succeeded.",
+    "Uploaded HoopsClips",
+    "Internal TestFlight upload command completed",
+)
 BLOCKER_DOCS = (
     (
         "docs/phase_edit7g_post_testflight_internal_smoke.md",
@@ -420,7 +426,8 @@ def check_ios_signing(repo_root: Path, collector: Collector) -> None:
     local_values = parse_xcconfig_values(local_secrets_path)
     env_team = os.getenv("HOOPS_DEVELOPMENT_TEAM", "").strip()
     local_team = local_values.get("HOOPS_DEVELOPMENT_TEAM", "").strip() if local_values else ""
-    if env_team or (local_team not in PLACEHOLDER_VALUES):
+    github_team_secret_present = "HOOPS_DEVELOPMENT_TEAM" in github_environment_names("secret")
+    if env_team or (local_team not in PLACEHOLDER_VALUES) or github_team_secret_present:
         collector.pass_("ios signing team", rel(local_secrets_path, repo_root), "Development team is configured without printing its value.")
     else:
         collector.fail("ios signing team", rel(local_secrets_path, repo_root), "HOOPS_DEVELOPMENT_TEAM is missing or placeholder.")
@@ -504,8 +511,90 @@ def check_upload_artifact(repo_root: Path, collector: Collector, archive_path: P
         collector.fail("upload artifact", rel(failure_path, repo_root), failure_detail)
     elif archive_path is not None:
         collector.fail("upload artifact", rel(archive_path, repo_root), "Requested archive/IPA path does not exist.")
+    elif current_testflight_upload_proof(repo_root):
+        collector.pass_("upload artifact", "GitHub Actions", "Current checkout has a successful internal TestFlight upload run with upload log proof.")
     else:
         collector.fail("upload artifact", "repo", "No .xcarchive or .ipa upload artifact found under the expected build output locations.")
+
+
+def current_testflight_upload_proof(repo_root: Path) -> bool:
+    current_sha = current_git_sha(repo_root)
+    if not current_sha:
+        return False
+    try:
+        result = subprocess.run(
+            [
+                "gh",
+                "run",
+                "list",
+                "--repo",
+                "charlie2233/rork-hoopshighlights-ai_Final",
+                "--workflow",
+                IOS_TESTFLIGHT_UPLOAD_WORKFLOW_FILE,
+                "--branch",
+                "main",
+                "--limit",
+                "20",
+                "--json",
+                "databaseId,status,conclusion,createdAt,headSha,event",
+            ],
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=20,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    if result.returncode != 0:
+        return False
+    try:
+        runs = json.loads(result.stdout or "[]")
+    except json.JSONDecodeError:
+        return False
+    if not isinstance(runs, list):
+        return False
+
+    matching_ids = [
+        run.get("databaseId")
+        for run in runs
+        if isinstance(run, dict)
+        and run.get("event") == "workflow_dispatch"
+        and str(run.get("headSha") or "") == current_sha
+        and run.get("status") == "completed"
+        and run.get("conclusion") == "success"
+    ]
+    for run_id in matching_ids:
+        if testflight_upload_log_has_markers(run_id):
+            return True
+    return False
+
+
+def testflight_upload_log_has_markers(run_id: object) -> bool:
+    if run_id in (None, ""):
+        return False
+    try:
+        result = subprocess.run(
+            [
+                "gh",
+                "run",
+                "view",
+                str(run_id),
+                "--repo",
+                "charlie2233/rork-hoopshighlights-ai_Final",
+                "--log",
+            ],
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    if result.returncode != 0:
+        return False
+    return all(marker in result.stdout for marker in TESTFLIGHT_UPLOAD_LOG_MARKERS)
 
 
 def check_connected_ios_device(collector: Collector) -> None:
@@ -800,10 +889,8 @@ def check_secret_gated_deploy_preflight(repo_root: Path, collector: Collector) -
                 "charlie2233/rork-hoopshighlights-ai_Final",
                 "--workflow",
                 SECRET_GATED_DEPLOY_WORKFLOW_FILE,
-                "--branch",
-                "main",
                 "--limit",
-                "20",
+                "50",
                 "--json",
                 "databaseId,status,conclusion,createdAt,headSha,event,url",
             ],
@@ -835,7 +922,7 @@ def check_secret_gated_deploy_preflight(repo_root: Path, collector: Collector) -
             "Cloud Edit Deploy Preflight",
             (
                 "No manually dispatched deploy preflight run was found; push codechecks do not prove staging secrets or provider auth. "
-                "Use operation=credential-check first while repairing provider credentials, then operation=preflight for launch readiness."
+                "Use operation=credential-check first while repairing provider credentials, then operation=preflight or operation=deploy for launch readiness."
             ),
         )
         return
@@ -858,7 +945,7 @@ def check_secret_gated_deploy_preflight(repo_root: Path, collector: Collector) -
             (
                 f"Latest manually dispatched deploy preflight is for {short_latest}, not current checkout {short_current}; "
                 "use operation=credential-check first while repairing provider credentials, then rerun workflow_dispatch "
-                "operation=preflight for launch readiness."
+                "operation=preflight or operation=deploy for launch readiness."
             ),
         )
         return
@@ -871,7 +958,7 @@ def check_secret_gated_deploy_preflight(repo_root: Path, collector: Collector) -
         collector.fail(
             check_name,
             "Cloud Edit Deploy Preflight",
-            f"Current-commit workflow_dispatch deploy preflight status={status} conclusion={conclusion} at {created_at}.",
+            f"Current-commit workflow_dispatch deploy/preflight status={status} conclusion={conclusion} at {created_at}.",
         )
         return
 
@@ -882,7 +969,7 @@ def check_secret_gated_deploy_preflight(repo_root: Path, collector: Collector) -
             "Cloud Edit Deploy Preflight",
             (
                 "Could not confirm the secret-gated deploy job; use operation=credential-check first while repairing provider "
-                "credentials, then rerun workflow_dispatch operation=preflight and verify provider-auth checks."
+                "credentials, then rerun workflow_dispatch operation=preflight or operation=deploy and verify provider-auth checks."
             ),
         )
         return
@@ -891,7 +978,7 @@ def check_secret_gated_deploy_preflight(repo_root: Path, collector: Collector) -
         collector.pass_(
             check_name,
             "Cloud Edit Deploy Preflight",
-            f"Current-commit workflow_dispatch deploy preflight completed successfully with provider-auth job proof at {created_at}.",
+            f"Current-commit workflow_dispatch deploy/preflight completed successfully with provider-auth job proof at {created_at}.",
         )
     else:
         collector.fail(
@@ -899,7 +986,7 @@ def check_secret_gated_deploy_preflight(repo_root: Path, collector: Collector) -
             "Cloud Edit Deploy Preflight",
             (
                 f"Secret-gated deploy job status={job_status} conclusion={job_conclusion}; provider-auth preflight is not proven. "
-                "Use operation=credential-check first while repairing provider credentials, then operation=preflight for launch readiness."
+                "Use operation=credential-check first while repairing provider credentials, then operation=preflight or operation=deploy for launch readiness."
             ),
         )
 

@@ -23,6 +23,7 @@ from scripts.submission_readiness_preflight import (
     check_ci_deploy_inputs,
     check_connected_ios_device,
     check_github_workflow_runs,
+    check_ios_signing,
     check_ios_upload_inputs,
     check_live_editing_version,
     check_secret_gated_deploy_preflight,
@@ -480,6 +481,7 @@ charlie的iPhone   charliedeiPhone.coredevice.local   E5786BB6-0095-5509-8B85-11
         self.assertIn("not current checkout", collector.findings[0].detail)
         self.assertIn("operation=credential-check", collector.findings[0].detail)
         self.assertIn("operation=preflight", collector.findings[0].detail)
+        self.assertIn("operation=deploy", collector.findings[0].detail)
 
     def test_secret_gated_deploy_preflight_rejects_dispatch_without_secret_job(self) -> None:
         run_list_payload = [
@@ -516,6 +518,7 @@ charlie的iPhone   charliedeiPhone.coredevice.local   E5786BB6-0095-5509-8B85-11
         self.assertTrue(has_failures(collector.findings))
         self.assertIn("operation=credential-check", collector.findings[0].detail)
         self.assertIn("operation=preflight", collector.findings[0].detail)
+        self.assertIn("operation=deploy", collector.findings[0].detail)
         self.assertIn("provider-auth preflight is not proven", collector.findings[0].detail)
 
     def test_secret_gated_deploy_preflight_passes_with_current_successful_secret_job(self) -> None:
@@ -584,6 +587,22 @@ charlie的iPhone   charliedeiPhone.coredevice.local   E5786BB6-0095-5509-8B85-11
 
         self.assertFalse(has_failures(collector.findings))
 
+    def test_ios_signing_team_can_come_from_github_environment_secret_name(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            create_ready_fixture(repo_root)
+            local_secrets = repo_root / "ios/HoopsClips/HoopsClips/Config/LocalSecrets.xcconfig"
+            local_secrets.write_text("HOOPS_DEVELOPMENT_TEAM = $(HOOPS_DEVELOPMENT_TEAM)\n", encoding="utf-8")
+
+            collector = Collector()
+            with patch.dict(os.environ, {}, clear=True), patch(
+                "scripts.submission_readiness_preflight.github_environment_names",
+                return_value={"HOOPS_DEVELOPMENT_TEAM"},
+            ):
+                check_ios_signing(repo_root, collector)
+
+            self.assertFalse(has_failures(collector.findings))
+
     def test_endpoint_label_omits_scheme_and_query(self) -> None:
         label = redacted_endpoint_label("https://example.test/v1/editing/version?token=secret")
 
@@ -600,6 +619,44 @@ charlie的iPhone   charliedeiPhone.coredevice.local   E5786BB6-0095-5509-8B85-11
             check_upload_artifact(repo_root, collector, archive_path)
 
             self.assertTrue(has_failures(collector.findings))
+
+    def test_upload_artifact_accepts_current_ci_testflight_upload_proof(self) -> None:
+        run_list_payload = [
+            {
+                "databaseId": 111,
+                "headSha": "abc1234567890",
+                "event": "workflow_dispatch",
+                "status": "completed",
+                "conclusion": "success",
+                "createdAt": "2026-05-30T04:33:01Z",
+            }
+        ]
+        upload_log = "\n".join(
+            [
+                "Progress 21%: Uploaded package is processing.",
+                "Progress 21%: Upload succeeded.",
+                "Uploaded HoopsClips",
+                "Internal TestFlight upload command completed",
+            ]
+        )
+
+        def fake_run(command: list[str], **_kwargs: object) -> SimpleNamespace:
+            if command[:3] == ["gh", "run", "list"]:
+                return SimpleNamespace(returncode=0, stdout=json.dumps(run_list_payload))
+            if command[:3] == ["gh", "run", "view"]:
+                return SimpleNamespace(returncode=0, stdout=upload_log)
+            return SimpleNamespace(returncode=1, stdout="")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            collector = Collector()
+            with patch("scripts.submission_readiness_preflight.subprocess.run", side_effect=fake_run), patch(
+                "scripts.submission_readiness_preflight.run_git",
+                return_value="abc1234567890\n",
+            ):
+                check_upload_artifact(repo_root, collector, None)
+
+            self.assertFalse(has_failures(collector.findings))
 
     def test_live_editing_version_fails_when_required_flag_missing(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
