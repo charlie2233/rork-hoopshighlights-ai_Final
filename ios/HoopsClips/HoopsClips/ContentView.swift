@@ -11,8 +11,10 @@ struct ContentView: View {
 
     private let firstTabIndex = 0
     private let lastTabIndex = 4
-    private let tabSwipeThreshold: CGFloat = 70
-    private let tabSwipeVerticalTolerance: CGFloat = 1.25
+    private let tabSwipeThreshold: CGFloat = 62
+    private let tabSwipeVerticalTolerance: CGFloat = 1.15
+    private let tabSwipeMinimumDistance: CGFloat = 18
+    private let tabSwipePredictedDistanceFactor: CGFloat = 0.35
 
     private var needsVerification: Bool {
         guard authService.isAuthenticated else { return false }
@@ -105,19 +107,22 @@ struct ContentView: View {
     }
 
     private var tabSwipeGesture: some Gesture {
-        DragGesture(minimumDistance: 35, coordinateSpace: .local)
+        DragGesture(minimumDistance: tabSwipeMinimumDistance, coordinateSpace: .local)
             .onEnded(handleTabSwipe)
     }
 
     private func handleTabSwipe(_ value: DragGesture.Value) {
         let horizontalDistance = value.translation.width
         let verticalDistance = value.translation.height
-        let isHorizontalSwipe = abs(horizontalDistance) >= tabSwipeThreshold
+        let predictedDistance = value.predictedEndTranslation.width
+        let effectiveDistance = horizontalDistance + (predictedDistance * tabSwipePredictedDistanceFactor)
+
+        let isHorizontalSwipe = abs(effectiveDistance) >= tabSwipeThreshold
             && abs(horizontalDistance) > abs(verticalDistance) * tabSwipeVerticalTolerance
 
         guard isHorizontalSwipe else { return }
 
-        let nextTab = selectedTab + (horizontalDistance < 0 ? 1 : -1)
+        let nextTab = selectedTab + (effectiveDistance < 0 ? 1 : -1)
         let boundedTab = min(max(nextTab, firstTabIndex), lastTabIndex)
         guard boundedTab != selectedTab else { return }
 
@@ -126,7 +131,7 @@ struct ContentView: View {
             return
         }
 
-        withAnimation(.easeOut(duration: 0.2)) {
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
             selectedTab = boundedTab
         }
     }

@@ -1781,8 +1781,8 @@ struct AIEditView: View {
         }
 
         do {
-            let requested = try await cloudEditService.requestStoredRender(
-                editJobID: render.editJobId,
+            let requested = try await cloudEditService.requestLockerRerender(
+                render: render,
                 installID: viewModel.installID
             )
             renderStatus = requested
