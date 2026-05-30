@@ -323,3 +323,122 @@ PYTHONPATH=ios/backend /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.
 - `py_compile`: passed.
 - `git diff --check`: passed.
 - Backend unittest discovery: 207 tests passed.
+
+## Prescan Fix Deploy And Live Launch71 Proof
+
+The prescan patch was committed and pushed separately:
+
+- Commit: `ce7c8012b9dad5a461974118552fb5c45964a980`
+- Branch: `codex/phase-launch70-editing-analysis-progress`
+
+To avoid another GitHub Actions deploy run, only the editing Cloud Run service was redeployed:
+
+```bash
+gcloud builds submit . \
+  --project=hoopsclips-9d38f \
+  --config=services/editing/cloudbuild.yaml \
+  --substitutions=_IMAGE_TAG="$(git rev-parse HEAD)"
+```
+
+- Cloud Build ID: `1c4983c0-9769-433c-8e17-b2da54c77d63`
+- Result: `SUCCESS`
+- Cloud Run revision: `hoopclips-editing-staging-00037-v2m`
+- Traffic: 100% to `hoopclips-editing-staging-00037-v2m`
+- Note: deploy printed the same IAM policy warning as prior deploys; the service remained reachable.
+
+Version proof:
+
+```bash
+python3 scripts/staging_version_probe.py --expected-git-sha "$(git rev-parse HEAD)" --json
+```
+
+- Direct editing `/version`: passed for `ce7c8012b9dad5a461974118552fb5c45964a980`.
+- Worker `/v1/editing/version`: passed for `ce7c8012b9dad5a461974118552fb5c45964a980`.
+
+The real launch video cases were rerun after the prescan deploy:
+
+```bash
+python3 scripts/collect_team_highlight_accuracy_case.py \
+  --video-path /Users/hanfei/Downloads/326_1770329282.mp4 \
+  --case-id launch71_downloads_326_team_black \
+  --video-id downloads_326_1770329282 \
+  --team-mode team \
+  --selected-color-label black \
+  --duration-seconds 30 \
+  --output-dir artifacts/team_highlight_accuracy_launch71 \
+  --manifest artifacts/team_highlight_accuracy_launch71_manifest.json \
+  --poll-interval-seconds 5 \
+  --timeout-seconds 2400
+```
+
+- Result: passed.
+- Job ID: `f6e237fd51cc471a8f880a06af0e626d`
+- Detected teams: 2
+- Selected team: `team_black` / `black`
+- Clip count: 25
+- Prescan timing proof: editing `POST /v1/team-scan` returned `200` in about 31 seconds.
+
+```bash
+python3 scripts/collect_team_highlight_accuracy_case.py \
+  --video-path /Users/hanfei/Downloads/326_1770329282.mp4 \
+  --case-id launch71_downloads_326_team_white \
+  --video-id downloads_326_1770329282 \
+  --team-mode team \
+  --selected-color-label white \
+  --duration-seconds 30 \
+  --output-dir artifacts/team_highlight_accuracy_launch71 \
+  --manifest artifacts/team_highlight_accuracy_launch71_manifest.json \
+  --poll-interval-seconds 5 \
+  --timeout-seconds 2400
+```
+
+- Result: passed.
+- Job ID: `df46dd0daa3c451abece0079cd44606a`
+- Detected teams: 2
+- Selected team: `team_white` / `white`
+- Clip count: 11
+
+```bash
+python3 scripts/collect_team_highlight_accuracy_case.py \
+  --video-path /Users/hanfei/Downloads/326_1770329282.mp4 \
+  --case-id launch71_downloads_326_all \
+  --video-id downloads_326_1770329282 \
+  --team-mode all \
+  --duration-seconds 30 \
+  --output-dir artifacts/team_highlight_accuracy_launch71 \
+  --manifest artifacts/team_highlight_accuracy_launch71_manifest.json \
+  --poll-interval-seconds 5 \
+  --timeout-seconds 2400
+```
+
+- Result: passed.
+- Job ID: `5c9a4f3b187248b7b8056aef54f2bf2c`
+- Team mode: `all`
+- Clip count: 30
+- This exercised the staging Worker route deployed by GitHub Actions run `26696508062`.
+
+Local artifact paths:
+
+- `artifacts/team_highlight_accuracy_launch71/launch71_downloads_326_team_black/analysis_result.json`
+- `artifacts/team_highlight_accuracy_launch71/launch71_downloads_326_team_black/manual_labels_template.json`
+- `artifacts/team_highlight_accuracy_launch71/launch71_downloads_326_team_white/analysis_result.json`
+- `artifacts/team_highlight_accuracy_launch71/launch71_downloads_326_team_white/manual_labels_template.json`
+- `artifacts/team_highlight_accuracy_launch71/launch71_downloads_326_all/analysis_result.json`
+- `artifacts/team_highlight_accuracy_launch71/launch71_downloads_326_all/manual_labels_template.json`
+- `artifacts/team_highlight_accuracy_launch71_manifest.json`
+
+Remaining accuracy gate:
+
+- The backend now produces a launch-grade review pool across selected black, selected white, and all-teams modes.
+- Human/manual labels are still required before claiming the 85% selected-team/highlight accuracy gate.
+- Run the label/report flow after manual review:
+
+```bash
+python3 scripts/build_launch_team_accuracy_report.py \
+  --manifest artifacts/team_highlight_accuracy_launch71_manifest.json \
+  --eval-output artifacts/team_highlight_accuracy_launch71_eval.json \
+  --report-output artifacts/team_highlight_accuracy_launch71_report.json \
+  --json
+python3 -m scripts.evaluate_team_highlight_accuracy artifacts/team_highlight_accuracy_launch71_eval.json --json > artifacts/team_highlight_accuracy_launch71_report.json
+python3 scripts/submission_readiness_preflight.py --team-accuracy-report artifacts/team_highlight_accuracy_launch71_report.json
+```
