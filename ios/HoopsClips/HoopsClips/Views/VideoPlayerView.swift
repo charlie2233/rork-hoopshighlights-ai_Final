@@ -826,12 +826,17 @@ struct VideoPlayerView: View {
             Text(viewModel.analysisService.statusMessage)
                 .font(.caption)
                 .foregroundStyle(AppTheme.subtleText)
+
+            Text(analysisProgressDetailText)
+                .font(.caption2)
+                .foregroundStyle(.white.opacity(0.72))
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(16)
         .rorkCard(cornerRadius: 16, stroke: AppTheme.accentPurple.opacity(0.2))
         .accessibilityElement(children: .combine)
         .accessibilityLabel(analysisProgressTitle)
-        .accessibilityValue("\(Int(viewModel.analysisService.progress * 100)) percent. \(viewModel.analysisService.statusMessage)")
+        .accessibilityValue("\(Int(viewModel.analysisService.progress * 100)) percent. \(viewModel.analysisService.statusMessage). \(analysisProgressDetailText)")
     }
 
     private var analysisCompleteView: some View {
@@ -1008,6 +1013,12 @@ struct VideoPlayerView: View {
         if status.contains("upload") {
             return languageStore.text(.uploading)
         }
+        if status.contains("team") || status.contains("jersey") {
+            return "Choosing teams"
+        }
+        if status.contains("candidate") || status.contains("clip") || status.contains("highlight") || status.contains("detecting") {
+            return "Finding clips"
+        }
         if status.contains("queued") {
             return languageStore.text(.queued)
         }
@@ -1024,6 +1035,43 @@ struct VideoPlayerView: View {
             return languageStore.text(.refining)
         }
         return languageStore.text(.analyzing)
+    }
+
+    private var analysisProgressDetailText: String {
+        let status = viewModel.analysisService.statusMessage.lowercased()
+
+        if status.contains("upload") {
+            return "Uploading the source video to the cloud before analysis starts."
+        }
+
+        if status.contains("team") || status.contains("jersey") {
+            return "Scanning jersey colors so you can target one team or keep all teams."
+        }
+
+        if status.contains("queued") || status.contains("waiting") {
+            return "Cloud worker is next in line; the next update appears when the job advances."
+        }
+
+        if status.contains("candidate") || status.contains("finding") || status.contains("detecting") || status.contains("clip") || status.contains("highlight") {
+            if viewModel.settings.highlightTeamSelection.mode == .team {
+                return "Focusing on \(viewModel.settings.highlightTeamSelection.displayTitle) and keeping uncertain plays for Review."
+            }
+            return "Building a high-recall clip pool from both teams for Review."
+        }
+
+        if status.contains("frame") || status.contains("scoring") || status.contains("motion") || status.contains("audio") || status.contains("action") {
+            return "Scoring motion, audio peaks, and basketball action in the cloud."
+        }
+
+        if status.contains("finalizing") || status.contains("refining") {
+            return "Validated clips are coming back for Review."
+        }
+
+        if viewModel.analysisMode == .cloud {
+            return "Cloud analysis is active; the next update appears when the backend advances."
+        }
+
+        return "Analysis is running on device because cloud mode is unavailable."
     }
 
     private var requiresProForCurrentVideo: Bool {

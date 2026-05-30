@@ -442,3 +442,31 @@ python3 scripts/build_launch_team_accuracy_report.py \
 python3 -m scripts.evaluate_team_highlight_accuracy artifacts/team_highlight_accuracy_launch71_eval.json --json > artifacts/team_highlight_accuracy_launch71_report.json
 python3 scripts/submission_readiness_preflight.py --team-accuracy-report artifacts/team_highlight_accuracy_launch71_report.json
 ```
+
+## Launch72 Honest Analysis Status UI
+
+Scope:
+
+- Updated the iOS analysis progress card to show a second line of stage-specific copy derived from the real import/cloud analysis status.
+- Added titles for real stages including uploading, choosing teams/jersey colors, finding candidate clips, queued cloud work, frame/action scoring, and finalizing Review.
+- Kept the copy honest: no fake countdowns, artificial waits, or pretend backend work.
+
+Validation:
+
+```bash
+git diff --check
+```
+
+- Result: passed.
+
+```bash
+# Build iOS Apps / XcodeBuildMCP
+# Project: ios/HoopsClips.xcodeproj
+# Scheme: HoopsClips
+# Configuration: Debug
+# Simulator: iPhone 17 Pro, iOS 26.0
+build_sim -quiet
+```
+
+- Result: passed.
+- Build log: `/Users/hanfei/Library/Developer/XcodeBuildMCP/workspaces/rork-hoopshighlights-ai_Final-b63ced5e161c/logs/build_sim_2026-05-30T22-52-18-056Z_pid49862_de3c2d14.log`
