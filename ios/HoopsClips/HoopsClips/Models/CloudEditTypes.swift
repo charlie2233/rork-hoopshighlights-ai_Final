@@ -796,6 +796,10 @@ struct CloudEditRevisionResponse: Codable, Sendable {
     let revisedPlan: CloudEditPlanSummary
     let validationResult: CloudEditRevisionValidationResult
     let requiresRerender: Bool
+    let revisionPlanner: String?
+    let gptRevisionPatchApplied: Bool?
+    let gptRevisionPatchStatus: String?
+    let gptRevisionPatchFallbackReason: String?
 }
 
 struct CloudEditRenderStatusResponse: Codable, Sendable {

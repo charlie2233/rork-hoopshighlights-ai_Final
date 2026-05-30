@@ -544,6 +544,10 @@ export interface EditRevisionResponse extends ResponseEnvelope {
   revisedPlan: Record<string, unknown>;
   validationResult: Record<string, unknown>;
   requiresRerender: boolean;
+  revisionPlanner?: "deterministic_patch" | "gpt_patch";
+  gptRevisionPatchApplied?: boolean;
+  gptRevisionPatchStatus?: "not_requested" | "disabled" | "fallback" | "applied" | "rejected";
+  gptRevisionPatchFallbackReason?: string | null;
 }
 
 export interface EditRevisionListResponse extends ResponseEnvelope {

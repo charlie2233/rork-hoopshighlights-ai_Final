@@ -178,6 +178,13 @@ class SampledFrame:
     data_url: str
 
 
+@dataclass(frozen=True)
+class GPTEditPlanPatchAttempt:
+    patch: Optional[EditPlanPatch]
+    status: str
+    fallback_reason: Optional[str] = None
+
+
 def rerank_edit_request_with_gpt(
     request: CreateEditJobRequest,
     source_path: Path,
@@ -276,8 +283,21 @@ def request_gpt_edit_plan_patch(
     settings: GPTHighlightRerankerSettings,
     response_client: ResponseClient = None,
 ) -> Optional[EditPlanPatch]:
-    if not settings.revision_enabled or not settings.configured:
-        return None
+    return request_gpt_edit_plan_patch_attempt(job, revision, settings, response_client).patch
+
+
+def request_gpt_edit_plan_patch_attempt(
+    job: StoredEditJob,
+    revision: ReviseEditJobRequest,
+    settings: GPTHighlightRerankerSettings,
+    response_client: ResponseClient = None,
+) -> GPTEditPlanPatchAttempt:
+    if not settings.revision_enabled:
+        return GPTEditPlanPatchAttempt(None, "disabled", "revision_disabled")
+    if not settings.enabled:
+        return GPTEditPlanPatchAttempt(None, "disabled", "editor_disabled")
+    if not settings.api_key:
+        return GPTEditPlanPatchAttempt(None, "fallback", "missing_api_key")
     payload = _build_revision_patch_payload(job, revision, settings)
     try:
         client = response_client or _default_responses_client
@@ -285,7 +305,7 @@ def request_gpt_edit_plan_patch(
         output_text = _extract_output_text(response_payload)
         patch = EditPlanPatch(**json.loads(output_text))
         if patch.revisionIntent != revision.command or patch.baseEditPlanId != job.edit_job_id:
-            return None
+            return GPTEditPlanPatchAttempt(None, "fallback", "patch_identity_mismatch")
         source_clips = filter_clips_for_team_selection(
             job.request.clips,
             job.request.teamSelection,
@@ -293,10 +313,14 @@ def request_gpt_edit_plan_patch(
         )
         patched_plan, errors = validate_edit_plan_patch(job.plan, patch, source_clips, job.request.planTier)
         if patched_plan is None or errors:
-            return None
-        return patch
-    except (HTTPError, URLError, TimeoutError, OSError, ValueError, json.JSONDecodeError, TypeError):
-        return None
+            return GPTEditPlanPatchAttempt(None, "fallback", "patch_validation_failed")
+        return GPTEditPlanPatchAttempt(patch, "applied")
+    except HTTPError as error:
+        return GPTEditPlanPatchAttempt(None, "fallback", f"openai_http_{error.code}")
+    except (URLError, TimeoutError, OSError):
+        return GPTEditPlanPatchAttempt(None, "fallback", "openai_unavailable")
+    except (ValueError, json.JSONDecodeError, TypeError):
+        return GPTEditPlanPatchAttempt(None, "fallback", "invalid_gpt_patch")
 
 
 def _with_fallback(

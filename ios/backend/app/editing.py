@@ -1660,6 +1660,10 @@ class EditRevisionResponse(APIModel):
     revisedPlan: EditPlan
     validationResult: EditRevisionValidationResult
     requiresRerender: bool = True
+    revisionPlanner: Literal["deterministic_patch", "gpt_patch"] = "deterministic_patch"
+    gptRevisionPatchApplied: bool = False
+    gptRevisionPatchStatus: Literal["not_requested", "disabled", "fallback", "applied", "rejected"] = "not_requested"
+    gptRevisionPatchFallbackReason: Optional[str] = Field(default=None, max_length=120)
 
 
 @dataclass
@@ -3897,6 +3901,8 @@ def build_revision_response(
     revision: ReviseEditJobRequest,
     revision_id: str,
     proposed_patch: Optional[EditPlanPatch] = None,
+    gpt_revision_patch_status: Optional[str] = None,
+    gpt_revision_patch_fallback_reason: Optional[str] = None,
 ) -> Tuple[StoredEditJob, EditRevisionResponse]:
     if proposed_patch is not None:
         source_clips = filter_clips_for_team_selection(
@@ -3907,6 +3913,9 @@ def build_revision_response(
         patched_plan, errors = validate_edit_plan_patch(job.plan, proposed_patch, source_clips, job.request.planTier)
         if patched_plan is None:
             patched_plan = job.plan
+        response_patch_status = gpt_revision_patch_status or ("applied" if not errors else "rejected")
+        if errors and response_patch_status == "applied":
+            response_patch_status = "rejected"
         revised = StoredEditJob(
             edit_job_id=job.edit_job_id,
             install_id=job.install_id,
@@ -3928,6 +3937,13 @@ def build_revision_response(
             revisedPlan=patched_plan,
             validationResult=EditRevisionValidationResult(valid=not errors, errors=errors),
             requiresRerender=True,
+            revisionPlanner="gpt_patch",
+            gptRevisionPatchApplied=not errors,
+            gptRevisionPatchStatus=response_patch_status,
+            gptRevisionPatchFallbackReason=(
+                gpt_revision_patch_fallback_reason
+                or ("validation_failed" if errors else None)
+            ),
         )
         return revised, response
 
@@ -3955,6 +3971,10 @@ def build_revision_response(
         revisedPlan=patched_plan,
         validationResult=EditRevisionValidationResult(valid=not errors, errors=errors),
         requiresRerender=True,
+        revisionPlanner="deterministic_patch",
+        gptRevisionPatchApplied=False,
+        gptRevisionPatchStatus=gpt_revision_patch_status or "not_requested",
+        gptRevisionPatchFallbackReason=gpt_revision_patch_fallback_reason,
     )
     return revised, response
 

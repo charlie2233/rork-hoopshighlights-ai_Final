@@ -21,6 +21,7 @@ from editing_app.gpt_reranker import (
     _build_revision_patch_payload,
     expand_shot_candidate_windows_for_source_context,
     request_gpt_edit_plan_patch,
+    request_gpt_edit_plan_patch_attempt,
 )
 
 
@@ -1109,6 +1110,15 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         patch = request_gpt_edit_plan_patch(job, ReviseEditJobRequest(command="make_more_hype"), settings, fake_response_client)
 
         self.assertIsNone(patch)
+        attempt = request_gpt_edit_plan_patch_attempt(
+            job,
+            ReviseEditJobRequest(command="make_more_hype"),
+            settings,
+            fake_response_client,
+        )
+        self.assertIsNone(attempt.patch)
+        self.assertEqual(attempt.status, "fallback")
+        self.assertEqual(attempt.fallback_reason, "patch_validation_failed")
 
     def test_revision_patch_request_rejects_unsafe_gpt_output(self) -> None:
         settings = GPTHighlightRerankerSettings(
@@ -1155,6 +1165,65 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         patch = request_gpt_edit_plan_patch(job, ReviseEditJobRequest(command="make_more_hype"), settings, fake_response_client)
 
         self.assertIsNone(patch)
+        attempt = request_gpt_edit_plan_patch_attempt(
+            job,
+            ReviseEditJobRequest(command="make_more_hype"),
+            settings,
+            fake_response_client,
+        )
+        self.assertIsNone(attempt.patch)
+        self.assertEqual(attempt.status, "fallback")
+        self.assertEqual(attempt.fallback_reason, "patch_validation_failed")
+
+    def test_revision_patch_attempt_reports_disabled_and_missing_key_reasons(self) -> None:
+        job = build_edit_job(_request(), "edit_revision_attempt_status")
+        disabled = request_gpt_edit_plan_patch_attempt(
+            job,
+            ReviseEditJobRequest(command="make_more_hype"),
+            GPTHighlightRerankerSettings(
+                enabled=True,
+                api_key="unit-test-key",
+                model="gpt-test",
+                endpoint="https://api.openai.test/v1/responses",
+                timeout_seconds=1.0,
+                max_output_tokens=512,
+                free_max_clips=8,
+                paid_max_clips=24,
+                free_frames_per_clip=3,
+                paid_frames_per_clip=5,
+                frame_width=512,
+                jpeg_quality=5,
+                max_image_bytes=180_000,
+                image_detail="low",
+                revision_enabled=False,
+            ),
+        )
+        missing_key = request_gpt_edit_plan_patch_attempt(
+            job,
+            ReviseEditJobRequest(command="make_more_hype"),
+            GPTHighlightRerankerSettings(
+                enabled=True,
+                api_key=None,
+                model="gpt-test",
+                endpoint="https://api.openai.test/v1/responses",
+                timeout_seconds=1.0,
+                max_output_tokens=512,
+                free_max_clips=8,
+                paid_max_clips=24,
+                free_frames_per_clip=3,
+                paid_frames_per_clip=5,
+                frame_width=512,
+                jpeg_quality=5,
+                max_image_bytes=180_000,
+                image_detail="low",
+                revision_enabled=True,
+            ),
+        )
+
+        self.assertEqual(disabled.status, "disabled")
+        self.assertEqual(disabled.fallback_reason, "revision_disabled")
+        self.assertEqual(missing_key.status, "fallback")
+        self.assertEqual(missing_key.fallback_reason, "missing_api_key")
 
     def test_schema_matches_highlight_decision_contract(self) -> None:
         settings = GPTHighlightRerankerSettings.from_env()

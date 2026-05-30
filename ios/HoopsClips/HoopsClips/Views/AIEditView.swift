@@ -1125,6 +1125,14 @@ struct AIEditView: View {
                     .foregroundStyle(AppTheme.warningYellow)
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("export.aiEdit.revision.summaryLabel")
+
+                if let plannerText = revisionPlannerText(for: revisionResponse) {
+                    Text(plannerText)
+                        .font(.caption2)
+                        .foregroundStyle(AppTheme.subtleText)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("export.aiEdit.revision.plannerLabel")
+                }
             }
         }
         .padding(14)
@@ -1690,6 +1698,27 @@ struct AIEditView: View {
             return "Last revision: \(pendingRevisionCommand.title). Pick another change or render again."
         }
         return "Ask HoopClips to patch the edit plan, then render the revised MP4."
+    }
+
+    private func revisionPlannerText(for response: CloudEditRevisionResponse) -> String? {
+        if response.gptRevisionPatchApplied == true {
+            return "GPT Edit Cool planned this revision; backend validation approved the patch."
+        }
+        switch response.gptRevisionPatchStatus {
+        case "fallback":
+            if let reason = response.gptRevisionPatchFallbackReason, !reason.isEmpty {
+                return "GPT patch fell back to deterministic editing: \(reason.replacingOccurrences(of: "_", with: " "))."
+            }
+            return "GPT patch fell back to deterministic editing."
+        case "disabled":
+            return "Deterministic revision patch; GPT revision planning is disabled."
+        case "rejected":
+            return "GPT patch was rejected by backend validation."
+        case "not_requested":
+            return "Deterministic revision patch."
+        default:
+            return nil
+        }
     }
 
     private var activePolicy: CloudEditPolicySummary {
