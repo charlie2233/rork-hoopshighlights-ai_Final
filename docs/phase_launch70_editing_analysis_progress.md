@@ -431,6 +431,21 @@ Remaining accuracy gate:
 
 - The backend now produces a launch-grade review pool across selected black, selected white, and all-teams modes.
 - Human/manual labels are still required before claiming the 85% selected-team/highlight accuracy gate.
+- A local review helper now creates an HTML page from the manifest and source video path. It only seeks within the original local video and edits manual-label JSON in the browser; it does not analyze, render, export, upload, or include raw upload/source URLs.
+- Launch71 review page:
+
+```bash
+python3 scripts/build_team_highlight_label_review_page.py \
+  --manifest artifacts/team_highlight_accuracy_launch71_manifest.json \
+  --video-path /Users/hanfei/Downloads/326_1770329282.mp4 \
+  --output artifacts/team_highlight_accuracy_launch71_review.html \
+  --json
+```
+
+- Result: passed.
+- Output: `artifacts/team_highlight_accuracy_launch71_review.html`
+- Cases: 3
+- Redaction check: no `uploadUrl`, `sourceObjectKey`, `sourceUrl`, `downloadUrl`, or `X-Amz-Signature` in the generated HTML.
 - Run the label/report flow after manual review:
 
 ```bash
@@ -470,3 +485,21 @@ build_sim -quiet
 
 - Result: passed.
 - Build log: `/Users/hanfei/Library/Developer/XcodeBuildMCP/workspaces/rork-hoopshighlights-ai_Final-b63ced5e161c/logs/build_sim_2026-05-30T22-52-18-056Z_pid49862_de3c2d14.log`
+
+## Launch72 Local Test Expansion
+
+```bash
+python3 -m py_compile \
+  scripts/build_team_highlight_label_review_page.py \
+  scripts/test_build_team_highlight_label_review_page.py
+python3 -m unittest scripts.test_build_team_highlight_label_review_page
+python3 -m unittest \
+  scripts.test_build_team_highlight_label_review_page \
+  scripts.test_build_team_highlight_eval_payload \
+  scripts.test_build_launch_team_accuracy_report \
+  scripts.test_submission_readiness_preflight \
+  scripts.test_team_highlight_accuracy_eval
+```
+
+- Result: passed.
+- Test count: 74.
