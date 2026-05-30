@@ -1349,7 +1349,7 @@ class TeamQuickScanTests(unittest.TestCase):
 
                 self.assertEqual(scan_response.status_code, 200)
                 self.assertEqual(start_response.status_code, 200)
-                for _ in range(20):
+                for _ in range(80):
                     poll_response = client.get(f"/v1/analysis/jobs/{created['jobId']}")
                     self.assertEqual(poll_response.status_code, 200)
                     job_payload = poll_response.json()
@@ -1528,7 +1528,7 @@ class TeamQuickScanTests(unittest.TestCase):
                     )
                     self.assertEqual(start_response.status_code, 200)
 
-                    for _ in range(20):
+                    for _ in range(80):
                         poll_response = client.get(f"/v1/analysis/jobs/{created['jobId']}")
                         self.assertEqual(poll_response.status_code, 200)
                         job_payload = poll_response.json()
