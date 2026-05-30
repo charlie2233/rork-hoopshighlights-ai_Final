@@ -63,6 +63,9 @@ xcodebuild -quiet -project ios/HoopsClips.xcodeproj -scheme HoopsClips -configur
 
 python3 scripts/submission_readiness_preflight.py --json
 # failed with launch blockers listed below
+
+gh pr checks 42 --json name,state,bucket,workflow,startedAt,completedAt,link
+# PR checks were triggered, but hosted runner jobs did not start because GitHub reports failed account payments or a spending-limit increase requirement
 ```
 
 ## Remaining Launch Blockers
@@ -72,7 +75,8 @@ This phase does not clear the live external blockers:
 - Google Cloud Secret Manager is missing `HOOPS_OPENAI_API_KEY`; no enabled version is verified.
 - Secret Manager Secret Accessor is not verified for the staging deploy service account.
 - Cloudflare `CLOUDFLARE_API_TOKEN`/Wrangler deploy proof is still required in the GitHub `staging` environment.
-- No new staging deploy/preflight run was triggered after the missing-secret failure.
+- GitHub Actions hosted runner jobs for PR #42 are blocked before execution by account billing/spending-limit status.
+- No successful staging deploy/preflight run has completed after the missing-secret failure.
 - Live staging Worker `/v1/editing/version` is stale/404 until the Worker is deployed.
 - Direct editing Cloud Run version is stale until the current source is deployed.
 - Launch-grade team/highlight accuracy report from real labeled footage is still missing.
