@@ -792,3 +792,46 @@ python3 scripts/submission_readiness_preflight.py \
   --team-accuracy-report artifacts/team_highlight_accuracy_launch71_report.json \
   --json
 ```
+
+## Launch73 Review-Note Triage And Local Test Sweep
+
+Reviewed `/Users/hanfei/Desktop/HoopClips-Review-Notes-2026-05-30_full.txt` as external review feedback, then verified against the current branch instead of applying it blindly.
+
+Findings:
+
+- Photos import claim is already fixed on this branch: `VideoImportTransfer.loadFileBackedVideo(from:)` uses a detached file-backed `Transferable`, `ImportedVideoFile` supports `.video`, `.movie`, `.mpeg4Movie`, and `.quickTimeMovie`, there is no `Data.self` fallback, and the temp filename uses `imported_video_\(UUID().uuidString).\(fileExtension)`.
+- CloudEditService rerender payload claim did not reproduce. `CloudEditServiceTests` passed locally through the Build iOS Apps plugin, including `testLockerRerenderUsesRevisionEndpointForRevisionRows()` and `testLockerRerenderUsesBaseEndpointForBaseRows()`.
+- The review note's low-confidence ContentView indentation/style item was not launch-functional and was left unchanged.
+- No iOS local analysis, local rendering, local composition, or local AI edit ownership was added.
+
+Validation commands:
+
+```bash
+Build iOS Apps plugin: test_sim HoopsClips Debug iPhone 17 Pro -only-testing:HoopsClipsTests/CloudEditServiceTests
+python3 -m unittest discover -s scripts -p 'test_*.py'
+PYTHONPATH=ios/backend:services/editing /tmp/hoopclips-editing-test-venv/bin/python -m unittest discover -s services/editing/tests -p 'test_*.py'
+PYTHONPATH=ios/backend /tmp/hoopclips-py312-venv/bin/python -m unittest discover -s ios/backend/tests -p 'test_*.py'
+npm --prefix services/control-plane run typecheck
+npm --prefix services/control-plane test
+git diff --check
+python3 scripts/submission_readiness_preflight.py --archive-path ios/archives/HoopsClips-Launch72.xcarchive --json
+```
+
+Results:
+
+- `CloudEditServiceTests`: 11 tests passed.
+- `scripts` unittest discovery: 126 tests passed.
+- `services/editing/tests` discovery: 117 tests passed, including local render/revision/history coverage.
+- `ios/backend/tests` discovery with `/tmp/hoopclips-py312-venv`: 207 tests passed.
+- `services/control-plane` typecheck: passed.
+- `services/control-plane` tests: 33 tests passed.
+- `git diff --check`: passed.
+- Full Build iOS Apps `test_sim` hit the plugin 120s timeout and the underlying `xcodebuild test-without-building` hung after `TEST BUILD SUCCEEDED`; the hung local process was stopped. Treat full iOS simulator suite as inconclusive for this pass, not as a source failure.
+- Submission readiness preflight remained `28 pass / 6 fail / 0 warn`.
+
+Remaining submission blockers from this pass:
+
+- Missing launch-grade `--team-accuracy-report`; the 85% selected-team/highlight quality gate is still unproven until the 66 Launch71 clips are manually labeled and scored.
+- Connected physical iPhone is detected but unavailable: paired, Developer Mode enabled, `tunnelState=unavailable`, `ddiServicesAvailable=false`.
+- Current-checkout main CI/preflight reruns are stale for Cloud Edit Deploy Preflight, iOS Internal TestFlight Upload, and secret-gated deploy preflight.
+- Installed TestFlight post-install smoke is still unproven.
