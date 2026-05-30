@@ -140,4 +140,71 @@ PYTHONPATH=ios/backend:services/editing /tmp/hoopclips-editing-test-venv/bin/pyt
 - Focused callback/User-Agent tests: passed.
 - Full editing-service suite: 117 tests passed.
 
-Next after redeploy: rerun the real selected-team accuracy collection and capture the completed job ID plus generated artifacts or sanitized failure state.
+## Callback Fix Deploy
+
+To avoid another full GitHub Actions deploy run, only the editing Cloud Run service was redeployed with the existing Cloud Build config:
+
+```bash
+gcloud builds submit . \
+  --project=hoopsclips-9d38f \
+  --config=services/editing/cloudbuild.yaml \
+  --substitutions=_IMAGE_TAG="$(git rev-parse HEAD)"
+```
+
+- Commit: `bdbd3f2c408f67b484896f5f5a025e55bf990b90`
+- Cloud Build ID: `5fc61324-aca8-45f1-9f90-b7ff165f511f`
+- Result: `SUCCESS`
+- Cloud Run revision: `hoopclips-editing-staging-00034-xj4`
+- Traffic: 100% to `hoopclips-editing-staging-00034-xj4`
+- Note: deploy printed an IAM policy warning, but the existing service URL remained reachable.
+
+Version proof:
+
+```bash
+python3 scripts/staging_version_probe.py --expected-git-sha "$(git rev-parse HEAD)" --json
+```
+
+- Direct editing `/version`: passed for `bdbd3f2c408f67b484896f5f5a025e55bf990b90`.
+- Worker `/v1/editing/version`: passed for `bdbd3f2c408f67b484896f5f5a025e55bf990b90`.
+
+## Live Launch70 Success
+
+The same real selected-team collection was rerun after the callback fix deploy:
+
+```bash
+python3 scripts/collect_team_highlight_accuracy_case.py \
+  --video-path /Users/hanfei/Downloads/326_1770329282.mp4 \
+  --case-id launch70_downloads_326_team \
+  --video-id downloads_326_1770329282 \
+  --team-mode team \
+  --duration-seconds 30 \
+  --output-dir artifacts/team_highlight_accuracy_launch70 \
+  --manifest artifacts/team_highlight_accuracy_launch70_manifest.json \
+  --poll-interval-seconds 5 \
+  --timeout-seconds 2400
+```
+
+- Result: passed.
+- Job ID: `36d008a66e454da899a8037721a53d78`
+- Final job status: `completed`
+- Detected teams: 2
+- Selected team: `team_black` / `black`
+- Clip count: 3
+- Local artifact paths:
+  - `artifacts/team_highlight_accuracy_launch70/launch70_downloads_326_team/analysis_result.json`
+  - `artifacts/team_highlight_accuracy_launch70/launch70_downloads_326_team/manual_labels_template.json`
+  - `artifacts/team_highlight_accuracy_launch70_manifest.json`
+
+Safe Cloud Run event proof for job `36d008a66e454da899a8037721a53d78`:
+
+- `analysis.dispatch.started`
+- `analysis.heartbeat.sent` at `Preparing cloud analysis input`
+- `analysis.progress_callback.sent` at `Preparing cloud analysis input`, progress `0.64`
+- `analysis.source.materialized`
+- `analysis.heartbeat.sent` at `Analyzing in cloud`
+- `analysis.progress_callback.sent` at `Analyzing in cloud`, progress `0.72`
+- `analysis.run.started`
+- `analysis.run.completed`, `clipCount=3`
+- `analysis.callback.sent`, `status=succeeded`
+
+Selected-team analysis now has proven real backend progress callbacks and a final completion callback through the Worker. Manual labels are still needed to score the clips for the target 85%+ team/highlight accuracy gate.
