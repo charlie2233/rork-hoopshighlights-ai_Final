@@ -309,15 +309,24 @@ final class AuthService {
 enum AIEditUITestFixture: String {
     case stagingRenderReady = "staging_render_ready"
     case failingRender = "failing_render"
+    case teamChoice = "team_choice"
 }
 
 enum AIEditUISmokeConfig {
     static var isEnabled: Bool {
         ProcessInfo.processInfo.arguments.contains("--hoops-ai-edit-live-smoke")
+            || ProcessInfo.processInfo.arguments.contains("--hoops-team-choice-ui-smoke")
             || truthy(environment["HOOPS_UI_SMOKE_MODE"])
+            || smokeMode == AIEditUITestFixture.teamChoice.rawValue
     }
 
     static var fixture: AIEditUITestFixture {
+        if ProcessInfo.processInfo.arguments.contains("--hoops-team-choice-ui-smoke") {
+            return .teamChoice
+        }
+        if smokeMode == AIEditUITestFixture.teamChoice.rawValue {
+            return .teamChoice
+        }
         let rawFixture = trimmed(environment["HOOPS_AI_EDIT_TEST_FIXTURE"]) ?? ""
         return AIEditUITestFixture(rawValue: rawFixture) ?? .stagingRenderReady
     }
@@ -346,10 +355,16 @@ enum AIEditUISmokeConfig {
         ProcessInfo.processInfo.environment
     }
 
+    private static var smokeMode: String? {
+        trimmed(environment["HOOPS_UI_SMOKE_MODE"])?.lowercased()
+    }
+
     private static func sourceObjectKey(for fixture: AIEditUITestFixture) -> String? {
         switch fixture {
         case .stagingRenderReady, .failingRender:
             return "uploads/25a101ba8d234fd98094bd112276161f/source.mp4"
+        case .teamChoice:
+            return nil
         }
     }
 

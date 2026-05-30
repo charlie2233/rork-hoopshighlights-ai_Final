@@ -1105,6 +1105,11 @@ final class HighlightsViewModel {
         guard Self.isAIEditLiveSmokeEnabled else { return }
 
         let fixture = AIEditUISmokeConfig.fixture
+        if fixture == .teamChoice {
+            applyTeamChoiceUISmokeProject()
+            return
+        }
+
         guard let resolvedSourceObjectKey = AIEditUISmokeConfig.sourceObjectKey else { return }
 
         currentProjectID = nil
@@ -1156,6 +1161,52 @@ final class HighlightsViewModel {
                 detectionMethod: .cloud
             )
         ]
+    }
+
+    private func applyTeamChoiceUISmokeProject() {
+        currentProjectID = nil
+        videoURL = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("hoopclips-team-choice-ui-smoke.mov")
+        videoDuration = 64
+        videoThumbnail = nil
+        isVideoLoaded = true
+        analysisMode = .cloud
+        cloudAnalysisJobID = nil
+        cloudEditSourceObjectKey = nil
+        lastAnalysisStatusSummary = nil
+        lastAnalyzedAt = nil
+        cloudQuotaRemaining = nil
+        isCloudFallbackOffered = false
+        pendingCloudAnalysisJob = nil
+        cloudDetectedTeams = [
+            CloudTeamOption(
+                teamId: "team_blue",
+                label: "Blue jerseys",
+                colorLabel: "blue",
+                primaryColorHex: "#2563EB",
+                confidence: 0.91,
+                source: "debug_ui_smoke"
+            ),
+            CloudTeamOption(
+                teamId: "team_white",
+                label: "White jerseys",
+                colorLabel: "white",
+                primaryColorHex: "#F8FAFC",
+                confidence: 0.88,
+                source: "debug_ui_smoke"
+            )
+        ]
+        settings.highlightTeamSelection = .allTeams
+        hasConfirmedHighlightTeamSelection = false
+        isCloudTeamScanInProgress = false
+        cloudTeamScanStatusMessage = "Choose a team before analysis"
+        cloudTeamScanErrorMessage = nil
+
+        analysisService.isAnalyzing = false
+        analysisService.progress = 0
+        analysisService.statusMessage = "Choose a team before analysis"
+        analysisService.lastRunDiagnostics = nil
+        analysisService.clips = []
     }
     #endif
 

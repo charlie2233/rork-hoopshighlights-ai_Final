@@ -514,6 +514,7 @@ struct VideoPlayerView: View {
                 .disabled(viewModel.isCloudTeamScanInProgress || viewModel.requiresHighlightTeamSelectionConfirmation)
                 .opacity(viewModel.isCloudTeamScanInProgress || viewModel.requiresHighlightTeamSelectionConfirmation ? 0.72 : 1)
                 .sensoryFeedback(.impact(weight: .medium), trigger: analysisStarted)
+                .accessibilityIdentifier("analysis.startButton")
 
                 if AppConstants.requiresCloudVideoPipeline {
                     cloudAnalysisPathView
@@ -560,6 +561,7 @@ struct VideoPlayerView: View {
             }
         }
         .padding(14)
+        .accessibilityIdentifier("analysis.teamTarget.section")
         .rorkCard(
             cornerRadius: 16,
             fill: AnyShapeStyle(AppTheme.surfaceBg.opacity(0.68)),
@@ -595,6 +597,7 @@ struct VideoPlayerView: View {
                     .font(.caption.weight(.semibold))
                     .lineLimit(1)
                     .minimumScaleFactor(0.78)
+                    .accessibilityIdentifier(selection.accessibilityIdentifier)
             }
             .foregroundStyle(isConfirmedSelection ? AppTheme.darkBg : AppTheme.neonPurple)
             .frame(maxWidth: .infinity, minHeight: 48)
@@ -612,6 +615,7 @@ struct VideoPlayerView: View {
         .accessibilityLabel("Target \(selection.displayTitle)")
         .accessibilityValue(isConfirmedSelection ? "Selected" : isSelected ? "Tap to confirm" : "Not selected")
         .accessibilityHint(selection.displaySubtitle)
+        .accessibilityIdentifier(selection.accessibilityIdentifier)
         .hoopsSelectedState(isConfirmedSelection)
     }
 
@@ -669,6 +673,7 @@ struct VideoPlayerView: View {
             Spacer(minLength: 0)
         }
         .frame(minHeight: 20)
+        .accessibilityIdentifier("analysis.teamTarget.status")
         .accessibilityElement(children: .combine)
     }
 
