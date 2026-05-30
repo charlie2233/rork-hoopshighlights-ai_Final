@@ -30,11 +30,13 @@ def main() -> int:
     args = parse_args()
     manifest_path = Path(args.manifest).resolve()
     downloads_dir = Path(args.downloads_dir).expanduser().resolve()
+    bundle_path = Path(args.bundle).expanduser().resolve() if args.bundle else None
     explicit_sources = parse_label_sources(args.label or [])
     report = apply_manual_labels(
         manifest=load_json(manifest_path),
         manifest_dir=manifest_path.parent,
         downloads_dir=downloads_dir,
+        bundle_path=bundle_path,
         explicit_sources=explicit_sources,
         apply=args.apply,
         allow_incomplete=args.allow_incomplete,
@@ -56,6 +58,10 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--manifest", required=True, help="Team-highlight accuracy manifest JSON.")
     parser.add_argument("--downloads-dir", default="~/Downloads", help="Directory containing downloaded *_manual_labels.json files.")
+    parser.add_argument(
+        "--bundle",
+        help="Single team_highlight_manual_labels_bundle.json file downloaded from the local review page.",
+    )
     parser.add_argument(
         "--label",
         action="append",
@@ -88,11 +94,13 @@ def apply_manual_labels(
     explicit_sources: dict[str, Path],
     apply: bool,
     allow_incomplete: bool,
+    bundle_path: Path | None = None,
 ) -> dict[str, Any]:
     entries = manifest.get("cases")
     if not isinstance(entries, list) or not entries:
         raise ValueError("Manifest must contain a non-empty cases array.")
 
+    bundled_labels = load_label_bundle(bundle_path) if bundle_path is not None else {}
     case_reports: list[dict[str, Any]] = []
     total_complete = 0
     total_incomplete = 0
@@ -104,11 +112,14 @@ def apply_manual_labels(
         entry = manifest_case_entry(raw_entry, index, manifest_dir)
         current_labels = load_json(entry.labels_path)
         case_id = entry.case_id or string_or_none(current_labels.get("caseId")) or f"case_{index + 1}"
-        source_path = explicit_sources.get(case_id) or downloads_dir / f"{case_id}_manual_labels.json"
+        explicit_source_path = explicit_sources.get(case_id)
+        bundled_payload = bundled_labels.get(case_id) if explicit_source_path is None else None
+        source_path = explicit_source_path or (bundle_path if bundled_payload is not None else downloads_dir / f"{case_id}_manual_labels.json")
         case_report = validate_downloaded_labels(
             case_id=case_id,
             current_labels=current_labels,
             source_path=source_path,
+            labels_payload=bundled_payload,
             target_path=entry.labels_path,
             allow_incomplete=allow_incomplete,
         )
@@ -138,11 +149,34 @@ def apply_manual_labels(
     }
 
 
+def load_label_bundle(bundle_path: Path) -> dict[str, dict[str, Any]]:
+    if not bundle_path.exists():
+        raise ValueError(f"Bundle file is missing: {bundle_path}")
+    payload = load_json(bundle_path)
+    if payload.get("schemaVersion") != "team-highlight-manual-label-bundle-v1":
+        raise ValueError("Bundle must use schemaVersion team-highlight-manual-label-bundle-v1.")
+    cases = payload.get("cases")
+    if not isinstance(cases, list) or not cases:
+        raise ValueError("Bundle must contain a non-empty cases array.")
+    by_case_id: dict[str, dict[str, Any]] = {}
+    for index, case_payload in enumerate(cases):
+        if not isinstance(case_payload, dict):
+            raise ValueError(f"Bundle case {index} must be an object.")
+        case_id = string_or_none(case_payload.get("caseId"))
+        if not case_id:
+            raise ValueError(f"Bundle case {index} is missing caseId.")
+        if case_id in by_case_id:
+            raise ValueError(f"Bundle contains duplicate caseId {case_id!r}.")
+        by_case_id[case_id] = case_payload
+    return by_case_id
+
+
 def validate_downloaded_labels(
     *,
     case_id: str,
     current_labels: dict[str, Any],
     source_path: Path,
+    labels_payload: dict[str, Any] | None,
     target_path: Path,
     allow_incomplete: bool,
 ) -> dict[str, Any]:
@@ -156,11 +190,11 @@ def validate_downloaded_labels(
         "incompleteClipCount": 0,
         "incompleteExamples": [],
     }
-    if not source_path.exists():
+    if labels_payload is None and not source_path.exists():
         base_report["errors"].append("downloaded label file is missing")
         return base_report
 
-    labels = load_json(source_path)
+    labels = labels_payload if labels_payload is not None else load_json(source_path)
     leak_paths = forbidden_label_paths(labels)
     if leak_paths:
         base_report["errors"].append("downloaded label file contains forbidden URL/object-key fields: " + ", ".join(leak_paths[:8]))

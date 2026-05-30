@@ -274,9 +274,14 @@ def render_progress_summary(payload: dict[str, Any]) -> str:
     return "\n".join(
         [
             '<section class="panel summary-panel">',
+            '<div class="case-heading">',
+            "<div>",
             "<h2>Label Progress</h2>",
             f'<p id="overall-progress"><strong>{reviewed}</strong> / {total} clips reviewed. {remaining} still need labels.</p>',
             '<p class="lede">A clip is complete when it is marked reviewed and has expected team, highlight, event, and outcome fields filled.</p>',
+            "</div>",
+            '<button type="button" onclick="downloadAllCaseLabels()">Download all labels</button>',
+            "</div>",
             "</section>",
         ]
     )
@@ -644,6 +649,10 @@ function updateCase(caseIndex) {
   cards.forEach(card => updateClip(caseIndex, Number(card.dataset.clipIndex)));
 }
 
+function updateAllCases() {
+  reviewData.cases.forEach((_casePayload, caseIndex) => updateCase(caseIndex));
+}
+
 function updateProgress() {
   let total = 0;
   let complete = 0;
@@ -674,6 +683,29 @@ function downloadCaseLabels(caseIndex) {
   const link = document.createElement("a");
   link.href = URL.createObjectURL(blob);
   link.download = `${casePayload.caseId || "team_labels"}_manual_labels.json`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(link.href), 2000);
+}
+
+function downloadAllCaseLabels() {
+  updateProgress();
+  const cards = Array.from(document.querySelectorAll("[data-case-index][data-clip-index]"));
+  const incomplete = cards.filter(card => !clipCompleteFromCard(card)).length;
+  if (incomplete > 0 && !window.confirm(`${incomplete} clip labels are incomplete. Download all anyway?`)) {
+    return;
+  }
+  updateAllCases();
+  const bundlePayload = {
+    schemaVersion: "team-highlight-manual-label-bundle-v1",
+    source: "team_highlight_label_review_page",
+    cases: reviewData.cases.map(casePayload => casePayload.labelsPayload),
+  };
+  const blob = new Blob([JSON.stringify(bundlePayload, null, 2) + "\n"], { type: "application/json" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = "team_highlight_manual_labels_bundle.json";
   document.body.appendChild(link);
   link.click();
   link.remove();

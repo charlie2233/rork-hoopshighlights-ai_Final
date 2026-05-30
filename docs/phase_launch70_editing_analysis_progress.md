@@ -731,6 +731,8 @@ The launch-grade accuracy flow now has an explicit handoff from the local review
 - Added `scripts/apply_team_highlight_manual_labels.py`.
 - Default mode is dry-run; it only overwrites manifest label files when `--apply` is passed.
 - It looks for review-page downloads named `{caseId}_manual_labels.json`, or accepts explicit `--label caseId=/path/to/file.json` mappings.
+- The review page now also supports a single `Download all labels` bundle named `team_highlight_manual_labels_bundle.json`.
+- The apply helper accepts that bundle with `--bundle`.
 - It validates case ID, clip count, label IDs, prediction clip IDs, completion fields, and rejects URL/object-key fields or signed URL markers.
 - It blocks incomplete labels by default so the launch report cannot be generated from partial manual review.
 - This is metadata-only; it does not inspect, upload, analyze, render, compose, or export video.
@@ -739,28 +741,39 @@ Validation:
 
 ```bash
 python3 -m py_compile \
+  scripts/build_team_highlight_label_review_page.py \
+  scripts/test_build_team_highlight_label_review_page.py \
   scripts/apply_team_highlight_manual_labels.py \
   scripts/test_apply_team_highlight_manual_labels.py
-python3 -m unittest scripts.test_apply_team_highlight_manual_labels -v
+python3 -m unittest \
+  scripts.test_build_team_highlight_label_review_page \
+  scripts.test_apply_team_highlight_manual_labels \
+  -v
+python3 scripts/build_team_highlight_label_review_page.py \
+  --manifest artifacts/team_highlight_accuracy_launch71_manifest.json \
+  --video-path /Users/hanfei/Downloads/326_1770329282.mp4 \
+  --output artifacts/team_highlight_accuracy_launch71_review.html \
+  --json
+rg -n 'X-Amz-Signature|uploadUrl|sourceObjectKey|sourceUrl|downloadUrl|presignedUrl|resultObjectKey|uploadHeaders' \
+  artifacts/team_highlight_accuracy_launch71_review.html
 python3 scripts/apply_team_highlight_manual_labels.py \
   --manifest artifacts/team_highlight_accuracy_launch71_manifest.json \
-  --downloads-dir ~/Downloads \
+  --bundle ~/Downloads/team_highlight_manual_labels_bundle.json \
   --json
 ```
 
 - `py_compile`: passed.
-- Focused apply-helper suite: 4 tests passed.
-- Current Launch71 apply dry-run: blocked because the expected downloaded label files are not present yet:
-  - `~/Downloads/launch71_downloads_326_team_black_manual_labels.json`
-  - `~/Downloads/launch71_downloads_326_team_white_manual_labels.json`
-  - `~/Downloads/launch71_downloads_326_all_manual_labels.json`
+- Focused review/apply-helper suite: 7 tests passed.
+- Regenerated Launch71 review page: 66 clip cards, bundle download code present.
+- Review-page leak scan: no signed URLs, source/upload URLs, object keys, or upload headers found.
+- Current Launch71 bundle apply dry-run: blocked because `~/Downloads/team_highlight_manual_labels_bundle.json` is not present yet.
 
 Updated manual-label flow after reviewing all 66 clips:
 
 ```bash
 python3 scripts/apply_team_highlight_manual_labels.py \
   --manifest artifacts/team_highlight_accuracy_launch71_manifest.json \
-  --downloads-dir ~/Downloads \
+  --bundle ~/Downloads/team_highlight_manual_labels_bundle.json \
   --apply \
   --json
 python3 scripts/build_launch_team_accuracy_report.py \
