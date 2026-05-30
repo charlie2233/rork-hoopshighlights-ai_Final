@@ -10,4 +10,5 @@ services/control-plane/.wrangler
 services/inference/.venv
 backend/.external/
 backend/.venvs/
+artifacts/
 **/__pycache__/
