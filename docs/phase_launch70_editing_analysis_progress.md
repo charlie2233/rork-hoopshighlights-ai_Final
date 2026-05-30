@@ -538,6 +538,24 @@ xcodebuild \
 - Archive: `ios/archives/HoopsClips-Launch72.xcarchive`
 - The archive path is intentionally ignored by git via `ios/.gitignore`.
 
+Local IPA export attempt:
+
+```bash
+cp ios/exportOptions.testflight-internal.plist /tmp/hoopclips-exportOptions.local.plist
+/usr/libexec/PlistBuddy -c 'Set :destination export' /tmp/hoopclips-exportOptions.local.plist
+xcodebuild \
+  -exportArchive \
+  -archivePath ios/archives/HoopsClips-Launch72.xcarchive \
+  -exportPath ios/build/HoopsClips-Launch72-export \
+  -exportOptionsPlist /tmp/hoopclips-exportOptions.local.plist \
+  -allowProvisioningUpdates \
+  -quiet
+```
+
+- Result: failed locally with `No Accounts` and no `iOS Distribution` signing certificate.
+- Impact: local archive proof is valid, but IPA export/upload still needs the configured GitHub TestFlight workflow or a local App Store Connect account/distribution certificate.
+- Safety: the checked-in `ios/exportOptions.testflight-internal.plist` was not run directly because it has `destination=upload` and submission is still blocked.
+
 Preflight with local archive:
 
 ```bash
