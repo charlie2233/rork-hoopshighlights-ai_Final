@@ -607,6 +607,8 @@ struct HoopsClipsTests {
 
         #expect(payload["primaryColorHex"] as? String == "#0057FF")
         #expect(decoded.primaryColorHex == "#0057FF")
+        #expect(selection.accessibilityIdentifier == "analysis.teamTarget.choice.team-blue")
+        #expect(HighlightTeamSelection.allTeams.accessibilityIdentifier == "analysis.teamTarget.choice.all")
     }
 
     @Test @MainActor func testTeamTargetChoicesRequireDetectedTeams() {
@@ -614,6 +616,7 @@ struct HoopsClipsTests {
 
         let fallbackChoices = viewModel.availableHighlightTeamChoices
         #expect(fallbackChoices.map(\.mode) == [.all])
+        #expect(fallbackChoices.map(\.accessibilityIdentifier) == ["analysis.teamTarget.choice.all"])
         #expect(viewModel.requiresHighlightTeamSelectionConfirmation == false)
 
         viewModel.cloudDetectedTeams = [
@@ -629,6 +632,7 @@ struct HoopsClipsTests {
 
         let scannedChoices = viewModel.availableHighlightTeamChoices
         #expect(scannedChoices.map(\.selectionKey) == ["all", "team_blue"])
+        #expect(scannedChoices.map(\.accessibilityIdentifier) == ["analysis.teamTarget.choice.all", "analysis.teamTarget.choice.team-blue"])
         #expect(scannedChoices[1].confidenceThreshold == 0.85)
         #expect(scannedChoices[1].includeUncertain)
         #expect(scannedChoices[1].primaryColorHex == "#0057FF")

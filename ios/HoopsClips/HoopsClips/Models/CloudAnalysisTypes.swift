@@ -27,6 +27,10 @@ nonisolated struct HighlightTeamSelection: Codable, Sendable, Equatable {
         return teamId ?? colorLabel ?? label ?? "team"
     }
 
+    var accessibilityIdentifier: String {
+        "analysis.teamTarget.choice.\(automationIdentifierSuffix)"
+    }
+
     var displayTitle: String {
         if mode == .all { return "All teams" }
         return label ?? colorLabel ?? teamId ?? "Selected team"
@@ -76,6 +80,20 @@ nonisolated struct HighlightTeamSelection: Codable, Sendable, Equatable {
         primaryColorHex = try container.decodeIfPresent(String.self, forKey: .primaryColorHex)
         confidenceThreshold = try container.decodeIfPresent(Double.self, forKey: .confidenceThreshold) ?? 0.85
         includeUncertain = try container.decodeIfPresent(Bool.self, forKey: .includeUncertain) ?? true
+    }
+
+    private var automationIdentifierSuffix: String {
+        let rawValue = selectionKey.lowercased()
+        let mapped = rawValue.unicodeScalars.map { scalar in
+            let value = scalar.value
+            let isDigit = value >= 48 && value <= 57
+            let isLowercaseASCII = value >= 97 && value <= 122
+            return isDigit || isLowercaseASCII ? String(scalar) : "-"
+        }.joined()
+        let collapsed = mapped
+            .split(separator: "-", omittingEmptySubsequences: true)
+            .joined(separator: "-")
+        return collapsed.isEmpty ? "team" : collapsed
     }
 }
 

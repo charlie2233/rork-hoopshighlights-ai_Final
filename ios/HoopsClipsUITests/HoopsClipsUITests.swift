@@ -198,6 +198,32 @@ final class HoopsClipsUITests: XCTestCase {
     }
 
     @MainActor
+    func testPreanalysisTeamChoiceSmoke() throws {
+        try skipUnlessAIEditUISmokeIsEnabled()
+
+        let app = launchTeamChoiceSmokeApp()
+        let allTeamsChoice = app.buttons["Target All teams"]
+        let blueTeamChoice = app.buttons["Target Blue jerseys"]
+        let whiteTeamChoice = app.buttons["Target White jerseys"]
+
+        assertElementEventuallyExists(app.descendants(matching: .any)["analysis.teamTarget.section"], in: app)
+        assertElementEventuallyExists(app.descendants(matching: .any)["analysis.teamTarget.status"], in: app)
+        assertElementEventuallyExists(allTeamsChoice, in: app)
+        assertElementEventuallyExists(blueTeamChoice, in: app)
+        assertElementEventuallyExists(whiteTeamChoice, in: app)
+
+        let analyzeButton = app.buttons["analysis.startButton"]
+        assertElementEventuallyExists(analyzeButton, in: app)
+        XCTAssertFalse(analyzeButton.isEnabled, "Analysis should wait until the user confirms All teams or one detected jersey-color team.")
+        attachScreenshot(named: "Team Choice Before Confirmation", app: app)
+
+        tapWhenReady(blueTeamChoice, in: app)
+        XCTAssertTrue(analyzeButton.waitForExistence(timeout: 5))
+        XCTAssertTrue(analyzeButton.isEnabled, "Selecting a detected team should unlock cloud analysis.")
+        attachScreenshot(named: "Team Choice Blue Confirmed", app: app)
+    }
+
+    @MainActor
     func testLaunchPerformance() throws {
         // This measures how long it takes to launch your application.
         measure(metrics: [XCTApplicationLaunchMetric()]) {
@@ -264,6 +290,19 @@ final class HoopsClipsUITests: XCTestCase {
         if let sourceObjectKey {
             app.launchEnvironment["HOOPS_SMOKE_SOURCE_OBJECT_KEY"] = sourceObjectKey
         }
+        app.launch()
+        return app
+    }
+
+    @MainActor
+    private func launchTeamChoiceSmokeApp() -> XCUIApplication {
+        XCUIDevice.shared.orientation = .portrait
+
+        let app = XCUIApplication()
+        app.launchArguments = ["--hoops-team-choice-ui-smoke"]
+        app.launchEnvironment["HOOPS_UI_SMOKE_MODE"] = "team_choice"
+        app.launchEnvironment["HOOPS_CLOUD_ANALYSIS_BASE_URL"] = "http://127.0.0.1:9"
+        app.launchEnvironment["HOOPS_CLOUD_EDIT_BASE_URL"] = "http://127.0.0.1:9"
         app.launch()
         return app
     }
