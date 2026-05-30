@@ -5,7 +5,7 @@ from contextlib import redirect_stdout
 from io import StringIO
 from pathlib import Path
 
-from scripts.build_launch_team_accuracy_report import build_launch_eval_payload, main
+from scripts.build_launch_team_accuracy_report import build_label_status, build_launch_eval_payload, main
 from scripts.evaluate_team_highlight_accuracy import evaluate_accuracy
 from scripts.test_build_team_highlight_eval_payload import analysis_clip
 from scripts.test_team_highlight_accuracy_eval import defensive_outcome_evidence, made_shot_evidence
@@ -140,6 +140,68 @@ class BuildLaunchTeamAccuracyReportTests(unittest.TestCase):
             self.assertTrue(report_output.exists())
             self.assertEqual(json.loads(eval_output.read_text(encoding="utf-8"))["source"], "real_cloud_analysis_with_manual_labels")
             self.assertEqual(json.loads(report_output.read_text(encoding="utf-8"))["status"], "fail")
+
+    def test_label_status_summarizes_every_incomplete_manifest_case(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="hoopclips-launch-label-status-") as temp_dir:
+            temp_path = Path(temp_dir)
+            selected_analysis = temp_path / "selected_analysis.json"
+            selected_labels = temp_path / "selected_labels.json"
+            all_analysis = temp_path / "all_analysis.json"
+            all_labels = temp_path / "all_labels.json"
+            write_json(selected_analysis, selected_team_analysis_payload())
+            write_json(all_analysis, all_teams_analysis_payload())
+            write_json(
+                selected_labels,
+                {
+                    "caseId": "selected_case",
+                    "clips": [
+                        {
+                            "labelId": "needs_review",
+                            "needsLabel": True,
+                            "expected": {"teamId": None, "isHighlight": None, "eventType": None, "outcome": None},
+                        },
+                        {
+                            "labelId": "complete_negative",
+                            "needsLabel": False,
+                            "expected": {"teamId": "team_light", "isHighlight": "false", "eventType": "bad_window", "outcome": "bad_window"},
+                        },
+                    ],
+                },
+            )
+            write_json(
+                all_labels,
+                {
+                    "caseId": "all_case",
+                    "teamMode": "all",
+                    "clips": [
+                        {
+                            "labelId": "missing_outcome",
+                            "needsLabel": False,
+                            "expected": {"teamId": "team_dark", "isHighlight": True, "eventType": "steal"},
+                        }
+                    ],
+                },
+            )
+
+            status = build_label_status(
+                manifest={
+                    "cases": [
+                        {"analysisResult": "selected_analysis.json", "labels": "selected_labels.json"},
+                        {"analysisResult": "all_analysis.json", "labels": "all_labels.json"},
+                    ]
+                },
+                manifest_dir=temp_path,
+            )
+
+        self.assertEqual(status["schemaVersion"], "team-highlight-label-status-v1")
+        self.assertEqual(status["status"], "incomplete")
+        self.assertEqual(status["caseCount"], 2)
+        self.assertEqual(status["clipCount"], 3)
+        self.assertEqual(status["completeClipCount"], 1)
+        self.assertEqual(status["incompleteClipCount"], 2)
+        self.assertEqual(status["missingFieldCounts"]["needsLabel=false"], 1)
+        self.assertEqual(status["missingFieldCounts"]["expected.outcome"], 2)
+        self.assertEqual(status["cases"][0]["incompleteExamples"][0]["labelId"], "needs_review")
 
 
 def selected_team_analysis_payload() -> dict:

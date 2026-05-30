@@ -12,13 +12,28 @@ REPO_ROOT_FOR_IMPORTS = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT_FOR_IMPORTS) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT_FOR_IMPORTS))
 
-from scripts.build_team_highlight_eval_payload import DEFAULT_MIN_OVERLAP_RATIO, build_eval_payload, load_json, number_or_none, string_or_none
+from scripts.build_team_highlight_eval_payload import (
+    DEFAULT_MIN_OVERLAP_RATIO,
+    build_eval_payload,
+    load_json,
+    manual_label_completion_missing_fields,
+    number_or_none,
+    string_or_none,
+)
 from scripts.evaluate_team_highlight_accuracy import evaluate_accuracy
 
 
 def main() -> int:
     args = parse_args()
     manifest_path = Path(args.manifest).resolve()
+    if args.label_status:
+        status_payload = build_label_status(manifest=load_json(manifest_path), manifest_dir=manifest_path.parent)
+        if args.json:
+            print(json.dumps(status_payload, indent=2, sort_keys=True))
+        else:
+            print_label_status(status_payload)
+        return 0 if status_payload["status"] == "complete" else 1
+
     eval_payload = build_launch_eval_payload(
         manifest=load_json(manifest_path),
         manifest_dir=manifest_path.parent,
@@ -62,6 +77,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Allow prediction clips that were returned by analysis but not covered by manual labels.",
     )
+    parser.add_argument(
+        "--label-status",
+        action="store_true",
+        help="Print completion status for every manual label file in the manifest and exit before building a report.",
+    )
     parser.add_argument("--json", action="store_true", help="Print the evaluated accuracy report JSON.")
     return parser.parse_args()
 
@@ -98,6 +118,82 @@ def build_launch_eval_payload(
         "source": "real_cloud_analysis_with_manual_labels",
         "cases": cases,
     }
+
+
+def build_label_status(*, manifest: dict[str, Any], manifest_dir: Path) -> dict[str, Any]:
+    entries = manifest.get("cases")
+    if not isinstance(entries, list) or not entries:
+        raise ValueError("Manifest must contain a non-empty cases array.")
+
+    case_statuses: list[dict[str, Any]] = []
+    total_clips = 0
+    complete_clips = 0
+    missing_field_counts: dict[str, int] = {}
+    for index, raw_entry in enumerate(entries):
+        if not isinstance(raw_entry, dict):
+            raise ValueError(f"Manifest case {index} must be an object.")
+        entry = manifest_case_entry(raw_entry, index, manifest_dir)
+        labels = load_json(entry.labels_path)
+        clips = [clip for clip in labels.get("clips", []) if isinstance(clip, dict)]
+        case_missing_field_counts: dict[str, int] = {}
+        incomplete_examples: list[dict[str, Any]] = []
+        case_complete = 0
+        for clip_index, clip in enumerate(clips):
+            missing_fields = manual_label_completion_missing_fields(clip)
+            if missing_fields:
+                for field in missing_fields:
+                    missing_field_counts[field] = missing_field_counts.get(field, 0) + 1
+                    case_missing_field_counts[field] = case_missing_field_counts.get(field, 0) + 1
+                if len(incomplete_examples) < 5:
+                    incomplete_examples.append(
+                        {
+                            "labelId": string_or_none(clip.get("labelId") or clip.get("id") or clip.get("predictionClipId")) or f"clip_{clip_index}",
+                            "missingFields": missing_fields,
+                        }
+                    )
+            else:
+                case_complete += 1
+
+        total_clips += len(clips)
+        complete_clips += case_complete
+        case_statuses.append(
+            {
+                "caseId": entry.case_id or string_or_none(labels.get("caseId")) or f"case_{index + 1}",
+                "labelsPath": str(entry.labels_path),
+                "clipCount": len(clips),
+                "completeClipCount": case_complete,
+                "incompleteClipCount": len(clips) - case_complete,
+                "missingFieldCounts": dict(sorted(case_missing_field_counts.items())),
+                "incompleteExamples": incomplete_examples,
+            }
+        )
+
+    incomplete_clips = total_clips - complete_clips
+    return {
+        "schemaVersion": "team-highlight-label-status-v1",
+        "status": "complete" if incomplete_clips == 0 else "incomplete",
+        "caseCount": len(case_statuses),
+        "clipCount": total_clips,
+        "completeClipCount": complete_clips,
+        "incompleteClipCount": incomplete_clips,
+        "missingFieldCounts": dict(sorted(missing_field_counts.items())),
+        "cases": case_statuses,
+    }
+
+
+def print_label_status(status_payload: dict[str, Any]) -> None:
+    print(f"status={status_payload['status']}")
+    print(f"cases={status_payload['caseCount']}")
+    print(f"clips={status_payload['completeClipCount']} complete / {status_payload['clipCount']} total")
+    if status_payload["missingFieldCounts"]:
+        print("missing fields:")
+        for field, count in status_payload["missingFieldCounts"].items():
+            print(f"- {field}: {count}")
+    for case in status_payload["cases"]:
+        print(
+            f"- {case['caseId']}: {case['completeClipCount']} complete / {case['clipCount']} total "
+            f"({case['incompleteClipCount']} incomplete)"
+        )
 
 
 class ManifestCaseEntry:

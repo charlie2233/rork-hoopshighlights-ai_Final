@@ -653,3 +653,36 @@ rg -n 'X-Amz-Signature|uploadUrl|sourceObjectKey|sourceUrl|downloadUrl|presigned
 - Completion controls are present: label progress, incomplete-download warning, selected-team options, and defensive labels.
 - Leak checks: no unsafe `seekClip` inline quoting and no signed URLs/object keys/source/upload URL fields found in the generated HTML.
 - Browser plugin note: safe-desktop Browser startup required `SAFE_MCP_ACTION_PIN`, so visual browser automation was not available in this session; verification used generated HTML checks instead.
+
+## Launch72 Manual Label Gate Hardening
+
+The evaluator payload builder was tightened so the 85% launch report cannot be built from ambiguous manual labels:
+
+- Reviewed label rows now require `expected.outcome`, matching the review page controls and the outcome-quality gates.
+- Reviewed label rows now validate `expected.isHighlight` through an explicit boolean parser.
+- String values such as `"false"` are preserved as `False` instead of being coerced truthy by Python.
+- `build_launch_team_accuracy_report.py --label-status` now summarizes every manifest case before report generation, including complete/incomplete clip counts and missing field counts.
+- This remains metadata-only validation; it does not inspect video pixels, call providers, upload, render, or expose secrets.
+
+Validation:
+
+```bash
+python3 -m py_compile \
+  scripts/build_team_highlight_eval_payload.py \
+  scripts/build_launch_team_accuracy_report.py \
+  scripts/test_build_team_highlight_eval_payload.py \
+  scripts/test_build_launch_team_accuracy_report.py
+python3 -m unittest \
+  scripts.test_build_team_highlight_eval_payload \
+  scripts.test_build_launch_team_accuracy_report \
+  -v
+python3 scripts/build_launch_team_accuracy_report.py \
+  --manifest artifacts/team_highlight_accuracy_launch71_manifest.json \
+  --label-status \
+  --json
+```
+
+- `py_compile`: passed.
+- Focused eval payload/report suite: 14 tests passed.
+- Launch71 label status result: incomplete, 0 / 66 clips complete.
+- Missing fields across Launch71: `needsLabel=false`, `expected.teamId`, `expected.isHighlight`, `expected.eventType`, and `expected.outcome` on all 66 clips.

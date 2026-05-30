@@ -183,18 +183,35 @@ def validate_manual_label_row(label: dict[str, Any]) -> None:
     if label.get("needsLabel") is not False:
         raise ValueError(f"Manual label row {label_id} still has needsLabel=true; finish labeling before building eval payload.")
 
+    missing = manual_label_expected_missing_fields(label)
+    if missing == ["expected"]:
+        raise ValueError(f"Manual label row {label_id} expected must be an object.")
+    if missing:
+        raise ValueError(f"Manual label row {label_id} is incomplete: {', '.join(missing)}.")
+
+
+def manual_label_completion_missing_fields(label: dict[str, Any]) -> list[str]:
+    missing: list[str] = []
+    if "needsLabel" in label and label.get("needsLabel") is not False:
+        missing.append("needsLabel=false")
+    missing.extend(manual_label_expected_missing_fields(label))
+    return missing
+
+
+def manual_label_expected_missing_fields(label: dict[str, Any]) -> list[str]:
     expected = label.get("expected") or label.get("groundTruth") or {}
     if not isinstance(expected, dict):
-        raise ValueError(f"Manual label row {label_id} expected must be an object.")
+        return ["expected"]
     missing: list[str] = []
     if not string_or_none(expected.get("teamId") or expected.get("groundTruthTeamId")):
         missing.append("expected.teamId")
-    if not isinstance(expected.get("isHighlight"), bool) and "groundTruthHighlight" not in expected:
+    if bool_or_none(expected.get("isHighlight") if "isHighlight" in expected else expected.get("groundTruthHighlight")) is None:
         missing.append("expected.isHighlight")
     if not string_or_none(expected.get("eventType") or expected.get("basketballEvent") or expected.get("label")):
         missing.append("expected.eventType")
-    if missing:
-        raise ValueError(f"Manual label row {label_id} is incomplete: {', '.join(missing)}.")
+    if not string_or_none(expected.get("outcome") or expected.get("shotOutcome") or expected.get("result")):
+        missing.append("expected.outcome")
+    return missing
 
 
 def extract_analysis_result(analysis: dict[str, Any]) -> dict[str, Any]:
@@ -288,9 +305,10 @@ def expected_from_label(label: dict[str, Any]) -> dict[str, Any]:
     expected = label.get("expected") or label.get("groundTruth") or label
     if not isinstance(expected, dict):
         expected = label
+    is_highlight = bool_or_none(expected.get("isHighlight") if "isHighlight" in expected else expected.get("groundTruthHighlight"))
     return {
         "teamId": expected.get("teamId") or expected.get("groundTruthTeamId"),
-        "isHighlight": bool(expected.get("isHighlight") if "isHighlight" in expected else expected.get("groundTruthHighlight")),
+        "isHighlight": bool(is_highlight),
         "eventType": expected.get("eventType") or expected.get("basketballEvent") or expected.get("label"),
         "outcome": expected.get("outcome") or expected.get("shotOutcome") or expected.get("result"),
     }
@@ -439,6 +457,18 @@ def integer_or_none(value: Any) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return None
+
+
+def bool_or_none(value: Any) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"true", "yes", "1"}:
+            return True
+        if normalized in {"false", "no", "0"}:
+            return False
+    return None
 
 
 if __name__ == "__main__":

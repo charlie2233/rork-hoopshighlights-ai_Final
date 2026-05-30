@@ -77,7 +77,7 @@ class BuildTeamHighlightEvalPayloadTests(unittest.TestCase):
                         "labelId": "steal_001",
                         "start": 30.1,
                         "end": 33.1,
-                        "expected": {"teamId": "team_dark", "isHighlight": True, "eventType": "steal"},
+                        "expected": {"teamId": "team_dark", "isHighlight": True, "eventType": "steal", "outcome": "steal"},
                     },
                 ],
             },
@@ -269,6 +269,52 @@ class BuildTeamHighlightEvalPayloadTests(unittest.TestCase):
 
         self.assertEqual(payload["cases"][0]["clips"][0]["expected"]["teamId"], "team_dark")
         self.assertTrue(payload["cases"][0]["clips"][0]["expected"]["isHighlight"])
+
+    def test_build_payload_requires_outcome_for_reviewed_launch_labels(self) -> None:
+        labels = build_label_template(
+            analysis={"jobId": "job_real_001", "results": {"clips": [{**analysis_clip(10.0, 14.0, "Made Shot", True, "team_dark", 0.94), "id": "clip_made_001"}]}},
+            case_id="real_game_001",
+            video_id="video_real_001",
+            selected_team_id="team_dark",
+        )
+        labels["clips"][0]["needsLabel"] = False
+        labels["clips"][0]["expected"] = {
+            "teamId": "team_dark",
+            "isHighlight": True,
+            "eventType": "made_shot",
+        }
+
+        with self.assertRaisesRegex(ValueError, "expected.outcome"):
+            build_eval_payload(
+                analysis={"jobId": "job_real_001", "results": {"clips": [{**analysis_clip(10.0, 14.0, "Made Shot", True, "team_dark", 0.94), "id": "clip_made_001"}]}},
+                labels=labels,
+            )
+
+    def test_build_payload_preserves_string_false_highlight_labels(self) -> None:
+        payload = build_eval_payload(
+            analysis={"clips": [{**analysis_clip(10.0, 14.0, "Bad Window", False, "team_dark", 0.94), "id": "clip_bad_window_001"}]},
+            labels={
+                "selectedTeamId": "team_dark",
+                "clips": [
+                    {
+                        "labelId": "negative_001",
+                        "predictionIndex": 0,
+                        "predictionClipId": "clip_bad_window_001",
+                        "start": 10.0,
+                        "end": 14.0,
+                        "needsLabel": False,
+                        "expected": {
+                            "teamId": "team_dark",
+                            "isHighlight": "false",
+                            "eventType": "bad_window",
+                            "outcome": "bad_window",
+                        },
+                    }
+                ],
+            },
+        )
+
+        self.assertFalse(payload["cases"][0]["clips"][0]["expected"]["isHighlight"])
 
     def test_cli_writes_payload_file(self) -> None:
         with tempfile.TemporaryDirectory(prefix="hoopclips-eval-payload-") as temp_dir:
