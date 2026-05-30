@@ -61,6 +61,9 @@ xcodebuild -quiet test -project ios/HoopsClips.xcodeproj -scheme HoopsClips -des
 xcodebuild -quiet -project ios/HoopsClips.xcodeproj -scheme HoopsClips -configuration Debug -destination 'platform=iOS Simulator,id=7ECBD8FA-B0A2-4C3B-9A5C-EB73D19B99F2' -derivedDataPath /tmp/hoopclips-launch42-dd2 CODE_SIGNING_ALLOWED=NO -hideShellScriptEnvironment build
 # passed with existing Swift warnings
 
+xcodebuild -quiet build-for-testing -project ios/HoopsClips.xcodeproj -scheme HoopsClips -destination 'platform=iOS Simulator,id=7ECBD8FA-B0A2-4C3B-9A5C-EB73D19B99F2' -derivedDataPath /tmp/hoopclips-launch42-bft-dd CODE_SIGNING_ALLOWED=NO -hideShellScriptEnvironment
+# passed with existing Swift warnings
+
 python3 scripts/submission_readiness_preflight.py --json
 # failed with launch blockers listed below
 
