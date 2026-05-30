@@ -387,6 +387,59 @@ class EditingServiceTests(unittest.TestCase):
         self.assertNotIn("sourceObjectKey", serialized_heartbeats)
         self.assertNotIn("https://uploads.example.test", serialized_heartbeats)
 
+    def test_worker_callbacks_use_service_user_agent(self) -> None:
+        captured: list[dict] = []
+
+        class Response:
+            status = 200
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        def capture_urlopen(request, timeout: int):
+            captured.append(
+                {
+                    "url": request.full_url,
+                    "timeout": timeout,
+                    "headers": {key.lower(): value for key, value in request.header_items()},
+                }
+            )
+            return Response()
+
+        payload = {
+            "jobId": "job_analysis",
+            "requestId": "request-analysis",
+            "traceId": "trace-analysis",
+            "uploadTraceId": "upload-trace-analysis",
+            "inferenceAttemptId": "attempt-analysis",
+            "status": "processing",
+            "stage": "Analyzing in cloud",
+            "progress": 0.72,
+        }
+
+        with patch.object(editing_main, "urlopen", side_effect=capture_urlopen):
+            editing_main.post_inference_callback(
+                "https://worker.example.test/internal/inference/callback",
+                "callback-secret",
+                payload,
+            )
+            editing_main.post_inference_heartbeat(
+                "https://worker.example.test/internal/inference/callback",
+                "callback-secret",
+                "job_analysis",
+                payload,
+            )
+
+        self.assertEqual(len(captured), 2)
+        self.assertEqual(captured[0]["headers"]["user-agent"], "HoopClipsEditingService/1.0")
+        self.assertEqual(captured[1]["headers"]["user-agent"], "HoopClipsEditingService/1.0")
+        self.assertEqual(captured[0]["headers"]["x-hoops-inference-secret"], "callback-secret")
+        self.assertEqual(captured[1]["headers"]["x-hoops-inference-secret"], "callback-secret")
+        self.assertTrue(captured[1]["url"].endswith("/internal/inference/heartbeat/job_analysis"))
+
     def test_render_requires_secret_outside_local(self) -> None:
         client = TestClient(create_app(self._settings(environment="staging", shared_secret="secret", render_storage_provider="r2")))
 

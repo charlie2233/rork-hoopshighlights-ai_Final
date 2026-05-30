@@ -91,4 +91,53 @@ git diff --check
 - Failed: launch script tests rejected the first `wrangler.jsonc` formatting because trailing commas made the repo's JSONC preflight parser fail.
 - Local fix: removed trailing commas, reran the exact failing test plus the full launch script suite and staging dry run successfully.
 
-After deploy, rerun the real selected-team accuracy collection and capture the job ID plus generated artifacts or sanitized failure state.
+- GitHub Actions run: `26694736663`
+- Result: passed.
+- Deployed staging editing service and staging Worker for commit `5fb981dfcbd75492adea2270ed9ed99298602317`.
+- Staging version probe passed for direct editing `/version` and Worker `/v1/editing/version`.
+
+## Live Launch70 Finding
+
+Real selected-team collection was rerun after deploy:
+
+```bash
+python3 scripts/collect_team_highlight_accuracy_case.py \
+  --video-path /Users/hanfei/Downloads/326_1770329282.mp4 \
+  --case-id launch70_downloads_326_team \
+  --video-id downloads_326_1770329282 \
+  --team-mode team \
+  --duration-seconds 30 \
+  --output-dir artifacts/team_highlight_accuracy_launch70 \
+  --manifest artifacts/team_highlight_accuracy_launch70_manifest.json \
+  --poll-interval-seconds 5 \
+  --timeout-seconds 2400
+```
+
+- Job ID: `7ab4ef8e55ca46fb9e9a5318d4cc8e3f`
+- Editing service accepted and completed analysis.
+- Editing logs showed `analysis.run.completed`.
+- Editing callbacks and heartbeats failed before reaching the Worker.
+- Route probe without a service User-Agent returned Cloudflare `error code: 1010`.
+- Route probe with `User-Agent: HoopClipsEditingService/1.0` reached the Worker and returned the expected invalid-secret JSON.
+
+This means the selected-team backend was no longer stuck in analysis; Cloudflare Browser Integrity rejected default Python `urllib` callback requests before the Worker route could authenticate them.
+
+## Follow-Up Patch
+
+- Editing callback and heartbeat requests now send `User-Agent: HoopClipsEditingService/1.0`.
+- Safe callback failure logging now includes failure codes such as `callback_http_403` and `heartbeat_http_403`, without logging secrets, credentials, object keys, source URLs, or full presigned URLs.
+- Added a regression test that verifies both callback and heartbeat requests include the service User-Agent and inference callback secret header.
+
+Additional local validation:
+
+```bash
+python3 -m py_compile services/editing/editing_app/main.py services/editing/tests/test_editing_service.py
+PYTHONPATH=ios/backend:services/editing /tmp/hoopclips-editing-test-venv/bin/python -m unittest services.editing.tests.test_editing_service.EditingServiceTests.test_worker_callbacks_use_service_user_agent services.editing.tests.test_editing_service.EditingServiceTests.test_analyze_endpoint_accepts_worker_dispatch_and_posts_callback -v
+PYTHONPATH=ios/backend:services/editing /tmp/hoopclips-editing-test-venv/bin/python -m unittest discover services/editing/tests -v
+```
+
+- `py_compile`: passed.
+- Focused callback/User-Agent tests: passed.
+- Full editing-service suite: 117 tests passed.
+
+Next after redeploy: rerun the real selected-team accuracy collection and capture the completed job ID plus generated artifacts or sanitized failure state.

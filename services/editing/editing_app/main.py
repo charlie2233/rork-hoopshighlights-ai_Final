@@ -136,6 +136,7 @@ def sanitize_team_scan_filename(filename: str) -> str:
 def post_inference_callback(callback_url: str, callback_secret: str, payload: dict[str, Any]) -> None:
     headers = {
         "content-type": "application/json",
+        "User-Agent": "HoopClipsEditingService/1.0",
         "x-hoops-inference-secret": callback_secret,
         "x-request-id": str(payload.get("requestId") or ""),
         "x-trace-id": str(payload.get("traceId") or ""),
@@ -146,9 +147,9 @@ def post_inference_callback(callback_url: str, callback_secret: str, payload: di
     try:
         with urlopen(request, timeout=20) as response:
             if response.status >= 400:
-                raise EditingServiceError(502, "callback_failed", "Inference callback was rejected by the control plane.")
+                raise EditingServiceError(502, f"callback_http_{response.status}", "Inference callback was rejected by the control plane.")
     except HTTPError as error:
-        raise EditingServiceError(502, "callback_failed", "Inference callback was rejected by the control plane.") from error
+        raise EditingServiceError(502, f"callback_http_{error.code}", "Inference callback was rejected by the control plane.") from error
     except (URLError, TimeoutError, OSError) as error:
         raise EditingServiceError(502, "callback_failed", "Inference callback could not reach the control plane.") from error
 
@@ -157,6 +158,7 @@ def post_inference_heartbeat(callback_url: str, callback_secret: str, job_id: st
     heartbeat_url = urljoin(callback_url, f"/internal/inference/heartbeat/{quote(job_id, safe='')}")
     headers = {
         "content-type": "application/json",
+        "User-Agent": "HoopClipsEditingService/1.0",
         "x-hoops-inference-secret": callback_secret,
         "x-request-id": str(payload.get("requestId") or ""),
         "x-trace-id": str(payload.get("traceId") or ""),
@@ -167,9 +169,9 @@ def post_inference_heartbeat(callback_url: str, callback_secret: str, job_id: st
     try:
         with urlopen(request, timeout=10) as response:
             if response.status >= 400:
-                raise EditingServiceError(502, "heartbeat_failed", "Inference heartbeat was rejected by the control plane.")
+                raise EditingServiceError(502, f"heartbeat_http_{response.status}", "Inference heartbeat was rejected by the control plane.")
     except HTTPError as error:
-        raise EditingServiceError(502, "heartbeat_failed", "Inference heartbeat was rejected by the control plane.") from error
+        raise EditingServiceError(502, f"heartbeat_http_{error.code}", "Inference heartbeat was rejected by the control plane.") from error
     except (URLError, TimeoutError, OSError) as error:
         raise EditingServiceError(502, "heartbeat_failed", "Inference heartbeat could not reach the control plane.") from error
 
@@ -308,6 +310,8 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
         try:
             await run_in_threadpool(post_inference_heartbeat, request.callbackUrl, request.callbackSecret, request.jobId, payload)
             emit_event("analysis.heartbeat.sent", jobId=request.jobId, stage=stage, teamMode=request.teamSelection.mode if request.teamSelection else "all")
+        except EditingServiceError as error:
+            emit_event("analysis.heartbeat.failed", jobId=request.jobId, stage=stage, failureReason=error.__class__.__name__, failureCode=error.error_code)
         except Exception as error:
             emit_event("analysis.heartbeat.failed", jobId=request.jobId, stage=stage, failureReason=error.__class__.__name__)
 
@@ -321,6 +325,8 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
         try:
             await run_in_threadpool(post_inference_callback, request.callbackUrl, request.callbackSecret, payload)
             emit_event("analysis.progress_callback.sent", jobId=request.jobId, stage=stage, progress=progress, teamMode=request.teamSelection.mode if request.teamSelection else "all")
+        except EditingServiceError as error:
+            emit_event("analysis.progress_callback.failed", jobId=request.jobId, stage=stage, progress=progress, failureReason=error.__class__.__name__, failureCode=error.error_code)
         except Exception as error:
             emit_event("analysis.progress_callback.failed", jobId=request.jobId, stage=stage, progress=progress, failureReason=error.__class__.__name__)
 
@@ -412,6 +418,8 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
         try:
             await run_in_threadpool(post_inference_callback, request.callbackUrl, request.callbackSecret, payload)
             emit_event("analysis.callback.sent", jobId=request.jobId, status=payload.get("status"), teamMode=request.teamSelection.mode if request.teamSelection else "all")
+        except EditingServiceError as error:
+            emit_event("analysis.callback.failed", jobId=request.jobId, status=payload.get("status"), failureReason=error.__class__.__name__, failureCode=error.error_code)
         except Exception as error:
             emit_event("analysis.callback.failed", jobId=request.jobId, status=payload.get("status"), failureReason=error.__class__.__name__)
 
