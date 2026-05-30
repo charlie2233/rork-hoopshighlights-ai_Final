@@ -1,12 +1,17 @@
 import type { MessageBatch } from "@cloudflare/workers-types";
 import type { Env } from "../env";
-import type { InferenceDispatchRequest, JobRecord, QueueJobMessage } from "../types";
+import type {
+  InferenceDispatchRequest,
+  JobRecord,
+  QueueJobMessage,
+} from "../types";
 import { getJobSnapshot, updateJobState } from "../do/job-state-client";
 import { appendJobEvent } from "../db";
 import { createPresignedReadTarget } from "../r2/presign";
 import { resolveRuntimeConfig } from "../env";
 
-const DEFAULT_INFERENCE_MODEL_VERSION = "videomae:MCG-NJU/videomae-base-finetuned-kinetics";
+const DEFAULT_INFERENCE_MODEL_VERSION =
+  "videomae:MCG-NJU/videomae-base-finetuned-kinetics";
 
 interface AnalysisDispatchProvider {
   name: "inference" | "editing";
@@ -14,7 +19,10 @@ interface AnalysisDispatchProvider {
   ingressSecret: string;
 }
 
-export async function handleQueueBatch(batch: MessageBatch<QueueJobMessage>, env: Env): Promise<void> {
+export async function handleQueueBatch(
+  batch: MessageBatch<QueueJobMessage>,
+  env: Env,
+): Promise<void> {
   for (const message of batch.messages) {
     if (message.body.kind !== "process-job") {
       continue;
@@ -37,10 +45,13 @@ export async function handleQueueBatch(batch: MessageBatch<QueueJobMessage>, env
         continue;
       }
 
-      inferenceAttemptId = currentJob.inferenceAttemptId ?? crypto.randomUUID().replace(/-/g, "");
+      inferenceAttemptId =
+        currentJob.inferenceAttemptId ?? crypto.randomUUID().replace(/-/g, "");
       const startedAt = new Date().toISOString();
       const modelVersion =
-        currentJob.modelVersion ?? message.body.modelVersion ?? DEFAULT_INFERENCE_MODEL_VERSION;
+        currentJob.modelVersion ??
+        message.body.modelVersion ??
+        DEFAULT_INFERENCE_MODEL_VERSION;
       const currentAttemptCount = Math.max(currentJob.attemptCount ?? 0, 0);
 
       const dispatchingJob = await updateJobState(
@@ -50,9 +61,10 @@ export async function handleQueueBatch(batch: MessageBatch<QueueJobMessage>, env
           stage: "Dispatching job to external inference service",
           progress: Math.max(currentJob.progress, 0.5),
           modelVersion,
-          uploadTraceId: currentJob.uploadTraceId ?? message.body.uploadTraceId ?? null,
+          uploadTraceId:
+            currentJob.uploadTraceId ?? message.body.uploadTraceId ?? null,
           inferenceAttemptId,
-          attemptCount: currentAttemptCount
+          attemptCount: currentAttemptCount,
         },
         {
           requestId: message.body.requestId,
@@ -63,13 +75,15 @@ export async function handleQueueBatch(batch: MessageBatch<QueueJobMessage>, env
             jobId: message.body.jobId,
             requestId: message.body.requestId,
             traceId: message.body.traceId || currentJob.traceId,
-            uploadTraceId: currentJob.uploadTraceId ?? message.body.uploadTraceId ?? null,
+            uploadTraceId:
+              currentJob.uploadTraceId ?? message.body.uploadTraceId ?? null,
             inferenceAttemptId,
-            modelVersion
-          }
-        }
+            modelVersion,
+          },
+        },
       );
-      const dispatchingSnapshot = (await getJobSnapshot(env, message.body.jobId)) ?? dispatchingJob;
+      const dispatchingSnapshot =
+        (await getJobSnapshot(env, message.body.jobId)) ?? dispatchingJob;
 
       await appendJobEvent(env.DB, {
         jobId: message.body.jobId,
@@ -81,18 +95,21 @@ export async function handleQueueBatch(batch: MessageBatch<QueueJobMessage>, env
           jobId: message.body.jobId,
           requestId: message.body.requestId,
           traceId: message.body.traceId || currentJob.traceId,
-          uploadTraceId: dispatchingSnapshot.uploadTraceId ?? message.body.uploadTraceId ?? null,
+          uploadTraceId:
+            dispatchingSnapshot.uploadTraceId ??
+            message.body.uploadTraceId ??
+            null,
           inferenceAttemptId,
-          modelVersion
+          modelVersion,
         },
-        createdAt: startedAt
+        createdAt: startedAt,
       });
 
       const dispatchRequest = await buildInferenceDispatchRequest(
         env,
         dispatchingSnapshot,
         message.body,
-        inferenceAttemptId
+        inferenceAttemptId,
       );
       const dispatchResult = await dispatchAnalysisJob(env, dispatchRequest);
 
@@ -106,12 +123,15 @@ export async function handleQueueBatch(batch: MessageBatch<QueueJobMessage>, env
           status: dispatchResult.status,
           jobId: message.body.jobId,
           requestId: message.body.requestId,
-          uploadTraceId: dispatchingSnapshot.uploadTraceId ?? message.body.uploadTraceId ?? null,
+          uploadTraceId:
+            dispatchingSnapshot.uploadTraceId ??
+            message.body.uploadTraceId ??
+            null,
           inferenceAttemptId,
           modelVersion,
-          provider: dispatchResult.provider
+          provider: dispatchResult.provider,
         },
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
       });
 
       console.info(
@@ -119,24 +139,31 @@ export async function handleQueueBatch(batch: MessageBatch<QueueJobMessage>, env
           requestId: message.body.requestId,
           jobId: message.body.jobId,
           traceId: message.body.traceId || currentJob.traceId,
-          uploadTraceId: dispatchingSnapshot.uploadTraceId ?? message.body.uploadTraceId ?? null,
+          uploadTraceId:
+            dispatchingSnapshot.uploadTraceId ??
+            message.body.uploadTraceId ??
+            null,
           inferenceAttemptId,
           event: "queue.dispatch.accepted",
           status: dispatchResult.status,
-          provider: dispatchResult.provider
-        })
+          provider: dispatchResult.provider,
+        }),
       );
 
       const postAcceptJob = await getJobSnapshot(env, message.body.jobId);
       if (postAcceptJob) {
-        const acceptedAttemptCount = Math.max(postAcceptJob.attemptCount ?? currentAttemptCount, 0) + 1;
+        const acceptedAttemptCount =
+          Math.max(postAcceptJob.attemptCount ?? currentAttemptCount, 0) + 1;
         const acceptancePatch: Partial<JobRecord> = {
           acceptedAt: startedAt,
           processingStartedAt: startedAt,
           attemptCount: acceptedAttemptCount,
           modelVersion,
-          uploadTraceId: dispatchingSnapshot.uploadTraceId ?? message.body.uploadTraceId ?? null,
-          inferenceAttemptId
+          uploadTraceId:
+            dispatchingSnapshot.uploadTraceId ??
+            message.body.uploadTraceId ??
+            null,
+          inferenceAttemptId,
         };
 
         if (
@@ -152,29 +179,28 @@ export async function handleQueueBatch(batch: MessageBatch<QueueJobMessage>, env
           acceptancePatch.startedAt = startedAt;
         }
 
-        await updateJobState(
-          env,
-          message.body.jobId,
-          acceptancePatch,
-          {
+        await updateJobState(env, message.body.jobId, acceptancePatch, {
+          requestId: message.body.requestId,
+          traceId: message.body.traceId || currentJob.traceId,
+          eventType: "queue.dispatch.accepted",
+          message: "External inference service accepted job.",
+          payload: {
+            status: dispatchResult.status,
+            jobId: message.body.jobId,
             requestId: message.body.requestId,
-            traceId: message.body.traceId || currentJob.traceId,
-            eventType: "queue.dispatch.accepted",
-            message: "External inference service accepted job.",
-            payload: {
-              status: dispatchResult.status,
-              jobId: message.body.jobId,
-              requestId: message.body.requestId,
-              uploadTraceId: dispatchingSnapshot.uploadTraceId ?? message.body.uploadTraceId ?? null,
-              inferenceAttemptId,
-              modelVersion,
-              provider: dispatchResult.provider
-            }
-          }
-        );
+            uploadTraceId:
+              dispatchingSnapshot.uploadTraceId ??
+              message.body.uploadTraceId ??
+              null,
+            inferenceAttemptId,
+            modelVersion,
+            provider: dispatchResult.provider,
+          },
+        });
       }
     } catch (error) {
-      const failureReason = error instanceof Error ? error.message : "Queue dispatch failed.";
+      const failureReason =
+        error instanceof Error ? error.message : "Queue dispatch failed.";
       if (currentJob) {
         const failedAt = new Date().toISOString();
         await updateJobState(
@@ -185,8 +211,11 @@ export async function handleQueueBatch(batch: MessageBatch<QueueJobMessage>, env
             stage: "External inference dispatch failed",
             progress: Math.max(currentJob.progress, 0.5),
             failureReason,
-            modelVersion: currentJob.modelVersion ?? message.body.modelVersion ?? DEFAULT_INFERENCE_MODEL_VERSION,
-            updatedAt: failedAt
+            modelVersion:
+              currentJob.modelVersion ??
+              message.body.modelVersion ??
+              DEFAULT_INFERENCE_MODEL_VERSION,
+            updatedAt: failedAt,
           },
           {
             requestId: message.body.requestId,
@@ -197,12 +226,15 @@ export async function handleQueueBatch(batch: MessageBatch<QueueJobMessage>, env
               jobId: message.body.jobId,
               requestId: message.body.requestId,
               traceId: message.body.traceId || currentJob.traceId,
-              uploadTraceId: currentJob.uploadTraceId ?? message.body.uploadTraceId ?? null,
+              uploadTraceId:
+                currentJob.uploadTraceId ?? message.body.uploadTraceId ?? null,
               inferenceAttemptId,
               modelVersion:
-                currentJob.modelVersion ?? message.body.modelVersion ?? DEFAULT_INFERENCE_MODEL_VERSION
-            }
-          }
+                currentJob.modelVersion ??
+                message.body.modelVersion ??
+                DEFAULT_INFERENCE_MODEL_VERSION,
+            },
+          },
         );
 
         // Dispatch failure occurs before the external service accepts the job.
@@ -216,12 +248,15 @@ export async function handleQueueBatch(batch: MessageBatch<QueueJobMessage>, env
             jobId: message.body.jobId,
             requestId: message.body.requestId,
             traceId: message.body.traceId || currentJob.traceId,
-            uploadTraceId: currentJob.uploadTraceId ?? message.body.uploadTraceId ?? null,
+            uploadTraceId:
+              currentJob.uploadTraceId ?? message.body.uploadTraceId ?? null,
             inferenceAttemptId,
             modelVersion:
-              currentJob.modelVersion ?? message.body.modelVersion ?? DEFAULT_INFERENCE_MODEL_VERSION
+              currentJob.modelVersion ??
+              message.body.modelVersion ??
+              DEFAULT_INFERENCE_MODEL_VERSION,
           },
-          createdAt: new Date().toISOString()
+          createdAt: new Date().toISOString(),
         });
 
         await sendDeadLetterRecord(env, {
@@ -233,9 +268,11 @@ export async function handleQueueBatch(batch: MessageBatch<QueueJobMessage>, env
           sourceObjectKey: message.body.sourceObjectKey,
           resultObjectKey: message.body.resultObjectKey,
           modelVersion:
-            currentJob.modelVersion ?? message.body.modelVersion ?? DEFAULT_INFERENCE_MODEL_VERSION,
+            currentJob.modelVersion ??
+            message.body.modelVersion ??
+            DEFAULT_INFERENCE_MODEL_VERSION,
           failureReason,
-          attempts: null
+          attempts: null,
         }).catch((dlqError) => {
           console.error(
             JSON.stringify({
@@ -243,8 +280,11 @@ export async function handleQueueBatch(batch: MessageBatch<QueueJobMessage>, env
               jobId: message.body.jobId,
               traceId: message.body.traceId || currentJob?.traceId,
               event: "dead_letter.enqueue_failed",
-              message: dlqError instanceof Error ? dlqError.message : "Failed to enqueue dead-letter record."
-            })
+              message:
+                dlqError instanceof Error
+                  ? dlqError.message
+                  : "Failed to enqueue dead-letter record.",
+            }),
           );
         });
       }
@@ -253,8 +293,8 @@ export async function handleQueueBatch(batch: MessageBatch<QueueJobMessage>, env
           requestId: message.body.requestId,
           jobId: message.body.jobId,
           event: "queue.dispatch.error",
-          message: failureReason
-        })
+          message: failureReason,
+        }),
       );
     }
   }
@@ -265,17 +305,22 @@ async function buildInferenceDispatchRequest(
   env: Env,
   job: JobRecord,
   message: QueueJobMessage,
-  inferenceAttemptId: string
+  inferenceAttemptId: string,
 ): Promise<{ callbackSecret: string; body: InferenceDispatchRequest }> {
-  const callbackUrl = new URL("/internal/inference/callback", env.CONTROL_PLANE_BASE_URL).toString();
-  const callbackSecret = env.INFERENCE_SHARED_SECRET || env.CONTROL_PLANE_SHARED_SECRET;
+  const callbackUrl = new URL(
+    "/internal/inference/callback",
+    env.CONTROL_PLANE_BASE_URL,
+  ).toString();
+  const callbackSecret =
+    env.INFERENCE_SHARED_SECRET || env.CONTROL_PLANE_SHARED_SECRET;
   const readTarget = await createPresignedReadTarget(env, {
     objectKey: job.sourceObjectKey,
     expiresInSeconds: Math.max(resolveRuntimeConfig(env).jobTtlSeconds, 3600),
-    bucketName: env.R2_UPLOAD_BUCKET_NAME
+    bucketName: env.R2_UPLOAD_BUCKET_NAME,
   });
 
-  const modelVersion = job.modelVersion ?? message.modelVersion ?? DEFAULT_INFERENCE_MODEL_VERSION;
+  const modelVersion =
+    job.modelVersion ?? message.modelVersion ?? DEFAULT_INFERENCE_MODEL_VERSION;
   const body: InferenceDispatchRequest = {
     jobId: job.jobId,
     requestId: message.requestId,
@@ -297,32 +342,46 @@ async function buildInferenceDispatchRequest(
     appVersion: job.appVersion,
     analysisVersion: job.analysisVersion,
     teamSelection: job.teamSelection ?? message.teamSelection ?? null,
-    requestedModel: modelVersion.startsWith("xclip:") ? "xclip" : "videomae"
+    requestedModel: modelVersion.startsWith("xclip:") ? "xclip" : "videomae",
   };
 
   return {
     callbackSecret,
-    body
+    body,
   };
 }
 
 async function dispatchAnalysisJob(
   env: Env,
-  dispatchRequest: { callbackSecret: string; body: InferenceDispatchRequest }
+  dispatchRequest: { callbackSecret: string; body: InferenceDispatchRequest },
 ): Promise<{ provider: AnalysisDispatchProvider["name"]; status: number }> {
-  const providers = analysisDispatchProviders(env);
+  const providers = analysisDispatchProviders(env, dispatchRequest.body);
   if (providers.length === 0) {
+    if (isSelectedTeamAnalysis(dispatchRequest.body)) {
+      throw new Error(
+        "Missing editing service base URL for selected-team analysis.",
+      );
+    }
     throw new Error("Missing inference service base URL.");
   }
 
-  let lastFailure: { provider: AnalysisDispatchProvider["name"]; status: number } | null = null;
+  let lastFailure: {
+    provider: AnalysisDispatchProvider["name"];
+    status: number;
+  } | null = null;
   for (const provider of providers) {
-    const body = analysisDispatchBodyForProvider(dispatchRequest.body, provider);
-    const response = await fetch(new URL("/v1/analyze", provider.baseUrl).toString(), {
-      method: "POST",
-      headers: analysisDispatchHeaders(dispatchRequest, provider),
-      body: JSON.stringify(body)
-    });
+    const body = analysisDispatchBodyForProvider(
+      dispatchRequest.body,
+      provider,
+    );
+    const response = await fetch(
+      new URL("/v1/analyze", provider.baseUrl).toString(),
+      {
+        method: "POST",
+        headers: analysisDispatchHeaders(dispatchRequest, provider),
+        body: JSON.stringify(body),
+      },
+    );
 
     if (response.ok) {
       return { provider: provider.name, status: response.status };
@@ -335,14 +394,16 @@ async function dispatchAnalysisJob(
   }
 
   if (lastFailure) {
-    throw new Error(`External inference dispatch failed with status ${lastFailure.status}.`);
+    throw new Error(
+      `External inference dispatch failed with status ${lastFailure.status}.`,
+    );
   }
   throw new Error("External inference dispatch failed.");
 }
 
 function analysisDispatchBodyForProvider(
   body: InferenceDispatchRequest,
-  provider: AnalysisDispatchProvider
+  provider: AnalysisDispatchProvider,
 ): InferenceDispatchRequest {
   if (provider.name === "editing") {
     return body;
@@ -365,7 +426,7 @@ function analysisDispatchBodyForProvider(
     appVersion: body.appVersion,
     analysisVersion: body.analysisVersion,
     requestedModel: body.requestedModel,
-    attemptCount: body.attemptCount
+    attemptCount: body.attemptCount,
   };
 
   if (body.teamSelection?.mode === "team") {
@@ -377,7 +438,7 @@ function analysisDispatchBodyForProvider(
 
 function analysisDispatchHeaders(
   dispatchRequest: { callbackSecret: string; body: InferenceDispatchRequest },
-  provider: AnalysisDispatchProvider
+  provider: AnalysisDispatchProvider,
 ): Record<string, string> {
   return {
     "content-type": "application/json",
@@ -385,27 +446,54 @@ function analysisDispatchHeaders(
     "x-request-id": dispatchRequest.body.requestId,
     "x-trace-id": dispatchRequest.body.traceId,
     "x-hoops-upload-trace-id": dispatchRequest.body.uploadTraceId,
-    "x-hoops-inference-attempt-id": dispatchRequest.body.inferenceAttemptId
+    "x-hoops-inference-attempt-id": dispatchRequest.body.inferenceAttemptId,
   };
 }
 
-function analysisDispatchProviders(env: Env): AnalysisDispatchProvider[] {
-  const providers: AnalysisDispatchProvider[] = [];
-  if (env.INFERENCE_BASE_URL && (env.INFERENCE_SHARED_SECRET || env.CONTROL_PLANE_SHARED_SECRET)) {
-    providers.push({
-      name: "inference",
-      baseUrl: env.INFERENCE_BASE_URL,
-      ingressSecret: env.INFERENCE_SHARED_SECRET || env.CONTROL_PLANE_SHARED_SECRET
-    });
-  }
-  if (env.EDITING_BASE_URL && (env.EDITING_SHARED_SECRET || env.INFERENCE_SHARED_SECRET || env.CONTROL_PLANE_SHARED_SECRET)) {
-    providers.push({
-      name: "editing",
-      baseUrl: env.EDITING_BASE_URL,
-      ingressSecret: env.EDITING_SHARED_SECRET || env.INFERENCE_SHARED_SECRET || env.CONTROL_PLANE_SHARED_SECRET
-    });
-  }
-  return providers.filter((provider) => provider.baseUrl.trim().length > 0 && provider.ingressSecret.trim().length > 0);
+function analysisDispatchProviders(
+  env: Env,
+  body: InferenceDispatchRequest,
+): AnalysisDispatchProvider[] {
+  const inferenceProvider: AnalysisDispatchProvider | null =
+    env.INFERENCE_BASE_URL &&
+    (env.INFERENCE_SHARED_SECRET || env.CONTROL_PLANE_SHARED_SECRET)
+      ? {
+          name: "inference" as const,
+          baseUrl: env.INFERENCE_BASE_URL,
+          ingressSecret:
+            env.INFERENCE_SHARED_SECRET || env.CONTROL_PLANE_SHARED_SECRET,
+        }
+      : null;
+  const editingProvider: AnalysisDispatchProvider | null =
+    env.EDITING_BASE_URL &&
+    (env.EDITING_SHARED_SECRET ||
+      env.INFERENCE_SHARED_SECRET ||
+      env.CONTROL_PLANE_SHARED_SECRET)
+      ? {
+          name: "editing" as const,
+          baseUrl: env.EDITING_BASE_URL,
+          ingressSecret:
+            env.EDITING_SHARED_SECRET ||
+            env.INFERENCE_SHARED_SECRET ||
+            env.CONTROL_PLANE_SHARED_SECRET,
+        }
+      : null;
+  const providers = isSelectedTeamAnalysis(body)
+    ? [editingProvider].filter(
+        (provider): provider is AnalysisDispatchProvider => provider !== null,
+      )
+    : [inferenceProvider, editingProvider].filter(
+        (provider): provider is AnalysisDispatchProvider => provider !== null,
+      );
+  return providers.filter(
+    (provider) =>
+      provider.baseUrl.trim().length > 0 &&
+      provider.ingressSecret.trim().length > 0,
+  );
+}
+
+function isSelectedTeamAnalysis(body: InferenceDispatchRequest): boolean {
+  return body.teamSelection?.mode === "team";
 }
 
 function shouldTryNextAnalysisProvider(status: number): boolean {
@@ -425,7 +513,7 @@ async function sendDeadLetterRecord(
     modelVersion?: string | null;
     failureReason: string;
     attempts?: number | null;
-  }
+  },
 ): Promise<void> {
   await env.ANALYSIS_DLQ.send(payload);
 }
