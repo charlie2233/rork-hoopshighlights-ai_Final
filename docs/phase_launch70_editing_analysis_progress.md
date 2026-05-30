@@ -617,3 +617,39 @@ xcrun devicectl list devices
 ```
 
 - Result: `charlie的iPhone` detected but still `unavailable`, so installed TestFlight smoke remains blocked.
+
+## Launch72 Label Review Helper Hardening
+
+The manual team/highlight review page was tightened so the launch-grade label pass is less error-prone:
+
+- Added an overall and per-case label completion summary.
+- Replaced free-text expected team/event/outcome fields with constrained selects.
+- Added explicit basketball defensive events and outcomes, including block, steal, forced turnover, defensive stop, and blocked-shot outcome labels.
+- Marked complete clip cards visually once reviewed, team, highlight, event, and outcome are filled.
+- Warns before downloading a case label JSON while clips are still incomplete.
+- Keeps the page as a local review helper only: no upload, analysis, rendering, export, source URL, object key, or presigned URL handling.
+
+Validation:
+
+```bash
+python3 -m py_compile \
+  scripts/build_team_highlight_label_review_page.py \
+  scripts/test_build_team_highlight_label_review_page.py
+python3 -m unittest scripts.test_build_team_highlight_label_review_page
+python3 scripts/build_team_highlight_label_review_page.py \
+  --manifest artifacts/team_highlight_accuracy_launch71_manifest.json \
+  --video-path /Users/hanfei/Downloads/326_1770329282.mp4 \
+  --output artifacts/team_highlight_accuracy_launch71_review.html \
+  --json
+rg -n 'onclick="seekClip\("' artifacts/team_highlight_accuracy_launch71_review.html
+rg -n 'X-Amz-Signature|uploadUrl|sourceObjectKey|sourceUrl|downloadUrl|presignedUrl|resultObjectKey|uploadHeaders' \
+  artifacts/team_highlight_accuracy_launch71_review.html
+```
+
+- `py_compile`: passed.
+- Focused review-page test: 2 tests passed.
+- Review page generation: passed for 3 cases.
+- Generated review page contains 66 clip cards and 1 local video tag.
+- Completion controls are present: label progress, incomplete-download warning, selected-team options, and defensive labels.
+- Leak checks: no unsafe `seekClip` inline quoting and no signed URLs/object keys/source/upload URL fields found in the generated HTML.
+- Browser plugin note: safe-desktop Browser startup required `SAFE_MCP_ACTION_PIN`, so visual browser automation was not available in this session; verification used generated HTML checks instead.

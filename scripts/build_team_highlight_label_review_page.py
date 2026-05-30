@@ -26,6 +26,41 @@ FORBIDDEN_REVIEW_KEYS = {
     "uploadUrl",
 }
 
+EVENT_TYPE_OPTIONS = [
+    ("", "Choose event"),
+    ("made_shot", "Made shot"),
+    ("missed_shot", "Missed shot"),
+    ("three_pointer", "Three pointer"),
+    ("layup", "Layup / finish"),
+    ("dunk", "Dunk"),
+    ("fast_break", "Fast break"),
+    ("block", "Block"),
+    ("steal", "Steal"),
+    ("forced_turnover", "Forced turnover"),
+    ("defensive_stop", "Defensive stop"),
+    ("rebound", "Rebound"),
+    ("assist", "Assist"),
+    ("boring", "Boring / not highlight"),
+    ("bad_window", "Bad timing window"),
+    ("not_basketball", "Not basketball"),
+    ("unclear", "Unclear"),
+]
+
+OUTCOME_OPTIONS = [
+    ("", "Choose outcome"),
+    ("made", "Made"),
+    ("missed", "Missed"),
+    ("blocked", "Blocked"),
+    ("steal", "Steal"),
+    ("forced_turnover", "Forced turnover"),
+    ("defensive_stop", "Defensive stop"),
+    ("not_shot", "Not a shot"),
+    ("not_highlight", "Not a highlight"),
+    ("bad_window", "Bad window"),
+    ("not_basketball", "Not basketball"),
+    ("unclear", "Unclear"),
+]
+
 
 def main() -> int:
     args = parse_args()
@@ -213,6 +248,7 @@ def render_review_page(payload: dict[str, Any], *, title: str) -> str:
         "<body>",
         f"<h1>{escape(title)}</h1>",
         '<p class="lede">Review the original source video, jump to each cloud-selected clip window, and fill the labels needed for the 85% team-highlight gate.</p>',
+        render_progress_summary(payload),
         render_video_sections(payload),
         render_case_sections(payload),
         f'<script id="review-data" type="application/json">{data_json}</script>',
@@ -223,6 +259,27 @@ def render_review_page(payload: dict[str, Any], *, title: str) -> str:
         "</html>",
     ]
     return "\n".join(body) + "\n"
+
+
+def render_progress_summary(payload: dict[str, Any]) -> str:
+    total = 0
+    remaining = 0
+    for case in payload.get("cases", []):
+        if not isinstance(case, dict):
+            continue
+        clips = [clip for clip in case.get("clips", []) if isinstance(clip, dict)]
+        total += len(clips)
+        remaining += sum(1 for clip in clips if clip.get("needsLabel") is not False)
+    reviewed = total - remaining
+    return "\n".join(
+        [
+            '<section class="panel summary-panel">',
+            "<h2>Label Progress</h2>",
+            f'<p id="overall-progress"><strong>{reviewed}</strong> / {total} clips reviewed. {remaining} still need labels.</p>',
+            '<p class="lede">A clip is complete when it is marked reviewed and has expected team, highlight, event, and outcome fields filled.</p>',
+            "</section>",
+        ]
+    )
 
 
 def render_video_sections(payload: dict[str, Any]) -> str:
@@ -254,6 +311,9 @@ def render_case_sections(payload: dict[str, Any]) -> str:
         selected = case.get("selectedTeamId") or "all teams"
         color = case.get("selectedTeamColorLabel") or "any color"
         teams = ", ".join(team_label(team) for team in case.get("detectedTeams", []) if isinstance(team, dict)) or "none"
+        case_total = sum(1 for clip in case.get("clips", []) if isinstance(clip, dict))
+        case_remaining = sum(1 for clip in case.get("clips", []) if isinstance(clip, dict) and clip.get("needsLabel") is not False)
+        case_reviewed = case_total - case_remaining
         sections.append(
             "\n".join(
                 [
@@ -263,6 +323,7 @@ def render_case_sections(payload: dict[str, Any]) -> str:
                     f"<h2>{escape(str(case.get('caseId') or f'case_{case_index + 1}'))}</h2>",
                     f'<p>Mode: <strong>{escape(str(case.get("teamMode") or "all"))}</strong> | Target: <strong>{escape(str(selected))}</strong> | Color: <strong>{escape(str(color))}</strong></p>',
                     f"<p>Detected teams: {escape(teams)}</p>",
+                    f'<p class="label-progress" id="case-progress-{case_index}">{case_reviewed} / {case_total} clips reviewed. {case_remaining} remaining.</p>',
                     f'<p class="path">Labels file: {escape(str(case.get("labelsPath") or ""))}</p>',
                     "</div>",
                     f'<button type="button" onclick="downloadCaseLabels({case_index})">Download filled labels</button>',
@@ -290,9 +351,10 @@ def render_clip_card(case_index: int, case: dict[str, Any], clip: dict[str, Any]
     expected_outcome = string_or_none(expected.get("outcome")) or ""
     is_highlight = expected.get("isHighlight")
     reviewed = "checked" if clip.get("needsLabel") is False else ""
+    complete_class = " complete" if clip.get("needsLabel") is False else ""
     return "\n".join(
         [
-            f'<article class="clip-card" data-case-index="{case_index}" data-clip-index="{clip_index}">',
+            f'<article class="clip-card{complete_class}" data-case-index="{case_index}" data-clip-index="{clip_index}">',
             f"<h3>#{clip_index + 1} {escape(str(label))}</h3>",
             f'<p class="clip-meta">{escape(str(clip.get("predictionClipId") or clip.get("labelId") or ""))} | {start}s to {finish}s</p>',
             f'<p>Predicted team: <strong>{escape(str(predicted.get("teamId") or "unknown"))}</strong> ({escape(format_number(predicted.get("teamConfidence")))}) | Status: {escape(str(predicted.get("teamAttributionStatus") or "unknown"))}</p>',
@@ -304,10 +366,10 @@ def render_clip_card(case_index: int, case: dict[str, Any], clip: dict[str, Any]
             "</div>",
             '<div class="label-grid">',
             f'<label>Reviewed<input class="reviewed" type="checkbox" {reviewed}></label>',
-            f'<label>Expected team<input class="expected-team" type="text" value="{escape(expected_team)}" placeholder="team_black / opponent / unclear"></label>',
+            f'<label>Expected team<select class="expected-team">{team_options(case, expected_team)}</select></label>',
             f'<label>Highlight<select class="expected-highlight">{highlight_options(is_highlight)}</select></label>',
-            f'<label>Event<input class="expected-event" type="text" value="{escape(expected_event)}" placeholder="made_shot / block / steal / boring"></label>',
-            f'<label>Outcome<input class="expected-outcome" type="text" value="{escape(expected_outcome)}" placeholder="made / missed / block / steal / none"></label>',
+            f'<label>Event<select class="expected-event">{select_options(EVENT_TYPE_OPTIONS, expected_event)}</select></label>',
+            f'<label>Outcome<select class="expected-outcome">{select_options(OUTCOME_OPTIONS, expected_outcome)}</select></label>',
             f'<label class="notes">Notes<textarea class="label-notes">{escape(str(clip.get("labelingNotes") or ""))}</textarea></label>',
             "</div>",
             "</article>",
@@ -330,6 +392,44 @@ def highlight_options(value: Any) -> str:
         selected = "false"
     options = [("unknown", "Choose"), ("true", "Yes"), ("false", "No")]
     return "".join(f'<option value="{raw}" {"selected" if raw == selected else ""}>{label}</option>' for raw, label in options)
+
+
+def team_options(case: dict[str, Any], selected_value: str) -> str:
+    options: list[tuple[str, str]] = [("", "Choose team")]
+    seen = {""}
+    selected_team_id = string_or_none(case.get("selectedTeamId"))
+    if selected_team_id and selected_team_id not in seen:
+        label = string_or_none(case.get("selectedTeamColorLabel")) or selected_team_id
+        options.append((selected_team_id, f"{selected_team_id} / selected team / {label}"))
+        seen.add(selected_team_id)
+    for team in case.get("detectedTeams", []):
+        if not isinstance(team, dict):
+            continue
+        team_id = string_or_none(team.get("teamId"))
+        if not team_id or team_id in seen:
+            continue
+        options.append((team_id, team_label(team)))
+        seen.add(team_id)
+    for raw, label in [
+        ("opponent", "Opponent"),
+        ("unclear", "Unclear team"),
+        ("not_applicable", "Not applicable"),
+    ]:
+        if raw not in seen:
+            options.append((raw, label))
+            seen.add(raw)
+    return select_options(options, selected_value)
+
+
+def select_options(options: list[tuple[str, str]], selected_value: str) -> str:
+    values = {raw for raw, _ in options}
+    resolved_options = list(options)
+    if selected_value and selected_value not in values:
+        resolved_options.append((selected_value, f"Existing: {selected_value}"))
+    return "".join(
+        f'<option value="{escape(raw)}" {"selected" if raw == selected_value else ""}>{escape(label)}</option>'
+        for raw, label in resolved_options
+    )
 
 
 def seconds_or_empty(value: Any) -> str:
@@ -381,6 +481,13 @@ h1, h2, h3, p {
 .lede, .clip-meta, .path {
   color: #aeb4c2;
 }
+.summary-panel {
+  border-color: #3a4562;
+}
+.label-progress {
+  color: #f6c95f;
+  font-weight: 800;
+}
 .panel {
   border: 1px solid #2c3140;
   border-radius: 14px;
@@ -411,6 +518,10 @@ video {
   border-radius: 12px;
   background: #1d202d;
   padding: 14px;
+}
+.clip-card.complete {
+  border-color: #1f9d6a;
+  background: #172620;
 }
 .button-row {
   display: flex;
@@ -518,12 +629,45 @@ function updateClip(caseIndex, clipIndex) {
   clip.labelingNotes = card.querySelector(".label-notes").value.trim();
 }
 
+function clipCompleteFromCard(card) {
+  return Boolean(
+    card.querySelector(".reviewed")?.checked &&
+    card.querySelector(".expected-team")?.value &&
+    card.querySelector(".expected-highlight")?.value !== "unknown" &&
+    card.querySelector(".expected-event")?.value &&
+    card.querySelector(".expected-outcome")?.value
+  );
+}
+
 function updateCase(caseIndex) {
   const cards = document.querySelectorAll(`[data-case-index="${caseIndex}"][data-clip-index]`);
   cards.forEach(card => updateClip(caseIndex, Number(card.dataset.clipIndex)));
 }
 
+function updateProgress() {
+  let total = 0;
+  let complete = 0;
+  reviewData.cases.forEach((casePayload, caseIndex) => {
+    const cards = Array.from(document.querySelectorAll(`[data-case-index="${caseIndex}"][data-clip-index]`));
+    const caseComplete = cards.filter(clipCompleteFromCard).length;
+    const caseTotal = cards.length;
+    total += caseTotal;
+    complete += caseComplete;
+    const row = document.getElementById(`case-progress-${caseIndex}`);
+    if (row) row.textContent = `${caseComplete} / ${caseTotal} clips complete. ${caseTotal - caseComplete} remaining.`;
+    cards.forEach(card => card.classList.toggle("complete", clipCompleteFromCard(card)));
+  });
+  const overall = document.getElementById("overall-progress");
+  if (overall) overall.innerHTML = `<strong>${complete}</strong> / ${total} clips complete. ${total - complete} still need labels.`;
+}
+
 function downloadCaseLabels(caseIndex) {
+  updateProgress();
+  const cards = Array.from(document.querySelectorAll(`[data-case-index="${caseIndex}"][data-clip-index]`));
+  const incomplete = cards.filter(card => !clipCompleteFromCard(card)).length;
+  if (incomplete > 0 && !window.confirm(`${incomplete} clip labels are incomplete. Download anyway?`)) {
+    return;
+  }
   updateCase(caseIndex);
   const casePayload = reviewData.cases[caseIndex].labelsPayload;
   const blob = new Blob([JSON.stringify(casePayload, null, 2) + "\n"], { type: "application/json" });
@@ -535,6 +679,10 @@ function downloadCaseLabels(caseIndex) {
   link.remove();
   setTimeout(() => URL.revokeObjectURL(link.href), 2000);
 }
+
+window.addEventListener("input", updateProgress);
+window.addEventListener("change", updateProgress);
+updateProgress();
 """.strip()
 
 
