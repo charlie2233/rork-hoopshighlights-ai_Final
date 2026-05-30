@@ -13,7 +13,12 @@ from fastapi.testclient import TestClient
 
 from app.config import Settings
 from app.main import create_app
-from app.models import CloudAnalysisResult, CloudClip, CloudDiagnostics, MaterializedSource, TeamOption, TeamSelection
+from app.models import CloudAnalysisResult, CloudClip, CloudDiagnostics, ClipTeamAttribution, MaterializedSource, TeamOption, TeamSelection
+from app.pipeline import (
+    _annotate_analysis_team_status,
+    _filter_analysis_clips_for_team_selection,
+    _trim_analysis_clips_for_review,
+)
 from app.team_quick_scan import (
     QuickScanFrame,
     _clip_sample_times,
@@ -63,6 +68,31 @@ def _clip(label: str, start: float, end: float, event_center: float, combined: f
     )
 
 
+def _team_clip(
+    label: str,
+    start: float,
+    team_id: str,
+    color_label: str,
+    confidence: float,
+    *,
+    status: str | None = None,
+) -> CloudClip:
+    return _clip(label, start, start + 4.5, start + 2.1).model_copy(
+        update={
+            "teamAttribution": ClipTeamAttribution(
+                teamId=team_id,
+                label=f"{color_label.title()} jerseys",
+                colorLabel=color_label,
+                confidence=confidence,
+                source="quick_scan",
+                evidenceFrameRefs=[f"{team_id}_{label}_setup", f"{team_id}_{label}_outcome"],
+                evidenceRoleGroups=["setup", "outcome"],
+            ),
+            "teamAttributionStatus": status,
+        }
+    )
+
+
 def _response(payload: dict) -> dict:
     return {"output": [{"content": [{"type": "output_text", "text": json.dumps(payload)}]}]}
 
@@ -108,18 +138,21 @@ def _local_settings(upload_root: Path) -> Settings:
     )
 
 
-def _create_uploaded_job(client: TestClient) -> dict:
+def _create_uploaded_job(client: TestClient, team_selection: dict | None = None) -> dict:
+    request_payload = {
+        "filename": "game.mp4",
+        "contentType": "video/mp4",
+        "fileSizeBytes": 9,
+        "durationSeconds": 30.0,
+        "installId": "install-123456",
+        "appVersion": "1.0",
+        "analysisVersion": "cloud-v1",
+    }
+    if team_selection is not None:
+        request_payload["teamSelection"] = team_selection
     create_response = client.post(
         "/v1/analysis/jobs",
-        json={
-            "filename": "game.mp4",
-            "contentType": "video/mp4",
-            "fileSizeBytes": 9,
-            "durationSeconds": 30.0,
-            "installId": "install-123456",
-            "appVersion": "1.0",
-            "analysisVersion": "cloud-v1",
-        },
+        json=request_payload,
     )
     assert create_response.status_code == 200
     created = create_response.json()
@@ -1260,6 +1293,154 @@ class TeamQuickScanTests(unittest.TestCase):
                 )
 
             self.assertEqual(start_response.status_code, 200)
+
+    def test_create_time_selected_team_survives_scan_and_start_without_resending_selection(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="hoopclips-create-time-team-start-") as temp_dir:
+            settings = _local_settings(Path(temp_dir))
+            app = create_app(settings)
+            client = TestClient(app)
+            created = _create_uploaded_job(
+                client,
+                team_selection={
+                    "mode": "team",
+                    "teamId": "team_dark",
+                    "label": "Dark jerseys",
+                    "colorLabel": "black",
+                    "includeUncertain": True,
+                },
+            )
+            detected = [
+                TeamOption(teamId="team_dark", label="Dark jerseys", colorLabel="black", confidence=0.92, source="quick_scan"),
+                TeamOption(teamId="team_light", label="Light jerseys", colorLabel="white", confidence=0.9, source="quick_scan"),
+            ]
+
+            def fake_run_analysis(job, _settings, _source_path):
+                self.assertIsNotNone(job.team_selection)
+                self.assertEqual(job.team_selection.teamId, "team_dark")
+                return CloudAnalysisResult(
+                    clipCount=0,
+                    clips=[],
+                    diagnostics=CloudDiagnostics(
+                        processingMs=1,
+                        backendModelVersion="cloud-v1+team-scan",
+                        usedVideoIntelligence=False,
+                        usedGeminiRelabeling=False,
+                        candidateSegments=0,
+                        finalSegments=0,
+                    ),
+                    detectedTeams=detected,
+                    teamSelection=job.team_selection,
+                )
+
+            job_payload = None
+            with (
+                patch("app.api.build_team_quick_scan_candidate_clips", return_value=[_clip("Block", 12.0, 16.5, 14.0)]),
+                patch("app.api.apply_team_quick_scan", return_value=([], detected, True)),
+                patch("app.api.run_analysis", side_effect=fake_run_analysis),
+            ):
+                scan_response = client.post(
+                    f"/v1/analysis/jobs/{created['jobId']}/team-scan",
+                    json={"installId": "install-123456"},
+                )
+                start_response = client.post(
+                    f"/v1/analysis/jobs/{created['jobId']}/start",
+                    json={"installId": "install-123456"},
+                )
+
+                self.assertEqual(scan_response.status_code, 200)
+                self.assertEqual(start_response.status_code, 200)
+                for _ in range(20):
+                    poll_response = client.get(f"/v1/analysis/jobs/{created['jobId']}")
+                    self.assertEqual(poll_response.status_code, 200)
+                    job_payload = poll_response.json()
+                    if job_payload["status"] == "succeeded":
+                        break
+                    time.sleep(0.05)
+
+            self.assertIsNotNone(job_payload)
+            assert job_payload is not None
+            self.assertEqual(job_payload["status"], "succeeded")
+            self.assertEqual(job_payload["results"]["teamSelection"]["teamId"], "team_dark")
+
+    def test_create_time_all_teams_starts_without_scan(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="hoopclips-create-time-all-teams-start-") as temp_dir:
+            settings = _local_settings(Path(temp_dir))
+            app = create_app(settings)
+            client = TestClient(app)
+            created = _create_uploaded_job(client, team_selection={"mode": "all"})
+
+            def fake_run_analysis(job, _settings, _source_path):
+                self.assertIsNotNone(job.team_selection)
+                self.assertEqual(job.team_selection.mode, "all")
+                return CloudAnalysisResult(
+                    clipCount=0,
+                    clips=[],
+                    diagnostics=CloudDiagnostics(
+                        processingMs=1,
+                        backendModelVersion="cloud-v1",
+                        usedVideoIntelligence=False,
+                        usedGeminiRelabeling=False,
+                        candidateSegments=0,
+                        finalSegments=0,
+                    ),
+                    detectedTeams=[],
+                    teamSelection=job.team_selection,
+                )
+
+            with patch("app.api.run_analysis", side_effect=fake_run_analysis):
+                start_response = client.post(
+                    f"/v1/analysis/jobs/{created['jobId']}/start",
+                    json={"installId": "install-123456"},
+                )
+
+            self.assertEqual(start_response.status_code, 200)
+
+    def test_selected_team_filter_keeps_defensive_clips_and_excludes_uncertain_when_disabled(self) -> None:
+        selection = TeamSelection(
+            mode="team",
+            teamId="team_dark",
+            label="Dark jerseys",
+            colorLabel="black",
+            includeUncertain=False,
+        )
+        clips = [
+            _team_clip("Block", 10.0, "team_dark", "black", 0.94),
+            _team_clip("Steal", 20.0, "team_dark", "black", 0.93),
+            _team_clip("Made Shot", 30.0, "team_light", "white", 0.94),
+            _team_clip("Possible Steal", 40.0, "team_light", "white", 0.62, status="uncertain"),
+        ]
+
+        filtered = _filter_analysis_clips_for_team_selection(clips, selection)
+        trimmed = _trim_analysis_clips_for_review(filtered, selection, 8)
+        annotated = _annotate_analysis_team_status(trimmed, selection)
+
+        self.assertEqual([clip.label for clip in annotated], ["Block", "Steal"])
+        self.assertEqual([clip.teamAttributionStatus for clip in annotated], ["matched", "matched"])
+
+    def test_selected_team_filter_keeps_uncertain_for_review_but_disables_auto_keep(self) -> None:
+        selection = TeamSelection(
+            mode="team",
+            teamId="team_dark",
+            label="Dark jerseys",
+            colorLabel="black",
+            includeUncertain=True,
+        )
+        clips = [
+            _team_clip("Block", 10.0, "team_dark", "black", 0.94),
+            _team_clip("Possible Steal", 20.0, "team_light", "white", 0.62, status="uncertain"),
+        ]
+
+        filtered = _filter_analysis_clips_for_team_selection(clips, selection)
+        trimmed = _trim_analysis_clips_for_review(filtered, selection, 8)
+        annotated = _annotate_analysis_team_status(trimmed, selection)
+
+        by_label = {clip.label: clip for clip in annotated}
+        self.assertEqual(set(by_label), {"Block", "Possible Steal"})
+        self.assertEqual(by_label["Block"].teamAttributionStatus, "matched")
+        self.assertTrue(by_label["Block"].shouldAutoKeep)
+        self.assertEqual(by_label["Possible Steal"].teamAttributionStatus, "uncertain")
+        self.assertFalse(by_label["Possible Steal"].shouldAutoKeep)
+        self.assertFalse(by_label["Possible Steal"].shouldEnableSlowMotion)
 
     def test_team_scan_endpoint_runs_before_start_and_start_accepts_selection(self) -> None:
         with tempfile.TemporaryDirectory(prefix="hoopclips-team-scan-api-") as temp_dir:
