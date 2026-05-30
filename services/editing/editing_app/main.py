@@ -81,7 +81,7 @@ from app.models import (  # noqa: E402
 )
 from app.pipeline import build_team_quick_scan_candidate_clips, run_analysis  # noqa: E402
 from app.renderers.ffmpeg_renderer import FfmpegRenderer, ffmpeg_diagnostics  # noqa: E402
-from app.team_quick_scan import apply_team_quick_scan  # noqa: E402
+from app.team_quick_scan import apply_team_quick_scan, team_quick_prescan_settings  # noqa: E402
 
 
 def materialize_team_scan_source(
@@ -1236,25 +1236,26 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
                 analysis_settings = get_analysis_settings()
             except ValueError as error:
                 raise EditingServiceError(503, "team_scan_unconfigured", "Team scan is not configured.") from error
+            prescan_settings = team_quick_prescan_settings(analysis_settings)
             source = await run_in_threadpool(
                 materialize_team_scan_source,
                 request.sourceUrl,
                 request.filename,
-                analysis_settings.max_file_size_bytes,
+                prescan_settings.max_file_size_bytes,
                 resolved_settings.upload_root,
             )
             candidate_clips = await run_in_threadpool(
                 build_team_quick_scan_candidate_clips,
                 source.local_path,
                 request.durationSeconds,
-                analysis_settings,
+                prescan_settings,
             )
             _, detected_teams, applied = await run_in_threadpool(
                 apply_team_quick_scan,
                 source.local_path,
                 request.durationSeconds,
                 candidate_clips,
-                analysis_settings,
+                prescan_settings,
             )
             status = "scanned" if applied and detected_teams else "unavailable"
             return ScanCloudAnalysisTeamsResponse(jobId=request.jobId, status=status, detectedTeams=detected_teams)

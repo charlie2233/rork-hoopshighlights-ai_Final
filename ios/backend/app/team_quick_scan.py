@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import base64
 import json
 import re
@@ -27,6 +27,11 @@ TEAM_QUICK_SCAN_COMPACT_FRAMES_PER_CANDIDATE = 3
 TEAM_QUICK_SCAN_RICH_CANDIDATE_CLIPS = 120
 TEAM_QUICK_SCAN_DEFAULT_TOTAL_CLIP_FRAMES = 1200
 TEAM_QUICK_SCAN_MAX_TOTAL_CLIP_FRAMES = 1280
+TEAM_QUICK_SCAN_PRESCAN_MAX_CANDIDATE_CLIPS = 12
+TEAM_QUICK_SCAN_PRESCAN_RICH_CANDIDATE_CLIPS = 8
+TEAM_QUICK_SCAN_PRESCAN_FRAMES_PER_CANDIDATE = 4
+TEAM_QUICK_SCAN_PRESCAN_MAX_TOTAL_CLIP_FRAMES = 56
+TEAM_QUICK_SCAN_PRESCAN_MIN_TIMEOUT_SECONDS = 60.0
 TEAM_QUICK_SCAN_SCORING_OWNERSHIP_ROLES = {"ballhandlersetup", "prerelease", "release"}
 TEAM_QUICK_SCAN_BLOCK_ACTION_ROLES = {"challenge", "balldeflection"}
 TEAM_QUICK_SCAN_POSSESSION_CHANGE_ACTION_ROLES = {
@@ -95,6 +100,33 @@ def apply_team_quick_scan(
         attribution = attributions.get(f"clip_{index}")
         scanned.append(clip.model_copy(update={"teamAttribution": attribution}) if attribution is not None else clip)
     return scanned, teams, bool(teams or attributions)
+
+
+def team_quick_prescan_settings(settings: Settings) -> Settings:
+    """Use a smaller real GPT vision budget for the interactive team picker."""
+    return replace(
+        settings,
+        team_quick_scan_timeout_seconds=max(
+            float(getattr(settings, "team_quick_scan_timeout_seconds", 24.0)),
+            TEAM_QUICK_SCAN_PRESCAN_MIN_TIMEOUT_SECONDS,
+        ),
+        team_quick_scan_max_candidate_clips=min(
+            int(getattr(settings, "team_quick_scan_max_candidate_clips", TEAM_QUICK_SCAN_MAX_CANDIDATE_CLIPS)),
+            TEAM_QUICK_SCAN_PRESCAN_MAX_CANDIDATE_CLIPS,
+        ),
+        team_quick_scan_rich_candidate_clips=min(
+            int(getattr(settings, "team_quick_scan_rich_candidate_clips", TEAM_QUICK_SCAN_RICH_CANDIDATE_CLIPS)),
+            TEAM_QUICK_SCAN_PRESCAN_RICH_CANDIDATE_CLIPS,
+        ),
+        team_quick_scan_clip_frames_per_clip=min(
+            int(getattr(settings, "team_quick_scan_clip_frames_per_clip", TEAM_QUICK_SCAN_MAX_FRAMES_PER_CANDIDATE)),
+            TEAM_QUICK_SCAN_PRESCAN_FRAMES_PER_CANDIDATE,
+        ),
+        team_quick_scan_max_total_clip_frames=min(
+            int(getattr(settings, "team_quick_scan_max_total_clip_frames", TEAM_QUICK_SCAN_DEFAULT_TOTAL_CLIP_FRAMES)),
+            TEAM_QUICK_SCAN_PRESCAN_MAX_TOTAL_CLIP_FRAMES,
+        ),
+    )
 
 
 def _build_openai_payload(

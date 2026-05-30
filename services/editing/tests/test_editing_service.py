@@ -286,6 +286,11 @@ class EditingServiceTests(unittest.TestCase):
         materialize.assert_called_once()
         build_candidates.assert_called_once()
         apply_scan.assert_called_once()
+        prescan_settings = build_candidates.call_args.args[2]
+        self.assertEqual(prescan_settings.team_quick_scan_max_candidate_clips, 12)
+        self.assertEqual(prescan_settings.team_quick_scan_clip_frames_per_clip, 4)
+        self.assertEqual(prescan_settings.team_quick_scan_timeout_seconds, 60.0)
+        self.assertIs(apply_scan.call_args.args[3], prescan_settings)
         self.assertEqual(cleanup_calls, [True])
 
     def test_analyze_endpoint_accepts_worker_dispatch_and_posts_callback(self) -> None:

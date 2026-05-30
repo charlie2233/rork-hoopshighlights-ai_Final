@@ -25,6 +25,7 @@ from app.team_quick_scan import (
     _extract_quick_scan_frames,
     _max_quick_scan_total_clip_frames,
     apply_team_quick_scan,
+    team_quick_prescan_settings,
 )
 
 
@@ -175,6 +176,28 @@ def _poll_analysis_job_until_terminal(client: TestClient, job_id: str, *, attemp
 
 
 class TeamQuickScanTests(unittest.TestCase):
+    def test_prescan_settings_keep_interactive_team_scan_bounded(self) -> None:
+        settings = _local_settings(Path("/tmp/hoopclips-prescan")).__dict__.copy()
+        full_settings = Settings(
+            **{
+                **settings,
+                "team_quick_scan_timeout_seconds": 24.0,
+                "team_quick_scan_max_candidate_clips": 160,
+                "team_quick_scan_rich_candidate_clips": 120,
+                "team_quick_scan_clip_frames_per_clip": 8,
+                "team_quick_scan_max_total_clip_frames": 1200,
+            }
+        )
+
+        prescan = team_quick_prescan_settings(full_settings)
+
+        self.assertEqual(prescan.team_quick_scan_max_candidate_clips, 12)
+        self.assertEqual(prescan.team_quick_scan_rich_candidate_clips, 8)
+        self.assertEqual(prescan.team_quick_scan_clip_frames_per_clip, 4)
+        self.assertEqual(prescan.team_quick_scan_max_total_clip_frames, 56)
+        self.assertEqual(prescan.team_quick_scan_timeout_seconds, 60.0)
+        self.assertEqual(full_settings.team_quick_scan_max_candidate_clips, 160)
+
     def test_disabled_scan_falls_back_without_calling_gpt(self) -> None:
         clips = [_clip("Three Pointer", 8.0, 12.5, 10.2)]
 

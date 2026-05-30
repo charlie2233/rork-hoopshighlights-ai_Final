@@ -59,7 +59,7 @@ from .rendering import (
 from .storage import GCSStorageProvider, LocalStorageProvider, StorageProvider
 from .task_dispatcher import CloudTasksDispatcher, InlineTaskDispatcher, TaskDispatcher
 from .team_identity import team_identity_matches
-from .team_quick_scan import apply_team_quick_scan
+from .team_quick_scan import apply_team_quick_scan, team_quick_prescan_settings
 
 
 async def materialize_remote_source(
@@ -529,18 +529,19 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
             await runtime.job_store.update_job(job_id, stage="Scanning teams", progress=max(job.progress, 0.18))
             job = await _require_job(job_id)
             source = await runtime.storage.materialize_source(job)
+            prescan_settings = team_quick_prescan_settings(resolved_settings)
             candidate_clips = await run_in_threadpool(
                 build_team_quick_scan_candidate_clips,
                 source.local_path,
                 job.duration_seconds,
-                resolved_settings,
+                prescan_settings,
             )
             _, detected_teams, applied = await run_in_threadpool(
                 apply_team_quick_scan,
                 source.local_path,
                 job.duration_seconds,
                 candidate_clips,
-                resolved_settings,
+                prescan_settings,
             )
             status = "scanned" if applied and detected_teams else "unavailable"
             await runtime.job_store.update_job(
@@ -576,18 +577,19 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
                 resolved_settings.max_file_size_bytes,
                 resolved_settings.upload_root,
             )
+            prescan_settings = team_quick_prescan_settings(resolved_settings)
             candidate_clips = await run_in_threadpool(
                 build_team_quick_scan_candidate_clips,
                 source.local_path,
                 request.durationSeconds,
-                resolved_settings,
+                prescan_settings,
             )
             _, detected_teams, applied = await run_in_threadpool(
                 apply_team_quick_scan,
                 source.local_path,
                 request.durationSeconds,
                 candidate_clips,
-                resolved_settings,
+                prescan_settings,
             )
             status = "scanned" if applied and detected_teams else "unavailable"
             return ScanCloudAnalysisTeamsResponse(jobId=request.jobId, status=status, detectedTeams=detected_teams)

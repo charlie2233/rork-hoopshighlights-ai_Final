@@ -257,3 +257,69 @@ Status:
 
 - Not deployed yet.
 - Next launch proof should deploy this backend change, rerun the three accuracy collection cases, and then generate a real `--team-accuracy-report` from human labels.
+
+## Candidate Recall Deploy And Prescan Finding
+
+The candidate-recall and all-teams routing patch was deployed through the existing GitHub workflow because local Wrangler was missing `CLOUDFLARE_API_TOKEN`:
+
+```bash
+gh workflow run "Cloud Edit Deploy Preflight" \
+  --repo charlie2233/rork-hoopshighlights-ai_Final \
+  --ref codex/phase-launch70-editing-analysis-progress \
+  -f operation=deploy
+```
+
+- GitHub Actions run: `26696508062`
+- Result: passed.
+- Worker typecheck, routing tests, Worker dry run, editing backend tests, launch script tests, deploy credential checks, direct editing version check, staging Worker deploy, and Worker editing version check all passed.
+- Deployed commit: `9b27207f78b3304d554c3480b0113437fe9cef07`.
+
+Version probe after deploy:
+
+```bash
+python3 scripts/staging_version_probe.py --expected-git-sha "$(git rev-parse HEAD)" --json
+```
+
+- Direct editing `/version`: passed for `9b27207f78b3304d554c3480b0113437fe9cef07`.
+- Worker `/v1/editing/version`: passed for `9b27207f78b3304d554c3480b0113437fe9cef07`.
+
+The first post-deploy real black-team collection did not pass the pre-analysis team picker:
+
+- Case: `launch71_downloads_326_team_black`
+- Job ID: `a5e1e20628844eaf8cbdf3eeecf9c746`
+- Team scan response: `status=unavailable`, `detectedTeams=[]`
+- Editing service request proof: `POST /v1/team-scan` returned `200` at `2026-05-30T22:24:23Z`.
+
+Diagnosis:
+
+- The candidate recall patch increased the real team-scan candidate context available to GPT.
+- The interactive team picker was still using the full quick-scan budget and a 24 second OpenAI timeout.
+- The request returned a clean `unavailable` result rather than a team list, so launch proof cannot claim selected-team readiness from that run.
+
+Follow-up patch:
+
+- Full cloud analysis keeps the richer candidate pool.
+- The pre-analysis team picker now uses a bounded real GPT vision prescan budget:
+  - 12 candidate clips
+  - 4 frames per candidate
+  - 8 rich candidates
+  - 56 max candidate frames
+  - 60 second minimum OpenAI timeout
+- Both local API team-scan endpoints and the editing service `/v1/team-scan` use the same prescan settings.
+- The full analysis path can still use the normal richer settings for final team attribution and highlight filtering.
+
+Local validation for the prescan patch:
+
+```bash
+PYTHONPATH=ios/backend /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest ios.backend.tests.test_team_quick_scan
+PYTHONPATH=ios/backend:services/editing /tmp/hoopclips-editing-test-venv/bin/python -m unittest services.editing.tests.test_editing_service
+/Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m py_compile ios/backend/app/config.py ios/backend/app/api.py ios/backend/app/team_quick_scan.py services/editing/editing_app/main.py
+git diff --check
+PYTHONPATH=ios/backend /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python -m unittest discover ios/backend/tests
+```
+
+- Team quick-scan suite: 39 tests passed.
+- Editing service suite: 56 tests passed.
+- `py_compile`: passed.
+- `git diff --check`: passed.
+- Backend unittest discovery: 207 tests passed.
