@@ -1542,7 +1542,31 @@ struct AIEditView: View {
         serviceVersion?.featureFlags?.allowsRevisions ?? true
     }
 
+    private var aiEditTemplatePacksAvailable: Bool {
+        serviceVersion?.featureFlags?.allowsTemplatePacks ?? true
+    }
+
+    private var gptEditingReadinessMessage: String? {
+        guard let flags = serviceVersion?.featureFlags else { return nil }
+        if !flags.allowsGptClipEditing {
+            return "GPT-led clip selection is disabled by the cloud backend."
+        }
+        if !flags.allowsGptPlanEditing {
+            return "GPT edit planning is disabled by the cloud backend."
+        }
+        if !flags.allowsGptRevisionEditing {
+            return "GPT revision planning is disabled by the cloud backend."
+        }
+        return nil
+    }
+
     private var cloudEditActionBlockedMessage: String? {
+        if let cloudEditVersionBlockMessage {
+            return cloudEditVersionBlockMessage
+        }
+        if let launchReadinessFlagMessage {
+            return launchReadinessFlagMessage
+        }
         if !aiEditPlanningAvailable {
             return CloudEditError.friendlyBackendMessage(
                 code: "ai_edit_disabled",
@@ -1554,6 +1578,31 @@ struct AIEditView: View {
                 code: "ai_edit_live_render_disabled",
                 fallback: "Cloud rendering is temporarily paused."
             )
+        }
+        if !aiEditTemplatePacksAvailable {
+            return CloudEditError.friendlyBackendMessage(
+                code: "ai_edit_template_pack_disabled",
+                fallback: "Cloud template packs are temporarily paused."
+            )
+        }
+        if let gptEditingReadinessMessage {
+            return gptEditingReadinessMessage
+        }
+        return nil
+    }
+
+    private var launchReadinessFlagMessage: String? {
+        guard let flags = serviceVersion?.featureFlags, !flags.hasRequiredLaunchReadinessFlags else { return nil }
+        return "Cloud editing flags are missing; deploy the current backend before TestFlight smoke."
+    }
+
+    private var cloudEditVersionBlockMessage: String? {
+        guard AppConstants.cloudEditEnabled else { return nil }
+        if let serviceStatusErrorMessage {
+            return "Cloud editing version check failed: \(serviceStatusErrorMessage)"
+        }
+        if serviceVersion == nil {
+            return "Checking cloud editing version before render."
         }
         return nil
     }
@@ -1602,11 +1651,23 @@ struct AIEditView: View {
     }
 
     private var primaryActionTitle: String {
+        if cloudEditVersionBlockMessage != nil {
+            return "Checking Cloud Status"
+        }
+        if launchReadinessFlagMessage != nil {
+            return "Update Cloud Backend"
+        }
         if !aiEditPlanningAvailable {
             return "AI Edit Paused"
         }
         if !aiEditLiveRenderingAvailable {
             return "Cloud Rendering Paused"
+        }
+        if !aiEditTemplatePacksAvailable {
+            return "Templates Paused"
+        }
+        if gptEditingReadinessMessage != nil {
+            return "GPT Editing Paused"
         }
         if revisionResponse != nil, downloadResponse == nil {
             return "Render Revision"
@@ -1776,7 +1837,7 @@ struct AIEditView: View {
     }
 
     @MainActor
-    private func refreshCloudEditVersion(showError: Bool = false) async {
+    private func refreshCloudEditVersion() async {
         guard AppConstants.cloudEditEnabled else {
             serviceVersion = nil
             serviceStatusErrorMessage = nil
@@ -1788,11 +1849,10 @@ struct AIEditView: View {
             serviceStatusErrorMessage = nil
         } catch CloudEditError.notConfigured {
             serviceVersion = nil
-            serviceStatusErrorMessage = nil
+            serviceStatusErrorMessage = AppConstants.cloudEditEnabled ? CloudEditError.notConfigured.errorDescription : nil
         } catch {
-            if showError {
-                serviceStatusErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-            }
+            serviceVersion = nil
+            serviceStatusErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
     }
 
