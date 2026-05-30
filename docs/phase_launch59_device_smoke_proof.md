@@ -75,6 +75,36 @@ Result:
 - Device process list showed the app running from the installed `HoopsClips.app` bundle.
 - Device app list showed `Hoopclips`, bundle `atrak.charlie.hoopsclips`, version `1.0.0`, build `5`.
 
+## Internal Staging Archive
+
+Created a local internal-staging iOS archive without dispatching another GitHub Actions run:
+
+```bash
+xcodebuild archive \
+  -project ios/HoopsClips.xcodeproj \
+  -scheme HoopsClips \
+  -configuration Release \
+  -destination 'generic/platform=iOS' \
+  -archivePath ios/build/HoopsClips-Phase59-InternalStaging.xcarchive \
+  -derivedDataPath /tmp/hoopclips-phase59-archive-derived \
+  -allowProvisioningUpdates \
+  -skipPackagePluginValidation \
+  -xcconfig ios/HoopsClips/HoopsClips/Config/InternalStaging.xcconfig \
+  HOOPS_DEVELOPMENT_TEAM=<configured-team-id>
+```
+
+Result:
+
+- `** ARCHIVE SUCCEEDED **`
+- Archive path: `ios/build/HoopsClips-Phase59-InternalStaging.xcarchive`
+- Bundle ID: `atrak.charlie.hoopsclips`
+- Version: `1.0.0`
+- Build: `5`
+- `HOOPSAppEnvironment`: `internal_staging`
+- `HOOPSCloudLaunchMode`: `internal_only`
+
+This archive is a local signed internal-staging artifact, not a TestFlight-uploaded IPA.
+
 ## UI Smoke
 
 Attempted the targeted physical-device UI smoke for the pre-analysis team picker:
@@ -134,23 +164,22 @@ Commands:
 
 ```bash
 python3 -m unittest scripts.test_submission_readiness_preflight -v
-python3 scripts/submission_readiness_preflight.py
+python3 scripts/submission_readiness_preflight.py --archive-path ios/build/HoopsClips-Phase59-InternalStaging.xcarchive
 ```
 
 Results:
 
 - Submission preflight unit tests passed: 35 tests.
-- Live submission readiness preflight after the script change: `29 pass`, `0 warn`, `5 fail` while the worktree was dirty.
+- Live submission readiness preflight with the local archive supplied: `31 pass`, `0 warn`, `3 fail`.
 - The preflight now passes the docs-only stale checks for:
   - direct editing git SHA
   - main-branch `Cloud Edit Deploy Preflight`
   - main-branch `iOS Internal TestFlight Upload`
+- The preflight now finds one local upload artifact candidate from the internal-staging archive.
 
 Remaining preflight blockers:
 
-- Tracked files modified in this branch until this work is committed.
 - Missing launch-grade labeled footage report proving the selected-team/highlight quality target.
-- No `.xcarchive` or `.ipa` upload artifact under expected local output paths.
 - Secret-gated manual deploy preflight is stale relative to current main.
 - Installed TestFlight post-install smoke remains unproven.
 
