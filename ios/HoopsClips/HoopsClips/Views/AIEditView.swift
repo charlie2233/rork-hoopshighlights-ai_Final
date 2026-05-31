@@ -543,7 +543,7 @@ struct AIEditView: View {
                     .foregroundStyle(AppTheme.warningYellow)
             }
 
-            HStack(spacing: 8) {
+            LazyVGrid(columns: formatGridColumns, alignment: .leading, spacing: 8) {
                 ForEach(displayedAspectRatios, id: \.rawValue) { aspectRatio in
                     Button {
                         selectedAspectRatio = aspectRatio
@@ -556,10 +556,12 @@ struct AIEditView: View {
                             Text(aspectRatio.subtitle)
                                 .font(.caption2)
                                 .lineLimit(2)
+                                .minimumScaleFactor(0.84)
                                 .multilineTextAlignment(.center)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
                         .foregroundStyle(selectedAspectRatio == aspectRatio ? .white : AppTheme.subtleText)
-                        .frame(maxWidth: .infinity)
+                        .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 78 : 64)
                         .padding(.vertical, 10)
                         .background(selectedAspectRatio == aspectRatio ? AppTheme.accentPurple : AppTheme.cardBg, in: .rect(cornerRadius: 12))
                     }
@@ -673,6 +675,12 @@ struct AIEditView: View {
     private var durationGridColumns: [GridItem] {
         [
             GridItem(.adaptive(minimum: dynamicTypeSize.isAccessibilitySize ? 92 : 72, maximum: 124), spacing: 8, alignment: .top)
+        ]
+    }
+
+    private var formatGridColumns: [GridItem] {
+        [
+            GridItem(.adaptive(minimum: dynamicTypeSize.isAccessibilitySize ? 168 : 112, maximum: 220), spacing: 8, alignment: .top)
         ]
     }
 
@@ -879,7 +887,7 @@ struct AIEditView: View {
                     .background((isExpired ? AppTheme.dangerRed : lockerStatusColor(for: render.status)).opacity(0.72), in: .capsule)
             }
 
-            HStack(spacing: 8) {
+            LazyVGrid(columns: lockerActionGridColumns, alignment: .leading, spacing: 8) {
                 if render.status == .rendered {
                     Button {
                         Task { await saveLockerRenderToPhotos(render) }
@@ -889,7 +897,11 @@ struct AIEditView: View {
                             systemImage: isExpired ? "exclamationmark.triangle.fill" : "photo.badge.arrow.down.fill"
                         )
                             .font(.caption.bold())
-                            .frame(maxWidth: .infinity)
+                            .multilineTextAlignment(.center)
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.82)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 52 : 42)
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(AppTheme.successGreen)
@@ -904,7 +916,11 @@ struct AIEditView: View {
                             systemImage: isExpired ? "exclamationmark.triangle.fill" : "square.and.arrow.up.fill"
                         )
                             .font(.caption.bold())
-                            .frame(maxWidth: .infinity)
+                            .multilineTextAlignment(.center)
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.82)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 52 : 42)
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(AppTheme.accentPurple)
@@ -917,7 +933,11 @@ struct AIEditView: View {
                 } label: {
                     Label(isBusy && isWorking ? "Rendering" : "Re-render", systemImage: "arrow.triangle.2.circlepath")
                         .font(.caption.bold())
-                        .frame(maxWidth: .infinity)
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.82)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 52 : 42)
                 }
                 .buttonStyle(.bordered)
                 .tint(AppTheme.warningYellow)
@@ -931,6 +951,12 @@ struct AIEditView: View {
             RoundedRectangle(cornerRadius: 12)
                 .stroke(AppTheme.softBorder, lineWidth: 1)
         }
+    }
+
+    private var lockerActionGridColumns: [GridItem] {
+        [
+            GridItem(.adaptive(minimum: dynamicTypeSize.isAccessibilitySize ? 156 : 104, maximum: 220), spacing: 8, alignment: .top)
+        ]
     }
 
     private func aiWorkReceiptCard(_ receipt: CloudEditWorkReceipt) -> some View {
