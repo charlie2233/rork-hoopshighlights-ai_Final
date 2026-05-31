@@ -875,3 +875,41 @@ Build iOS Apps plugin: test_sim HoopsClips Debug iPhone 17 Pro -only-testing:Hoo
 - `ios/backend/tests` discovery: 207 passed.
 - Backend config preflight: 81 passed, 12 warned, 0 failed.
 - Targeted `CloudEditServiceTests`: 11 passed through the Build iOS Apps plugin.
+
+## Launch77 GPT Manual-Label Draft Helper
+
+The Launch71 accuracy manifest still has `0 / 66` clips complete, so the 85% selected-team/highlight gate remains unproven. To reduce review time without weakening the gate, this pass added a GPT-assisted draft-label helper:
+
+- `scripts/draft_team_highlight_manual_labels_with_gpt.py`
+- `scripts/test_draft_team_highlight_manual_labels_with_gpt.py`
+- Evidence doc: `docs/phase_launch77_gpt_manual_label_draft_helper.md`
+
+The helper samples keyframes from existing candidate clip windows only, asks a vision-capable OpenAI Responses model for strict JSON draft labels, and writes a review-page-compatible label bundle. It intentionally keeps `needsLabel=true` and `humanReviewRequired=true`, so GPT cannot create launch evidence without human approval.
+
+Validation:
+
+```bash
+python3 -m py_compile scripts/draft_team_highlight_manual_labels_with_gpt.py scripts/test_draft_team_highlight_manual_labels_with_gpt.py
+python3 -m unittest scripts.test_draft_team_highlight_manual_labels_with_gpt -v
+python3 scripts/draft_team_highlight_manual_labels_with_gpt.py \
+  --manifest artifacts/team_highlight_accuracy_launch71_manifest.json \
+  --video-path /Users/hanfei/Downloads/326_1770329282.mp4 \
+  --mock-response /tmp/hoopclips_label_draft_mock_response.json \
+  --context-output /tmp/hoopclips_label_draft_context_redacted.json \
+  --output /tmp/hoopclips_label_draft_bundle.json \
+  --json
+python3 scripts/apply_team_highlight_manual_labels.py \
+  --manifest artifacts/team_highlight_accuracy_launch71_manifest.json \
+  --bundle /tmp/hoopclips_label_draft_bundle.json \
+  --allow-incomplete \
+  --json
+rg -n 'X-Amz-Signature|uploadUrl|sourceObjectKey|sourceUrl|downloadUrl|presignedUrl|resultObjectKey|uploadHeaders|/Users/hanfei|file://|AuthKey|OPENAI|sk-' \
+  /tmp/hoopclips_label_draft_context_redacted.json \
+  /tmp/hoopclips_label_draft_bundle.json
+```
+
+- Python compile: passed.
+- Focused draft-helper tests: 4 passed.
+- Real Launch71 manifest + local video path with mock structured response: produced a 3-case, 66-clip draft bundle.
+- Existing apply helper accepted the draft bundle only with `--allow-incomplete`; all 66 rows remained incomplete until human review marks them complete.
+- Leak scan found no signed URLs, object keys, local file paths, API-key markers, or full presigned URLs in the redacted GPT context or draft bundle.
