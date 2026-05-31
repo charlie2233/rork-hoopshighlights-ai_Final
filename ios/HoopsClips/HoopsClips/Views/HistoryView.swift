@@ -11,6 +11,7 @@ struct HistoryView: View {
     @State private var renamingProjectID: UUID?
     @State private var renameDraft = ""
     @FocusState private var focusedRenameProjectID: UUID?
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         NavigationStack {
@@ -136,7 +137,7 @@ struct HistoryView: View {
                 VStack(spacing: 8) {
                     historyRow(for: project)
 
-                    HStack(spacing: 8) {
+                    LazyVGrid(columns: historyActionGridColumns, alignment: .leading, spacing: 8) {
                         Button {
                             selectedProject = project
                         } label: {
@@ -174,7 +175,7 @@ struct HistoryView: View {
     }
 
     private func historyRow(for project: PersistedProjectRecord) -> some View {
-        HStack(spacing: 12) {
+        HStack(alignment: .top, spacing: 12) {
             Group {
                 if let thumbnail = viewModel.projectThumbnailImage(for: project) {
                     Image(uiImage: thumbnail)
@@ -219,10 +220,12 @@ struct HistoryView: View {
                                 Text(project.displayTitle)
                                     .lineLimit(2)
                                     .minimumScaleFactor(0.86)
+                                    .fixedSize(horizontal: false, vertical: true)
 
                                 Image(systemName: "pencil")
                                     .font(.caption2.weight(.bold))
                                     .foregroundStyle(AppTheme.subtleText)
+                                    .accessibilityHidden(true)
                             }
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(.white)
@@ -239,38 +242,35 @@ struct HistoryView: View {
                 Text("Updated \(project.updatedAt.formatted(date: .abbreviated, time: .shortened))")
                     .font(.caption)
                     .foregroundStyle(.white.opacity(0.74))
-                    .lineLimit(1)
+                    .fixedSize(horizontal: false, vertical: true)
 
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
+                LazyVGrid(columns: historyBadgeGridColumns, alignment: .leading, spacing: 8) {
+                    historyBadge(
+                        icon: "film.stack.fill",
+                        text: "\(project.keptClipCount)/\(project.totalClipCount)"
+                    )
+
+                    if project.hasLatestExport {
                         historyBadge(
-                            icon: "film.stack.fill",
-                            text: "\(project.keptClipCount)/\(project.totalClipCount)"
+                            icon: "square.and.arrow.up.fill",
+                            text: "Export"
                         )
+                    }
 
-                        if project.hasLatestExport {
-                            historyBadge(
-                                icon: "square.and.arrow.up.fill",
-                                text: "Export"
-                            )
-                        }
+                    if let analysisMode = project.analysisMode {
+                        historyBadge(
+                            icon: userFacingAnalysisModeIcon(analysisMode),
+                            text: userFacingAnalysisModeLabel(analysisMode)
+                        )
+                    }
 
-                        if let analysisMode = project.analysisMode {
-                            historyBadge(
-                                icon: userFacingAnalysisModeIcon(analysisMode),
-                                text: userFacingAnalysisModeLabel(analysisMode)
-                            )
-                        }
-
-                        if let teamTarget = projectTeamTargetShortLabel(project) {
-                            historyBadge(
-                                icon: project.highlightTeamSelection?.mode == .team ? "person.2.fill" : "person.3.fill",
-                                text: teamTarget
-                            )
-                        }
+                    if let teamTarget = projectTeamTargetShortLabel(project) {
+                        historyBadge(
+                            icon: project.highlightTeamSelection?.mode == .team ? "person.2.fill" : "person.3.fill",
+                            text: teamTarget
+                        )
                     }
                 }
-                .contentMargins(.horizontal, 0)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -279,7 +279,21 @@ struct HistoryView: View {
         .overlay(
             RoundedRectangle(cornerRadius: 14)
                 .stroke(AppTheme.softBorder, lineWidth: 1)
-        )
+            )
+    }
+
+    private var historyActionGridColumns: [GridItem] {
+        let minimumWidth: CGFloat = dynamicTypeSize.isAccessibilitySize ? 150 : 118
+        return [
+            GridItem(.adaptive(minimum: minimumWidth, maximum: 260), spacing: 8, alignment: .top)
+        ]
+    }
+
+    private var historyBadgeGridColumns: [GridItem] {
+        let minimumWidth: CGFloat = dynamicTypeSize.isAccessibilitySize ? 128 : 92
+        return [
+            GridItem(.adaptive(minimum: minimumWidth, maximum: 220), spacing: 8, alignment: .top)
+        ]
     }
 
     private func historyBadge(icon: String, text: String) -> some View {
@@ -288,18 +302,26 @@ struct HistoryView: View {
                 .font(.caption2.weight(.semibold))
             Text(text)
                 .font(.caption2.weight(.medium))
+                .lineLimit(2)
+                .minimumScaleFactor(0.86)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .foregroundStyle(.white)
+        .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 38 : 28, alignment: .center)
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
-        .background(AppTheme.cardBg, in: Capsule())
+        .background(AppTheme.cardBg, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     private func historyActionLabel(title: String, icon: String, tint: Color) -> some View {
         Label(title, systemImage: icon)
             .font(.caption.bold())
             .foregroundStyle(tint)
-            .frame(maxWidth: .infinity)
+            .multilineTextAlignment(.center)
+            .lineLimit(2)
+            .minimumScaleFactor(0.88)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 48 : 36)
             .padding(.vertical, 10)
             .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
             .overlay(
@@ -344,6 +366,7 @@ private struct HistoryProjectDetailView: View {
     let onDeleteProject: () -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var previewPlayer: AVPlayer?
     @State private var previewTitle: String?
     @State private var showingDeleteConfirmation = false
@@ -417,7 +440,7 @@ private struct HistoryProjectDetailView: View {
                     .stroke(AppTheme.softBorder, lineWidth: 1)
             )
 
-            HStack(spacing: 10) {
+            LazyVGrid(columns: detailMetricGridColumns, alignment: .leading, spacing: 10) {
                 RorkMetricChip(
                     icon: "film.stack.fill",
                     value: "\(project.keptClipCount)",
@@ -592,14 +615,17 @@ private struct HistoryProjectDetailView: View {
             } else {
                 ForEach(project.events.reversed()) { event in
                     VStack(alignment: .leading, spacing: 4) {
-                        HStack {
+                        HStack(alignment: .top, spacing: 8) {
                             Text(event.kind.label)
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(.white)
+                                .fixedSize(horizontal: false, vertical: true)
                             Spacer()
                             Text(event.timestamp.formatted(date: .abbreviated, time: .shortened))
                                 .font(.caption2)
                                 .foregroundStyle(AppTheme.subtleText)
+                                .multilineTextAlignment(.trailing)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
 
                         Text(event.message)
@@ -620,17 +646,42 @@ private struct HistoryProjectDetailView: View {
         .rorkCard(cornerRadius: 16, stroke: AppTheme.softBorder, glowOpacity: 0.05)
     }
 
+    private var detailMetricGridColumns: [GridItem] {
+        let minimumWidth: CGFloat = dynamicTypeSize.isAccessibilitySize ? 150 : 108
+        return [
+            GridItem(.adaptive(minimum: minimumWidth, maximum: 220), spacing: 10, alignment: .top)
+        ]
+    }
+
+    @ViewBuilder
     private func detailLine(label: String, value: String) -> some View {
-        HStack(alignment: .top, spacing: 8) {
-            Text(label)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.white)
-                .frame(width: 72, alignment: .leading)
-            Text(value)
-                .font(.caption)
-                .foregroundStyle(AppTheme.subtleText)
-                .frame(maxWidth: .infinity, alignment: .leading)
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: 3) {
+                detailLineLabel(label)
+                detailLineValue(value)
+            }
+        } else {
+            HStack(alignment: .top, spacing: 8) {
+                detailLineLabel(label)
+                    .frame(width: 72, alignment: .leading)
+                detailLineValue(value)
+            }
         }
+    }
+
+    private func detailLineLabel(_ label: String) -> some View {
+        Text(label)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.white)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func detailLineValue(_ value: String) -> some View {
+        Text(value)
+            .font(.caption)
+            .foregroundStyle(AppTheme.subtleText)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     private func actionLabel(title: String, subtitle: String, icon: String, tint: Color) -> some View {
@@ -645,10 +696,12 @@ private struct HistoryProjectDetailView: View {
                 Text(title)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.white)
+                    .fixedSize(horizontal: false, vertical: true)
                 Text(subtitle)
                     .font(.caption2)
                     .foregroundStyle(AppTheme.subtleText)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             Spacer(minLength: 0)
