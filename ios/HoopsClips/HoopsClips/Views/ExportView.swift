@@ -3,11 +3,6 @@ import AVKit
 import UniformTypeIdentifiers
 
 struct ExportView: View {
-    private enum QuickShareCategory {
-        case editor
-        case social
-    }
-
     @Environment(SubscriptionManager.self) private var subscriptionManager
     @Environment(AuthService.self) private var authService
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -19,14 +14,10 @@ struct ExportView: View {
     @State private var showSystemShareSheet = false
     @State private var showExportPreviewSheet = false
     @State private var musicPreviewManager = MusicPreviewManager()
-    @State private var editorShortcuts = EditorAppSupport.defaultShortcuts
-    @State private var socialShortcuts = SocialAppSupport.defaultShortcuts
     @State private var exportPreviewPlayer: AVPlayer?
     @State private var expandedExportPreviewPlayer: AVPlayer?
     @State private var shareURL: URL?
     @State private var lastAutoPresentedExportURL: URL?
-    @State private var selectedShareTargetHint: String?
-    @State private var selectedShareCategory: QuickShareCategory?
     @State private var shareErrorMessage: String?
     @State private var showFileImporter = false
     @State private var lastExportAnnouncementPercent = -1
@@ -43,13 +34,17 @@ struct ExportView: View {
                         VStack(spacing: 24) {
                             summaryCard
                             aiEditAgentSection
-                            themeSection
-                            musicSection
-                            qualitySection
-                            formatSection
-                            postProcessingSection
-                            quickActionsSection
-                            exportButton
+                            if AppConstants.requiresCloudVideoPipeline {
+                                quickActionsSection
+                            } else {
+                                themeSection
+                                musicSection
+                                qualitySection
+                                formatSection
+                                postProcessingSection
+                                quickActionsSection
+                                exportButton
+                            }
                         }
                         .padding(.horizontal, 16)
                         .padding(.top, 8)
@@ -104,8 +99,6 @@ struct ExportView: View {
                 Text(shareErrorMessage ?? "Try saving to Photos, then share from your camera roll.")
             }
             .onAppear {
-                refreshEditorShortcuts()
-                refreshSocialShortcuts()
                 configureExportPreviewPlayer(for: viewModel.exportService.exportedURL)
             }
             .onChange(of: viewModel.exportService.exportedURL) { _, newValue in
@@ -159,7 +152,7 @@ struct ExportView: View {
             RorkSectionHeader(
                 title: "Highlight Reel",
                 icon: "film.stack.fill",
-                subtitle: "Export only uses clips marked Keep from Review"
+                subtitle: "Kept clips go to AI Edit for cloud rendering"
             )
 
             HStack(spacing: 20) {
@@ -184,36 +177,7 @@ struct ExportView: View {
                 Spacer()
             }
 
-            HStack(spacing: 10) {
-                RorkMetricChip(
-                    icon: "paintbrush.fill",
-                    value: selectionTitle(viewModel.selectedTheme.rawValue, isLocked: isThemeLocked(viewModel.selectedTheme)),
-                    label: "Theme"
-                )
-                RorkMetricChip(
-                    icon: "slider.horizontal.3",
-                    value: viewModel.selectedQuality.rawValue,
-                    label: "Quality",
-                    tint: AppTheme.warningYellow
-                )
-            }
-
-            HStack(spacing: 10) {
-                RorkMetricChip(
-                    icon: viewModel.selectedFormat.icon,
-                    value: viewModel.selectedFormat.rawValue,
-                    label: "Format",
-                    tint: AppTheme.successGreen
-                )
-                RorkMetricChip(
-                    icon: "music.note",
-                    value: selectionTitle(viewModel.selectedMusic == .none ? "No Music" : "Music", isLocked: isMusicLocked(viewModel.selectedMusic)),
-                    label: viewModel.selectedMusic == .none ? "Audio" : viewModel.selectedMusic.rawValue,
-                    tint: AppTheme.neonPurple
-                )
-            }
-
-            if hasLockedSelections {
+            if !AppConstants.requiresCloudVideoPipeline && hasLockedSelections {
                 HStack(spacing: 8) {
                     Image(systemName: "lock.fill")
                         .font(.caption.weight(.semibold))
@@ -730,17 +694,9 @@ struct ExportView: View {
                         HStack(spacing: 10) {
                             Image(systemName: "square.and.arrow.up.fill")
                                 .font(.subheadline.weight(.semibold))
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Open In / Share")
-                                    .font(.subheadline.bold())
-                                Text(exportedURL.lastPathComponent)
-                                    .font(.caption2.monospaced())
-                                    .foregroundStyle(Color.white.opacity(0.72))
-                                    .lineLimit(2)
-                            }
+                            Text("Share")
+                                .font(.subheadline.bold())
                             Spacer()
-                            Image(systemName: "bolt.fill")
-                                .font(.caption.bold())
                         }
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
@@ -756,9 +712,9 @@ struct ExportView: View {
                     .disabled(!exportAvailable)
                     .opacity(exportAvailable ? 1.0 : 0.5)
                     .sensoryFeedback(.impact(weight: .light), trigger: shareTrigger)
-                    .accessibilityLabel("Open In or Share")
+                    .accessibilityLabel("Share")
                     .accessibilityValue(exportAvailable ? exportedURL.lastPathComponent : "Export unavailable")
-                    .accessibilityHint("Opens the system share sheet for editing apps, social apps, AirDrop, and Files.")
+                    .accessibilityHint("Opens the system share sheet.")
 
                     Button {
                         saveTrigger += 1
@@ -785,143 +741,7 @@ struct ExportView: View {
                     .sensoryFeedback(.impact(weight: .light), trigger: saveTrigger)
                     .accessibilityLabel("Save to Photos")
                     .accessibilityValue(exportAvailable ? "Ready" : "Export unavailable")
-                    .accessibilityHint("Saves the latest exported reel to your photo library.")
-                }
-
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "sparkles.rectangle.stack.fill")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(AppTheme.warningYellow)
-                        Text("Edit in another app")
-                            .font(.caption.bold())
-                            .foregroundStyle(.white)
-                        Spacer()
-                    }
-
-                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-                        ForEach(editorShortcuts) { shortcut in
-                            Button {
-                                presentShareSheet(
-                                    for: exportedURL,
-                                    preferredTarget: shortcut.displayName,
-                                    category: .editor
-                                )
-                            } label: {
-                                VStack(alignment: .leading, spacing: 8) {
-                                    HStack(spacing: 6) {
-                                        Image(systemName: shortcut.iconSystemName)
-                                            .font(.caption.weight(.semibold))
-                                        Text(shortcut.displayName)
-                                            .font(.caption.bold())
-                                            .lineLimit(2)
-                                    }
-                                    .foregroundStyle(.white)
-
-                                    Text(shortcut.statusText)
-                                        .font(.caption2.weight(.medium))
-                                        .foregroundStyle(shortcut.isInstalled ? AppTheme.successGreen : AppTheme.subtleText)
-                                        .lineLimit(2)
-                                }
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 10)
-                                .background(
-                                    shortcut.isInstalled
-                                    ? AppTheme.successGreen.opacity(0.12)
-                                    : AppTheme.surfaceBg,
-                                    in: RoundedRectangle(cornerRadius: 12)
-                                )
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .stroke(
-                                            shortcut.isInstalled
-                                            ? AppTheme.successGreen.opacity(0.28)
-                                            : AppTheme.softBorder,
-                                            lineWidth: 1
-                                        )
-                                )
-                            }
-                            .buttonStyle(.plain)
-                            .disabled(!exportAvailable)
-                            .opacity(exportAvailable ? 1.0 : 0.5)
-                            .accessibilityLabel("Edit in \(shortcut.displayName)")
-                            .accessibilityValue(shortcut.statusText)
-                            .accessibilityHint("Opens the share sheet so you can choose this editor or another video app.")
-                        }
-                    }
-
-                    Text(editorShareHelperText)
-                        .font(.caption2)
-                        .foregroundStyle(AppTheme.subtleText)
-                }
-
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "bubble.left.and.bubble.right.fill")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(AppTheme.neonPurple)
-                        Text("Quick post")
-                            .font(.caption.bold())
-                            .foregroundStyle(.white)
-                        Spacer()
-                    }
-
-                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-                        ForEach(socialShortcuts) { shortcut in
-                            Button {
-                                presentShareSheet(
-                                    for: exportedURL,
-                                    preferredTarget: shortcut.displayName,
-                                    category: .social
-                                )
-                            } label: {
-                                VStack(alignment: .leading, spacing: 8) {
-                                    HStack(spacing: 6) {
-                                        Image(systemName: shortcut.iconSystemName)
-                                            .font(.caption.weight(.semibold))
-                                        Text(shortcut.displayName)
-                                            .font(.caption.bold())
-                                            .lineLimit(2)
-                                    }
-                                    .foregroundStyle(.white)
-
-                                    Text(shortcut.statusText)
-                                        .font(.caption2.weight(.medium))
-                                        .foregroundStyle(shortcut.isInstalled ? AppTheme.successGreen : AppTheme.subtleText)
-                                        .lineLimit(2)
-                                }
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 10)
-                                .background(
-                                    shortcut.isInstalled
-                                    ? AppTheme.neonPurple.opacity(0.14)
-                                    : AppTheme.surfaceBg,
-                                    in: RoundedRectangle(cornerRadius: 12)
-                                )
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .stroke(
-                                            shortcut.isInstalled
-                                            ? AppTheme.neonPurple.opacity(0.28)
-                                            : AppTheme.softBorder,
-                                            lineWidth: 1
-                                        )
-                                )
-                            }
-                            .buttonStyle(.plain)
-                            .disabled(!exportAvailable)
-                            .opacity(exportAvailable ? 1.0 : 0.5)
-                            .accessibilityLabel("Share to \(shortcut.displayName)")
-                            .accessibilityValue(shortcut.statusText)
-                            .accessibilityHint("Opens the share sheet so you can choose this social app or another destination.")
-                        }
-                    }
-
-                    Text(socialShareHelperText)
-                        .font(.caption2)
-                        .foregroundStyle(AppTheme.subtleText)
+                        .accessibilityHint("Saves the latest exported reel to your photo library.")
                 }
             }
             .padding(16)
@@ -1046,29 +866,8 @@ struct ExportView: View {
         return "Creates a video from kept clips."
     }
 
-    private var editorShareHelperText: String {
-        if selectedShareCategory == .editor, let selectedShareTargetHint {
-            return "Choose \(selectedShareTargetHint) in the share sheet to continue editing this exported reel."
-        }
-        return "Exports use standard video files, so Adobe apps, CapCut, iMovie, VN, LumaFusion, Splice, and other editors can pick them up from the share sheet."
-    }
-
-    private var socialShareHelperText: String {
-        if selectedShareCategory == .social, let selectedShareTargetHint {
-            return "Choose \(selectedShareTargetHint) in the share sheet to post."
-        }
-        return "Pick your social app in the share sheet to post, or save to Photos first."
-    }
-
     private var shareSheetTitle: String {
-        switch selectedShareCategory {
-        case .editor:
-            return "Edit HoopClips Reel"
-        case .social:
-            return "HoopClips Highlight Reel"
-        case nil:
-            return "HoopClips Highlight Reel"
-        }
+        "HoopClips Highlight Reel"
     }
 
     private func isThemeLocked(_ theme: ExportTheme) -> Bool {
@@ -1098,23 +897,15 @@ struct ExportView: View {
         return "Sets the export music track."
     }
 
-    private func presentShareSheet(
-        for url: URL,
-        preferredTarget: String? = nil,
-        category: QuickShareCategory? = nil
-    ) {
+    private func presentShareSheet(for url: URL) {
         guard isExportFileAvailable(url), !showSystemShareSheet else { return }
         shareURL = url
-        selectedShareTargetHint = preferredTarget
-        selectedShareCategory = category
         shareTrigger += 1
         showSystemShareSheet = true
     }
 
     private func clearShareSelection() {
         shareURL = nil
-        selectedShareTargetHint = nil
-        selectedShareCategory = nil
     }
 
     private func announceExportProgress(_ progress: Double) {
@@ -1128,14 +919,6 @@ struct ExportView: View {
         guard bucket >= 25, bucket <= 100, bucket != lastExportAnnouncementPercent else { return }
         lastExportAnnouncementPercent = bucket
         HoopsAccessibility.announce("Export \(bucket) percent complete.")
-    }
-
-    private func refreshEditorShortcuts() {
-        editorShortcuts = EditorAppSupport.resolvedShortcuts()
-    }
-
-    private func refreshSocialShortcuts() {
-        socialShortcuts = SocialAppSupport.resolvedShortcuts()
     }
 
     private func isExportFileAvailable(_ url: URL) -> Bool {

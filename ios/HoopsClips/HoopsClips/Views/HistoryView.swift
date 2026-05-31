@@ -133,47 +133,26 @@ struct HistoryView: View {
             )
 
             ForEach(projects) { project in
-                let isRenaming = renamingProjectID == project.id
-
-                HStack(spacing: 10) {
+                VStack(spacing: 8) {
                     historyRow(for: project)
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            guard !isRenaming else { return }
+
+                    HStack(spacing: 8) {
+                        Button {
                             selectedProject = project
+                        } label: {
+                            historyActionLabel(title: "Open", icon: "chevron.right", tint: AppTheme.neonPurple)
+                                .accessibilityLabel("Open \(project.displayTitle)")
                         }
+                        .buttonStyle(.plain)
 
-                    Button {
-                        selectedProject = project
-                    } label: {
-                        Image(systemName: "chevron.right")
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(AppTheme.subtleText)
-                            .frame(width: 40, height: 56)
-                            .background(AppTheme.surfaceBg.opacity(0.72), in: RoundedRectangle(cornerRadius: 14))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 14)
-                                    .stroke(AppTheme.softBorder, lineWidth: 1)
-                            )
-                            .accessibilityLabel("Open \(project.displayTitle)")
+                        Button(role: .destructive) {
+                            requestDelete(project)
+                        } label: {
+                            historyActionLabel(title: "Delete", icon: "trash.fill", tint: AppTheme.dangerRed)
+                                .accessibilityLabel("Delete \(project.displayTitle)")
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
-
-                    Button(role: .destructive) {
-                        requestDelete(project)
-                    } label: {
-                        Image(systemName: "trash.fill")
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(AppTheme.dangerRed)
-                            .frame(width: 40, height: 56)
-                            .background(AppTheme.dangerRed.opacity(0.12), in: RoundedRectangle(cornerRadius: 14))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 14)
-                                    .stroke(AppTheme.dangerRed.opacity(0.35), lineWidth: 1)
-                            )
-                            .accessibilityLabel("Delete \(project.displayTitle)")
-                    }
-                    .buttonStyle(.plain)
                 }
                 .contextMenu {
                     Button {
@@ -236,11 +215,19 @@ struct HistoryView: View {
                         Button {
                             beginRenaming(project)
                         } label: {
-                            Text(project.displayTitle)
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(.white)
-                                .lineLimit(1)
-                                .frame(maxWidth: .infinity, alignment: .leading)
+                            HStack(spacing: 6) {
+                                Text(project.displayTitle)
+                                    .lineLimit(2)
+                                    .minimumScaleFactor(0.86)
+
+                                Image(systemName: "pencil")
+                                    .font(.caption2.weight(.bold))
+                                    .foregroundStyle(AppTheme.subtleText)
+                            }
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Rename \(project.displayTitle)")
@@ -250,30 +237,33 @@ struct HistoryView: View {
                 }
 
                 Text("Updated \(project.updatedAt.formatted(date: .abbreviated, time: .shortened))")
-                    .font(.caption2)
-                    .foregroundStyle(AppTheme.subtleText)
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.74))
                     .lineLimit(1)
 
-                HStack(spacing: 8) {
-                    historyBadge(
-                        icon: "film.stack.fill",
-                        text: "\(project.keptClipCount)/\(project.totalClipCount)"
-                    )
-
-                    if project.hasLatestExport {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
                         historyBadge(
-                            icon: "square.and.arrow.up.fill",
-                            text: "Export"
+                            icon: "film.stack.fill",
+                            text: "\(project.keptClipCount)/\(project.totalClipCount)"
                         )
-                    }
 
-                    if let analysisMode = project.analysisMode {
-                        historyBadge(
-                            icon: userFacingAnalysisModeIcon(analysisMode),
-                            text: userFacingAnalysisModeLabel(analysisMode)
-                        )
+                        if project.hasLatestExport {
+                            historyBadge(
+                                icon: "square.and.arrow.up.fill",
+                                text: "Export"
+                            )
+                        }
+
+                        if let analysisMode = project.analysisMode {
+                            historyBadge(
+                                icon: userFacingAnalysisModeIcon(analysisMode),
+                                text: userFacingAnalysisModeLabel(analysisMode)
+                            )
+                        }
                     }
                 }
+                .contentMargins(.horizontal, 0)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -296,6 +286,19 @@ struct HistoryView: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
         .background(AppTheme.cardBg, in: Capsule())
+    }
+
+    private func historyActionLabel(title: String, icon: String, tint: Color) -> some View {
+        Label(title, systemImage: icon)
+            .font(.caption.bold())
+            .foregroundStyle(tint)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 10)
+            .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(tint.opacity(0.26), lineWidth: 1)
+            )
     }
 
     private func beginRenaming(_ project: PersistedProjectRecord) {

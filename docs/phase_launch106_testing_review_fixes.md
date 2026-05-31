@@ -1,0 +1,92 @@
+# Phase Launch106 Testing Review Fixes
+
+## Goal
+
+Resolve tester-reported launch blockers before internal launch. HoopClips stays cloud-first: iOS controls upload, review, AI edit requests, status, preview, save, and share; cloud services own analysis, GPT edit planning, rendering, and storage.
+
+## Tester Blocking Feedback
+
+- Export shows `Cloud editing version check failed: request timed out`.
+- Export has too many choices for normal users.
+- AI Edit should expose a simple side note box for user direction.
+- Share should be a simple share button, not a list of every possible app.
+- History formatting feels crowded.
+- Some labels are hidden or cramped on phones.
+- Too many small explanatory labels make the app feel noisy.
+- Highlight accuracy needs more GPT help; cost is not the constraint for the current testing phase.
+- Keep using real cloud job/render status only. Do not add fake thinking, fake ETA, or artificial waits.
+
+## Current Evidence
+
+- Branch: `codex/phase-launch70-editing-analysis-progress`
+- Latest pushed commit before this pass: `eed1289 Fix HoopClips bundle display name [skip ci]`
+- Existing uncommitted launch prep before this pass: iOS build number 7, TestFlight config checks, History title rename affordance.
+- Editing staging config already uses quality-beta GPT knobs in `services/editing/cloudbuild.yaml`:
+  - `HOOPS_AI_CLIP_GPT_EDITOR_ENABLED=true`
+  - `HOOPS_AI_CLIP_GPT_PLAN_EDIT_ENABLED=true`
+  - `HOOPS_AI_CLIP_GPT_REVISION_ENABLED=true`
+  - `HOOPS_AI_CLIP_GPT_KEYFRAMES_PER_CLIP=8`
+  - `HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_FREE=60`
+  - `HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_PRO=60`
+  - `HOOPS_AI_CLIP_GPT_TIMEOUT_SECONDS=60`
+  - `HOOPS_AI_CLIP_GPT_MAX_OUTPUT_TOKENS=12000`
+  - `HOOPS_GPT_HIGHLIGHT_RERANKER_ENABLED=true`
+
+## Work Log
+
+### Pass 1 - Triage
+
+- Confirmed `AIEditView` blocks the primary render action when `/v1/editing/version` times out.
+- Confirmed Export still shows legacy local-render controls even when this build requires the cloud video pipeline.
+- Confirmed the Export share area lists editor and social app shortcuts; tester wants one simple share action.
+- Confirmed AI Edit already sends a bounded user prompt, but the UI label reads like a technical edit direction instead of a simple side note.
+- Confirmed History title rename exists through tapping the title, but rows are still dense.
+
+### Pass 2 - iOS UX Fixes In Progress
+
+- Added a short post-sign-in transition in `ContentView` only after the sign-in screen was shown. It displays `You're in` / `Opening HoopClips`, then routes to the Player tab. Persisted sessions still open immediately.
+- Changed cloud edit version timeout behavior so a slow `/v1/editing/version` check becomes a warning instead of blocking the real render request. Explicit config/backend flag failures still block.
+- Simplified AI Edit copy, renamed `Edit Direction` to `Side Note`, and kept the prompt bounded/sanitized before it reaches the backend.
+- In cloud-required builds, Export now hides legacy local-render controls and keeps AI Edit as the primary render path.
+- Replaced the exported-app shortcut grids with one simple `Share` button plus `Save`.
+- Started History layout cleanup by moving row actions below the project row so project titles and rename affordance have more room on small phones.
+
+### Pass 3 - Validation
+
+Local validation was kept off GitHub Actions to save minutes:
+
+```bash
+git diff --check
+python3 -m unittest scripts.test_submission_readiness_preflight -v
+bash ios/scripts/verify_internal_staging_config.sh
+xcodebuild build-for-testing \
+  -project ios/HoopsClips.xcodeproj \
+  -scheme HoopsClips \
+  -configuration Debug \
+  -destination 'generic/platform=iOS Simulator' \
+  -derivedDataPath /tmp/hoopclips-launch106-bft \
+  CODE_SIGNING_ALLOWED=NO \
+  -skipPackagePluginValidation
+```
+
+- `git diff --check`: passed.
+- Submission readiness unit tests: 36 passed.
+- Internal staging config verification: passed for app env, cloud launch mode, analysis URL, edit URL, bundle ID, marketing version, build number 7, and Info.plist path.
+- iOS Debug build-for-testing: passed.
+- Existing warnings remain in `CloudAnalysisService.swift` progress callbacks and `VideoExportService.swift` AVFoundation export APIs; this pass did not introduce new build failures.
+
+## Fix Plan
+
+- Make cloud editing version timeout a non-blocking warning; the real create-job/render request remains the source of truth. Explicit configuration and backend flag blocks still block.
+- In cloud-required builds, hide legacy Export theme/music/quality/format/post-processing controls and route users to AI Edit.
+- Rename and simplify the AI Edit side note field.
+- Simplify share UI to one Share button plus Save.
+- Reduce small low-contrast explanatory copy and improve line wrapping.
+- Polish History row density and detail copy.
+
+## Validation To Run
+
+- `git diff --check`
+- iOS Debug build-for-testing with code signing disabled.
+- Existing submission preflight unit tests touched by build 7 changes.
+- Backend tests only if backend code changes.

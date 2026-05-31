@@ -42,6 +42,8 @@ struct AIEditView: View {
     @State private var pendingRevisionCommand: CloudEditRevisionCommand?
     @State private var serviceVersion: CloudEditVersionResponse?
     @State private var serviceStatusErrorMessage: String?
+    @State private var serviceStatusBlocksRendering = false
+    @State private var serviceStatusIsChecking = false
     @State private var renderHistory: [CloudEditRenderStatusResponse] = []
     @State private var previewPlayer: AVPlayer?
     @State private var localShareURL: URL?
@@ -171,22 +173,17 @@ struct AIEditView: View {
                 .foregroundStyle(.white)
                 .accessibilityIdentifier("export.aiEdit.section")
 
-            Text("HoopClips edits in the cloud: it finds your best plays, builds the edit plan, renders the MP4, and stores the result temporarily for preview and sharing.")
+            Text("Pick a style, add a side note, and HoopClips renders the MP4 in the cloud.")
                 .font(.subheadline)
                 .foregroundStyle(AppTheme.subtleText)
 
             HStack(spacing: 8) {
                 aiChip(icon: "film.stack.fill", text: "\(viewModel.keptClips.count) kept clips")
                 aiChip(icon: selectedAspectRatio.icon, text: selectedAspectRatio.rawValue)
-                aiChip(icon: "timer", text: "\(activePolicy.displayName): \(activePolicy.maxRenderSeconds)s max")
+                aiChip(icon: "timer", text: "\(selectedDuration)s")
             }
 
-            Text(policyLimitText)
-                .font(.caption2)
-                .foregroundStyle(AppTheme.subtleText.opacity(0.92))
-                .accessibilityIdentifier("export.aiEdit.policy.limitLabel")
-
-            Text("You can leave the app - HoopClips will keep editing in the cloud. Come back anytime to preview your finished reel.")
+            Text("You can leave the app while the real cloud job runs.")
                 .font(.caption.bold())
                 .foregroundStyle(AppTheme.warningYellow)
                 .fixedSize(horizontal: false, vertical: true)
@@ -215,36 +212,12 @@ struct AIEditView: View {
                         .font(.headline)
                         .foregroundStyle(.white)
                         .accessibilityIdentifier("export.aiEdit.plan.current")
-                    Text(policy.queueTitle)
+                    Text("\(policy.maxDailyRenders) AI edits/day - \(policy.maxOutputResolution) max")
                         .font(.caption.bold())
                         .foregroundStyle(AppTheme.warningYellow)
                         .accessibilityIdentifier("export.aiEdit.queue.label")
-                    Text(policy.queueDetail)
-                        .font(.caption)
-                        .foregroundStyle(AppTheme.subtleText)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityIdentifier("export.aiEdit.queue.message")
                 }
                 Spacer()
-            }
-
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 8)], spacing: 8) {
-                ForEach(policy.planLimitRows, id: \.self) { row in
-                    Label(row, systemImage: "checkmark.circle.fill")
-                        .font(.caption)
-                        .foregroundStyle(AppTheme.subtleText)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(10)
-                        .background(AppTheme.cardBg.opacity(0.62), in: .rect(cornerRadius: 12))
-                }
-            }
-
-            if proUXFlags.cloudLockerEnabled {
-                Label("My AI Edits: rendered videos expire in \(policy.renderRetentionDays) days on \(policy.displayName).", systemImage: "externaldrive.fill")
-                    .font(.caption)
-                    .foregroundStyle(AppTheme.subtleText)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityIdentifier("export.aiEdit.cloudLocker.summary")
             }
         }
         .padding(14)
@@ -361,14 +334,6 @@ struct AIEditView: View {
                             Text(preset.subtitle)
                                 .font(.caption.bold())
                                 .foregroundStyle(AppTheme.warningYellow)
-                            Text(preset.bestFor)
-                                .font(.caption)
-                                .foregroundStyle(AppTheme.subtleText)
-                                .fixedSize(horizontal: false, vertical: true)
-                            Text(preset.styleSummary)
-                                .font(.caption2)
-                                .foregroundStyle(AppTheme.subtleText.opacity(0.92))
-                                .fixedSize(horizontal: false, vertical: true)
                         }
                         Spacer()
                     }
@@ -422,14 +387,6 @@ struct AIEditView: View {
                                 Text(template.subtitle)
                                     .font(.caption.bold())
                                     .foregroundStyle(AppTheme.warningYellow)
-                                Text(template.bestFor)
-                                    .font(.caption)
-                                    .foregroundStyle(AppTheme.subtleText)
-                                    .fixedSize(horizontal: false, vertical: true)
-                                Text(template.styleSummary)
-                                    .font(.caption2)
-                                    .foregroundStyle(AppTheme.subtleText.opacity(0.92))
-                                    .fixedSize(horizontal: false, vertical: true)
                             }
                             Spacer()
                         }
@@ -537,7 +494,7 @@ struct AIEditView: View {
     private var promptCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Label("Edit Direction", systemImage: "text.bubble.fill")
+                Label("Side Note", systemImage: "text.bubble.fill")
                     .font(.headline)
                     .foregroundStyle(.white)
                 Spacer()
@@ -566,7 +523,7 @@ struct AIEditView: View {
                     }
 
                 if userEditPrompt.isEmpty {
-                    Text("Focus on defense, make it more hype, or keep the game story clean.")
+                    Text("Example: more hype, focus on defense, NBA recap, 30s vertical mixtape.")
                         .font(.subheadline)
                         .foregroundStyle(AppTheme.subtleText.opacity(0.68))
                         .padding(.horizontal, 16)
@@ -787,7 +744,7 @@ struct AIEditView: View {
                         Task { await redownloadLockerRender(render) }
                     } label: {
                         Label(
-                            isExpired ? "Expired" : (isBusy && isPreparingShare ? "Preparing Share" : "Download / Share"),
+                            isExpired ? "Expired" : (isBusy && isPreparingShare ? "Preparing Share" : "Share"),
                             systemImage: isExpired ? "exclamationmark.triangle.fill" : "square.and.arrow.up.fill"
                         )
                             .font(.caption.bold())
@@ -1073,7 +1030,7 @@ struct AIEditView: View {
 
             if downloadResponse != nil {
                 Button(action: shareRenderedVideo) {
-                    Label(isPreparingShare ? "Preparing MP4" : "Download / Share / Open In", systemImage: "square.and.arrow.up.fill")
+                    Label(isPreparingShare ? "Preparing MP4" : "Share", systemImage: "square.and.arrow.up.fill")
                         .font(.headline)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
@@ -1614,13 +1571,11 @@ struct AIEditView: View {
 
     private var cloudEditVersionBlockMessage: String? {
         guard AppConstants.cloudEditEnabled else { return nil }
+        guard serviceStatusBlocksRendering else { return nil }
         if let serviceStatusErrorMessage {
-            return "Cloud editing version check failed: \(serviceStatusErrorMessage)"
+            return "Cloud editing config check failed: \(serviceStatusErrorMessage)"
         }
-        if serviceVersion == nil {
-            return "Checking cloud editing version before render."
-        }
-        return nil
+        return "Cloud editing config check failed."
     }
 
     private var primaryActionDisabled: Bool {
@@ -1635,6 +1590,9 @@ struct AIEditView: View {
         if let cloudEditActionBlockedMessage {
             return cloudEditActionBlockedMessage
         }
+        if serviceStatusIsChecking {
+            return "Checking cloud status. You can still start a render."
+        }
         if !aiEditRevisionsAvailable {
             return "AI edit revisions are temporarily paused by the cloud backend."
         }
@@ -1645,11 +1603,20 @@ struct AIEditView: View {
     }
 
     private var serviceStatusIcon: String {
-        cloudEditActionBlockedMessage == nil && serviceStatusErrorMessage == nil ? "pause.circle" : "exclamationmark.triangle.fill"
+        if cloudEditActionBlockedMessage != nil {
+            return "exclamationmark.triangle.fill"
+        }
+        if serviceStatusIsChecking {
+            return "arrow.clockwise.circle"
+        }
+        if serviceStatusErrorMessage != nil {
+            return "exclamationmark.triangle"
+        }
+        return "pause.circle"
     }
 
     private var serviceStatusColor: Color {
-        cloudEditActionBlockedMessage == nil && serviceStatusErrorMessage == nil ? AppTheme.warningYellow : AppTheme.dangerRed
+        cloudEditActionBlockedMessage == nil ? AppTheme.warningYellow : AppTheme.dangerRed
     }
 
     private var revisionCommands: [CloudEditRevisionCommand] {
@@ -1668,7 +1635,7 @@ struct AIEditView: View {
 
     private var primaryActionTitle: String {
         if cloudEditVersionBlockMessage != nil {
-            return "Checking Cloud Status"
+            return "Fix Cloud Config"
         }
         if launchReadinessFlagMessage != nil {
             return "Update Cloud Backend"
@@ -1745,12 +1712,6 @@ struct AIEditView: View {
         let trimmed = userEditPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
         return String(trimmed.prefix(Self.maxUserPromptCharacters))
-    }
-
-    private var policyLimitText: String {
-        let policy = activePolicy
-        let watermark = policy.watermarkRequired || policy.outroRequired ? "watermark/outro included" : "no required watermark"
-        return "\(policy.displayName): \(policy.maxDailyRenders) AI edits/day, \(policy.maxRevisionsPerEdit) revisions/edit, \(policy.maxOutputResolution) max, \(watermark)."
     }
 
     private var renderStateGuidance: String {
@@ -1929,19 +1890,42 @@ struct AIEditView: View {
         guard AppConstants.cloudEditEnabled else {
             serviceVersion = nil
             serviceStatusErrorMessage = nil
+            serviceStatusBlocksRendering = false
+            serviceStatusIsChecking = false
             return
         }
+
+        serviceStatusIsChecking = true
+        defer { serviceStatusIsChecking = false }
 
         do {
             serviceVersion = try await cloudEditService.fetchVersion()
             serviceStatusErrorMessage = nil
+            serviceStatusBlocksRendering = false
         } catch CloudEditError.notConfigured {
             serviceVersion = nil
             serviceStatusErrorMessage = AppConstants.cloudEditEnabled ? CloudEditError.notConfigured.errorDescription : nil
+            serviceStatusBlocksRendering = true
+        } catch CloudEditError.invalidResponse {
+            serviceVersion = nil
+            serviceStatusErrorMessage = CloudEditError.invalidResponse.errorDescription
+            serviceStatusBlocksRendering = true
+        } catch CloudEditError.backend(_, let message) {
+            serviceVersion = nil
+            serviceStatusErrorMessage = message
+            serviceStatusBlocksRendering = true
         } catch {
             serviceVersion = nil
-            serviceStatusErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            serviceStatusErrorMessage = cloudStatusWarningMessage(for: error)
+            serviceStatusBlocksRendering = false
         }
+    }
+
+    private func cloudStatusWarningMessage(for error: Error) -> String {
+        if let urlError = error as? URLError, urlError.code == .timedOut {
+            return "Cloud status check timed out. Start a render to use the real cloud job response."
+        }
+        return "Cloud status check failed. Start a render to use the real cloud job response."
     }
 
     @MainActor

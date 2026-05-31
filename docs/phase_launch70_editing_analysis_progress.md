@@ -1096,3 +1096,48 @@ Results:
 Remaining TestFlight blocker:
 
 - The installed HoopClips app on the iPhone is currently the developer-installed build, not a TestFlight-installed build, so the installed TestFlight post-install smoke remains unproven.
+
+## Launch105 Build 7 TestFlight Prep And History Rename
+
+Build `6` had already been used for the previous internal upload path, so the next internal TestFlight candidate is now prepared as build `7`.
+This keeps App Store Connect from rejecting a duplicate build number after the HoopClips display-name polish.
+
+Changes:
+
+- `CURRENT_PROJECT_VERSION` is now `7` for the app, tests, and shared project build settings.
+- Internal staging config verification, TestFlight archive assertion, and submission-readiness preflight expectations now require build `7`.
+- History project rows now make the title itself the inline rename control, with a small pencil icon; the chevron remains the explicit open-detail action so a title tap does not race the row-detail tap.
+
+Validation:
+
+```bash
+bash ios/scripts/verify_internal_staging_config.sh
+python3 -m unittest scripts.test_submission_readiness_preflight -v
+plutil -lint ios/exportOptions.testflight-internal.plist
+xcodebuild build-for-testing \
+  -project ios/HoopsClips.xcodeproj \
+  -scheme HoopsClips \
+  -configuration Debug \
+  -destination 'generic/platform=iOS Simulator' \
+  -derivedDataPath /tmp/hoopclips-build7-bft \
+  CODE_SIGNING_ALLOWED=NO \
+  -skipPackagePluginValidation
+```
+
+Results:
+
+- Internal staging config verification: passed, including `CURRENT_PROJECT_VERSION=7`.
+- Submission-readiness preflight unit tests: 36 tests passed.
+- TestFlight export options plist lint: passed.
+- iOS Debug build-for-testing: passed for generic iOS Simulator.
+- Build produced existing warnings in `VideoExportService.swift` for AVFoundation deprecations and Sendable capture; no new `HistoryView.swift` warning was introduced by the rename UI change.
+
+GitHub Actions budget note:
+
+- No TestFlight upload workflow was triggered in this pass. The next cloud upload should intentionally build/upload build `7`, then install from TestFlight on the real iPhone for the post-install smoke.
+
+Remaining blockers:
+
+- Launch-grade 85% selected-team/highlight accuracy is still unproven until the Launch71 clips are human-reviewed and scored.
+- Installed TestFlight post-install smoke remains unproven because the phone has a developer-installed HoopClips build, not a TestFlight-installed HoopClips build.
+- Current main-branch deploy/upload proof is still stale until the gated deploy and TestFlight upload jobs run against the current launch commit.

@@ -8,6 +8,8 @@ struct ContentView: View {
     @State private var languageStore = AppLanguageStore()
     @State private var selectedTab = 0
     @State private var showingPaywall = false
+    @State private var didShowSignInScreen = false
+    @State private var isShowingPostSignInTransition = false
     @Namespace private var tabSelectionNamespace
 
     private let tabSwipeAnimation = Animation.interactiveSpring(
@@ -100,6 +102,9 @@ struct ContentView: View {
                 await subscriptionManager.syncAuthenticatedUser(authService.currentUser)
             }
         }
+        .onChange(of: authService.isAuthenticated) { _, isAuthenticated in
+            handleAuthenticationChange(isAuthenticated)
+        }
         .environment(languageStore)
         .environment(\.locale, languageStore.selectedLanguage.locale)
     }
@@ -108,11 +113,42 @@ struct ContentView: View {
     private var authenticatedContent: some View {
         if !authService.isAuthenticated {
             AuthView(authService: authService)
+                .onAppear {
+                    didShowSignInScreen = true
+                    isShowingPostSignInTransition = false
+                }
+        } else if isShowingPostSignInTransition {
+            postSignInTransitionView
         } else if needsVerification {
             VerificationView(authService: authService)
         } else {
             mainAppView
         }
+    }
+
+    private var postSignInTransitionView: some View {
+        ZStack {
+            HoopsMotionBackdrop(glowOpacity: 0.22, courtOpacity: 0.10)
+
+            VStack(spacing: 18) {
+                HoopsMotionHero(size: 144)
+
+                VStack(spacing: 6) {
+                    Text("You're in")
+                        .font(.title.bold())
+                        .foregroundStyle(.white)
+                    Text("Opening HoopClips")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(AppTheme.warningYellow)
+                }
+
+                ProgressView()
+                    .tint(AppTheme.neonPurple)
+                    .accessibilityLabel("Opening HoopClips")
+            }
+            .padding(24)
+        }
+        .preferredColorScheme(.dark)
     }
 
     private var mainAppView: some View {
@@ -169,6 +205,31 @@ struct ContentView: View {
         .animation(reduceMotion ? nil : tabSelectionAnimation, value: selectedTab)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("app.tabBar")
+    }
+
+    private func handleAuthenticationChange(_ isAuthenticated: Bool) {
+        guard isAuthenticated else {
+            didShowSignInScreen = true
+            isShowingPostSignInTransition = false
+            return
+        }
+
+        guard didShowSignInScreen else {
+            isShowingPostSignInTransition = false
+            return
+        }
+
+        isShowingPostSignInTransition = true
+        let signedInUserID = authService.currentUser?.id
+
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(700))
+            guard authService.currentUser?.id == signedInUserID else { return }
+            selectedTab = AppTab.player.rawValue
+            didShowSignInScreen = false
+            isShowingPostSignInTransition = false
+            HoopsAccessibility.announce("Signed in. Opening HoopClips.")
+        }
     }
 
     private func appTabButton(_ tab: AppTab) -> some View {
