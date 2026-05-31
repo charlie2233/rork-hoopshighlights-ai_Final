@@ -171,6 +171,44 @@ Submission decision:
 - Next required proof is real-device availability plus a full internal smoke: install -> import/upload -> cloud team scan -> selected team or all teams -> cloud analysis -> Review -> AI Edit -> render -> preview -> More Hype revision -> revised preview -> Share/Open In.
 - Keep GitHub Actions usage limited until the device smoke and live staging probes are ready; then rerun only the necessary current-commit deploy/upload workflows.
 
+### Pass 7 - Checklist Recheck and Bottom Tab Drag
+
+Fresh recheck on 2026-05-31:
+
+- Cloud editing version timeout: fixed as a non-blocking warning in Export/AI Edit; real create-job/render state remains the source of truth.
+- Export simplification: cloud-required builds route users to AI Edit plus Review & Share instead of exposing the old theme/music/quality/format/post-processing stack.
+- User side note: AI Edit has a `Side Note` prompt box for structured edit intent such as NBA recap, more hype, defense focus, or shorter cuts.
+- GPT usage/quality: staging deploy defaults keep GPT clip editing, GPT plan edit, and GPT revision enabled with 160 candidate clips; Free remains generous on clip review while daily Free AI edit chances stay capped at 3.
+- Music: built-in/custom/CC0 music paths and backend audio profiles exist. Commercial "real music" still needs licensed assets before bundling; do not ship unlicensed tracks.
+- Share: Export and AI Edit now use a simple system Share button instead of app-by-app share grids.
+- History formatting: rows use lower-density formatting and keep actions below the project row; project titles can be renamed by tapping the title.
+- Hidden/cramped text: recent passes removed low-value helper copy, added wrapping/scaling in dense controls, and kept compact labels from hiding on smaller phones.
+- Fake thinking/ETA: not added. Status copy stays tied to real import, scan, analysis, queue, render, preview, and share states.
+- Added this pass: the custom bottom tab bar now supports horizontal drag left/right to switch tabs, matching the page swipe behavior while preserving tap targets.
+
+Validation this pass:
+
+```bash
+git diff --check
+python3 -m unittest scripts.test_submission_readiness_preflight -v
+bash ios/scripts/verify_internal_staging_config.sh
+```
+
+- `git diff --check`: passed after the tab-bar change.
+- Submission readiness unit tests: 36 passed.
+- Internal staging config verification: passed.
+- XcodeBuildMCP simulator Debug build for `HoopsClips`: passed with code signing disabled.
+- Existing warnings remain in `CloudAnalysisService.swift` progress callbacks and `VideoExportService.swift` AVFoundation export APIs; the tab-bar change introduced no compile errors.
+
+Current launch blockers from local submission preflight:
+
+- Pre-commit local preflight reported modified tracked files; this is expected for this in-progress pass and should clear after commit.
+- Launch-grade selected-team/highlight accuracy evidence is still missing; the 85% target needs a labeled footage report from `scripts/evaluate_team_highlight_accuracy.py`.
+- Archived upload artifact metadata still does not match the expected upload metadata.
+- The wired iPhone is detected but unavailable to `devicectl`, so install/post-install smoke cannot run yet.
+- Latest main-branch Cloud Edit Deploy Preflight, iOS Internal TestFlight Upload, and secret-gated deploy preflight runs are not for the current checkout.
+- Installed TestFlight post-install smoke remains unproven.
+
 ## Fix Plan
 
 - Make cloud editing version timeout a non-blocking warning; the real create-job/render request remains the source of truth. Explicit configuration and backend flag blocks still block.

@@ -12,6 +12,7 @@ struct ContentView: View {
     @State private var showingPaywall = false
     @State private var didShowSignInScreen = false
     @State private var isShowingPostSignInTransition = false
+    @GestureState private var tabBarDragTranslation: CGFloat = 0
     @Namespace private var tabSelectionNamespace
 
     private let tabSwipeAnimation = Animation.interactiveSpring(
@@ -228,9 +229,25 @@ struct ContentView: View {
                 .fill(AppTheme.softBorder.opacity(0.8))
                 .frame(height: 1)
         }
+        .contentShape(.rect)
+        .offset(x: reduceMotion ? 0 : tabBarVisualOffset)
+        .simultaneousGesture(tabBarDragGesture)
         .animation(reduceMotion ? nil : tabSelectionAnimation, value: selectedTab)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("app.tabBar")
+    }
+
+    private var tabBarVisualOffset: CGFloat {
+        min(18, max(-18, tabBarDragTranslation * 0.12))
+    }
+
+    private var tabBarDragGesture: some Gesture {
+        DragGesture(minimumDistance: 18, coordinateSpace: .local)
+            .updating($tabBarDragTranslation) { value, state, _ in
+                guard abs(value.translation.width) > abs(value.translation.height) * 1.2 else { return }
+                state = value.translation.width
+            }
+            .onEnded(handleTabBarDrag)
     }
 
     private func handleAuthenticationChange(_ isAuthenticated: Bool) {
@@ -330,6 +347,27 @@ struct ContentView: View {
         withAnimation(tabSwipeAnimation) {
             selectedTab = tab.rawValue
         }
+    }
+
+    private func handleTabBarDrag(_ value: DragGesture.Value) {
+        let horizontal = value.translation.width
+        let vertical = abs(value.translation.height)
+        let projected: CGFloat
+        if abs(value.predictedEndTranslation.width) > abs(horizontal) {
+            projected = value.predictedEndTranslation.width
+        } else {
+            projected = horizontal
+        }
+
+        guard abs(projected) >= 32 || abs(horizontal) >= 32 else { return }
+        guard abs(horizontal) > vertical * 1.2 || abs(projected) > vertical * 1.6 else { return }
+
+        let delta = projected < 0 ? 1 : -1
+        let firstTab = AppTab.allCases.first?.rawValue ?? selectedTab
+        let lastTab = AppTab.allCases.last?.rawValue ?? selectedTab
+        let targetRawValue = min(max(selectedTab + delta, firstTab), lastTab)
+        guard let targetTab = AppTab(rawValue: targetRawValue) else { return }
+        selectTab(targetTab)
     }
 }
 
