@@ -299,14 +299,18 @@ final class ProjectHistoryStore {
     }
 
     private func writeThumbnail(for asset: AVURLAsset, to outputURL: URL) async throws {
-        let generator = AVAssetImageGenerator(asset: asset)
-        generator.appliesPreferredTrackTransform = true
-        generator.maximumSize = CGSize(width: 400, height: 225)
-        let (image, _) = try await generator.image(at: .zero)
+        let sourceURL = asset.url
+        let data = try await Task.detached(priority: .utility) {
+            let generator = AVAssetImageGenerator(asset: AVURLAsset(url: sourceURL))
+            generator.appliesPreferredTrackTransform = true
+            generator.maximumSize = CGSize(width: 400, height: 225)
+            let (image, _) = try await generator.image(at: .zero)
 
-        guard let data = UIImage(cgImage: image).jpegData(compressionQuality: 0.82) else {
-            throw ProjectHistoryStoreError.invalidThumbnail
-        }
+            guard let data = UIImage(cgImage: image).jpegData(compressionQuality: 0.82) else {
+                throw ProjectHistoryStoreError.invalidThumbnail
+            }
+            return data
+        }.value
 
         try data.write(to: outputURL, options: .atomic)
     }

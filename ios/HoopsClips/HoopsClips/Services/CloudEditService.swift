@@ -55,7 +55,7 @@ struct CloudEditService: CloudEditServicing {
         var request = URLRequest(url: baseURL.appending(path: "v1/edit-jobs"))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Hoopclips-iOS/1.0", forHTTPHeaderField: "User-Agent")
+        request.setValue("HoopClips-iOS/1.0", forHTTPHeaderField: "User-Agent")
         request.setValue(UUID().uuidString, forHTTPHeaderField: "x-trace-id")
         request.httpBody = try encoder.encode(requestBody)
 
@@ -129,7 +129,7 @@ struct CloudEditService: CloudEditServicing {
         var request = URLRequest(url: baseURL.appending(path: "v1/edit-jobs/\(editJobID)/render"))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Hoopclips-iOS/1.0", forHTTPHeaderField: "User-Agent")
+        request.setValue("HoopClips-iOS/1.0", forHTTPHeaderField: "User-Agent")
         request.setValue(UUID().uuidString, forHTTPHeaderField: "x-trace-id")
         request.httpBody = try encoder.encode(
             CloudEditStoredRenderRequest(
@@ -189,7 +189,7 @@ struct CloudEditService: CloudEditServicing {
         var request = URLRequest(url: baseURL.appending(path: "v1/edit-jobs/\(editJobID)/revise"))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Hoopclips-iOS/1.0", forHTTPHeaderField: "User-Agent")
+        request.setValue("HoopClips-iOS/1.0", forHTTPHeaderField: "User-Agent")
         request.setValue(UUID().uuidString, forHTTPHeaderField: "x-trace-id")
         request.httpBody = try encoder.encode(
             CloudEditRevisionRequest(
@@ -212,7 +212,7 @@ struct CloudEditService: CloudEditServicing {
         var request = URLRequest(url: baseURL.appending(path: "v1/edit-jobs/\(editJobID)/revisions/\(revisionID)/render"))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Hoopclips-iOS/1.0", forHTTPHeaderField: "User-Agent")
+        request.setValue("HoopClips-iOS/1.0", forHTTPHeaderField: "User-Agent")
         request.setValue(UUID().uuidString, forHTTPHeaderField: "x-trace-id")
         let idempotencyKey: String
         if forceNew {
@@ -248,7 +248,7 @@ struct CloudEditService: CloudEditServicing {
         }
 
         let destination = URL.temporaryDirectory
-            .appendingPathComponent("Hoopclips-AI-Edit-\(response.renderJobId)")
+            .appendingPathComponent("HoopClips-AI-Edit-\(response.renderJobId)")
             .appendingPathExtension("mp4")
         try? FileManager.default.removeItem(at: destination)
         try FileManager.default.moveItem(at: temporaryURL, to: destination)
@@ -285,7 +285,7 @@ struct CloudEditService: CloudEditServicing {
 
     private func signedClientRequest(url: URL) -> URLRequest {
         var request = URLRequest(url: url)
-        request.setValue("Hoopclips-iOS/1.0", forHTTPHeaderField: "User-Agent")
+        request.setValue("HoopClips-iOS/1.0", forHTTPHeaderField: "User-Agent")
         request.setValue(UUID().uuidString, forHTTPHeaderField: "x-trace-id")
         return request
     }

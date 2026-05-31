@@ -95,7 +95,7 @@ final class HighlightsViewModel {
             return "Cloud AI editing is not configured in this build."
         }
         if cloudEditSourceObjectKey == nil {
-            return "Run cloud analysis first so Hoopclips has the uploaded source video."
+            return "Run cloud analysis first so HoopClips has the uploaded source video."
         }
         if keptClips.isEmpty {
             return "Keep at least one clip before making an AI edit."
@@ -745,6 +745,23 @@ final class HighlightsViewModel {
 
         applyPersistedProject(project)
         persistCurrentProject(reason: .reopened, message: "Reopened \(project.displayTitle)")
+    }
+
+    func renameProject(id: UUID, title: String) {
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTitle.isEmpty,
+              let projectIndex = projectLibrary.projects.firstIndex(where: { $0.id == id }) else {
+            return
+        }
+
+        var project = projectLibrary.projects[projectIndex]
+        guard project.displayTitle != trimmedTitle else { return }
+
+        project.title = trimmedTitle
+        project.updatedAt = Date()
+        project.appendEvent(kind: .renamed, message: "Renamed project to \(trimmedTitle)", limit: maxProjectEventCount)
+        projectLibrary.projects[projectIndex] = project
+        saveProjectLibrary()
     }
 
     func deleteProject(id: UUID) {

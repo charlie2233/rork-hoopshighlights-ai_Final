@@ -660,7 +660,7 @@ internal final class ExportThemeRenderer {
             margin: max(14, base.margin - 2),
             fixedOpacityMultiplier: 1.0
         )
-        return try makeClipLabelImage(text: "Hoopclips", style: watermarkStyle, scaleBucket: max(720, scaleBucket - 360))
+        return try makeClipLabelImage(text: "HoopClips", style: watermarkStyle, scaleBucket: max(720, scaleBucket - 360))
     }
 
     @MainActor
@@ -694,8 +694,8 @@ internal final class ExportThemeRenderer {
             .foregroundColor: UIColor.white.withAlphaComponent(0.78)
         ]
 
-        let title = NSAttributedString(string: "Hoopclips", attributes: titleAttrs)
-        let subtitle = NSAttributedString(string: "Made with Hoopclips", attributes: subtitleAttrs)
+        let title = NSAttributedString(string: "HoopClips", attributes: titleAttrs)
+        let subtitle = NSAttributedString(string: "Made with HoopClips", attributes: subtitleAttrs)
 
         let image = renderer.image { ctx in
             let bounds = CGRect(origin: .zero, size: size)

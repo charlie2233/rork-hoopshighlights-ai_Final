@@ -25,7 +25,8 @@ struct VideoPlayerView: View {
     @State private var importErrorMessage: String?
     @State private var lastAnalysisAnnouncementPercent = -1
 
-    private let videoImportTimeoutNanoseconds: UInt64 = 90 * 1_000_000_000
+    private let videoImportReminderNanoseconds: UInt64 = 20 * 1_000_000_000
+    private let videoImportTimeoutNanoseconds: UInt64 = 5 * 60 * 1_000_000_000
 
     var body: some View {
         NavigationStack {
@@ -151,7 +152,7 @@ struct VideoPlayerView: View {
     private func importVideo(from url: URL) {
         beginVideoImport {
             await MainActor.run {
-                importStatusMessage = "Copying video into HoopClips..."
+                importStatusMessage = "Saving video to HoopClips..."
             }
             return await viewModel.loadVideo(url: url)
         }
@@ -167,14 +168,14 @@ struct VideoPlayerView: View {
                 }
                 guard let importedVideo = try await VideoImportTransfer.loadFileBackedVideo(from: item) else {
                     await MainActor.run {
-                        importErrorMessage = "Hoopclips could not access a local video file from Photos. Save it to Files and import from there, or choose a shorter downloaded clip."
+                        importErrorMessage = "HoopClips could not access a local video file from Photos. Save it to Files and import from there, or choose a shorter downloaded clip."
                     }
                     return false
                 }
 
                 try Task.checkCancellation()
                 await MainActor.run {
-                    importStatusMessage = "Copying video into HoopClips..."
+                    importStatusMessage = "Saving video to HoopClips..."
                 }
                 let didLoadVideo = await viewModel.loadVideo(url: importedVideo.url)
                 try? await VideoImportTransfer.removeTemporaryFile(at: importedVideo.url)
@@ -183,7 +184,7 @@ struct VideoPlayerView: View {
                 return false
             } catch {
                 await MainActor.run {
-                    importErrorMessage = "Hoopclips could not import that video: \(error.localizedDescription)"
+                    importErrorMessage = "HoopClips could not import that video: \(error.localizedDescription)"
                 }
                 return false
             }
@@ -201,35 +202,57 @@ struct VideoPlayerView: View {
         importErrorMessage = nil
 
         let task = Task {
-            let timeoutTask = Task {
+            let importWatchdogTask = Task {
                 do {
-                    try await Task.sleep(nanoseconds: videoImportTimeoutNanoseconds)
+                    try await Task.sleep(nanoseconds: videoImportReminderNanoseconds)
                 } catch {
                     return
                 }
 
                 await MainActor.run {
                     guard activeImportID == importID, isImportingVideo else { return }
-                    importErrorMessage = "Hoopclips is still waiting for that video. Try a shorter local clip, or save it to Files and import it again."
+                    importStatusMessage = "Still importing this video. Large clips from Photos can take a minute."
+                }
+
+                do {
+                    try await Task.sleep(nanoseconds: videoImportTimeoutNanoseconds - videoImportReminderNanoseconds)
+                } catch {
+                    return
+                }
+
+                await MainActor.run {
+                    guard activeImportID == importID, isImportingVideo else { return }
+                    importErrorMessage = "HoopClips is still waiting for that video. Try a shorter local clip, or save it to Files and import it again."
                     importTask?.cancel()
                     clearImportState()
                 }
             }
 
             let didLoadVideo = await operation()
-            timeoutTask.cancel()
+            importWatchdogTask.cancel()
 
             await MainActor.run {
-                guard activeImportID == importID else { return }
-
-                clearImportState()
-                if importErrorMessage == nil && (!didLoadVideo || !viewModel.isVideoLoaded) {
-                    importErrorMessage = "Hoopclips could not read that video. Try importing it from Files or choose another clip."
-                }
+                finishVideoImport(importID: importID, didLoadVideo: didLoadVideo)
             }
         }
 
         importTask = task
+    }
+
+    private func finishVideoImport(importID: UUID, didLoadVideo: Bool) {
+        guard activeImportID == importID || (didLoadVideo && viewModel.isVideoLoaded) else { return }
+
+        if didLoadVideo && viewModel.isVideoLoaded {
+            importErrorMessage = nil
+            clearImportState()
+            startTeamScanIfNeeded()
+            return
+        }
+
+        clearImportState()
+        if importErrorMessage == nil {
+            importErrorMessage = "HoopClips could not read that video. Try importing it from Files or choose another clip."
+        }
     }
 
     private func startTeamScanIfNeeded() {
@@ -366,7 +389,7 @@ struct VideoPlayerView: View {
                 featurePill(icon: "sparkles", text: languageStore.text(.smartHighlights))
                 featurePill(icon: "bolt.fill", text: languageStore.text(.fastReels))
                 featurePill(icon: "film.stack.fill", text: languageStore.text(.autoTrim))
-                featurePill(icon: "basketball.fill", text: "Hoopclips")
+                featurePill(icon: "basketball.fill", text: languageStore.text(.getExposure))
             }
         }
         .padding(18)

@@ -8,6 +8,9 @@ struct HistoryView: View {
     @State private var projectPendingDeletion: PersistedProjectRecord?
     @State private var showingDeleteProjectConfirmation = false
     @State private var showingClearHistoryConfirmation = false
+    @State private var renamingProjectID: UUID?
+    @State private var renameDraft = ""
+    @FocusState private var focusedRenameProjectID: UUID?
 
     var body: some View {
         NavigationStack {
@@ -94,7 +97,16 @@ struct HistoryView: View {
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("This deletes every saved Hoopclips project, including saved source videos, exports, thumbnails, and custom audio stored in history.")
+                Text("This deletes every saved HoopClips project, including saved source videos, exports, thumbnails, and custom audio stored in history.")
+            }
+            .onChange(of: focusedRenameProjectID) { oldValue, newValue in
+                guard let oldValue,
+                      oldValue != newValue,
+                      renamingProjectID == oldValue,
+                      let project = viewModel.historyProjects.first(where: { $0.id == oldValue }) else {
+                    return
+                }
+                commitRename(for: project)
             }
         }
     }
@@ -102,7 +114,7 @@ struct HistoryView: View {
     private var emptyState: some View {
         HoopsEmptyStateCard(
             title: "No Project History Yet",
-            message: "Import a video and Hoopclips will keep the project, timeline, and saved export here.",
+            message: "Import a video and HoopClips will keep the project, timeline, and saved export here.",
             icon: "clock.arrow.circlepath"
         )
     }
@@ -121,11 +133,29 @@ struct HistoryView: View {
             )
 
             ForEach(projects) { project in
+                let isRenaming = renamingProjectID == project.id
+
                 HStack(spacing: 10) {
+                    historyRow(for: project)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            guard !isRenaming else { return }
+                            selectedProject = project
+                        }
+
                     Button {
                         selectedProject = project
                     } label: {
-                        historyRow(for: project)
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(AppTheme.subtleText)
+                            .frame(width: 40, height: 56)
+                            .background(AppTheme.surfaceBg.opacity(0.72), in: RoundedRectangle(cornerRadius: 14))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14)
+                                    .stroke(AppTheme.softBorder, lineWidth: 1)
+                            )
+                            .accessibilityLabel("Open \(project.displayTitle)")
                     }
                     .buttonStyle(.plain)
 
@@ -146,6 +176,12 @@ struct HistoryView: View {
                     .buttonStyle(.plain)
                 }
                 .contextMenu {
+                    Button {
+                        beginRenaming(project)
+                    } label: {
+                        Label("Rename Project", systemImage: "pencil")
+                    }
+
                     Button(role: .destructive) {
                         requestDelete(project)
                     } label: {
@@ -184,14 +220,33 @@ struct HistoryView: View {
 
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
-                    Text(project.displayTitle)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
+                    if renamingProjectID == project.id {
+                        TextField("Project title", text: $renameDraft)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .textInputAutocapitalization(.words)
+                            .submitLabel(.done)
+                            .focused($focusedRenameProjectID, equals: project.id)
+                            .onSubmit {
+                                commitRename(for: project)
+                            }
+                            .accessibilityLabel("Project title")
+                            .accessibilityHint("Rename this saved project.")
+                    } else {
+                        Button {
+                            beginRenaming(project)
+                        } label: {
+                            Text(project.displayTitle)
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(.white)
+                                .lineLimit(1)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Rename \(project.displayTitle)")
+                        .accessibilityHint("Edit this project title.")
+                    }
                     Spacer(minLength: 8)
-                    Image(systemName: "chevron.right")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(AppTheme.subtleText)
                 }
 
                 Text("Updated \(project.updatedAt.formatted(date: .abbreviated, time: .shortened))")
@@ -241,6 +296,25 @@ struct HistoryView: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
         .background(AppTheme.cardBg, in: Capsule())
+    }
+
+    private func beginRenaming(_ project: PersistedProjectRecord) {
+        renameDraft = project.displayTitle
+        renamingProjectID = project.id
+        Task { @MainActor in
+            focusedRenameProjectID = project.id
+        }
+    }
+
+    private func commitRename(for project: PersistedProjectRecord) {
+        guard renamingProjectID == project.id else { return }
+
+        let newTitle = renameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        renamingProjectID = nil
+        focusedRenameProjectID = nil
+
+        guard !newTitle.isEmpty else { return }
+        viewModel.renameProject(id: project.id, title: newTitle)
     }
 
     private func requestDelete(_ project: PersistedProjectRecord) {

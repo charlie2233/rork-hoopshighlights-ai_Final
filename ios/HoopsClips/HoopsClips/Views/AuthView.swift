@@ -60,7 +60,7 @@ struct AuthView: View {
             HoopsMotionHero(size: 198)
 
             VStack(spacing: 8) {
-                Text("Hoopclips")
+                Text("HoopClips")
                     .font(.system(size: 32, weight: .bold))
                     .foregroundStyle(.white)
             }

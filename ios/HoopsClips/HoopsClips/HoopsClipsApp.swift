@@ -11,7 +11,7 @@ struct HoopsClipsApp: App {
         telemetry.configure()
 
         if !runtimeConfig.missingRequiredKeys.isEmpty {
-            let message = "Missing Hoopclips runtime config keys: \(runtimeConfig.missingRequiredKeys.joined(separator: ", "))"
+            let message = "Missing HoopClips runtime config keys: \(runtimeConfig.missingRequiredKeys.joined(separator: ", "))"
             telemetry.recordConfigurationIssue(message)
         }
 

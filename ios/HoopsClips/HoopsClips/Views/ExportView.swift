@@ -149,7 +149,7 @@ struct ExportView: View {
     private var emptyState: some View {
         HoopsEmptyStateCard(
             title: "No Clips to Export",
-            message: "Keep a few moments in Review first. Then Hoopclips can turn them into a share-ready highlight reel.",
+            message: "Keep a few moments in Review first. Then HoopClips can turn them into a share-ready highlight reel.",
             icon: "square.and.arrow.up.fill"
         )
     }
@@ -1063,11 +1063,11 @@ struct ExportView: View {
     private var shareSheetTitle: String {
         switch selectedShareCategory {
         case .editor:
-            return "Edit Hoopclips Reel"
+            return "Edit HoopClips Reel"
         case .social:
-            return "Hoopclips Highlight Reel"
+            return "HoopClips Highlight Reel"
         case nil:
-            return "Hoopclips Highlight Reel"
+            return "HoopClips Highlight Reel"
         }
     }
 

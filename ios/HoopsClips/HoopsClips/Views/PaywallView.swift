@@ -311,7 +311,7 @@ struct PaywallView: View {
                 .font(.headline)
                 .foregroundStyle(.white)
 
-            Text("Memberships are tied to your Hoopclips account. Sign in with Google, Apple, email, or phone before upgrading.")
+            Text("Memberships are tied to your HoopClips account. Sign in with Google, Apple, email, or phone before upgrading.")
                 .font(.subheadline)
                 .foregroundStyle(AppTheme.subtleText)
                 .multilineTextAlignment(.center)

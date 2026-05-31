@@ -170,6 +170,7 @@ enum ProjectEventKind: String, Codable, Sendable, CaseIterable {
     case exportCompleted
     case saveToPhotos
     case reopened
+    case renamed
 
     var label: String {
         switch self {
@@ -185,6 +186,8 @@ enum ProjectEventKind: String, Codable, Sendable, CaseIterable {
             return "Saved to Photos"
         case .reopened:
             return "Reopened"
+        case .renamed:
+            return "Renamed"
         }
     }
 }

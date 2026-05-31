@@ -23,6 +23,9 @@ struct AppLanguageStoreTests {
     }
 
     @Test func exposesLaunchCopyForSupportedLanguages() {
+        #expect(AppLanguage.english.text(.playerTitle) == "HoopClips")
+        #expect(AppLanguage.english.text(.turnGamesTitle) == "Get Your Highlights Seen")
+        #expect(AppLanguage.english.text(.getExposure) == "Get Exposure")
         #expect(AppLanguage.chinese.text(.selectVideo) == "选择视频")
         #expect(AppLanguage.spanish.text(.selectVideo) == "Seleccionar video")
         #expect(AppLanguage.french.text(.selectVideo) == "Choisir une vidéo")
