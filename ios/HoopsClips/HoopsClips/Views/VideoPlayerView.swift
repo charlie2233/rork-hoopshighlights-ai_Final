@@ -789,6 +789,8 @@ struct VideoPlayerView: View {
                     Text(teamTargetSubtitle)
                         .font(.caption2)
                         .foregroundStyle(AppTheme.subtleText)
+                        .lineLimit(4)
+                        .minimumScaleFactor(0.9)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
@@ -1010,7 +1012,11 @@ struct VideoPlayerView: View {
         if viewModel.requiresHighlightTeamSelectionConfirmation {
             return "Choose target team or All teams"
         }
-        return viewModel.cloudDetectedTeams.map(\.label).joined(separator: " vs ")
+        let labels = viewModel.cloudDetectedTeams.map(\.label)
+        if labels.count > 2 {
+            return "\(labels.count) teams found. Choose one or All teams."
+        }
+        return labels.joined(separator: " vs ")
     }
 
     private func teamSwatchColor(for selection: HighlightTeamSelection) -> Color {
@@ -1055,36 +1061,7 @@ struct VideoPlayerView: View {
 
     private var targetHighlightLengthControl: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 10) {
-                ZStack {
-                    Circle()
-                        .fill(AppTheme.warningYellow.opacity(0.14))
-                        .frame(width: 34, height: 34)
-                    Image(systemName: "timer.circle.fill")
-                        .font(.headline)
-                        .foregroundStyle(AppTheme.warningYellow)
-                }
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(languageStore.text(.settingsTargetHighlight))
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.white)
-                    Text(languageStore.text(.settingsTargetHighlightHelp))
-                        .font(.caption2)
-                        .foregroundStyle(AppTheme.subtleText)
-                        .lineLimit(3)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                Spacer(minLength: 0)
-
-                Text(formattedTargetDuration(viewModel.settings.targetHighlightDuration))
-                    .font(.subheadline.weight(.bold).monospacedDigit())
-                    .foregroundStyle(AppTheme.warningYellow)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(AppTheme.warningYellow.opacity(0.12), in: .capsule)
-            }
+            targetHighlightLengthHeader
 
             LazyVGrid(columns: targetDurationGridColumns, spacing: 8) {
                 ForEach([30.0, 60.0, 90.0, 180.0, 270.0], id: \.self) { preset in
@@ -1106,6 +1083,61 @@ struct VideoPlayerView: View {
             glow: AppTheme.warningYellow,
             glowOpacity: 0.04
         )
+    }
+
+    private var targetHighlightLengthHeader: some View {
+        ViewThatFits(in: .horizontal) {
+            targetHighlightLengthHeaderContent(placesValueInline: true)
+            targetHighlightLengthHeaderContent(placesValueInline: false)
+        }
+    }
+
+    private func targetHighlightLengthHeaderContent(placesValueInline: Bool) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            ZStack {
+                Circle()
+                    .fill(AppTheme.warningYellow.opacity(0.14))
+                    .frame(width: 34, height: 34)
+                Image(systemName: "timer.circle.fill")
+                    .font(.headline)
+                    .foregroundStyle(AppTheme.warningYellow)
+            }
+            .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: placesValueInline ? 2 : 8) {
+                Text(languageStore.text(.settingsTargetHighlight))
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.9)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(languageStore.text(.settingsTargetHighlightHelp))
+                    .font(.caption2)
+                    .foregroundStyle(AppTheme.subtleText)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if !placesValueInline {
+                    targetDurationBadge
+                }
+            }
+
+            if placesValueInline {
+                Spacer(minLength: 8)
+                targetDurationBadge
+            }
+        }
+    }
+
+    private var targetDurationBadge: some View {
+        Text(formattedTargetDuration(viewModel.settings.targetHighlightDuration))
+            .font(.subheadline.weight(.bold).monospacedDigit())
+            .foregroundStyle(AppTheme.warningYellow)
+            .lineLimit(1)
+            .minimumScaleFactor(0.82)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(AppTheme.warningYellow.opacity(0.12), in: .capsule)
+            .accessibilityLabel("Target length \(formattedTargetDuration(viewModel.settings.targetHighlightDuration))")
     }
 
     private func targetDurationPresetButton(_ duration: Double) -> some View {
@@ -1140,7 +1172,7 @@ struct VideoPlayerView: View {
 
     private var targetDurationGridColumns: [GridItem] {
         [
-            GridItem(.adaptive(minimum: dynamicTypeSize.isAccessibilitySize ? 92 : 72, maximum: 124), spacing: 8, alignment: .top)
+            GridItem(.adaptive(minimum: dynamicTypeSize.isAccessibilitySize ? 116 : 88, maximum: 136), spacing: 8, alignment: .top)
         ]
     }
 
