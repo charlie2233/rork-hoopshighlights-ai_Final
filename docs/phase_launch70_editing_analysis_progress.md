@@ -963,3 +963,72 @@ Results:
   - 66 / 66 clips now have draft expected team, highlight, event, and outcome fields.
   - 0 / 66 clips are complete because human review is still required.
 - Leak scan found no signed URL, source/upload URL, object-key, result-key, upload-header, API-key, or private-key markers in the draft bundle, regenerated review page, or applied local label templates.
+
+## Launch103 Import, Titles, History Rename, And Local Validation
+
+User-reported iOS fixes:
+
+- Import state no longer stays on "Preparing video..." after the imported video has already persisted and loaded; successful load now clears the import UI and starts the real cloud team scan.
+- Long imports now show honest status copy after 20 seconds and a five-minute failure guard instead of a short 90-second failure.
+- Project thumbnail generation now runs off the main actor.
+- App title/copy casing was normalized to `HoopClips`.
+- The import hero pill changed from `Hoopclips` to `Get Exposure`.
+- History rows now support tap-to-rename by tapping the project title.
+- No iOS analysis, rendering, composition, export, Remotion, Canva, or GPT ownership was added.
+
+Validation:
+
+```bash
+git diff --check
+rg -n "Hoopclips" ios/HoopsClips/HoopsClips -g '*.swift'
+xcodebuild test \
+  -project ios/HoopsClips.xcodeproj \
+  -scheme HoopsClips \
+  -destination 'platform=iOS Simulator,id=A46E2157-77ED-42CE-959D-65C068681A47' \
+  -derivedDataPath /tmp/hoopclips-title-import-history-tests \
+  -skipPackagePluginValidation \
+  -only-testing:HoopsClipsTests/AppLanguageStoreTests
+xcodebuild build \
+  -project ios/HoopsClips.xcodeproj \
+  -scheme HoopsClips \
+  -configuration Debug \
+  -destination 'id=00008130-000A001A1178001C' \
+  -derivedDataPath /tmp/hoopclips-launch103-device-build \
+  -allowProvisioningUpdates \
+  -skipPackagePluginValidation
+xcrun devicectl device install app \
+  --device E5786BB6-0095-5509-8B85-110C0B5CE6D3 \
+  /tmp/hoopclips-launch103-device-build/Build/Products/Debug-iphoneos/HoopsClips.app
+PYTHONPATH=services/editing:ios/backend \
+  /Users/hanfei/rork-hoopshighlights-ai_Final/ios/backend/.venv/bin/python \
+  -m unittest services.editing.tests.test_gpt_reranker services.editing.tests.test_editing_service -v
+npm --prefix services/control-plane test -- test/control-plane-status-transitions.test.ts
+npm --prefix services/control-plane run typecheck
+```
+
+Results:
+
+- `git diff --check`: passed.
+- Remaining `Hoopclips` Swift search: no results.
+- Focused `AppLanguageStoreTests`: 3 tests passed.
+- Real iPhone Debug build: passed.
+- Real iPhone install: passed for bundle `atrak.charlie.hoopsclips`.
+- Remote launch after install was blocked only because the iPhone was locked.
+- Editing/GPT backend suite: 117 tests passed, including local render/revision/history coverage.
+- Control-plane selected-team/status transitions: 33 tests passed.
+- Control-plane typecheck: passed.
+- A broader local `HoopsClipsTests` simulator command hung before "Testing started" and was stopped; treat it as inconclusive, not as a test failure.
+
+Current implementation evidence checked in this pass:
+
+- Photos import is file-backed only: `ImportedVideoFile` supports `.video`, `.movie`, `.mpeg4Movie`, and `.quickTimeMovie`; there is no `Data.self` fallback.
+- Pre-analysis team choice is present: after import, cloud quick scan detects jersey-color teams, iOS shows color-labeled team options plus `All teams`, and analysis is blocked until the user confirms when teams are detected.
+- Selected-team requests keep `includeUncertain=true` so uncertain plays stay reviewable.
+- Free AI editing/render policy remains `3` daily renders in iOS defaults and the editing service policy.
+- GPT-led editing tests cover strict structured outputs, no-full-video payloads, selected-team filtering, uncertain-review preservation, blocks/steals/defensive-stop handling, fallback behavior, and invalid patch rejection.
+
+Remaining blockers:
+
+- Launch-grade 85% selected-team/highlight accuracy is still unproven until the 66 Launch71 clips are human-reviewed and scored.
+- Installed TestFlight post-install smoke remains unproven.
+- Main-branch CI/deploy and iOS TestFlight upload proof need current successful evidence before submission.
