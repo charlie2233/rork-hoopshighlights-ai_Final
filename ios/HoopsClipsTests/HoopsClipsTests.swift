@@ -1094,6 +1094,130 @@ struct HoopsClipsTests {
         #expect(request.clips.first { $0.id == ordinaryDiscardedClip.id.uuidString } == nil)
     }
 
+    @Test @MainActor func testCloudEditRequestIncludesStrongSelectedTeamReserveCandidate() throws {
+        let viewModel = HighlightsViewModel()
+        viewModel.cloudEditSourceObjectKey = "uploads/source.mp4"
+        viewModel.settings.highlightTeamSelection = HighlightTeamSelection(
+            mode: .team,
+            teamId: "team_dark",
+            label: "Dark jerseys",
+            colorLabel: "black",
+            confidenceThreshold: 0.85
+        )
+
+        let keptClip = Clip(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000011")!,
+            startTime: 10.0,
+            endTime: 16.0,
+            eventCenter: 13.0,
+            action: .madeShot,
+            confidence: 0.92,
+            isKept: true,
+            label: "Kept Dark Shot",
+            audioScore: 0.7,
+            visualScore: 0.85,
+            motionScore: 0.82,
+            combinedScore: 0.88,
+            detectionMethod: .cloud,
+            teamAttribution: ClipTeamAttribution(
+                teamId: "team_dark",
+                label: "Dark jerseys",
+                colorLabel: "black",
+                confidence: 0.93,
+                source: "team_scan"
+            ),
+            teamAttributionStatus: "matched"
+        )
+        let strongSelectedTeamClip = Clip(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000012")!,
+            startTime: 30.0,
+            endTime: 37.0,
+            eventCenter: 33.4,
+            action: .madeShot,
+            confidence: 0.76,
+            isKept: false,
+            label: "Strong Dark Finish",
+            audioScore: 0.58,
+            visualScore: 0.73,
+            motionScore: 0.76,
+            combinedScore: 0.82,
+            detectionMethod: .cloud,
+            teamAttribution: ClipTeamAttribution(
+                teamId: "team_dark",
+                label: "Dark jerseys",
+                colorLabel: "black",
+                confidence: 0.9,
+                source: "team_scan"
+            ),
+            teamAttributionStatus: "matched"
+        )
+        let otherTeamClip = Clip(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000013")!,
+            startTime: 48.0,
+            endTime: 55.0,
+            eventCenter: 51.1,
+            action: .madeShot,
+            confidence: 0.9,
+            isKept: false,
+            label: "Strong Light Finish",
+            audioScore: 0.82,
+            visualScore: 0.9,
+            motionScore: 0.88,
+            combinedScore: 0.94,
+            detectionMethod: .cloud,
+            teamAttribution: ClipTeamAttribution(
+                teamId: "team_light",
+                label: "Light jerseys",
+                colorLabel: "white",
+                confidence: 0.95,
+                source: "team_scan"
+            ),
+            teamAttributionStatus: "matched"
+        )
+        let lowSignalSelectedTeamClip = Clip(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000014")!,
+            startTime: 62.0,
+            endTime: 68.0,
+            eventCenter: 65.0,
+            action: .madeShot,
+            confidence: 0.72,
+            isKept: false,
+            label: "Low Signal Dark Shot",
+            audioScore: 0.2,
+            visualScore: 0.52,
+            motionScore: 0.55,
+            combinedScore: 0.58,
+            detectionMethod: .cloud,
+            teamAttribution: ClipTeamAttribution(
+                teamId: "team_dark",
+                label: "Dark jerseys",
+                colorLabel: "black",
+                confidence: 0.91,
+                source: "team_scan"
+            ),
+            teamAttributionStatus: "matched"
+        )
+        viewModel.analysisService.clips = [
+            keptClip,
+            strongSelectedTeamClip,
+            otherTeamClip,
+            lowSignalSelectedTeamClip
+        ]
+
+        let request = try viewModel.createCloudEditRequest(
+            preset: .personalHighlight,
+            targetDurationSeconds: 30,
+            isProUser: false
+        )
+
+        #expect(request.clips.map(\.label) == ["Kept Dark Shot", "Strong Dark Finish"])
+        #expect(request.clips.first { $0.id == keptClip.id.uuidString }?.userReviewDecision == "kept")
+        #expect(request.clips.first { $0.id == strongSelectedTeamClip.id.uuidString }?.userReviewDecision == "unreviewed")
+        #expect(request.clips.first { $0.id == otherTeamClip.id.uuidString } == nil)
+        #expect(request.clips.first { $0.id == lowSignalSelectedTeamClip.id.uuidString } == nil)
+        #expect(viewModel.cloudEditCandidatePoolCount == 2)
+    }
+
     @Test func testCloudEditCandidateRankingReservesDefenseAndReviewClipsBeforeCap() {
         var clips: [Clip] = []
         for index in 0..<42 {

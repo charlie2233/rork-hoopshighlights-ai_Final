@@ -57,7 +57,12 @@ final class HighlightsViewModel {
     var keptClips: [Clip] { clips.filter(\.isKept) }
     var discardedClips: [Clip] { clips.filter { !$0.isKept } }
     var needsReviewClips: [Clip] { clips.filter(\.needsUserReview) }
-    var cloudEditCandidatePoolCount: Int { Self.cloudEditRequestCandidateClips(from: clips).count }
+    var cloudEditCandidatePoolCount: Int {
+        Self.cloudEditRequestCandidateClips(
+            from: clips,
+            teamSelection: settings.highlightTeamSelection
+        ).count
+    }
 
     var showingVideoPicker = false
     var showingSaveSuccess = false
@@ -637,7 +642,10 @@ final class HighlightsViewModel {
             throw CloudEditError.missingSourceObject
         }
 
-        let candidateSourceClips = Self.cloudEditRequestCandidateClips(from: clips)
+        let candidateSourceClips = Self.cloudEditRequestCandidateClips(
+            from: clips,
+            teamSelection: settings.highlightTeamSelection
+        )
         let duplicateGroups = Self.cloudEditDuplicateGroupAssignments(for: candidateSourceClips)
         let candidates = candidateSourceClips.map { clip in
             let inferredCenter = clip.startTime + (clip.duration / 2.0)
@@ -655,7 +663,10 @@ final class HighlightsViewModel {
                 audioPeak: clip.audioScore,
                 combinedScore: clip.combinedScore,
                 duplicateGroup: duplicateGroups[clip.id],
-                userReviewDecision: Self.cloudEditUserReviewDecision(for: clip),
+                userReviewDecision: Self.cloudEditUserReviewDecision(
+                    for: clip,
+                    teamSelection: settings.highlightTeamSelection
+                ),
                 nativeShotSignals: clip.nativeShotSignals,
                 teamAttribution: clip.teamAttribution,
                 teamAttributionStatus: clip.teamAttributionStatus
@@ -684,15 +695,22 @@ final class HighlightsViewModel {
     nonisolated private static let cloudEditReviewCandidateReserveDivisor = 5
     nonisolated private static let cloudEditDuplicateOverlapThreshold = 0.68
     nonisolated private static let cloudEditDuplicateEventCenterTolerance = 1.5
+    nonisolated private static let cloudEditSelectedTeamReserveMinScore = 0.72
+    nonisolated private static let cloudEditSelectedTeamReserveMinConfidence = 0.70
+    nonisolated private static let cloudEditSelectedTeamReserveMinWatchability = 0.64
 
-    nonisolated static func cloudEditRequestCandidateClips(from clips: [Clip], limit: Int = cloudEditCandidateRequestLimit) -> [Clip] {
+    nonisolated static func cloudEditRequestCandidateClips(
+        from clips: [Clip],
+        limit: Int = cloudEditCandidateRequestLimit,
+        teamSelection: HighlightTeamSelection = .allTeams
+    ) -> [Clip] {
         let cappedLimit = max(0, limit)
         guard cappedLimit > 0 else { return [] }
 
         let keptSource = clips.filter(\.isKept)
         let keptCandidates = rankedCloudEditCandidateClips(from: keptSource, limit: cappedLimit)
         let reviewOnlyCandidates = rankedCloudEditCandidateClips(
-            from: clips.filter { !$0.isKept && isCloudEditReviewReserveCandidate($0) },
+            from: clips.filter { !$0.isKept && isCloudEditReviewReserveCandidate($0, teamSelection: teamSelection) },
             limit: cappedLimit
         )
 
@@ -779,18 +797,40 @@ final class HighlightsViewModel {
         return assignments
     }
 
-    nonisolated private static func cloudEditUserReviewDecision(for clip: Clip) -> String {
+    nonisolated private static func cloudEditUserReviewDecision(
+        for clip: Clip,
+        teamSelection: HighlightTeamSelection = .allTeams
+    ) -> String {
         if clip.isKept {
             return "kept"
         }
-        if isCloudEditReviewReserveCandidate(clip) {
+        if isCloudEditReviewReserveCandidate(clip, teamSelection: teamSelection) {
             return "unreviewed"
         }
         return "discarded"
     }
 
-    nonisolated private static func isCloudEditReviewReserveCandidate(_ clip: Clip) -> Bool {
-        clip.needsUserReview || defensiveCloudEditCandidateFamily(clip) != nil
+    nonisolated private static func isCloudEditReviewReserveCandidate(
+        _ clip: Clip,
+        teamSelection: HighlightTeamSelection = .allTeams
+    ) -> Bool {
+        clip.needsUserReview
+            || defensiveCloudEditCandidateFamily(clip) != nil
+            || isSelectedTeamCloudEditReviewReserveCandidate(clip, teamSelection: teamSelection)
+    }
+
+    nonisolated private static func isSelectedTeamCloudEditReviewReserveCandidate(
+        _ clip: Clip,
+        teamSelection: HighlightTeamSelection
+    ) -> Bool {
+        guard teamSelection.mode == .team else { return false }
+        guard clipMatchesHighlightTeamSelection(clip, selection: teamSelection) else { return false }
+        guard isCloudEditCandidateQualityEligible(clip) else { return false }
+
+        let watchability = max(clip.visualScore, clip.motionScore)
+        return clip.combinedScore >= cloudEditSelectedTeamReserveMinScore
+            && clip.confidence >= cloudEditSelectedTeamReserveMinConfidence
+            && watchability >= cloudEditSelectedTeamReserveMinWatchability
     }
 
     nonisolated private static func cloudEditClipsAreDuplicateMoments(_ lhs: Clip, _ rhs: Clip) -> Bool {
