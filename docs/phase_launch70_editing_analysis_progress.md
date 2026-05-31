@@ -941,3 +941,25 @@ rg -n 'Import draft bundle|importDraftBundle|applyDraftBundlePayload|bundle-impo
 - Review page regenerated for 3 Launch71 cases.
 - Import controls and JS were present.
 - Leak scan found no signed URL, source/upload URL, object-key, result-key, or upload-header markers.
+
+## Launch79 Real GPT Label Draft Run
+
+Secret Manager access was available locally, so the GPT draft helper was run against the real Launch71 66-clip manifest using the local source video. The OpenAI key was passed only through process environment variables and was not printed or written to repo files.
+
+Evidence doc:
+
+- `docs/phase_launch79_real_gpt_label_draft_run.md`
+
+Results:
+
+- Real GPT draft batches completed for all three cases:
+  - `launch71_downloads_326_team_black`: 25 clips.
+  - `launch71_downloads_326_team_white`: 11 clips.
+  - `launch71_downloads_326_all`: 30 clips.
+- Merged draft bundle: `/Users/hanfei/Downloads/team_highlight_manual_labels_bundle_draft.json`.
+- The draft bundle was applied to ignored local Launch71 label templates with `--allow-incomplete --apply`.
+- Regenerated `artifacts/team_highlight_accuracy_launch71_review.html`.
+- Label status changed from all fields missing to only `needsLabel=false` missing:
+  - 66 / 66 clips now have draft expected team, highlight, event, and outcome fields.
+  - 0 / 66 clips are complete because human review is still required.
+- Leak scan found no signed URL, source/upload URL, object-key, result-key, upload-header, API-key, or private-key markers in the draft bundle, regenerated review page, or applied local label templates.
