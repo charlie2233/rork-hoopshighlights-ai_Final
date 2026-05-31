@@ -77,7 +77,8 @@ Use a 20-persona subagent review panel to find practical launch improvements for
 - Passed: iOS Debug simulator build via XcodeBuildMCP `build_sim` with `CODE_SIGNING_ALLOWED=NO -skipPackagePluginValidation` (HoopsClips, iPhone 17 Pro, warnings 0)
 - Passed: `python3 -m unittest scripts.test_submission_readiness_preflight -v` (36 tests)
 - Interrupted: local `xcodebuild test` and `xcodebuild test -only-testing:HoopsClipsTests` both built test bundles, then hung in the simulator runner/finalization path and were terminated. The earlier full run showed multiple unit tests passing and UI smoke tests skipped before the hang, but no clean test summary was produced.
-- Expected no-go: `python3 scripts/submission_readiness_preflight.py --skip-live` reported pass=21 warn=3 fail=9 while this branch was still uncommitted. Blocking items include team accuracy evidence, backend config preflight, archive metadata, unavailable wired iPhone tunnel, stale main CI/deploy runs, and installed TestFlight smoke.
+- Expected no-go before commit: `python3 scripts/submission_readiness_preflight.py --skip-live` reported pass=21 warn=3 fail=9 while this branch was still uncommitted.
+- Expected no-go after commit: `python3 scripts/submission_readiness_preflight.py --skip-live` reported pass=23 warn=2 fail=8. Repo cleanliness passed; remaining blockers are backend config preflight, team accuracy evidence, archive metadata, unavailable wired iPhone tunnel, stale main CI/deploy runs, secret-gated deploy preflight for the current SHA, and installed TestFlight smoke.
 
 ## Current Launch Blockers
 
