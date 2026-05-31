@@ -684,51 +684,7 @@ struct ReviewView: View {
             Button {
                 selectedClip = clip
             } label: {
-                HStack(spacing: 12) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 10)
-                            .fill(actionColor(for: clip.action).opacity(0.15))
-                            .frame(width: 44, height: 44)
-                        Image(systemName: clip.action.icon)
-                            .font(.title3)
-                            .foregroundStyle(actionColor(for: clip.action))
-                    }
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack(spacing: 6) {
-                            Text(clip.label)
-                                .font(.headline)
-                                .foregroundStyle(.white)
-                                .lineLimit(2)
-                                .minimumScaleFactor(0.84)
-                                .fixedSize(horizontal: false, vertical: true)
-                                .layoutPriority(1)
-                            
-                            if clip.detectionMethod == .ml {
-                                Image(systemName: "sparkles")
-                                    .font(.caption2)
-                                    .foregroundStyle(AppTheme.neonPurple)
-                            }
-                        }
-                        
-                        HStack(spacing: 8) {
-                            Text("\(clip.formattedStartTime) — \(clip.formattedEndTime)")
-                                .font(.caption.monospacedDigit())
-                            Text("•")
-                            Text(clip.formattedDuration)
-                                .font(.caption.monospacedDigit())
-                        }
-                        .foregroundStyle(AppTheme.subtleText)
-
-                        clipContextBadges(clip)
-                    }
-                    .layoutPriority(1)
-
-                    Spacer()
-
-                    confidenceBadge(level: clip.confidenceLevel, value: clip.confidence)
-                }
-                .padding(12)
+                clipCardHeader(clip)
             }
             .buttonStyle(.plain)
             .accessibilityElement(children: .ignore)
@@ -824,6 +780,133 @@ struct ReviewView: View {
             glowOpacity: clip.isKept ? 0.09 : 0.04
         )
         .opacity(clip.isKept ? 1.0 : 0.6)
+    }
+
+    private func clipCardHeader(_ clip: Clip) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            clipActionIcon(clip)
+
+            VStack(alignment: .leading, spacing: 8) {
+                clipCardText(clip)
+
+                confidenceBadge(level: clip.confidenceLevel, value: clip.confidence)
+                    .fixedSize(horizontal: true, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(12)
+    }
+
+    private func clipActionIcon(_ clip: Clip) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 10)
+                .fill(actionColor(for: clip.action).opacity(0.15))
+            Image(systemName: clip.action.icon)
+                .font(.title3)
+                .foregroundStyle(actionColor(for: clip.action))
+        }
+        .frame(width: 44, height: 44)
+        .accessibilityHidden(true)
+    }
+
+    private func clipCardText(_ clip: Clip) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(clip.label)
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.84)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .layoutPriority(1)
+
+                if clip.detectionMethod == .ml {
+                    Image(systemName: "sparkles")
+                        .font(.caption2)
+                        .foregroundStyle(AppTheme.neonPurple)
+                        .accessibilityLabel("AI detected")
+                }
+            }
+
+            clipTimingText(clip)
+
+            clipContextBadges(clip)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private func clipTimingText(_ clip: Clip) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) {
+                Text("\(clip.formattedStartTime) — \(clip.formattedEndTime)")
+                Text("•")
+                Text(clip.formattedDuration)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(clip.formattedStartTime) — \(clip.formattedEndTime)")
+                Text(clip.formattedDuration)
+            }
+        }
+        .font(.caption.monospacedDigit())
+        .foregroundStyle(AppTheme.subtleText)
+        .lineLimit(2)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func clipDetailHeader(_ clip: Clip) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            clipActionIcon(clip)
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(clip.label)
+                        .font(.title2.bold())
+                        .foregroundStyle(.white)
+                        .lineLimit(3)
+                        .minimumScaleFactor(0.82)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .layoutPriority(1)
+
+                    if clip.detectionMethod == .ml {
+                        Text("AI")
+                            .font(.caption2.bold())
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(AppTheme.neonPurple, in: .capsule)
+                            .fixedSize(horizontal: true, vertical: true)
+                    }
+                }
+
+                clipContextBadges(clip)
+
+                confidenceBadge(level: clip.confidenceLevel, value: clip.confidence)
+                    .fixedSize(horizontal: true, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func clipDetailTimingText(_ clip: Clip) -> some View {
+        LazyVGrid(columns: clipDetailTimingGridColumns, alignment: .leading, spacing: 8) {
+            Label(clip.formattedStartTime, systemImage: "play.fill")
+            Label(clip.formattedEndTime, systemImage: "stop.fill")
+            Label(clip.formattedDuration, systemImage: "timer")
+        }
+        .font(.caption)
+        .foregroundStyle(AppTheme.subtleText)
+        .lineLimit(2)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var clipDetailTimingGridColumns: [GridItem] {
+        let minimumWidth: CGFloat = dynamicTypeSize.isAccessibilitySize ? 132 : 92
+        return [
+            GridItem(.adaptive(minimum: minimumWidth, maximum: 220), spacing: 10, alignment: .leading)
+        ]
     }
 
     private func clipScoreBreakdown(clip: Clip, includeDivider: Bool = true) -> some View {
@@ -1178,36 +1261,8 @@ struct ReviewView: View {
                         }
 
                         VStack(spacing: 12) {
-                            HStack {
-                                Image(systemName: clip.action.icon)
-                                    .font(.title2)
-                                    .foregroundStyle(actionColor(for: clip.action))
-                                Text(clip.label)
-                                    .font(.title2.bold())
-                                    .foregroundStyle(.white)
-                                
-                                if clip.detectionMethod == .ml {
-                                    Text("AI")
-                                        .font(.caption2.bold())
-                                        .foregroundStyle(.white)
-                                        .padding(.horizontal, 6)
-                                        .padding(.vertical, 2)
-                                        .background(AppTheme.neonPurple, in: .capsule)
-                                }
-
-                                clipContextBadges(clip)
-                                
-                                Spacer()
-                                confidenceBadge(level: clip.confidenceLevel, value: clip.confidence)
-                            }
-
-                            HStack(spacing: 16) {
-                                Label(clip.formattedStartTime, systemImage: "play.fill")
-                                Label(clip.formattedEndTime, systemImage: "stop.fill")
-                                Label(clip.formattedDuration, systemImage: "timer")
-                            }
-                            .font(.caption)
-                            .foregroundStyle(AppTheme.subtleText)
+                            clipDetailHeader(clip)
+                            clipDetailTimingText(clip)
                         }
                         .padding(16)
                         .background(AppTheme.cardBg, in: .rect(cornerRadius: 16))
