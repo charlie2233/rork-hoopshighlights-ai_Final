@@ -1064,16 +1064,33 @@ struct HoopsClipsTests {
             detectionMethod: .cloud,
             teamAttributionStatus: "matched"
         )
-        viewModel.analysisService.clips = [keptClip, reviewOnlySteal, ordinaryDiscardedClip]
+        let reviewOnlyBlock = Clip(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000004")!,
+            startTime: 44.0,
+            endTime: 49.0,
+            eventCenter: 46.2,
+            action: .block,
+            confidence: 0.8,
+            isKept: false,
+            label: "Clean Block",
+            audioScore: 0.44,
+            visualScore: 0.76,
+            motionScore: 0.8,
+            combinedScore: 0.82,
+            detectionMethod: .cloud,
+            teamAttributionStatus: "matched"
+        )
+        viewModel.analysisService.clips = [keptClip, reviewOnlySteal, ordinaryDiscardedClip, reviewOnlyBlock]
 
         let request = try viewModel.createCloudEditRequest(
             preset: .personalHighlight,
             targetDurationSeconds: 30,
             isProUser: false
         )
-        #expect(request.clips.map(\.label) == ["Made Shot", "Possible Steal"])
+        #expect(request.clips.map(\.label) == ["Made Shot", "Possible Steal", "Clean Block"])
         #expect(request.clips.first { $0.id == keptClip.id.uuidString }?.userReviewDecision == "kept")
         #expect(request.clips.first { $0.id == reviewOnlySteal.id.uuidString }?.userReviewDecision == "unreviewed")
+        #expect(request.clips.first { $0.id == reviewOnlyBlock.id.uuidString }?.userReviewDecision == "unreviewed")
         #expect(request.clips.first { $0.id == ordinaryDiscardedClip.id.uuidString } == nil)
     }
 

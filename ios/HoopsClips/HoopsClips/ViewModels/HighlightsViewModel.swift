@@ -649,7 +649,7 @@ final class HighlightsViewModel {
         let keptSource = clips.filter(\.isKept)
         let keptCandidates = rankedCloudEditCandidateClips(from: keptSource, limit: cappedLimit)
         let reviewOnlyCandidates = rankedCloudEditCandidateClips(
-            from: clips.filter { !$0.isKept && $0.needsUserReview },
+            from: clips.filter { !$0.isKept && isCloudEditReviewReserveCandidate($0) },
             limit: cappedLimit
         )
 
@@ -698,10 +698,14 @@ final class HighlightsViewModel {
         if clip.isKept {
             return "kept"
         }
-        if clip.needsUserReview {
+        if isCloudEditReviewReserveCandidate(clip) {
             return "unreviewed"
         }
         return "discarded"
+    }
+
+    nonisolated private static func isCloudEditReviewReserveCandidate(_ clip: Clip) -> Bool {
+        clip.needsUserReview || defensiveCloudEditCandidateFamily(clip) != nil
     }
 
     nonisolated static func rankedCloudEditCandidateClips(from clips: [Clip], limit: Int = 40) -> [Clip] {
