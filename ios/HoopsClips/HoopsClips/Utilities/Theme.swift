@@ -152,6 +152,24 @@ struct RorkMetricChip: View {
     }
 }
 
+struct HoopsBrandMark: View {
+    var size: CGFloat = 96
+    var cornerRadius: CGFloat? = nil
+    var showsShadow = true
+
+    var body: some View {
+        Image("BrandMark")
+            .resizable()
+            .interpolation(.high)
+            .antialiased(true)
+            .scaledToFit()
+            .frame(width: size, height: size)
+            .clipShape(.rect(cornerRadius: cornerRadius ?? size * 0.22, style: .continuous))
+            .shadow(color: Color.black.opacity(showsShadow ? 0.34 : 0), radius: size * 0.10, x: 0, y: size * 0.045)
+            .accessibilityHidden(true)
+    }
+}
+
 struct HoopsMotionBackdrop: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var glowOpacity: Double = 0.24

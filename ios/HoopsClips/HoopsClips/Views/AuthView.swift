@@ -57,7 +57,7 @@ struct AuthView: View {
 
     private var heroSection: some View {
         VStack(spacing: 16) {
-            HoopsMotionHero(size: 198)
+            HoopsBrandMark(size: 142)
 
             VStack(spacing: 8) {
                 Text("HoopClips")

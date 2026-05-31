@@ -1081,11 +1081,17 @@ struct SettingsView: View {
     private var aboutSection: some View {
         settingsCard(title: languageStore.text(.settingsAbout), icon: "info.circle.fill") {
             VStack(spacing: 12) {
-                HStack {
-                    Text("HoopClips")
-                        .font(.headline)
-                        .foregroundStyle(.white)
+                HStack(spacing: 12) {
+                    HoopsBrandMark(size: 48, showsShadow: false)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("HoopClips")
+                            .font(.headline)
+                            .foregroundStyle(.white)
+                    }
+
                     Spacer()
+
                     Text("v1.0")
                         .font(.subheadline)
                         .foregroundStyle(AppTheme.subtleText)

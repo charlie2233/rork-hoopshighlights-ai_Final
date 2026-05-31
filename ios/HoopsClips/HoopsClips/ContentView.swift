@@ -154,7 +154,7 @@ struct ContentView: View {
             HoopsMotionBackdrop(glowOpacity: 0.22, courtOpacity: 0.10)
 
             VStack(spacing: 18) {
-                HoopsMotionHero(size: 144)
+                HoopsBrandMark(size: 118)
 
                 VStack(spacing: 6) {
                     Text("You're in")
