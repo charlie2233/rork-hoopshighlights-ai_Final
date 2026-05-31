@@ -46,7 +46,7 @@ Result:
 - GPT draft prefilled clips: `66`
 - Skipped draft clips: `0`
 - Human review required: `true`
-- Priority queue in regenerated page:
+- Priority queue from `--json` output:
   - `needs_close_review`: `58`
   - `standard_review`: `8`
 
@@ -73,6 +73,8 @@ python3 -m unittest scripts.test_build_team_highlight_label_review_page -v
 ```
 
 Result: `4` tests passed.
+
+The in-app Browser was attempted against the generated local `file://` review page, but Browser policy rejected that URL. No alternate browser workaround was used. The CLI `--json` output now reports `reviewPriorityCounts` so this review queue can be verified without opening the local page in Browser.
 
 ## Launch Notes
 

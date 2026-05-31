@@ -264,6 +264,9 @@ class BuildTeamHighlightLabelReviewPageTests(unittest.TestCase):
                 "output": "/tmp/review.html",
                 "caseCount": 1,
                 "clipCount": 1,
+                "reviewPriorityCounts": {
+                    "quick_check": 1,
+                },
                 "draftPrefill": {
                     "schemaVersion": "team-highlight-label-review-draft-prefill-v1",
                     "source": "draft_bundle",
@@ -354,6 +357,13 @@ class BuildTeamHighlightLabelReviewPageTests(unittest.TestCase):
 
         self.assertEqual(payload["cases"][0]["clips"][0]["reviewPriority"]["key"], "needs_close_review")
         self.assertEqual(payload["cases"][0]["clips"][1]["reviewPriority"]["key"], "quick_check")
+        self.assertEqual(
+            review_page_output_metadata(Path("/tmp/review.html"), payload)["reviewPriorityCounts"],
+            {
+                "needs_close_review": 1,
+                "quick_check": 1,
+            },
+        )
         self.assertIn('data-review-priority="needs_close_review"', page)
         self.assertIn('data-review-priority="quick_check"', page)
         self.assertIn("review-priority needs-close-review", page)

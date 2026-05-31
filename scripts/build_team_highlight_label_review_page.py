@@ -180,6 +180,16 @@ def build_review_payload(
 
 
 def review_page_output_metadata(output_path: Path, payload: dict[str, Any]) -> dict[str, Any]:
+    review_priority_counts: dict[str, int] = {}
+    for case in payload.get("cases", []):
+        if not isinstance(case, dict):
+            continue
+        for clip in case.get("clips", []):
+            if not isinstance(clip, dict):
+                continue
+            priority = clip.get("reviewPriority") if isinstance(clip.get("reviewPriority"), dict) else {}
+            priority_key = string_or_none(priority.get("key")) or "standard_review"
+            review_priority_counts[priority_key] = review_priority_counts.get(priority_key, 0) + 1
     metadata: dict[str, Any] = {
         "output": str(output_path),
         "caseCount": len([case for case in payload.get("cases", []) if isinstance(case, dict)]),
@@ -188,6 +198,7 @@ def review_page_output_metadata(output_path: Path, payload: dict[str, Any]) -> d
             for case in payload.get("cases", [])
             if isinstance(case, dict)
         ),
+        "reviewPriorityCounts": dict(sorted(review_priority_counts.items())),
     }
     if isinstance(payload.get("draftPrefill"), dict):
         metadata["draftPrefill"] = payload["draftPrefill"]
