@@ -501,7 +501,10 @@ final class HighlightsViewModel {
 
     func keepHighConfidenceClips() {
         for index in analysisService.clips.indices
-        where analysisService.clips[index].confidence >= 0.8 && !analysisService.clips[index].needsUserReview {
+        where Self.isAutoKeepHighConfidenceEligible(
+            analysisService.clips[index],
+            teamSelection: settings.highlightTeamSelection
+        ) {
             analysisService.clips[index].isKept = true
         }
         persistCurrentProject()
@@ -518,6 +521,42 @@ final class HighlightsViewModel {
 
     nonisolated static func protectsClipFromQuickSkip(_ clip: Clip) -> Bool {
         clip.needsUserReview || defensiveCloudEditCandidateFamily(clip) != nil
+    }
+
+    func shouldAutoKeepHighConfidenceClip(_ clip: Clip) -> Bool {
+        Self.isAutoKeepHighConfidenceEligible(clip, teamSelection: settings.highlightTeamSelection)
+    }
+
+    nonisolated static func isAutoKeepHighConfidenceEligible(
+        _ clip: Clip,
+        teamSelection: HighlightTeamSelection = .allTeams
+    ) -> Bool {
+        guard clip.confidence >= 0.8, !clip.needsUserReview else { return false }
+        return clipMatchesHighlightTeamSelection(clip, selection: teamSelection)
+    }
+
+    nonisolated private static func clipMatchesHighlightTeamSelection(
+        _ clip: Clip,
+        selection: HighlightTeamSelection
+    ) -> Bool {
+        guard selection.mode == .team else { return true }
+        guard let attribution = clip.teamAttribution else { return false }
+        guard attribution.confidence >= selection.confidenceThreshold else { return false }
+
+        let selectedKeys = normalizedHighlightTeamKeys(selection.teamId, selection.colorLabel, selection.label)
+        let attributedKeys = normalizedHighlightTeamKeys(attribution.teamId, attribution.colorLabel, attribution.label)
+        guard !selectedKeys.isEmpty, !attributedKeys.isEmpty else { return false }
+        return !selectedKeys.isDisjoint(with: attributedKeys)
+    }
+
+    nonisolated private static func normalizedHighlightTeamKeys(_ values: String?...) -> Set<String> {
+        Set(values.compactMap(normalizedHighlightTeamKey))
+    }
+
+    nonisolated private static func normalizedHighlightTeamKey(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return normalized.isEmpty ? nil : normalized
     }
 
     func selectCustomAudio(url: URL) {

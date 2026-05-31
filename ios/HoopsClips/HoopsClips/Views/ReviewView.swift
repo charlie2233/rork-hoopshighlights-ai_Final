@@ -223,7 +223,17 @@ struct ReviewView: View {
     }
 
     private var highConfidencePendingCount: Int {
-        viewModel.clips.filter { $0.confidence >= 0.8 && !$0.isKept && !$0.needsUserReview }.count
+        viewModel.clips.filter {
+            !$0.isKept && viewModel.shouldAutoKeepHighConfidenceClip($0)
+        }.count
+    }
+
+    private var highConfidencePendingSubtitle: String {
+        let noun = highConfidencePendingCount == 1 ? "clip" : "clips"
+        if selectedTeamFilterIsAvailable {
+            return "\(highConfidencePendingCount) target \(noun)"
+        }
+        return "\(highConfidencePendingCount) \(noun)"
     }
 
     private var lowConfidenceKeptCount: Int {
@@ -380,7 +390,7 @@ struct ReviewView: View {
         LazyVGrid(columns: reviewActionGridColumns, spacing: 10) {
             reviewQuickActionButton(
                 title: "Keep Best",
-                subtitle: "\(highConfidencePendingCount) clips",
+                subtitle: highConfidencePendingSubtitle,
                 icon: "checkmark.seal.fill",
                 tint: AppTheme.successGreen,
                 isDisabled: highConfidencePendingCount == 0

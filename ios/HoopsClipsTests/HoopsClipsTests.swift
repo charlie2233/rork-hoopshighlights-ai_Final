@@ -1833,6 +1833,94 @@ struct HoopsClipsTests {
         #expect(viewModel.needsReviewClips.map(\.label) == ["Possible Steal"])
     }
 
+    @Test @MainActor func testKeepHighConfidenceRespectsSelectedHighlightTeam() {
+        let viewModel = HighlightsViewModel()
+        viewModel.settings.highlightTeamSelection = HighlightTeamSelection(
+            mode: .team,
+            teamId: "team_dark",
+            label: "Dark jerseys",
+            colorLabel: "black",
+            confidenceThreshold: 0.85,
+            includeUncertain: true
+        )
+        defer { viewModel.settings.highlightTeamSelection = .allTeams }
+        let darkTeamClip = Clip(
+            startTime: 4.0,
+            endTime: 8.5,
+            eventCenter: 6.0,
+            action: .madeShot,
+            confidence: 0.91,
+            isKept: false,
+            label: "Dark Made Shot",
+            audioScore: 0.72,
+            visualScore: 0.88,
+            motionScore: 0.82,
+            combinedScore: 0.9,
+            detectionMethod: .cloud,
+            teamAttribution: ClipTeamAttribution(
+                teamId: "team_dark",
+                label: "Dark jerseys",
+                colorLabel: "black",
+                confidence: 0.93,
+                source: "quick_scan"
+            ),
+            teamAttributionStatus: "matched"
+        )
+        let otherTeamClip = Clip(
+            startTime: 12.0,
+            endTime: 16.5,
+            eventCenter: 14.0,
+            action: .madeShot,
+            confidence: 0.92,
+            isKept: false,
+            label: "Light Made Shot",
+            audioScore: 0.70,
+            visualScore: 0.86,
+            motionScore: 0.80,
+            combinedScore: 0.88,
+            detectionMethod: .cloud,
+            teamAttribution: ClipTeamAttribution(
+                teamId: "team_light",
+                label: "Light jerseys",
+                colorLabel: "white",
+                confidence: 0.94,
+                source: "quick_scan"
+            ),
+            teamAttributionStatus: "matched"
+        )
+        let noTeamClip = Clip(
+            startTime: 22.0,
+            endTime: 26.5,
+            eventCenter: 24.0,
+            action: .madeShot,
+            confidence: 0.93,
+            isKept: false,
+            label: "No Team Shot",
+            audioScore: 0.68,
+            visualScore: 0.84,
+            motionScore: 0.78,
+            combinedScore: 0.87,
+            detectionMethod: .cloud
+        )
+
+        viewModel.analysisService.clips = [darkTeamClip, otherTeamClip, noTeamClip]
+        viewModel.keepHighConfidenceClips()
+
+        #expect(viewModel.keptClips.map(\.label) == ["Dark Made Shot"])
+        #expect(viewModel.discardedClips.map(\.label) == ["Light Made Shot", "No Team Shot"])
+        #expect(HighlightsViewModel.isAutoKeepHighConfidenceEligible(darkTeamClip))
+        #expect(HighlightsViewModel.isAutoKeepHighConfidenceEligible(otherTeamClip))
+        #expect(!HighlightsViewModel.isAutoKeepHighConfidenceEligible(
+            otherTeamClip,
+            teamSelection: HighlightTeamSelection(
+                mode: .team,
+                teamId: "team_dark",
+                label: "Dark jerseys",
+                colorLabel: "black"
+            )
+        ))
+    }
+
     @Test @MainActor func testDiscardLowConfidencePreservesReviewAndDefensiveClips() {
         let viewModel = HighlightsViewModel()
         let lowBoringClip = Clip(
