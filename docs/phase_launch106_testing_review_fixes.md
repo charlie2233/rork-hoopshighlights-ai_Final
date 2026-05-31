@@ -127,6 +127,50 @@ Results:
 - Submission readiness unit tests: 36 passed.
 - iOS Debug build-for-testing: passed.
 
+### Pass 6 - Completion Truth Audit
+
+Current branch audit:
+
+- Branch: `codex/phase-launch70-editing-analysis-progress`
+- Latest pushed commit: `043bb3c Reset active project on auth switch [skip ci]`
+- Working tree: clean and in sync with origin before this doc update.
+- Product icon/logo: current branch contains `71f3a61 Refresh HoopClips product app icon`; the installed asset is a 1024x1024 PNG at `ios/HoopsClips/HoopsClips/Assets.xcassets/AppIcon.appiconset/icon.png`.
+- Free editing availability: Free daily AI edit chances remain capped at `3` across iOS policy, backend policy, and static launch preflight coverage.
+- GPT-led editing quality knobs: staging defaults keep GPT editor, GPT plan edit, and GPT revision enabled with 60 candidate clips for Free and Pro/internal review and 8 Pro/internal keyframes per clip.
+- Photos import hang fix: current `VideoPlayerView` is file-backed for `.video`, `.movie`, `.mpeg4Movie`, and `.quickTimeMovie`; the old `Data.self` fallback is absent.
+- Team selection: the cloud-first pre-analysis team quick scan and selected-team/all-teams flow are implemented and tested, including blocks and steals ownership behavior.
+
+Fresh readiness command:
+
+```bash
+python3 scripts/submission_readiness_preflight.py --skip-live
+```
+
+Result:
+
+- `pass=24 warn=2 fail=7`
+
+Hard failures still blocking submission:
+
+- Launch-grade selected-team/highlight accuracy evidence is missing; the 85% quality target still needs a labeled footage report from `scripts/evaluate_team_highlight_accuracy.py`.
+- The archived upload artifact metadata does not match the expected upload metadata.
+- The wired iPhone is detected but unavailable to `devicectl`, so install/post-install smoke cannot run yet.
+- The latest main-branch Cloud Edit Deploy Preflight workflow run is not for current commit `043bb3c`.
+- The latest main-branch iOS Internal TestFlight Upload workflow run is not for current commit `043bb3c`.
+- The latest manually dispatched secret-gated deploy preflight is not for current commit `043bb3c`.
+- Installed TestFlight post-install smoke remains unproven.
+
+Warnings:
+
+- Live Worker `/v1/editing/version` probe was skipped by `--skip-live`.
+- Live editing service `/version` probe was skipped by `--skip-live`.
+
+Submission decision:
+
+- Do not submit this build to Apple yet.
+- Next required proof is real-device availability plus a full internal smoke: install -> import/upload -> cloud team scan -> selected team or all teams -> cloud analysis -> Review -> AI Edit -> render -> preview -> More Hype revision -> revised preview -> Share/Open In.
+- Keep GitHub Actions usage limited until the device smoke and live staging probes are ready; then rerun only the necessary current-commit deploy/upload workflows.
+
 ## Fix Plan
 
 - Make cloud editing version timeout a non-blocking warning; the real create-job/render request remains the source of truth. Explicit configuration and backend flag blocks still block.
