@@ -399,6 +399,8 @@ def _fallback_rejection_reason(
     request: CreateEditJobRequest,
     render_clip_ids: set[str],
 ) -> str:
+    if clip.userReviewDecision == "discarded":
+        return "user_discarded"
     if request.teamSelection is not None and request.teamSelection.mode == "team":
         status = team_attribution_status(clip, request.teamSelection)
         if status == "opponent":

@@ -1831,10 +1831,11 @@ def filter_clips_for_team_selection(
     *,
     include_review_only_uncertain: bool = True,
 ) -> List[EditCandidateClip]:
+    eligible_clips = [clip for clip in clips if clip.userReviewDecision != "discarded"]
     if team_selection is None or team_selection.mode == "all":
-        return list(clips)
+        return list(eligible_clips)
     filtered: List[EditCandidateClip] = []
-    for clip in clips:
+    for clip in eligible_clips:
         status = team_attribution_status(clip, team_selection)
         if status == "matched":
             filtered.append(clip)
@@ -2880,6 +2881,10 @@ def apply_gpt_highlight_rerank(
     rejected_reason_counts: Dict[str, int] = {}
     rejected_reason_by_clip_id: Dict[str, str] = {}
     missing_decision_clip_ids: List[str] = []
+    discarded_clip_ids = discarded_clip_ids_for_edit_request(request.clips)
+    if discarded_clip_ids:
+        rejected_clip_ids.extend(discarded_clip_ids)
+        _increment_reason_count(rejected_reason_counts, "user_discarded", len(discarded_clip_ids))
     for clip in review_source_clips:
         decision = valid_decisions.get(clip.id)
         if decision is None:
@@ -3021,10 +3026,15 @@ def uncertain_review_clip_ids_for_team_selection(
     reviewable = [
         clip
         for clip in clips
-        if team_attribution_status(clip, team_selection) == "uncertain"
+        if clip.userReviewDecision != "discarded"
+        and team_attribution_status(clip, team_selection) == "uncertain"
         and is_plan_quality_eligible_clip(clip)
     ]
     return [clip.id for clip in rank_clips(reviewable)[:GPT_CANDIDATE_REVIEW_LIMIT]]
+
+
+def discarded_clip_ids_for_edit_request(clips: Sequence[EditCandidateClip]) -> List[str]:
+    return [clip.id for clip in clips if clip.userReviewDecision == "discarded"]
 
 
 def _increment_reason_count(counts: Dict[str, int], reason: str, amount: int = 1) -> None:
@@ -3033,8 +3043,6 @@ def _increment_reason_count(counts: Dict[str, int], reason: str, amount: int = 1
 
 SOFT_GPT_REJECTION_REASONS_FOR_RESCUE = {
     "gpt_rejected",
-    "low_highlight_score",
-    "low_watchability_score",
     "low_hype",
     "low_energy",
     "not_confident",

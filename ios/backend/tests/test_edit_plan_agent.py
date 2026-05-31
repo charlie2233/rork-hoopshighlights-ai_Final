@@ -46,6 +46,7 @@ from app.editing import (
     revise_edit_job,
     summarize_clip_pool,
     team_attribution_status,
+    uncertain_review_clip_ids_for_team_selection,
     validate_agent_template_cookbook_registry,
     validate_edit_plan,
     validate_edit_plan_patch,
@@ -388,6 +389,52 @@ class EditPlanAgentTests(unittest.TestCase):
             ["dark_bucket", "uncertain_unreviewed_steal", "uncertain_kept_block"],
         )
         self.assertEqual([clip.id for clip in renderable], ["dark_bucket", "uncertain_kept_block"])
+
+    def test_team_filter_excludes_user_discarded_clips(self) -> None:
+        team_request = CreateEditJobRequest(
+            **_request_payload(
+                teamSelection={
+                    "mode": "team",
+                    "teamId": "team_dark",
+                    "label": "Dark jerseys",
+                    "colorLabel": "black",
+                    "confidenceThreshold": 0.85,
+                    "includeUncertain": True,
+                },
+                clips=[
+                    {
+                        **_clip("dark_kept", 0.0, "Made Shot", 0.93),
+                        "teamAttribution": _team_attribution(team_id="team_dark", color_label="black", confidence=0.91),
+                    },
+                    {
+                        **_clip("dark_discarded", 9.0, "Made Shot", 0.95),
+                        "teamAttribution": _team_attribution(team_id="team_dark", color_label="black", confidence=0.92),
+                        "userReviewDecision": "discarded",
+                    },
+                    {
+                        **_clip("uncertain_discarded", 18.0, "Steal", 0.86),
+                        "teamAttribution": {"teamId": "team_light", "colorLabel": "white", "confidence": 0.64},
+                        "userReviewDecision": "discarded",
+                    },
+                ],
+            )
+        )
+        all_teams_request = CreateEditJobRequest(
+            **_request_payload(
+                teamSelection={"mode": "all", "includeUncertain": True},
+                clips=[
+                    _clip("all_kept", 0.0, "Made Shot", 0.93),
+                    {**_clip("all_discarded", 9.0, "Made Shot", 0.95), "userReviewDecision": "discarded"},
+                ],
+            )
+        )
+
+        self.assertEqual([clip.id for clip in filter_clips_for_team_selection(team_request.clips, team_request.teamSelection)], ["dark_kept"])
+        self.assertEqual(
+            uncertain_review_clip_ids_for_team_selection(team_request.clips, team_request.teamSelection),
+            [],
+        )
+        self.assertEqual([clip.id for clip in filter_clips_for_team_selection(all_teams_request.clips, all_teams_request.teamSelection)], ["all_kept"])
 
     def test_selected_team_filter_rejects_conflicting_team_id_even_when_color_matches(self) -> None:
         request = CreateEditJobRequest(
@@ -1680,6 +1727,57 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertEqual([clip.id for clip in reranked.clips], ["dark_steal", "uncertain_steal"])
         self.assertNotIn("light_steal", reranked.gptRerankSummary.keptClipIds)
 
+    def test_gpt_highlight_rerank_does_not_render_user_discarded_matched_clip(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                teamSelection={
+                    "mode": "team",
+                    "teamId": "team_dark",
+                    "label": "Dark jerseys",
+                    "colorLabel": "black",
+                    "confidenceThreshold": 0.85,
+                    "includeUncertain": True,
+                },
+                clips=[
+                    {
+                        **_clip("dark_kept", 0.0, "Made Shot", 0.93),
+                        "teamAttribution": _team_attribution(team_id="team_dark", color_label="black", confidence=0.93),
+                    },
+                    {
+                        **_clip("dark_discarded", 9.0, "Made Shot", 0.96),
+                        "teamAttribution": _team_attribution(team_id="team_dark", color_label="black", confidence=0.96),
+                        "userReviewDecision": "discarded",
+                    },
+                ],
+            )
+        )
+        decisions = [
+            GPTHighlightClipDecision(
+                clipId=clip.id,
+                keep=True,
+                highlightScore=0.92,
+                watchabilityScore=0.88,
+                basketballEvent="Made Shot",
+                outcome="made",
+                caption="BUCKET",
+                reason="GPT wanted to keep this matched-team clip.",
+                qualitySignals=_quality_signals(),
+                shotResultEvidence=_shot_result_evidence(),
+                shotTrackingEvidence=_shot_tracking_evidence(),
+                suggestedEdit=GPTHighlightSuggestedEdit(cropFocus="rim"),
+            )
+            for clip in request.clips
+        ]
+
+        reranked = apply_gpt_highlight_rerank(request, decisions, "gpt-test", 2, 10)
+        plan = build_edit_plan(reranked, "edit_discarded_not_rendered")
+
+        self.assertEqual(reranked.gptRerankSummary.status, "applied")
+        self.assertEqual([clip.id for clip in reranked.clips], ["dark_kept"])
+        self.assertEqual([clip.clipId for clip in plan.clips], ["dark_kept"])
+        self.assertIn("dark_discarded", reranked.gptRerankSummary.rejectedClipIds)
+        self.assertEqual(reranked.gptRerankSummary.rejectedReasonCounts.get("user_discarded"), 1)
+
     def test_gpt_highlight_rerank_does_not_render_unreviewed_uncertain_team_clip(self) -> None:
         request = CreateEditJobRequest(
             **_request_payload(
@@ -2791,6 +2889,60 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertEqual(reranked.gptRerankSummary.rejectedReasonCounts.get("not_confident"), 1)
         self.assertEqual(reranked.gptRerankSummary.rejectedReasonCounts.get("low_hype"), 1)
         self.assertIn(plan.clips[0].clipId, {"clean_finish", "clear_three"})
+
+    def test_gpt_highlight_rerank_low_scores_do_not_rescue_boring_clips(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=30,
+                clips=[
+                    _clip("low_watchability_finish", 0.0, "Made Shot", 0.95),
+                    _clip("low_highlight_three", 12.0, "Made Shot", 0.9),
+                ],
+            )
+        )
+        decisions = [
+            GPTHighlightClipDecision(
+                clipId="low_watchability_finish",
+                keep=True,
+                highlightScore=0.86,
+                watchabilityScore=0.42,
+                basketballEvent="Made Shot",
+                outcome="made",
+                caption="SKIP",
+                reason="The outcome is visible but the camera is too rough to watch.",
+                qualitySignals=_quality_signals(),
+                shotResultEvidence=_shot_result_evidence(),
+                shotTrackingEvidence=_shot_tracking_evidence(),
+                suggestedEdit=GPTHighlightSuggestedEdit(),
+            ),
+            GPTHighlightClipDecision(
+                clipId="low_highlight_three",
+                keep=True,
+                highlightScore=0.49,
+                watchabilityScore=0.78,
+                basketballEvent="Made Shot",
+                outcome="made",
+                caption="SKIP",
+                reason="The play is clear but not strong enough for a final highlight.",
+                qualitySignals=_quality_signals(),
+                shotResultEvidence=_shot_result_evidence(),
+                shotTrackingEvidence=_shot_tracking_evidence(),
+                suggestedEdit=GPTHighlightSuggestedEdit(),
+            ),
+        ]
+
+        reranked = apply_gpt_highlight_rerank(request, decisions, "gpt-test", 2, 6)
+        job = build_edit_job(reranked, "edit_low_score_gpt_rejected")
+
+        self.assertEqual(reranked.gptRerankSummary.status, "applied")
+        self.assertEqual(reranked.gptRerankSummary.fallbackReason, "all_clips_rejected")
+        self.assertEqual(reranked.gptRerankSummary.keptClipIds, [])
+        self.assertEqual(set(reranked.gptRerankSummary.rejectedClipIds), {"low_watchability_finish", "low_highlight_three"})
+        self.assertEqual(reranked.gptRerankSummary.rejectedReasonCounts.get("low_watchability_score"), 1)
+        self.assertEqual(reranked.gptRerankSummary.rejectedReasonCounts.get("low_highlight_score"), 1)
+        self.assertEqual(reranked.clips, [])
+        self.assertEqual(job.status, "failed")
+        self.assertIn("empty_clip_list", [error.code for error in job.validation_errors])
 
     def test_gpt_highlight_rerank_rejects_generic_audio_only_scoring_claim(self) -> None:
         request = CreateEditJobRequest(
