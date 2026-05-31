@@ -234,16 +234,7 @@ def build_review_payload(
 
 
 def review_page_output_metadata(output_path: Path, payload: dict[str, Any]) -> dict[str, Any]:
-    review_priority_counts: dict[str, int] = {}
-    for case in payload.get("cases", []):
-        if not isinstance(case, dict):
-            continue
-        for clip in case.get("clips", []):
-            if not isinstance(clip, dict):
-                continue
-            priority = clip.get("reviewPriority") if isinstance(clip.get("reviewPriority"), dict) else {}
-            priority_key = string_or_none(priority.get("key")) or "standard_review"
-            review_priority_counts[priority_key] = review_priority_counts.get(priority_key, 0) + 1
+    review_priority_counts = count_review_priorities(payload)
     metadata: dict[str, Any] = {
         "output": str(output_path),
         "caseCount": len([case for case in payload.get("cases", []) if isinstance(case, dict)]),
@@ -257,6 +248,20 @@ def review_page_output_metadata(output_path: Path, payload: dict[str, Any]) -> d
     if isinstance(payload.get("draftPrefill"), dict):
         metadata["draftPrefill"] = payload["draftPrefill"]
     return metadata
+
+
+def count_review_priorities(payload: dict[str, Any]) -> dict[str, int]:
+    review_priority_counts: dict[str, int] = {}
+    for case in payload.get("cases", []):
+        if not isinstance(case, dict):
+            continue
+        for clip in case.get("clips", []):
+            if not isinstance(clip, dict):
+                continue
+            priority = clip.get("reviewPriority") if isinstance(clip.get("reviewPriority"), dict) else {}
+            priority_key = string_or_none(priority.get("key")) or "standard_review"
+            review_priority_counts[priority_key] = review_priority_counts.get(priority_key, 0) + 1
+    return review_priority_counts
 
 
 def review_case_payload(
@@ -509,6 +514,16 @@ def render_progress_summary(payload: dict[str, Any]) -> str:
             f'<p class="lede">GPT draft prefilled {applied} clips'
             f'{f"; skipped {skipped}" if skipped else ""}. {escape(review_copy)}</p>'
         )
+    priority_counts = count_review_priorities(payload)
+    priority_total = sum(priority_counts.values())
+    priority_summary = (
+        '<div class="priority-filter" aria-label="Review priority filters">'
+        f'<button type="button" class="priority-filter-button active" data-priority-filter="all" onclick="setPriorityFilter(\'all\')">All {priority_total}</button>'
+        f'<button type="button" class="priority-filter-button" data-priority-filter="needs_close_review" onclick="setPriorityFilter(\'needs_close_review\')">Close {priority_counts.get("needs_close_review", 0)}</button>'
+        f'<button type="button" class="priority-filter-button" data-priority-filter="standard_review" onclick="setPriorityFilter(\'standard_review\')">Standard {priority_counts.get("standard_review", 0)}</button>'
+        f'<button type="button" class="priority-filter-button" data-priority-filter="quick_check" onclick="setPriorityFilter(\'quick_check\')">Quick {priority_counts.get("quick_check", 0)}</button>'
+        "</div>"
+    )
     return "\n".join(
         [
             '<section class="panel summary-panel">',
@@ -518,6 +533,7 @@ def render_progress_summary(payload: dict[str, Any]) -> str:
             f'<p id="overall-progress"><strong>{reviewed}</strong> / {total} clips reviewed. {remaining} still need labels.</p>',
             '<p class="lede">A clip is complete when it is marked reviewed and has expected team, highlight, event, and outcome fields filled.</p>',
             draft_line,
+            priority_summary,
             '<p class="lede" id="draft-status">Local draft not loaded.</p>',
             "</div>",
             '<div class="button-row">',
@@ -830,6 +846,20 @@ video {
   background: #352b17;
   color: #ffe29a;
 }
+.priority-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
+}
+.priority-filter-button {
+  background: #232839;
+  color: #d8deea;
+}
+.priority-filter-button.active {
+  background: #f6c95f;
+  color: #171923;
+}
 .button-row {
   display: flex;
   flex-wrap: wrap;
@@ -914,6 +944,7 @@ textarea {
 JS = r"""
 const reviewData = JSON.parse(document.getElementById("review-data").textContent);
 window.reviewData = reviewData;
+let currentPriorityFilter = "all";
 
 function videoElementId(videoId) {
   const safe = String(videoId || "source").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -1158,7 +1189,26 @@ function clearSavedDraft() {
   draftStatus("Local draft cleared.");
 }
 
+function updatePriorityFilterVisibility() {
+  allClipCards({ visibleOnly: false }).forEach(card => {
+    const matches = currentPriorityFilter === "all" || card.dataset.reviewPriority === currentPriorityFilter;
+    card.hidden = !matches;
+  });
+  document.querySelectorAll(".priority-filter-button").forEach(button => {
+    button.classList.toggle("active", button.dataset.priorityFilter === currentPriorityFilter);
+  });
+}
+
+function setPriorityFilter(priority) {
+  currentPriorityFilter = priority || "all";
+  updatePriorityFilterVisibility();
+  updateProgress();
+  draftStatus(currentPriorityFilter === "all" ? "Showing all review priorities." : `Filtered to ${currentPriorityFilter.replace(/_/g, " ")} clips.`);
+  focusNextIncomplete();
+}
+
 function updateProgress() {
+  updatePriorityFilterVisibility();
   let total = 0;
   let complete = 0;
   reviewData.cases.forEach((casePayload, caseIndex) => {
@@ -1181,8 +1231,10 @@ function updateProgress() {
   }
 }
 
-function allClipCards() {
-  return Array.from(document.querySelectorAll("[data-case-index][data-clip-index]"));
+function allClipCards(options = {}) {
+  const visibleOnly = options.visibleOnly !== false;
+  const cards = Array.from(document.querySelectorAll("[data-case-index][data-clip-index]"));
+  return visibleOnly ? cards.filter(card => !card.hidden) : cards;
 }
 
 function activeClipCard() {
