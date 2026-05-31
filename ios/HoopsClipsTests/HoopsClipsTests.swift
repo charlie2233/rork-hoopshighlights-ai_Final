@@ -238,7 +238,7 @@ struct HoopsClipsTests {
         #expect(pro.retentionSummary == "Videos stored for 60 days")
     }
 
-    @Test func testCloudEditStatusCopyUsesRealAIWorkLanguageWithoutFakeThinking() {
+    @Test func testCloudEditStatusCopyUsesRealCloudJobLanguageWithoutFakeThinking() {
         let inProgressLabels = [
             CloudEditRenderState.renderRequested,
             .planning,
@@ -248,9 +248,10 @@ struct HoopsClipsTests {
             .rendering
         ].map(\.displayLabel)
 
-        #expect(inProgressLabels.allSatisfy { $0.localizedCaseInsensitiveContains("AI") })
+        #expect(inProgressLabels.allSatisfy { !$0.localizedCaseInsensitiveContains("AI is") })
         #expect(inProgressLabels.allSatisfy { !$0.localizedCaseInsensitiveContains("thinking") })
-        #expect(CloudEditRenderState.rendering.displayLabel == "AI is rendering your reel")
+        #expect(inProgressLabels.allSatisfy { !$0.localizedCaseInsensitiveContains("ETA") })
+        #expect(CloudEditRenderState.rendering.displayLabel == "Rendering in cloud")
         #expect(CloudEditRenderState.rendered.displayLabel == "Your reel is ready")
     }
 

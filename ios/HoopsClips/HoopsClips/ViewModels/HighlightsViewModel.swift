@@ -301,7 +301,7 @@ final class HighlightsViewModel {
             }
         }
         cloudTeamScanErrorMessage = nil
-        cloudTeamScanStatusMessage = "AI is preparing team scan"
+        cloudTeamScanStatusMessage = "Preparing cloud team scan"
         settings.highlightTeamSelection = .allTeams
         hasConfirmedHighlightTeamSelection = false
         analysisMode = .cloud

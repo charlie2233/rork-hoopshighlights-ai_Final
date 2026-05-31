@@ -28,7 +28,7 @@ struct CloudAnalysisService {
         }
 
         let fileInfo = try fileInfo(for: url)
-        await progress(0.02, "AI is preparing analysis")
+        await progress(0.02, "Preparing cloud analysis")
         let job = try await createJob(
             baseURL: baseURL,
             request: CreateCloudAnalysisJobRequest(
@@ -46,7 +46,7 @@ struct CloudAnalysisService {
         await progress(0.15, "Uploading video to cloud")
         try await uploadVideo(to: job, from: url)
 
-        await progress(0.28, "AI is finding candidate clips")
+        await progress(0.28, "Starting cloud clip search")
         _ = try await startJob(baseURL: baseURL, jobID: job.jobId, installID: installID, teamSelection: teamSelection)
 
         return try await pollJob(
@@ -71,7 +71,7 @@ struct CloudAnalysisService {
         }
 
         let fileInfo = try fileInfo(for: url)
-        await progress(0.02, "AI is preparing team scan")
+        await progress(0.02, "Preparing cloud team scan")
         let job = try await createJob(
             baseURL: baseURL,
             request: CreateCloudAnalysisJobRequest(
@@ -88,9 +88,9 @@ struct CloudAnalysisService {
         await progress(0.14, "Uploading video for team scan")
         try await uploadVideo(to: job, from: url)
 
-        await progress(0.20, "AI is labeling jersey colors")
+        await progress(0.20, "Scanning jersey colors")
         let scan = try await scanJobTeams(baseURL: baseURL, jobID: job.jobId, installID: installID)
-        await progress(0.24, scan.detectedTeams.isEmpty ? "Team scan unavailable" : "AI found team choices")
+        await progress(0.24, scan.detectedTeams.isEmpty ? "Team scan unavailable" : "Team choices found")
 
         return PreparedCloudAnalysisJob(
             sourceURL: url.standardizedFileURL,
@@ -109,7 +109,7 @@ struct CloudAnalysisService {
             throw CloudAnalysisError.notConfigured
         }
 
-        await progress(0.28, "AI is finding candidate clips")
+        await progress(0.28, "Starting cloud clip search")
         _ = try await startJob(
             baseURL: baseURL,
             jobID: preparedJob.job.jobId,
@@ -250,7 +250,7 @@ struct CloudAnalysisService {
 
             switch CloudAnalysisJobState(rawValue: job.status) {
             case .succeeded:
-                await progress(0.96, "AI is finalizing clips")
+                await progress(0.96, "Finalizing clips")
                 guard let results = job.results else {
                     throw CloudAnalysisError.invalidResponse
                 }
@@ -266,9 +266,9 @@ struct CloudAnalysisService {
                     message: "Analysis took too long before completion."
                 )
             case .created, .queued:
-                await progress(min(max(job.progress, 0.0), 0.55), job.stage.isEmpty ? "AI is waiting for clip analysis" : job.stage)
+                await progress(min(max(job.progress, 0.0), 0.55), job.stage.isEmpty ? "Waiting for cloud analysis" : job.stage)
             case .processing:
-                await progress(max(0.55, min(job.progress, 0.92)), job.stage.isEmpty ? "AI is analyzing frames" : job.stage)
+                await progress(max(0.55, min(job.progress, 0.92)), job.stage.isEmpty ? "Analyzing frames in cloud" : job.stage)
             case .none:
                 throw CloudAnalysisError.invalidResponse
             }

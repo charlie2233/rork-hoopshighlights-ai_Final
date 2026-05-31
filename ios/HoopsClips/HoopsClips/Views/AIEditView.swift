@@ -1786,15 +1786,15 @@ struct AIEditView: View {
 
         switch phase {
         case .planning:
-            return "AI is finding candidate clips and choosing the strongest moments."
+            return "Cloud edit is reviewing candidate clips and building the plan."
         case .planReady:
-            return "AI built the edit plan; cloud render is the next real step."
+            return "Edit plan is ready; cloud render is the next real step."
         case .renderRequested, .created:
-            return "AI is handing the approved edit plan to the cloud renderer."
+            return "Approved edit plan is being handed to the cloud renderer."
         case .queued:
-            return "AI edit is queued; HoopClips will keep checking real job status."
+            return "Cloud edit is queued; HoopClips will keep checking real job status."
         case .rendering:
-            return "AI is rendering the approved timeline into an MP4."
+            return "Cloud renderer is producing the approved MP4."
         case .rendered, .failed, .failedTimeout, .cancelled:
             return nil
         }
@@ -1803,25 +1803,25 @@ struct AIEditView: View {
     private func activeAIWorkPhrase(for stepID: String) -> String {
         switch stepID {
         case "video_uploaded":
-            return "Cloud source is ready for AI editing."
+            return "Cloud source is ready for editing."
         case "finding_highlights":
-            return "AI is finding candidate clips."
+            return "Cloud job is reviewing candidate clips."
         case "selecting_best_clips":
-            return "AI is choosing the strongest highlights."
+            return "Cloud job is selecting highlights from the candidate pool."
         case "removing_duplicates":
-            return "AI is rejecting duplicate or boring moments."
+            return "Cloud job is checking duplicate and low-value moments."
         case "applying_template":
-            return "AI is matching clips to the selected template."
+            return "Template rules are being applied to the edit plan."
         case "adding_slow_motion":
-            return "AI is choosing slow-motion moments."
+            return "Slow-motion moments are being validated in the edit plan."
         case "adding_watermark_outro":
-            return "AI is applying plan rules and branding."
+            return "Plan rules, watermark, and outro are being validated."
         case "rendering_mp4":
-            return "AI is rendering the approved timeline into an MP4."
+            return "Cloud renderer is producing the approved MP4."
         case "finalizing_download":
-            return "AI is finalizing preview and share access."
+            return "Preview and share access are being finalized."
         default:
-            return "AI is updating this edit from real cloud job status."
+            return "HoopClips is updating this edit from real cloud job status."
         }
     }
 
