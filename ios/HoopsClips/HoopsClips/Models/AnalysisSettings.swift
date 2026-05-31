@@ -10,6 +10,7 @@ nonisolated struct AnalysisSettings: Codable, Sendable {
     var maxClipDuration: Double = 15.0
     var targetHighlightDuration: Double = 45.0
     var highlightTeamSelection: HighlightTeamSelection = .allTeams
+    var customHighlightTeamNames: [String: String] = [:]
     var clipPadding: Double = 1.5
     var framesSampledPerSecond: Double = 3.0
     var preferKeepUncertain: Bool = true
@@ -34,6 +35,7 @@ extension AnalysisSettings {
         case maxClipDuration
         case targetHighlightDuration
         case highlightTeamSelection
+        case customHighlightTeamNames
         case clipPadding
         case framesSampledPerSecond
         case preferKeepUncertain
@@ -54,6 +56,7 @@ extension AnalysisSettings {
         maxClipDuration = try container.decodeIfPresent(Double.self, forKey: .maxClipDuration) ?? 15.0
         targetHighlightDuration = try container.decodeIfPresent(Double.self, forKey: .targetHighlightDuration) ?? 45.0
         highlightTeamSelection = try container.decodeIfPresent(HighlightTeamSelection.self, forKey: .highlightTeamSelection) ?? .allTeams
+        customHighlightTeamNames = try container.decodeIfPresent([String: String].self, forKey: .customHighlightTeamNames) ?? [:]
         clipPadding = try container.decodeIfPresent(Double.self, forKey: .clipPadding) ?? 1.5
         framesSampledPerSecond = try container.decodeIfPresent(Double.self, forKey: .framesSampledPerSecond) ?? 3.0
         preferKeepUncertain = try container.decodeIfPresent(Bool.self, forKey: .preferKeepUncertain) ?? true
@@ -74,6 +77,7 @@ extension AnalysisSettings {
         try container.encode(maxClipDuration, forKey: .maxClipDuration)
         try container.encode(targetHighlightDuration, forKey: .targetHighlightDuration)
         try container.encode(highlightTeamSelection, forKey: .highlightTeamSelection)
+        try container.encode(customHighlightTeamNames, forKey: .customHighlightTeamNames)
         try container.encode(clipPadding, forKey: .clipPadding)
         try container.encode(framesSampledPerSecond, forKey: .framesSampledPerSecond)
         try container.encode(preferKeepUncertain, forKey: .preferKeepUncertain)

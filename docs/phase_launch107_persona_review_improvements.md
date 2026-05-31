@@ -58,12 +58,13 @@ Use a 20-persona subagent review panel to find practical launch improvements for
 - AI Edit and App Review copy reduce customer-facing implementation terms and replace RevenueCat/GPT/backend wording where it appears in the main path.
 - App Review sign-in notes now describe the real cloud-enabled product path.
 - Backend render quota now counts active/rendered jobs, not failed/failed-timeout jobs, so failed cloud jobs do not burn Free chances.
+- First cloud team scan/analysis now asks for explicit cloud AI consent before uploading the source video.
+- Team Setup now lets users rename a detected jersey-color team before analysis while preserving the scan-backed team ID.
 
 ## Deferred
 
 - Import preflight for large camera files: size, codec, resolution, local storage, cloud eligibility, and exact over-limit reason.
-- First-analysis cloud consent sheet covering source video upload, retention, deletion, and policy links.
-- Team Setup: rename jersey-color teams, save target team/opponent per project, and mark all-teams/not-sure clearly.
+- Team Setup: save opponent name per project and make all-teams/not-sure clearer in History.
 - Evidence-grade Review: keyframes, why-kept reason, team evidence, and outcome/timing reason per clip.
 - Recruit profile/share packet for coach workflows.
 - Platform post packs and deterministic filenames for social managers/videographers.
@@ -79,6 +80,10 @@ Use a 20-persona subagent review panel to find practical launch improvements for
 - Interrupted: local `xcodebuild test` and `xcodebuild test -only-testing:HoopsClipsTests` both built test bundles, then hung in the simulator runner/finalization path and were terminated. The earlier full run showed multiple unit tests passing and UI smoke tests skipped before the hang, but no clean test summary was produced.
 - Expected no-go before commit: `python3 scripts/submission_readiness_preflight.py --skip-live` reported pass=21 warn=3 fail=9 while this branch was still uncommitted.
 - Expected no-go after commit: `python3 scripts/submission_readiness_preflight.py --skip-live` reported pass=23 warn=2 fail=8. Repo cleanliness passed; remaining blockers are backend config preflight, team accuracy evidence, archive metadata, unavailable wired iPhone tunnel, stale main CI/deploy runs, secret-gated deploy preflight for the current SHA, and installed TestFlight smoke.
+- Follow-up pass: implemented review-deferred cloud consent and detected-team renaming. Validation is tracked in the final handoff for commit after `dd8be93`.
+- Follow-up passed: `git diff --check`.
+- Follow-up passed: XcodeBuildMCP focused simulator test/build for `HoopsClipsTests/HoopsClipsTests/testTeamTargetCanUseCustomDisplayName` with `CODE_SIGNING_ALLOWED=NO -skipPackagePluginValidation`.
+- Follow-up passed: `python3 -m unittest scripts.test_submission_readiness_preflight -v` (36 tests).
 
 ## Current Launch Blockers
 

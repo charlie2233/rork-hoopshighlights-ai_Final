@@ -693,6 +693,33 @@ struct HoopsClipsTests {
         #expect(viewModel.settings.highlightTeamSelection.teamId == "team_blue")
     }
 
+    @Test @MainActor func testTeamTargetCanUseCustomDisplayName() {
+        let viewModel = HighlightsViewModel()
+        viewModel.cloudDetectedTeams = [
+            CloudTeamOption(
+                teamId: "team_blue",
+                label: "Blue jerseys",
+                colorLabel: "blue",
+                primaryColorHex: "#0057FF",
+                confidence: 0.94,
+                source: "quick_scan"
+            )
+        ]
+
+        viewModel.confirmHighlightTeamSelection(viewModel.availableHighlightTeamChoices[1])
+        viewModel.renameSelectedHighlightTeam("  Eastside 17U   Varsity  ")
+
+        #expect(viewModel.settings.highlightTeamSelection.label == "Eastside 17U Varsity")
+        #expect(viewModel.settings.customHighlightTeamNames["team_blue"] == "Eastside 17U Varsity")
+        #expect(viewModel.availableHighlightTeamChoices[1].displayTitle == "Eastside 17U Varsity")
+
+        viewModel.renameSelectedHighlightTeam("   ")
+
+        #expect(viewModel.settings.highlightTeamSelection.label == "Blue jerseys")
+        #expect(viewModel.settings.customHighlightTeamNames["team_blue"] == nil)
+        #expect(viewModel.availableHighlightTeamChoices[1].displayTitle == "Blue jerseys")
+    }
+
     @Test @MainActor func testTeamScanCancellationClearsInProgressState() async throws {
         let tempURL = FileManager.default.temporaryDirectory.appending(path: "team-scan-cancel-\(UUID().uuidString).mp4")
         try Data("fake video".utf8).write(to: tempURL)

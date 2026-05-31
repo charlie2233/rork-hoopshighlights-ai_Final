@@ -30,12 +30,12 @@ Suggested review path:
 4. Use Apple's sandbox purchase flow for Premium Monthly.
 5. Restore purchases from the paywall if needed.
 6. Import a short basketball video from Photos or Files.
-7. Run cloud AI analysis and wait for the generated clips.
+7. Accept the cloud AI prompt, choose the target team or All teams, then run analysis and wait for the generated clips.
 8. Review generated clips.
 9. Use AI Edit to generate a cloud-rendered highlight reel.
 10. Preview, save to Photos, and share the highlight reel.
 
-No external hardware, cloud dashboard, or admin access is required. The app may upload the selected source video to HoopClips cloud only after the reviewer starts analysis.
+No external hardware, cloud dashboard, or admin access is required. The app may upload the selected source video to HoopClips cloud only after the reviewer accepts the in-app cloud AI prompt for team scan or analysis.
 ```
 
 ## Backend Account Requirement

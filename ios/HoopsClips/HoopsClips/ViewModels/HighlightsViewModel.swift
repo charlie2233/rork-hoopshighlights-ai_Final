@@ -105,10 +105,11 @@ final class HighlightsViewModel {
 
     var availableHighlightTeamChoices: [HighlightTeamSelection] {
         let scannedChoices = cloudDetectedTeams.map { team in
-            HighlightTeamSelection(
+            let displayLabel = sanitizedCustomTeamName(settings.customHighlightTeamNames[team.teamId]) ?? team.label
+            return HighlightTeamSelection(
                 mode: .team,
                 teamId: team.teamId,
-                label: team.label,
+                label: displayLabel,
                 colorLabel: team.colorLabel,
                 primaryColorHex: team.primaryColorHex,
                 confidenceThreshold: 0.85,
@@ -121,6 +122,11 @@ final class HighlightsViewModel {
         }
 
         return [.allTeams] + scannedChoices
+    }
+
+    var selectedHighlightTeamNameDraft: String {
+        guard settings.highlightTeamSelection.mode == .team else { return "" }
+        return settings.highlightTeamSelection.label ?? ""
     }
 
     var requiresHighlightTeamSelectionConfirmation: Bool {
@@ -394,13 +400,38 @@ final class HighlightsViewModel {
     }
 
     func confirmHighlightTeamSelection(_ selection: HighlightTeamSelection) {
-        settings.highlightTeamSelection = selection
+        var resolvedSelection = selection
+        if let teamID = selection.teamId,
+           let customName = sanitizedCustomTeamName(settings.customHighlightTeamNames[teamID]) {
+            resolvedSelection.label = customName
+        }
+        settings.highlightTeamSelection = resolvedSelection
         hasConfirmedHighlightTeamSelection = true
         if !cloudDetectedTeams.isEmpty {
-            cloudTeamScanStatusMessage = selection.mode == .all
+            cloudTeamScanStatusMessage = resolvedSelection.mode == .all
                 ? "All teams selected"
-                : "\(selection.displayTitle) selected"
+                : "\(resolvedSelection.displayTitle) selected"
         }
+    }
+
+    func renameSelectedHighlightTeam(_ displayName: String) {
+        guard settings.highlightTeamSelection.mode == .team,
+              let teamID = settings.highlightTeamSelection.teamId else {
+            return
+        }
+
+        let customName = sanitizedCustomTeamName(displayName)
+        if let customName {
+            settings.customHighlightTeamNames[teamID] = customName
+            settings.highlightTeamSelection.label = customName
+        } else {
+            settings.customHighlightTeamNames.removeValue(forKey: teamID)
+            settings.highlightTeamSelection.label = cloudDetectedTeams.first(where: { $0.teamId == teamID })?.label
+                ?? settings.highlightTeamSelection.colorLabel
+                ?? "Selected team"
+        }
+
+        cloudTeamScanStatusMessage = "\(settings.highlightTeamSelection.displayTitle) selected"
     }
 
     private func runPrimaryLocalAnalysis(for url: URL, status: String) async {
@@ -1043,6 +1074,16 @@ final class HighlightsViewModel {
         if !detectedKeys.contains(selectedKey) {
             settings.highlightTeamSelection = .allTeams
         }
+    }
+
+    private func sanitizedCustomTeamName(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let collapsed = value
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
+        guard !collapsed.isEmpty else { return nil }
+        return String(collapsed.prefix(36))
     }
 
     private func insertProject(_ project: PersistedProjectRecord, makeCurrent: Bool) {

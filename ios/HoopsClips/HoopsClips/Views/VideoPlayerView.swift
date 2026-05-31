@@ -10,6 +10,7 @@ struct VideoPlayerView: View {
     @Environment(AuthService.self) private var authService
     @Environment(AppLanguageStore.self) private var languageStore
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @AppStorage("hoops.cloudVideoConsentAccepted.v1") private var cloudVideoConsentAccepted = false
     @State private var player: AVPlayer?
     @State private var showingFilePicker = false
     @State private var selectedPhotoItem: PhotosPickerItem?
@@ -26,6 +27,8 @@ struct VideoPlayerView: View {
     @State private var importBackgroundTaskID: UIBackgroundTaskIdentifier = .invalid
     @State private var importErrorMessage: String?
     @State private var lastAnalysisAnnouncementPercent = -1
+    @State private var showingCloudVideoConsent = false
+    @State private var pendingCloudVideoConsentAction: CloudVideoConsentAction?
 
     private let videoImportReminderNanoseconds: UInt64 = 20 * 1_000_000_000
     private let videoImportTimeoutNanoseconds: UInt64 = 5 * 60 * 1_000_000_000
@@ -122,6 +125,15 @@ struct VideoPlayerView: View {
             }
             .sheet(isPresented: $showingPaywall) {
                 PaywallView(subscriptionManager: subscriptionManager, authService: authService)
+            }
+            .sheet(isPresented: $showingCloudVideoConsent) {
+                CloudVideoConsentSheet(
+                    primaryActionTitle: cloudConsentPrimaryActionTitle,
+                    onAccept: acceptCloudVideoConsent,
+                    onCancel: cancelCloudVideoConsent
+                )
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
             }
             .alert(languageStore.text(.noHighlightsFound), isPresented: $showingNoClipsAlert) {
                 Button("OK", role: .cancel) { }
@@ -308,12 +320,74 @@ struct VideoPlayerView: View {
     private func startTeamScanIfNeeded() {
         guard AppConstants.cloudAnalysisEnabled else { return }
         guard viewModel.isVideoLoaded, viewModel.clips.isEmpty else { return }
+        guard viewModel.cloudDetectedTeams.isEmpty else { return }
         guard teamScanTask == nil else { return }
+        guard cloudVideoConsentAccepted else {
+            requestCloudVideoConsent(for: .teamScan)
+            return
+        }
 
         teamScanTask = Task { @MainActor in
             await viewModel.scanTeamsBeforeAnalysis()
             teamScanTask = nil
         }
+    }
+
+    private func startAnalysisFromButton() {
+        guard !requiresProForCurrentVideo else {
+            showingDurationLimitAlert = true
+            return
+        }
+        guard !viewModel.isCloudTeamScanInProgress else { return }
+        guard !viewModel.requiresHighlightTeamSelectionConfirmation else {
+            HoopsAccessibility.announce("Choose a highlight team or All teams before analysis.")
+            return
+        }
+        guard !AppConstants.cloudAnalysisEnabled || cloudVideoConsentAccepted else {
+            requestCloudVideoConsent(for: .startAnalysis)
+            return
+        }
+
+        analysisStarted = true
+        Task {
+            await viewModel.startAnalysis()
+            if viewModel.clips.isEmpty {
+                showingNoClipsAlert = true
+            }
+        }
+    }
+
+    private func requestCloudVideoConsent(for action: CloudVideoConsentAction) {
+        pendingCloudVideoConsentAction = action
+        showingCloudVideoConsent = true
+    }
+
+    private var cloudConsentPrimaryActionTitle: String {
+        switch pendingCloudVideoConsentAction {
+        case .startAnalysis:
+            return "I Agree, Start Analysis"
+        case .teamScan, nil:
+            return "I Agree, Scan Teams"
+        }
+    }
+
+    private func acceptCloudVideoConsent() {
+        cloudVideoConsentAccepted = true
+        showingCloudVideoConsent = false
+        let action = pendingCloudVideoConsentAction
+        pendingCloudVideoConsentAction = nil
+
+        switch action {
+        case .startAnalysis:
+            startAnalysisFromButton()
+        case .teamScan, nil:
+            startTeamScanIfNeeded()
+        }
+    }
+
+    private func cancelCloudVideoConsent() {
+        pendingCloudVideoConsentAction = nil
+        showingCloudVideoConsent = false
     }
 
     private func cancelActiveImport() {
@@ -568,22 +642,7 @@ struct VideoPlayerView: View {
                 }
 
                 Button {
-                    guard !requiresProForCurrentVideo else {
-                        showingDurationLimitAlert = true
-                        return
-                    }
-                    guard !viewModel.isCloudTeamScanInProgress else { return }
-                    guard !viewModel.requiresHighlightTeamSelectionConfirmation else {
-                        HoopsAccessibility.announce("Choose a highlight team or All teams before analysis.")
-                        return
-                    }
-                    analysisStarted = true
-                    Task {
-                        await viewModel.startAnalysis()
-                        if viewModel.clips.isEmpty {
-                            showingNoClipsAlert = true
-                        }
-                    }
+                    startAnalysisFromButton()
                 } label: {
                     HStack(spacing: 12) {
                         Image(systemName: "brain.head.profile.fill")
@@ -648,6 +707,15 @@ struct VideoPlayerView: View {
                     teamTargetButton(selection)
                 }
             }
+
+            if viewModel.settings.highlightTeamSelection.mode == .team {
+                selectedTeamNameField
+            } else if viewModel.requiresHighlightTeamSelectionConfirmation {
+                Label("Not sure? Use All teams and check plays in Review.", systemImage: "questionmark.circle.fill")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(AppTheme.subtleText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .padding(14)
         .accessibilityIdentifier("analysis.teamTarget.section")
@@ -708,17 +776,53 @@ struct VideoPlayerView: View {
         .hoopsSelectedState(isConfirmedSelection)
     }
 
+    private var selectedTeamNameField: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "pencil")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(AppTheme.neonPurple)
+                .frame(width: 22)
+
+            TextField(
+                "Team name (optional)",
+                text: Binding(
+                    get: { viewModel.selectedHighlightTeamNameDraft },
+                    set: { viewModel.renameSelectedHighlightTeam($0) }
+                )
+            )
+            .font(.caption.weight(.medium))
+            .foregroundStyle(.white)
+            .textInputAutocapitalization(.words)
+            .submitLabel(.done)
+            .accessibilityIdentifier("analysis.teamTarget.nameField")
+
+            Text("optional")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(AppTheme.subtleText)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(AppTheme.surfaceBg.opacity(0.72), in: .rect(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(AppTheme.neonPurple.opacity(0.18), lineWidth: 1)
+        )
+        .accessibilityElement(children: .contain)
+    }
+
     private var teamTargetSubtitle: String {
         if viewModel.isCloudTeamScanInProgress {
             return viewModel.cloudTeamScanStatusMessage ?? "Scanning jersey colors before analysis."
         }
         if viewModel.requiresHighlightTeamSelectionConfirmation {
-            return "Choose a jersey-color team or tap All teams before analysis."
+            return "Pick your team, rename it if helpful, or use All teams."
         }
         if !viewModel.cloudDetectedTeams.isEmpty {
-            return "Detected teams are labeled by jersey color. Uncertain plays stay in Review."
+            return "HoopClips keeps uncertain plays in Review so you can decide."
         }
-        return "Team targeting unlocks after the cloud scan finds jersey colors. Use All teams for now."
+        return cloudVideoConsentAccepted
+            ? "Team targeting unlocks after the cloud scan finds jersey colors."
+            : "First scan asks before uploading video to the HoopClips cloud."
     }
 
     private var teamScanStatusRow: some View {
@@ -768,7 +872,7 @@ struct VideoPlayerView: View {
 
     private var teamScanDetectedStatusText: String {
         if viewModel.requiresHighlightTeamSelectionConfirmation {
-            return "Choose target team"
+            return "Choose target team or All teams"
         }
         return viewModel.cloudDetectedTeams.map(\.label).joined(separator: " vs ")
     }
@@ -1202,6 +1306,102 @@ struct VideoPlayerView: View {
         guard bucket >= 25, bucket <= 100, bucket != lastAnalysisAnnouncementPercent else { return }
         lastAnalysisAnnouncementPercent = bucket
         HoopsAccessibility.announce("Analysis \(bucket) percent complete.")
+    }
+}
+
+private enum CloudVideoConsentAction {
+    case teamScan
+    case startAnalysis
+}
+
+private struct CloudVideoConsentSheet: View {
+    let primaryActionTitle: String
+    let onAccept: () -> Void
+    let onCancel: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                AppTheme.darkBg.ignoresSafeArea()
+
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 18) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Use Cloud AI")
+                                .font(.title2.bold())
+                                .foregroundStyle(.white)
+                            Text("HoopClips needs cloud processing to scan teams, find highlights, and make edited videos for this build.")
+                                .font(.subheadline)
+                                .foregroundStyle(AppTheme.subtleText)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+
+                        VStack(alignment: .leading, spacing: 12) {
+                            consentRow(icon: "icloud.and.arrow.up.fill", text: "Your source video is uploaded to HoopClips cloud services for team scan and analysis.")
+                            consentRow(icon: "basketball.fill", text: "AI looks for teams, plays, blocks, steals, and useful review clips.")
+                            consentRow(icon: "film.stack.fill", text: "Finished edits and cloud locker copies can be stored for a limited time.")
+                            consentRow(icon: "iphone", text: "Imported files, History, and saved downloads also remain on this device.")
+                        }
+
+                        if let privacyURL = AppConstants.privacyPolicyURL {
+                            Link(destination: privacyURL) {
+                                Label("Privacy Policy", systemImage: "lock.shield.fill")
+                                    .font(.footnote.weight(.semibold))
+                            }
+                            .foregroundStyle(AppTheme.neonPurple)
+                        }
+
+                        VStack(spacing: 10) {
+                            Button {
+                                onAccept()
+                            } label: {
+                                Text(primaryActionTitle)
+                                    .font(.headline)
+                                    .foregroundStyle(.white)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 14)
+                                    .background(AppTheme.purpleGradient, in: .rect(cornerRadius: 14))
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityIdentifier("analysis.cloudConsent.acceptButton")
+
+                            Button {
+                                onCancel()
+                            } label: {
+                                Text("Not Now")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(AppTheme.subtleText)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 12)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(20)
+                }
+            }
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Close") {
+                        onCancel()
+                    }
+                    .foregroundStyle(AppTheme.subtleText)
+                }
+            }
+        }
+    }
+
+    private func consentRow(icon: String, text: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: icon)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(AppTheme.neonPurple)
+                .frame(width: 22)
+            Text(text)
+                .font(.footnote)
+                .foregroundStyle(.white.opacity(0.86))
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 }
 
