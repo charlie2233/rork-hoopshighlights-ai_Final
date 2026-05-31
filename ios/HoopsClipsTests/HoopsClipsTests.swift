@@ -7,6 +7,7 @@
 
 import Testing
 import Foundation
+import CoreGraphics
 import CoreML
 import Vision
 import UniformTypeIdentifiers
@@ -27,6 +28,61 @@ struct HoopsClipsTests {
             .quickTimeMovie
         ])
         #expect(!VideoImportPolicy.supportedContentTypes.contains(.data))
+    }
+
+    @Test func testVideoImportPreflightAcceptsLongerFourMinuteThirtyEditSource() throws {
+        let summary = try VideoImportPolicy.evaluatePreflight(
+            fileSizeBytes: 320 * 1024 * 1024,
+            durationSeconds: 270,
+            dimensions: CGSize(width: 3840, height: 2160),
+            codecNames: ["hvc1"],
+            availableCapacityBytes: 900 * 1024 * 1024,
+            fileExtension: "mov"
+        )
+
+        #expect(summary.durationSeconds == 270)
+        #expect(summary.dimensions == CGSize(width: 3840, height: 2160))
+    }
+
+    @Test func testVideoImportPreflightRejectsOversizedCloudUploadWithExactReason() {
+        do {
+            _ = try VideoImportPolicy.evaluatePreflight(
+                fileSizeBytes: VideoImportPolicy.maxCloudUploadBytes + 1,
+                durationSeconds: 60,
+                dimensions: CGSize(width: 1920, height: 1080),
+                codecNames: ["avc1"],
+                availableCapacityBytes: 2 * 1024 * 1024 * 1024,
+                fileExtension: "mp4"
+            )
+            Issue.record("Expected oversized import to fail.")
+        } catch let error as VideoImportPreflightError {
+            #expect(error.code == "file_too_large")
+            #expect(error.userFacingMessage.contains(VideoImportPolicy.formattedBytes(VideoImportPolicy.maxCloudUploadBytes)))
+        } catch {
+            Issue.record("Unexpected error type: \(error)")
+        }
+    }
+
+    @Test func testVideoImportPreflightRejectsInsufficientStorageWithExactReason() {
+        let fileSizeBytes: Int64 = 100 * 1024 * 1024
+        let availableBytes = fileSizeBytes + VideoImportPolicy.requiredScratchBytes - 1
+
+        do {
+            _ = try VideoImportPolicy.evaluatePreflight(
+                fileSizeBytes: fileSizeBytes,
+                durationSeconds: 60,
+                dimensions: CGSize(width: 1920, height: 1080),
+                codecNames: ["avc1"],
+                availableCapacityBytes: availableBytes,
+                fileExtension: "mp4"
+            )
+            Issue.record("Expected low-storage import to fail.")
+        } catch let error as VideoImportPreflightError {
+            #expect(error.code == "not_enough_storage")
+            #expect(error.userFacingMessage.contains(VideoImportPolicy.formattedBytes(fileSizeBytes + VideoImportPolicy.requiredScratchBytes)))
+        } catch {
+            Issue.record("Unexpected error type: \(error)")
+        }
     }
 
     @Test func testHeuristicFallback() async {

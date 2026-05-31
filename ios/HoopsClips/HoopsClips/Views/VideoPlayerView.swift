@@ -165,6 +165,9 @@ struct VideoPlayerView: View {
 
     private func importVideo(from url: URL) {
         beginVideoImport(source: "files") {
+            guard await preflightVideoImport(url: url, source: "files") != nil else {
+                return false
+            }
             await MainActor.run {
                 importStatusMessage = "Saving video to HoopClips..."
             }
@@ -188,6 +191,12 @@ struct VideoPlayerView: View {
                         "video_import.file_access_failed",
                         metadata: "source=photos"
                     )
+                    return false
+                }
+
+                try Task.checkCancellation()
+                guard await preflightVideoImport(url: importedVideo.url, source: "photos") != nil else {
+                    try? await VideoImportTransfer.removeTemporaryFile(at: importedVideo.url)
                     return false
                 }
 
@@ -280,6 +289,42 @@ struct VideoPlayerView: View {
         }
 
         importTask = task
+    }
+
+    private func preflightVideoImport(url: URL, source: String) async -> VideoImportPreflightSummary? {
+        await MainActor.run {
+            importStatusMessage = "Checking video details..."
+        }
+
+        do {
+            let summary = try await VideoImportPolicy.preflight(url: url)
+            LaunchTelemetry.shared.recordStabilityCheckpoint(
+                "video_import.preflight_passed",
+                metadata: summary.telemetryMetadata(source: source)
+            )
+            await MainActor.run {
+                importStatusMessage = "Video checked. Saving to HoopClips..."
+            }
+            return summary
+        } catch let error as VideoImportPreflightError {
+            LaunchTelemetry.shared.recordStabilityCheckpoint(
+                "video_import.preflight_failed",
+                metadata: "source=\(source) code=\(error.code)"
+            )
+            await MainActor.run {
+                importErrorMessage = error.userFacingMessage
+            }
+            return nil
+        } catch {
+            LaunchTelemetry.shared.recordStabilityCheckpoint(
+                "video_import.preflight_failed",
+                metadata: "source=\(source) code=metadata_unreadable"
+            )
+            await MainActor.run {
+                importErrorMessage = "HoopClips could not read that video's details. Try saving it to Files or exporting a fresh copy from Photos."
+            }
+            return nil
+        }
     }
 
     private func beginImportBackgroundTask(source: String) {
@@ -1434,6 +1479,10 @@ private struct CloudVideoConsentSheet: View {
 }
 
 enum VideoImportPolicy {
+    static let maxCloudUploadBytes: Int64 = 500 * 1024 * 1024
+    static let maxCloudDurationSeconds: Double = AppConstants.cloudAnalysisMaxDuration
+    static let requiredScratchBytes: Int64 = 256 * 1024 * 1024
+
     static let supportedContentTypes: [UTType] = [
         .video,
         .movie,
@@ -1442,6 +1491,241 @@ enum VideoImportPolicy {
     ]
 
     static let usesFileBackedTransferOnly = true
+
+    static func preflight(url: URL) async throws -> VideoImportPreflightSummary {
+        let fileExtension = url.pathExtension
+        guard isSupportedVideoExtension(fileExtension) else {
+            throw VideoImportPreflightError.unsupportedType(fileExtension.isEmpty ? "unknown" : fileExtension)
+        }
+
+        let fileSizeBytes = try fileSizeBytes(for: url)
+        let availableCapacityBytes = availableCapacityBytesForImport()
+        let summary = try await metadataSummary(
+            for: url,
+            fileSizeBytes: fileSizeBytes,
+            availableCapacityBytes: availableCapacityBytes
+        )
+        try validate(summary)
+        return summary
+    }
+
+    static func validateTemporaryCopyCapacity(for sourceURL: URL) throws {
+        let fileSizeBytes = try fileSizeBytes(for: sourceURL)
+        try validateLocalStorage(fileSizeBytes: fileSizeBytes, availableCapacityBytes: availableCapacityBytesForImport())
+    }
+
+    static func validate(_ summary: VideoImportPreflightSummary) throws {
+        guard summary.fileSizeBytes > 0 else {
+            throw VideoImportPreflightError.unreadableFileSize
+        }
+        guard summary.fileSizeBytes <= maxCloudUploadBytes else {
+            throw VideoImportPreflightError.fileTooLarge(
+                actualBytes: summary.fileSizeBytes,
+                maxBytes: maxCloudUploadBytes
+            )
+        }
+        try validateLocalStorage(
+            fileSizeBytes: summary.fileSizeBytes,
+            availableCapacityBytes: summary.availableCapacityBytes
+        )
+        guard let durationSeconds = summary.durationSeconds, durationSeconds.isFinite, durationSeconds > 0 else {
+            throw VideoImportPreflightError.unreadableDuration
+        }
+        guard durationSeconds <= maxCloudDurationSeconds else {
+            throw VideoImportPreflightError.videoTooLong(
+                actualSeconds: durationSeconds,
+                maxSeconds: maxCloudDurationSeconds
+            )
+        }
+        guard summary.dimensions != nil else {
+            throw VideoImportPreflightError.noVideoTrack
+        }
+    }
+
+    static func evaluatePreflight(
+        fileSizeBytes: Int64,
+        durationSeconds: Double?,
+        dimensions: CGSize?,
+        codecNames: [String],
+        availableCapacityBytes: Int64?,
+        fileExtension: String = "mov"
+    ) throws -> VideoImportPreflightSummary {
+        let summary = VideoImportPreflightSummary(
+            fileSizeBytes: fileSizeBytes,
+            durationSeconds: durationSeconds,
+            dimensions: dimensions,
+            codecNames: codecNames,
+            availableCapacityBytes: availableCapacityBytes,
+            fileExtension: fileExtension
+        )
+        try validate(summary)
+        return summary
+    }
+
+    static func formattedBytes(_ bytes: Int64) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useMB, .useGB]
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: bytes)
+    }
+
+    private static func metadataSummary(
+        for url: URL,
+        fileSizeBytes: Int64,
+        availableCapacityBytes: Int64?
+    ) async throws -> VideoImportPreflightSummary {
+        let asset = AVURLAsset(url: url)
+        let duration = try await asset.load(.duration)
+        let durationSeconds = CMTimeGetSeconds(duration)
+        let videoTracks = try await asset.loadTracks(withMediaType: .video)
+        guard let videoTrack = videoTracks.first else {
+            return VideoImportPreflightSummary(
+                fileSizeBytes: fileSizeBytes,
+                durationSeconds: durationSeconds,
+                dimensions: nil,
+                codecNames: [],
+                availableCapacityBytes: availableCapacityBytes,
+                fileExtension: url.pathExtension
+            )
+        }
+
+        let naturalSize = try await videoTrack.load(.naturalSize)
+        let preferredTransform = try await videoTrack.load(.preferredTransform)
+        let transformedSize = naturalSize.applying(preferredTransform)
+        let dimensions = CGSize(
+            width: abs(transformedSize.width.rounded()),
+            height: abs(transformedSize.height.rounded())
+        )
+        let formatDescriptions = (try? await videoTrack.load(.formatDescriptions)) ?? []
+        let codecNames = formatDescriptions
+            .map { CMFormatDescriptionGetMediaSubType($0).fourCharacterCodeString }
+            .filter { !$0.isEmpty }
+
+        return VideoImportPreflightSummary(
+            fileSizeBytes: fileSizeBytes,
+            durationSeconds: durationSeconds,
+            dimensions: dimensions,
+            codecNames: Array(Set(codecNames)).sorted(),
+            availableCapacityBytes: availableCapacityBytes,
+            fileExtension: url.pathExtension
+        )
+    }
+
+    private static func validateLocalStorage(fileSizeBytes: Int64, availableCapacityBytes: Int64?) throws {
+        guard let availableCapacityBytes else { return }
+        let requiredBytes = fileSizeBytes + requiredScratchBytes
+        guard availableCapacityBytes >= requiredBytes else {
+            throw VideoImportPreflightError.notEnoughStorage(
+                availableBytes: availableCapacityBytes,
+                requiredBytes: requiredBytes
+            )
+        }
+    }
+
+    private static func fileSizeBytes(for url: URL) throws -> Int64 {
+        let values = try url.resourceValues(forKeys: [.fileSizeKey])
+        guard let fileSize = values.fileSize, fileSize > 0 else {
+            throw VideoImportPreflightError.unreadableFileSize
+        }
+        return Int64(fileSize)
+    }
+
+    private static func availableCapacityBytesForImport() -> Int64? {
+        let values = try? URL.temporaryDirectory.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
+        return values?.volumeAvailableCapacityForImportantUsage
+    }
+
+    private static func isSupportedVideoExtension(_ fileExtension: String) -> Bool {
+        let trimmed = fileExtension.trimmingCharacters(in: CharacterSet(charactersIn: ". "))
+        guard !trimmed.isEmpty else { return true }
+        guard let type = UTType(filenameExtension: trimmed) else { return true }
+        return type.conforms(to: .video) || type.conforms(to: .movie) || supportedContentTypes.contains(type)
+    }
+}
+
+struct VideoImportPreflightSummary: Equatable, Sendable {
+    let fileSizeBytes: Int64
+    let durationSeconds: Double?
+    let dimensions: CGSize?
+    let codecNames: [String]
+    let availableCapacityBytes: Int64?
+    let fileExtension: String
+
+    func telemetryMetadata(source: String) -> String {
+        let durationText = durationSeconds.map { String(Int($0.rounded())) } ?? "unknown"
+        let dimensionsText: String
+        if let dimensions {
+            dimensionsText = "\(Int(dimensions.width))x\(Int(dimensions.height))"
+        } else {
+            dimensionsText = "unknown"
+        }
+        let codecText = codecNames.isEmpty ? "unknown" : codecNames.joined(separator: ",")
+        return "source=\(source) fileSizeBytes=\(fileSizeBytes) durationSeconds=\(durationText) resolution=\(dimensionsText) codecs=\(codecText)"
+    }
+}
+
+enum VideoImportPreflightError: LocalizedError, Equatable {
+    case unsupportedType(String)
+    case unreadableFileSize
+    case unreadableDuration
+    case noVideoTrack
+    case fileTooLarge(actualBytes: Int64, maxBytes: Int64)
+    case videoTooLong(actualSeconds: Double, maxSeconds: Double)
+    case notEnoughStorage(availableBytes: Int64, requiredBytes: Int64)
+
+    var code: String {
+        switch self {
+        case .unsupportedType:
+            return "unsupported_type"
+        case .unreadableFileSize:
+            return "unreadable_file_size"
+        case .unreadableDuration:
+            return "unreadable_duration"
+        case .noVideoTrack:
+            return "no_video_track"
+        case .fileTooLarge:
+            return "file_too_large"
+        case .videoTooLong:
+            return "video_too_long"
+        case .notEnoughStorage:
+            return "not_enough_storage"
+        }
+    }
+
+    var userFacingMessage: String {
+        switch self {
+        case .unsupportedType(let fileExtension):
+            return "HoopClips supports movie files like MP4, MOV, and QuickTime. This file type (\(fileExtension)) is not supported."
+        case .unreadableFileSize:
+            return "HoopClips could not read that video's file size. Save it to Files and try importing it again."
+        case .unreadableDuration:
+            return "HoopClips could not read that video's duration. Export a fresh MP4 or MOV copy and try again."
+        case .noVideoTrack:
+            return "That file does not contain a readable video track. Choose a different basketball video."
+        case .fileTooLarge(let actualBytes, let maxBytes):
+            return "This video is \(VideoImportPolicy.formattedBytes(actualBytes)). Staging cloud analysis accepts up to \(VideoImportPolicy.formattedBytes(maxBytes)). Choose a shorter clip or export a smaller copy before importing."
+        case .videoTooLong(let actualSeconds, let maxSeconds):
+            return "This video is \(Clip.formatTime(actualSeconds)). HoopClips cloud analysis accepts videos up to \(Clip.formatTime(maxSeconds)). Choose a shorter game file before importing."
+        case .notEnoughStorage(let availableBytes, let requiredBytes):
+            return "This import needs about \(VideoImportPolicy.formattedBytes(requiredBytes)) free on this iPhone. You have about \(VideoImportPolicy.formattedBytes(availableBytes)) available."
+        }
+    }
+
+    var errorDescription: String? {
+        userFacingMessage
+    }
+}
+
+private extension FourCharCode {
+    var fourCharacterCodeString: String {
+        let bytes: [UInt8] = [
+            UInt8((self >> 24) & 0xff),
+            UInt8((self >> 16) & 0xff),
+            UInt8((self >> 8) & 0xff),
+            UInt8(self & 0xff)
+        ]
+        return String(bytes: bytes, encoding: .macOSRoman) ?? "\(self)"
+    }
 }
 
 private enum VideoImportTransfer {
@@ -1495,6 +1779,7 @@ private struct ImportedVideoFile: Transferable {
     private static func copyImportedVideo(from sourceURL: URL) throws -> ImportedVideoFile {
         let fileExtension = sourceURL.pathExtension.isEmpty ? "mov" : sourceURL.pathExtension
         let tempURL = URL.temporaryDirectory.appending(path: "imported_video_\(UUID().uuidString).\(fileExtension)")
+        try VideoImportPolicy.validateTemporaryCopyCapacity(for: sourceURL)
         try FileManager.default.copyItem(at: sourceURL, to: tempURL)
         return ImportedVideoFile(url: tempURL)
     }

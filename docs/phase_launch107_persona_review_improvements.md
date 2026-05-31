@@ -63,10 +63,10 @@ Use a 20-persona subagent review panel to find practical launch improvements for
 - Review now shows evidence rows for why a clip is kept/skipped, key moment timestamps, team evidence, outcome evidence, and timing context.
 - History now shows each project's selected team or All teams choice, with detail copy explaining uncertain-team review behavior.
 - Team Setup now lets users save an optional opponent name; History keeps it with the target-team context.
+- Import now preflights video type, file size, duration, resolution/codec metadata, and local free space before saving, with exact user-facing failure reasons for oversized files, overlong videos, unsupported files, unreadable videos, and low storage.
 
 ## Deferred
 
-- Import preflight for large camera files: size, codec, resolution, local storage, cloud eligibility, and exact over-limit reason.
 - Recruit profile/share packet for coach workflows.
 - Platform post packs and deterministic filenames for social managers/videographers.
 - Real purchase/restore proof for RevenueCat/App Store sandbox.
@@ -89,6 +89,7 @@ Use a 20-persona subagent review panel to find practical launch improvements for
 - Follow-up pass 2 passed: `git diff --check`, `python3 -m unittest scripts.test_submission_readiness_preflight -v` (36 tests), and XcodeBuildMCP focused simulator tests for `testClipReviewBadgesMarkUncertainTeamOutcomeAndTiming`, `testClipReviewBadgesMarkMissingTeamAttributionStatusUncertain`, and `testClipReviewEvidenceRowsShowConfidentTeamAndKeyMoments`.
 - Follow-up pass 2 also made History show selected-team versus All teams context for reopened projects.
 - Follow-up pass 3: implemented optional opponent-name capture in Team Setup and persisted it into project History.
+- Follow-up pass 4: implemented import preflight so large camera files fail fast with exact cloud-limit/storage/metadata reasons instead of sitting on Preparing video.
 
 ## Current Launch Blockers
 
