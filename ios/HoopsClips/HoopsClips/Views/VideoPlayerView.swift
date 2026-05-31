@@ -18,6 +18,7 @@ struct VideoPlayerView: View {
     @State private var showingNoClipsAlert = false
     @State private var showingDurationLimitAlert = false
     @State private var isImportingVideo = false
+    @State private var importStatusMessage = ""
     @State private var activeImportID: UUID?
     @State private var importTask: Task<Void, Never>?
     @State private var teamScanTask: Task<Void, Never>?
@@ -103,7 +104,7 @@ struct VideoPlayerView: View {
                 }
             }
             .onChange(of: isImportingVideo) { _, isImporting in
-                HoopsAccessibility.announce(isImporting ? languageStore.text(.preparingVideo) : "Video import finished.")
+                HoopsAccessibility.announce(isImporting ? currentImportStatusMessage : "Video import finished.")
             }
             .onChange(of: viewModel.analysisService.statusMessage) { _, message in
                 guard viewModel.analysisService.isAnalyzing else { return }
@@ -149,7 +150,10 @@ struct VideoPlayerView: View {
 
     private func importVideo(from url: URL) {
         beginVideoImport {
-            await viewModel.loadVideo(url: url)
+            await MainActor.run {
+                importStatusMessage = "Copying video into HoopClips..."
+            }
+            return await viewModel.loadVideo(url: url)
         }
     }
 
@@ -158,6 +162,9 @@ struct VideoPlayerView: View {
             do {
                 try Task.checkCancellation()
 
+                await MainActor.run {
+                    importStatusMessage = "Reading video from Photos..."
+                }
                 guard let importedVideo = try await VideoImportTransfer.loadFileBackedVideo(from: item) else {
                     await MainActor.run {
                         importErrorMessage = "Hoopclips could not access a local video file from Photos. Save it to Files and import from there, or choose a shorter downloaded clip."
@@ -166,6 +173,9 @@ struct VideoPlayerView: View {
                 }
 
                 try Task.checkCancellation()
+                await MainActor.run {
+                    importStatusMessage = "Copying video into HoopClips..."
+                }
                 return await viewModel.loadVideo(url: importedVideo.url)
             } catch is CancellationError {
                 return false
@@ -185,6 +195,7 @@ struct VideoPlayerView: View {
         let importID = UUID()
         activeImportID = importID
         isImportingVideo = true
+        importStatusMessage = languageStore.text(.preparingVideo)
         importErrorMessage = nil
 
         let task = Task {
@@ -239,8 +250,13 @@ struct VideoPlayerView: View {
 
     private func clearImportState() {
         isImportingVideo = false
+        importStatusMessage = ""
         activeImportID = nil
         importTask = nil
+    }
+
+    private var currentImportStatusMessage: String {
+        importStatusMessage.isEmpty ? languageStore.text(.preparingVideo) : importStatusMessage
     }
 
     private func syncPlayer(with url: URL?) {
@@ -306,7 +322,7 @@ struct VideoPlayerView: View {
                         Image(systemName: "plus.circle.fill")
                             .font(.title3)
                     }
-                    Text(isImportingVideo ? languageStore.text(.preparingVideo) : languageStore.text(.selectVideo))
+                    Text(isImportingVideo ? currentImportStatusMessage : languageStore.text(.selectVideo))
                         .font(.headline)
                 }
                 .foregroundStyle(.white)
@@ -320,9 +336,9 @@ struct VideoPlayerView: View {
             )
             .disabled(isImportingVideo)
             .opacity(isImportingVideo ? 0.82 : 1)
-            .accessibilityLabel(isImportingVideo ? languageStore.text(.preparingVideo) : languageStore.text(.selectVideo))
+            .accessibilityLabel(isImportingVideo ? currentImportStatusMessage : languageStore.text(.selectVideo))
             .accessibilityHint("Opens choices for importing a basketball video from Photos or Files.")
-            .accessibilityValue(isImportingVideo ? "In progress" : "Ready")
+            .accessibilityValue(isImportingVideo ? currentImportStatusMessage : "Ready")
 
             if isImportingVideo {
                 Button {

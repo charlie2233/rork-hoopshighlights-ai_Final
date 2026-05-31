@@ -88,7 +88,7 @@ final class ProjectHistoryStore {
             try Task.checkCancellation()
             let sourceExtension = preferredExtension(for: sourceURL.pathExtension, fallback: "mov")
             let persistedSourceURL = projectDirectoryURL.appending(path: "source.\(sourceExtension)", directoryHint: .notDirectory)
-            try copyReplacingItem(at: sourceURL, to: persistedSourceURL)
+            try await copyReplacingItemInBackground(at: sourceURL, to: persistedSourceURL)
             try Task.checkCancellation()
 
             let asset = AVURLAsset(url: persistedSourceURL)
@@ -286,6 +286,16 @@ final class ProjectHistoryStore {
             try fileManager.removeItem(at: destinationURL)
         }
         try fileManager.copyItem(at: sourceURL, to: destinationURL)
+    }
+
+    private func copyReplacingItemInBackground(at sourceURL: URL, to destinationURL: URL) async throws {
+        try await Task.detached(priority: .utility) {
+            let fileManager = FileManager.default
+            if fileManager.fileExists(atPath: destinationURL.path) {
+                try fileManager.removeItem(at: destinationURL)
+            }
+            try fileManager.copyItem(at: sourceURL, to: destinationURL)
+        }.value
     }
 
     private func writeThumbnail(for asset: AVURLAsset, to outputURL: URL) async throws {
