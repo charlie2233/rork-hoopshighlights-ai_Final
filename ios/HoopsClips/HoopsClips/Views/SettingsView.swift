@@ -8,6 +8,7 @@ struct SettingsView: View {
     @Environment(AppLanguageStore.self) private var languageStore
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showingResetAlert = false
+    @State private var showingSignOutConfirmation = false
     @State private var showingPaywall = false
     @State private var showingAdvancedSettings = false
     @State private var feedbackType: FeedbackType = .suggestion
@@ -149,6 +150,18 @@ struct SettingsView: View {
                 Button(languageStore.text(.settingsCancel), role: .cancel) { }
             } message: {
                 Text(languageStore.text(.settingsResetMessage))
+            }
+            .confirmationDialog(
+                languageStore.text(.settingsSignOutConfirmationTitle),
+                isPresented: $showingSignOutConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button(languageStore.text(.settingsSignOut), role: .destructive) {
+                    authService.signOut()
+                }
+                Button(languageStore.text(.settingsCancel), role: .cancel) { }
+            } message: {
+                Text(languageStore.text(.settingsSignOutConfirmationMessage))
             }
         }
     }
@@ -1468,7 +1481,7 @@ struct SettingsView: View {
 
     private var signOutButton: some View {
         Button {
-            authService.signOut()
+            showingSignOutConfirmation = true
         } label: {
             HStack {
                 Image(systemName: "rectangle.portrait.and.arrow.right")

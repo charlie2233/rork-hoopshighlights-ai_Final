@@ -260,6 +260,8 @@ enum AppTextKey {
     case settingsSignInToUpgrade
     case settingsUpgradeToPro
     case settingsSignOut
+    case settingsSignOutConfirmationTitle
+    case settingsSignOutConfirmationMessage
     case settingsGuest
     case settingsUnknown
     case settingsResetTitle
@@ -519,6 +521,8 @@ extension AppLanguage {
         .settingsSignInToUpgrade: "Sign In to Upgrade",
         .settingsUpgradeToPro: "Upgrade to Pro",
         .settingsSignOut: "Sign Out",
+        .settingsSignOutConfirmationTitle: "Sign out?",
+        .settingsSignOutConfirmationMessage: "You'll return to the sign-in screen. Your saved projects stay on this device.",
         .settingsGuest: "Guest",
         .settingsUnknown: "Unknown",
         .settingsResetTitle: "Reset Settings?",
@@ -742,6 +746,8 @@ extension AppLanguage {
         .settingsSignInToUpgrade: "登录后升级",
         .settingsUpgradeToPro: "升级到 Pro",
         .settingsSignOut: "退出登录",
+        .settingsSignOutConfirmationTitle: "退出登录？",
+        .settingsSignOutConfirmationMessage: "你将回到登录页面。此设备上保存的项目会保留。",
         .settingsGuest: "访客",
         .settingsUnknown: "未知",
         .settingsResetTitle: "重置设置？",
@@ -965,6 +971,8 @@ extension AppLanguage {
         .settingsSignInToUpgrade: "Inicia sesión para mejorar",
         .settingsUpgradeToPro: "Mejorar a Pro",
         .settingsSignOut: "Cerrar sesión",
+        .settingsSignOutConfirmationTitle: "¿Cerrar sesión?",
+        .settingsSignOutConfirmationMessage: "Volverás a la pantalla de inicio de sesión. Tus proyectos guardados se quedan en este dispositivo.",
         .settingsGuest: "Invitado",
         .settingsUnknown: "Desconocido",
         .settingsResetTitle: "¿Restablecer ajustes?",
@@ -1188,6 +1196,8 @@ extension AppLanguage {
         .settingsSignInToUpgrade: "Connecte-toi pour passer Pro",
         .settingsUpgradeToPro: "Passer Pro",
         .settingsSignOut: "Se déconnecter",
+        .settingsSignOutConfirmationTitle: "Se déconnecter ?",
+        .settingsSignOutConfirmationMessage: "Tu reviendras à l'écran de connexion. Tes projets enregistrés restent sur cet appareil.",
         .settingsGuest: "Invité",
         .settingsUnknown: "Inconnu",
         .settingsResetTitle: "Réinitialiser les réglages ?",
