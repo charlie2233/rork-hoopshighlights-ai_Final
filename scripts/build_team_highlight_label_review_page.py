@@ -282,6 +282,7 @@ def render_progress_summary(payload: dict[str, Any]) -> str:
             '<p class="lede" id="draft-status">Local draft not loaded.</p>',
             "</div>",
             '<div class="button-row">',
+            '<button type="button" onclick="focusNextIncomplete()">Next incomplete</button>',
             '<button type="button" onclick="downloadAllCaseLabels()">Download all labels</button>',
             '<label class="file-button">Import draft bundle<input id="bundle-import" type="file" accept="application/json" onchange="importDraftBundle(event)"></label>',
             '<button type="button" onclick="clearSavedDraft()">Clear saved draft</button>',
@@ -364,7 +365,7 @@ def render_clip_card(case_index: int, case: dict[str, Any], clip: dict[str, Any]
     complete_class = " complete" if clip.get("needsLabel") is False else ""
     return "\n".join(
         [
-            f'<article class="clip-card{complete_class}" data-case-index="{case_index}" data-clip-index="{clip_index}">',
+            f'<article class="clip-card{complete_class}" data-case-index="{case_index}" data-clip-index="{clip_index}" tabindex="-1">',
             f"<h3>#{clip_index + 1} {escape(str(label))}</h3>",
             f'<p class="clip-meta">{escape(str(clip.get("predictionClipId") or clip.get("labelId") or ""))} | {start}s to {finish}s</p>',
             f'<p>Predicted team: <strong>{escape(str(predicted.get("teamId") or "unknown"))}</strong> ({escape(format_number(predicted.get("teamConfidence")))}) | Status: {escape(str(predicted.get("teamAttributionStatus") or "unknown"))}</p>',
@@ -373,6 +374,7 @@ def render_clip_card(case_index: int, case: dict[str, Any], clip: dict[str, Any]
             jump_button(case.get("videoId"), start, "Start"),
             jump_button(case.get("videoId"), event, "Event"),
             jump_button(case.get("videoId"), finish, "Finish"),
+            f'<button type="button" onclick="markReviewedAndNext({case_index}, {clip_index})">Mark reviewed + next</button>',
             "</div>",
             '<div class="label-grid">',
             f'<label>Reviewed<input class="reviewed" type="checkbox" {reviewed}></label>',
@@ -528,6 +530,10 @@ video {
   border-radius: 12px;
   background: #1d202d;
   padding: 14px;
+}
+.clip-card:focus {
+  outline: 3px solid #f6c95f;
+  outline-offset: 2px;
 }
 .clip-card.complete {
   border-color: #1f9d6a;
@@ -869,6 +875,62 @@ function updateProgress() {
   });
   const overall = document.getElementById("overall-progress");
   if (overall) overall.innerHTML = `<strong>${complete}</strong> / ${total} clips complete. ${total - complete} still need labels.`;
+}
+
+function allClipCards() {
+  return Array.from(document.querySelectorAll("[data-case-index][data-clip-index]"));
+}
+
+function focusClipCard(card) {
+  if (!card) {
+    draftStatus("All visible clips are complete.");
+    return false;
+  }
+  card.scrollIntoView({ behavior: "smooth", block: "center" });
+  card.focus({ preventScroll: true });
+  const casePayload = reviewData.cases[Number(card.dataset.caseIndex)];
+  const clipPayload = casePayload?.clips?.[Number(card.dataset.clipIndex)];
+  const video = document.getElementById(videoElementId(casePayload?.videoId));
+  if (video && clipPayload?.eventCenter != null) {
+    video.currentTime = Math.max(0, Number(clipPayload.eventCenter) || 0);
+  }
+  return true;
+}
+
+function focusNextIncomplete(caseIndex = null, clipIndex = null) {
+  updateProgress();
+  const cards = allClipCards();
+  if (!cards.length) return false;
+  let startIndex = -1;
+  if (caseIndex !== null && clipIndex !== null) {
+    startIndex = cards.findIndex(card => (
+      Number(card.dataset.caseIndex) === Number(caseIndex) &&
+      Number(card.dataset.clipIndex) === Number(clipIndex)
+    ));
+  }
+  const ordered = cards.slice(startIndex + 1).concat(cards.slice(0, startIndex + 1));
+  return focusClipCard(ordered.find(card => !clipCompleteFromCard(card)));
+}
+
+function markReviewedAndNext(caseIndex, clipIndex) {
+  const card = document.querySelector(`[data-case-index="${caseIndex}"][data-clip-index="${clipIndex}"]`);
+  if (!card) return;
+  if (!card.querySelector(".expected-team")?.value ||
+      card.querySelector(".expected-highlight")?.value === "unknown" ||
+      !card.querySelector(".expected-event")?.value ||
+      !card.querySelector(".expected-outcome")?.value) {
+    draftStatus("Fill team, highlight, event, and outcome before marking this clip reviewed.");
+    card.scrollIntoView({ behavior: "smooth", block: "center" });
+    card.focus({ preventScroll: true });
+    return;
+  }
+  card.querySelector(".reviewed").checked = true;
+  updateClip(Number(caseIndex), Number(clipIndex));
+  updateProgress();
+  saveDraft();
+  if (!focusNextIncomplete(caseIndex, clipIndex)) {
+    draftStatus("All clips are complete. Download all labels when ready.");
+  }
 }
 
 function downloadCaseLabels(caseIndex) {
