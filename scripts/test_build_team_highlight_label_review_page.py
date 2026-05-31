@@ -5,6 +5,8 @@ from pathlib import Path
 
 from scripts.build_team_highlight_label_review_page import (
     build_review_payload,
+    parse_video_angle_paths,
+    parse_video_angle_urls,
     parse_video_urls,
     render_review_page,
     review_page_output_metadata,
@@ -110,6 +112,8 @@ class BuildTeamHighlightLabelReviewPageTests(unittest.TestCase):
         self.assertIn('value="defensive_stop"', page)
         self.assertIn('value="blocked"', page)
         self.assertIn("seekClip(&quot;video_a&quot;, 3.000)", page)
+        self.assertIn('id="video-video-a-main"', page)
+        self.assertIn("videoElementsFor(videoId)", page)
         self.assertNotIn('onclick="seekClip("', page)
         self.assertIn('data-video-id="video_a"', page)
         self.assertIn('data-start-seconds="1.000"', page)
@@ -246,6 +250,58 @@ class BuildTeamHighlightLabelReviewPageTests(unittest.TestCase):
         self.assertNotIn("X-Amz-Signature", page)
         self.assertNotIn("sourceObjectKey", page)
 
+    def test_multi_angle_video_mapping_seeks_synced_local_angles(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            analysis_path = root / "analysis.json"
+            labels_path = root / "labels.json"
+            broadcast_path = root / "broadcast.mp4"
+            baseline_path = root / "baseline.mp4"
+            broadcast_path.write_bytes(b"fake broadcast")
+            baseline_path.write_bytes(b"fake baseline")
+            write_json(analysis_path, {"results": {"videoId": "video_a", "clips": [{"id": "clip_1"}]}})
+            write_json(
+                labels_path,
+                {
+                    "caseId": "case_a",
+                    "videoId": "video_a",
+                    "clips": [
+                        {
+                            "labelId": "label_001",
+                            "predictionIndex": 0,
+                            "predictionClipId": "clip_1",
+                            "start": 1.0,
+                            "end": 5.0,
+                            "needsLabel": True,
+                            "predicted": {"eventCenter": 3.0},
+                            "expected": {},
+                        }
+                    ],
+                },
+            )
+
+            payload = build_review_payload(
+                manifest={"cases": [{"caseId": "case_a", "analysisResult": "analysis.json", "labels": "labels.json"}]},
+                manifest_dir=root,
+                video_paths={},
+                video_angle_paths=parse_video_angle_paths([f"video_a:broadcast={broadcast_path}"]),
+                video_angle_urls=parse_video_angle_urls(["video_a:baseline=http://127.0.0.1:8787/baseline.mp4"]),
+                default_video_path=None,
+            )
+            page = render_review_page(payload, title="Review")
+
+        self.assertEqual(len(payload["videoAngles"]["video_a"]), 2)
+        self.assertEqual(payload["videoAngles"]["video_a"][0]["angleId"], "broadcast")
+        self.assertEqual(payload["videoAngles"]["video_a"][1]["angleId"], "baseline")
+        self.assertEqual(payload["videos"]["video_a"], broadcast_path.resolve().as_uri())
+        self.assertIn("Source Video: video_a (2 angles)", page)
+        self.assertIn('id="video-video-a-broadcast"', page)
+        self.assertIn('id="video-video-a-baseline"', page)
+        self.assertIn("videoElementsFor(videoId)", page)
+        self.assertIn("videos.forEach(video =>", page)
+        self.assertEqual(review_page_output_metadata(Path("/tmp/review.html"), payload)["videoAngleCount"], 2)
+        self.assertNotIn("X-Amz-Signature", page)
+
     def test_video_url_mapping_rejects_remote_or_presigned_urls(self) -> None:
         with self.assertRaisesRegex(ValueError, "localhost"):
             parse_video_urls(["video_a=https://r2.example.test/source.mp4"])
@@ -326,6 +382,7 @@ class BuildTeamHighlightLabelReviewPageTests(unittest.TestCase):
                 "output": "/tmp/review.html",
                 "caseCount": 1,
                 "clipCount": 1,
+                "videoAngleCount": 1,
                 "reviewPriorityCounts": {
                     "quick_check": 1,
                 },

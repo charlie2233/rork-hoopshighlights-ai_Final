@@ -5,6 +5,7 @@ import argparse
 import html
 import json
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -63,11 +64,21 @@ OUTCOME_OPTIONS = [
 ]
 
 
+@dataclass(frozen=True)
+class VideoAngle:
+    video_id: str
+    angle_id: str
+    label: str
+    url: str
+
+
 def main() -> int:
     args = parse_args()
     manifest_path = Path(args.manifest).resolve()
     video_paths = parse_video_paths(args.video or [])
     video_urls = parse_video_urls(args.video_url or [])
+    video_angle_paths = parse_video_angle_paths(args.video_angle or [])
+    video_angle_urls = parse_video_angle_urls(args.video_url_angle or [])
     default_video_path = Path(args.video_path).resolve() if args.video_path else None
     draft_bundle = load_json(Path(args.draft_bundle).expanduser().resolve()) if args.draft_bundle else None
     payload = build_review_payload(
@@ -75,6 +86,8 @@ def main() -> int:
         manifest_dir=manifest_path.parent,
         video_paths=video_paths,
         video_urls=video_urls,
+        video_angle_paths=video_angle_paths,
+        video_angle_urls=video_angle_urls,
         default_video_path=default_video_path,
         draft_bundle=draft_bundle,
     )
@@ -120,6 +133,22 @@ def parse_args() -> argparse.Namespace:
             "Only file://, localhost, 127.0.0.1, or ::1 URLs without query strings are allowed."
         ),
     )
+    parser.add_argument(
+        "--video-angle",
+        action="append",
+        help=(
+            "Add another local angle as videoId:angleName=/absolute/path.mp4. "
+            "Repeat for sideline, baseline, broadcast, phone, or other synced angles."
+        ),
+    )
+    parser.add_argument(
+        "--video-url-angle",
+        action="append",
+        help=(
+            "Add another local browser angle as videoId:angleName=http://127.0.0.1:8787/angle.mp4. "
+            "Only local URLs without query strings are allowed."
+        ),
+    )
     parser.add_argument("--title", default="HoopClips Team Highlight Label Review", help="HTML page title.")
     parser.add_argument("--json", action="store_true", help="Print machine-readable output metadata.")
     return parser.parse_args()
@@ -151,6 +180,65 @@ def parse_video_urls(values: list[str]) -> dict[str, str]:
     return mapping
 
 
+def parse_video_angle_paths(values: list[str]) -> dict[str, list[VideoAngle]]:
+    mapping: dict[str, list[VideoAngle]] = {}
+    for value in values:
+        video_id, angle_id, raw_path = parse_video_angle_assignment(value, option_name="--video-angle")
+        mapping.setdefault(video_id, []).append(
+            VideoAngle(
+                video_id=video_id,
+                angle_id=angle_id,
+                label=label_for_angle(angle_id),
+                url=Path(raw_path).expanduser().resolve().as_uri(),
+            )
+        )
+    return mapping
+
+
+def parse_video_angle_urls(values: list[str]) -> dict[str, list[VideoAngle]]:
+    mapping: dict[str, list[VideoAngle]] = {}
+    for value in values:
+        video_id, angle_id, raw_url = parse_video_angle_assignment(value, option_name="--video-url-angle")
+        mapping.setdefault(video_id, []).append(
+            VideoAngle(
+                video_id=video_id,
+                angle_id=angle_id,
+                label=label_for_angle(angle_id),
+                url=validate_local_video_url(raw_url.strip()),
+            )
+        )
+    return mapping
+
+
+def parse_video_angle_assignment(value: str, *, option_name: str) -> tuple[str, str, str]:
+    if "=" not in value:
+        raise ValueError(f"{option_name} must use videoId:angleName=/absolute/path.mp4")
+    left, raw_location = value.split("=", 1)
+    if ":" not in left:
+        raise ValueError(f"{option_name} must include an angle name as videoId:angleName=...")
+    video_id, angle_id = left.split(":", 1)
+    video_id = video_id.strip()
+    angle_id = angle_id.strip()
+    if not video_id:
+        raise ValueError(f"{option_name} is missing a video id.")
+    if not angle_id:
+        raise ValueError(f"{option_name} is missing an angle name.")
+    if not raw_location.strip():
+        raise ValueError(f"{option_name} is missing a path or local URL.")
+    return video_id, safe_angle_id(angle_id), raw_location.strip()
+
+
+def safe_angle_id(value: str) -> str:
+    safe = "".join(ch.lower() if ch.isalnum() else "-" for ch in value).strip("-")
+    if not safe:
+        raise ValueError("Angle name must include at least one letter or number.")
+    return safe
+
+
+def label_for_angle(angle_id: str) -> str:
+    return " ".join(part.capitalize() for part in angle_id.replace("_", "-").split("-") if part) or angle_id
+
+
 def validate_local_video_url(raw_url: str) -> str:
     parsed = urlparse(raw_url)
     if parsed.scheme not in {"file", "http", "https"}:
@@ -180,6 +268,8 @@ def build_review_payload(
     video_paths: dict[str, Path],
     default_video_path: Path | None,
     video_urls: dict[str, str] | None = None,
+    video_angle_paths: dict[str, list[VideoAngle]] | None = None,
+    video_angle_urls: dict[str, list[VideoAngle]] | None = None,
     draft_bundle: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     entries = manifest.get("cases")
@@ -188,6 +278,7 @@ def build_review_payload(
 
     cases: list[dict[str, Any]] = []
     videos: dict[str, str] = {}
+    video_angles: dict[str, list[dict[str, str]]] = {}
     for index, raw_entry in enumerate(entries):
         if not isinstance(raw_entry, dict):
             raise ValueError(f"Manifest case {index} must be an object.")
@@ -201,17 +292,23 @@ def build_review_payload(
             or string_or_none(result.get("videoId"))
             or f"case_{index + 1}"
         )
-        local_video_url = (video_urls or {}).get(video_id)
-        if local_video_url:
-            videos[video_id] = local_video_url
-        else:
-            video_path = video_paths.get(video_id) or default_video_path
-            if video_path is None:
+        angles = merged_video_angles(
+            video_id=video_id,
+            local_video_url=(video_urls or {}).get(video_id),
+            local_video_path=video_paths.get(video_id) or default_video_path,
+            video_angle_paths=(video_angle_paths or {}).get(video_id, []),
+            video_angle_urls=(video_angle_urls or {}).get(video_id, []),
+        )
+        if not angles:
+            if default_video_path is None and video_id not in video_paths and video_id not in (video_urls or {}):
                 raise ValueError(
                     f"Missing source video path or local video URL for videoId {video_id!r}. "
-                    f"Use --video-path, --video {video_id}=..., or --video-url {video_id}=http://127.0.0.1:8787/..."
+                    f"Use --video-path, --video {video_id}=..., --video-url {video_id}=http://127.0.0.1:8787/..., "
+                    f"or --video-angle {video_id}:broadcast=/path.mp4."
                 )
-            videos[video_id] = video_path.as_uri()
+        if angles:
+            videos[video_id] = angles[0]["url"]
+            video_angles[video_id] = angles
         case_payload = review_case_payload(
             raw_entry=raw_entry,
             labels=labels,
@@ -226,6 +323,7 @@ def build_review_payload(
         "schemaVersion": "team-highlight-label-review-page-v1",
         "source": "real_cloud_analysis_manual_review_helper",
         "videos": videos,
+        "videoAngles": video_angles,
         "cases": cases,
     }
     if draft_bundle is not None:
@@ -233,8 +331,49 @@ def build_review_payload(
     return payload
 
 
+def merged_video_angles(
+    *,
+    video_id: str,
+    local_video_url: str | None,
+    local_video_path: Path | None,
+    video_angle_paths: list[VideoAngle],
+    video_angle_urls: list[VideoAngle],
+) -> list[dict[str, str]]:
+    angles: list[VideoAngle] = []
+    if local_video_url:
+        angles.append(VideoAngle(video_id=video_id, angle_id="main", label="Main", url=local_video_url))
+    elif local_video_path is not None:
+        angles.append(VideoAngle(video_id=video_id, angle_id="main", label="Main", url=local_video_path.as_uri()))
+    angles.extend(video_angle_paths)
+    angles.extend(video_angle_urls)
+
+    unique: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for angle in angles:
+        angle_key = safe_angle_id(angle.angle_id)
+        if angle_key in seen:
+            raise ValueError(f"Duplicate angle {angle.angle_id!r} for videoId {video_id!r}.")
+        seen.add(angle_key)
+        unique.append(
+            {
+                "videoId": video_id,
+                "angleId": angle_key,
+                "label": angle.label,
+                "url": angle.url,
+            }
+        )
+    return unique
+
+
 def review_page_output_metadata(output_path: Path, payload: dict[str, Any]) -> dict[str, Any]:
     review_priority_counts = count_review_priorities(payload)
+    video_angle_count = 0
+    if isinstance(payload.get("videoAngles"), dict):
+        video_angle_count = sum(
+            len([angle for angle in angles if isinstance(angle, dict)])
+            for angles in payload["videoAngles"].values()
+            if isinstance(angles, list)
+        )
     metadata: dict[str, Any] = {
         "output": str(output_path),
         "caseCount": len([case for case in payload.get("cases", []) if isinstance(case, dict)]),
@@ -243,6 +382,7 @@ def review_page_output_metadata(output_path: Path, payload: dict[str, Any]) -> d
             for case in payload.get("cases", [])
             if isinstance(case, dict)
         ),
+        "videoAngleCount": video_angle_count,
         "reviewPriorityCounts": dict(sorted(review_priority_counts.items())),
     }
     if isinstance(payload.get("draftPrefill"), dict):
@@ -552,17 +692,46 @@ def render_progress_summary(payload: dict[str, Any]) -> str:
 
 def render_video_sections(payload: dict[str, Any]) -> str:
     sections: list[str] = []
-    videos = payload.get("videos", {})
-    if not isinstance(videos, dict):
+    video_angles = payload.get("videoAngles")
+    videos = payload.get("videos")
+    if isinstance(video_angles, dict) and video_angles:
+        angle_groups = video_angles
+    elif isinstance(videos, dict):
+        angle_groups = {
+            str(video_id): [{"videoId": str(video_id), "angleId": "main", "label": "Main", "url": str(url)}]
+            for video_id, url in videos.items()
+        }
+    else:
         return ""
-    for video_id, url in videos.items():
-        element_id = video_element_id(str(video_id))
+    for video_id, raw_angles in angle_groups.items():
+        angles = [angle for angle in raw_angles if isinstance(angle, dict)] if isinstance(raw_angles, list) else []
+        if not angles:
+            continue
+        angle_rows = []
+        for angle in angles:
+            angle_id = string_or_none(angle.get("angleId")) or "main"
+            angle_label = string_or_none(angle.get("label")) or label_for_angle(angle_id)
+            url = string_or_none(angle.get("url")) or ""
+            element_id = video_element_id(str(video_id), angle_id)
+            angle_rows.append(
+                "\n".join(
+                    [
+                        '<div class="video-angle">',
+                        f'<div class="angle-label">{escape(angle_label)}</div>',
+                        f'<video id="{escape(element_id)}" controls preload="metadata" src="{escape(url)}"></video>',
+                        "</div>",
+                    ]
+                )
+            )
+        suffix = f" ({len(angles)} angles)" if len(angles) > 1 else ""
         sections.append(
             "\n".join(
                 [
                     '<section class="panel video-panel">',
-                    f"<h2>Source Video: {escape(str(video_id))}</h2>",
-                    f'<video id="{escape(element_id)}" controls preload="metadata" src="{escape(str(url))}"></video>',
+                    f"<h2>Source Video: {escape(str(video_id))}{escape(suffix)}</h2>",
+                    '<div class="video-angle-grid">',
+                    "\n".join(angle_rows),
+                    "</div>",
                     "</section>",
                 ]
             )
@@ -738,9 +907,10 @@ def team_label(team: dict[str, Any]) -> str:
     return " / ".join(pieces)
 
 
-def video_element_id(video_id: str) -> str:
+def video_element_id(video_id: str, angle_id: str = "main") -> str:
     safe = "".join(ch if ch.isalnum() else "-" for ch in video_id.lower()).strip("-")
-    return f"video-{safe or 'source'}"
+    safe_angle = "".join(ch if ch.isalnum() else "-" for ch in angle_id.lower()).strip("-")
+    return f"video-{safe or 'source'}-{safe_angle or 'main'}"
 
 
 def escape(value: str) -> str:
@@ -788,6 +958,21 @@ h1, h2, h3, p {
 .video-panel h2 {
   font-size: 16px;
   margin-bottom: 8px;
+}
+.video-angle-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 12px;
+}
+.video-angle {
+  display: grid;
+  gap: 6px;
+}
+.angle-label {
+  color: #c8cfdd;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
 }
 .video-panel video {
   max-height: min(42vh, 420px);
@@ -946,17 +1131,32 @@ const reviewData = JSON.parse(document.getElementById("review-data").textContent
 window.reviewData = reviewData;
 let currentPriorityFilter = "all";
 
-function videoElementId(videoId) {
+function videoElementId(videoId, angleId = "main") {
   const safe = String(videoId || "source").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-  return `video-${safe || "source"}`;
+  const safeAngle = String(angleId || "main").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  return `video-${safe || "source"}-${safeAngle || "main"}`;
+}
+
+function videoElementsFor(videoId) {
+  const angles = reviewData.videoAngles?.[videoId];
+  if (Array.isArray(angles) && angles.length > 0) {
+    return angles
+      .map(angle => document.getElementById(videoElementId(videoId, angle.angleId || "main")))
+      .filter(Boolean);
+  }
+  const legacy = document.getElementById(videoElementId(videoId));
+  return legacy ? [legacy] : [];
 }
 
 function seekClip(videoId, seconds) {
-  const video = document.getElementById(videoElementId(videoId));
-  if (!video) return;
-  video.currentTime = Math.max(0, Number(seconds) || 0);
-  video.scrollIntoView({ behavior: "smooth", block: "center" });
-  video.play().catch(() => {});
+  const videos = videoElementsFor(videoId);
+  if (!videos.length) return;
+  const targetTime = Math.max(0, Number(seconds) || 0);
+  videos.forEach(video => {
+    video.currentTime = targetTime;
+  });
+  videos[0].scrollIntoView({ behavior: "smooth", block: "center" });
+  videos[0].play().catch(() => {});
 }
 
 function boolFromSelect(value) {
@@ -1260,9 +1460,12 @@ function focusClipCard(card) {
   card.focus({ preventScroll: true });
   const casePayload = reviewData.cases[Number(card.dataset.caseIndex)];
   const clipPayload = casePayload?.clips?.[Number(card.dataset.clipIndex)];
-  const video = document.getElementById(videoElementId(casePayload?.videoId));
-  if (video && clipPayload?.eventCenter != null) {
-    video.currentTime = Math.max(0, Number(clipPayload.eventCenter) || 0);
+  const videos = videoElementsFor(casePayload?.videoId);
+  if (videos.length && clipPayload?.eventCenter != null) {
+    const targetTime = Math.max(0, Number(clipPayload.eventCenter) || 0);
+    videos.forEach(video => {
+      video.currentTime = targetTime;
+    });
   }
   return true;
 }
