@@ -234,6 +234,7 @@ def review_clip_payload(index: int, clip: dict[str, Any]) -> dict[str, Any]:
     event_center = number_or_none(predicted.get("eventCenter"))
     if event_center is None and start is not None and end is not None:
         event_center = round((start + end) / 2.0, 3)
+    review_priority = review_priority_for_clip(clip=clip, predicted=predicted, expected=expected)
     return {
         "index": index,
         "labelId": string_or_none(clip.get("labelId")) or f"label_{index:03d}",
@@ -245,6 +246,66 @@ def review_clip_payload(index: int, clip: dict[str, Any]) -> dict[str, Any]:
         "predicted": sanitize_for_review(predicted),
         "expected": sanitize_for_review(expected),
         "labelingNotes": string_or_none(clip.get("labelingNotes")) or "",
+        "reviewPriority": review_priority,
+    }
+
+
+def review_priority_for_clip(*, clip: dict[str, Any], predicted: dict[str, Any], expected: dict[str, Any]) -> dict[str, str]:
+    notes = (string_or_none(clip.get("labelingNotes")) or "").lower()
+    predicted_confidence = number_or_none(predicted.get("confidence"))
+    team_confidence = number_or_none(predicted.get("teamConfidence"))
+    attribution_status = (string_or_none(predicted.get("teamAttributionStatus")) or "").lower()
+    expected_team = (string_or_none(expected.get("teamId")) or "").lower()
+    expected_event = (string_or_none(expected.get("eventType")) or "").lower()
+    expected_outcome = (string_or_none(expected.get("outcome")) or "").lower()
+    uncertainty_markers = (
+        "uncertainty",
+        "uncertain",
+        "unclear",
+        "interrupted",
+        "blocked view",
+        "not visible",
+        "hard to tell",
+        "low confidence",
+        "weak evidence",
+    )
+    close_review = (
+        any(marker in notes for marker in uncertainty_markers)
+        or expected_team in {"unclear", "not_applicable"}
+        or expected_event in {"unclear", "bad_window", "not_basketball"}
+        or expected_outcome in {"unclear", "bad_window", "not_basketball"}
+        or (team_confidence is not None and team_confidence < 0.85)
+        or (predicted_confidence is not None and predicted_confidence < 0.75)
+        or (attribution_status and attribution_status not in {"matched", "all_teams", "unknown"})
+    )
+    has_complete_prefill = bool(
+        expected_team
+        and expected_event
+        and expected_outcome
+        and expected.get("isHighlight") is not None
+    )
+    quick_check = (
+        has_complete_prefill
+        and not close_review
+        and (predicted_confidence is None or predicted_confidence >= 0.9)
+        and (team_confidence is None or team_confidence >= 0.9)
+    )
+    if close_review:
+        return {
+            "key": "needs_close_review",
+            "label": "Close review",
+            "detail": "Uncertainty or weak evidence; verify the video carefully.",
+        }
+    if quick_check:
+        return {
+            "key": "quick_check",
+            "label": "Quick check",
+            "detail": "High-confidence draft; still verify before marking reviewed.",
+        }
+    return {
+        "key": "standard_review",
+        "label": "Standard review",
+        "detail": "Verify the clip window and expected labels.",
     }
 
 
@@ -287,6 +348,11 @@ def apply_draft_bundle_to_review_payload(payload: dict[str, Any], draft_bundle: 
                 continue
             prefill_clip_from_draft(label_clips[clip_index], draft_clip, human_review_required=human_review_required)
             prefill_clip_from_draft(review_clips[clip_index], draft_clip, human_review_required=human_review_required)
+            review_clips[clip_index]["reviewPriority"] = review_priority_for_clip(
+                clip=review_clips[clip_index],
+                predicted=review_clips[clip_index].get("predicted") if isinstance(review_clips[clip_index].get("predicted"), dict) else {},
+                expected=review_clips[clip_index].get("expected") if isinstance(review_clips[clip_index].get("expected"), dict) else {},
+            )
             applied += 1
     return {
         "schemaVersion": "team-highlight-label-review-draft-prefill-v1",
@@ -391,6 +457,7 @@ def render_progress_summary(payload: dict[str, Any]) -> str:
             "</div>",
             '<div class="button-row">',
             '<button type="button" onclick="focusNextIncomplete()">Next incomplete</button>',
+            '<button type="button" onclick="focusNextCloseReview()">Next close review</button>',
             '<button id="download-ready-button" type="button" onclick="downloadLaunchReadyLabels()" disabled>Finish labels first</button>',
             '<button type="button" onclick="downloadAllCaseLabels()">Download all labels</button>',
             '<label class="file-button">Import draft bundle<input id="bundle-import" type="file" accept="application/json" onchange="importDraftBundle(event)"></label>',
@@ -473,14 +540,24 @@ def render_clip_card(case_index: int, case: dict[str, Any], clip: dict[str, Any]
     is_highlight = expected.get("isHighlight")
     reviewed = "checked" if clip.get("needsLabel") is False else ""
     complete_class = " complete" if clip.get("needsLabel") is False else ""
+    priority = clip.get("reviewPriority") if isinstance(clip.get("reviewPriority"), dict) else {}
+    priority_key = string_or_none(priority.get("key")) or "standard_review"
+    priority_class = priority_key.replace("_", "-")
+    priority_label = string_or_none(priority.get("label")) or "Standard review"
+    priority_detail = string_or_none(priority.get("detail")) or "Verify the clip window and expected labels."
     return "\n".join(
         [
             (
                 f'<article class="clip-card{complete_class}" data-case-index="{case_index}" data-clip-index="{clip_index}" '
                 f'data-video-id="{escape(video_id)}" data-start-seconds="{escape(start)}" '
-                f'data-event-seconds="{escape(event)}" data-finish-seconds="{escape(finish)}" tabindex="-1">'
+                f'data-event-seconds="{escape(event)}" data-finish-seconds="{escape(finish)}" '
+                f'data-review-priority="{escape(priority_key)}" tabindex="-1">'
             ),
             f"<h3>#{clip_index + 1} {escape(str(label))}</h3>",
+            (
+                f'<p class="review-priority {escape(priority_class)}"><strong>{escape(priority_label)}:</strong> '
+                f"{escape(priority_detail)}</p>"
+            ),
             f'<p class="clip-meta">{escape(str(clip.get("predictionClipId") or clip.get("labelId") or ""))} | {start}s to {finish}s</p>',
             f'<p>Predicted team: <strong>{escape(str(predicted.get("teamId") or "unknown"))}</strong> ({escape(format_number(predicted.get("teamConfidence")))}) | Status: {escape(str(predicted.get("teamAttributionStatus") or "unknown"))}</p>',
             f'<p>Outcome: {escape(str(predicted.get("outcome") or "unknown"))} | Keep: {escape(str(predicted.get("keep")))}</p>',
@@ -665,6 +742,28 @@ video {
 .clip-card.complete {
   border-color: #1f9d6a;
   background: #172620;
+}
+.review-priority {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  border: 1px solid #394152;
+  border-radius: 999px;
+  background: #232839;
+  color: #d8deea;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.review-priority.quick-check {
+  border-color: #1f9d6a;
+  background: #173026;
+  color: #b8f5d8;
+}
+.review-priority.needs-close-review {
+  border-color: #f6c95f;
+  background: #352b17;
+  color: #ffe29a;
 }
 .button-row {
   display: flex;
@@ -1064,6 +1163,18 @@ function focusNextIncomplete(caseIndex = null, clipIndex = null) {
   }
   const ordered = cards.slice(startIndex + 1).concat(cards.slice(0, startIndex + 1));
   return focusClipCard(ordered.find(card => !clipCompleteFromCard(card)));
+}
+
+function focusNextCloseReview() {
+  updateProgress();
+  const cards = allClipCards();
+  const closeReviewCard = cards.find(card => (
+    card.dataset.reviewPriority === "needs_close_review" &&
+    !clipCompleteFromCard(card)
+  ));
+  if (focusClipCard(closeReviewCard)) return true;
+  draftStatus("No close-review clips remain. Continuing with the next incomplete label.");
+  return focusNextIncomplete();
 }
 
 function markReviewedAndNext(caseIndex, clipIndex) {

@@ -128,7 +128,11 @@ class BuildTeamHighlightLabelReviewPageTests(unittest.TestCase):
         self.assertIn("Finish ${incomplete} label", page)
         self.assertIn("Finish every label before downloading launch-ready labels", page)
         self.assertIn("Next incomplete", page)
+        self.assertIn("Next close review", page)
         self.assertIn("focusNextIncomplete", page)
+        self.assertIn("focusNextCloseReview", page)
+        self.assertIn('data-review-priority="standard_review"', page)
+        self.assertIn("review-priority standard-review", page)
         self.assertIn("markReviewedAndNext", page)
         self.assertIn("Fill team, highlight, event, and outcome", page)
         self.assertIn('tabindex="-1"', page)
@@ -280,6 +284,81 @@ class BuildTeamHighlightLabelReviewPageTests(unittest.TestCase):
         self.assertNotIn('class="reviewed" type="checkbox" checked', page)
         self.assertNotIn("X-Amz-Signature", page)
         self.assertNotIn("sourceUrl", page)
+
+    def test_review_priority_marks_close_review_and_quick_check_clips(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            analysis_path = root / "analysis.json"
+            labels_path = root / "labels.json"
+            video_path = root / "source.mp4"
+            video_path.write_bytes(b"fake video")
+            write_json(analysis_path, {"results": {"videoId": "video_a", "clips": [{"id": "clip_1"}, {"id": "clip_2"}]}})
+            write_json(
+                labels_path,
+                {
+                    "caseId": "case_a",
+                    "videoId": "video_a",
+                    "selectedTeamId": "team_black",
+                    "clips": [
+                        {
+                            "labelId": "label_001",
+                            "predictionClipId": "clip_1",
+                            "start": 1.0,
+                            "end": 5.0,
+                            "needsLabel": True,
+                            "predicted": {
+                                "confidence": 0.72,
+                                "teamConfidence": 0.6,
+                                "teamAttributionStatus": "uncertain",
+                                "eventCenter": 3.0,
+                            },
+                            "expected": {
+                                "teamId": "unclear",
+                                "isHighlight": True,
+                                "eventType": "three_pointer",
+                                "outcome": "unclear",
+                            },
+                            "labelingNotes": "Uncertainty: outcome unclear; verify before launch evidence.",
+                        },
+                        {
+                            "labelId": "label_002",
+                            "predictionClipId": "clip_2",
+                            "start": 7.0,
+                            "end": 11.0,
+                            "needsLabel": True,
+                            "predicted": {
+                                "confidence": 0.96,
+                                "teamConfidence": 0.94,
+                                "teamAttributionStatus": "matched",
+                                "eventCenter": 9.0,
+                            },
+                            "expected": {
+                                "teamId": "team_black",
+                                "isHighlight": True,
+                                "eventType": "made_shot",
+                                "outcome": "made",
+                            },
+                            "labelingNotes": "Clean made shot by black jerseys.",
+                        },
+                    ],
+                },
+            )
+
+            payload = build_review_payload(
+                manifest={"cases": [{"caseId": "case_a", "analysisResult": "analysis.json", "labels": "labels.json"}]},
+                manifest_dir=root,
+                video_paths={},
+                default_video_path=video_path,
+            )
+            page = render_review_page(payload, title="Review")
+
+        self.assertEqual(payload["cases"][0]["clips"][0]["reviewPriority"]["key"], "needs_close_review")
+        self.assertEqual(payload["cases"][0]["clips"][1]["reviewPriority"]["key"], "quick_check")
+        self.assertIn('data-review-priority="needs_close_review"', page)
+        self.assertIn('data-review-priority="quick_check"', page)
+        self.assertIn("review-priority needs-close-review", page)
+        self.assertIn("review-priority quick-check", page)
+        self.assertIn("No close-review clips remain", page)
 
 
 def write_json(path: Path, payload: dict) -> None:
