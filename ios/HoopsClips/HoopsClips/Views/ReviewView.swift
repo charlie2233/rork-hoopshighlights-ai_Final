@@ -599,7 +599,11 @@ struct ReviewView: View {
             .accessibilityHint("Opens clip detail preview.")
 
             if expandedClipID == clip.id {
-                clipScoreBreakdown(clip: clip)
+                VStack(spacing: 12) {
+                    Divider().overlay(AppTheme.accentPurple.opacity(0.2))
+                    clipEvidenceRows(clip: clip, maxRows: 4)
+                    clipScoreBreakdown(clip: clip, includeDivider: false)
+                }
                     .padding(.horizontal, 12)
                     .padding(.bottom, 12)
                     .transition(.move(edge: .top).combined(with: .opacity))
@@ -684,14 +688,58 @@ struct ReviewView: View {
         .opacity(clip.isKept ? 1.0 : 0.6)
     }
 
-    private func clipScoreBreakdown(clip: Clip) -> some View {
+    private func clipScoreBreakdown(clip: Clip, includeDivider: Bool = true) -> some View {
         VStack(spacing: 8) {
-            Divider().overlay(AppTheme.accentPurple.opacity(0.2))
+            if includeDivider {
+                Divider().overlay(AppTheme.accentPurple.opacity(0.2))
+            }
             scoreBar(label: "Audio", value: clip.audioScore, color: .blue)
             scoreBar(label: "Motion", value: clip.motionScore, color: .orange)
             scoreBar(label: "Visual", value: clip.visualScore, color: .green)
             scoreBar(label: "Combined", value: clip.combinedScore, color: AppTheme.neonPurple)
         }
+    }
+
+    private func clipEvidenceRows(clip: Clip, maxRows: Int? = nil) -> some View {
+        let rows = maxRows.map { Array(clip.reviewEvidenceRows.prefix($0)) } ?? clip.reviewEvidenceRows
+
+        return VStack(alignment: .leading, spacing: 10) {
+            ForEach(rows) { row in
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: row.systemImage)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(row.needsReview ? AppTheme.warningYellow : AppTheme.neonPurple)
+                        .frame(width: 20)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 6) {
+                            Text(row.title)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.white)
+                            if row.needsReview {
+                                Text("Check")
+                                    .font(.caption2.weight(.bold))
+                                    .foregroundStyle(AppTheme.warningYellow)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(AppTheme.warningYellow.opacity(0.14), in: .capsule)
+                            }
+                        }
+
+                        Text(row.detail)
+                            .font(.caption2)
+                            .foregroundStyle(AppTheme.subtleText)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    Spacer(minLength: 0)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(row.title)
+                .accessibilityValue(row.detail)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func scoreBar(label: String, value: Double, color: Color) -> some View {
@@ -1002,6 +1050,17 @@ struct ReviewView: View {
                         clipScoreBreakdown(clip: clip)
                             .padding(16)
                             .background(AppTheme.cardBg, in: .rect(cornerRadius: 16))
+
+                        VStack(alignment: .leading, spacing: 12) {
+                            RorkSectionHeader(
+                                title: "Review Evidence",
+                                icon: "checkmark.seal.fill",
+                                subtitle: "Why this clip is here and what to check"
+                            )
+                            clipEvidenceRows(clip: clip)
+                        }
+                        .padding(16)
+                        .background(AppTheme.cardBg, in: .rect(cornerRadius: 16))
                     }
                     .padding(.horizontal, 16)
                     .padding(.bottom, 40)

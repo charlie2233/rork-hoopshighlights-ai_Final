@@ -261,6 +261,13 @@ struct HistoryView: View {
                                 text: userFacingAnalysisModeLabel(analysisMode)
                             )
                         }
+
+                        if let teamTarget = projectTeamTargetShortLabel(project) {
+                            historyBadge(
+                                icon: project.highlightTeamSelection?.mode == .team ? "person.2.fill" : "person.3.fill",
+                                text: teamTarget
+                            )
+                        }
                     }
                 }
                 .contentMargins(.horizontal, 0)
@@ -442,6 +449,9 @@ private struct HistoryProjectDetailView: View {
                 }
                 if let analysisStatusSummary = project.analysisStatusSummary, !analysisStatusSummary.isEmpty {
                     detailLine(label: "Status", value: analysisStatusSummary)
+                }
+                if let teamTarget = projectTeamTargetDetailLabel(project) {
+                    detailLine(label: "Team", value: teamTarget)
                 }
             }
         }
@@ -677,4 +687,24 @@ fileprivate func userFacingAnalysisModeIcon(_ mode: AnalysisExecutionMode) -> St
     case .local, .localFallback:
         return "iphone"
     }
+}
+
+fileprivate func projectTeamTargetShortLabel(_ project: PersistedProjectRecord) -> String? {
+    guard let selection = project.highlightTeamSelection else { return nil }
+    if selection.mode == .all {
+        return "All teams"
+    }
+    return selection.displayTitle
+}
+
+fileprivate func projectTeamTargetDetailLabel(_ project: PersistedProjectRecord) -> String? {
+    guard let selection = project.highlightTeamSelection else { return nil }
+    if selection.mode == .all {
+        return "All teams; useful when the user was not sure which team to target."
+    }
+
+    let reviewCopy = selection.includeUncertain
+        ? "Uncertain plays stayed available for Review."
+        : "Only confident matches were targeted."
+    return "\(selection.displayTitle). \(reviewCopy)"
 }

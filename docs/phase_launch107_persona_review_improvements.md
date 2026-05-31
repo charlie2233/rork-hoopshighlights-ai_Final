@@ -60,12 +60,13 @@ Use a 20-persona subagent review panel to find practical launch improvements for
 - Backend render quota now counts active/rendered jobs, not failed/failed-timeout jobs, so failed cloud jobs do not burn Free chances.
 - First cloud team scan/analysis now asks for explicit cloud AI consent before uploading the source video.
 - Team Setup now lets users rename a detected jersey-color team before analysis while preserving the scan-backed team ID.
+- Review now shows evidence rows for why a clip is kept/skipped, key moment timestamps, team evidence, outcome evidence, and timing context.
+- History now shows each project's selected team or All teams choice, with detail copy explaining uncertain-team review behavior.
 
 ## Deferred
 
 - Import preflight for large camera files: size, codec, resolution, local storage, cloud eligibility, and exact over-limit reason.
-- Team Setup: save opponent name per project and make all-teams/not-sure clearer in History.
-- Evidence-grade Review: keyframes, why-kept reason, team evidence, and outcome/timing reason per clip.
+- Team Setup: save opponent name per project.
 - Recruit profile/share packet for coach workflows.
 - Platform post packs and deterministic filenames for social managers/videographers.
 - Real purchase/restore proof for RevenueCat/App Store sandbox.
@@ -84,11 +85,14 @@ Use a 20-persona subagent review panel to find practical launch improvements for
 - Follow-up passed: `git diff --check`.
 - Follow-up passed: XcodeBuildMCP focused simulator test/build for `HoopsClipsTests/HoopsClipsTests/testTeamTargetCanUseCustomDisplayName` with `CODE_SIGNING_ALLOWED=NO -skipPackagePluginValidation`.
 - Follow-up passed: `python3 -m unittest scripts.test_submission_readiness_preflight -v` (36 tests).
+- Follow-up pass 2: implemented evidence-grade Review rows for clip decision, key moments, team evidence, outcome evidence, and timing context.
+- Follow-up pass 2 passed: `git diff --check`, `python3 -m unittest scripts.test_submission_readiness_preflight -v` (36 tests), and XcodeBuildMCP focused simulator tests for `testClipReviewBadgesMarkUncertainTeamOutcomeAndTiming`, `testClipReviewBadgesMarkMissingTeamAttributionStatusUncertain`, and `testClipReviewEvidenceRowsShowConfidentTeamAndKeyMoments`.
+- Follow-up pass 2 also made History show selected-team versus All teams context for reopened projects.
 
 ## Current Launch Blockers
 
 - Real installed TestFlight smoke is still required on a wired iPhone.
 - Real cloud accuracy proof is still required for selected team, highlight windows, blocks, steals, and uncertain-review clips.
 - Large Photos/Files import needs real-device matrix proof, especially 4K iPhone and mirrorless `.MOV`.
-- App Store privacy copy and first-analysis consent still need a full pass before submission.
+- App Store privacy copy still needs a full submission pass before submission.
 - Production purchase/restore and subscription metadata still need live sandbox proof.

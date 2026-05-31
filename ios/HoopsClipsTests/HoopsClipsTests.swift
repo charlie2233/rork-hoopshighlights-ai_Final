@@ -1435,6 +1435,12 @@ struct HoopsClipsTests {
         #expect(clip.needsUserReview)
         #expect(clip.reviewBadges == [.teamUncertain, .outcomeUncertain, .timingUncertain])
         #expect(clip.reviewBadges.map(\.title) == ["Team?", "Outcome?", "Timing?"])
+        #expect(clip.reviewEvidenceRows.map(\.id) == ["decision", "keyframes", "team", "outcome", "timing"])
+        #expect(clip.reviewEvidenceRows.first?.title == "Why kept")
+        #expect(clip.reviewEvidenceRows.first?.needsReview == true)
+        #expect(clip.reviewEvidenceRows.contains { $0.title == "Team needs check" && $0.detail.contains("64% confidence") })
+        #expect(clip.reviewEvidenceRows.contains { $0.title == "Outcome needs check" })
+        #expect(clip.reviewEvidenceRows.contains { $0.title == "Timing needs check" && $0.detail.contains("setup 0.2s") })
     }
 
     @Test func testClipReviewBadgesMarkMissingTeamAttributionStatusUncertain() {
@@ -1457,6 +1463,41 @@ struct HoopsClipsTests {
 
         #expect(clip.needsUserReview)
         #expect(clip.reviewBadges == [.teamUncertain])
+        #expect(clip.reviewEvidenceRows.contains { $0.title == "Team needs check" && $0.detail.contains("No confident team evidence") })
+    }
+
+    @Test func testClipReviewEvidenceRowsShowConfidentTeamAndKeyMoments() {
+        let clip = Clip(
+            startTime: 8.0,
+            endTime: 14.5,
+            eventCenter: 11.0,
+            action: .steal,
+            confidence: 0.88,
+            isKept: true,
+            label: "Steal Into Layup",
+            audioScore: 0.62,
+            visualScore: 0.81,
+            motionScore: 0.86,
+            combinedScore: 0.9,
+            detectionMethod: .cloud,
+            teamAttribution: ClipTeamAttribution(
+                teamId: "team_blue",
+                label: "Eastside 17U",
+                colorLabel: "blue",
+                confidence: 0.92,
+                source: "quick_scan",
+                evidenceFrameRefs: ["clip_start", "clip_finish"],
+                evidenceRoleGroups: ["action", "outcome"]
+            ),
+            teamAttributionStatus: "matched"
+        )
+
+        #expect(clip.reviewEvidenceRows.map(\.id) == ["decision", "keyframes", "team"])
+        #expect(clip.reviewEvidenceRows[0].detail.contains("defensive highlight"))
+        #expect(clip.reviewEvidenceRows[1].detail == "Start 0:08.0 · Action 0:11.0 · Finish 0:14.5")
+        #expect(clip.reviewEvidenceRows[2].title == "Team evidence")
+        #expect(clip.reviewEvidenceRows[2].detail.contains("Eastside 17U, 92% confidence"))
+        #expect(clip.reviewEvidenceRows[2].detail.contains("frames: action, outcome"))
     }
 
     @Test @MainActor func testViewModelExposesNeedsReviewClipsForReviewFilter() {
