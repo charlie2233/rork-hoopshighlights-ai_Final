@@ -362,6 +362,15 @@ final class HighlightsViewModel {
     }
 
     private func runPrimaryLocalAnalysis(for url: URL, status: String) async {
+        guard !AppConstants.requiresCloudVideoPipeline else {
+            let message = "Cloud analysis is required for this build."
+            analysisMode = .cloud
+            isCloudFallbackOffered = false
+            analysisService.finishExternalAnalysis(with: message)
+            recordAnalysisFailure(message: message)
+            return
+        }
+
         analysisMode = .local
         isCloudFallbackOffered = false
         cloudQuotaRemaining = nil
@@ -439,7 +448,7 @@ final class HighlightsViewModel {
     func exportHighlights(isProUser: Bool) async {
         guard let url = videoURL else { return }
         guard !AppConstants.requiresCloudVideoPipeline else {
-            exportService.markUnavailable("Cloud rendering is required for this build. Use AI Edit to render, preview, download, or share.")
+            exportService.markUnavailable(AppConstants.localVideoExportUnavailableMessage)
             return
         }
 

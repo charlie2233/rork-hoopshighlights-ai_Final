@@ -24,6 +24,7 @@ struct LaunchRuntimeConfigTests {
         #expect(config.allowsCloudAnalysisRequests == false)
         #expect(config.googleSignInConfigured)
         #expect(config.emailPasswordAuthConfigured)
+        #expect(config.allowsLocalVideoPipeline == false)
         #expect(config.requiresCloudVideoPipeline)
         #expect(config.launchAnalysisMode == .cloud)
     }
@@ -45,6 +46,7 @@ struct LaunchRuntimeConfigTests {
 
         #expect(config.missingRequiredKeys.contains("HOOPSCloudAnalysisBaseURL"))
         #expect(config.allowsCloudAnalysisRequests == false)
+        #expect(config.allowsLocalVideoPipeline == false)
         #expect(config.requiresCloudVideoPipeline)
         #expect(config.launchAnalysisMode == .cloud)
     }
@@ -67,6 +69,7 @@ struct LaunchRuntimeConfigTests {
         #expect(config.missingRequiredKeys.isEmpty)
         #expect(config.allowsCloudAnalysisRequests)
         #expect(config.allowsCloudEditRequests)
+        #expect(config.allowsLocalVideoPipeline == false)
         #expect(config.requiresCloudVideoPipeline)
         #expect(config.launchAnalysisMode == .cloud)
     }
@@ -85,6 +88,7 @@ struct LaunchRuntimeConfigTests {
             cloudLaunchMode: .internalOnly
         )
         #expect(missingURLConfig.allowsCloudAnalysisRequests == false)
+        #expect(missingURLConfig.allowsLocalVideoPipeline == false)
         #expect(missingURLConfig.requiresCloudVideoPipeline)
         #expect(missingURLConfig.launchAnalysisMode == .cloud)
 
@@ -101,8 +105,27 @@ struct LaunchRuntimeConfigTests {
             cloudLaunchMode: .internalOnly
         )
         #expect(invalidURLConfig.allowsCloudAnalysisRequests == false)
+        #expect(invalidURLConfig.allowsLocalVideoPipeline == false)
         #expect(invalidURLConfig.requiresCloudVideoPipeline)
         #expect(invalidURLConfig.launchAnalysisMode == .cloud)
+    }
+
+    @Test func testDebugIsOnlyEnvironmentAllowedToUseLocalVideoPipeline() {
+        let debugConfig = AppRuntimeConfig(
+            environmentName: "debug",
+            revenueCatAPIKey: "",
+            googleClientID: "",
+            googleReversedClientID: "",
+            firebaseAuthAPIKey: "",
+            privacyPolicyURL: "",
+            termsOfServiceURL: "",
+            cloudAnalysisBaseURL: "",
+            sentryDSN: "",
+            cloudLaunchMode: .disabled
+        )
+        #expect(debugConfig.allowsLocalVideoPipeline)
+        #expect(debugConfig.requiresCloudVideoPipeline == false)
+        #expect(debugConfig.launchAnalysisMode == .local)
     }
 
     @Test @MainActor func testVideoExportServiceUnavailableStateClearsLocalExport() {
@@ -117,6 +140,21 @@ struct LaunchRuntimeConfigTests {
         #expect(service.exportProgress == 0.0)
         #expect(service.exportedURL == nil)
         #expect(service.statusMessage == "Cloud rendering is required for this build.")
+    }
+
+    @Test @MainActor func testVideoExportServiceBlocksLocalExportWhenCloudRenderingIsRequired() {
+        let service = VideoExportService()
+        service.isExporting = true
+        service.exportProgress = 0.7
+        service.exportedURL = URL(fileURLWithPath: "/tmp/local-export.mp4")
+
+        let blocked = service.blockLocalExportIfCloudRequired(requiresCloudRendering: true)
+
+        #expect(blocked)
+        #expect(service.isExporting == false)
+        #expect(service.exportProgress == 0.0)
+        #expect(service.exportedURL == nil)
+        #expect(service.statusMessage == AppConstants.localVideoExportUnavailableMessage)
     }
 
     @Test func testCloudEditEndpointIsRequiredAndRequiresSecureURLInProduction() {

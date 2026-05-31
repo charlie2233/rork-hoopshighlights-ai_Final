@@ -62,6 +62,10 @@ enum AppConstants {
         runtimeConfig.requiresCloudVideoPipeline
     }
 
+    static var localVideoExportUnavailableMessage: String {
+        "Cloud rendering is required for this build. Use AI Edit to render, preview, download, or share."
+    }
+
     static var cloudAnalysisEnabled: Bool {
         runtimeConfig.requiresCloudVideoPipeline || runtimeConfig.allowsCloudAnalysisRequests || (runtimeConfig.isDebug && !cloudAnalysisBaseURL.isEmpty)
     }

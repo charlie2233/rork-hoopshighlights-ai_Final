@@ -17,6 +17,18 @@ final class VideoExportService {
         statusMessage = message
     }
 
+    @discardableResult
+    func blockLocalExportIfCloudRequired() -> Bool {
+        blockLocalExportIfCloudRequired(requiresCloudRendering: AppConstants.requiresCloudVideoPipeline)
+    }
+
+    @discardableResult
+    func blockLocalExportIfCloudRequired(requiresCloudRendering: Bool) -> Bool {
+        guard requiresCloudRendering else { return false }
+        markUnavailable(AppConstants.localVideoExportUnavailableMessage)
+        return true
+    }
+
     func exportHighlights(
         sourceURL: URL,
         clips: [Clip],
@@ -28,6 +40,8 @@ final class VideoExportService {
         format: ExportFileFormat,
         postProcessing: ExportPostProcessingOptions
     ) async {
+        guard !blockLocalExportIfCloudRequired() else { return }
+
         exportedURL = nil
 
         if let restrictionMessage = premiumRestrictionMessage(theme: theme, music: music, isProUser: isProUser) {

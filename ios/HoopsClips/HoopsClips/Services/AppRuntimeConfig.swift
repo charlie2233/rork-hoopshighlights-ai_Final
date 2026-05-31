@@ -146,8 +146,12 @@ struct AppRuntimeConfig {
         resolvedCloudEditBaseURL != nil
     }
 
+    var allowsLocalVideoPipeline: Bool {
+        isDebug
+    }
+
     var requiresCloudVideoPipeline: Bool {
-        !isDebug
+        !allowsLocalVideoPipeline
     }
 
     var launchAnalysisMode: AnalysisExecutionMode {

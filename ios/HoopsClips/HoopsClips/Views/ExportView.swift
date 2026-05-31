@@ -957,7 +957,7 @@ struct ExportView: View {
                         return
                     }
                     if cloudRenderRequired {
-                        viewModel.exportService.markUnavailable("Cloud rendering is required for this build. Use AI Edit to render, preview, download, or share.")
+                        viewModel.exportService.markUnavailable(AppConstants.localVideoExportUnavailableMessage)
                         return
                     }
                     Task { await viewModel.exportHighlights(isProUser: subscriptionManager.isProUser) }
