@@ -463,6 +463,7 @@ def render_clip_card(case_index: int, case: dict[str, Any], clip: dict[str, Any]
     predicted = clip.get("predicted") if isinstance(clip.get("predicted"), dict) else {}
     expected = clip.get("expected") if isinstance(clip.get("expected"), dict) else {}
     label = predicted.get("label") or "Clip"
+    video_id = str(case.get("videoId") or "")
     start = seconds_or_empty(clip.get("start"))
     event = seconds_or_empty(clip.get("eventCenter"))
     finish = seconds_or_empty(clip.get("end"))
@@ -474,7 +475,11 @@ def render_clip_card(case_index: int, case: dict[str, Any], clip: dict[str, Any]
     complete_class = " complete" if clip.get("needsLabel") is False else ""
     return "\n".join(
         [
-            f'<article class="clip-card{complete_class}" data-case-index="{case_index}" data-clip-index="{clip_index}" tabindex="-1">',
+            (
+                f'<article class="clip-card{complete_class}" data-case-index="{case_index}" data-clip-index="{clip_index}" '
+                f'data-video-id="{escape(video_id)}" data-start-seconds="{escape(start)}" '
+                f'data-event-seconds="{escape(event)}" data-finish-seconds="{escape(finish)}" tabindex="-1">'
+            ),
             f"<h3>#{clip_index + 1} {escape(str(label))}</h3>",
             f'<p class="clip-meta">{escape(str(clip.get("predictionClipId") or clip.get("labelId") or ""))} | {start}s to {finish}s</p>',
             f'<p>Predicted team: <strong>{escape(str(predicted.get("teamId") or "unknown"))}</strong> ({escape(format_number(predicted.get("teamConfidence")))}) | Status: {escape(str(predicted.get("teamAttributionStatus") or "unknown"))}</p>',
@@ -1016,6 +1021,20 @@ function allClipCards() {
   return Array.from(document.querySelectorAll("[data-case-index][data-clip-index]"));
 }
 
+function activeClipCard() {
+  const focused = document.activeElement?.closest?.("[data-case-index][data-clip-index]");
+  if (focused) return focused;
+  const cards = allClipCards();
+  return cards.find(card => !clipCompleteFromCard(card)) || cards[0] || null;
+}
+
+function seekClipFromCard(card, marker) {
+  if (!card) return;
+  const seconds = card.dataset[`${marker}Seconds`];
+  if (seconds === undefined || seconds === "") return;
+  seekClip(card.dataset.videoId, seconds);
+}
+
 function focusClipCard(card) {
   if (!card) {
     draftStatus("All visible clips are complete.");
@@ -1065,6 +1084,31 @@ function markReviewedAndNext(caseIndex, clipIndex) {
   saveDraft();
   if (!focusNextIncomplete(caseIndex, clipIndex)) {
     draftStatus("All clips are complete. Download all labels when ready.");
+  }
+}
+
+function handleReviewShortcut(event) {
+  const targetTag = String(event.target?.tagName || "").toLowerCase();
+  if (["input", "select", "textarea"].includes(targetTag)) return;
+  if (event.altKey || event.ctrlKey || event.metaKey) return;
+
+  const key = String(event.key || "").toLowerCase();
+  if (!["s", "e", "f", "r", "n"].includes(key)) return;
+
+  const card = activeClipCard();
+  if (!card) return;
+
+  event.preventDefault();
+  if (key === "s") {
+    seekClipFromCard(card, "start");
+  } else if (key === "e") {
+    seekClipFromCard(card, "event");
+  } else if (key === "f") {
+    seekClipFromCard(card, "finish");
+  } else if (key === "r") {
+    markReviewedAndNext(Number(card.dataset.caseIndex), Number(card.dataset.clipIndex));
+  } else if (key === "n") {
+    focusNextIncomplete(Number(card.dataset.caseIndex), Number(card.dataset.clipIndex));
   }
 }
 
@@ -1130,6 +1174,7 @@ window.addEventListener("input", updateProgress);
 window.addEventListener("change", updateProgress);
 window.addEventListener("input", saveDraft);
 window.addEventListener("change", saveDraft);
+window.addEventListener("keydown", handleReviewShortcut);
 restoreDraft();
 updateProgress();
 """.strip()
