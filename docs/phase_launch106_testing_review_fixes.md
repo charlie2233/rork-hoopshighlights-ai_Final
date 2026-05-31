@@ -192,17 +192,18 @@ Validation this pass:
 git diff --check
 python3 -m unittest scripts.test_submission_readiness_preflight -v
 bash ios/scripts/verify_internal_staging_config.sh
+python3 scripts/submission_readiness_preflight.py --skip-live
 ```
 
 - `git diff --check`: passed after the tab-bar change.
 - Submission readiness unit tests: 36 passed.
 - Internal staging config verification: passed.
 - XcodeBuildMCP simulator Debug build for `HoopsClips`: passed with code signing disabled.
+- Clean local submission preflight after the tab-bar commit: `pass=24 warn=2 fail=7`.
 - Existing warnings remain in `CloudAnalysisService.swift` progress callbacks and `VideoExportService.swift` AVFoundation export APIs; the tab-bar change introduced no compile errors.
 
 Current launch blockers from local submission preflight:
 
-- Pre-commit local preflight reported modified tracked files; this is expected for this in-progress pass and should clear after commit.
 - Launch-grade selected-team/highlight accuracy evidence is still missing; the 85% target needs a labeled footage report from `scripts/evaluate_team_highlight_accuracy.py`.
 - Archived upload artifact metadata still does not match the expected upload metadata.
 - The wired iPhone is detected but unavailable to `devicectl`, so install/post-install smoke cannot run yet.
