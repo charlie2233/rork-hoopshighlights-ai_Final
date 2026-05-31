@@ -508,10 +508,16 @@ final class HighlightsViewModel {
     }
 
     func discardLowConfidenceClips() {
-        for index in analysisService.clips.indices where analysisService.clips[index].confidence < 0.5 {
+        for index in analysisService.clips.indices
+        where analysisService.clips[index].confidence < 0.5
+            && !Self.protectsClipFromQuickSkip(analysisService.clips[index]) {
             analysisService.clips[index].isKept = false
         }
         persistCurrentProject()
+    }
+
+    nonisolated static func protectsClipFromQuickSkip(_ clip: Clip) -> Bool {
+        clip.needsUserReview || defensiveCloudEditCandidateFamily(clip) != nil
     }
 
     func selectCustomAudio(url: URL) {

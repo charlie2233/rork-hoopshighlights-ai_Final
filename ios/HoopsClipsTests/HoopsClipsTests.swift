@@ -1697,6 +1697,64 @@ struct HoopsClipsTests {
         #expect(viewModel.needsReviewClips.map(\.label) == ["Possible Steal"])
     }
 
+    @Test @MainActor func testDiscardLowConfidencePreservesReviewAndDefensiveClips() {
+        let viewModel = HighlightsViewModel()
+        let lowBoringClip = Clip(
+            startTime: 2.0,
+            endTime: 5.0,
+            action: .unknown,
+            confidence: 0.32,
+            isKept: true,
+            label: "Loose camera movement",
+            combinedScore: 0.18
+        )
+        let lowUncertainSteal = Clip(
+            startTime: 8.0,
+            endTime: 12.0,
+            eventCenter: 10.0,
+            action: .steal,
+            confidence: 0.42,
+            isKept: true,
+            label: "Possible Steal",
+            combinedScore: 0.48,
+            teamAttributionStatus: "uncertain"
+        )
+        let lowBlock = Clip(
+            startTime: 18.0,
+            endTime: 22.0,
+            eventCenter: 20.0,
+            action: .block,
+            confidence: 0.44,
+            isKept: true,
+            label: "Possible Block",
+            combinedScore: 0.52
+        )
+        let lowDefensiveStop = Clip(
+            startTime: 26.0,
+            endTime: 31.0,
+            eventCenter: 28.0,
+            action: .unknown,
+            confidence: 0.38,
+            isKept: true,
+            label: "Defensive Stop",
+            combinedScore: 0.46
+        )
+
+        viewModel.analysisService.clips = [
+            lowBoringClip,
+            lowUncertainSteal,
+            lowBlock,
+            lowDefensiveStop
+        ]
+        viewModel.discardLowConfidenceClips()
+
+        #expect(viewModel.discardedClips.map(\.label) == ["Loose camera movement"])
+        #expect(viewModel.keptClips.map(\.label) == ["Possible Steal", "Possible Block", "Defensive Stop"])
+        #expect(HighlightsViewModel.protectsClipFromQuickSkip(lowUncertainSteal))
+        #expect(HighlightsViewModel.protectsClipFromQuickSkip(lowBlock))
+        #expect(HighlightsViewModel.protectsClipFromQuickSkip(lowDefensiveStop))
+    }
+
     @Test func testCloudJobResponseDecodesNestedResults() throws {
         let payload = """
         {

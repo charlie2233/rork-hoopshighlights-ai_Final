@@ -226,7 +226,11 @@ struct ReviewView: View {
     }
 
     private var lowConfidenceKeptCount: Int {
-        viewModel.clips.filter { $0.confidence < 0.5 && $0.isKept }.count
+        viewModel.clips.filter {
+            $0.confidence < 0.5
+                && $0.isKept
+                && !HighlightsViewModel.protectsClipFromQuickSkip($0)
+        }.count
     }
 
     private var selectedTeamFilterIsAvailable: Bool {
@@ -299,7 +303,7 @@ struct ReviewView: View {
 
             reviewQuickActionButton(
                 title: "Skip Low",
-                subtitle: "\(lowConfidenceKeptCount) clips",
+                subtitle: "\(lowConfidenceKeptCount) safe clips",
                 icon: "xmark.seal.fill",
                 tint: AppTheme.dangerRed,
                 isDisabled: lowConfidenceKeptCount == 0
@@ -835,39 +839,66 @@ struct ReviewView: View {
     private func clipContextBadges(_ clip: Clip) -> some View {
         let teamTitle = clipTeamDisplayTitle(clip)
         if teamTitle != nil || !clip.reviewBadges.isEmpty || isDefensiveClip(clip) {
-            HStack(spacing: 6) {
-                if let teamTitle {
-                    Label(teamTitle, systemImage: clipNeedsTeamReview(clip) ? "person.2.badge.gearshape.fill" : "person.2.fill")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(clipNeedsTeamReview(clip) ? AppTheme.warningYellow : AppTheme.neonPurple)
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 3)
-                        .background((clipNeedsTeamReview(clip) ? AppTheme.warningYellow : AppTheme.neonPurple).opacity(0.14), in: .capsule)
-                        .accessibilityLabel(clipNeedsTeamReview(clip) ? "team attribution needs review" : "team attribution")
-                        .accessibilityValue(teamTitle)
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 6) {
+                    clipContextBadgeItems(clip)
                 }
 
-                if isDefensiveClip(clip) {
-                    Label(defensiveBadgeTitle(for: clip), systemImage: defensiveBadgeIcon(for: clip))
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.orange)
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 3)
-                        .background(Color.orange.opacity(0.14), in: .capsule)
-                        .accessibilityLabel("defensive highlight")
-                        .accessibilityValue(defensiveBadgeTitle(for: clip))
-                }
-
-                ForEach(clip.reviewBadges, id: \.self) { badge in
-                    Label(badge.title, systemImage: badge.systemImage)
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(AppTheme.warningYellow)
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 3)
-                        .background(AppTheme.warningYellow.opacity(0.14), in: .capsule)
-                        .accessibilityLabel(badge.accessibilityLabel)
+                LazyVGrid(columns: clipContextBadgeGridColumns, alignment: .leading, spacing: 6) {
+                    clipContextBadgeItems(clip)
                 }
             }
+        }
+    }
+
+    private var clipContextBadgeGridColumns: [GridItem] {
+        let minimumWidth: CGFloat = dynamicTypeSize.isAccessibilitySize ? 128 : 86
+        return [
+            GridItem(.adaptive(minimum: minimumWidth, maximum: 220), spacing: 6, alignment: .leading)
+        ]
+    }
+
+    @ViewBuilder
+    private func clipContextBadgeItems(_ clip: Clip) -> some View {
+        if let teamTitle = clipTeamDisplayTitle(clip) {
+            Label(teamTitle, systemImage: clipNeedsTeamReview(clip) ? "person.2.badge.gearshape.fill" : "person.2.fill")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(clipNeedsTeamReview(clip) ? AppTheme.warningYellow : AppTheme.neonPurple)
+                .lineLimit(2)
+                .minimumScaleFactor(0.82)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
+                .background((clipNeedsTeamReview(clip) ? AppTheme.warningYellow : AppTheme.neonPurple).opacity(0.14), in: .capsule)
+                .accessibilityLabel(clipNeedsTeamReview(clip) ? "team attribution needs review" : "team attribution")
+                .accessibilityValue(teamTitle)
+        }
+
+        if isDefensiveClip(clip) {
+            Label(defensiveBadgeTitle(for: clip), systemImage: defensiveBadgeIcon(for: clip))
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.orange)
+                .lineLimit(2)
+                .minimumScaleFactor(0.82)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
+                .background(Color.orange.opacity(0.14), in: .capsule)
+                .accessibilityLabel("defensive highlight")
+                .accessibilityValue(defensiveBadgeTitle(for: clip))
+        }
+
+        ForEach(clip.reviewBadges, id: \.self) { badge in
+            Label(badge.title, systemImage: badge.systemImage)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(AppTheme.warningYellow)
+                .lineLimit(2)
+                .minimumScaleFactor(0.82)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
+                .background(AppTheme.warningYellow.opacity(0.14), in: .capsule)
+                .accessibilityLabel(badge.accessibilityLabel)
         }
     }
 
