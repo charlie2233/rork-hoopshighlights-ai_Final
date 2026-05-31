@@ -835,3 +835,43 @@ Remaining submission blockers from this pass:
 - Connected physical iPhone is detected but unavailable: paired, Developer Mode enabled, `tunnelState=unavailable`, `ddiServicesAvailable=false`.
 - Current-checkout main CI/preflight reruns are stale for Cloud Edit Deploy Preflight, iOS Internal TestFlight Upload, and secret-gated deploy preflight.
 - Installed TestFlight post-install smoke is still unproven.
+
+## Clip156 Full-Pool GPT Review Alignment
+
+The current launch branch had a quality mismatch: cloud analysis and `GPT_CANDIDATE_REVIEW_LIMIT` were already widened to a `60`-candidate high-recall pool, but GPT-led editing defaults still limited Free to `8` candidates and Pro/internal to `30`. That could hide late blocks, steals, defensive stops, selected-team uncertain clips, or stronger complete-context plays before GPT could judge them.
+
+Changes:
+
+- Free GPT clip review now defaults to `60` candidates with `3` keyframes per clip.
+- Pro/internal GPT clip review now defaults to `60` candidates with `5...8` keyframes per clip.
+- Free daily AI edit chances remain capped at `3`; this spends more semantic review per edit, not more free edits.
+- Staging editing Cloud Build, secret-gated deploy workflow, static launch config preflight, editing README, and GPT-led editing docs now agree on the `60`-candidate GPT cap.
+- No iOS local analysis, rendering, composition, export, or FFmpeg ownership was added.
+
+Evidence doc:
+
+- `docs/phase_clip156_full_pool_gpt_review_launch70.md`
+
+Validation:
+
+```bash
+python3 -m py_compile services/editing/editing_app/gpt_reranker.py services/editing/tests/test_gpt_reranker.py scripts/launch_backend_config_preflight.py scripts/test_launch_backend_config_preflight.py
+PYTHONPATH=ios/backend:services/editing /tmp/hoopclips-editing-test-venv/bin/python -m unittest services.editing.tests.test_gpt_reranker.GPTHighlightRerankerTests.test_free_and_pro_sampling_limits services.editing.tests.test_gpt_reranker.GPTHighlightRerankerTests.test_free_sampling_reviews_full_analysis_pool_by_default services.editing.tests.test_gpt_reranker.GPTHighlightRerankerTests.test_sampling_env_overrides_are_launch_bounded services.editing.tests.test_gpt_reranker.GPTHighlightRerankerTests.test_sampling_caps_are_applied_before_openai_call -v
+python3 -m unittest scripts.test_launch_backend_config_preflight -v
+ruby -e 'require "yaml"; YAML.load_file("services/editing/cloudbuild.yaml"); YAML.load_file(".github/workflows/cloud-edit-deploy-preflight.yml"); puts "yaml parses"'
+python3 -m unittest discover -s scripts -p 'test_*.py'
+PYTHONPATH=ios/backend:services/editing /tmp/hoopclips-editing-test-venv/bin/python -m unittest discover -s services/editing/tests -p 'test_*.py'
+PYTHONPATH=ios/backend:services/editing /tmp/hoopclips-py312-venv/bin/python -m unittest discover -s ios/backend/tests -p 'test_*.py'
+python3 scripts/launch_backend_config_preflight.py --json
+Build iOS Apps plugin: test_sim HoopsClips Debug iPhone 17 Pro -only-testing:HoopsClipsTests/CloudEditServiceTests
+```
+
+- Python compile: passed.
+- Focused GPT reranker tests: 4 passed.
+- Static backend config preflight tests: 7 passed.
+- YAML parse check: passed.
+- `scripts` unittest discovery: 126 passed.
+- `services/editing/tests` discovery: 117 passed.
+- `ios/backend/tests` discovery: 207 passed.
+- Backend config preflight: 81 passed, 12 warned, 0 failed.
+- Targeted `CloudEditServiceTests`: 11 passed through the Build iOS Apps plugin.

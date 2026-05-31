@@ -121,15 +121,15 @@ class GPTHighlightRerankerSettings:
             max_output_tokens=_env_int("HOOPS_AI_CLIP_GPT_MAX_OUTPUT_TOKENS", _env_int("HOOPS_GPT_HIGHLIGHT_RERANK_MAX_OUTPUT_TOKENS", 12000, 256, 12000), 256, 12000),
             free_max_clips=_env_int(
                 "HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_FREE",
-                _env_int("HOOPS_GPT_HIGHLIGHT_RERANK_FREE_MAX_CLIPS", 8, 1, 8),
+                _env_int("HOOPS_GPT_HIGHLIGHT_RERANK_FREE_MAX_CLIPS", 60, 1, GPT_CANDIDATE_REVIEW_LIMIT),
                 1,
-                8,
+                GPT_CANDIDATE_REVIEW_LIMIT,
             ),
             paid_max_clips=_env_int(
                 "HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_PRO",
-                _env_int("HOOPS_GPT_HIGHLIGHT_RERANK_PAID_MAX_CLIPS", 30, 20, 30),
+                _env_int("HOOPS_GPT_HIGHLIGHT_RERANK_PAID_MAX_CLIPS", 60, 20, GPT_CANDIDATE_REVIEW_LIMIT),
                 20,
-                30,
+                GPT_CANDIDATE_REVIEW_LIMIT,
             ),
             free_frames_per_clip=_env_int(
                 "HOOPS_AI_CLIP_GPT_FREE_KEYFRAMES_PER_CLIP",
