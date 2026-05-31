@@ -691,20 +691,35 @@ fileprivate func userFacingAnalysisModeIcon(_ mode: AnalysisExecutionMode) -> St
 
 fileprivate func projectTeamTargetShortLabel(_ project: PersistedProjectRecord) -> String? {
     guard let selection = project.highlightTeamSelection else { return nil }
+    let opponent = sanitizedHistoryTeamName(project.opponentTeamName)
     if selection.mode == .all {
         return "All teams"
+    }
+    if let opponent {
+        return "\(selection.displayTitle) vs \(opponent)"
     }
     return selection.displayTitle
 }
 
 fileprivate func projectTeamTargetDetailLabel(_ project: PersistedProjectRecord) -> String? {
     guard let selection = project.highlightTeamSelection else { return nil }
+    let opponent = sanitizedHistoryTeamName(project.opponentTeamName)
     if selection.mode == .all {
-        return "All teams; useful when the user was not sure which team to target."
+        if let opponent {
+            return "All teams, opponent noted as \(opponent). Useful when the user was not sure which team to target."
+        }
+        return "All teams. Useful when the user was not sure which team to target."
     }
 
     let reviewCopy = selection.includeUncertain
         ? "Uncertain plays stayed available for Review."
         : "Only confident matches were targeted."
-    return "\(selection.displayTitle). \(reviewCopy)"
+    let opponentCopy = opponent.map { " Opponent: \($0)." } ?? ""
+    return "\(selection.displayTitle).\(opponentCopy) \(reviewCopy)"
+}
+
+fileprivate func sanitizedHistoryTeamName(_ value: String?) -> String? {
+    guard let value else { return nil }
+    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+    return trimmed.isEmpty ? nil : trimmed
 }

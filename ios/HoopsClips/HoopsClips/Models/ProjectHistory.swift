@@ -42,6 +42,7 @@ struct PersistedProjectRecord: Identifiable, Codable, Sendable {
     var cloudAnalysisJobID: String?
     var cloudEditSourceObjectKey: String?
     var highlightTeamSelection: HighlightTeamSelection?
+    var opponentTeamName: String?
     var cloudDetectedTeams: [CloudTeamOption]?
     var cloudDiagnostics: CloudDiagnostics?
     var totalClipCount: Int
@@ -74,6 +75,7 @@ struct PersistedProjectRecord: Identifiable, Codable, Sendable {
         cloudAnalysisJobID: String? = nil,
         cloudEditSourceObjectKey: String? = nil,
         highlightTeamSelection: HighlightTeamSelection? = nil,
+        opponentTeamName: String? = nil,
         cloudDetectedTeams: [CloudTeamOption]? = nil,
         cloudDiagnostics: CloudDiagnostics? = nil,
         totalClipCount: Int = 0,
@@ -105,6 +107,7 @@ struct PersistedProjectRecord: Identifiable, Codable, Sendable {
         self.cloudAnalysisJobID = cloudAnalysisJobID
         self.cloudEditSourceObjectKey = cloudEditSourceObjectKey
         self.highlightTeamSelection = highlightTeamSelection
+        self.opponentTeamName = opponentTeamName
         self.cloudDetectedTeams = cloudDetectedTeams
         self.cloudDiagnostics = cloudDiagnostics
         self.totalClipCount = totalClipCount

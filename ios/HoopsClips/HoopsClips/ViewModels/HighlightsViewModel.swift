@@ -129,6 +129,10 @@ final class HighlightsViewModel {
         return settings.highlightTeamSelection.label ?? ""
     }
 
+    var opponentTeamNameDraft: String {
+        settings.opponentTeamName ?? ""
+    }
+
     var requiresHighlightTeamSelectionConfirmation: Bool {
         AppConstants.cloudAnalysisEnabled
             && !cloudDetectedTeams.isEmpty
@@ -206,6 +210,7 @@ final class HighlightsViewModel {
             try Task.checkCancellation()
             clearPendingCloudAnalysisJob()
             settings.highlightTeamSelection = .allTeams
+            settings.opponentTeamName = nil
             let project = try await projectStore.createProjectFromImportedVideo(sourceURL: url.standardizedFileURL)
             try Task.checkCancellation()
             insertProject(project, makeCurrent: true)
@@ -432,6 +437,12 @@ final class HighlightsViewModel {
         }
 
         cloudTeamScanStatusMessage = "\(settings.highlightTeamSelection.displayTitle) selected"
+        persistCurrentProject()
+    }
+
+    func renameOpponentTeam(_ displayName: String) {
+        settings.opponentTeamName = sanitizedCustomTeamName(displayName)
+        persistCurrentProject()
     }
 
     private func runPrimaryLocalAnalysis(for url: URL, status: String) async {
@@ -928,6 +939,7 @@ final class HighlightsViewModel {
         project.cloudAnalysisJobID = cloudAnalysisJobID
         project.cloudEditSourceObjectKey = cloudEditSourceObjectKey
         project.highlightTeamSelection = settings.highlightTeamSelection
+        project.opponentTeamName = settings.opponentTeamName
         project.cloudDetectedTeams = cloudDetectedTeams
         project.cloudDiagnostics = analysisService.lastCloudDiagnostics
         project.lastAnalyzedAt = lastAnalyzedAt
@@ -999,6 +1011,7 @@ final class HighlightsViewModel {
         cloudAnalysisJobID = project.cloudAnalysisJobID
         cloudEditSourceObjectKey = project.cloudEditSourceObjectKey
         settings.highlightTeamSelection = project.highlightTeamSelection ?? .allTeams
+        settings.opponentTeamName = project.opponentTeamName
         cloudDetectedTeams = project.cloudDetectedTeams ?? []
         analysisService.lastCloudDiagnostics = project.cloudDiagnostics
         hasConfirmedHighlightTeamSelection = project.highlightTeamSelection != nil || cloudDetectedTeams.isEmpty
@@ -1048,6 +1061,8 @@ final class HighlightsViewModel {
         cloudEditSourceObjectKey = nil
         cloudDetectedTeams = []
         hasConfirmedHighlightTeamSelection = false
+        settings.highlightTeamSelection = .allTeams
+        settings.opponentTeamName = nil
         clearPendingCloudAnalysisJob()
         lastAnalyzedAt = nil
         lastExportedAt = nil

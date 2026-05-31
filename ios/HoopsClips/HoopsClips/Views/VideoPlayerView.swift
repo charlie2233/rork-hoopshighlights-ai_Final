@@ -716,6 +716,8 @@ struct VideoPlayerView: View {
                     .foregroundStyle(AppTheme.subtleText)
                     .fixedSize(horizontal: false, vertical: true)
             }
+
+            opponentTeamNameField
         }
         .padding(14)
         .accessibilityIdentifier("analysis.teamTarget.section")
@@ -777,24 +779,50 @@ struct VideoPlayerView: View {
     }
 
     private var selectedTeamNameField: some View {
+        teamSetupTextField(
+            icon: "pencil",
+            placeholder: "Team name (optional)",
+            value: Binding(
+                get: { viewModel.selectedHighlightTeamNameDraft },
+                set: { viewModel.renameSelectedHighlightTeam($0) }
+            ),
+            accessibilityIdentifier: "analysis.teamTarget.nameField"
+        )
+    }
+
+    private var opponentTeamNameField: some View {
+        teamSetupTextField(
+            icon: "person.crop.circle.badge.questionmark",
+            placeholder: "Opponent name (optional)",
+            value: Binding(
+                get: { viewModel.opponentTeamNameDraft },
+                set: { viewModel.renameOpponentTeam($0) }
+            ),
+            accessibilityIdentifier: "analysis.teamTarget.opponentNameField"
+        )
+    }
+
+    private func teamSetupTextField(
+        icon: String,
+        placeholder: String,
+        value: Binding<String>,
+        accessibilityIdentifier: String
+    ) -> some View {
         HStack(spacing: 10) {
-            Image(systemName: "pencil")
+            Image(systemName: icon)
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(AppTheme.neonPurple)
                 .frame(width: 22)
 
             TextField(
-                "Team name (optional)",
-                text: Binding(
-                    get: { viewModel.selectedHighlightTeamNameDraft },
-                    set: { viewModel.renameSelectedHighlightTeam($0) }
-                )
+                placeholder,
+                text: value
             )
             .font(.caption.weight(.medium))
             .foregroundStyle(.white)
             .textInputAutocapitalization(.words)
             .submitLabel(.done)
-            .accessibilityIdentifier("analysis.teamTarget.nameField")
+            .accessibilityIdentifier(accessibilityIdentifier)
 
             Text("optional")
                 .font(.caption2.weight(.semibold))

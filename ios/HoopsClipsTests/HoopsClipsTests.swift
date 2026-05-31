@@ -720,6 +720,30 @@ struct HoopsClipsTests {
         #expect(viewModel.availableHighlightTeamChoices[1].displayTitle == "Blue jerseys")
     }
 
+    @Test @MainActor func testOpponentTeamNameIsSanitizedAndClearable() {
+        let viewModel = HighlightsViewModel()
+
+        viewModel.renameOpponentTeam("  Westside   Prep  ")
+
+        #expect(viewModel.settings.opponentTeamName == "Westside Prep")
+        #expect(viewModel.opponentTeamNameDraft == "Westside Prep")
+
+        viewModel.renameOpponentTeam("   ")
+
+        #expect(viewModel.settings.opponentTeamName == nil)
+        #expect(viewModel.opponentTeamNameDraft == "")
+    }
+
+    @Test func testAnalysisSettingsCodablePreservesOpponentName() throws {
+        var settings = AnalysisSettings()
+        settings.opponentTeamName = "Westside Prep"
+
+        let data = try JSONEncoder().encode(settings)
+        let decoded = try JSONDecoder().decode(AnalysisSettings.self, from: data)
+
+        #expect(decoded.opponentTeamName == "Westside Prep")
+    }
+
     @Test @MainActor func testTeamScanCancellationClearsInProgressState() async throws {
         let tempURL = FileManager.default.temporaryDirectory.appending(path: "team-scan-cancel-\(UUID().uuidString).mp4")
         try Data("fake video".utf8).write(to: tempURL)
@@ -788,7 +812,7 @@ struct HoopsClipsTests {
         #expect(requestCount == 0)
     }
 
-    @Test func testPersistedProjectRecordStoresCloudTeamSelectionAndDiagnostics() throws {
+    @Test @MainActor func testPersistedProjectRecordStoresCloudTeamSelectionAndDiagnostics() throws {
         let now = Date(timeIntervalSince1970: 1_777_000_000)
         let project = PersistedProjectRecord(
             title: "Team Game",
@@ -806,6 +830,7 @@ struct HoopsClipsTests {
                 colorLabel: "blue",
                 primaryColorHex: "#0057FF"
             ),
+            opponentTeamName: "Westside Prep",
             cloudDetectedTeams: [
                 CloudTeamOption(
                     teamId: "team_blue",
@@ -845,6 +870,7 @@ struct HoopsClipsTests {
         let decoded = try decoder.decode(PersistedProjectRecord.self, from: try encoder.encode(project))
 
         #expect(decoded.highlightTeamSelection?.teamId == "team_blue")
+        #expect(decoded.opponentTeamName == "Westside Prep")
         #expect(decoded.highlightTeamSelection?.primaryColorHex == "#0057FF")
         #expect(decoded.cloudDetectedTeams?.first?.label == "Blue jerseys")
         #expect(decoded.cloudDiagnostics?.forcedTurnoverReviewSegments == 1)
@@ -1761,7 +1787,7 @@ struct HoopsClipsTests {
         #expect(response.workReceipt?.summaryRows.contains("Kept 1 uncertain team candidate available for Review.") == true)
     }
 
-    @Test func testCloudEditJobResponseDecodesUncertainReviewClipIds() throws {
+    @Test @MainActor func testCloudEditJobResponseDecodesUncertainReviewClipIds() throws {
         let payload = """
         {
           "editJobId": "edit_123",
