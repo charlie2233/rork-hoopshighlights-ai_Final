@@ -283,6 +283,7 @@ def render_progress_summary(payload: dict[str, Any]) -> str:
             "</div>",
             '<div class="button-row">',
             '<button type="button" onclick="downloadAllCaseLabels()">Download all labels</button>',
+            '<label class="file-button">Import draft bundle<input id="bundle-import" type="file" accept="application/json" onchange="importDraftBundle(event)"></label>',
             '<button type="button" onclick="clearSavedDraft()">Clear saved draft</button>',
             "</div>",
             "</div>",
@@ -551,6 +552,19 @@ button:disabled {
   cursor: not-allowed;
   opacity: 0.45;
 }
+.file-button {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  background: #2563eb;
+  color: white;
+  font-weight: 800;
+  padding: 9px 13px;
+  cursor: pointer;
+}
+.file-button input {
+  display: none;
+}
 .label-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -698,6 +712,86 @@ function applyClipPayloadToCard(caseIndex, clipIndex, clipPayload) {
   const notes = card.querySelector(".label-notes");
   if (notes) notes.value = clipPayload.labelingNotes || "";
   updateClip(caseIndex, clipIndex);
+}
+
+function findCaseIndex(caseId) {
+  return reviewData.cases.findIndex(casePayload => String(casePayload.caseId || casePayload.labelsPayload?.caseId || "") === String(caseId || ""));
+}
+
+function findClipIndex(caseIndex, draftClip) {
+  const currentClips = reviewData.cases[caseIndex]?.labelsPayload?.clips || [];
+  return currentClips.findIndex(currentClip => {
+    const labelMatches = draftClip.labelId && currentClip.labelId === draftClip.labelId;
+    const predictionMatches = draftClip.predictionClipId && currentClip.predictionClipId === draftClip.predictionClipId;
+    return Boolean(labelMatches || predictionMatches);
+  });
+}
+
+function applyDraftClipToCard(caseIndex, clipIndex, draftClip, humanReviewRequired) {
+  const currentClip = reviewData.cases[caseIndex]?.labelsPayload?.clips?.[clipIndex];
+  if (!currentClip || !draftClip || typeof draftClip !== "object") return false;
+  const expected = draftClip.expected || {};
+  currentClip.expected = {
+    teamId: expected.teamId || null,
+    isHighlight: expected.isHighlight === true ? true : expected.isHighlight === false ? false : null,
+    eventType: expected.eventType || null,
+    outcome: expected.outcome || null,
+  };
+  currentClip.labelingNotes = draftClip.labelingNotes || currentClip.labelingNotes || "";
+  currentClip.needsLabel = humanReviewRequired ? true : draftClip.needsLabel !== false;
+  applyClipPayloadToCard(caseIndex, clipIndex, currentClip);
+  return true;
+}
+
+function applyDraftBundlePayload(payload) {
+  if (!payload || payload.schemaVersion !== "team-highlight-manual-label-bundle-v1" || !Array.isArray(payload.cases)) {
+    throw new Error("Draft bundle must use schemaVersion team-highlight-manual-label-bundle-v1.");
+  }
+  const humanReviewRequired = payload.humanReviewRequired === true || String(payload.source || "").includes("draft");
+  let applied = 0;
+  let skipped = 0;
+  payload.cases.forEach(draftCase => {
+    const caseIndex = findCaseIndex(draftCase?.caseId);
+    if (caseIndex < 0 || !Array.isArray(draftCase?.clips)) {
+      skipped += Array.isArray(draftCase?.clips) ? draftCase.clips.length : 1;
+      return;
+    }
+    draftCase.clips.forEach(draftClip => {
+      const clipIndex = findClipIndex(caseIndex, draftClip || {});
+      if (clipIndex < 0) {
+        skipped += 1;
+        return;
+      }
+      if (applyDraftClipToCard(caseIndex, clipIndex, draftClip, humanReviewRequired)) {
+        applied += 1;
+      } else {
+        skipped += 1;
+      }
+    });
+  });
+  updateProgress();
+  saveDraft();
+  draftStatus(`Imported ${applied} draft labels${skipped ? `; skipped ${skipped}` : ""}. Review and mark each clip before download.`);
+}
+
+function importDraftBundle(event) {
+  const file = event?.target?.files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      applyDraftBundlePayload(JSON.parse(String(reader.result || "{}")));
+    } catch (error) {
+      draftStatus(`Draft import failed: ${error.message || error}`);
+    } finally {
+      event.target.value = "";
+    }
+  };
+  reader.onerror = () => {
+    draftStatus("Draft import failed: could not read the selected file.");
+    event.target.value = "";
+  };
+  reader.readAsText(file);
 }
 
 function saveDraft() {

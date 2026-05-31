@@ -913,3 +913,31 @@ rg -n 'X-Amz-Signature|uploadUrl|sourceObjectKey|sourceUrl|downloadUrl|presigned
 - Real Launch71 manifest + local video path with mock structured response: produced a 3-case, 66-clip draft bundle.
 - Existing apply helper accepted the draft bundle only with `--allow-incomplete`; all 66 rows remained incomplete until human review marks them complete.
 - Leak scan found no signed URLs, object keys, local file paths, API-key markers, or full presigned URLs in the redacted GPT context or draft bundle.
+
+## Launch78 Review Page Draft Import
+
+The review page can now import a `team-highlight-manual-label-bundle-v1` draft bundle directly, match cases/clips by ID, and prefill expected team/highlight/event/outcome fields. If the bundle is marked `humanReviewRequired=true` or comes from a draft source, imported clips stay unchecked so the reviewer must still approve every row before launch evidence can count.
+
+Evidence doc:
+
+- `docs/phase_launch78_review_page_draft_import.md`
+
+Validation:
+
+```bash
+python3 -m py_compile scripts/build_team_highlight_label_review_page.py scripts/test_build_team_highlight_label_review_page.py
+python3 -m unittest scripts.test_build_team_highlight_label_review_page scripts.test_draft_team_highlight_manual_labels_with_gpt -v
+python3 scripts/build_team_highlight_label_review_page.py \
+  --manifest artifacts/team_highlight_accuracy_launch71_manifest.json \
+  --video-path /Users/hanfei/Downloads/326_1770329282.mp4 \
+  --output artifacts/team_highlight_accuracy_launch71_review.html \
+  --json
+rg -n 'Import draft bundle|importDraftBundle|applyDraftBundlePayload|bundle-import|X-Amz-Signature|uploadUrl|sourceObjectKey|sourceUrl|downloadUrl|presignedUrl|resultObjectKey|uploadHeaders' \
+  artifacts/team_highlight_accuracy_launch71_review.html
+```
+
+- Python compile: passed.
+- Focused review/draft helper tests: 6 passed.
+- Review page regenerated for 3 Launch71 cases.
+- Import controls and JS were present.
+- Leak scan found no signed URL, source/upload URL, object-key, result-key, or upload-header markers.
