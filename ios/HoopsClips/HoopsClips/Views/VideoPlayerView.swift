@@ -176,7 +176,9 @@ struct VideoPlayerView: View {
                 await MainActor.run {
                     importStatusMessage = "Copying video into HoopClips..."
                 }
-                return await viewModel.loadVideo(url: importedVideo.url)
+                let didLoadVideo = await viewModel.loadVideo(url: importedVideo.url)
+                try? await VideoImportTransfer.removeTemporaryFile(at: importedVideo.url)
+                return didLoadVideo
             } catch is CancellationError {
                 return false
             } catch {
@@ -1141,6 +1143,16 @@ private enum VideoImportTransfer {
         try await Task.detached(priority: .userInitiated) {
             try Task.checkCancellation()
             return try await item.loadTransferable(type: ImportedVideoFile.self)
+        }.value
+    }
+
+    static func removeTemporaryFile(at url: URL) async throws {
+        try await Task.detached(priority: .utility) {
+            try Task.checkCancellation()
+            guard url.path.hasPrefix(URL.temporaryDirectory.path) else {
+                return
+            }
+            try FileManager.default.removeItem(at: url)
         }.value
     }
 }
