@@ -255,6 +255,26 @@ struct HoopsClipsTests {
         #expect(CloudEditRenderState.rendered.displayLabel == "Your reel is ready")
     }
 
+    @Test func testCloudAnalysisProgressStageSanitizesFakeThinkingEtaAndSensitiveText() {
+        let fallback = "Analyzing frames in cloud"
+        let unsafeStages = [
+            "AI is thinking about the best clips",
+            "ETA 2 minutes",
+            "Uploading https://storage.example.test/upload/source.mp4",
+            "Reading uploads/job_123/source.mp4",
+            "Using R2 bucket credentials",
+            "Presigned URL ready"
+        ]
+
+        for stage in unsafeStages {
+            #expect(CloudAnalysisService.safeProgressStage(stage, fallback: fallback) == fallback)
+        }
+
+        #expect(CloudAnalysisService.safeProgressStage("", fallback: fallback) == fallback)
+        #expect(CloudAnalysisService.safeProgressStage("  Scanning jersey colors  ", fallback: fallback) == "Scanning jersey colors")
+        #expect(CloudAnalysisService.safeProgressStage("Finding candidate clips", fallback: fallback) == "Finding candidate clips")
+    }
+
     @Test @MainActor func testCloudEditRequestEncodesOptionalUserPrompt() throws {
         let nativeSignals = NativeShotSignals(
             isShotLike: true,

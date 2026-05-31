@@ -14,6 +14,43 @@ struct CloudAnalysisService {
         self.encoder.dateEncodingStrategy = .iso8601
     }
 
+    static func safeProgressStage(_ stage: String, fallback: String) -> String {
+        let trimmed = stage.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return fallback
+        }
+
+        let normalized = trimmed.lowercased()
+        let forbiddenMarkers = [
+            "thinking",
+            "eta ",
+            " eta",
+            "eta:",
+            "http://",
+            "https://",
+            "presigned",
+            "signature",
+            "x-amz",
+            "x-goog",
+            "uploads/",
+            "renders/",
+            "render_logs/",
+            "r2 ",
+            "bucket",
+            "secret",
+            "token",
+            "credential",
+            "api_key",
+            "apikey",
+            "access_key"
+        ]
+        guard !forbiddenMarkers.contains(where: { normalized.contains($0) }) else {
+            return fallback
+        }
+
+        return trimmed
+    }
+
     func analyzeVideo(
         url: URL,
         duration: Double,
@@ -266,9 +303,15 @@ struct CloudAnalysisService {
                     message: "Analysis took too long before completion."
                 )
             case .created, .queued:
-                await progress(min(max(job.progress, 0.0), 0.55), job.stage.isEmpty ? "Waiting for cloud analysis" : job.stage)
+                await progress(
+                    min(max(job.progress, 0.0), 0.55),
+                    Self.safeProgressStage(job.stage, fallback: "Waiting for cloud analysis")
+                )
             case .processing:
-                await progress(max(0.55, min(job.progress, 0.92)), job.stage.isEmpty ? "Analyzing frames in cloud" : job.stage)
+                await progress(
+                    max(0.55, min(job.progress, 0.92)),
+                    Self.safeProgressStage(job.stage, fallback: "Analyzing frames in cloud")
+                )
             case .none:
                 throw CloudAnalysisError.invalidResponse
             }
