@@ -27,9 +27,10 @@ private struct HoopClipsBrandRenderer {
         image.lockFocus()
         NSGraphicsContext.current?.imageInterpolation = .high
         drawBackground()
-        drawBasketballAccent()
-        drawSpeedCut()
+        drawBasketballMark()
+        drawBaselineSlash()
         drawMonogram()
+        drawWordmark()
         drawFineBorder()
         image.unlockFocus()
         return image
@@ -37,103 +38,131 @@ private struct HoopClipsBrandRenderer {
 
     private func drawBackground() {
         let rect = NSRect(x: 0, y: 0, width: size, height: size)
-        color(5, 7, 10).setFill()
+        color(6, 8, 10).setFill()
         rect.fill()
 
         let gradient = NSGradient(colors: [
-            color(35, 39, 43),
-            color(12, 14, 17),
-            color(5, 7, 10)
+            color(26, 29, 31),
+            color(9, 11, 13),
+            color(3, 5, 7)
         ])
-        gradient?.draw(in: NSBezierPath(rect: rect), angle: -18)
+        gradient?.draw(in: NSBezierPath(rect: rect), angle: -28)
     }
 
-    private func drawBasketballAccent() {
+    private func drawBasketballMark() {
         let ballRect = NSRect(
-            x: size * 0.128,
-            y: size * 0.285,
-            width: size * 0.39,
-            height: size * 0.43
+            x: size * 0.103,
+            y: size * 0.314,
+            width: size * 0.430,
+            height: size * 0.430
         )
         let ball = NSBezierPath(ovalIn: ballRect)
-        color(242, 92, 28).setFill()
-        ball.fill()
+        let ballGradient = NSGradient(colors: [
+            color(255, 119, 29),
+            color(232, 83, 19)
+        ])
+        ballGradient?.draw(in: ball, angle: -24)
 
         color(7, 9, 12).setStroke()
         drawCurve(
-            from: CGPoint(x: size * 0.318, y: size * 0.290),
-            control1: CGPoint(x: size * 0.376, y: size * 0.420),
-            control2: CGPoint(x: size * 0.374, y: size * 0.566),
-            to: CGPoint(x: size * 0.304, y: size * 0.708),
-            width: size * 0.022
+            from: CGPoint(x: size * 0.332, y: size * 0.318),
+            control1: CGPoint(x: size * 0.408, y: size * 0.454),
+            control2: CGPoint(x: size * 0.395, y: size * 0.602),
+            to: CGPoint(x: size * 0.304, y: size * 0.724),
+            width: size * 0.024
         )
         drawCurve(
-            from: CGPoint(x: size * 0.137, y: size * 0.442),
-            control1: CGPoint(x: size * 0.250, y: size * 0.516),
-            control2: CGPoint(x: size * 0.378, y: size * 0.518),
-            to: CGPoint(x: size * 0.506, y: size * 0.472),
-            width: size * 0.022
+            from: CGPoint(x: size * 0.116, y: size * 0.458),
+            control1: CGPoint(x: size * 0.244, y: size * 0.532),
+            control2: CGPoint(x: size * 0.381, y: size * 0.536),
+            to: CGPoint(x: size * 0.520, y: size * 0.492),
+            width: size * 0.023
         )
         drawCurve(
-            from: CGPoint(x: size * 0.190, y: size * 0.658),
-            control1: CGPoint(x: size * 0.302, y: size * 0.632),
-            control2: CGPoint(x: size * 0.404, y: size * 0.572),
-            to: CGPoint(x: size * 0.504, y: size * 0.476),
-            width: size * 0.019
+            from: CGPoint(x: size * 0.184, y: size * 0.666),
+            control1: CGPoint(x: size * 0.300, y: size * 0.644),
+            control2: CGPoint(x: size * 0.414, y: size * 0.588),
+            to: CGPoint(x: size * 0.518, y: size * 0.492),
+            width: size * 0.020
         )
     }
 
-    private func drawSpeedCut() {
+    private func drawBaselineSlash() {
         let shadow = NSShadow()
-        shadow.shadowColor = color(0, 0, 0, 0.42)
-        shadow.shadowBlurRadius = size * 0.018
-        shadow.shadowOffset = NSSize(width: 0, height: -size * 0.008)
+        shadow.shadowColor = color(0, 0, 0, 0.34)
+        shadow.shadowBlurRadius = size * 0.014
+        shadow.shadowOffset = NSSize(width: 0, height: -size * 0.006)
 
         NSGraphicsContext.saveGraphicsState()
         shadow.set()
         let cut = NSBezierPath()
-        cut.move(to: CGPoint(x: size * 0.228, y: size * 0.247))
-        cut.line(to: CGPoint(x: size * 0.782, y: size * 0.322))
-        cut.line(to: CGPoint(x: size * 0.838, y: size * 0.367))
-        cut.line(to: CGPoint(x: size * 0.278, y: size * 0.295))
+        cut.move(to: CGPoint(x: size * 0.152, y: size * 0.266))
+        cut.line(to: CGPoint(x: size * 0.792, y: size * 0.333))
+        cut.line(to: CGPoint(x: size * 0.874, y: size * 0.392))
+        cut.line(to: CGPoint(x: size * 0.228, y: size * 0.323))
         cut.close()
-        color(244, 166, 35).setFill()
+        color(249, 181, 45).setFill()
         cut.fill()
         NSGraphicsContext.restoreGraphicsState()
     }
 
     private func drawMonogram() {
-        let font = NSFont(name: "AvenirNextCondensed-HeavyItalic", size: size * 0.435)
-            ?? NSFont(name: "DINCondensed-Bold", size: size * 0.43)
-            ?? NSFont.systemFont(ofSize: size * 0.42, weight: .black)
+        let font = NSFont(name: "AvenirNextCondensed-HeavyItalic", size: size * 0.510)
+            ?? NSFont(name: "DINCondensed-Bold", size: size * 0.500)
+            ?? NSFont.systemFont(ofSize: size * 0.490, weight: .black)
         let shadow = NSShadow()
-        shadow.shadowColor = color(0, 0, 0, 0.62)
-        shadow.shadowBlurRadius = size * 0.024
-        shadow.shadowOffset = NSSize(width: 0, height: -size * 0.010)
+        shadow.shadowColor = color(0, 0, 0, 0.58)
+        shadow.shadowBlurRadius = size * 0.018
+        shadow.shadowOffset = NSSize(width: 0, height: -size * 0.012)
 
         let attributes: [NSAttributedString.Key: Any] = [
             .font: font,
             .foregroundColor: color(248, 247, 239),
             .strokeColor: color(7, 9, 12),
-            .strokeWidth: -2.4,
+            .strokeWidth: -2.8,
             .shadow: shadow,
             .kern: 0
         ]
         let text = "HC"
         let textSize = text.size(withAttributes: attributes)
         let point = CGPoint(
-            x: (size - textSize.width) / 2 + size * 0.055,
-            y: size * 0.304
+            x: (size - textSize.width) / 2 + size * 0.058,
+            y: size * 0.292
         )
         text.draw(at: point, withAttributes: attributes)
     }
 
+    private func drawWordmark() {
+        let font = NSFont(name: "AvenirNextCondensed-HeavyItalic", size: size * 0.072)
+            ?? NSFont.systemFont(ofSize: size * 0.068, weight: .heavy)
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: color(248, 247, 239, 0.94),
+            .kern: size * 0.004
+        ]
+        let text = "HOOPCLIPS"
+        let textSize = text.size(withAttributes: attributes)
+        let point = CGPoint(
+            x: (size - textSize.width) / 2 + size * 0.006,
+            y: size * 0.145
+        )
+        text.draw(at: point, withAttributes: attributes)
+
+        let underline = NSBezierPath()
+        underline.move(to: CGPoint(x: size * 0.302, y: size * 0.127))
+        underline.line(to: CGPoint(x: size * 0.700, y: size * 0.127))
+        underline.lineWidth = size * 0.012
+        underline.lineCapStyle = .round
+        color(240, 159, 32, 0.92).setStroke()
+        underline.stroke()
+    }
+
     private func drawFineBorder() {
         let rect = NSRect(x: 0, y: 0, width: size, height: size)
-        let inset = size * 0.018
-        let border = NSBezierPath(roundedRect: rect.insetBy(dx: inset, dy: inset), xRadius: size * 0.20, yRadius: size * 0.20)
-        color(255, 255, 255, 0.045).setStroke()
-        border.lineWidth = size * 0.003
+        let inset = size * 0.020
+        let border = NSBezierPath(roundedRect: rect.insetBy(dx: inset, dy: inset), xRadius: size * 0.185, yRadius: size * 0.185)
+        color(255, 255, 255, 0.060).setStroke()
+        border.lineWidth = size * 0.004
         border.stroke()
     }
 
