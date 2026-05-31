@@ -21,6 +21,13 @@ private enum AIEditProInfoSheet: Identifiable {
     }
 }
 
+private struct AIEditQuickPrompt: Identifiable {
+    let id: String
+    let title: String
+    let prompt: String
+    let icon: String
+}
+
 struct AIEditView: View {
     @Bindable var viewModel: HighlightsViewModel
     let isProUser: Bool
@@ -29,6 +36,7 @@ struct AIEditView: View {
     var onRequestProUpgrade: (() -> Void)?
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var selectedPreset: CloudEditPreset = .personalHighlight
     @State private var selectedProTemplate: CloudEditProTemplate?
     @State private var selectedAspectRatio: CloudEditAspectRatio = CloudEditPreset.personalHighlight.aspectRatio
@@ -61,6 +69,32 @@ struct AIEditView: View {
     private let cloudEditService: any CloudEditServicing
     private let proUXFlags = CloudEditProUXFlags.safeDefault
     private static let maxUserPromptCharacters = 240
+    private static let quickPrompts: [AIEditQuickPrompt] = [
+        AIEditQuickPrompt(
+            id: "hype",
+            title: "More hype",
+            prompt: "Make it more hype and prioritize clear made shots, blocks, steals, and big defensive stops.",
+            icon: "bolt.fill"
+        ),
+        AIEditQuickPrompt(
+            id: "defense",
+            title: "Focus defense",
+            prompt: "Focus on defense: blocks, steals, stops, and transition plays.",
+            icon: "shield.lefthalf.filled"
+        ),
+        AIEditQuickPrompt(
+            id: "clear-outcomes",
+            title: "Clear outcomes",
+            prompt: "Prefer clips with a visible outcome. Keep uncertain but strong moments so I can review them.",
+            icon: "scope"
+        ),
+        AIEditQuickPrompt(
+            id: "team-recap",
+            title: "Team recap",
+            prompt: "Make a clean team recap with balanced players, offense, defense, and game flow.",
+            icon: "person.3.fill"
+        )
+    ]
 
     init(
         viewModel: HighlightsViewModel,
@@ -553,6 +587,35 @@ struct AIEditView: View {
                         .padding(.horizontal, 16)
                         .padding(.vertical, 18)
                         .allowsHitTesting(false)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            LazyVGrid(columns: quickPromptGridColumns, alignment: .leading, spacing: 8) {
+                ForEach(Self.quickPrompts) { quickPrompt in
+                    Button {
+                        applyQuickPrompt(quickPrompt)
+                    } label: {
+                        Label(quickPrompt.title, systemImage: quickPrompt.icon)
+                            .font(.caption.weight(.semibold))
+                            .multilineTextAlignment(.center)
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.86)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 52 : 42)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .foregroundStyle(.white)
+                            .background(AppTheme.accentPurple.opacity(0.20), in: .rect(cornerRadius: 12))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(AppTheme.neonPurple.opacity(0.22), lineWidth: 1)
+                            }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("export.aiEdit.quickPrompt.\(quickPrompt.id)")
+                    .accessibilityLabel("Add edit note: \(quickPrompt.title)")
+                    .accessibilityHint("Adds this editing direction to the cloud AI edit note.")
                 }
             }
 
@@ -566,6 +629,13 @@ struct AIEditView: View {
         }
         .padding(14)
         .rorkCard(cornerRadius: 16, stroke: AppTheme.softBorder, glowOpacity: 0.04)
+    }
+
+    private var quickPromptGridColumns: [GridItem] {
+        let minimumWidth: CGFloat = dynamicTypeSize.isAccessibilitySize ? 168 : 132
+        return [
+            GridItem(.adaptive(minimum: minimumWidth, maximum: 240), spacing: 8, alignment: .top)
+        ]
     }
 
     private var statusCard: some View {
@@ -1779,6 +1849,20 @@ struct AIEditView: View {
         let trimmed = userEditPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
         return String(trimmed.prefix(Self.maxUserPromptCharacters))
+    }
+
+    private func applyQuickPrompt(_ quickPrompt: AIEditQuickPrompt) {
+        let trimmed = userEditPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            userEditPrompt = quickPrompt.prompt
+            return
+        }
+
+        let normalizedPrompt = quickPrompt.prompt.lowercased()
+        guard !trimmed.lowercased().contains(normalizedPrompt) else { return }
+
+        let separator = trimmed.hasSuffix(".") || trimmed.hasSuffix("!") || trimmed.hasSuffix("?") ? " " : ". "
+        userEditPrompt = String((trimmed + separator + quickPrompt.prompt).prefix(Self.maxUserPromptCharacters))
     }
 
     private var proIntentWarningText: String? {
