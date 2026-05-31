@@ -521,10 +521,15 @@ struct VideoPlayerView: View {
                     }
                     Text(isImportingVideo ? currentImportStatusMessage : languageStore.text(.selectVideo))
                         .font(.headline)
+                        .multilineTextAlignment(.center)
+                        .lineLimit(3)
+                        .minimumScaleFactor(0.88)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 16)
+                .padding(.horizontal, 14)
                 .background(AppTheme.purpleGradient, in: .rect(cornerRadius: 16))
             }
             .overlay(
@@ -557,7 +562,7 @@ struct VideoPlayerView: View {
                 .accessibilityHint("Stops the current video import.")
             }
 
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+            LazyVGrid(columns: importFeatureGridColumns, alignment: .leading, spacing: 12) {
                 featurePill(icon: "sparkles", text: languageStore.text(.smartHighlights))
                 featurePill(icon: "bolt.fill", text: languageStore.text(.fastReels))
                 featurePill(icon: "film.stack.fill", text: languageStore.text(.autoTrim))
@@ -568,8 +573,15 @@ struct VideoPlayerView: View {
         .rorkCard(cornerRadius: 22, stroke: AppTheme.softBorder, glowOpacity: 0.18)
     }
 
+    private var importFeatureGridColumns: [GridItem] {
+        let minimumWidth: CGFloat = dynamicTypeSize >= .accessibility1 ? 176 : 136
+        return [
+            GridItem(.adaptive(minimum: minimumWidth, maximum: 260), spacing: 12, alignment: .top)
+        ]
+    }
+
     private func featurePill(icon: String, text: String) -> some View {
-        HStack(spacing: 10) {
+        HStack(alignment: .top, spacing: 10) {
             ZStack {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(AppTheme.accentPurple.opacity(0.14))
@@ -582,10 +594,13 @@ struct VideoPlayerView: View {
             Text(text)
                 .font(.caption.weight(.medium))
                 .foregroundStyle(.white)
-                .lineLimit(1)
+                .lineLimit(2)
+                .minimumScaleFactor(0.86)
+                .fixedSize(horizontal: false, vertical: true)
 
             Spacer(minLength: 0)
         }
+        .frame(maxWidth: .infinity, minHeight: dynamicTypeSize >= .accessibility1 ? 62 : 52, alignment: .leading)
         .padding(.horizontal, 10)
         .padding(.vertical, 10)
         .rorkCard(cornerRadius: 14, fill: AnyShapeStyle(AppTheme.surfaceBg.opacity(0.7)), stroke: AppTheme.softBorder, glowOpacity: 0.04)
@@ -1027,7 +1042,8 @@ struct VideoPlayerView: View {
                     Text(languageStore.text(.settingsTargetHighlightHelp))
                         .font(.caption2)
                         .foregroundStyle(AppTheme.subtleText)
-                        .lineLimit(2)
+                        .lineLimit(3)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 Spacer(minLength: 0)
