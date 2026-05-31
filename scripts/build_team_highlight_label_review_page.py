@@ -67,11 +67,13 @@ def main() -> int:
     manifest_path = Path(args.manifest).resolve()
     video_paths = parse_video_paths(args.video or [])
     default_video_path = Path(args.video_path).resolve() if args.video_path else None
+    draft_bundle = load_json(Path(args.draft_bundle).expanduser().resolve()) if args.draft_bundle else None
     payload = build_review_payload(
         manifest=load_json(manifest_path),
         manifest_dir=manifest_path.parent,
         video_paths=video_paths,
         default_video_path=default_video_path,
+        draft_bundle=draft_bundle,
     )
     html_output = render_review_page(payload, title=args.title)
     output_path = Path(args.output).resolve()
@@ -95,6 +97,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--manifest", required=True, help="Team-highlight accuracy manifest JSON.")
     parser.add_argument("--output", required=True, help="Write the local HTML review page here.")
     parser.add_argument("--video-path", help="Default local source video path for every case in the manifest.")
+    parser.add_argument(
+        "--draft-bundle",
+        help=(
+            "Optional GPT draft team_highlight_manual_labels_bundle.json to prefill expected labels. "
+            "Rows with humanReviewRequired remain unreviewed."
+        ),
+    )
     parser.add_argument(
         "--video",
         action="append",
@@ -124,6 +133,7 @@ def build_review_payload(
     manifest_dir: Path,
     video_paths: dict[str, Path],
     default_video_path: Path | None,
+    draft_bundle: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     entries = manifest.get("cases")
     if not isinstance(entries, list) or not entries:
@@ -158,12 +168,15 @@ def build_review_payload(
         )
         cases.append(case_payload)
 
-    return {
+    payload = {
         "schemaVersion": "team-highlight-label-review-page-v1",
         "source": "real_cloud_analysis_manual_review_helper",
         "videos": videos,
         "cases": cases,
     }
+    if draft_bundle is not None:
+        payload["draftPrefill"] = apply_draft_bundle_to_review_payload(payload, draft_bundle)
+    return payload
 
 
 def review_case_payload(
@@ -220,6 +233,75 @@ def review_clip_payload(index: int, clip: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def apply_draft_bundle_to_review_payload(payload: dict[str, Any], draft_bundle: dict[str, Any]) -> dict[str, Any]:
+    if draft_bundle.get("schemaVersion") != "team-highlight-manual-label-bundle-v1":
+        raise ValueError("Draft bundle must use schemaVersion team-highlight-manual-label-bundle-v1.")
+    draft_cases = draft_bundle.get("cases")
+    if not isinstance(draft_cases, list) or not draft_cases:
+        raise ValueError("Draft bundle must contain a non-empty cases array.")
+
+    human_review_required = draft_bundle.get("humanReviewRequired") is True or "draft" in str(draft_bundle.get("source") or "")
+    by_case_id: dict[str, dict[str, Any]] = {}
+    for index, draft_case in enumerate(draft_cases):
+        if not isinstance(draft_case, dict):
+            raise ValueError(f"Draft bundle case {index} must be an object.")
+        case_id = string_or_none(draft_case.get("caseId"))
+        if not case_id:
+            raise ValueError(f"Draft bundle case {index} is missing caseId.")
+        if case_id in by_case_id:
+            raise ValueError(f"Draft bundle contains duplicate caseId {case_id!r}.")
+        by_case_id[case_id] = draft_case
+
+    applied = 0
+    skipped = 0
+    for review_case in payload.get("cases", []):
+        if not isinstance(review_case, dict):
+            continue
+        case_id = string_or_none(review_case.get("caseId") or review_case.get("labelsPayload", {}).get("caseId"))
+        draft_case = by_case_id.get(case_id or "")
+        if not draft_case:
+            skipped += len([clip for clip in review_case.get("clips", []) if isinstance(clip, dict)])
+            continue
+        draft_clips = [clip for clip in draft_case.get("clips", []) if isinstance(clip, dict)]
+        label_clips = [clip for clip in review_case.get("labelsPayload", {}).get("clips", []) if isinstance(clip, dict)]
+        review_clips = [clip for clip in review_case.get("clips", []) if isinstance(clip, dict)]
+        for draft_clip in draft_clips:
+            clip_index = find_matching_draft_clip_index(label_clips, draft_clip)
+            if clip_index < 0 or clip_index >= len(review_clips):
+                skipped += 1
+                continue
+            prefill_clip_from_draft(label_clips[clip_index], draft_clip, human_review_required=human_review_required)
+            prefill_clip_from_draft(review_clips[clip_index], draft_clip, human_review_required=human_review_required)
+            applied += 1
+    return {
+        "schemaVersion": "team-highlight-label-review-draft-prefill-v1",
+        "source": "draft_bundle",
+        "appliedClipCount": applied,
+        "skippedClipCount": skipped,
+        "humanReviewRequired": human_review_required,
+    }
+
+
+def find_matching_draft_clip_index(current_clips: list[dict[str, Any]], draft_clip: dict[str, Any]) -> int:
+    draft_label_id = string_or_none(draft_clip.get("labelId"))
+    draft_prediction_clip_id = string_or_none(draft_clip.get("predictionClipId") or draft_clip.get("clipId"))
+    for index, current_clip in enumerate(current_clips):
+        current_label_id = string_or_none(current_clip.get("labelId"))
+        current_prediction_clip_id = string_or_none(current_clip.get("predictionClipId") or current_clip.get("clipId"))
+        label_matches = draft_label_id and current_label_id == draft_label_id
+        prediction_matches = draft_prediction_clip_id and current_prediction_clip_id == draft_prediction_clip_id
+        if label_matches or prediction_matches:
+            return index
+    return -1
+
+
+def prefill_clip_from_draft(target_clip: dict[str, Any], draft_clip: dict[str, Any], *, human_review_required: bool) -> None:
+    expected = draft_clip.get("expected") if isinstance(draft_clip.get("expected"), dict) else {}
+    target_clip["expected"] = sanitize_for_review(expected)
+    target_clip["labelingNotes"] = string_or_none(draft_clip.get("labelingNotes")) or string_or_none(target_clip.get("labelingNotes")) or ""
+    target_clip["needsLabel"] = True if human_review_required else draft_clip.get("needsLabel") is not False
+
+
 def sanitize_for_review(value: Any) -> Any:
     if isinstance(value, dict):
         return {
@@ -271,6 +353,16 @@ def render_progress_summary(payload: dict[str, Any]) -> str:
         total += len(clips)
         remaining += sum(1 for clip in clips if clip.get("needsLabel") is not False)
     reviewed = total - remaining
+    draft_prefill = payload.get("draftPrefill") if isinstance(payload.get("draftPrefill"), dict) else None
+    draft_line = ""
+    if draft_prefill:
+        applied = int(draft_prefill.get("appliedClipCount") or 0)
+        skipped = int(draft_prefill.get("skippedClipCount") or 0)
+        review_copy = "Human review is still required." if draft_prefill.get("humanReviewRequired") else "Downloaded labels may already include reviewed rows."
+        draft_line = (
+            f'<p class="lede">GPT draft prefilled {applied} clips'
+            f'{f"; skipped {skipped}" if skipped else ""}. {escape(review_copy)}</p>'
+        )
     return "\n".join(
         [
             '<section class="panel summary-panel">',
@@ -279,6 +371,7 @@ def render_progress_summary(payload: dict[str, Any]) -> str:
             "<h2>Label Progress</h2>",
             f'<p id="overall-progress"><strong>{reviewed}</strong> / {total} clips reviewed. {remaining} still need labels.</p>',
             '<p class="lede">A clip is complete when it is marked reviewed and has expected team, highlight, event, and outcome fields filled.</p>',
+            draft_line,
             '<p class="lede" id="draft-status">Local draft not loaded.</p>',
             "</div>",
             '<div class="button-row">',

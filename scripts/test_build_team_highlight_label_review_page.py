@@ -169,6 +169,82 @@ class BuildTeamHighlightLabelReviewPageTests(unittest.TestCase):
                     default_video_path=None,
                 )
 
+    def test_draft_bundle_prefills_expected_fields_but_still_requires_human_review(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            analysis_path = root / "analysis.json"
+            labels_path = root / "labels.json"
+            video_path = root / "source.mp4"
+            video_path.write_bytes(b"fake video")
+            write_json(analysis_path, {"results": {"videoId": "video_a", "clips": [{"id": "clip_1"}]}})
+            write_json(
+                labels_path,
+                {
+                    "caseId": "case_a",
+                    "videoId": "video_a",
+                    "selectedTeamId": "team_black",
+                    "selectedTeamColorLabel": "black",
+                    "clips": [
+                        {
+                            "labelId": "label_001",
+                            "predictionClipId": "clip_1",
+                            "start": 1.0,
+                            "end": 5.0,
+                            "needsLabel": True,
+                            "predicted": {"eventCenter": 3.0},
+                            "expected": {"teamId": None, "isHighlight": None, "eventType": None, "outcome": None},
+                        }
+                    ],
+                },
+            )
+
+            payload = build_review_payload(
+                manifest={"cases": [{"caseId": "case_a", "analysisResult": "analysis.json", "labels": "labels.json"}]},
+                manifest_dir=root,
+                video_paths={},
+                default_video_path=video_path,
+                draft_bundle={
+                    "schemaVersion": "team-highlight-manual-label-bundle-v1",
+                    "source": "gpt_team_highlight_label_draft",
+                    "humanReviewRequired": True,
+                    "cases": [
+                        {
+                            "caseId": "case_a",
+                            "clips": [
+                                {
+                                    "labelId": "label_001",
+                                    "predictionClipId": "clip_1",
+                                    "needsLabel": False,
+                                    "expected": {
+                                        "teamId": "team_black",
+                                        "isHighlight": True,
+                                        "eventType": "block",
+                                        "outcome": "blocked",
+                                        "sourceUrl": "https://r2.example.test/source?X-Amz-Signature=secret",
+                                    },
+                                    "labelingNotes": "GPT draft: visible block by black jerseys.",
+                                }
+                            ],
+                        }
+                    ],
+                },
+            )
+            page = render_review_page(payload, title="Review")
+
+        self.assertEqual(payload["draftPrefill"]["appliedClipCount"], 1)
+        self.assertTrue(payload["draftPrefill"]["humanReviewRequired"])
+        self.assertTrue(payload["cases"][0]["clips"][0]["needsLabel"])
+        self.assertEqual(payload["cases"][0]["clips"][0]["expected"]["eventType"], "block")
+        self.assertIn("GPT draft prefilled 1 clips", page)
+        self.assertIn('value="team_black" selected', page)
+        self.assertIn('value="true" selected', page)
+        self.assertIn('value="block" selected', page)
+        self.assertIn('value="blocked" selected', page)
+        self.assertIn("GPT draft: visible block by black jerseys.", page)
+        self.assertNotIn('class="reviewed" type="checkbox" checked', page)
+        self.assertNotIn("X-Amz-Signature", page)
+        self.assertNotIn("sourceUrl", page)
+
 
 def write_json(path: Path, payload: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
