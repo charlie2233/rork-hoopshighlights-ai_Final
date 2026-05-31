@@ -64,6 +64,7 @@ struct ReviewView: View {
                         VStack(spacing: 16) {
                             headerStats
                             reviewProgressStrip
+                            priorityReviewCard
                             reviewContextStrip
                             quickActionsBar
                             aiEditEntryCard
@@ -239,17 +240,105 @@ struct ReviewView: View {
 
     private var availableFilterOptions: [FilterOption] {
         var options: [FilterOption] = [.all]
-        if selectedTeamFilterIsAvailable {
-            options.append(.selectedTeam)
+        let optionalOptions: [FilterOption] = [.selectedTeam, .teamUncertain, .defense, .blocks, .steals, .needsReview, .kept, .discarded]
+
+        for option in optionalOptions where shouldShowFilter(option) {
+            options.append(option)
         }
-        options.append(contentsOf: [.teamUncertain, .defense, .blocks, .steals, .needsReview, .kept, .discarded])
+
+        if !options.contains(filterOption) {
+            options.append(filterOption)
+        }
         return options
+    }
+
+    private func shouldShowFilter(_ option: FilterOption) -> Bool {
+        if option == filterOption { return true }
+        switch option {
+        case .all:
+            return true
+        case .selectedTeam:
+            return selectedTeamFilterIsAvailable && clipCount(for: option) > 0
+        case .teamUncertain, .defense, .blocks, .steals, .needsReview, .kept, .discarded:
+            return clipCount(for: option) > 0
+        }
     }
 
     private var selectedTeamSummaryTitle: String {
         let selection = viewModel.settings.highlightTeamSelection
         guard selection.mode == .team else { return "All teams" }
         return selection.displayTitle
+    }
+
+    private var priorityReviewClips: [Clip] {
+        viewModel.clips.filter { clip in
+            clip.needsUserReview || clipNeedsTeamReview(clip) || isDefensiveClip(clip)
+        }
+    }
+
+    private var priorityReviewFilter: FilterOption {
+        if !viewModel.needsReviewClips.isEmpty { return .needsReview }
+        if clipCount(for: .teamUncertain) > 0 { return .teamUncertain }
+        if clipCount(for: .defense) > 0 { return .defense }
+        return .all
+    }
+
+    @ViewBuilder
+    private var priorityReviewCard: some View {
+        if !priorityReviewClips.isEmpty {
+            Button {
+                HoopsAccessibility.animate(reduceMotion: reduceMotion) {
+                    filterOption = priorityReviewFilter
+                }
+            } label: {
+                HStack(alignment: .top, spacing: 12) {
+                    Image(systemName: "scope")
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(AppTheme.warningYellow)
+                        .frame(width: 34, height: 34)
+                        .background(AppTheme.warningYellow.opacity(0.14), in: .circle)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Check priority plays")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.86)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Text("Review uncertain team calls, blocks, steals, and close outcomes before making the edit.")
+                            .font(.caption)
+                            .foregroundStyle(AppTheme.subtleText)
+                            .lineLimit(3)
+                            .minimumScaleFactor(0.84)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .layoutPriority(1)
+
+                    Spacer(minLength: 0)
+
+                    Text("\(priorityReviewClips.count)")
+                        .font(.caption.bold().monospacedDigit())
+                        .foregroundStyle(AppTheme.warningYellow)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(AppTheme.warningYellow.opacity(0.14), in: .capsule)
+                }
+                .padding(12)
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .rorkCard(
+                cornerRadius: 14,
+                fill: AnyShapeStyle(AppTheme.surfaceBg.opacity(0.58)),
+                stroke: AppTheme.warningYellow.opacity(0.24),
+                glow: AppTheme.warningYellow,
+                glowOpacity: 0.05
+            )
+            .accessibilityIdentifier("review.priorityReviewButton")
+            .accessibilityLabel("Check priority plays")
+            .accessibilityValue("\(priorityReviewClips.count) clips")
+            .accessibilityHint("Filters Review to clips that need a closer look before making the AI edit.")
+        }
     }
 
     private var reviewContextStrip: some View {
@@ -600,6 +689,10 @@ struct ReviewView: View {
                             Text(clip.label)
                                 .font(.headline)
                                 .foregroundStyle(.white)
+                                .lineLimit(2)
+                                .minimumScaleFactor(0.84)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .layoutPriority(1)
                             
                             if clip.detectionMethod == .ml {
                                 Image(systemName: "sparkles")
@@ -619,6 +712,7 @@ struct ReviewView: View {
 
                         clipContextBadges(clip)
                     }
+                    .layoutPriority(1)
 
                     Spacer()
 
