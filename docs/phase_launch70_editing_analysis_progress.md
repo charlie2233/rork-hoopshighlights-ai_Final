@@ -1032,3 +1032,67 @@ Remaining blockers:
 - Launch-grade 85% selected-team/highlight accuracy is still unproven until the 66 Launch71 clips are human-reviewed and scored.
 - Installed TestFlight post-install smoke remains unproven.
 - Main-branch CI/deploy and iOS TestFlight upload proof need current successful evidence before submission.
+
+## Launch104 Bundle Display Name And Reachable Device Proof
+
+Follow-up polish after launching the app on the real iPhone:
+
+- `CFBundleDisplayName` now uses `HoopClips` instead of `Hoopclips`.
+- Photos permission copy now uses `HoopClips` instead of `Hoopclips`.
+- This is display/copy only; it does not change cloud ownership, analysis, rendering, storage, GPT editing, export, or upload behavior.
+
+Validation:
+
+```bash
+plutil -lint ios/HoopsClips/App-Info.plist
+rg -n "Hoopclips" ios/HoopsClips -g '*.plist' -g '*.swift'
+git diff --check
+xcodebuild build \
+  -project ios/HoopsClips.xcodeproj \
+  -scheme HoopsClips \
+  -configuration Debug \
+  -destination 'id=00008130-000A001A1178001C' \
+  -derivedDataPath /tmp/hoopclips-launch103-device-build \
+  -allowProvisioningUpdates \
+  -skipPackagePluginValidation
+xcrun devicectl device install app \
+  --device E5786BB6-0095-5509-8B85-110C0B5CE6D3 \
+  /tmp/hoopclips-launch103-device-build/Build/Products/Debug-iphoneos/HoopsClips.app
+xcrun devicectl device info apps \
+  --device E5786BB6-0095-5509-8B85-110C0B5CE6D3 \
+  --bundle-id atrak.charlie.hoopsclips \
+  --json-output /tmp/hoopclips-device-apps-after-displayname.json
+xcrun devicectl device process launch \
+  --device E5786BB6-0095-5509-8B85-110C0B5CE6D3 \
+  --terminate-existing \
+  atrak.charlie.hoopsclips
+xcrun devicectl device info apps \
+  --device E5786BB6-0095-5509-8B85-110C0B5CE6D3 \
+  --include-all-apps \
+  --bundle-id com.apple.TestFlight \
+  --json-output /tmp/hoopclips-testflight-app.json
+```
+
+Results:
+
+- `plutil`: passed.
+- `Hoopclips` search: no remaining iOS plist/Swift matches.
+- `git diff --check`: passed.
+- Real iPhone Debug build: passed.
+- Real iPhone install: passed.
+- Installed app metadata now reports:
+  - name: `HoopClips`
+  - bundle: `atrak.charlie.hoopsclips`
+  - version: `1.0.0`
+  - build: `6`
+  - `builtByDeveloper: true`
+- Real iPhone launch: passed.
+- TestFlight app is installed:
+  - bundle: `com.apple.TestFlight`
+  - version: `4.2.1`
+  - build: `628.1`
+  - `builtByDeveloper: false`
+
+Remaining TestFlight blocker:
+
+- The installed HoopClips app on the iPhone is currently the developer-installed build, not a TestFlight-installed build, so the installed TestFlight post-install smoke remains unproven.
