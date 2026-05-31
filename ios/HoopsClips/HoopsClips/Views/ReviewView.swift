@@ -14,6 +14,7 @@ struct ReviewView: View {
     @State private var expandedClipID: UUID?
     @State private var keepTrigger = 0
     @State private var discardTrigger = 0
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     private let tabTransitionAnimation = Animation.interactiveSpring(
         response: 0.42,
         dampingFraction: 0.96,
@@ -117,7 +118,7 @@ struct ReviewView: View {
     }
 
     private var headerStats: some View {
-        HStack(spacing: 12) {
+        LazyVGrid(columns: reviewStatGridColumns, spacing: 10) {
             reviewStatCard(
                 value: "\(viewModel.keptClips.count)",
                 label: "Keeping",
@@ -145,6 +146,13 @@ struct ReviewView: View {
         }
     }
 
+    private var reviewStatGridColumns: [GridItem] {
+        let minimumWidth: CGFloat = dynamicTypeSize.isAccessibilitySize ? 148 : 76
+        return [
+            GridItem(.adaptive(minimum: minimumWidth, maximum: 180), spacing: 10, alignment: .top)
+        ]
+    }
+
     private func reviewStatCard(value: String, label: String, icon: String, color: Color) -> some View {
         VStack(spacing: 6) {
             Image(systemName: icon)
@@ -153,11 +161,16 @@ struct ReviewView: View {
             Text(value)
                 .font(.headline.monospacedDigit())
                 .foregroundStyle(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
             Text(label)
                 .font(.caption2)
                 .foregroundStyle(AppTheme.subtleText)
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 112 : 92)
         .padding(.vertical, 12)
         .rorkCard(
             cornerRadius: 12,
@@ -236,28 +249,25 @@ struct ReviewView: View {
     }
 
     private var reviewContextStrip: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                RorkMetricChip(
-                    icon: selectedTeamFilterIsAvailable ? "person.2.fill" : "person.3.fill",
-                    value: selectedTeamSummaryTitle,
-                    label: "Team",
-                    tint: selectedTeamFilterIsAvailable ? AppTheme.warningYellow : AppTheme.neonPurple
-                )
-                RorkMetricChip(
-                    icon: "shield.fill",
-                    value: "\(clipCount(for: .defense))",
-                    label: "Defense",
-                    tint: .orange
-                )
-                RorkMetricChip(
-                    icon: "person.2.badge.gearshape.fill",
-                    value: "\(clipCount(for: .teamUncertain))",
-                    label: "Team Check",
-                    tint: AppTheme.warningYellow
-                )
-            }
-            .padding(.horizontal, 2)
+        LazyVGrid(columns: reviewContextGridColumns, spacing: 8) {
+            RorkMetricChip(
+                icon: selectedTeamFilterIsAvailable ? "person.2.fill" : "person.3.fill",
+                value: selectedTeamSummaryTitle,
+                label: "Team",
+                tint: selectedTeamFilterIsAvailable ? AppTheme.warningYellow : AppTheme.neonPurple
+            )
+            RorkMetricChip(
+                icon: "shield.fill",
+                value: "\(clipCount(for: .defense))",
+                label: "Defense",
+                tint: .orange
+            )
+            RorkMetricChip(
+                icon: "person.2.badge.gearshape.fill",
+                value: "\(clipCount(for: .teamUncertain))",
+                label: "Team Check",
+                tint: AppTheme.warningYellow
+            )
         }
         .padding(10)
         .rorkCard(cornerRadius: 14, fill: AnyShapeStyle(AppTheme.surfaceBg.opacity(0.45)), stroke: AppTheme.softBorder, glowOpacity: 0.03)
@@ -266,8 +276,15 @@ struct ReviewView: View {
         .accessibilityValue("\(selectedTeamSummaryTitle), \(clipCount(for: .defense)) defensive clips, \(clipCount(for: .teamUncertain)) clips need team check")
     }
 
+    private var reviewContextGridColumns: [GridItem] {
+        let minimumWidth: CGFloat = dynamicTypeSize.isAccessibilitySize ? 150 : 104
+        return [
+            GridItem(.adaptive(minimum: minimumWidth, maximum: 240), spacing: 8, alignment: .top)
+        ]
+    }
+
     private var quickActionsBar: some View {
-        HStack(spacing: 10) {
+        LazyVGrid(columns: reviewActionGridColumns, spacing: 10) {
             reviewQuickActionButton(
                 title: "Keep Best",
                 subtitle: "\(highConfidencePendingCount) clips",
@@ -299,6 +316,13 @@ struct ReviewView: View {
             stroke: AppTheme.softBorder,
             glowOpacity: 0.04
         )
+    }
+
+    private var reviewActionGridColumns: [GridItem] {
+        let minimumWidth: CGFloat = dynamicTypeSize.isAccessibilitySize ? 168 : 132
+        return [
+            GridItem(.adaptive(minimum: minimumWidth, maximum: 260), spacing: 10, alignment: .top)
+        ]
     }
 
     private var aiEditEntryCard: some View {
@@ -378,9 +402,13 @@ struct ReviewView: View {
                     Text(title)
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.white)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                     Text(subtitle)
                         .font(.caption2.monospacedDigit())
                         .foregroundStyle(AppTheme.subtleText)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 Spacer(minLength: 0)
@@ -413,7 +441,9 @@ struct ReviewView: View {
                     } label: {
                         Text(filterTitle(for: option))
                             .font(.subheadline.weight(.medium))
-                            .lineLimit(1)
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.86)
+                            .fixedSize(horizontal: false, vertical: true)
                             .foregroundStyle(filterOption == option ? .white : AppTheme.subtleText)
                             .padding(.horizontal, 16)
                             .padding(.vertical, 8)

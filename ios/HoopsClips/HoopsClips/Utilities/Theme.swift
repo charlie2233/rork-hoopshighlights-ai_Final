@@ -132,18 +132,23 @@ struct RorkMetricChip: View {
                 Text(value)
                     .font(.caption.bold().monospacedDigit())
                     .foregroundStyle(.white)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.84)
+                    .fixedSize(horizontal: false, vertical: true)
                 Text(label)
                     .font(.caption2)
                     .foregroundStyle(AppTheme.subtleText)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
-        .background(AppTheme.surfaceBg.opacity(0.75), in: Capsule())
+        .background(AppTheme.surfaceBg.opacity(0.75), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay(
-            Capsule()
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .stroke(AppTheme.softBorder, lineWidth: 1)
         )
         .accessibilityElement(children: .ignore)
