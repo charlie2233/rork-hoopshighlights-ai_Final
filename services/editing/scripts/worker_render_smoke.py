@@ -85,16 +85,18 @@ def main() -> int:
     media = probe_media(final_path, expected_aspect_ratio=edit_job.plan.aspectRatio, expected_duration_seconds=_float_or_none(status.get("durationSeconds")))
     print(
         json.dumps(
-            {
-                "status": "pass",
-                "workerUrl": args.worker_url,
-                "editJobId": edit_job.edit_job_id,
-                "renderJobId": status.get("renderJobId"),
-                "sourceObjectKey": source_key,
-                "outputObjectKey": download.get("outputObjectKey"),
-                "downloadedPath": str(final_path),
-                "media": media,
-            },
+            sanitize_for_log(
+                {
+                    "status": "pass",
+                    "workerUrl": args.worker_url,
+                    "editJobId": edit_job.edit_job_id,
+                    "renderJobId": status.get("renderJobId"),
+                    "sourceObjectKey": source_key,
+                    "outputObjectKey": download.get("outputObjectKey"),
+                    "downloadedPath": str(final_path),
+                    "media": media,
+                }
+            ),
             indent=2,
             sort_keys=True,
         )

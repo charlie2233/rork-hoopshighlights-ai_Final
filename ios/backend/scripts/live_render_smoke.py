@@ -100,7 +100,7 @@ def main() -> int:
             "renderStorage": readyz.get("renderStorage"),
         },
     }
-    print(json.dumps(summary, indent=2, sort_keys=True))
+    print(json.dumps(sanitize_for_log(summary), indent=2, sort_keys=True))
     return 0
 
 
@@ -269,13 +269,31 @@ def sanitize_for_log(value: object) -> object:
         return sanitized
     if isinstance(value, list):
         return [sanitize_for_log(item) for item in value]
+    if isinstance(value, tuple):
+        return [sanitize_for_log(item) for item in value]
+    if isinstance(value, set):
+        return [sanitize_for_log(item) for item in sorted(value, key=str)]
     if isinstance(value, str):
         lower_value = value.lower()
         if value.startswith("http") and ("x-amz-" in lower_value or "signature=" in lower_value):
             return "[redacted]"
-        if "x-amz-signature=" in lower_value or "x-amz-credential=" in lower_value:
+        if (
+            "x-amz-signature=" in lower_value
+            or "x-amz-credential=" in lower_value
+            or "x-amz-security-token=" in lower_value
+            or "presigned" in lower_value
+            or "sourceobjectkey" in lower_value
+            or "downloadurl" in lower_value
+            or "renderlogobjectkey" in lower_value
+            or "uploads/" in lower_value
+            or "renders/" in lower_value
+            or "render_logs/" in lower_value
+        ):
             return "[redacted]"
-    return value
+        return value
+    if value is None or isinstance(value, (bool, int, float)):
+        return value
+    return sanitize_for_log(str(value))
 
 
 def run(command: list[str], capture: bool = False) -> subprocess.CompletedProcess[str]:
