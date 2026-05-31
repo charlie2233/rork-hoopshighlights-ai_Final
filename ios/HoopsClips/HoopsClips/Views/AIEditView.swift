@@ -1185,10 +1185,7 @@ struct AIEditView: View {
             }
 
             Button(action: startEdit) {
-                Label(primaryActionTitle, systemImage: primaryActionIcon)
-                    .font(.headline)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
+                fullWidthActionLabel(primaryActionTitle, systemImage: primaryActionIcon)
             }
             .buttonStyle(.borderedProminent)
             .tint(AppTheme.accentPurple)
@@ -1198,10 +1195,13 @@ struct AIEditView: View {
 
             if phase == .failed {
                 Button(action: startEdit) {
-                    Label("Try Again", systemImage: "arrow.clockwise")
-                        .font(.caption.bold())
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
+                    fullWidthActionLabel(
+                        "Try Again",
+                        systemImage: "arrow.clockwise",
+                        font: .caption.bold(),
+                        minimumHeight: 40,
+                        verticalPadding: 10
+                    )
                 }
                 .buttonStyle(.bordered)
                 .tint(AppTheme.warningYellow)
@@ -1214,10 +1214,11 @@ struct AIEditView: View {
                 Button {
                     Task { await saveRenderedVideoToPhotos() }
                 } label: {
-                    Label("Save to Photos", systemImage: "photo.badge.arrow.down.fill")
-                        .font(.headline)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
+                    fullWidthActionLabel(
+                        "Save to Photos",
+                        systemImage: "photo.badge.arrow.down.fill",
+                        verticalPadding: 12
+                    )
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(AppTheme.successGreen)
@@ -1226,10 +1227,11 @@ struct AIEditView: View {
                 .accessibilityHint("Saves the finished video to your photo library.")
 
                 Button(action: shareRenderedVideo) {
-                    Label(isPreparingShare ? "Getting Video Ready" : "Share", systemImage: "square.and.arrow.up.fill")
-                        .font(.headline)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
+                    fullWidthActionLabel(
+                        isPreparingShare ? "Getting Video Ready" : "Share",
+                        systemImage: "square.and.arrow.up.fill",
+                        verticalPadding: 12
+                    )
                 }
                 .buttonStyle(.bordered)
                 .tint(AppTheme.neonPurple)
@@ -1240,6 +1242,26 @@ struct AIEditView: View {
         }
         .padding(14)
         .rorkCard(cornerRadius: 16, stroke: AppTheme.softBorder, glowOpacity: 0.04)
+    }
+
+    private func fullWidthActionLabel(
+        _ title: String,
+        systemImage: String,
+        font: Font = .headline,
+        minimumHeight: CGFloat = 46,
+        verticalPadding: CGFloat = 14
+    ) -> some View {
+        Label(title, systemImage: systemImage)
+            .font(font)
+            .multilineTextAlignment(.center)
+            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
+            .minimumScaleFactor(0.82)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(
+                maxWidth: .infinity,
+                minHeight: dynamicTypeSize.isAccessibilitySize ? minimumHeight + 10 : minimumHeight
+            )
+            .padding(.vertical, verticalPadding)
     }
 
     private var revisionCard: some View {
