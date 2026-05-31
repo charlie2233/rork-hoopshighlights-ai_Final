@@ -10,6 +10,11 @@ private let appIconPaths = [
     "ios/HoopsClips/Assets.xcassets/AppIcon.appiconset/icon.png"
 ]
 
+private let appIconContentsPaths = [
+    "ios/HoopsClips/HoopsClips/Assets.xcassets/AppIcon.appiconset/Contents.json",
+    "ios/HoopsClips/Assets.xcassets/AppIcon.appiconset/Contents.json"
+]
+
 private let brandMarkPaths = [
     "ios/HoopsClips/HoopsClips/Assets.xcassets/BrandMark.imageset/brand_mark.png",
     "ios/HoopsClips/Assets.xcassets/BrandMark.imageset/brand_mark.png"
@@ -30,7 +35,6 @@ private struct HoopClipsBrandRenderer {
         drawBasketballMark()
         drawBaselineSlash()
         drawMonogram()
-        drawWordmark()
         drawFineBorder()
         image.unlockFocus()
         return image
@@ -38,51 +42,60 @@ private struct HoopClipsBrandRenderer {
 
     private func drawBackground() {
         let rect = NSRect(x: 0, y: 0, width: size, height: size)
-        color(6, 8, 10).setFill()
+        color(4, 6, 8).setFill()
         rect.fill()
 
         let gradient = NSGradient(colors: [
-            color(26, 29, 31),
-            color(9, 11, 13),
-            color(3, 5, 7)
+            color(27, 31, 32),
+            color(7, 10, 12),
+            color(2, 3, 5)
         ])
-        gradient?.draw(in: NSBezierPath(rect: rect), angle: -28)
+        gradient?.draw(in: NSBezierPath(rect: rect), angle: -35)
+
+        let spotlight = NSBezierPath(ovalIn: NSRect(
+            x: -size * 0.10,
+            y: size * 0.55,
+            width: size * 0.54,
+            height: size * 0.54
+        ))
+        color(255, 122, 28, 0.12).setFill()
+        spotlight.fill()
     }
 
     private func drawBasketballMark() {
         let ballRect = NSRect(
-            x: size * 0.103,
-            y: size * 0.314,
+            x: size * 0.085,
+            y: size * 0.205,
             width: size * 0.430,
             height: size * 0.430
         )
         let ball = NSBezierPath(ovalIn: ballRect)
         let ballGradient = NSGradient(colors: [
-            color(255, 119, 29),
-            color(232, 83, 19)
+            color(255, 129, 27),
+            color(235, 73, 16)
         ])
         ballGradient?.draw(in: ball, angle: -24)
 
-        color(7, 9, 12).setStroke()
+        color(5, 7, 9).setStroke()
         drawCurve(
-            from: CGPoint(x: size * 0.332, y: size * 0.318),
-            control1: CGPoint(x: size * 0.408, y: size * 0.454),
-            control2: CGPoint(x: size * 0.395, y: size * 0.602),
-            to: CGPoint(x: size * 0.304, y: size * 0.724),
+            from: CGPoint(x: size * 0.313, y: size * 0.205),
+            control1: CGPoint(x: size * 0.390, y: size * 0.340),
+            control2: CGPoint(x: size * 0.375, y: size * 0.490),
+            to: CGPoint(x: size * 0.287, y: size * 0.615),
             width: size * 0.024
         )
         drawCurve(
-            from: CGPoint(x: size * 0.116, y: size * 0.458),
-            control1: CGPoint(x: size * 0.244, y: size * 0.532),
-            control2: CGPoint(x: size * 0.381, y: size * 0.536),
-            to: CGPoint(x: size * 0.520, y: size * 0.492),
+            from: CGPoint(x: size * 0.100, y: size * 0.352),
+            control1: CGPoint(x: size * 0.228, y: size * 0.424),
+            control2: CGPoint(x: size * 0.362, y: size * 0.429),
+            to: CGPoint(x: size * 0.503, y: size * 0.383),
             width: size * 0.023
         )
         drawCurve(
-            from: CGPoint(x: size * 0.184, y: size * 0.666),
-            control1: CGPoint(x: size * 0.300, y: size * 0.644),
-            control2: CGPoint(x: size * 0.414, y: size * 0.588),
-            to: CGPoint(x: size * 0.518, y: size * 0.492),
+            from: CGPoint(x: size * 0.168, y: size * 0.558),
+            control1: CGPoint(x: size * 0.286, y: size * 0.536),
+            control2: CGPoint(x: size * 0.400, y: size * 0.480),
+            to: CGPoint(x: size * 0.503, y: size * 0.383),
             width: size * 0.020
         )
     }
@@ -96,73 +109,48 @@ private struct HoopClipsBrandRenderer {
         NSGraphicsContext.saveGraphicsState()
         shadow.set()
         let cut = NSBezierPath()
-        cut.move(to: CGPoint(x: size * 0.152, y: size * 0.266))
-        cut.line(to: CGPoint(x: size * 0.792, y: size * 0.333))
-        cut.line(to: CGPoint(x: size * 0.874, y: size * 0.392))
-        cut.line(to: CGPoint(x: size * 0.228, y: size * 0.323))
+        cut.move(to: CGPoint(x: size * 0.095, y: size * 0.225))
+        cut.line(to: CGPoint(x: size * 0.820, y: size * 0.313))
+        cut.line(to: CGPoint(x: size * 0.915, y: size * 0.386))
+        cut.line(to: CGPoint(x: size * 0.185, y: size * 0.292))
         cut.close()
-        color(249, 181, 45).setFill()
+        color(247, 181, 42).setFill()
         cut.fill()
         NSGraphicsContext.restoreGraphicsState()
     }
 
     private func drawMonogram() {
-        let font = NSFont(name: "AvenirNextCondensed-HeavyItalic", size: size * 0.510)
-            ?? NSFont(name: "DINCondensed-Bold", size: size * 0.500)
-            ?? NSFont.systemFont(ofSize: size * 0.490, weight: .black)
+        let font = NSFont(name: "AvenirNextCondensed-HeavyItalic", size: size * 0.650)
+            ?? NSFont(name: "DINCondensed-Bold", size: size * 0.635)
+            ?? NSFont.systemFont(ofSize: size * 0.620, weight: .black)
         let shadow = NSShadow()
-        shadow.shadowColor = color(0, 0, 0, 0.58)
-        shadow.shadowBlurRadius = size * 0.018
-        shadow.shadowOffset = NSSize(width: 0, height: -size * 0.012)
+        shadow.shadowColor = color(0, 0, 0, 0.64)
+        shadow.shadowBlurRadius = size * 0.016
+        shadow.shadowOffset = NSSize(width: 0, height: -size * 0.011)
 
         let attributes: [NSAttributedString.Key: Any] = [
             .font: font,
             .foregroundColor: color(248, 247, 239),
-            .strokeColor: color(7, 9, 12),
-            .strokeWidth: -2.8,
+            .strokeColor: color(3, 5, 7),
+            .strokeWidth: -3.2,
             .shadow: shadow,
-            .kern: 0
+            .kern: -size * 0.010
         ]
         let text = "HC"
         let textSize = text.size(withAttributes: attributes)
         let point = CGPoint(
-            x: (size - textSize.width) / 2 + size * 0.058,
-            y: size * 0.292
+            x: (size - textSize.width) / 2 + size * 0.050,
+            y: size * 0.220
         )
         text.draw(at: point, withAttributes: attributes)
-    }
-
-    private func drawWordmark() {
-        let font = NSFont(name: "AvenirNextCondensed-HeavyItalic", size: size * 0.072)
-            ?? NSFont.systemFont(ofSize: size * 0.068, weight: .heavy)
-        let attributes: [NSAttributedString.Key: Any] = [
-            .font: font,
-            .foregroundColor: color(248, 247, 239, 0.94),
-            .kern: size * 0.004
-        ]
-        let text = "HOOPCLIPS"
-        let textSize = text.size(withAttributes: attributes)
-        let point = CGPoint(
-            x: (size - textSize.width) / 2 + size * 0.006,
-            y: size * 0.145
-        )
-        text.draw(at: point, withAttributes: attributes)
-
-        let underline = NSBezierPath()
-        underline.move(to: CGPoint(x: size * 0.302, y: size * 0.127))
-        underline.line(to: CGPoint(x: size * 0.700, y: size * 0.127))
-        underline.lineWidth = size * 0.012
-        underline.lineCapStyle = .round
-        color(240, 159, 32, 0.92).setStroke()
-        underline.stroke()
     }
 
     private func drawFineBorder() {
         let rect = NSRect(x: 0, y: 0, width: size, height: size)
-        let inset = size * 0.020
-        let border = NSBezierPath(roundedRect: rect.insetBy(dx: inset, dy: inset), xRadius: size * 0.185, yRadius: size * 0.185)
-        color(255, 255, 255, 0.060).setStroke()
-        border.lineWidth = size * 0.004
+        let inset = size * 0.026
+        let border = NSBezierPath(roundedRect: rect.insetBy(dx: inset, dy: inset), xRadius: size * 0.160, yRadius: size * 0.160)
+        color(255, 255, 255, 0.045).setStroke()
+        border.lineWidth = size * 0.0035
         border.stroke()
     }
 
@@ -208,11 +196,36 @@ private func savePNG(_ image: NSImage, to relativePath: String) throws {
     }
 }
 
+private func saveAppIconContents(to relativePath: String) throws {
+    let outputURL = repoRoot.appendingPathComponent(relativePath)
+    try FileManager.default.createDirectory(at: outputURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+    let contents = """
+    {
+      "images" : [
+        {
+          "filename" : "icon.png",
+          "idiom" : "universal",
+          "platform" : "ios",
+          "size" : "1024x1024"
+        }
+      ],
+      "info" : {
+        "author" : "xcode",
+        "version" : 1
+      }
+    }
+    """
+    try (contents + "\n").write(to: outputURL, atomically: true, encoding: .utf8)
+}
+
 let appIcon = HoopClipsBrandRenderer(size: 1024).image()
 let brandMark = HoopClipsBrandRenderer(size: 512).image()
 
 for path in appIconPaths {
     try savePNG(appIcon, to: path)
+}
+for path in appIconContentsPaths {
+    try saveAppIconContents(to: path)
 }
 for path in brandMarkPaths {
     try savePNG(brandMark, to: path)
