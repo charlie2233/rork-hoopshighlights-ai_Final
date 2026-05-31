@@ -1,7 +1,9 @@
 import SwiftUI
+import UIKit
 
 struct ContentView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
     @State private var viewModel = HighlightsViewModel()
     @State private var authService = AuthService()
     @State private var subscriptionManager = SubscriptionManager()
@@ -50,6 +52,16 @@ struct ContentView: View {
             case .export: return "app.tab.export"
             case .history: return "app.tab.history"
             case .settings: return "app.tab.settings"
+            }
+        }
+
+        var telemetryName: String {
+            switch self {
+            case .player: return "player"
+            case .review: return "review"
+            case .export: return "export"
+            case .history: return "history"
+            case .settings: return "settings"
             }
         }
 
@@ -104,6 +116,15 @@ struct ContentView: View {
         }
         .onChange(of: authService.isAuthenticated) { _, isAuthenticated in
             handleAuthenticationChange(isAuthenticated)
+        }
+        .onAppear {
+            LaunchTelemetry.shared.recordLifecycleState("active", screen: selectedTabTelemetryName)
+        }
+        .onChange(of: scenePhase) { _, phase in
+            LaunchTelemetry.shared.recordLifecycleState(phase.hoopsTelemetryName, screen: selectedTabTelemetryName)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
+            LaunchTelemetry.shared.recordMemoryWarning(screen: selectedTabTelemetryName)
         }
         .environment(languageStore)
         .environment(\.locale, languageStore.selectedLanguage.locale)
@@ -185,6 +206,10 @@ struct ContentView: View {
         .sheet(isPresented: $showingPaywall) {
             PaywallView(subscriptionManager: subscriptionManager, authService: authService)
         }
+    }
+
+    private var selectedTabTelemetryName: String {
+        AppTab(rawValue: selectedTab)?.telemetryName ?? "unknown"
     }
 
     private var appTabBar: some View {
@@ -272,6 +297,7 @@ struct ContentView: View {
 
     private func selectTab(_ tab: AppTab) {
         guard selectedTab != tab.rawValue else { return }
+        LaunchTelemetry.shared.recordStabilityCheckpoint("tab.selected", metadata: "tab=\(tab.telemetryName)")
         guard !reduceMotion else {
             selectedTab = tab.rawValue
             return
@@ -279,6 +305,17 @@ struct ContentView: View {
 
         withAnimation(tabSwipeAnimation) {
             selectedTab = tab.rawValue
+        }
+    }
+}
+
+private extension ScenePhase {
+    var hoopsTelemetryName: String {
+        switch self {
+        case .active: return "active"
+        case .inactive: return "inactive"
+        case .background: return "background"
+        @unknown default: return "unknown"
         }
     }
 }

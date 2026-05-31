@@ -188,6 +188,11 @@ final class HighlightsViewModel {
     func loadVideo(url: URL) async -> Bool {
         let accessing = url.startAccessingSecurityScopedResource()
         defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+        let fileSize = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? -1
+        LaunchTelemetry.shared.recordStabilityCheckpoint(
+            "video_import.persist_begin",
+            metadata: "fileSizeBytes=\(fileSize)"
+        )
 
         persistCurrentProject()
 
@@ -200,11 +205,20 @@ final class HighlightsViewModel {
             insertProject(project, makeCurrent: true)
             applyPersistedProject(project)
             persistCurrentProject(reason: .imported, message: "Imported \(project.sourceFilename)")
+            LaunchTelemetry.shared.recordStabilityCheckpoint(
+                "video_import.persisted",
+                metadata: "durationSeconds=\(Int(project.sourceDuration.rounded()))"
+            )
             return true
         } catch is CancellationError {
+            LaunchTelemetry.shared.recordStabilityCheckpoint("video_import.persist_cancelled")
             return false
         } catch {
             print("Failed to load video: \(error.localizedDescription)")
+            LaunchTelemetry.shared.recordStabilityCheckpoint(
+                "video_import.persist_failed",
+                metadata: "reason=\(error.localizedDescription)"
+            )
             return false
         }
     }
@@ -218,6 +232,10 @@ final class HighlightsViewModel {
         await AnalysisNotificationService.shared.prepareForAnalysis()
         beginBackgroundAnalysisTask()
         defer { endBackgroundAnalysisTask() }
+        LaunchTelemetry.shared.recordStabilityCheckpoint(
+            "analysis.started",
+            metadata: "mode=\(AppConstants.cloudAnalysisEnabled ? "cloud" : "local") durationSeconds=\(Int(videoDuration.rounded()))"
+        )
 
         analysisService.updateSettings(settings)
 
@@ -268,8 +286,13 @@ final class HighlightsViewModel {
                 usedFallback: false
             )
             recordAnalysisCompleted()
+            LaunchTelemetry.shared.recordStabilityCheckpoint(
+                "analysis.completed",
+                metadata: "mode=cloud clips=\(analysisService.clips.count)"
+            )
         } catch let error where error.isTaskCancellation {
             analysisService.finishExternalAnalysis(with: "Analysis cancelled")
+            LaunchTelemetry.shared.recordStabilityCheckpoint("analysis.cancelled", metadata: "mode=cloud")
             return
         } catch let error as CloudAnalysisError {
             switch error {
@@ -290,6 +313,12 @@ final class HighlightsViewModel {
         guard !analysisService.isAnalyzing, !isCloudTeamScanInProgress else { return }
         let scanSourceURL = url.standardizedFileURL
         guard pendingCloudAnalysisJob?.sourceURL != scanSourceURL else { return }
+        beginBackgroundAnalysisTask()
+        defer { endBackgroundAnalysisTask() }
+        LaunchTelemetry.shared.recordStabilityCheckpoint(
+            "team_scan.started",
+            metadata: "durationSeconds=\(Int(videoDuration.rounded()))"
+        )
 
         let scanID = UUID()
         activeCloudTeamScanID = scanID
@@ -324,10 +353,15 @@ final class HighlightsViewModel {
             cloudTeamScanStatusMessage = preparedJob.detectedTeams.isEmpty
                 ? "No clear jersey colors found yet"
                 : "Choose a team before analysis"
+            LaunchTelemetry.shared.recordStabilityCheckpoint(
+                "team_scan.completed",
+                metadata: "teams=\(preparedJob.detectedTeams.count)"
+            )
         } catch let error where error.isTaskCancellation {
             if videoURL?.standardizedFileURL == scanSourceURL {
                 clearPendingCloudAnalysisJob()
             }
+            LaunchTelemetry.shared.recordStabilityCheckpoint("team_scan.cancelled")
             return
         } catch let error as CloudAnalysisError {
             guard videoURL?.standardizedFileURL == scanSourceURL else { return }
@@ -340,6 +374,10 @@ final class HighlightsViewModel {
             cloudDetectedTeams = []
             settings.highlightTeamSelection = .allTeams
             hasConfirmedHighlightTeamSelection = true
+            LaunchTelemetry.shared.recordStabilityCheckpoint(
+                "team_scan.failed",
+                metadata: "reason=\(error.localizedDescription)"
+            )
         } catch {
             guard videoURL?.standardizedFileURL == scanSourceURL else { return }
             cloudTeamScanErrorMessage = error.localizedDescription
@@ -348,6 +386,10 @@ final class HighlightsViewModel {
             cloudDetectedTeams = []
             settings.highlightTeamSelection = .allTeams
             hasConfirmedHighlightTeamSelection = true
+            LaunchTelemetry.shared.recordStabilityCheckpoint(
+                "team_scan.failed",
+                metadata: "reason=\(error.localizedDescription)"
+            )
         }
     }
 
@@ -1246,6 +1288,10 @@ final class HighlightsViewModel {
             isCloudFallbackOffered = false
             analysisService.finishExternalAnalysis(with: message)
             recordAnalysisFailure(message: message)
+            LaunchTelemetry.shared.recordStabilityCheckpoint(
+                "analysis.failed",
+                metadata: "mode=cloud reason=\(error.localizedDescription)"
+            )
             return
         }
 
@@ -1255,6 +1301,10 @@ final class HighlightsViewModel {
             guard let url = videoURL else {
                 analysisService.finishExternalAnalysis(with: error.localizedDescription)
                 recordAnalysisFailure(message: error.localizedDescription)
+                LaunchTelemetry.shared.recordStabilityCheckpoint(
+                    "analysis.failed",
+                    metadata: "mode=localFallback reason=\(error.localizedDescription)"
+                )
                 return
             }
             analysisService.updateExternalAnalysis(progress: 0.0, status: "Analyzing on device")
@@ -1265,6 +1315,10 @@ final class HighlightsViewModel {
                 usedFallback: false
             )
             recordAnalysisCompleted()
+            LaunchTelemetry.shared.recordStabilityCheckpoint(
+                "analysis.completed",
+                metadata: "mode=localFallback clips=\(analysisService.clips.count)"
+            )
             return
         }
 
@@ -1273,6 +1327,10 @@ final class HighlightsViewModel {
             analysisService.finishExternalAnalysis(with: message)
             isCloudFallbackOffered = false
             recordAnalysisFailure(message: message)
+            LaunchTelemetry.shared.recordStabilityCheckpoint(
+                "analysis.failed",
+                metadata: "mode=cloud code=\(code)"
+            )
             return
         }
 
@@ -1282,6 +1340,10 @@ final class HighlightsViewModel {
         guard let url = videoURL else {
             analysisService.finishExternalAnalysis(with: error.localizedDescription)
             recordAnalysisFailure(message: error.localizedDescription)
+            LaunchTelemetry.shared.recordStabilityCheckpoint(
+                "analysis.failed",
+                metadata: "mode=localFallback reason=\(error.localizedDescription)"
+            )
             return
         }
         await analysisService.analyze(url: url, settings: settings)
@@ -1291,6 +1353,10 @@ final class HighlightsViewModel {
             usedFallback: true
         )
         recordAnalysisCompleted()
+        LaunchTelemetry.shared.recordStabilityCheckpoint(
+            "analysis.completed",
+            metadata: "mode=localFallback clips=\(analysisService.clips.count)"
+        )
     }
 }
 

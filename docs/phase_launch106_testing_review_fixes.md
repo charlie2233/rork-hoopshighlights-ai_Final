@@ -75,6 +75,38 @@ xcodebuild build-for-testing \
 - iOS Debug build-for-testing: passed.
 - Existing warnings remain in `CloudAnalysisService.swift` progress callbacks and `VideoExportService.swift` AVFoundation export APIs; this pass did not introduce new build failures.
 
+### Pass 4 - Random Quit Triage
+
+- Checked local `~/Library/Logs/DiagnosticReports/HoopsClips-*.ips` reports. They were simulator test-harness SIGTRAP reports from older `CloudEditServiceTests`, not foreground user-session crashes.
+- Checked connected-device visibility with `xcrun devicectl list devices`; `charlie的iPhone` was registered but unavailable, so real iPhone crash/Jetsam logs could not be pulled in this pass.
+- Confirmed the current Photos import code is file-backed only and supports `.video`, `.movie`, `.mpeg4Movie`, and `.quickTimeMovie`; the old `Data.self` fallback is not present in this branch.
+- Added privacy-safe stability breadcrumbs for app lifecycle, memory warnings, import persistence, team scan, analysis, and tab changes. These log only safe phases/counts/durations/file sizes, not video URLs, R2 object keys, credentials, or presigned URLs.
+- Added an import background task around file/Photos import and reused the analysis background task for the pre-analysis team scan upload so iOS is less likely to suspend/kill those operations mid-transfer.
+- On the next launch after a foreground abnormal exit, `LaunchTelemetry` records the previous lifecycle state, screen, checkpoint, and memory-warning count to unified logging.
+
+Validation:
+
+```bash
+git diff --check
+python3 -m unittest scripts.test_submission_readiness_preflight -v
+bash ios/scripts/verify_internal_staging_config.sh
+xcodebuild build-for-testing \
+  -project ios/HoopsClips.xcodeproj \
+  -scheme HoopsClips \
+  -configuration Debug \
+  -destination 'generic/platform=iOS Simulator' \
+  -derivedDataPath /tmp/hoopclips-stability-bft \
+  CODE_SIGNING_ALLOWED=NO \
+  -skipPackagePluginValidation
+```
+
+- `git diff --check`: passed.
+- Submission readiness unit tests: 36 passed.
+- Internal staging config verification: passed.
+- First build attempt caught an optional-string `Logger` interpolation error in `LaunchTelemetry`; fixed it.
+- Rerun iOS Debug build-for-testing: passed.
+- Device crash pull remains blocked until the iPhone is visible to `devicectl`.
+
 ## Fix Plan
 
 - Make cloud editing version timeout a non-blocking warning; the real create-job/render request remains the source of truth. Explicit configuration and backend flag blocks still block.

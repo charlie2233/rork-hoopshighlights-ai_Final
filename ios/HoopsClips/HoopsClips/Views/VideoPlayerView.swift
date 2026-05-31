@@ -2,6 +2,7 @@ import SwiftUI
 import AVKit
 import PhotosUI
 import UniformTypeIdentifiers
+import UIKit
 
 struct VideoPlayerView: View {
     @Bindable var viewModel: HighlightsViewModel
@@ -22,6 +23,7 @@ struct VideoPlayerView: View {
     @State private var activeImportID: UUID?
     @State private var importTask: Task<Void, Never>?
     @State private var teamScanTask: Task<Void, Never>?
+    @State private var importBackgroundTaskID: UIBackgroundTaskIdentifier = .invalid
     @State private var importErrorMessage: String?
     @State private var lastAnalysisAnnouncementPercent = -1
 
@@ -150,7 +152,7 @@ struct VideoPlayerView: View {
     }
 
     private func importVideo(from url: URL) {
-        beginVideoImport {
+        beginVideoImport(source: "files") {
             await MainActor.run {
                 importStatusMessage = "Saving video to HoopClips..."
             }
@@ -159,7 +161,7 @@ struct VideoPlayerView: View {
     }
 
     private func importVideo(from item: PhotosPickerItem) {
-        beginVideoImport {
+        beginVideoImport(source: "photos") {
             do {
                 try Task.checkCancellation()
 
@@ -170,6 +172,10 @@ struct VideoPlayerView: View {
                     await MainActor.run {
                         importErrorMessage = "HoopClips could not access a local video file from Photos. Save it to Files and import from there, or choose a shorter downloaded clip."
                     }
+                    LaunchTelemetry.shared.recordStabilityCheckpoint(
+                        "video_import.file_access_failed",
+                        metadata: "source=photos"
+                    )
                     return false
                 }
 
@@ -181,17 +187,25 @@ struct VideoPlayerView: View {
                 try? await VideoImportTransfer.removeTemporaryFile(at: importedVideo.url)
                 return didLoadVideo
             } catch is CancellationError {
+                LaunchTelemetry.shared.recordStabilityCheckpoint(
+                    "video_import.cancelled",
+                    metadata: "source=photos"
+                )
                 return false
             } catch {
                 await MainActor.run {
                     importErrorMessage = "HoopClips could not import that video: \(error.localizedDescription)"
                 }
+                LaunchTelemetry.shared.recordStabilityCheckpoint(
+                    "video_import.failed",
+                    metadata: "source=photos reason=\(error.localizedDescription)"
+                )
                 return false
             }
         }
     }
 
-    private func beginVideoImport(_ operation: @escaping () async -> Bool) {
+    private func beginVideoImport(source: String, _ operation: @escaping () async -> Bool) {
         guard !isImportingVideo else { return }
         importTask?.cancel()
 
@@ -200,6 +214,11 @@ struct VideoPlayerView: View {
         isImportingVideo = true
         importStatusMessage = languageStore.text(.preparingVideo)
         importErrorMessage = nil
+        beginImportBackgroundTask(source: source)
+        LaunchTelemetry.shared.recordStabilityCheckpoint(
+            "video_import.started",
+            metadata: "source=\(source)"
+        )
 
         let task = Task {
             let importWatchdogTask = Task {
@@ -211,6 +230,10 @@ struct VideoPlayerView: View {
 
                 await MainActor.run {
                     guard activeImportID == importID, isImportingVideo else { return }
+                    LaunchTelemetry.shared.recordStabilityCheckpoint(
+                        "video_import.slow",
+                        metadata: "source=\(source)"
+                    )
                     importStatusMessage = "Still importing this video. Large clips from Photos can take a minute."
                 }
 
@@ -222,6 +245,10 @@ struct VideoPlayerView: View {
 
                 await MainActor.run {
                     guard activeImportID == importID, isImportingVideo else { return }
+                    LaunchTelemetry.shared.recordStabilityCheckpoint(
+                        "video_import.timeout",
+                        metadata: "source=\(source)"
+                    )
                     importErrorMessage = "HoopClips is still waiting for that video. Try a shorter local clip, or save it to Files and import it again."
                     importTask?.cancel()
                     clearImportState()
@@ -230,6 +257,10 @@ struct VideoPlayerView: View {
 
             let didLoadVideo = await operation()
             importWatchdogTask.cancel()
+            LaunchTelemetry.shared.recordStabilityCheckpoint(
+                didLoadVideo ? "video_import.loaded" : "video_import.not_loaded",
+                metadata: "source=\(source)"
+            )
 
             await MainActor.run {
                 finishVideoImport(importID: importID, didLoadVideo: didLoadVideo)
@@ -237,6 +268,25 @@ struct VideoPlayerView: View {
         }
 
         importTask = task
+    }
+
+    private func beginImportBackgroundTask(source: String) {
+        guard importBackgroundTaskID == .invalid else { return }
+        importBackgroundTaskID = UIApplication.shared.beginBackgroundTask(withName: "HoopsVideoImport") {
+            Task { @MainActor in
+                LaunchTelemetry.shared.recordStabilityCheckpoint(
+                    "video_import.background_time_expired",
+                    metadata: "source=\(source)"
+                )
+                cancelActiveImport()
+            }
+        }
+    }
+
+    private func endImportBackgroundTask() {
+        guard importBackgroundTaskID != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(importBackgroundTaskID)
+        importBackgroundTaskID = .invalid
     }
 
     private func finishVideoImport(importID: UUID, didLoadVideo: Bool) {
@@ -270,6 +320,7 @@ struct VideoPlayerView: View {
         importTask?.cancel()
         teamScanTask?.cancel()
         teamScanTask = nil
+        LaunchTelemetry.shared.recordStabilityCheckpoint("video_import.cancel_requested")
         clearImportState()
     }
 
@@ -278,6 +329,7 @@ struct VideoPlayerView: View {
         importStatusMessage = ""
         activeImportID = nil
         importTask = nil
+        endImportBackgroundTask()
     }
 
     private var currentImportStatusMessage: String {
