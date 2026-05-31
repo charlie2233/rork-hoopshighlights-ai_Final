@@ -1309,7 +1309,7 @@ struct AIEditView: View {
         let failed = phase == .failed || phase == .failedTimeout || phase == .cancelled
         let templateName = selectedTemplateTitle
         let selectedClipCount = editPlan?.clips.count
-        let candidateClipCount = viewModel.keptClips.count
+        let candidateClipCount = viewModel.cloudEditCandidatePoolCount
         let slowMotionCount = editPlan.map(slowMotionMomentCount(in:)) ?? 0
         let brandingDetail = editPlan.map { plan in
             "\(plan.watermark.enabled ? "Watermark included" : "Watermark not included"), \(plan.outro.enabled ? "outro included" : "outro not included")."
@@ -1409,7 +1409,7 @@ struct AIEditView: View {
         let outputDuration = renderStatus?.durationSeconds
         let storageExpiresAt = renderStatus?.retentionMetadata?.expiresAt
         let selectedClipCount = editPlan.clips.count
-        let candidateClipCount = viewModel.keptClips.count
+        let candidateClipCount = viewModel.cloudEditCandidatePoolCount
         var rows = [
             "Rendered with \(policy.displayName) plan limits.",
             "\(policy.queueTitle): \(policy.queueDetail)",

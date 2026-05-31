@@ -57,6 +57,7 @@ final class HighlightsViewModel {
     var keptClips: [Clip] { clips.filter(\.isKept) }
     var discardedClips: [Clip] { clips.filter { !$0.isKept } }
     var needsReviewClips: [Clip] { clips.filter(\.needsUserReview) }
+    var cloudEditCandidatePoolCount: Int { Self.cloudEditRequestCandidateClips(from: clips).count }
 
     var showingVideoPicker = false
     var showingSaveSuccess = false
@@ -631,7 +632,11 @@ final class HighlightsViewModel {
         )
     }
 
-    nonisolated static func cloudEditRequestCandidateClips(from clips: [Clip], limit: Int = 160) -> [Clip] {
+    nonisolated static let cloudEditCandidateRequestLimit = 160
+    nonisolated private static let cloudEditMinimumReviewCandidateReserve = 8
+    nonisolated private static let cloudEditReviewCandidateReserveDivisor = 5
+
+    nonisolated static func cloudEditRequestCandidateClips(from clips: [Clip], limit: Int = cloudEditCandidateRequestLimit) -> [Clip] {
         let cappedLimit = max(0, limit)
         guard cappedLimit > 0 else { return [] }
 
@@ -646,7 +651,10 @@ final class HighlightsViewModel {
             return keptCandidates
         }
 
-        let reviewReserveLimit = min(reviewOnlyCandidates.count, max(2, cappedLimit / 8))
+        let reviewReserveLimit = cloudEditReviewCandidateReserveLimit(
+            reviewCandidateCount: reviewOnlyCandidates.count,
+            cappedLimit: cappedLimit
+        )
         let keptLimit = max(0, cappedLimit - reviewReserveLimit)
         var selected = rankedCloudEditCandidateClips(from: keptSource, limit: keptLimit)
         selected.append(contentsOf: reviewOnlyCandidates.prefix(reviewReserveLimit))
@@ -666,6 +674,18 @@ final class HighlightsViewModel {
             }
             return lhs.startTime < rhs.startTime
         }
+    }
+
+    nonisolated private static func cloudEditReviewCandidateReserveLimit(
+        reviewCandidateCount: Int,
+        cappedLimit: Int
+    ) -> Int {
+        guard reviewCandidateCount > 0, cappedLimit > 0 else { return 0 }
+        let fractionalReserve = max(1, cappedLimit / cloudEditReviewCandidateReserveDivisor)
+        let minimumReserve = cappedLimit >= 16
+            ? cloudEditMinimumReviewCandidateReserve
+            : max(1, cappedLimit / 3)
+        return min(reviewCandidateCount, cappedLimit, max(fractionalReserve, minimumReserve))
     }
 
     nonisolated private static func cloudEditUserReviewDecision(for clip: Clip) -> String {

@@ -1742,7 +1742,7 @@ enum VideoImportPreflightError: LocalizedError, Equatable {
         case .noVideoTrack:
             return "That file does not contain a readable video track. Choose a different basketball video."
         case .fileTooLarge(let actualBytes, let maxBytes):
-            return "This video is \(VideoImportPolicy.formattedBytes(actualBytes)). Staging cloud analysis accepts up to \(VideoImportPolicy.formattedBytes(maxBytes)). Choose a shorter clip or export a smaller copy before importing."
+            return "This video is \(VideoImportPolicy.formattedBytes(actualBytes)). HoopClips cloud analysis accepts up to \(VideoImportPolicy.formattedBytes(maxBytes)). Choose a shorter clip or export a smaller copy before importing."
         case .videoTooLong(let actualSeconds, let maxSeconds):
             return "This video is \(Clip.formatTime(actualSeconds)). HoopClips cloud analysis accepts videos up to \(Clip.formatTime(maxSeconds)). Choose a shorter game file before importing."
         case .notEnoughStorage(let availableBytes, let requiredBytes):

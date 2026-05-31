@@ -934,46 +934,52 @@ struct HoopsClipsTests {
         #expect(decoded.cloudDiagnostics?.teamUncertainReviewSegments == 1)
     }
 
-    @Test @MainActor func testCloudEditRequestSendsStrongestCandidatesBeforeSixtyClipCap() throws {
+    @Test @MainActor func testCloudEditRequestSendsFullBackendCandidatePoolAndReviewReserve() throws {
         let viewModel = HighlightsViewModel()
         viewModel.cloudEditSourceObjectKey = "uploads/source.mp4"
         var clips: [Clip] = []
-        for index in 0..<61 {
-            let isStrongCandidate = index == 60
+        let strongIndex = 169
+        for index in 0..<180 {
+            let isStrongCandidate = index == strongIndex
             let startTime = Double(index * 10)
             clips.append(
                 Clip(
                     startTime: startTime,
                     endTime: startTime + 6,
+                    eventCenter: startTime + 3,
                     action: .madeShot,
-                    confidence: isStrongCandidate ? 0.98 : 0.42,
+                    confidence: isStrongCandidate ? 0.98 : 0.72,
                     isKept: true,
                     label: "Made Shot",
-                    audioScore: isStrongCandidate ? 0.92 : 0.1,
-                    visualScore: isStrongCandidate ? 0.95 : 0.2,
-                    motionScore: isStrongCandidate ? 0.95 : 0.2,
-                    combinedScore: isStrongCandidate ? 0.99 : 0.15,
+                    audioScore: isStrongCandidate ? 0.92 : 0.2,
+                    visualScore: isStrongCandidate ? 0.95 : 0.62,
+                    motionScore: isStrongCandidate ? 0.95 : 0.62,
+                    combinedScore: isStrongCandidate ? 0.99 : 0.62,
                     detectionMethod: .cloud
                 )
             )
         }
-        clips.append(
-            Clip(
-                startTime: 700,
-                endTime: 705,
-                eventCenter: 702.2,
-                action: .steal,
-                confidence: 0.81,
-                isKept: false,
-                label: "Possible Steal",
-                audioScore: 0.48,
-                visualScore: 0.74,
-                motionScore: 0.78,
-                combinedScore: 0.82,
-                detectionMethod: .cloud,
-                teamAttributionStatus: "uncertain"
+
+        for index in 0..<45 {
+            let startTime = 2_000.0 + Double(index * 8)
+            clips.append(
+                Clip(
+                    startTime: startTime,
+                    endTime: startTime + 5,
+                    eventCenter: startTime + 2.4,
+                    action: index.isMultiple(of: 2) ? .steal : .block,
+                    confidence: 0.78,
+                    isKept: false,
+                    label: index.isMultiple(of: 2) ? "Possible Steal" : "Possible Block",
+                    audioScore: 0.42,
+                    visualScore: 0.72,
+                    motionScore: 0.76,
+                    combinedScore: 0.8,
+                    detectionMethod: .cloud,
+                    teamAttributionStatus: "uncertain"
+                )
             )
-        )
+        }
         viewModel.analysisService.clips = clips
 
         let request = try viewModel.createCloudEditRequest(
@@ -982,11 +988,13 @@ struct HoopsClipsTests {
             isProUser: false
         )
         let candidateStarts = request.clips.map(\.start)
+        let reviewCandidateCount = request.clips.filter { $0.userReviewDecision == "unreviewed" }.count
 
-        #expect(request.clips.count == 60)
-        #expect(candidateStarts.contains(600.0))
-        #expect(candidateStarts.contains(700.0))
-        #expect(!candidateStarts.contains(590.0))
+        #expect(request.clips.count == HighlightsViewModel.cloudEditCandidateRequestLimit)
+        #expect(candidateStarts.contains(Double(strongIndex * 10)))
+        #expect(reviewCandidateCount == 32)
+        #expect(candidateStarts.contains(2_000.0))
+        #expect(!candidateStarts.contains(1_680.0))
     }
 
     @Test @MainActor func testCloudEditRequestIncludesReviewOnlyUncertainCandidatesWithoutAutoKeepingThem() throws {
