@@ -107,6 +107,26 @@ xcodebuild build-for-testing \
 - Rerun iOS Debug build-for-testing: passed.
 - Device crash pull remains blocked until the iPhone is visible to `devicectl`.
 
+### Pass 5 - Auth Boundary Player Reset
+
+- Tester found that signing out and signing into another account left the previous video loaded in the Player tab.
+- Root cause: `ContentView` keeps the same `HighlightsViewModel` in `@State` while auth screens swap in/out, so the visible auth flow changed but the active project state remained alive.
+- Added an auth-boundary reset in `ContentView`: when the user signs out or the authenticated user scope changes from one signed-in account to another, HoopClips persists the current project, clears the active Player/Review/Export state, returns to Player, and closes the paywall.
+- Added a safe `auth.project_reset` stability checkpoint with only the reset reason.
+
+Validation:
+
+- `git diff --check`
+- `python3 -m unittest scripts.test_submission_readiness_preflight -v`
+- iOS Debug build-for-testing with code signing disabled:
+  `xcodebuild build-for-testing -project ios/HoopsClips.xcodeproj -scheme HoopsClips -configuration Debug -destination 'generic/platform=iOS Simulator' -derivedDataPath /tmp/hoopclips-auth-boundary-bft CODE_SIGNING_ALLOWED=NO -skipPackagePluginValidation`
+
+Results:
+
+- `git diff --check`: passed.
+- Submission readiness unit tests: 36 passed.
+- iOS Debug build-for-testing: passed.
+
 ## Fix Plan
 
 - Make cloud editing version timeout a non-blocking warning; the real create-job/render request remains the source of truth. Explicit configuration and backend flag blocks still block.

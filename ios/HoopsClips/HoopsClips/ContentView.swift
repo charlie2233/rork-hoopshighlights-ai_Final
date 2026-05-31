@@ -109,7 +109,8 @@ struct ContentView: View {
         .task {
             await subscriptionManager.syncAuthenticatedUser(authService.currentUser)
         }
-        .onChange(of: revenueCatSyncKey) { _, _ in
+        .onChange(of: revenueCatSyncKey) { oldScope, newScope in
+            handleAuthenticatedUserScopeChange(from: oldScope, to: newScope)
             Task {
                 await subscriptionManager.syncAuthenticatedUser(authService.currentUser)
             }
@@ -234,6 +235,7 @@ struct ContentView: View {
 
     private func handleAuthenticationChange(_ isAuthenticated: Bool) {
         guard isAuthenticated else {
+            resetVisibleProjectForAuthenticationBoundary(reason: "signed_out")
             didShowSignInScreen = true
             isShowingPostSignInTransition = false
             return
@@ -255,6 +257,28 @@ struct ContentView: View {
             isShowingPostSignInTransition = false
             HoopsAccessibility.announce("Signed in. Opening HoopClips.")
         }
+    }
+
+    private func handleAuthenticatedUserScopeChange(from oldScope: String, to newScope: String) {
+        guard oldScope != newScope else { return }
+        guard oldScope != "signed-out" else { return }
+
+        let reason = newScope == "signed-out" ? "signed_out" : "account_switched"
+        resetVisibleProjectForAuthenticationBoundary(reason: reason)
+    }
+
+    private func resetVisibleProjectForAuthenticationBoundary(reason: String) {
+        guard viewModel.isVideoLoaded || viewModel.currentProjectID != nil || !viewModel.clips.isEmpty else {
+            return
+        }
+
+        LaunchTelemetry.shared.recordStabilityCheckpoint(
+            "auth.project_reset",
+            metadata: "reason=\(reason)"
+        )
+        viewModel.resetProject()
+        selectedTab = AppTab.player.rawValue
+        showingPaywall = false
     }
 
     private func appTabButton(_ tab: AppTab) -> some View {
