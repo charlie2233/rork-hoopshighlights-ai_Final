@@ -8,11 +8,18 @@ struct ContentView: View {
     @State private var languageStore = AppLanguageStore()
     @State private var selectedTab = 0
     @State private var showingPaywall = false
+    @Namespace private var tabSelectionNamespace
 
     private let tabSwipeAnimation = Animation.interactiveSpring(
-        response: 0.42,
-        dampingFraction: 0.96,
-        blendDuration: 0.12
+        response: 0.34,
+        dampingFraction: 0.92,
+        blendDuration: 0.08
+    )
+
+    private let tabSelectionAnimation = Animation.interactiveSpring(
+        response: 0.28,
+        dampingFraction: 0.88,
+        blendDuration: 0.08
     )
 
     private enum AppTab: Int, CaseIterable, Identifiable {
@@ -134,7 +141,6 @@ struct ContentView: View {
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
             .indexViewStyle(.page(backgroundDisplayMode: .never))
-            .animation(reduceMotion ? nil : tabSwipeAnimation, value: selectedTab)
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 appTabBar
             }
@@ -160,6 +166,7 @@ struct ContentView: View {
                 .fill(AppTheme.softBorder.opacity(0.8))
                 .frame(height: 1)
         }
+        .animation(reduceMotion ? nil : tabSelectionAnimation, value: selectedTab)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("app.tabBar")
     }
@@ -190,6 +197,7 @@ struct ContentView: View {
                             RoundedRectangle(cornerRadius: 16, style: .continuous)
                                 .stroke(AppTheme.neonPurple.opacity(0.28), lineWidth: 1)
                         }
+                        .matchedGeometryEffect(id: "app.tab.selection", in: tabSelectionNamespace)
                 }
             }
             .contentShape(.rect)
