@@ -1288,6 +1288,125 @@ struct HoopsClipsTests {
         #expect(request.clips.map(\.start) == [20.0])
     }
 
+    @Test @MainActor func testCloudEditRequestTagsOverlappingSameMomentDuplicateGroups() throws {
+        let viewModel = HighlightsViewModel()
+        viewModel.cloudEditSourceObjectKey = "uploads/source.mp4"
+        let firstWindow = Clip(
+            startTime: 10.0,
+            endTime: 16.0,
+            eventCenter: 13.0,
+            action: .madeShot,
+            confidence: 0.82,
+            isKept: true,
+            label: "Made Shot",
+            audioScore: 0.5,
+            visualScore: 0.7,
+            motionScore: 0.74,
+            combinedScore: 0.78,
+            detectionMethod: .cloud
+        )
+        let overlappingWindow = Clip(
+            startTime: 10.4,
+            endTime: 16.2,
+            eventCenter: 13.2,
+            action: .madeShot,
+            confidence: 0.80,
+            isKept: true,
+            label: "Made Shot",
+            audioScore: 0.48,
+            visualScore: 0.68,
+            motionScore: 0.72,
+            combinedScore: 0.76,
+            detectionMethod: .cloud
+        )
+        let separateWindow = Clip(
+            startTime: 28.0,
+            endTime: 34.0,
+            eventCenter: 31.0,
+            action: .madeShot,
+            confidence: 0.79,
+            isKept: true,
+            label: "Made Shot",
+            audioScore: 0.5,
+            visualScore: 0.69,
+            motionScore: 0.73,
+            combinedScore: 0.75,
+            detectionMethod: .cloud
+        )
+        viewModel.analysisService.clips = [firstWindow, overlappingWindow, separateWindow]
+
+        let request = try viewModel.createCloudEditRequest(
+            preset: .personalHighlight,
+            targetDurationSeconds: 30,
+            isProUser: false
+        )
+
+        let firstGroup = try #require(request.clips.first { $0.start == 10.0 }?.duplicateGroup)
+        let overlappingGroup = try #require(request.clips.first { $0.start == 10.4 }?.duplicateGroup)
+        let separateGroup = request.clips.first { $0.start == 28.0 }?.duplicateGroup
+
+        #expect(firstGroup == overlappingGroup)
+        #expect(firstGroup.hasPrefix("dup_shot_"))
+        #expect(separateGroup == nil)
+    }
+
+    @Test func testCloudEditDuplicateGroupsDoNotMergeDifferentAttributedTeams() {
+        let firstTeam = ClipTeamAttribution(
+            teamId: "team_dark",
+            label: "Dark jerseys",
+            colorLabel: "black",
+            confidence: 0.92,
+            source: "quick_scan",
+            evidenceFrameRefs: [],
+            evidenceRoleGroups: []
+        )
+        let secondTeam = ClipTeamAttribution(
+            teamId: "team_light",
+            label: "Light jerseys",
+            colorLabel: "white",
+            confidence: 0.91,
+            source: "quick_scan",
+            evidenceFrameRefs: [],
+            evidenceRoleGroups: []
+        )
+        let darkClip = Clip(
+            startTime: 10.0,
+            endTime: 16.0,
+            eventCenter: 13.0,
+            action: .madeShot,
+            confidence: 0.82,
+            isKept: true,
+            label: "Made Shot",
+            audioScore: 0.5,
+            visualScore: 0.7,
+            motionScore: 0.74,
+            combinedScore: 0.78,
+            detectionMethod: .cloud,
+            teamAttribution: firstTeam,
+            teamAttributionStatus: "matched"
+        )
+        let lightClip = Clip(
+            startTime: 10.3,
+            endTime: 16.1,
+            eventCenter: 13.1,
+            action: .madeShot,
+            confidence: 0.80,
+            isKept: true,
+            label: "Made Shot",
+            audioScore: 0.48,
+            visualScore: 0.68,
+            motionScore: 0.72,
+            combinedScore: 0.76,
+            detectionMethod: .cloud,
+            teamAttribution: secondTeam,
+            teamAttributionStatus: "matched"
+        )
+
+        let duplicateGroups = HighlightsViewModel.cloudEditDuplicateGroupAssignments(for: [darkClip, lightClip])
+
+        #expect(duplicateGroups.isEmpty)
+    }
+
     @Test func testCloudEditProTemplatesAreRealAndDistinct() {
         let templates = CloudEditProTemplate.allCases
         let identifiers = templates.map(\.accessibilityIdentifier)

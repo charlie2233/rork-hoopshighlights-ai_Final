@@ -598,7 +598,9 @@ final class HighlightsViewModel {
             throw CloudEditError.missingSourceObject
         }
 
-        let candidates = Self.cloudEditRequestCandidateClips(from: clips).map { clip in
+        let candidateSourceClips = Self.cloudEditRequestCandidateClips(from: clips)
+        let duplicateGroups = Self.cloudEditDuplicateGroupAssignments(for: candidateSourceClips)
+        let candidates = candidateSourceClips.map { clip in
             let inferredCenter = clip.startTime + (clip.duration / 2.0)
             let center = max(clip.startTime, min(clip.endTime, clip.eventCenter ?? inferredCenter))
             return CloudEditCandidateClip(
@@ -613,7 +615,7 @@ final class HighlightsViewModel {
                 motionScore: clip.motionScore,
                 audioPeak: clip.audioScore,
                 combinedScore: clip.combinedScore,
-                duplicateGroup: nil,
+                duplicateGroup: duplicateGroups[clip.id],
                 userReviewDecision: Self.cloudEditUserReviewDecision(for: clip),
                 nativeShotSignals: clip.nativeShotSignals,
                 teamAttribution: clip.teamAttribution,
@@ -641,6 +643,8 @@ final class HighlightsViewModel {
     nonisolated static let cloudEditCandidateRequestLimit = 160
     nonisolated private static let cloudEditMinimumReviewCandidateReserve = 8
     nonisolated private static let cloudEditReviewCandidateReserveDivisor = 5
+    nonisolated private static let cloudEditDuplicateOverlapThreshold = 0.68
+    nonisolated private static let cloudEditDuplicateEventCenterTolerance = 1.5
 
     nonisolated static func cloudEditRequestCandidateClips(from clips: [Clip], limit: Int = cloudEditCandidateRequestLimit) -> [Clip] {
         let cappedLimit = max(0, limit)
@@ -694,6 +698,48 @@ final class HighlightsViewModel {
         return min(reviewCandidateCount, cappedLimit, max(fractionalReserve, minimumReserve))
     }
 
+    nonisolated static func cloudEditDuplicateGroupAssignments(for clips: [Clip]) -> [UUID: String] {
+        var groups: [[Clip]] = []
+        let sortedClips = clips
+            .filter { $0.duration > 0 }
+            .sorted { lhs, rhs in
+                if lhs.startTime != rhs.startTime {
+                    return lhs.startTime < rhs.startTime
+                }
+                return lhs.endTime < rhs.endTime
+            }
+
+        for clip in sortedClips {
+            if let index = groups.firstIndex(where: { group in
+                group.contains { cloudEditClipsAreDuplicateMoments(clip, $0) }
+            }) {
+                groups[index].append(clip)
+            } else {
+                groups.append([clip])
+            }
+        }
+
+        var assignments: [UUID: String] = [:]
+        for (index, group) in groups.enumerated() where group.count > 1 {
+            guard let representative = group.min(by: { lhs, rhs in
+                if lhs.combinedScore != rhs.combinedScore {
+                    return lhs.combinedScore > rhs.combinedScore
+                }
+                return lhs.startTime < rhs.startTime
+            }) else { continue }
+
+            let center = cloudEditEventCenter(for: representative)
+            let centerBucket = max(0, Int(center.rounded()))
+            let family = cloudEditDuplicateFamily(for: representative)
+            let groupID = "dup_\(family)_\(centerBucket)_\(index)"
+            for clip in group {
+                assignments[clip.id] = groupID
+            }
+        }
+
+        return assignments
+    }
+
     nonisolated private static func cloudEditUserReviewDecision(for clip: Clip) -> String {
         if clip.isKept {
             return "kept"
@@ -706,6 +752,63 @@ final class HighlightsViewModel {
 
     nonisolated private static func isCloudEditReviewReserveCandidate(_ clip: Clip) -> Bool {
         clip.needsUserReview || defensiveCloudEditCandidateFamily(clip) != nil
+    }
+
+    nonisolated private static func cloudEditClipsAreDuplicateMoments(_ lhs: Clip, _ rhs: Clip) -> Bool {
+        guard lhs.id != rhs.id else { return false }
+        guard lhs.duration > 0, rhs.duration > 0 else { return false }
+        guard cloudEditDuplicateFamily(for: lhs) == cloudEditDuplicateFamily(for: rhs) else { return false }
+
+        if let lhsTeamID = lhs.teamAttribution?.teamId,
+           let rhsTeamID = rhs.teamAttribution?.teamId,
+           lhsTeamID != rhsTeamID {
+            return false
+        }
+
+        let overlap = max(0.0, min(lhs.endTime, rhs.endTime) - max(lhs.startTime, rhs.startTime))
+        let overlapRatio = overlap / max(min(lhs.duration, rhs.duration), 0.001)
+        let centerDelta = abs(cloudEditEventCenter(for: lhs) - cloudEditEventCenter(for: rhs))
+
+        return overlapRatio >= cloudEditDuplicateOverlapThreshold
+            && centerDelta <= cloudEditDuplicateEventCenterTolerance
+    }
+
+    nonisolated private static func cloudEditEventCenter(for clip: Clip) -> Double {
+        let inferredCenter = clip.startTime + max(clip.duration, 0.0) / 2.0
+        return max(clip.startTime, min(clip.endTime, clip.eventCenter ?? inferredCenter))
+    }
+
+    nonisolated private static func cloudEditDuplicateFamily(for clip: Clip) -> String {
+        if let defensiveFamily = defensiveCloudEditCandidateFamily(clip) {
+            return defensiveFamily
+        }
+        if isShotLikeCloudEditCandidate(clip) {
+            return "shot"
+        }
+
+        switch clip.action {
+        case .fastBreak:
+            return "fast_break"
+        case .crossover:
+            return "handle"
+        case .unknown:
+            return cloudEditSanitizedDuplicateToken(from: clip.label)
+        case .dunk, .layup, .madeShot, .threePointer, .alleyOop, .posterize, .buzzerBeater:
+            return "shot"
+        case .steal:
+            return "steal"
+        case .block:
+            return "block"
+        }
+    }
+
+    nonisolated private static func cloudEditSanitizedDuplicateToken(from text: String) -> String {
+        let token = text
+            .lowercased()
+            .split { !$0.isLetter && !$0.isNumber }
+            .prefix(3)
+            .joined(separator: "_")
+        return token.isEmpty ? "highlight" : String(token.prefix(32))
     }
 
     nonisolated static func rankedCloudEditCandidateClips(from clips: [Clip], limit: Int = 40) -> [Clip] {
