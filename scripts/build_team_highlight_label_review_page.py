@@ -7,6 +7,7 @@ import json
 import sys
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 REPO_ROOT_FOR_IMPORTS = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT_FOR_IMPORTS) not in sys.path:
@@ -66,12 +67,14 @@ def main() -> int:
     args = parse_args()
     manifest_path = Path(args.manifest).resolve()
     video_paths = parse_video_paths(args.video or [])
+    video_urls = parse_video_urls(args.video_url or [])
     default_video_path = Path(args.video_path).resolve() if args.video_path else None
     draft_bundle = load_json(Path(args.draft_bundle).expanduser().resolve()) if args.draft_bundle else None
     payload = build_review_payload(
         manifest=load_json(manifest_path),
         manifest_dir=manifest_path.parent,
         video_paths=video_paths,
+        video_urls=video_urls,
         default_video_path=default_video_path,
         draft_bundle=draft_bundle,
     )
@@ -109,6 +112,14 @@ def parse_args() -> argparse.Namespace:
         action="append",
         help="Map one video id to a local file path as videoId=/absolute/path.mp4. Repeat for multiple videos.",
     )
+    parser.add_argument(
+        "--video-url",
+        action="append",
+        help=(
+            "Map one video id to a local-only browser URL as videoId=http://127.0.0.1:8787/source.mp4. "
+            "Only file://, localhost, 127.0.0.1, or ::1 URLs without query strings are allowed."
+        ),
+    )
     parser.add_argument("--title", default="HoopClips Team Highlight Label Review", help="HTML page title.")
     parser.add_argument("--json", action="store_true", help="Print machine-readable output metadata.")
     return parser.parse_args()
@@ -127,12 +138,48 @@ def parse_video_paths(values: list[str]) -> dict[str, Path]:
     return mapping
 
 
+def parse_video_urls(values: list[str]) -> dict[str, str]:
+    mapping: dict[str, str] = {}
+    for value in values:
+        if "=" not in value:
+            raise ValueError("--video-url must use videoId=http://127.0.0.1:8787/path.mp4")
+        video_id, raw_url = value.split("=", 1)
+        video_id = video_id.strip()
+        if not video_id:
+            raise ValueError("--video-url is missing a video id.")
+        mapping[video_id] = validate_local_video_url(raw_url.strip())
+    return mapping
+
+
+def validate_local_video_url(raw_url: str) -> str:
+    parsed = urlparse(raw_url)
+    if parsed.scheme not in {"file", "http", "https"}:
+        raise ValueError("--video-url must use file:// or a localhost http(s) URL.")
+    if parsed.query or parsed.fragment:
+        raise ValueError("--video-url must not include query strings or fragments.")
+    if any(marker.lower() in raw_url.lower() for marker in ("x-amz-", "signature=", "token=", "secret", "credential=")):
+        raise ValueError("--video-url must not include signed URL, token, or credential markers.")
+    if parsed.scheme == "file":
+        if parsed.netloc not in {"", "localhost"}:
+            raise ValueError("--video-url file URLs must be local.")
+        if not parsed.path:
+            raise ValueError("--video-url file URLs must include a path.")
+        return raw_url
+    host = (parsed.hostname or "").lower()
+    if host not in {"localhost", "127.0.0.1", "::1"}:
+        raise ValueError("--video-url http(s) URLs must point to localhost, 127.0.0.1, or ::1.")
+    if not parsed.path or parsed.path == "/":
+        raise ValueError("--video-url http(s) URLs must include a video path.")
+    return raw_url
+
+
 def build_review_payload(
     *,
     manifest: dict[str, Any],
     manifest_dir: Path,
     video_paths: dict[str, Path],
     default_video_path: Path | None,
+    video_urls: dict[str, str] | None = None,
     draft_bundle: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     entries = manifest.get("cases")
@@ -154,10 +201,17 @@ def build_review_payload(
             or string_or_none(result.get("videoId"))
             or f"case_{index + 1}"
         )
-        video_path = video_paths.get(video_id) or default_video_path
-        if video_path is None:
-            raise ValueError(f"Missing source video path for videoId {video_id!r}. Use --video-path or --video {video_id}=...")
-        videos[video_id] = video_path.as_uri()
+        local_video_url = (video_urls or {}).get(video_id)
+        if local_video_url:
+            videos[video_id] = local_video_url
+        else:
+            video_path = video_paths.get(video_id) or default_video_path
+            if video_path is None:
+                raise ValueError(
+                    f"Missing source video path or local video URL for videoId {video_id!r}. "
+                    f"Use --video-path, --video {video_id}=..., or --video-url {video_id}=http://127.0.0.1:8787/..."
+                )
+            videos[video_id] = video_path.as_uri()
         case_payload = review_case_payload(
             raw_entry=raw_entry,
             labels=labels,

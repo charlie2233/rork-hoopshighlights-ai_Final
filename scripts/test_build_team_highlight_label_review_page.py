@@ -3,7 +3,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scripts.build_team_highlight_label_review_page import build_review_payload, render_review_page, review_page_output_metadata
+from scripts.build_team_highlight_label_review_page import (
+    build_review_payload,
+    parse_video_urls,
+    render_review_page,
+    review_page_output_metadata,
+)
 
 
 class BuildTeamHighlightLabelReviewPageTests(unittest.TestCase):
@@ -191,6 +196,54 @@ class BuildTeamHighlightLabelReviewPageTests(unittest.TestCase):
                     video_paths={},
                     default_video_path=None,
                 )
+
+    def test_local_video_url_mapping_supports_browser_smoke_without_remote_urls(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            analysis_path = root / "analysis.json"
+            labels_path = root / "labels.json"
+            write_json(analysis_path, {"results": {"videoId": "video_a", "clips": [{"id": "clip_1"}]}})
+            write_json(
+                labels_path,
+                {
+                    "caseId": "case_a",
+                    "videoId": "video_a",
+                    "clips": [
+                        {
+                            "labelId": "label_001",
+                            "predictionIndex": 0,
+                            "predictionClipId": "clip_1",
+                            "start": 1.0,
+                            "end": 5.0,
+                            "needsLabel": True,
+                            "predicted": {"eventCenter": 3.0},
+                            "expected": {},
+                        }
+                    ],
+                },
+            )
+
+            payload = build_review_payload(
+                manifest={"cases": [{"caseId": "case_a", "analysisResult": "analysis.json", "labels": "labels.json"}]},
+                manifest_dir=root,
+                video_paths={},
+                video_urls=parse_video_urls(["video_a=http://127.0.0.1:8787/artifacts/source.mp4"]),
+                default_video_path=None,
+            )
+            page = render_review_page(payload, title="Review")
+
+        self.assertEqual(payload["videos"]["video_a"], "http://127.0.0.1:8787/artifacts/source.mp4")
+        self.assertIn('src="http://127.0.0.1:8787/artifacts/source.mp4"', page)
+        self.assertNotIn("X-Amz-Signature", page)
+        self.assertNotIn("sourceObjectKey", page)
+
+    def test_video_url_mapping_rejects_remote_or_presigned_urls(self) -> None:
+        with self.assertRaisesRegex(ValueError, "localhost"):
+            parse_video_urls(["video_a=https://r2.example.test/source.mp4"])
+        with self.assertRaisesRegex(ValueError, "query strings"):
+            parse_video_urls(["video_a=http://127.0.0.1:8787/source.mp4?X-Amz-Signature=secret"])
+        with self.assertRaisesRegex(ValueError, "signed URL"):
+            parse_video_urls(["video_a=http://127.0.0.1:8787/source-signature=secret.mp4"])
 
     def test_draft_bundle_prefills_expected_fields_but_still_requires_human_review(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
