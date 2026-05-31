@@ -26,10 +26,10 @@ Resolve tester-reported launch blockers before internal launch. HoopClips stays 
   - `HOOPS_AI_CLIP_GPT_PLAN_EDIT_ENABLED=true`
   - `HOOPS_AI_CLIP_GPT_REVISION_ENABLED=true`
   - `HOOPS_AI_CLIP_GPT_KEYFRAMES_PER_CLIP=8`
-  - `HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_FREE=60`
-  - `HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_PRO=60`
-  - `HOOPS_AI_CLIP_GPT_TIMEOUT_SECONDS=60`
-  - `HOOPS_AI_CLIP_GPT_MAX_OUTPUT_TOKENS=12000`
+  - `HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_FREE=160`
+  - `HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_PRO=160`
+  - `HOOPS_AI_CLIP_GPT_TIMEOUT_SECONDS=120`
+  - `HOOPS_AI_CLIP_GPT_MAX_OUTPUT_TOKENS=24000`
   - `HOOPS_GPT_HIGHLIGHT_RERANKER_ENABLED=true`
 
 ## Work Log
@@ -136,7 +136,7 @@ Current branch audit:
 - Working tree: clean and in sync with origin before this doc update.
 - Product icon/logo: current branch contains `71f3a61 Refresh HoopClips product app icon`; the installed asset is a 1024x1024 PNG at `ios/HoopsClips/HoopsClips/Assets.xcassets/AppIcon.appiconset/icon.png`.
 - Free editing availability: Free daily AI edit chances remain capped at `3` across iOS policy, backend policy, and static launch preflight coverage.
-- GPT-led editing quality knobs: staging defaults keep GPT editor, GPT plan edit, and GPT revision enabled with 60 candidate clips for Free and Pro/internal review and 8 Pro/internal keyframes per clip.
+- GPT-led editing quality knobs: staging defaults keep GPT editor, GPT plan edit, and GPT revision enabled with 160 candidate clips for Free and Pro/internal review and 8 Pro/internal keyframes per clip.
 - Photos import hang fix: current `VideoPlayerView` is file-backed for `.video`, `.movie`, `.mpeg4Movie`, and `.quickTimeMovie`; the old `Data.self` fallback is absent.
 - Team selection: the cloud-first pre-analysis team quick scan and selected-team/all-teams flow are implemented and tested, including blocks and steals ownership behavior.
 

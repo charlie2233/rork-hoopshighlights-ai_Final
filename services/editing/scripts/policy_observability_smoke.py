@@ -229,17 +229,20 @@ def run_policy_rejection_smoke(args: argparse.Namespace, source_key: str) -> Dic
                 "sourceObjectKey": source_key,
                 "preset": "personal_highlight",
                 "templateId": "personal_highlight_v1",
-                "targetDurationSeconds": 120,
+                "targetDurationSeconds": 270,
                 "aspectRatio": "9:16",
                 "planTier": "free",
-                "clips": smoke_clips(),
+                "clips": [
+                    {**smoke_clips()[0], "end": 601.0, "eventCenter": 300.0},
+                    *smoke_clips()[1:],
+                ],
             },
             trace_id=trace_id,
         )
     except SmokeError as error:
         body = error.payload.get("body") if isinstance(error.payload, dict) else None
         status = error.payload.get("status") if isinstance(error.payload, dict) else None
-        if status != 400 or not isinstance(body, dict) or body.get("errorCode") != "render_duration_limit":
+        if status != 400 or not isinstance(body, dict) or body.get("errorCode") != "source_video_too_long":
             raise
         return {
             "status": "rejected_before_render",
@@ -247,7 +250,7 @@ def run_policy_rejection_smoke(args: argparse.Namespace, source_key: str) -> Dic
             "errorCode": body.get("errorCode"),
             "failureReason": body.get("failureReason"),
         }
-    raise SmokeError("policy rejection smoke unexpectedly succeeded", {"expectedErrorCode": "render_duration_limit"})
+    raise SmokeError("policy rejection smoke unexpectedly succeeded", {"expectedErrorCode": "source_video_too_long"})
 
 
 def assert_policy_response(status: Dict[str, Any], expected_revision_id: Optional[str]) -> None:
@@ -259,7 +262,7 @@ def assert_policy_response(status: Dict[str, Any], expected_revision_id: Optiona
     retention = status.get("retentionMetadata") or {}
     required_policy = {
         "planTier": "free",
-        "maxRenderSeconds": 45,
+        "maxRenderSeconds": 270,
         "maxDailyRenders": 3,
         "watermarkRequired": True,
         "outroRequired": True,

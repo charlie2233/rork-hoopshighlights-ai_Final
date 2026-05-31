@@ -51,7 +51,7 @@
   },
   "targetDurationRules": {
     "defaultAspectRatio": "source",
-    "targetDurations": [60, 120, 180],
+    "targetDurations": [60, 120, 180, 240, 270],
     "minClipDuration": 6.0,
     "maxClipDuration": 10.0
   },

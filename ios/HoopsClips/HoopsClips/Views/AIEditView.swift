@@ -1,4 +1,5 @@
 import AVKit
+import Foundation
 import SwiftUI
 
 enum AIEditPresentation {
@@ -180,7 +181,7 @@ struct AIEditView: View {
             HStack(spacing: 8) {
                 aiChip(icon: "film.stack.fill", text: "\(viewModel.keptClips.count) kept clips")
                 aiChip(icon: selectedAspectRatio.icon, text: selectedAspectRatio.rawValue)
-                aiChip(icon: "timer", text: "\(selectedDuration)s")
+                aiChip(icon: "timer", text: formattedDuration(selectedDuration))
             }
 
             Text("You can leave the app while the real cloud job runs.")
@@ -416,30 +417,33 @@ struct AIEditView: View {
                     .font(.headline)
                     .foregroundStyle(.white)
                 Spacer()
-                Text("\(selectedDuration)s")
+                Text(formattedDuration(selectedDuration))
                     .font(.subheadline.monospacedDigit().bold())
                     .foregroundStyle(AppTheme.warningYellow)
             }
 
-            HStack(spacing: 8) {
-                ForEach(displayedDurationOptions, id: \.self) { duration in
-                    Button {
-                        if duration <= activePolicy.maxRenderSeconds {
-                            selectedDuration = duration
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(displayedDurationOptions, id: \.self) { duration in
+                        Button {
+                            if duration <= activePolicy.maxRenderSeconds {
+                                selectedDuration = duration
+                            }
+                        } label: {
+                            Text(formattedDuration(duration))
+                                .font(.subheadline.bold())
+                                .foregroundStyle(duration > activePolicy.maxRenderSeconds ? AppTheme.subtleText.opacity(0.45) : (selectedDuration == duration ? .white : AppTheme.subtleText))
+                                .frame(minWidth: 64)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 10)
+                                .background(selectedDuration == duration ? AppTheme.accentPurple : AppTheme.cardBg.opacity(duration > activePolicy.maxRenderSeconds ? 0.45 : 1), in: .capsule)
                         }
-                    } label: {
-                        Text("\(duration)s")
-                            .font(.subheadline.bold())
-                            .foregroundStyle(duration > activePolicy.maxRenderSeconds ? AppTheme.subtleText.opacity(0.45) : (selectedDuration == duration ? .white : AppTheme.subtleText))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 10)
-                            .background(selectedDuration == duration ? AppTheme.accentPurple : AppTheme.cardBg.opacity(duration > activePolicy.maxRenderSeconds ? 0.45 : 1), in: .capsule)
+                        .buttonStyle(.plain)
+                        .disabled(duration > activePolicy.maxRenderSeconds)
+                        .accessibilityLabel(formattedDuration(duration))
+                        .accessibilityIdentifier(durationAccessibilityIdentifier(for: duration))
+                        .accessibilityValue(duration > activePolicy.maxRenderSeconds ? "Unavailable on \(activePolicy.displayName)" : (selectedDuration == duration ? "Selected" : "Not selected"))
                     }
-                    .buttonStyle(.plain)
-                    .disabled(duration > activePolicy.maxRenderSeconds)
-                    .accessibilityLabel("\(duration) seconds")
-                    .accessibilityIdentifier(durationAccessibilityIdentifier(for: duration))
-                    .accessibilityValue(duration > activePolicy.maxRenderSeconds ? "Unavailable on \(activePolicy.displayName)" : (selectedDuration == duration ? "Selected" : "Not selected"))
                 }
             }
         }
@@ -1810,7 +1814,19 @@ struct AIEditView: View {
         if !options.contains(selectedDuration) {
             options.insert(selectedDuration, at: 0)
         }
-        return options
+        return options.sorted()
+    }
+
+    private func formattedDuration(_ seconds: Int) -> String {
+        if seconds < 60 {
+            return "\(seconds)s"
+        }
+        let minutes = seconds / 60
+        let remainingSeconds = seconds % 60
+        if remainingSeconds == 0 {
+            return "\(minutes)m"
+        }
+        return "\(minutes):\(String(format: "%02d", remainingSeconds))"
     }
 
     private func aiChip(icon: String, text: String) -> some View {

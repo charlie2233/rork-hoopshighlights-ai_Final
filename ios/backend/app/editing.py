@@ -123,7 +123,7 @@ MIN_NON_SHOT_WATCHABILITY_SCORE = 0.42
 MIN_GENERIC_HIGHLIGHT_PLANNING_SCORE = 0.62
 MIN_GENERIC_HIGHLIGHT_WATCHABILITY_SCORE = 0.5
 MIN_NATIVE_OUTCOME_CONFLICT_CONFIDENCE = 0.65
-GPT_CANDIDATE_REVIEW_LIMIT = 60
+GPT_CANDIDATE_REVIEW_LIMIT = 160
 GPT_NON_SCORING_DEFENSIVE_OUTCOMES = {"steal", "forced_turnover", "defensive_stop"}
 GPT_SHOT_RESULT_OUTCOMES = {"made", "missed", "blocked"}
 TEAM_EVIDENCE_REQUIRED_SOURCES = {"quick_scan", "gpt_frame_review", "provider", "unknown"}
@@ -200,7 +200,7 @@ PLAN_TIER_POLICY_REGISTRY: Dict[str, PlanTierPolicy] = {
     "free": PlanTierPolicy(
         planTier="free",
         displayName="Free",
-        maxRenderSeconds=45,
+        maxRenderSeconds=270,
         maxDailyRenders=3,
         maxActiveRenders=1,
         maxRevisionsPerEdit=3,
@@ -217,7 +217,7 @@ PLAN_TIER_POLICY_REGISTRY: Dict[str, PlanTierPolicy] = {
     "pro": PlanTierPolicy(
         planTier="pro",
         displayName="Pro",
-        maxRenderSeconds=180,
+        maxRenderSeconds=270,
         maxDailyRenders=25,
         maxActiveRenders=2,
         maxRevisionsPerEdit=10,
@@ -234,7 +234,7 @@ PLAN_TIER_POLICY_REGISTRY: Dict[str, PlanTierPolicy] = {
     "internal": PlanTierPolicy(
         planTier="internal",
         displayName="Internal",
-        maxRenderSeconds=300,
+        maxRenderSeconds=270,
         maxDailyRenders=100,
         maxActiveRenders=4,
         maxRevisionsPerEdit=25,
@@ -251,7 +251,7 @@ PLAN_TIER_POLICY_REGISTRY: Dict[str, PlanTierPolicy] = {
     "dev": PlanTierPolicy(
         planTier="dev",
         displayName="Development",
-        maxRenderSeconds=300,
+        maxRenderSeconds=270,
         maxDailyRenders=500,
         maxActiveRenders=8,
         maxRevisionsPerEdit=50,
@@ -617,7 +617,7 @@ TEMPLATE_PACK_REGISTRY: Dict[str, TemplatePack] = {
         bestFor="TikTok, Instagram, recruiting reels",
         defaultAspectRatio="9:16",
         allowedAspectRatios=["9:16", "16:9"],
-        targetDurations=[15, 30, 45],
+        targetDurations=[15, 30, 45, 60, 90, 120, 180, 270],
         ordering="best_first",
         pacing="fast",
         clipLength=ClipLengthProfile(minSeconds=3.5, targetSeconds=5.5, maxSeconds=7.0),
@@ -640,7 +640,7 @@ TEMPLATE_PACK_REGISTRY: Dict[str, TemplatePack] = {
         bestFor="recaps, YouTube, team sharing",
         defaultAspectRatio="16:9",
         allowedAspectRatios=["16:9", "9:16"],
-        targetDurations=[60, 90, 120],
+        targetDurations=[60, 90, 120, 180, 240, 270],
         ordering="chronological_with_best_moments_boosted",
         pacing="medium",
         clipLength=ClipLengthProfile(minSeconds=5.5, targetSeconds=6.5, maxSeconds=8.0),
@@ -664,7 +664,7 @@ TEMPLATE_PACK_REGISTRY: Dict[str, TemplatePack] = {
         bestFor="coaches, trainers, parent review",
         defaultAspectRatio="source",
         allowedAspectRatios=["source", "16:9"],
-        targetDurations=[60, 120, 180],
+        targetDurations=[60, 120, 180, 240, 270],
         ordering="chronological",
         pacing="slow",
         clipLength=ClipLengthProfile(minSeconds=6.0, targetSeconds=8.0, maxSeconds=10.0),
@@ -687,7 +687,7 @@ TEMPLATE_PACK_REGISTRY: Dict[str, TemplatePack] = {
         bestFor="coaches, scouts, player profiles",
         defaultAspectRatio="9:16",
         allowedAspectRatios=["9:16", "16:9"],
-        targetDurations=[45, 60, 90, 120],
+        targetDurations=[45, 60, 90, 120, 180, 240, 270],
         ordering="best_first",
         pacing="medium_fast",
         clipLength=ClipLengthProfile(minSeconds=4.5, targetSeconds=6.5, maxSeconds=8.5),
@@ -712,7 +712,7 @@ TEMPLATE_PACK_REGISTRY: Dict[str, TemplatePack] = {
         bestFor="polished Instagram, TikTok, player mixtapes",
         defaultAspectRatio="9:16",
         allowedAspectRatios=["9:16", "16:9"],
-        targetDurations=[30, 45, 60, 90],
+        targetDurations=[30, 45, 60, 90, 120, 180, 270],
         ordering="best_first",
         pacing="fast_cinematic",
         clipLength=ClipLengthProfile(minSeconds=3.5, targetSeconds=5.5, maxSeconds=7.5),
@@ -737,7 +737,7 @@ TEMPLATE_PACK_REGISTRY: Dict[str, TemplatePack] = {
         bestFor="team recaps, YouTube, broadcast-style game stories",
         defaultAspectRatio="16:9",
         allowedAspectRatios=["16:9", "9:16"],
-        targetDurations=[90, 120, 180],
+        targetDurations=[90, 120, 180, 240, 270],
         ordering="chronological_with_best_moments_boosted",
         pacing="medium_broadcast",
         clipLength=ClipLengthProfile(minSeconds=5.5, targetSeconds=7.5, maxSeconds=9.5),
@@ -763,7 +763,7 @@ TEMPLATE_PACK_REGISTRY: Dict[str, TemplatePack] = {
         bestFor="parents, teams, season moments",
         defaultAspectRatio="16:9",
         allowedAspectRatios=["16:9", "9:16"],
-        targetDurations=[90, 120, 180],
+        targetDurations=[90, 120, 180, 240, 270],
         ordering="chronological_with_best_moments_boosted",
         pacing="medium_team",
         clipLength=ClipLengthProfile(minSeconds=5.0, targetSeconds=7.0, maxSeconds=9.0),
@@ -868,7 +868,7 @@ PRESET_REGISTRY: Dict[str, EditPreset] = {
         templateId="personal_highlight_v1",
         displayName="Personal Highlight",
         defaultAspectRatio="9:16",
-        durationOptions=[15, 30, 45],
+        durationOptions=[15, 30, 45, 60, 90, 120, 180, 270],
         ordering="best_first",
         pacing="fast",
         clipLengthRangeSeconds=(4.5, 6.5),
@@ -885,7 +885,7 @@ PRESET_REGISTRY: Dict[str, EditPreset] = {
         templateId="full_game_highlight_v1",
         displayName="Full Game Highlight",
         defaultAspectRatio="16:9",
-        durationOptions=[60, 90, 120],
+        durationOptions=[60, 90, 120, 180, 240, 270],
         ordering="chronological_with_best_moments_boosted",
         pacing="medium",
         clipLengthRangeSeconds=(5.5, 8.0),
@@ -902,7 +902,7 @@ PRESET_REGISTRY: Dict[str, EditPreset] = {
         templateId="coach_review_v1",
         displayName="Coach Review",
         defaultAspectRatio="source",
-        durationOptions=[60, 120, 180],
+        durationOptions=[60, 120, 180, 240, 270],
         ordering="chronological",
         pacing="slow",
         clipLengthRangeSeconds=(6.0, 10.0),
@@ -1004,7 +1004,7 @@ class CreateEditJobRequest(APIModel):
     preset: PresetId = "personal_highlight"
     templateId: Optional[TemplateId] = None
     theme: Optional[str] = Field(default=None, max_length=80)
-    targetDurationSeconds: int = Field(gt=0, le=180)
+    targetDurationSeconds: int = Field(gt=0, le=270)
     aspectRatio: Optional[AspectRatio] = None
     planTier: PlanTier = "free"
     revenueCatAppUserID: Optional[str] = Field(default=None, min_length=1, max_length=160)
@@ -1160,7 +1160,7 @@ class EditUserPromptIntent(APIModel):
     tone: Optional[UserPromptTone] = None
     pacing: Optional[UserPromptPacing] = None
     requestedAspectRatio: Optional[AspectRatio] = None
-    requestedDurationSeconds: Optional[int] = Field(default=None, gt=0, le=180)
+    requestedDurationSeconds: Optional[int] = Field(default=None, gt=0, le=270)
     templateHint: Optional[TemplateId] = None
     effectIntensity: Optional[UserPromptEffectIntensity] = None
     audioPreference: Optional[UserPromptAudioPreference] = None
@@ -1198,9 +1198,19 @@ def derive_user_prompt_intent(user_prompt: Optional[str], plan_tier: PlanTier = 
             return None
         return template_id
 
-    duration_match = re.search(r"\b(15|30|45|60|90|120|180)\s*(?:s|sec|secs|second|seconds)\b", text)
+    duration_match = re.search(r"\b(15|30|45|60|90|120|180|240|270)\s*(?:s|sec|secs|second|seconds)\b", text)
+    minute_match = re.search(r"\b([1-4])\s*:\s*([0-5][0-9])\b", text)
+    decimal_minute_match = re.search(r"\b(1(?:\.5)?|2(?:\.5)?|3(?:\.5)?|4(?:\.5)?)\s*(?:m|min|mins|minute|minutes)\b", text)
     if duration_match:
         requested_duration_seconds = int(duration_match.group(1))
+        structured_summary.append(f"target_duration_{requested_duration_seconds}s")
+    elif minute_match:
+        minutes = int(minute_match.group(1))
+        seconds = int(minute_match.group(2))
+        requested_duration_seconds = min(270, (minutes * 60) + seconds)
+        structured_summary.append(f"target_duration_{requested_duration_seconds}s")
+    elif decimal_minute_match:
+        requested_duration_seconds = min(270, int(round(float(decimal_minute_match.group(1)) * 60)))
         structured_summary.append(f"target_duration_{requested_duration_seconds}s")
 
     if any(term in text for term in ("9:16", "vertical", "portrait", "tiktok", "reel", "shorts")):
@@ -1336,7 +1346,7 @@ class ReviseEditJobRequest(APIModel):
     installId: Optional[str] = Field(default=None, min_length=8, max_length=128)
     command: RevisionCommand
     freeText: Optional[str] = Field(default=None, max_length=240)
-    targetDurationSeconds: Optional[int] = Field(default=None, gt=0, le=180)
+    targetDurationSeconds: Optional[int] = Field(default=None, gt=0, le=270)
     aspectRatio: Optional[AspectRatio] = None
 
 
@@ -1498,8 +1508,8 @@ class TemplatePackValidator:
         for index, aspect_ratio in enumerate(template.allowedAspectRatios):
             if aspect_ratio not in cls.supported_aspect_ratios:
                 add(f"allowedAspectRatios[{index}]", "invalid_aspect_ratio", "Template allowed aspect ratio is unsupported.")
-        if any(duration <= 0 or duration > 180 for duration in template.targetDurations):
-            add("targetDurations", "invalid_target_duration", "Template target durations must be between 1 and 180 seconds.")
+        if any(duration <= 0 or duration > 270 for duration in template.targetDurations):
+            add("targetDurations", "invalid_target_duration", "Template target durations must be between 1 and 270 seconds.")
         for effect in template.effectProfile.allowedEffects:
             if effect not in cls.supported_effects:
                 add("effectProfile.allowedEffects", "unsupported_effect", "Template requested an unsupported effect.")
@@ -3650,7 +3660,7 @@ def _build_revised_edit_job(job: StoredEditJob, revision: ReviseEditJobRequest) 
     elif command == "make_shorter":
         request_data["targetDurationSeconds"] = max(15, job.plan.targetDurationSeconds - 15)
     elif command == "make_longer":
-        request_data["targetDurationSeconds"] = min(180, job.plan.targetDurationSeconds + 15)
+        request_data["targetDurationSeconds"] = min(270, job.plan.targetDurationSeconds + 15)
 
     if revision.aspectRatio is not None:
         request_data["aspectRatio"] = revision.aspectRatio

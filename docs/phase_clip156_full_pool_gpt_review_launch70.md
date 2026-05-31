@@ -6,12 +6,12 @@ Align GPT-led highlight editing with the current high-recall cloud analysis pool
 
 ## Change
 
-- Free GPT clip review now defaults to `60` candidate clips with `3` keyframes per clip.
-- Pro/internal GPT clip review now defaults to `60` candidate clips with `5...8` keyframes per clip.
-- `HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_FREE` and legacy `HOOPS_GPT_HIGHLIGHT_RERANK_FREE_MAX_CLIPS` now clamp to `1...60`.
-- `HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_PRO` and legacy `HOOPS_GPT_HIGHLIGHT_RERANK_PAID_MAX_CLIPS` now clamp to `20...60`.
-- Staging deploy defaults in `services/editing/cloudbuild.yaml` and the secret-gated deploy workflow now set both Free and Pro/internal GPT candidate caps to `60`.
-- Static backend config preflight now requires those `60`-candidate GPT quality defaults.
+- Free GPT clip review now defaults to `160` candidate clips with `3` keyframes per clip.
+- Pro/internal GPT clip review now defaults to `160` candidate clips with `5...8` keyframes per clip.
+- `HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_FREE` and legacy `HOOPS_GPT_HIGHLIGHT_RERANK_FREE_MAX_CLIPS` now clamp to `1...160`.
+- `HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_PRO` and legacy `HOOPS_GPT_HIGHLIGHT_RERANK_PAID_MAX_CLIPS` now clamp to `20...160`.
+- Staging deploy defaults in `services/editing/cloudbuild.yaml` and the secret-gated deploy workflow now set both Free and Pro/internal GPT candidate caps to `160`.
+- Static backend config preflight now requires those `160`-candidate GPT quality defaults.
 
 ## Guardrails
 
@@ -23,7 +23,7 @@ Align GPT-led highlight editing with the current high-recall cloud analysis pool
 
 ## Why
 
-The analysis backend already returns up to `60` candidates and `GPT_CANDIDATE_REVIEW_LIMIT` is already `60`. Keeping the GPT semantic editor at `8` Free candidates or `30` Pro/internal candidates could drop clear blocks, steals, defensive stops, selected-team uncertain clips, or late high-quality moments before GPT could judge them. The wider cap lets GPT reject boring, duplicate, unclear, and opponent-team clips from the same high-recall pool the user can review.
+The analysis backend now returns up to `160` candidates and `GPT_CANDIDATE_REVIEW_LIMIT` is `160`. Keeping the GPT semantic editor at `8`, `30`, or `60` candidates could drop clear blocks, steals, defensive stops, selected-team uncertain clips, or late high-quality moments before GPT could judge them. The wider cap lets GPT reject boring, duplicate, unclear, and opponent-team clips from the same high-recall pool the user can review.
 
 ## Validation
 
@@ -53,6 +53,6 @@ Results:
 
 ## Launch Notes
 
-- Deploy analysis and editing together so Review, AI Edit, and GPT limits stay aligned around the 60-candidate pool.
+- Deploy analysis and editing together so Review, AI Edit, and GPT limits stay aligned around the 160-candidate pool.
 - Keep all GPT/editing kill switches available for staging rollback.
 - Do not claim internal submission readiness until the launch-grade labeled footage report and installed TestFlight smoke are proven.

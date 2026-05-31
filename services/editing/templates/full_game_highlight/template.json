@@ -2,7 +2,7 @@
   "templateId": "full_game_highlight_v1",
   "displayName": "Full Game Highlight",
   "aspectRatio": "16:9",
-  "targetDurations": [60, 90, 120],
+  "targetDurations": [60, 90, 120, 180, 240, 270],
   "ordering": "chronological_with_best_moments_boosted",
   "pacing": "medium",
   "captionStyle": "clean_scorebug",

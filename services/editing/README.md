@@ -39,17 +39,17 @@ The service receives a validated `EditPlan`, downloads the source video from ren
 - `HOOPS_AI_CLIP_GPT_REVISION_ENABLED`: launch switch for GPT-produced `EditPlanPatch` revision flows, default `false`
 - `HOOPS_AI_CLIP_GPT_KEYFRAMES_PER_CLIP`: Pro/internal keyframe cap per clip, clamped to `5...8`; staging default is `8` for stronger shot-arc and rim-entry path context
 - `HOOPS_AI_CLIP_GPT_FREE_KEYFRAMES_PER_CLIP`: Free keyframe cap per clip, fixed at `3` to match the launch contract
-- `HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_FREE`: Free candidate cap, clamped to `1...60`; staging default is `60` so Free users get broad GPT review while daily Free edit chances stay at `3`
-- `HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_PRO`: Pro/internal candidate cap, clamped to `20...60`; staging default is `60`
+- `HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_FREE`: Free candidate cap, clamped to `1...160`; staging default is `160` so Free users get broad GPT review while daily Free edit chances stay at `3`
+- `HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_PRO`: Pro/internal candidate cap, clamped to `20...160`; staging default is `160`
 - `HOOPS_GPT_HIGHLIGHT_RERANKER_ENABLED`: kill switch for GPT highlight reranking, default `false`
 - `HOOPS_OPENAI_API_KEY`: OpenAI key required only when GPT highlight reranking is enabled
 - `HOOPS_GPT_HIGHLIGHT_RERANK_MODEL`: vision-capable reranker model, default `gpt-4.1` for quality-beta editing; set `HOOPS_AI_CLIP_GPT_MODEL` to override
-- `HOOPS_GPT_HIGHLIGHT_RERANK_FREE_MAX_CLIPS`: legacy Free cap override, clamped to `1...60`
+- `HOOPS_GPT_HIGHLIGHT_RERANK_FREE_MAX_CLIPS`: legacy Free cap override, clamped to `1...160`
 - `HOOPS_GPT_HIGHLIGHT_RERANK_FREE_FRAMES_PER_CLIP`: legacy Free frames override, fixed at `3`
-- `HOOPS_GPT_HIGHLIGHT_RERANK_PAID_MAX_CLIPS`: legacy Pro/internal cap, clamped to `20...60`
+- `HOOPS_GPT_HIGHLIGHT_RERANK_PAID_MAX_CLIPS`: legacy Pro/internal cap, clamped to `20...160`
 - `HOOPS_GPT_HIGHLIGHT_RERANK_PAID_FRAMES_PER_CLIP`: legacy Pro/internal frames per clip, clamped to `5...8`
-- `HOOPS_GPT_HIGHLIGHT_RERANK_TIMEOUT_SECONDS`: OpenAI request timeout, clamped to `1...60`
-- `HOOPS_GPT_HIGHLIGHT_RERANK_MAX_OUTPUT_TOKENS`: Structured-output budget, clamped to `256...12000`; quality-beta default is `12000`
+- `HOOPS_GPT_HIGHLIGHT_RERANK_TIMEOUT_SECONDS`: OpenAI request timeout, clamped to `1...120`
+- `HOOPS_GPT_HIGHLIGHT_RERANK_MAX_OUTPUT_TOKENS`: Structured-output budget, clamped to `256...24000`; quality-beta default is `24000`
 - `HOOPS_GPT_HIGHLIGHT_RERANK_FRAME_WIDTH`: sampled keyframe width, clamped to `256...1280`; quality-beta default is `1024`
 - `HOOPS_GPT_HIGHLIGHT_RERANK_JPEG_QUALITY`: FFmpeg JPEG quality, clamped to `2...12`; quality-beta default is `4`
 - `HOOPS_GPT_HIGHLIGHT_RERANK_MAX_IMAGE_BYTES`: per-frame payload cap, clamped to `40000...1000000`; quality-beta default is `750000`
@@ -59,7 +59,7 @@ Quality-beta staging deploys set the GPT editor, plan edit, revision, and legacy
 
 The `/version` endpoint reports the resolved non-secret feature-flag snapshot and GPT reranker sampling caps. It intentionally does not expose all cost knobs. Use it to verify staging rollout state without exposing R2 credentials, service secrets, OpenAI keys, sampled frames, or presigned URLs. GPT reranker OpenAI requests are built with `store=false`.
 
-GPT highlight reranking only receives existing candidate clips and sampled JPEG keyframes. The staging path filters out candidates shorter than the backend minimum or candidates whose event center is too close to the start/end of the window, then asks GPT to verify visible setup, release/event, shot arc, ball path, rim/outcome, camera quality, full play context, explicit `shotResultEvidence`, and frame-role `shotTrackingEvidence` through strict JSON. Free samples up to 60 candidates with 3 keyframes each; Pro/internal samples up to 60 candidates with 5 to 8 keyframes each. At the 8-frame Pro/internal budget, shot candidates include pre-event, release, outcome, rim, and post-outcome context around the required start/eventCenter/finish frames so GPT can judge ball flight instead of trusting a label or late basket aftermath. Made-shot decisions must also provide rim-entry sequence evidence showing approach, entry, and below-rim/net follow-through when those richer roles are sampled. Backend validation rejects kept GPT decisions that still describe tiny, pre-basket-only, unclear, low-score, guessed-made, untracked-entry, missing-outcome, missing rim-entry sequence evidence, unsampled frame-role evidence, reaction-only makes, or generic frame-role proof when richer sampled shot roles were available before the deterministic EditPlan is built.
+GPT highlight reranking only receives existing candidate clips and sampled JPEG keyframes. The staging path filters out candidates shorter than the backend minimum or candidates whose event center is too close to the start/end of the window, then asks GPT to verify visible setup, release/event, shot arc, ball path, rim/outcome, camera quality, full play context, explicit `shotResultEvidence`, and frame-role `shotTrackingEvidence` through strict JSON. Free samples up to 160 candidates with 3 keyframes each; Pro/internal samples up to 160 candidates with 5 to 8 keyframes each. At the 8-frame Pro/internal budget, shot candidates include pre-event, release, outcome, rim, and post-outcome context around the required start/eventCenter/finish frames so GPT can judge ball flight instead of trusting a label or late basket aftermath. Made-shot decisions must also provide rim-entry sequence evidence showing approach, entry, and below-rim/net follow-through when those richer roles are sampled. Backend validation rejects kept GPT decisions that still describe tiny, pre-basket-only, unclear, low-score, guessed-made, untracked-entry, missing-outcome, missing rim-entry sequence evidence, unsampled frame-role evidence, reaction-only makes, or generic frame-role proof when richer sampled shot roles were available before the deterministic EditPlan is built.
 
 ## Local Smoke
 

@@ -2,7 +2,7 @@
   "templateId": "recruiting_reel_pro_v1",
   "displayName": "Recruiting Reel Pro",
   "aspectRatio": "9:16",
-  "targetDurations": [45, 60, 90, 120],
+  "targetDurations": [45, 60, 90, 120, 180, 240, 270],
   "ordering": "best_first",
   "pacing": "medium_fast",
   "captionStyle": "recruiting_clean_hype",

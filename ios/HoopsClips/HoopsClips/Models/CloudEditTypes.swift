@@ -85,11 +85,11 @@ enum CloudEditPreset: String, Codable, CaseIterable, Identifiable, Sendable {
     var durationOptions: [Int] {
         switch self {
         case .personalHighlight:
-            return [15, 30, 45]
+            return [15, 30, 45, 60, 90, 120, 180, 270]
         case .fullGameHighlight:
-            return [60, 90, 120]
+            return [60, 90, 120, 180, 240, 270]
         case .coachReview:
-            return [60, 120, 180]
+            return [60, 120, 180, 240, 270]
         }
     }
 }
@@ -202,11 +202,11 @@ enum CloudEditProTemplate: String, CaseIterable, Identifiable, Sendable {
     var durationOptions: [Int] {
         switch self {
         case .recruitingReelPro:
-            return [45, 60, 90, 120]
+            return [45, 60, 90, 120, 180, 240, 270]
         case .cinematicMixtapePro:
-            return [30, 45, 60, 90]
+            return [30, 45, 60, 90, 120, 180, 270]
         case .nbaRecapPro, .teamHighlightPro:
-            return [90, 120, 180]
+            return [90, 120, 180, 240, 270]
         }
     }
 }
@@ -281,7 +281,7 @@ struct CloudEditPolicySummary: Codable, Sendable {
     static let freeDefault = CloudEditPolicySummary(
         planTier: .free,
         displayName: "Free",
-        maxRenderSeconds: 45,
+        maxRenderSeconds: 270,
         maxDailyRenders: 3,
         maxActiveRenders: 1,
         maxRevisionsPerEdit: 3,
@@ -295,7 +295,7 @@ struct CloudEditPolicySummary: Codable, Sendable {
     static let proDefault = CloudEditPolicySummary(
         planTier: .pro,
         displayName: "Pro",
-        maxRenderSeconds: 180,
+        maxRenderSeconds: 270,
         maxDailyRenders: 25,
         maxActiveRenders: 2,
         maxRevisionsPerEdit: 10,

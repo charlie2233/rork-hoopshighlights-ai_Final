@@ -2,7 +2,7 @@
   "templateId": "nba_recap_pro_v1",
   "displayName": "NBA Recap Pro",
   "aspectRatio": "16:9",
-  "targetDurations": [90, 120, 180],
+  "targetDurations": [90, 120, 180, 240, 270],
   "ordering": "chronological_with_best_moments_boosted",
   "pacing": "medium_broadcast",
   "captionStyle": "broadcast_scorebug",

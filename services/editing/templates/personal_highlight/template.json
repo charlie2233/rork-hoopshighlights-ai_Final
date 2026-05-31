@@ -2,7 +2,7 @@
   "templateId": "personal_highlight_v1",
   "displayName": "Personal Highlight",
   "aspectRatio": "9:16",
-  "targetDurations": [15, 30, 45],
+  "targetDurations": [15, 30, 45, 60, 90, 120, 180, 270],
   "ordering": "best_first",
   "pacing": "fast",
   "captionStyle": "bold_hype",

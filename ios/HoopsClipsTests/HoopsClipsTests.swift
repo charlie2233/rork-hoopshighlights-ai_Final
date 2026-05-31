@@ -212,11 +212,11 @@ struct HoopsClipsTests {
 
     @Test func testCloudEditPresetsExposeExpectedAspectRatiosAndDurations() {
         #expect(CloudEditPreset.personalHighlight.aspectRatio == .vertical)
-        #expect(CloudEditPreset.personalHighlight.durationOptions == [15, 30, 45])
+        #expect(CloudEditPreset.personalHighlight.durationOptions == [15, 30, 45, 60, 90, 120, 180, 270])
         #expect(CloudEditPreset.fullGameHighlight.aspectRatio == .widescreen)
-        #expect(CloudEditPreset.fullGameHighlight.durationOptions == [60, 90, 120])
+        #expect(CloudEditPreset.fullGameHighlight.durationOptions == [60, 90, 120, 180, 240, 270])
         #expect(CloudEditPreset.coachReview.aspectRatio == .widescreen)
-        #expect(CloudEditPreset.coachReview.durationOptions == [60, 120, 180])
+        #expect(CloudEditPreset.coachReview.durationOptions == [60, 120, 180, 240, 270])
     }
 
     @Test func testCloudEditPolicySummaryExposesFreemiumCopy() {
@@ -230,6 +230,7 @@ struct HoopsClipsTests {
         #expect(free.brandingSummary.contains("watermark/outro"))
         #expect(pro.brandingSummary.contains("Clean export"))
         #expect(free.planLimitRows.contains("720p max export"))
+        #expect(free.maxRenderSeconds == 270)
         #expect(free.maxDailyRenders == 3)
         #expect(free.planLimitRows.contains("3 AI edits/day"))
         #expect(AppConstants.cloudAnalysisDailyQuota == 3)
@@ -1171,7 +1172,7 @@ struct HoopsClipsTests {
         #expect(CloudEditProTemplate.recruitingReelPro.templateID == "recruiting_reel_pro_v1")
         #expect(CloudEditProTemplate.cinematicMixtapePro.templateID == "cinematic_mixtape_pro_v1")
         #expect(CloudEditProTemplate.nbaRecapPro.preset == .fullGameHighlight)
-        #expect(CloudEditProTemplate.teamHighlightPro.durationOptions == [90, 120, 180])
+        #expect(CloudEditProTemplate.teamHighlightPro.durationOptions == [90, 120, 180, 240, 270])
     }
 
     @Test func testCloudEditProUXFlagsDefaultToVisibleButNonPaymentUX() {
@@ -1610,7 +1611,7 @@ struct HoopsClipsTests {
           "policy": {
             "planTier": "free",
             "displayName": "Free",
-            "maxRenderSeconds": 45,
+            "maxRenderSeconds": 270,
             "maxDailyRenders": 3,
             "maxActiveRenders": 1,
             "maxRevisionsPerEdit": 3,

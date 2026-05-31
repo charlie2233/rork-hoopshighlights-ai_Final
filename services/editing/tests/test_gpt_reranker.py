@@ -57,7 +57,7 @@ def _request(plan_tier: str = "free", clip_count: int = 10) -> CreateEditJobRequ
         preset="personal_highlight",
         targetDurationSeconds=30,
         planTier=plan_tier,
-        clips=[_clip(f"c{index}", float(index * 7), 1.0 - (index * 0.01)) for index in range(clip_count)],
+        clips=[_clip(f"c{index}", float(index * 7), 1.0 - (index * 0.001)) for index in range(clip_count)],
     )
 
 
@@ -2836,27 +2836,27 @@ class GPTHighlightRerankerTests(unittest.TestCase):
     def test_free_and_pro_sampling_limits(self) -> None:
         settings = GPTHighlightRerankerSettings.from_env()
 
-        self.assertEqual(settings.limits_for("free"), (60, 3))
-        self.assertEqual(settings.limits_for("pro")[0], 60)
+        self.assertEqual(settings.limits_for("free"), (160, 3))
+        self.assertEqual(settings.limits_for("pro")[0], 160)
         self.assertGreaterEqual(settings.limits_for("pro")[1], 5)
         self.assertLessEqual(settings.limits_for("pro")[1], 8)
-        self.assertEqual(settings.timeout_seconds, 60.0)
-        self.assertEqual(settings.max_output_tokens, 12000)
+        self.assertEqual(settings.timeout_seconds, 120.0)
+        self.assertEqual(settings.max_output_tokens, 24000)
 
     def test_free_sampling_reviews_full_analysis_pool_by_default(self) -> None:
         settings = GPTHighlightRerankerSettings.from_env()
         max_clips, _ = settings.limits_for("free")
-        request = _request("free", 60)
+        request = _request("free", 160)
 
         sampled = gpt_reranker._quality_filtered_sampled_clips(
             gpt_reranker.rank_clips(request.clips),
             max_clips,
         )
 
-        self.assertEqual(max_clips, 60)
-        self.assertEqual(len(sampled), 60)
+        self.assertEqual(max_clips, 160)
+        self.assertEqual(len(sampled), 160)
         self.assertEqual(sampled[0].id, "c0")
-        self.assertEqual(sampled[-1].id, "c59")
+        self.assertEqual(sampled[-1].id, "c159")
 
     def test_sampling_env_overrides_are_launch_bounded(self) -> None:
         env_keys = (
@@ -2887,8 +2887,8 @@ class GPTHighlightRerankerTests(unittest.TestCase):
                 else:
                     os.environ[key] = old_value
 
-        self.assertEqual(settings.limits_for("free"), (60, 3))
-        self.assertEqual(settings.limits_for("pro"), (60, 8))
+        self.assertEqual(settings.limits_for("free"), (160, 3))
+        self.assertEqual(settings.limits_for("pro"), (160, 8))
 
     def test_sampling_reserves_block_and_steal_families_for_gpt_review(self) -> None:
         scoring = [
@@ -3043,8 +3043,8 @@ class GPTHighlightRerankerTests(unittest.TestCase):
             endpoint="https://api.openai.test/v1/responses",
             timeout_seconds=1.0,
             max_output_tokens=512,
-            free_max_clips=60,
-            paid_max_clips=60,
+            free_max_clips=160,
+            paid_max_clips=160,
             free_frames_per_clip=3,
             paid_frames_per_clip=5,
             frame_width=512,
@@ -3135,14 +3135,14 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         try:
             gpt_reranker._extract_candidate_keyframes = fake_extract
             with tempfile.NamedTemporaryFile(suffix=".mp4") as source:
-                free_result = gpt_reranker.rerank_edit_request_with_gpt(_request("free", 60), Path(source.name), settings, fake_response_client)
-                pro_result = gpt_reranker.rerank_edit_request_with_gpt(_request("pro", 60), Path(source.name), settings, fake_response_client)
+                free_result = gpt_reranker.rerank_edit_request_with_gpt(_request("free", 160), Path(source.name), settings, fake_response_client)
+                pro_result = gpt_reranker.rerank_edit_request_with_gpt(_request("pro", 160), Path(source.name), settings, fake_response_client)
         finally:
             gpt_reranker._extract_candidate_keyframes = original_extract
 
-        self.assertEqual(observed_calls, [(60, 3), (60, 5)])
-        self.assertEqual(len(free_result.gptRerankSummary.storyOrderClipIds), 60)
-        self.assertEqual(len(pro_result.gptRerankSummary.storyOrderClipIds), 60)
+        self.assertEqual(observed_calls, [(160, 3), (160, 5)])
+        self.assertEqual(len(free_result.gptRerankSummary.storyOrderClipIds), 160)
+        self.assertEqual(len(pro_result.gptRerankSummary.storyOrderClipIds), 160)
         self.assertTrue(set(free_result.gptRerankSummary.storyOrderClipIds).issubset({clip.id for clip in free_result.clips}))
         self.assertTrue(set(pro_result.gptRerankSummary.storyOrderClipIds).issubset({clip.id for clip in pro_result.clips}))
 

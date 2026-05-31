@@ -879,7 +879,7 @@ struct SettingsView: View {
                         .font(.subheadline.monospacedDigit())
                         .foregroundStyle(AppTheme.neonPurple)
                 }
-                Slider(value: $viewModel.settings.targetHighlightDuration, in: 15.0...180.0, step: 5.0)
+                Slider(value: $viewModel.settings.targetHighlightDuration, in: 15.0...270.0, step: 5.0)
                     .tint(AppTheme.accentPurple)
                     .accessibilityLabel(languageStore.text(.settingsTargetHighlight))
                     .accessibilityValue(formattedTargetDuration(viewModel.settings.targetHighlightDuration))
@@ -1078,6 +1078,22 @@ struct SettingsView: View {
                     .font(.caption)
                     .foregroundStyle(AppTheme.subtleText)
                     .fixedSize(horizontal: false, vertical: true)
+
+                HStack(spacing: 5) {
+                    Text("Created by")
+                    Text("atrak.dev")
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.white.opacity(0.9))
+                    Text("with")
+                    Image(systemName: "heart.fill")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(AppTheme.dangerRed)
+                }
+                .font(.caption.weight(.medium))
+                .foregroundStyle(AppTheme.subtleText)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Created by atrak.dev with love")
 
                 HStack(spacing: 16) {
                     aiFeatureTag(languageStore.text(.settingsSmartClipsTag))

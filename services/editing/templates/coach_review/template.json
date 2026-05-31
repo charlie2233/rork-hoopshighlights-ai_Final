@@ -2,7 +2,7 @@
   "templateId": "coach_review_v1",
   "displayName": "Coach Review",
   "aspectRatio": "source",
-  "targetDurations": [60, 120, 180],
+  "targetDurations": [60, 120, 180, 240, 270],
   "ordering": "chronological",
   "pacing": "slow",
   "captionStyle": "plain",

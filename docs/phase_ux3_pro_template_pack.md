@@ -14,13 +14,13 @@ Convert the existing locked Pro template cards into real cloud-renderable templa
 
 | Template ID | Preset wire value | Default aspect | Durations | Premium | Notes |
 | --- | --- | --- | --- | --- | --- |
-| `personal_highlight_v1` | `personal_highlight` | `9:16` | `15, 30, 45` | No | Existing free template |
-| `full_game_highlight_v1` | `full_game_highlight` | `16:9` | `60, 90, 120` | No | Existing free template |
-| `coach_review_v1` | `coach_review` | source/`16:9` | `60, 90, 120` | No | Existing free template |
-| `recruiting_reel_pro_v1` | `personal_highlight` | `9:16` | `45, 60, 90, 120` | Yes | Player/recruiting style, clean hype captions, stronger slow motion, clean export |
-| `cinematic_mixtape_pro_v1` | `personal_highlight` | `9:16` | `30, 45, 60, 90` | Yes | Premium social edit, cinematic pacing, speed ramp/punch zoom profile, clean export |
-| `nba_recap_pro_v1` | `full_game_highlight` | `16:9` | `90, 120, 180` | Yes | Broadcast recap, chronological game-flow, scorebug/lower-third styling, clean export |
-| `team_highlight_pro_v1` | `full_game_highlight` | `16:9` | `90, 120, 180` | Yes | Team package recap, balanced game-flow, moderate effects, clean export |
+| `personal_highlight_v1` | `personal_highlight` | `9:16` | `15, 30, 45, 60, 90, 120, 180, 270` | No | Existing free template |
+| `full_game_highlight_v1` | `full_game_highlight` | `16:9` | `60, 90, 120, 180, 240, 270` | No | Existing free template |
+| `coach_review_v1` | `coach_review` | source/`16:9` | `60, 120, 180, 240, 270` | No | Existing free template |
+| `recruiting_reel_pro_v1` | `personal_highlight` | `9:16` | `45, 60, 90, 120, 180, 240, 270` | Yes | Player/recruiting style, clean hype captions, stronger slow motion, clean export |
+| `cinematic_mixtape_pro_v1` | `personal_highlight` | `9:16` | `30, 45, 60, 90, 120, 180, 270` | Yes | Premium social edit, cinematic pacing, speed ramp/punch zoom profile, clean export |
+| `nba_recap_pro_v1` | `full_game_highlight` | `16:9` | `90, 120, 180, 240, 270` | Yes | Broadcast recap, chronological game-flow, scorebug/lower-third styling, clean export |
+| `team_highlight_pro_v1` | `full_game_highlight` | `16:9` | `90, 120, 180, 240, 270` | Yes | Team package recap, balanced game-flow, moderate effects, clean export |
 
 Each Pro template has JSON assets under `services/editing/templates/<template_slug>/` for template defaults, captions, colors, watermark metadata, title cards, outro metadata, and lower-thirds where applicable.
 

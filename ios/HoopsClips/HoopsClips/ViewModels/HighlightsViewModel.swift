@@ -589,7 +589,7 @@ final class HighlightsViewModel {
         )
     }
 
-    nonisolated static func cloudEditRequestCandidateClips(from clips: [Clip], limit: Int = 60) -> [Clip] {
+    nonisolated static func cloudEditRequestCandidateClips(from clips: [Clip], limit: Int = 160) -> [Clip] {
         let cappedLimit = max(0, limit)
         guard cappedLimit > 0 else { return [] }
 

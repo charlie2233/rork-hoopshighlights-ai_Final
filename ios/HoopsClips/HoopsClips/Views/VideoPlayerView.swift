@@ -845,13 +845,15 @@ struct VideoPlayerView: View {
                     .background(AppTheme.warningYellow.opacity(0.12), in: .capsule)
             }
 
-            HStack(spacing: 8) {
-                ForEach([30.0, 45.0, 60.0, 90.0], id: \.self) { preset in
-                    targetDurationPresetButton(preset)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach([30.0, 60.0, 90.0, 180.0, 270.0], id: \.self) { preset in
+                        targetDurationPresetButton(preset)
+                    }
                 }
             }
 
-            Slider(value: $viewModel.settings.targetHighlightDuration, in: 15.0...180.0, step: 5.0)
+            Slider(value: $viewModel.settings.targetHighlightDuration, in: 15.0...270.0, step: 5.0)
                 .tint(AppTheme.warningYellow)
                 .accessibilityLabel(languageStore.text(.settingsTargetHighlight))
                 .accessibilityValue(formattedTargetDuration(viewModel.settings.targetHighlightDuration))
@@ -878,7 +880,8 @@ struct VideoPlayerView: View {
             Text(formattedTargetDuration(duration))
                 .font(.caption.weight(.semibold).monospacedDigit())
                 .foregroundStyle(isSelected ? AppTheme.darkBg : AppTheme.warningYellow)
-                .frame(maxWidth: .infinity)
+                .frame(minWidth: 58)
+                .padding(.horizontal, 10)
                 .padding(.vertical, 8)
                 .background(
                     isSelected ? AppTheme.warningYellow : AppTheme.warningYellow.opacity(0.10),

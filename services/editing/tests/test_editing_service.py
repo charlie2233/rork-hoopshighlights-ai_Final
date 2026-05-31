@@ -768,12 +768,14 @@ class EditingServiceTests(unittest.TestCase):
         dev_policy = get_plan_tier_policy("dev")
 
         self.assertEqual(free_policy.maxDailyRenders, 3)
-        self.assertEqual(free_policy.maxRenderSeconds, 45)
+        self.assertEqual(free_policy.maxRenderSeconds, 270)
         self.assertTrue(free_policy.watermarkRequired)
         self.assertTrue(free_policy.outroRequired)
         self.assertFalse(free_policy.premiumTemplatesAllowed)
-        self.assertGreater(pro_policy.maxRenderSeconds, free_policy.maxRenderSeconds)
+        self.assertEqual(pro_policy.maxRenderSeconds, 270)
         self.assertTrue(internal_policy.premiumTemplatesAllowed)
+        self.assertEqual(internal_policy.maxRenderSeconds, 270)
+        self.assertEqual(dev_policy.maxRenderSeconds, 270)
         self.assertGreater(dev_policy.maxDailyRenders, internal_policy.maxDailyRenders)
 
     def test_version_reports_live_render_kill_switch(self) -> None:
@@ -1277,17 +1279,19 @@ class EditingServiceTests(unittest.TestCase):
 
     def test_policy_rejection_emits_safe_policy_failed_event(self) -> None:
         client = TestClient(create_app(self._settings()))
-        request = self._edit_request().model_copy(update={"targetDurationSeconds": 120, "templateId": "personal_highlight_v1"})
+        request = self._edit_request()
+        long_source_clip = request.clips[0].model_copy(update={"end": 601.0, "eventCenter": 300.0})
+        request = request.model_copy(update={"clips": [long_source_clip, request.clips[1]], "templateId": "personal_highlight_v1"})
         output = StringIO()
 
         with redirect_stdout(output):
             response = client.post("/v1/edit-jobs", json=request.model_dump())
 
         self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.json()["errorCode"], "render_duration_limit")
+        self.assertEqual(response.json()["errorCode"], "source_video_too_long")
         events = [json.loads(line) for line in output.getvalue().splitlines() if line.startswith("{")]
         policy_event = next(event for event in events if event.get("event") == "policy.failed")
-        self.assertEqual(policy_event["failureReason"], "render_duration_limit")
+        self.assertEqual(policy_event["failureReason"], "source_video_too_long")
         self.assertEqual(policy_event["planTier"], "free")
         self.assertEqual(policy_event["templateId"], "personal_highlight_v1")
         self.assertFalse(any("url" in key.lower() or "secret" in key.lower() for key in policy_event))
@@ -1346,7 +1350,7 @@ class EditingServiceTests(unittest.TestCase):
         render_log = json.loads(log_path.read_text(encoding="utf-8"))
         self.assertEqual(render_log["status"], "rendered")
         self.assertEqual(render_log["planTier"], "free")
-        self.assertEqual(render_log["policy"]["maxRenderSeconds"], 45)
+        self.assertEqual(render_log["policy"]["maxRenderSeconds"], 270)
         self.assertEqual(render_log["retentionMetadata"]["retentionClass"], "free_final_render")
         self.assertEqual(render_log["ffmpeg"]["templateId"], "personal_highlight_v1")
         self.assertEqual(render_log["ffmpeg"]["captionStyle"], "bold_hype")
@@ -2169,7 +2173,7 @@ class EditingServiceTests(unittest.TestCase):
     def test_render_over_free_policy_duration_rejected_before_render(self) -> None:
         client = TestClient(create_app(self._settings()))
         payload = self._render_payload(self._edit_request())
-        payload["editPlan"]["targetDurationSeconds"] = 120
+        payload["editPlan"]["targetDurationSeconds"] = 300
 
         render_response = client.post("/v1/render-jobs", json=payload)
 

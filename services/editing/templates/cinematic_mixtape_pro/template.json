@@ -2,7 +2,7 @@
   "templateId": "cinematic_mixtape_pro_v1",
   "displayName": "Cinematic Mixtape Pro",
   "aspectRatio": "9:16",
-  "targetDurations": [30, 45, 60, 90],
+  "targetDurations": [30, 45, 60, 90, 120, 180, 270],
   "ordering": "best_first",
   "pacing": "fast_cinematic",
   "captionStyle": "cinematic_hype",
