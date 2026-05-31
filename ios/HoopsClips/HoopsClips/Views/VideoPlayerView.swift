@@ -95,6 +95,7 @@ struct VideoPlayerView: View {
             }
             .onAppear {
                 syncPlayer(with: viewModel.videoURL)
+                completeImportAfterLoadedVideo()
             }
             .onChange(of: viewModel.videoURL) { _, newValue in
                 syncPlayer(with: newValue)
@@ -106,6 +107,7 @@ struct VideoPlayerView: View {
                     teamScanTask?.cancel()
                     teamScanTask = nil
                 } else {
+                    completeImportAfterLoadedVideo()
                     HoopsAccessibility.announce("Video imported. Choose a target reel length, then start analysis.")
                     startTeamScanIfNeeded()
                 }
@@ -172,7 +174,13 @@ struct VideoPlayerView: View {
             await MainActor.run {
                 importStatusMessage = "Saving video to HoopClips..."
             }
-            return await viewModel.loadVideo(url: url)
+            let didLoadVideo = await viewModel.loadVideo(url: url)
+            if didLoadVideo {
+                await MainActor.run {
+                    completeImportAfterLoadedVideo()
+                }
+            }
+            return didLoadVideo
         }
     }
 
@@ -206,6 +214,11 @@ struct VideoPlayerView: View {
                     importStatusMessage = "Saving video to HoopClips..."
                 }
                 let didLoadVideo = await viewModel.loadVideo(url: importedVideo.url)
+                if didLoadVideo {
+                    await MainActor.run {
+                        completeImportAfterLoadedVideo()
+                    }
+                }
                 try? await VideoImportTransfer.removeTemporaryFile(at: importedVideo.url)
                 return didLoadVideo
             } catch is CancellationError {
@@ -351,8 +364,7 @@ struct VideoPlayerView: View {
         guard activeImportID == importID || (didLoadVideo && viewModel.isVideoLoaded) else { return }
 
         if didLoadVideo && viewModel.isVideoLoaded {
-            importErrorMessage = nil
-            clearImportState()
+            completeImportAfterLoadedVideo()
             startTeamScanIfNeeded()
             return
         }
@@ -360,6 +372,14 @@ struct VideoPlayerView: View {
         clearImportState()
         if importErrorMessage == nil {
             importErrorMessage = "HoopClips could not read that video. Try importing it from Files or choose another clip."
+        }
+    }
+
+    private func completeImportAfterLoadedVideo() {
+        guard viewModel.isVideoLoaded else { return }
+        importErrorMessage = nil
+        if isImportingVideo || activeImportID != nil || importTask != nil {
+            clearImportState()
         }
     }
 
@@ -655,10 +675,14 @@ struct VideoPlayerView: View {
                     Image(systemName: "folder.fill")
                         .font(.caption)
                         .foregroundStyle(AppTheme.subtleText)
+                        .padding(.top, 1)
                     Text(url.lastPathComponent)
                         .font(.caption.monospaced())
                         .foregroundStyle(AppTheme.subtleText)
-                        .lineLimit(1)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.82)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .layoutPriority(1)
                     Spacer()
                 }
                 .padding(.horizontal, 4)
@@ -688,9 +712,14 @@ struct VideoPlayerView: View {
                     HStack(spacing: 8) {
                         Image(systemName: "sparkles")
                             .foregroundStyle(AppTheme.warningYellow)
+                            .padding(.top, 1)
                         Text(analysisBannerText)
                             .font(.caption.weight(.medium))
                             .foregroundStyle(AppTheme.warningYellow)
+                            .lineLimit(3)
+                            .minimumScaleFactor(0.84)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .layoutPriority(1)
                         Spacer()
                         if subscriptionManager.freeUsesRemaining == 0 && subscriptionManager.isProUser == false {
                             Button(languageStore.text(.goPro)) { showingPaywall = true }
