@@ -615,6 +615,19 @@ h1, h2, h3, p {
   padding: 18px;
   margin: 0 0 18px;
 }
+.video-panel {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.34);
+}
+.video-panel h2 {
+  font-size: 16px;
+  margin-bottom: 8px;
+}
+.video-panel video {
+  max-height: min(42vh, 420px);
+}
 video {
   display: block;
   width: min(100%, 960px);
@@ -717,6 +730,9 @@ textarea {
   }
   .case-heading {
     display: block;
+  }
+  .video-panel {
+    position: static;
   }
   .label-grid {
     grid-template-columns: 1fr;
