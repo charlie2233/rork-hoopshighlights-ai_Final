@@ -735,7 +735,11 @@ function boolFromSelect(value) {
 
 function draftStorageKey() {
   const caseIds = reviewData.cases.map(casePayload => casePayload.caseId || casePayload.labelsPayload?.caseId || "case").join("|");
-  return `hoopclips-team-label-draft:${caseIds}`;
+  const draftPrefill = reviewData.draftPrefill;
+  const prefillKey = draftPrefill
+    ? `prefill:${draftPrefill.source || "draft"}:${draftPrefill.appliedClipCount || 0}:${draftPrefill.skippedClipCount || 0}:${draftPrefill.humanReviewRequired === true ? "human" : "trusted"}`
+    : "prefill:none";
+  return `hoopclips-team-label-draft:${caseIds}:${prefillKey}`;
 }
 
 function draftStatus(message) {
