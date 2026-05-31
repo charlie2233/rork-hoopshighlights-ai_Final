@@ -106,7 +106,7 @@ struct VideoPlayerView: View {
                     teamScanTask?.cancel()
                     teamScanTask = nil
                 } else {
-                    HoopsAccessibility.announce("Video imported. Choose a target highlight length, then start analysis.")
+                    HoopsAccessibility.announce("Video imported. Choose a target reel length, then start analysis.")
                     startTeamScanIfNeeded()
                 }
             }
@@ -1056,11 +1056,9 @@ struct VideoPlayerView: View {
                     .background(AppTheme.warningYellow.opacity(0.12), in: .capsule)
             }
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach([30.0, 60.0, 90.0, 180.0, 270.0], id: \.self) { preset in
-                        targetDurationPresetButton(preset)
-                    }
+            LazyVGrid(columns: targetDurationGridColumns, spacing: 8) {
+                ForEach([30.0, 60.0, 90.0, 180.0, 270.0], id: \.self) { preset in
+                    targetDurationPresetButton(preset)
                 }
             }
 
@@ -1068,7 +1066,7 @@ struct VideoPlayerView: View {
                 .tint(AppTheme.warningYellow)
                 .accessibilityLabel(languageStore.text(.settingsTargetHighlight))
                 .accessibilityValue(formattedTargetDuration(viewModel.settings.targetHighlightDuration))
-                .accessibilityHint("Sets the target length for the highlight reel before analysis.")
+                .accessibilityHint("Sets the target reel length before analysis.")
         }
         .padding(14)
         .rorkCard(
@@ -1091,22 +1089,29 @@ struct VideoPlayerView: View {
             Text(formattedTargetDuration(duration))
                 .font(.caption.weight(.semibold).monospacedDigit())
                 .foregroundStyle(isSelected ? AppTheme.darkBg : AppTheme.warningYellow)
-                .frame(minWidth: 58)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
+                .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 54 : 42)
+                .padding(.horizontal, 8)
                 .background(
                     isSelected ? AppTheme.warningYellow : AppTheme.warningYellow.opacity(0.10),
-                    in: .capsule
+                    in: .rect(cornerRadius: 12)
                 )
                 .overlay(
-                    Capsule()
+                    RoundedRectangle(cornerRadius: 12)
                         .stroke(AppTheme.warningYellow.opacity(isSelected ? 0 : 0.28), lineWidth: 1)
                 )
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Set target highlight length to \(formattedTargetDuration(duration))")
+        .accessibilityLabel("Set target reel length to \(formattedTargetDuration(duration))")
         .accessibilityValue(isSelected ? "Selected" : "Not selected")
         .hoopsSelectedState(isSelected)
+    }
+
+    private var targetDurationGridColumns: [GridItem] {
+        [
+            GridItem(.adaptive(minimum: dynamicTypeSize.isAccessibilitySize ? 92 : 72, maximum: 124), spacing: 8, alignment: .top)
+        ]
     }
 
     private var analysisProgressView: some View {

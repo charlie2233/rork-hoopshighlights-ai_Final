@@ -65,6 +65,7 @@ struct AIEditView: View {
     @State private var lockerBusyRenderJobID: String?
     @State private var showingShareSheet = false
     @State private var proInfoSheet: AIEditProInfoSheet?
+    @State private var showPlanDetails = false
 
     private let cloudEditService: any CloudEditServicing
     private let proUXFlags = CloudEditProUXFlags.safeDefault
@@ -213,17 +214,18 @@ struct AIEditView: View {
                 .foregroundStyle(.white)
                 .accessibilityIdentifier("export.aiEdit.section")
 
-            Text("Pick a style, add a side note, and HoopClips makes the finished video in the cloud.")
+            Text("Choose a style, length, and note. HoopClips renders the MP4 in the cloud.")
                 .font(.subheadline)
                 .foregroundStyle(AppTheme.subtleText)
+                .fixedSize(horizontal: false, vertical: true)
 
-            HStack(spacing: 8) {
+            LazyVGrid(columns: heroChipGridColumns, alignment: .leading, spacing: 8) {
                 aiChip(icon: "film.stack.fill", text: "\(viewModel.keptClips.count) kept clips")
                 aiChip(icon: selectedAspectRatio.icon, text: selectedAspectRatio.rawValue)
                 aiChip(icon: "timer", text: formattedDuration(selectedDuration))
             }
 
-            Text("You can leave the app while the real cloud job runs.")
+            Text("Real cloud job status only.")
                 .font(.caption.bold())
                 .foregroundStyle(AppTheme.warningYellow)
                 .fixedSize(horizontal: false, vertical: true)
@@ -251,29 +253,46 @@ struct AIEditView: View {
                     Text("Current plan: \(policy.displayName)")
                         .font(.headline)
                         .foregroundStyle(.white)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                         .accessibilityIdentifier("export.aiEdit.plan.current")
                     Text("\(policy.maxDailyRenders) video edits/day - \(policy.maxOutputResolution) max")
                         .font(.caption.bold())
                         .foregroundStyle(AppTheme.warningYellow)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                         .accessibilityIdentifier("export.aiEdit.queue.label")
                 }
-                Spacer()
+                Spacer(minLength: 0)
             }
 
-            VStack(alignment: .leading, spacing: 8) {
-                ForEach(policy.planLimitRows, id: \.self) { row in
-                    Label(row, systemImage: "checkmark.circle.fill")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.white.opacity(0.88))
-                        .frame(maxWidth: .infinity, alignment: .leading)
+            DisclosureGroup(isExpanded: $showPlanDetails) {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(policy.planLimitRows, id: \.self) { row in
+                        Label(row, systemImage: "checkmark.circle.fill")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.white.opacity(0.88))
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    if policy.planTier.isFree {
+                        Label("Failed HoopClips jobs do not use a free edit.", systemImage: "arrow.counterclockwise.circle.fill")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(AppTheme.warningYellow)
+                            .lineLimit(3)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                 }
-                if policy.planTier.isFree {
-                    Label("Failed HoopClips jobs do not use a free edit.", systemImage: "arrow.counterclockwise.circle.fill")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(AppTheme.warningYellow)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
+                .padding(.top, 4)
+            } label: {
+                Label("Plan limits", systemImage: "list.bullet.clipboard.fill")
+                    .font(.caption.bold())
+                    .foregroundStyle(AppTheme.subtleText)
             }
+            .tint(AppTheme.warningYellow)
+            .accessibilityIdentifier("export.aiEdit.planDetails")
         }
         .padding(14)
         .rorkCard(cornerRadius: 16, stroke: AppTheme.warningYellow.opacity(0.18), glow: AppTheme.warningYellow, glowOpacity: 0.04)
@@ -334,14 +353,16 @@ struct AIEditView: View {
             }
 
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 138), spacing: 8)], spacing: 8) {
-                ForEach(CloudEditPolicySummary.proValueRows, id: \.self) { row in
+                ForEach(Array(CloudEditPolicySummary.proValueRows.prefix(4)), id: \.self) { row in
                     Label(row, systemImage: "sparkles")
                         .font(.caption2.bold())
                         .foregroundStyle(.white.opacity(0.9))
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 8)
-                        .background(AppTheme.accentPurple.opacity(0.22), in: .capsule)
+                        .background(AppTheme.accentPurple.opacity(0.22), in: .rect(cornerRadius: 12))
                 }
             }
         }
@@ -370,10 +391,12 @@ struct AIEditView: View {
                                 .foregroundStyle(selectedProTemplate == nil && selectedPreset == preset ? AppTheme.warningYellow : AppTheme.neonPurple)
                         }
                         VStack(alignment: .leading, spacing: 3) {
+                            Text(preset.title)
+                                .font(.subheadline.bold())
+                                .foregroundStyle(.white)
+                                .lineLimit(2)
+                                .fixedSize(horizontal: false, vertical: true)
                             HStack(spacing: 6) {
-                                Text(preset.title)
-                                    .font(.subheadline.bold())
-                                    .foregroundStyle(.white)
                                 Text("Free")
                                     .font(.caption2.bold())
                                     .foregroundStyle(AppTheme.successGreen)
@@ -389,8 +412,10 @@ struct AIEditView: View {
                             Text(preset.subtitle)
                                 .font(.caption.bold())
                                 .foregroundStyle(AppTheme.warningYellow)
+                                .lineLimit(2)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
-                        Spacer()
+                        Spacer(minLength: 0)
                     }
                     .padding(14)
                     .background(selectedProTemplate == nil && selectedPreset == preset ? AppTheme.accentPurple.opacity(0.18) : AppTheme.cardBg.opacity(0.72), in: .rect(cornerRadius: 14))
@@ -425,10 +450,12 @@ struct AIEditView: View {
                                     .foregroundStyle(selectedProTemplate == template ? AppTheme.warningYellow : AppTheme.subtleText)
                             }
                             VStack(alignment: .leading, spacing: 3) {
+                                Text(template.title)
+                                    .font(.subheadline.bold())
+                                    .foregroundStyle(.white)
+                                    .lineLimit(2)
+                                    .fixedSize(horizontal: false, vertical: true)
                                 HStack(spacing: 6) {
-                                    Text(template.title)
-                                        .font(.subheadline.bold())
-                                        .foregroundStyle(.white)
                                     Text("Pro")
                                         .font(.caption2.bold())
                                         .foregroundStyle(.white)
@@ -442,8 +469,10 @@ struct AIEditView: View {
                                 Text(template.subtitle)
                                     .font(.caption.bold())
                                     .foregroundStyle(AppTheme.warningYellow)
+                                    .lineLimit(2)
+                                    .fixedSize(horizontal: false, vertical: true)
                             }
-                            Spacer()
+                            Spacer(minLength: 0)
                         }
                         .padding(14)
                         .background(selectedProTemplate == template ? AppTheme.warningYellow.opacity(0.12) : AppTheme.cardBg.opacity(0.45), in: .rect(cornerRadius: 14))
@@ -467,7 +496,7 @@ struct AIEditView: View {
     private var durationPicker: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("Target Length")
+                Text("Reel Length")
                     .font(.headline)
                     .foregroundStyle(.white)
                 Spacer()
@@ -476,28 +505,27 @@ struct AIEditView: View {
                     .foregroundStyle(AppTheme.warningYellow)
             }
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(displayedDurationOptions, id: \.self) { duration in
-                        Button {
-                            if duration <= activePolicy.maxRenderSeconds {
-                                selectedDuration = duration
-                            }
-                        } label: {
-                            Text(formattedDuration(duration))
-                                .font(.subheadline.bold())
-                                .foregroundStyle(duration > activePolicy.maxRenderSeconds ? AppTheme.subtleText.opacity(0.45) : (selectedDuration == duration ? .white : AppTheme.subtleText))
-                                .frame(minWidth: 64)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 10)
-                                .background(selectedDuration == duration ? AppTheme.accentPurple : AppTheme.cardBg.opacity(duration > activePolicy.maxRenderSeconds ? 0.45 : 1), in: .capsule)
+            LazyVGrid(columns: durationGridColumns, spacing: 8) {
+                ForEach(displayedDurationOptions, id: \.self) { duration in
+                    Button {
+                        if duration <= activePolicy.maxRenderSeconds {
+                            selectedDuration = duration
                         }
-                        .buttonStyle(.plain)
-                        .disabled(duration > activePolicy.maxRenderSeconds)
-                        .accessibilityLabel(formattedDuration(duration))
-                        .accessibilityIdentifier(durationAccessibilityIdentifier(for: duration))
-                        .accessibilityValue(duration > activePolicy.maxRenderSeconds ? "Unavailable on \(activePolicy.displayName)" : (selectedDuration == duration ? "Selected" : "Not selected"))
+                    } label: {
+                        Text(formattedDuration(duration))
+                            .font(.subheadline.bold())
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.82)
+                            .foregroundStyle(duration > activePolicy.maxRenderSeconds ? AppTheme.subtleText.opacity(0.45) : (selectedDuration == duration ? .white : AppTheme.subtleText))
+                            .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 54 : 44)
+                            .padding(.horizontal, 8)
+                            .background(selectedDuration == duration ? AppTheme.accentPurple : AppTheme.cardBg.opacity(duration > activePolicy.maxRenderSeconds ? 0.45 : 1), in: .rect(cornerRadius: 12))
                     }
+                    .buttonStyle(.plain)
+                    .disabled(duration > activePolicy.maxRenderSeconds)
+                    .accessibilityLabel("Set reel length to \(formattedDuration(duration))")
+                    .accessibilityIdentifier(durationAccessibilityIdentifier(for: duration))
+                    .accessibilityValue(duration > activePolicy.maxRenderSeconds ? "Unavailable on \(activePolicy.displayName)" : (selectedDuration == duration ? "Selected" : "Not selected"))
                 }
             }
         }
@@ -638,6 +666,18 @@ struct AIEditView: View {
         ]
     }
 
+    private var heroChipGridColumns: [GridItem] {
+        [
+            GridItem(.adaptive(minimum: dynamicTypeSize.isAccessibilitySize ? 150 : 112), spacing: 8, alignment: .top)
+        ]
+    }
+
+    private var durationGridColumns: [GridItem] {
+        [
+            GridItem(.adaptive(minimum: dynamicTypeSize.isAccessibilitySize ? 92 : 72, maximum: 124), spacing: 8, alignment: .top)
+        ]
+    }
+
     private var statusCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
@@ -717,11 +757,6 @@ struct AIEditView: View {
                         .background(AppTheme.successGreen.opacity(0.7), in: .capsule)
                 }
             }
-
-            Text("Only real HoopClips job updates are shown; pending steps stay as a checklist until the server reports progress.")
-                .font(.caption)
-                .foregroundStyle(AppTheme.subtleText)
-                .fixedSize(horizontal: false, vertical: true)
 
             VStack(alignment: .leading, spacing: 9) {
                 ForEach(timeline.steps) { step in
@@ -1996,9 +2031,12 @@ struct AIEditView: View {
         Label(text, systemImage: icon)
             .font(.caption.bold())
             .foregroundStyle(.white)
+            .lineLimit(2)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .background(AppTheme.cardBg.opacity(0.74), in: .capsule)
+            .background(AppTheme.cardBg.opacity(0.74), in: .rect(cornerRadius: 12))
     }
 
     private func styleAccessibilityIdentifier(for preset: CloudEditPreset) -> String {
