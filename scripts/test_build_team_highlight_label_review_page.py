@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scripts.build_team_highlight_label_review_page import build_review_payload, render_review_page
+from scripts.build_team_highlight_label_review_page import build_review_payload, render_review_page, review_page_output_metadata
 
 
 class BuildTeamHighlightLabelReviewPageTests(unittest.TestCase):
@@ -236,6 +236,21 @@ class BuildTeamHighlightLabelReviewPageTests(unittest.TestCase):
         self.assertTrue(payload["draftPrefill"]["humanReviewRequired"])
         self.assertTrue(payload["cases"][0]["clips"][0]["needsLabel"])
         self.assertEqual(payload["cases"][0]["clips"][0]["expected"]["eventType"], "block")
+        self.assertEqual(
+            review_page_output_metadata(Path("/tmp/review.html"), payload),
+            {
+                "output": "/tmp/review.html",
+                "caseCount": 1,
+                "clipCount": 1,
+                "draftPrefill": {
+                    "schemaVersion": "team-highlight-label-review-draft-prefill-v1",
+                    "source": "draft_bundle",
+                    "appliedClipCount": 1,
+                    "skippedClipCount": 0,
+                    "humanReviewRequired": True,
+                },
+            },
+        )
         self.assertIn("GPT draft prefilled 1 clips", page)
         self.assertIn("draftPrefill", page)
         self.assertIn("prefill:${draftPrefill.source", page)

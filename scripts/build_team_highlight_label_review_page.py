@@ -80,7 +80,7 @@ def main() -> int:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(html_output, encoding="utf-8")
     if args.json:
-        print(json.dumps({"output": str(output_path), "caseCount": len(payload["cases"])}, indent=2, sort_keys=True))
+        print(json.dumps(review_page_output_metadata(output_path, payload), indent=2, sort_keys=True))
     else:
         print(f"wrote {output_path}")
     return 0
@@ -177,6 +177,21 @@ def build_review_payload(
     if draft_bundle is not None:
         payload["draftPrefill"] = apply_draft_bundle_to_review_payload(payload, draft_bundle)
     return payload
+
+
+def review_page_output_metadata(output_path: Path, payload: dict[str, Any]) -> dict[str, Any]:
+    metadata: dict[str, Any] = {
+        "output": str(output_path),
+        "caseCount": len([case for case in payload.get("cases", []) if isinstance(case, dict)]),
+        "clipCount": sum(
+            len([clip for clip in case.get("clips", []) if isinstance(clip, dict)])
+            for case in payload.get("cases", [])
+            if isinstance(case, dict)
+        ),
+    }
+    if isinstance(payload.get("draftPrefill"), dict):
+        metadata["draftPrefill"] = payload["draftPrefill"]
+    return metadata
 
 
 def review_case_payload(
