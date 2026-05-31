@@ -391,6 +391,7 @@ def render_progress_summary(payload: dict[str, Any]) -> str:
             "</div>",
             '<div class="button-row">',
             '<button type="button" onclick="focusNextIncomplete()">Next incomplete</button>',
+            '<button id="download-ready-button" type="button" onclick="downloadLaunchReadyLabels()" disabled>Finish labels first</button>',
             '<button type="button" onclick="downloadAllCaseLabels()">Download all labels</button>',
             '<label class="file-button">Import draft bundle<input id="bundle-import" type="file" accept="application/json" onchange="importDraftBundle(event)"></label>',
             '<button type="button" onclick="clearSavedDraft()">Clear saved draft</button>',
@@ -1003,6 +1004,12 @@ function updateProgress() {
   });
   const overall = document.getElementById("overall-progress");
   if (overall) overall.innerHTML = `<strong>${complete}</strong> / ${total} clips complete. ${total - complete} still need labels.`;
+  const readyButton = document.getElementById("download-ready-button");
+  if (readyButton) {
+    const incomplete = total - complete;
+    readyButton.disabled = incomplete > 0;
+    readyButton.textContent = incomplete > 0 ? `Finish ${incomplete} label${incomplete === 1 ? "" : "s"} first` : "Download launch-ready labels";
+  }
 }
 
 function allClipCards() {
@@ -1087,6 +1094,22 @@ function downloadAllCaseLabels() {
   if (incomplete > 0 && !window.confirm(`${incomplete} clip labels are incomplete. Download all anyway?`)) {
     return;
   }
+  downloadLabelBundle();
+}
+
+function downloadLaunchReadyLabels() {
+  updateProgress();
+  const cards = Array.from(document.querySelectorAll("[data-case-index][data-clip-index]"));
+  const incomplete = cards.filter(card => !clipCompleteFromCard(card)).length;
+  if (incomplete > 0) {
+    draftStatus(`${incomplete} clip labels are incomplete. Finish every label before downloading launch-ready labels.`);
+    focusNextIncomplete();
+    return;
+  }
+  downloadLabelBundle();
+}
+
+function downloadLabelBundle() {
   updateAllCases();
   const bundlePayload = {
     schemaVersion: "team-highlight-manual-label-bundle-v1",
