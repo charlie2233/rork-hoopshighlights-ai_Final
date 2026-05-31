@@ -10,6 +10,7 @@ struct VideoPlayerView: View {
     @Environment(AuthService.self) private var authService
     @Environment(AppLanguageStore.self) private var languageStore
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @AppStorage("hoops.cloudVideoConsentAccepted.v1") private var cloudVideoConsentAccepted = false
     @State private var player: AVPlayer?
     @State private var showingFilePicker = false
@@ -722,7 +723,7 @@ struct VideoPlayerView: View {
 
     private var teamTargetControl: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 10) {
+            HStack(alignment: .top, spacing: 10) {
                 ZStack {
                     Circle()
                         .fill(AppTheme.neonPurple.opacity(0.14))
@@ -739,7 +740,7 @@ struct VideoPlayerView: View {
                     Text(teamTargetSubtitle)
                         .font(.caption2)
                         .foregroundStyle(AppTheme.subtleText)
-                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 Spacer(minLength: 0)
@@ -747,7 +748,7 @@ struct VideoPlayerView: View {
 
             teamScanStatusRow
 
-            HStack(spacing: 8) {
+            LazyVGrid(columns: teamTargetGridColumns, alignment: .leading, spacing: 8) {
                 ForEach(viewModel.availableHighlightTeamChoices, id: \.selectionKey) { selection in
                     teamTargetButton(selection)
                 }
@@ -775,6 +776,13 @@ struct VideoPlayerView: View {
         )
     }
 
+    private var teamTargetGridColumns: [GridItem] {
+        let minimumWidth: CGFloat = dynamicTypeSize >= .accessibility1 ? 168 : 118
+        return [
+            GridItem(.adaptive(minimum: minimumWidth, maximum: 240), spacing: 8, alignment: .top)
+        ]
+    }
+
     private func teamTargetButton(_ selection: HighlightTeamSelection) -> some View {
         let isSelected = viewModel.settings.highlightTeamSelection.selectionKey == selection.selectionKey
         let isConfirmedSelection = isSelected && !viewModel.requiresHighlightTeamSelectionConfirmation
@@ -799,13 +807,16 @@ struct VideoPlayerView: View {
                 }
                 Text(selection.displayTitle)
                     .font(.caption.weight(.semibold))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.78)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.88)
+                    .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier(selection.accessibilityIdentifier)
             }
             .foregroundStyle(isConfirmedSelection ? AppTheme.darkBg : AppTheme.neonPurple)
-            .frame(maxWidth: .infinity, minHeight: 48)
+            .frame(maxWidth: .infinity, minHeight: dynamicTypeSize >= .accessibility1 ? 68 : 54)
             .padding(.horizontal, 6)
+            .padding(.vertical, 2)
             .background(
                 isConfirmedSelection ? AppTheme.neonPurple : AppTheme.neonPurple.opacity(0.10),
                 in: .rect(cornerRadius: 12)
@@ -899,7 +910,7 @@ struct VideoPlayerView: View {
     }
 
     private var teamScanStatusRow: some View {
-        HStack(spacing: 8) {
+        HStack(alignment: .top, spacing: 8) {
             if viewModel.isCloudTeamScanInProgress {
                 ProgressView()
                     .tint(AppTheme.neonPurple)
@@ -907,21 +918,26 @@ struct VideoPlayerView: View {
                 Text(viewModel.cloudTeamScanStatusMessage ?? "Scanning teams")
                     .font(.caption.weight(.medium))
                     .foregroundStyle(AppTheme.neonPurple)
+                    .fixedSize(horizontal: false, vertical: true)
             } else if !viewModel.cloudDetectedTeams.isEmpty {
                 Image(systemName: viewModel.requiresHighlightTeamSelectionConfirmation ? "hand.tap.fill" : "checkmark.seal.fill")
                     .font(.caption)
+                    .padding(.top, 1)
                     .foregroundStyle(viewModel.requiresHighlightTeamSelectionConfirmation ? AppTheme.warningYellow : AppTheme.successGreen)
                 Text(teamScanDetectedStatusText)
                     .font(.caption.weight(.medium))
                     .foregroundStyle(viewModel.requiresHighlightTeamSelectionConfirmation ? AppTheme.warningYellow : AppTheme.successGreen)
-                    .lineLimit(1)
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
             } else if viewModel.cloudTeamScanErrorMessage != nil {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.caption)
+                    .padding(.top, 1)
                     .foregroundStyle(AppTheme.warningYellow)
                 Text("Team scan unavailable")
                     .font(.caption.weight(.medium))
                     .foregroundStyle(AppTheme.warningYellow)
+                    .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 0)
                 Button("Retry") {
                     startTeamScanIfNeeded()
@@ -931,10 +947,12 @@ struct VideoPlayerView: View {
             } else {
                 Image(systemName: "sparkles")
                     .font(.caption)
+                    .padding(.top, 1)
                     .foregroundStyle(AppTheme.subtleText)
                 Text("All teams is available until jersey colors are detected")
                     .font(.caption.weight(.medium))
                     .foregroundStyle(AppTheme.subtleText)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 0)
         }
