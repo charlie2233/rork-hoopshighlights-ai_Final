@@ -7,7 +7,7 @@ struct SettingsView: View {
     @Bindable var subscriptionManager: SubscriptionManager
     @Environment(AppLanguageStore.self) private var languageStore
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var showingResetAlert = false
+    @State private var showingResetConfirmation = false
     @State private var showingSignOutConfirmation = false
     @State private var showingPaywall = false
     @State private var showingAdvancedSettings = false
@@ -143,7 +143,11 @@ struct SettingsView: View {
             .sheet(isPresented: $showingPaywall) {
                 PaywallView(subscriptionManager: subscriptionManager, authService: authService)
             }
-            .alert(languageStore.text(.settingsResetTitle), isPresented: $showingResetAlert) {
+            .confirmationDialog(
+                languageStore.text(.settingsResetTitle),
+                isPresented: $showingResetConfirmation,
+                titleVisibility: .visible
+            ) {
                 Button(languageStore.text(.settingsReset), role: .destructive) {
                     viewModel.settings = AnalysisSettings()
                 }
@@ -1514,7 +1518,7 @@ struct SettingsView: View {
 
     private var dangerZone: some View {
         Button {
-            showingResetAlert = true
+            showingResetConfirmation = true
         } label: {
             VStack(spacing: 6) {
                 HStack {
