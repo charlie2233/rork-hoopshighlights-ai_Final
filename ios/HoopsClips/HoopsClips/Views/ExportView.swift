@@ -631,7 +631,7 @@ struct ExportView: View {
                                 .stroke(AppTheme.accentPurple.opacity(0.28), lineWidth: 1)
                         )
                         .overlay(alignment: .topLeading) {
-                            Text(exportedURL.lastPathComponent)
+                            Text("Latest AI edit")
                                 .font(.caption2.monospaced())
                                 .foregroundStyle(.white)
                                 .padding(.horizontal, 10)
@@ -989,7 +989,9 @@ struct ExportView: View {
                             Text(url.lastPathComponent)
                                 .font(.caption.monospaced())
                                 .foregroundStyle(AppTheme.subtleText)
-                                .lineLimit(1)
+                                .lineLimit(2)
+                                .minimumScaleFactor(0.82)
+                                .fixedSize(horizontal: false, vertical: true)
 
                             HStack(spacing: 8) {
                                 RorkMetricChip(

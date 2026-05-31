@@ -177,6 +177,12 @@ struct AIEditView: View {
     private var workflowContent: some View {
         VStack(spacing: 18) {
             heroCard
+            promptCard
+            actionCard
+            statusCard
+            if let previewPlayer {
+                previewCard(player: previewPlayer)
+            }
             planTierCard
             if activePolicy.planTier.isFree, proUXFlags.proUpsellEnabled {
                 proValueCard
@@ -184,15 +190,9 @@ struct AIEditView: View {
             stylePicker
             formatPicker
             durationPicker
-            promptCard
-            statusCard
             aiWorkTimelineCard
             if proUXFlags.cloudLockerEnabled {
                 cloudLockerCard
-            }
-
-            if let previewPlayer {
-                previewCard(player: previewPlayer)
             }
 
             if let receipt = activeWorkReceipt {
@@ -202,8 +202,6 @@ struct AIEditView: View {
             if editPlan != nil, downloadResponse != nil || revisionResponse != nil {
                 revisionCard
             }
-
-            actionCard
         }
     }
 
@@ -214,7 +212,7 @@ struct AIEditView: View {
                 .foregroundStyle(.white)
                 .accessibilityIdentifier("export.aiEdit.section")
 
-            Text("Choose a style, length, and note. HoopClips renders the MP4 in the cloud.")
+            Text("Tap Make My Reel, or add a quick note first. HoopClips renders the MP4 in the cloud.")
                 .font(.subheadline)
                 .foregroundStyle(AppTheme.subtleText)
                 .fixedSize(horizontal: false, vertical: true)
@@ -225,7 +223,7 @@ struct AIEditView: View {
                 aiChip(icon: "timer", text: formattedDuration(selectedDuration))
             }
 
-            Text("Real cloud job status only.")
+            Text("Status comes from live cloud jobs.")
                 .font(.caption.bold())
                 .foregroundStyle(AppTheme.warningYellow)
                 .fixedSize(horizontal: false, vertical: true)
@@ -2152,9 +2150,9 @@ struct AIEditView: View {
 
     private func cloudStatusWarningMessage(for error: Error) -> String {
         if let urlError = error as? URLError, urlError.code == .timedOut {
-            return "Cloud status check timed out. Start a render to use the real cloud job response."
+            return "Cloud status check took too long. You can still start the edit; HoopClips will use the real render response."
         }
-        return "Cloud status check failed. Start a render to use the real cloud job response."
+        return "Cloud status check could not refresh. You can still start the edit; HoopClips will use the real render response."
     }
 
     @MainActor
