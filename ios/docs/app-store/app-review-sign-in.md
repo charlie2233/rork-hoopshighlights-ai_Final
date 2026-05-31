@@ -21,20 +21,21 @@ Password: <APP_REVIEW_PASSWORD>
 
 Email/password sign-in is backed by Firebase Authentication in the Release build.
 
-The public release build uses on-device video analysis only. Cloud ML is intentionally disabled for this launch.
+The public release build uses HoopClips cloud for video upload, AI analysis, AI edit planning, and final video rendering. The iOS app is the control surface for import, review, status, preview, save, and share.
 
 Suggested review path:
 1. Sign in with the provided review account.
-2. Enter the in-app demo verification code.
+2. Complete the sign-in prompt shown by the app.
 3. Open Membership to view Hoopclips Premium.
 4. Use Apple's sandbox purchase flow for Premium Monthly.
 5. Restore purchases from the paywall if needed.
 6. Import a short basketball video from Photos or Files.
-7. Run on-device analysis.
+7. Run cloud AI analysis and wait for the generated clips.
 8. Review generated clips.
-9. Export and save the highlight reel.
+9. Use AI Edit to generate a cloud-rendered highlight reel.
+10. Preview, save to Photos, and share the highlight reel.
 
-No external hardware, cloud dashboard, or admin access is required.
+No external hardware, cloud dashboard, or admin access is required. The app may upload the selected source video to HoopClips cloud only after the reviewer starts analysis.
 ```
 
 ## Backend Account Requirement

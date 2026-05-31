@@ -714,6 +714,9 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
     def active_render_statuses() -> set[str]:
         return {"render_requested", "created", "queued", "rendering"}
 
+    def daily_quota_statuses() -> set[str]:
+        return active_render_statuses() | {"rendered"}
+
     def is_returnable_existing(job: StoredRenderJob) -> bool:
         return job.status in active_render_statuses() or job.status == "rendered"
 
@@ -921,8 +924,13 @@ def create_app(settings: Optional[EditingSettings] = None) -> FastAPI:
             mark_stale_job(job)
         prune_daily_render_counts(request.installId)
         cutoff = now_utc() - timedelta(days=1)
-        durable_daily_count = sum(1 for job in install_jobs if job.created_at >= cutoff and job.status != "cancelled")
-        memory_daily_count = len(render_created_by_install.get(request.installId, []))
+        quota_statuses = daily_quota_statuses()
+        durable_daily_count = sum(1 for job in install_jobs if job.created_at >= cutoff and job.status in quota_statuses)
+        memory_daily_count = sum(
+            1
+            for job in render_jobs.values()
+            if job.install_id == request.installId and job.created_at >= cutoff and job.status in quota_statuses
+        )
         if max(durable_daily_count, memory_daily_count) >= policy.maxDailyRenders:
             raise EditingServiceError(429, "daily_render_limit", "Daily AI edit render limit reached for this plan.")
         active_ids = {

@@ -106,6 +106,11 @@ struct AIEditView: View {
                 proTemplateInfoSheet(for: template)
             }
         }
+        .alert("Saved to Photos", isPresented: $viewModel.showingSaveSuccess) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text("Your HoopClips video is in your photo library.")
+        }
         .task(id: viewModel.installID) {
             await refreshCloudEditVersion()
             await refreshRenderHistory()
@@ -174,7 +179,7 @@ struct AIEditView: View {
                 .foregroundStyle(.white)
                 .accessibilityIdentifier("export.aiEdit.section")
 
-            Text("Pick a style, add a side note, and HoopClips renders the MP4 in the cloud.")
+            Text("Pick a style, add a side note, and HoopClips makes the finished video in the cloud.")
                 .font(.subheadline)
                 .foregroundStyle(AppTheme.subtleText)
 
@@ -213,12 +218,27 @@ struct AIEditView: View {
                         .font(.headline)
                         .foregroundStyle(.white)
                         .accessibilityIdentifier("export.aiEdit.plan.current")
-                    Text("\(policy.maxDailyRenders) AI edits/day - \(policy.maxOutputResolution) max")
+                    Text("\(policy.maxDailyRenders) video edits/day - \(policy.maxOutputResolution) max")
                         .font(.caption.bold())
                         .foregroundStyle(AppTheme.warningYellow)
                         .accessibilityIdentifier("export.aiEdit.queue.label")
                 }
                 Spacer()
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(policy.planLimitRows, id: \.self) { row in
+                    Label(row, systemImage: "checkmark.circle.fill")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.88))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                if policy.planTier.isFree {
+                    Label("Failed HoopClips jobs do not use a free edit.", systemImage: "arrow.counterclockwise.circle.fill")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(AppTheme.warningYellow)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
         }
         .padding(14)
@@ -241,7 +261,7 @@ struct AIEditView: View {
                     Text("Upgrade to Pro")
                         .font(.headline)
                         .foregroundStyle(.white)
-                    Text("Priority rendering, cleaner exports, longer videos, and more revisions.")
+                    Text("Priority rendering, 1080p exports, Pro templates, and 10 revisions/edit.")
                         .font(.caption)
                         .foregroundStyle(AppTheme.subtleText)
                         .fixedSize(horizontal: false, vertical: true)
@@ -298,7 +318,7 @@ struct AIEditView: View {
 
     private var stylePicker: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Template Pack")
+            Text("Edit Style")
                 .font(.headline)
                 .foregroundStyle(.white)
 
@@ -454,7 +474,7 @@ struct AIEditView: View {
     private var formatPicker: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("Target Format")
+                Text("Video Shape")
                     .font(.headline)
                     .foregroundStyle(.white)
                 Spacer()
@@ -464,7 +484,7 @@ struct AIEditView: View {
             }
 
             HStack(spacing: 8) {
-                ForEach([CloudEditAspectRatio.vertical, .widescreen], id: \.rawValue) { aspectRatio in
+                ForEach(displayedAspectRatios, id: \.rawValue) { aspectRatio in
                     Button {
                         selectedAspectRatio = aspectRatio
                     } label: {
@@ -534,6 +554,14 @@ struct AIEditView: View {
                         .padding(.vertical, 18)
                         .allowsHitTesting(false)
                 }
+            }
+
+            if let proIntentWarningText {
+                Label(proIntentWarningText, systemImage: "lock.fill")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(AppTheme.warningYellow)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("export.aiEdit.userPrompt.proIntentWarning")
             }
         }
         .padding(14)
@@ -606,7 +634,7 @@ struct AIEditView: View {
         let timeline = activeWorkTimeline
         return VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Label("AI Work Timeline", systemImage: "sparkles.rectangle.stack.fill")
+                Label("AI Edit Timeline", systemImage: "sparkles.rectangle.stack.fill")
                     .font(.headline)
                     .foregroundStyle(.white)
                 Spacer()
@@ -620,7 +648,7 @@ struct AIEditView: View {
                 }
             }
 
-            Text("Rows update from cloud render status; pending steps remain a checklist until the server reports progress.")
+            Text("Only real HoopClips job updates are shown; pending steps stay as a checklist until the server reports progress.")
                 .font(.caption)
                 .foregroundStyle(AppTheme.subtleText)
                 .fixedSize(horizontal: false, vertical: true)
@@ -699,11 +727,17 @@ struct AIEditView: View {
                     .accessibilityIdentifier("export.aiEdit.cloudLocker.empty")
             } else {
                 VStack(spacing: 10) {
-                    ForEach(Array(renderHistory.prefix(5)), id: \.renderJobId) { render in
+                    ForEach(Array(renderHistory.prefix(8)), id: \.renderJobId) { render in
                         cloudLockerRenderRow(render)
                     }
                 }
             }
+
+            Text("Cloud copies expire on your plan. Videos saved to Photos or kept in local History stay on this iPhone.")
+                .font(.caption2)
+                .foregroundStyle(AppTheme.subtleText)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("export.aiEdit.cloudLocker.retentionCopy")
 
             if let lockerErrorMessage {
                 Text(lockerErrorMessage)
@@ -744,6 +778,21 @@ struct AIEditView: View {
 
             HStack(spacing: 8) {
                 if render.status == .rendered {
+                    Button {
+                        Task { await saveLockerRenderToPhotos(render) }
+                    } label: {
+                        Label(
+                            isExpired ? "Expired" : (isBusy && isPreparingShare ? "Saving" : "Save"),
+                            systemImage: isExpired ? "exclamationmark.triangle.fill" : "photo.badge.arrow.down.fill"
+                        )
+                            .font(.caption.bold())
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(AppTheme.successGreen)
+                    .disabled(isExpired || isWorking || isPreparingShare || lockerBusyRenderJobID != nil)
+                    .accessibilityIdentifier("export.aiEdit.cloudLocker.save.\(render.renderJobId)")
+
                     Button {
                         Task { await redownloadLockerRender(render) }
                     } label: {
@@ -857,7 +906,7 @@ struct AIEditView: View {
                 }
                 .accessibilityIdentifier("export.aiEdit.preview")
                 .accessibilityLabel("Rendered AI edit preview")
-                .accessibilityHint("Plays the cloud-rendered MP4.")
+                .accessibilityHint("Plays the cloud-rendered video.")
         }
         .padding(14)
         .rorkCard(cornerRadius: 16, stroke: AppTheme.softBorder, glowOpacity: 0.04)
@@ -874,7 +923,7 @@ struct AIEditView: View {
                             .foregroundStyle(.white)
                             .accessibilityIdentifier("export.aiEdit.proInfoSheet")
 
-                        Text("Pro unlocks the faster, cleaner cloud editing tier. Subscriptions are purchased through App Store in-app purchase via RevenueCat when this build is configured with a live offering.")
+                        Text("Pro unlocks the faster, cleaner cloud editing tier with App Store in-app purchase.")
                             .font(.subheadline)
                             .foregroundStyle(AppTheme.subtleText)
                             .fixedSize(horizontal: false, vertical: true)
@@ -951,7 +1000,7 @@ struct AIEditView: View {
                             Text("Available with Pro")
                                 .font(.headline)
                                 .foregroundStyle(.white)
-                            Text("This template renders in the cloud after an active Pro entitlement is verified. Upgrade uses App Store in-app purchase via RevenueCat when subscription offerings are configured.")
+                            Text("This template unlocks with Pro and uses HoopClips cloud to make the finished video.")
                                 .font(.caption)
                                 .foregroundStyle(AppTheme.subtleText)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -1029,12 +1078,26 @@ struct AIEditView: View {
                 .tint(AppTheme.warningYellow)
                 .disabled(primaryActionDisabled)
                 .accessibilityIdentifier("export.aiEdit.retryButton")
-                .accessibilityHint("Retries the cloud render when the backend allows it.")
+                .accessibilityHint("Retries the cloud job when HoopClips allows it.")
             }
 
             if downloadResponse != nil {
+                Button {
+                    Task { await saveRenderedVideoToPhotos() }
+                } label: {
+                    Label("Save to Photos", systemImage: "photo.badge.arrow.down.fill")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(AppTheme.successGreen)
+                .disabled(isPreparingShare || viewModel.exportService.exportedURL == nil)
+                .accessibilityIdentifier("export.aiEdit.saveToPhotosButton")
+                .accessibilityHint("Saves the finished video to your photo library.")
+
                 Button(action: shareRenderedVideo) {
-                    Label(isPreparingShare ? "Preparing MP4" : "Share", systemImage: "square.and.arrow.up.fill")
+                    Label(isPreparingShare ? "Getting Video Ready" : "Share", systemImage: "square.and.arrow.up.fill")
                         .font(.headline)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
@@ -1043,7 +1106,7 @@ struct AIEditView: View {
                 .tint(AppTheme.neonPurple)
                 .disabled(isPreparingShare)
                 .accessibilityIdentifier("export.aiEdit.shareButton")
-                .accessibilityHint("Downloads the rendered MP4 and opens the system share sheet.")
+                .accessibilityHint("Downloads the finished video and opens the system share sheet.")
             }
         }
         .padding(14)
@@ -1212,15 +1275,15 @@ struct AIEditView: View {
                 ),
                 CloudEditWorkStep(
                     stepId: "rendering_mp4",
-                    title: "Rendering final MP4",
-                    detail: phase == .rendered ? "Cloud renderer finished the MP4." : "Cloud renderer is creating the MP4.",
+                    title: "Making final video",
+                    detail: phase == .rendered ? "HoopClips finished the video." : "HoopClips is creating the video.",
                     status: renderingStepStatus,
                     startedAt: nil,
                     completedAt: nil
                 ),
                 CloudEditWorkStep(
                     stepId: "finalizing_download",
-                    title: "Finalizing your MP4",
+                    title: "Finalizing your video",
                     detail: downloadResponse == nil ? nil : "Download is ready for preview and sharing.",
                     status: finalizingStepStatus,
                     startedAt: nil,
@@ -1253,7 +1316,7 @@ struct AIEditView: View {
             "Revision limit: \(policy.maxRevisionsPerEdit) per edit.",
         ]
         if let outputDuration {
-            rows.insert("Rendered \(Clip.formatTime(outputDuration)) MP4.", at: 5)
+            rows.insert("Finished \(Clip.formatTime(outputDuration)) video.", at: 5)
         }
         if let storageExpiresAt {
             rows.append("Stored until \(storageExpiresAt).")
@@ -1378,7 +1441,7 @@ struct AIEditView: View {
         }
         rows.appendIfMissing("Added \(receipt.slowMotionMomentCount) slow-motion moments.")
         if let duration = receipt.outputDurationSeconds {
-            rows.appendIfMissing("Rendered \(Clip.formatTime(duration)) MP4.")
+            rows.appendIfMissing("Finished \(Clip.formatTime(duration)) video.")
         }
         if let outputResolution = receipt.outputResolution {
             rows.appendIfMissing("Export limit: \(outputResolution).")
@@ -1526,13 +1589,13 @@ struct AIEditView: View {
     private var gptEditingReadinessMessage: String? {
         guard let flags = serviceVersion?.featureFlags else { return nil }
         if !flags.allowsGptClipEditing {
-            return "GPT-led clip selection is disabled by the cloud backend."
+            return "AI clip selection is temporarily paused by HoopClips."
         }
         if !flags.allowsGptPlanEditing {
-            return "GPT edit planning is disabled by the cloud backend."
+            return "AI edit planning is temporarily paused by HoopClips."
         }
         if !flags.allowsGptRevisionEditing {
-            return "GPT revision planning is disabled by the cloud backend."
+            return "AI revision planning is temporarily paused by HoopClips."
         }
         return nil
     }
@@ -1570,7 +1633,7 @@ struct AIEditView: View {
 
     private var launchReadinessFlagMessage: String? {
         guard let flags = serviceVersion?.featureFlags, !flags.hasRequiredLaunchReadinessFlags else { return nil }
-        return "Cloud editing flags are missing; deploy the current backend before TestFlight smoke."
+        return "HoopClips cloud is missing required launch flags; deploy the current service before TestFlight smoke."
     }
 
     private var cloudEditVersionBlockMessage: String? {
@@ -1595,10 +1658,10 @@ struct AIEditView: View {
             return cloudEditActionBlockedMessage
         }
         if serviceStatusIsChecking {
-            return "Checking cloud status. You can still start a render."
+            return "Checking HoopClips status. You can still start the edit."
         }
         if !aiEditRevisionsAvailable {
-            return "AI edit revisions are temporarily paused by the cloud backend."
+            return "AI edit revisions are temporarily paused by HoopClips."
         }
         if let serviceStatusErrorMessage {
             return serviceStatusErrorMessage
@@ -1654,12 +1717,12 @@ struct AIEditView: View {
             return "Templates Paused"
         }
         if gptEditingReadinessMessage != nil {
-            return "GPT Editing Paused"
+            return "AI Editing Paused"
         }
         if revisionResponse != nil, downloadResponse == nil {
-            return "Render Revision"
+            return "Make Revised Video"
         }
-        return downloadResponse == nil ? "Generate Highlight Reel" : "Render Again"
+        return downloadResponse == nil ? "Make My Reel" : "Render Again"
     }
 
     private var primaryActionIcon: String {
@@ -1671,28 +1734,28 @@ struct AIEditView: View {
 
     private var revisionStatusText: String {
         if let pendingRevisionCommand, revisionResponse != nil, downloadResponse == nil {
-            return "\(pendingRevisionCommand.title) revision is ready. Render it to create a new MP4."
+            return "\(pendingRevisionCommand.title) revision is ready. Make the new video when you are ready."
         }
         if let pendingRevisionCommand {
-            return "Last revision: \(pendingRevisionCommand.title). Pick another change or render again."
+            return "Last revision: \(pendingRevisionCommand.title). Pick another change or make it again."
         }
-        return "Ask HoopClips to patch the edit plan, then render the revised MP4."
+        return "Ask HoopClips for a cleaner edit, then make the revised video."
     }
 
     private func revisionPlannerText(for response: CloudEditRevisionResponse) -> String? {
         if response.gptRevisionPatchApplied == true {
-            return "GPT Edit Cool planned this revision; backend validation approved the patch."
+            return "HoopClips planned this revision and approved it for rendering."
         }
         switch response.gptRevisionPatchStatus {
         case "fallback":
             if let reason = response.gptRevisionPatchFallbackReason, !reason.isEmpty {
-                return "GPT patch fell back to deterministic editing: \(reason.replacingOccurrences(of: "_", with: " "))."
+                return "HoopClips used the safe revision path: \(reason.replacingOccurrences(of: "_", with: " "))."
             }
-            return "GPT patch fell back to deterministic editing."
+            return "HoopClips used the safe revision path."
         case "disabled":
-            return "Deterministic revision patch; GPT revision planning is disabled."
+            return "HoopClips used the standard revision path."
         case "rejected":
-            return "GPT patch was rejected by backend validation."
+            return "HoopClips could not safely apply that revision."
         case "not_requested":
             return "Deterministic revision patch."
         default:
@@ -1718,22 +1781,31 @@ struct AIEditView: View {
         return String(trimmed.prefix(Self.maxUserPromptCharacters))
     }
 
+    private var proIntentWarningText: String? {
+        guard activePolicy.planTier.isFree else { return nil }
+        let prompt = userEditPrompt.lowercased()
+        guard !prompt.isEmpty else { return nil }
+        let lockedTerms = ["nba", "cinematic", "mixtape", "recruiting", "team highlight", "team package"]
+        guard lockedTerms.contains(where: { prompt.contains($0) }) else { return nil }
+        return "That exact style is Pro. Free will use the closest available style."
+    }
+
     private var renderStateGuidance: String {
         switch phase {
         case .planning:
             return "Ready to ask HoopClips to build your AI edit in the cloud."
         case .planReady:
-            return "HoopClips picked clips and applied your style. Next step is the cloud MP4 render."
+            return "HoopClips picked clips and applied your style. Next step is making the finished video."
         case .renderRequested, .created, .queued:
             return "Your highlight reel is queued. You can leave the app - HoopClips keeps editing in the cloud."
         case .rendering:
-            return "Rendering your highlight reel in the cloud. Come back anytime to check the finished MP4."
+            return "Making your highlight reel in the cloud. Come back anytime to check the finished video."
         case .rendered:
-            return "Your MP4 is ready to preview and share."
+            return "Your video is ready to preview and share."
         case .failed:
-            return "Render failed. You can retry when the backend says it is safe."
+            return "The video did not finish. You can retry when HoopClips is ready."
         case .failedTimeout:
-            return "Rendering timed out. Try a shorter edit or retry when the backend is ready."
+            return "Making the video timed out. Try a shorter edit or retry when HoopClips is ready."
         case .cancelled:
             return "Render was cancelled."
         }
@@ -1753,13 +1825,13 @@ struct AIEditView: View {
         case .planning:
             return "Cloud edit is reviewing candidate clips and building the plan."
         case .planReady:
-            return "Edit plan is ready; cloud render is the next real step."
+            return "The edit plan is ready; making the video is the next real step."
         case .renderRequested, .created:
-            return "Approved edit plan is being handed to the cloud renderer."
+            return "The approved edit plan is being sent to HoopClips."
         case .queued:
             return "Cloud edit is queued; HoopClips will keep checking real job status."
         case .rendering:
-            return "Cloud renderer is producing the approved MP4."
+            return "HoopClips is producing the approved video."
         case .rendered, .failed, .failedTimeout, .cancelled:
             return nil
         }
@@ -1782,7 +1854,7 @@ struct AIEditView: View {
         case "adding_watermark_outro":
             return "Plan rules, watermark, and outro are being validated."
         case "rendering_mp4":
-            return "Cloud renderer is producing the approved MP4."
+            return "HoopClips is producing the approved video."
         case "finalizing_download":
             return "Preview and share access are being finalized."
         default:
@@ -1815,6 +1887,13 @@ struct AIEditView: View {
             options.insert(selectedDuration, at: 0)
         }
         return options.sorted()
+    }
+
+    private var displayedAspectRatios: [CloudEditAspectRatio] {
+        if selectedTemplateID == CloudEditPreset.coachReview.templateID {
+            return [.source, .widescreen]
+        }
+        return [.vertical, .widescreen]
     }
 
     private func formattedDuration(_ seconds: Int) -> String {
@@ -1899,6 +1978,18 @@ struct AIEditView: View {
     private func shareRenderedVideo() {
         guard !isPreparingShare else { return }
         Task { await prepareShareSheet() }
+    }
+
+    @MainActor
+    private func saveRenderedVideoToPhotos() async {
+        guard viewModel.exportService.exportedURL != nil else {
+            errorMessage = "Preview the finished video first, then save it to Photos."
+            return
+        }
+        await viewModel.saveToPhotos()
+        if viewModel.showingSaveSuccess {
+            HoopsAccessibility.announce("HoopClips video saved to Photos.")
+        }
     }
 
     @MainActor
@@ -2001,6 +2092,42 @@ struct AIEditView: View {
         } catch {
             lockerErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             HoopsAccessibility.announce("Could not download that cloud render.")
+        }
+    }
+
+    @MainActor
+    private func saveLockerRenderToPhotos(_ render: CloudEditRenderStatusResponse) async {
+        guard !isPreparingShare, !isLockerRenderExpired(render) else { return }
+        lockerBusyRenderJobID = render.renderJobId
+        isPreparingShare = true
+        lockerErrorMessage = nil
+        defer {
+            isPreparingShare = false
+            lockerBusyRenderJobID = nil
+        }
+
+        do {
+            let download = try await cloudEditService.fetchDownloadURL(
+                renderJobID: render.renderJobId,
+                installID: viewModel.installID
+            )
+            downloadResponse = download
+            renderStatus = render
+            policySummary = render.policy ?? policySummary
+            phase = render.status
+            try await attachDownloadedCloudPreview(from: download)
+            await viewModel.saveToPhotos()
+            LaunchTelemetry.shared.recordAIEditEvent(
+                "ios.cloud_locker.saved_to_photos",
+                editJobID: render.editJobId,
+                renderJobID: render.renderJobId,
+                revisionID: render.revisionId,
+                templateID: render.templateId,
+                planTier: render.planTier?.rawValue
+            )
+        } catch {
+            lockerErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            HoopsAccessibility.announce("Could not save that HoopClips video.")
         }
     }
 
@@ -2225,7 +2352,7 @@ struct AIEditView: View {
                 templateID: revision.revisedPlan.templateId,
                 planTier: policySummary?.planTier.rawValue
             )
-            HoopsAccessibility.announce("Revision ready. Render it to create a new MP4.")
+            HoopsAccessibility.announce("Revision ready. Make the new video when you are ready.")
         } catch {
             phase = .failed
             errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
@@ -2362,7 +2489,7 @@ struct AIEditView: View {
             )
         } catch {
             let failureDescription = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-            errorMessage = "Could not prepare the MP4 for sharing. Try again in a moment."
+            errorMessage = "Could not prepare the video for sharing. Try again in a moment."
             LaunchTelemetry.shared.recordAIEditEvent(
                 "ios.share.failed",
                 editJobID: editJob?.editJobId,

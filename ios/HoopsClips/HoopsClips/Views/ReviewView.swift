@@ -22,15 +22,25 @@ struct ReviewView: View {
 
     private enum FilterOption: String, CaseIterable {
         case all = "All"
-        case needsReview = "Needs Review"
+        case selectedTeam = "Team"
+        case teamUncertain = "Check Team"
+        case defense = "Defense"
+        case blocks = "Blocks"
+        case steals = "Steals"
+        case needsReview = "Check"
         case kept = "Kept"
-        case discarded = "Discarded"
+        case discarded = "Skipped"
     }
 
     private var filteredClips: [Clip] {
         let base: [Clip]
         switch filterOption {
         case .all: base = viewModel.clips
+        case .selectedTeam: base = viewModel.clips.filter(clipMatchesSelectedTeam)
+        case .teamUncertain: base = viewModel.clips.filter(clipNeedsTeamReview)
+        case .defense: base = viewModel.clips.filter(isDefensiveClip)
+        case .blocks: base = viewModel.clips.filter(isBlockClip)
+        case .steals: base = viewModel.clips.filter(isStealClip)
         case .needsReview: base = viewModel.needsReviewClips
         case .kept: base = viewModel.keptClips
         case .discarded: base = viewModel.discardedClips
@@ -53,6 +63,7 @@ struct ReviewView: View {
                         VStack(spacing: 16) {
                             headerStats
                             reviewProgressStrip
+                            reviewContextStrip
                             quickActionsBar
                             aiEditEntryCard
                             filterBar
@@ -75,7 +86,7 @@ struct ReviewView: View {
                             Button("Keep All", systemImage: "checkmark.circle") {
                                 viewModel.keepAllClips()
                             }
-                            Button("Discard All", systemImage: "xmark.circle") {
+                            Button("Skip All", systemImage: "xmark.circle") {
                                 viewModel.discardAllClips()
                             }
                             Divider()
@@ -87,7 +98,7 @@ struct ReviewView: View {
                                 .foregroundStyle(AppTheme.neonPurple)
                         }
                         .accessibilityLabel("More review actions")
-                        .accessibilityHint("Keep all, discard all, or change sorting.")
+                        .accessibilityHint("Keep all, skip all, or change sorting.")
                     }
                 }
             }
@@ -100,7 +111,7 @@ struct ReviewView: View {
     private var emptyState: some View {
         HoopsEmptyStateCard(
             title: "No Clips Yet",
-            message: "Import a video and run analysis. Your best plays will land here ready to keep, discard, and fine-tune.",
+            message: "Import a video and run analysis. Your best plays will land here ready to keep, skip, and fine-tune.",
             icon: "film.stack.fill"
         )
     }
@@ -115,13 +126,13 @@ struct ReviewView: View {
             )
             reviewStatCard(
                 value: "\(viewModel.discardedClips.count)",
-                label: "Discarded",
+                label: "Skipped",
                 icon: "xmark.circle.fill",
                 color: AppTheme.dangerRed
             )
             reviewStatCard(
                 value: "\(viewModel.needsReviewClips.count)",
-                label: "Review",
+                label: "Check",
                 icon: "exclamationmark.triangle.fill",
                 color: AppTheme.warningYellow
             )
@@ -205,10 +216,60 @@ struct ReviewView: View {
         viewModel.clips.filter { $0.confidence < 0.5 && $0.isKept }.count
     }
 
+    private var selectedTeamFilterIsAvailable: Bool {
+        viewModel.settings.highlightTeamSelection.mode == .team
+    }
+
+    private var availableFilterOptions: [FilterOption] {
+        var options: [FilterOption] = [.all]
+        if selectedTeamFilterIsAvailable {
+            options.append(.selectedTeam)
+        }
+        options.append(contentsOf: [.teamUncertain, .defense, .blocks, .steals, .needsReview, .kept, .discarded])
+        return options
+    }
+
+    private var selectedTeamSummaryTitle: String {
+        let selection = viewModel.settings.highlightTeamSelection
+        guard selection.mode == .team else { return "All teams" }
+        return selection.displayTitle
+    }
+
+    private var reviewContextStrip: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                RorkMetricChip(
+                    icon: selectedTeamFilterIsAvailable ? "person.2.fill" : "person.3.fill",
+                    value: selectedTeamSummaryTitle,
+                    label: "Team",
+                    tint: selectedTeamFilterIsAvailable ? AppTheme.warningYellow : AppTheme.neonPurple
+                )
+                RorkMetricChip(
+                    icon: "shield.fill",
+                    value: "\(clipCount(for: .defense))",
+                    label: "Defense",
+                    tint: .orange
+                )
+                RorkMetricChip(
+                    icon: "person.2.badge.gearshape.fill",
+                    value: "\(clipCount(for: .teamUncertain))",
+                    label: "Team Check",
+                    tint: AppTheme.warningYellow
+                )
+            }
+            .padding(.horizontal, 2)
+        }
+        .padding(10)
+        .rorkCard(cornerRadius: 14, fill: AnyShapeStyle(AppTheme.surfaceBg.opacity(0.45)), stroke: AppTheme.softBorder, glowOpacity: 0.03)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Review context")
+        .accessibilityValue("\(selectedTeamSummaryTitle), \(clipCount(for: .defense)) defensive clips, \(clipCount(for: .teamUncertain)) clips need team check")
+    }
+
     private var quickActionsBar: some View {
         HStack(spacing: 10) {
             reviewQuickActionButton(
-                title: "Keep High",
+                title: "Keep Best",
                 subtitle: "\(highConfidencePendingCount) clips",
                 icon: "checkmark.seal.fill",
                 tint: AppTheme.successGreen,
@@ -220,7 +281,7 @@ struct ReviewView: View {
             }
 
             reviewQuickActionButton(
-                title: "Discard Low",
+                title: "Skip Low",
                 subtitle: "\(lowConfidenceKeptCount) clips",
                 icon: "xmark.seal.fill",
                 tint: AppTheme.dangerRed,
@@ -253,7 +314,7 @@ struct ReviewView: View {
                     Text("Make Highlight Reel")
                         .font(.headline)
                         .foregroundStyle(.white)
-                    Text(viewModel.cloudEditUnavailableReason ?? "Continue to Export to choose AI edit style, length, render, revise, and share.")
+                    Text(viewModel.cloudEditUnavailableReason ?? "Pick a style, add a note, and HoopClips will make the video.")
                         .font(.caption)
                         .foregroundStyle(AppTheme.subtleText)
                         .fixedSize(horizontal: false, vertical: true)
@@ -265,7 +326,7 @@ struct ReviewView: View {
             Button {
                 openExport()
             } label: {
-                Label("Continue to Export", systemImage: "square.and.arrow.up.fill")
+                Label("Make My Highlight", systemImage: "sparkles")
                     .font(.subheadline.bold())
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 11)
@@ -274,7 +335,7 @@ struct ReviewView: View {
             .tint(AppTheme.accentPurple)
             .disabled(!viewModel.canRequestCloudEdit)
             .accessibilityIdentifier("review.continueToExportButton")
-            .accessibilityHint("Opens Export with AI edit style, target length, render, preview, and share controls.")
+            .accessibilityHint("Opens AI Edit with style, length, preview, save, and share controls.")
         }
         .padding(14)
         .rorkCard(
@@ -346,7 +407,7 @@ struct ReviewView: View {
     private var filterBar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                ForEach(FilterOption.allCases, id: \.self) { option in
+                ForEach(availableFilterOptions, id: \.self) { option in
                     Button {
                         HoopsAccessibility.animate(reduceMotion: reduceMotion) { filterOption = option }
                     } label: {
@@ -415,32 +476,74 @@ struct ReviewView: View {
         switch filterOption {
         case .all:
             return "No clips"
+        case .selectedTeam:
+            return "No selected-team clips"
+        case .teamUncertain:
+            return "No clips to check"
+        case .defense:
+            return "No defensive clips"
+        case .blocks:
+            return "No block clips"
+        case .steals:
+            return "No steal clips"
         case .needsReview:
-            return "No needs review clips"
+            return "No clips to check"
         case .kept:
             return "No kept clips"
         case .discarded:
-            return "No discarded clips"
+            return "No skipped clips"
         }
     }
 
     private func filterTitle(for option: FilterOption) -> String {
         switch option {
+        case .all:
+            return "All \(viewModel.clips.count)"
+        case .selectedTeam:
+            return "Team \(clipCount(for: option))"
+        case .teamUncertain:
+            return "Check Team \(clipCount(for: option))"
+        case .defense:
+            return "Defense \(clipCount(for: option))"
+        case .blocks:
+            return "Blocks \(clipCount(for: option))"
+        case .steals:
+            return "Steals \(clipCount(for: option))"
         case .needsReview:
-            return "\(option.rawValue) \(viewModel.needsReviewClips.count)"
-        default:
-            return option.rawValue
+            return "Check \(viewModel.needsReviewClips.count)"
+        case .kept:
+            return "Kept \(viewModel.keptClips.count)"
+        case .discarded:
+            return "Skipped \(viewModel.discardedClips.count)"
         }
     }
 
     private func filterAccessibilityValue(for option: FilterOption) -> String {
-        let count = switch option {
-        case .all: viewModel.clips.count
-        case .needsReview: viewModel.needsReviewClips.count
-        case .kept: viewModel.keptClips.count
-        case .discarded: viewModel.discardedClips.count
-        }
+        let count = clipCount(for: option)
         return filterOption == option ? "Selected, \(count) clips" : "\(count) clips"
+    }
+
+    private func clipCount(for option: FilterOption) -> Int {
+        switch option {
+        case .all:
+            return viewModel.clips.count
+        case .selectedTeam:
+            return viewModel.clips.filter(clipMatchesSelectedTeam).count
+        case .teamUncertain:
+            return viewModel.clips.filter(clipNeedsTeamReview).count
+        case .defense:
+            return viewModel.clips.filter(isDefensiveClip).count
+        case .blocks:
+            return viewModel.clips.filter(isBlockClip).count
+        case .steals:
+            return viewModel.clips.filter(isStealClip).count
+        case .needsReview:
+            return viewModel.needsReviewClips.count
+        case .kept:
+            return viewModel.keptClips.count
+        case .discarded:
+            return viewModel.discardedClips.count
+        }
     }
 
     private func clipCard(clip: Clip) -> some View {
@@ -480,7 +583,7 @@ struct ReviewView: View {
                         }
                         .foregroundStyle(AppTheme.subtleText)
 
-                        clipReviewBadges(clip)
+                        clipContextBadges(clip)
                     }
 
                     Spacer()
@@ -551,7 +654,7 @@ struct ReviewView: View {
                     HStack(spacing: 6) {
                         Image(systemName: clip.isKept ? "xmark" : "checkmark")
                             .font(.caption.bold())
-                        Text(clip.isKept ? "Discard" : "Keep")
+                        Text(clip.isKept ? "Skip" : "Keep")
                             .font(.caption.bold())
                     }
                     .foregroundStyle(clip.isKept ? AppTheme.dangerRed : AppTheme.successGreen)
@@ -564,9 +667,9 @@ struct ReviewView: View {
                 }
                 .sensoryFeedback(.impact(weight: .light), trigger: keepTrigger)
                 .sensoryFeedback(.impact(weight: .light), trigger: discardTrigger)
-                .accessibilityLabel(clip.isKept ? "Discard clip" : "Keep clip")
-                .accessibilityValue(clip.isKept ? "Kept" : "Discarded")
-                .accessibilityHint("Toggles whether this clip is included in the export.")
+                .accessibilityLabel(clip.isKept ? "Skip clip" : "Keep clip")
+                .accessibilityValue(clip.isKept ? "Kept" : "Skipped")
+                .accessibilityHint("Toggles whether this clip is included in the finished video.")
                 .hoopsSelectedState(clip.isKept)
             }
             .padding(.horizontal, 12)
@@ -648,6 +751,129 @@ struct ReviewView: View {
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private func clipContextBadges(_ clip: Clip) -> some View {
+        let teamTitle = clipTeamDisplayTitle(clip)
+        if teamTitle != nil || !clip.reviewBadges.isEmpty || isDefensiveClip(clip) {
+            HStack(spacing: 6) {
+                if let teamTitle {
+                    Label(teamTitle, systemImage: clipNeedsTeamReview(clip) ? "person.2.badge.gearshape.fill" : "person.2.fill")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(clipNeedsTeamReview(clip) ? AppTheme.warningYellow : AppTheme.neonPurple)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background((clipNeedsTeamReview(clip) ? AppTheme.warningYellow : AppTheme.neonPurple).opacity(0.14), in: .capsule)
+                        .accessibilityLabel(clipNeedsTeamReview(clip) ? "team attribution needs review" : "team attribution")
+                        .accessibilityValue(teamTitle)
+                }
+
+                if isDefensiveClip(clip) {
+                    Label(defensiveBadgeTitle(for: clip), systemImage: defensiveBadgeIcon(for: clip))
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.orange)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(Color.orange.opacity(0.14), in: .capsule)
+                        .accessibilityLabel("defensive highlight")
+                        .accessibilityValue(defensiveBadgeTitle(for: clip))
+                }
+
+                ForEach(clip.reviewBadges, id: \.self) { badge in
+                    Label(badge.title, systemImage: badge.systemImage)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(AppTheme.warningYellow)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(AppTheme.warningYellow.opacity(0.14), in: .capsule)
+                        .accessibilityLabel(badge.accessibilityLabel)
+                }
+            }
+        }
+    }
+
+    private func clipTeamDisplayTitle(_ clip: Clip) -> String? {
+        guard let teamAttribution = clip.teamAttribution else { return nil }
+        return teamAttribution.label ?? teamAttribution.colorLabel ?? readableTeamIdentifier(teamAttribution.teamId)
+    }
+
+    private func readableTeamIdentifier(_ value: String?) -> String? {
+        guard let value, !value.isEmpty else { return nil }
+        return value
+            .replacingOccurrences(of: "_", with: " ")
+            .split(separator: " ")
+            .map { $0.capitalized }
+            .joined(separator: " ")
+    }
+
+    private func clipMatchesSelectedTeam(_ clip: Clip) -> Bool {
+        let selection = viewModel.settings.highlightTeamSelection
+        guard selection.mode == .team,
+              let attribution = clip.teamAttribution,
+              !clipNeedsTeamReview(clip) else {
+            return false
+        }
+        return normalizedTeamKeys(for: selection).contains { key in
+            normalizedTeamKeys(for: attribution).contains(key)
+        }
+    }
+
+    private func clipNeedsTeamReview(_ clip: Clip) -> Bool {
+        if clip.teamAttributionStatus == "uncertain" {
+            return true
+        }
+        guard let attribution = clip.teamAttribution else {
+            return viewModel.settings.highlightTeamSelection.mode == .team
+        }
+        return attribution.confidence < viewModel.settings.highlightTeamSelection.confidenceThreshold
+    }
+
+    private func normalizedTeamKeys(for selection: HighlightTeamSelection) -> [String] {
+        [selection.teamId, selection.colorLabel, selection.label]
+            .compactMap(normalizedTeamKey)
+    }
+
+    private func normalizedTeamKeys(for attribution: ClipTeamAttribution) -> [String] {
+        [attribution.teamId, attribution.colorLabel, attribution.label]
+            .compactMap(normalizedTeamKey)
+    }
+
+    private func normalizedTeamKey(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return normalized.isEmpty ? nil : normalized
+    }
+
+    private func isDefensiveClip(_ clip: Clip) -> Bool {
+        isBlockClip(clip) || isStealClip(clip) || normalizedClipLabel(clip).contains(where: { token in
+            ["defense", "defensive", "deflection", "pressure", "lockdown", "contest", "charge", "stop", "turnover", "forced", "strip"].contains(token)
+        })
+    }
+
+    private func isBlockClip(_ clip: Clip) -> Bool {
+        clip.action == .block || normalizedClipLabel(clip).contains("block") || normalizedClipLabel(clip).contains("blocked")
+    }
+
+    private func isStealClip(_ clip: Clip) -> Bool {
+        clip.action == .steal || normalizedClipLabel(clip).contains("steal") || normalizedClipLabel(clip).contains("strip")
+    }
+
+    private func normalizedClipLabel(_ clip: Clip) -> Set<String> {
+        let words = clip.label.lowercased().split { !$0.isLetter && !$0.isNumber }
+        return Set(words.map(String.init))
+    }
+
+    private func defensiveBadgeTitle(for clip: Clip) -> String {
+        if isBlockClip(clip) { return "Block" }
+        if isStealClip(clip) { return "Steal" }
+        return "Defense"
+    }
+
+    private func defensiveBadgeIcon(for clip: Clip) -> String {
+        if isBlockClip(clip) { return "shield.fill" }
+        if isStealClip(clip) { return "hand.raised.fill" }
+        return "figure.basketball"
     }
 
     private func actionColor(for action: HighlightAction) -> Color {
@@ -756,7 +982,7 @@ struct ReviewView: View {
                                         .background(AppTheme.neonPurple, in: .capsule)
                                 }
 
-                                clipReviewBadges(clip)
+                                clipContextBadges(clip)
                                 
                                 Spacer()
                                 confidenceBadge(level: clip.confidenceLevel, value: clip.confidence)
@@ -808,7 +1034,7 @@ struct ReviewView: View {
     }
 
     private func clipAccessibilityValue(_ clip: Clip) -> String {
-        let keepState = clip.isKept ? "Kept" : "Discarded"
+        let keepState = clip.isKept ? "Kept" : "Skipped"
         let reviewNotes = clip.reviewBadges.map(\.accessibilityLabel)
         let reviewText = reviewNotes.isEmpty ? "" : " Review flags: \(reviewNotes.joined(separator: ", "))."
         return "\(keepState). Confidence \(Int(clip.confidence * 100)) percent. Duration \(clip.formattedDuration).\(reviewText)"

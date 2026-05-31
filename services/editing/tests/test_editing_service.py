@@ -2340,6 +2340,39 @@ class EditingServiceTests(unittest.TestCase):
         finally:
             os.environ.pop("HOOPS_AI_EDIT_MAX_DAILY_RENDERS", None)
 
+    @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "ffmpeg and ffprobe are required")
+    def test_failed_render_does_not_consume_daily_free_quota(self) -> None:
+        os.environ["HOOPS_AI_EDIT_MAX_DAILY_RENDERS"] = "1"
+        try:
+            settings = self._settings()
+            payload = self._render_payload(self._edit_request())
+            now = now_utc()
+            DurableRenderStateStore(RenderStorage(settings)).save_job(
+                StoredRenderJob(
+                    edit_job_id="edit_failed_quota",
+                    render_job_id="render_failed_quota",
+                    install_id=payload["installId"],
+                    trace_id="trace_failed_quota",
+                    status="failed",
+                    aspect_ratio="9:16",
+                    created_at=now,
+                    updated_at=now,
+                    source_object_key=payload["sourceObjectKey"],
+                    plan_version="edit-plan-v1",
+                    template_id="personal_highlight_v1",
+                    plan_tier="free",
+                    idempotency_key="idem_failed_quota",
+                    failure_reason="render_failed",
+                )
+            )
+
+            response = TestClient(create_app(settings)).post("/v1/render-jobs", json=payload)
+
+            self.assertEqual(response.status_code, 200)
+            self.assertNotEqual(response.json().get("errorCode"), "daily_render_limit")
+        finally:
+            os.environ.pop("HOOPS_AI_EDIT_MAX_DAILY_RENDERS", None)
+
     def test_download_url_unavailable_before_render_job_exists(self) -> None:
         client = TestClient(create_app(self._settings()))
 

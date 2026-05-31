@@ -77,8 +77,10 @@ enum CloudEditPreset: String, Codable, CaseIterable, Identifiable, Sendable {
         switch self {
         case .personalHighlight:
             return .vertical
-        case .fullGameHighlight, .coachReview:
+        case .fullGameHighlight:
             return .widescreen
+        case .coachReview:
+            return .source
         }
     }
 
@@ -331,7 +333,7 @@ struct CloudEditPolicySummary: Codable, Sendable {
             queueTitle,
             "\(maxOutputResolution) max export",
             brandingSummary,
-            "\(maxDailyRenders) AI edits/day",
+            "\(maxDailyRenders) video edits/day",
             "\(maxRevisionsPerEdit) revisions/edit",
             retentionSummary
         ]
@@ -342,9 +344,9 @@ struct CloudEditPolicySummary: Codable, Sendable {
         "1080p clean exports",
         "No required watermark",
         "No required HoopClips outro",
-        "Longer videos",
-        "More revisions",
-        "Longer cloud storage",
+        "25 video edits/day",
+        "10 revisions/edit",
+        "60-day cloud locker",
         "Pro template packs"
     ]
 }

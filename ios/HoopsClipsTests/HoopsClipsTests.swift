@@ -215,7 +215,7 @@ struct HoopsClipsTests {
         #expect(CloudEditPreset.personalHighlight.durationOptions == [15, 30, 45, 60, 90, 120, 180, 270])
         #expect(CloudEditPreset.fullGameHighlight.aspectRatio == .widescreen)
         #expect(CloudEditPreset.fullGameHighlight.durationOptions == [60, 90, 120, 180, 240, 270])
-        #expect(CloudEditPreset.coachReview.aspectRatio == .widescreen)
+        #expect(CloudEditPreset.coachReview.aspectRatio == .source)
         #expect(CloudEditPreset.coachReview.durationOptions == [60, 120, 180, 240, 270])
     }
 

@@ -122,8 +122,9 @@ final class HoopsClipsUITests: XCTestCase {
             "Standard render queue",
             "720p max export",
             "HoopClips watermark/outro included",
-            "3 AI edits/day",
+            "3 video edits/day",
             "3 revisions/edit",
+            "Failed HoopClips jobs do not use a free edit.",
             "Videos stored for 14 days",
             "My AI Edits: rendered videos expire in 14 days on Free."
         ] {
@@ -142,9 +143,9 @@ final class HoopsClipsUITests: XCTestCase {
             "1080p clean exports",
             "No required watermark",
             "No required HoopClips outro",
-            "Longer videos",
-            "More revisions",
-            "Longer cloud storage",
+            "25 video edits/day",
+            "10 revisions/edit",
+            "60-day cloud locker",
             "Pro template packs"
         ] {
             assertStaticTextEventuallyExists(text, in: app)
