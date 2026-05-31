@@ -164,6 +164,7 @@ enum AppTextKey {
     case settingsSampling
     case settingsDraftType
     case settingsDraftChars
+    case settingsCloudAI
     case settingsOnDevice
     case settingsHistory
     case settingsEngine
@@ -425,6 +426,7 @@ extension AppLanguage {
         .settingsSampling: "Sampling",
         .settingsDraftType: "Draft Type",
         .settingsDraftChars: "Draft Chars",
+        .settingsCloudAI: "Cloud AI",
         .settingsOnDevice: "On This iPhone",
         .settingsHistory: "History",
         .settingsEngine: "Engine",
@@ -650,6 +652,7 @@ extension AppLanguage {
         .settingsSampling: "采样",
         .settingsDraftType: "草稿类型",
         .settingsDraftChars: "草稿字数",
+        .settingsCloudAI: "云端 AI",
         .settingsOnDevice: "此 iPhone 本地",
         .settingsHistory: "历史",
         .settingsEngine: "引擎",
@@ -875,6 +878,7 @@ extension AppLanguage {
         .settingsSampling: "Muestreo",
         .settingsDraftType: "Tipo de borrador",
         .settingsDraftChars: "Caracteres",
+        .settingsCloudAI: "IA en nube",
         .settingsOnDevice: "En este iPhone",
         .settingsHistory: "Historial",
         .settingsEngine: "Motor",
@@ -1100,6 +1104,7 @@ extension AppLanguage {
         .settingsSampling: "Échantillonnage",
         .settingsDraftType: "Type de brouillon",
         .settingsDraftChars: "Caractères",
+        .settingsCloudAI: "IA cloud",
         .settingsOnDevice: "Sur cet iPhone",
         .settingsHistory: "Historique",
         .settingsEngine: "Moteur",

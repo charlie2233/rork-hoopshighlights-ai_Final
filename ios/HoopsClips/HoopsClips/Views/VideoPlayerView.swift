@@ -711,10 +711,15 @@ struct VideoPlayerView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(languageStore.text(.analyzeWithAI))
                                 .font(.headline)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.86)
                             Text(analysisButtonSubtitle)
                                 .font(.caption)
                                 .opacity(0.7)
+                                .lineLimit(2)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
+                        .layoutPriority(1)
                         Spacer()
                         Image(systemName: "chevron.right")
                     }
@@ -894,10 +899,6 @@ struct VideoPlayerView: View {
             .textInputAutocapitalization(.words)
             .submitLabel(.done)
             .accessibilityIdentifier(accessibilityIdentifier)
-
-            Text("optional")
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(AppTheme.subtleText)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)

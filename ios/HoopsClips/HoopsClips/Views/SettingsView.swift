@@ -7,6 +7,7 @@ struct SettingsView: View {
     @Bindable var subscriptionManager: SubscriptionManager
     @Environment(AppLanguageStore.self) private var languageStore
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var showingResetConfirmation = false
     @State private var showingSignOutConfirmation = false
     @State private var showingPaywall = false
@@ -189,19 +190,24 @@ struct SettingsView: View {
                     Text(accountDisplayName)
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(.white.opacity(0.88))
-                        .lineLimit(1)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.85)
+                        .fixedSize(horizontal: false, vertical: true)
                     Text(accountDetailLine)
                         .font(.caption)
                         .foregroundStyle(AppTheme.subtleText)
-                        .lineLimit(1)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.86)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
+                .layoutPriority(1)
 
                 Spacer(minLength: 0)
             }
 
             Divider().overlay(AppTheme.softBorder)
 
-            HStack(spacing: 10) {
+            LazyVGrid(columns: accountPlanStatGridColumns, alignment: .leading, spacing: 10) {
                 settingsInlineStat(
                     icon: subscriptionManager.isProUser ? "checkmark.seal.fill" : "sparkles",
                     value: subscriptionManager.isProUser ? "Pro" : "\(subscriptionManager.freeUsesRemaining)",
@@ -210,10 +216,10 @@ struct SettingsView: View {
                 )
 
                 settingsInlineStat(
-                    icon: "cpu.fill",
-                    value: languageStore.text(.settingsOnDevice),
+                    icon: accountAnalysisPathIcon,
+                    value: accountAnalysisPathValue,
                     label: languageStore.text(.analysis),
-                    tint: AppTheme.successGreen
+                    tint: accountAnalysisPathTint
                 )
             }
         }
@@ -257,7 +263,11 @@ struct SettingsView: View {
                         Text("\(languageStore.text(.languageCurrent)): \(languageStore.selectedLanguage.nativeName)")
                             .font(.caption)
                             .foregroundStyle(AppTheme.subtleText)
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.86)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
+                    .layoutPriority(1)
 
                     Spacer()
 
@@ -492,6 +502,25 @@ struct SettingsView: View {
         return "\(languageStore.text(.settingsSignedInWith)) \(authMethodLabel)"
     }
 
+    private var accountPlanStatGridColumns: [GridItem] {
+        let minimumWidth: CGFloat = dynamicTypeSize.isAccessibilitySize ? 160 : 112
+        return [
+            GridItem(.adaptive(minimum: minimumWidth, maximum: 260), spacing: 10, alignment: .top)
+        ]
+    }
+
+    private var accountAnalysisPathIcon: String {
+        AppConstants.cloudAnalysisEnabled ? "cloud.fill" : "cpu.fill"
+    }
+
+    private var accountAnalysisPathValue: String {
+        AppConstants.cloudAnalysisEnabled ? languageStore.text(.settingsCloudAI) : languageStore.text(.settingsOnDevice)
+    }
+
+    private var accountAnalysisPathTint: Color {
+        AppConstants.cloudAnalysisEnabled ? AppTheme.neonPurple : AppTheme.successGreen
+    }
+
     private func settingsInlineStat(icon: String, value: String, label: String, tint: Color) -> some View {
         HStack(spacing: 8) {
             Image(systemName: icon)
@@ -503,18 +532,23 @@ struct SettingsView: View {
                 Text(value)
                     .font(.caption.weight(.semibold).monospacedDigit())
                     .foregroundStyle(.white)
-                    .lineLimit(1)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.82)
+                    .fixedSize(horizontal: false, vertical: true)
                 Text(label)
                     .font(.caption2)
                     .foregroundStyle(AppTheme.subtleText)
-                    .lineLimit(1)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.86)
+                    .fixedSize(horizontal: false, vertical: true)
             }
+            .layoutPriority(1)
 
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 9)
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 60 : 48, alignment: .leading)
         .background(AppTheme.cardBg.opacity(0.44), in: .rect(cornerRadius: 13))
         .overlay(
             RoundedRectangle(cornerRadius: 13, style: .continuous)
@@ -661,11 +695,17 @@ struct SettingsView: View {
                     Text(title)
                         .font(.headline.weight(.semibold))
                         .foregroundStyle(.white)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.86)
+                        .fixedSize(horizontal: false, vertical: true)
                     Text(subtitle)
                         .font(.caption)
                         .foregroundStyle(AppTheme.subtleText)
                         .lineLimit(2)
+                        .minimumScaleFactor(0.82)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
+                .layoutPriority(1)
 
                 Spacer(minLength: 10)
 
@@ -673,6 +713,8 @@ struct SettingsView: View {
                     Text(stat.value)
                         .font(.caption.weight(.semibold).monospacedDigit())
                         .foregroundStyle(stat.tint)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
                         .padding(.horizontal, 9)
                         .padding(.vertical, 5)
                         .background(stat.tint.opacity(0.10), in: .capsule)
@@ -1812,11 +1854,17 @@ private extension SettingsView.SettingsPreviewStat {
             Text(value)
                 .font(.subheadline.weight(.bold))
                 .foregroundStyle(.white)
+                .lineLimit(2)
+                .minimumScaleFactor(0.82)
+                .fixedSize(horizontal: false, vertical: true)
             Text(label)
                 .font(.caption2)
                 .foregroundStyle(AppTheme.subtleText)
+                .lineLimit(2)
+                .minimumScaleFactor(0.86)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, minHeight: 78)
         .padding(.vertical, 12)
         .rorkCard(cornerRadius: 14, fill: AnyShapeStyle(AppTheme.surfaceBg.opacity(0.72)), stroke: AppTheme.softBorder, glowOpacity: 0.04)
     }
