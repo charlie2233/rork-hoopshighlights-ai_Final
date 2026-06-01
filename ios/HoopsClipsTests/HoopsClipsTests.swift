@@ -2897,7 +2897,7 @@ struct HoopsClipsTests {
         #expect(clip.reviewBadges == [.teamUncertain, .outcomeUncertain, .timingUncertain])
         #expect(clip.reviewBadges.map(\.title) == ["Team?", "Outcome?", "Timing?"])
         #expect(clip.reviewEvidenceRows.map(\.id) == ["decision", "keyframes", "team", "outcome", "timing"])
-        #expect(clip.reviewEvidenceRows.first?.title == "Why kept")
+        #expect(clip.reviewEvidenceRows.first?.title == "Needs review")
         #expect(clip.reviewEvidenceRows.first?.needsReview == true)
         #expect(clip.reviewEvidenceRows.contains { $0.title == "Team needs check" && $0.detail.contains("64% confidence") })
         #expect(clip.reviewEvidenceRows.contains { $0.title == "Outcome needs check" })
@@ -2950,6 +2950,28 @@ struct HoopsClipsTests {
         #expect(clip.reviewEvidenceRows.contains { $0.title == "Crowd/audio cue" && $0.detail.contains("96%") })
     }
 
+    @Test func testClipReviewDecisionDoesNotClaimSkippedAudioCueWasKept() {
+        let clip = Clip(
+            startTime: 44.0,
+            endTime: 49.0,
+            eventCenter: 46.5,
+            action: .unknown,
+            confidence: 0.59,
+            isKept: false,
+            label: "Audio Pop Cue",
+            audioScore: 0.94,
+            visualScore: 0.58,
+            motionScore: 0.61,
+            combinedScore: 0.60,
+            detectionMethod: .cloud
+        )
+
+        #expect(clip.needsUserReview)
+        #expect(clip.reviewEvidenceRows.first?.title == "Needs review")
+        #expect(clip.reviewEvidenceRows.first?.detail.hasPrefix("Needs review because") == true)
+        #expect(clip.reviewEvidenceRows.first?.detail.contains("Kept") == false)
+    }
+
     @Test func testClipReviewBadgesIgnoreWeakAudioOnlyNoise() {
         let clip = Clip(
             startTime: 12.0,
@@ -2968,6 +2990,40 @@ struct HoopsClipsTests {
 
         #expect(!clip.needsUserReview)
         #expect(!clip.reviewBadges.contains(.audioCue))
+    }
+
+    @Test func testAudioCueReviewSummaryCountsOnlyVisibleReviewCues() {
+        let loudCue = Clip(
+            startTime: 44.0,
+            endTime: 49.0,
+            eventCenter: 46.5,
+            action: .unknown,
+            confidence: 0.69,
+            isKept: true,
+            label: "Audio Pop Cue",
+            audioScore: 0.93,
+            visualScore: 0.52,
+            motionScore: 0.57,
+            combinedScore: 0.61,
+            detectionMethod: .cloud
+        )
+        let weakNoise = Clip(
+            startTime: 12.0,
+            endTime: 16.0,
+            eventCenter: 14.0,
+            action: .unknown,
+            confidence: 0.42,
+            isKept: false,
+            label: "Highlight",
+            audioScore: 0.96,
+            visualScore: 0.22,
+            motionScore: 0.24,
+            combinedScore: 0.42,
+            detectionMethod: .cloud
+        )
+
+        #expect(HighlightsViewModel.audioCueReviewSummary(from: [loudCue, weakNoise]) == "Crowd/audio cues flagged 1 clip for Review; check visible outcome.")
+        #expect(HighlightsViewModel.audioCueReviewSummary(from: [weakNoise]) == nil)
     }
 
     @Test func testClipReviewEvidenceRowsShowConfidentTeamAndKeyMoments() {

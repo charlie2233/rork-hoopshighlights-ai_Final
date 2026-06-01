@@ -615,6 +615,12 @@ final class HighlightsViewModel {
         !reviewBadges(for: clip, teamSelection: teamSelection).isEmpty
     }
 
+    nonisolated static func audioCueReviewSummary(from clips: [Clip]) -> String? {
+        let count = clips.filter { $0.reviewBadges.contains(.audioCue) }.count
+        guard count > 0 else { return nil }
+        return "Crowd/audio cues flagged \(count) \(count == 1 ? "clip" : "clips") for Review; check visible outcome."
+    }
+
     nonisolated static func needsTeamReview(
         _ clip: Clip,
         teamSelection: HighlightTeamSelection = .allTeams

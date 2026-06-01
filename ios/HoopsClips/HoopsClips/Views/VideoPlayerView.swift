@@ -1572,6 +1572,10 @@ struct VideoPlayerView: View {
             rows.append("\(opponentFiltered) opponent \(opponentFiltered == 1 ? "clip was" : "clips were") filtered before Review.")
         }
 
+        if let audioCueSummary = HighlightsViewModel.audioCueReviewSummary(from: viewModel.analysisService.clips) {
+            rows.append(audioCueSummary)
+        }
+
         let defensive = diagnostics.defensiveReviewSegments ?? 0
         if defensive > 0 {
             let blocks = diagnostics.blockReviewSegments ?? 0
