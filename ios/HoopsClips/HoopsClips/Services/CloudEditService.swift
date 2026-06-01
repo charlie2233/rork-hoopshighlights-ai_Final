@@ -30,6 +30,10 @@ protocol CloudEditServicing {
 }
 
 struct CloudEditService: CloudEditServicing {
+    private static let quickStatusTimeout: TimeInterval = 8
+    private static let renderHistoryTimeout: TimeInterval = 12
+    private static let standardRequestTimeout: TimeInterval = 30
+
     private let session: URLSession
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
@@ -46,7 +50,9 @@ struct CloudEditService: CloudEditServicing {
         let baseURL = try configuredBaseURL()
         let url = baseURL.appending(path: "v1/editing/version")
 
-        let (data, response) = try await session.data(for: signedClientRequest(url: url))
+        let (data, response) = try await session.data(
+            for: signedClientRequest(url: url, timeoutInterval: Self.quickStatusTimeout)
+        )
         return try decodeResponse(data: data, response: response, successType: CloudEditVersionResponse.self)
     }
 
@@ -115,7 +121,9 @@ struct CloudEditService: CloudEditServicing {
             throw CloudEditError.invalidResponse
         }
 
-        let (data, response) = try await session.data(for: signedClientRequest(url: url))
+        let (data, response) = try await session.data(
+            for: signedClientRequest(url: url, timeoutInterval: Self.renderHistoryTimeout)
+        )
         return try decodeResponse(data: data, response: response, successType: CloudEditRenderHistoryResponse.self)
     }
 
@@ -283,8 +291,11 @@ struct CloudEditService: CloudEditServicing {
         return url
     }
 
-    private func signedClientRequest(url: URL) -> URLRequest {
-        var request = URLRequest(url: url)
+    private func signedClientRequest(
+        url: URL,
+        timeoutInterval: TimeInterval = Self.standardRequestTimeout
+    ) -> URLRequest {
+        var request = URLRequest(url: url, timeoutInterval: timeoutInterval)
         request.setValue("HoopClips-iOS/1.0", forHTTPHeaderField: "User-Agent")
         request.setValue(UUID().uuidString, forHTTPHeaderField: "x-trace-id")
         return request

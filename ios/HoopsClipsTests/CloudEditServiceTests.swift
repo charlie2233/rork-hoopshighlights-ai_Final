@@ -27,8 +27,9 @@ struct CloudEditServiceTests {
         try await withCloudEditBaseURL {
             let service = CloudEditService(session: makeSession { request in
                 #expect(request.httpMethod == "GET")
-                #expect(request.value(forHTTPHeaderField: "User-Agent") == "Hoopclips-iOS/1.0")
+                #expect(request.value(forHTTPHeaderField: "User-Agent") == "HoopClips-iOS/1.0")
                 #expect(request.value(forHTTPHeaderField: "x-trace-id")?.isEmpty == false)
+                #expect(request.timeoutInterval == 8)
                 let url = try #require(request.url)
                 #expect(url.path == "/v1/editing/version")
                 #expect(request.httpBody == nil)
@@ -90,8 +91,9 @@ struct CloudEditServiceTests {
         try await withCloudEditBaseURL {
             let service = CloudEditService(session: makeSession { request in
                 #expect(request.httpMethod == "GET")
-                #expect(request.value(forHTTPHeaderField: "User-Agent") == "Hoopclips-iOS/1.0")
+                #expect(request.value(forHTTPHeaderField: "User-Agent") == "HoopClips-iOS/1.0")
                 #expect(request.value(forHTTPHeaderField: "x-trace-id")?.isEmpty == false)
+                #expect(request.timeoutInterval == 12)
                 let url = try #require(request.url)
                 #expect(url.path == "/v1/render-jobs")
                 let query = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems)
