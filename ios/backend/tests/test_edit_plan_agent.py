@@ -924,6 +924,62 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertTrue(by_id["uncertain_block"]["candidateQuality"]["defensiveEventLike"])
         self.assertEqual(by_id["uncertain_block"]["candidateQuality"]["defensiveFamily"], "block")
 
+    def test_agent_decision_guidance_constrains_gpt_selection_and_review_semantics(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                teamSelection={
+                    "mode": "team",
+                    "teamId": "team_dark",
+                    "label": "Dark jerseys",
+                    "colorLabel": "black",
+                    "confidenceThreshold": 0.85,
+                    "includeUncertain": True,
+                },
+                clips=[
+                    {
+                        **_clip("dark_bucket", 0.0, "Made Shot", 0.93),
+                        "teamAttribution": _team_attribution(team_id="team_dark", color_label="black", confidence=0.91),
+                    },
+                    {
+                        **_clip("uncertain_block", 9.0, "Blocked Shot", 0.88),
+                        "teamAttribution": {"teamId": "team_light", "colorLabel": "white", "confidence": 0.62},
+                    },
+                ],
+            )
+        )
+
+        context = build_agent_editing_context(
+            request.templateId,
+            summarize_clip_pool(request.clips),
+            request.clips,
+            teamSelection=request.teamSelection,
+        )
+        guidance = context["decisionGuidance"]
+
+        self.assertEqual(set(guidance["allowedClipIds"]), {"dark_bucket", "uncertain_block"})
+        self.assertEqual(guidance["allowedClipIds"], [clip["clipId"] for clip in context["candidateClips"]])
+        self.assertTrue(guidance["selectionContract"]["useOnlyProvidedClipIds"])
+        self.assertTrue(guidance["selectionContract"]["preferRenderReady"])
+        self.assertTrue(guidance["selectionContract"]["preferQualityEligible"])
+        self.assertTrue(guidance["selectionContract"]["rejectGenericFillerUnlessNeeded"])
+        self.assertIn("block", guidance["selectionContract"]["keepClearDefensiveHighlights"])
+        self.assertIn("steal", guidance["selectionContract"]["keepClearDefensiveHighlights"])
+        self.assertEqual(
+            guidance["renderEligibilityPolicy"]["manual_team_review_required"],
+            "review_only_until_user_keeps",
+        )
+        self.assertEqual(guidance["renderEligibilityPolicy"]["opponent_filtered"], "do_not_select")
+        self.assertEqual(
+            guidance["teamTargetingPolicy"]["uncertainTeamClips"],
+            "include_for_user_review_when_requested_but_do_not_auto_render",
+        )
+        self.assertFalse(guidance["safetyContract"]["fullVideoInputsAllowed"])
+        self.assertFalse(guidance["safetyContract"]["rendererCommandsAllowed"])
+        serialized = str(context)
+        self.assertNotIn("sourceObjectKey", serialized)
+        self.assertNotIn("downloadUrl", serialized)
+        self.assertNotIn("presigned", serialized.lower())
+
     def test_template_registry_has_base_and_pro_packs(self) -> None:
         validation = validate_template_registry()
 
@@ -1011,6 +1067,11 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertIn("COLD.", context["templateCookbookRules"]["captionRules"]["examples"])
         self.assertEqual(context["candidateClips"][0]["clipId"], "c3")
         self.assertIn("candidateQualitySummary", context)
+        self.assertIn("decisionGuidance", context)
+        self.assertEqual(context["decisionGuidance"]["allowedClipIds"], [clip["clipId"] for clip in context["candidateClips"]])
+        self.assertTrue(context["decisionGuidance"]["selectionContract"]["strictStructuredJsonOnly"])
+        self.assertFalse(context["decisionGuidance"]["safetyContract"]["rendererCommandsAllowed"])
+        self.assertFalse(context["decisionGuidance"]["safetyContract"]["fullVideoInputsAllowed"])
         self.assertIn("candidateQuality", context["candidateClips"][0])
         self.assertTrue(context["candidateClips"][0]["candidateQuality"]["qualityEligible"])
         self.assertTrue(context["candidateClips"][0]["candidateQuality"]["shotLike"])

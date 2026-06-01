@@ -1963,6 +1963,55 @@ def _agent_candidate_quality_summary(
     return counts
 
 
+def _agent_decision_guidance(
+    clips: Sequence[EditCandidateClip],
+    team_selection: Optional[TeamSelection],
+) -> Dict[str, object]:
+    allowed_clip_ids = [clip.id for clip in clips]
+    return {
+        "allowedClipIds": allowed_clip_ids,
+        "selectionContract": {
+            "useOnlyProvidedClipIds": True,
+            "preferRenderReady": True,
+            "preferQualityEligible": True,
+            "rejectGenericFillerUnlessNeeded": True,
+            "keepClearDefensiveHighlights": [
+                "block",
+                "steal",
+                "forced_turnover",
+                "defensive_stop",
+            ],
+            "strictStructuredJsonOnly": True,
+        },
+        "renderEligibilityPolicy": {
+            "render_ready": "may_select_for_final_plan",
+            "render_ready_after_user_keep": "may_select_for_final_plan",
+            "quality_review_required": "review_or_low_priority_only",
+            "manual_team_review_required": "review_only_until_user_keeps",
+            "opponent_filtered": "do_not_select",
+            "user_discarded": "do_not_select",
+        },
+        "teamTargetingPolicy": {
+            "mode": "all" if team_selection is None else team_selection.mode,
+            "uncertainTeamClips": "include_for_user_review_when_requested_but_do_not_auto_render",
+            "selectedTeamOnly": team_selection is not None and team_selection.mode == "team",
+        },
+        "safetyContract": {
+            "fullVideoInputsAllowed": False,
+            "rendererCommandsAllowed": False,
+            "storageUrlsAllowed": False,
+            "timestampAuthority": "backend_cv_runtime_and_edit_plan_validators",
+        },
+        "outputMustOmit": [
+            "download links",
+            "signed storage links",
+            "private storage identifiers",
+            "storage credentials",
+            "renderer commands",
+        ],
+    }
+
+
 def build_agent_editing_context(
     templateId: Optional[str],
     clipPoolSummary: object,
@@ -1972,6 +2021,7 @@ def build_agent_editing_context(
     template = get_template_pack(templateId)
     cookbook = get_agent_template_cookbook(template.templateId)
     filtered_candidates = filter_clips_for_team_selection(candidateClips, teamSelection)
+    ranked_candidates = rank_clips(filtered_candidates)[:GPT_CANDIDATE_REVIEW_LIMIT]
     return {
         "templateId": template.templateId,
         "agentStyleIntent": cookbook.agentStyleIntent,
@@ -2011,9 +2061,10 @@ def build_agent_editing_context(
         "teamTargeting": _team_selection_payload(teamSelection),
         "clipPoolSummary": _clip_pool_summary_payload(clipPoolSummary),
         "candidateQualitySummary": _agent_candidate_quality_summary(filtered_candidates, teamSelection),
+        "decisionGuidance": _agent_decision_guidance(ranked_candidates, teamSelection),
         "candidateClips": [
             _compact_agent_candidate_clip(clip, teamSelection)
-            for clip in rank_clips(filtered_candidates)[:GPT_CANDIDATE_REVIEW_LIMIT]
+            for clip in ranked_candidates
         ],
     }
 
