@@ -1179,3 +1179,79 @@ enum CloudEditError: Error, LocalizedError, Sendable {
         }
     }
 }
+
+nonisolated enum CloudEditStatusRefreshPolicy {
+    static func blocksRendering(for error: Error) -> Bool {
+        switch error {
+        case CloudEditError.notConfigured, CloudEditError.invalidResponse:
+            return true
+        case CloudEditError.backend(let code, _):
+            return !isTransientBackendStatusCode(code)
+        case CloudEditError.timedOut, CloudEditError.network:
+            return false
+        case let urlError as URLError:
+            return !isTransientURLStatusCode(urlError.code)
+        default:
+            return false
+        }
+    }
+
+    static func statusMessage(for error: Error) -> String {
+        switch error {
+        case CloudEditError.notConfigured:
+            return CloudEditError.notConfigured.errorDescription ?? "Cloud AI editing is not configured."
+        case CloudEditError.invalidResponse:
+            return "Cloud status response is invalid. Try again after the backend deploy."
+        case CloudEditError.backend(let code, let message):
+            if isTransientBackendStatusCode(code) {
+                return "Cloud status is slow. You can still start the edit."
+            }
+            return message
+        case CloudEditError.timedOut:
+            return "Cloud status is slow. You can still start the edit."
+        case CloudEditError.network:
+            return "Cloud status did not refresh. You can still start the edit."
+        case let urlError as URLError where isTransientURLStatusCode(urlError.code):
+            return "Cloud status is slow. You can still start the edit."
+        default:
+            return "Cloud status did not refresh. You can still start the edit."
+        }
+    }
+
+    private static func isTransientBackendStatusCode(_ code: String) -> Bool {
+        let normalized = code.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return [
+            "http_408",
+            "http_409",
+            "http_425",
+            "http_429",
+            "http_500",
+            "http_502",
+            "http_503",
+            "http_504",
+            "request_timeout",
+            "timeout",
+            "timed_out",
+            "gateway_timeout",
+            "temporarily_unavailable",
+            "service_unavailable",
+        ].contains(normalized)
+    }
+
+    private static func isTransientURLStatusCode(_ code: URLError.Code) -> Bool {
+        switch code {
+        case .timedOut,
+             .cannotFindHost,
+             .cannotConnectToHost,
+             .networkConnectionLost,
+             .dnsLookupFailed,
+             .notConnectedToInternet,
+             .internationalRoamingOff,
+             .callIsActive,
+             .dataNotAllowed:
+            return true
+        default:
+            return false
+        }
+    }
+}

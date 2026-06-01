@@ -2604,6 +2604,25 @@ struct HoopsClipsTests {
         #expect(flags.allowsGptRevisionEditing == false)
     }
 
+    @Test func testCloudEditStatusRefreshPolicyDoesNotBlockTransientVersionFailures() {
+        let gatewayTimeout = CloudEditError.backend(code: "http_504", message: "Request timed out.")
+        let urlTimeout = URLError(.timedOut)
+
+        #expect(!CloudEditStatusRefreshPolicy.blocksRendering(for: gatewayTimeout))
+        #expect(!CloudEditStatusRefreshPolicy.blocksRendering(for: urlTimeout))
+        #expect(CloudEditStatusRefreshPolicy.statusMessage(for: gatewayTimeout) == "Cloud status is slow. You can still start the edit.")
+        #expect(CloudEditStatusRefreshPolicy.statusMessage(for: urlTimeout) == "Cloud status is slow. You can still start the edit.")
+    }
+
+    @Test func testCloudEditStatusRefreshPolicyBlocksRealConfigFailures() {
+        let unauthorized = CloudEditError.backend(code: "http_401", message: "Cloud editing auth failed.")
+
+        #expect(CloudEditStatusRefreshPolicy.blocksRendering(for: CloudEditError.notConfigured))
+        #expect(CloudEditStatusRefreshPolicy.blocksRendering(for: CloudEditError.invalidResponse))
+        #expect(CloudEditStatusRefreshPolicy.blocksRendering(for: unauthorized))
+        #expect(CloudEditStatusRefreshPolicy.statusMessage(for: unauthorized) == "Cloud editing auth failed.")
+    }
+
     @Test func testCloudEditKillSwitchErrorsHaveFriendlyMessages() {
         #expect(CloudEditError.friendlyBackendMessage(code: "ai_edit_disabled", fallback: "fallback").contains("paused"))
         let liveRenderDisabled = CloudEditError.friendlyBackendMessage(code: "ai_edit_live_render_disabled", fallback: "fallback")

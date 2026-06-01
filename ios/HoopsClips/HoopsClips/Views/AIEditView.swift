@@ -2702,29 +2702,14 @@ struct AIEditView: View {
             serviceVersion = try await cloudEditService.fetchVersion()
             serviceStatusErrorMessage = nil
             serviceStatusBlocksRendering = false
-        } catch CloudEditError.notConfigured {
-            serviceVersion = nil
-            serviceStatusErrorMessage = AppConstants.cloudEditEnabled ? CloudEditError.notConfigured.errorDescription : nil
-            serviceStatusBlocksRendering = true
-        } catch CloudEditError.invalidResponse {
-            serviceVersion = nil
-            serviceStatusErrorMessage = CloudEditError.invalidResponse.errorDescription
-            serviceStatusBlocksRendering = true
-        } catch CloudEditError.backend(_, let message) {
-            serviceVersion = nil
-            serviceStatusErrorMessage = message
-            serviceStatusBlocksRendering = true
         } catch {
-            serviceStatusErrorMessage = cloudStatusWarningMessage(for: error)
-            serviceStatusBlocksRendering = false
+            let blocksRendering = CloudEditStatusRefreshPolicy.blocksRendering(for: error)
+            if blocksRendering {
+                serviceVersion = nil
+            }
+            serviceStatusErrorMessage = CloudEditStatusRefreshPolicy.statusMessage(for: error)
+            serviceStatusBlocksRendering = blocksRendering
         }
-    }
-
-    private func cloudStatusWarningMessage(for error: Error) -> String {
-        if let urlError = error as? URLError, urlError.code == .timedOut {
-            return "Cloud status is slow to answer. You can still start the edit; HoopClips will use the real job response."
-        }
-        return "Cloud status could not refresh. You can still start the edit; HoopClips will use the real job response."
     }
 
     @MainActor
