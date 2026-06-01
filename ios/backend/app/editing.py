@@ -126,6 +126,9 @@ MIN_NON_SHOT_PLANNING_SCORE = 0.5
 MIN_NON_SHOT_WATCHABILITY_SCORE = 0.42
 MIN_GENERIC_HIGHLIGHT_PLANNING_SCORE = 0.62
 MIN_GENERIC_HIGHLIGHT_WATCHABILITY_SCORE = 0.5
+MIN_SUPER_LOUD_AUDIO_REACTION_PEAK = 0.97
+MIN_SUPER_LOUD_AUDIO_REACTION_ACTIVITY = 0.46
+MIN_SUPER_LOUD_AUDIO_REACTION_CONFIDENCE = 0.42
 MIN_UNLABELED_AUDIO_REACTION_PEAK = 0.92
 MIN_UNLABELED_AUDIO_REACTION_ACTIVITY = 0.58
 MIN_UNLABELED_AUDIO_REACTION_CONFIDENCE = 0.45
@@ -2626,10 +2629,14 @@ def audio_reaction_source_for_clip(clip: EditCandidateClip) -> Optional[str]:
     normalized = clip.label.strip().lower()
     explicit_reaction_label = normalized in {
         "audio pop",
+        "audio pop cue",
         "audio reaction",
+        "audio reaction cue",
+        "audio cue",
         "crowd pop",
+        "crowd pop cue",
         "crowd reaction",
-    }
+    } or _has_audio_reaction_phrase(normalized)
     if explicit_reaction_label:
         return "explicit_reaction_label"
 
@@ -2652,7 +2659,28 @@ def audio_reaction_source_for_clip(clip: EditCandidateClip) -> Optional[str]:
     ):
         return "unlabeled_loud_audio_pop"
 
+    has_super_loud_pop = clip.audioPeak >= MIN_SUPER_LOUD_AUDIO_REACTION_PEAK
+    has_some_activity_near_pop = max(clip.motionScore, clip.watchability, clip.excitement) >= MIN_SUPER_LOUD_AUDIO_REACTION_ACTIVITY
+    if (
+        is_generic_filler_clip(clip)
+        and has_super_loud_pop
+        and has_some_activity_near_pop
+        and has_context
+        and clip.confidence >= MIN_SUPER_LOUD_AUDIO_REACTION_CONFIDENCE
+    ):
+        return "super_loud_audio_pop"
+
     return None
+
+
+def _has_audio_reaction_phrase(normalized: str) -> bool:
+    audio_marker = "audio" in normalized and any(
+        token in normalized for token in ("pop", "cue", "reaction", "spike", "burst")
+    )
+    crowd_marker = "crowd" in normalized and any(
+        token in normalized for token in ("pop", "cue", "reaction", "spike", "burst", "loud")
+    )
+    return audio_marker or crowd_marker
 
 
 def audio_reaction_guidance_for_clip(clip: EditCandidateClip) -> Optional[str]:
@@ -2665,12 +2693,12 @@ def audio_reaction_salience_score(clip: EditCandidateClip) -> float:
         return 0.0
     activity_score = max(clip.motionScore, clip.watchability, clip.excitement)
     context_score = clip_context_quality_score(clip)
-    source_bonus = 0.04 if source in {"explicit_reaction_label", "reaction_label_with_audio_energy"} else 0.0
+    source_bonus = 0.06 if source in {"explicit_reaction_label", "reaction_label_with_audio_energy"} else 0.0
     score = (
-        (clip.audioPeak * 0.38)
-        + (activity_score * 0.24)
-        + (context_score * 0.24)
-        + (clip.confidence * 0.10)
+        (clip.audioPeak * 0.46)
+        + (activity_score * 0.20)
+        + (context_score * 0.22)
+        + (clip.confidence * 0.08)
         + source_bonus
     )
     if is_generic_filler_clip(clip) and context_score < 0.55:

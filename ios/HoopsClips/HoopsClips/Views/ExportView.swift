@@ -499,7 +499,7 @@ struct ExportView: View {
                 subtitle: "Higher quality improves clarity but takes longer"
             )
 
-            HStack(spacing: 10) {
+            LazyVGrid(columns: exportOptionGridColumns, alignment: .leading, spacing: 10) {
                 ForEach(ExportQuality.allCases) { quality in
                     Button {
                         HoopsAccessibility.animate(reduceMotion: reduceMotion) { viewModel.selectedQuality = quality }
@@ -507,13 +507,18 @@ struct ExportView: View {
                         VStack(spacing: 4) {
                             Text(quality.rawValue)
                                 .font(.headline)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.82)
                             Text(quality.description)
                                 .font(.caption2)
-                                .lineLimit(2)
+                                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 3)
                                 .multilineTextAlignment(.center)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
                         .foregroundStyle(viewModel.selectedQuality == quality ? .white : AppTheme.subtleText)
                         .frame(maxWidth: .infinity)
+                        .frame(minHeight: dynamicTypeSize.isAccessibilitySize ? 92 : 72)
+                        .padding(.horizontal, 10)
                         .padding(.vertical, 12)
                         .background(
                             viewModel.selectedQuality == quality ? AppTheme.accentPurple : AppTheme.cardBg,
@@ -546,7 +551,7 @@ struct ExportView: View {
                 subtitle: "Choose output container for compatibility or Apple workflows"
             )
 
-            HStack(spacing: 10) {
+            LazyVGrid(columns: exportOptionGridColumns, alignment: .leading, spacing: 10) {
                 ForEach(ExportFileFormat.allCases) { format in
                     Button {
                         HoopsAccessibility.animate(reduceMotion: reduceMotion) { viewModel.selectedFormat = format }
@@ -557,11 +562,14 @@ struct ExportView: View {
                                     .font(.subheadline.weight(.semibold))
                                 Text(format.rawValue)
                                     .font(.headline)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.82)
                             }
                             Text(format.description)
                                 .font(.caption2)
-                                .lineLimit(2)
+                                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 3)
                                 .multilineTextAlignment(.leading)
+                                .fixedSize(horizontal: false, vertical: true)
                                 .foregroundStyle(
                                     viewModel.selectedFormat == format
                                     ? Color.white.opacity(0.8)
@@ -570,6 +578,7 @@ struct ExportView: View {
                         }
                         .foregroundStyle(viewModel.selectedFormat == format ? .white : AppTheme.subtleText)
                         .frame(maxWidth: .infinity, alignment: .leading)
+                        .frame(minHeight: dynamicTypeSize.isAccessibilitySize ? 104 : 82, alignment: .leading)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 12)
                         .background(
@@ -899,6 +908,12 @@ struct ExportView: View {
     private var quickActionButtonGridColumns: [GridItem] {
         [
             GridItem(.adaptive(minimum: dynamicTypeSize.isAccessibilitySize ? 156 : 128), spacing: 10, alignment: .top)
+        ]
+    }
+
+    private var exportOptionGridColumns: [GridItem] {
+        [
+            GridItem(.adaptive(minimum: dynamicTypeSize.isAccessibilitySize ? 168 : 116), spacing: 10, alignment: .top)
         ]
     }
 

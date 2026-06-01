@@ -1181,20 +1181,22 @@ def _audio_reaction_sampling_reserve_limit(max_clips: int, candidate_count: int)
     if max_clips < 8 or candidate_count == 0:
         return 0
     if max_clips >= 160:
-        return min(candidate_count, 10)
+        return min(candidate_count, max(16, max_clips // 10))
     if max_clips >= 80:
-        return min(candidate_count, 6)
+        return min(candidate_count, max(10, max_clips // 10))
     if max_clips >= 24:
-        return min(candidate_count, 4)
-    return min(candidate_count, 2)
+        return min(candidate_count, max(6, max_clips // 6))
+    return min(candidate_count, max(3, max_clips // 4))
 
 
-def _audio_reaction_candidate_quality_key(clip: EditCandidateClip) -> tuple[float, float, float, float, float]:
+def _audio_reaction_candidate_quality_key(clip: EditCandidateClip) -> tuple[float, ...]:
     return (
         1.0 if is_audio_reaction_clip(clip) else 0.0,
+        audio_reaction_salience_score(clip),
         clip.audioPeak,
         clip.planning_score,
         clip.motionScore,
+        clip.excitement,
         clip.watchability,
     )
 
