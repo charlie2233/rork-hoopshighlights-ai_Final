@@ -833,7 +833,8 @@ class PipelineQualityTests(unittest.TestCase):
         self.assertIn("Uncertain block", labels)
         self.assertIn("Uncertain steal", labels)
         self.assertIn("Uncertain finish", labels)
-        self.assertNotIn("Uncertain rebound", labels)
+        self.assertIn("Uncertain rebound", labels)
+        self.assertNotIn("Made Shot 4", labels)
         self.assertNotIn("Made Shot 7", labels)
 
     def test_review_trim_reserves_strong_defensive_clip_when_scoring_fills_cap(self) -> None:
@@ -903,6 +904,36 @@ class PipelineQualityTests(unittest.TestCase):
         self.assertNotIn("Blocked shot", labels)
         self.assertNotIn("Contest block", labels)
         self.assertNotIn("Made Shot 6", labels)
+
+    def test_review_trim_reserves_more_defensive_families_for_larger_review_sets(self) -> None:
+        scoring = [
+            _clip(
+                start=float(index * 5),
+                end=float(index * 5 + 4),
+                label=f"Made Shot {index}",
+                combined=0.98 - (index * 0.01),
+                event_center=float(index * 5 + 2),
+                auto_keep=True,
+            )
+            for index in range(12)
+        ]
+        defense = [
+            _clip(start=70.0, end=74.0, label="Blocked Shot", combined=0.88, event_center=72.0, auto_keep=True),
+            _clip(start=75.0, end=79.0, label="Steal", combined=0.86, event_center=77.0, auto_keep=True),
+            _clip(start=80.0, end=84.0, label="Forced Turnover", combined=0.84, event_center=82.0, auto_keep=True),
+            _clip(start=85.0, end=89.0, label="Defensive Stop", combined=0.82, event_center=87.0, auto_keep=True),
+        ]
+
+        trimmed = _trim_analysis_clips_for_review([*scoring, *defense], None, max_clips=12)
+        labels = [clip.label for clip in trimmed]
+
+        self.assertEqual(len(trimmed), 12)
+        self.assertIn("Blocked Shot", labels)
+        self.assertIn("Steal", labels)
+        self.assertIn("Forced Turnover", labels)
+        self.assertIn("Defensive Stop", labels)
+        self.assertNotIn("Made Shot 8", labels)
+        self.assertNotIn("Made Shot 11", labels)
 
     def test_defensive_label_classifier_ignores_stop_and_pop_jumpers(self) -> None:
         self.assertFalse(_is_defensive_label("Stop and Pop Jumper"))

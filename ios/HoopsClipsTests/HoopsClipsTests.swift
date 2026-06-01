@@ -1333,6 +1333,64 @@ struct HoopsClipsTests {
         #expect(candidateStarts.contains(2_000.0))
     }
 
+    @Test @MainActor func testCloudEditRequestReservesHalfCandidatePoolForReviewUnderPressure() throws {
+        let viewModel = HighlightsViewModel()
+        viewModel.cloudEditSourceObjectKey = "uploads/source.mp4"
+        var clips: [Clip] = []
+
+        for index in 0..<300 {
+            let startTime = Double(index * 8)
+            clips.append(
+                Clip(
+                    startTime: startTime,
+                    endTime: startTime + 5,
+                    eventCenter: startTime + 2.5,
+                    action: .madeShot,
+                    confidence: 0.82,
+                    isKept: true,
+                    label: "Made Shot",
+                    audioScore: 0.5,
+                    visualScore: 0.72,
+                    motionScore: 0.74,
+                    combinedScore: 0.78,
+                    detectionMethod: .cloud
+                )
+            )
+        }
+
+        for index in 0..<220 {
+            let startTime = 3_000.0 + Double(index * 7)
+            clips.append(
+                Clip(
+                    startTime: startTime,
+                    endTime: startTime + 5,
+                    eventCenter: startTime + 2.3,
+                    action: index.isMultiple(of: 2) ? .steal : .block,
+                    confidence: 0.76,
+                    isKept: false,
+                    label: index.isMultiple(of: 2) ? "Possible Steal" : "Possible Block",
+                    audioScore: 0.38,
+                    visualScore: 0.68,
+                    motionScore: 0.76,
+                    combinedScore: 0.74,
+                    detectionMethod: .cloud,
+                    teamAttributionStatus: "uncertain"
+                )
+            )
+        }
+        viewModel.analysisService.clips = clips
+
+        let request = try viewModel.createCloudEditRequest(
+            preset: .personalHighlight,
+            targetDurationSeconds: 30,
+            isProUser: false
+        )
+        let reviewCandidateCount = request.clips.filter { $0.userReviewDecision == "unreviewed" }.count
+
+        #expect(request.clips.count == HighlightsViewModel.cloudEditCandidateRequestLimit)
+        #expect(reviewCandidateCount == HighlightsViewModel.cloudEditCandidateRequestLimit / 2)
+    }
+
     @Test @MainActor func testCloudEditRequestIncludesReviewOnlyUncertainCandidatesWithoutAutoKeepingThem() throws {
         let viewModel = HighlightsViewModel()
         viewModel.cloudEditSourceObjectKey = "uploads/source.mp4"
@@ -1815,11 +1873,11 @@ struct HoopsClipsTests {
             isProUser: false
         )
 
-        #expect(request.clips.map(\.label) == ["Kept Dark Shot", "No Team Finish"])
+        #expect(request.clips.map(\.label) == ["Kept Dark Shot", "No Team Finish", "Weak No Team Shot"])
         #expect(request.clips.first { $0.id == keptDarkClip.id.uuidString }?.userReviewDecision == "kept")
         #expect(request.clips.first { $0.id == uncertainTeamClip.id.uuidString }?.userReviewDecision == "unreviewed")
         #expect(request.clips.first { $0.id == confidentOpponentClip.id.uuidString } == nil)
-        #expect(request.clips.first { $0.id == weakUncertainClip.id.uuidString } == nil)
+        #expect(request.clips.first { $0.id == weakUncertainClip.id.uuidString }?.userReviewDecision == "unreviewed")
     }
 
     @Test func testCloudEditAutoKeepRequiresEvidenceBackedQuickScanTeamMatch() {

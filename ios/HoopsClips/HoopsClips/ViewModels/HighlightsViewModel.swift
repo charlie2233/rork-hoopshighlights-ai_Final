@@ -840,13 +840,13 @@ final class HighlightsViewModel {
     }
 
     nonisolated static let cloudEditCandidateRequestLimit = 320
-    nonisolated private static let cloudEditMinimumReviewCandidateReserve = 16
-    nonisolated private static let cloudEditReviewCandidateReserveDivisor = 3
+    nonisolated private static let cloudEditMinimumReviewCandidateReserve = 32
+    nonisolated private static let cloudEditReviewCandidateReserveDivisor = 2
     nonisolated private static let cloudEditDuplicateOverlapThreshold = 0.68
     nonisolated private static let cloudEditDuplicateEventCenterTolerance = 1.5
-    nonisolated private static let cloudEditSelectedTeamReserveMinScore = 0.72
-    nonisolated private static let cloudEditSelectedTeamReserveMinConfidence = 0.70
-    nonisolated private static let cloudEditSelectedTeamReserveMinWatchability = 0.64
+    nonisolated private static let cloudEditSelectedTeamReserveMinScore = 0.52
+    nonisolated private static let cloudEditSelectedTeamReserveMinConfidence = 0.50
+    nonisolated private static let cloudEditSelectedTeamReserveMinWatchability = 0.45
     nonisolated private static let cloudEditTeamEvidenceRequiredSources: Set<String> = [
         "quick_scan",
         "gpt_frame_review",
