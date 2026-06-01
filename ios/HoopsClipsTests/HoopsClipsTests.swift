@@ -3141,6 +3141,17 @@ struct HoopsClipsTests {
         #expect(!HighlightsViewModel.isAutoKeepHighConfidenceEligible(uncertainTeamClip, teamSelection: selectedTeam))
     }
 
+    @Test func testDetectedTeamStatusCopyAvoidsCrammingLongTeamNames() {
+        let labels = [
+            "Westside Elite National 17U Black Jerseys",
+            "Eastside Lightning Select White Jerseys"
+        ]
+
+        #expect(HighlightTeamTargetCopy.detectedStatusText(teamLabels: labels, requiresSelection: false) == "2 teams found. Choose one or All teams.")
+        #expect(HighlightTeamTargetCopy.detectedStatusText(teamLabels: labels, requiresSelection: true) == "Choose one team or All teams.")
+        #expect(HighlightTeamTargetCopy.detectedStatusText(teamLabels: [labels[0]], requiresSelection: false) == "1 team found. Choose it or All teams.")
+    }
+
     @Test func testAllTeamsStillPrioritizesDefensiveClipsWithoutTeamReviewBadge() {
         let uncertainStealClip = Clip(
             startTime: 18.0,

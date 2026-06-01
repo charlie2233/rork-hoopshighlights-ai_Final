@@ -2655,7 +2655,7 @@ struct AIEditView: View {
         Label(text, systemImage: icon)
             .font(.caption.bold())
             .foregroundStyle(.white)
-            .lineLimit(2)
+            .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 3)
             .minimumScaleFactor(0.84)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)

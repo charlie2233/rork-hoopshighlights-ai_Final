@@ -1033,7 +1033,7 @@ struct VideoPlayerView: View {
                     Text(teamTargetSubtitle)
                         .font(.caption2)
                         .foregroundStyle(AppTheme.subtleText)
-                        .lineLimit(4)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 4)
                         .minimumScaleFactor(0.9)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -1104,7 +1104,7 @@ struct VideoPlayerView: View {
                 Text(selection.displayTitle)
                     .font(.caption.weight(.semibold))
                     .multilineTextAlignment(.center)
-                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 3)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 4)
                     .minimumScaleFactor(0.82)
                     .fixedSize(horizontal: false, vertical: true)
                     .layoutPriority(1)
@@ -1192,13 +1192,13 @@ struct VideoPlayerView: View {
             return viewModel.cloudTeamScanStatusMessage ?? "Scanning jersey colors before analysis."
         }
         if viewModel.requiresHighlightTeamSelectionConfirmation {
-            return "Pick your team, rename it if helpful, or use All teams."
+            return "Choose one team or All teams. Rename it if helpful."
         }
         if !viewModel.cloudDetectedTeams.isEmpty {
-            return "HoopClips keeps uncertain plays in Review so you can decide."
+            return "Uncertain team plays stay in Review so you can decide."
         }
         return cloudVideoConsentAccepted
-            ? "Team targeting unlocks after the cloud scan finds jersey colors."
+            ? "Team choices appear after the cloud scan finds jersey colors."
             : "First scan asks before uploading video to the HoopClips cloud."
     }
 
@@ -1211,6 +1211,7 @@ struct VideoPlayerView: View {
                 Text(viewModel.cloudTeamScanStatusMessage ?? "Scanning teams")
                     .font(.caption.weight(.medium))
                     .foregroundStyle(AppTheme.neonPurple)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 3)
                     .fixedSize(horizontal: false, vertical: true)
             } else if !viewModel.cloudDetectedTeams.isEmpty {
                 Image(systemName: viewModel.requiresHighlightTeamSelectionConfirmation ? "hand.tap.fill" : "checkmark.seal.fill")
@@ -1220,7 +1221,7 @@ struct VideoPlayerView: View {
                 Text(teamScanDetectedStatusText)
                     .font(.caption.weight(.medium))
                     .foregroundStyle(viewModel.requiresHighlightTeamSelectionConfirmation ? AppTheme.warningYellow : AppTheme.successGreen)
-                    .lineLimit(3)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 3)
                     .fixedSize(horizontal: false, vertical: true)
             } else if viewModel.cloudTeamScanErrorMessage != nil {
                 Image(systemName: "exclamationmark.triangle.fill")
@@ -1230,6 +1231,7 @@ struct VideoPlayerView: View {
                 Text("Team scan unavailable")
                     .font(.caption.weight(.medium))
                     .foregroundStyle(AppTheme.warningYellow)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 0)
                 Button("Retry") {
@@ -1242,9 +1244,10 @@ struct VideoPlayerView: View {
                     .font(.caption)
                     .padding(.top, 1)
                     .foregroundStyle(AppTheme.subtleText)
-                Text("All teams is available until jersey colors are detected")
+                Text("Use All teams until jersey colors are detected.")
                     .font(.caption.weight(.medium))
                     .foregroundStyle(AppTheme.subtleText)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 3)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 0)
@@ -1255,14 +1258,10 @@ struct VideoPlayerView: View {
     }
 
     private var teamScanDetectedStatusText: String {
-        if viewModel.requiresHighlightTeamSelectionConfirmation {
-            return "Choose target team or All teams"
-        }
-        let labels = viewModel.cloudDetectedTeams.map(\.label)
-        if labels.count > 2 {
-            return "\(labels.count) teams found. Choose one or All teams."
-        }
-        return labels.joined(separator: " vs ")
+        HighlightTeamTargetCopy.detectedStatusText(
+            teamLabels: viewModel.cloudDetectedTeams.map(\.label),
+            requiresSelection: viewModel.requiresHighlightTeamSelectionConfirmation
+        )
     }
 
     private func teamSwatchColor(for selection: HighlightTeamSelection) -> Color {

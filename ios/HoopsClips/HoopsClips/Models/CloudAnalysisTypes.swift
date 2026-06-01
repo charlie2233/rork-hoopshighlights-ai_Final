@@ -106,6 +106,23 @@ nonisolated struct CloudTeamOption: Codable, Sendable, Equatable {
     let source: String?
 }
 
+nonisolated enum HighlightTeamTargetCopy {
+    static func detectedStatusText(teamLabels: [String], requiresSelection: Bool) -> String {
+        if requiresSelection {
+            return "Choose one team or All teams."
+        }
+
+        let teamCount = teamLabels.count
+        if teamCount == 1 {
+            return "1 team found. Choose it or All teams."
+        }
+        if teamCount > 1 {
+            return "\(teamCount) teams found. Choose one or All teams."
+        }
+        return "Teams found. Choose one or All teams."
+    }
+}
+
 nonisolated struct ClipTeamAttribution: Codable, Sendable, Equatable {
     var teamId: String?
     var label: String?
