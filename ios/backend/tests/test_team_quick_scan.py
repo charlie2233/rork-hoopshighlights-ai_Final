@@ -191,11 +191,11 @@ class TeamQuickScanTests(unittest.TestCase):
 
         prescan = team_quick_prescan_settings(full_settings)
 
-        self.assertEqual(prescan.team_quick_scan_max_candidate_clips, 12)
-        self.assertEqual(prescan.team_quick_scan_rich_candidate_clips, 8)
-        self.assertEqual(prescan.team_quick_scan_clip_frames_per_clip, 4)
-        self.assertEqual(prescan.team_quick_scan_max_total_clip_frames, 56)
-        self.assertEqual(prescan.team_quick_scan_timeout_seconds, 60.0)
+        self.assertEqual(prescan.team_quick_scan_max_candidate_clips, 20)
+        self.assertEqual(prescan.team_quick_scan_rich_candidate_clips, 12)
+        self.assertEqual(prescan.team_quick_scan_clip_frames_per_clip, 5)
+        self.assertEqual(prescan.team_quick_scan_max_total_clip_frames, 96)
+        self.assertEqual(prescan.team_quick_scan_timeout_seconds, 75.0)
         self.assertEqual(full_settings.team_quick_scan_max_candidate_clips, 320)
 
     def test_disabled_scan_falls_back_without_calling_gpt(self) -> None:

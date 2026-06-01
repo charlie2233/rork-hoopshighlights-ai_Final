@@ -35,6 +35,7 @@ struct VideoPlayerView: View {
     private let videoImportReminderNanoseconds: UInt64 = 20 * 1_000_000_000
     private let videoImportTimeoutNanoseconds: UInt64 = 5 * 60 * 1_000_000_000
     private let videoImportCompletionGraceNanoseconds: UInt64 = 2 * 1_000_000_000
+    private let videoImportRecoveryPollNanoseconds: UInt64 = 2 * 1_000_000_000
 
     var body: some View {
         NavigationStack {
@@ -269,6 +270,24 @@ struct VideoPlayerView: View {
         )
 
         let task = Task {
+            let importRecoveryTask = Task {
+                while !Task.isCancelled {
+                    do {
+                        try await Task.sleep(nanoseconds: videoImportRecoveryPollNanoseconds)
+                    } catch {
+                        return
+                    }
+
+                    let recovered = await MainActor.run {
+                        guard activeImportID == importID, isImportingVideo else { return false }
+                        return recoverSuccessfulImportIfNeeded(source: source, phase: "poll")
+                    }
+                    if recovered {
+                        return
+                    }
+                }
+            }
+
             let importWatchdogTask = Task {
                 do {
                     try await Task.sleep(nanoseconds: videoImportReminderNanoseconds)
@@ -278,13 +297,7 @@ struct VideoPlayerView: View {
 
                 await MainActor.run {
                     guard activeImportID == importID, isImportingVideo else { return }
-                    if viewModel.isVideoLoaded {
-                        LaunchTelemetry.shared.recordStabilityCheckpoint(
-                            "video_import.watchdog_recovered_loaded_video",
-                            metadata: "source=\(source) phase=slow_reminder"
-                        )
-                        completeImportAfterLoadedVideo()
-                        startTeamScanIfNeeded()
+                    if recoverSuccessfulImportIfNeeded(source: source, phase: "slow_reminder") {
                         return
                     }
                     LaunchTelemetry.shared.recordStabilityCheckpoint(
@@ -302,13 +315,7 @@ struct VideoPlayerView: View {
 
                 await MainActor.run {
                     guard activeImportID == importID, isImportingVideo else { return }
-                    if viewModel.isVideoLoaded {
-                        LaunchTelemetry.shared.recordStabilityCheckpoint(
-                            "video_import.watchdog_recovered_loaded_video",
-                            metadata: "source=\(source) phase=timeout"
-                        )
-                        completeImportAfterLoadedVideo()
-                        startTeamScanIfNeeded()
+                    if recoverSuccessfulImportIfNeeded(source: source, phase: "timeout") {
                         return
                     }
                     LaunchTelemetry.shared.recordStabilityCheckpoint(
@@ -322,6 +329,7 @@ struct VideoPlayerView: View {
             }
 
             let didLoadVideo = await operation()
+            importRecoveryTask.cancel()
             importWatchdogTask.cancel()
             LaunchTelemetry.shared.recordStabilityCheckpoint(
                 didLoadVideo ? "video_import.loaded" : "video_import.not_loaded",
@@ -401,7 +409,7 @@ struct VideoPlayerView: View {
         guard activeImportID == importID || viewModel.isVideoLoaded || didLoadVideo else { return }
 
         if didLoadVideo {
-            if recoverSuccessfulImportIfNeeded(source: source) {
+            if recoverSuccessfulImportIfNeeded(source: source, phase: "operation_loaded") {
                 return
             }
             importStatusMessage = "Opening project..."
@@ -413,7 +421,7 @@ struct VideoPlayerView: View {
                 }
 
                 guard activeImportID == importID || isImportingVideo else { return }
-                if recoverSuccessfulImportIfNeeded(source: source) {
+                if recoverSuccessfulImportIfNeeded(source: source, phase: "completion_grace") {
                     return
                 }
 
@@ -424,6 +432,10 @@ struct VideoPlayerView: View {
                 clearImportState()
                 importErrorMessage = "HoopClips saved the video, but this screen could not open it yet. Open the project from History or import it from Files."
             }
+            return
+        }
+
+        if recoverSuccessfulImportIfNeeded(source: source, phase: "operation_not_loaded") {
             return
         }
 
@@ -448,11 +460,11 @@ struct VideoPlayerView: View {
         startTeamScanIfNeeded()
     }
 
-    private func recoverSuccessfulImportIfNeeded(source: String) -> Bool {
+    private func recoverSuccessfulImportIfNeeded(source: String, phase: String = "visible") -> Bool {
         if viewModel.reconcileCurrentProjectLoadState() {
             LaunchTelemetry.shared.recordStabilityCheckpoint(
                 "video_import.visible",
-                metadata: "source=\(source)"
+                metadata: "source=\(source) phase=\(phase)"
             )
             syncPlayer(with: viewModel.videoURL)
             completeImportAfterLoadedVideo()
