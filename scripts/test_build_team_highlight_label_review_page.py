@@ -124,6 +124,13 @@ class BuildTeamHighlightLabelReviewPageTests(unittest.TestCase):
         self.assertIn('["input", "select", "textarea"].includes(targetTag)', page)
         self.assertIn('seekClipFromCard(card, "event")', page)
         self.assertIn("markReviewedAndNext(Number(card.dataset.caseIndex)", page)
+        self.assertIn("Use prediction", page)
+        self.assertIn("fillFromPrediction", page)
+        self.assertIn("eventTypeFromPrediction", page)
+        self.assertIn("outcomeFromPrediction", page)
+        self.assertIn('card.querySelector(".reviewed").checked = false', page)
+        self.assertIn("Fast-filled from HoopClips prediction; verify video before marking reviewed.", page)
+        self.assertIn('["s", "e", "f", "p", "r", "n"].includes(key)', page)
         self.assertIn(video_path.as_uri(), page)
         self.assertIn(".video-panel", page)
         self.assertIn("position: sticky", page)
@@ -391,6 +398,7 @@ class BuildTeamHighlightLabelReviewPageTests(unittest.TestCase):
                     "source": "draft_bundle",
                     "appliedClipCount": 1,
                     "skippedClipCount": 0,
+                    "fallbackCaseMatchCount": 0,
                     "humanReviewRequired": True,
                 },
             },
@@ -406,6 +414,83 @@ class BuildTeamHighlightLabelReviewPageTests(unittest.TestCase):
         self.assertNotIn('class="reviewed" type="checkbox" checked', page)
         self.assertNotIn("X-Amz-Signature", page)
         self.assertNotIn("sourceUrl", page)
+
+    def test_draft_bundle_can_match_case_by_team_signature_when_case_ids_changed(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            analysis_path = root / "analysis.json"
+            labels_path = root / "labels.json"
+            video_path = root / "source.mp4"
+            video_path.write_bytes(b"fake video")
+            write_json(analysis_path, {"results": {"videoId": "video_a", "clips": [{"id": "clip_1"}]}})
+            write_json(
+                labels_path,
+                {
+                    "caseId": "current_team_black_case",
+                    "videoId": "video_a",
+                    "teamMode": "team",
+                    "selectedTeamId": "team_black",
+                    "selectedTeamColorLabel": "black",
+                    "clips": [
+                        {
+                            "labelId": "label_001",
+                            "predictionClipId": "clip_1",
+                            "start": 1.0,
+                            "end": 5.0,
+                            "needsLabel": True,
+                            "predicted": {"eventCenter": 3.0},
+                            "expected": {"teamId": None, "isHighlight": None, "eventType": None, "outcome": None},
+                        }
+                    ],
+                },
+            )
+
+            payload = build_review_payload(
+                manifest={
+                    "cases": [
+                        {
+                            "caseId": "current_team_black_case",
+                            "analysisResult": "analysis.json",
+                            "labels": "labels.json",
+                            "teamMode": "team",
+                            "selectedTeamId": "team_black",
+                        }
+                    ]
+                },
+                manifest_dir=root,
+                video_paths={},
+                default_video_path=video_path,
+                draft_bundle={
+                    "schemaVersion": "team-highlight-manual-label-bundle-v1",
+                    "source": "gpt_team_highlight_label_draft",
+                    "humanReviewRequired": True,
+                    "cases": [
+                        {
+                            "caseId": "old_team_black_case",
+                            "teamMode": "team",
+                            "selectedTeamId": "team_black",
+                            "clips": [
+                                {
+                                    "labelId": "label_001",
+                                    "predictionClipId": "clip_1",
+                                    "expected": {
+                                        "teamId": "team_black",
+                                        "isHighlight": True,
+                                        "eventType": "steal",
+                                        "outcome": "steal",
+                                    },
+                                }
+                            ],
+                        }
+                    ],
+                },
+            )
+
+        self.assertEqual(payload["draftPrefill"]["appliedClipCount"], 1)
+        self.assertEqual(payload["draftPrefill"]["skippedClipCount"], 0)
+        self.assertEqual(payload["draftPrefill"]["fallbackCaseMatchCount"], 1)
+        self.assertTrue(payload["cases"][0]["clips"][0]["needsLabel"])
+        self.assertEqual(payload["cases"][0]["clips"][0]["expected"]["eventType"], "steal")
 
     def test_review_priority_marks_close_review_and_quick_check_clips(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

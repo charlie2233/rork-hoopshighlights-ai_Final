@@ -528,6 +528,7 @@ def apply_draft_bundle_to_review_payload(payload: dict[str, Any], draft_bundle: 
 
     human_review_required = draft_bundle.get("humanReviewRequired") is True or "draft" in str(draft_bundle.get("source") or "")
     by_case_id: dict[str, dict[str, Any]] = {}
+    by_case_signature: dict[tuple[str, str], dict[str, Any] | None] = {}
     for index, draft_case in enumerate(draft_cases):
         if not isinstance(draft_case, dict):
             raise ValueError(f"Draft bundle case {index} must be an object.")
@@ -537,14 +538,25 @@ def apply_draft_bundle_to_review_payload(payload: dict[str, Any], draft_bundle: 
         if case_id in by_case_id:
             raise ValueError(f"Draft bundle contains duplicate caseId {case_id!r}.")
         by_case_id[case_id] = draft_case
+        signature = case_match_signature(draft_case)
+        if signature in by_case_signature:
+            by_case_signature[signature] = None
+        else:
+            by_case_signature[signature] = draft_case
 
     applied = 0
     skipped = 0
+    fallback_case_matches = 0
     for review_case in payload.get("cases", []):
         if not isinstance(review_case, dict):
             continue
         case_id = string_or_none(review_case.get("caseId") or review_case.get("labelsPayload", {}).get("caseId"))
         draft_case = by_case_id.get(case_id or "")
+        if not draft_case:
+            signature_match = by_case_signature.get(case_match_signature(review_case))
+            if signature_match:
+                draft_case = signature_match
+                fallback_case_matches += 1
         if not draft_case:
             skipped += len([clip for clip in review_case.get("clips", []) if isinstance(clip, dict)])
             continue
@@ -569,8 +581,15 @@ def apply_draft_bundle_to_review_payload(payload: dict[str, Any], draft_bundle: 
         "source": "draft_bundle",
         "appliedClipCount": applied,
         "skippedClipCount": skipped,
+        "fallbackCaseMatchCount": fallback_case_matches,
         "humanReviewRequired": human_review_required,
     }
+
+
+def case_match_signature(case: dict[str, Any]) -> tuple[str, str]:
+    team_mode = (string_or_none(case.get("teamMode") or case.get("labelsPayload", {}).get("teamMode")) or "all").lower()
+    selected_team_id = string_or_none(case.get("selectedTeamId") or case.get("labelsPayload", {}).get("selectedTeamId")) or ""
+    return team_mode, selected_team_id.lower()
 
 
 def find_matching_draft_clip_index(current_clips: list[dict[str, Any]], draft_clip: dict[str, Any]) -> int:
@@ -815,6 +834,7 @@ def render_clip_card(case_index: int, case: dict[str, Any], clip: dict[str, Any]
             jump_button(case.get("videoId"), start, "Start"),
             jump_button(case.get("videoId"), event, "Event"),
             jump_button(case.get("videoId"), finish, "Finish"),
+            f'<button class="secondary-button" type="button" onclick="fillFromPrediction({case_index}, {clip_index})">Use prediction</button>',
             f'<button type="button" onclick="markReviewedAndNext({case_index}, {clip_index})">Mark reviewed + next</button>',
             "</div>",
             '<div class="label-grid">',
@@ -1064,6 +1084,10 @@ button:disabled {
   cursor: not-allowed;
   opacity: 0.45;
 }
+.secondary-button {
+  background: #30364a;
+  color: #f6c95f;
+}
 .file-button {
   display: inline-flex;
   align-items: center;
@@ -1232,6 +1256,88 @@ function setSelectValue(select, value) {
   if (!select) return;
   const normalized = value == null ? "" : String(value);
   select.value = normalized;
+}
+
+function normalizedPredictionText(value) {
+  return String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+}
+
+function eventTypeFromPrediction(predicted) {
+  const raw = normalizedPredictionText(predicted.eventType || predicted.basketballEvent || predicted.label);
+  const outcome = normalizedPredictionText(predicted.outcome);
+  if (!raw) return "";
+  if (raw.includes("three")) return "three_pointer";
+  if (raw.includes("layup") || raw.includes("finish")) return "layup";
+  if (raw.includes("dunk")) return "dunk";
+  if (raw.includes("fast_break") || raw.includes("transition")) return "fast_break";
+  if (raw.includes("block")) return "block";
+  if (raw.includes("steal") || raw.includes("takeaway")) return "steal";
+  if (raw.includes("forced_turnover") || raw.includes("turnover") || raw.includes("deflection")) return "forced_turnover";
+  if (raw.includes("defensive_stop") || raw.includes("stop")) return "defensive_stop";
+  if (raw.includes("rebound")) return "rebound";
+  if (raw.includes("assist")) return "assist";
+  if (raw.includes("boring")) return "boring";
+  if (raw.includes("bad_window")) return "bad_window";
+  if (raw.includes("not_basketball")) return "not_basketball";
+  if (raw.includes("shot")) {
+    if (outcome === "made") return "made_shot";
+    if (outcome === "missed") return "missed_shot";
+    return "unclear";
+  }
+  if (raw.includes("highlight")) return "unclear";
+  return "";
+}
+
+function outcomeFromPrediction(predicted) {
+  const raw = normalizedPredictionText(predicted.outcome);
+  const allowed = new Set([
+    "made",
+    "missed",
+    "blocked",
+    "steal",
+    "forced_turnover",
+    "defensive_stop",
+    "not_shot",
+    "not_highlight",
+    "bad_window",
+    "not_basketball",
+    "unclear",
+  ]);
+  return allowed.has(raw) ? raw : "";
+}
+
+function fillFromPrediction(caseIndex, clipIndex) {
+  const casePayload = reviewData.cases[caseIndex];
+  const clipPayload = casePayload?.labelsPayload?.clips?.[clipIndex];
+  const card = document.querySelector(`[data-case-index="${caseIndex}"][data-clip-index="${clipIndex}"]`);
+  if (!casePayload || !clipPayload || !card) return;
+
+  const predicted = clipPayload.predicted || {};
+  const expectedTeam = predicted.teamId || "";
+  setSelectValue(card.querySelector(".expected-team"), expectedTeam);
+  if (!card.querySelector(".expected-team")?.value && normalizedPredictionText(predicted.teamAttributionStatus) === "opponent") {
+    setSelectValue(card.querySelector(".expected-team"), "opponent");
+  }
+  if (!card.querySelector(".expected-team")?.value) {
+    setSelectValue(card.querySelector(".expected-team"), "unclear");
+  }
+
+  const keep = predicted.keep === true ? "true" : predicted.keep === false ? "false" : "unknown";
+  setSelectValue(card.querySelector(".expected-highlight"), keep);
+  setSelectValue(card.querySelector(".expected-event"), eventTypeFromPrediction(predicted));
+  setSelectValue(card.querySelector(".expected-outcome"), outcomeFromPrediction(predicted));
+  card.querySelector(".reviewed").checked = false;
+
+  const notes = card.querySelector(".label-notes");
+  const note = "Fast-filled from HoopClips prediction; verify video before marking reviewed.";
+  if (notes && !notes.value.includes(note)) {
+    notes.value = notes.value.trim() ? `${notes.value.trim()} ${note}` : note;
+  }
+
+  updateClip(caseIndex, clipIndex);
+  updateProgress();
+  saveDraft();
+  draftStatus("Prediction copied into this clip. Verify the video, then mark reviewed.");
 }
 
 function applyClipPayloadToCard(caseIndex, clipIndex, clipPayload) {
@@ -1524,7 +1630,7 @@ function handleReviewShortcut(event) {
   if (event.altKey || event.ctrlKey || event.metaKey) return;
 
   const key = String(event.key || "").toLowerCase();
-  if (!["s", "e", "f", "r", "n"].includes(key)) return;
+  if (!["s", "e", "f", "p", "r", "n"].includes(key)) return;
 
   const card = activeClipCard();
   if (!card) return;
@@ -1536,6 +1642,8 @@ function handleReviewShortcut(event) {
     seekClipFromCard(card, "event");
   } else if (key === "f") {
     seekClipFromCard(card, "finish");
+  } else if (key === "p") {
+    fillFromPrediction(Number(card.dataset.caseIndex), Number(card.dataset.clipIndex));
   } else if (key === "r") {
     markReviewedAndNext(Number(card.dataset.caseIndex), Number(card.dataset.clipIndex));
   } else if (key === "n") {
