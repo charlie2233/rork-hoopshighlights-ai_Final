@@ -320,6 +320,7 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         agent_clip = compact_input["agentTemplateCookbook"]["candidateClips"][0]
 
         self.assertTrue(compact_clip["qualityHints"]["audioReactionCandidate"])
+        self.assertGreater(compact_clip["qualityHints"]["audioReactionSalienceScore"], 0.0)
         self.assertIn("recall hint", compact_clip["qualityHints"]["audioReactionGuidance"])
         self.assertEqual(
             compact_clip["qualityHints"]["audioReactionVerificationRoles"],
@@ -332,6 +333,7 @@ class GPTHighlightRerankerTests(unittest.TestCase):
             list(gpt_reranker.AUDIO_REACTION_CONTEXT_KEYFRAME_ROLES),
         )
         self.assertTrue(agent_clip["candidateQuality"]["audioReactionCandidate"])
+        self.assertGreater(agent_clip["candidateQuality"]["audioReactionSalienceScore"], 0.0)
         self.assertTrue(
             compact_input["agentTemplateCookbook"]["decisionGuidance"]["selectionContract"]["audioPopIsRecallHintOnly"]
         )
@@ -1889,6 +1891,7 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertIn("unlabeled_loud_pop", {clip.id for clip in sampled})
         self.assertTrue(gpt_reranker.is_audio_reaction_clip(request.clips[-1]))
         self.assertEqual(gpt_reranker.audio_reaction_source_for_clip(request.clips[-1]), "unlabeled_loud_audio_pop")
+        self.assertGreater(gpt_reranker.audio_reaction_salience_score(request.clips[-1]), 0.0)
 
     def test_gpt_audio_reaction_detection_ignores_weak_audio_only_filler(self) -> None:
         request = CreateEditJobRequest(
@@ -1912,6 +1915,46 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         )
 
         self.assertFalse(gpt_reranker.is_audio_reaction_clip(request.clips[0]))
+        self.assertEqual(gpt_reranker.audio_reaction_salience_score(request.clips[0]), 0.0)
+
+    def test_audio_reaction_salience_prefers_valid_crowd_pop_duplicate(self) -> None:
+        request = CreateEditJobRequest(
+            videoId="video_audio_duplicate",
+            analysisJobId="analysis_audio_duplicate",
+            installId="install-123",
+            sourceObjectKey="uploads/source.mp4",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="free",
+            clips=[
+                {
+                    **_labeled_clip("steady_play", 24.0, 0.72, "Highlight"),
+                    "audioPeak": 0.2,
+                    "motionScore": 0.8,
+                    "watchability": 0.78,
+                    "excitement": 0.72,
+                    "combinedScore": 0.72,
+                    "duplicateGroup": "same_moment",
+                },
+                {
+                    **_labeled_clip("crowd_pop_same_play", 24.1, 0.66, "Highlight"),
+                    "audioPeak": 0.98,
+                    "motionScore": 0.82,
+                    "watchability": 0.78,
+                    "excitement": 0.84,
+                    "combinedScore": 0.66,
+                    "duplicateGroup": "same_moment",
+                },
+            ],
+        )
+
+        deduped = gpt_reranker.remove_duplicate_moments(request.clips)
+
+        self.assertEqual([clip.id for clip in deduped], ["crowd_pop_same_play"])
+        self.assertGreater(
+            gpt_reranker.audio_reaction_salience_score(request.clips[1]),
+            gpt_reranker.audio_reaction_salience_score(request.clips[0]),
+        )
 
     def test_shot_sampling_treats_event_center_as_rim_result_anchor(self) -> None:
         request = CreateEditJobRequest(

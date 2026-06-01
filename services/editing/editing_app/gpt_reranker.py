@@ -39,6 +39,7 @@ from app.editing import (  # noqa: E402
     ReviseEditJobRequest,
     StoredEditJob,
     apply_gpt_highlight_rerank,
+    audio_reaction_salience_score,
     audio_reaction_source_for_clip,
     build_agent_editing_context,
     clip_outcome_evidence_source,
@@ -884,6 +885,7 @@ def _candidate_quality_hints(clip: EditCandidateClip) -> Dict[str, Any]:
         "shotLike": is_shot_like,
         "audioReactionCandidate": is_audio_reaction,
         "audioReactionSource": audio_reaction_source,
+        "audioReactionSalienceScore": audio_reaction_salience_score(clip),
         "audioReactionGuidance": (
             AUDIO_REACTION_GPT_GUIDANCE
             if is_audio_reaction

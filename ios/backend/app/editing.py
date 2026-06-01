@@ -1949,6 +1949,7 @@ def _compact_agent_candidate_clip(
             "defensiveEventLike": defensive_event_like,
             "audioReactionCandidate": audio_reaction,
             "audioReactionSource": audio_reaction_source,
+            "audioReactionSalienceScore": audio_reaction_salience_score(clip),
             "audioReactionGuidance": audio_reaction_guidance_for_clip(clip),
             "defensiveFamily": _defensive_highlight_family(clip),
             "genericFiller": is_generic_filler_clip(clip),
@@ -1994,6 +1995,7 @@ def _agent_candidate_quality_summary(
         "qualityEligible": 0,
         "shotLike": 0,
         "defensiveEventLike": 0,
+        "audioReactionCandidates": 0,
         "manualTeamReviewRequired": 0,
         "renderReady": 0,
     }
@@ -2005,6 +2007,8 @@ def _agent_candidate_quality_summary(
             counts["shotLike"] += 1
         if is_defensive_event_like_clip(clip):
             counts["defensiveEventLike"] += 1
+        if is_audio_reaction_clip(clip):
+            counts["audioReactionCandidates"] += 1
         eligibility = _agent_render_eligibility(clip, team_selection)
         if eligibility == "manual_team_review_required":
             counts["manualTeamReviewRequired"] += 1
@@ -2154,6 +2158,7 @@ def rank_clips(clips: Sequence[EditCandidateClip]) -> List[EditCandidateClip]:
             1 if is_plan_quality_eligible_clip(clip) else 0,
             clip_context_quality_score(clip),
             clip_outcome_reliability_score(clip),
+            audio_reaction_salience_score(clip),
             clip.planning_score,
             clip.watchability,
             clip.excitement,
@@ -2654,6 +2659,25 @@ def audio_reaction_guidance_for_clip(clip: EditCandidateClip) -> Optional[str]:
     return AUDIO_REACTION_GPT_GUIDANCE if is_audio_reaction_clip(clip) else None
 
 
+def audio_reaction_salience_score(clip: EditCandidateClip) -> float:
+    source = audio_reaction_source_for_clip(clip)
+    if source is None:
+        return 0.0
+    activity_score = max(clip.motionScore, clip.watchability, clip.excitement)
+    context_score = clip_context_quality_score(clip)
+    source_bonus = 0.04 if source in {"explicit_reaction_label", "reaction_label_with_audio_energy"} else 0.0
+    score = (
+        (clip.audioPeak * 0.38)
+        + (activity_score * 0.24)
+        + (context_score * 0.24)
+        + (clip.confidence * 0.10)
+        + source_bonus
+    )
+    if is_generic_filler_clip(clip) and context_score < 0.55:
+        score = min(score, 0.64)
+    return round(max(0.0, min(1.0, score)), 4)
+
+
 def has_minimum_non_shot_quality(clip: EditCandidateClip) -> bool:
     if is_generic_filler_clip(clip):
         planning_threshold = MIN_GENERIC_HIGHLIGHT_PLANNING_SCORE
@@ -2691,11 +2715,12 @@ def is_plan_quality_eligible_clip(clip: EditCandidateClip) -> bool:
     return True
 
 
-def _duplicate_choice_key(clip: EditCandidateClip) -> Tuple[int, float, float, float, float, float, float]:
+def _duplicate_choice_key(clip: EditCandidateClip) -> Tuple[int, float, float, float, float, float, float, float]:
     return (
         1 if is_plan_quality_eligible_clip(clip) else 0,
         clip_context_quality_score(clip),
         clip_outcome_reliability_score(clip),
+        audio_reaction_salience_score(clip),
         clip.planning_score,
         clip.watchability,
         clip.excitement,
