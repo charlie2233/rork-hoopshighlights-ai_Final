@@ -175,101 +175,16 @@ struct HistoryView: View {
     }
 
     private func historyRow(for project: PersistedProjectRecord) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            Group {
-                if let thumbnail = viewModel.projectThumbnailImage(for: project) {
-                    Image(uiImage: thumbnail)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                } else {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(AppTheme.surfaceBg)
-                        Image(systemName: "video.fill")
-                            .font(.title3)
-                            .foregroundStyle(AppTheme.neonPurple)
-                    }
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 12) {
+                    projectThumbnail(for: project, isExpanded: true)
+                    historySummary(for: project)
                 }
-            }
-            .frame(width: 92, height: 56)
-            .clipShape(.rect(cornerRadius: 12))
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(AppTheme.softBorder, lineWidth: 1)
-            )
-
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    if renamingProjectID == project.id {
-                        TextField("Project title", text: $renameDraft)
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(.white)
-                            .textInputAutocapitalization(.words)
-                            .submitLabel(.done)
-                            .focused($focusedRenameProjectID, equals: project.id)
-                            .onSubmit {
-                                commitRename(for: project)
-                            }
-                            .accessibilityLabel("Project title")
-                            .accessibilityHint("Rename this saved project.")
-                    } else {
-                        Button {
-                            beginRenaming(project)
-                        } label: {
-                            HStack(spacing: 6) {
-                                Text(project.displayTitle)
-                                    .lineLimit(2)
-                                    .minimumScaleFactor(0.86)
-                                    .fixedSize(horizontal: false, vertical: true)
-
-                                Image(systemName: "pencil")
-                                    .font(.caption2.weight(.bold))
-                                    .foregroundStyle(AppTheme.subtleText)
-                                    .accessibilityHidden(true)
-                            }
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(.white)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Rename \(project.displayTitle)")
-                        .accessibilityHint("Edit this project title.")
-                    }
-                    Spacer(minLength: 8)
-                }
-
-                Text("Updated \(project.updatedAt.formatted(date: .abbreviated, time: .shortened))")
-                    .font(.caption)
-                    .foregroundStyle(.white.opacity(0.74))
-                    .fixedSize(horizontal: false, vertical: true)
-
-                LazyVGrid(columns: historyBadgeGridColumns, alignment: .leading, spacing: 8) {
-                    historyBadge(
-                        icon: "film.stack.fill",
-                        text: "\(project.keptClipCount)/\(project.totalClipCount)"
-                    )
-
-                    if project.hasLatestExport {
-                        historyBadge(
-                            icon: "square.and.arrow.up.fill",
-                            text: "Export"
-                        )
-                    }
-
-                    if let analysisMode = project.analysisMode {
-                        historyBadge(
-                            icon: userFacingAnalysisModeIcon(analysisMode),
-                            text: userFacingAnalysisModeLabel(analysisMode)
-                        )
-                    }
-
-                    if let teamTarget = projectTeamTargetShortLabel(project) {
-                        historyBadge(
-                            icon: project.highlightTeamSelection?.mode == .team ? "person.2.fill" : "person.3.fill",
-                            text: teamTarget
-                        )
-                    }
+            } else {
+                HStack(alignment: .top, spacing: 12) {
+                    projectThumbnail(for: project, isExpanded: false)
+                    historySummary(for: project)
                 }
             }
         }
@@ -280,6 +195,124 @@ struct HistoryView: View {
             RoundedRectangle(cornerRadius: 14)
                 .stroke(AppTheme.softBorder, lineWidth: 1)
             )
+    }
+
+    private func projectThumbnail(for project: PersistedProjectRecord, isExpanded: Bool) -> some View {
+        Group {
+            if let thumbnail = viewModel.projectThumbnailImage(for: project) {
+                Image(uiImage: thumbnail)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+            } else {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(AppTheme.surfaceBg)
+                    Image(systemName: "video.fill")
+                        .font(isExpanded ? .title2 : .title3)
+                        .foregroundStyle(AppTheme.neonPurple)
+                }
+            }
+        }
+        .frame(maxWidth: isExpanded ? .infinity : 92)
+        .frame(width: isExpanded ? nil : 92, height: isExpanded ? 132 : 56)
+        .clipShape(.rect(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(AppTheme.softBorder, lineWidth: 1)
+        )
+        .accessibilityHidden(true)
+    }
+
+    private func historySummary(for project: PersistedProjectRecord) -> some View {
+        VStack(alignment: .leading, spacing: dynamicTypeSize.isAccessibilitySize ? 10 : 6) {
+            HStack(alignment: .top) {
+                projectTitleEditor(for: project)
+                Spacer(minLength: 0)
+            }
+
+            Text("Updated \(project.updatedAt.formatted(date: .abbreviated, time: .shortened))")
+                .font(.caption)
+                .foregroundStyle(.white.opacity(0.78))
+                .fixedSize(horizontal: false, vertical: true)
+
+            LazyVGrid(columns: historyBadgeGridColumns, alignment: .leading, spacing: 8) {
+                historyBadge(
+                    icon: "film.stack.fill",
+                    text: "\(project.keptClipCount)/\(project.totalClipCount)"
+                )
+
+                if project.hasLatestExport {
+                    historyBadge(
+                        icon: "square.and.arrow.up.fill",
+                        text: "Export"
+                    )
+                }
+
+                if let analysisMode = project.analysisMode {
+                    historyBadge(
+                        icon: userFacingAnalysisModeIcon(analysisMode),
+                        text: userFacingAnalysisModeLabel(analysisMode)
+                    )
+                }
+
+                if let teamTarget = projectTeamTargetShortLabel(project) {
+                    historyBadge(
+                        icon: project.highlightTeamSelection?.mode == .team ? "person.2.fill" : "person.3.fill",
+                        text: teamTarget
+                    )
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private func projectTitleEditor(for project: PersistedProjectRecord) -> some View {
+        if renamingProjectID == project.id {
+            TextField("Project title", text: $renameDraft, axis: .vertical)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.white)
+                .textInputAutocapitalization(.words)
+                .submitLabel(.done)
+                .lineLimit(1...3)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .background(AppTheme.cardBg, in: .rect(cornerRadius: 10))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(AppTheme.neonPurple.opacity(0.28), lineWidth: 1)
+                }
+                .focused($focusedRenameProjectID, equals: project.id)
+                .onSubmit {
+                    commitRename(for: project)
+                }
+                .accessibilityLabel("Project title")
+                .accessibilityHint("Rename this saved project.")
+        } else {
+            Button {
+                beginRenaming(project)
+            } label: {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(project.displayTitle)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
+                        .minimumScaleFactor(0.88)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .layoutPriority(1)
+
+                    Image(systemName: "pencil")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(AppTheme.subtleText)
+                        .accessibilityHidden(true)
+                }
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Rename \(project.displayTitle)")
+            .accessibilityHint("Edit this project title.")
+        }
     }
 
     private var historyActionGridColumns: [GridItem] {
