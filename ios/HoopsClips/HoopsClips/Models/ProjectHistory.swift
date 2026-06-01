@@ -133,6 +133,23 @@ struct PersistedProjectRecord: Identifiable, Codable, Sendable {
         latestExportRelativePath != nil
     }
 
+    var historyClipBadgeText: String {
+        "\(max(0, keptClipCount)) kept"
+    }
+
+    var historyClipBadgeAccessibilityText: String {
+        let kept = max(0, keptClipCount)
+        let total = max(0, totalClipCount)
+        if total > 0 {
+            return "\(kept) kept clips out of \(total) total clips"
+        }
+        return "\(kept) kept clips"
+    }
+
+    var historyExportBadgeText: String {
+        "Saved reel"
+    }
+
     mutating func appendEvent(kind: ProjectEventKind, message: String, limit: Int) {
         events.append(
             ProjectEventRecord(

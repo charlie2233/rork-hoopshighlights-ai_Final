@@ -433,7 +433,16 @@ def _backfill_underfilled_gpt_result(
     if not _is_underfilled_gpt_result(request, initial_result, available_before_backfill):
         return initial_result
     if not backfill_candidates:
-        return initial_result
+        if initial_result.gptRerankSummary is not None and initial_result.gptRerankSummary.fallbackReason == "all_clips_rejected":
+            return initial_result
+        return _with_fallback(
+            request,
+            "fallback",
+            settings.model,
+            "underfilled_gpt_result_no_backfill",
+            len(initial_sampled_clips),
+            len(initial_sampled_frames),
+        )
 
     backfill_frames = _extract_candidate_keyframes(source_path, backfill_candidates, frames_per_clip, settings)
     if not backfill_frames:

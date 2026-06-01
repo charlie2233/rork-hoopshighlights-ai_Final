@@ -254,13 +254,15 @@ struct HistoryView: View {
             LazyVGrid(columns: historyBadgeGridColumns, alignment: .leading, spacing: 8) {
                 historyBadge(
                     icon: "film.stack.fill",
-                    text: "\(project.keptClipCount)/\(project.totalClipCount)"
+                    text: project.historyClipBadgeText,
+                    accessibilityLabel: project.historyClipBadgeAccessibilityText
                 )
 
                 if project.hasLatestExport {
                     historyBadge(
                         icon: "square.and.arrow.up.fill",
-                        text: "Export"
+                        text: project.historyExportBadgeText,
+                        accessibilityLabel: "Saved reel ready to preview or share"
                     )
                 }
 
@@ -355,13 +357,13 @@ struct HistoryView: View {
         ]
     }
 
-    private func historyBadge(icon: String, text: String) -> some View {
+    private func historyBadge(icon: String, text: String, accessibilityLabel: String? = nil) -> some View {
         HStack(spacing: 4) {
             Image(systemName: icon)
                 .font(.caption2.weight(.semibold))
             Text(text)
                 .font(.caption2.weight(.medium))
-                .lineLimit(2)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
                 .minimumScaleFactor(0.86)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -370,6 +372,7 @@ struct HistoryView: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
         .background(AppTheme.cardBg, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .accessibilityLabel(accessibilityLabel ?? text)
     }
 
     private func historyActionLabel(title: String, icon: String, tint: Color) -> some View {

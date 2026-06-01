@@ -1212,6 +1212,28 @@ struct HoopsClipsTests {
         #expect(decoded.cloudDiagnostics?.teamUncertainReviewSegments == 1)
     }
 
+    @Test func testProjectHistoryBadgesUsePlainUserVisibleLabels() {
+        let now = Date(timeIntervalSince1970: 1_777_100_000)
+        let project = PersistedProjectRecord(
+            title: "Blue vs Gold",
+            sourceFilename: "blue-gold.mov",
+            sourceRelativePath: "projects/source.mov",
+            sourceDuration: 64,
+            thumbnailRelativePath: "projects/thumb.jpg",
+            latestExportRelativePath: "projects/export.mp4",
+            latestExportFilename: "blue-gold-edit.mp4",
+            createdAt: now,
+            updatedAt: now,
+            lastOpenedAt: now,
+            totalClipCount: 22,
+            keptClipCount: 8
+        )
+
+        #expect(project.historyClipBadgeText == "8 kept")
+        #expect(project.historyClipBadgeAccessibilityText == "8 kept clips out of 22 total clips")
+        #expect(project.historyExportBadgeText == "Saved reel")
+    }
+
     @Test @MainActor func testCloudEditRequestSendsFullBackendCandidatePoolAndReviewReserve() throws {
         let viewModel = HighlightsViewModel()
         viewModel.cloudEditSourceObjectKey = "uploads/source.mp4"

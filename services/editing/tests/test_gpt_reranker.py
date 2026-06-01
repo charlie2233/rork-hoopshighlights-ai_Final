@@ -2304,6 +2304,77 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertEqual(result.gptRerankSummary.keptClipIds, ["c0", "c4", "c5"])
         self.assertEqual([clip.id for clip in result.clips[:3]], ["c0", "c4", "c5"])
 
+    def test_underfilled_gpt_result_falls_back_when_full_pool_was_sampled(self) -> None:
+        settings = GPTHighlightRerankerSettings(
+            enabled=True,
+            api_key="unit-test-key",
+            model="gpt-test",
+            endpoint="https://api.openai.test/v1/responses",
+            timeout_seconds=1.0,
+            max_output_tokens=512,
+            free_max_clips=12,
+            paid_max_clips=24,
+            free_frames_per_clip=8,
+            paid_frames_per_clip=8,
+            frame_width=512,
+            jpeg_quality=5,
+            max_image_bytes=180_000,
+            image_detail="low",
+            plan_edit_enabled=True,
+        )
+        original_extract = gpt_reranker._extract_candidate_keyframes
+        call_payload_clip_ids: list[list[str]] = []
+
+        def fake_extract(source_path, clips, frames_per_clip, rerank_settings):
+            frames = []
+            for clip in clips:
+                for role, second in gpt_reranker._sample_times_for_clip(clip, frames_per_clip):
+                    frames.append(SampledFrame(clip_id=clip.id, role=role, time_seconds=second, data_url="data:image/jpeg;base64,ZmFrZQ=="))
+            return frames
+
+        def fake_response_client(payload, api_key, endpoint, timeout_seconds):
+            compact_input = json.loads(payload["input"][0]["content"][0]["text"])
+            clip_ids = [clip["clipId"] for clip in compact_input["clips"]]
+            call_payload_clip_ids.append(clip_ids)
+            return {
+                "output_text": json.dumps(
+                    {
+                        "decisions": [
+                            _gpt_decision_payload(
+                                clip_id,
+                                keep=clip_id == "c0",
+                                score=0.92 if clip_id == "c0" else 0.42,
+                            )
+                            for clip_id in clip_ids
+                        ],
+                        "storyOrder": ["c0"],
+                        "planEdit": {
+                            "orderedClipIds": ["c0"],
+                            "pacing": "fast",
+                            "captions": [],
+                            "slowMotionMoments": [],
+                            "summary": "over-pruned",
+                        },
+                        "summary": "over-pruned",
+                    }
+                )
+            }
+
+        try:
+            gpt_reranker._extract_candidate_keyframes = fake_extract
+            request = _request("free", 12).model_copy(update={"targetDurationSeconds": 270})
+            with tempfile.NamedTemporaryFile(suffix=".mp4") as source:
+                result = gpt_reranker.rerank_edit_request_with_gpt(request, Path(source.name), settings, fake_response_client)
+        finally:
+            gpt_reranker._extract_candidate_keyframes = original_extract
+
+        self.assertEqual(call_payload_clip_ids, [[f"c{index}" for index in range(12)]])
+        self.assertEqual(result.gptRerankSummary.status, "fallback")
+        self.assertEqual(result.gptRerankSummary.fallbackReason, "underfilled_gpt_result_no_backfill")
+        self.assertEqual(result.gptRerankSummary.sampledClipCount, 12)
+        self.assertEqual(len(result.clips), 12)
+        self.assertGreater(len(result.gptRerankSummary.keptClipIds), 1)
+
     def test_long_target_duration_requires_deeper_gpt_backfill_floor(self) -> None:
         short_request = _request("free", 12)
         medium_request = short_request.model_copy(update={"targetDurationSeconds": 45})
