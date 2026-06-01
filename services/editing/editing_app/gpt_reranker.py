@@ -1731,6 +1731,7 @@ def _build_openai_payload(
             "For very long reels near 4:30, build a fuller edit with offense, defense, transition, and story variety; do not collapse it into a short best-of reel when clear candidates exist. "
             "Reject boring, unclear, duplicate, or unsafe clips, but do not over-prune a long reel down to only two or three clips unless the supplied candidates truly lack visible outcomes. "
             "When a selected team is supplied, keep highlights for that team only; exclude confident opponent clips. Keep uncertain team-attribution clips for user review. "
+            "For selected-team jobs, selectionQualityRules.minRecommendedKeptClipCount and minRecommendedKeptDurationSeconds are based on render-eligible clips only; do not satisfy the final edit floor with review-only uncertain clips. "
             "For selected-team jobs, prioritize evidence-backed selected-team render candidates before uncertain review-only clips in the final edit. "
             "For teamAttributionStatus=uncertain, userReviewDecision=kept is the only signal that the user explicitly promoted the clip for final editing; otherwise treat it as review-only. "
             + TEAM_EVIDENCE_GPT_GUIDANCE
@@ -1750,20 +1751,25 @@ def _gpt_selection_quality_rules(
     request: CreateEditJobRequest,
     sampled_clips: Sequence[EditCandidateClip],
 ) -> Dict[str, Any]:
-    available_unique = remove_duplicate_moments(
+    reviewable_unique = remove_duplicate_moments(
         [clip for clip in sampled_clips if is_plan_quality_eligible_clip(clip)]
     )
-    min_clip_count, min_duration = _gpt_underfill_floor(request, available_unique)
+    selected_team_mode = bool(request.teamSelection is not None and request.teamSelection.mode == "team")
+    render_eligible_unique = (
+        _render_eligible_underfill_clips(request, sampled_clips)
+        if selected_team_mode
+        else reviewable_unique
+    )
+    min_clip_count, min_duration = _gpt_underfill_floor(request, render_eligible_unique)
     target_duration = max(float(request.targetDurationSeconds), 0.0)
     defense_only = _has_defense_only_intent(request)
-    defensive_candidate_count = len([clip for clip in available_unique if _is_defensive_candidate_clip(clip)])
-    selected_team_mode = bool(request.teamSelection is not None and request.teamSelection.mode == "team")
+    defensive_candidate_count = len([clip for clip in render_eligible_unique if _is_defensive_candidate_clip(clip)])
     selected_team_render_count = 0
     selected_team_evidence_backed_count = 0
     selected_team_defensive_count = 0
     selected_team_uncertain_review_count = 0
     if selected_team_mode:
-        for clip in available_unique:
+        for clip in reviewable_unique:
             context = _team_defense_context(clip, request.teamSelection)
             if context["renderEligibleForSelectedTeam"]:
                 selected_team_render_count += 1
@@ -1775,7 +1781,9 @@ def _gpt_selection_quality_rules(
                 selected_team_uncertain_review_count += 1
     return {
         "targetDurationSeconds": request.targetDurationSeconds,
-        "availableQualityCandidateCount": len(available_unique),
+        "availableQualityCandidateCount": len(reviewable_unique),
+        "reviewableQualityCandidateCount": len(reviewable_unique),
+        "renderEligibleQualityCandidateCount": len(render_eligible_unique),
         "defensiveQualityCandidateCount": defensive_candidate_count,
         "selectedTeamRenderCandidateCount": selected_team_render_count if selected_team_mode else None,
         "selectedTeamEvidenceBackedCandidateCount": selected_team_evidence_backed_count if selected_team_mode else None,

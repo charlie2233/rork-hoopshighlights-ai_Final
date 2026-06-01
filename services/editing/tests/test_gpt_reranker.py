@@ -479,6 +479,70 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertEqual(len(uncertain_ids), 3)
         self.assertTrue(all(clip_id.startswith("uncertain_block_") for clip_id in uncertain_ids))
 
+    def test_selected_team_quality_floor_counts_render_eligible_not_review_only_uncertain(self) -> None:
+        settings = GPTHighlightRerankerSettings.from_env()
+        clips = []
+        for index in range(2):
+            clips.append(
+                {
+                    **_clip(f"dark_make_{index}", float(index * 7), 0.96 - (index * 0.01)),
+                    "teamAttribution": {
+                        "teamId": "team_dark",
+                        "label": "Dark jerseys",
+                        "colorLabel": "black",
+                        "confidence": 0.93,
+                        "source": "quick_scan",
+                        "evidenceFrameRefs": [f"dark_{index}_action", f"dark_{index}_outcome"],
+                        "evidenceRoleGroups": ["action", "outcome"],
+                    },
+                }
+            )
+        for index in range(8):
+            clips.append(
+                {
+                    **_clip(f"uncertain_make_{index}", float((index + 2) * 7), 0.94 - (index * 0.01)),
+                    "teamAttribution": {
+                        "teamId": "team_dark",
+                        "label": "Dark jerseys",
+                        "colorLabel": "black",
+                        "confidence": 0.63,
+                        "source": "quick_scan",
+                    },
+                }
+            )
+        request = CreateEditJobRequest(
+            videoId="video_selected_team_floor",
+            analysisJobId="analysis_selected_team_floor",
+            installId="install-123",
+            sourceObjectKey="uploads/source.mp4",
+            preset="personal_highlight",
+            targetDurationSeconds=90,
+            planTier="free",
+            teamSelection={
+                "mode": "team",
+                "teamId": "team_dark",
+                "label": "Dark jerseys",
+                "colorLabel": "black",
+                "confidenceThreshold": 0.85,
+                "includeUncertain": True,
+            },
+            clips=clips,
+        )
+
+        payload = _build_openai_payload(request, request.clips, [], settings)
+        compact_input = json.loads(payload["input"][0]["content"][0]["text"])
+        rules = compact_input["selectionQualityRules"]
+
+        self.assertEqual(rules["availableQualityCandidateCount"], 10)
+        self.assertEqual(rules["reviewableQualityCandidateCount"], 10)
+        self.assertEqual(rules["renderEligibleQualityCandidateCount"], 2)
+        self.assertEqual(rules["selectedTeamRenderCandidateCount"], 2)
+        self.assertEqual(rules["selectedTeamUncertainReviewCandidateCount"], 8)
+        self.assertEqual(rules["minRecommendedKeptClipCount"], 2)
+        self.assertEqual(rules["minRecommendedKeptDurationSeconds"], 12.0)
+        self.assertIn("render-eligible clips only", payload["instructions"])
+        self.assertIn("review-only uncertain clips", payload["instructions"])
+
     def test_selected_team_sampling_respects_include_uncertain_false(self) -> None:
         request = CreateEditJobRequest(
             videoId="video_selected_team_confident_only",
