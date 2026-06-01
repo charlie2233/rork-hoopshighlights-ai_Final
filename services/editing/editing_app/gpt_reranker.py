@@ -21,6 +21,7 @@ from app.editing import (  # noqa: E402
     DEFENSIVE_TRACKING_RESULT_ROLES,
     EditPlanPatch,
     EditCandidateClip,
+    AUDIO_REACTION_GPT_GUIDANCE,
     GPT_CANDIDATE_REVIEW_LIMIT,
     GPTHighlightClipDecision,
     GPTPlanEdit,
@@ -44,6 +45,7 @@ from app.editing import (  # noqa: E402
     derive_user_prompt_intent,
     filter_clips_for_team_selection,
     get_template_pack_for_plan,
+    is_audio_reaction_clip,
     is_defensive_event_like_clip,
     is_plan_quality_eligible_clip,
     is_shot_like_clip,
@@ -848,6 +850,7 @@ def _candidate_quality_hints(clip: EditCandidateClip) -> Dict[str, Any]:
     duration = round(clip.duration, 3)
     is_shot_like = is_shot_like_clip(clip)
     is_defensive = _is_defensive_candidate_clip(clip)
+    is_audio_reaction = is_audio_reaction_clip(clip)
     requires_shot_timing = is_shot_like and not is_defensive
     if requires_shot_timing:
         min_duration = max(MIN_PLAN_CLIP_SECONDS, MIN_GPT_SHOT_LIKE_CANDIDATE_SECONDS)
@@ -870,6 +873,12 @@ def _candidate_quality_hints(clip: EditCandidateClip) -> Dict[str, Any]:
         "minLeadInSeconds": min_lead_in,
         "minFollowThroughSeconds": min_follow_through,
         "shotLike": is_shot_like,
+        "audioReactionCandidate": is_audio_reaction,
+        "audioReactionGuidance": (
+            AUDIO_REACTION_GPT_GUIDANCE
+            if is_audio_reaction
+            else None
+        ),
         "nativeShotSignals": native_shot_signals_for_clip(clip).model_dump(mode="json"),
         "outcomeEvidenceSource": clip_outcome_evidence_source(clip),
         "outcomeReliabilityScore": clip_outcome_reliability_score(clip),
@@ -1667,6 +1676,8 @@ def _build_openai_payload(
                         "rejectTinyClips": True,
                         "rejectPreBasketOnlyClips": True,
                         "treatLabelOnlyOutcomeEvidenceAsUnverified": True,
+                        "audioPopIsRecallHintOnly": True,
+                        "audioPopOutcomeClaimsRequireSampledVisualEvidence": True,
                         "nonScoringDefensiveOutcomes": ["steal", "forced_turnover", "defensive_stop"],
                         "madeShotRequiresSetupReleaseBallPathRimAndOutcome": True,
                         "madeOrMissedShotRequiresVisibleReleaseAndRimResult": True,
@@ -1748,6 +1759,7 @@ def _build_openai_payload(
             "outcome sanity, boring/duplicate rejection, concise captions, story order, and safe edit suggestions. "
             "Act like a basketball shot-tracker: for made shots, verify visible setup, release, ball path, rim/result, and aftermath. "
             "Treat outcomeEvidenceSource=label_only as unverified until the sampled frames visibly prove the result. "
+            "Treat Crowd Reaction, crowd-pop, and audio-pop candidates as recall hints only; do not keep them or claim made, missed, blocked, steal, forced_turnover, or defensive_stop outcomes unless sampled keyframes visibly show the basketball event, ball/player control, and outcome. "
             "For made or missed shots, releaseVisible, shotArcVisible, and rimResultVisible must all be true; do not infer a make from a label or late rim-only aftermath. "
             "A made outcome requires shotResultEvidence.rimResultEvidence=made_visible with confident visible rim/net proof; use unclear if the result is guessed. "
             "A made outcome also requires shotResultEvidence.rimEntrySequence=visible_entry with approach, rim-entry, and below-rim/net frame roles. "
@@ -1893,6 +1905,7 @@ def _build_revision_patch_payload(
                 "teamAttributionStatus": team_attribution_status(clip, job.request.teamSelection),
                 "teamEvidence": team_evidence_summary(clip),
                 "teamDefenseContext": _team_defense_context(clip, job.request.teamSelection),
+                "qualityHints": _candidate_quality_hints(clip),
                 "nativeShotSignals": native_shot_signals_for_clip(clip).model_dump(mode="json"),
             }
             for clip in source_clips
@@ -1904,6 +1917,7 @@ def _build_revision_patch_payload(
         "instructions": (
             "You are HoopClips GPT Edit Cool. Return an EditPlanPatch JSON only. "
             "Do not output free-form prose. Do not generate FFmpeg commands, shell commands, render instructions, file paths, URLs, or storage keys. "
+            "Treat Crowd Reaction, crowd-pop, and audio-pop candidates as recall hints only; do not create or revise captions/outcomes as made, missed, blocked, steal, forced_turnover, or defensive_stop unless the existing validated plan already supports that event. "
             + TEAM_EVIDENCE_GPT_GUIDANCE
             + "Use only clips whose teamDefenseContext.allowedFinalEditAction is render and safe patch paths; the backend will validate and repair before rendering."
         ),

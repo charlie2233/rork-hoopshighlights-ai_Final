@@ -103,6 +103,9 @@ RevisionCommand = Literal[
 
 EDIT_PLAN_VERSION = "edit-plan-v1"
 RENDER_MODE = "cloud_ffmpeg"
+AUDIO_REACTION_GPT_GUIDANCE = (
+    "Crowd/audio pop is a recall hint only; keep or claim an outcome only when sampled frames show real basketball action and visible outcome."
+)
 MIN_PLAN_CLIP_SECONDS = 2.0
 MIN_GPT_HIGHLIGHT_SCORE = 0.55
 MIN_GPT_WATCHABILITY_SCORE = 0.5
@@ -1919,6 +1922,7 @@ def _compact_agent_candidate_clip(
     quality_eligible = is_plan_quality_eligible_clip(clip)
     shot_like = is_shot_like_clip(clip)
     defensive_event_like = is_defensive_event_like_clip(clip)
+    audio_reaction = is_audio_reaction_clip(clip)
     return {
         "clipId": clip.id,
         "start": round(clip.start, 3),
@@ -1939,6 +1943,8 @@ def _compact_agent_candidate_clip(
             "outcomeReliabilityScore": outcome_reliability_score,
             "shotLike": shot_like,
             "defensiveEventLike": defensive_event_like,
+            "audioReactionCandidate": audio_reaction,
+            "audioReactionGuidance": audio_reaction_guidance_for_clip(clip),
             "defensiveFamily": _defensive_highlight_family(clip),
             "genericFiller": is_generic_filler_clip(clip),
         },
@@ -2014,6 +2020,8 @@ def _agent_decision_guidance(
             "preferRenderReady": True,
             "preferQualityEligible": True,
             "rejectGenericFillerUnlessNeeded": True,
+            "audioPopIsRecallHintOnly": True,
+            "audioPopOutcomeClaimsRequireSampledVisualEvidence": True,
             "keepClearDefensiveHighlights": [
                 "block",
                 "steal",
@@ -2595,6 +2603,25 @@ def non_shot_clip_quality_score(clip: EditCandidateClip) -> float:
 def is_generic_filler_clip(clip: EditCandidateClip) -> bool:
     normalized = clip.label.strip().lower()
     return normalized in {"highlight", "clip", "play", "moment"} or normalized.endswith(" highlight")
+
+
+def is_audio_reaction_clip(clip: EditCandidateClip) -> bool:
+    normalized = clip.label.strip().lower()
+    explicit_reaction_label = normalized in {
+        "audio pop",
+        "audio reaction",
+        "crowd pop",
+        "crowd reaction",
+    }
+    inferred_reaction_label = ("reaction" in normalized or "crowd" in normalized) and max(
+        clip.audioPeak,
+        clip.excitement,
+    ) >= 0.75
+    return explicit_reaction_label or inferred_reaction_label
+
+
+def audio_reaction_guidance_for_clip(clip: EditCandidateClip) -> Optional[str]:
+    return AUDIO_REACTION_GPT_GUIDANCE if is_audio_reaction_clip(clip) else None
 
 
 def has_minimum_non_shot_quality(clip: EditCandidateClip) -> bool:
@@ -3396,6 +3423,8 @@ def _gpt_decision_rejection_reason(
         return "low_watchability_score"
     if decision.outcome in {"unclear", "not_basketball"}:
         return "unclear_or_non_basketball_outcome"
+    if is_audio_reaction_clip(clip) and sampled_frame_roles is None:
+        return "audio_reaction_requires_sampled_visual_evidence"
     if not _source_supports_gpt_outcome_claim(decision, clip):
         return "gpt_outcome_unsupported_by_source"
     if _gpt_outcome_conflicts_with_native_signal(decision, clip):
@@ -3645,6 +3674,13 @@ def _source_supports_gpt_outcome_claim(decision: GPTHighlightClipDecision, clip:
             return True
         if is_shot_like_clip(clip):
             return False
+        if is_audio_reaction_clip(clip):
+            return (
+                max(clip.watchability, clip.motionScore) >= 0.72
+                and clip.confidence >= 0.65
+                and clip.planning_score >= 0.7
+                and has_minimum_non_shot_event_context(clip)
+            )
         if not is_generic_filler_clip(clip):
             return max(clip.watchability, clip.motionScore) >= 0.55 and clip.confidence >= 0.55
         return max(clip.watchability, clip.motionScore) >= 0.72 and clip.confidence >= 0.65 and clip.planning_score >= 0.7
@@ -3657,6 +3693,13 @@ def _source_supports_gpt_outcome_claim(decision: GPTHighlightClipDecision, clip:
     normalized_label = clip.label.strip().lower()
     if decision.outcome in {"made", "missed"} and normalized_label in {"defense", "defensive stop", "block", "steal"}:
         return False
+    if is_audio_reaction_clip(clip):
+        return (
+            max(clip.watchability, clip.motionScore) >= 0.72
+            and clip.confidence >= 0.65
+            and clip.planning_score >= 0.7
+            and has_minimum_non_shot_event_context(clip)
+        )
     if not is_generic_filler_clip(clip):
         return True
 

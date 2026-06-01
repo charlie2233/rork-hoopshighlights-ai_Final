@@ -284,6 +284,55 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertNotIn("uploads/source.mp4", str(payload))
         self.assertNotIn("https://", str(payload))
 
+    def test_payload_marks_crowd_reaction_candidates_as_audio_recall_hints(self) -> None:
+        settings = GPTHighlightRerankerSettings.from_env()
+        request = CreateEditJobRequest(
+            videoId="video_audio_pop",
+            analysisJobId="analysis_audio_pop",
+            installId="install-123",
+            sourceObjectKey="uploads/source.mp4",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="free",
+            clips=[
+                {
+                    **_labeled_clip("crowd_pop_1", 42.0, 0.92, "Crowd Reaction"),
+                    "audioPeak": 0.99,
+                    "motionScore": 0.86,
+                    "watchability": 0.88,
+                    "combinedScore": 0.9,
+                }
+            ],
+        )
+        frames = [
+            SampledFrame("crowd_pop_1", "start", 42.0, "data:image/jpeg;base64,c3RhcnQ="),
+            SampledFrame("crowd_pop_1", "eventCenter", 45.0, "data:image/jpeg;base64,ZXZlbnQ="),
+            SampledFrame("crowd_pop_1", "finish", 48.0, "data:image/jpeg;base64,ZmluaXNo"),
+        ]
+
+        payload = _build_openai_payload(request, request.clips, frames, settings)
+        compact_input = json.loads(payload["input"][0]["content"][0]["text"])
+        compact_clip = compact_input["clips"][0]
+        agent_clip = compact_input["agentTemplateCookbook"]["candidateClips"][0]
+
+        self.assertTrue(compact_clip["qualityHints"]["audioReactionCandidate"])
+        self.assertIn("recall hint", compact_clip["qualityHints"]["audioReactionGuidance"])
+        self.assertTrue(compact_input["shotTrackerRules"]["audioPopIsRecallHintOnly"])
+        self.assertTrue(compact_input["shotTrackerRules"]["audioPopOutcomeClaimsRequireSampledVisualEvidence"])
+        self.assertTrue(agent_clip["candidateQuality"]["audioReactionCandidate"])
+        self.assertTrue(
+            compact_input["agentTemplateCookbook"]["decisionGuidance"]["selectionContract"]["audioPopIsRecallHintOnly"]
+        )
+        self.assertIn("audio-pop candidates as recall hints", payload["instructions"])
+        self.assertEqual(
+            compact_clip["sampledKeyframes"],
+            [
+                {"role": "start", "time": 42.0},
+                {"role": "eventCenter", "time": 45.0},
+                {"role": "finish", "time": 48.0},
+            ],
+        )
+
     def test_payload_includes_team_targeting_and_excludes_confident_opponent_clips(self) -> None:
         settings = GPTHighlightRerankerSettings.from_env()
         request = _team_targeted_request()
@@ -1363,6 +1412,38 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertNotIn("uploads/source.mp4", serialized)
         self.assertNotIn("downloadUrl", serialized)
         self.assertNotIn("https://", serialized)
+
+    def test_revision_patch_payload_marks_audio_reaction_candidates_as_recall_hints(self) -> None:
+        settings = GPTHighlightRerankerSettings.from_env()
+        request = CreateEditJobRequest(
+            videoId="video_audio_pop_revision",
+            analysisJobId="analysis_audio_pop_revision",
+            installId="install-123",
+            sourceObjectKey="uploads/source.mp4",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="internal",
+            clips=[
+                {
+                    **_labeled_clip("crowd_pop_revision", 42.0, 0.92, "Crowd Reaction"),
+                    "audioPeak": 0.99,
+                    "motionScore": 0.86,
+                    "watchability": 0.88,
+                    "combinedScore": 0.9,
+                }
+            ],
+        )
+        job = build_edit_job(request, "edit_revision_audio_pop_payload")
+
+        payload = _build_revision_patch_payload(job, ReviseEditJobRequest(command="make_more_hype"), settings)
+        compact_input = json.loads(payload["input"][0]["content"][0]["text"])
+        candidate = compact_input["candidateClips"][0]
+        agent_candidate = compact_input["agentTemplateCookbook"]["candidateClips"][0]
+
+        self.assertTrue(candidate["qualityHints"]["audioReactionCandidate"])
+        self.assertIn("recall hint", candidate["qualityHints"]["audioReactionGuidance"])
+        self.assertTrue(agent_candidate["candidateQuality"]["audioReactionCandidate"])
+        self.assertIn("audio-pop candidates as recall hints", payload["instructions"])
 
     def test_revision_patch_payload_filters_selected_team_candidates(self) -> None:
         settings = GPTHighlightRerankerSettings.from_env()

@@ -3153,6 +3153,61 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertEqual(reranked.gptRerankSummary.rejectedReasonCounts["gpt_outcome_unsupported_by_source"], 1)
         self.assertEqual(job.status, "failed")
 
+    def test_gpt_highlight_rerank_rejects_crowd_reaction_outcome_claims_without_sampled_visual_support(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=15,
+                clips=[
+                    {
+                        **_clip("crowd_pop_only", 0.0, "Crowd Reaction", 0.9),
+                        "watchability": 0.9,
+                        "motionScore": 0.88,
+                        "audioPeak": 1.0,
+                    }
+                ],
+            )
+        )
+        outcome_events = [
+            ("made", "Made Shot", "BUCKET"),
+            ("missed", "Missed Shot", "GOOD LOOK"),
+            ("blocked", "Block", "BLOCKED"),
+            ("steal", "Steal", "PICKED"),
+        ]
+
+        for outcome, basketball_event, caption in outcome_events:
+            with self.subTest(outcome=outcome):
+                decisions = [
+                    GPTHighlightClipDecision(
+                        clipId="crowd_pop_only",
+                        keep=True,
+                        highlightScore=0.95,
+                        watchabilityScore=0.9,
+                        basketballEvent=basketball_event,
+                        outcome=outcome,
+                        caption=caption,
+                        reason="GPT overclaimed an outcome from a crowd reaction without sampled visual support.",
+                        qualitySignals=_quality_signals(),
+                        shotResultEvidence=_shot_result_evidence(
+                            rimResultEvidence="blocked" if outcome == "blocked" else "clear_miss" if outcome == "missed" else "made_visible",
+                            rimEntrySequence="visible_miss" if outcome == "missed" else "visible_entry",
+                        ),
+                        shotTrackingEvidence=_shot_tracking_evidence(),
+                        suggestedEdit=GPTHighlightSuggestedEdit(),
+                    )
+                ]
+
+                reranked = apply_gpt_highlight_rerank(request, decisions, "gpt-test", 1, 8)
+                job = build_edit_job(reranked, f"edit_crowd_reaction_{outcome}_claim")
+
+                self.assertEqual(reranked.clips, [])
+                self.assertEqual(reranked.gptRerankSummary.fallbackReason, "all_clips_rejected")
+                self.assertIn("crowd_pop_only", reranked.gptRerankSummary.rejectedClipIds)
+                self.assertEqual(
+                    reranked.gptRerankSummary.rejectedReasonCounts["audio_reaction_requires_sampled_visual_evidence"],
+                    1,
+                )
+                self.assertEqual(job.status, "failed")
+
     def test_gpt_highlight_rerank_rejects_outcome_conflicting_with_native_shot_signal(self) -> None:
         request = CreateEditJobRequest(
             **_request_payload(
