@@ -291,7 +291,7 @@ struct ExportView: View {
                 subtitle: "Visual overlays and color treatment for the reel"
             )
 
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 100), spacing: 10)], spacing: 10) {
+            LazyVGrid(columns: themeOptionGridColumns, spacing: 10) {
                 ForEach(ExportTheme.allCases) { theme in
                     let isLocked = isThemeLocked(theme)
                     Button {
@@ -315,6 +315,10 @@ struct ExportView: View {
                             Text(theme.rawValue)
                                 .font(.caption.weight(.medium))
                                 .foregroundStyle(viewModel.selectedTheme == theme ? .white : (isLocked ? AppTheme.warningYellow : AppTheme.subtleText))
+                                .multilineTextAlignment(.center)
+                                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
+                                .minimumScaleFactor(0.84)
+                                .fixedSize(horizontal: false, vertical: true)
 
                             if isLocked {
                                 Text("PRO")
@@ -323,9 +327,11 @@ struct ExportView: View {
                                     .padding(.horizontal, 6)
                                     .padding(.vertical, 3)
                                     .background(AppTheme.warningYellow.opacity(0.10), in: Capsule())
+                                    .fixedSize(horizontal: true, vertical: true)
                             }
                         }
                         .frame(maxWidth: .infinity)
+                        .frame(minHeight: dynamicTypeSize.isAccessibilitySize ? 116 : 94)
                         .padding(.vertical, 14)
                         .background(
                             viewModel.selectedTheme == theme ? AppTheme.accentPurple : AppTheme.cardBg,
@@ -359,12 +365,16 @@ struct ExportView: View {
                 .font(.caption)
                 .foregroundStyle(AppTheme.subtleText)
                 .padding(.leading, 4)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 3)
+                .fixedSize(horizontal: false, vertical: true)
 
             if !subscriptionManager.isProUser {
                 Text("Pro unlocks Neon, Cinematic, and Hype export themes.")
                     .font(.caption2)
                     .foregroundStyle(AppTheme.warningYellow)
                     .padding(.leading, 4)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 3)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .padding(16)
@@ -908,6 +918,12 @@ struct ExportView: View {
     private var quickActionButtonGridColumns: [GridItem] {
         [
             GridItem(.adaptive(minimum: dynamicTypeSize.isAccessibilitySize ? 156 : 128), spacing: 10, alignment: .top)
+        ]
+    }
+
+    private var themeOptionGridColumns: [GridItem] {
+        [
+            GridItem(.adaptive(minimum: dynamicTypeSize.isAccessibilitySize ? 168 : 116), spacing: 10, alignment: .top)
         ]
     }
 
