@@ -83,7 +83,7 @@ struct AIEditView: View {
         AIEditQuickPrompt(
             id: "defense",
             title: "Focus defense",
-            prompt: "Focus on defense: blocks, steals, stops, and transition plays.",
+            prompt: "Focus on defense: blocks, steals, forced turnovers, stops, and transition plays.",
             icon: "shield.lefthalf.filled"
         ),
         AIEditQuickPrompt(
@@ -676,7 +676,7 @@ struct AIEditView: View {
                     }
 
                 if userEditPrompt.isEmpty {
-                    Text("Optional: more hype, focus on defense, NBA recap, 4:30 team reel.")
+                    Text("Optional: more hype, focus defense, turnovers, NBA recap, 4:30 team reel.")
                         .font(.subheadline)
                         .foregroundStyle(AppTheme.subtleText)
                         .padding(.horizontal, 16)
@@ -818,6 +818,8 @@ struct AIEditView: View {
                 Label(activeAIWorkPhrase, systemImage: "sparkles")
                     .font(.caption.bold())
                     .foregroundStyle(AppTheme.warningYellow)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 3)
+                    .minimumScaleFactor(0.84)
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("export.aiEdit.activeWorkPhrase")
             }
@@ -829,11 +831,7 @@ struct AIEditView: View {
             }
 
             if let serviceStatusMessage {
-                Label(serviceStatusMessage, systemImage: serviceStatusIcon)
-                    .font(.caption)
-                    .foregroundStyle(serviceStatusColor)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityIdentifier("export.aiEdit.serviceStatus")
+                serviceStatusBanner(message: serviceStatusMessage)
             }
 
             if let errorMessage {
@@ -847,6 +845,40 @@ struct AIEditView: View {
         .rorkCard(cornerRadius: 16, stroke: statusColor.opacity(0.24), glow: statusColor, glowOpacity: 0.05)
         .accessibilityLabel("AI edit status")
         .accessibilityValue(phase.displayLabel)
+    }
+
+    private func serviceStatusBanner(message: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label {
+                Text(message)
+                    .font(.caption)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 5 : 3)
+                    .minimumScaleFactor(0.84)
+                    .fixedSize(horizontal: false, vertical: true)
+            } icon: {
+                Image(systemName: serviceStatusIcon)
+                    .accessibilityHidden(true)
+            }
+            .foregroundStyle(serviceStatusColor)
+            .accessibilityIdentifier("export.aiEdit.serviceStatus")
+
+            if shouldShowCloudStatusRetry {
+                Button {
+                    Task { await refreshCloudEditVersion() }
+                } label: {
+                    Label("Retry status check", systemImage: "arrow.clockwise")
+                        .font(.caption.weight(.semibold))
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.84)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                }
+                .buttonStyle(.bordered)
+                .tint(serviceStatusColor)
+                .accessibilityIdentifier("export.aiEdit.retryStatus")
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var aiWorkTimelineCard: some View {
@@ -1994,6 +2026,12 @@ struct AIEditView: View {
 
     private var serviceStatusColor: Color {
         cloudEditActionBlockedMessage == nil ? AppTheme.warningYellow : AppTheme.dangerRed
+    }
+
+    private var shouldShowCloudStatusRetry: Bool {
+        serviceStatusErrorMessage != nil
+            && !serviceStatusBlocksRendering
+            && !serviceStatusIsChecking
     }
 
     private var revisionCommands: [CloudEditRevisionCommand] {

@@ -1235,7 +1235,23 @@ def derive_user_prompt_intent(user_prompt: Optional[str], plan_tier: PlanTier = 
         pacing = pacing or "fast"
         effect_intensity = "high"
         structured_summary.append("increase_hype")
-    if any(term in text for term in ("defense", "defence", "block", "steal", "stop", "lockdown", "contest")):
+    if any(term in text for term in (
+        "defense",
+        "defence",
+        "block",
+        "steal",
+        "stop",
+        "lockdown",
+        "contest",
+        "forced turnover",
+        "turnover",
+        "deflection",
+        "deflect",
+        "charge",
+        "takeaway",
+        "loose ball",
+        "pressure",
+    )):
         add_unique(style_intents, "defense_focus")
         add_unique(focus_areas, "defense")
         tone = tone or "hype"

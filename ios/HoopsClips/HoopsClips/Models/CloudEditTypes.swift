@@ -406,9 +406,9 @@ enum CloudEditUserPromptBuilder {
     static func defaultFocusSummary(teamSelection: HighlightTeamSelection?) -> String {
         let selectedTeam = teamSelection?.mode == .team ? (teamSelection?.displayTitle ?? "selected team") : nil
         if let selectedTeam {
-            return "Accuracy guardrails: \(selectedTeam), visible outcomes, blocks, steals, defensive stops, and strong uncertain clips for Review."
+            return "Accuracy guardrails: \(selectedTeam), visible outcomes, blocks, steals, forced turnovers, defensive stops, and strong uncertain clips for Review."
         }
-        return "Accuracy guardrails: visible outcomes, made shots, blocks, steals, defensive stops, and strong uncertain clips for Review."
+        return "Accuracy guardrails: visible outcomes, made shots, blocks, steals, forced turnovers, defensive stops, and strong uncertain clips for Review."
     }
 
     private static func defaultAccuracyPrompt(teamSelection: HighlightTeamSelection?) -> String {
@@ -418,10 +418,10 @@ enum CloudEditUserPromptBuilder {
         } else {
             parts.append("Cover both teams.")
         }
-        parts.append("Keep visible outcomes: made shots, blocks, steals, defensive stops.")
-        parts.append("Defense does not need a made basket.")
-        parts.append("Reject duplicates/dead-ball/filler.")
-        parts.append("Keep strong uncertain team clips reviewable.")
+        parts.append("Keep visible makes, blocks, steals, forced turnovers, defensive stops.")
+        parts.append("Defense can be a highlight without a make.")
+        parts.append("Reject duplicate/dead-ball/filler.")
+        parts.append("Keep uncertain team clips reviewable.")
         return parts.joined(separator: " ")
     }
 
