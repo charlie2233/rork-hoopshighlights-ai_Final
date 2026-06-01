@@ -2495,6 +2495,129 @@ struct HoopsClipsTests {
         #expect(viewModel.needsReviewClips.map(\.label) == ["Possible Steal"])
     }
 
+    @Test @MainActor func testViewModelPriorityReviewClipsFocusTeamDefenseAndUncertainPlays() {
+        let viewModel = HighlightsViewModel()
+        let selectedTeam = HighlightTeamSelection(
+            mode: .team,
+            teamId: "team_dark",
+            label: "Dark jerseys",
+            colorLabel: "black",
+            confidenceThreshold: 0.85,
+            includeUncertain: true
+        )
+        viewModel.settings.highlightTeamSelection = selectedTeam
+        defer { viewModel.settings.highlightTeamSelection = .allTeams }
+
+        let cleanClip = Clip(
+            startTime: 4.0,
+            endTime: 8.0,
+            eventCenter: 6.0,
+            action: .madeShot,
+            confidence: 0.93,
+            isKept: true,
+            label: "Clean Made Shot",
+            visualScore: 0.88,
+            motionScore: 0.82,
+            combinedScore: 0.9,
+            detectionMethod: .cloud,
+            teamAttribution: ClipTeamAttribution(
+                teamId: "team_dark",
+                label: "Dark jerseys",
+                colorLabel: "black",
+                confidence: 0.94,
+                source: "quick_scan"
+            ),
+            teamAttributionStatus: "matched"
+        )
+        let blockClip = Clip(
+            startTime: 12.0,
+            endTime: 15.5,
+            eventCenter: 13.7,
+            action: .block,
+            confidence: 0.48,
+            isKept: false,
+            label: "Weak Side Block",
+            visualScore: 0.72,
+            motionScore: 0.81,
+            combinedScore: 0.56,
+            detectionMethod: .cloud
+        )
+        let pressureClip = Clip(
+            startTime: 18.0,
+            endTime: 22.5,
+            eventCenter: 20.1,
+            action: .unknown,
+            confidence: 0.62,
+            isKept: true,
+            label: "Full Court Pressure Stop",
+            visualScore: 0.74,
+            motionScore: 0.83,
+            combinedScore: 0.67,
+            detectionMethod: .cloud,
+            teamAttribution: ClipTeamAttribution(
+                teamId: "team_dark",
+                label: "Dark jerseys",
+                colorLabel: "black",
+                confidence: 0.91,
+                source: "quick_scan"
+            ),
+            teamAttributionStatus: "matched"
+        )
+        let uncertainTeamClip = Clip(
+            startTime: 28.0,
+            endTime: 32.0,
+            eventCenter: 30.0,
+            action: .madeShot,
+            confidence: 0.72,
+            isKept: true,
+            label: "Possible Dark Shot",
+            visualScore: 0.69,
+            motionScore: 0.73,
+            combinedScore: 0.76,
+            detectionMethod: .cloud,
+            teamAttribution: ClipTeamAttribution(
+                teamId: "team_dark",
+                label: "Dark jerseys",
+                colorLabel: "black",
+                confidence: 0.63,
+                source: "gpt_frame_review"
+            ),
+            teamAttributionStatus: "uncertain"
+        )
+        let missingTeamClip = Clip(
+            startTime: 36.0,
+            endTime: 40.0,
+            eventCenter: 38.0,
+            action: .layup,
+            confidence: 0.81,
+            isKept: true,
+            label: "Possible Dark Layup",
+            visualScore: 0.78,
+            motionScore: 0.8,
+            combinedScore: 0.82,
+            detectionMethod: .cloud
+        )
+
+        viewModel.analysisService.clips = [
+            cleanClip,
+            blockClip,
+            pressureClip,
+            uncertainTeamClip,
+            missingTeamClip
+        ]
+
+        #expect(viewModel.priorityReviewClips.map(\.label) == [
+            "Weak Side Block",
+            "Full Court Pressure Stop",
+            "Possible Dark Shot",
+            "Possible Dark Layup"
+        ])
+        #expect(!HighlightsViewModel.isPriorityReviewClip(cleanClip, teamSelection: selectedTeam))
+        #expect(HighlightsViewModel.isBlockReviewClip(blockClip))
+        #expect(HighlightsViewModel.isDefensiveReviewClip(pressureClip))
+        #expect(HighlightsViewModel.needsTeamReview(missingTeamClip, teamSelection: selectedTeam))
+    }
+
     @Test @MainActor func testKeepHighConfidenceDoesNotAutoKeepNeedsReviewClips() {
         let viewModel = HighlightsViewModel()
         let cleanHighConfidence = Clip(

@@ -57,6 +57,9 @@ final class HighlightsViewModel {
     var keptClips: [Clip] { clips.filter(\.isKept) }
     var discardedClips: [Clip] { clips.filter { !$0.isKept } }
     var needsReviewClips: [Clip] { clips.filter(\.needsUserReview) }
+    var priorityReviewClips: [Clip] {
+        Self.priorityReviewClips(from: clips, teamSelection: settings.highlightTeamSelection)
+    }
     var cloudEditCandidatePoolCount: Int {
         Self.cloudEditRequestCandidateClips(
             from: clips,
@@ -531,7 +534,48 @@ final class HighlightsViewModel {
     }
 
     nonisolated static func protectsClipFromQuickSkip(_ clip: Clip) -> Bool {
-        clip.needsUserReview || defensiveCloudEditCandidateFamily(clip) != nil
+        clip.needsUserReview || isDefensiveReviewClip(clip)
+    }
+
+    nonisolated static func priorityReviewClips(
+        from clips: [Clip],
+        teamSelection: HighlightTeamSelection = .allTeams
+    ) -> [Clip] {
+        clips.filter { isPriorityReviewClip($0, teamSelection: teamSelection) }
+    }
+
+    nonisolated static func isPriorityReviewClip(
+        _ clip: Clip,
+        teamSelection: HighlightTeamSelection = .allTeams
+    ) -> Bool {
+        clip.needsUserReview
+            || needsTeamReview(clip, teamSelection: teamSelection)
+            || isDefensiveReviewClip(clip)
+    }
+
+    nonisolated static func needsTeamReview(
+        _ clip: Clip,
+        teamSelection: HighlightTeamSelection = .allTeams
+    ) -> Bool {
+        if clip.teamAttributionStatus == "uncertain" {
+            return true
+        }
+        guard let attribution = clip.teamAttribution else {
+            return teamSelection.mode == .team
+        }
+        return attribution.confidence < teamSelection.confidenceThreshold
+    }
+
+    nonisolated static func isDefensiveReviewClip(_ clip: Clip) -> Bool {
+        defensiveCloudEditCandidateFamily(clip) != nil
+    }
+
+    nonisolated static func isBlockReviewClip(_ clip: Clip) -> Bool {
+        defensiveCloudEditCandidateFamily(clip) == "block"
+    }
+
+    nonisolated static func isStealReviewClip(_ clip: Clip) -> Bool {
+        defensiveCloudEditCandidateFamily(clip) == "steal"
     }
 
     func shouldAutoKeepHighConfidenceClip(_ clip: Clip) -> Bool {
@@ -1048,6 +1092,16 @@ final class HighlightsViewModel {
         if text.contains("defensive stop")
             || text.contains("defense stop")
             || tokens.contains("lockdown")
+            || tokens.contains("pressure")
+            || tokens.contains("pressed")
+            || tokens.contains("trap")
+            || tokens.contains("trapped")
+            || tokens.contains("deny")
+            || tokens.contains("denial")
+            || tokens.contains("contest")
+            || tokens.contains("contested")
+            || tokens.contains("defense")
+            || tokens.contains("defensive")
             || (tokens.contains("stop") && !tokens.isDisjoint(with: ["defensive", "defense", "forced"])) {
             return "defensive_stop"
         }

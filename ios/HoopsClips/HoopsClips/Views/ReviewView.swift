@@ -10,6 +10,7 @@ struct ReviewView: View {
     @State private var clipLoopObserverToken: NSObjectProtocol?
     @State private var clipPlaybackRange: ClosedRange<Double>?
     @State private var filterOption: FilterOption = .all
+    @State private var hasAutoFocusedPriorityFilter = false
     @State private var sortByScore = true
     @State private var expandedClipID: UUID?
     @State private var keepTrigger = 0
@@ -106,6 +107,10 @@ struct ReviewView: View {
                     }
                 }
             }
+            .onAppear(perform: focusPriorityReviewIfNeeded)
+            .onChange(of: priorityReviewClips.map(\.id)) { _, _ in
+                focusPriorityReviewIfNeeded()
+            }
             .sheet(item: $selectedClip, onDismiss: teardownClipPlayer) { clip in
                 clipDetailSheet(clip: clip)
             }
@@ -189,14 +194,28 @@ struct ReviewView: View {
         let progress = Double(viewModel.keptClips.count) / Double(total)
 
         return VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Label("Review Progress", systemImage: "checklist")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.white)
-                Spacer()
-                Text("\(viewModel.keptClips.count)/\(viewModel.clips.count) kept")
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(AppTheme.subtleText)
+            ViewThatFits(in: .horizontal) {
+                HStack {
+                    Label("Review Progress", systemImage: "checklist")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .lineLimit(2)
+                    Spacer()
+                    Text("\(viewModel.keptClips.count)/\(viewModel.clips.count) kept")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(AppTheme.subtleText)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.84)
+                }
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Label("Review Progress", systemImage: "checklist")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.white)
+                    Text("\(viewModel.keptClips.count)/\(viewModel.clips.count) kept")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(AppTheme.subtleText)
+                }
             }
 
             ProgressView(value: progress)
@@ -285,9 +304,7 @@ struct ReviewView: View {
     }
 
     private var priorityReviewClips: [Clip] {
-        viewModel.clips.filter { clip in
-            clip.needsUserReview || clipNeedsTeamReview(clip) || isDefensiveClip(clip)
-        }
+        viewModel.priorityReviewClips
     }
 
     private var priorityReviewFilter: FilterOption {
@@ -310,13 +327,13 @@ struct ReviewView: View {
                         .background(AppTheme.warningYellow.opacity(0.14), in: .circle)
 
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Check priority plays")
+                        Text("Review these first")
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(.white)
                             .lineLimit(2)
                             .minimumScaleFactor(0.86)
                             .fixedSize(horizontal: false, vertical: true)
-                        Text("Check team calls, blocks, steals, forced turnovers, and close outcomes before the edit.")
+                        Text("Team calls, blocks, steals, forced turnovers, and unclear outcomes are queued here.")
                             .font(.caption)
                             .foregroundStyle(AppTheme.subtleText)
                             .lineLimit(3)
@@ -346,7 +363,7 @@ struct ReviewView: View {
                 glowOpacity: 0.05
             )
             .accessibilityIdentifier("review.priorityReviewButton")
-            .accessibilityLabel("Check priority plays")
+            .accessibilityLabel("Review these first")
             .accessibilityValue("\(priorityReviewClips.count) clips")
             .accessibilityHint("Filters Review to clips that need a closer look before making the AI edit.")
         }
@@ -483,6 +500,15 @@ struct ReviewView: View {
 
         withAnimation(tabTransitionAnimation) {
             selectedTab = 2
+        }
+    }
+
+    private func focusPriorityReviewIfNeeded() {
+        guard !hasAutoFocusedPriorityFilter else { return }
+        guard filterOption == .all, !priorityReviewClips.isEmpty else { return }
+        hasAutoFocusedPriorityFilter = true
+        HoopsAccessibility.animate(reduceMotion: reduceMotion) {
+            filterOption = .priority
         }
     }
 
@@ -1145,13 +1171,10 @@ struct ReviewView: View {
     }
 
     private func clipNeedsTeamReview(_ clip: Clip) -> Bool {
-        if clip.teamAttributionStatus == "uncertain" {
-            return true
-        }
-        guard let attribution = clip.teamAttribution else {
-            return viewModel.settings.highlightTeamSelection.mode == .team
-        }
-        return attribution.confidence < viewModel.settings.highlightTeamSelection.confidenceThreshold
+        HighlightsViewModel.needsTeamReview(
+            clip,
+            teamSelection: viewModel.settings.highlightTeamSelection
+        )
     }
 
     private func normalizedTeamKeys(for selection: HighlightTeamSelection) -> [String] {
@@ -1171,52 +1194,15 @@ struct ReviewView: View {
     }
 
     private func isDefensiveClip(_ clip: Clip) -> Bool {
-        if isBlockClip(clip) || isStealClip(clip) || isForcedTurnoverClip(clip) || isDefensiveStopClip(clip) {
-            return true
-        }
-        return normalizedClipLabel(clip).contains(where: { token in
-            [
-                "defense",
-                "defensive",
-                "pressure",
-                "lockdown",
-                "contest",
-                "strip",
-                "stripped",
-                "takeaway",
-                "intercept",
-                "intercepted",
-                "interception",
-                "poke",
-                "poked",
-                "rip",
-                "ripped"
-            ].contains(token)
-        })
+        HighlightsViewModel.isDefensiveReviewClip(clip)
     }
 
     private func isBlockClip(_ clip: Clip) -> Bool {
-        clip.action == .block || normalizedClipLabel(clip).contains("block") || normalizedClipLabel(clip).contains("blocked")
+        HighlightsViewModel.isBlockReviewClip(clip)
     }
 
     private func isStealClip(_ clip: Clip) -> Bool {
-        let tokens = normalizedClipLabel(clip)
-        return clip.action == .steal
-            || !tokens.isDisjoint(with: [
-                "steal",
-                "stolen",
-                "strip",
-                "stripped",
-                "takeaway",
-                "intercept",
-                "intercepted",
-                "interception",
-                "pickpocket",
-                "poke",
-                "poked",
-                "rip",
-                "ripped"
-            ])
+        HighlightsViewModel.isStealReviewClip(clip)
     }
 
     private func isForcedTurnoverClip(_ clip: Clip) -> Bool {
