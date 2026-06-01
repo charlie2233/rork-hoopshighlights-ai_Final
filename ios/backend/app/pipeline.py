@@ -52,6 +52,12 @@ MIN_CONFIDENT_TEAM_EVIDENCE_ROLE_GROUPS = 2
 MIN_DETECTED_TEAM_OPTION_CONFIDENCE = 0.85
 AUDIO_PROFILE_BUCKET_SECONDS = 0.5
 AUDIO_POP_EVENT_CENTER_THRESHOLD = 0.45
+AUDIO_REACTION_BOUNDARY_MIN_SCORE = 0.32
+AUDIO_REACTION_BOUNDARY_MIN_GAP_SECONDS = 2.25
+AUDIO_REACTION_BOUNDARY_MAX_COUNT = 48
+AUDIO_REACTION_BOUNDARY_CONTEXT_BUCKETS = 4
+AUDIO_REACTION_WINDOW_LEAD_SECONDS = 2.0
+AUDIO_REACTION_WINDOW_FOLLOW_SECONDS = 1.4
 VisualFrameSignal = Tuple[float, ...]
 
 
@@ -1309,6 +1315,43 @@ def _audio_pop_context_score(pop_time_seconds: Optional[float], start_time: floa
     return clamp((lead_score * 0.75) + (follow_score * 0.25), 0.0, 1.0)
 
 
+def _detect_audio_reaction_boundaries(audio_profile: Sequence[float]) -> List[AudioPopSignal]:
+    if not audio_profile:
+        return []
+
+    candidates: List[AudioPopSignal] = []
+    for index, value in enumerate(audio_profile):
+        before = audio_profile[max(0, index - AUDIO_REACTION_BOUNDARY_CONTEXT_BUCKETS) : index]
+        after = audio_profile[index + 1 : min(len(audio_profile), index + AUDIO_REACTION_BOUNDARY_CONTEXT_BUCKETS + 1)]
+        if before and value < max(before):
+            continue
+        if after and value < max(after):
+            continue
+
+        signal = _audio_pop_signal_for_window(
+            audio_profile,
+            max(0, index - AUDIO_REACTION_BOUNDARY_CONTEXT_BUCKETS),
+            min(len(audio_profile), index + AUDIO_REACTION_BOUNDARY_CONTEXT_BUCKETS + 1),
+        )
+        if signal.time_seconds is None or signal.score < AUDIO_REACTION_BOUNDARY_MIN_SCORE:
+            continue
+        candidates.append(signal)
+
+    candidates.sort(key=lambda item: item.score, reverse=True)
+    selected: List[AudioPopSignal] = []
+    min_gap = AUDIO_REACTION_BOUNDARY_MIN_GAP_SECONDS
+    for signal in candidates:
+        if signal.time_seconds is None:
+            continue
+        if any(existing.time_seconds is not None and abs(signal.time_seconds - existing.time_seconds) < min_gap for existing in selected):
+            continue
+        selected.append(signal)
+        if len(selected) >= AUDIO_REACTION_BOUNDARY_MAX_COUNT:
+            break
+
+    return sorted(selected, key=lambda item: item.time_seconds or 0.0)
+
+
 def _extract_audio_profile(path: Path, duration_seconds: float) -> List[float]:
     bucket_count = max(int(math.ceil(duration_seconds / AUDIO_PROFILE_BUCKET_SECONDS)), 1)
     ffmpeg = shutil.which("ffmpeg")
@@ -1451,11 +1494,92 @@ def _build_candidate_windows(
 
         time_cursor += stride
 
+    windows.extend(
+        _build_audio_reaction_candidate_windows(
+            duration_seconds=duration_seconds,
+            audio_profile=audio_profile,
+            shot_boundaries=shot_boundaries,
+            settings=settings,
+        )
+    )
+    windows.sort(key=lambda item: item.start_time)
+
     segmented = _segment_with_hysteresis(windows, settings, clip_limit=resolved_limit)
     if segmented:
         return _backfill_segmented_candidate_windows(segmented, windows, resolved_limit)
 
     return sorted(windows, key=lambda item: item.combined_score, reverse=True)[:resolved_limit]
+
+
+def _build_audio_reaction_candidate_windows(
+    *,
+    duration_seconds: float,
+    audio_profile: Sequence[float],
+    shot_boundaries: List[float],
+    settings: Settings,
+) -> List[CandidateWindow]:
+    reaction_windows: List[CandidateWindow] = []
+    for signal in _detect_audio_reaction_boundaries(audio_profile):
+        if signal.time_seconds is None:
+            continue
+
+        event_time = clamp(signal.time_seconds, 0.0, duration_seconds)
+        start_time = max(0.0, event_time - AUDIO_REACTION_WINDOW_LEAD_SECONDS)
+        end_time = min(duration_seconds, event_time + AUDIO_REACTION_WINDOW_FOLLOW_SECONDS)
+        target_duration = min(
+            settings.max_clip_duration_seconds,
+            max(settings.min_clip_duration_seconds, AUDIO_REACTION_WINDOW_LEAD_SECONDS + AUDIO_REACTION_WINDOW_FOLLOW_SECONDS),
+        )
+        if end_time - start_time < target_duration:
+            missing = target_duration - (end_time - start_time)
+            start_time = max(0.0, start_time - (missing * 0.58))
+            end_time = min(duration_seconds, end_time + (missing * 0.42))
+            if end_time - start_time < target_duration:
+                start_time = max(0.0, min(start_time, duration_seconds - target_duration))
+                end_time = min(duration_seconds, start_time + target_duration)
+
+        if end_time - start_time < settings.min_clip_duration_seconds:
+            continue
+        if end_time - start_time > settings.max_clip_duration_seconds:
+            start_time = max(0.0, event_time - min(AUDIO_REACTION_WINDOW_LEAD_SECONDS, settings.max_clip_duration_seconds * 0.62))
+            end_time = min(duration_seconds, start_time + settings.max_clip_duration_seconds)
+            if event_time > end_time:
+                end_time = min(duration_seconds, event_time + AUDIO_REACTION_WINDOW_FOLLOW_SECONDS)
+                start_time = max(0.0, end_time - settings.max_clip_duration_seconds)
+
+        bucket_start = max(int(start_time / AUDIO_PROFILE_BUCKET_SECONDS), 0)
+        bucket_end = max(int(math.ceil(end_time / AUDIO_PROFILE_BUCKET_SECONDS)), bucket_start + 1)
+        slice_values = list(audio_profile[bucket_start:bucket_end]) or [0.0]
+        audio_score = clamp(max(slice_values), 0.0, 1.0)
+        audio_mean = mean(slice_values)
+        center = (start_time + end_time) / 2.0
+        shot_context_score, shot_event_time = _shot_context_score_for_window(
+            start_time=start_time,
+            end_time=end_time,
+            center_time=center,
+            shot_boundaries=shot_boundaries,
+        )
+        event_anchor = shot_event_time if shot_event_time is not None and shot_context_score >= 0.45 else event_time
+        visual_score = clamp((shot_context_score * 0.52) + (audio_mean * 0.16) + (signal.score * 0.10) + 0.12, 0.0, 0.62)
+        motion_score = clamp((signal.score * 0.62) + (audio_score * 0.22) + (shot_context_score * 0.16), 0.0, 1.0)
+        combined_score = clamp(0.48 + (signal.score * 0.25) + (audio_score * 0.08) + (shot_context_score * 0.17), 0.0, 0.92)
+
+        reaction_windows.append(
+            CandidateWindow(
+                start_time=round(start_time, 3),
+                end_time=round(end_time, 3),
+                peak_time=round(clamp(event_anchor, start_time, end_time), 3),
+                audio_score=round(audio_score, 4),
+                visual_score=round(visual_score, 4),
+                motion_score=round(motion_score, 4),
+                combined_score=round(combined_score, 4),
+                event_context_score=round(shot_context_score, 4),
+                audio_pop_score=round(signal.score, 4),
+                audio_pop_time=signal.time_seconds,
+            )
+        )
+
+    return reaction_windows
 
 
 def _backfill_segmented_candidate_windows(

@@ -18,6 +18,7 @@ from app.pipeline import (
     _annotate_analysis_team_status,
     _analysis_candidate_pool_limit,
     _detect_shot_boundaries,
+    _detect_audio_reaction_boundaries,
     _detected_teams_from_clips,
     _is_defensive_label,
     _merge_hybrid_detection_clips,
@@ -175,6 +176,40 @@ class PipelineQualityTests(unittest.TestCase):
 
         self.assertEqual(high_settings.max_returned_clips, 320)
         self.assertEqual(low_settings.max_returned_clips, 8)
+
+    def test_audio_reaction_boundaries_detect_loud_local_crowd_pops(self) -> None:
+        audio_profile = [0.08] * 40
+        audio_profile[11] = 0.62
+        audio_profile[12] = 0.98
+        audio_profile[13] = 0.74
+        audio_profile[28] = 0.92
+
+        boundaries = _detect_audio_reaction_boundaries(audio_profile)
+
+        self.assertGreaterEqual(len(boundaries), 2)
+        self.assertAlmostEqual(boundaries[0].time_seconds or 0.0, 6.25, delta=0.3)
+        self.assertAlmostEqual(boundaries[1].time_seconds or 0.0, 14.25, delta=0.3)
+        self.assertGreater(boundaries[0].score, 0.32)
+
+    def test_candidate_windows_include_crowd_pop_recall_anchor_for_gpt_review(self) -> None:
+        audio_profile = [0.06] * 30
+        audio_profile[11] = 0.58
+        audio_profile[12] = 1.0
+        audio_profile[13] = 0.76
+
+        windows = _build_candidate_windows(
+            duration_seconds=15.0,
+            audio_profile=audio_profile,
+            shot_boundaries=[],
+            settings=_settings(),
+            clip_limit=8,
+        )
+        reaction_windows = [window for window in windows if window.audio_pop_score >= 0.32]
+
+        self.assertTrue(any(abs(window.peak_time - 6.25) <= 0.4 for window in reaction_windows))
+        reaction_clip = classify_window(max(reaction_windows, key=lambda window: window.audio_pop_score))
+        self.assertEqual(reaction_clip.label, "Crowd Reaction")
+        self.assertFalse(reaction_clip.shouldAutoKeep)
 
     def test_run_analysis_applies_quick_scan_before_selected_team_filter(self) -> None:
         native = [
