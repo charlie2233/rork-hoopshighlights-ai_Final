@@ -1875,6 +1875,11 @@ def _compact_agent_candidate_clip(
     clip: EditCandidateClip,
     team_selection: Optional[TeamSelection] = None,
 ) -> Dict[str, object]:
+    context_quality_score = clip_context_quality_score(clip)
+    outcome_reliability_score = clip_outcome_reliability_score(clip)
+    quality_eligible = is_plan_quality_eligible_clip(clip)
+    shot_like = is_shot_like_clip(clip)
+    defensive_event_like = is_defensive_event_like_clip(clip)
     return {
         "clipId": clip.id,
         "start": round(clip.start, 3),
@@ -1887,6 +1892,17 @@ def _compact_agent_candidate_clip(
         "audioPeak": clip.audioPeak,
         "watchabilityScore": clip.watchability,
         "duplicateGroup": clip.duplicateGroup,
+        "planningScore": clip.planning_score,
+        "renderEligibility": _agent_render_eligibility(clip, team_selection),
+        "candidateQuality": {
+            "qualityEligible": quality_eligible,
+            "contextQualityScore": context_quality_score,
+            "outcomeReliabilityScore": outcome_reliability_score,
+            "shotLike": shot_like,
+            "defensiveEventLike": defensive_event_like,
+            "defensiveFamily": _defensive_highlight_family(clip),
+            "genericFiller": is_generic_filler_clip(clip),
+        },
         "userReviewDecision": clip.userReviewDecision,
         "teamAttribution": clip.teamAttribution.model_dump(mode="json") if clip.teamAttribution is not None else None,
         "teamAttributionStatus": team_attribution_status(clip, team_selection),
@@ -1898,6 +1914,53 @@ def _compact_agent_candidate_clip(
         "gptOutcomeEvidenceSource": clip.gptOutcomeEvidenceSource,
         "gptOutcomeReliabilityScore": clip.gptOutcomeReliabilityScore,
     }
+
+
+def _agent_render_eligibility(
+    clip: EditCandidateClip,
+    team_selection: Optional[TeamSelection],
+) -> str:
+    if clip.userReviewDecision == "discarded":
+        return "user_discarded"
+    if team_selection is None or team_selection.mode == "all":
+        return "render_ready" if is_plan_quality_eligible_clip(clip) else "quality_review_required"
+
+    status = team_attribution_status(clip, team_selection)
+    if status == "matched":
+        return "render_ready" if is_plan_quality_eligible_clip(clip) else "quality_review_required"
+    if status == "uncertain":
+        if clip.userReviewDecision == "kept":
+            return "render_ready_after_user_keep" if is_plan_quality_eligible_clip(clip) else "quality_review_required"
+        return "manual_team_review_required"
+    return "opponent_filtered"
+
+
+def _agent_candidate_quality_summary(
+    clips: Sequence[EditCandidateClip],
+    team_selection: Optional[TeamSelection],
+) -> Dict[str, int]:
+    counts = {
+        "candidateCount": 0,
+        "qualityEligible": 0,
+        "shotLike": 0,
+        "defensiveEventLike": 0,
+        "manualTeamReviewRequired": 0,
+        "renderReady": 0,
+    }
+    for clip in clips:
+        counts["candidateCount"] += 1
+        if is_plan_quality_eligible_clip(clip):
+            counts["qualityEligible"] += 1
+        if is_shot_like_clip(clip):
+            counts["shotLike"] += 1
+        if is_defensive_event_like_clip(clip):
+            counts["defensiveEventLike"] += 1
+        eligibility = _agent_render_eligibility(clip, team_selection)
+        if eligibility == "manual_team_review_required":
+            counts["manualTeamReviewRequired"] += 1
+        if eligibility in {"render_ready", "render_ready_after_user_keep"}:
+            counts["renderReady"] += 1
+    return counts
 
 
 def build_agent_editing_context(
@@ -1947,6 +2010,7 @@ def build_agent_editing_context(
         },
         "teamTargeting": _team_selection_payload(teamSelection),
         "clipPoolSummary": _clip_pool_summary_payload(clipPoolSummary),
+        "candidateQualitySummary": _agent_candidate_quality_summary(filtered_candidates, teamSelection),
         "candidateClips": [
             _compact_agent_candidate_clip(clip, teamSelection)
             for clip in rank_clips(filtered_candidates)[:GPT_CANDIDATE_REVIEW_LIMIT]

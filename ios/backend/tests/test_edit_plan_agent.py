@@ -879,6 +879,50 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertTrue(context["teamTargeting"]["includeUncertain"])
         self.assertEqual(context["candidateClips"][0]["teamAttribution"]["teamId"], "team_dark")
         self.assertEqual(context["candidateClips"][0]["teamAttributionStatus"], "matched")
+        self.assertEqual(context["candidateClips"][0]["renderEligibility"], "render_ready")
+        self.assertTrue(context["candidateClips"][0]["candidateQuality"]["qualityEligible"])
+        self.assertGreater(context["candidateClips"][0]["candidateQuality"]["contextQualityScore"], 0.0)
+        self.assertGreater(context["candidateClips"][0]["planningScore"], 0.0)
+
+    def test_agent_editing_context_marks_uncertain_team_clips_as_manual_review_only(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                teamSelection={
+                    "mode": "team",
+                    "teamId": "team_dark",
+                    "label": "Dark jerseys",
+                    "colorLabel": "black",
+                    "confidenceThreshold": 0.85,
+                    "includeUncertain": True,
+                },
+                clips=[
+                    {
+                        **_clip("dark_bucket", 0.0, "Made Shot", 0.93),
+                        "teamAttribution": _team_attribution(team_id="team_dark", color_label="black", confidence=0.91),
+                    },
+                    {
+                        **_clip("uncertain_block", 9.0, "Blocked Shot", 0.88),
+                        "teamAttribution": {"teamId": "team_light", "colorLabel": "white", "confidence": 0.62},
+                    },
+                ],
+            )
+        )
+
+        context = build_agent_editing_context(
+            request.templateId,
+            summarize_clip_pool(request.clips),
+            request.clips,
+            teamSelection=request.teamSelection,
+        )
+        by_id = {clip["clipId"]: clip for clip in context["candidateClips"]}
+
+        self.assertEqual(context["candidateQualitySummary"]["candidateCount"], 2)
+        self.assertEqual(context["candidateQualitySummary"]["renderReady"], 1)
+        self.assertEqual(context["candidateQualitySummary"]["manualTeamReviewRequired"], 1)
+        self.assertEqual(by_id["dark_bucket"]["renderEligibility"], "render_ready")
+        self.assertEqual(by_id["uncertain_block"]["renderEligibility"], "manual_team_review_required")
+        self.assertTrue(by_id["uncertain_block"]["candidateQuality"]["defensiveEventLike"])
+        self.assertEqual(by_id["uncertain_block"]["candidateQuality"]["defensiveFamily"], "block")
 
     def test_template_registry_has_base_and_pro_packs(self) -> None:
         validation = validate_template_registry()
@@ -966,6 +1010,12 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertEqual(context["templateCookbookRules"]["orderingRules"]["opener"], "one_of_top_2_clips")
         self.assertIn("COLD.", context["templateCookbookRules"]["captionRules"]["examples"])
         self.assertEqual(context["candidateClips"][0]["clipId"], "c3")
+        self.assertIn("candidateQualitySummary", context)
+        self.assertIn("candidateQuality", context["candidateClips"][0])
+        self.assertTrue(context["candidateClips"][0]["candidateQuality"]["qualityEligible"])
+        self.assertTrue(context["candidateClips"][0]["candidateQuality"]["shotLike"])
+        self.assertEqual(context["candidateClips"][0]["renderEligibility"], "render_ready")
+        self.assertGreater(context["candidateClips"][0]["candidateQuality"]["contextQualityScore"], 0.0)
         self.assertEqual(context["candidateClips"][0]["nativeShotSignals"]["outcome"], "made")
         self.assertEqual(context["candidateClips"][0]["outcomeEvidenceSource"], "label_only")
         self.assertGreater(context["candidateClips"][0]["outcomeReliabilityScore"], 0.0)
