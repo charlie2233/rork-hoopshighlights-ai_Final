@@ -2836,8 +2836,8 @@ class GPTHighlightRerankerTests(unittest.TestCase):
     def test_free_and_pro_sampling_limits(self) -> None:
         settings = GPTHighlightRerankerSettings.from_env()
 
-        self.assertEqual(settings.limits_for("free"), (160, 3))
-        self.assertEqual(settings.limits_for("pro")[0], 160)
+        self.assertEqual(settings.limits_for("free"), (220, 3))
+        self.assertEqual(settings.limits_for("pro")[0], 220)
         self.assertGreaterEqual(settings.limits_for("pro")[1], 5)
         self.assertLessEqual(settings.limits_for("pro")[1], 8)
         self.assertEqual(settings.timeout_seconds, 120.0)
@@ -2846,17 +2846,17 @@ class GPTHighlightRerankerTests(unittest.TestCase):
     def test_free_sampling_reviews_full_analysis_pool_by_default(self) -> None:
         settings = GPTHighlightRerankerSettings.from_env()
         max_clips, _ = settings.limits_for("free")
-        request = _request("free", 160)
+        request = _request("free", 220)
 
         sampled = gpt_reranker._quality_filtered_sampled_clips(
             gpt_reranker.rank_clips(request.clips),
             max_clips,
         )
 
-        self.assertEqual(max_clips, 160)
-        self.assertEqual(len(sampled), 160)
+        self.assertEqual(max_clips, 220)
+        self.assertEqual(len(sampled), 220)
         self.assertEqual(sampled[0].id, "c0")
-        self.assertEqual(sampled[-1].id, "c159")
+        self.assertEqual(sampled[-1].id, "c219")
 
     def test_sampling_env_overrides_are_launch_bounded(self) -> None:
         env_keys = (
@@ -2887,8 +2887,8 @@ class GPTHighlightRerankerTests(unittest.TestCase):
                 else:
                     os.environ[key] = old_value
 
-        self.assertEqual(settings.limits_for("free"), (160, 3))
-        self.assertEqual(settings.limits_for("pro"), (160, 8))
+        self.assertEqual(settings.limits_for("free"), (220, 3))
+        self.assertEqual(settings.limits_for("pro"), (220, 8))
 
     def test_sampling_reserves_block_and_steal_families_for_gpt_review(self) -> None:
         scoring = [

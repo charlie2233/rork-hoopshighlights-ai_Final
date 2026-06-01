@@ -8,7 +8,7 @@ Give the cloud GPT editor a better, higher-recall candidate pool without moving 
 
 ## What Changed
 
-- Kept the iOS cloud edit request aligned to the backend `GPT_CANDIDATE_REVIEW_LIMIT` of 160 candidate clips.
+- Historical note: this phase originally kept the iOS cloud edit request aligned to the backend `GPT_CANDIDATE_REVIEW_LIMIT` of 160 candidate clips. Phase Launch144 raises the live cap to 220.
 - Reserved a larger slice of that request for uncertain review candidates: 20% of the pool, with an 8-clip minimum for normal-sized pools.
 - Preserved the existing behavior that sends only clip metadata and user review decisions, never full videos.
 - Updated AI Edit fallback timeline and receipt counts to show the actual cloud candidate pool count instead of only already-kept clips.

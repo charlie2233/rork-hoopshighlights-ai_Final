@@ -141,17 +141,17 @@ class PipelineQualityTests(unittest.TestCase):
     def tearDown(self) -> None:
         get_settings.cache_clear()
 
-    def test_default_backend_candidate_pool_feeds_gpt_internal_top_one_sixty(self) -> None:
+    def test_default_backend_candidate_pool_feeds_gpt_internal_top_two_twenty(self) -> None:
         with tempfile.TemporaryDirectory(prefix="hoopclips-settings-") as temp_dir:
             with patch.dict(os.environ, {"HOOPS_ENVIRONMENT": "local", "HOOPS_UPLOAD_ROOT": temp_dir}, clear=True):
                 get_settings.cache_clear()
                 settings = get_settings()
 
-        self.assertEqual(settings.max_returned_clips, 160)
+        self.assertEqual(settings.max_returned_clips, 220)
         self.assertEqual(settings.team_quick_scan_clip_frames_per_clip, 8)
-        self.assertEqual(settings.team_quick_scan_rich_candidate_clips, 120)
-        self.assertEqual(settings.team_quick_scan_max_total_clip_frames, 1200)
-        self.assertEqual(settings.team_quick_scan_max_candidate_clips, 160)
+        self.assertEqual(settings.team_quick_scan_rich_candidate_clips, 160)
+        self.assertEqual(settings.team_quick_scan_max_total_clip_frames, 1760)
+        self.assertEqual(settings.team_quick_scan_max_candidate_clips, 220)
 
     def test_backend_candidate_pool_env_is_clamped_for_review_safety(self) -> None:
         with tempfile.TemporaryDirectory(prefix="hoopclips-settings-") as temp_dir:
@@ -171,7 +171,7 @@ class PipelineQualityTests(unittest.TestCase):
                 get_settings.cache_clear()
                 low_settings = get_settings()
 
-        self.assertEqual(high_settings.max_returned_clips, 160)
+        self.assertEqual(high_settings.max_returned_clips, 220)
         self.assertEqual(low_settings.max_returned_clips, 8)
 
     def test_run_analysis_applies_quick_scan_before_selected_team_filter(self) -> None:
@@ -921,7 +921,7 @@ class PipelineQualityTests(unittest.TestCase):
         self.assertEqual(_analysis_candidate_pool_limit(_analysis_settings("hybrid"), selected), 16)
         large_settings = _analysis_settings("hybrid")
         large_settings.max_returned_clips = 60
-        self.assertEqual(_analysis_candidate_pool_limit(large_settings, selected), 160)
+        self.assertEqual(_analysis_candidate_pool_limit(large_settings, selected), 220)
 
     def test_team_quick_scan_uses_action_anchored_candidate_pool(self) -> None:
         settings = _analysis_settings("hybrid")

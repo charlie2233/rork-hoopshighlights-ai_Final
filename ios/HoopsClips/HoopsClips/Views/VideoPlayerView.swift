@@ -746,11 +746,12 @@ struct VideoPlayerView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(languageStore.text(.analyzeWithAI))
                                 .font(.headline)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.86)
+                                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
+                                .minimumScaleFactor(0.84)
+                                .fixedSize(horizontal: false, vertical: true)
                             Text(analysisButtonSubtitle)
                                 .font(.caption)
-                                .opacity(0.7)
+                                .foregroundStyle(.white.opacity(0.86))
                                 .lineLimit(2)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
@@ -1208,8 +1209,8 @@ struct VideoPlayerView: View {
                 .foregroundStyle(AppTheme.subtleText)
 
             Text(analysisProgressDetailText)
-                .font(.caption2)
-                .foregroundStyle(.white.opacity(0.72))
+                .font(.caption)
+                .foregroundStyle(AppTheme.subtleText)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(16)

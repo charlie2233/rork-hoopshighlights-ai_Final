@@ -38,13 +38,13 @@ def _settings(**overrides):
         "team_quick_scan_timeout_seconds": 12.0,
         "team_quick_scan_video_frame_count": 6,
         "team_quick_scan_clip_frames_per_clip": 8,
-        "team_quick_scan_rich_candidate_clips": 120,
-        "team_quick_scan_max_total_clip_frames": 1200,
+        "team_quick_scan_rich_candidate_clips": 160,
+        "team_quick_scan_max_total_clip_frames": 1760,
         "team_quick_scan_frame_width": 720,
         "team_quick_scan_jpeg_quality": 4,
         "team_quick_scan_max_image_bytes": 500_000,
         "team_quick_scan_min_team_confidence": 0.55,
-        "team_quick_scan_max_candidate_clips": 160,
+        "team_quick_scan_max_candidate_clips": 220,
         "team_quick_scan_max_output_tokens": 12000,
     }
     values.update(overrides)
@@ -182,10 +182,10 @@ class TeamQuickScanTests(unittest.TestCase):
             **{
                 **settings,
                 "team_quick_scan_timeout_seconds": 24.0,
-                "team_quick_scan_max_candidate_clips": 160,
-                "team_quick_scan_rich_candidate_clips": 120,
+                "team_quick_scan_max_candidate_clips": 220,
+                "team_quick_scan_rich_candidate_clips": 160,
                 "team_quick_scan_clip_frames_per_clip": 8,
-                "team_quick_scan_max_total_clip_frames": 1200,
+                "team_quick_scan_max_total_clip_frames": 1760,
             }
         )
 
@@ -196,7 +196,7 @@ class TeamQuickScanTests(unittest.TestCase):
         self.assertEqual(prescan.team_quick_scan_clip_frames_per_clip, 4)
         self.assertEqual(prescan.team_quick_scan_max_total_clip_frames, 56)
         self.assertEqual(prescan.team_quick_scan_timeout_seconds, 60.0)
-        self.assertEqual(full_settings.team_quick_scan_max_candidate_clips, 160)
+        self.assertEqual(full_settings.team_quick_scan_max_candidate_clips, 220)
 
     def test_disabled_scan_falls_back_without_calling_gpt(self) -> None:
         clips = [_clip("Three Pointer", 8.0, 12.5, 10.2)]
