@@ -927,7 +927,7 @@ class PipelineQualityTests(unittest.TestCase):
         self.assertEqual(_analysis_candidate_pool_limit(_analysis_settings("hybrid"), selected), 16)
         large_settings = _analysis_settings("hybrid")
         large_settings.max_returned_clips = 200
-        self.assertEqual(_analysis_candidate_pool_limit(large_settings, selected), 640)
+        self.assertEqual(_analysis_candidate_pool_limit(large_settings, selected), 800)
 
     def test_team_quick_scan_uses_action_anchored_candidate_pool(self) -> None:
         settings = _analysis_settings("hybrid")

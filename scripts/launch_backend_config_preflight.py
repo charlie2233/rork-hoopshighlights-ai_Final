@@ -424,11 +424,15 @@ def check_workflows(repo_root: Path, collector: Collector) -> None:
             ("wrangler deploy", "staging deploy command"),
             ("wrangler rollback", "staging rollback command"),
             ("deploy:staging:dry-run", "staging dry-run check"),
+            ("HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_FREE=320", "Free GPT candidate cap"),
+            ("HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_PRO=320", "Pro GPT candidate cap"),
         ):
             if snippet in deploy_text:
                 collector.pass_("cloud deploy workflow coverage", rel(deploy_path, repo_root), f"Workflow includes {label}.")
             else:
                 collector.fail("cloud deploy workflow coverage", rel(deploy_path, repo_root), f"Workflow is missing {label}.")
+        if "HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_FREE=220" in deploy_text or "HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_PRO=220" in deploy_text:
+            collector.fail("cloud deploy workflow coverage", rel(deploy_path, repo_root), "Workflow still contains the old 220 GPT candidate cap.")
 
     release_path = repo_root / ".github/workflows/release-secrets-preflight.yml"
     release_text = read_text(release_path, collector)
