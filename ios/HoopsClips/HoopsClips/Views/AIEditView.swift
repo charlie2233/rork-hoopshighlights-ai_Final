@@ -82,8 +82,8 @@ struct AIEditView: View {
         ),
         AIEditQuickPrompt(
             id: "defense",
-            title: "Focus defense",
-            prompt: "Focus on defense: blocks, steals, forced turnovers, stops, and transition plays.",
+            title: "Defense only",
+            prompt: "Defense only: prioritize blocks, steals, forced turnovers, stops, deflections, charges, and loose balls. Use offense only if there are not enough clear defensive clips.",
             icon: "shield.lefthalf.filled"
         ),
         AIEditQuickPrompt(

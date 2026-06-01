@@ -983,6 +983,14 @@ def _selected_team_quality_filtered_sampled_clips(
             break
 
     for clip in render_candidates:
+        if reserved_defensive_count >= defensive_render_reserve:
+            break
+        if clip.id in selected_ids or not _is_defensive_candidate_clip(clip):
+            continue
+        add_clip(clip)
+        reserved_defensive_count += 1
+
+    for clip in render_candidates:
         add_clip(clip)
         if len(selected) >= render_slot_limit:
             break
@@ -1067,6 +1075,7 @@ def _defensive_sampling_reserve_limit(request: Optional[CreateEditJobRequest], m
     if request is not None:
         user_intent = derive_user_prompt_intent(request.userPrompt, request.planTier)
         template = get_template_pack_for_plan(request.preset, request.templateId)
+        defense_only = bool(user_intent and "defense_only" in user_intent.styleIntents)
         defense_focused = bool(
             user_intent
             and (
@@ -1075,9 +1084,16 @@ def _defensive_sampling_reserve_limit(request: Optional[CreateEditJobRequest], m
             )
         )
         team_story_template = template.templateId in {"team_highlight_pro_v1", "coach_review_v1"}
-        if defense_focused or team_story_template:
+        if defense_only:
+            reserve = max_clips
+        elif defense_focused or team_story_template:
             reserve = max(reserve, max_clips // 4)
     return min(reserve, max_clips)
+
+
+def _has_defense_only_intent(request: CreateEditJobRequest) -> bool:
+    user_intent = derive_user_prompt_intent(request.userPrompt, request.planTier)
+    return bool(user_intent and "defense_only" in user_intent.styleIntents)
 
 
 def _is_defensive_candidate_clip(clip: EditCandidateClip) -> bool:
@@ -1676,6 +1692,7 @@ def _build_openai_payload(
             f"Non-scoring defensive outcomes also require shotResultEvidence.outcomeConfidence >= {MIN_GPT_DEFENSIVE_OUTCOME_CONFIDENCE:.2f}; use unclear or keep=false when the steal, forced turnover, or stop is guessed. "
             "When defensive roles like challenge, possessionChange, recovery, or defenseOutcome are sampled, cite those roles in shotTrackingEvidence instead of shot-arc or rim roles. "
             "Honor userEditIntent only when it is compatible with the supplied template, plan tier, candidate clips, and safety constraints. "
+            "When selectionQualityRules.defenseOnlyRequested is true, build a defense-first edit from blocks, steals, forced turnovers, defensive stops, deflections, charges, pressure, and loose-ball recoveries; include ordinary offensive makes only when there are not enough clear defensive candidates for a reviewable result. "
             "Honor selectionQualityRules: for long target durations, keep enough non-duplicate, clear, reviewable highlights to satisfy the recommended kept clip count and duration floor when the candidate pool supports it. "
             "Reject boring, unclear, duplicate, or unsafe clips, but do not over-prune a long reel down to only two or three clips unless the supplied candidates truly lack visible outcomes. "
             "When a selected team is supplied, keep highlights for that team only; exclude confident opponent clips. Keep uncertain team-attribution clips for user review. "
@@ -1703,14 +1720,19 @@ def _gpt_selection_quality_rules(
     )
     min_clip_count, min_duration = _gpt_underfill_floor(request, available_unique)
     target_duration = max(float(request.targetDurationSeconds), 0.0)
+    defense_only = _has_defense_only_intent(request)
+    defensive_candidate_count = len([clip for clip in available_unique if _is_defensive_candidate_clip(clip)])
     return {
         "targetDurationSeconds": request.targetDurationSeconds,
         "availableQualityCandidateCount": len(available_unique),
+        "defensiveQualityCandidateCount": defensive_candidate_count,
         "minRecommendedKeptClipCount": min_clip_count,
         "minRecommendedKeptDurationSeconds": round(min_duration, 3),
         "longTargetDuration": target_duration >= 90.0,
         "veryLongTargetDuration": target_duration >= 180.0,
+        "defenseOnlyRequested": defense_only,
         "selectionPolicy": "maximize clear highlight value while preserving enough quality clips for the requested reel length",
+        "defenseOnlyPolicy": "when requested, prioritize blocks, steals, forced turnovers, defensive stops, deflections, charges, pressure, and loose-ball recoveries; use offensive makes only when defensive candidates cannot satisfy a reviewable reel",
         "overPrunePolicy": "do_not_keep_only_top_few_for_long_reels_when_more_clear_non_duplicate_candidates_exist",
         "duplicatePolicy": "reject true duplicates, but use distinct outcomes from the same game stretch when they add story value",
         "uncertainReviewPolicy": "strong uncertain selected-team clips can stay reviewable; confident opponent or unclear filler clips should not render",

@@ -58,6 +58,7 @@ UserPromptStyleIntent = Literal[
     "more_hype",
     "nba_recap",
     "defense_focus",
+    "defense_only",
     "vertical_mixtape",
     "recruiting_reel",
     "coach_review",
@@ -1198,6 +1199,24 @@ def derive_user_prompt_intent(user_prompt: Optional[str], plan_tier: PlanTier = 
             return None
         return template_id
 
+    defense_only_requested = any(
+        term in text
+        for term in (
+            "defense only",
+            "defence only",
+            "only defense",
+            "only defence",
+            "just defense",
+            "just defence",
+            "no offense",
+            "no offence",
+            "blocks and steals only",
+            "steals and blocks only",
+            "defensive plays only",
+            "defensive highlights only",
+        )
+    )
+
     duration_match = re.search(r"\b(15|30|45|60|90|120|180|240|270)\s*(?:s|sec|secs|second|seconds)\b", text)
     minute_match = re.search(r"\b([1-4])\s*:\s*([0-5][0-9])\b", text)
     decimal_minute_match = re.search(r"\b(1(?:\.5)?|2(?:\.5)?|3(?:\.5)?|4(?:\.5)?)\s*(?:m|min|mins|minute|minutes)\b", text)
@@ -1235,7 +1254,7 @@ def derive_user_prompt_intent(user_prompt: Optional[str], plan_tier: PlanTier = 
         pacing = pacing or "fast"
         effect_intensity = "high"
         structured_summary.append("increase_hype")
-    if any(term in text for term in (
+    if defense_only_requested or any(term in text for term in (
         "defense",
         "defence",
         "block",
@@ -1253,9 +1272,13 @@ def derive_user_prompt_intent(user_prompt: Optional[str], plan_tier: PlanTier = 
         "pressure",
     )):
         add_unique(style_intents, "defense_focus")
+        if defense_only_requested:
+            add_unique(style_intents, "defense_only")
         add_unique(focus_areas, "defense")
         tone = tone or "hype"
         structured_summary.append("defense_focus")
+        if defense_only_requested:
+            structured_summary.append("defense_only")
     if any(term in text for term in ("mixtape", "cinematic", "cold", "built different", "vibe")):
         add_unique(style_intents, "vertical_mixtape")
         add_unique(focus_areas, "energy")

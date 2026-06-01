@@ -1118,6 +1118,28 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertNotIn("sourceObjectKey", str(payload))
         self.assertNotIn("uploads/source.mp4", str(payload))
 
+    def test_payload_marks_defense_only_intent_and_quality_rules(self) -> None:
+        settings = GPTHighlightRerankerSettings.from_env()
+        request = _request().model_copy(update={"userPrompt": "Defense only: blocks and steals, no offense."})
+        frame = SampledFrame(
+            clip_id="c0",
+            role="start",
+            time_seconds=0.0,
+            data_url="data:image/jpeg;base64,ZmFrZQ==",
+        )
+
+        payload = _build_openai_payload(request, request.clips[:1], [frame], settings)
+        compact_input = json.loads(payload["input"][0]["content"][0]["text"])
+        intent = compact_input["userEditIntent"]
+        rules = compact_input["selectionQualityRules"]
+
+        self.assertIn("defense_focus", intent["styleIntents"])
+        self.assertIn("defense_only", intent["styleIntents"])
+        self.assertIn("defense", intent["focusAreas"])
+        self.assertTrue(rules["defenseOnlyRequested"])
+        self.assertIn("defense-first edit", payload["instructions"])
+        self.assertNotIn("Defense only", json.dumps(payload))
+
     def test_revision_patch_payload_uses_agent_template_cookbook(self) -> None:
         settings = GPTHighlightRerankerSettings.from_env()
         request = _request("internal").model_copy(
@@ -2781,6 +2803,38 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertIn("late_steal", sampled_ids)
         self.assertIn("late_stop", sampled_ids)
         self.assertLess(len([clip_id for clip_id in sampled_ids if clip_id.startswith("make_")]), 20)
+
+    def test_defense_only_sampling_prefers_defensive_pool_before_scoring_fill(self) -> None:
+        scoring_clips = [_clip(f"make_{index}", float(index * 7), 0.99 - (index * 0.001)) for index in range(16)]
+        defensive_clips = [
+            _labeled_clip("late_block_1", 180.0, 0.63, "Block"),
+            _labeled_clip("late_steal_1", 188.0, 0.62, "Steal"),
+            _labeled_clip("late_forced_turnover_1", 196.0, 0.61, "Forced Turnover"),
+            _labeled_clip("late_stop_1", 204.0, 0.60, "Defensive Stop"),
+            _labeled_clip("late_block_2", 212.0, 0.59, "Blocked Shot"),
+            _labeled_clip("late_steal_2", 220.0, 0.58, "Takeaway Steal"),
+            _labeled_clip("late_forced_turnover_2", 228.0, 0.57, "Defensive Turnover"),
+            _labeled_clip("late_stop_2", 236.0, 0.56, "Defensive Stop"),
+        ]
+        request = CreateEditJobRequest(
+            videoId="video_defense_only_pool",
+            analysisJobId="analysis_defense_only_pool",
+            installId="install-123",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="free",
+            userPrompt="Defense only: blocks, steals, and stops. No offense.",
+            clips=[*scoring_clips, *defensive_clips],
+        )
+
+        sampled = gpt_reranker._quality_filtered_sampled_clips(
+            gpt_reranker.rank_clips(request.clips),
+            8,
+            request=request,
+        )
+        sampled_ids = {clip.id for clip in sampled}
+
+        self.assertEqual(sampled_ids, {clip["id"] for clip in defensive_clips})
 
     def test_defensive_candidates_use_possession_change_keyframes(self) -> None:
         request = CreateEditJobRequest(

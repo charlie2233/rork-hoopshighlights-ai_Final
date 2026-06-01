@@ -274,6 +274,16 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertIn("defense_focus", intent.structuredSummary)
         self.assertEqual(intent.tone, "hype")
 
+    def test_user_prompt_defense_only_maps_to_strict_defensive_intent(self) -> None:
+        intent = derive_user_prompt_intent("Defense only: blocks, steals, charges, no offense", "free")
+
+        assert intent is not None
+        self.assertIn("defense_focus", intent.styleIntents)
+        self.assertIn("defense_only", intent.styleIntents)
+        self.assertIn("defense", intent.focusAreas)
+        self.assertIn("defense_only", intent.structuredSummary)
+        self.assertEqual(intent.tone, "hype")
+
     def test_user_prompt_intent_is_policy_gated_and_structured_only(self) -> None:
         free_intent = derive_user_prompt_intent("make it NBA recap 30s vertical mixtape", "free")
         pro_intent = derive_user_prompt_intent("make it NBA recap 30s vertical mixtape", "pro")
