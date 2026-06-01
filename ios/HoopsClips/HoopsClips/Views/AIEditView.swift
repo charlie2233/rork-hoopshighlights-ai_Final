@@ -2487,7 +2487,6 @@ struct AIEditView: View {
             serviceStatusErrorMessage = message
             serviceStatusBlocksRendering = true
         } catch {
-            serviceVersion = nil
             serviceStatusErrorMessage = cloudStatusWarningMessage(for: error)
             serviceStatusBlocksRendering = false
         }

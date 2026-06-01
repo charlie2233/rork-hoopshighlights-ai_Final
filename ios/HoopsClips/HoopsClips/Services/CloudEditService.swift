@@ -30,7 +30,7 @@ protocol CloudEditServicing {
 }
 
 struct CloudEditService: CloudEditServicing {
-    private static let quickStatusTimeout: TimeInterval = 8
+    private static let versionStatusTimeout: TimeInterval = 15
     private static let renderHistoryTimeout: TimeInterval = 12
     private static let standardRequestTimeout: TimeInterval = 30
 
@@ -51,7 +51,7 @@ struct CloudEditService: CloudEditServicing {
         let url = baseURL.appending(path: "v1/editing/version")
 
         let (data, response) = try await session.data(
-            for: signedClientRequest(url: url, timeoutInterval: Self.quickStatusTimeout)
+            for: signedClientRequest(url: url, timeoutInterval: Self.versionStatusTimeout)
         )
         return try decodeResponse(data: data, response: response, successType: CloudEditVersionResponse.self)
     }
