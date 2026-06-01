@@ -108,7 +108,7 @@ Then you can selectively install dependencies into isolated virtualenvs:
 - `HOOPS_TEAM_QUICK_SCAN_MAX_TOTAL_CLIP_FRAMES`: total per-clip frame budget for team quick scan, excluding whole-video context frames (default `2560`, max `3200`)
 - `HOOPS_TEAM_QUICK_SCAN_MAX_CANDIDATE_CLIPS`: maximum analysis candidates included in team quick scan attribution, clamped to `1...320` (default `320`)
 - `HOOPS_TEAM_QUICK_SCAN_MIN_TEAM_CONFIDENCE`: minimum confidence to expose a detected team option (default `0.55`). Clip filtering still treats attribution below `0.85` as uncertain.
-- Interactive team prescan uses a bounded accuracy preset derived from these settings: up to 96 candidate clips, 64 rich candidates, 8 role frames per rich candidate, and 768 total clip frames.
+- Interactive team prescan uses a bounded accuracy preset derived from these settings: up to 160 candidate clips, 128 rich candidates, 8 role frames per rich candidate, and 1,280 total clip frames.
 - `HOOPS_RENDER_STORAGE_PROVIDER`: `local` or `r2` (default `local`)
 - `HOOPS_RENDER_DOWNLOAD_TTL_SECONDS`: signed/local render download URL TTL (default `900`)
 - `HOOPS_MAX_RENDER_COMPLEXITY_UNITS`: max estimated render complexity before rejecting render (default `600`)

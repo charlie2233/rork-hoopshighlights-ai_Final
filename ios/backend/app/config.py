@@ -243,7 +243,7 @@ def get_settings() -> Settings:
         team_quick_scan_api_key=os.getenv("HOOPS_OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY") or None,
         team_quick_scan_model=os.getenv("HOOPS_TEAM_QUICK_SCAN_MODEL", os.getenv("HOOPS_AI_CLIP_GPT_MODEL", "gpt-4.1")),
         team_quick_scan_endpoint=os.getenv("HOOPS_TEAM_QUICK_SCAN_ENDPOINT", "https://api.openai.com/v1/responses"),
-        team_quick_scan_timeout_seconds=_env_float("HOOPS_TEAM_QUICK_SCAN_TIMEOUT_SECONDS", 60.0, 2.0, 90.0),
+        team_quick_scan_timeout_seconds=_env_float("HOOPS_TEAM_QUICK_SCAN_TIMEOUT_SECONDS", 60.0, 2.0, 120.0),
         team_quick_scan_video_frame_count=_env_int("HOOPS_TEAM_QUICK_SCAN_VIDEO_FRAME_COUNT", 8, 2, 16),
         team_quick_scan_clip_frames_per_clip=_env_int("HOOPS_TEAM_QUICK_SCAN_CLIP_FRAMES_PER_CLIP", 8, 1, 8),
         team_quick_scan_rich_candidate_clips=_env_int("HOOPS_TEAM_QUICK_SCAN_RICH_CANDIDATE_CLIPS", 320, 0, 320),

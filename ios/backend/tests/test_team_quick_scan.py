@@ -191,11 +191,11 @@ class TeamQuickScanTests(unittest.TestCase):
 
         prescan = team_quick_prescan_settings(full_settings)
 
-        self.assertEqual(prescan.team_quick_scan_max_candidate_clips, 96)
-        self.assertEqual(prescan.team_quick_scan_rich_candidate_clips, 64)
+        self.assertEqual(prescan.team_quick_scan_max_candidate_clips, 160)
+        self.assertEqual(prescan.team_quick_scan_rich_candidate_clips, 128)
         self.assertEqual(prescan.team_quick_scan_clip_frames_per_clip, 8)
-        self.assertEqual(prescan.team_quick_scan_max_total_clip_frames, 768)
-        self.assertEqual(prescan.team_quick_scan_timeout_seconds, 90.0)
+        self.assertEqual(prescan.team_quick_scan_max_total_clip_frames, 1280)
+        self.assertEqual(prescan.team_quick_scan_timeout_seconds, 120.0)
         self.assertEqual(full_settings.team_quick_scan_max_candidate_clips, 320)
 
     def test_prescan_frame_budget_uses_rich_and_tail_candidates(self) -> None:
@@ -227,7 +227,7 @@ class TeamQuickScanTests(unittest.TestCase):
         for frame in clip_frames:
             roles_by_clip.setdefault(frame.clip_ref, []).append(frame.role)
 
-        self.assertEqual(len(clip_frames), 560)
+        self.assertEqual(len(clip_frames), 640)
         self.assertEqual(len(roles_by_clip), 80)
         self.assertEqual(
             roles_by_clip["clip_0"],
@@ -243,7 +243,7 @@ class TeamQuickScanTests(unittest.TestCase):
             ],
         )
         self.assertEqual(roles_by_clip["clip_63"], roles_by_clip["clip_0"])
-        self.assertEqual(roles_by_clip["clip_64"], ["ballHandlerSetup", "release", "rimResult"])
+        self.assertEqual(roles_by_clip["clip_64"], roles_by_clip["clip_0"])
         self.assertNotIn("clip_80", roles_by_clip)
 
     def test_disabled_scan_falls_back_without_calling_gpt(self) -> None:
