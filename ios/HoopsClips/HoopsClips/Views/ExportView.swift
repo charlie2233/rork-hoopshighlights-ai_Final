@@ -21,6 +21,7 @@ struct ExportView: View {
     @State private var shareErrorMessage: String?
     @State private var showFileImporter = false
     @State private var lastExportAnnouncementPercent = -1
+    @State private var showAdvancedLocalExportControls = false
 
     var body: some View {
         NavigationStack {
@@ -37,11 +38,14 @@ struct ExportView: View {
                             if AppConstants.requiresCloudVideoPipeline {
                                 quickActionsSection
                             } else {
-                                themeSection
-                                musicSection
-                                qualitySection
-                                formatSection
-                                postProcessingSection
+                                localExportSetupCard
+                                if showAdvancedLocalExportControls {
+                                    themeSection
+                                    musicSection
+                                    qualitySection
+                                    formatSection
+                                    postProcessingSection
+                                }
                                 quickActionsSection
                                 exportButton
                             }
@@ -229,6 +233,65 @@ struct ExportView: View {
             presentation: .exportSection,
             onRequestProUpgrade: { showingPaywall = true }
         )
+    }
+
+    private var localExportSetupCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 10) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(AppTheme.accentPurple.opacity(0.20))
+                        .frame(width: 42, height: 42)
+                    Image(systemName: "slider.horizontal.below.rectangle")
+                        .font(.headline)
+                        .foregroundStyle(AppTheme.neonPurple)
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Export setup")
+                        .font(.headline)
+                        .foregroundStyle(.white)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Text(localExportSetupSummary)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(hasLockedSelections ? AppTheme.warningYellow : AppTheme.subtleText)
+                        .lineLimit(3)
+                        .minimumScaleFactor(0.86)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("export.localSetup.summary")
+                }
+
+                Spacer(minLength: 0)
+            }
+
+            Button {
+                HoopsAccessibility.animate(reduceMotion: reduceMotion, .snappy(duration: 0.18)) {
+                    showAdvancedLocalExportControls.toggle()
+                }
+            } label: {
+                Label(
+                    showAdvancedLocalExportControls ? "Hide advanced export options" : "Advanced export options",
+                    systemImage: showAdvancedLocalExportControls ? "chevron.up.circle.fill" : "slider.horizontal.3"
+                )
+                .font(.caption.bold())
+                .multilineTextAlignment(.center)
+                .lineLimit(3)
+                .minimumScaleFactor(0.84)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, minHeight: 42)
+                .padding(.horizontal, 8)
+            }
+            .buttonStyle(.bordered)
+            .tint(AppTheme.neonPurple)
+            .accessibilityIdentifier("export.localSetup.advancedButton")
+            .accessibilityValue(showAdvancedLocalExportControls ? "Advanced export options shown" : "Advanced export options hidden")
+            .accessibilityHint("Shows or hides local export theme, music, quality, format, and effects options.")
+        }
+        .padding(14)
+        .rorkCard(cornerRadius: 16, stroke: AppTheme.neonPurple.opacity(0.16), glow: AppTheme.neonPurple, glowOpacity: 0.04)
+        .accessibilityIdentifier("export.localSetup.card")
     }
 
     private var themeSection: some View {
@@ -815,6 +878,14 @@ struct ExportView: View {
 
     private var hasLockedSelections: Bool {
         isThemeLocked(viewModel.selectedTheme) || isMusicLocked(viewModel.selectedMusic)
+    }
+
+    private var localExportSetupSummary: String {
+        let summary = "\(viewModel.selectedTheme.rawValue) • \(viewModel.selectedQuality.rawValue) • \(viewModel.selectedFormat.rawValue)"
+        if hasLockedSelections {
+            return "\(summary). One selected option needs Pro."
+        }
+        return "\(summary). Ready to export."
     }
 
     private var lockedExportGradient: LinearGradient {

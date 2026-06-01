@@ -85,6 +85,28 @@ struct HoopsClipsTests {
         }
     }
 
+    @Test @MainActor func testDefaultLocalExportSettingsStayFreeAndCompatible() {
+        let viewModel = HighlightsViewModel()
+        let now = Date()
+        let project = PersistedProjectRecord(
+            title: "Test Game",
+            sourceFilename: "game.mov",
+            sourceRelativePath: "sources/game.mov",
+            sourceDuration: 60,
+            thumbnailRelativePath: "thumbs/game.jpg",
+            createdAt: now,
+            updatedAt: now,
+            lastOpenedAt: now
+        )
+
+        #expect(viewModel.selectedTheme == .vibrant)
+        #expect(!viewModel.selectedTheme.requiresPro)
+        #expect(viewModel.selectedFormat == .mp4)
+        #expect(project.selectedTheme == .vibrant)
+        #expect(!project.selectedTheme.requiresPro)
+        #expect(project.selectedFormat == .mp4)
+    }
+
     @Test func testHeuristicFallback() async {
         // Prepare a Clip that should trigger "Posterize" or "Dunk" via heuristics
         // Heuristic: maxPose > 0.7 && maxMotion > 0.6
@@ -1276,6 +1298,86 @@ struct HoopsClipsTests {
             "Ball Deflection Into Runout",
             "Takes Charge",
             "Takeaway Steal"
+        ])
+    }
+
+    @Test @MainActor func testCloudEditRequestKeepsInterceptionsAndPokedLooseStealsForGptReview() throws {
+        let viewModel = HighlightsViewModel()
+        viewModel.cloudEditSourceObjectKey = "uploads/source.mp4"
+        let keptClip = Clip(
+            startTime: 8.0,
+            endTime: 14.0,
+            eventCenter: 11.0,
+            action: .madeShot,
+            confidence: 0.9,
+            isKept: true,
+            label: "Made Shot",
+            audioScore: 0.6,
+            visualScore: 0.82,
+            motionScore: 0.8,
+            combinedScore: 0.86,
+            detectionMethod: .cloud
+        )
+        let interceptedPass = Clip(
+            startTime: 20.0,
+            endTime: 25.0,
+            eventCenter: 22.2,
+            action: .unknown,
+            confidence: 0.73,
+            isKept: false,
+            label: "Intercepted Pass",
+            audioScore: 0.32,
+            visualScore: 0.7,
+            motionScore: 0.74,
+            combinedScore: 0.72,
+            detectionMethod: .cloud
+        )
+        let pokedLoose = Clip(
+            startTime: 32.0,
+            endTime: 37.0,
+            eventCenter: 34.0,
+            action: .unknown,
+            confidence: 0.72,
+            isKept: false,
+            label: "Poked Ball Loose",
+            audioScore: 0.3,
+            visualScore: 0.68,
+            motionScore: 0.72,
+            combinedScore: 0.7,
+            detectionMethod: .cloud
+        )
+        let rejectedAtRim = Clip(
+            startTime: 44.0,
+            endTime: 49.0,
+            eventCenter: 46.2,
+            action: .unknown,
+            confidence: 0.74,
+            isKept: false,
+            label: "Rejected At The Rim",
+            audioScore: 0.36,
+            visualScore: 0.72,
+            motionScore: 0.78,
+            combinedScore: 0.73,
+            detectionMethod: .cloud
+        )
+        viewModel.analysisService.clips = [keptClip, interceptedPass, pokedLoose, rejectedAtRim]
+
+        let request = try viewModel.createCloudEditRequest(
+            preset: .personalHighlight,
+            targetDurationSeconds: 30,
+            isProUser: false
+        )
+
+        #expect(request.clips.map(\.label) == [
+            "Made Shot",
+            "Intercepted Pass",
+            "Poked Ball Loose",
+            "Rejected At The Rim"
+        ])
+        #expect(request.clips.filter { $0.userReviewDecision == "unreviewed" }.map(\.label) == [
+            "Intercepted Pass",
+            "Poked Ball Loose",
+            "Rejected At The Rim"
         ])
     }
 

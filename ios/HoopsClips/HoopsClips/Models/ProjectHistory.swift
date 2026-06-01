@@ -81,7 +81,7 @@ struct PersistedProjectRecord: Identifiable, Codable, Sendable {
         totalClipCount: Int = 0,
         keptClipCount: Int = 0,
         clips: [Clip] = [],
-        selectedTheme: ExportTheme = .cinematic,
+        selectedTheme: ExportTheme = .vibrant,
         selectedMusic: MusicTrack = .none,
         selectedQuality: ExportQuality = .high,
         selectedFormat: ExportFileFormat = .mp4,

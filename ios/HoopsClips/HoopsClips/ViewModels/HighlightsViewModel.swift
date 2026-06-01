@@ -31,7 +31,7 @@ final class HighlightsViewModel {
     var cloudAnalysisService = CloudAnalysisService()
     var exportService = VideoExportService()
 
-    var selectedTheme: ExportTheme = .cinematic {
+    var selectedTheme: ExportTheme = .vibrant {
         didSet { persistCurrentProject() }
     }
     var selectedMusic: MusicTrack = .none {
@@ -1001,11 +1001,12 @@ final class HighlightsViewModel {
     nonisolated private static func defensiveCloudEditCandidateFamily(_ clip: Clip) -> String? {
         let text = "\(clip.label) \(clip.action.rawValue)".lowercased()
         let tokens = Set(text.split { !$0.isLetter && !$0.isNumber }.map(String.init))
-        if !tokens.isDisjoint(with: ["block", "blocked", "contest", "contested", "swat", "swatted", "rejection"])
-            || text.contains("blocked shot") {
+        if !tokens.isDisjoint(with: ["block", "blocked", "contest", "contested", "swat", "swatted", "rejection", "reject", "rejected"])
+            || text.contains("blocked shot")
+            || text.contains("rim protection") {
             return "block"
         }
-        if !tokens.isDisjoint(with: ["steal", "strip", "stripped", "takeaway", "pickpocket"]) {
+        if !tokens.isDisjoint(with: ["steal", "stolen", "strip", "stripped", "takeaway", "pickpocket", "intercept", "intercepted", "interception", "poke", "poked", "rip", "ripped"]) {
             return "steal"
         }
         if !tokens.isDisjoint(with: ["deflection", "deflected", "charge"])
@@ -1276,7 +1277,7 @@ final class HighlightsViewModel {
         exportService.exportProgress = 0
         exportService.statusMessage = ""
 
-        selectedTheme = .cinematic
+        selectedTheme = .vibrant
         selectedMusic = .none
         selectedQuality = .high
         selectedFormat = .mp4
