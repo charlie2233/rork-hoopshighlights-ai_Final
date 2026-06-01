@@ -13,6 +13,7 @@ struct ContentView: View {
     @State private var showingPaywall = false
     @State private var didShowSignInScreen = false
     @State private var isShowingPostSignInTransition = false
+    @AppStorage("hoopsclips.visibleProjectAuthScopeKey.v1") private var visibleProjectAuthScopeKey = "signed-out"
     @GestureState private var tabBarDragTranslation: CGFloat = 0
     @Namespace private var tabSelectionNamespace
 
@@ -95,6 +96,10 @@ struct ContentView: View {
         return "\(user.authMethod.rawValue):\(user.id)"
     }
 
+    private var visibleProjectScopeKey: String {
+        HighlightsViewModel.installIDDefaultsKey(forAuthScope: revenueCatSyncKey)
+    }
+
     #if DEBUG
     private var isPaywallScreenshotMode: Bool {
         ProcessInfo.processInfo.arguments.contains("--hoops-paywall-screenshot")
@@ -114,7 +119,7 @@ struct ContentView: View {
             #endif
         }
         .task {
-            viewModel.applyAuthenticatedCloudScope(revenueCatSyncKey)
+            reconcileInitialAuthenticatedUserScope(revenueCatSyncKey, visibleScopeKey: visibleProjectScopeKey)
             await subscriptionManager.syncAuthenticatedUser(authService.currentUser)
         }
         .onChange(of: revenueCatSyncKey) { oldScope, newScope in
@@ -192,6 +197,7 @@ struct ContentView: View {
                         selectTab(.history)
                     }
                 )
+                    .id("player-\(revenueCatSyncKey)")
                     .environment(subscriptionManager)
                     .environment(authService)
                     .tag(AppTab.player.rawValue)
@@ -284,6 +290,7 @@ struct ContentView: View {
     private func handleAuthenticationChange(_ isAuthenticated: Bool) {
         guard isAuthenticated else {
             resetVisibleProjectForAuthenticationBoundary(reason: "signed_out")
+            visibleProjectAuthScopeKey = HighlightsViewModel.installIDDefaultsKey(forAuthScope: "signed-out")
             didShowSignInScreen = true
             isShowingPostSignInTransition = false
             return
@@ -313,6 +320,25 @@ struct ContentView: View {
         viewModel.applyAuthenticatedCloudScope(newScope)
         let reason = newScope == "signed-out" ? "signed_out" : "account_switched"
         resetVisibleProjectForAuthenticationBoundary(reason: reason)
+        visibleProjectAuthScopeKey = HighlightsViewModel.installIDDefaultsKey(forAuthScope: newScope)
+    }
+
+    private func reconcileInitialAuthenticatedUserScope(_ currentScope: String, visibleScopeKey: String) {
+        viewModel.applyAuthenticatedCloudScope(currentScope)
+        guard visibleProjectAuthScopeKey != visibleScopeKey else { return }
+
+        let reason: String
+        let signedOutScopeKey = HighlightsViewModel.installIDDefaultsKey(forAuthScope: "signed-out")
+        if currentScope == "signed-out" {
+            reason = "signed_out"
+        } else if visibleProjectAuthScopeKey == "signed-out" || visibleProjectAuthScopeKey == signedOutScopeKey {
+            reason = "signed_in"
+        } else {
+            reason = "account_switched"
+        }
+
+        resetVisibleProjectForAuthenticationBoundary(reason: reason)
+        visibleProjectAuthScopeKey = visibleScopeKey
     }
 
     private func resetVisibleProjectForAuthenticationBoundary(reason: String) {
@@ -325,8 +351,8 @@ struct ContentView: View {
                 "auth.project_reset",
                 metadata: "reason=\(reason)"
             )
-            viewModel.resetProject()
         }
+        viewModel.clearVisibleProjectForAuthenticationBoundary()
         selectedTab = AppTab.player.rawValue
         showingPaywall = false
     }

@@ -109,8 +109,9 @@ struct HoopsClipsTests {
         #expect(UserDefaults.standard.data(forKey: "hoops_auth_user") == nil)
     }
 
-    @Test @MainActor func testResetProjectClearsVisibleVideoForAccountBoundary() {
+    @Test @MainActor func testAuthBoundaryClearClearsVisibleVideoState() {
         let viewModel = HighlightsViewModel()
+        viewModel.currentProjectID = UUID()
         viewModel.videoURL = URL(fileURLWithPath: "/tmp/account-boundary-source.mov")
         viewModel.videoDuration = 96
         viewModel.isVideoLoaded = true
@@ -151,8 +152,9 @@ struct HoopsClipsTests {
         ]
         viewModel.exportService.exportedURL = URL(fileURLWithPath: "/tmp/old-account-export.mp4")
 
-        viewModel.resetProject()
+        viewModel.clearVisibleProjectForAuthenticationBoundary()
 
+        #expect(viewModel.currentProjectID == nil)
         #expect(viewModel.videoURL == nil)
         #expect(viewModel.videoDuration == 0)
         #expect(viewModel.isVideoLoaded == false)

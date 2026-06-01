@@ -844,9 +844,12 @@ final class HighlightsViewModel {
     nonisolated private static let cloudEditReviewCandidateReserveDivisor = 2
     nonisolated private static let cloudEditDuplicateOverlapThreshold = 0.68
     nonisolated private static let cloudEditDuplicateEventCenterTolerance = 1.5
-    nonisolated private static let cloudEditSelectedTeamReserveMinScore = 0.52
-    nonisolated private static let cloudEditSelectedTeamReserveMinConfidence = 0.50
-    nonisolated private static let cloudEditSelectedTeamReserveMinWatchability = 0.45
+    nonisolated private static let cloudEditSelectedTeamReserveMinScore = 0.68
+    nonisolated private static let cloudEditSelectedTeamReserveMinConfidence = 0.60
+    nonisolated private static let cloudEditSelectedTeamReserveMinWatchability = 0.65
+    nonisolated private static let cloudEditUncertainTeamReserveMinScore = 0.52
+    nonisolated private static let cloudEditUncertainTeamReserveMinConfidence = 0.50
+    nonisolated private static let cloudEditUncertainTeamReserveMinWatchability = 0.45
     nonisolated private static let cloudEditTeamEvidenceRequiredSources: Set<String> = [
         "quick_scan",
         "gpt_frame_review",
@@ -997,6 +1000,12 @@ final class HighlightsViewModel {
         guard isCloudEditCandidateQualityEligible(clip) else { return false }
 
         let watchability = max(clip.visualScore, clip.motionScore)
+        if needsTeamReview(clip, teamSelection: teamSelection) {
+            return clip.combinedScore >= cloudEditUncertainTeamReserveMinScore
+                && clip.confidence >= cloudEditUncertainTeamReserveMinConfidence
+                && watchability >= cloudEditUncertainTeamReserveMinWatchability
+        }
+
         return clip.combinedScore >= cloudEditSelectedTeamReserveMinScore
             && clip.confidence >= cloudEditSelectedTeamReserveMinConfidence
             && watchability >= cloudEditSelectedTeamReserveMinWatchability
@@ -1224,6 +1233,13 @@ final class HighlightsViewModel {
 
     func resetProject() {
         persistCurrentProject()
+        currentProjectID = nil
+        projectLibrary.currentProjectID = nil
+        saveProjectLibrary()
+        clearLiveProjectState()
+    }
+
+    func clearVisibleProjectForAuthenticationBoundary() {
         currentProjectID = nil
         projectLibrary.currentProjectID = nil
         saveProjectLibrary()
