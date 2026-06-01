@@ -1072,9 +1072,10 @@ struct VideoPlayerView: View {
     }
 
     private var teamTargetGridColumns: [GridItem] {
-        let minimumWidth: CGFloat = dynamicTypeSize >= .accessibility1 ? 168 : 118
+        let minimumWidth: CGFloat = dynamicTypeSize >= .accessibility1 ? 220 : 150
+        let maximumWidth: CGFloat = dynamicTypeSize >= .accessibility1 ? 360 : 280
         return [
-            GridItem(.adaptive(minimum: minimumWidth, maximum: 240), spacing: 8, alignment: .top)
+            GridItem(.adaptive(minimum: minimumWidth, maximum: maximumWidth), spacing: 8, alignment: .top)
         ]
     }
 
@@ -1087,7 +1088,7 @@ struct VideoPlayerView: View {
                 viewModel.confirmHighlightTeamSelection(selection)
             }
         } label: {
-            VStack(spacing: 4) {
+            VStack(spacing: dynamicTypeSize.isAccessibilitySize ? 8 : 6) {
                 if selection.mode == .all {
                     Image(systemName: "person.3.fill")
                         .font(.caption.weight(.bold))
@@ -1103,15 +1104,16 @@ struct VideoPlayerView: View {
                 Text(selection.displayTitle)
                     .font(.caption.weight(.semibold))
                     .multilineTextAlignment(.center)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.88)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 3)
+                    .minimumScaleFactor(0.82)
                     .fixedSize(horizontal: false, vertical: true)
+                    .layoutPriority(1)
                     .accessibilityIdentifier(selection.accessibilityIdentifier)
             }
             .foregroundStyle(isConfirmedSelection ? AppTheme.darkBg : AppTheme.neonPurple)
-            .frame(maxWidth: .infinity, minHeight: dynamicTypeSize >= .accessibility1 ? 68 : 54)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
+            .frame(maxWidth: .infinity, minHeight: dynamicTypeSize >= .accessibility1 ? 92 : 72)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 8)
             .background(
                 isConfirmedSelection ? AppTheme.neonPurple : AppTheme.neonPurple.opacity(0.10),
                 in: .rect(cornerRadius: 12)

@@ -816,7 +816,7 @@ final class HighlightsViewModel {
                 start: clip.startTime,
                 end: clip.endTime,
                 eventCenter: center,
-                label: clip.label,
+                label: Self.cloudEditCandidateLabel(for: clip),
                 confidence: clip.confidence,
                 excitement: clip.combinedScore,
                 watchability: max(clip.visualScore, clip.motionScore),
@@ -865,6 +865,24 @@ final class HighlightsViewModel {
     nonisolated private static let cloudEditAudioReactionMinAudioScore = 0.88
     nonisolated private static let cloudEditAudioReactionMinVisualContext = 0.42
     nonisolated private static let cloudEditAudioReactionMinCombinedScore = 0.50
+    nonisolated private static let cloudEditAudioReactionLabelKeywords = [
+        "crowd",
+        "reaction",
+        "audio pop",
+        "audio spike",
+        "bench pop",
+        "big cheer",
+        "cheer",
+        "noise burst"
+    ]
+    nonisolated private static let cloudEditGenericAudioCueLabels: Set<String> = [
+        "action",
+        "clip",
+        "highlight",
+        "moment",
+        "play",
+        "unknown"
+    ]
     nonisolated private static let cloudEditTeamEvidenceRequiredSources: Set<String> = [
         "quick_scan",
         "gpt_frame_review",
@@ -1201,16 +1219,7 @@ final class HighlightsViewModel {
         guard clip.duration >= 2.0 else { return false }
 
         let text = "\(clip.label) \(clip.action.rawValue)".lowercased()
-        let hasReactionLabel = [
-            "crowd",
-            "reaction",
-            "audio pop",
-            "audio spike",
-            "bench pop",
-            "big cheer",
-            "cheer",
-            "noise burst"
-        ].contains { text.contains($0) }
+        let hasReactionLabel = cloudEditHasAudioReactionLabel(text)
         let visualContext = max(clip.visualScore, clip.motionScore)
         let hasEnoughContext = visualContext >= cloudEditAudioReactionMinVisualContext
             || clip.combinedScore >= cloudEditAudioReactionMinCombinedScore
@@ -1220,6 +1229,29 @@ final class HighlightsViewModel {
         }
 
         return clip.audioScore >= cloudEditAudioReactionMinAudioScore && hasEnoughContext
+    }
+
+    nonisolated private static func cloudEditCandidateLabel(for clip: Clip) -> String {
+        let trimmedLabel = clip.label.trimmingCharacters(in: .whitespacesAndNewlines)
+        let fallbackLabel = trimmedLabel.isEmpty ? clip.action.rawValue : trimmedLabel
+        guard isAudioReactionCloudEditCandidate(clip) else {
+            return fallbackLabel
+        }
+
+        let searchableText = "\(fallbackLabel) \(clip.action.rawValue)".lowercased()
+        if cloudEditHasAudioReactionLabel(searchableText) {
+            return fallbackLabel
+        }
+
+        if cloudEditGenericAudioCueLabels.contains(fallbackLabel.lowercased()) {
+            return "Audio Pop Cue"
+        }
+
+        return "Audio Pop Cue - \(fallbackLabel)"
+    }
+
+    nonisolated private static func cloudEditHasAudioReactionLabel(_ text: String) -> Bool {
+        cloudEditAudioReactionLabelKeywords.contains { text.contains($0) }
     }
 
     nonisolated private static func defensiveCloudEditCandidateFamily(_ clip: Clip) -> String? {

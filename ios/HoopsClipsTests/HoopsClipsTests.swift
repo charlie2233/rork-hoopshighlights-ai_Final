@@ -1543,6 +1543,39 @@ struct HoopsClipsTests {
         #expect(crowdCandidate.audioPeak >= 0.97)
     }
 
+    @Test @MainActor func testCloudEditRequestLabelsGenericAudioPopCueForGptReview() throws {
+        let viewModel = HighlightsViewModel()
+        viewModel.cloudEditSourceObjectKey = "uploads/source.mp4"
+        let audioCueClip = Clip(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000092")!,
+            startTime: 42.0,
+            endTime: 48.0,
+            eventCenter: 45.0,
+            action: .unknown,
+            confidence: 0.58,
+            isKept: false,
+            label: "Action",
+            audioScore: 0.96,
+            visualScore: 0.44,
+            motionScore: 0.46,
+            combinedScore: 0.56,
+            detectionMethod: .cloud
+        )
+        viewModel.analysisService.clips = [audioCueClip]
+
+        let request = try viewModel.createCloudEditRequest(
+            preset: .personalHighlight,
+            targetDurationSeconds: 30,
+            isProUser: false
+        )
+
+        let candidate = try #require(request.clips.first)
+        #expect(candidate.id == audioCueClip.id.uuidString)
+        #expect(candidate.label == "Audio Pop Cue")
+        #expect(candidate.userReviewDecision == "unreviewed")
+        #expect(candidate.audioPeak >= 0.96)
+    }
+
     @Test @MainActor func testCloudEditRequestIncludesReviewOnlyUncertainCandidatesWithoutAutoKeepingThem() throws {
         let viewModel = HighlightsViewModel()
         viewModel.cloudEditSourceObjectKey = "uploads/source.mp4"
