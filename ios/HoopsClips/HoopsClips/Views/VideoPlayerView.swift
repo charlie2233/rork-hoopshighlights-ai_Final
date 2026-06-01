@@ -569,23 +569,7 @@ struct VideoPlayerView: View {
             .accessibilityValue(isImportingVideo ? currentImportStatusMessage : "Ready")
 
             if isImportingVideo {
-                Button {
-                    cancelActiveImport()
-                } label: {
-                    Text(languageStore.text(.cancelImport))
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(AppTheme.subtleText)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 8)
-                        .background(AppTheme.surfaceBg.opacity(0.7), in: .capsule)
-                        .overlay(
-                            Capsule()
-                                .stroke(AppTheme.softBorder, lineWidth: 1)
-                        )
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(languageStore.text(.cancelImport))
-                .accessibilityHint("Stops the current video import.")
+                importStatusCard
             }
 
             LazyVGrid(columns: importFeatureGridColumns, alignment: .leading, spacing: 12) {
@@ -597,6 +581,61 @@ struct VideoPlayerView: View {
         }
         .padding(18)
         .rorkCard(cornerRadius: 22, stroke: AppTheme.softBorder, glowOpacity: 0.18)
+    }
+
+    private var importStatusCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 10) {
+                ProgressView()
+                    .tint(AppTheme.neonPurple)
+                    .padding(.top, 2)
+                    .accessibilityHidden(true)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(currentImportStatusMessage)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 3)
+                        .minimumScaleFactor(0.86)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Text("Keep HoopClips open while the video is copied. If it stays here too long, cancel and import from Files.")
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.subtleText)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 5 : 3)
+                        .minimumScaleFactor(0.84)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .layoutPriority(1)
+            }
+
+            Button {
+                cancelActiveImport()
+            } label: {
+                Label(languageStore.text(.cancelImport), systemImage: "xmark.circle.fill")
+                    .font(.footnote.weight(.semibold))
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.86)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 48 : 40)
+                    .padding(.horizontal, 12)
+            }
+            .buttonStyle(.bordered)
+            .tint(AppTheme.subtleText)
+            .accessibilityLabel(languageStore.text(.cancelImport))
+            .accessibilityValue(currentImportStatusMessage)
+            .accessibilityHint("Stops the current video import and returns to the import screen.")
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(AppTheme.surfaceBg.opacity(0.72), in: .rect(cornerRadius: 16))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(AppTheme.softBorder, lineWidth: 1)
+        )
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("import.status.card")
     }
 
     private var importFeatureGridColumns: [GridItem] {
