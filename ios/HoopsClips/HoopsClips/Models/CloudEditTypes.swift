@@ -386,6 +386,44 @@ struct CloudEditUserIntent: Equatable, Sendable {
     }
 }
 
+enum CloudEditUserPromptBuilder {
+    static let maxPromptCharacters = 240
+
+    static func effectivePrompt(
+        userPrompt: String?,
+        teamSelection: HighlightTeamSelection?,
+        maxCharacters: Int = maxPromptCharacters
+    ) -> String? {
+        let trimmed = userPrompt?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !trimmed.isEmpty {
+            return String(trimmed.prefix(maxCharacters))
+        }
+
+        return String(defaultAccuracyPrompt(teamSelection: teamSelection).prefix(maxCharacters))
+    }
+
+    static func defaultFocusSummary(teamSelection: HighlightTeamSelection?) -> String {
+        let selectedTeam = teamSelection?.mode == .team ? (teamSelection?.displayTitle ?? "selected team") : nil
+        if let selectedTeam {
+            return "Default focus: \(selectedTeam), clear outcomes, blocks, steals, and strong uncertain clips for Review."
+        }
+        return "Default focus: clear outcomes, made shots, blocks, steals, and strong uncertain clips for Review."
+    }
+
+    private static func defaultAccuracyPrompt(teamSelection: HighlightTeamSelection?) -> String {
+        var parts: [String] = []
+        if teamSelection?.mode == .team {
+            parts.append("Focus on \(teamSelection?.displayTitle ?? "the selected team").")
+        } else {
+            parts.append("Cover both teams.")
+        }
+        parts.append("Prioritize visible outcomes: made shots, blocks, steals, defensive stops, fast breaks.")
+        parts.append("Reject duplicates, unclear dead-ball moments, and boring filler.")
+        parts.append("Keep strong uncertain team clips reviewable.")
+        return parts.joined(separator: " ")
+    }
+}
+
 enum CloudEditPlanTier: String, Codable, Sendable {
     case free
     case pro

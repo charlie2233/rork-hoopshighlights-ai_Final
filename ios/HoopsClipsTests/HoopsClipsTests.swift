@@ -446,6 +446,57 @@ struct HoopsClipsTests {
         #expect(clips.first?["userReviewDecision"] as? String == "kept")
     }
 
+    @Test func testCloudEditDefaultPromptAddsAccuracyGuidanceWhenUserLeavesNoteEmpty() throws {
+        let prompt = try #require(
+            CloudEditUserPromptBuilder.effectivePrompt(
+                userPrompt: "   ",
+                teamSelection: .allTeams
+            )
+        )
+
+        #expect(prompt.contains("Cover both teams."))
+        #expect(prompt.contains("visible outcomes"))
+        #expect(prompt.contains("blocks"))
+        #expect(prompt.contains("steals"))
+        #expect(prompt.contains("Reject duplicates"))
+        #expect(prompt.count <= CloudEditUserPromptBuilder.maxPromptCharacters)
+    }
+
+    @Test func testCloudEditDefaultPromptCarriesSelectedTeamFocus() throws {
+        let selection = HighlightTeamSelection(
+            mode: .team,
+            teamId: "team_dark",
+            label: "Dark jerseys",
+            colorLabel: "black",
+            confidenceThreshold: 0.85,
+            includeUncertain: true
+        )
+        let prompt = try #require(
+            CloudEditUserPromptBuilder.effectivePrompt(
+                userPrompt: nil,
+                teamSelection: selection
+            )
+        )
+        let summary = CloudEditUserPromptBuilder.defaultFocusSummary(teamSelection: selection)
+
+        #expect(prompt.hasPrefix("Focus on Dark jerseys."))
+        #expect(prompt.contains("Keep strong uncertain team clips reviewable."))
+        #expect(summary.contains("Dark jerseys"))
+        #expect(summary.contains("blocks"))
+        #expect(summary.count <= CloudEditUserPromptBuilder.maxPromptCharacters)
+    }
+
+    @Test func testCloudEditUserPromptBuilderPreservesUserInstruction() throws {
+        let prompt = try #require(
+            CloudEditUserPromptBuilder.effectivePrompt(
+                userPrompt: "Make it a short defense reel.",
+                teamSelection: .allTeams
+            )
+        )
+
+        #expect(prompt == "Make it a short defense reel.")
+    }
+
     @Test func testCloudAnalysisRequestEncodesPreAnalysisTeamChoice() throws {
         let request = CreateCloudAnalysisJobRequest(
             filename: "game.mp4",

@@ -580,9 +580,11 @@ struct AIEditView: View {
     private var promptCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Label("Side Note", systemImage: "text.bubble.fill")
+                Label("Side Note (optional)", systemImage: "text.bubble.fill")
                     .font(.headline)
                     .foregroundStyle(.white)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
                 Spacer()
                 Text("\(userEditPrompt.count)/\(Self.maxUserPromptCharacters)")
                     .font(.caption2.monospacedDigit().bold())
@@ -615,9 +617,19 @@ struct AIEditView: View {
                         .padding(.horizontal, 16)
                         .padding(.vertical, 18)
                         .allowsHitTesting(false)
+                        .lineLimit(3)
+                        .minimumScaleFactor(0.86)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
+
+            Label(defaultCloudEditFocusSummary, systemImage: "checkmark.seal.fill")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(AppTheme.warningYellow)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 5 : 3)
+                .minimumScaleFactor(0.84)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("export.aiEdit.defaultFocusSummary")
 
             LazyVGrid(columns: quickPromptGridColumns, alignment: .leading, spacing: 8) {
                 ForEach(Self.quickPrompts) { quickPrompt in
@@ -1801,7 +1813,9 @@ struct AIEditView: View {
     }
 
     private var primaryActionHint: String {
-        cloudEditActionBlockedMessage ?? "Requests a cloud edit plan and render."
+        cloudEditActionBlockedMessage
+            ?? viewModel.cloudEditUnavailableReason
+            ?? "Requests a cloud edit plan and render."
     }
 
     private var serviceStatusMessage: String? {
@@ -1870,6 +1884,12 @@ struct AIEditView: View {
         if gptEditingReadinessMessage != nil {
             return "AI Editing Paused"
         }
+        if !viewModel.canRequestCloudEdit {
+            if viewModel.keptClips.isEmpty {
+                return "Keep Clips First"
+            }
+            return "Finish Cloud Analysis"
+        }
         if revisionResponse != nil, downloadResponse == nil {
             return "Make Revised Video"
         }
@@ -1927,9 +1947,17 @@ struct AIEditView: View {
     }
 
     private var sanitizedUserEditPrompt: String? {
-        let trimmed = userEditPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-        return String(trimmed.prefix(Self.maxUserPromptCharacters))
+        CloudEditUserPromptBuilder.effectivePrompt(
+            userPrompt: userEditPrompt,
+            teamSelection: viewModel.settings.highlightTeamSelection,
+            maxCharacters: Self.maxUserPromptCharacters
+        )
+    }
+
+    private var defaultCloudEditFocusSummary: String {
+        CloudEditUserPromptBuilder.defaultFocusSummary(
+            teamSelection: viewModel.settings.highlightTeamSelection
+        )
     }
 
     private func applyQuickPrompt(_ quickPrompt: AIEditQuickPrompt) {
