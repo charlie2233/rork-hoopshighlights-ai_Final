@@ -405,6 +405,8 @@ struct CloudEditUserIntent: Equatable, Sendable {
 
 enum CloudEditUserPromptBuilder {
     static let maxPromptCharacters = 320
+    static let maxFocusSummaryCharacters = 170
+    private static let maxFocusSummaryTeamCharacters = 42
 
     static func effectivePrompt(
         userPrompt: String?,
@@ -433,11 +435,14 @@ enum CloudEditUserPromptBuilder {
     }
 
     static func defaultFocusSummary(teamSelection: HighlightTeamSelection?) -> String {
-        let selectedTeam = teamSelection?.mode == .team ? (teamSelection?.displayTitle ?? "selected team") : nil
+        let selectedTeam = teamSelection?.mode == .team
+            ? compactFocusSummaryTeamTitle(teamSelection?.displayTitle ?? "selected team")
+            : nil
         if let selectedTeam {
-            return "Target: \(selectedTeam). Render confident matches only; keep uncertain clips for Review. Checks visible makes, blocks, steals, forced turnovers, defensive stops, and crowd/audio cues with visual proof."
+            let targetSeparator = selectedTeam.hasSuffix("...") ? " " : ". "
+            return "Target: \(selectedTeam)\(targetSeparator)Checks made shots, blocks, steals, defensive stops, and crowd/audio cues with visual proof. Uncertain clips stay reviewable."
         }
-        return "Target: All teams. Checks visible outcomes, made shots, blocks, steals, forced turnovers, defensive stops, and crowd/audio cues with visual proof; keeps uncertain clips for Review."
+        return "Target: All teams. Checks made shots, blocks, steals, defensive stops, and crowd/audio cues with visual proof. Uncertain clips stay reviewable."
     }
 
     private static func defaultAccuracyPrompt(teamSelection: HighlightTeamSelection?) -> String {
@@ -458,6 +463,26 @@ enum CloudEditUserPromptBuilder {
 
     private static func joinUserPrompt(_ userPrompt: String, with guardrails: String) -> String {
         userPrompt + promptSeparator(after: userPrompt) + guardrails
+    }
+
+    private static func compactFocusSummaryTeamTitle(_ title: String) -> String {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let visibleTitle = trimmed.isEmpty ? "selected team" : trimmed
+        guard visibleTitle.count > maxFocusSummaryTeamCharacters else {
+            return visibleTitle
+        }
+
+        let prefixLength = max(0, maxFocusSummaryTeamCharacters - 3)
+        let rawPrefix = String(visibleTitle.prefix(prefixLength))
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let wordSafePrefix: String
+        if let lastSpace = rawPrefix.lastIndex(of: " ") {
+            wordSafePrefix = String(rawPrefix[..<lastSpace])
+        } else {
+            wordSafePrefix = rawPrefix
+        }
+
+        return (wordSafePrefix.isEmpty ? rawPrefix : wordSafePrefix) + "..."
     }
 
     private static func promptSeparator(after userPrompt: String) -> String {

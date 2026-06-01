@@ -649,14 +649,14 @@ struct HoopsClipsTests {
         #expect(prompt.contains("reject confident opponents"))
         #expect(prompt.contains("Keep uncertain clips reviewable."))
         #expect(summary.hasPrefix("Target: Dark jerseys."))
-        #expect(summary.contains("Render confident matches only"))
         #expect(summary.contains("Dark jerseys"))
         #expect(summary.contains("blocks"))
-        #expect(summary.contains("forced turnovers"))
+        #expect(summary.contains("steals"))
         #expect(summary.contains("defensive stops"))
         #expect(summary.contains("crowd/audio cues"))
         #expect(summary.contains("visual proof"))
-        #expect(summary.count <= CloudEditUserPromptBuilder.maxPromptCharacters)
+        #expect(summary.contains("Uncertain clips stay reviewable."))
+        #expect(summary.count <= CloudEditUserPromptBuilder.maxFocusSummaryCharacters)
     }
 
     @Test func testCloudEditDefaultFocusSummaryShowsAllTeamsTarget() {
@@ -666,10 +666,29 @@ struct HoopsClipsTests {
         #expect(summary.contains("made shots"))
         #expect(summary.contains("blocks"))
         #expect(summary.contains("steals"))
+        #expect(summary.contains("defensive stops"))
         #expect(summary.contains("crowd/audio cues"))
         #expect(summary.contains("visual proof"))
-        #expect(summary.contains("Review"))
-        #expect(summary.count <= CloudEditUserPromptBuilder.maxPromptCharacters)
+        #expect(summary.contains("Uncertain clips stay reviewable."))
+        #expect(summary.count <= CloudEditUserPromptBuilder.maxFocusSummaryCharacters)
+    }
+
+    @Test func testCloudEditDefaultFocusSummaryStaysCompactForLongTeamNames() {
+        let selection = HighlightTeamSelection(
+            mode: .team,
+            teamId: "team_long",
+            label: "Eastside National Varsity Showcase Black Jerseys",
+            colorLabel: "black",
+            confidenceThreshold: 0.85,
+            includeUncertain: true
+        )
+
+        let summary = CloudEditUserPromptBuilder.defaultFocusSummary(teamSelection: selection)
+
+        #expect(summary.hasPrefix("Target: Eastside National Varsity Showcase..."))
+        #expect(summary.contains("crowd/audio cues"))
+        #expect(summary.contains("visual proof"))
+        #expect(summary.count <= CloudEditUserPromptBuilder.maxFocusSummaryCharacters)
     }
 
     @Test func testCloudEditUserPromptBuilderPreservesUserInstruction() throws {
