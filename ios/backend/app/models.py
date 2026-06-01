@@ -289,6 +289,8 @@ class CandidateWindow:
     motion_score: float
     combined_score: float
     event_context_score: float = 0.0
+    audio_pop_score: float = 0.0
+    audio_pop_time: Optional[float] = None
 
 
 @dataclass

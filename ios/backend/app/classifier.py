@@ -14,6 +14,8 @@ def classify_window(window: CandidateWindow) -> CloudClip:
         label = "Three Pointer"
     elif has_shot_context and window.visual_score >= 0.60 and window.motion_score >= 0.48:
         label = "Shot Attempt"
+    elif window.audio_pop_score >= 0.45 and window.visual_score < 0.50 and not has_shot_context:
+        label = "Crowd Reaction"
     elif window.motion_score >= 0.64:
         label = "Fast Break"
     elif has_shot_context and combined >= 0.55:
@@ -32,7 +34,7 @@ def classify_window(window: CandidateWindow) -> CloudClip:
         visualScore=round(clamp(window.visual_score, 0.0, 1.0), 4),
         motionScore=round(clamp(window.motion_score, 0.0, 1.0), 4),
         combinedScore=round(combined, 4),
-        shouldAutoKeep=confidence >= 0.62 and label != "Highlight",
+        shouldAutoKeep=confidence >= 0.62 and label not in {"Highlight", "Crowd Reaction"},
         shouldEnableSlowMotion=label in {"Dunk", "Posterize"},
     )
 

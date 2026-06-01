@@ -50,6 +50,8 @@ TEAM_EVIDENCE_REQUIRED_SOURCES = {"quick_scan", "gpt_frame_review", "provider", 
 MIN_CONFIDENT_TEAM_EVIDENCE_FRAME_REFS = 2
 MIN_CONFIDENT_TEAM_EVIDENCE_ROLE_GROUPS = 2
 MIN_DETECTED_TEAM_OPTION_CONFIDENCE = 0.85
+AUDIO_PROFILE_BUCKET_SECONDS = 0.5
+AUDIO_POP_EVENT_CENTER_THRESHOLD = 0.45
 VisualFrameSignal = Tuple[float, ...]
 
 
@@ -63,6 +65,13 @@ class VisualEventFrame:
     center_motion: float
     lower_motion: float
     audio_score: float
+
+
+@dataclass(frozen=True)
+class AudioPopSignal:
+    score: float
+    time_seconds: Optional[float]
+    baseline: float
 
 
 def run_analysis(job: StoredJob, settings: Settings, source_path: Path) -> CloudAnalysisResult:
@@ -1246,14 +1255,62 @@ def _shot_result_visual_score(frame: VisualEventFrame) -> float:
 def _audio_peak_near_time(audio_profile: Sequence[float], time_seconds: float) -> float:
     if not audio_profile:
         return 0.0
-    center = max(int(time_seconds / 0.5), 0)
+    center = max(int(time_seconds / AUDIO_PROFILE_BUCKET_SECONDS), 0)
     start = max(center - 1, 0)
     end = min(center + 2, len(audio_profile))
     return clamp(max(audio_profile[start:end] or [0.0]), 0.0, 1.0)
 
 
+def _audio_pop_signal_for_window(
+    audio_profile: Sequence[float],
+    bucket_start: int,
+    bucket_end: int,
+) -> AudioPopSignal:
+    if not audio_profile or bucket_start >= len(audio_profile):
+        return AudioPopSignal(score=0.0, time_seconds=None, baseline=0.0)
+
+    bounded_start = max(bucket_start, 0)
+    bounded_end = min(max(bucket_end, bounded_start + 1), len(audio_profile))
+    window_values = list(audio_profile[bounded_start:bounded_end])
+    if not window_values:
+        return AudioPopSignal(score=0.0, time_seconds=None, baseline=0.0)
+
+    peak_offset, peak_value = max(enumerate(window_values), key=lambda item: item[1])
+    peak_index = bounded_start + peak_offset
+    local_start = max(0, peak_index - 6)
+    local_end = min(len(audio_profile), peak_index + 7)
+    surrounding_values = [
+        value
+        for index, value in enumerate(audio_profile[local_start:local_end], start=local_start)
+        if abs(index - peak_index) > 1
+    ]
+    baseline = mean(surrounding_values or window_values)
+    window_mean = mean(window_values)
+    loudness_gate = clamp((peak_value - 0.48) / 0.28, 0.0, 1.0)
+    rise_above_window = max(peak_value - window_mean, 0.0)
+    rise_above_baseline = max(peak_value - baseline, 0.0)
+    score = clamp(
+        ((rise_above_window * 0.9) + (rise_above_baseline * 0.55) + (max(peak_value - 0.70, 0.0) * 0.25))
+        * loudness_gate,
+        0.0,
+        1.0,
+    )
+    time_seconds = (peak_index + 0.5) * AUDIO_PROFILE_BUCKET_SECONDS
+    return AudioPopSignal(score=round(score, 4), time_seconds=round(time_seconds, 3), baseline=round(baseline, 4))
+
+
+def _audio_pop_context_score(pop_time_seconds: Optional[float], start_time: float, end_time: float) -> float:
+    if pop_time_seconds is None:
+        return 0.0
+    lead_in = max(pop_time_seconds - start_time, 0.0)
+    follow = max(end_time - pop_time_seconds, 0.0)
+    lead_score = min(lead_in / 1.6, 1.0)
+    follow_score = min(follow / 0.8, 1.0)
+    return clamp((lead_score * 0.75) + (follow_score * 0.25), 0.0, 1.0)
+
+
 def _extract_audio_profile(path: Path, duration_seconds: float) -> List[float]:
-    bucket_count = max(int(math.ceil(duration_seconds / 0.5)), 1)
+    bucket_count = max(int(math.ceil(duration_seconds / AUDIO_PROFILE_BUCKET_SECONDS)), 1)
     ffmpeg = shutil.which("ffmpeg")
     if ffmpeg is None:
         return [0.0] * bucket_count
@@ -1289,7 +1346,7 @@ def _extract_audio_profile(path: Path, duration_seconds: float) -> List[float]:
     if not samples:
         return [0.0] * bucket_count
 
-    samples_per_bucket = max(int(sample_rate * 0.5), 1)
+    samples_per_bucket = max(int(sample_rate * AUDIO_PROFILE_BUCKET_SECONDS), 1)
     peaks: List[float] = []
     for index in range(bucket_count):
         start = index * samples_per_bucket
@@ -1323,13 +1380,18 @@ def _build_candidate_windows(
         if end_time - time_cursor < settings.min_clip_duration_seconds:
             break
 
-        bucket_start = max(int(time_cursor / 0.5), 0)
-        bucket_end = max(int(math.ceil(end_time / 0.5)), bucket_start + 1)
+        bucket_start = max(int(time_cursor / AUDIO_PROFILE_BUCKET_SECONDS), 0)
+        bucket_end = max(int(math.ceil(end_time / AUDIO_PROFILE_BUCKET_SECONDS)), bucket_start + 1)
         slice_values = audio_profile[bucket_start:bucket_end] or [0.0]
 
         audio_score = max(slice_values)
         audio_mean = mean(slice_values)
         volatility = max(audio_score - audio_mean, 0.0)
+        audio_pop_signal = _audio_pop_signal_for_window(audio_profile, bucket_start, bucket_end)
+        audio_pop_score = round(
+            audio_pop_signal.score * _audio_pop_context_score(audio_pop_signal.time_seconds, time_cursor, end_time),
+            4,
+        )
         center = (time_cursor + end_time) / 2.0
         center_bias = 1.0 - abs((center / max(duration_seconds, 1.0)) - 0.5) * 1.35
         shot_context_score, shot_event_time = _shot_context_score_for_window(
@@ -1342,7 +1404,11 @@ def _build_candidate_windows(
         context_boost = 0.16 * shot_context_score
 
         motion_score = clamp(
-            (audio_score * 0.65) + (volatility * 1.1) + (center_transition_boost * 0.75) + (context_boost * 0.55),
+            (audio_score * 0.58)
+            + (volatility * 0.92)
+            + (audio_pop_score * 0.18)
+            + (center_transition_boost * 0.75)
+            + (context_boost * 0.55),
             0.0,
             1.0,
         )
@@ -1351,9 +1417,22 @@ def _build_candidate_windows(
             0.0,
             1.0,
         )
-        baseline_score = clamp((audio_score * 0.42) + (motion_score * 0.34) + (visual_score * 0.24), 0.0, 1.0)
-        combined_score = clamp(baseline_score + (shot_context_score * 0.12), 0.0, 1.0)
-        peak_time = shot_event_time if shot_event_time is not None and shot_context_score >= 0.45 else center
+        baseline_score = clamp(
+            (audio_score * 0.36) + (motion_score * 0.32) + (visual_score * 0.22) + (audio_pop_score * 0.1),
+            0.0,
+            1.0,
+        )
+        combined_score = clamp(
+            baseline_score + (shot_context_score * 0.16) + (audio_pop_score * 0.04),
+            0.0,
+            1.0,
+        )
+        if shot_event_time is not None and shot_context_score >= 0.45:
+            peak_time = shot_event_time
+        elif audio_pop_signal.time_seconds is not None and audio_pop_score >= AUDIO_POP_EVENT_CENTER_THRESHOLD:
+            peak_time = min(max(audio_pop_signal.time_seconds, time_cursor), end_time)
+        else:
+            peak_time = center
 
         windows.append(
             CandidateWindow(
@@ -1365,6 +1444,8 @@ def _build_candidate_windows(
                 motion_score=motion_score,
                 combined_score=combined_score,
                 event_context_score=shot_context_score,
+                audio_pop_score=audio_pop_score,
+                audio_pop_time=audio_pop_signal.time_seconds,
             )
         )
 
@@ -1403,10 +1484,10 @@ def _backfill_segmented_candidate_windows(
 def _candidate_window_recall_key(window: CandidateWindow) -> tuple[float, float, float, float, float]:
     return (
         window.event_context_score,
+        window.audio_pop_score,
         window.combined_score,
         window.motion_score,
         window.visual_score,
-        window.audio_score,
     )
 
 
@@ -1488,11 +1569,12 @@ def _segment_with_hysteresis(windows: List[CandidateWindow], settings: Settings,
 
 
 def _collapse_windows(group: List[CandidateWindow], settings: Settings) -> CandidateWindow:
-    peak_window = max(group, key=lambda item: (item.event_context_score, item.combined_score))
-    anchor_window = peak_window if peak_window.event_context_score >= 0.45 else group[0]
+    peak_window = max(group, key=lambda item: (item.event_context_score, item.audio_pop_score, item.combined_score))
+    has_event_anchor = peak_window.event_context_score >= 0.45 or peak_window.audio_pop_score >= AUDIO_POP_EVENT_CENTER_THRESHOLD
+    anchor_window = peak_window if has_event_anchor else group[0]
 
     start_time = max(anchor_window.start_time - settings.clip_padding_seconds, 0.0)
-    group_end = peak_window.end_time if peak_window.event_context_score >= 0.45 else group[-1].end_time
+    group_end = peak_window.end_time if has_event_anchor else group[-1].end_time
     padded_end = group_end + settings.clip_padding_seconds
     max_end = max(group_end, start_time + settings.max_clip_duration_seconds)
     end_time = min(padded_end, max_end)
@@ -1512,12 +1594,15 @@ def _collapse_windows(group: List[CandidateWindow], settings: Settings) -> Candi
         motion_score=max(item.motion_score for item in group),
         combined_score=max(item.combined_score for item in group),
         event_context_score=max(item.event_context_score for item in group),
+        audio_pop_score=max(item.audio_pop_score for item in group),
+        audio_pop_time=max(group, key=lambda item: item.audio_pop_score).audio_pop_time,
     )
 
 
 def _fallback_window(duration_seconds: float, audio_profile: List[float], settings: Settings) -> CandidateWindow:
     peak_index = max(range(len(audio_profile)), key=lambda index: audio_profile[index], default=0)
-    center = min((peak_index * 0.5) + 1.0, max(duration_seconds - (settings.min_clip_duration_seconds / 2.0), 0.0))
+    audio_pop_time = min((peak_index + 0.5) * AUDIO_PROFILE_BUCKET_SECONDS, duration_seconds)
+    center = min(audio_pop_time, max(duration_seconds - (settings.min_clip_duration_seconds / 2.0), 0.0))
     start_time = max(center - 1.6, 0.0)
     end_time = min(duration_seconds, start_time + 4.0)
     if end_time - start_time < settings.min_clip_duration_seconds:
@@ -1531,9 +1616,11 @@ def _fallback_window(duration_seconds: float, audio_profile: List[float], settin
     return CandidateWindow(
         start_time=start_time,
         end_time=end_time,
-        peak_time=(start_time + end_time) / 2.0,
+        peak_time=min(max(audio_pop_time, start_time), end_time),
         audio_score=audio_score,
         visual_score=visual_score,
         motion_score=motion_score,
         combined_score=combined_score,
+        audio_pop_score=0.0,
+        audio_pop_time=audio_pop_time,
     )

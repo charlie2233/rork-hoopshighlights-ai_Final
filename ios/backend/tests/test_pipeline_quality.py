@@ -1432,6 +1432,41 @@ class PipelineQualityTests(unittest.TestCase):
         self.assertGreater(windows[0].event_context_score, 0.0)
         self.assertGreaterEqual(len({round(window.start_time, 1) for window in windows}), 4)
 
+    def test_native_candidate_audio_pop_anchors_recall_window_with_lead_in(self) -> None:
+        audio_profile = [0.08] * 80
+        audio_profile[30] = 0.97
+
+        windows = _build_candidate_windows(
+            duration_seconds=40.0,
+            audio_profile=audio_profile,
+            shot_boundaries=[],
+            settings=_settings(),
+        )
+
+        top = windows[0]
+        clip = classify_window(top)
+        self.assertLessEqual(top.start_time, 13.75)
+        self.assertAlmostEqual(top.peak_time, 15.25)
+        self.assertGreaterEqual(top.audio_pop_score, 0.9)
+        self.assertGreaterEqual(top.combined_score, 0.75)
+        self.assertEqual(clip.label, "Crowd Reaction")
+        self.assertFalse(clip.shouldAutoKeep)
+
+    def test_native_candidate_audio_pop_does_not_reward_steady_loud_background(self) -> None:
+        audio_profile = [0.72] * 80
+
+        windows = _build_candidate_windows(
+            duration_seconds=40.0,
+            audio_profile=audio_profile,
+            shot_boundaries=[],
+            settings=_settings(),
+        )
+
+        top = windows[0]
+        clip = classify_window(top)
+        self.assertLess(top.audio_pop_score, 0.05)
+        self.assertNotEqual(clip.label, "Crowd Reaction")
+
     def test_native_recall_fallback_returns_configured_candidate_pool(self) -> None:
         audio_profile = [0.08] * 60
         windows = _build_candidate_windows(
