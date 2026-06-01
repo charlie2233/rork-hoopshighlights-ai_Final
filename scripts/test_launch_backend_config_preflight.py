@@ -49,6 +49,7 @@ class LaunchBackendConfigPreflightTests(unittest.TestCase):
         self.assertEqual(REQUIRED_GPT_RERANK_SUBSTITUTIONS["_AI_CLIP_GPT_PLAN_EDIT_ENABLED"], "true")
         self.assertEqual(REQUIRED_GPT_RERANK_SUBSTITUTIONS["_AI_CLIP_GPT_REVISION_ENABLED"], "true")
         self.assertEqual(REQUIRED_GPT_RERANK_SUBSTITUTIONS["_AI_CLIP_GPT_KEYFRAMES_PER_CLIP"], "10")
+        self.assertEqual(REQUIRED_GPT_RERANK_SUBSTITUTIONS["_AI_CLIP_GPT_FREE_KEYFRAMES_PER_CLIP"], "10")
         self.assertEqual(REQUIRED_GPT_RERANK_SUBSTITUTIONS["_AI_CLIP_GPT_MAX_CANDIDATES_FREE"], "220")
         self.assertEqual(REQUIRED_GPT_RERANK_SUBSTITUTIONS["_AI_CLIP_GPT_MAX_CANDIDATES_PRO"], "220")
         self.assertEqual(REQUIRED_GPT_RERANK_SUBSTITUTIONS["_AI_CLIP_GPT_TIMEOUT_SECONDS"], "120")
@@ -64,6 +65,7 @@ class LaunchBackendConfigPreflightTests(unittest.TestCase):
                 "_AI_CLIP_GPT_PLAN_EDIT_ENABLED",
                 "_AI_CLIP_GPT_REVISION_ENABLED",
                 "_AI_CLIP_GPT_KEYFRAMES_PER_CLIP",
+                "_AI_CLIP_GPT_FREE_KEYFRAMES_PER_CLIP",
                 "_AI_CLIP_GPT_MAX_CANDIDATES_FREE",
                 "_AI_CLIP_GPT_MAX_CANDIDATES_PRO",
                 "_AI_CLIP_GPT_TIMEOUT_SECONDS",

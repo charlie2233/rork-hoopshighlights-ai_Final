@@ -2888,8 +2888,35 @@ class GPTHighlightRerankerTests(unittest.TestCase):
                 else:
                     os.environ[key] = old_value
 
-        self.assertEqual(settings.limits_for("free"), (220, 3))
+        self.assertEqual(settings.limits_for("free"), (220, 10))
         self.assertEqual(settings.limits_for("pro"), (220, 10))
+
+    def test_free_keyframe_env_override_allows_quality_beta_depth(self) -> None:
+        env_keys = (
+            "HOOPS_AI_CLIP_GPT_FREE_KEYFRAMES_PER_CLIP",
+            "HOOPS_GPT_HIGHLIGHT_RERANK_FREE_FRAMES_PER_CLIP",
+        )
+        old_values = {key: os.environ.get(key) for key in env_keys}
+        os.environ["HOOPS_AI_CLIP_GPT_FREE_KEYFRAMES_PER_CLIP"] = "10"
+        os.environ["HOOPS_GPT_HIGHLIGHT_RERANK_FREE_FRAMES_PER_CLIP"] = "3"
+        try:
+            settings = GPTHighlightRerankerSettings.from_env()
+        finally:
+            for key, old_value in old_values.items():
+                if old_value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = old_value
+
+        max_clips, frames_per_clip = settings.limits_for("free")
+        request = _request("free", 1)
+        sampled_roles = [role for role, _ in gpt_reranker._sample_times_for_clip(request.clips[0], frames_per_clip)]
+
+        self.assertEqual(max_clips, 220)
+        self.assertEqual(frames_per_clip, 10)
+        self.assertIn("release", sampled_roles)
+        self.assertIn("rimEntry", sampled_roles)
+        self.assertIn("belowRim", sampled_roles)
 
     def test_sampling_reserves_block_and_steal_families_for_gpt_review(self) -> None:
         scoring = [
