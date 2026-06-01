@@ -958,11 +958,28 @@ def _is_defensive_candidate_clip(clip: EditCandidateClip) -> bool:
 def _defensive_candidate_family(clip: EditCandidateClip) -> Optional[str]:
     label = clip.label.strip().lower()
     tokens = set(label.replace("-", " ").replace("_", " ").split())
-    if tokens & {"block", "blocked", "contest"} or "blocked shot" in label:
+    if tokens & {"block", "blocked", "contest", "swat", "swatted", "rejection", "rejected"} or "blocked shot" in label:
         return "block"
-    if tokens & {"steal", "strip"}:
+    if tokens & {
+        "steal",
+        "stolen",
+        "strip",
+        "stripped",
+        "takeaway",
+        "takeaways",
+        "intercept",
+        "intercepted",
+        "interception",
+        "pickpocket",
+        "poke",
+        "poked",
+        "rip",
+        "ripped",
+    }:
         return "steal"
-    if "turnover" in tokens and (tokens & {"forced", "force", "defensive", "defense"}):
+    if tokens & {"deflection", "deflected", "charge"} or "loose ball" in label:
+        return "forced_turnover"
+    if "turnover" in tokens and (tokens & {"forced", "force", "defensive", "defense", "steal", "strip", "takeaway"}):
         return "forced_turnover"
     if "stop" in tokens and ("defensive stop" in label or "defense stop" in label or label == "stop"):
         return "defensive_stop"

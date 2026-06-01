@@ -2188,6 +2188,22 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertTrue(is_defensive_event_like_clip(request.clips[2]))
         self.assertTrue(is_defensive_event_like_clip(request.clips[3]))
 
+    def test_defensive_event_classifier_keeps_turnover_pressure_labels(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=15,
+                clips=[
+                    _clip("deflection", 12.0, "Deflection To Fast Break", 0.88),
+                    _clip("charge", 24.0, "Took Charge", 0.86),
+                    _clip("loose_ball", 36.0, "Loose Ball Recovery", 0.82),
+                    _clip("takeaway", 48.0, "Takeaway", 0.84),
+                    _clip("poked_loose", 60.0, "Poked Loose", 0.83),
+                ],
+            )
+        )
+
+        self.assertTrue(all(is_defensive_event_like_clip(clip) for clip in request.clips))
+
     def test_gpt_highlight_rerank_rejects_missed_shot_without_ball_path(self) -> None:
         request = CreateEditJobRequest(
             **_request_payload(

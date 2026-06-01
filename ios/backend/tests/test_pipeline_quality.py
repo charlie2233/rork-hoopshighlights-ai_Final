@@ -896,6 +896,11 @@ class PipelineQualityTests(unittest.TestCase):
         self.assertTrue(_is_defensive_label("Blocked Shot"))
         self.assertTrue(_is_defensive_label("Defensive Stop"))
         self.assertTrue(_is_defensive_label("Steal Finish"))
+        self.assertTrue(_is_defensive_label("Deflection To Fast Break"))
+        self.assertTrue(_is_defensive_label("Loose Ball Recovery"))
+        self.assertTrue(_is_defensive_label("Takeaway"))
+        self.assertTrue(_is_defensive_label("Poked Loose"))
+        self.assertTrue(_is_defensive_label("Took Charge"))
 
     def test_defensive_label_classifier_requires_forced_turnover_context(self) -> None:
         self.assertFalse(_is_defensive_label("Turnover"))

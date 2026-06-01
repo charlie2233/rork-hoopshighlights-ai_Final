@@ -2327,14 +2327,41 @@ def _defensive_reserve_replacement_index(selected: Sequence[EditCandidateClip]) 
 def _defensive_highlight_family(clip: EditCandidateClip) -> Optional[str]:
     normalized = clip.label.strip().lower()
     tokens = set(re.findall(r"[a-z0-9]+", normalized))
-    if tokens & {"block", "blocked", "contest"} or "blocked shot" in normalized:
+    if tokens & {"block", "blocked", "contest", "swat", "swatted", "rejection", "rejected"} or "blocked shot" in normalized:
         return "block"
-    if tokens & {"steal", "strip"}:
+    if tokens & {
+        "steal",
+        "stolen",
+        "strip",
+        "stripped",
+        "takeaway",
+        "takeaways",
+        "intercept",
+        "intercepted",
+        "interception",
+        "pickpocket",
+        "poke",
+        "poked",
+        "rip",
+        "ripped",
+    }:
         return "steal"
-    if "turnover" in tokens and "unforced" not in tokens and tokens & {"forced", "force", "defensive", "defense"}:
+    if tokens & {"deflection", "deflected", "charge"} or "loose ball" in normalized:
+        return "forced_turnover"
+    if "turnover" in tokens and "unforced" not in tokens and tokens & {
+        "forced",
+        "force",
+        "defensive",
+        "defense",
+        "steal",
+        "strip",
+        "takeaway",
+    }:
         return "forced_turnover"
     if "stop" in tokens and (normalized == "stop" or "defensive stop" in normalized or "defense stop" in normalized):
         return "defensive_stop"
+    if tokens & {"defense", "defensive", "pressure", "lockdown"}:
+        return "defensive"
     return None
 
 
@@ -2351,13 +2378,7 @@ def is_shot_like_clip(clip: EditCandidateClip) -> bool:
 
 
 def is_defensive_event_like_clip(clip: EditCandidateClip) -> bool:
-    normalized = clip.label.strip().lower()
-    tokens = set(re.findall(r"[a-z0-9]+", normalized))
-    if tokens & {"defense", "defensive", "block", "blocked", "steal", "strip", "contest", "pressure", "lockdown"}:
-        return True
-    if "turnover" in tokens and "unforced" not in tokens and tokens & {"forced", "force", "defensive", "defense"}:
-        return True
-    return "stop" in tokens and (normalized == "stop" or "defensive stop" in normalized or "defense stop" in normalized)
+    return _defensive_highlight_family(clip) is not None
 
 
 def native_shot_signals_for_clip(clip: EditCandidateClip) -> NativeShotSignals:

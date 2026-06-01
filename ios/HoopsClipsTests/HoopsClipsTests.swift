@@ -2315,6 +2315,27 @@ struct HoopsClipsTests {
         #expect(clip.reviewEvidenceRows[2].detail.contains("frames: action, outcome"))
     }
 
+    @Test func testClipReviewEvidenceRowsTreatTurnoverPressureAsDefense() {
+        let clip = Clip(
+            startTime: 18.0,
+            endTime: 22.5,
+            eventCenter: 20.2,
+            action: .unknown,
+            confidence: 0.79,
+            isKept: true,
+            label: "Loose Ball Takeaway",
+            audioScore: 0.44,
+            visualScore: 0.75,
+            motionScore: 0.82,
+            combinedScore: 0.78,
+            detectionMethod: .cloud
+        )
+
+        #expect(clip.reviewEvidenceRows.map(\.id) == ["decision", "keyframes"])
+        #expect(clip.reviewEvidenceRows[0].detail.contains("defensive highlight"))
+        #expect(clip.reviewEvidenceRows[0].detail.contains("possession-change"))
+    }
+
     @Test @MainActor func testViewModelExposesNeedsReviewClipsForReviewFilter() {
         let viewModel = HighlightsViewModel()
         let cleanClip = Clip(

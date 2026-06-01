@@ -137,8 +137,8 @@ nonisolated struct Clip: Identifiable, Codable, Sendable {
         if !isKept {
             return "Skipped clips stay out of the finished edit unless you tap Keep."
         }
-        if action == .block || action == .steal {
-            return "Kept as a defensive highlight with strong motion and visual signals."
+        if isDefensiveHighlight {
+            return "Kept as a defensive highlight with strong motion, ball pressure, or possession-change signals."
         }
         if confidence >= 0.8 {
             return "Kept because confidence is high and the clip has strong highlight signals."
@@ -239,6 +239,42 @@ nonisolated struct Clip: Identifiable, Codable, Sendable {
             .split(separator: " ")
             .map { $0.capitalized }
             .joined(separator: " ")
+    }
+
+    private var isDefensiveHighlight: Bool {
+        if action == .block || action == .steal { return true }
+        let text = "\(label) \(action.rawValue)".lowercased()
+        let tokens = Set(text.split { !$0.isLetter && !$0.isNumber }.map(String.init))
+        if !tokens.isDisjoint(with: [
+            "defense",
+            "defensive",
+            "block",
+            "blocked",
+            "contest",
+            "steal",
+            "stolen",
+            "strip",
+            "stripped",
+            "deflection",
+            "deflected",
+            "charge",
+            "takeaway",
+            "intercept",
+            "intercepted",
+            "interception",
+            "poke",
+            "poked",
+            "rip",
+            "ripped",
+            "pressure",
+            "lockdown"
+        ]) {
+            return true
+        }
+        if text.contains("loose ball") { return true }
+        return tokens.contains("turnover")
+            && !tokens.contains("unforced")
+            && !tokens.isDisjoint(with: ["forced", "force", "defensive", "defense", "steal", "strip", "takeaway"])
     }
 }
 

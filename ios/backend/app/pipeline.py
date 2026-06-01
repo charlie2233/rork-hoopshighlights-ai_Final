@@ -855,9 +855,31 @@ def _is_defensive_label(label: str) -> bool:
         "contest",
         "pressure",
         "lockdown",
+        "deflection",
+        "deflected",
+        "charge",
+        "takeaway",
+        "takeaways",
+        "intercept",
+        "intercepted",
+        "interception",
+        "poke",
+        "poked",
+        "rip",
+        "ripped",
     }:
         return True
-    if "turnover" in tokens and "unforced" not in tokens and tokens & {"forced", "force", "defensive", "defense", "steal", "strip"}:
+    if "loose ball" in normalized:
+        return True
+    if "turnover" in tokens and "unforced" not in tokens and tokens & {
+        "forced",
+        "force",
+        "defensive",
+        "defense",
+        "steal",
+        "strip",
+        "takeaway",
+    }:
         return True
     return "stop" in tokens and (normalized == "stop" or "defensive stop" in normalized or "defense stop" in normalized)
 
@@ -865,11 +887,28 @@ def _is_defensive_label(label: str) -> bool:
 def _defensive_label_family(label: str) -> Optional[str]:
     normalized = label.strip().lower()
     tokens = set(re.findall(r"[a-z0-9]+", normalized))
-    if tokens & {"block", "blocked", "contest"}:
+    if tokens & {"block", "blocked", "contest", "swat", "swatted", "rejection", "rejected"}:
         return "block"
-    if tokens & {"steal", "strip"}:
+    if tokens & {
+        "steal",
+        "stolen",
+        "strip",
+        "stripped",
+        "takeaway",
+        "takeaways",
+        "intercept",
+        "intercepted",
+        "interception",
+        "pickpocket",
+        "poke",
+        "poked",
+        "rip",
+        "ripped",
+    }:
         return "steal"
-    if "turnover" in tokens and (tokens & {"forced", "force", "defensive", "defense"}):
+    if tokens & {"deflection", "deflected", "charge"} or "loose ball" in normalized:
+        return "forced_turnover"
+    if "turnover" in tokens and (tokens & {"forced", "force", "defensive", "defense", "steal", "strip", "takeaway"}):
         return "forced_turnover"
     if "stop" in tokens and ("defensive stop" in normalized or "defense stop" in normalized or normalized == "stop"):
         return "defensive_stop"

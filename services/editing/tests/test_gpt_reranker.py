@@ -2954,6 +2954,46 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertNotIn("block_3", sampled_ids)
         self.assertNotIn("score_5", sampled_ids)
 
+    def test_sampling_reserves_turnover_pressure_labels_for_gpt_review(self) -> None:
+        scoring = [
+            _clip(f"score_{index}", float(index * 7), 0.99 - (index * 0.01))
+            for index in range(8)
+        ]
+        clips = [
+            *scoring,
+            _labeled_clip("takeaway", 80.0, 0.70, "Takeaway"),
+            _labeled_clip("deflection", 87.0, 0.69, "Deflection To Fast Break"),
+            _labeled_clip("charge", 94.0, 0.68, "Took Charge"),
+            _labeled_clip("loose_ball", 101.0, 0.67, "Loose Ball Recovery"),
+        ]
+        request = CreateEditJobRequest(
+            videoId="video_defensive_pressure",
+            analysisJobId="analysis_defensive_pressure",
+            installId="install-123",
+            sourceObjectKey="uploads/source.mp4",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="free",
+            clips=clips,
+        )
+
+        families = {clip.id: gpt_reranker._defensive_candidate_family(clip) for clip in request.clips}
+        self.assertEqual(families["takeaway"], "steal")
+        self.assertEqual(families["deflection"], "forced_turnover")
+        self.assertEqual(families["charge"], "forced_turnover")
+        self.assertEqual(families["loose_ball"], "forced_turnover")
+
+        sampled = gpt_reranker._quality_filtered_sampled_clips(
+            gpt_reranker.rank_clips(request.clips),
+            8,
+            request=request,
+        )
+        sampled_ids = {clip.id for clip in sampled}
+        defensive_ids = {"takeaway", "deflection", "charge", "loose_ball"}
+
+        self.assertIn("takeaway", sampled_ids)
+        self.assertGreaterEqual(len(sampled_ids & defensive_ids), 3)
+
     def test_selected_team_sampling_bounds_unreviewed_uncertain_clip_reserve(self) -> None:
         uncertain = [
             {

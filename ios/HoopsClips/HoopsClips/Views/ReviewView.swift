@@ -316,7 +316,7 @@ struct ReviewView: View {
                             .lineLimit(2)
                             .minimumScaleFactor(0.86)
                             .fixedSize(horizontal: false, vertical: true)
-                        Text("Review uncertain team calls, blocks, steals, and close outcomes before making the edit.")
+                        Text("Check team calls, blocks, steals, forced turnovers, and close outcomes before the edit.")
                             .font(.caption)
                             .foregroundStyle(AppTheme.subtleText)
                             .lineLimit(3)
@@ -940,23 +940,22 @@ struct ReviewView: View {
                         .frame(width: 20)
 
                     VStack(alignment: .leading, spacing: 2) {
-                        HStack(spacing: 6) {
-                            Text(row.title)
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.white)
-                            if row.needsReview {
-                                Text("Check")
-                                    .font(.caption2.weight(.bold))
-                                    .foregroundStyle(AppTheme.warningYellow)
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(AppTheme.warningYellow.opacity(0.14), in: .capsule)
+                        ViewThatFits(in: .horizontal) {
+                            HStack(spacing: 6) {
+                                evidenceRowTitle(row)
+                                evidenceRowCheckBadge(row)
+                            }
+
+                            VStack(alignment: .leading, spacing: 3) {
+                                evidenceRowTitle(row)
+                                evidenceRowCheckBadge(row)
                             }
                         }
 
                         Text(row.detail)
                             .font(.caption2)
                             .foregroundStyle(AppTheme.subtleText)
+                            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 6 : 4)
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
@@ -968,6 +967,29 @@ struct ReviewView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func evidenceRowTitle(_ row: ClipReviewEvidenceRow) -> some View {
+        Text(row.title)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.white)
+            .lineLimit(2)
+            .minimumScaleFactor(0.86)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    @ViewBuilder
+    private func evidenceRowCheckBadge(_ row: ClipReviewEvidenceRow) -> some View {
+        if row.needsReview {
+            Text("Check")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(AppTheme.warningYellow)
+                .lineLimit(1)
+                .minimumScaleFactor(0.86)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(AppTheme.warningYellow.opacity(0.14), in: .capsule)
+        }
     }
 
     private func scoreBar(label: String, value: Double, color: Color) -> some View {
@@ -1149,8 +1171,27 @@ struct ReviewView: View {
     }
 
     private func isDefensiveClip(_ clip: Clip) -> Bool {
-        isBlockClip(clip) || isStealClip(clip) || normalizedClipLabel(clip).contains(where: { token in
-            ["defense", "defensive", "deflection", "pressure", "lockdown", "contest", "charge", "stop", "turnover", "forced", "strip"].contains(token)
+        if isBlockClip(clip) || isStealClip(clip) || isForcedTurnoverClip(clip) || isDefensiveStopClip(clip) {
+            return true
+        }
+        return normalizedClipLabel(clip).contains(where: { token in
+            [
+                "defense",
+                "defensive",
+                "pressure",
+                "lockdown",
+                "contest",
+                "strip",
+                "stripped",
+                "takeaway",
+                "intercept",
+                "intercepted",
+                "interception",
+                "poke",
+                "poked",
+                "rip",
+                "ripped"
+            ].contains(token)
         })
     }
 
@@ -1159,7 +1200,41 @@ struct ReviewView: View {
     }
 
     private func isStealClip(_ clip: Clip) -> Bool {
-        clip.action == .steal || normalizedClipLabel(clip).contains("steal") || normalizedClipLabel(clip).contains("strip")
+        let tokens = normalizedClipLabel(clip)
+        return clip.action == .steal
+            || !tokens.isDisjoint(with: [
+                "steal",
+                "stolen",
+                "strip",
+                "stripped",
+                "takeaway",
+                "intercept",
+                "intercepted",
+                "interception",
+                "pickpocket",
+                "poke",
+                "poked",
+                "rip",
+                "ripped"
+            ])
+    }
+
+    private func isForcedTurnoverClip(_ clip: Clip) -> Bool {
+        let text = normalizedClipText(clip)
+        let tokens = normalizedClipLabel(clip)
+        if !tokens.isDisjoint(with: ["deflection", "deflected", "charge"]) || text.contains("loose ball") {
+            return true
+        }
+        return tokens.contains("turnover")
+            && !tokens.contains("unforced")
+            && !tokens.isDisjoint(with: ["forced", "force", "defensive", "defense", "steal", "strip", "takeaway"])
+    }
+
+    private func isDefensiveStopClip(_ clip: Clip) -> Bool {
+        let text = normalizedClipText(clip)
+        let tokens = normalizedClipLabel(clip)
+        return tokens.contains("stop")
+            && (text == "stop" || text.contains("defensive stop") || text.contains("defense stop") || tokens.contains("lockdown"))
     }
 
     private func normalizedClipLabel(_ clip: Clip) -> Set<String> {
@@ -1167,15 +1242,24 @@ struct ReviewView: View {
         return Set(words.map(String.init))
     }
 
+    private func normalizedClipText(_ clip: Clip) -> String {
+        clip.label
+            .lowercased()
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     private func defensiveBadgeTitle(for clip: Clip) -> String {
         if isBlockClip(clip) { return "Block" }
         if isStealClip(clip) { return "Steal" }
+        if isForcedTurnoverClip(clip) { return "Forced TO" }
+        if isDefensiveStopClip(clip) { return "Stop" }
         return "Defense"
     }
 
     private func defensiveBadgeIcon(for clip: Clip) -> String {
         if isBlockClip(clip) { return "shield.fill" }
         if isStealClip(clip) { return "hand.raised.fill" }
+        if isForcedTurnoverClip(clip) { return "arrow.triangle.2.circlepath.circle.fill" }
         return "figure.basketball"
     }
 
