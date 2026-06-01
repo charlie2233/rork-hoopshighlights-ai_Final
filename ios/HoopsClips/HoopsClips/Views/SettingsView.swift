@@ -664,7 +664,7 @@ struct SettingsView: View {
                 .foregroundStyle(AppTheme.subtleText)
                 .fixedSize(horizontal: false, vertical: true)
 
-            HStack(spacing: 10) {
+            HoopsFlowLayout(spacing: 8, rowSpacing: 8) {
                 aiFeatureTag(languageStore.text(.settingsSourceVideoTag))
                 aiFeatureTag(languageStore.text(.settingsLatestExportTag))
                 aiFeatureTag(languageStore.text(.settingsEventTimelineTag))
@@ -1145,7 +1145,7 @@ struct SettingsView: View {
                     .foregroundStyle(AppTheme.subtleText)
                     .fixedSize(horizontal: false, vertical: true)
 
-                HStack(spacing: 5) {
+                HoopsFlowLayout(spacing: 5, rowSpacing: 5) {
                     Text("Created by")
                     Text("atrak.dev")
                         .fontWeight(.semibold)
@@ -1161,7 +1161,7 @@ struct SettingsView: View {
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel("Created by atrak.dev with love")
 
-                HStack(spacing: 16) {
+                HoopsFlowLayout(spacing: 8, rowSpacing: 8) {
                     aiFeatureTag(languageStore.text(.settingsSmartClipsTag))
                     aiFeatureTag(languageStore.text(.settingsPrivateTag))
                     aiFeatureTag(languageStore.text(.settingsFastExportTag))
@@ -1618,6 +1618,9 @@ struct SettingsView: View {
         Text(text)
             .font(.caption2)
             .foregroundStyle(AppTheme.neonPurple)
+            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
+            .minimumScaleFactor(0.84)
+            .fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
             .background(AppTheme.accentPurple.opacity(0.15), in: .capsule)

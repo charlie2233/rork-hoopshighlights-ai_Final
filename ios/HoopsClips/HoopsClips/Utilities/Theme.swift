@@ -100,32 +100,135 @@ struct RorkSectionHeader: View {
     let title: String
     let icon: String
     var subtitle: String?
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(AppTheme.accentPurple.opacity(0.15))
-                    .frame(width: 34, height: 34)
-                Image(systemName: icon)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(AppTheme.neonPurple)
-            }
-            .accessibilityHidden(true)
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 10) {
+                    headerIcon
+                    textStack
+                }
+            } else {
+                HStack(alignment: .center, spacing: 12) {
+                    headerIcon
+                    textStack
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.headline)
-                    .foregroundStyle(.white)
-                if let subtitle {
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundStyle(AppTheme.subtleText)
+                    Spacer(minLength: 0)
                 }
             }
-
-            Spacer(minLength: 0)
         }
+    }
+
+    private var headerIcon: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(AppTheme.accentPurple.opacity(0.15))
+                .frame(width: 34, height: 34)
+            Image(systemName: icon)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(AppTheme.neonPurple)
+        }
+        .accessibilityHidden(true)
+    }
+
+    private var textStack: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.headline)
+                .foregroundStyle(.white)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
+                .minimumScaleFactor(0.86)
+                .fixedSize(horizontal: false, vertical: true)
+            if let subtitle {
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.subtleText)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 6 : 3)
+                    .minimumScaleFactor(0.84)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .layoutPriority(1)
+    }
+}
+
+struct HoopsFlowLayout: Layout {
+    var spacing: CGFloat = 8
+    var rowSpacing: CGFloat = 8
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let maxWidth = proposal.width ?? subviews.reduce(CGFloat.zero) { partial, subview in
+            partial + subview.sizeThatFits(.unspecified).width + spacing
+        }
+        let rows = layoutRows(maxWidth: maxWidth, subviews: subviews)
+        return CGSize(
+            width: maxWidth,
+            height: rows.last.map { $0.y + $0.height } ?? 0
+        )
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let rows = layoutRows(maxWidth: bounds.width, subviews: subviews)
+        for row in rows {
+            for item in row.items {
+                subviews[item.index].place(
+                    at: CGPoint(x: bounds.minX + item.x, y: bounds.minY + row.y),
+                    proposal: ProposedViewSize(width: item.size.width, height: item.size.height)
+                )
+            }
+        }
+    }
+
+    private struct RowItem {
+        let index: Int
+        let x: CGFloat
+        let size: CGSize
+    }
+
+    private struct Row {
+        var y: CGFloat
+        var height: CGFloat
+        var items: [RowItem]
+    }
+
+    private func layoutRows(maxWidth: CGFloat, subviews: Subviews) -> [Row] {
+        guard !subviews.isEmpty else { return [] }
+
+        let availableWidth = max(maxWidth, 1)
+        var rows: [Row] = []
+        var currentItems: [RowItem] = []
+        var currentX: CGFloat = 0
+        var currentHeight: CGFloat = 0
+        var currentY: CGFloat = 0
+
+        func finishRow() {
+            guard !currentItems.isEmpty else { return }
+            rows.append(Row(y: currentY, height: currentHeight, items: currentItems))
+            currentY += currentHeight + rowSpacing
+            currentItems = []
+            currentX = 0
+            currentHeight = 0
+        }
+
+        for index in subviews.indices {
+            let proposedSize = subviews[index].sizeThatFits(.unspecified)
+            let itemWidth = min(proposedSize.width, availableWidth)
+            let itemSize = CGSize(width: itemWidth, height: proposedSize.height)
+            let nextX = currentItems.isEmpty ? 0 : currentX + spacing
+
+            if !currentItems.isEmpty, nextX + itemWidth > availableWidth {
+                finishRow()
+            }
+
+            let x = currentItems.isEmpty ? 0 : currentX + spacing
+            currentItems.append(RowItem(index: index, x: x, size: itemSize))
+            currentX = x + itemWidth
+            currentHeight = max(currentHeight, itemSize.height)
+        }
+
+        finishRow()
+        return rows
     }
 }
 
@@ -422,12 +525,18 @@ struct HoopsEmptyStateCard: View {
                     .font(.title3.bold())
                     .foregroundStyle(.white)
                     .multilineTextAlignment(.center)
+                    .lineLimit(3)
+                    .minimumScaleFactor(0.86)
+                    .fixedSize(horizontal: false, vertical: true)
 
                 Text(message)
                     .font(.subheadline)
                     .foregroundStyle(AppTheme.subtleText)
                     .multilineTextAlignment(.center)
                     .lineSpacing(3)
+                    .lineLimit(6)
+                    .minimumScaleFactor(0.84)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             if let actionTitle, let action {

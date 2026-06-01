@@ -598,13 +598,25 @@ def _is_underfilled_gpt_result(
 def _gpt_underfill_floor(request: CreateEditJobRequest, available_clips: Sequence[EditCandidateClip]) -> tuple[int, float]:
     template = get_template_pack_for_plan(request.preset, request.templateId)
     target_seconds = max(float(request.targetDurationSeconds), template.clipLength.minSeconds)
-    desired_count = 2 if target_seconds <= 15 else 3
-    if request.planTier != "free" and target_seconds >= 45:
-        desired_count = 4
+    desired_count = _gpt_underfill_desired_clip_count(target_seconds)
     min_clip_count = min(desired_count, len(available_clips))
     available_duration = sum(_bounded_gpt_clip_duration(request, clip) for clip in available_clips)
     duration_floor = max(template.clipLength.minSeconds * min_clip_count * 0.8, target_seconds * 0.35)
     return min_clip_count, min(duration_floor, available_duration)
+
+
+def _gpt_underfill_desired_clip_count(target_seconds: float) -> int:
+    if target_seconds <= 15:
+        return 2
+    if target_seconds <= 30:
+        return 3
+    if target_seconds <= 45:
+        return 4
+    if target_seconds <= 90:
+        return 6
+    if target_seconds <= 180:
+        return 8
+    return 10
 
 
 def _bounded_gpt_clip_duration(request: CreateEditJobRequest, clip: EditCandidateClip) -> float:

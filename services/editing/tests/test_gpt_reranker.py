@@ -2266,6 +2266,20 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertEqual(result.gptRerankSummary.keptClipIds, ["c0", "c4", "c5"])
         self.assertEqual([clip.id for clip in result.clips[:3]], ["c0", "c4", "c5"])
 
+    def test_long_target_duration_requires_deeper_gpt_backfill_floor(self) -> None:
+        short_request = _request("free", 12)
+        medium_request = short_request.model_copy(update={"targetDurationSeconds": 45})
+        long_request = short_request.model_copy(update={"targetDurationSeconds": 270})
+
+        short_count, _ = gpt_reranker._gpt_underfill_floor(short_request, short_request.clips)
+        medium_count, _ = gpt_reranker._gpt_underfill_floor(medium_request, medium_request.clips)
+        long_count, long_duration_floor = gpt_reranker._gpt_underfill_floor(long_request, long_request.clips)
+
+        self.assertEqual(short_count, 3)
+        self.assertEqual(medium_count, 4)
+        self.assertEqual(long_count, 10)
+        self.assertGreaterEqual(long_duration_floor, 60.0)
+
     def test_incomplete_gpt_decisions_fallback_without_dropping_sampled_candidates(self) -> None:
         settings = GPTHighlightRerankerSettings(
             enabled=True,
