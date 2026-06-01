@@ -2999,6 +2999,46 @@ struct HoopsClipsTests {
         #expect(clip.reviewEvidenceRows.first?.detail.contains("Kept") == false)
     }
 
+    @Test func testClipReviewBadgesMarkSuperLoudAudioCueWithSomeActionContext() {
+        let clip = Clip(
+            startTime: 44.0,
+            endTime: 49.0,
+            eventCenter: 46.5,
+            action: .unknown,
+            confidence: 0.46,
+            isKept: false,
+            label: "Highlight",
+            audioScore: 0.99,
+            visualScore: 0.41,
+            motionScore: 0.48,
+            combinedScore: 0.52,
+            detectionMethod: .cloud
+        )
+
+        #expect(clip.needsUserReview)
+        #expect(clip.reviewBadges == [.audioCue])
+        #expect(clip.reviewEvidenceRows.contains { $0.title == "Crowd/audio cue" && $0.detail.contains("99%") })
+    }
+
+    @Test func testClipReviewBadgesRecognizeAudioSpikeCuePhrase() {
+        let clip = Clip(
+            startTime: 12.0,
+            endTime: 17.5,
+            eventCenter: 14.5,
+            action: .unknown,
+            confidence: 0.54,
+            isKept: false,
+            label: "Audio Spike Cue",
+            audioScore: 0.78,
+            visualScore: 0.46,
+            motionScore: 0.53,
+            combinedScore: 0.51,
+            detectionMethod: .cloud
+        )
+
+        #expect(clip.reviewBadges == [.audioCue])
+    }
+
     @Test func testClipReviewBadgesIgnoreWeakAudioOnlyNoise() {
         let clip = Clip(
             startTime: 12.0,

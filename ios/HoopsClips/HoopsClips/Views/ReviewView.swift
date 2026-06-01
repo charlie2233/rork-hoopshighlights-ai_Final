@@ -1067,28 +1067,62 @@ struct ReviewView: View {
     }
 
     private func scoreBar(label: String, value: Double, color: Color) -> some View {
-        HStack(spacing: 8) {
-            Text(label)
-                .font(.caption2)
-                .foregroundStyle(AppTheme.subtleText)
-                .frame(width: 60, alignment: .leading)
+        let clampedValue = max(0.0, min(value, 1.0))
+        let percentText = "\(Int(clampedValue * 100))%"
 
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(Color.white.opacity(0.05))
-                    Capsule()
-                        .fill(color)
-                        .frame(width: geo.size.width * min(value, 1.0))
-                }
+        return ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) {
+                scoreBarLabel(label)
+                    .frame(width: dynamicTypeSize.isAccessibilitySize ? 76 : 60, alignment: .leading)
+
+                scoreBarTrack(value: clampedValue, color: color)
+
+                scoreBarValue(percentText)
+                    .frame(width: dynamicTypeSize.isAccessibilitySize ? 48 : 35, alignment: .trailing)
             }
-            .frame(height: 6)
 
-            Text("\(Int(value * 100))%")
-                .font(.caption2.monospacedDigit())
-                .foregroundStyle(AppTheme.subtleText)
-                .frame(width: 35, alignment: .trailing)
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    scoreBarLabel(label)
+                    Spacer(minLength: 8)
+                    scoreBarValue(percentText)
+                }
+
+                scoreBarTrack(value: clampedValue, color: color)
+            }
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(label)
+        .accessibilityValue("\(Int(clampedValue * 100)) percent")
+    }
+
+    private func scoreBarLabel(_ label: String) -> some View {
+        Text(label)
+            .font(.caption2)
+            .foregroundStyle(AppTheme.subtleText)
+            .lineLimit(1)
+            .minimumScaleFactor(0.78)
+    }
+
+    private func scoreBarValue(_ value: String) -> some View {
+        Text(value)
+            .font(.caption2.monospacedDigit())
+            .foregroundStyle(AppTheme.subtleText)
+            .lineLimit(1)
+            .minimumScaleFactor(0.78)
+    }
+
+    private func scoreBarTrack(value: Double, color: Color) -> some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(Color.white.opacity(0.05))
+                Capsule()
+                    .fill(color)
+                    .frame(width: geo.size.width * CGFloat(value))
+            }
+        }
+        .frame(height: dynamicTypeSize.isAccessibilitySize ? 8 : 6)
     }
 
     private func confidenceBadge(level: ConfidenceLevel, value: Double) -> some View {

@@ -4,6 +4,8 @@ nonisolated struct Clip: Identifiable, Codable, Sendable {
     private static let reviewEvidenceAudioCueThreshold = 0.72
     private static let reviewBadgeAudioCueThreshold = 0.90
     private static let reviewBadgeAudioCueActivityThreshold = 0.50
+    private static let reviewBadgeSuperLoudAudioCueThreshold = 0.97
+    private static let reviewBadgeSuperLoudAudioCueActivityThreshold = 0.46
 
     let id: UUID
     var startTime: Double
@@ -223,22 +225,41 @@ nonisolated struct Clip: Identifiable, Codable, Sendable {
     private var hasAudioCueReviewBadge: Bool {
         guard duration >= 2.0 else { return false }
         let text = "\(label) \(action.rawValue)".lowercased()
-        let hasReactionLabel = Self.audioReactionKeywords.contains { text.contains($0) }
+        let hasReactionLabel = Self.hasAudioReactionPhrase(text)
         let activityScore = max(visualScore, motionScore, combinedScore)
         if hasReactionLabel {
             return audioScore >= Self.reviewEvidenceAudioCueThreshold && activityScore >= Self.reviewBadgeAudioCueActivityThreshold
+        }
+        if audioScore >= Self.reviewBadgeSuperLoudAudioCueThreshold {
+            return activityScore >= Self.reviewBadgeSuperLoudAudioCueActivityThreshold
         }
         return audioScore >= Self.reviewBadgeAudioCueThreshold && activityScore >= Self.reviewBadgeAudioCueActivityThreshold
     }
 
     private static let audioReactionKeywords = [
         "audio pop",
+        "audio pop cue",
         "audio reaction",
+        "audio reaction cue",
+        "audio cue",
         "crowd pop",
+        "crowd pop cue",
         "crowd reaction",
         "crowd",
         "reaction"
     ]
+
+    private static func hasAudioReactionPhrase(_ text: String) -> Bool {
+        if audioReactionKeywords.contains(where: { text.contains($0) }) {
+            return true
+        }
+
+        let audioMarker = text.contains("audio")
+            && ["pop", "cue", "reaction", "spike", "burst"].contains { text.contains($0) }
+        let crowdMarker = text.contains("crowd")
+            && ["pop", "cue", "reaction", "spike", "burst", "loud"].contains { text.contains($0) }
+        return audioMarker || crowdMarker
+    }
 
     private var outcomeEvidenceRow: ClipReviewEvidenceRow? {
         guard let nativeShotSignals else { return nil }
