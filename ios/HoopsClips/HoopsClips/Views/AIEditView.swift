@@ -70,6 +70,7 @@ struct AIEditView: View {
     @State private var showSetupControls = false
     @State private var showPromptExamples = false
     @State private var showTimelineDetails = false
+    @State private var showAdvancedAIEditDetails = false
 
     private let cloudEditService: any CloudEditServicing
     private let proUXFlags = CloudEditProUXFlags.safeDefault
@@ -196,22 +197,68 @@ struct AIEditView: View {
             if editPlan != nil, downloadResponse != nil || revisionResponse != nil {
                 revisionCard
             }
-            if shouldShowAIWorkTimeline {
-                aiWorkTimelineCard
-            }
-            if shouldShowCloudLocker {
-                cloudLockerCard
-            }
+            aiEditDetailsToggle
+            if showAdvancedAIEditDetails {
+                if shouldShowAIWorkTimeline {
+                    aiWorkTimelineCard
+                }
+                if shouldShowCloudLocker {
+                    cloudLockerCard
+                }
 
-            if let receipt = activeWorkReceipt {
-                aiWorkReceiptCard(receipt)
-            }
+                if let receipt = activeWorkReceipt {
+                    aiWorkReceiptCard(receipt)
+                }
 
-            planTierCard
-            if activePolicy.planTier.isFree, proUXFlags.proUpsellEnabled {
-                proValueCard
+                planTierCard
+                if activePolicy.planTier.isFree, proUXFlags.proUpsellEnabled {
+                    proValueCard
+                }
             }
         }
+    }
+
+    private var aiEditDetailsToggle: some View {
+        Button {
+            HoopsAccessibility.animate(reduceMotion: reduceMotion, .snappy(duration: 0.18)) {
+                showAdvancedAIEditDetails.toggle()
+            }
+        } label: {
+            HStack(alignment: .center, spacing: 10) {
+                Image(systemName: showAdvancedAIEditDetails ? "chevron.up.circle.fill" : "chevron.down.circle.fill")
+                    .font(.headline)
+                    .foregroundStyle(AppTheme.warningYellow)
+                    .frame(width: 24)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(showAdvancedAIEditDetails ? "Hide edit details" : "Edit details")
+                        .font(.subheadline.bold())
+                        .foregroundStyle(.white)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.84)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(aiEditDetailsSummary)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(AppTheme.subtleText)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
+                        .minimumScaleFactor(0.84)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(14)
+            .background(AppTheme.cardBg.opacity(0.74), in: .rect(cornerRadius: 14))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14)
+                    .stroke(AppTheme.neonPurple.opacity(0.14), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("export.aiEdit.detailsToggle")
+        .accessibilityLabel(showAdvancedAIEditDetails ? "Hide edit details" : "Show edit details")
+        .accessibilityValue(aiEditDetailsSummary)
     }
 
     private var heroCard: some View {
@@ -2233,6 +2280,27 @@ struct AIEditView: View {
 
     private var selectedSetupSummary: String {
         "\(selectedTemplateTitle) - \(selectedAspectRatio.rawValue) - \(formattedDuration(selectedDuration))."
+    }
+
+    private var aiEditDetailsSummary: String {
+        let policy = activePolicy
+        var summary = [
+            "\(policy.displayName): \(policy.maxDailyRenders) edits/day",
+            policy.maxOutputResolution,
+            policy.brandingSummary,
+        ]
+
+        if hasStartedAIEditJob {
+            summary.append("cloud status")
+        }
+        if activeWorkReceipt != nil {
+            summary.append("receipt")
+        }
+        if shouldShowCloudLocker {
+            summary.append("locker")
+        }
+
+        return summary.joined(separator: " - ")
     }
 
     private var teamTargetChipText: String {
