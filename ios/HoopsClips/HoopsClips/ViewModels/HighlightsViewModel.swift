@@ -862,6 +862,9 @@ final class HighlightsViewModel {
     nonisolated private static let cloudEditUncertainTeamReserveMinScore = 0.52
     nonisolated private static let cloudEditUncertainTeamReserveMinConfidence = 0.50
     nonisolated private static let cloudEditUncertainTeamReserveMinWatchability = 0.45
+    nonisolated private static let cloudEditAudioReactionMinAudioScore = 0.88
+    nonisolated private static let cloudEditAudioReactionMinVisualContext = 0.42
+    nonisolated private static let cloudEditAudioReactionMinCombinedScore = 0.50
     nonisolated private static let cloudEditTeamEvidenceRequiredSources: Set<String> = [
         "quick_scan",
         "gpt_frame_review",
@@ -1000,6 +1003,7 @@ final class HighlightsViewModel {
     ) -> Bool {
         reviewBadges(for: clip, teamSelection: teamSelection).contains { $0 != .teamUncertain }
             || defensiveCloudEditCandidateFamily(clip) != nil
+            || isAudioReactionCloudEditCandidate(clip)
             || isSelectedTeamCloudEditReviewReserveCandidate(clip, teamSelection: teamSelection)
     }
 
@@ -1050,6 +1054,9 @@ final class HighlightsViewModel {
     nonisolated private static func cloudEditDuplicateFamily(for clip: Clip) -> String {
         if let defensiveFamily = defensiveCloudEditCandidateFamily(clip) {
             return defensiveFamily
+        }
+        if isAudioReactionCloudEditCandidate(clip) {
+            return "audio_reaction"
         }
         if isShotLikeCloudEditCandidate(clip) {
             return "shot"
@@ -1116,6 +1123,7 @@ final class HighlightsViewModel {
         for family in ["block", "steal", "forced_turnover", "defensive_stop"] {
             reserveFirstMissing { defensiveCloudEditCandidateFamily($0) == family }
         }
+        reserveFirstMissing { isAudioReactionCloudEditCandidate($0) }
         reserveFirstMissing { needsUserReview($0, teamSelection: teamSelection) }
 
         if !reserveIDs.isEmpty {
@@ -1174,6 +1182,9 @@ final class HighlightsViewModel {
         if let defensiveFamily = defensiveCloudEditCandidateFamily(clip) {
             score += defensiveFamily == "block" || defensiveFamily == "steal" ? 0.14 : 0.10
         }
+        if isAudioReactionCloudEditCandidate(clip) {
+            score += 0.10
+        }
         if clip.needsUserReview {
             score += 0.05
         }
@@ -1184,6 +1195,31 @@ final class HighlightsViewModel {
     nonisolated private static func isShotLikeCloudEditCandidate(_ clip: Clip) -> Bool {
         let text = "\(clip.label) \(clip.action.rawValue)".lowercased()
         return ["shot", "bucket", "basket", "layup", "dunk", "finish", "jumper", "three", "3pt"].contains { text.contains($0) }
+    }
+
+    nonisolated private static func isAudioReactionCloudEditCandidate(_ clip: Clip) -> Bool {
+        guard clip.duration >= 2.0 else { return false }
+
+        let text = "\(clip.label) \(clip.action.rawValue)".lowercased()
+        let hasReactionLabel = [
+            "crowd",
+            "reaction",
+            "audio pop",
+            "audio spike",
+            "bench pop",
+            "big cheer",
+            "cheer",
+            "noise burst"
+        ].contains { text.contains($0) }
+        let visualContext = max(clip.visualScore, clip.motionScore)
+        let hasEnoughContext = visualContext >= cloudEditAudioReactionMinVisualContext
+            || clip.combinedScore >= cloudEditAudioReactionMinCombinedScore
+
+        if hasReactionLabel {
+            return clip.audioScore >= 0.74 && hasEnoughContext
+        }
+
+        return clip.audioScore >= cloudEditAudioReactionMinAudioScore && hasEnoughContext
     }
 
     nonisolated private static func defensiveCloudEditCandidateFamily(_ clip: Clip) -> String? {

@@ -68,7 +68,6 @@ struct AIEditView: View {
     @State private var proInfoSheet: AIEditProInfoSheet?
     @State private var showPlanDetails = false
     @State private var showSetupControls = false
-    @State private var showPromptExamples = false
     @State private var showTimelineDetails = false
     @State private var showAdvancedAIEditDetails = false
     @State private var activeInstallID: String?
@@ -784,55 +783,7 @@ struct AIEditView: View {
                     .accessibilityIdentifier("export.aiEdit.smartSetupSummary")
             }
 
-            Button {
-                HoopsAccessibility.animate(reduceMotion: reduceMotion, .snappy(duration: 0.18)) {
-                    showPromptExamples.toggle()
-                }
-            } label: {
-                Label(showPromptExamples ? "Hide examples" : "Show edit examples", systemImage: showPromptExamples ? "chevron.up.circle.fill" : "lightbulb.fill")
-                    .font(.caption.bold())
-                    .multilineTextAlignment(.center)
-                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
-                    .minimumScaleFactor(0.84)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 52 : 42)
-                    .padding(.horizontal, 8)
-            }
-            .buttonStyle(.bordered)
-            .tint(AppTheme.neonPurple)
-            .accessibilityIdentifier("export.aiEdit.prompt.examplesButton")
-            .accessibilityValue(showPromptExamples ? "Edit examples shown" : "Edit examples hidden")
-            .accessibilityHint("Shows optional editing directions that can be added to the side note.")
-
-            if showPromptExamples {
-                LazyVGrid(columns: quickPromptGridColumns, alignment: .leading, spacing: 8) {
-                    ForEach(Self.quickPrompts) { quickPrompt in
-                        Button {
-                            applyQuickPrompt(quickPrompt)
-                        } label: {
-                            Label(quickPrompt.title, systemImage: quickPrompt.icon)
-                                .font(.caption.weight(.semibold))
-                                .multilineTextAlignment(.center)
-                                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
-                                .minimumScaleFactor(0.86)
-                                .fixedSize(horizontal: false, vertical: true)
-                                .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 58 : 42)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .foregroundStyle(.white)
-                                .background(AppTheme.accentPurple.opacity(0.20), in: .rect(cornerRadius: 12))
-                                .overlay {
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .stroke(AppTheme.neonPurple.opacity(0.22), lineWidth: 1)
-                                }
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityIdentifier("export.aiEdit.quickPrompt.\(quickPrompt.id)")
-                        .accessibilityLabel("Add edit note: \(quickPrompt.title)")
-                        .accessibilityHint("Adds this editing direction to the cloud AI edit note.")
-                    }
-                }
-            }
+            quickPromptPicker
 
             if let proIntentWarningText {
                 Label(proIntentWarningText, systemImage: "lock.fill")
@@ -844,6 +795,47 @@ struct AIEditView: View {
         }
         .padding(14)
         .rorkCard(cornerRadius: 16, stroke: AppTheme.softBorder, glowOpacity: 0.04)
+    }
+
+    private var quickPromptPicker: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("Quick focus", systemImage: "lightbulb.fill")
+                .font(.caption.bold())
+                .foregroundStyle(AppTheme.warningYellow)
+                .lineLimit(2)
+                .minimumScaleFactor(0.84)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("export.aiEdit.quickFocus.title")
+
+            LazyVGrid(columns: quickPromptGridColumns, alignment: .leading, spacing: 8) {
+                ForEach(Self.quickPrompts) { quickPrompt in
+                    Button {
+                        applyQuickPrompt(quickPrompt)
+                    } label: {
+                        Label(quickPrompt.title, systemImage: quickPrompt.icon)
+                            .font(.caption.weight(.semibold))
+                            .multilineTextAlignment(.center)
+                            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
+                            .minimumScaleFactor(0.86)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 58 : 42)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .foregroundStyle(.white)
+                            .background(AppTheme.accentPurple.opacity(0.20), in: .rect(cornerRadius: 12))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(AppTheme.neonPurple.opacity(0.22), lineWidth: 1)
+                            }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("export.aiEdit.quickPrompt.\(quickPrompt.id)")
+                    .accessibilityLabel("Add edit note: \(quickPrompt.title)")
+                    .accessibilityHint("Adds this editing direction to the cloud AI edit note.")
+                }
+            }
+        }
+        .accessibilityElement(children: .contain)
     }
 
     private var promptHeader: some View {

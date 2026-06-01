@@ -1487,6 +1487,62 @@ struct HoopsClipsTests {
         #expect(request.clips.first?.userReviewDecision == "unreviewed")
     }
 
+    @Test @MainActor func testCloudEditRequestReservesCrowdPopCandidateForGptReview() throws {
+        let viewModel = HighlightsViewModel()
+        viewModel.cloudEditSourceObjectKey = "uploads/source.mp4"
+        var clips: [Clip] = []
+
+        for index in 0..<330 {
+            let startTime = Double(index * 8)
+            clips.append(
+                Clip(
+                    startTime: startTime,
+                    endTime: startTime + 6,
+                    eventCenter: startTime + 3,
+                    action: .madeShot,
+                    confidence: 0.96,
+                    isKept: true,
+                    label: "Made Shot",
+                    audioScore: 0.7,
+                    visualScore: 0.92,
+                    motionScore: 0.9,
+                    combinedScore: 0.94,
+                    detectionMethod: .cloud
+                )
+            )
+        }
+
+        let crowdPopClip = Clip(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000091")!,
+            startTime: 2_800.0,
+            endTime: 2_806.0,
+            eventCenter: 2_803.0,
+            action: .unknown,
+            confidence: 0.58,
+            isKept: false,
+            label: "Crowd Reaction",
+            audioScore: 0.97,
+            visualScore: 0.44,
+            motionScore: 0.46,
+            combinedScore: 0.56,
+            detectionMethod: .cloud
+        )
+        clips.append(crowdPopClip)
+        viewModel.analysisService.clips = clips
+
+        let request = try viewModel.createCloudEditRequest(
+            preset: .personalHighlight,
+            targetDurationSeconds: 30,
+            isProUser: false
+        )
+
+        let crowdCandidate = try #require(request.clips.first { $0.id == crowdPopClip.id.uuidString })
+        #expect(request.clips.count == HighlightsViewModel.cloudEditCandidateRequestLimit)
+        #expect(crowdCandidate.userReviewDecision == "unreviewed")
+        #expect(crowdCandidate.label == "Crowd Reaction")
+        #expect(crowdCandidate.audioPeak >= 0.97)
+    }
+
     @Test @MainActor func testCloudEditRequestIncludesReviewOnlyUncertainCandidatesWithoutAutoKeepingThem() throws {
         let viewModel = HighlightsViewModel()
         viewModel.cloudEditSourceObjectKey = "uploads/source.mp4"

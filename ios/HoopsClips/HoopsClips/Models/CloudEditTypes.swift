@@ -453,10 +453,10 @@ enum CloudEditUserPromptBuilder {
         } else {
             parts.append("Cover both teams.")
         }
-        parts.append("Keep visible makes, blocks, steals, forced turnovers, defensive stops.")
+        parts.append("Use visible makes, blocks, steals, forced turnovers, defensive stops.")
         parts.append("Defense counts without a make.")
-        parts.append("Use crowd/audio pops as cues only; verify visible outcome.")
-        parts.append("Reject duplicate/dead-ball/filler.")
+        parts.append("Use crowd/audio pops; verify visible outcome.")
+        parts.append("Reject duplicate/filler.")
         parts.append("Keep uncertain clips reviewable.")
         return parts.joined(separator: " ")
     }
