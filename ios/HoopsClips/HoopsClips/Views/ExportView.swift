@@ -6,6 +6,7 @@ struct ExportView: View {
     @Environment(SubscriptionManager.self) private var subscriptionManager
     @Environment(AuthService.self) private var authService
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Bindable var viewModel: HighlightsViewModel
     @State private var exportTrigger = 0
     @State private var saveTrigger = 0
@@ -159,26 +160,15 @@ struct ExportView: View {
                 subtitle: "Kept clips go to AI Edit for cloud rendering"
             )
 
-            HStack(spacing: 20) {
-                VStack(spacing: 4) {
-                    Text("\(viewModel.keptClips.count)")
-                        .font(.title.bold().monospacedDigit())
-                        .foregroundStyle(AppTheme.neonPurple)
-                    Text("Clips")
-                        .font(.caption)
-                        .foregroundStyle(AppTheme.subtleText)
-                }
-
-                VStack(spacing: 4) {
-                    Text(Clip.formatTime(viewModel.keptClips.reduce(0) { $0 + $1.duration }))
-                        .font(.title.bold().monospacedDigit())
-                        .foregroundStyle(AppTheme.neonPurple)
-                    Text("Duration")
-                        .font(.caption)
-                        .foregroundStyle(AppTheme.subtleText)
-                }
-
-                Spacer()
+            LazyVGrid(columns: summaryMetricGridColumns, alignment: .leading, spacing: 10) {
+                summaryMetric(
+                    value: "\(viewModel.keptClips.count)",
+                    label: "Clips"
+                )
+                summaryMetric(
+                    value: Clip.formatTime(viewModel.keptClips.reduce(0) { $0 + $1.duration }),
+                    label: "Duration"
+                )
             }
 
             if !AppConstants.requiresCloudVideoPipeline && hasLockedSelections {
@@ -203,23 +193,15 @@ struct ExportView: View {
                 )
             }
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(viewModel.keptClips) { clip in
-                        HStack(spacing: 4) {
-                            Image(systemName: clip.action.icon)
-                                .font(.caption2)
-                            Text(clip.label)
-                                .font(.caption2)
-                        }
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(AppTheme.surfaceBg, in: .capsule)
-                    }
+            LazyVGrid(columns: summaryClipGridColumns, alignment: .leading, spacing: 8) {
+                ForEach(Array(viewModel.keptClips.prefix(summaryClipPreviewLimit))) { clip in
+                    summaryClipChip(icon: clip.action.icon, text: clip.label)
+                }
+
+                if summaryClipOverflowCount > 0 {
+                    summaryClipChip(icon: "plus.circle.fill", text: "+\(summaryClipOverflowCount) more")
                 }
             }
-            .contentMargins(.horizontal, 0)
         }
         .padding(16)
         .rorkCard(cornerRadius: 16, stroke: AppTheme.accentPurple.opacity(0.2))
@@ -750,25 +732,16 @@ struct ExportView: View {
                     )
                 }
 
-                HStack(spacing: 10) {
+                LazyVGrid(columns: quickActionButtonGridColumns, alignment: .leading, spacing: 10) {
                     Button {
                         presentShareSheet(for: exportedURL)
                     } label: {
-                        HStack(spacing: 10) {
-                            Image(systemName: "square.and.arrow.up.fill")
-                                .font(.subheadline.weight(.semibold))
-                            Text("Share")
-                                .font(.subheadline.bold())
-                            Spacer()
-                        }
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 12)
-                        .background(AppTheme.purpleGradient, in: .rect(cornerRadius: 14))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 14)
-                                .stroke(AppTheme.neonPurple.opacity(0.28), lineWidth: 1)
+                        exportActionLabel(
+                            title: "Share",
+                            icon: "square.and.arrow.up.fill",
+                            foreground: .white,
+                            fill: AnyShapeStyle(AppTheme.purpleGradient),
+                            stroke: AppTheme.neonPurple.opacity(0.28)
                         )
                     }
                     .buttonStyle(.plain)
@@ -783,19 +756,12 @@ struct ExportView: View {
                         saveTrigger += 1
                         Task { await viewModel.saveToPhotos() }
                     } label: {
-                        VStack(spacing: 4) {
-                            Image(systemName: "photo.badge.arrow.down.fill")
-                                .font(.subheadline.weight(.semibold))
-                            Text("Save")
-                                .font(.caption.bold())
-                        }
-                        .foregroundStyle(AppTheme.successGreen)
-                        .frame(width: 74)
-                        .padding(.vertical, 12)
-                        .background(AppTheme.successGreen.opacity(0.12), in: .rect(cornerRadius: 14))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 14)
-                                .stroke(AppTheme.successGreen.opacity(0.22), lineWidth: 1)
+                        exportActionLabel(
+                            title: "Save",
+                            icon: "photo.badge.arrow.down.fill",
+                            foreground: AppTheme.successGreen,
+                            fill: AnyShapeStyle(AppTheme.successGreen.opacity(0.12)),
+                            stroke: AppTheme.successGreen.opacity(0.22)
                         )
                     }
                     .buttonStyle(.plain)
@@ -854,8 +820,11 @@ struct ExportView: View {
                             Text(exportButtonSubtitle(isCloudRequired: cloudRenderRequired))
                                 .font(.caption)
                                 .opacity(0.72)
-                                .lineLimit(1)
+                                .lineLimit(2)
+                                .minimumScaleFactor(0.84)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
+                        .layoutPriority(1)
                         Spacer()
                         Image(systemName: "sparkles")
                     }
@@ -878,6 +847,93 @@ struct ExportView: View {
 
     private var hasLockedSelections: Bool {
         isThemeLocked(viewModel.selectedTheme) || isMusicLocked(viewModel.selectedMusic)
+    }
+
+    private var summaryMetricGridColumns: [GridItem] {
+        [
+            GridItem(.adaptive(minimum: dynamicTypeSize.isAccessibilitySize ? 132 : 104), spacing: 10, alignment: .leading)
+        ]
+    }
+
+    private var summaryClipGridColumns: [GridItem] {
+        [
+            GridItem(.adaptive(minimum: dynamicTypeSize.isAccessibilitySize ? 156 : 118, maximum: 260), spacing: 8, alignment: .top)
+        ]
+    }
+
+    private var summaryClipPreviewLimit: Int {
+        dynamicTypeSize.isAccessibilitySize ? 4 : 6
+    }
+
+    private var summaryClipOverflowCount: Int {
+        max(0, viewModel.keptClips.count - summaryClipPreviewLimit)
+    }
+
+    private var quickActionButtonGridColumns: [GridItem] {
+        [
+            GridItem(.adaptive(minimum: dynamicTypeSize.isAccessibilitySize ? 156 : 128), spacing: 10, alignment: .top)
+        ]
+    }
+
+    private func summaryMetric(value: String, label: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(value)
+                .font(.title.bold().monospacedDigit())
+                .foregroundStyle(AppTheme.neonPurple)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+            Text(label)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(AppTheme.subtleText)
+                .lineLimit(2)
+                .minimumScaleFactor(0.86)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 66 : 52, alignment: .leading)
+    }
+
+    private func summaryClipChip(icon: String, text: String) -> some View {
+        HStack(alignment: .top, spacing: 6) {
+            Image(systemName: icon)
+                .font(.caption2.weight(.semibold))
+                .padding(.top, 1)
+            Text(text)
+                .font(.caption2.weight(.semibold))
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
+                .minimumScaleFactor(0.82)
+                .fixedSize(horizontal: false, vertical: true)
+                .layoutPriority(1)
+            Spacer(minLength: 0)
+        }
+        .foregroundStyle(.white)
+        .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 44 : 32, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(AppTheme.surfaceBg, in: .rect(cornerRadius: 12))
+    }
+
+    private func exportActionLabel(
+        title: String,
+        icon: String,
+        foreground: Color,
+        fill: AnyShapeStyle,
+        stroke: Color
+    ) -> some View {
+        Label(title, systemImage: icon)
+            .font(.subheadline.bold())
+            .multilineTextAlignment(.center)
+            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
+            .minimumScaleFactor(0.84)
+            .fixedSize(horizontal: false, vertical: true)
+            .foregroundStyle(foreground)
+            .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 52 : 44)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(fill, in: .rect(cornerRadius: 14))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14)
+                    .stroke(stroke, lineWidth: 1)
+            )
     }
 
     private var localExportSetupSummary: String {
