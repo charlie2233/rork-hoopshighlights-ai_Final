@@ -63,6 +63,8 @@ AUDIO_REACTION_CLUSTER_MIN_PEAK = 0.56
 AUDIO_REACTION_CLUSTER_SPIKE_MARGIN = 0.16
 AUDIO_REACTION_WINDOW_LEAD_SECONDS = 2.75
 AUDIO_REACTION_WINDOW_FOLLOW_SECONDS = 1.5
+AUDIO_REACTION_VISUAL_EVENT_LOOKBACK_SECONDS = 3.25
+AUDIO_REACTION_VISUAL_EVENT_POST_POP_SECONDS = 0.75
 UNLABELED_AUDIO_REACTION_MIN_AUDIO_SCORE = 0.92
 UNLABELED_AUDIO_REACTION_MIN_ACTIVITY_SCORE = 0.58
 UNLABELED_AUDIO_REACTION_MIN_COMBINED_SCORE = 0.50
@@ -1470,6 +1472,20 @@ def _detect_audio_reaction_boundaries(audio_profile: Sequence[float]) -> List[Au
     return sorted(selected, key=lambda item: item.time_seconds or 0.0)
 
 
+def _visual_event_anchor_before_audio_reaction(
+    pop_time_seconds: float,
+    shot_boundaries: Sequence[float],
+) -> Optional[float]:
+    candidates = [
+        boundary
+        for boundary in shot_boundaries
+        if 0.0 <= pop_time_seconds - boundary <= AUDIO_REACTION_VISUAL_EVENT_LOOKBACK_SECONDS
+    ]
+    if not candidates:
+        return None
+    return max(candidates)
+
+
 def _extract_audio_profile(path: Path, duration_seconds: float) -> List[float]:
     bucket_count = max(int(math.ceil(duration_seconds / AUDIO_PROFILE_BUCKET_SECONDS)), 1)
     ffmpeg = shutil.which("ffmpeg")
@@ -1642,8 +1658,20 @@ def _build_audio_reaction_candidate_windows(
             continue
 
         event_time = clamp(signal.time_seconds, 0.0, duration_seconds)
-        start_time = max(0.0, event_time - AUDIO_REACTION_WINDOW_LEAD_SECONDS)
-        end_time = min(duration_seconds, event_time + AUDIO_REACTION_WINDOW_FOLLOW_SECONDS)
+        visual_event_anchor = _visual_event_anchor_before_audio_reaction(event_time, shot_boundaries)
+        if visual_event_anchor is not None:
+            visual_event_anchor = clamp(visual_event_anchor, 0.0, duration_seconds)
+            start_time = max(0.0, visual_event_anchor - NATIVE_SHOT_CONTEXT_TARGET_LEAD_SECONDS)
+            end_time = min(
+                duration_seconds,
+                max(
+                    visual_event_anchor + NATIVE_SHOT_CONTEXT_TARGET_FOLLOW_THROUGH_SECONDS,
+                    event_time + AUDIO_REACTION_VISUAL_EVENT_POST_POP_SECONDS,
+                ),
+            )
+        else:
+            start_time = max(0.0, event_time - AUDIO_REACTION_WINDOW_LEAD_SECONDS)
+            end_time = min(duration_seconds, event_time + AUDIO_REACTION_WINDOW_FOLLOW_SECONDS)
         target_duration = min(
             settings.max_clip_duration_seconds,
             max(settings.min_clip_duration_seconds, AUDIO_REACTION_WINDOW_LEAD_SECONDS + AUDIO_REACTION_WINDOW_FOLLOW_SECONDS),

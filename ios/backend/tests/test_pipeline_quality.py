@@ -15,6 +15,7 @@ from app.pipeline import (
     TEAM_SELECTION_PREFILTER_MULTIPLIER,
     _analysis_team_diagnostic_counts,
     _build_candidate_windows,
+    _build_audio_reaction_candidate_windows,
     _annotate_analysis_team_status,
     _analysis_candidate_pool_limit,
     _detect_shot_boundaries,
@@ -267,6 +268,34 @@ class PipelineQualityTests(unittest.TestCase):
         self.assertLessEqual(reaction_window.start_time, audio_pop_time - 2.5)
         self.assertGreaterEqual(reaction_window.end_time, audio_pop_time + 1.3)
         self.assertAlmostEqual(reaction_window.peak_time, audio_pop_time, delta=0.05)
+
+    def test_audio_reaction_window_anchors_visual_play_before_crowd_pop(self) -> None:
+        settings = SimpleNamespace(
+            min_clip_duration_seconds=2.0,
+            max_clip_duration_seconds=6.0,
+            clip_padding_seconds=0.0,
+            max_returned_clips=8,
+        )
+        audio_profile = [0.06] * 30
+        audio_profile[11] = 0.58
+        audio_profile[12] = 1.0
+        audio_profile[13] = 0.76
+
+        windows = _build_audio_reaction_candidate_windows(
+            duration_seconds=15.0,
+            audio_profile=audio_profile,
+            shot_boundaries=[4.5],
+            settings=settings,
+        )
+        reaction_window = max(windows, key=lambda window: window.audio_pop_score)
+        reaction_clip = classify_window(reaction_window)
+
+        self.assertAlmostEqual(reaction_window.audio_pop_time or 0.0, 6.25, delta=0.3)
+        self.assertAlmostEqual(reaction_window.peak_time, 4.5, delta=0.05)
+        self.assertLessEqual(reaction_window.start_time, 2.55)
+        self.assertGreaterEqual(reaction_window.event_context_score, 0.45)
+        self.assertNotEqual(reaction_clip.label, "Crowd Reaction")
+        self.assertTrue(reaction_clip.shouldAutoKeep)
 
     def test_run_analysis_applies_quick_scan_before_selected_team_filter(self) -> None:
         native = [
