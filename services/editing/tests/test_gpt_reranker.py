@@ -417,6 +417,115 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertTrue(block_context["reviewOnlyUncertain"])
         self.assertFalse(block_context["selectedTeamDefensiveHighlight"])
 
+    def test_selected_team_sampling_reserves_more_uncertain_review_candidates(self) -> None:
+        clips = []
+        for index in range(8):
+            clips.append(
+                {
+                    **_clip(f"dark_make_{index}", float(index * 7), 0.96 - (index * 0.01)),
+                    "teamAttribution": {
+                        "teamId": "team_dark",
+                        "label": "Dark jerseys",
+                        "colorLabel": "black",
+                        "confidence": 0.93,
+                        "source": "quick_scan",
+                        "evidenceFrameRefs": [f"dark_{index}_action", f"dark_{index}_outcome"],
+                        "evidenceRoleGroups": ["action", "outcome"],
+                    },
+                }
+            )
+        for index in range(8):
+            clips.append(
+                {
+                    **_clip(f"uncertain_block_{index}", float((index + 8) * 7), 0.95 - (index * 0.01)),
+                    "label": "Blocked Shot",
+                    "teamAttribution": {
+                        "teamId": "team_dark",
+                        "label": "Dark jerseys",
+                        "colorLabel": "black",
+                        "confidence": 0.62,
+                        "source": "quick_scan",
+                    },
+                }
+            )
+
+        request = CreateEditJobRequest(
+            videoId="video_selected_team_sampling",
+            analysisJobId="analysis_selected_team_sampling",
+            installId="install-123",
+            sourceObjectKey="uploads/source.mp4",
+            preset="personal_highlight",
+            targetDurationSeconds=90,
+            planTier="free",
+            teamSelection={
+                "mode": "team",
+                "teamId": "team_dark",
+                "label": "Dark jerseys",
+                "colorLabel": "black",
+                "confidenceThreshold": 0.85,
+                "includeUncertain": True,
+            },
+            clips=clips,
+        )
+
+        sampled = gpt_reranker._quality_filtered_sampled_clips(request.clips, 9, request=request)
+        uncertain_ids = [
+            clip.id
+            for clip in sampled
+            if gpt_reranker.team_attribution_status(clip, request.teamSelection) == "uncertain"
+        ]
+
+        self.assertEqual(len(sampled), 9)
+        self.assertEqual(len(uncertain_ids), 3)
+        self.assertTrue(all(clip_id.startswith("uncertain_block_") for clip_id in uncertain_ids))
+
+    def test_selected_team_sampling_respects_include_uncertain_false(self) -> None:
+        request = CreateEditJobRequest(
+            videoId="video_selected_team_confident_only",
+            analysisJobId="analysis_selected_team_confident_only",
+            installId="install-123",
+            sourceObjectKey="uploads/source.mp4",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="free",
+            teamSelection={
+                "mode": "team",
+                "teamId": "team_dark",
+                "label": "Dark jerseys",
+                "colorLabel": "black",
+                "confidenceThreshold": 0.85,
+                "includeUncertain": False,
+            },
+            clips=[
+                {
+                    **_clip("dark_make", 0.0, 0.94),
+                    "teamAttribution": {
+                        "teamId": "team_dark",
+                        "label": "Dark jerseys",
+                        "colorLabel": "black",
+                        "confidence": 0.94,
+                        "source": "quick_scan",
+                        "evidenceFrameRefs": ["dark_action", "dark_outcome"],
+                        "evidenceRoleGroups": ["action", "outcome"],
+                    },
+                },
+                {
+                    **_clip("uncertain_make", 7.0, 0.93),
+                    "teamAttribution": {
+                        "teamId": "team_dark",
+                        "label": "Dark jerseys",
+                        "colorLabel": "black",
+                        "confidence": 0.65,
+                        "source": "quick_scan",
+                    },
+                },
+            ],
+        )
+
+        sampled = gpt_reranker._quality_filtered_sampled_clips(request.clips, 8, request=request)
+
+        self.assertEqual([clip.id for clip in sampled], ["dark_make"])
+
     def test_disabled_gpt_fallback_preserves_uncertain_team_review_ids(self) -> None:
         settings = GPTHighlightRerankerSettings(
             enabled=False,

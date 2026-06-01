@@ -877,11 +877,11 @@ def _quality_filtered_sampled_clips(
             continue
         eligible.append(clip)
 
-    if len(eligible) <= max_clips:
-        return eligible
-
     if request and request.teamSelection is not None and request.teamSelection.mode == "team":
         return _selected_team_quality_filtered_sampled_clips(eligible, max_clips, request)
+
+    if len(eligible) <= max_clips:
+        return eligible
 
     selected: List[EditCandidateClip] = []
     selected_ids: set[str] = set()
@@ -954,13 +954,17 @@ def _selected_team_quality_filtered_sampled_clips(
         [clip for clip in eligible if clip.id in render_eligible_ids],
         team_selection,
     )
-    review_only_uncertain = _selected_team_review_priority_order(
-        [
-            clip
-            for clip in eligible
-            if clip.id not in render_eligible_ids
-            and team_attribution_status(clip, team_selection) == "uncertain"
-        ]
+    review_only_uncertain = (
+        _selected_team_review_priority_order(
+            [
+                clip
+                for clip in eligible
+                if clip.id not in render_eligible_ids
+                and team_attribution_status(clip, team_selection) == "uncertain"
+            ]
+        )
+        if team_selection.includeUncertain
+        else []
     )
 
     selected: List[EditCandidateClip] = []
@@ -972,7 +976,7 @@ def _selected_team_quality_filtered_sampled_clips(
         selected.append(clip)
         selected_ids.add(clip.id)
 
-    review_only_reserve = min(len(review_only_uncertain), max(1, max_clips // 4), max_clips)
+    review_only_reserve = min(len(review_only_uncertain), max(1, max_clips // 3), max_clips)
     render_slot_limit = max(0, max_clips - review_only_reserve)
     defensive_render_reserve = min(
         _defensive_sampling_reserve_limit(request, max_clips),
@@ -1070,6 +1074,7 @@ def _selected_team_final_sample_order(
         key=lambda clip: (
             1 if team_attribution_status(clip, team_selection) == "matched" else 0,
             1 if team_evidence_summary(clip).get("status") == "evidence_backed" else 0,
+            1 if _is_defensive_candidate_clip(clip) else 0,
             0 if team_attribution_status(clip, team_selection) == "uncertain" else 1,
             -rank_index.get(clip.id, 0),
         ),
