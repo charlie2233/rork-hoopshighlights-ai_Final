@@ -113,6 +113,57 @@ class SubmissionReadinessPreflightTests(unittest.TestCase):
         self.assertTrue(has_failures(collector.findings))
         self.assertIn("--team-accuracy-report", collector.findings[0].detail)
 
+    def test_missing_team_accuracy_report_points_to_existing_labeling_bundle(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            bundle_dir = repo_root / "artifacts/team_highlight_labeling_bundle"
+            write_json(
+                bundle_dir / "label_status.json",
+                {
+                    "schemaVersion": "team-highlight-label-status-v1",
+                    "status": "incomplete",
+                    "clipCount": 54,
+                    "completeClipCount": 7,
+                    "incompleteClipCount": 47,
+                },
+            )
+            write_json(
+                bundle_dir / "bundle_metadata.json",
+                {
+                    "schemaVersion": "team-highlight-labeling-bundle-v1",
+                    "reviewPage": "artifacts/team_highlight_labeling_bundle/team_highlight_label_review.html",
+                    "labelStatus": "artifacts/team_highlight_labeling_bundle/label_status.json",
+                    "clipCount": 54,
+                    "completeClipCount": 7,
+                    "incompleteClipCount": 47,
+                },
+            )
+            collector = Collector()
+
+            check_team_highlight_accuracy_report(repo_root, collector, None)
+
+        self.assertTrue(has_failures(collector.findings))
+        detail = collector.findings[0].detail
+        self.assertIn("7/54 clips complete", detail)
+        self.assertIn("47 remaining", detail)
+        self.assertIn("team_highlight_label_review.html", detail)
+        self.assertIn("next_steps.md", detail)
+        self.assertIn("GPT draft labels do not count", detail)
+
+    def test_missing_team_accuracy_report_points_to_manifest_when_bundle_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            manifest_path = repo_root / "artifacts/team_highlight_accuracy_manifest.json"
+            write_json(manifest_path, {"schemaVersion": "team-highlight-accuracy-manifest-v1", "cases": []})
+            collector = Collector()
+
+            check_team_highlight_accuracy_report(repo_root, collector, None)
+
+        self.assertTrue(has_failures(collector.findings))
+        detail = collector.findings[0].detail
+        self.assertIn("team_highlight_accuracy_manifest.json", detail)
+        self.assertIn("prepare_team_highlight_labeling_bundle.py", detail)
+
     def test_team_accuracy_report_rejects_relaxed_launch_thresholds(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             repo_root = Path(temp_dir)

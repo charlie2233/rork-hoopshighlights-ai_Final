@@ -136,6 +136,11 @@ BLOCKER_DOCS = (
         "Live iOS kill-switch state is not proven through the Worker.",
     ),
 )
+DEFAULT_TEAM_ACCURACY_MANIFEST = Path("artifacts/team_highlight_accuracy_manifest.json")
+DEFAULT_LABELING_BUNDLE_DIR = Path("artifacts/team_highlight_labeling_bundle")
+DEFAULT_LABELING_BUNDLE_METADATA = DEFAULT_LABELING_BUNDLE_DIR / "bundle_metadata.json"
+DEFAULT_LABELING_BUNDLE_STATUS = DEFAULT_LABELING_BUNDLE_DIR / "label_status.json"
+DEFAULT_LABELING_BUNDLE_NEXT_STEPS = DEFAULT_LABELING_BUNDLE_DIR / "next_steps.md"
 PLACEHOLDER_VALUES = {"", "YOUR_TEAM_ID", "$(HOOPS_DEVELOPMENT_TEAM)"}
 UUID_RE = re.compile(r"^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$")
 TEAM_ACCURACY_THRESHOLD_TO_METRIC = (
@@ -332,7 +337,7 @@ def check_team_highlight_accuracy_report(repo_root: Path, collector: Collector, 
         collector.fail(
             check_name,
             "scripts/evaluate_team_highlight_accuracy.py",
-            "Missing --team-accuracy-report from a launch-grade labeled footage run; 85% selected-team/highlight quality is unproven.",
+            missing_team_accuracy_report_detail(repo_root),
         )
         return
 
@@ -427,6 +432,60 @@ def check_team_highlight_accuracy_report(repo_root: Path, collector: Collector, 
             f"{int(metrics['uncertainReviewCount'])} uncertain review clip(s)."
         ),
     )
+
+
+def missing_team_accuracy_report_detail(repo_root: Path) -> str:
+    base = (
+        "Missing --team-accuracy-report from a launch-grade labeled footage run; "
+        "85% selected-team/highlight quality is unproven."
+    )
+    hint = team_labeling_bundle_hint(repo_root)
+    return f"{base} {hint}" if hint else base
+
+
+def team_labeling_bundle_hint(repo_root: Path) -> str:
+    metadata_path = repo_root / DEFAULT_LABELING_BUNDLE_METADATA
+    status_path = repo_root / DEFAULT_LABELING_BUNDLE_STATUS
+    next_steps_path = repo_root / DEFAULT_LABELING_BUNDLE_NEXT_STEPS
+    metadata = read_json_object(metadata_path)
+    status = read_json_object(status_path)
+
+    if metadata is not None or status is not None:
+        source = status or metadata or {}
+        complete = number_or_none(source.get("completeClipCount"))
+        total = number_or_none(source.get("clipCount"))
+        incomplete = number_or_none(source.get("incompleteClipCount"))
+        review_page = metadata_path_from_payload(repo_root, metadata, "reviewPage", DEFAULT_LABELING_BUNDLE_DIR / "team_highlight_label_review.html")
+        status_label = metadata_path_from_payload(repo_root, metadata, "labelStatus", DEFAULT_LABELING_BUNDLE_STATUS)
+        progress = ""
+        if complete is not None and total is not None:
+            progress = f" Existing labeling bundle progress: {int(complete)}/{int(total)} clips complete"
+            if incomplete is not None:
+                progress += f", {int(incomplete)} remaining"
+            progress += "."
+        return (
+            f"{progress} Continue human review at {rel(review_page, repo_root)}; "
+            f"status: {rel(status_label, repo_root)}; next steps: {rel(next_steps_path, repo_root)}. "
+            "GPT draft labels do not count until every clip is human-reviewed and the launch report is rebuilt."
+        ).strip()
+
+    manifest_path = repo_root / DEFAULT_TEAM_ACCURACY_MANIFEST
+    if manifest_path.exists():
+        return (
+            f" A manifest exists at {rel(manifest_path, repo_root)}; prepare or reopen the labeling bundle with "
+            "`python3 scripts/prepare_team_highlight_labeling_bundle.py "
+            f"--manifest {rel(manifest_path, repo_root)} "
+            f"--output-dir {rel(repo_root / DEFAULT_LABELING_BUNDLE_DIR, repo_root)}`."
+        )
+    return ""
+
+
+def metadata_path_from_payload(repo_root: Path, payload: dict[str, object] | None, key: str, fallback: Path) -> Path:
+    raw_value = payload.get(key) if payload else None
+    if isinstance(raw_value, str) and raw_value.strip():
+        path = Path(raw_value).expanduser()
+        return path if path.is_absolute() else repo_root / path
+    return repo_root / fallback
 
 
 def check_ios_signing(repo_root: Path, collector: Collector) -> None:
@@ -1314,6 +1373,14 @@ def read_text(path: Path) -> str | None:
         return path.read_text(encoding="utf-8")
     except (FileNotFoundError, UnicodeDecodeError):
         return None
+
+
+def read_json_object(path: Path) -> dict[str, object] | None:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
 
 
 def number_or_none(value: object) -> float | None:
