@@ -1194,6 +1194,10 @@ def _team_defense_context(
         user_kept_uncertain=user_kept_uncertain,
         review_only_uncertain=review_only_uncertain,
     )
+    manual_review_required = _manual_review_required_for_gpt_context(candidate_lane)
+    allowed_final_edit_action = (
+        "render" if render_eligible else ("review_only" if manual_review_required else "reject")
+    )
     return {
         "candidateLane": candidate_lane,
         "defensiveFamily": defensive_family,
@@ -1201,7 +1205,14 @@ def _team_defense_context(
         "teamAttributionStatus": status,
         "teamEvidenceStatus": evidence.get("status"),
         "renderEligibleForSelectedTeam": render_eligible,
+        "finalEditAllowed": render_eligible,
         "reviewOnlyUncertain": review_only_uncertain,
+        "manualReviewRequired": manual_review_required,
+        "allowedFinalEditAction": allowed_final_edit_action,
+        "renderEligibilityReason": _render_eligibility_reason_for_gpt_context(
+            candidate_lane,
+            render_eligible,
+        ),
         "selectedTeamDefensiveHighlight": (
             selected_team_mode
             and defensive_family is not None
@@ -1278,6 +1289,31 @@ def _candidate_lane_for_gpt_context(
     if quality_eligible:
         return "all_teams_render_candidate"
     return "quality_review_candidate"
+
+
+def _manual_review_required_for_gpt_context(candidate_lane: str) -> bool:
+    return (
+        candidate_lane == "review_only_uncertain_team_candidate"
+        or "quality_review" in candidate_lane
+    )
+
+
+def _render_eligibility_reason_for_gpt_context(candidate_lane: str, render_eligible: bool) -> str:
+    if candidate_lane == "user_discarded":
+        return "user_discarded"
+    if candidate_lane == "opponent_team_candidate":
+        return "opponent_team"
+    if candidate_lane == "review_only_uncertain_team_candidate":
+        return "needs_manual_team_review"
+    if "quality_review" in candidate_lane:
+        return "quality_context_incomplete"
+    if candidate_lane.startswith("user_kept_uncertain_team"):
+        return "user_kept_uncertain_team"
+    if candidate_lane.startswith("selected_team"):
+        return "selected_team_match"
+    if candidate_lane.startswith("all_teams"):
+        return "all_teams_candidate" if render_eligible else "all_teams_review_candidate"
+    return "render_eligible" if render_eligible else "not_render_eligible"
 
 
 def _selection_guidance_for_gpt_context(candidate_lane: str) -> str:
@@ -1735,7 +1771,7 @@ def _build_openai_payload(
             "For selected-team jobs, prioritize evidence-backed selected-team render candidates before uncertain review-only clips in the final edit. "
             "For teamAttributionStatus=uncertain, userReviewDecision=kept is the only signal that the user explicitly promoted the clip for final editing; otherwise treat it as review-only. "
             + TEAM_EVIDENCE_GPT_GUIDANCE
-            + "Use teamDefenseContext.candidateLane, renderEligibleForSelectedTeam, reviewOnlyUncertain, and defensiveFamily to separate selected-team render candidates from review-only or opponent plays. "
+            + "Use teamDefenseContext.candidateLane, finalEditAllowed, manualReviewRequired, allowedFinalEditAction, renderEligibilityReason, renderEligibleForSelectedTeam, reviewOnlyUncertain, and defensiveFamily to separate selected-team render candidates from review-only or opponent plays. "
             + "Selected-team blocks, steals, defensive stops, and forced turnovers can be highlights even when they are not scoring plays. "
             "Use only supplied candidate clip IDs and sampled keyframes. Do not replace FFmpeg extraction, CV tracking, rendering, or exact timestamps. "
             "Do not output FFmpeg commands, shell commands, file paths, source video URLs, or storage keys. "
@@ -1869,7 +1905,7 @@ def _build_revision_patch_payload(
             "You are HoopClips GPT Edit Cool. Return an EditPlanPatch JSON only. "
             "Do not output free-form prose. Do not generate FFmpeg commands, shell commands, render instructions, file paths, URLs, or storage keys. "
             + TEAM_EVIDENCE_GPT_GUIDANCE
-            + "Use only provided render-eligible clip IDs and safe patch paths; the backend will validate and repair before rendering."
+            + "Use only clips whose teamDefenseContext.allowedFinalEditAction is render and safe patch paths; the backend will validate and repair before rendering."
         ),
         "input": [{"role": "user", "content": [{"type": "input_text", "text": json.dumps(compact_context, separators=(",", ":"))}]}],
         "text": {"format": {"type": "json_schema", "name": "hoopclips_gpt_edit_plan_patch", "strict": True, "schema": _edit_plan_patch_schema()}},
