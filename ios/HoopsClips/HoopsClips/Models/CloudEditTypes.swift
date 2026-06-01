@@ -404,7 +404,7 @@ struct CloudEditUserIntent: Equatable, Sendable {
 }
 
 enum CloudEditUserPromptBuilder {
-    static let maxPromptCharacters = 240
+    static let maxPromptCharacters = 320
 
     static func effectivePrompt(
         userPrompt: String?,
@@ -435,7 +435,7 @@ enum CloudEditUserPromptBuilder {
     static func defaultFocusSummary(teamSelection: HighlightTeamSelection?) -> String {
         let selectedTeam = teamSelection?.mode == .team ? (teamSelection?.displayTitle ?? "selected team") : nil
         if let selectedTeam {
-            return "Target: \(selectedTeam). Checks visible outcomes, blocks, steals, forced turnovers, defensive stops; keeps uncertain clips for Review."
+            return "Target: \(selectedTeam). Render confident matches only; keep uncertain clips for Review. Checks visible makes, blocks, steals, forced turnovers, defensive stops."
         }
         return "Target: All teams. Checks visible outcomes, made shots, blocks, steals, forced turnovers, defensive stops; keeps uncertain clips for Review."
     }
@@ -444,6 +444,7 @@ enum CloudEditUserPromptBuilder {
         var parts: [String] = []
         if teamSelection?.mode == .team {
             parts.append("Focus on \(teamSelection?.displayTitle ?? "the selected team").")
+            parts.append("Render selected-team matches; reject confident opponent clips.")
         } else {
             parts.append("Cover both teams.")
         }

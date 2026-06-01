@@ -265,6 +265,18 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertEqual(intent.effectIntensity, "high")
         self.assertNotIn("Make it more hype", context.model_dump_json())
 
+    def test_user_prompt_allows_richer_side_note_without_leaking_to_context_dump(self) -> None:
+        prompt = " ".join(["focus defense, blocks, steals, opponent rejection, 4:30 team reel"] * 4)
+        self.assertGreater(len(prompt), 240)
+        self.assertLessEqual(len(prompt), 320)
+
+        request = CreateEditJobRequest(**_request_payload(userPrompt=prompt))
+        context = build_edit_context(request)
+
+        self.assertEqual(request.userPrompt, prompt)
+        self.assertIsNotNone(context.userIntent.userPromptIntent)
+        self.assertNotIn("focus defense", context.model_dump_json())
+
     def test_user_prompt_turnover_language_maps_to_defense_focus(self) -> None:
         intent = derive_user_prompt_intent("focus on turnovers, deflections, charges, and loose balls", "free")
 

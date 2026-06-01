@@ -609,8 +609,11 @@ struct HoopsClipsTests {
         let summary = CloudEditUserPromptBuilder.defaultFocusSummary(teamSelection: selection)
 
         #expect(prompt.hasPrefix("Focus on Dark jerseys."))
+        #expect(prompt.contains("Render selected-team matches"))
+        #expect(prompt.contains("reject confident opponent clips"))
         #expect(prompt.contains("Keep uncertain team clips reviewable."))
         #expect(summary.hasPrefix("Target: Dark jerseys."))
+        #expect(summary.contains("Render confident matches only"))
         #expect(summary.contains("Dark jerseys"))
         #expect(summary.contains("blocks"))
         #expect(summary.contains("forced turnovers"))
@@ -665,6 +668,7 @@ struct HoopsClipsTests {
         )
 
         #expect(prompt.hasPrefix("Make this a 4:30 team reel. Focus on White jerseys."))
+        #expect(prompt.contains("reject confident opponent clips"))
         #expect(prompt.contains("defensive stops"))
         #expect(prompt.contains("Defense can be a highlight without a make."))
         #expect(prompt.contains("Keep uncertain team clips reviewable."))
@@ -692,6 +696,7 @@ struct HoopsClipsTests {
 
         #expect(prompt.hasPrefix("please make a polished"))
         #expect(prompt.contains("Focus on White jerseys."))
+        #expect(prompt.contains("reject confident opponent clips"))
         #expect(prompt.contains("defensive stops"))
         #expect(prompt.contains("Keep uncertain team clips reviewable."))
         #expect(prompt.count <= CloudEditUserPromptBuilder.maxPromptCharacters)

@@ -1009,7 +1009,7 @@ class CreateEditJobRequest(APIModel):
     aspectRatio: Optional[AspectRatio] = None
     planTier: PlanTier = "free"
     revenueCatAppUserID: Optional[str] = Field(default=None, min_length=1, max_length=160)
-    userPrompt: Optional[str] = Field(default=None, max_length=240)
+    userPrompt: Optional[str] = Field(default=None, max_length=320)
     teamSelection: Optional[TeamSelection] = None
     clips: List[EditCandidateClip] = Field(min_length=1, max_length=GPT_CANDIDATE_REVIEW_LIMIT)
     gptRerankSummary: Optional["GPTHighlightRerankSummary"] = None

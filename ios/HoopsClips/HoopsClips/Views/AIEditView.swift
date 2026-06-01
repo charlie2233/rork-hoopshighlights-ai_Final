@@ -72,7 +72,7 @@ struct AIEditView: View {
 
     private let cloudEditService: any CloudEditServicing
     private let proUXFlags = CloudEditProUXFlags.safeDefault
-    private static let maxUserPromptCharacters = 240
+    private static let maxUserPromptCharacters = CloudEditUserPromptBuilder.maxPromptCharacters
     private static let quickPrompts: [AIEditQuickPrompt] = [
         AIEditQuickPrompt(
             id: "hype",
@@ -232,6 +232,7 @@ struct AIEditView: View {
 
             LazyVGrid(columns: heroChipGridColumns, alignment: .leading, spacing: 8) {
                 aiChip(icon: "film.stack.fill", text: "\(viewModel.keptClips.count) kept clips")
+                aiChip(icon: viewModel.settings.highlightTeamSelection.mode == .team ? "person.2.fill" : "person.3.fill", text: teamTargetChipText)
                 aiChip(icon: selectedAspectRatio.icon, text: selectedAspectRatio.rawValue)
                 aiChip(icon: "timer", text: formattedDuration(selectedDuration))
             }
@@ -681,7 +682,7 @@ struct AIEditView: View {
                 }
 
                 if userEditPrompt.isEmpty {
-                    Text("Try: focus defense, NBA recap, or 4:30 team reel.")
+                    Text("Optional: defense, NBA recap, 4:30 team reel.")
                         .font(.subheadline)
                         .foregroundStyle(AppTheme.subtleText)
                         .padding(.horizontal, 16)
@@ -2191,6 +2192,14 @@ struct AIEditView: View {
 
     private var selectedSetupSummary: String {
         "\(selectedTemplateTitle) - \(selectedAspectRatio.rawValue) - \(formattedDuration(selectedDuration))."
+    }
+
+    private var teamTargetChipText: String {
+        let selection = viewModel.settings.highlightTeamSelection
+        if selection.mode == .team {
+            return "Team: \(selection.displayTitle)"
+        }
+        return "All teams"
     }
 
     private var sanitizedUserEditPrompt: String? {
