@@ -78,6 +78,11 @@ struct ContentView: View {
         }
     }
 
+    private enum AppTabBarLayout {
+        case fixed
+        case scrollable
+    }
+
     private var needsVerification: Bool {
         guard authService.isAuthenticated else { return false }
         let hasPendingEmail = authService.pendingEmailVerification != nil
@@ -216,12 +221,10 @@ struct ContentView: View {
     }
 
     private var appTabBar: some View {
-        HStack(spacing: 6) {
-            ForEach(AppTab.allCases) { tab in
-                appTabButton(tab)
-            }
+        ViewThatFits(in: .horizontal) {
+            fixedAppTabBarRow
+            scrollableAppTabBarRow
         }
-        .padding(.horizontal, 10)
         .padding(.top, 8)
         .padding(.bottom, 8)
         .background(AppTheme.cardBg.opacity(0.96))
@@ -236,6 +239,27 @@ struct ContentView: View {
         .animation(reduceMotion ? nil : tabSelectionAnimation, value: selectedTab)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("app.tabBar")
+    }
+
+    private var fixedAppTabBarRow: some View {
+        HStack(spacing: 6) {
+            ForEach(AppTab.allCases) { tab in
+                appTabButton(tab, layout: .fixed)
+            }
+        }
+        .padding(.horizontal, 10)
+    }
+
+    private var scrollableAppTabBarRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(AppTab.allCases) { tab in
+                    appTabButton(tab, layout: .scrollable)
+                }
+            }
+            .padding(.horizontal, 10)
+        }
+        .accessibilityHint("Swipe the tab row horizontally to reveal every tab.")
     }
 
     private var tabBarVisualOffset: CGFloat {
@@ -299,7 +323,7 @@ struct ContentView: View {
         showingPaywall = false
     }
 
-    private func appTabButton(_ tab: AppTab) -> some View {
+    private func appTabButton(_ tab: AppTab, layout: AppTabBarLayout) -> some View {
         let isSelected = selectedTab == tab.rawValue
         let title = tab.title(using: languageStore)
 
@@ -311,14 +335,20 @@ struct ContentView: View {
                     .font(.system(size: 17, weight: isSelected ? .semibold : .medium))
                 Text(title)
                     .font(.caption2.weight(isSelected ? .semibold : .medium))
-                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
-                    .minimumScaleFactor(0.78)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
+                    .minimumScaleFactor(0.82)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .foregroundStyle(isSelected ? .white : AppTheme.subtleText)
-            .frame(maxWidth: .infinity)
-            .frame(height: dynamicTypeSize.isAccessibilitySize ? 66 : 52)
+            .frame(
+                minWidth: layout == .fixed ? 66 : nil,
+                maxWidth: layout == .fixed ? .infinity : nil
+            )
+            .frame(
+                width: layout == .scrollable ? tabButtonScrollableWidth : nil,
+                height: tabButtonHeight
+            )
             .background {
                 if isSelected {
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
@@ -337,6 +367,14 @@ struct ContentView: View {
         .accessibilityLabel(title)
         .accessibilityHint("Opens \(title).")
         .hoopsSelectedState(isSelected)
+    }
+
+    private var tabButtonScrollableWidth: CGFloat {
+        dynamicTypeSize.isAccessibilitySize ? 106 : 88
+    }
+
+    private var tabButtonHeight: CGFloat {
+        dynamicTypeSize.isAccessibilitySize ? 84 : 60
     }
 
     private func selectTab(_ tab: AppTab) {
