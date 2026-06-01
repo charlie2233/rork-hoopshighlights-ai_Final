@@ -56,9 +56,9 @@ nonisolated struct Clip: Identifiable, Codable, Sendable {
         var rows: [ClipReviewEvidenceRow] = [
             ClipReviewEvidenceRow(
                 id: "decision",
-                title: isKept ? "Why kept" : "Why skipped",
+                title: needsUserReview ? "Why kept" : (isKept ? "Why kept" : "Why skipped"),
                 detail: reviewDecisionReason,
-                systemImage: isKept ? "checkmark.seal.fill" : "xmark.circle.fill",
+                systemImage: needsUserReview || isKept ? "checkmark.seal.fill" : "xmark.circle.fill",
                 needsReview: needsUserReview
             ),
             ClipReviewEvidenceRow(
@@ -131,11 +131,11 @@ nonisolated struct Clip: Identifiable, Codable, Sendable {
     }
 
     private var reviewDecisionReason: String {
-        if !isKept {
-            return "Skipped clips stay out of the finished edit unless you tap Keep."
-        }
         if needsUserReview {
             return "Kept for review because team, timing, or outcome still needs a human check."
+        }
+        if !isKept {
+            return "Skipped clips stay out of the finished edit unless you tap Keep."
         }
         if action == .block || action == .steal {
             return "Kept as a defensive highlight with strong motion and visual signals."

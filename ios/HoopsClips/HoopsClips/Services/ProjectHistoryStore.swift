@@ -16,6 +16,13 @@ enum ProjectHistoryStoreError: LocalizedError {
     }
 }
 
+enum ProjectImportPhase: Equatable, Sendable {
+    case copyingSource
+    case readingMetadata
+    case generatingPreview
+    case savingProject
+}
+
 final class ProjectHistoryStore {
     private let fileManager: FileManager
     private let libraryRootURL: URL
@@ -77,7 +84,10 @@ final class ProjectHistoryStore {
         }
     }
 
-    func createProjectFromImportedVideo(sourceURL: URL) async throws -> PersistedProjectRecord {
+    func createProjectFromImportedVideo(
+        sourceURL: URL,
+        onProgress: (@Sendable (ProjectImportPhase) async -> Void)? = nil
+    ) async throws -> PersistedProjectRecord {
         try ensureDirectories()
 
         let projectID = UUID()
@@ -88,18 +98,22 @@ final class ProjectHistoryStore {
             try Task.checkCancellation()
             let sourceExtension = preferredExtension(for: sourceURL.pathExtension, fallback: "mov")
             let persistedSourceURL = projectDirectoryURL.appending(path: "source.\(sourceExtension)", directoryHint: .notDirectory)
+            await onProgress?(.copyingSource)
             try await copyReplacingItemInBackground(at: sourceURL, to: persistedSourceURL)
             try Task.checkCancellation()
 
+            await onProgress?(.readingMetadata)
             let asset = AVURLAsset(url: persistedSourceURL)
             let duration = try await asset.load(.duration)
             let durationSeconds = CMTimeGetSeconds(duration)
             try Task.checkCancellation()
 
+            await onProgress?(.generatingPreview)
             let thumbnailURL = projectDirectoryURL.appending(path: "thumbnail.jpg", directoryHint: .notDirectory)
             try await writeThumbnail(for: asset, to: thumbnailURL)
             try Task.checkCancellation()
 
+            await onProgress?(.savingProject)
             let filename = sourceURL.lastPathComponent
             let basename = (filename as NSString).deletingPathExtension
             let now = Date()

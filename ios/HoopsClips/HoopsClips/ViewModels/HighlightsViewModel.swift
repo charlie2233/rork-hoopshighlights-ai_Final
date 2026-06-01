@@ -201,7 +201,10 @@ final class HighlightsViewModel {
     }
 
     @discardableResult
-    func loadVideo(url: URL) async -> Bool {
+    func loadVideo(
+        url: URL,
+        importProgress: (@Sendable (ProjectImportPhase) async -> Void)? = nil
+    ) async -> Bool {
         let accessing = url.startAccessingSecurityScopedResource()
         defer { if accessing { url.stopAccessingSecurityScopedResource() } }
         let fileSize = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? -1
@@ -217,7 +220,10 @@ final class HighlightsViewModel {
             clearPendingCloudAnalysisJob()
             settings.highlightTeamSelection = .allTeams
             settings.opponentTeamName = nil
-            let project = try await projectStore.createProjectFromImportedVideo(sourceURL: url.standardizedFileURL)
+            let project = try await projectStore.createProjectFromImportedVideo(
+                sourceURL: url.standardizedFileURL,
+                onProgress: importProgress
+            )
             try Task.checkCancellation()
             insertProject(project, makeCurrent: true)
             applyPersistedProject(project)

@@ -171,10 +171,10 @@ struct VideoPlayerView: View {
             guard await preflightVideoImport(url: url, source: "files") != nil else {
                 return false
             }
-            await MainActor.run {
-                importStatusMessage = "Saving video to HoopClips..."
+            await updateImportStatus(for: .copyingSource)
+            let didLoadVideo = await viewModel.loadVideo(url: url) { phase in
+                await updateImportStatus(for: phase)
             }
-            let didLoadVideo = await viewModel.loadVideo(url: url)
             if didLoadVideo {
                 await MainActor.run {
                     completeImportAfterLoadedVideo()
@@ -210,10 +210,10 @@ struct VideoPlayerView: View {
                 }
 
                 try Task.checkCancellation()
-                await MainActor.run {
-                    importStatusMessage = "Saving video to HoopClips..."
+                await updateImportStatus(for: .copyingSource)
+                let didLoadVideo = await viewModel.loadVideo(url: importedVideo.url) { phase in
+                    await updateImportStatus(for: phase)
                 }
-                let didLoadVideo = await viewModel.loadVideo(url: importedVideo.url)
                 if didLoadVideo {
                     await MainActor.run {
                         completeImportAfterLoadedVideo()
@@ -338,6 +338,12 @@ struct VideoPlayerView: View {
                 importErrorMessage = "HoopClips could not read that video's details. Try saving it to Files or exporting a fresh copy from Photos."
             }
             return nil
+        }
+    }
+
+    private func updateImportStatus(for phase: ProjectImportPhase) async {
+        await MainActor.run {
+            importStatusMessage = phase.importStatusMessage
         }
     }
 
@@ -1826,6 +1832,21 @@ private extension FourCharCode {
             UInt8(self & 0xff)
         ]
         return String(bytes: bytes, encoding: .macOSRoman) ?? "\(self)"
+    }
+}
+
+private extension ProjectImportPhase {
+    var importStatusMessage: String {
+        switch self {
+        case .copyingSource:
+            return "Copying video into HoopClips..."
+        case .readingMetadata:
+            return "Reading video details..."
+        case .generatingPreview:
+            return "Building project preview..."
+        case .savingProject:
+            return "Opening project..."
+        }
     }
 }
 
