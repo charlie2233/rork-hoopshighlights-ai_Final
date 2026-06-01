@@ -23,6 +23,7 @@ struct ReviewView: View {
 
     private enum FilterOption: String, CaseIterable {
         case all = "All"
+        case priority = "Priority"
         case selectedTeam = "Team"
         case teamUncertain = "Check Team"
         case defense = "Defense"
@@ -37,6 +38,7 @@ struct ReviewView: View {
         let base: [Clip]
         switch filterOption {
         case .all: base = viewModel.clips
+        case .priority: base = priorityReviewClips
         case .selectedTeam: base = viewModel.clips.filter(clipMatchesSelectedTeam)
         case .teamUncertain: base = viewModel.clips.filter(clipNeedsTeamReview)
         case .defense: base = viewModel.clips.filter(isDefensiveClip)
@@ -250,7 +252,7 @@ struct ReviewView: View {
 
     private var availableFilterOptions: [FilterOption] {
         var options: [FilterOption] = [.all]
-        let optionalOptions: [FilterOption] = [.selectedTeam, .teamUncertain, .defense, .blocks, .steals, .needsReview, .kept, .discarded]
+        let optionalOptions: [FilterOption] = [.priority, .selectedTeam, .teamUncertain, .defense, .blocks, .steals, .needsReview, .kept, .discarded]
 
         for option in optionalOptions where shouldShowFilter(option) {
             options.append(option)
@@ -267,6 +269,8 @@ struct ReviewView: View {
         switch option {
         case .all:
             return true
+        case .priority:
+            return clipCount(for: option) > 0
         case .selectedTeam:
             return selectedTeamFilterIsAvailable && clipCount(for: option) > 0
         case .teamUncertain, .defense, .blocks, .steals, .needsReview, .kept, .discarded:
@@ -287,10 +291,7 @@ struct ReviewView: View {
     }
 
     private var priorityReviewFilter: FilterOption {
-        if !viewModel.needsReviewClips.isEmpty { return .needsReview }
-        if clipCount(for: .teamUncertain) > 0 { return .teamUncertain }
-        if clipCount(for: .defense) > 0 { return .defense }
-        return .all
+        priorityReviewClips.isEmpty ? .all : .priority
     }
 
     @ViewBuilder
@@ -609,6 +610,8 @@ struct ReviewView: View {
         switch filterOption {
         case .all:
             return "No clips"
+        case .priority:
+            return "No priority clips"
         case .selectedTeam:
             return "No selected-team clips"
         case .teamUncertain:
@@ -632,6 +635,8 @@ struct ReviewView: View {
         switch option {
         case .all:
             return "All \(viewModel.clips.count)"
+        case .priority:
+            return "Priority \(priorityReviewClips.count)"
         case .selectedTeam:
             return "Team \(clipCount(for: option))"
         case .teamUncertain:
@@ -660,6 +665,8 @@ struct ReviewView: View {
         switch option {
         case .all:
             return viewModel.clips.count
+        case .priority:
+            return priorityReviewClips.count
         case .selectedTeam:
             return viewModel.clips.filter(clipMatchesSelectedTeam).count
         case .teamUncertain:
