@@ -191,10 +191,10 @@ class TeamQuickScanTests(unittest.TestCase):
 
         prescan = team_quick_prescan_settings(full_settings)
 
-        self.assertEqual(prescan.team_quick_scan_max_candidate_clips, 64)
-        self.assertEqual(prescan.team_quick_scan_rich_candidate_clips, 32)
-        self.assertEqual(prescan.team_quick_scan_clip_frames_per_clip, 6)
-        self.assertEqual(prescan.team_quick_scan_max_total_clip_frames, 288)
+        self.assertEqual(prescan.team_quick_scan_max_candidate_clips, 96)
+        self.assertEqual(prescan.team_quick_scan_rich_candidate_clips, 64)
+        self.assertEqual(prescan.team_quick_scan_clip_frames_per_clip, 8)
+        self.assertEqual(prescan.team_quick_scan_max_total_clip_frames, 768)
         self.assertEqual(prescan.team_quick_scan_timeout_seconds, 90.0)
         self.assertEqual(full_settings.team_quick_scan_max_candidate_clips, 320)
 
@@ -227,15 +227,24 @@ class TeamQuickScanTests(unittest.TestCase):
         for frame in clip_frames:
             roles_by_clip.setdefault(frame.clip_ref, []).append(frame.role)
 
-        self.assertEqual(len(clip_frames), 288)
-        self.assertEqual(len(roles_by_clip), 64)
+        self.assertEqual(len(clip_frames), 560)
+        self.assertEqual(len(roles_by_clip), 80)
         self.assertEqual(
             roles_by_clip["clip_0"],
-            ["ballHandlerSetup", "preRelease", "release", "rimApproach", "rimResult", "followThrough"],
+            [
+                "ballHandlerSetup",
+                "preRelease",
+                "release",
+                "shotArc",
+                "rimApproach",
+                "rimResult",
+                "followThrough",
+                "finishContext",
+            ],
         )
-        self.assertEqual(roles_by_clip["clip_31"], roles_by_clip["clip_0"])
-        self.assertEqual(roles_by_clip["clip_32"], ["ballHandlerSetup", "release", "rimResult"])
-        self.assertNotIn("clip_64", roles_by_clip)
+        self.assertEqual(roles_by_clip["clip_63"], roles_by_clip["clip_0"])
+        self.assertEqual(roles_by_clip["clip_64"], ["ballHandlerSetup", "release", "rimResult"])
+        self.assertNotIn("clip_80", roles_by_clip)
 
     def test_disabled_scan_falls_back_without_calling_gpt(self) -> None:
         clips = [_clip("Three Pointer", 8.0, 12.5, 10.2)]
