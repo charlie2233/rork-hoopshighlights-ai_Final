@@ -141,10 +141,26 @@ struct HistoryView: View {
                         Button {
                             selectedProject = project
                         } label: {
-                            historyActionLabel(title: "Open", icon: "chevron.right", tint: AppTheme.neonPurple)
-                                .accessibilityLabel("Open \(project.displayTitle)")
+                            historyActionLabel(title: "Details", icon: "info.circle.fill", tint: AppTheme.neonPurple)
+                                .accessibilityLabel("Show details for \(project.displayTitle)")
                         }
                         .buttonStyle(.plain)
+                        .accessibilityIdentifier("history.project.details")
+
+                        Button {
+                            viewModel.openProject(id: project.id)
+                        } label: {
+                            historyActionLabel(
+                                title: viewModel.currentProjectID == project.id ? "Current" : "Resume",
+                                icon: "arrow.counterclockwise.circle.fill",
+                                tint: AppTheme.successGreen
+                            )
+                            .accessibilityLabel(resumeAccessibilityLabel(for: project))
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(!viewModel.canOpenProject(project) || viewModel.currentProjectID == project.id)
+                        .opacity((viewModel.canOpenProject(project) && viewModel.currentProjectID != project.id) ? 1.0 : 0.54)
+                        .accessibilityIdentifier("history.project.resume")
 
                         Button(role: .destructive) {
                             requestDelete(project)
@@ -313,6 +329,16 @@ struct HistoryView: View {
             .accessibilityLabel("Rename \(project.displayTitle)")
             .accessibilityHint("Edit this project title.")
         }
+    }
+
+    private func resumeAccessibilityLabel(for project: PersistedProjectRecord) -> String {
+        if viewModel.currentProjectID == project.id {
+            return "\(project.displayTitle) is already open"
+        }
+        if !viewModel.canOpenProject(project) {
+            return "\(project.displayTitle) cannot be resumed because its source video is missing"
+        }
+        return "Resume \(project.displayTitle)"
     }
 
     private var historyActionGridColumns: [GridItem] {
