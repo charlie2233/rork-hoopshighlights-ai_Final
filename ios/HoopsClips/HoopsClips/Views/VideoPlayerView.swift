@@ -271,6 +271,15 @@ struct VideoPlayerView: View {
 
                 await MainActor.run {
                     guard activeImportID == importID, isImportingVideo else { return }
+                    if viewModel.isVideoLoaded {
+                        LaunchTelemetry.shared.recordStabilityCheckpoint(
+                            "video_import.watchdog_recovered_loaded_video",
+                            metadata: "source=\(source) phase=slow_reminder"
+                        )
+                        completeImportAfterLoadedVideo()
+                        startTeamScanIfNeeded()
+                        return
+                    }
                     LaunchTelemetry.shared.recordStabilityCheckpoint(
                         "video_import.slow",
                         metadata: "source=\(source)"
@@ -286,6 +295,15 @@ struct VideoPlayerView: View {
 
                 await MainActor.run {
                     guard activeImportID == importID, isImportingVideo else { return }
+                    if viewModel.isVideoLoaded {
+                        LaunchTelemetry.shared.recordStabilityCheckpoint(
+                            "video_import.watchdog_recovered_loaded_video",
+                            metadata: "source=\(source) phase=timeout"
+                        )
+                        completeImportAfterLoadedVideo()
+                        startTeamScanIfNeeded()
+                        return
+                    }
                     LaunchTelemetry.shared.recordStabilityCheckpoint(
                         "video_import.timeout",
                         metadata: "source=\(source)"
