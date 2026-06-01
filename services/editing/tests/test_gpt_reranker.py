@@ -455,7 +455,7 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertTrue(compact_clip["qualityHints"]["timingWindowOk"])
         self.assertEqual(compact_clip["nativeShotSignals"]["setupContextScore"], 1.0)
         self.assertEqual(compact_clip["nativeShotSignals"]["outcomeContextScore"], 1.0)
-        self.assertEqual(shot_rules["requiredShotContextKeyframes"], [])
+        self.assertEqual(shot_rules["requiredShotContextKeyframes"], ["outcome", "preEvent"])
         pro_request = _request("pro", 1)
         pro_payload = _build_openai_payload(pro_request, pro_request.clips[:1], frames, settings)
         pro_input = json.loads(pro_payload["input"][0]["content"][0]["text"])
@@ -2836,13 +2836,23 @@ class GPTHighlightRerankerTests(unittest.TestCase):
     def test_free_and_pro_sampling_limits(self) -> None:
         settings = GPTHighlightRerankerSettings.from_env()
 
-        self.assertEqual(settings.limits_for("free"), (320, 3))
+        self.assertEqual(settings.limits_for("free"), (320, 5))
         self.assertEqual(settings.limits_for("pro")[0], 320)
         self.assertGreaterEqual(settings.limits_for("pro")[1], 5)
         self.assertLessEqual(settings.limits_for("pro")[1], 10)
         self.assertEqual(settings.limits_for("pro")[1], 10)
         self.assertEqual(settings.timeout_seconds, 120.0)
         self.assertEqual(settings.max_output_tokens, 24000)
+
+    def test_free_default_keyframes_include_setup_and_outcome_context(self) -> None:
+        settings = GPTHighlightRerankerSettings.from_env()
+        _, frames_per_clip = settings.limits_for("free")
+        request = _request("free", 1)
+
+        sampled_roles = [role for role, _ in gpt_reranker._sample_times_for_clip(request.clips[0], frames_per_clip)]
+
+        self.assertEqual(frames_per_clip, 5)
+        self.assertEqual({"start", "eventCenter", "finish", "preEvent", "outcome"}, set(sampled_roles))
 
     def test_free_sampling_reviews_full_analysis_pool_by_default(self) -> None:
         settings = GPTHighlightRerankerSettings.from_env()

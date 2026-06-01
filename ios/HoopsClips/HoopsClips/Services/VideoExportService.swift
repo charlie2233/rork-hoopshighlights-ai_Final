@@ -2,6 +2,11 @@ import Foundation
 import AVFoundation
 import Photos
 
+// The export progress timer fires on the main run loop; keep the AVFoundation read main-actor confined.
+private struct MainActorProgressSource<Value>: @unchecked Sendable {
+    let value: Value
+}
+
 @Observable
 @MainActor
 final class VideoExportService {
@@ -285,10 +290,11 @@ final class VideoExportService {
             }
 
             statusMessage = "Rendering \(theme.rawValue) export..."
+            let progressSource = MainActorProgressSource(value: exportSession)
 
-            let timer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
-                Task { @MainActor in
-                    self?.exportProgress = 0.5 + Double(exportSession.progress) * 0.5
+            let timer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { _ in
+                MainActor.assumeIsolated {
+                    self.exportProgress = 0.5 + Double(progressSource.value.progress) * 0.5
                 }
             }
 

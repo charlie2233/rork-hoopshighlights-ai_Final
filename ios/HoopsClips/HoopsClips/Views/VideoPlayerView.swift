@@ -99,6 +99,9 @@ struct VideoPlayerView: View {
             }
             .onChange(of: viewModel.videoURL) { _, newValue in
                 syncPlayer(with: newValue)
+                if newValue != nil {
+                    recoverCompletedImportIfNeeded()
+                }
             }
             .onChange(of: viewModel.isVideoLoaded) { _, isVideoLoaded in
                 if !isVideoLoaded {
@@ -111,6 +114,9 @@ struct VideoPlayerView: View {
                     HoopsAccessibility.announce("Video imported. Choose a target reel length, then start analysis.")
                     startTeamScanIfNeeded()
                 }
+            }
+            .onChange(of: viewModel.currentProjectID) { _, _ in
+                recoverCompletedImportIfNeeded()
             }
             .onChange(of: isImportingVideo) { _, isImporting in
                 HoopsAccessibility.announce(isImporting ? currentImportStatusMessage : "Video import finished.")
@@ -367,9 +373,9 @@ struct VideoPlayerView: View {
     }
 
     private func finishVideoImport(importID: UUID, didLoadVideo: Bool) {
-        guard activeImportID == importID || (didLoadVideo && viewModel.isVideoLoaded) else { return }
+        guard activeImportID == importID || viewModel.isVideoLoaded else { return }
 
-        if didLoadVideo && viewModel.isVideoLoaded {
+        if viewModel.isVideoLoaded {
             completeImportAfterLoadedVideo()
             startTeamScanIfNeeded()
             return
@@ -387,6 +393,12 @@ struct VideoPlayerView: View {
         if isImportingVideo || activeImportID != nil || importTask != nil {
             clearImportState()
         }
+    }
+
+    private func recoverCompletedImportIfNeeded() {
+        guard viewModel.isVideoLoaded else { return }
+        completeImportAfterLoadedVideo()
+        startTeamScanIfNeeded()
     }
 
     private func startTeamScanIfNeeded() {
