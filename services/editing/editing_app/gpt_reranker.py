@@ -133,7 +133,7 @@ class GPTHighlightRerankerSettings:
             ),
             free_frames_per_clip=_env_int(
                 "HOOPS_AI_CLIP_GPT_FREE_KEYFRAMES_PER_CLIP",
-                _env_int("HOOPS_GPT_HIGHLIGHT_RERANK_FREE_FRAMES_PER_CLIP", 5, 3, 10),
+                _env_int("HOOPS_GPT_HIGHLIGHT_RERANK_FREE_FRAMES_PER_CLIP", 10, 3, 10),
                 3,
                 10,
             ),

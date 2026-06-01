@@ -80,9 +80,9 @@ Revision commands such as More Hype, NBA Style, and Shorter can use GPT-produced
 
 - `HOOPS_AI_CLIP_GPT_EDITOR_ENABLED`: enables GPT-led clip selection.
 - `HOOPS_AI_CLIP_GPT_KEYFRAMES_PER_CLIP`: Pro/internal sampled-keyframe cap, clamped to `5...10`.
-- `HOOPS_AI_CLIP_GPT_FREE_KEYFRAMES_PER_CLIP`: Free sampled-keyframe cap, default `3` and clamped to `3...10`; internal staging can set `10` for quality-beta accuracy.
-- `HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_FREE`: Free candidate cap, clamped to `1...220`.
-- `HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_PRO`: Pro/internal candidate cap, clamped to `20...220`.
+- `HOOPS_AI_CLIP_GPT_FREE_KEYFRAMES_PER_CLIP`: Free sampled-keyframe cap, default `10` and clamped to `3...10` for quality-beta accuracy while daily Free edit chances remain capped separately.
+- `HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_FREE`: Free candidate cap, clamped to `1...320`.
+- `HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_PRO`: Pro/internal candidate cap, clamped to `20...320`.
 - `HOOPS_AI_CLIP_GPT_PLAN_EDIT_ENABLED`: applies GPT `planEdit` directives after validation.
 - `HOOPS_AI_CLIP_GPT_REVISION_ENABLED`: allows GPT `EditPlanPatch` revision proposals.
 
