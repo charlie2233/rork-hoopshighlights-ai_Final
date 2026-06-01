@@ -11,6 +11,7 @@ struct VideoPlayerView: View {
     @Environment(AppLanguageStore.self) private var languageStore
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.scenePhase) private var scenePhase
     @AppStorage("hoops.cloudVideoConsentAccepted.v1") private var cloudVideoConsentAccepted = false
     @State private var player: AVPlayer?
     @State private var showingFilePicker = false
@@ -117,6 +118,10 @@ struct VideoPlayerView: View {
                 }
             }
             .onChange(of: viewModel.currentProjectID) { _, _ in
+                recoverCompletedImportIfNeeded()
+            }
+            .onChange(of: scenePhase) { _, phase in
+                guard phase == .active else { return }
                 recoverCompletedImportIfNeeded()
             }
             .onChange(of: isImportingVideo) { _, isImporting in
@@ -429,7 +434,8 @@ struct VideoPlayerView: View {
     }
 
     private func completeImportAfterLoadedVideo() {
-        guard viewModel.isVideoLoaded else { return }
+        guard viewModel.reconcileCurrentProjectLoadState() else { return }
+        syncPlayer(with: viewModel.videoURL)
         importErrorMessage = nil
         if isImportingVideo || activeImportID != nil || importTask != nil {
             clearImportState()
@@ -437,7 +443,7 @@ struct VideoPlayerView: View {
     }
 
     private func recoverCompletedImportIfNeeded() {
-        guard viewModel.isVideoLoaded else { return }
+        guard viewModel.reconcileCurrentProjectLoadState() else { return }
         completeImportAfterLoadedVideo()
         startTeamScanIfNeeded()
     }
