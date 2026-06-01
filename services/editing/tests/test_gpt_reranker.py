@@ -248,6 +248,7 @@ class GPTHighlightRerankerTests(unittest.TestCase):
                 "teamAttribution",
                 "teamAttributionStatus",
                 "teamEvidence",
+                "teamDefenseContext",
                 "templateId",
                 "planTier",
                 "qualityHints",
@@ -305,13 +306,107 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertNotIn("light_make", compact_clip_ids)
         self.assertEqual(by_id["dark_make"]["teamAttributionStatus"], "matched")
         self.assertEqual(by_id["dark_make"]["teamEvidence"]["status"], "evidence_backed")
+        self.assertEqual(by_id["dark_make"]["teamDefenseContext"]["candidateLane"], "selected_team_render_candidate")
+        self.assertTrue(by_id["dark_make"]["teamDefenseContext"]["renderEligibleForSelectedTeam"])
         self.assertEqual(by_id["uncertain_make"]["teamAttributionStatus"], "uncertain")
         self.assertEqual(by_id["uncertain_make"]["teamEvidence"]["status"], "weak_evidence")
+        self.assertEqual(by_id["uncertain_make"]["teamDefenseContext"]["candidateLane"], "review_only_uncertain_team_candidate")
+        self.assertTrue(by_id["uncertain_make"]["teamDefenseContext"]["reviewOnlyUncertain"])
+        self.assertFalse(by_id["uncertain_make"]["teamDefenseContext"]["renderEligibleForSelectedTeam"])
         self.assertIn("insufficient_evidence_frame_refs", by_id["uncertain_make"]["teamEvidence"]["reasons"])
         self.assertIn("Keep uncertain team-attribution clips", payload["instructions"])
         self.assertIn("teamEvidence.status=evidence_backed", payload["instructions"])
         self.assertIn("must never be promoted to a confident selected-team match", payload["instructions"])
         self.assertIn("raw teamAttribution.confidence", payload["instructions"])
+        self.assertIn("teamDefenseContext.candidateLane", payload["instructions"])
+
+    def test_payload_adds_team_defense_context_for_selected_team_candidates(self) -> None:
+        settings = GPTHighlightRerankerSettings.from_env()
+        request = CreateEditJobRequest(
+            videoId="video_team_defense_context",
+            analysisJobId="analysis_team_defense_context",
+            installId="install-123",
+            sourceObjectKey="uploads/source.mp4",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="free",
+            teamSelection={
+                "mode": "team",
+                "teamId": "team_dark",
+                "label": "Dark jerseys",
+                "colorLabel": "black",
+                "confidenceThreshold": 0.85,
+                "includeUncertain": True,
+            },
+            clips=[
+                {
+                    **_labeled_clip("dark_steal", 0.0, 0.94, "Takeaway"),
+                    "teamAttribution": {
+                        "teamId": "team_dark",
+                        "label": "Dark jerseys",
+                        "colorLabel": "black",
+                        "confidence": 0.94,
+                        "source": "quick_scan",
+                        "evidenceFrameRefs": ["dark_steal_action", "dark_steal_outcome"],
+                        "evidenceRoleGroups": ["action", "outcome"],
+                    },
+                },
+                {
+                    **_labeled_clip("light_block", 7.0, 0.93, "Block"),
+                    "teamAttribution": {
+                        "teamId": "team_light",
+                        "label": "Light jerseys",
+                        "colorLabel": "white",
+                        "confidence": 0.95,
+                        "source": "quick_scan",
+                        "evidenceFrameRefs": ["light_block_action", "light_block_outcome"],
+                        "evidenceRoleGroups": ["action", "outcome"],
+                    },
+                },
+                {
+                    **_labeled_clip("uncertain_block", 14.0, 0.92, "Blocked Shot"),
+                    "teamAttribution": {
+                        "teamId": "team_dark",
+                        "label": "Dark jerseys",
+                        "colorLabel": "black",
+                        "confidence": 0.66,
+                        "source": "quick_scan",
+                    },
+                },
+            ],
+        )
+        frames = [
+            SampledFrame(clip_id="dark_steal", role="start", time_seconds=0.0, data_url="data:image/jpeg;base64,ZA=="),
+            SampledFrame(clip_id="light_block", role="start", time_seconds=7.0, data_url="data:image/jpeg;base64,bA=="),
+            SampledFrame(clip_id="uncertain_block", role="start", time_seconds=14.0, data_url="data:image/jpeg;base64,dQ=="),
+        ]
+
+        payload = _build_openai_payload(request, request.clips, frames, settings)
+        compact_input = json.loads(payload["input"][0]["content"][0]["text"])
+        by_id = {clip["clipId"]: clip for clip in compact_input["clips"]}
+
+        self.assertIn("dark_steal", by_id)
+        self.assertIn("uncertain_block", by_id)
+        self.assertNotIn("light_block", by_id)
+        steal_context = by_id["dark_steal"]["teamDefenseContext"]
+        self.assertEqual(steal_context["candidateLane"], "selected_team_defensive_candidate")
+        self.assertEqual(steal_context["defensiveFamily"], "steal")
+        self.assertTrue(steal_context["defensiveEventLike"])
+        self.assertEqual(steal_context["teamAttributionStatus"], "matched")
+        self.assertEqual(steal_context["teamEvidenceStatus"], "evidence_backed")
+        self.assertTrue(steal_context["renderEligibleForSelectedTeam"])
+        self.assertFalse(steal_context["reviewOnlyUncertain"])
+        self.assertTrue(steal_context["selectedTeamDefensiveHighlight"])
+        self.assertIn("possession_control_outcome", steal_context["selectionGuidance"])
+
+        block_context = by_id["uncertain_block"]["teamDefenseContext"]
+        self.assertEqual(block_context["candidateLane"], "review_only_uncertain_team_candidate")
+        self.assertEqual(block_context["defensiveFamily"], "block")
+        self.assertEqual(block_context["teamAttributionStatus"], "uncertain")
+        self.assertEqual(block_context["teamEvidenceStatus"], "weak_evidence")
+        self.assertFalse(block_context["renderEligibleForSelectedTeam"])
+        self.assertTrue(block_context["reviewOnlyUncertain"])
+        self.assertFalse(block_context["selectedTeamDefensiveHighlight"])
 
     def test_disabled_gpt_fallback_preserves_uncertain_team_review_ids(self) -> None:
         settings = GPTHighlightRerankerSettings(

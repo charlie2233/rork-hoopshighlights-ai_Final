@@ -988,6 +988,117 @@ def _defensive_candidate_family(clip: EditCandidateClip) -> Optional[str]:
     return None
 
 
+def _team_defense_context(
+    clip: EditCandidateClip,
+    team_selection: Optional[Any],
+) -> Dict[str, Any]:
+    status = team_attribution_status(clip, team_selection)
+    evidence = team_evidence_summary(clip)
+    defensive_family = _defensive_candidate_family(clip)
+    selected_team_mode = bool(team_selection is not None and team_selection.mode == "team")
+    quality_eligible = is_plan_quality_eligible_clip(clip)
+    user_kept_uncertain = selected_team_mode and status == "uncertain" and clip.userReviewDecision == "kept"
+    review_only_uncertain = selected_team_mode and status == "uncertain" and not user_kept_uncertain
+    render_eligible = _render_eligible_for_gpt_context(
+        clip=clip,
+        selected_team_mode=selected_team_mode,
+        team_status=status,
+        quality_eligible=quality_eligible,
+        user_kept_uncertain=user_kept_uncertain,
+    )
+    candidate_lane = _candidate_lane_for_gpt_context(
+        clip=clip,
+        selected_team_mode=selected_team_mode,
+        team_status=status,
+        defensive_family=defensive_family,
+        quality_eligible=quality_eligible,
+        user_kept_uncertain=user_kept_uncertain,
+        review_only_uncertain=review_only_uncertain,
+    )
+    return {
+        "candidateLane": candidate_lane,
+        "defensiveFamily": defensive_family,
+        "defensiveEventLike": defensive_family is not None,
+        "teamAttributionStatus": status,
+        "teamEvidenceStatus": evidence.get("status"),
+        "renderEligibleForSelectedTeam": render_eligible,
+        "reviewOnlyUncertain": review_only_uncertain,
+        "selectedTeamDefensiveHighlight": (
+            selected_team_mode
+            and defensive_family is not None
+            and render_eligible
+            and status in {"matched", "uncertain"}
+        ),
+        "selectionGuidance": _selection_guidance_for_gpt_context(candidate_lane),
+    }
+
+
+def _render_eligible_for_gpt_context(
+    *,
+    clip: EditCandidateClip,
+    selected_team_mode: bool,
+    team_status: str,
+    quality_eligible: bool,
+    user_kept_uncertain: bool,
+) -> bool:
+    if clip.userReviewDecision == "discarded" or not quality_eligible:
+        return False
+    if not selected_team_mode:
+        return True
+    return team_status == "matched" or user_kept_uncertain
+
+
+def _candidate_lane_for_gpt_context(
+    *,
+    clip: EditCandidateClip,
+    selected_team_mode: bool,
+    team_status: str,
+    defensive_family: Optional[str],
+    quality_eligible: bool,
+    user_kept_uncertain: bool,
+    review_only_uncertain: bool,
+) -> str:
+    if clip.userReviewDecision == "discarded":
+        return "user_discarded"
+    if selected_team_mode:
+        if team_status == "opponent":
+            return "opponent_team_candidate"
+        if review_only_uncertain:
+            return "review_only_uncertain_team_candidate"
+        if user_kept_uncertain:
+            if defensive_family is not None:
+                return "user_kept_uncertain_team_defensive_candidate"
+            return "user_kept_uncertain_team_candidate"
+        if team_status == "matched":
+            if not quality_eligible:
+                return "selected_team_quality_review_candidate"
+            if defensive_family is not None:
+                return "selected_team_defensive_candidate"
+            return "selected_team_render_candidate"
+        return "team_quality_review_candidate"
+    if defensive_family is not None:
+        if quality_eligible:
+            return "all_teams_defensive_candidate"
+        return "all_teams_defensive_quality_review_candidate"
+    if quality_eligible:
+        return "all_teams_render_candidate"
+    return "quality_review_candidate"
+
+
+def _selection_guidance_for_gpt_context(candidate_lane: str) -> str:
+    if candidate_lane == "review_only_uncertain_team_candidate":
+        return "review_only_until_user_keeps; judge highlight value but do_not_auto_render"
+    if candidate_lane == "opponent_team_candidate":
+        return "confident_opponent_clip; do_not_select_for_selected_team"
+    if "defensive" in candidate_lane:
+        return "defensive_highlight_candidate; keep_when_possession_control_outcome_and_clean_camera_are_visible"
+    if "quality_review" in candidate_lane:
+        return "low_or_incomplete_context; keep_only_if_sampled_frames_prove_event_and_outcome"
+    if candidate_lane.startswith("user_kept_uncertain_team"):
+        return "user_promoted_uncertain_team_clip; may_select_if_event_and_outcome_are_clear"
+    return "regular_candidate; judge_watchability_event_clarity_and_outcome"
+
+
 def _extract_candidate_keyframes(
     source_path: Path,
     clips: Sequence[EditCandidateClip],
@@ -1285,6 +1396,7 @@ def _build_openai_payload(
             "teamAttribution": clip.teamAttribution.model_dump(mode="json") if clip.teamAttribution is not None else None,
             "teamAttributionStatus": team_attribution_status(clip, request.teamSelection),
             "teamEvidence": team_evidence_summary(clip),
+            "teamDefenseContext": _team_defense_context(clip, request.teamSelection),
             "templateId": template.templateId,
             "planTier": request.planTier,
             "qualityHints": _candidate_quality_hints(clip),
@@ -1419,6 +1531,7 @@ def _build_openai_payload(
             "When a selected team is supplied, keep highlights for that team only; exclude confident opponent clips. Keep uncertain team-attribution clips for user review. "
             "For teamAttributionStatus=uncertain, userReviewDecision=kept is the only signal that the user explicitly promoted the clip for final editing; otherwise treat it as review-only. "
             + TEAM_EVIDENCE_GPT_GUIDANCE
+            + "Use teamDefenseContext.candidateLane, renderEligibleForSelectedTeam, reviewOnlyUncertain, and defensiveFamily to separate selected-team render candidates from review-only or opponent plays. "
             + "Selected-team blocks, steals, defensive stops, and forced turnovers can be highlights even when they are not scoring plays. "
             "Use only supplied candidate clip IDs and sampled keyframes. Do not replace FFmpeg extraction, CV tracking, rendering, or exact timestamps. "
             "Do not output FFmpeg commands, shell commands, file paths, source video URLs, or storage keys. "
@@ -1482,6 +1595,7 @@ def _build_revision_patch_payload(
                 "teamAttribution": clip.teamAttribution.model_dump(mode="json") if clip.teamAttribution is not None else None,
                 "teamAttributionStatus": team_attribution_status(clip, job.request.teamSelection),
                 "teamEvidence": team_evidence_summary(clip),
+                "teamDefenseContext": _team_defense_context(clip, job.request.teamSelection),
                 "nativeShotSignals": native_shot_signals_for_clip(clip).model_dump(mode="json"),
             }
             for clip in source_clips
