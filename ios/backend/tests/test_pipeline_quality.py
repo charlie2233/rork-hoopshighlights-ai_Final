@@ -21,6 +21,7 @@ from app.pipeline import (
     _detect_audio_reaction_boundaries,
     _detected_teams_from_clips,
     _defensive_label_family,
+    _is_audio_reaction_candidate,
     _is_audio_reaction_label,
     _is_defensive_label,
     _merge_hybrid_detection_clips,
@@ -1091,6 +1092,48 @@ class PipelineQualityTests(unittest.TestCase):
         self.assertTrue(_is_audio_reaction_label("Crowd Reaction"))
         self.assertIn("Crowd Reaction", labels)
         self.assertNotIn("Made Shot 7", labels)
+
+    def test_review_trim_reserves_unlabeled_loud_crowd_pop_candidate(self) -> None:
+        scoring = [
+            _clip(
+                start=float(index * 5),
+                end=float(index * 5 + 4),
+                label=f"Made Shot {index}",
+                combined=0.99 - (index * 0.01),
+                event_center=float(index * 5 + 2),
+                auto_keep=True,
+            )
+            for index in range(9)
+        ]
+        loud_pop = _clip(
+            start=55.0,
+            end=59.0,
+            label="Highlight",
+            combined=0.61,
+            confidence=0.7,
+            event_center=57.0,
+            auto_keep=False,
+        ).model_copy(update={"audioScore": 0.98, "motionScore": 0.76, "visualScore": 0.52})
+
+        trimmed = _trim_analysis_clips_for_review([*scoring, loud_pop], None, max_clips=8)
+        labels = [clip.label for clip in trimmed]
+
+        self.assertTrue(_is_audio_reaction_candidate(loud_pop))
+        self.assertIn("Highlight", labels)
+        self.assertNotIn("Made Shot 7", labels)
+
+    def test_unlabeled_audio_only_filler_is_not_audio_reaction_candidate(self) -> None:
+        filler = _clip(
+            start=12.0,
+            end=16.0,
+            label="Highlight",
+            combined=0.42,
+            confidence=0.42,
+            event_center=14.0,
+            auto_keep=False,
+        ).model_copy(update={"audioScore": 0.98, "motionScore": 0.22, "visualScore": 0.24})
+
+        self.assertFalse(_is_audio_reaction_candidate(filler))
 
     def test_defensive_label_classifier_ignores_stop_and_pop_jumpers(self) -> None:
         self.assertFalse(_is_defensive_label("Stop and Pop Jumper"))

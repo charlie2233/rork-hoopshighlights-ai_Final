@@ -39,6 +39,7 @@ from app.editing import (  # noqa: E402
     ReviseEditJobRequest,
     StoredEditJob,
     apply_gpt_highlight_rerank,
+    audio_reaction_source_for_clip,
     build_agent_editing_context,
     clip_outcome_evidence_source,
     clip_outcome_reliability_score,
@@ -857,7 +858,8 @@ def _candidate_quality_hints(clip: EditCandidateClip) -> Dict[str, Any]:
     duration = round(clip.duration, 3)
     is_shot_like = is_shot_like_clip(clip)
     is_defensive = _is_defensive_candidate_clip(clip)
-    is_audio_reaction = is_audio_reaction_clip(clip)
+    audio_reaction_source = audio_reaction_source_for_clip(clip)
+    is_audio_reaction = audio_reaction_source is not None
     requires_shot_timing = is_shot_like and not is_defensive
     if requires_shot_timing:
         min_duration = max(MIN_PLAN_CLIP_SECONDS, MIN_GPT_SHOT_LIKE_CANDIDATE_SECONDS)
@@ -881,6 +883,7 @@ def _candidate_quality_hints(clip: EditCandidateClip) -> Dict[str, Any]:
         "minFollowThroughSeconds": min_follow_through,
         "shotLike": is_shot_like,
         "audioReactionCandidate": is_audio_reaction,
+        "audioReactionSource": audio_reaction_source,
         "audioReactionGuidance": (
             AUDIO_REACTION_GPT_GUIDANCE
             if is_audio_reaction

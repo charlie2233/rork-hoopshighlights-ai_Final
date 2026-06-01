@@ -3166,7 +3166,7 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertEqual(reranked.clips, [])
         self.assertEqual(reranked.gptRerankSummary.fallbackReason, "all_clips_rejected")
         self.assertIn("audio_only_hype", reranked.gptRerankSummary.rejectedClipIds)
-        self.assertEqual(reranked.gptRerankSummary.rejectedReasonCounts["gpt_outcome_unsupported_by_source"], 1)
+        self.assertEqual(reranked.gptRerankSummary.rejectedReasonCounts["audio_reaction_requires_sampled_visual_evidence"], 1)
         self.assertEqual(job.status, "failed")
 
     def test_gpt_highlight_rerank_rejects_crowd_reaction_outcome_claims_without_sampled_visual_support(self) -> None:

@@ -1854,6 +1854,65 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertIn("crowd_pop_reserve", {clip.id for clip in sampled})
         self.assertTrue(gpt_reranker.is_audio_reaction_clip(request.clips[-1]))
 
+    def test_gpt_sampling_reserves_unlabeled_loud_audio_pop_for_review(self) -> None:
+        scoring = [
+            _clip(f"score_{index}", float(index * 6), 0.99 - (index * 0.01))
+            for index in range(9)
+        ]
+        request = CreateEditJobRequest(
+            videoId="video_unlabeled_audio_pop",
+            analysisJobId="analysis_unlabeled_audio_pop",
+            installId="install-123",
+            sourceObjectKey="uploads/source.mp4",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="free",
+            clips=[
+                *scoring,
+                {
+                    **_labeled_clip("unlabeled_loud_pop", 72.0, 0.7, "Highlight"),
+                    "audioPeak": 0.98,
+                    "motionScore": 0.74,
+                    "watchability": 0.62,
+                    "excitement": 0.84,
+                    "combinedScore": 0.64,
+                },
+            ],
+        )
+
+        sampled = gpt_reranker._quality_filtered_sampled_clips(
+            gpt_reranker.rank_clips(request.clips),
+            8,
+            request=request,
+        )
+
+        self.assertIn("unlabeled_loud_pop", {clip.id for clip in sampled})
+        self.assertTrue(gpt_reranker.is_audio_reaction_clip(request.clips[-1]))
+        self.assertEqual(gpt_reranker.audio_reaction_source_for_clip(request.clips[-1]), "unlabeled_loud_audio_pop")
+
+    def test_gpt_audio_reaction_detection_ignores_weak_audio_only_filler(self) -> None:
+        request = CreateEditJobRequest(
+            videoId="video_weak_audio_only",
+            analysisJobId="analysis_weak_audio_only",
+            installId="install-123",
+            sourceObjectKey="uploads/source.mp4",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="free",
+            clips=[
+                {
+                    **_labeled_clip("weak_audio_only", 12.0, 0.42, "Highlight"),
+                    "audioPeak": 0.98,
+                    "motionScore": 0.22,
+                    "watchability": 0.2,
+                    "excitement": 0.42,
+                    "combinedScore": 0.42,
+                }
+            ],
+        )
+
+        self.assertFalse(gpt_reranker.is_audio_reaction_clip(request.clips[0]))
+
     def test_shot_sampling_treats_event_center_as_rim_result_anchor(self) -> None:
         request = CreateEditJobRequest(
             videoId="video_result_anchor",

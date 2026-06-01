@@ -59,6 +59,9 @@ AUDIO_REACTION_BOUNDARY_CONTEXT_BUCKETS = 4
 AUDIO_REACTION_ONSET_CONTEXT_BUCKETS = 5
 AUDIO_REACTION_WINDOW_LEAD_SECONDS = 2.75
 AUDIO_REACTION_WINDOW_FOLLOW_SECONDS = 1.5
+UNLABELED_AUDIO_REACTION_MIN_AUDIO_SCORE = 0.92
+UNLABELED_AUDIO_REACTION_MIN_ACTIVITY_SCORE = 0.58
+UNLABELED_AUDIO_REACTION_MIN_COMBINED_SCORE = 0.50
 VisualFrameSignal = Tuple[float, ...]
 
 
@@ -201,7 +204,7 @@ def _analysis_team_diagnostic_counts(
         "stealReviewSegments": sum(1 for clip in review_clips if _defensive_label_family(clip.label) == "steal"),
         "forcedTurnoverReviewSegments": sum(1 for clip in review_clips if _defensive_label_family(clip.label) == "forced_turnover"),
         "defensiveStopReviewSegments": sum(1 for clip in review_clips if _defensive_label_family(clip.label) == "defensive_stop"),
-        "audioReactionReviewSegments": sum(1 for clip in review_clips if _is_audio_reaction_label(clip.label)),
+        "audioReactionReviewSegments": sum(1 for clip in review_clips if _is_audio_reaction_candidate(clip)),
     }
 
 
@@ -403,7 +406,7 @@ def _trim_analysis_clips_for_review(
     audio_reactions = [
         (index, clip)
         for index, clip in indexed_clips
-        if _is_audio_reaction_label(clip.label)
+        if _is_audio_reaction_candidate(clip)
     ]
     audio_reaction_reserve = _audio_reaction_review_reserve_limit(max_clips, len(audio_reactions))
     for index, clip in sorted(audio_reactions, key=_audio_reaction_reserved_clip_quality_key, reverse=True)[
@@ -989,6 +992,20 @@ def _is_audio_reaction_label(label: str) -> bool:
         "crowd pop",
         "crowd reaction",
     } or ("crowd" in tokens and "reaction" in tokens)
+
+
+def _is_audio_reaction_candidate(clip: CloudClip) -> bool:
+    if _is_audio_reaction_label(clip.label):
+        return True
+    normalized = clip.label.strip().lower()
+    generic_label = normalized in {"highlight", "clip", "play", "moment"} or normalized.endswith(" highlight")
+    if not generic_label:
+        return False
+    return (
+        clip.audioScore >= UNLABELED_AUDIO_REACTION_MIN_AUDIO_SCORE
+        and max(clip.motionScore, clip.visualScore, clip.confidence) >= UNLABELED_AUDIO_REACTION_MIN_ACTIVITY_SCORE
+        and clip.combinedScore >= UNLABELED_AUDIO_REACTION_MIN_COMBINED_SCORE
+    )
 
 
 def _probe_duration(path: Path, fallback: float) -> float:

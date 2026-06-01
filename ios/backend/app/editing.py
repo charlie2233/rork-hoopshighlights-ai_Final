@@ -126,6 +126,9 @@ MIN_NON_SHOT_PLANNING_SCORE = 0.5
 MIN_NON_SHOT_WATCHABILITY_SCORE = 0.42
 MIN_GENERIC_HIGHLIGHT_PLANNING_SCORE = 0.62
 MIN_GENERIC_HIGHLIGHT_WATCHABILITY_SCORE = 0.5
+MIN_UNLABELED_AUDIO_REACTION_PEAK = 0.92
+MIN_UNLABELED_AUDIO_REACTION_ACTIVITY = 0.58
+MIN_UNLABELED_AUDIO_REACTION_CONFIDENCE = 0.45
 MIN_NATIVE_OUTCOME_CONFLICT_CONFIDENCE = 0.65
 GPT_CANDIDATE_REVIEW_LIMIT = 320
 GPT_NON_SCORING_DEFENSIVE_OUTCOMES = {"steal", "forced_turnover", "defensive_stop"}
@@ -1922,7 +1925,8 @@ def _compact_agent_candidate_clip(
     quality_eligible = is_plan_quality_eligible_clip(clip)
     shot_like = is_shot_like_clip(clip)
     defensive_event_like = is_defensive_event_like_clip(clip)
-    audio_reaction = is_audio_reaction_clip(clip)
+    audio_reaction_source = audio_reaction_source_for_clip(clip)
+    audio_reaction = audio_reaction_source is not None
     return {
         "clipId": clip.id,
         "start": round(clip.start, 3),
@@ -1944,6 +1948,7 @@ def _compact_agent_candidate_clip(
             "shotLike": shot_like,
             "defensiveEventLike": defensive_event_like,
             "audioReactionCandidate": audio_reaction,
+            "audioReactionSource": audio_reaction_source,
             "audioReactionGuidance": audio_reaction_guidance_for_clip(clip),
             "defensiveFamily": _defensive_highlight_family(clip),
             "genericFiller": is_generic_filler_clip(clip),
@@ -2609,6 +2614,10 @@ def is_generic_filler_clip(clip: EditCandidateClip) -> bool:
 
 
 def is_audio_reaction_clip(clip: EditCandidateClip) -> bool:
+    return audio_reaction_source_for_clip(clip) is not None
+
+
+def audio_reaction_source_for_clip(clip: EditCandidateClip) -> Optional[str]:
     normalized = clip.label.strip().lower()
     explicit_reaction_label = normalized in {
         "audio pop",
@@ -2616,11 +2625,29 @@ def is_audio_reaction_clip(clip: EditCandidateClip) -> bool:
         "crowd pop",
         "crowd reaction",
     }
+    if explicit_reaction_label:
+        return "explicit_reaction_label"
+
     inferred_reaction_label = ("reaction" in normalized or "crowd" in normalized) and max(
         clip.audioPeak,
         clip.excitement,
     ) >= 0.75
-    return explicit_reaction_label or inferred_reaction_label
+    if inferred_reaction_label:
+        return "reaction_label_with_audio_energy"
+
+    has_loud_pop = clip.audioPeak >= MIN_UNLABELED_AUDIO_REACTION_PEAK
+    has_activity_near_pop = max(clip.motionScore, clip.watchability, clip.excitement) >= MIN_UNLABELED_AUDIO_REACTION_ACTIVITY
+    has_context = clip.duration >= MIN_NON_SHOT_LIKE_CLIP_SECONDS and has_minimum_non_shot_event_context(clip)
+    if (
+        is_generic_filler_clip(clip)
+        and has_loud_pop
+        and has_activity_near_pop
+        and has_context
+        and clip.confidence >= MIN_UNLABELED_AUDIO_REACTION_CONFIDENCE
+    ):
+        return "unlabeled_loud_audio_pop"
+
+    return None
 
 
 def audio_reaction_guidance_for_clip(clip: EditCandidateClip) -> Optional[str]:
