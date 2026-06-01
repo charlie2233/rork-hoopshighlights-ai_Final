@@ -245,6 +245,7 @@ final class HighlightsViewModel {
     @discardableResult
     func loadVideo(
         url: URL,
+        consumeSourceAfterImport: Bool = false,
         importProgress: (@Sendable (ProjectImportPhase) async -> Void)? = nil
     ) async -> Bool {
         let accessing = url.startAccessingSecurityScopedResource()
@@ -264,6 +265,7 @@ final class HighlightsViewModel {
             settings.opponentTeamName = nil
             let project = try await projectStore.createProjectFromImportedVideo(
                 sourceURL: url.standardizedFileURL,
+                consumeSourceAfterImport: consumeSourceAfterImport,
                 onProgress: importProgress
             )
             try Task.checkCancellation()

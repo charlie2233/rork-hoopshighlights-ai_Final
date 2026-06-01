@@ -238,7 +238,10 @@ struct VideoPlayerView: View {
 
                 try Task.checkCancellation()
                 await updateImportStatus(for: .copyingSource)
-                let didLoadVideo = await viewModel.loadVideo(url: importedVideo.url) { phase in
+                let didLoadVideo = await viewModel.loadVideo(
+                    url: importedVideo.url,
+                    consumeSourceAfterImport: VideoImportPolicy.shouldConsumeTemporaryImportedVideo(at: importedVideo.url)
+                ) { phase in
                     await updateImportStatus(for: phase)
                 }
                 if didLoadVideo {
@@ -1976,6 +1979,14 @@ enum VideoImportPolicy {
             return candidate
         }
         return fallback
+    }
+
+    static func shouldConsumeTemporaryImportedVideo(at url: URL) -> Bool {
+        let tempRoot = URL.temporaryDirectory.standardizedFileURL.path
+        let tempPrefix = tempRoot.hasSuffix("/") ? tempRoot : tempRoot + "/"
+        let standardizedURL = url.standardizedFileURL
+        return standardizedURL.path.hasPrefix(tempPrefix)
+            && standardizedURL.lastPathComponent.hasPrefix("imported_video_")
     }
 
     private static func metadataSummary(

@@ -86,6 +86,7 @@ final class ProjectHistoryStore {
 
     func createProjectFromImportedVideo(
         sourceURL: URL,
+        consumeSourceAfterImport: Bool = false,
         onProgress: (@Sendable (ProjectImportPhase) async -> Void)? = nil
     ) async throws -> PersistedProjectRecord {
         try ensureDirectories()
@@ -99,7 +100,11 @@ final class ProjectHistoryStore {
             let sourceExtension = preferredExtension(for: sourceURL.pathExtension, fallback: "mov")
             let persistedSourceURL = projectDirectoryURL.appending(path: "source.\(sourceExtension)", directoryHint: .notDirectory)
             await onProgress?(.copyingSource)
-            try await copyReplacingItemInBackground(at: sourceURL, to: persistedSourceURL)
+            if consumeSourceAfterImport {
+                try await moveReplacingItemInBackground(at: sourceURL, to: persistedSourceURL)
+            } else {
+                try await copyReplacingItemInBackground(at: sourceURL, to: persistedSourceURL)
+            }
             try Task.checkCancellation()
 
             await onProgress?(.readingMetadata)
@@ -304,11 +309,32 @@ final class ProjectHistoryStore {
 
     private func copyReplacingItemInBackground(at sourceURL: URL, to destinationURL: URL) async throws {
         try await Task.detached(priority: .utility) {
+            try Task.checkCancellation()
             let fileManager = FileManager.default
             if fileManager.fileExists(atPath: destinationURL.path) {
                 try fileManager.removeItem(at: destinationURL)
             }
             try fileManager.copyItem(at: sourceURL, to: destinationURL)
+        }.value
+    }
+
+    private func moveReplacingItemInBackground(at sourceURL: URL, to destinationURL: URL) async throws {
+        try await Task.detached(priority: .utility) {
+            try Task.checkCancellation()
+            let fileManager = FileManager.default
+            if fileManager.fileExists(atPath: destinationURL.path) {
+                try fileManager.removeItem(at: destinationURL)
+            }
+
+            do {
+                try fileManager.moveItem(at: sourceURL, to: destinationURL)
+            } catch {
+                try Task.checkCancellation()
+                if fileManager.fileExists(atPath: destinationURL.path) {
+                    try? fileManager.removeItem(at: destinationURL)
+                }
+                try fileManager.copyItem(at: sourceURL, to: destinationURL)
+            }
         }.value
     }
 

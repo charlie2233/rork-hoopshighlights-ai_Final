@@ -38,6 +38,18 @@ struct HoopsClipsTests {
         #expect(VideoImportPolicy.preferredImportedVideoFileExtension(sourceExtension: "download", fallbackExtension: "mov") == "mov")
     }
 
+    @Test func testVideoImportPolicyConsumesOnlyHoopClipsTemporaryPhotosTransfers() {
+        let importedTempURL = URL.temporaryDirectory
+            .appending(path: "imported_video_1234.mp4", directoryHint: .notDirectory)
+        let unrelatedTempURL = URL.temporaryDirectory
+            .appending(path: "coach_clip.mp4", directoryHint: .notDirectory)
+        let filesURL = URL(filePath: "/Users/tester/Movies/imported_video_1234.mp4")
+
+        #expect(VideoImportPolicy.shouldConsumeTemporaryImportedVideo(at: importedTempURL))
+        #expect(!VideoImportPolicy.shouldConsumeTemporaryImportedVideo(at: unrelatedTempURL))
+        #expect(!VideoImportPolicy.shouldConsumeTemporaryImportedVideo(at: filesURL))
+    }
+
     @Test func testVideoImportPreflightAcceptsLongerFourMinuteThirtyEditSource() throws {
         let summary = try VideoImportPolicy.evaluatePreflight(
             fileSizeBytes: 320 * 1024 * 1024,
