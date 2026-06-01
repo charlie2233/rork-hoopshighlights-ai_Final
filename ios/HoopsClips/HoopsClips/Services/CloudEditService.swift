@@ -30,7 +30,7 @@ protocol CloudEditServicing {
 }
 
 struct CloudEditService: CloudEditServicing {
-    private static let versionStatusTimeout: TimeInterval = 8
+    private static let versionStatusTimeout: TimeInterval = 15
     private static let renderHistoryTimeout: TimeInterval = 12
     private static let standardRequestTimeout: TimeInterval = 30
 

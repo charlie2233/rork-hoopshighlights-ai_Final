@@ -2060,7 +2060,7 @@ struct AIEditView: View {
             return cloudEditActionBlockedMessage
         }
         if serviceStatusIsChecking {
-            return "Checking HoopClips status. You can still start the edit."
+            return "Checking cloud status. You can still start the edit."
         }
         if !aiEditRevisionsAvailable {
             return "AI edit revisions are temporarily paused by HoopClips."
@@ -2079,7 +2079,7 @@ struct AIEditView: View {
             return "arrow.clockwise.circle"
         }
         if serviceStatusErrorMessage != nil {
-            return "exclamationmark.triangle"
+            return serviceStatusBlocksRendering ? "exclamationmark.triangle" : "info.circle.fill"
         }
         return "pause.circle"
     }
@@ -2555,9 +2555,9 @@ struct AIEditView: View {
 
     private func cloudStatusWarningMessage(for error: Error) -> String {
         if let urlError = error as? URLError, urlError.code == .timedOut {
-            return "Cloud status check took too long. You can still start the edit; HoopClips will use the real render response."
+            return "Cloud status is slow to answer. You can still start the edit; HoopClips will use the real job response."
         }
-        return "Cloud status check could not refresh. You can still start the edit; HoopClips will use the real render response."
+        return "Cloud status could not refresh. You can still start the edit; HoopClips will use the real job response."
     }
 
     @MainActor
