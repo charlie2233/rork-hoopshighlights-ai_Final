@@ -213,14 +213,19 @@ struct AIEditView: View {
 
     private var heroCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label("AI Edit Agent", systemImage: "wand.and.stars")
+            Label("Make My Reel", systemImage: "wand.and.stars")
                 .font(.title2.bold())
                 .foregroundStyle(.white)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
+                .minimumScaleFactor(0.84)
+                .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("export.aiEdit.section")
 
-            Text("Add a side note or quick focus, then tap Make My Reel.")
+            Text("Leave the note blank for an automatic edit, or tell HoopClips what to focus on.")
                 .font(.subheadline)
                 .foregroundStyle(AppTheme.subtleText)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 3)
+                .minimumScaleFactor(0.84)
                 .fixedSize(horizontal: false, vertical: true)
 
             LazyVGrid(columns: heroChipGridColumns, alignment: .leading, spacing: 8) {
@@ -664,7 +669,7 @@ struct AIEditView: View {
                     }
 
                 if userEditPrompt.isEmpty {
-                    Text("Optional: more hype, focus defense, turnovers, NBA recap, 4:30 team reel.")
+                    Text("Leave blank for best edit, or say: focus defense, NBA recap, 4:30 team reel.")
                         .font(.subheadline)
                         .foregroundStyle(AppTheme.subtleText)
                         .padding(.horizontal, 16)
@@ -759,7 +764,7 @@ struct AIEditView: View {
     }
 
     private var promptHeaderTitle: some View {
-        Label("Side Note (optional)", systemImage: "text.bubble.fill")
+        Label("Tell HoopClips (optional)", systemImage: "text.bubble.fill")
             .font(.headline)
             .foregroundStyle(.white)
             .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
@@ -2395,6 +2400,7 @@ struct AIEditView: View {
             .font(.caption.bold())
             .foregroundStyle(.white)
             .lineLimit(2)
+            .minimumScaleFactor(0.84)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 10)

@@ -397,7 +397,19 @@ enum CloudEditUserPromptBuilder {
         guard maxCharacters > 0 else { return nil }
         let trimmed = userPrompt?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if !trimmed.isEmpty {
-            return String(joinUserPrompt(trimmed, with: defaultAccuracyPrompt(teamSelection: teamSelection)).prefix(maxCharacters))
+            let guardrails = defaultAccuracyPrompt(teamSelection: teamSelection)
+            let userPromptBudget = maxCharacters - guardrails.count - 2
+            guard userPromptBudget > 0 else {
+                return String(guardrails.prefix(maxCharacters))
+            }
+
+            let budgetedUserPrompt = String(trimmed.prefix(userPromptBudget))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !budgetedUserPrompt.isEmpty else {
+                return String(guardrails.prefix(maxCharacters))
+            }
+
+            return joinUserPrompt(budgetedUserPrompt, with: guardrails)
         }
 
         return String(defaultAccuracyPrompt(teamSelection: teamSelection).prefix(maxCharacters))
@@ -426,9 +438,13 @@ enum CloudEditUserPromptBuilder {
     }
 
     private static func joinUserPrompt(_ userPrompt: String, with guardrails: String) -> String {
+        userPrompt + promptSeparator(after: userPrompt) + guardrails
+    }
+
+    private static func promptSeparator(after userPrompt: String) -> String {
         let punctuation = CharacterSet(charactersIn: ".!?")
         let needsPeriod = userPrompt.unicodeScalars.last.map { !punctuation.contains($0) } ?? false
-        return userPrompt + (needsPeriod ? ". " : " ") + guardrails
+        return needsPeriod ? ". " : " "
     }
 }
 
