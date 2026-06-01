@@ -180,21 +180,20 @@ struct AIEditView: View {
     private var workflowContent: some View {
         VStack(spacing: 18) {
             heroCard
-            actionCard
             promptCard
-            statusCard
-            if let previewPlayer {
-                previewCard(player: previewPlayer)
-            }
-            planTierCard
-            if activePolicy.planTier.isFree, proUXFlags.proUpsellEnabled {
-                proValueCard
-            }
             smartSetupCard
             if showSetupControls {
                 stylePicker
                 formatPicker
                 durationPicker
+            }
+            actionCard
+            statusCard
+            if let previewPlayer {
+                previewCard(player: previewPlayer)
+            }
+            if editPlan != nil, downloadResponse != nil || revisionResponse != nil {
+                revisionCard
             }
             aiWorkTimelineCard
             if proUXFlags.cloudLockerEnabled {
@@ -205,8 +204,9 @@ struct AIEditView: View {
                 aiWorkReceiptCard(receipt)
             }
 
-            if editPlan != nil, downloadResponse != nil || revisionResponse != nil {
-                revisionCard
+            planTierCard
+            if activePolicy.planTier.isFree, proUXFlags.proUpsellEnabled {
+                proValueCard
             }
         }
     }
@@ -218,7 +218,7 @@ struct AIEditView: View {
                 .foregroundStyle(.white)
                 .accessibilityIdentifier("export.aiEdit.section")
 
-            Text("Tap Make My Reel. Add a side note when you want a specific style, length, or focus.")
+            Text("Add a side note or quick focus, then tap Make My Reel.")
                 .font(.subheadline)
                 .foregroundStyle(AppTheme.subtleText)
                 .fixedSize(horizontal: false, vertical: true)
@@ -642,19 +642,7 @@ struct AIEditView: View {
 
     private var promptCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Label("Side Note (optional)", systemImage: "text.bubble.fill")
-                    .font(.headline)
-                    .foregroundStyle(.white)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
-                Spacer()
-                Text("\(userEditPrompt.count)/\(Self.maxUserPromptCharacters)")
-                    .font(.caption2.monospacedDigit().bold())
-                    .foregroundStyle(userEditPrompt.count >= Self.maxUserPromptCharacters ? AppTheme.warningYellow : AppTheme.subtleText)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.76)
-            }
+            promptHeader
 
             ZStack(alignment: .topLeading) {
                 TextEditor(text: $userEditPrompt)
@@ -751,6 +739,41 @@ struct AIEditView: View {
         }
         .padding(14)
         .rorkCard(cornerRadius: 16, stroke: AppTheme.softBorder, glowOpacity: 0.04)
+    }
+
+    private var promptHeader: some View {
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 6) {
+                    promptHeaderTitle
+                    promptCharacterCount
+                }
+            } else {
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    promptHeaderTitle
+                    Spacer(minLength: 8)
+                    promptCharacterCount
+                }
+            }
+        }
+    }
+
+    private var promptHeaderTitle: some View {
+        Label("Side Note (optional)", systemImage: "text.bubble.fill")
+            .font(.headline)
+            .foregroundStyle(.white)
+            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
+            .minimumScaleFactor(0.86)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var promptCharacterCount: some View {
+        Text("\(userEditPrompt.count)/\(Self.maxUserPromptCharacters)")
+            .font(.caption2.monospacedDigit().bold())
+            .foregroundStyle(userEditPrompt.count >= Self.maxUserPromptCharacters ? AppTheme.warningYellow : AppTheme.subtleText)
+            .lineLimit(1)
+            .minimumScaleFactor(0.76)
+            .accessibilityLabel("\(userEditPrompt.count) of \(Self.maxUserPromptCharacters) characters used")
     }
 
     private var quickPromptGridColumns: [GridItem] {
