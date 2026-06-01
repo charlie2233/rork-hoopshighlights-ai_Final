@@ -1,6 +1,8 @@
 import Foundation
 
 nonisolated struct Clip: Identifiable, Codable, Sendable {
+    private static let reviewEvidenceAudioCueThreshold = 0.72
+
     let id: UUID
     var startTime: Double
     var endTime: Double
@@ -72,6 +74,12 @@ nonisolated struct Clip: Identifiable, Codable, Sendable {
 
         if let teamEvidenceRow {
             rows.append(teamEvidenceRow)
+        }
+        if let defensiveEvidenceRow {
+            rows.append(defensiveEvidenceRow)
+        }
+        if let audioReactionEvidenceRow {
+            rows.append(audioReactionEvidenceRow)
         }
         if let outcomeEvidenceRow {
             rows.append(outcomeEvidenceRow)
@@ -182,6 +190,28 @@ nonisolated struct Clip: Identifiable, Codable, Sendable {
             detail: details.joined(separator: " · "),
             systemImage: needsReview ? "person.2.badge.gearshape.fill" : "person.2.fill",
             needsReview: needsReview
+        )
+    }
+
+    private var defensiveEvidenceRow: ClipReviewEvidenceRow? {
+        guard isDefensiveHighlight else { return nil }
+        return ClipReviewEvidenceRow(
+            id: "defense",
+            title: "Defensive cue",
+            detail: "Blocks, steals, pressure, loose balls, and forced turnovers can be highlights even without a made shot.",
+            systemImage: "shield.fill",
+            needsReview: false
+        )
+    }
+
+    private var audioReactionEvidenceRow: ClipReviewEvidenceRow? {
+        guard audioScore >= Self.reviewEvidenceAudioCueThreshold else { return nil }
+        return ClipReviewEvidenceRow(
+            id: "audio",
+            title: "Crowd/audio cue",
+            detail: "Audio peak \(Self.percent(audioScore)). Loud reactions can point to a highlight; check that the play outcome is visible.",
+            systemImage: "waveform",
+            needsReview: true
         )
     }
 

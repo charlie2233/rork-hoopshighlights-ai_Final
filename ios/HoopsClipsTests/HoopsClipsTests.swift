@@ -2953,12 +2953,14 @@ struct HoopsClipsTests {
             teamAttributionStatus: "matched"
         )
 
-        #expect(clip.reviewEvidenceRows.map(\.id) == ["decision", "keyframes", "team"])
+        #expect(clip.reviewEvidenceRows.map(\.id) == ["decision", "keyframes", "team", "defense"])
         #expect(clip.reviewEvidenceRows[0].detail.contains("defensive highlight"))
         #expect(clip.reviewEvidenceRows[1].detail == "Start 0:08.0 · Action 0:11.0 · Finish 0:14.5")
         #expect(clip.reviewEvidenceRows[2].title == "Team evidence")
         #expect(clip.reviewEvidenceRows[2].detail.contains("Eastside 17U, 92% confidence"))
         #expect(clip.reviewEvidenceRows[2].detail.contains("frames: action, outcome"))
+        #expect(clip.reviewEvidenceRows[3].title == "Defensive cue")
+        #expect(clip.reviewEvidenceRows[3].detail.contains("Blocks, steals"))
     }
 
     @Test func testClipReviewEvidenceRowsTreatTurnoverPressureAsDefense() {
@@ -2977,9 +2979,34 @@ struct HoopsClipsTests {
             detectionMethod: .cloud
         )
 
-        #expect(clip.reviewEvidenceRows.map(\.id) == ["decision", "keyframes"])
+        #expect(clip.reviewEvidenceRows.map(\.id) == ["decision", "keyframes", "defense"])
         #expect(clip.reviewEvidenceRows[0].detail.contains("defensive highlight"))
         #expect(clip.reviewEvidenceRows[0].detail.contains("possession-change"))
+        #expect(clip.reviewEvidenceRows[2].title == "Defensive cue")
+        #expect(clip.reviewEvidenceRows[2].detail.contains("forced turnovers"))
+    }
+
+    @Test func testClipReviewEvidenceRowsShowCrowdAudioCueForLoudReactions() {
+        let clip = Clip(
+            startTime: 24.0,
+            endTime: 29.0,
+            eventCenter: 26.4,
+            action: .unknown,
+            confidence: 0.62,
+            isKept: false,
+            label: "Audio Pop Cue",
+            audioScore: 0.94,
+            visualScore: 0.48,
+            motionScore: 0.52,
+            combinedScore: 0.67,
+            detectionMethod: .cloud
+        )
+
+        #expect(clip.reviewEvidenceRows.map(\.id) == ["decision", "keyframes", "audio"])
+        #expect(clip.reviewEvidenceRows[2].title == "Crowd/audio cue")
+        #expect(clip.reviewEvidenceRows[2].detail.contains("Audio peak 94%"))
+        #expect(clip.reviewEvidenceRows[2].detail.contains("play outcome is visible"))
+        #expect(clip.reviewEvidenceRows[2].needsReview)
     }
 
     @Test @MainActor func testViewModelExposesNeedsReviewClipsForReviewFilter() {
