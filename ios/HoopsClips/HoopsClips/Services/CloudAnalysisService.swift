@@ -2,6 +2,8 @@ import Foundation
 import UniformTypeIdentifiers
 
 struct CloudAnalysisService {
+    private static let analysisPollTimeoutSeconds: UInt64 = 8 * 60
+    private static let maxPollDelaySeconds = 5
     private let session: URLSession
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
@@ -270,7 +272,7 @@ struct CloudAnalysisService {
         initialPollAfterSeconds: Int,
         progress: @escaping @MainActor @Sendable (Double, String) -> Void
     ) async throws -> CloudAnalysisResult {
-        let timeoutNanos: UInt64 = 180 * 1_000_000_000
+        let timeoutNanos: UInt64 = Self.analysisPollTimeoutSeconds * 1_000_000_000
         let deadline = DispatchTime.now().uptimeNanoseconds + timeoutNanos
         var pollDelay = max(1, initialPollAfterSeconds)
 
@@ -316,7 +318,7 @@ struct CloudAnalysisService {
                 throw CloudAnalysisError.invalidResponse
             }
 
-            pollDelay = min(pollDelay + 1, 4)
+            pollDelay = min(pollDelay + 1, Self.maxPollDelaySeconds)
         }
 
         throw CloudAnalysisError.timedOut

@@ -410,7 +410,7 @@ nonisolated enum CloudAnalysisError: Error, LocalizedError, Sendable {
         case .uploadFailed:
             return "The video upload did not complete."
         case .timedOut:
-            return "Cloud analysis took too long and timed out."
+            return "Cloud analysis is taking longer than expected. Reopen the project from History and try again, or choose a shorter video."
         case .quotaExceeded(let remaining):
             if let remaining {
                 return "Cloud analysis quota exceeded. Remaining today: \(remaining)."
