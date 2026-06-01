@@ -542,9 +542,15 @@ def _gpt_backfill_candidate_clips(
         request.teamSelection,
         include_review_only_uncertain=False,
     )
+    ranked_render_source_clips = rank_clips(render_source_clips)
+    if request.teamSelection is not None and request.teamSelection.mode == "team":
+        ranked_render_source_clips = _selected_team_render_priority_order(
+            ranked_render_source_clips,
+            request.teamSelection,
+        )
     candidates = [
         clip
-        for clip in rank_clips(render_source_clips)
+        for clip in ranked_render_source_clips
         if clip.id not in exclude_clip_ids
         and is_plan_quality_eligible_clip(clip)
         and _candidate_quality_hints(clip)["timingWindowOk"]
@@ -844,6 +850,9 @@ def _quality_filtered_sampled_clips(
     if len(eligible) <= max_clips:
         return eligible
 
+    if request and request.teamSelection is not None and request.teamSelection.mode == "team":
+        return _selected_team_quality_filtered_sampled_clips(eligible, max_clips, request)
+
     selected: List[EditCandidateClip] = []
     selected_ids: set[str] = set()
 
@@ -881,54 +890,148 @@ def _quality_filtered_sampled_clips(
             add_clip(clip)
             reserved_defensive_count += 1
 
-    if request and request.teamSelection is not None and request.teamSelection.mode == "team":
-        render_eligible_ids = {
-            clip.id
-            for clip in filter_clips_for_team_selection(
-                eligible,
-                request.teamSelection,
-                include_review_only_uncertain=False,
-            )
-        }
-        review_only_uncertain = [
-            clip
-            for clip in eligible
-            if team_attribution_status(clip, request.teamSelection) == "uncertain"
-            and clip.id not in render_eligible_ids
-            and clip.id not in selected_ids
-        ]
-        review_only_reserve = min(len(review_only_uncertain), max(1, max_clips // 4), max_clips)
-        render_slot_limit = max(0, max_clips - review_only_reserve)
-
-        for clip in eligible:
-            if clip.id in render_eligible_ids:
-                add_clip(clip)
-                if len(selected) >= render_slot_limit:
-                    break
-
-        review_only_uncertain_ids: set[str] = set()
-        for clip in review_only_uncertain:
-            add_clip(clip)
-            review_only_uncertain_ids.add(clip.id)
-            if len(review_only_uncertain_ids) >= review_only_reserve:
-                break
-
-        if len(selected) < max_clips:
-            for clip in eligible:
-                if clip.id in render_eligible_ids:
-                    add_clip(clip)
-                    if len(selected) >= max_clips:
-                        break
-
-        if len(selected) >= max_clips:
-            return rank_clips(selected)
-
     for clip in eligible:
         add_clip(clip)
         if len(selected) >= max_clips:
             break
 
     return rank_clips(selected)
+
+
+def _selected_team_quality_filtered_sampled_clips(
+    eligible: Sequence[EditCandidateClip],
+    max_clips: int,
+    request: CreateEditJobRequest,
+) -> List[EditCandidateClip]:
+    team_selection = request.teamSelection
+    if team_selection is None:
+        return rank_clips(eligible)[:max_clips]
+
+    render_eligible_ids = {
+        clip.id
+        for clip in filter_clips_for_team_selection(
+            eligible,
+            team_selection,
+            include_review_only_uncertain=False,
+        )
+    }
+    render_candidates = _selected_team_render_priority_order(
+        [clip for clip in eligible if clip.id in render_eligible_ids],
+        team_selection,
+    )
+    review_only_uncertain = _selected_team_review_priority_order(
+        [
+            clip
+            for clip in eligible
+            if clip.id not in render_eligible_ids
+            and team_attribution_status(clip, team_selection) == "uncertain"
+        ]
+    )
+
+    selected: List[EditCandidateClip] = []
+    selected_ids: set[str] = set()
+
+    def add_clip(clip: EditCandidateClip) -> None:
+        if len(selected) >= max_clips or clip.id in selected_ids:
+            return
+        selected.append(clip)
+        selected_ids.add(clip.id)
+
+    review_only_reserve = min(len(review_only_uncertain), max(1, max_clips // 4), max_clips)
+    render_slot_limit = max(0, max_clips - review_only_reserve)
+    defensive_render_reserve = min(
+        _defensive_sampling_reserve_limit(request, max_clips),
+        render_slot_limit,
+        len(render_candidates),
+    )
+
+    reserved_defensive_count = 0
+    for family in ("block", "steal", "forced_turnover", "defensive_stop", "defensive"):
+        if reserved_defensive_count >= defensive_render_reserve:
+            break
+        for clip in render_candidates:
+            if clip.id in selected_ids or _defensive_candidate_family(clip) != family:
+                continue
+            add_clip(clip)
+            reserved_defensive_count += 1
+            break
+
+    for clip in render_candidates:
+        add_clip(clip)
+        if len(selected) >= render_slot_limit:
+            break
+
+    review_only_added = 0
+    for clip in review_only_uncertain:
+        add_clip(clip)
+        if clip.id in selected_ids:
+            review_only_added += 1
+        if review_only_added >= review_only_reserve:
+            break
+
+    if len(selected) < max_clips:
+        for clip in render_candidates:
+            add_clip(clip)
+            if len(selected) >= max_clips:
+                break
+
+    if len(selected) < max_clips:
+        for clip in review_only_uncertain:
+            add_clip(clip)
+            if len(selected) >= max_clips:
+                break
+
+    return _selected_team_final_sample_order(selected, team_selection)
+
+
+def _selected_team_render_priority_order(
+    clips: Sequence[EditCandidateClip],
+    team_selection: Any,
+) -> List[EditCandidateClip]:
+    ranked = rank_clips(clips)
+    rank_index = {clip.id: index for index, clip in enumerate(ranked)}
+    return sorted(
+        ranked,
+        key=lambda clip: (
+            1 if team_attribution_status(clip, team_selection) == "matched" else 0,
+            1 if team_evidence_summary(clip).get("status") == "evidence_backed" else 0,
+            1 if _is_defensive_candidate_clip(clip) else 0,
+            -rank_index.get(clip.id, 0),
+        ),
+        reverse=True,
+    )
+
+
+def _selected_team_review_priority_order(clips: Sequence[EditCandidateClip]) -> List[EditCandidateClip]:
+    ranked = rank_clips(clips)
+    rank_index = {clip.id: index for index, clip in enumerate(ranked)}
+    return sorted(
+        ranked,
+        key=lambda clip: (
+            1 if _is_defensive_candidate_clip(clip) else 0,
+            1 if _defensive_candidate_family(clip) in {"block", "steal", "forced_turnover", "defensive_stop"} else 0,
+            -rank_index.get(clip.id, 0),
+        ),
+        reverse=True,
+    )
+
+
+def _selected_team_final_sample_order(
+    clips: Sequence[EditCandidateClip],
+    team_selection: Any,
+) -> List[EditCandidateClip]:
+    ranked = rank_clips(clips)
+    rank_index = {clip.id: index for index, clip in enumerate(ranked)}
+    return sorted(
+        ranked,
+        key=lambda clip: (
+            1 if team_attribution_status(clip, team_selection) == "matched" else 0,
+            1 if team_evidence_summary(clip).get("status") == "evidence_backed" else 0,
+            0 if team_attribution_status(clip, team_selection) == "uncertain" else 1,
+            -rank_index.get(clip.id, 0),
+        ),
+        reverse=True,
+    )
 
 
 def _defensive_sampling_reserve_limit(request: Optional[CreateEditJobRequest], max_clips: int) -> int:
@@ -1030,6 +1133,22 @@ def _team_defense_context(
             and status in {"matched", "uncertain"}
         ),
         "selectionGuidance": _selection_guidance_for_gpt_context(candidate_lane),
+    }
+
+
+def _team_targeting_rules(team_selection: Optional[Any]) -> Dict[str, Any]:
+    selected_team_mode = bool(team_selection is not None and team_selection.mode == "team")
+    return {
+        "selectedTeamOnly": selected_team_mode,
+        "selectedTeamClipsNeedEvidenceBackedMatch": selected_team_mode,
+        "confidentOpponentClipsExcludedBeforeGpt": selected_team_mode,
+        "uncertainTeamClipsAreReviewOnlyUnlessUserKept": selected_team_mode,
+        "includeUncertainForUserReview": bool(
+            selected_team_mode and getattr(team_selection, "includeUncertain", False)
+        ),
+        "preferEvidenceBackedSelectedTeamRenderCandidates": selected_team_mode,
+        "blocksStealsForcedTurnoversAndStopsAreValidHighlights": True,
+        "doNotPromoteWeakTeamEvidenceFromVisionAlone": selected_team_mode,
     }
 
 
@@ -1428,6 +1547,7 @@ def _build_openai_payload(
                         "confidenceThreshold": 0.85,
                         "includeUncertain": True,
                     },
+                    "teamTargetingRules": _team_targeting_rules(request.teamSelection),
                     "shotTrackerRules": {
                         "preferCompletePlayContext": True,
                         "rejectTinyClips": True,
@@ -1529,6 +1649,7 @@ def _build_openai_payload(
             "When defensive roles like challenge, possessionChange, recovery, or defenseOutcome are sampled, cite those roles in shotTrackingEvidence instead of shot-arc or rim roles. "
             "Honor userEditIntent only when it is compatible with the supplied template, plan tier, candidate clips, and safety constraints. "
             "When a selected team is supplied, keep highlights for that team only; exclude confident opponent clips. Keep uncertain team-attribution clips for user review. "
+            "For selected-team jobs, prioritize evidence-backed selected-team render candidates before uncertain review-only clips in the final edit. "
             "For teamAttributionStatus=uncertain, userReviewDecision=kept is the only signal that the user explicitly promoted the clip for final editing; otherwise treat it as review-only. "
             + TEAM_EVIDENCE_GPT_GUIDANCE
             + "Use teamDefenseContext.candidateLane, renderEligibleForSelectedTeam, reviewOnlyUncertain, and defensiveFamily to separate selected-team render candidates from review-only or opponent plays. "
@@ -1579,6 +1700,7 @@ def _build_revision_patch_payload(
         "planTier": job.request.planTier,
         "templateId": template.templateId,
         "teamTargeting": team_targeting,
+        "teamTargetingRules": _team_targeting_rules(job.request.teamSelection),
         "agentTemplateCookbook": agent_template_context,
         "currentPlan": job.plan.model_dump(mode="json"),
         "candidateClips": [

@@ -301,6 +301,10 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertEqual(compact_input["teamTargeting"]["mode"], "team")
         self.assertEqual(compact_input["teamTargeting"]["confidenceThreshold"], 0.85)
         self.assertTrue(compact_input["teamTargeting"]["includeUncertain"])
+        self.assertTrue(compact_input["teamTargetingRules"]["selectedTeamOnly"])
+        self.assertTrue(compact_input["teamTargetingRules"]["preferEvidenceBackedSelectedTeamRenderCandidates"])
+        self.assertTrue(compact_input["teamTargetingRules"]["uncertainTeamClipsAreReviewOnlyUnlessUserKept"])
+        self.assertTrue(compact_input["teamTargetingRules"]["blocksStealsForcedTurnoversAndStopsAreValidHighlights"])
         self.assertIn("dark_make", compact_clip_ids)
         self.assertIn("uncertain_make", compact_clip_ids)
         self.assertNotIn("light_make", compact_clip_ids)
@@ -319,6 +323,7 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertIn("must never be promoted to a confident selected-team match", payload["instructions"])
         self.assertIn("raw teamAttribution.confidence", payload["instructions"])
         self.assertIn("teamDefenseContext.candidateLane", payload["instructions"])
+        self.assertIn("prioritize evidence-backed selected-team render candidates", payload["instructions"])
 
     def test_payload_adds_team_defense_context_for_selected_team_candidates(self) -> None:
         settings = GPTHighlightRerankerSettings.from_env()
@@ -3169,6 +3174,130 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertEqual(len(sampled), 8)
         self.assertEqual(len([clip_id for clip_id in sampled_ids if clip_id.startswith("uncertain_")]), 2)
         self.assertEqual(len([clip_id for clip_id in sampled_ids if clip_id.startswith("matched_")]), 6)
+
+    def test_selected_team_sampling_prioritizes_evidence_backed_matches_over_uncertain_defense(self) -> None:
+        uncertain_defense = [
+            {
+                **_labeled_clip(f"uncertain_defense_{index}", float(index * 7), 0.99 - (index * 0.001), label),
+                "teamAttribution": {
+                    "teamId": "team_dark",
+                    "label": "Dark jerseys",
+                    "colorLabel": "black",
+                    "confidence": 0.64,
+                    "source": "quick_scan",
+                },
+            }
+            for index, label in enumerate(
+                [
+                    "Blocked Shot",
+                    "Steal",
+                    "Forced Turnover",
+                    "Defensive Stop",
+                    "Block",
+                    "Takeaway",
+                    "Deflection",
+                    "Loose Ball Recovery",
+                ]
+            )
+        ]
+        matched = [
+            {
+                **_clip(f"matched_{index}", 100.0 + float(index * 7), 0.78 - (index * 0.001)),
+                "teamAttribution": {
+                    "teamId": "team_dark",
+                    "label": "Dark jerseys",
+                    "colorLabel": "black",
+                    "confidence": 0.93,
+                    "source": "quick_scan",
+                    "evidenceFrameRefs": [f"matched_{index}_action", f"matched_{index}_outcome"],
+                    "evidenceRoleGroups": ["action", "outcome"],
+                },
+            }
+            for index in range(8)
+        ]
+        request = CreateEditJobRequest(
+            videoId="video_selected_team_accuracy_budget",
+            analysisJobId="analysis_selected_team_accuracy_budget",
+            installId="install-123",
+            sourceObjectKey="uploads/source.mp4",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="free",
+            teamSelection={
+                "mode": "team",
+                "teamId": "team_dark",
+                "label": "Dark jerseys",
+                "colorLabel": "black",
+                "confidenceThreshold": 0.85,
+                "includeUncertain": True,
+            },
+            clips=[*uncertain_defense, *matched],
+        )
+
+        sampled = gpt_reranker._quality_filtered_sampled_clips(
+            gpt_reranker.rank_clips(request.clips),
+            8,
+            request=request,
+        )
+        sampled_ids = [clip.id for clip in sampled]
+
+        self.assertEqual(len(sampled), 8)
+        self.assertEqual(len([clip_id for clip_id in sampled_ids if clip_id.startswith("matched_")]), 6)
+        self.assertEqual(len([clip_id for clip_id in sampled_ids if clip_id.startswith("uncertain_defense_")]), 2)
+        self.assertTrue(all(clip_id.startswith("matched_") for clip_id in sampled_ids[:6]))
+
+    def test_selected_team_backfill_prefers_matched_clips_over_user_kept_uncertain(self) -> None:
+        kept_uncertain = [
+            {
+                **_clip(f"kept_uncertain_{index}", float(index * 7), 0.99 - (index * 0.001)),
+                "userReviewDecision": "kept",
+                "teamAttribution": {
+                    "teamId": "team_dark",
+                    "label": "Dark jerseys",
+                    "colorLabel": "black",
+                    "confidence": 0.65,
+                    "source": "quick_scan",
+                },
+            }
+            for index in range(6)
+        ]
+        matched = [
+            {
+                **_clip(f"matched_backfill_{index}", 100.0 + float(index * 7), 0.76 - (index * 0.001)),
+                "teamAttribution": {
+                    "teamId": "team_dark",
+                    "label": "Dark jerseys",
+                    "colorLabel": "black",
+                    "confidence": 0.93,
+                    "source": "quick_scan",
+                    "evidenceFrameRefs": [f"matched_backfill_{index}_action", f"matched_backfill_{index}_outcome"],
+                    "evidenceRoleGroups": ["action", "outcome"],
+                },
+            }
+            for index in range(4)
+        ]
+        request = CreateEditJobRequest(
+            videoId="video_selected_team_backfill",
+            analysisJobId="analysis_selected_team_backfill",
+            installId="install-123",
+            sourceObjectKey="uploads/source.mp4",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="free",
+            teamSelection={
+                "mode": "team",
+                "teamId": "team_dark",
+                "label": "Dark jerseys",
+                "colorLabel": "black",
+                "confidenceThreshold": 0.85,
+                "includeUncertain": True,
+            },
+            clips=[*kept_uncertain, *matched],
+        )
+
+        backfill = gpt_reranker._gpt_backfill_candidate_clips(request, exclude_clip_ids=set(), max_clips=3)
+
+        self.assertEqual([clip.id for clip in backfill], ["matched_backfill_0", "matched_backfill_1", "matched_backfill_2"])
 
     def test_default_model_prioritizes_full_quality_vision_editor(self) -> None:
         model_env_keys = ("HOOPS_AI_CLIP_GPT_MODEL", "HOOPS_GPT_HIGHLIGHT_RERANK_MODEL")
