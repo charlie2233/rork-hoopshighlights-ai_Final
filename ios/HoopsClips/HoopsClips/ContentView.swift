@@ -3,6 +3,7 @@ import UIKit
 
 struct ContentView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.scenePhase) private var scenePhase
     @State private var viewModel = HighlightsViewModel()
     @State private var authService = AuthService()
@@ -310,12 +311,14 @@ struct ContentView: View {
                     .font(.system(size: 17, weight: isSelected ? .semibold : .medium))
                 Text(title)
                     .font(.caption2.weight(isSelected ? .semibold : .medium))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.72)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+                    .minimumScaleFactor(0.78)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .foregroundStyle(isSelected ? .white : AppTheme.subtleText)
             .frame(maxWidth: .infinity)
-            .frame(height: 50)
+            .frame(height: dynamicTypeSize.isAccessibilitySize ? 66 : 52)
             .background {
                 if isSelected {
                     RoundedRectangle(cornerRadius: 16, style: .continuous)

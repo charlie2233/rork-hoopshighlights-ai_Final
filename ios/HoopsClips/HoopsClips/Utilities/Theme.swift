@@ -27,25 +27,40 @@ enum AppTheme {
         endPoint: .bottomTrailing
     )
 
-    static let meshBackground = MeshGradient(
-        width: 3, height: 3,
-        points: [
-            [0.0, 0.0], [0.5, 0.0], [1.0, 0.0],
-            [0.0, 0.5], [0.5, 0.5], [1.0, 0.5],
-            [0.0, 1.0], [0.5, 1.0], [1.0, 1.0]
-        ],
-        colors: [
-            Color(red: 0.05, green: 0.01, blue: 0.10),
-            Color(red: 0.15, green: 0.03, blue: 0.25),
-            Color(red: 0.05, green: 0.01, blue: 0.10),
-            Color(red: 0.10, green: 0.02, blue: 0.20),
-            Color(red: 0.30, green: 0.08, blue: 0.50),
-            Color(red: 0.10, green: 0.02, blue: 0.20),
-            Color(red: 0.05, green: 0.01, blue: 0.10),
-            Color(red: 0.15, green: 0.03, blue: 0.25),
-            Color(red: 0.05, green: 0.01, blue: 0.10)
-        ]
-    )
+    @ViewBuilder
+    static var meshBackground: some View {
+        if #available(iOS 18.0, *) {
+            MeshGradient(
+                width: 3, height: 3,
+                points: [
+                    [0.0, 0.0], [0.5, 0.0], [1.0, 0.0],
+                    [0.0, 0.5], [0.5, 0.5], [1.0, 0.5],
+                    [0.0, 1.0], [0.5, 1.0], [1.0, 1.0]
+                ],
+                colors: [
+                    Color(red: 0.05, green: 0.01, blue: 0.10),
+                    Color(red: 0.15, green: 0.03, blue: 0.25),
+                    Color(red: 0.05, green: 0.01, blue: 0.10),
+                    Color(red: 0.10, green: 0.02, blue: 0.20),
+                    Color(red: 0.30, green: 0.08, blue: 0.50),
+                    Color(red: 0.10, green: 0.02, blue: 0.20),
+                    Color(red: 0.05, green: 0.01, blue: 0.10),
+                    Color(red: 0.15, green: 0.03, blue: 0.25),
+                    Color(red: 0.05, green: 0.01, blue: 0.10)
+                ]
+            )
+        } else {
+            LinearGradient(
+                colors: [
+                    Color(red: 0.05, green: 0.01, blue: 0.10),
+                    Color(red: 0.18, green: 0.04, blue: 0.30),
+                    Color(red: 0.05, green: 0.01, blue: 0.10)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        }
+    }
 }
 
 extension View {
