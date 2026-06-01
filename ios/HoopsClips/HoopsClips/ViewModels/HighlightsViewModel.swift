@@ -597,6 +597,7 @@ final class HighlightsViewModel {
         guard selection.mode == .team else { return true }
         guard let attribution = clip.teamAttribution else { return false }
         guard attribution.confidence >= selection.confidenceThreshold else { return false }
+        guard hasConfidentCloudEditTeamEvidence(attribution) else { return false }
 
         let selectedKeys = normalizedHighlightTeamKeys(selection.teamId, selection.colorLabel, selection.label)
         let attributedKeys = normalizedHighlightTeamKeys(attribution.teamId, attribution.colorLabel, attribution.label)
@@ -611,6 +612,7 @@ final class HighlightsViewModel {
         guard selection.mode == .team else { return false }
         guard let attribution = clip.teamAttribution else { return false }
         guard attribution.confidence >= selection.confidenceThreshold else { return false }
+        guard hasConfidentCloudEditTeamEvidence(attribution) else { return false }
 
         let selectedKeys = normalizedHighlightTeamKeys(selection.teamId, selection.colorLabel, selection.label)
         let attributedKeys = normalizedHighlightTeamKeys(attribution.teamId, attribution.colorLabel, attribution.label)
@@ -634,6 +636,15 @@ final class HighlightsViewModel {
 
     nonisolated private static func normalizedHighlightTeamKeys(_ values: String?...) -> Set<String> {
         Set(values.compactMap(normalizedHighlightTeamKey))
+    }
+
+    nonisolated private static func hasConfidentCloudEditTeamEvidence(_ attribution: ClipTeamAttribution) -> Bool {
+        let source = (attribution.source ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard cloudEditTeamEvidenceRequiredSources.contains(source) else { return true }
+        let frameRefs = Set((attribution.evidenceFrameRefs ?? []).filter { !$0.isEmpty })
+        let roleGroups = Set((attribution.evidenceRoleGroups ?? []).filter { !$0.isEmpty })
+        return frameRefs.count >= cloudEditMinTeamEvidenceFrameRefs
+            && roleGroups.count >= cloudEditMinTeamEvidenceRoleGroups
     }
 
     nonisolated private static func normalizedHighlightTeamKey(_ value: String?) -> String? {
@@ -776,6 +787,14 @@ final class HighlightsViewModel {
     nonisolated private static let cloudEditSelectedTeamReserveMinScore = 0.72
     nonisolated private static let cloudEditSelectedTeamReserveMinConfidence = 0.70
     nonisolated private static let cloudEditSelectedTeamReserveMinWatchability = 0.64
+    nonisolated private static let cloudEditTeamEvidenceRequiredSources: Set<String> = [
+        "quick_scan",
+        "gpt_frame_review",
+        "provider",
+        "unknown"
+    ]
+    nonisolated private static let cloudEditMinTeamEvidenceFrameRefs = 2
+    nonisolated private static let cloudEditMinTeamEvidenceRoleGroups = 2
 
     nonisolated static func cloudEditRequestCandidateClips(
         from clips: [Clip],

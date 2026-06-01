@@ -1727,6 +1727,113 @@ struct HoopsClipsTests {
         #expect(request.clips.first { $0.id == weakUncertainClip.id.uuidString } == nil)
     }
 
+    @Test func testCloudEditAutoKeepRequiresEvidenceBackedQuickScanTeamMatch() {
+        let selection = HighlightTeamSelection(
+            mode: .team,
+            teamId: "team_dark",
+            label: "Dark jerseys",
+            colorLabel: "black",
+            confidenceThreshold: 0.85,
+            includeUncertain: true
+        )
+        var clip = Clip(
+            startTime: 12.0,
+            endTime: 18.0,
+            eventCenter: 15.0,
+            action: .madeShot,
+            confidence: 0.94,
+            isKept: false,
+            label: "Dark Jersey Finish",
+            audioScore: 0.65,
+            visualScore: 0.88,
+            motionScore: 0.84,
+            combinedScore: 0.9,
+            detectionMethod: .cloud,
+            teamAttribution: ClipTeamAttribution(
+                teamId: "team_dark",
+                label: "Dark jerseys",
+                colorLabel: "black",
+                confidence: 0.96,
+                source: "quick_scan"
+            )
+        )
+
+        #expect(!HighlightsViewModel.isAutoKeepHighConfidenceEligible(clip, teamSelection: selection))
+
+        clip.teamAttribution?.evidenceFrameRefs = ["setup_frame", "outcome_frame"]
+        clip.teamAttribution?.evidenceRoleGroups = ["setup", "outcome"]
+
+        #expect(HighlightsViewModel.isAutoKeepHighConfidenceEligible(clip, teamSelection: selection))
+    }
+
+    @Test @MainActor func testCloudEditRequestKeepsWeakOpponentEvidenceReviewableWhenUncertainAllowed() throws {
+        let viewModel = HighlightsViewModel()
+        viewModel.cloudEditSourceObjectKey = "uploads/source.mp4"
+        viewModel.settings.highlightTeamSelection = HighlightTeamSelection(
+            mode: .team,
+            teamId: "team_dark",
+            label: "Dark jerseys",
+            colorLabel: "black",
+            confidenceThreshold: 0.85,
+            includeUncertain: true
+        )
+
+        let keptDarkClip = Clip(
+            startTime: 8.0,
+            endTime: 14.0,
+            eventCenter: 11.0,
+            action: .madeShot,
+            confidence: 0.92,
+            isKept: true,
+            label: "Kept Dark Shot",
+            audioScore: 0.7,
+            visualScore: 0.85,
+            motionScore: 0.82,
+            combinedScore: 0.88,
+            detectionMethod: .cloud,
+            teamAttribution: ClipTeamAttribution(
+                teamId: "team_dark",
+                label: "Dark jerseys",
+                colorLabel: "black",
+                confidence: 0.93,
+                source: "quick_scan",
+                evidenceFrameRefs: ["dark_setup", "dark_outcome"],
+                evidenceRoleGroups: ["setup", "outcome"]
+            )
+        )
+        let weakOpponentEvidenceSteal = Clip(
+            startTime: 24.0,
+            endTime: 29.0,
+            eventCenter: 26.2,
+            action: .steal,
+            confidence: 0.84,
+            isKept: false,
+            label: "Possible Opponent-Labeled Steal",
+            audioScore: 0.48,
+            visualScore: 0.74,
+            motionScore: 0.78,
+            combinedScore: 0.82,
+            detectionMethod: .cloud,
+            teamAttribution: ClipTeamAttribution(
+                teamId: "team_light",
+                label: "Light jerseys",
+                colorLabel: "white",
+                confidence: 0.94,
+                source: "quick_scan"
+            )
+        )
+        viewModel.analysisService.clips = [keptDarkClip, weakOpponentEvidenceSteal]
+
+        let request = try viewModel.createCloudEditRequest(
+            preset: .personalHighlight,
+            targetDurationSeconds: 30,
+            isProUser: false
+        )
+
+        #expect(request.clips.map(\.label) == ["Kept Dark Shot", "Possible Opponent-Labeled Steal"])
+        #expect(request.clips.first { $0.id == weakOpponentEvidenceSteal.id.uuidString }?.userReviewDecision == "unreviewed")
+    }
+
     @Test @MainActor func testCloudEditRequestCanDisableUncertainTeamCandidateReserve() throws {
         let viewModel = HighlightsViewModel()
         viewModel.cloudEditSourceObjectKey = "uploads/source.mp4"
