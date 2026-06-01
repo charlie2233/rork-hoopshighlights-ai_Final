@@ -771,7 +771,9 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertEqual(rules["minRecommendedKeptClipCount"], 12)
         self.assertTrue(rules["longTargetDuration"])
         self.assertTrue(rules["veryLongTargetDuration"])
+        self.assertIn("4:30", rules["veryLongReelPolicy"])
         self.assertIn("do_not_keep_only_top_few", rules["overPrunePolicy"])
+        self.assertIn("near 4:30", payload["instructions"])
         self.assertIn("Honor selectionQualityRules", payload["instructions"])
 
     def test_payload_preserves_native_uncertain_outcome_over_provider_made_label(self) -> None:
@@ -2493,6 +2495,7 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         medium_request = short_request.model_copy(update={"targetDurationSeconds": 45})
         long_request = short_request.model_copy(update={"targetDurationSeconds": 270})
         full_pool_long_request = _request("free", 30).model_copy(update={"targetDurationSeconds": 270})
+        deep_pool_long_request = _request("free", 80).model_copy(update={"targetDurationSeconds": 270})
 
         short_count, _ = gpt_reranker._gpt_underfill_floor(short_request, short_request.clips)
         medium_count, _ = gpt_reranker._gpt_underfill_floor(medium_request, medium_request.clips)
@@ -2501,6 +2504,10 @@ class GPTHighlightRerankerTests(unittest.TestCase):
             full_pool_long_request,
             full_pool_long_request.clips,
         )
+        deep_pool_long_count, deep_pool_long_duration_floor = gpt_reranker._gpt_underfill_floor(
+            deep_pool_long_request,
+            deep_pool_long_request.clips,
+        )
 
         self.assertEqual(short_count, 3)
         self.assertEqual(medium_count, 4)
@@ -2508,6 +2515,8 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertGreaterEqual(long_duration_floor, 70.0)
         self.assertEqual(full_pool_long_count, 30)
         self.assertGreaterEqual(full_pool_long_duration_floor, 145.0)
+        self.assertEqual(deep_pool_long_count, 42)
+        self.assertGreaterEqual(deep_pool_long_duration_floor, 180.0)
 
     def test_underfill_ignores_review_only_uncertain_selected_team_candidates(self) -> None:
         matched = {

@@ -644,7 +644,7 @@ def _gpt_underfill_desired_clip_count(target_seconds: float) -> int:
         return 14
     if target_seconds <= 240:
         return 24
-    return 34
+    return 42
 
 
 def _gpt_underfill_duration_ratio(target_seconds: float) -> float:
@@ -654,7 +654,7 @@ def _gpt_underfill_duration_ratio(target_seconds: float) -> float:
         return 0.45
     if target_seconds <= 240:
         return 0.58
-    return 0.55
+    return 0.67
 
 
 def _bounded_gpt_clip_duration(request: CreateEditJobRequest, clip: EditCandidateClip) -> float:
@@ -1728,6 +1728,7 @@ def _build_openai_payload(
             "Honor userEditIntent only when it is compatible with the supplied template, plan tier, candidate clips, and safety constraints. "
             "When selectionQualityRules.defenseOnlyRequested is true, build a defense-first edit from blocks, steals, forced turnovers, defensive stops, deflections, charges, pressure, and loose-ball recoveries; include ordinary offensive makes only when there are not enough clear defensive candidates for a reviewable result. "
             "Honor selectionQualityRules: for long target durations, keep enough non-duplicate, clear, reviewable highlights to satisfy the recommended kept clip count and duration floor when the candidate pool supports it. "
+            "For very long reels near 4:30, build a fuller edit with offense, defense, transition, and story variety; do not collapse it into a short best-of reel when clear candidates exist. "
             "Reject boring, unclear, duplicate, or unsafe clips, but do not over-prune a long reel down to only two or three clips unless the supplied candidates truly lack visible outcomes. "
             "When a selected team is supplied, keep highlights for that team only; exclude confident opponent clips. Keep uncertain team-attribution clips for user review. "
             "For selected-team jobs, prioritize evidence-backed selected-team render candidates before uncertain review-only clips in the final edit. "
@@ -1786,6 +1787,7 @@ def _gpt_selection_quality_rules(
         "veryLongTargetDuration": target_duration >= 180.0,
         "defenseOnlyRequested": defense_only,
         "selectionPolicy": "maximize clear highlight value while preserving enough quality clips for the requested reel length",
+        "veryLongReelPolicy": "for reels near 4:30, preserve a fuller sequence of clear offense, defense, transition, and story moments instead of compressing to a short mixtape",
         "defenseOnlyPolicy": "when requested, prioritize blocks, steals, forced turnovers, defensive stops, deflections, charges, pressure, and loose-ball recoveries; use offensive makes only when defensive candidates cannot satisfy a reviewable reel",
         "overPrunePolicy": "do_not_keep_only_top_few_for_long_reels_when_more_clear_non_duplicate_candidates_exist",
         "duplicatePolicy": "reject true duplicates, but use distinct outcomes from the same game stretch when they add story value",

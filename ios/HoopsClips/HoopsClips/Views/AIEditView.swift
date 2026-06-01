@@ -681,21 +681,27 @@ struct AIEditView: View {
                     Button {
                         selectedAspectRatio = aspectRatio
                     } label: {
-                        VStack(spacing: 6) {
+                        VStack(spacing: dynamicTypeSize.isAccessibilitySize ? 8 : 6) {
                             Image(systemName: aspectRatio.icon)
                                 .font(.headline)
+                                .frame(height: dynamicTypeSize.isAccessibilitySize ? 24 : 20)
                             Text(aspectRatio.title)
                                 .font(.caption.bold())
+                                .multilineTextAlignment(.center)
+                                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
+                                .minimumScaleFactor(0.82)
+                                .fixedSize(horizontal: false, vertical: true)
                             Text(aspectRatio.subtitle)
                                 .font(.caption2)
-                                .lineLimit(2)
+                                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
                                 .minimumScaleFactor(0.84)
                                 .multilineTextAlignment(.center)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                         .foregroundStyle(selectedAspectRatio == aspectRatio ? .white : AppTheme.subtleText)
-                        .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 78 : 64)
+                        .frame(maxWidth: .infinity, minHeight: formatButtonMinHeight)
                         .padding(.vertical, 10)
+                        .padding(.horizontal, 6)
                         .background(selectedAspectRatio == aspectRatio ? AppTheme.accentPurple : AppTheme.cardBg, in: .rect(cornerRadius: 12))
                     }
                     .buttonStyle(.plain)
@@ -930,8 +936,12 @@ struct AIEditView: View {
 
     private var formatGridColumns: [GridItem] {
         [
-            GridItem(.adaptive(minimum: dynamicTypeSize.isAccessibilitySize ? 168 : 112, maximum: 220), spacing: 8, alignment: .top)
+            GridItem(.adaptive(minimum: dynamicTypeSize.isAccessibilitySize ? 184 : 126, maximum: 240), spacing: 8, alignment: .top)
         ]
+    }
+
+    private var formatButtonMinHeight: CGFloat {
+        dynamicTypeSize.isAccessibilitySize ? 112 : 76
     }
 
     private var statusCard: some View {
