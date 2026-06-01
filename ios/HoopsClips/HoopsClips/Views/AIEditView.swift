@@ -259,10 +259,11 @@ struct AIEditView: View {
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
                         .accessibilityIdentifier("export.aiEdit.plan.current")
-                    Text("\(policy.maxDailyRenders) video edits/day - \(policy.maxOutputResolution) max")
+                    Text("\(policy.maxDailyRenders) AI edits/day - \(policy.maxOutputResolution) max")
                         .font(.caption.bold())
                         .foregroundStyle(AppTheme.warningYellow)
-                        .lineLimit(2)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
+                        .minimumScaleFactor(0.84)
                         .fixedSize(horizontal: false, vertical: true)
                         .accessibilityIdentifier("export.aiEdit.queue.label")
                 }
@@ -785,6 +786,9 @@ struct AIEditView: View {
                 Text(phase.displayLabel)
                     .font(.headline)
                     .foregroundStyle(statusColor)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
+                    .minimumScaleFactor(0.84)
+                    .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("export.aiEdit.statusLabel")
                 Spacer()
                 if isWorking {
@@ -797,10 +801,16 @@ struct AIEditView: View {
                 Text("\(editPlan.clips.count) clips planned for \(editPlan.targetDurationSeconds)s, \(editPlan.aspectRatio.rawValue).")
                     .font(.caption)
                     .foregroundStyle(AppTheme.subtleText)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
+                    .minimumScaleFactor(0.84)
+                    .fixedSize(horizontal: false, vertical: true)
             } else {
                 Text(viewModel.cloudEditUnavailableReason ?? renderStateGuidance)
                     .font(.caption)
                     .foregroundStyle(AppTheme.subtleText)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 5 : 3)
+                    .minimumScaleFactor(0.84)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             if let activeAIWorkPhrase {

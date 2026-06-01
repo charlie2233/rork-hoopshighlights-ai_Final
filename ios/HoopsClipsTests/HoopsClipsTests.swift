@@ -337,7 +337,7 @@ struct HoopsClipsTests {
         #expect(free.planLimitRows.contains("720p max export"))
         #expect(free.maxRenderSeconds == 270)
         #expect(free.maxDailyRenders == 3)
-        #expect(free.planLimitRows.contains("3 video edits/day"))
+        #expect(free.planLimitRows.contains("3 AI edits/day"))
         #expect(AppConstants.cloudAnalysisDailyQuota == 3)
         #expect(pro.planLimitRows.contains("1080p max export"))
         #expect(free.retentionSummary == "Videos stored for 14 days")
@@ -480,6 +480,7 @@ struct HoopsClipsTests {
         #expect(prompt.contains("visible outcomes"))
         #expect(prompt.contains("blocks"))
         #expect(prompt.contains("steals"))
+        #expect(prompt.contains("Defense does not need a made basket."))
         #expect(prompt.contains("Reject duplicates"))
         #expect(prompt.count <= CloudEditUserPromptBuilder.maxPromptCharacters)
     }
@@ -505,6 +506,7 @@ struct HoopsClipsTests {
         #expect(prompt.contains("Keep strong uncertain team clips reviewable."))
         #expect(summary.contains("Dark jerseys"))
         #expect(summary.contains("blocks"))
+        #expect(summary.contains("defensive stops"))
         #expect(summary.count <= CloudEditUserPromptBuilder.maxPromptCharacters)
     }
 
@@ -521,6 +523,7 @@ struct HoopsClipsTests {
         #expect(prompt.contains("visible outcomes"))
         #expect(prompt.contains("blocks"))
         #expect(prompt.contains("steals"))
+        #expect(prompt.contains("Defense does not need a made basket."))
         #expect(prompt.contains("Reject duplicates"))
         #expect(prompt.count <= CloudEditUserPromptBuilder.maxPromptCharacters)
     }
@@ -543,6 +546,7 @@ struct HoopsClipsTests {
 
         #expect(prompt.hasPrefix("Make this a 4:30 team reel. Focus on White jerseys."))
         #expect(prompt.contains("defensive stops"))
+        #expect(prompt.contains("Defense does not need a made basket."))
         #expect(prompt.contains("Keep strong uncertain team clips reviewable."))
         #expect(prompt.count <= CloudEditUserPromptBuilder.maxPromptCharacters)
     }
@@ -1829,6 +1833,7 @@ struct HoopsClipsTests {
     @Test @MainActor func testCloudEditRequestDoesNotSendLatePreBasketShotCandidate() throws {
         let viewModel = HighlightsViewModel()
         viewModel.cloudEditSourceObjectKey = "uploads/source.mp4"
+        viewModel.settings.highlightTeamSelection = .allTeams
         let latePreBasketOnly = Clip(
             startTime: 10.0,
             endTime: 16.0,
@@ -1871,6 +1876,7 @@ struct HoopsClipsTests {
     @Test @MainActor func testCloudEditRequestTagsOverlappingSameMomentDuplicateGroups() throws {
         let viewModel = HighlightsViewModel()
         viewModel.cloudEditSourceObjectKey = "uploads/source.mp4"
+        viewModel.settings.highlightTeamSelection = .allTeams
         let firstWindow = Clip(
             startTime: 10.0,
             endTime: 16.0,
