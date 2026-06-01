@@ -70,6 +70,7 @@ struct AIEditView: View {
     @State private var showSetupControls = false
     @State private var showTimelineDetails = false
     @State private var showAdvancedAIEditDetails = false
+    @State private var showAllDurationOptions = false
     @State private var activeInstallID: String?
 
     private let cloudEditService: any CloudEditServicing
@@ -93,6 +94,12 @@ struct AIEditView: View {
             title: "Clear outcomes",
             prompt: "Prefer clips with a visible outcome. Keep uncertain but strong moments so I can review them.",
             icon: "scope"
+        ),
+        AIEditQuickPrompt(
+            id: "crowd-pop",
+            title: "Crowd pops",
+            prompt: "Use loud crowd pops, bench reactions, and audio spikes as highlight clues, but only keep them when the play outcome is visible.",
+            icon: "waveform"
         ),
         AIEditQuickPrompt(
             id: "team-recap",
@@ -189,6 +196,7 @@ struct AIEditView: View {
         showPlanDetails = false
         showTimelineDetails = false
         showAdvancedAIEditDetails = false
+        showAllDurationOptions = false
     }
 
     private var sheetBody: some View {
@@ -665,6 +673,28 @@ struct AIEditView: View {
                     .accessibilityIdentifier(durationAccessibilityIdentifier(for: duration))
                     .accessibilityValue(duration > activePolicy.maxRenderSeconds ? "Unavailable on \(activePolicy.displayName)" : (selectedDuration == duration ? "Selected" : "Not selected"))
                 }
+            }
+
+            if shouldShowDurationOptionsToggle {
+                Button {
+                    HoopsAccessibility.animate(reduceMotion: reduceMotion, .snappy(duration: 0.18)) {
+                        showAllDurationOptions.toggle()
+                    }
+                } label: {
+                    Label(showAllDurationOptions ? "Show fewer lengths" : "More lengths", systemImage: showAllDurationOptions ? "chevron.up.circle.fill" : "ellipsis.circle.fill")
+                        .font(.caption.bold())
+                        .multilineTextAlignment(.center)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
+                        .minimumScaleFactor(0.84)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 52 : 42)
+                        .padding(.horizontal, 8)
+                }
+                .buttonStyle(.bordered)
+                .tint(AppTheme.neonPurple)
+                .accessibilityIdentifier("export.aiEdit.length.moreButton")
+                .accessibilityValue(showAllDurationOptions ? "All length choices shown" : "Only common length choices shown")
+                .accessibilityHint("Shows or hides longer AI edit length choices.")
             }
         }
         .padding(14)
@@ -2529,6 +2559,7 @@ struct AIEditView: View {
         selectedPreset = preset
         selectedAspectRatio = preset.aspectRatio
         selectedDuration = defaultDuration(options: preset.durationOptions)
+        showAllDurationOptions = false
     }
 
     private func selectProTemplate(_ template: CloudEditProTemplate) {
@@ -2536,6 +2567,7 @@ struct AIEditView: View {
         selectedPreset = template.preset
         selectedAspectRatio = template.aspectRatio
         selectedDuration = defaultDuration(options: template.durationOptions)
+        showAllDurationOptions = false
     }
 
     private func defaultDuration(options: [Int]) -> Int {
@@ -2543,16 +2575,49 @@ struct AIEditView: View {
         return available.dropFirst().first ?? available.first ?? min(options[0], activePolicy.maxRenderSeconds)
     }
 
+    private var allowedDurationOptions: [Int] {
+        (selectedProTemplate?.durationOptions ?? selectedPreset.durationOptions)
+            .filter { $0 <= activePolicy.maxRenderSeconds }
+            .sorted()
+    }
+
     private var displayedDurationOptions: [Int] {
-        var options = selectedProTemplate?.durationOptions ?? selectedPreset.durationOptions
+        let options = Self.visibleDurationOptions(
+            allowedOptions: allowedDurationOptions,
+            selectedDuration: selectedDuration,
+            showAllOptions: showAllDurationOptions
+        )
+        return options
+    }
+
+    private var shouldShowDurationOptionsToggle: Bool {
+        allowedDurationOptions.count > displayedDurationOptions.count || showAllDurationOptions
+    }
+
+    static func visibleDurationOptions(
+        allowedOptions: [Int],
+        selectedDuration: Int,
+        showAllOptions: Bool
+    ) -> [Int] {
+        let sortedAllowed = allowedOptions.sorted()
+        guard !showAllOptions else { return sortedAllowed }
+
+        let commonDurations = [30, 60, 90, 120]
+        var options = sortedAllowed.filter { commonDurations.contains($0) }
+        if options.isEmpty {
+            options = Array(sortedAllowed.prefix(4))
+        } else if !options.contains(selectedDuration) {
+            options.append(selectedDuration)
+        }
+
         if !options.contains(selectedDuration) {
             options.insert(selectedDuration, at: 0)
         }
-        return options.sorted()
+        return Array(Set(options)).sorted()
     }
 
     private func nearestAllowedDuration(to requestedSeconds: Int) -> Int? {
-        let options = displayedDurationOptions.filter { $0 <= activePolicy.maxRenderSeconds }
+        let options = allowedDurationOptions
         return options.min { lhs, rhs in
             let lhsDistance = abs(lhs - requestedSeconds)
             let rhsDistance = abs(rhs - requestedSeconds)

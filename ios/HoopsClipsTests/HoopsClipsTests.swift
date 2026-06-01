@@ -420,6 +420,26 @@ struct HoopsClipsTests {
         #expect(CloudEditPreset.coachReview.durationOptions == [60, 120, 180, 240, 270])
     }
 
+    @Test func testAIEditLengthChoicesStartSimpleButKeepSelectedLongDurationVisible() {
+        let visible = AIEditView.visibleDurationOptions(
+            allowedOptions: CloudEditPreset.personalHighlight.durationOptions,
+            selectedDuration: 270,
+            showAllOptions: false
+        )
+
+        #expect(visible == [30, 60, 90, 120, 270])
+    }
+
+    @Test func testAIEditLengthChoicesCanRevealAllAllowedDurations() {
+        let visible = AIEditView.visibleDurationOptions(
+            allowedOptions: CloudEditPreset.personalHighlight.durationOptions,
+            selectedDuration: 30,
+            showAllOptions: true
+        )
+
+        #expect(visible == [15, 30, 45, 60, 90, 120, 180, 270])
+    }
+
     @Test func testCloudEditUserIntentParsesRecapShapeAndDuration() {
         let intent = CloudEditUserIntent.parse("make it NBA recap, 30s vertical")
 
