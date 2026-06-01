@@ -1304,6 +1304,25 @@ struct HoopsClipsTests {
         #expect(project.historyExportBadgeText == "Saved reel")
     }
 
+    @Test func testHistoryProjectActionsUseShortReadableCopy() {
+        let actionCopy = [
+            HistoryProjectActionCopy.emptyPreviewHint,
+            HistoryProjectActionCopy.openAvailableSubtitle,
+            HistoryProjectActionCopy.openUnavailableSubtitle,
+            HistoryProjectActionCopy.sourceAvailableSubtitle,
+            HistoryProjectActionCopy.sourceMissingSubtitle,
+            HistoryProjectActionCopy.exportAvailableSubtitle,
+            HistoryProjectActionCopy.exportMissingSubtitle,
+            HistoryProjectActionCopy.shareAvailableSubtitle,
+            HistoryProjectActionCopy.deleteSubtitle,
+        ]
+
+        #expect(actionCopy.allSatisfy { !$0.contains("Latest Export") })
+        #expect(actionCopy.allSatisfy { $0.count <= 32 })
+        #expect(HistoryProjectActionCopy.shareAvailableSubtitle == "Use iOS share sheet")
+        #expect(HistoryProjectActionCopy.openAvailableSubtitle == "Open in Player, Review, Export")
+    }
+
     @Test @MainActor func testCloudEditRequestSendsFullBackendCandidatePoolAndReviewReserve() throws {
         let viewModel = HighlightsViewModel()
         viewModel.cloudEditSourceObjectKey = "uploads/source.mp4"

@@ -605,10 +605,13 @@ private struct HistoryProjectDetailView: View {
                     Image(systemName: "play.circle")
                         .font(.title)
                         .foregroundStyle(AppTheme.neonPurple)
-                    Text("Tap Play Source or Play Latest Export to preview this project.")
+                    Text(HistoryProjectActionCopy.emptyPreviewHint)
                         .font(.caption)
                         .foregroundStyle(AppTheme.subtleText)
                         .multilineTextAlignment(.center)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 3)
+                        .minimumScaleFactor(0.86)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 28)
@@ -628,7 +631,7 @@ private struct HistoryProjectDetailView: View {
             RorkSectionHeader(
                 title: "Actions",
                 icon: "bolt.fill",
-                subtitle: "Reopen the project or inspect saved media"
+                subtitle: "Open, preview, or share"
             )
 
             Button {
@@ -638,8 +641,8 @@ private struct HistoryProjectDetailView: View {
                 actionLabel(
                     title: isCurrentProject ? "Currently Open" : "Open Project",
                     subtitle: canOpenProject
-                        ? "Load this project back into Player, Review, and Export"
-                        : "Source video is missing, so this project cannot be reopened",
+                        ? HistoryProjectActionCopy.openAvailableSubtitle
+                        : HistoryProjectActionCopy.openUnavailableSubtitle,
                     icon: "arrow.counterclockwise.circle.fill",
                     tint: AppTheme.neonPurple
                 )
@@ -653,7 +656,7 @@ private struct HistoryProjectDetailView: View {
             } label: {
                 actionLabel(
                     title: "Play Source",
-                    subtitle: sourceURL == nil ? "Source file is no longer available" : "Replay the saved imported video",
+                    subtitle: sourceURL == nil ? HistoryProjectActionCopy.sourceMissingSubtitle : HistoryProjectActionCopy.sourceAvailableSubtitle,
                     icon: "video.fill",
                     tint: AppTheme.warningYellow
                 )
@@ -666,8 +669,8 @@ private struct HistoryProjectDetailView: View {
                 startPreview(url: latestExportURL, title: "Latest Export")
             } label: {
                 actionLabel(
-                    title: "Play Latest Export",
-                    subtitle: latestExportURL == nil ? "No export is saved for this project yet" : "Replay the latest saved highlight reel",
+                    title: "Play Export",
+                    subtitle: latestExportURL == nil ? HistoryProjectActionCopy.exportMissingSubtitle : HistoryProjectActionCopy.exportAvailableSubtitle,
                     icon: "play.rectangle.fill",
                     tint: AppTheme.successGreen
                 )
@@ -680,8 +683,8 @@ private struct HistoryProjectDetailView: View {
                 presentShareSheet(for: latestExportURL)
             } label: {
                 actionLabel(
-                    title: "Share Latest Export",
-                    subtitle: latestExportURL == nil ? "No export is saved for this project yet" : "Send the saved reel with the iOS share sheet",
+                    title: "Share",
+                    subtitle: latestExportURL == nil ? HistoryProjectActionCopy.exportMissingSubtitle : HistoryProjectActionCopy.shareAvailableSubtitle,
                     icon: "square.and.arrow.up.fill",
                     tint: AppTheme.successGreen
                 )
@@ -696,7 +699,7 @@ private struct HistoryProjectDetailView: View {
             } label: {
                 actionLabel(
                     title: "Delete Project",
-                    subtitle: "Remove this project and its saved files from the device",
+                    subtitle: HistoryProjectActionCopy.deleteSubtitle,
                     icon: "trash.fill",
                     tint: AppTheme.dangerRed
                 )
@@ -793,26 +796,41 @@ private struct HistoryProjectDetailView: View {
     }
 
     private func actionLabel(title: String, subtitle: String, icon: String, tint: Color) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: icon)
+        let iconView = Image(systemName: icon)
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(tint)
+            .frame(width: 34, height: 34)
+            .background(tint.opacity(0.12), in: .circle)
+
+        let textStack = VStack(alignment: .leading, spacing: 3) {
+            Text(title)
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(tint)
-                .frame(width: 34, height: 34)
-                .background(tint.opacity(0.12), in: .circle)
+                .foregroundStyle(.white)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
+                .minimumScaleFactor(0.86)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(subtitle)
+                .font(.caption2)
+                .foregroundStyle(AppTheme.subtleText)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 3)
+                .minimumScaleFactor(0.86)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+        }
 
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text(subtitle)
-                    .font(.caption2)
-                    .foregroundStyle(AppTheme.subtleText)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .fixedSize(horizontal: false, vertical: true)
+        return Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 8) {
+                    iconView
+                    textStack
+                }
+            } else {
+                HStack(spacing: 12) {
+                    iconView
+                    textStack
+                    Spacer(minLength: 0)
+                }
             }
-
-            Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
@@ -849,6 +867,18 @@ private struct HistoryProjectDetailView: View {
     private func clearShareSelection() {
         shareURL = nil
     }
+}
+
+nonisolated enum HistoryProjectActionCopy {
+    static let emptyPreviewHint = "Choose Source or Export below."
+    static let openAvailableSubtitle = "Open in Player, Review, Export"
+    static let openUnavailableSubtitle = "Source video missing"
+    static let sourceAvailableSubtitle = "Preview original video"
+    static let sourceMissingSubtitle = "Source file missing"
+    static let exportAvailableSubtitle = "Preview saved reel"
+    static let exportMissingSubtitle = "No saved export yet"
+    static let shareAvailableSubtitle = "Use iOS share sheet"
+    static let deleteSubtitle = "Remove saved files"
 }
 
 fileprivate func userFacingAnalysisModeLabel(_ mode: AnalysisExecutionMode) -> String {
