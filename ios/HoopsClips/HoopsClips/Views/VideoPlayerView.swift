@@ -334,6 +334,7 @@ struct VideoPlayerView: View {
                         "video_import.long_running",
                         metadata: "source=\(source)"
                     )
+                    importRecoveryOffersHistory = true
                     importStatusMessage = "Still saving the project. If it already finished, HoopClips will open it or show it in History."
                 }
 
@@ -491,6 +492,13 @@ struct VideoPlayerView: View {
     private func clearImportError() {
         importErrorMessage = nil
         importRecoveryOffersHistory = false
+    }
+
+    private func openHistoryFromImportRecovery() {
+        LaunchTelemetry.shared.recordStabilityCheckpoint("video_import.open_history_from_status")
+        _ = recoverSuccessfulImportIfNeeded(source: "import_status", phase: "history_shortcut")
+        clearImportError()
+        onOpenHistory()
     }
 
     private func completeImportAfterLoadedVideo() {
@@ -658,11 +666,18 @@ struct VideoPlayerView: View {
                 Text(languageStore.text(.turnGamesTitle))
                     .font(.title2.bold())
                     .foregroundStyle(.white)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
+                    .minimumScaleFactor(0.86)
+                    .fixedSize(horizontal: false, vertical: true)
 
                 Text(languageStore.text(.turnGamesSubtitle))
                     .font(.subheadline)
                     .foregroundStyle(AppTheme.subtleText)
                     .multilineTextAlignment(.center)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 5 : 3)
+                    .minimumScaleFactor(0.84)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.horizontal, 10)
 
@@ -742,23 +757,40 @@ struct VideoPlayerView: View {
                 .layoutPriority(1)
             }
 
-            Button {
-                cancelActiveImport()
-            } label: {
-                Label(languageStore.text(.cancelImport), systemImage: "xmark.circle.fill")
-                    .font(.footnote.weight(.semibold))
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.86)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 48 : 40)
-                    .padding(.horizontal, 12)
+            LazyVGrid(columns: importStatusActionGridColumns, spacing: 8) {
+                if importRecoveryOffersHistory {
+                    Button {
+                        openHistoryFromImportRecovery()
+                    } label: {
+                        importStatusActionLabel(
+                            title: "Check History",
+                            icon: "clock.arrow.circlepath",
+                            foreground: AppTheme.warningYellow,
+                            fill: AppTheme.warningYellow.opacity(0.12),
+                            stroke: AppTheme.warningYellow.opacity(0.24)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Check History")
+                    .accessibilityHint("Opens History in case the video was already saved there.")
+                }
+
+                Button {
+                    cancelActiveImport()
+                } label: {
+                    importStatusActionLabel(
+                        title: languageStore.text(.cancelImport),
+                        icon: "xmark.circle.fill",
+                        foreground: AppTheme.subtleText,
+                        fill: AppTheme.cardBg.opacity(0.72),
+                        stroke: AppTheme.softBorder
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(languageStore.text(.cancelImport))
+                .accessibilityValue(currentImportStatusMessage)
+                .accessibilityHint("Stops the current video import and returns to the import screen.")
             }
-            .buttonStyle(.bordered)
-            .tint(AppTheme.subtleText)
-            .accessibilityLabel(languageStore.text(.cancelImport))
-            .accessibilityValue(currentImportStatusMessage)
-            .accessibilityHint("Stops the current video import and returns to the import screen.")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
@@ -769,6 +801,36 @@ struct VideoPlayerView: View {
         )
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("import.status.card")
+    }
+
+    private var importStatusActionGridColumns: [GridItem] {
+        [
+            GridItem(.adaptive(minimum: dynamicTypeSize.isAccessibilitySize ? 164 : 128), spacing: 8, alignment: .top)
+        ]
+    }
+
+    private func importStatusActionLabel(
+        title: String,
+        icon: String,
+        foreground: Color,
+        fill: Color,
+        stroke: Color
+    ) -> some View {
+        Label(title, systemImage: icon)
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(foreground)
+            .multilineTextAlignment(.center)
+            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
+            .minimumScaleFactor(0.86)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 52 : 42)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(fill, in: .rect(cornerRadius: 12))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(stroke, lineWidth: 1)
+            )
     }
 
     private var importFeatureGridColumns: [GridItem] {
