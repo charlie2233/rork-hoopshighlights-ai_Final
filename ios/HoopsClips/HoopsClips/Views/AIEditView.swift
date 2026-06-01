@@ -37,6 +37,7 @@ struct AIEditView: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var selectedPreset: CloudEditPreset = .personalHighlight
     @State private var selectedProTemplate: CloudEditProTemplate?
     @State private var selectedAspectRatio: CloudEditAspectRatio = CloudEditPreset.personalHighlight.aspectRatio
@@ -66,6 +67,7 @@ struct AIEditView: View {
     @State private var showingShareSheet = false
     @State private var proInfoSheet: AIEditProInfoSheet?
     @State private var showPlanDetails = false
+    @State private var showSetupControls = false
 
     private let cloudEditService: any CloudEditServicing
     private let proUXFlags = CloudEditProUXFlags.safeDefault
@@ -187,9 +189,12 @@ struct AIEditView: View {
             if activePolicy.planTier.isFree, proUXFlags.proUpsellEnabled {
                 proValueCard
             }
-            stylePicker
-            formatPicker
-            durationPicker
+            smartSetupCard
+            if showSetupControls {
+                stylePicker
+                formatPicker
+                durationPicker
+            }
             aiWorkTimelineCard
             if proUXFlags.cloudLockerEnabled {
                 cloudLockerCard
@@ -367,6 +372,62 @@ struct AIEditView: View {
         .padding(14)
         .rorkCard(cornerRadius: 16, stroke: AppTheme.neonPurple.opacity(0.2), glow: AppTheme.neonPurple, glowOpacity: 0.06)
         .accessibilityIdentifier("export.aiEdit.proValueCard")
+    }
+
+    private var smartSetupCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 10) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(AppTheme.accentPurple.opacity(0.24))
+                        .frame(width: 44, height: 44)
+                    Image(systemName: "slider.horizontal.below.rectangle")
+                        .font(.headline)
+                        .foregroundStyle(AppTheme.warningYellow)
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Smart setup")
+                        .font(.headline)
+                        .foregroundStyle(.white)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Text(selectedSetupSummary)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(AppTheme.subtleText)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 5 : 3)
+                        .minimumScaleFactor(0.84)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("export.aiEdit.smartSetup.summary")
+                }
+
+                Spacer(minLength: 0)
+            }
+
+            Button {
+                HoopsAccessibility.animate(reduceMotion: reduceMotion, .snappy(duration: 0.18)) {
+                    showSetupControls.toggle()
+                }
+            } label: {
+                Label(showSetupControls ? "Hide setup choices" : "Change style, shape, or length", systemImage: showSetupControls ? "chevron.up.circle.fill" : "slider.horizontal.3")
+                    .font(.caption.bold())
+                    .multilineTextAlignment(.center)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
+                    .minimumScaleFactor(0.84)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 52 : 42)
+                    .padding(.horizontal, 8)
+            }
+            .buttonStyle(.bordered)
+            .tint(AppTheme.neonPurple)
+            .accessibilityIdentifier("export.aiEdit.smartSetup.changeButton")
+            .accessibilityValue(showSetupControls ? "Setup choices shown" : "Setup choices hidden")
+            .accessibilityHint("Shows or hides optional AI edit style, video shape, and reel length choices.")
+        }
+        .padding(14)
+        .rorkCard(cornerRadius: 16, stroke: AppTheme.neonPurple.opacity(0.18), glow: AppTheme.neonPurple, glowOpacity: 0.05)
+        .accessibilityIdentifier("export.aiEdit.smartSetupCard")
     }
 
     private var stylePicker: some View {
@@ -589,6 +650,8 @@ struct AIEditView: View {
                 Text("\(userEditPrompt.count)/\(Self.maxUserPromptCharacters)")
                     .font(.caption2.monospacedDigit().bold())
                     .foregroundStyle(userEditPrompt.count >= Self.maxUserPromptCharacters ? AppTheme.warningYellow : AppTheme.subtleText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.76)
             }
 
             ZStack(alignment: .topLeading) {
@@ -1961,6 +2024,10 @@ struct AIEditView: View {
 
     private var selectedTemplateTitle: String {
         selectedProTemplate?.title ?? selectedPreset.title
+    }
+
+    private var selectedSetupSummary: String {
+        "\(selectedTemplateTitle), \(selectedAspectRatio.rawValue), \(formattedDuration(selectedDuration)). HoopClips can use your side note to adjust the plan before cloud rendering."
     }
 
     private var sanitizedUserEditPrompt: String? {

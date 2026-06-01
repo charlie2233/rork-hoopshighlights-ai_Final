@@ -69,6 +69,8 @@ final class HoopsClipsUITests: XCTestCase {
 
         openAIEditExportFlow(from: app)
 
+        assertElementEventuallyExists(app.descendants(matching: .any)["export.aiEdit.smartSetupCard"], in: app)
+        openAIEditSetupControls(in: app)
         XCTAssertTrue(app.buttons["export.aiEdit.style.personalHighlight"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.buttons["export.aiEdit.style.fullGameHighlight"].exists)
         XCTAssertTrue(app.buttons["export.aiEdit.style.coachReview"].exists)
@@ -116,6 +118,7 @@ final class HoopsClipsUITests: XCTestCase {
         )
         openAIEditExportFlow(from: app)
 
+        assertElementEventuallyExists(app.descendants(matching: .any)["export.aiEdit.smartSetupCard"], in: app)
         assertElementEventuallyExists(app.descendants(matching: .any)["export.aiEdit.planCard.free"], in: app)
         assertStaticTextEventuallyExists("Current plan: Free", in: app)
         for text in [
@@ -152,6 +155,7 @@ final class HoopsClipsUITests: XCTestCase {
         }
         attachScreenshot(named: "UX2B Free Plan And Pro Value Cards", app: app)
 
+        openAIEditSetupControls(in: app)
         for identifier in [
             "export.aiEdit.proTemplate.recruitingReel",
             "export.aiEdit.proTemplate.cinematicMixtape",
@@ -356,6 +360,15 @@ final class HoopsClipsUITests: XCTestCase {
         XCTAssertTrue(exportTab.exists, "Export tab should be visible after routing from Review.")
         XCTAssertTrue(app.descendants(matching: .any)["export.aiEdit.section"].waitForExistence(timeout: 10))
         attachScreenshot(named: "02 Export AI Edit Agent", app: app)
+    }
+
+    @MainActor
+    private func openAIEditSetupControls(in app: XCUIApplication) {
+        let changeSetupButton = app.buttons["export.aiEdit.smartSetup.changeButton"]
+        if changeSetupButton.value as? String == "Setup choices shown" {
+            return
+        }
+        tapWhenReady(changeSetupButton, in: app)
     }
 
     @MainActor
