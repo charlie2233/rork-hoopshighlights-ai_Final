@@ -37,7 +37,7 @@ The service receives a validated `EditPlan`, downloads the source video from ren
 - `HOOPS_AI_CLIP_GPT_EDITOR_ENABLED`: kill switch for GPT-led highlight editing, default `false`
 - `HOOPS_AI_CLIP_GPT_PLAN_EDIT_ENABLED`: allows GPT `planEdit` ordering/caption/slow-motion directives to affect EditPlan inputs, default `false`
 - `HOOPS_AI_CLIP_GPT_REVISION_ENABLED`: launch switch for GPT-produced `EditPlanPatch` revision flows, default `false`
-- `HOOPS_AI_CLIP_GPT_KEYFRAMES_PER_CLIP`: Pro/internal keyframe cap per clip, clamped to `5...8`; staging default is `8` for stronger shot-arc and rim-entry path context
+- `HOOPS_AI_CLIP_GPT_KEYFRAMES_PER_CLIP`: Pro/internal keyframe cap per clip, clamped to `5...10`; staging default is `10` for stronger shot-arc, rim-approach, rim-entry, and follow-through context
 - `HOOPS_AI_CLIP_GPT_FREE_KEYFRAMES_PER_CLIP`: Free keyframe cap per clip, fixed at `3` to match the launch contract
 - `HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_FREE`: Free candidate cap, clamped to `1...220`; staging default is `220` so Free users get broad GPT review while daily Free edit chances stay at `3`
 - `HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_PRO`: Pro/internal candidate cap, clamped to `20...220`; staging default is `220`
@@ -47,7 +47,7 @@ The service receives a validated `EditPlan`, downloads the source video from ren
 - `HOOPS_GPT_HIGHLIGHT_RERANK_FREE_MAX_CLIPS`: legacy Free cap override, clamped to `1...220`
 - `HOOPS_GPT_HIGHLIGHT_RERANK_FREE_FRAMES_PER_CLIP`: legacy Free frames override, fixed at `3`
 - `HOOPS_GPT_HIGHLIGHT_RERANK_PAID_MAX_CLIPS`: legacy Pro/internal cap, clamped to `20...220`
-- `HOOPS_GPT_HIGHLIGHT_RERANK_PAID_FRAMES_PER_CLIP`: legacy Pro/internal frames per clip, clamped to `5...8`
+- `HOOPS_GPT_HIGHLIGHT_RERANK_PAID_FRAMES_PER_CLIP`: legacy Pro/internal frames per clip, clamped to `5...10`
 - `HOOPS_GPT_HIGHLIGHT_RERANK_TIMEOUT_SECONDS`: OpenAI request timeout, clamped to `1...120`
 - `HOOPS_GPT_HIGHLIGHT_RERANK_MAX_OUTPUT_TOKENS`: Structured-output budget, clamped to `256...24000`; quality-beta default is `24000`
 - `HOOPS_GPT_HIGHLIGHT_RERANK_FRAME_WIDTH`: sampled keyframe width, clamped to `256...1280`; quality-beta default is `1024`

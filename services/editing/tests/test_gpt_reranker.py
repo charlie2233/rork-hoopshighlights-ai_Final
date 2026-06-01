@@ -461,7 +461,7 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         pro_input = json.loads(pro_payload["input"][0]["content"][0]["text"])
         self.assertEqual(
             pro_input["shotTrackerRules"]["requiredShotContextKeyframes"],
-            ["outcome", "postOutcome", "preEvent", "release", "rim"],
+            ["belowRim", "preEvent", "release", "rimApproach", "rimEntry", "shotArcEarly", "shotArcLate"],
         )
         self.assertIn("qualitySignals", decision_properties)
         self.assertIn("qualitySignals", decision_schema["required"])
@@ -2839,7 +2839,8 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertEqual(settings.limits_for("free"), (220, 3))
         self.assertEqual(settings.limits_for("pro")[0], 220)
         self.assertGreaterEqual(settings.limits_for("pro")[1], 5)
-        self.assertLessEqual(settings.limits_for("pro")[1], 8)
+        self.assertLessEqual(settings.limits_for("pro")[1], 10)
+        self.assertEqual(settings.limits_for("pro")[1], 10)
         self.assertEqual(settings.timeout_seconds, 120.0)
         self.assertEqual(settings.max_output_tokens, 24000)
 
@@ -2888,7 +2889,7 @@ class GPTHighlightRerankerTests(unittest.TestCase):
                     os.environ[key] = old_value
 
         self.assertEqual(settings.limits_for("free"), (220, 3))
-        self.assertEqual(settings.limits_for("pro"), (220, 8))
+        self.assertEqual(settings.limits_for("pro"), (220, 10))
 
     def test_sampling_reserves_block_and_steal_families_for_gpt_review(self) -> None:
         scoring = [

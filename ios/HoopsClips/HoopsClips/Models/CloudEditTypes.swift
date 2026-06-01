@@ -512,7 +512,7 @@ struct CloudEditPolicySummary: Codable, Sendable {
             queueTitle,
             "\(maxOutputResolution) max export",
             brandingSummary,
-            "\(maxDailyRenders) video edits/day",
+            "\(maxDailyRenders) AI edits/day",
             "\(maxRevisionsPerEdit) revisions/edit",
             retentionSummary
         ]
@@ -523,7 +523,7 @@ struct CloudEditPolicySummary: Codable, Sendable {
         "1080p clean exports",
         "No required watermark",
         "No required HoopClips outro",
-        "25 video edits/day",
+        "25 AI edits/day",
         "10 revisions/edit",
         "60-day cloud locker",
         "Pro template packs"

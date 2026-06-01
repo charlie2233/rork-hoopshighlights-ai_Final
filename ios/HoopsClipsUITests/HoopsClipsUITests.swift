@@ -125,7 +125,7 @@ final class HoopsClipsUITests: XCTestCase {
             "Standard render queue",
             "720p max export",
             "HoopClips watermark/outro included",
-            "3 video edits/day",
+            "3 AI edits/day",
             "3 revisions/edit",
             "Failed HoopClips jobs do not use a free edit.",
             "Videos stored for 14 days",
@@ -146,7 +146,7 @@ final class HoopsClipsUITests: XCTestCase {
             "1080p clean exports",
             "No required watermark",
             "No required HoopClips outro",
-            "25 video edits/day",
+            "25 AI edits/day",
             "10 revisions/edit",
             "60-day cloud locker",
             "Pro template packs"

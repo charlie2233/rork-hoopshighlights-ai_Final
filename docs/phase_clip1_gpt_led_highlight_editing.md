@@ -79,7 +79,7 @@ Revision commands such as More Hype, NBA Style, and Shorter can use GPT-produced
 ## Feature Flags
 
 - `HOOPS_AI_CLIP_GPT_EDITOR_ENABLED`: enables GPT-led clip selection.
-- `HOOPS_AI_CLIP_GPT_KEYFRAMES_PER_CLIP`: Pro/internal sampled-keyframe cap, clamped to `5...8`.
+- `HOOPS_AI_CLIP_GPT_KEYFRAMES_PER_CLIP`: Pro/internal sampled-keyframe cap, clamped to `5...10`.
 - `HOOPS_AI_CLIP_GPT_FREE_KEYFRAMES_PER_CLIP`: Free sampled-keyframe cap, fixed at `3`.
 - `HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_FREE`: Free candidate cap, clamped to `1...220`.
 - `HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_PRO`: Pro/internal candidate cap, clamped to `20...220`.

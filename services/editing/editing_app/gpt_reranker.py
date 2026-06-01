@@ -139,9 +139,9 @@ class GPTHighlightRerankerSettings:
             ),
             paid_frames_per_clip=_env_int(
                 "HOOPS_AI_CLIP_GPT_KEYFRAMES_PER_CLIP",
-                _env_int("HOOPS_GPT_HIGHLIGHT_RERANK_PAID_FRAMES_PER_CLIP", 8, 5, 8),
+                _env_int("HOOPS_GPT_HIGHLIGHT_RERANK_PAID_FRAMES_PER_CLIP", 10, 5, 10),
                 5,
-                8,
+                10,
             ),
             frame_width=_env_int("HOOPS_GPT_HIGHLIGHT_RERANK_FRAME_WIDTH", 1024, 256, 1280),
             jpeg_quality=_env_int("HOOPS_GPT_HIGHLIGHT_RERANK_JPEG_QUALITY", 4, 2, 12),
