@@ -107,6 +107,10 @@ class PrepareTeamHighlightLabelingBundleTests(unittest.TestCase):
         self.assertIn("apply_team_highlight_manual_labels.py", next_steps)
         self.assertIn("build_launch_team_accuracy_report.py", next_steps)
         self.assertIn("submission_readiness_preflight.py", next_steps)
+        self.assertIn("Next close review", next_steps)
+        self.assertIn("J/L", next_steps)
+        self.assertIn("K", next_steps)
+        self.assertIn("The page auto-saves a local browser draft", next_steps)
 
     def test_can_generate_gpt_draft_and_prefill_review_page_from_keyframes(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
