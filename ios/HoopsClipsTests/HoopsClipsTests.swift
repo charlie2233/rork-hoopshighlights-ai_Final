@@ -620,7 +620,9 @@ struct HoopsClipsTests {
         #expect(prompt.contains("blocks"))
         #expect(prompt.contains("steals"))
         #expect(prompt.contains("forced turnovers"))
-        #expect(prompt.contains("Defense can be a highlight without a make."))
+        #expect(prompt.contains("Defense counts without a make."))
+        #expect(prompt.contains("crowd/audio pops"))
+        #expect(prompt.contains("verify visible outcome"))
         #expect(prompt.contains("Reject duplicate"))
         #expect(prompt.count <= CloudEditUserPromptBuilder.maxPromptCharacters)
     }
@@ -644,14 +646,16 @@ struct HoopsClipsTests {
 
         #expect(prompt.hasPrefix("Focus on Dark jerseys."))
         #expect(prompt.contains("Render selected-team matches"))
-        #expect(prompt.contains("reject confident opponent clips"))
-        #expect(prompt.contains("Keep uncertain team clips reviewable."))
+        #expect(prompt.contains("reject confident opponents"))
+        #expect(prompt.contains("Keep uncertain clips reviewable."))
         #expect(summary.hasPrefix("Target: Dark jerseys."))
         #expect(summary.contains("Render confident matches only"))
         #expect(summary.contains("Dark jerseys"))
         #expect(summary.contains("blocks"))
         #expect(summary.contains("forced turnovers"))
         #expect(summary.contains("defensive stops"))
+        #expect(summary.contains("crowd/audio cues"))
+        #expect(summary.contains("visual proof"))
         #expect(summary.count <= CloudEditUserPromptBuilder.maxPromptCharacters)
     }
 
@@ -662,6 +666,8 @@ struct HoopsClipsTests {
         #expect(summary.contains("made shots"))
         #expect(summary.contains("blocks"))
         #expect(summary.contains("steals"))
+        #expect(summary.contains("crowd/audio cues"))
+        #expect(summary.contains("visual proof"))
         #expect(summary.contains("Review"))
         #expect(summary.count <= CloudEditUserPromptBuilder.maxPromptCharacters)
     }
@@ -680,7 +686,9 @@ struct HoopsClipsTests {
         #expect(prompt.contains("blocks"))
         #expect(prompt.contains("steals"))
         #expect(prompt.contains("forced turnovers"))
-        #expect(prompt.contains("Defense can be a highlight without a make."))
+        #expect(prompt.contains("Defense counts without a make."))
+        #expect(prompt.contains("crowd/audio pops"))
+        #expect(prompt.contains("verify visible outcome"))
         #expect(prompt.contains("Reject duplicate"))
         #expect(prompt.count <= CloudEditUserPromptBuilder.maxPromptCharacters)
     }
@@ -702,10 +710,12 @@ struct HoopsClipsTests {
         )
 
         #expect(prompt.hasPrefix("Make this a 4:30 team reel. Focus on White jerseys."))
-        #expect(prompt.contains("reject confident opponent clips"))
+        #expect(prompt.contains("reject confident opponents"))
         #expect(prompt.contains("defensive stops"))
-        #expect(prompt.contains("Defense can be a highlight without a make."))
-        #expect(prompt.contains("Keep uncertain team clips reviewable."))
+        #expect(prompt.contains("Defense counts without a make."))
+        #expect(prompt.contains("crowd/audio pops"))
+        #expect(prompt.contains("verify visible outcome"))
+        #expect(prompt.contains("Keep uncertain clips reviewable."))
         #expect(prompt.count <= CloudEditUserPromptBuilder.maxPromptCharacters)
     }
 
@@ -730,9 +740,11 @@ struct HoopsClipsTests {
 
         #expect(prompt.hasPrefix("please make a polished"))
         #expect(prompt.contains("Focus on White jerseys."))
-        #expect(prompt.contains("reject confident opponent clips"))
+        #expect(prompt.contains("reject confident opponents"))
         #expect(prompt.contains("defensive stops"))
-        #expect(prompt.contains("Keep uncertain team clips reviewable."))
+        #expect(prompt.contains("crowd/audio pops"))
+        #expect(prompt.contains("verify visible outcome"))
+        #expect(prompt.contains("Keep uncertain clips reviewable."))
         #expect(prompt.count <= CloudEditUserPromptBuilder.maxPromptCharacters)
     }
 
