@@ -68,6 +68,7 @@ struct AIEditView: View {
     @State private var proInfoSheet: AIEditProInfoSheet?
     @State private var showPlanDetails = false
     @State private var showSetupControls = false
+    @State private var showTimelineDetails = false
 
     private let cloudEditService: any CloudEditServicing
     private let proUXFlags = CloudEditProUXFlags.safeDefault
@@ -850,11 +851,15 @@ struct AIEditView: View {
 
     private var aiWorkTimelineCard: some View {
         let timeline = activeWorkTimeline
+        let summaryStep = timelineSummaryStep(in: timeline)
         return VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Label("AI Edit Timeline", systemImage: "sparkles.rectangle.stack.fill")
+                Label("Cloud Job", systemImage: "sparkles.rectangle.stack.fill")
                     .font(.headline)
                     .foregroundStyle(.white)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.84)
+                    .fixedSize(horizontal: false, vertical: true)
                 Spacer()
                 if activePolicy.planTier != .free {
                     Text("Priority")
@@ -866,36 +871,62 @@ struct AIEditView: View {
                 }
             }
 
-            VStack(alignment: .leading, spacing: 9) {
-                ForEach(timeline.steps) { step in
-                    HStack(alignment: .top, spacing: 10) {
-                        Image(systemName: workStepIcon(for: step.status))
-                            .font(.caption.bold())
-                            .foregroundStyle(workStepColor(for: step.status))
-                            .frame(width: 18)
-                            .padding(.top, 2)
+            timelineStepRow(summaryStep, isDetailed: false)
+                .padding(10)
+                .background(AppTheme.cardBg.opacity(0.58), in: .rect(cornerRadius: 12))
+                .accessibilityIdentifier("export.aiEdit.timeline.current")
 
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(step.title)
-                                .font(.caption.bold())
-                                .foregroundStyle(.white)
-                            if let detail = step.detail, !detail.isEmpty {
-                                Text(detail)
-                                    .font(.caption2)
-                                    .foregroundStyle(AppTheme.subtleText)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-                        }
-                        Spacer(minLength: 0)
+            DisclosureGroup(isExpanded: $showTimelineDetails) {
+                VStack(alignment: .leading, spacing: 9) {
+                    ForEach(timeline.steps) { step in
+                        timelineStepRow(step, isDetailed: true)
+                            .accessibilityIdentifier("export.aiEdit.timeline.\(step.stepId)")
                     }
-                    .accessibilityElement(children: .combine)
-                    .accessibilityIdentifier("export.aiEdit.timeline.\(step.stepId)")
                 }
+                .padding(.top, 6)
+            } label: {
+                Label(showTimelineDetails ? "Hide cloud details" : "Show cloud details", systemImage: "list.bullet.clipboard.fill")
+                    .font(.caption.bold())
+                    .foregroundStyle(AppTheme.subtleText)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.84)
+                    .fixedSize(horizontal: false, vertical: true)
             }
+            .tint(AppTheme.warningYellow)
+            .accessibilityIdentifier("export.aiEdit.timeline.detailsToggle")
         }
         .padding(14)
         .rorkCard(cornerRadius: 16, stroke: AppTheme.neonPurple.opacity(0.16), glow: AppTheme.neonPurple, glowOpacity: 0.05)
         .accessibilityIdentifier("export.aiEdit.timeline")
+    }
+
+    private func timelineStepRow(_ step: CloudEditWorkStep, isDetailed: Bool) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: workStepIcon(for: step.status))
+                .font(.caption.bold())
+                .foregroundStyle(workStepColor(for: step.status))
+                .frame(width: 18)
+                .padding(.top, 2)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(step.title)
+                    .font(.caption.bold())
+                    .foregroundStyle(.white)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
+                    .minimumScaleFactor(0.84)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let detail = step.detail, !detail.isEmpty {
+                    Text(detail)
+                        .font(.caption2)
+                        .foregroundStyle(isDetailed ? AppTheme.subtleText : .white.opacity(0.74))
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 5 : 3)
+                        .minimumScaleFactor(0.84)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .accessibilityElement(children: .combine)
     }
 
     private var cloudLockerCard: some View {
@@ -1647,6 +1678,30 @@ struct AIEditView: View {
         plan.clips.reduce(0) { count, clip in
             count + clip.effects.filter { $0.type == "slow_motion" }.count
         }
+    }
+
+    private func timelineSummaryStep(in timeline: CloudEditWorkTimeline) -> CloudEditWorkStep {
+        if let failedStep = timeline.steps.first(where: { $0.status == .failed }) {
+            return failedStep
+        }
+        if let runningStep = timeline.steps.first(where: { $0.status == .running }) {
+            return runningStep
+        }
+        if phase == .rendered,
+           let completedStep = timeline.steps.last(where: { $0.status == .complete }) {
+            return completedStep
+        }
+        if let pendingStep = timeline.steps.first(where: { $0.status == .pending }) {
+            return pendingStep
+        }
+        return timeline.steps.last ?? CloudEditWorkStep(
+            stepId: "status",
+            title: phase.displayLabel,
+            detail: renderStateGuidance,
+            status: phase == .rendered ? .complete : (phase == .failed || phase == .failedTimeout || phase == .cancelled ? .failed : .pending),
+            startedAt: nil,
+            completedAt: nil
+        )
     }
 
     private func workStepIcon(for status: CloudEditWorkStepStatus) -> String {
