@@ -631,6 +631,23 @@ struct AIEditView: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("export.aiEdit.defaultFocusSummary")
 
+            if let smartSetupSummary {
+                Label(smartSetupSummary, systemImage: "slider.horizontal.3")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.9))
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 5 : 3)
+                    .minimumScaleFactor(0.84)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(AppTheme.accentPurple.opacity(0.16), in: .rect(cornerRadius: 12))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(AppTheme.neonPurple.opacity(0.22), lineWidth: 1)
+                    }
+                    .accessibilityIdentifier("export.aiEdit.smartSetupSummary")
+            }
+
             LazyVGrid(columns: quickPromptGridColumns, alignment: .leading, spacing: 8) {
                 ForEach(Self.quickPrompts) { quickPrompt in
                     Button {
@@ -1960,6 +1977,49 @@ struct AIEditView: View {
         )
     }
 
+    private var smartSetupSummary: String? {
+        let intent = CloudEditUserIntent.parse(userEditPrompt)
+        guard intent.hasStructuredChoices else { return nil }
+
+        var parts: [String] = []
+        let intendedTemplateID: String
+        if let proTemplate = intent.proTemplate {
+            if activePolicy.premiumTemplatesAllowed {
+                parts.append(proTemplate.title)
+                intendedTemplateID = proTemplate.templateID
+            } else {
+                parts.append("Closest free style: \(proTemplate.preset.title)")
+                intendedTemplateID = proTemplate.preset.templateID
+            }
+        } else if let preset = intent.preset {
+            parts.append(preset.title)
+            intendedTemplateID = preset.templateID
+        } else {
+            intendedTemplateID = selectedTemplateID
+        }
+
+        if let aspectRatio = intent.aspectRatio {
+            let allowedAspectRatios = displayedAspectRatios(for: intendedTemplateID)
+            if allowedAspectRatios.contains(aspectRatio) {
+                parts.append(aspectRatio.title)
+            } else if let closestAspectRatio = allowedAspectRatios.first {
+                parts.append("Closest shape: \(closestAspectRatio.title)")
+            }
+        }
+
+        if let durationSeconds = intent.durationSeconds,
+           let closestDuration = nearestAllowedDuration(to: durationSeconds) {
+            if closestDuration == durationSeconds {
+                parts.append(formattedDuration(closestDuration))
+            } else {
+                parts.append("Closest length: \(formattedDuration(closestDuration))")
+            }
+        }
+
+        guard !parts.isEmpty else { return nil }
+        return "Smart setup from note: \(parts.joined(separator: " - "))"
+    }
+
     private func applyQuickPrompt(_ quickPrompt: AIEditQuickPrompt) {
         let trimmed = userEditPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
@@ -2115,7 +2175,11 @@ struct AIEditView: View {
     }
 
     private var displayedAspectRatios: [CloudEditAspectRatio] {
-        if selectedTemplateID == CloudEditPreset.coachReview.templateID {
+        displayedAspectRatios(for: selectedTemplateID)
+    }
+
+    private func displayedAspectRatios(for templateID: String) -> [CloudEditAspectRatio] {
+        if templateID == CloudEditPreset.coachReview.templateID {
             return [.source, .widescreen]
         }
         return [.vertical, .widescreen]
