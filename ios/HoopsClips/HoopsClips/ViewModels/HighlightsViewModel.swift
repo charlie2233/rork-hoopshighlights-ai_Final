@@ -56,7 +56,9 @@ final class HighlightsViewModel {
 
     var keptClips: [Clip] { clips.filter(\.isKept) }
     var discardedClips: [Clip] { clips.filter { !$0.isKept } }
-    var needsReviewClips: [Clip] { clips.filter(\.needsUserReview) }
+    var needsReviewClips: [Clip] {
+        clips.filter { Self.needsUserReview($0, teamSelection: settings.highlightTeamSelection) }
+    }
     var priorityReviewClips: [Clip] {
         Self.priorityReviewClips(from: clips, teamSelection: settings.highlightTeamSelection)
     }
@@ -527,14 +529,20 @@ final class HighlightsViewModel {
     func discardLowConfidenceClips() {
         for index in analysisService.clips.indices
         where analysisService.clips[index].confidence < 0.5
-            && !Self.protectsClipFromQuickSkip(analysisService.clips[index]) {
+            && !Self.protectsClipFromQuickSkip(
+                analysisService.clips[index],
+                teamSelection: settings.highlightTeamSelection
+            ) {
             analysisService.clips[index].isKept = false
         }
         persistCurrentProject()
     }
 
-    nonisolated static func protectsClipFromQuickSkip(_ clip: Clip) -> Bool {
-        clip.needsUserReview || isDefensiveReviewClip(clip)
+    nonisolated static func protectsClipFromQuickSkip(
+        _ clip: Clip,
+        teamSelection: HighlightTeamSelection = .allTeams
+    ) -> Bool {
+        needsUserReview(clip, teamSelection: teamSelection) || isDefensiveReviewClip(clip)
     }
 
     nonisolated static func priorityReviewClips(
@@ -548,20 +556,38 @@ final class HighlightsViewModel {
         _ clip: Clip,
         teamSelection: HighlightTeamSelection = .allTeams
     ) -> Bool {
-        clip.needsUserReview
-            || needsTeamReview(clip, teamSelection: teamSelection)
+        needsUserReview(clip, teamSelection: teamSelection)
             || isDefensiveReviewClip(clip)
+    }
+
+    nonisolated static func reviewBadges(
+        for clip: Clip,
+        teamSelection: HighlightTeamSelection = .allTeams
+    ) -> [ClipReviewBadge] {
+        var badges = clip.reviewBadges.filter { $0 != .teamUncertain }
+        if needsTeamReview(clip, teamSelection: teamSelection) {
+            badges.insert(.teamUncertain, at: 0)
+        }
+        return badges
+    }
+
+    nonisolated static func needsUserReview(
+        _ clip: Clip,
+        teamSelection: HighlightTeamSelection = .allTeams
+    ) -> Bool {
+        !reviewBadges(for: clip, teamSelection: teamSelection).isEmpty
     }
 
     nonisolated static func needsTeamReview(
         _ clip: Clip,
         teamSelection: HighlightTeamSelection = .allTeams
     ) -> Bool {
+        guard teamSelection.mode == .team else { return false }
         if clip.teamAttributionStatus == "uncertain" {
             return true
         }
         guard let attribution = clip.teamAttribution else {
-            return teamSelection.mode == .team
+            return true
         }
         return attribution.confidence < teamSelection.confidenceThreshold
     }
@@ -586,7 +612,7 @@ final class HighlightsViewModel {
         _ clip: Clip,
         teamSelection: HighlightTeamSelection = .allTeams
     ) -> Bool {
-        guard clip.confidence >= 0.8, !clip.needsUserReview else { return false }
+        guard clip.confidence >= 0.8, !needsUserReview(clip, teamSelection: teamSelection) else { return false }
         return clipConfidentlyMatchesHighlightTeamSelection(clip, selection: teamSelection)
     }
 
@@ -808,10 +834,15 @@ final class HighlightsViewModel {
             clipAllowedForCloudEditTeamSelection($0, selection: teamSelection)
         }
         let keptSource = teamEligibleClips.filter(\.isKept)
-        let keptCandidates = rankedCloudEditCandidateClips(from: keptSource, limit: cappedLimit)
+        let keptCandidates = rankedCloudEditCandidateClips(
+            from: keptSource,
+            limit: cappedLimit,
+            teamSelection: teamSelection
+        )
         let reviewOnlyCandidates = rankedCloudEditCandidateClips(
             from: teamEligibleClips.filter { !$0.isKept && isCloudEditReviewReserveCandidate($0, teamSelection: teamSelection) },
-            limit: cappedLimit
+            limit: cappedLimit,
+            teamSelection: teamSelection
         )
 
         guard !reviewOnlyCandidates.isEmpty else {
@@ -823,7 +854,11 @@ final class HighlightsViewModel {
             cappedLimit: cappedLimit
         )
         let keptLimit = max(0, cappedLimit - reviewReserveLimit)
-        var selected = rankedCloudEditCandidateClips(from: keptSource, limit: keptLimit)
+        var selected = rankedCloudEditCandidateClips(
+            from: keptSource,
+            limit: keptLimit,
+            teamSelection: teamSelection
+        )
         selected.append(contentsOf: reviewOnlyCandidates.prefix(reviewReserveLimit))
         if selected.count < cappedLimit {
             var selectedIDs = Set(selected.map(\.id))
@@ -914,7 +949,7 @@ final class HighlightsViewModel {
         _ clip: Clip,
         teamSelection: HighlightTeamSelection = .allTeams
     ) -> Bool {
-        clip.needsUserReview
+        reviewBadges(for: clip, teamSelection: teamSelection).contains { $0 != .teamUncertain }
             || defensiveCloudEditCandidateFamily(clip) != nil
             || isSelectedTeamCloudEditReviewReserveCandidate(clip, teamSelection: teamSelection)
     }
@@ -990,7 +1025,11 @@ final class HighlightsViewModel {
         return token.isEmpty ? "highlight" : String(token.prefix(32))
     }
 
-    nonisolated static func rankedCloudEditCandidateClips(from clips: [Clip], limit: Int = 40) -> [Clip] {
+    nonisolated static func rankedCloudEditCandidateClips(
+        from clips: [Clip],
+        limit: Int = 40,
+        teamSelection: HighlightTeamSelection = .allTeams
+    ) -> [Clip] {
         let cappedLimit = max(0, limit)
         let ranked = clips.filter(isCloudEditCandidateQualityEligible).sorted { lhs, rhs in
             let lhsScore = cloudEditCandidateScore(lhs)
@@ -1022,7 +1061,7 @@ final class HighlightsViewModel {
         for family in ["block", "steal", "forced_turnover", "defensive_stop"] {
             reserveFirstMissing { defensiveCloudEditCandidateFamily($0) == family }
         }
-        reserveFirstMissing(where: \.needsUserReview)
+        reserveFirstMissing { needsUserReview($0, teamSelection: teamSelection) }
 
         if !reserveIDs.isEmpty {
             selected.append(contentsOf: ranked.filter { reserveIDs.contains($0.id) })

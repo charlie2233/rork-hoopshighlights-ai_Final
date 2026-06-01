@@ -1956,6 +1956,18 @@ struct HoopsClipsTests {
             motionScore: 0.64,
             combinedScore: 0.62,
             detectionMethod: .cloud,
+            nativeShotSignals: NativeShotSignals(
+                isShotLike: true,
+                leadInSeconds: 2.5,
+                followThroughSeconds: 2.5,
+                setupContextScore: 0.6,
+                outcomeContextScore: 0.3,
+                eventCenterQuality: 0.6,
+                contextQualityScore: 0.58,
+                timingWindowOk: true,
+                outcome: "uncertain",
+                outcomeConfidence: 0.2
+            ),
             teamAttributionStatus: "uncertain"
         )
 
@@ -2552,6 +2564,16 @@ struct HoopsClipsTests {
 
     @Test @MainActor func testViewModelExposesNeedsReviewClipsForReviewFilter() {
         let viewModel = HighlightsViewModel()
+        let selectedTeam = HighlightTeamSelection(
+            mode: .team,
+            teamId: "team_dark",
+            label: "Dark jerseys",
+            colorLabel: "black",
+            confidenceThreshold: 0.85,
+            includeUncertain: true
+        )
+        viewModel.settings.highlightTeamSelection = selectedTeam
+        defer { viewModel.settings.highlightTeamSelection = .allTeams }
         let cleanClip = Clip(
             startTime: 4.0,
             endTime: 8.0,
@@ -2600,6 +2622,105 @@ struct HoopsClipsTests {
         viewModel.analysisService.clips = [cleanClip, uncertainClip]
 
         #expect(viewModel.needsReviewClips.map(\.label) == ["Possible Steal"])
+    }
+
+    @Test func testAllTeamsModeSuppressesTeamOnlyReviewNoise() {
+        let uncertainTeamClip = Clip(
+            startTime: 18.0,
+            endTime: 22.0,
+            eventCenter: 20.0,
+            action: .madeShot,
+            confidence: 0.88,
+            isKept: true,
+            label: "Ambiguous Jersey Bucket",
+            audioScore: 0.42,
+            visualScore: 0.72,
+            motionScore: 0.69,
+            combinedScore: 0.76,
+            detectionMethod: .cloud,
+            teamAttribution: ClipTeamAttribution(
+                teamId: "team_dark",
+                label: "Dark jerseys",
+                colorLabel: "black",
+                confidence: 0.64,
+                source: "gpt_frame_review"
+            ),
+            teamAttributionStatus: "uncertain"
+        )
+
+        #expect(!HighlightsViewModel.needsTeamReview(uncertainTeamClip, teamSelection: .allTeams))
+        #expect(HighlightsViewModel.reviewBadges(for: uncertainTeamClip, teamSelection: .allTeams).isEmpty)
+        #expect(!HighlightsViewModel.needsUserReview(uncertainTeamClip, teamSelection: .allTeams))
+        #expect(!HighlightsViewModel.isPriorityReviewClip(uncertainTeamClip, teamSelection: .allTeams))
+        #expect(HighlightsViewModel.isAutoKeepHighConfidenceEligible(uncertainTeamClip, teamSelection: .allTeams))
+    }
+
+    @Test func testSelectedTeamModeKeepsTeamReviewSignal() {
+        let selectedTeam = HighlightTeamSelection(
+            mode: .team,
+            teamId: "team_dark",
+            label: "Dark jerseys",
+            colorLabel: "black",
+            confidenceThreshold: 0.85,
+            includeUncertain: true
+        )
+        let uncertainTeamClip = Clip(
+            startTime: 18.0,
+            endTime: 22.0,
+            eventCenter: 20.0,
+            action: .madeShot,
+            confidence: 0.88,
+            isKept: true,
+            label: "Ambiguous Jersey Bucket",
+            audioScore: 0.42,
+            visualScore: 0.72,
+            motionScore: 0.69,
+            combinedScore: 0.76,
+            detectionMethod: .cloud,
+            teamAttribution: ClipTeamAttribution(
+                teamId: "team_dark",
+                label: "Dark jerseys",
+                colorLabel: "black",
+                confidence: 0.64,
+                source: "gpt_frame_review"
+            ),
+            teamAttributionStatus: "uncertain"
+        )
+
+        #expect(HighlightsViewModel.needsTeamReview(uncertainTeamClip, teamSelection: selectedTeam))
+        #expect(HighlightsViewModel.reviewBadges(for: uncertainTeamClip, teamSelection: selectedTeam) == [.teamUncertain])
+        #expect(HighlightsViewModel.needsUserReview(uncertainTeamClip, teamSelection: selectedTeam))
+        #expect(HighlightsViewModel.isPriorityReviewClip(uncertainTeamClip, teamSelection: selectedTeam))
+        #expect(!HighlightsViewModel.isAutoKeepHighConfidenceEligible(uncertainTeamClip, teamSelection: selectedTeam))
+    }
+
+    @Test func testAllTeamsStillPrioritizesDefensiveClipsWithoutTeamReviewBadge() {
+        let uncertainStealClip = Clip(
+            startTime: 18.0,
+            endTime: 22.0,
+            eventCenter: 20.0,
+            action: .steal,
+            confidence: 0.71,
+            isKept: false,
+            label: "Possible Steal",
+            audioScore: 0.42,
+            visualScore: 0.72,
+            motionScore: 0.69,
+            combinedScore: 0.76,
+            detectionMethod: .cloud,
+            teamAttribution: ClipTeamAttribution(
+                teamId: "team_dark",
+                label: "Dark jerseys",
+                colorLabel: "black",
+                confidence: 0.64,
+                source: "gpt_frame_review"
+            ),
+            teamAttributionStatus: "uncertain"
+        )
+
+        #expect(HighlightsViewModel.reviewBadges(for: uncertainStealClip, teamSelection: .allTeams).isEmpty)
+        #expect(HighlightsViewModel.isStealReviewClip(uncertainStealClip))
+        #expect(HighlightsViewModel.isPriorityReviewClip(uncertainStealClip, teamSelection: .allTeams))
     }
 
     @Test @MainActor func testViewModelPriorityReviewClipsFocusTeamDefenseAndUncertainPlays() {
@@ -2762,6 +2883,18 @@ struct HoopsClipsTests {
             motionScore: 0.69,
             combinedScore: 0.86,
             detectionMethod: .cloud,
+            nativeShotSignals: NativeShotSignals(
+                isShotLike: true,
+                leadInSeconds: 2.0,
+                followThroughSeconds: 2.5,
+                setupContextScore: 0.6,
+                outcomeContextScore: 0.3,
+                eventCenterQuality: 0.6,
+                contextQualityScore: 0.58,
+                timingWindowOk: true,
+                outcome: "uncertain",
+                outcomeConfidence: 0.2
+            ),
             teamAttribution: ClipTeamAttribution(
                 teamId: "team_dark",
                 label: "Dark jerseys",
@@ -2809,7 +2942,9 @@ struct HoopsClipsTests {
                 label: "Dark jerseys",
                 colorLabel: "black",
                 confidence: 0.93,
-                source: "quick_scan"
+                source: "quick_scan",
+                evidenceFrameRefs: ["dark_setup", "dark_outcome"],
+                evidenceRoleGroups: ["setup", "outcome"]
             ),
             teamAttributionStatus: "matched"
         )
@@ -2831,7 +2966,9 @@ struct HoopsClipsTests {
                 label: "Light jerseys",
                 colorLabel: "white",
                 confidence: 0.94,
-                source: "quick_scan"
+                source: "quick_scan",
+                evidenceFrameRefs: ["light_setup", "light_outcome"],
+                evidenceRoleGroups: ["setup", "outcome"]
             ),
             teamAttributionStatus: "matched"
         )

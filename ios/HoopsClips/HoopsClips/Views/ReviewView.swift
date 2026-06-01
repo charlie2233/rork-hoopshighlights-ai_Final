@@ -261,7 +261,10 @@ struct ReviewView: View {
         viewModel.clips.filter {
             $0.confidence < 0.5
                 && $0.isKept
-                && !HighlightsViewModel.protectsClipFromQuickSkip($0)
+                && !HighlightsViewModel.protectsClipFromQuickSkip(
+                    $0,
+                    teamSelection: viewModel.settings.highlightTeamSelection
+                )
         }.count
     }
 
@@ -1062,9 +1065,10 @@ struct ReviewView: View {
 
     @ViewBuilder
     private func clipReviewBadges(_ clip: Clip) -> some View {
-        if !clip.reviewBadges.isEmpty {
+        let reviewBadges = contextualReviewBadges(for: clip)
+        if !reviewBadges.isEmpty {
             HStack(spacing: 6) {
-                ForEach(clip.reviewBadges, id: \.self) { badge in
+                ForEach(reviewBadges, id: \.self) { badge in
                     Label(badge.title, systemImage: badge.systemImage)
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(AppTheme.warningYellow)
@@ -1080,7 +1084,7 @@ struct ReviewView: View {
     @ViewBuilder
     private func clipContextBadges(_ clip: Clip) -> some View {
         let teamTitle = clipTeamDisplayTitle(clip)
-        if teamTitle != nil || !clip.reviewBadges.isEmpty || isDefensiveClip(clip) {
+        if teamTitle != nil || !contextualReviewBadges(for: clip).isEmpty || isDefensiveClip(clip) {
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 6) {
                     clipContextBadgeItems(clip)
@@ -1102,6 +1106,7 @@ struct ReviewView: View {
 
     @ViewBuilder
     private func clipContextBadgeItems(_ clip: Clip) -> some View {
+        let reviewBadges = contextualReviewBadges(for: clip)
         if let teamTitle = clipTeamDisplayTitle(clip) {
             Label(teamTitle, systemImage: clipNeedsTeamReview(clip) ? "person.2.badge.gearshape.fill" : "person.2.fill")
                 .font(.caption2.weight(.semibold))
@@ -1130,7 +1135,7 @@ struct ReviewView: View {
                 .accessibilityValue(defensiveBadgeTitle(for: clip))
         }
 
-        ForEach(clip.reviewBadges, id: \.self) { badge in
+        ForEach(reviewBadges, id: \.self) { badge in
             Label(badge.title, systemImage: badge.systemImage)
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(AppTheme.warningYellow)
@@ -1173,6 +1178,13 @@ struct ReviewView: View {
     private func clipNeedsTeamReview(_ clip: Clip) -> Bool {
         HighlightsViewModel.needsTeamReview(
             clip,
+            teamSelection: viewModel.settings.highlightTeamSelection
+        )
+    }
+
+    private func contextualReviewBadges(for clip: Clip) -> [ClipReviewBadge] {
+        HighlightsViewModel.reviewBadges(
+            for: clip,
             teamSelection: viewModel.settings.highlightTeamSelection
         )
     }
@@ -1391,7 +1403,7 @@ struct ReviewView: View {
 
     private func clipAccessibilityValue(_ clip: Clip) -> String {
         let keepState = clip.isKept ? "Kept" : "Skipped"
-        let reviewNotes = clip.reviewBadges.map(\.accessibilityLabel)
+        let reviewNotes = contextualReviewBadges(for: clip).map(\.accessibilityLabel)
         let reviewText = reviewNotes.isEmpty ? "" : " Review flags: \(reviewNotes.joined(separator: ", "))."
         return "\(keepState). Confidence \(Int(clip.confidence * 100)) percent. Duration \(clip.formattedDuration).\(reviewText)"
     }
