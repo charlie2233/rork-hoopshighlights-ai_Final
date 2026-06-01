@@ -1210,6 +1210,22 @@ final class HighlightsViewModel {
         return projectStore.thumbnailImage(for: project)
     }
 
+    @discardableResult
+    func reconcileCurrentProjectLoadState() -> Bool {
+        guard let currentProjectID,
+              let project = projectLibrary.projects.first(where: { $0.id == currentProjectID }),
+              projectSourceURL(for: project) != nil else {
+            return isVideoLoaded
+        }
+
+        guard !isVideoLoaded || videoURL == nil else {
+            return true
+        }
+
+        applyPersistedProject(project)
+        return isVideoLoaded
+    }
+
     func canOpenProject(_ project: PersistedProjectRecord) -> Bool {
         projectSourceURL(for: project) != nil
     }

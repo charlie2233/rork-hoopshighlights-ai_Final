@@ -33,6 +33,7 @@ struct VideoPlayerView: View {
 
     private let videoImportReminderNanoseconds: UInt64 = 20 * 1_000_000_000
     private let videoImportTimeoutNanoseconds: UInt64 = 5 * 60 * 1_000_000_000
+    private let videoImportCompletionGraceNanoseconds: UInt64 = 2 * 1_000_000_000
 
     var body: some View {
         NavigationStack {
@@ -208,10 +209,12 @@ struct VideoPlayerView: View {
                     )
                     return false
                 }
+                defer {
+                    VideoImportTransfer.scheduleTemporaryFileRemoval(at: importedVideo.url)
+                }
 
                 try Task.checkCancellation()
                 guard await preflightVideoImport(url: importedVideo.url, source: "photos") != nil else {
-                    try? await VideoImportTransfer.removeTemporaryFile(at: importedVideo.url)
                     return false
                 }
 
@@ -225,7 +228,6 @@ struct VideoPlayerView: View {
                         completeImportAfterLoadedVideo()
                     }
                 }
-                try? await VideoImportTransfer.removeTemporaryFile(at: importedVideo.url)
                 return didLoadVideo
             } catch is CancellationError {
                 LaunchTelemetry.shared.recordStabilityCheckpoint(
@@ -322,7 +324,7 @@ struct VideoPlayerView: View {
             )
 
             await MainActor.run {
-                finishVideoImport(importID: importID, didLoadVideo: didLoadVideo)
+                finishVideoImport(importID: importID, didLoadVideo: didLoadVideo, source: source)
             }
         }
 
@@ -390,12 +392,33 @@ struct VideoPlayerView: View {
         importBackgroundTaskID = .invalid
     }
 
-    private func finishVideoImport(importID: UUID, didLoadVideo: Bool) {
-        guard activeImportID == importID || viewModel.isVideoLoaded else { return }
+    private func finishVideoImport(importID: UUID, didLoadVideo: Bool, source: String) {
+        guard activeImportID == importID || viewModel.isVideoLoaded || didLoadVideo else { return }
 
-        if viewModel.isVideoLoaded {
-            completeImportAfterLoadedVideo()
-            startTeamScanIfNeeded()
+        if didLoadVideo {
+            if recoverSuccessfulImportIfNeeded(source: source) {
+                return
+            }
+            importStatusMessage = "Opening project..."
+            Task { @MainActor in
+                do {
+                    try await Task.sleep(nanoseconds: videoImportCompletionGraceNanoseconds)
+                } catch {
+                    return
+                }
+
+                guard activeImportID == importID || isImportingVideo else { return }
+                if recoverSuccessfulImportIfNeeded(source: source) {
+                    return
+                }
+
+                LaunchTelemetry.shared.recordStabilityCheckpoint(
+                    "video_import.loaded_but_not_visible",
+                    metadata: "source=\(source)"
+                )
+                clearImportState()
+                importErrorMessage = "HoopClips saved the video, but this screen could not open it yet. Open the project from History or import it from Files."
+            }
             return
         }
 
@@ -417,6 +440,20 @@ struct VideoPlayerView: View {
         guard viewModel.isVideoLoaded else { return }
         completeImportAfterLoadedVideo()
         startTeamScanIfNeeded()
+    }
+
+    private func recoverSuccessfulImportIfNeeded(source: String) -> Bool {
+        if viewModel.reconcileCurrentProjectLoadState() {
+            LaunchTelemetry.shared.recordStabilityCheckpoint(
+                "video_import.visible",
+                metadata: "source=\(source)"
+            )
+            syncPlayer(with: viewModel.videoURL)
+            completeImportAfterLoadedVideo()
+            startTeamScanIfNeeded()
+            return true
+        }
+        return false
     }
 
     private func startTeamScanIfNeeded() {
@@ -1937,6 +1974,16 @@ private enum VideoImportTransfer {
             try FileManager.default.removeItem(at: url)
         }.value
     }
+
+    static func scheduleTemporaryFileRemoval(at url: URL) {
+        Task.detached(priority: .utility) {
+            guard !Task.isCancelled else { return }
+            guard url.path.hasPrefix(URL.temporaryDirectory.path) else {
+                return
+            }
+            try? FileManager.default.removeItem(at: url)
+        }
+    }
 }
 
 private struct ImportedVideoFile: Transferable {
@@ -1969,6 +2016,13 @@ private struct ImportedVideoFile: Transferable {
     }
 
     private static func copyImportedVideo(from sourceURL: URL) throws -> ImportedVideoFile {
+        let accessing = sourceURL.startAccessingSecurityScopedResource()
+        defer {
+            if accessing {
+                sourceURL.stopAccessingSecurityScopedResource()
+            }
+        }
+
         let fileExtension = sourceURL.pathExtension.isEmpty ? "mov" : sourceURL.pathExtension
         let tempURL = URL.temporaryDirectory.appending(path: "imported_video_\(UUID().uuidString).\(fileExtension)")
         try VideoImportPolicy.validateTemporaryCopyCapacity(for: sourceURL)
