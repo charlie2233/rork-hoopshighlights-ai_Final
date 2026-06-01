@@ -611,7 +611,7 @@ struct AIEditView: View {
                     }
 
                 if userEditPrompt.isEmpty {
-                    Text("Example: more hype, focus on defense, NBA recap, 30s vertical mixtape.")
+                    Text("Optional: more hype, focus on defense, NBA recap, 4:30 team reel.")
                         .font(.subheadline)
                         .foregroundStyle(AppTheme.subtleText)
                         .padding(.horizontal, 16)

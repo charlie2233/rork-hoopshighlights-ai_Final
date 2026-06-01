@@ -394,9 +394,10 @@ enum CloudEditUserPromptBuilder {
         teamSelection: HighlightTeamSelection?,
         maxCharacters: Int = maxPromptCharacters
     ) -> String? {
+        guard maxCharacters > 0 else { return nil }
         let trimmed = userPrompt?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if !trimmed.isEmpty {
-            return String(trimmed.prefix(maxCharacters))
+            return String(joinUserPrompt(trimmed, with: defaultAccuracyPrompt(teamSelection: teamSelection)).prefix(maxCharacters))
         }
 
         return String(defaultAccuracyPrompt(teamSelection: teamSelection).prefix(maxCharacters))
@@ -405,9 +406,9 @@ enum CloudEditUserPromptBuilder {
     static func defaultFocusSummary(teamSelection: HighlightTeamSelection?) -> String {
         let selectedTeam = teamSelection?.mode == .team ? (teamSelection?.displayTitle ?? "selected team") : nil
         if let selectedTeam {
-            return "Default focus: \(selectedTeam), clear outcomes, blocks, steals, and strong uncertain clips for Review."
+            return "Accuracy guardrails: \(selectedTeam), clear outcomes, blocks, steals, and strong uncertain clips for Review."
         }
-        return "Default focus: clear outcomes, made shots, blocks, steals, and strong uncertain clips for Review."
+        return "Accuracy guardrails: clear outcomes, made shots, blocks, steals, and strong uncertain clips for Review."
     }
 
     private static func defaultAccuracyPrompt(teamSelection: HighlightTeamSelection?) -> String {
@@ -421,6 +422,12 @@ enum CloudEditUserPromptBuilder {
         parts.append("Reject duplicates, unclear dead-ball moments, and boring filler.")
         parts.append("Keep strong uncertain team clips reviewable.")
         return parts.joined(separator: " ")
+    }
+
+    private static func joinUserPrompt(_ userPrompt: String, with guardrails: String) -> String {
+        let punctuation = CharacterSet(charactersIn: ".!?")
+        let needsPeriod = userPrompt.unicodeScalars.last.map { !punctuation.contains($0) } ?? false
+        return userPrompt + (needsPeriod ? ". " : " ") + guardrails
     }
 }
 

@@ -494,7 +494,35 @@ struct HoopsClipsTests {
             )
         )
 
-        #expect(prompt == "Make it a short defense reel.")
+        #expect(prompt.hasPrefix("Make it a short defense reel."))
+        #expect(prompt.contains("Cover both teams."))
+        #expect(prompt.contains("visible outcomes"))
+        #expect(prompt.contains("blocks"))
+        #expect(prompt.contains("steals"))
+        #expect(prompt.contains("Reject duplicates"))
+        #expect(prompt.count <= CloudEditUserPromptBuilder.maxPromptCharacters)
+    }
+
+    @Test func testCloudEditUserPromptBuilderKeepsTeamGuardrailsWithTypedNote() throws {
+        let selection = HighlightTeamSelection(
+            mode: .team,
+            teamId: "team_light",
+            label: "White jerseys",
+            colorLabel: "white",
+            confidenceThreshold: 0.85,
+            includeUncertain: true
+        )
+        let prompt = try #require(
+            CloudEditUserPromptBuilder.effectivePrompt(
+                userPrompt: "Make this a 4:30 team reel",
+                teamSelection: selection
+            )
+        )
+
+        #expect(prompt.hasPrefix("Make this a 4:30 team reel. Focus on White jerseys."))
+        #expect(prompt.contains("defensive stops"))
+        #expect(prompt.contains("Keep strong uncertain team clips reviewable."))
+        #expect(prompt.count <= CloudEditUserPromptBuilder.maxPromptCharacters)
     }
 
     @Test func testCloudAnalysisRequestEncodesPreAnalysisTeamChoice() throws {
