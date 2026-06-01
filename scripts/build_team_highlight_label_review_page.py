@@ -692,6 +692,12 @@ def render_progress_summary(payload: dict[str, Any]) -> str:
             f'<p id="overall-progress"><strong>{reviewed}</strong> / {total} clips reviewed. {remaining} still need labels.</p>',
             '<p class="lede">A clip is complete when it is marked reviewed and has expected team, highlight, event, and outcome fields filled.</p>',
             draft_line,
+            (
+                '<p class="shortcut-strip">'
+                '<strong>Shortcuts:</strong> S/E/F jump, J/L scrub, K play/pause, P use prediction, '
+                'R reviewed, N next, 1 selected, 2 not highlight, 3 bad window.'
+                "</p>"
+            ),
             priority_summary,
             '<p class="lede" id="draft-status">Local draft not loaded.</p>',
             "</div>",
@@ -966,6 +972,16 @@ h1, h2, h3, p {
 .label-progress {
   color: #f6c95f;
   font-weight: 800;
+}
+.shortcut-strip {
+  max-width: 920px;
+  color: #d8deea;
+  background: #202535;
+  border: 1px solid #333b52;
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 700;
 }
 .panel {
   border: 1px solid #2c3140;
@@ -1620,6 +1636,33 @@ function seekClipFromCard(card, marker) {
   seekClip(card.dataset.videoId, seconds);
 }
 
+function scrubVideosForCard(card, deltaSeconds) {
+  if (!card) return;
+  const videos = videoElementsFor(card.dataset.videoId);
+  if (!videos.length) return;
+  const baseTime = Number.isFinite(videos[0].currentTime) ? videos[0].currentTime : Number(card.dataset.eventSeconds || 0);
+  const targetTime = Math.max(0, baseTime + deltaSeconds);
+  videos.forEach(video => {
+    video.currentTime = targetTime;
+  });
+  draftStatus(`${deltaSeconds > 0 ? "Forward" : "Back"} ${Math.abs(deltaSeconds).toFixed(1)}s.`);
+}
+
+function togglePlaybackForCard(card) {
+  if (!card) return;
+  const videos = videoElementsFor(card.dataset.videoId);
+  if (!videos.length) return;
+  const shouldPlay = videos.some(video => video.paused);
+  videos.forEach(video => {
+    if (shouldPlay) {
+      video.play().catch(() => {});
+    } else {
+      video.pause();
+    }
+  });
+  draftStatus(shouldPlay ? "Playing synced angles." : "Paused synced angles.");
+}
+
 function focusClipCard(card) {
   if (!card) {
     draftStatus("All visible clips are complete.");
@@ -1693,7 +1736,7 @@ function handleReviewShortcut(event) {
   if (event.altKey || event.ctrlKey || event.metaKey) return;
 
   const key = String(event.key || "").toLowerCase();
-  if (!["s", "e", "f", "p", "r", "n", "1", "2", "3"].includes(key)) return;
+  if (!["s", "e", "f", "j", "k", "l", "p", "r", "n", "1", "2", "3"].includes(key)) return;
 
   const card = activeClipCard();
   if (!card) return;
@@ -1705,6 +1748,12 @@ function handleReviewShortcut(event) {
     seekClipFromCard(card, "event");
   } else if (key === "f") {
     seekClipFromCard(card, "finish");
+  } else if (key === "j") {
+    scrubVideosForCard(card, -0.5);
+  } else if (key === "k") {
+    togglePlaybackForCard(card);
+  } else if (key === "l") {
+    scrubVideosForCard(card, 0.5);
   } else if (key === "p") {
     fillFromPrediction(Number(card.dataset.caseIndex), Number(card.dataset.clipIndex));
   } else if (key === "r") {
