@@ -2927,6 +2927,49 @@ struct HoopsClipsTests {
         #expect(clip.reviewEvidenceRows.contains { $0.title == "Team needs check" && $0.detail.contains("No confident team evidence") })
     }
 
+    @Test func testClipReviewBadgesMarkLoudAudioCueForVisualReview() {
+        let clip = Clip(
+            startTime: 44.0,
+            endTime: 49.0,
+            eventCenter: 46.5,
+            action: .unknown,
+            confidence: 0.69,
+            isKept: true,
+            label: "Highlight",
+            audioScore: 0.96,
+            visualScore: 0.52,
+            motionScore: 0.74,
+            combinedScore: 0.64,
+            detectionMethod: .cloud
+        )
+
+        #expect(clip.needsUserReview)
+        #expect(clip.reviewBadges == [.audioCue])
+        #expect(clip.reviewBadges.map(\.title) == ["Audio?"])
+        #expect(clip.reviewEvidenceRows.first?.detail.contains("team, audio, timing, or outcome") == true)
+        #expect(clip.reviewEvidenceRows.contains { $0.title == "Crowd/audio cue" && $0.detail.contains("96%") })
+    }
+
+    @Test func testClipReviewBadgesIgnoreWeakAudioOnlyNoise() {
+        let clip = Clip(
+            startTime: 12.0,
+            endTime: 16.0,
+            eventCenter: 14.0,
+            action: .unknown,
+            confidence: 0.42,
+            isKept: false,
+            label: "Highlight",
+            audioScore: 0.96,
+            visualScore: 0.22,
+            motionScore: 0.24,
+            combinedScore: 0.42,
+            detectionMethod: .cloud
+        )
+
+        #expect(!clip.needsUserReview)
+        #expect(!clip.reviewBadges.contains(.audioCue))
+    }
+
     @Test func testClipReviewEvidenceRowsShowConfidentTeamAndKeyMoments() {
         let clip = Clip(
             startTime: 8.0,

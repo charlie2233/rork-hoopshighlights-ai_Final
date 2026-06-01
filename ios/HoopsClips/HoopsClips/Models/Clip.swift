@@ -2,6 +2,8 @@ import Foundation
 
 nonisolated struct Clip: Identifiable, Codable, Sendable {
     private static let reviewEvidenceAudioCueThreshold = 0.72
+    private static let reviewBadgeAudioCueThreshold = 0.90
+    private static let reviewBadgeAudioCueActivityThreshold = 0.50
 
     let id: UUID
     var startTime: Double
@@ -38,6 +40,9 @@ nonisolated struct Clip: Identifiable, Codable, Sendable {
         var badges: [ClipReviewBadge] = []
         if teamAttributionStatus == "uncertain" || (teamAttribution?.confidence ?? 1.0) < 0.85 {
             badges.append(.teamUncertain)
+        }
+        if hasAudioCueReviewBadge {
+            badges.append(.audioCue)
         }
         if let nativeShotSignals {
             if nativeShotSignals.outcome == "uncertain" {
@@ -140,7 +145,7 @@ nonisolated struct Clip: Identifiable, Codable, Sendable {
 
     private var reviewDecisionReason: String {
         if needsUserReview {
-            return "Kept for review because team, timing, or outcome still needs a human check."
+            return "Kept for review because team, audio, timing, or outcome still needs a human check."
         }
         if !isKept {
             return "Skipped clips stay out of the finished edit unless you tap Keep."
@@ -214,6 +219,26 @@ nonisolated struct Clip: Identifiable, Codable, Sendable {
             needsReview: true
         )
     }
+
+    private var hasAudioCueReviewBadge: Bool {
+        guard duration >= 2.0 else { return false }
+        let text = "\(label) \(action.rawValue)".lowercased()
+        let hasReactionLabel = Self.audioReactionKeywords.contains { text.contains($0) }
+        let activityScore = max(visualScore, motionScore, combinedScore)
+        if hasReactionLabel {
+            return audioScore >= Self.reviewEvidenceAudioCueThreshold && activityScore >= Self.reviewBadgeAudioCueActivityThreshold
+        }
+        return audioScore >= Self.reviewBadgeAudioCueThreshold && activityScore >= Self.reviewBadgeAudioCueActivityThreshold
+    }
+
+    private static let audioReactionKeywords = [
+        "audio pop",
+        "audio reaction",
+        "crowd pop",
+        "crowd reaction",
+        "crowd",
+        "reaction"
+    ]
 
     private var outcomeEvidenceRow: ClipReviewEvidenceRow? {
         guard let nativeShotSignals else { return nil }
@@ -318,12 +343,14 @@ nonisolated struct ClipReviewEvidenceRow: Identifiable, Sendable, Equatable {
 
 nonisolated enum ClipReviewBadge: String, Codable, Sendable, Equatable, Hashable, CaseIterable {
     case teamUncertain
+    case audioCue
     case outcomeUncertain
     case timingUncertain
 
     var title: String {
         switch self {
         case .teamUncertain: return "Team?"
+        case .audioCue: return "Audio?"
         case .outcomeUncertain: return "Outcome?"
         case .timingUncertain: return "Timing?"
         }
@@ -332,6 +359,7 @@ nonisolated enum ClipReviewBadge: String, Codable, Sendable, Equatable, Hashable
     var systemImage: String {
         switch self {
         case .teamUncertain: return "person.2.fill"
+        case .audioCue: return "waveform"
         case .outcomeUncertain: return "questionmark.circle"
         case .timingUncertain: return "clock.fill"
         }
@@ -340,6 +368,7 @@ nonisolated enum ClipReviewBadge: String, Codable, Sendable, Equatable, Hashable
     var accessibilityLabel: String {
         switch self {
         case .teamUncertain: return "team attribution needs review"
+        case .audioCue: return "crowd or audio cue needs visual review"
         case .outcomeUncertain: return "outcome needs review"
         case .timingUncertain: return "clip timing needs review"
         }
