@@ -6,6 +6,7 @@ import UIKit
 
 struct VideoPlayerView: View {
     @Bindable var viewModel: HighlightsViewModel
+    var onOpenHistory: () -> Void = {}
     @Environment(SubscriptionManager.self) private var subscriptionManager
     @Environment(AuthService.self) private var authService
     @Environment(AppLanguageStore.self) private var languageStore
@@ -28,6 +29,7 @@ struct VideoPlayerView: View {
     @State private var teamScanTask: Task<Void, Never>?
     @State private var importBackgroundTaskID: UIBackgroundTaskIdentifier = .invalid
     @State private var importErrorMessage: String?
+    @State private var importRecoveryOffersHistory = false
     @State private var lastAnalysisAnnouncementPercent = -1
     @State private var showingCloudVideoConsent = false
     @State private var pendingCloudVideoConsentAction: CloudVideoConsentAction?
@@ -169,11 +171,20 @@ struct VideoPlayerView: View {
             } message: {
                 Text("\(languageStore.text(.proRequiredMessagePrefix)) \(formatDuration(AppConstants.nonProMaxAnalysisDuration)). \(languageStore.text(.proRequiredMessageMiddle)) \(formatDuration(viewModel.videoDuration)).")
             }
-            .alert("Video Import Failed", isPresented: Binding(
+            .alert(importAlertTitle, isPresented: Binding(
                 get: { importErrorMessage != nil },
-                set: { if !$0 { importErrorMessage = nil } }
+                set: { if !$0 { clearImportError() } }
             )) {
-                Button("OK", role: .cancel) { importErrorMessage = nil }
+                if importRecoveryOffersHistory {
+                    Button("Open History") {
+                        LaunchTelemetry.shared.recordStabilityCheckpoint("video_import.open_history_from_alert")
+                        clearImportError()
+                        onOpenHistory()
+                    }
+                }
+                Button("OK", role: .cancel) {
+                    clearImportError()
+                }
             } message: {
                 Text(importErrorMessage ?? "Choose another video and try again.")
             }
@@ -263,7 +274,7 @@ struct VideoPlayerView: View {
         activeImportID = importID
         isImportingVideo = true
         importStatusMessage = languageStore.text(.preparingVideo)
-        importErrorMessage = nil
+        clearImportError()
         beginImportBackgroundTask(source: source)
         LaunchTelemetry.shared.recordStabilityCheckpoint(
             "video_import.started",
@@ -341,7 +352,9 @@ struct VideoPlayerView: View {
                         "video_import.timeout",
                         metadata: "source=\(source)"
                     )
-                    importErrorMessage = "HoopClips is still waiting for that video. Check History first if the project saved, or cancel and import from Files."
+                    showImportRecoveryError(
+                        "HoopClips is still waiting for that video. It may already be saved in History."
+                    )
                     importTask?.cancel()
                     clearImportState()
                 }
@@ -449,7 +462,9 @@ struct VideoPlayerView: View {
                     metadata: "source=\(source)"
                 )
                 clearImportState()
-                importErrorMessage = "HoopClips saved the video, but this screen could not open it yet. Open the project from History or import it from Files."
+                showImportRecoveryError(
+                    "HoopClips saved the video, but this screen could not open it yet. Open it from History."
+                )
             }
             return
         }
@@ -464,10 +479,24 @@ struct VideoPlayerView: View {
         }
     }
 
+    private var importAlertTitle: String {
+        importRecoveryOffersHistory ? "Check History" : "Video Import Failed"
+    }
+
+    private func showImportRecoveryError(_ message: String) {
+        importRecoveryOffersHistory = true
+        importErrorMessage = message
+    }
+
+    private func clearImportError() {
+        importErrorMessage = nil
+        importRecoveryOffersHistory = false
+    }
+
     private func completeImportAfterLoadedVideo() {
         guard viewModel.reconcileCurrentProjectLoadState() else { return }
         syncPlayer(with: viewModel.videoURL)
-        importErrorMessage = nil
+        clearImportError()
         if isImportingVideo || activeImportID != nil || importTask != nil {
             clearImportState()
         }
@@ -616,7 +645,7 @@ struct VideoPlayerView: View {
         teamScanTask?.cancel()
         teamScanTask = nil
         cancelActiveImport()
-        importErrorMessage = nil
+        clearImportError()
     }
 
     private var importSection: some View {

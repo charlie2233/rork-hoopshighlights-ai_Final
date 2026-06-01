@@ -186,7 +186,12 @@ struct ContentView: View {
             HoopsMotionBackdrop(glowOpacity: 0.18, courtOpacity: 0.08)
 
             TabView(selection: $selectedTab) {
-                VideoPlayerView(viewModel: viewModel)
+                VideoPlayerView(
+                    viewModel: viewModel,
+                    onOpenHistory: {
+                        selectTab(.history)
+                    }
+                )
                     .environment(subscriptionManager)
                     .environment(authService)
                     .tag(AppTab.player.rawValue)
