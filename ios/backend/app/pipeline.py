@@ -58,6 +58,9 @@ AUDIO_REACTION_BOUNDARY_MAX_COUNT = 48
 AUDIO_REACTION_BOUNDARY_CONTEXT_BUCKETS = 4
 AUDIO_REACTION_ONSET_CONTEXT_BUCKETS = 5
 AUDIO_REACTION_SUSTAIN_CONTEXT_BUCKETS = 5
+AUDIO_REACTION_CLUSTER_CONTEXT_BUCKETS = 4
+AUDIO_REACTION_CLUSTER_MIN_PEAK = 0.56
+AUDIO_REACTION_CLUSTER_SPIKE_MARGIN = 0.16
 AUDIO_REACTION_WINDOW_LEAD_SECONDS = 2.75
 AUDIO_REACTION_WINDOW_FOLLOW_SECONDS = 1.5
 UNLABELED_AUDIO_REACTION_MIN_AUDIO_SCORE = 0.92
@@ -1377,6 +1380,7 @@ def _audio_pop_signal_for_window(
     ]
     sustain_mean = mean(sustain_values or [0.0])
     sustain_above_baseline = max(sustain_mean - baseline, 0.0)
+    cluster_boost = _audio_reaction_cluster_boost(audio_profile, peak_index, peak_value, baseline)
     loudness_gate = clamp((peak_value - 0.48) / 0.28, 0.0, 1.0)
     rise_above_window = max(peak_value - window_mean, 0.0)
     rise_above_baseline = max(peak_value - baseline, 0.0)
@@ -1388,6 +1392,7 @@ def _audio_pop_signal_for_window(
             + (rise_from_onset * 0.58)
             + (sustain_above_baseline * 0.22)
             + (max(peak_value - 0.70, 0.0) * 0.2)
+            + cluster_boost
         )
         * loudness_gate,
         0.0,
@@ -1395,6 +1400,27 @@ def _audio_pop_signal_for_window(
     )
     time_seconds = (peak_index + 0.5) * AUDIO_PROFILE_BUCKET_SECONDS
     return AudioPopSignal(score=round(score, 4), time_seconds=round(time_seconds, 3), baseline=round(baseline, 4))
+
+
+def _audio_reaction_cluster_boost(
+    audio_profile: Sequence[float],
+    peak_index: int,
+    peak_value: float,
+    baseline: float,
+) -> float:
+    if peak_value < AUDIO_REACTION_CLUSTER_MIN_PEAK:
+        return 0.0
+
+    cluster_start = max(0, peak_index - AUDIO_REACTION_CLUSTER_CONTEXT_BUCKETS)
+    cluster_end = min(len(audio_profile), peak_index + AUDIO_REACTION_CLUSTER_CONTEXT_BUCKETS + 1)
+    elevated_floor = max(0.50, baseline + AUDIO_REACTION_CLUSTER_SPIKE_MARGIN)
+    elevated_values = [value for value in audio_profile[cluster_start:cluster_end] if value >= elevated_floor]
+    if len(elevated_values) < 2:
+        return 0.0
+
+    density_score = min((len(elevated_values) - 1) / 3.0, 1.0)
+    elevation_score = clamp((mean(elevated_values) - baseline) / 0.42, 0.0, 1.0)
+    return clamp((density_score * 0.20) + (elevation_score * 0.16), 0.0, 0.36)
 
 
 def _audio_pop_context_score(pop_time_seconds: Optional[float], start_time: float, end_time: float) -> float:

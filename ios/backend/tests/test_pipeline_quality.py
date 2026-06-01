@@ -208,6 +208,23 @@ class PipelineQualityTests(unittest.TestCase):
         self.assertAlmostEqual(boundaries[0].time_seconds or 0.0, 11.25, delta=0.45)
         self.assertGreater(boundaries[0].score, 0.5)
 
+    def test_audio_reaction_repeated_crowd_pops_boost_salience(self) -> None:
+        isolated_pop = [0.08] * 48
+        isolated_pop[20] = 0.72
+        repeated_pops = [0.08] * 48
+        repeated_pops[18] = 0.62
+        repeated_pops[19] = 0.68
+        repeated_pops[20] = 0.72
+        repeated_pops[21] = 0.66
+
+        isolated = _detect_audio_reaction_boundaries(isolated_pop)
+        repeated = _detect_audio_reaction_boundaries(repeated_pops)
+
+        self.assertTrue(isolated)
+        self.assertTrue(repeated)
+        self.assertAlmostEqual(repeated[0].time_seconds or 0.0, isolated[0].time_seconds or 0.0, delta=0.3)
+        self.assertGreater(repeated[0].score, isolated[0].score + 0.04)
+
     def test_candidate_windows_include_crowd_pop_recall_anchor_for_gpt_review(self) -> None:
         audio_profile = [0.06] * 30
         audio_profile[11] = 0.58
