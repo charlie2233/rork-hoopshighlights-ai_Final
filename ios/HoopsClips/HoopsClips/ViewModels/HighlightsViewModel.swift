@@ -543,10 +543,10 @@ final class HighlightsViewModel {
         teamSelection: HighlightTeamSelection = .allTeams
     ) -> Bool {
         guard clip.confidence >= 0.8, !clip.needsUserReview else { return false }
-        return clipMatchesHighlightTeamSelection(clip, selection: teamSelection)
+        return clipConfidentlyMatchesHighlightTeamSelection(clip, selection: teamSelection)
     }
 
-    nonisolated private static func clipMatchesHighlightTeamSelection(
+    nonisolated private static func clipConfidentlyMatchesHighlightTeamSelection(
         _ clip: Clip,
         selection: HighlightTeamSelection
     ) -> Bool {
@@ -558,6 +558,34 @@ final class HighlightsViewModel {
         let attributedKeys = normalizedHighlightTeamKeys(attribution.teamId, attribution.colorLabel, attribution.label)
         guard !selectedKeys.isEmpty, !attributedKeys.isEmpty else { return false }
         return !selectedKeys.isDisjoint(with: attributedKeys)
+    }
+
+    nonisolated private static func clipIsConfidentOpponentTeam(
+        _ clip: Clip,
+        selection: HighlightTeamSelection
+    ) -> Bool {
+        guard selection.mode == .team else { return false }
+        guard let attribution = clip.teamAttribution else { return false }
+        guard attribution.confidence >= selection.confidenceThreshold else { return false }
+
+        let selectedKeys = normalizedHighlightTeamKeys(selection.teamId, selection.colorLabel, selection.label)
+        let attributedKeys = normalizedHighlightTeamKeys(attribution.teamId, attribution.colorLabel, attribution.label)
+        guard !selectedKeys.isEmpty, !attributedKeys.isEmpty else { return false }
+        return selectedKeys.isDisjoint(with: attributedKeys)
+    }
+
+    nonisolated private static func clipAllowedForCloudEditTeamSelection(
+        _ clip: Clip,
+        selection: HighlightTeamSelection
+    ) -> Bool {
+        guard selection.mode == .team else { return true }
+        if clipConfidentlyMatchesHighlightTeamSelection(clip, selection: selection) {
+            return true
+        }
+        if clipIsConfidentOpponentTeam(clip, selection: selection) {
+            return false
+        }
+        return selection.includeUncertain
     }
 
     nonisolated private static func normalizedHighlightTeamKeys(_ values: String?...) -> Set<String> {
@@ -713,10 +741,13 @@ final class HighlightsViewModel {
         let cappedLimit = max(0, limit)
         guard cappedLimit > 0 else { return [] }
 
-        let keptSource = clips.filter(\.isKept)
+        let teamEligibleClips = clips.filter {
+            clipAllowedForCloudEditTeamSelection($0, selection: teamSelection)
+        }
+        let keptSource = teamEligibleClips.filter(\.isKept)
         let keptCandidates = rankedCloudEditCandidateClips(from: keptSource, limit: cappedLimit)
         let reviewOnlyCandidates = rankedCloudEditCandidateClips(
-            from: clips.filter { !$0.isKept && isCloudEditReviewReserveCandidate($0, teamSelection: teamSelection) },
+            from: teamEligibleClips.filter { !$0.isKept && isCloudEditReviewReserveCandidate($0, teamSelection: teamSelection) },
             limit: cappedLimit
         )
 
@@ -830,7 +861,7 @@ final class HighlightsViewModel {
         teamSelection: HighlightTeamSelection
     ) -> Bool {
         guard teamSelection.mode == .team else { return false }
-        guard clipMatchesHighlightTeamSelection(clip, selection: teamSelection) else { return false }
+        guard clipAllowedForCloudEditTeamSelection(clip, selection: teamSelection) else { return false }
         guard isCloudEditCandidateQualityEligible(clip) else { return false }
 
         let watchability = max(clip.visualScore, clip.motionScore)

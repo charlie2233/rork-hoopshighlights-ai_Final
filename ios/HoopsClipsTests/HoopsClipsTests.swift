@@ -1505,6 +1505,175 @@ struct HoopsClipsTests {
         #expect(viewModel.cloudEditCandidatePoolCount == 2)
     }
 
+    @Test @MainActor func testCloudEditRequestKeepsUncertainTeamCandidateForSelectedTeamReview() throws {
+        let viewModel = HighlightsViewModel()
+        viewModel.cloudEditSourceObjectKey = "uploads/source.mp4"
+        viewModel.settings.highlightTeamSelection = HighlightTeamSelection(
+            mode: .team,
+            teamId: "team_dark",
+            label: "Dark jerseys",
+            colorLabel: "black",
+            confidenceThreshold: 0.85,
+            includeUncertain: true
+        )
+
+        let keptDarkClip = Clip(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000021")!,
+            startTime: 10.0,
+            endTime: 16.0,
+            eventCenter: 13.0,
+            action: .madeShot,
+            confidence: 0.92,
+            isKept: true,
+            label: "Kept Dark Shot",
+            audioScore: 0.7,
+            visualScore: 0.85,
+            motionScore: 0.82,
+            combinedScore: 0.88,
+            detectionMethod: .cloud,
+            teamAttribution: ClipTeamAttribution(
+                teamId: "team_dark",
+                label: "Dark jerseys",
+                colorLabel: "black",
+                confidence: 0.93,
+                source: "team_scan"
+            ),
+            teamAttributionStatus: "matched"
+        )
+        let uncertainTeamClip = Clip(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000022")!,
+            startTime: 24.0,
+            endTime: 30.0,
+            eventCenter: 27.0,
+            action: .madeShot,
+            confidence: 0.76,
+            isKept: false,
+            label: "No Team Finish",
+            audioScore: 0.52,
+            visualScore: 0.74,
+            motionScore: 0.77,
+            combinedScore: 0.8,
+            detectionMethod: .cloud
+        )
+        let confidentOpponentClip = Clip(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000023")!,
+            startTime: 38.0,
+            endTime: 44.0,
+            eventCenter: 41.0,
+            action: .madeShot,
+            confidence: 0.94,
+            isKept: true,
+            label: "Kept Light Shot",
+            audioScore: 0.82,
+            visualScore: 0.9,
+            motionScore: 0.88,
+            combinedScore: 0.94,
+            detectionMethod: .cloud,
+            teamAttribution: ClipTeamAttribution(
+                teamId: "team_light",
+                label: "Light jerseys",
+                colorLabel: "white",
+                confidence: 0.95,
+                source: "team_scan"
+            ),
+            teamAttributionStatus: "matched"
+        )
+        let weakUncertainClip = Clip(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000024")!,
+            startTime: 52.0,
+            endTime: 58.0,
+            eventCenter: 55.0,
+            action: .madeShot,
+            confidence: 0.66,
+            isKept: false,
+            label: "Weak No Team Shot",
+            audioScore: 0.2,
+            visualScore: 0.48,
+            motionScore: 0.5,
+            combinedScore: 0.55,
+            detectionMethod: .cloud
+        )
+        viewModel.analysisService.clips = [
+            keptDarkClip,
+            uncertainTeamClip,
+            confidentOpponentClip,
+            weakUncertainClip
+        ]
+
+        let request = try viewModel.createCloudEditRequest(
+            preset: .personalHighlight,
+            targetDurationSeconds: 30,
+            isProUser: false
+        )
+
+        #expect(request.clips.map(\.label) == ["Kept Dark Shot", "No Team Finish"])
+        #expect(request.clips.first { $0.id == keptDarkClip.id.uuidString }?.userReviewDecision == "kept")
+        #expect(request.clips.first { $0.id == uncertainTeamClip.id.uuidString }?.userReviewDecision == "unreviewed")
+        #expect(request.clips.first { $0.id == confidentOpponentClip.id.uuidString } == nil)
+        #expect(request.clips.first { $0.id == weakUncertainClip.id.uuidString } == nil)
+    }
+
+    @Test @MainActor func testCloudEditRequestCanDisableUncertainTeamCandidateReserve() throws {
+        let viewModel = HighlightsViewModel()
+        viewModel.cloudEditSourceObjectKey = "uploads/source.mp4"
+        viewModel.settings.highlightTeamSelection = HighlightTeamSelection(
+            mode: .team,
+            teamId: "team_dark",
+            label: "Dark jerseys",
+            colorLabel: "black",
+            confidenceThreshold: 0.85,
+            includeUncertain: false
+        )
+
+        let keptDarkClip = Clip(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000031")!,
+            startTime: 10.0,
+            endTime: 16.0,
+            eventCenter: 13.0,
+            action: .madeShot,
+            confidence: 0.92,
+            isKept: true,
+            label: "Kept Dark Shot",
+            audioScore: 0.7,
+            visualScore: 0.85,
+            motionScore: 0.82,
+            combinedScore: 0.88,
+            detectionMethod: .cloud,
+            teamAttribution: ClipTeamAttribution(
+                teamId: "team_dark",
+                label: "Dark jerseys",
+                colorLabel: "black",
+                confidence: 0.93,
+                source: "team_scan"
+            ),
+            teamAttributionStatus: "matched"
+        )
+        let uncertainTeamClip = Clip(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000032")!,
+            startTime: 24.0,
+            endTime: 30.0,
+            eventCenter: 27.0,
+            action: .madeShot,
+            confidence: 0.78,
+            isKept: false,
+            label: "No Team Finish",
+            audioScore: 0.52,
+            visualScore: 0.74,
+            motionScore: 0.77,
+            combinedScore: 0.81,
+            detectionMethod: .cloud
+        )
+        viewModel.analysisService.clips = [keptDarkClip, uncertainTeamClip]
+
+        let request = try viewModel.createCloudEditRequest(
+            preset: .personalHighlight,
+            targetDurationSeconds: 30,
+            isProUser: false
+        )
+
+        #expect(request.clips.map(\.label) == ["Kept Dark Shot"])
+    }
+
     @Test func testCloudEditCandidateRankingReservesDefenseAndReviewClipsBeforeCap() {
         var clips: [Clip] = []
         for index in 0..<42 {
