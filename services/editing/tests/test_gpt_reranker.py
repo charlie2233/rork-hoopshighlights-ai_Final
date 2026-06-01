@@ -306,7 +306,11 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         )
         frames = [
             SampledFrame("crowd_pop_1", "start", 42.0, "data:image/jpeg;base64,c3RhcnQ="),
+            SampledFrame("crowd_pop_1", "reactionLeadIn", 43.55, "data:image/jpeg;base64,bGVhZA=="),
+            SampledFrame("crowd_pop_1", "reactionBuild", 44.35, "data:image/jpeg;base64,YnVpbGQ="),
             SampledFrame("crowd_pop_1", "eventCenter", 45.0, "data:image/jpeg;base64,ZXZlbnQ="),
+            SampledFrame("crowd_pop_1", "reactionAftermath", 45.55, "data:image/jpeg;base64,YWZ0ZXI="),
+            SampledFrame("crowd_pop_1", "reactionFollowThrough", 46.25, "data:image/jpeg;base64,Zm9sbG93"),
             SampledFrame("crowd_pop_1", "finish", 48.0, "data:image/jpeg;base64,ZmluaXNo"),
         ]
 
@@ -317,18 +321,31 @@ class GPTHighlightRerankerTests(unittest.TestCase):
 
         self.assertTrue(compact_clip["qualityHints"]["audioReactionCandidate"])
         self.assertIn("recall hint", compact_clip["qualityHints"]["audioReactionGuidance"])
+        self.assertEqual(
+            compact_clip["qualityHints"]["audioReactionVerificationRoles"],
+            list(gpt_reranker.AUDIO_REACTION_CONTEXT_KEYFRAME_ROLES),
+        )
         self.assertTrue(compact_input["shotTrackerRules"]["audioPopIsRecallHintOnly"])
         self.assertTrue(compact_input["shotTrackerRules"]["audioPopOutcomeClaimsRequireSampledVisualEvidence"])
+        self.assertEqual(
+            compact_input["shotTrackerRules"]["audioReactionVerificationRoles"],
+            list(gpt_reranker.AUDIO_REACTION_CONTEXT_KEYFRAME_ROLES),
+        )
         self.assertTrue(agent_clip["candidateQuality"]["audioReactionCandidate"])
         self.assertTrue(
             compact_input["agentTemplateCookbook"]["decisionGuidance"]["selectionContract"]["audioPopIsRecallHintOnly"]
         )
         self.assertIn("audio-pop candidates as recall hints", payload["instructions"])
+        self.assertIn("reactionLeadIn", payload["instructions"])
         self.assertEqual(
             compact_clip["sampledKeyframes"],
             [
                 {"role": "start", "time": 42.0},
+                {"role": "reactionLeadIn", "time": 43.55},
+                {"role": "reactionBuild", "time": 44.35},
                 {"role": "eventCenter", "time": 45.0},
+                {"role": "reactionAftermath", "time": 45.55},
+                {"role": "reactionFollowThrough", "time": 46.25},
                 {"role": "finish", "time": 48.0},
             ],
         )
@@ -834,6 +851,10 @@ class GPTHighlightRerankerTests(unittest.TestCase):
                 "shotArcEarly",
                 "eventCenter",
                 "outcome",
+                "reactionLeadIn",
+                "reactionBuild",
+                "reactionAftermath",
+                "reactionFollowThrough",
                 "shotArcLate",
                 "rimApproach",
                 "rim",
@@ -1757,6 +1778,45 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertGreater(dict(pro_samples)["belowRim"], dict(pro_samples)["rimEntry"])
         sample_times = [second for _, second in pro_samples]
         self.assertEqual(sample_times, sorted(sample_times))
+
+    def test_audio_reaction_sampling_adds_before_and_after_pop_context(self) -> None:
+        request = CreateEditJobRequest(
+            videoId="video_audio_reaction_roles",
+            analysisJobId="analysis_audio_reaction_roles",
+            installId="install-123",
+            sourceObjectKey="uploads/source.mp4",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="pro",
+            clips=[
+                {
+                    **_labeled_clip("crowd_pop_roles", 42.0, 0.92, "Crowd Reaction"),
+                    "audioPeak": 0.99,
+                    "motionScore": 0.86,
+                    "watchability": 0.88,
+                    "combinedScore": 0.9,
+                }
+            ],
+        )
+        clip = request.clips[0]
+
+        samples = gpt_reranker._sample_times_for_clip(clip, 8)
+        roles = [role for role, _ in samples]
+        times = dict(samples)
+
+        self.assertEqual(len(samples), 8)
+        self.assertIn("start", roles)
+        self.assertIn("eventCenter", roles)
+        self.assertIn("finish", roles)
+        self.assertIn("reactionLeadIn", roles)
+        self.assertIn("reactionBuild", roles)
+        self.assertIn("reactionAftermath", roles)
+        self.assertIn("reactionFollowThrough", roles)
+        self.assertNotIn("shotArcEarly", roles)
+        self.assertLess(times["reactionLeadIn"], clip.eventCenter)
+        self.assertLess(times["reactionBuild"], clip.eventCenter)
+        self.assertGreater(times["reactionAftermath"], clip.eventCenter)
+        self.assertGreater(times["reactionFollowThrough"], clip.eventCenter)
 
     def test_shot_sampling_treats_event_center_as_rim_result_anchor(self) -> None:
         request = CreateEditJobRequest(

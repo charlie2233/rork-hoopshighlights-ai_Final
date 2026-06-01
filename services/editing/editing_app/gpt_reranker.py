@@ -64,6 +64,13 @@ ResponseClient = Callable[[Dict[str, Any], str, str, float], Dict[str, Any]]
 ALLOWED_IMAGE_DETAIL_LEVELS = {"low", "high", "original", "auto"}
 REQUIRED_KEYFRAME_ROLES = {"start", "eventCenter", "finish"}
 SHOT_CONTEXT_KEYFRAME_ROLES = ("preEvent", "release", "shotArcEarly", "shotArcLate", "rimApproach", "rimEntry", "belowRim")
+AUDIO_REACTION_CONTEXT_KEYFRAME_ROLES = (
+    "reactionLeadIn",
+    "reactionBuild",
+    "eventCenter",
+    "reactionAftermath",
+    "reactionFollowThrough",
+)
 MIN_GPT_CANDIDATE_LEAD_IN_SECONDS = MIN_SHOT_CONTEXT_LEAD_IN_SECONDS
 MIN_GPT_CANDIDATE_FOLLOW_THROUGH_SECONDS = MIN_SHOT_CONTEXT_FOLLOW_THROUGH_SECONDS
 MIN_GPT_SHOT_LIKE_CANDIDATE_SECONDS = 3.0
@@ -879,6 +886,11 @@ def _candidate_quality_hints(clip: EditCandidateClip) -> Dict[str, Any]:
             if is_audio_reaction
             else None
         ),
+        "audioReactionVerificationRoles": (
+            list(AUDIO_REACTION_CONTEXT_KEYFRAME_ROLES)
+            if is_audio_reaction
+            else []
+        ),
         "nativeShotSignals": native_shot_signals_for_clip(clip).model_dump(mode="json"),
         "outcomeEvidenceSource": clip_outcome_evidence_source(clip),
         "outcomeReliabilityScore": clip_outcome_reliability_score(clip),
@@ -1435,6 +1447,8 @@ def _sampled_frame_roles_by_clip(frames: Sequence[SampledFrame]) -> Dict[str, Li
 def _sample_times_for_clip(clip: EditCandidateClip, frames_per_clip: int) -> List[tuple[str, float]]:
     if _is_defensive_candidate_clip(clip):
         return _defensive_sample_times_for_clip(clip, frames_per_clip)
+    if is_audio_reaction_clip(clip):
+        return _audio_reaction_sample_times_for_clip(clip, frames_per_clip)
 
     finish = max(clip.start, clip.end - 0.05)
     base = [("start", clip.start), ("eventCenter", clip.eventCenter), ("finish", finish)]
@@ -1498,6 +1512,46 @@ def _sample_times_for_clip(clip: EditCandidateClip, frames_per_clip: int) -> Lis
         candidates = [("preEvent", setup_second), ("outcome", outcome_second)]
     else:
         candidates = [("preEvent", setup_second), ("midAction", mid_action_second)]
+    reserved_buckets = {round(second, 1) for _, second in base_samples}
+    context_samples = _dedupe_sample_times(candidates, clip, reserved_buckets)[: max(0, frames_per_clip - 3)]
+    return sorted([*base_samples, *context_samples], key=lambda item: item[1])
+
+
+def _audio_reaction_sample_times_for_clip(clip: EditCandidateClip, frames_per_clip: int) -> List[tuple[str, float]]:
+    finish = max(clip.start, clip.end - 0.05)
+    duration = max(finish - clip.start, 0.001)
+    base = [("start", clip.start), ("eventCenter", clip.eventCenter), ("finish", finish)]
+    base_samples = _clamp_sample_times(base, clip)
+    if frames_per_clip <= 3:
+        return base_samples
+
+    reaction_lead_in_second = max(clip.start, clip.eventCenter - 1.45)
+    reaction_build_second = max(clip.start, clip.eventCenter - 0.65)
+    reaction_aftermath_second = min(finish, clip.eventCenter + 0.55)
+    reaction_follow_through_second = min(finish, clip.eventCenter + 1.25)
+    mid_action_second = clip.start + (duration * 0.45)
+    if frames_per_clip >= 8:
+        candidates = [
+            ("reactionLeadIn", reaction_lead_in_second),
+            ("reactionBuild", reaction_build_second),
+            ("reactionAftermath", reaction_aftermath_second),
+            ("reactionFollowThrough", reaction_follow_through_second),
+            ("midAction", mid_action_second),
+        ]
+    elif frames_per_clip >= 6:
+        candidates = [
+            ("reactionLeadIn", reaction_lead_in_second),
+            ("reactionBuild", reaction_build_second),
+            ("reactionAftermath", reaction_aftermath_second),
+        ]
+    elif frames_per_clip >= 5:
+        candidates = [
+            ("reactionLeadIn", reaction_lead_in_second),
+            ("reactionAftermath", reaction_aftermath_second),
+        ]
+    else:
+        candidates = [("reactionLeadIn", reaction_lead_in_second)]
+
     reserved_buckets = {round(second, 1) for _, second in base_samples}
     context_samples = _dedupe_sample_times(candidates, clip, reserved_buckets)[: max(0, frames_per_clip - 3)]
     return sorted([*base_samples, *context_samples], key=lambda item: item[1])
@@ -1678,6 +1732,7 @@ def _build_openai_payload(
                         "treatLabelOnlyOutcomeEvidenceAsUnverified": True,
                         "audioPopIsRecallHintOnly": True,
                         "audioPopOutcomeClaimsRequireSampledVisualEvidence": True,
+                        "audioReactionVerificationRoles": list(AUDIO_REACTION_CONTEXT_KEYFRAME_ROLES),
                         "nonScoringDefensiveOutcomes": ["steal", "forced_turnover", "defensive_stop"],
                         "madeShotRequiresSetupReleaseBallPathRimAndOutcome": True,
                         "madeOrMissedShotRequiresVisibleReleaseAndRimResult": True,
@@ -1760,6 +1815,7 @@ def _build_openai_payload(
             "Act like a basketball shot-tracker: for made shots, verify visible setup, release, ball path, rim/result, and aftermath. "
             "Treat outcomeEvidenceSource=label_only as unverified until the sampled frames visibly prove the result. "
             "Treat Crowd Reaction, crowd-pop, and audio-pop candidates as recall hints only; do not keep them or claim made, missed, blocked, steal, forced_turnover, or defensive_stop outcomes unless sampled keyframes visibly show the basketball event, ball/player control, and outcome. "
+            "When reactionLeadIn, reactionBuild, reactionAftermath, or reactionFollowThrough roles are sampled, inspect those before/after-audio-pop frames to verify whether the loud crowd moment belongs to a real play; keep=false if the frames only show crowd noise, dead ball, scoreboard, huddles, or post-play aftermath. "
             "For made or missed shots, releaseVisible, shotArcVisible, and rimResultVisible must all be true; do not infer a make from a label or late rim-only aftermath. "
             "A made outcome requires shotResultEvidence.rimResultEvidence=made_visible with confident visible rim/net proof; use unclear if the result is guessed. "
             "A made outcome also requires shotResultEvidence.rimEntrySequence=visible_entry with approach, rim-entry, and below-rim/net frame roles. "
@@ -1935,6 +1991,10 @@ def _response_schema() -> Dict[str, Any]:
         "shotArcEarly",
         "eventCenter",
         "outcome",
+        "reactionLeadIn",
+        "reactionBuild",
+        "reactionAftermath",
+        "reactionFollowThrough",
         "shotArcLate",
         "rimApproach",
         "rim",
