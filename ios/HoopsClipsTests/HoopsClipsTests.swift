@@ -30,6 +30,14 @@ struct HoopsClipsTests {
         #expect(!VideoImportPolicy.supportedContentTypes.contains(.data))
     }
 
+    @Test func testVideoImportPolicyNormalizesPhotosTransferFileExtensions() {
+        #expect(VideoImportPolicy.preferredImportedVideoFileExtension(sourceExtension: "", fallbackExtension: "mov") == "mov")
+        #expect(VideoImportPolicy.preferredImportedVideoFileExtension(sourceExtension: ".MP4", fallbackExtension: "mov") == "mp4")
+        #expect(VideoImportPolicy.preferredImportedVideoFileExtension(sourceExtension: "mov", fallbackExtension: "mp4") == "mov")
+        #expect(VideoImportPolicy.preferredImportedVideoFileExtension(sourceExtension: "tmp", fallbackExtension: "mp4") == "mp4")
+        #expect(VideoImportPolicy.preferredImportedVideoFileExtension(sourceExtension: "download", fallbackExtension: "mov") == "mov")
+    }
+
     @Test func testVideoImportPreflightAcceptsLongerFourMinuteThirtyEditSource() throws {
         let summary = try VideoImportPolicy.evaluatePreflight(
             fileSizeBytes: 320 * 1024 * 1024,

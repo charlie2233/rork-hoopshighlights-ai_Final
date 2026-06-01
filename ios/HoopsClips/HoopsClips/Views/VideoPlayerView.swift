@@ -1959,6 +1959,20 @@ enum VideoImportPolicy {
         return formatter.string(fromByteCount: bytes)
     }
 
+    static func preferredImportedVideoFileExtension(
+        sourceExtension: String,
+        fallbackExtension: String
+    ) -> String {
+        let fallback = normalizedFileExtension(fallbackExtension).isEmpty ? "mov" : normalizedFileExtension(fallbackExtension)
+        let candidate = normalizedFileExtension(sourceExtension)
+        guard !candidate.isEmpty else { return fallback }
+        guard let type = UTType(filenameExtension: candidate) else { return fallback }
+        if type.conforms(to: .video) || type.conforms(to: .movie) || supportedContentTypes.contains(type) {
+            return candidate
+        }
+        return fallback
+    }
+
     private static func metadataSummary(
         for url: URL,
         fileSizeBytes: Int64,
@@ -2026,10 +2040,16 @@ enum VideoImportPolicy {
     }
 
     private static func isSupportedVideoExtension(_ fileExtension: String) -> Bool {
-        let trimmed = fileExtension.trimmingCharacters(in: CharacterSet(charactersIn: ". "))
+        let trimmed = normalizedFileExtension(fileExtension)
         guard !trimmed.isEmpty else { return true }
         guard let type = UTType(filenameExtension: trimmed) else { return true }
         return type.conforms(to: .video) || type.conforms(to: .movie) || supportedContentTypes.contains(type)
+    }
+
+    private static func normalizedFileExtension(_ fileExtension: String) -> String {
+        fileExtension
+            .trimmingCharacters(in: CharacterSet(charactersIn: ". \n\t"))
+            .lowercased()
     }
 }
 
@@ -2169,29 +2189,29 @@ private struct ImportedVideoFile: Transferable {
         FileRepresentation(contentType: .video) { video in
             SentTransferredFile(video.url)
         } importing: { received in
-            try copyImportedVideo(from: received.file)
+            try copyImportedVideo(from: received.file, fallbackExtension: "mov")
         }
 
         FileRepresentation(contentType: .movie) { video in
             SentTransferredFile(video.url)
         } importing: { received in
-            try copyImportedVideo(from: received.file)
+            try copyImportedVideo(from: received.file, fallbackExtension: "mov")
         }
 
         FileRepresentation(contentType: .mpeg4Movie) { video in
             SentTransferredFile(video.url)
         } importing: { received in
-            try copyImportedVideo(from: received.file)
+            try copyImportedVideo(from: received.file, fallbackExtension: "mp4")
         }
 
         FileRepresentation(contentType: .quickTimeMovie) { video in
             SentTransferredFile(video.url)
         } importing: { received in
-            try copyImportedVideo(from: received.file)
+            try copyImportedVideo(from: received.file, fallbackExtension: "mov")
         }
     }
 
-    private static func copyImportedVideo(from sourceURL: URL) throws -> ImportedVideoFile {
+    private static func copyImportedVideo(from sourceURL: URL, fallbackExtension: String) throws -> ImportedVideoFile {
         let accessing = sourceURL.startAccessingSecurityScopedResource()
         defer {
             if accessing {
@@ -2199,7 +2219,10 @@ private struct ImportedVideoFile: Transferable {
             }
         }
 
-        let fileExtension = sourceURL.pathExtension.isEmpty ? "mov" : sourceURL.pathExtension
+        let fileExtension = VideoImportPolicy.preferredImportedVideoFileExtension(
+            sourceExtension: sourceURL.pathExtension,
+            fallbackExtension: fallbackExtension
+        )
         let tempURL = URL.temporaryDirectory.appending(path: "imported_video_\(UUID().uuidString).\(fileExtension)")
         try VideoImportPolicy.validateTemporaryCopyCapacity(for: sourceURL)
         try FileManager.default.copyItem(at: sourceURL, to: tempURL)
