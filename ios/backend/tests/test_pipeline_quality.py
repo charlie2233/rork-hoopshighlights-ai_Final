@@ -191,6 +191,20 @@ class PipelineQualityTests(unittest.TestCase):
         self.assertAlmostEqual(boundaries[1].time_seconds or 0.0, 14.25, delta=0.3)
         self.assertGreater(boundaries[0].score, 0.32)
 
+    def test_audio_reaction_boundaries_detect_sustained_crowd_swell_onset(self) -> None:
+        audio_profile = [0.07] * 48
+        audio_profile[20] = 0.52
+        audio_profile[21] = 0.83
+        audio_profile[22] = 0.9
+        audio_profile[23] = 0.84
+        audio_profile[24] = 0.66
+
+        boundaries = _detect_audio_reaction_boundaries(audio_profile)
+
+        self.assertTrue(boundaries)
+        self.assertAlmostEqual(boundaries[0].time_seconds or 0.0, 11.25, delta=0.45)
+        self.assertGreater(boundaries[0].score, 0.5)
+
     def test_candidate_windows_include_crowd_pop_recall_anchor_for_gpt_review(self) -> None:
         audio_profile = [0.06] * 30
         audio_profile[11] = 0.58

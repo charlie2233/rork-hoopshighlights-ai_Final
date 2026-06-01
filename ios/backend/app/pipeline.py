@@ -56,6 +56,7 @@ AUDIO_REACTION_BOUNDARY_MIN_SCORE = 0.32
 AUDIO_REACTION_BOUNDARY_MIN_GAP_SECONDS = 2.25
 AUDIO_REACTION_BOUNDARY_MAX_COUNT = 48
 AUDIO_REACTION_BOUNDARY_CONTEXT_BUCKETS = 4
+AUDIO_REACTION_ONSET_CONTEXT_BUCKETS = 5
 AUDIO_REACTION_WINDOW_LEAD_SECONDS = 2.0
 AUDIO_REACTION_WINDOW_FOLLOW_SECONDS = 1.4
 VisualFrameSignal = Tuple[float, ...]
@@ -1292,11 +1293,21 @@ def _audio_pop_signal_for_window(
     ]
     baseline = mean(surrounding_values or window_values)
     window_mean = mean(window_values)
+    onset_values = audio_profile[
+        max(0, peak_index - AUDIO_REACTION_ONSET_CONTEXT_BUCKETS - 1) : max(0, peak_index - 1)
+    ]
+    onset_baseline = mean(onset_values or surrounding_values or window_values)
     loudness_gate = clamp((peak_value - 0.48) / 0.28, 0.0, 1.0)
     rise_above_window = max(peak_value - window_mean, 0.0)
     rise_above_baseline = max(peak_value - baseline, 0.0)
+    rise_from_onset = max(peak_value - onset_baseline, 0.0)
     score = clamp(
-        ((rise_above_window * 0.9) + (rise_above_baseline * 0.55) + (max(peak_value - 0.70, 0.0) * 0.25))
+        (
+            (rise_above_window * 0.72)
+            + (rise_above_baseline * 0.48)
+            + (rise_from_onset * 0.58)
+            + (max(peak_value - 0.70, 0.0) * 0.2)
+        )
         * loudness_gate,
         0.0,
         1.0,

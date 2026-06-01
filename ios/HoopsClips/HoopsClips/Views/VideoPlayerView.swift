@@ -316,7 +316,8 @@ struct VideoPlayerView: View {
                         "video_import.slow",
                         metadata: "source=\(source)"
                     )
-                    importStatusMessage = "Still copying the video. Large Photos clips can take a little while."
+                    importRecoveryOffersHistory = true
+                    importStatusMessage = "Still copying the video. If it already finished, check History."
                 }
 
                 do {
@@ -773,6 +774,7 @@ struct VideoPlayerView: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel("Check History")
                     .accessibilityHint("Opens History in case the video was already saved there.")
+                    .accessibilityIdentifier("import.status.checkHistoryButton")
                 }
 
                 Button {
@@ -790,6 +792,7 @@ struct VideoPlayerView: View {
                 .accessibilityLabel(languageStore.text(.cancelImport))
                 .accessibilityValue(currentImportStatusMessage)
                 .accessibilityHint("Stops the current video import and returns to the import screen.")
+                .accessibilityIdentifier("import.status.cancelButton")
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

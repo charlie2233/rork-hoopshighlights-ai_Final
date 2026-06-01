@@ -9,6 +9,7 @@ This keeps the HoopClips architecture cloud-first. iOS does not analyze audio or
 ## Changes
 
 - Added explicit audio reaction boundary detection for loud local audio spikes.
+- Made the audio-pop scorer onset-aware so a sudden crowd swell outranks steady loud gym noise.
 - Added audio-reaction candidate windows around crowd-pop peaks with lead-in and follow-through context.
 - Crowd-pop candidates are recall hints only. They are labeled `Crowd Reaction` when no shot context is visible and are not auto-kept without visual evidence.
 - Existing visual/shot boundaries still win when they are available, so crowd noise does not replace CV, timestamp logic, keyframes, GPT review, or deterministic rendering.
@@ -20,11 +21,13 @@ Run after this change:
 
 ```bash
 git diff --check
-cd ios/backend && python -m pytest tests/test_pipeline_quality.py
+cd ios/backend && uv run --isolated --with-requirements requirements.txt --with pytest python -m pytest tests/test_pipeline_quality.py -q
+cd ios/backend && uv run --isolated --with-requirements requirements.txt --with pytest python -m pytest tests -q
+cd services/editing && uv run --isolated --with-requirements requirements.txt --with pytest python -m pytest tests/test_gpt_reranker.py -q
 ```
 
 ## Launch Notes
 
-- This improves recall for gyms where parents/crowds react loudly right after a big play.
+- This improves recall for gyms where parents/crowds react loudly right after a big play, including short sustained swells rather than only single-frame spikes.
 - It intentionally favors reviewability over silent rejection. If the audio pop is real but the visuals are unclear, GPT should keep it as uncertain/review-only instead of confidently rendering it.
 - Cost is unchanged for native analysis; extra GPT cost only happens downstream when these candidates are sampled for GPT-led editing.
