@@ -227,6 +227,29 @@ class PipelineQualityTests(unittest.TestCase):
         self.assertEqual(reaction_clip.label, "Crowd Reaction")
         self.assertFalse(reaction_clip.shouldAutoKeep)
 
+    def test_audio_reaction_windows_keep_pre_pop_action_context(self) -> None:
+        audio_profile = [0.06] * 30
+        audio_profile[11] = 0.58
+        audio_profile[12] = 1.0
+        audio_profile[13] = 0.76
+
+        windows = _build_candidate_windows(
+            duration_seconds=15.0,
+            audio_profile=audio_profile,
+            shot_boundaries=[],
+            settings=_settings(),
+            clip_limit=8,
+        )
+        reaction_window = max(
+            (window for window in windows if window.audio_pop_score >= 0.32),
+            key=lambda window: window.audio_pop_score,
+        )
+        audio_pop_time = reaction_window.audio_pop_time or reaction_window.peak_time
+
+        self.assertLessEqual(reaction_window.start_time, audio_pop_time - 2.5)
+        self.assertGreaterEqual(reaction_window.end_time, audio_pop_time + 1.3)
+        self.assertAlmostEqual(reaction_window.peak_time, audio_pop_time, delta=0.05)
+
     def test_run_analysis_applies_quick_scan_before_selected_team_filter(self) -> None:
         native = [
             _clip(start=7.5, end=12.0, label="Three Pointer", combined=0.86, event_center=10.0, auto_keep=True),

@@ -1815,6 +1815,8 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertNotIn("shotArcEarly", roles)
         self.assertLess(times["reactionLeadIn"], clip.eventCenter)
         self.assertLess(times["reactionBuild"], clip.eventCenter)
+        self.assertLessEqual(times["reactionLeadIn"], clip.eventCenter - 2.0)
+        self.assertLessEqual(times["reactionBuild"], clip.eventCenter - 1.0)
         self.assertGreater(times["reactionAftermath"], clip.eventCenter)
         self.assertGreater(times["reactionFollowThrough"], clip.eventCenter)
 

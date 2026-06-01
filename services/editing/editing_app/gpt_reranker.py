@@ -1572,9 +1572,9 @@ def _audio_reaction_sample_times_for_clip(clip: EditCandidateClip, frames_per_cl
     if frames_per_clip <= 3:
         return base_samples
 
-    reaction_lead_in_second = max(clip.start, clip.eventCenter - 1.45)
-    reaction_build_second = max(clip.start, clip.eventCenter - 0.65)
-    reaction_aftermath_second = min(finish, clip.eventCenter + 0.55)
+    reaction_lead_in_second = max(clip.start, clip.eventCenter - 2.2)
+    reaction_build_second = max(clip.start, clip.eventCenter - 1.15)
+    reaction_aftermath_second = min(finish, clip.eventCenter + 0.45)
     reaction_follow_through_second = min(finish, clip.eventCenter + 1.25)
     mid_action_second = clip.start + (duration * 0.45)
     if frames_per_clip >= 8:

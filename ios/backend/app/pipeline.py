@@ -57,8 +57,8 @@ AUDIO_REACTION_BOUNDARY_MIN_GAP_SECONDS = 2.25
 AUDIO_REACTION_BOUNDARY_MAX_COUNT = 48
 AUDIO_REACTION_BOUNDARY_CONTEXT_BUCKETS = 4
 AUDIO_REACTION_ONSET_CONTEXT_BUCKETS = 5
-AUDIO_REACTION_WINDOW_LEAD_SECONDS = 2.0
-AUDIO_REACTION_WINDOW_FOLLOW_SECONDS = 1.4
+AUDIO_REACTION_WINDOW_LEAD_SECONDS = 2.75
+AUDIO_REACTION_WINDOW_FOLLOW_SECONDS = 1.5
 VisualFrameSignal = Tuple[float, ...]
 
 
@@ -1763,6 +1763,13 @@ def _collapse_windows(group: List[CandidateWindow], settings: Settings) -> Candi
 
     start_time = max(anchor_window.start_time - settings.clip_padding_seconds, 0.0)
     group_end = peak_window.end_time if has_event_anchor else group[-1].end_time
+    if (
+        peak_window.audio_pop_score >= AUDIO_POP_EVENT_CENTER_THRESHOLD
+        and peak_window.audio_pop_time is not None
+        and peak_window.event_context_score < 0.45
+    ):
+        start_time = max(0.0, min(start_time, peak_window.audio_pop_time - AUDIO_REACTION_WINDOW_LEAD_SECONDS))
+        group_end = max(group_end, peak_window.audio_pop_time + AUDIO_REACTION_WINDOW_FOLLOW_SECONDS)
     padded_end = group_end + settings.clip_padding_seconds
     max_end = max(group_end, start_time + settings.max_clip_duration_seconds)
     end_time = min(padded_end, max_end)
