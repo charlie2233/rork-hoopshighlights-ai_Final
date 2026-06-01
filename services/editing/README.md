@@ -41,6 +41,7 @@ The service receives a validated `EditPlan`, downloads the source video from ren
 - `HOOPS_AI_CLIP_GPT_FREE_KEYFRAMES_PER_CLIP`: Free keyframe cap per clip, default `10` and clamped to `3...10` so Free/internal testers get release, rim-entry, and follow-through evidence while Free daily edit chances stay at `3`
 - `HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_FREE`: Free candidate cap, clamped to `1...320`; staging default is `320` so Free users get broad GPT review while daily Free edit chances stay at `3`
 - `HOOPS_AI_CLIP_GPT_MAX_CANDIDATES_PRO`: Pro/internal candidate cap, clamped to `20...320`; staging default is `320`
+- GPT underfill guardrails require deeper kept-clip coverage for long edits; 4:30 requests now push GPT toward a full story instead of a tiny top-play cut when the candidate pool supports it.
 - `HOOPS_GPT_HIGHLIGHT_RERANKER_ENABLED`: kill switch for GPT highlight reranking, default `false`
 - `HOOPS_OPENAI_API_KEY`: OpenAI key required only when GPT highlight reranking is enabled
 - `HOOPS_GPT_HIGHLIGHT_RERANK_MODEL`: vision-capable reranker model, default `gpt-4.1` for quality-beta editing; set `HOOPS_AI_CLIP_GPT_MODEL` to override

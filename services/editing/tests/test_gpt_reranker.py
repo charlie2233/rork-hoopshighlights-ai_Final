@@ -2506,8 +2506,8 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertEqual(medium_count, 4)
         self.assertEqual(long_count, 12)
         self.assertGreaterEqual(long_duration_floor, 70.0)
-        self.assertEqual(full_pool_long_count, 16)
-        self.assertGreaterEqual(full_pool_long_duration_floor, 140.0)
+        self.assertEqual(full_pool_long_count, 30)
+        self.assertGreaterEqual(full_pool_long_duration_floor, 145.0)
 
     def test_incomplete_gpt_decisions_fallback_without_dropping_sampled_candidates(self) -> None:
         settings = GPTHighlightRerankerSettings(

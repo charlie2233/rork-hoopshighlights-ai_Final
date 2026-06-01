@@ -623,10 +623,10 @@ def _gpt_underfill_desired_clip_count(target_seconds: float) -> int:
     if target_seconds <= 90:
         return 6
     if target_seconds <= 180:
-        return 10
-    if target_seconds <= 240:
         return 14
-    return 16
+    if target_seconds <= 240:
+        return 24
+    return 34
 
 
 def _gpt_underfill_duration_ratio(target_seconds: float) -> float:
@@ -634,6 +634,8 @@ def _gpt_underfill_duration_ratio(target_seconds: float) -> float:
         return 0.35
     if target_seconds <= 180:
         return 0.45
+    if target_seconds <= 240:
+        return 0.58
     return 0.55
 
 

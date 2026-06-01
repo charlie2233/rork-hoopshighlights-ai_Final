@@ -68,6 +68,7 @@ struct AIEditView: View {
     @State private var proInfoSheet: AIEditProInfoSheet?
     @State private var showPlanDetails = false
     @State private var showSetupControls = false
+    @State private var showPromptExamples = false
     @State private var showTimelineDetails = false
 
     private let cloudEditService: any CloudEditServicing
@@ -559,15 +560,7 @@ struct AIEditView: View {
 
     private var durationPicker: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("Reel Length")
-                    .font(.headline)
-                    .foregroundStyle(.white)
-                Spacer()
-                Text(formattedDuration(selectedDuration))
-                    .font(.subheadline.monospacedDigit().bold())
-                    .foregroundStyle(AppTheme.warningYellow)
-            }
+            optionHeader(title: "Reel Length", value: formattedDuration(selectedDuration))
 
             LazyVGrid(columns: durationGridColumns, spacing: 8) {
                 ForEach(displayedDurationOptions, id: \.self) { duration in
@@ -599,15 +592,7 @@ struct AIEditView: View {
 
     private var formatPicker: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("Video Shape")
-                    .font(.headline)
-                    .foregroundStyle(.white)
-                Spacer()
-                Text(selectedAspectRatio.rawValue)
-                    .font(.subheadline.monospacedDigit().bold())
-                    .foregroundStyle(AppTheme.warningYellow)
-            }
+            optionHeader(title: "Video Shape", value: selectedAspectRatio.rawValue)
 
             LazyVGrid(columns: formatGridColumns, alignment: .leading, spacing: 8) {
                 ForEach(displayedAspectRatios, id: \.rawValue) { aspectRatio in
@@ -711,31 +696,53 @@ struct AIEditView: View {
                     .accessibilityIdentifier("export.aiEdit.smartSetupSummary")
             }
 
-            LazyVGrid(columns: quickPromptGridColumns, alignment: .leading, spacing: 8) {
-                ForEach(Self.quickPrompts) { quickPrompt in
-                    Button {
-                        applyQuickPrompt(quickPrompt)
-                    } label: {
-                        Label(quickPrompt.title, systemImage: quickPrompt.icon)
-                            .font(.caption.weight(.semibold))
-                            .multilineTextAlignment(.center)
-                            .lineLimit(2)
-                            .minimumScaleFactor(0.86)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 52 : 42)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .foregroundStyle(.white)
-                            .background(AppTheme.accentPurple.opacity(0.20), in: .rect(cornerRadius: 12))
-                            .overlay {
-                                RoundedRectangle(cornerRadius: 12)
-                                    .stroke(AppTheme.neonPurple.opacity(0.22), lineWidth: 1)
-                            }
+            Button {
+                HoopsAccessibility.animate(reduceMotion: reduceMotion, .snappy(duration: 0.18)) {
+                    showPromptExamples.toggle()
+                }
+            } label: {
+                Label(showPromptExamples ? "Hide examples" : "Show edit examples", systemImage: showPromptExamples ? "chevron.up.circle.fill" : "lightbulb.fill")
+                    .font(.caption.bold())
+                    .multilineTextAlignment(.center)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
+                    .minimumScaleFactor(0.84)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 52 : 42)
+                    .padding(.horizontal, 8)
+            }
+            .buttonStyle(.bordered)
+            .tint(AppTheme.neonPurple)
+            .accessibilityIdentifier("export.aiEdit.prompt.examplesButton")
+            .accessibilityValue(showPromptExamples ? "Edit examples shown" : "Edit examples hidden")
+            .accessibilityHint("Shows optional editing directions that can be added to the side note.")
+
+            if showPromptExamples {
+                LazyVGrid(columns: quickPromptGridColumns, alignment: .leading, spacing: 8) {
+                    ForEach(Self.quickPrompts) { quickPrompt in
+                        Button {
+                            applyQuickPrompt(quickPrompt)
+                        } label: {
+                            Label(quickPrompt.title, systemImage: quickPrompt.icon)
+                                .font(.caption.weight(.semibold))
+                                .multilineTextAlignment(.center)
+                                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
+                                .minimumScaleFactor(0.86)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 58 : 42)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .foregroundStyle(.white)
+                                .background(AppTheme.accentPurple.opacity(0.20), in: .rect(cornerRadius: 12))
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .stroke(AppTheme.neonPurple.opacity(0.22), lineWidth: 1)
+                                }
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("export.aiEdit.quickPrompt.\(quickPrompt.id)")
+                        .accessibilityLabel("Add edit note: \(quickPrompt.title)")
+                        .accessibilityHint("Adds this editing direction to the cloud AI edit note.")
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("export.aiEdit.quickPrompt.\(quickPrompt.id)")
-                    .accessibilityLabel("Add edit note: \(quickPrompt.title)")
-                    .accessibilityHint("Adds this editing direction to the cloud AI edit note.")
                 }
             }
 
@@ -784,6 +791,40 @@ struct AIEditView: View {
             .lineLimit(1)
             .minimumScaleFactor(0.76)
             .accessibilityLabel("\(userEditPrompt.count) of \(Self.maxUserPromptCharacters) characters used")
+    }
+
+    private func optionHeader(title: String, value: String) -> some View {
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title)
+                        .font(.headline)
+                        .foregroundStyle(.white)
+                        .lineLimit(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(value)
+                        .font(.subheadline.monospacedDigit().bold())
+                        .foregroundStyle(AppTheme.warningYellow)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.84)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            } else {
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Text(title)
+                        .font(.headline)
+                        .foregroundStyle(.white)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 8)
+                    Text(value)
+                        .font(.subheadline.monospacedDigit().bold())
+                        .foregroundStyle(AppTheme.warningYellow)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.78)
+                }
+            }
+        }
     }
 
     private var quickPromptGridColumns: [GridItem] {
