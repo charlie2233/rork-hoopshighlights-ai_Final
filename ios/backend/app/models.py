@@ -226,6 +226,7 @@ class CloudDiagnostics(APIModel):
     stealReviewSegments: int = 0
     forcedTurnoverReviewSegments: int = 0
     defensiveStopReviewSegments: int = 0
+    audioReactionReviewSegments: int = 0
 
 
 class CloudAnalysisResult(APIModel):

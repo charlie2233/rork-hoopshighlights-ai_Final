@@ -563,6 +563,14 @@ class TeamQuickScanTests(unittest.TestCase):
 
         self.assertEqual(roles, ["ballHandlerSetup", "release", "rimResult", "followThrough"])
 
+    def test_contested_jumper_uses_defensive_stop_roles_not_block_roles(self) -> None:
+        contest = _clip("Contested Jumper", 8.0, 12.5, 10.0)
+
+        roles = [role for role, _ in _clip_sample_times(contest, 3)]
+
+        self.assertEqual(roles, ["defenseSetup", "possessionChange", "recovery"])
+        self.assertNotIn("challenge", roles)
+
     def test_plain_turnover_uses_generic_roles_not_defensive_ownership(self) -> None:
         turnover = _clip("Turnover", 8.0, 12.5, 10.0)
 

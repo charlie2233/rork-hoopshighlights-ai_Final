@@ -37,6 +37,7 @@ from app.editing import (
     clip_context_quality_score,
     filter_clips_for_team_selection,
     get_template_pack_for_plan,
+    _defensive_highlight_family,
     is_defensive_event_like_clip,
     is_plan_quality_eligible_clip,
     native_shot_signals_for_clip,
@@ -965,6 +966,21 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertEqual(by_id["uncertain_block"]["renderEligibility"], "manual_team_review_required")
         self.assertTrue(by_id["uncertain_block"]["candidateQuality"]["defensiveEventLike"])
         self.assertEqual(by_id["uncertain_block"]["candidateQuality"]["defensiveFamily"], "block")
+
+    def test_agent_context_treats_contest_as_defensive_stop_not_block(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                clips=[
+                    _clip("contest", 9.0, "Contested Jumper", 0.84),
+                    _clip("block", 18.0, "Blocked Shot", 0.84),
+                ],
+            )
+        )
+        by_id = {clip.id: clip for clip in request.clips}
+
+        self.assertTrue(is_defensive_event_like_clip(by_id["contest"]))
+        self.assertEqual(_defensive_highlight_family(by_id["contest"]), "defensive_stop")
+        self.assertEqual(_defensive_highlight_family(by_id["block"]), "block")
 
     def test_agent_decision_guidance_constrains_gpt_selection_and_review_semantics(self) -> None:
         request = CreateEditJobRequest(

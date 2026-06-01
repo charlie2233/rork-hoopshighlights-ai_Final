@@ -20,6 +20,8 @@ from app.pipeline import (
     _detect_shot_boundaries,
     _detect_audio_reaction_boundaries,
     _detected_teams_from_clips,
+    _defensive_label_family,
+    _is_audio_reaction_label,
     _is_defensive_label,
     _merge_hybrid_detection_clips,
     _native_shot_signals_for_analysis_clip,
@@ -1038,6 +1040,35 @@ class PipelineQualityTests(unittest.TestCase):
         self.assertNotIn("Made Shot 8", labels)
         self.assertNotIn("Made Shot 11", labels)
 
+    def test_review_trim_reserves_audio_reaction_recall_candidate_when_scoring_fills_cap(self) -> None:
+        scoring = [
+            _clip(
+                start=float(index * 5),
+                end=float(index * 5 + 4),
+                label=f"Made Shot {index}",
+                combined=0.99 - (index * 0.01),
+                event_center=float(index * 5 + 2),
+                auto_keep=True,
+            )
+            for index in range(9)
+        ]
+        crowd_pop = _clip(
+            start=55.0,
+            end=59.0,
+            label="Crowd Reaction",
+            combined=0.62,
+            confidence=0.68,
+            event_center=57.0,
+            auto_keep=False,
+        ).model_copy(update={"audioScore": 0.99, "motionScore": 0.84, "visualScore": 0.42})
+
+        trimmed = _trim_analysis_clips_for_review([*scoring, crowd_pop], None, max_clips=8)
+        labels = [clip.label for clip in trimmed]
+
+        self.assertTrue(_is_audio_reaction_label("Crowd Reaction"))
+        self.assertIn("Crowd Reaction", labels)
+        self.assertNotIn("Made Shot 7", labels)
+
     def test_defensive_label_classifier_ignores_stop_and_pop_jumpers(self) -> None:
         self.assertFalse(_is_defensive_label("Stop and Pop Jumper"))
         self.assertTrue(_is_defensive_label("Blocked Shot"))
@@ -1048,6 +1079,11 @@ class PipelineQualityTests(unittest.TestCase):
         self.assertTrue(_is_defensive_label("Takeaway"))
         self.assertTrue(_is_defensive_label("Poked Loose"))
         self.assertTrue(_is_defensive_label("Took Charge"))
+
+    def test_defensive_label_family_treats_contest_as_stop_not_block(self) -> None:
+        self.assertTrue(_is_defensive_label("Contested Jumper"))
+        self.assertEqual(_defensive_label_family("Contested Jumper"), "defensive_stop")
+        self.assertEqual(_defensive_label_family("Blocked Shot"), "block")
 
     def test_defensive_label_classifier_requires_forced_turnover_context(self) -> None:
         self.assertFalse(_is_defensive_label("Turnover"))
@@ -1122,6 +1158,21 @@ class PipelineQualityTests(unittest.TestCase):
         self.assertEqual(diagnostics.get("stealReviewSegments"), 1)
         self.assertEqual(diagnostics.get("forcedTurnoverReviewSegments"), 1)
         self.assertEqual(diagnostics.get("defensiveStopReviewSegments"), 1)
+
+    def test_analysis_team_diagnostics_count_audio_reaction_review_clips(self) -> None:
+        clips = [
+            _clip(start=0.0, end=4.0, label="Crowd Reaction", combined=0.72, event_center=2.0, auto_keep=False),
+            _clip(start=5.0, end=9.0, label="Made Shot", combined=0.9, event_center=7.0, auto_keep=True),
+        ]
+
+        diagnostics = _analysis_team_diagnostic_counts(
+            candidate_clips=clips,
+            review_clips=clips,
+            team_selection=None,
+            used_team_quick_scan=False,
+        )
+
+        self.assertEqual(diagnostics.get("audioReactionReviewSegments"), 1)
 
     def test_run_analysis_hybrid_merges_native_pool_when_provider_returns_limited_clips(self) -> None:
         external = [

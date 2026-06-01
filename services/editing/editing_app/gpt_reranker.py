@@ -961,6 +961,16 @@ def _quality_filtered_sampled_clips(
             add_clip(clip)
             reserved_defensive_count += 1
 
+    audio_reaction_reserve = _audio_reaction_sampling_reserve_limit(max_clips, len(eligible))
+    audio_reaction_added = 0
+    for clip in sorted(eligible, key=_audio_reaction_candidate_quality_key, reverse=True):
+        if audio_reaction_added >= audio_reaction_reserve:
+            break
+        if clip.id in selected_ids or not is_audio_reaction_clip(clip):
+            continue
+        add_clip(clip)
+        audio_reaction_added += 1
+
     for clip in remove_duplicate_moments(eligible):
         add_clip(clip)
         if len(selected) >= max_clips:
@@ -1044,6 +1054,19 @@ def _selected_team_quality_filtered_sampled_clips(
         add_clip(clip)
         reserved_defensive_count += 1
 
+    audio_reaction_render_reserve = min(
+        _audio_reaction_sampling_reserve_limit(render_slot_limit, len(render_candidates)),
+        render_slot_limit,
+    )
+    audio_reaction_render_added = 0
+    for clip in sorted(render_candidates, key=_audio_reaction_candidate_quality_key, reverse=True):
+        if audio_reaction_render_added >= audio_reaction_render_reserve:
+            break
+        if clip.id in selected_ids or not is_audio_reaction_clip(clip):
+            continue
+        add_clip(clip)
+        audio_reaction_render_added += 1
+
     for clip in render_candidates:
         add_clip(clip)
         if len(selected) >= render_slot_limit:
@@ -1098,6 +1121,7 @@ def _selected_team_review_priority_order(clips: Sequence[EditCandidateClip]) -> 
         key=lambda clip: (
             1 if _is_defensive_candidate_clip(clip) else 0,
             1 if _defensive_candidate_family(clip) in {"block", "steal", "forced_turnover", "defensive_stop"} else 0,
+            1 if is_audio_reaction_clip(clip) else 0,
             -rank_index.get(clip.id, 0),
         ),
         reverse=True,
@@ -1146,6 +1170,26 @@ def _defensive_sampling_reserve_limit(request: Optional[CreateEditJobRequest], m
     return min(reserve, max_clips)
 
 
+def _audio_reaction_sampling_reserve_limit(max_clips: int, candidate_count: int) -> int:
+    max_clips = max(0, int(max_clips))
+    candidate_count = max(0, int(candidate_count))
+    if max_clips < 8 or candidate_count == 0:
+        return 0
+    if max_clips >= 24:
+        return min(candidate_count, 2)
+    return 1
+
+
+def _audio_reaction_candidate_quality_key(clip: EditCandidateClip) -> tuple[float, float, float, float, float]:
+    return (
+        1.0 if is_audio_reaction_clip(clip) else 0.0,
+        clip.audioPeak,
+        clip.planning_score,
+        clip.motionScore,
+        clip.watchability,
+    )
+
+
 def _has_defense_only_intent(request: CreateEditJobRequest) -> bool:
     user_intent = derive_user_prompt_intent(request.userPrompt, request.planTier)
     return bool(user_intent and "defense_only" in user_intent.styleIntents)
@@ -1158,7 +1202,7 @@ def _is_defensive_candidate_clip(clip: EditCandidateClip) -> bool:
 def _defensive_candidate_family(clip: EditCandidateClip) -> Optional[str]:
     label = clip.label.strip().lower()
     tokens = set(label.replace("-", " ").replace("_", " ").split())
-    if tokens & {"block", "blocked", "contest", "swat", "swatted", "rejection", "rejected"} or "blocked shot" in label:
+    if tokens & {"block", "blocked", "swat", "swatted", "rejection", "rejected"} or "blocked shot" in label:
         return "block"
     if tokens & {
         "steal",
@@ -1181,7 +1225,10 @@ def _defensive_candidate_family(clip: EditCandidateClip) -> Optional[str]:
         return "forced_turnover"
     if "turnover" in tokens and (tokens & {"forced", "force", "defensive", "defense", "steal", "strip", "takeaway"}):
         return "forced_turnover"
-    if "stop" in tokens and ("defensive stop" in label or "defense stop" in label or label == "stop"):
+    if (
+        "stop" in tokens
+        and ("defensive stop" in label or "defense stop" in label or label == "stop")
+    ) or tokens & {"contest", "contested"}:
         return "defensive_stop"
     if tokens & {"defense", "defensive", "pressure", "lockdown"}:
         return "defensive"

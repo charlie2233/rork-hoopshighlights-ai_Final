@@ -1818,6 +1818,40 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertGreater(times["reactionAftermath"], clip.eventCenter)
         self.assertGreater(times["reactionFollowThrough"], clip.eventCenter)
 
+    def test_gpt_sampling_reserves_audio_reaction_recall_candidate_when_scoring_fills_cap(self) -> None:
+        scoring = [
+            _clip(f"score_{index}", float(index * 6), 0.99 - (index * 0.01))
+            for index in range(9)
+        ]
+        request = CreateEditJobRequest(
+            videoId="video_audio_reaction_reserve",
+            analysisJobId="analysis_audio_reaction_reserve",
+            installId="install-123",
+            sourceObjectKey="uploads/source.mp4",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="free",
+            clips=[
+                *scoring,
+                {
+                    **_labeled_clip("crowd_pop_reserve", 72.0, 0.7, "Crowd Reaction"),
+                    "audioPeak": 0.99,
+                    "motionScore": 0.86,
+                    "watchability": 0.88,
+                    "combinedScore": 0.68,
+                },
+            ],
+        )
+
+        sampled = gpt_reranker._quality_filtered_sampled_clips(
+            gpt_reranker.rank_clips(request.clips),
+            8,
+            request=request,
+        )
+
+        self.assertIn("crowd_pop_reserve", {clip.id for clip in sampled})
+        self.assertTrue(gpt_reranker.is_audio_reaction_clip(request.clips[-1]))
+
     def test_shot_sampling_treats_event_center_as_rim_result_anchor(self) -> None:
         request = CreateEditJobRequest(
             videoId="video_result_anchor",
@@ -3777,6 +3811,8 @@ class GPTHighlightRerankerTests(unittest.TestCase):
             _labeled_clip("deflection", 87.0, 0.69, "Deflection To Fast Break"),
             _labeled_clip("charge", 94.0, 0.68, "Took Charge"),
             _labeled_clip("loose_ball", 101.0, 0.67, "Loose Ball Recovery"),
+            _labeled_clip("contest", 108.0, 0.66, "Contested Jumper"),
+            _labeled_clip("block", 115.0, 0.65, "Blocked Shot"),
         ]
         request = CreateEditJobRequest(
             videoId="video_defensive_pressure",
@@ -3794,6 +3830,8 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertEqual(families["deflection"], "forced_turnover")
         self.assertEqual(families["charge"], "forced_turnover")
         self.assertEqual(families["loose_ball"], "forced_turnover")
+        self.assertEqual(families["contest"], "defensive_stop")
+        self.assertEqual(families["block"], "block")
 
         sampled = gpt_reranker._quality_filtered_sampled_clips(
             gpt_reranker.rank_clips(request.clips),
@@ -3801,10 +3839,36 @@ class GPTHighlightRerankerTests(unittest.TestCase):
             request=request,
         )
         sampled_ids = {clip.id for clip in sampled}
-        defensive_ids = {"takeaway", "deflection", "charge", "loose_ball"}
+        defensive_ids = {"takeaway", "deflection", "charge", "loose_ball", "contest", "block"}
 
         self.assertIn("takeaway", sampled_ids)
+        self.assertIn("block", sampled_ids)
         self.assertGreaterEqual(len(sampled_ids & defensive_ids), 3)
+
+    def test_sampling_reserves_contested_defensive_stop_for_gpt_review(self) -> None:
+        scoring = [
+            _clip(f"score_{index}", float(index * 7), 0.99 - (index * 0.01))
+            for index in range(8)
+        ]
+        request = CreateEditJobRequest(
+            videoId="video_contested_stop",
+            analysisJobId="analysis_contested_stop",
+            installId="install-123",
+            sourceObjectKey="uploads/source.mp4",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="free",
+            clips=[*scoring, _labeled_clip("contest", 80.0, 0.66, "Contested Jumper")],
+        )
+
+        sampled = gpt_reranker._quality_filtered_sampled_clips(
+            gpt_reranker.rank_clips(request.clips),
+            8,
+            request=request,
+        )
+
+        self.assertEqual(gpt_reranker._defensive_candidate_family(request.clips[-1]), "defensive_stop")
+        self.assertIn("contest", {clip.id for clip in sampled})
 
     def test_selected_team_sampling_bounds_unreviewed_uncertain_clip_reserve(self) -> None:
         uncertain = [

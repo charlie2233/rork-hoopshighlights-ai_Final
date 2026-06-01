@@ -767,7 +767,7 @@ def _clip_sample_times(clip: CloudClip, count: int) -> list[tuple[str, float]]:
 
 def _is_block_like_label(label: str) -> bool:
     tokens = _label_tokens(label)
-    return bool(tokens & {"block", "blocked", "contest", "swat", "swatted", "rejection", "reject", "rejected"})
+    return bool(tokens & {"block", "blocked", "swat", "swatted", "rejection", "reject", "rejected"})
 
 
 def _is_non_scoring_defensive_label(label: str) -> bool:
@@ -792,6 +792,8 @@ def _is_non_scoring_defensive_label(label: str) -> bool:
         "deflection",
         "deflected",
         "charge",
+        "contest",
+        "contested",
         "pressure",
         "lockdown",
     }:

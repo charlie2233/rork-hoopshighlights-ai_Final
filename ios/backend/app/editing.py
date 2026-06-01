@@ -2358,7 +2358,7 @@ def _defensive_reserve_replacement_index(selected: Sequence[EditCandidateClip]) 
 def _defensive_highlight_family(clip: EditCandidateClip) -> Optional[str]:
     normalized = clip.label.strip().lower()
     tokens = set(re.findall(r"[a-z0-9]+", normalized))
-    if tokens & {"block", "blocked", "contest", "swat", "swatted", "rejection", "rejected"} or "blocked shot" in normalized:
+    if tokens & {"block", "blocked", "swat", "swatted", "rejection", "rejected"} or "blocked shot" in normalized:
         return "block"
     if tokens & {
         "steal",
@@ -2389,7 +2389,10 @@ def _defensive_highlight_family(clip: EditCandidateClip) -> Optional[str]:
         "takeaway",
     }:
         return "forced_turnover"
-    if "stop" in tokens and (normalized == "stop" or "defensive stop" in normalized or "defense stop" in normalized):
+    if (
+        "stop" in tokens
+        and (normalized == "stop" or "defensive stop" in normalized or "defense stop" in normalized)
+    ) or tokens & {"contest", "contested"}:
         return "defensive_stop"
     if tokens & {"defense", "defensive", "pressure", "lockdown"}:
         return "defensive"

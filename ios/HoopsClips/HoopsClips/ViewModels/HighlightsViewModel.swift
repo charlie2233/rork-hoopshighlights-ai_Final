@@ -641,6 +641,14 @@ final class HighlightsViewModel {
         defensiveCloudEditCandidateFamily(clip) == "steal"
     }
 
+    nonisolated static func isForcedTurnoverReviewClip(_ clip: Clip) -> Bool {
+        defensiveCloudEditCandidateFamily(clip) == "forced_turnover"
+    }
+
+    nonisolated static func isDefensiveStopReviewClip(_ clip: Clip) -> Bool {
+        defensiveCloudEditCandidateFamily(clip) == "defensive_stop"
+    }
+
     func shouldAutoKeepHighConfidenceClip(_ clip: Clip) -> Bool {
         Self.isAutoKeepHighConfidenceEligible(clip, teamSelection: settings.highlightTeamSelection)
     }
@@ -1181,7 +1189,7 @@ final class HighlightsViewModel {
     nonisolated private static func defensiveCloudEditCandidateFamily(_ clip: Clip) -> String? {
         let text = "\(clip.label) \(clip.action.rawValue)".lowercased()
         let tokens = Set(text.split { !$0.isLetter && !$0.isNumber }.map(String.init))
-        if !tokens.isDisjoint(with: ["block", "blocked", "contest", "contested", "swat", "swatted", "rejection", "reject", "rejected"])
+        if !tokens.isDisjoint(with: ["block", "blocked", "swat", "swatted", "rejection", "reject", "rejected"])
             || text.contains("blocked shot")
             || text.contains("rim protection") {
             return "block"

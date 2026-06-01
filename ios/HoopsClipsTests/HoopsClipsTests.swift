@@ -2988,6 +2988,28 @@ struct HoopsClipsTests {
         #expect(HighlightsViewModel.isPriorityReviewClip(uncertainStealClip, teamSelection: .allTeams))
     }
 
+    @Test func testContestReviewClipIsDefensiveStopNotBlock() {
+        let contestedClip = Clip(
+            startTime: 12.0,
+            endTime: 17.5,
+            eventCenter: 15.0,
+            action: .unknown,
+            confidence: 0.76,
+            isKept: true,
+            label: "Contested Jumper",
+            audioScore: 0.5,
+            visualScore: 0.78,
+            motionScore: 0.8,
+            combinedScore: 0.82,
+            detectionMethod: .cloud
+        )
+
+        #expect(HighlightsViewModel.isDefensiveReviewClip(contestedClip))
+        #expect(HighlightsViewModel.isDefensiveStopReviewClip(contestedClip))
+        #expect(!HighlightsViewModel.isBlockReviewClip(contestedClip))
+        #expect(!HighlightsViewModel.isStealReviewClip(contestedClip))
+    }
+
     @Test @MainActor func testViewModelPriorityReviewClipsFocusTeamDefenseAndUncertainPlays() {
         let viewModel = HighlightsViewModel()
         let selectedTeam = HighlightTeamSelection(

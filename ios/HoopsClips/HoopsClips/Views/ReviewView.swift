@@ -1263,32 +1263,11 @@ struct ReviewView: View {
     }
 
     private func isForcedTurnoverClip(_ clip: Clip) -> Bool {
-        let text = normalizedClipText(clip)
-        let tokens = normalizedClipLabel(clip)
-        if !tokens.isDisjoint(with: ["deflection", "deflected", "charge"]) || text.contains("loose ball") {
-            return true
-        }
-        return tokens.contains("turnover")
-            && !tokens.contains("unforced")
-            && !tokens.isDisjoint(with: ["forced", "force", "defensive", "defense", "steal", "strip", "takeaway"])
+        HighlightsViewModel.isForcedTurnoverReviewClip(clip)
     }
 
     private func isDefensiveStopClip(_ clip: Clip) -> Bool {
-        let text = normalizedClipText(clip)
-        let tokens = normalizedClipLabel(clip)
-        return tokens.contains("stop")
-            && (text == "stop" || text.contains("defensive stop") || text.contains("defense stop") || tokens.contains("lockdown"))
-    }
-
-    private func normalizedClipLabel(_ clip: Clip) -> Set<String> {
-        let words = clip.label.lowercased().split { !$0.isLetter && !$0.isNumber }
-        return Set(words.map(String.init))
-    }
-
-    private func normalizedClipText(_ clip: Clip) -> String {
-        clip.label
-            .lowercased()
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        HighlightsViewModel.isDefensiveStopReviewClip(clip)
     }
 
     private func defensiveBadgeTitle(for clip: Clip) -> String {

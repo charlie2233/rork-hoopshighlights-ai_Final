@@ -201,6 +201,7 @@ def _analysis_team_diagnostic_counts(
         "stealReviewSegments": sum(1 for clip in review_clips if _defensive_label_family(clip.label) == "steal"),
         "forcedTurnoverReviewSegments": sum(1 for clip in review_clips if _defensive_label_family(clip.label) == "forced_turnover"),
         "defensiveStopReviewSegments": sum(1 for clip in review_clips if _defensive_label_family(clip.label) == "defensive_stop"),
+        "audioReactionReviewSegments": sum(1 for clip in review_clips if _is_audio_reaction_label(clip.label)),
     }
 
 
@@ -335,6 +336,18 @@ def _defensive_review_reserve_limit(max_clips: int, defensive_count: int) -> int
     return min(defensive_count, max(2, max_clips // 3))
 
 
+def _audio_reaction_review_reserve_limit(max_clips: int, audio_reaction_count: int) -> int:
+    max_clips = max(0, int(max_clips))
+    audio_reaction_count = max(0, int(audio_reaction_count))
+    if max_clips < 8 or audio_reaction_count == 0:
+        return 0
+    if max_clips >= 40:
+        return min(audio_reaction_count, 3)
+    if max_clips >= 20:
+        return min(audio_reaction_count, 2)
+    return 1
+
+
 def _trim_analysis_clips_for_review(
     clips: Sequence[CloudClip],
     team_selection: Optional[TeamSelection],
@@ -387,6 +400,17 @@ def _trim_analysis_clips_for_review(
             add_clip(index, clip)
             reserved_defensive_count += 1
 
+    audio_reactions = [
+        (index, clip)
+        for index, clip in indexed_clips
+        if _is_audio_reaction_label(clip.label)
+    ]
+    audio_reaction_reserve = _audio_reaction_review_reserve_limit(max_clips, len(audio_reactions))
+    for index, clip in sorted(audio_reactions, key=_audio_reaction_reserved_clip_quality_key, reverse=True)[
+        :audio_reaction_reserve
+    ]:
+        add_clip(index, clip)
+
     uncertain: list[tuple[int, CloudClip]] = []
     uncertain_reserve = 0
     if team_selection is not None and team_selection.mode == "team" and team_selection.includeUncertain:
@@ -417,6 +441,20 @@ def _review_reserved_clip_quality_key(
 ) -> tuple[float, float, float, float, float, float, float, int]:
     index, clip = item
     return (*_hybrid_clip_quality_key(clip), -index)
+
+
+def _audio_reaction_reserved_clip_quality_key(
+    item: tuple[int, CloudClip],
+) -> tuple[float, float, float, float, float, int]:
+    index, clip = item
+    return (
+        clip.audioScore,
+        clip.combinedScore,
+        clip.motionScore,
+        clip.confidence,
+        clip.visualScore,
+        -index,
+    )
 
 
 def _annotate_analysis_team_status(
@@ -869,6 +907,7 @@ def _is_defensive_label(label: str) -> bool:
         "steal",
         "strip",
         "contest",
+        "contested",
         "pressure",
         "lockdown",
         "deflection",
@@ -903,7 +942,7 @@ def _is_defensive_label(label: str) -> bool:
 def _defensive_label_family(label: str) -> Optional[str]:
     normalized = label.strip().lower()
     tokens = set(re.findall(r"[a-z0-9]+", normalized))
-    if tokens & {"block", "blocked", "contest", "swat", "swatted", "rejection", "rejected"}:
+    if tokens & {"block", "blocked", "swat", "swatted", "rejection", "rejected"}:
         return "block"
     if tokens & {
         "steal",
@@ -926,7 +965,10 @@ def _defensive_label_family(label: str) -> Optional[str]:
         return "forced_turnover"
     if "turnover" in tokens and (tokens & {"forced", "force", "defensive", "defense", "steal", "strip", "takeaway"}):
         return "forced_turnover"
-    if "stop" in tokens and ("defensive stop" in normalized or "defense stop" in normalized or normalized == "stop"):
+    if (
+        "stop" in tokens
+        and ("defensive stop" in normalized or "defense stop" in normalized or normalized == "stop")
+    ) or tokens & {"contest", "contested"}:
         return "defensive_stop"
     if tokens & {
         "defense",
@@ -936,6 +978,17 @@ def _defensive_label_family(label: str) -> Optional[str]:
     }:
         return "defensive"
     return None
+
+
+def _is_audio_reaction_label(label: str) -> bool:
+    normalized = label.strip().lower()
+    tokens = set(re.findall(r"[a-z0-9]+", normalized))
+    return normalized in {
+        "audio pop",
+        "audio reaction",
+        "crowd pop",
+        "crowd reaction",
+    } or ("crowd" in tokens and "reaction" in tokens)
 
 
 def _probe_duration(path: Path, fallback: float) -> float:
