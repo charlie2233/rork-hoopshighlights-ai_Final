@@ -435,9 +435,9 @@ enum CloudEditUserPromptBuilder {
     static func defaultFocusSummary(teamSelection: HighlightTeamSelection?) -> String {
         let selectedTeam = teamSelection?.mode == .team ? (teamSelection?.displayTitle ?? "selected team") : nil
         if let selectedTeam {
-            return "Accuracy guardrails: \(selectedTeam), visible outcomes, blocks, steals, forced turnovers, defensive stops, and strong uncertain clips for Review."
+            return "Target: \(selectedTeam). Checks visible outcomes, blocks, steals, forced turnovers, defensive stops; keeps uncertain clips for Review."
         }
-        return "Accuracy guardrails: visible outcomes, made shots, blocks, steals, forced turnovers, defensive stops, and strong uncertain clips for Review."
+        return "Target: All teams. Checks visible outcomes, made shots, blocks, steals, forced turnovers, defensive stops; keeps uncertain clips for Review."
     }
 
     private static func defaultAccuracyPrompt(teamSelection: HighlightTeamSelection?) -> String {

@@ -149,7 +149,7 @@ class PipelineQualityTests(unittest.TestCase):
 
         self.assertEqual(settings.max_returned_clips, 320)
         self.assertEqual(settings.team_quick_scan_clip_frames_per_clip, 8)
-        self.assertEqual(settings.team_quick_scan_rich_candidate_clips, 220)
+        self.assertEqual(settings.team_quick_scan_rich_candidate_clips, 320)
         self.assertEqual(settings.team_quick_scan_max_total_clip_frames, 2560)
         self.assertEqual(settings.team_quick_scan_max_candidate_clips, 320)
         self.assertEqual(settings.team_quick_scan_max_output_tokens, 18000)

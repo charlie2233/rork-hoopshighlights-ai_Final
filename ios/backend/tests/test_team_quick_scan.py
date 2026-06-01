@@ -38,7 +38,7 @@ def _settings(**overrides):
         "team_quick_scan_timeout_seconds": 12.0,
         "team_quick_scan_video_frame_count": 6,
         "team_quick_scan_clip_frames_per_clip": 8,
-        "team_quick_scan_rich_candidate_clips": 220,
+        "team_quick_scan_rich_candidate_clips": 320,
         "team_quick_scan_max_total_clip_frames": 2560,
         "team_quick_scan_frame_width": 720,
         "team_quick_scan_jpeg_quality": 4,
@@ -183,7 +183,7 @@ class TeamQuickScanTests(unittest.TestCase):
                 **settings,
                 "team_quick_scan_timeout_seconds": 24.0,
                 "team_quick_scan_max_candidate_clips": 320,
-                "team_quick_scan_rich_candidate_clips": 220,
+                "team_quick_scan_rich_candidate_clips": 320,
                 "team_quick_scan_clip_frames_per_clip": 8,
                 "team_quick_scan_max_total_clip_frames": 2560,
             }
@@ -638,6 +638,36 @@ class TeamQuickScanTests(unittest.TestCase):
         self.assertEqual(roles_by_clip["clip_3"], ["ballHandlerSetup", "release", "rimResult"])
         self.assertEqual(roles_by_clip["clip_4"], ["ballHandlerSetup", "release", "rimResult"])
         self.assertEqual(len([frame for frame in frames if frame.clip_ref is not None]), 21)
+
+    def test_frame_extraction_uses_rich_frames_for_full_internal_candidate_pool(self) -> None:
+        clips = [
+            _clip("Made Shot", float(index * 5), float(index * 5 + 4), float(index * 5 + 2))
+            for index in range(320)
+        ]
+
+        with tempfile.TemporaryDirectory(prefix="hoopclips-team-scan-full-rich-budget-") as temp_dir:
+            source_path = Path(temp_dir) / "source.mp4"
+            source_path.write_bytes(b"video")
+            with patch("app.team_quick_scan._extract_frame_data_url", return_value="data:image/jpeg;base64,frame"):
+                frames = _extract_quick_scan_frames(
+                    source_path,
+                    1_700.0,
+                    clips,
+                    _settings(team_quick_scan_video_frame_count=0),
+                )
+
+        clip_frames = [frame for frame in frames if frame.clip_ref is not None]
+        roles_by_clip = {}
+        for frame in clip_frames:
+            roles_by_clip.setdefault(frame.clip_ref, []).append(frame.role)
+
+        self.assertEqual(len(clip_frames), 2560)
+        self.assertEqual(len(roles_by_clip), 320)
+        self.assertEqual(
+            roles_by_clip["clip_0"],
+            ["ballHandlerSetup", "preRelease", "release", "shotArc", "rimApproach", "rimResult", "followThrough", "finishContext"],
+        )
+        self.assertEqual(roles_by_clip["clip_319"], roles_by_clip["clip_0"])
 
     def test_total_clip_frame_budget_allows_configured_beta_ceiling(self) -> None:
         self.assertEqual(_max_quick_scan_total_clip_frames(_settings(team_quick_scan_max_total_clip_frames=600)), 600)

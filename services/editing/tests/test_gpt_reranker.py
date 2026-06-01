@@ -655,7 +655,7 @@ class GPTHighlightRerankerTests(unittest.TestCase):
 
         self.assertEqual(rules["targetDurationSeconds"], 270)
         self.assertEqual(rules["availableQualityCandidateCount"], 12)
-        self.assertEqual(rules["minRecommendedKeptClipCount"], 10)
+        self.assertEqual(rules["minRecommendedKeptClipCount"], 12)
         self.assertTrue(rules["longTargetDuration"])
         self.assertTrue(rules["veryLongTargetDuration"])
         self.assertIn("do_not_keep_only_top_few", rules["overPrunePolicy"])
@@ -2286,15 +2286,22 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         short_request = _request("free", 12)
         medium_request = short_request.model_copy(update={"targetDurationSeconds": 45})
         long_request = short_request.model_copy(update={"targetDurationSeconds": 270})
+        full_pool_long_request = _request("free", 30).model_copy(update={"targetDurationSeconds": 270})
 
         short_count, _ = gpt_reranker._gpt_underfill_floor(short_request, short_request.clips)
         medium_count, _ = gpt_reranker._gpt_underfill_floor(medium_request, medium_request.clips)
         long_count, long_duration_floor = gpt_reranker._gpt_underfill_floor(long_request, long_request.clips)
+        full_pool_long_count, full_pool_long_duration_floor = gpt_reranker._gpt_underfill_floor(
+            full_pool_long_request,
+            full_pool_long_request.clips,
+        )
 
         self.assertEqual(short_count, 3)
         self.assertEqual(medium_count, 4)
-        self.assertEqual(long_count, 10)
-        self.assertGreaterEqual(long_duration_floor, 60.0)
+        self.assertEqual(long_count, 12)
+        self.assertGreaterEqual(long_duration_floor, 70.0)
+        self.assertEqual(full_pool_long_count, 16)
+        self.assertGreaterEqual(full_pool_long_duration_floor, 140.0)
 
     def test_incomplete_gpt_decisions_fallback_without_dropping_sampled_candidates(self) -> None:
         settings = GPTHighlightRerankerSettings(

@@ -600,7 +600,7 @@ def _gpt_underfill_floor(request: CreateEditJobRequest, available_clips: Sequenc
     desired_count = _gpt_underfill_desired_clip_count(target_seconds)
     min_clip_count = min(desired_count, len(available_clips))
     available_duration = sum(_bounded_gpt_clip_duration(request, clip) for clip in available_clips)
-    duration_floor = max(template.clipLength.minSeconds * min_clip_count * 0.8, target_seconds * 0.35)
+    duration_floor = max(template.clipLength.minSeconds * min_clip_count * 0.8, target_seconds * _gpt_underfill_duration_ratio(target_seconds))
     return min_clip_count, min(duration_floor, available_duration)
 
 
@@ -614,8 +614,18 @@ def _gpt_underfill_desired_clip_count(target_seconds: float) -> int:
     if target_seconds <= 90:
         return 6
     if target_seconds <= 180:
-        return 8
-    return 10
+        return 10
+    if target_seconds <= 240:
+        return 14
+    return 16
+
+
+def _gpt_underfill_duration_ratio(target_seconds: float) -> float:
+    if target_seconds <= 90:
+        return 0.35
+    if target_seconds <= 180:
+        return 0.45
+    return 0.55
 
 
 def _bounded_gpt_clip_duration(request: CreateEditJobRequest, clip: EditCandidateClip) -> float:

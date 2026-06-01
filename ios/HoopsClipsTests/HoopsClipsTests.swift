@@ -610,10 +610,22 @@ struct HoopsClipsTests {
 
         #expect(prompt.hasPrefix("Focus on Dark jerseys."))
         #expect(prompt.contains("Keep uncertain team clips reviewable."))
+        #expect(summary.hasPrefix("Target: Dark jerseys."))
         #expect(summary.contains("Dark jerseys"))
         #expect(summary.contains("blocks"))
         #expect(summary.contains("forced turnovers"))
         #expect(summary.contains("defensive stops"))
+        #expect(summary.count <= CloudEditUserPromptBuilder.maxPromptCharacters)
+    }
+
+    @Test func testCloudEditDefaultFocusSummaryShowsAllTeamsTarget() {
+        let summary = CloudEditUserPromptBuilder.defaultFocusSummary(teamSelection: .allTeams)
+
+        #expect(summary.hasPrefix("Target: All teams."))
+        #expect(summary.contains("made shots"))
+        #expect(summary.contains("blocks"))
+        #expect(summary.contains("steals"))
+        #expect(summary.contains("Review"))
         #expect(summary.count <= CloudEditUserPromptBuilder.maxPromptCharacters)
     }
 
@@ -1781,6 +1793,49 @@ struct HoopsClipsTests {
                 source: "quick_scan"
             )
         )
+
+        #expect(!HighlightsViewModel.isAutoKeepHighConfidenceEligible(clip, teamSelection: selection))
+
+        clip.teamAttribution?.evidenceFrameRefs = ["setup_frame", "outcome_frame"]
+        clip.teamAttribution?.evidenceRoleGroups = ["setup", "outcome"]
+
+        #expect(HighlightsViewModel.isAutoKeepHighConfidenceEligible(clip, teamSelection: selection))
+    }
+
+    @Test func testCloudEditAutoKeepTreatsMissingTeamSourceAsUnknownEvidence() {
+        let selection = HighlightTeamSelection(
+            mode: .team,
+            teamId: "team_dark",
+            label: "Dark jerseys",
+            colorLabel: "black",
+            confidenceThreshold: 0.85,
+            includeUncertain: true
+        )
+        var clip = Clip(
+            startTime: 12.0,
+            endTime: 18.0,
+            eventCenter: 15.0,
+            action: .madeShot,
+            confidence: 0.94,
+            isKept: false,
+            label: "Dark Jersey Finish",
+            audioScore: 0.65,
+            visualScore: 0.88,
+            motionScore: 0.84,
+            combinedScore: 0.9,
+            detectionMethod: .cloud,
+            teamAttribution: ClipTeamAttribution(
+                teamId: "team_dark",
+                label: "Dark jerseys",
+                colorLabel: "black",
+                confidence: 0.96,
+                source: nil
+            )
+        )
+
+        #expect(!HighlightsViewModel.isAutoKeepHighConfidenceEligible(clip, teamSelection: selection))
+
+        clip.teamAttribution?.source = "   "
 
         #expect(!HighlightsViewModel.isAutoKeepHighConfidenceEligible(clip, teamSelection: selection))
 

@@ -665,7 +665,8 @@ final class HighlightsViewModel {
     }
 
     nonisolated private static func hasConfidentCloudEditTeamEvidence(_ attribution: ClipTeamAttribution) -> Bool {
-        let source = (attribution.source ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let rawSource = (attribution.source ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let source = rawSource.isEmpty ? "unknown" : rawSource
         guard cloudEditTeamEvidenceRequiredSources.contains(source) else { return true }
         let frameRefs = Set((attribution.evidenceFrameRefs ?? []).filter { !$0.isEmpty })
         let roleGroups = Set((attribution.evidenceRoleGroups ?? []).filter { !$0.isEmpty })

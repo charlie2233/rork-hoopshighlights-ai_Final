@@ -50,7 +50,7 @@ class Settings:
     team_quick_scan_timeout_seconds: float = 60.0
     team_quick_scan_video_frame_count: int = 8
     team_quick_scan_clip_frames_per_clip: int = 8
-    team_quick_scan_rich_candidate_clips: int = 220
+    team_quick_scan_rich_candidate_clips: int = 320
     team_quick_scan_max_total_clip_frames: int = 2560
     team_quick_scan_frame_width: int = 720
     team_quick_scan_jpeg_quality: int = 4
@@ -246,7 +246,7 @@ def get_settings() -> Settings:
         team_quick_scan_timeout_seconds=_env_float("HOOPS_TEAM_QUICK_SCAN_TIMEOUT_SECONDS", 60.0, 2.0, 90.0),
         team_quick_scan_video_frame_count=_env_int("HOOPS_TEAM_QUICK_SCAN_VIDEO_FRAME_COUNT", 8, 2, 16),
         team_quick_scan_clip_frames_per_clip=_env_int("HOOPS_TEAM_QUICK_SCAN_CLIP_FRAMES_PER_CLIP", 8, 1, 8),
-        team_quick_scan_rich_candidate_clips=_env_int("HOOPS_TEAM_QUICK_SCAN_RICH_CANDIDATE_CLIPS", 220, 0, 320),
+        team_quick_scan_rich_candidate_clips=_env_int("HOOPS_TEAM_QUICK_SCAN_RICH_CANDIDATE_CLIPS", 320, 0, 320),
         team_quick_scan_max_total_clip_frames=_env_int("HOOPS_TEAM_QUICK_SCAN_MAX_TOTAL_CLIP_FRAMES", 2560, 60, 3200),
         team_quick_scan_frame_width=_env_int("HOOPS_TEAM_QUICK_SCAN_FRAME_WIDTH", 720, 320, 1280),
         team_quick_scan_jpeg_quality=_env_int("HOOPS_TEAM_QUICK_SCAN_JPEG_QUALITY", 4, 2, 12),

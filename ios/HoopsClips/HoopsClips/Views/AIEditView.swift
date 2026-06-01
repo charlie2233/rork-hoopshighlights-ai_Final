@@ -646,6 +646,21 @@ struct AIEditView: View {
         VStack(alignment: .leading, spacing: 10) {
             promptHeader
 
+            Label(defaultCloudEditFocusSummary, systemImage: "scope")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.white.opacity(0.9))
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 5 : 3)
+                .minimumScaleFactor(0.84)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(AppTheme.cardBg.opacity(0.58), in: .rect(cornerRadius: 12))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(AppTheme.softBorder, lineWidth: 1)
+                }
+                .accessibilityIdentifier("export.aiEdit.targetFocusSummary")
+
             ZStack(alignment: .topLeading) {
                 TextEditor(text: $userEditPrompt)
                     .font(.subheadline)
