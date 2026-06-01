@@ -252,6 +252,140 @@ enum CloudEditAspectRatio: String, Codable, Sendable {
     }
 }
 
+struct CloudEditUserIntent: Equatable, Sendable {
+    let preset: CloudEditPreset?
+    let proTemplate: CloudEditProTemplate?
+    let aspectRatio: CloudEditAspectRatio?
+    let durationSeconds: Int?
+
+    var hasStructuredChoices: Bool {
+        preset != nil || proTemplate != nil || aspectRatio != nil || durationSeconds != nil
+    }
+
+    static func parse(_ text: String) -> CloudEditUserIntent {
+        let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !normalized.isEmpty else {
+            return CloudEditUserIntent(
+                preset: nil,
+                proTemplate: nil,
+                aspectRatio: nil,
+                durationSeconds: nil
+            )
+        }
+
+        let proTemplate = parseProTemplate(from: normalized)
+        let preset = parsePreset(from: normalized, fallbackTemplate: proTemplate)
+        let aspectRatio = parseAspectRatio(from: normalized)
+        let durationSeconds = parseDurationSeconds(from: normalized)
+
+        return CloudEditUserIntent(
+            preset: preset,
+            proTemplate: proTemplate,
+            aspectRatio: aspectRatio,
+            durationSeconds: durationSeconds
+        )
+    }
+
+    private static func parseProTemplate(from normalized: String) -> CloudEditProTemplate? {
+        if containsAny(normalized, ["recruiting", "recruit", "scout", "showcase"]) {
+            return .recruitingReelPro
+        }
+        if containsAny(normalized, ["cinematic", "mixtape", "vibe edit", "social edit"]) {
+            return .cinematicMixtapePro
+        }
+        if containsAny(normalized, ["nba", "broadcast", "lower third", "lower-third"]) {
+            return .nbaRecapPro
+        }
+        if containsAny(normalized, ["team highlight", "team package", "season recap", "team-first"]) {
+            return .teamHighlightPro
+        }
+        return nil
+    }
+
+    private static func parsePreset(
+        from normalized: String,
+        fallbackTemplate: CloudEditProTemplate?
+    ) -> CloudEditPreset? {
+        if containsAny(normalized, ["coach", "film review", "trainer", "teaching tape", "breakdown"]) {
+            return .coachReview
+        }
+        if containsAny(normalized, ["full game", "game recap", "recap", "youtube", "game flow"]) {
+            return .fullGameHighlight
+        }
+        if containsAny(normalized, ["hype", "reel", "tiktok", "instagram", "vertical", "best plays"]) {
+            return .personalHighlight
+        }
+        return fallbackTemplate?.preset
+    }
+
+    private static func parseAspectRatio(from normalized: String) -> CloudEditAspectRatio? {
+        if containsAny(normalized, ["no crop", "source", "original shape", "original format"]) {
+            return .source
+        }
+        if containsAny(normalized, ["vertical", "9:16", "portrait", "tiktok", "instagram", "reels"]) {
+            return .vertical
+        }
+        if containsAny(normalized, ["widescreen", "16:9", "youtube", "landscape", "horizontal"]) {
+            return .widescreen
+        }
+        return nil
+    }
+
+    private static func parseDurationSeconds(from normalized: String) -> Int? {
+        if let groups = firstCaptureGroups(
+            in: normalized,
+            pattern: #"(?<!\d)(\d{1,2}):([0-5]\d)(?!\d)"#
+        ),
+           let minutes = Int(groups[0]),
+           let seconds = Int(groups[1]),
+           minutes <= 5 {
+            return minutes * 60 + seconds
+        }
+
+        if let groups = firstCaptureGroups(
+            in: normalized,
+            pattern: #"(?<!\d)(\d{1,2})\s*(?:m|min|mins|minute|minutes)\b(?:\s+(\d{1,2})(?:\s*(?:s|sec|secs|second|seconds))?)?"#
+        ),
+           let minutes = Int(groups[0]) {
+            let seconds = groups.count > 1 ? (Int(groups[1]) ?? 0) : 0
+            return minutes * 60 + seconds
+        }
+
+        if let groups = firstCaptureGroups(
+            in: normalized,
+            pattern: #"(?<!\d)(\d{1,3})\s*(?:s|sec|secs|second|seconds)\b"#
+        ),
+           let seconds = Int(groups[0]) {
+            return seconds
+        }
+
+        return nil
+    }
+
+    private static func containsAny(_ text: String, _ needles: [String]) -> Bool {
+        needles.contains(where: { text.contains($0) })
+    }
+
+    private static func firstCaptureGroups(in text: String, pattern: String) -> [String]? {
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+        let searchRange = NSRange(text.startIndex..<text.endIndex, in: text)
+        guard let match = regex.firstMatch(in: text, range: searchRange), match.numberOfRanges > 1 else {
+            return nil
+        }
+
+        var groups: [String] = []
+        for index in 1..<match.numberOfRanges {
+            let range = match.range(at: index)
+            guard range.location != NSNotFound, let stringRange = Range(range, in: text) else {
+                groups.append("")
+                continue
+            }
+            groups.append(String(text[stringRange]))
+        }
+        return groups
+    }
+}
+
 enum CloudEditPlanTier: String, Codable, Sendable {
     case free
     case pro

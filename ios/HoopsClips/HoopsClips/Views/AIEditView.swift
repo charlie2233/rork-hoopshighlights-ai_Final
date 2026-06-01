@@ -177,8 +177,8 @@ struct AIEditView: View {
     private var workflowContent: some View {
         VStack(spacing: 18) {
             heroCard
-            promptCard
             actionCard
+            promptCard
             statusCard
             if let previewPlayer {
                 previewCard(player: previewPlayer)
@@ -212,7 +212,7 @@ struct AIEditView: View {
                 .foregroundStyle(.white)
                 .accessibilityIdentifier("export.aiEdit.section")
 
-            Text("Tap Make My Reel, or add a quick note first. HoopClips renders the MP4 in the cloud.")
+            Text("Tap Make My Reel. Add a side note when you want a specific style, length, or focus.")
                 .font(.subheadline)
                 .foregroundStyle(AppTheme.subtleText)
                 .fixedSize(horizontal: false, vertical: true)
@@ -594,7 +594,7 @@ struct AIEditView: View {
                     .font(.subheadline)
                     .foregroundStyle(.white)
                     .scrollContentBackground(.hidden)
-                    .frame(minHeight: 86)
+                    .frame(minHeight: dynamicTypeSize.isAccessibilitySize ? 132 : 96)
                     .padding(10)
                     .background(AppTheme.cardBg.opacity(0.72), in: .rect(cornerRadius: 12))
                     .overlay {
@@ -611,7 +611,7 @@ struct AIEditView: View {
                 if userEditPrompt.isEmpty {
                     Text("Example: more hype, focus on defense, NBA recap, 30s vertical mixtape.")
                         .font(.subheadline)
-                        .foregroundStyle(AppTheme.subtleText.opacity(0.68))
+                        .foregroundStyle(AppTheme.subtleText)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 18)
                         .allowsHitTesting(false)
@@ -1946,6 +1946,26 @@ struct AIEditView: View {
         userEditPrompt = String((trimmed + separator + quickPrompt.prompt).prefix(Self.maxUserPromptCharacters))
     }
 
+    private func applyStructuredUserPromptIntent() {
+        let intent = CloudEditUserIntent.parse(userEditPrompt)
+        guard intent.hasStructuredChoices else { return }
+
+        if let proTemplate = intent.proTemplate, activePolicy.premiumTemplatesAllowed {
+            selectProTemplate(proTemplate)
+        } else if let preset = intent.proTemplate?.preset ?? intent.preset {
+            selectFreePreset(preset)
+        }
+
+        if let aspectRatio = intent.aspectRatio, displayedAspectRatios.contains(aspectRatio) {
+            selectedAspectRatio = aspectRatio
+        }
+
+        if let durationSeconds = intent.durationSeconds,
+           let closestDuration = nearestAllowedDuration(to: durationSeconds) {
+            selectedDuration = closestDuration
+        }
+    }
+
     private var proIntentWarningText: String? {
         guard activePolicy.planTier.isFree else { return nil }
         let prompt = userEditPrompt.lowercased()
@@ -2054,6 +2074,18 @@ struct AIEditView: View {
         return options.sorted()
     }
 
+    private func nearestAllowedDuration(to requestedSeconds: Int) -> Int? {
+        let options = displayedDurationOptions.filter { $0 <= activePolicy.maxRenderSeconds }
+        return options.min { lhs, rhs in
+            let lhsDistance = abs(lhs - requestedSeconds)
+            let rhsDistance = abs(rhs - requestedSeconds)
+            if lhsDistance == rhsDistance {
+                return lhs > rhs
+            }
+            return lhsDistance < rhsDistance
+        }
+    }
+
     private var displayedAspectRatios: [CloudEditAspectRatio] {
         if selectedTemplateID == CloudEditPreset.coachReview.templateID {
             return [.source, .widescreen]
@@ -2118,6 +2150,9 @@ struct AIEditView: View {
             phase = .failed
             HoopsAccessibility.announce("Cloud AI editing is paused.")
             return
+        }
+        if revisionResponse == nil || downloadResponse != nil {
+            applyStructuredUserPromptIntent()
         }
         if let selectedProTemplate, !isProUser {
             proInfoSheet = .template(selectedProTemplate)

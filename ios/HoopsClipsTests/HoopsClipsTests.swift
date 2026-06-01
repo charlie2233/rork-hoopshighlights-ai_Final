@@ -275,6 +275,33 @@ struct HoopsClipsTests {
         #expect(CloudEditPreset.coachReview.durationOptions == [60, 120, 180, 240, 270])
     }
 
+    @Test func testCloudEditUserIntentParsesRecapShapeAndDuration() {
+        let intent = CloudEditUserIntent.parse("make it NBA recap, 30s vertical")
+
+        #expect(intent.proTemplate == .nbaRecapPro)
+        #expect(intent.preset == .fullGameHighlight)
+        #expect(intent.aspectRatio == .vertical)
+        #expect(intent.durationSeconds == 30)
+    }
+
+    @Test func testCloudEditUserIntentParsesCoachReviewSourceAndLongDuration() {
+        let intent = CloudEditUserIntent.parse("coach review 4:30 source")
+
+        #expect(intent.proTemplate == nil)
+        #expect(intent.preset == .coachReview)
+        #expect(intent.aspectRatio == .source)
+        #expect(intent.durationSeconds == 270)
+    }
+
+    @Test func testCloudEditUserIntentKeepsAspectRatioOutOfDuration() {
+        let intent = CloudEditUserIntent.parse("vertical 9:16 cinematic mixtape")
+
+        #expect(intent.proTemplate == .cinematicMixtapePro)
+        #expect(intent.preset == .personalHighlight)
+        #expect(intent.aspectRatio == .vertical)
+        #expect(intent.durationSeconds == nil)
+    }
+
     @Test func testCloudEditPolicySummaryExposesFreemiumCopy() {
         let free = CloudEditPolicySummary.freeDefault
         let pro = CloudEditPolicySummary.proDefault
@@ -288,7 +315,7 @@ struct HoopsClipsTests {
         #expect(free.planLimitRows.contains("720p max export"))
         #expect(free.maxRenderSeconds == 270)
         #expect(free.maxDailyRenders == 3)
-        #expect(free.planLimitRows.contains("3 AI edits/day"))
+        #expect(free.planLimitRows.contains("3 video edits/day"))
         #expect(AppConstants.cloudAnalysisDailyQuota == 3)
         #expect(pro.planLimitRows.contains("1080p max export"))
         #expect(free.retentionSummary == "Videos stored for 14 days")
