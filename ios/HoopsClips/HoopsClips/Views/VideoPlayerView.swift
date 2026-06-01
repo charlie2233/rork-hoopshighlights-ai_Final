@@ -1419,18 +1419,7 @@ struct VideoPlayerView: View {
 
     private var analysisProgressView: some View {
         VStack(spacing: 16) {
-            HStack {
-                Image(systemName: "brain.head.profile.fill")
-                    .foregroundStyle(AppTheme.neonPurple)
-                    .symbolEffect(.variableColor.iterative, isActive: true)
-                Text(analysisProgressTitle)
-                    .font(.headline)
-                    .foregroundStyle(.white)
-                Spacer()
-                Text("\(Int(viewModel.analysisService.progress * 100))%")
-                    .font(.subheadline.monospacedDigit())
-                    .foregroundStyle(AppTheme.neonPurple)
-            }
+            analysisProgressHeader
 
             ProgressView(value: viewModel.analysisService.progress)
                 .tint(AppTheme.accentPurple)
@@ -1441,10 +1430,17 @@ struct VideoPlayerView: View {
             Text(viewModel.analysisService.statusMessage)
                 .font(.caption)
                 .foregroundStyle(AppTheme.subtleText)
+                .multilineTextAlignment(.center)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
+                .minimumScaleFactor(0.84)
+                .fixedSize(horizontal: false, vertical: true)
 
             Text(analysisProgressDetailText)
                 .font(.caption)
                 .foregroundStyle(AppTheme.subtleText)
+                .multilineTextAlignment(.center)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 5 : 3)
+                .minimumScaleFactor(0.84)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(16)
@@ -1452,6 +1448,43 @@ struct VideoPlayerView: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel(analysisProgressTitle)
         .accessibilityValue("\(Int(viewModel.analysisService.progress * 100)) percent. \(viewModel.analysisService.statusMessage). \(analysisProgressDetailText)")
+    }
+
+    private var analysisProgressHeader: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                analysisProgressTitleLabel
+                Spacer(minLength: 8)
+                analysisProgressPercentText
+            }
+
+            VStack(alignment: .center, spacing: 6) {
+                analysisProgressTitleLabel
+                analysisProgressPercentText
+            }
+        }
+    }
+
+    private var analysisProgressTitleLabel: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Image(systemName: "brain.head.profile.fill")
+                .foregroundStyle(AppTheme.neonPurple)
+                .symbolEffect(.variableColor.iterative, isActive: true)
+            Text(analysisProgressTitle)
+                .font(.headline)
+                .foregroundStyle(.white)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
+                .minimumScaleFactor(0.84)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var analysisProgressPercentText: some View {
+        Text("\(Int(viewModel.analysisService.progress * 100))%")
+            .font(.subheadline.monospacedDigit())
+            .foregroundStyle(AppTheme.neonPurple)
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
     }
 
     private var analysisCompleteView: some View {
@@ -1465,7 +1498,7 @@ struct VideoPlayerView: View {
                 Spacer()
             }
 
-            HStack(spacing: 16) {
+            LazyVGrid(columns: analysisStatGridColumns, alignment: .leading, spacing: 10) {
                 statBadge(value: "\(viewModel.clips.count)", label: languageStore.text(.clipsFound), color: AppTheme.neonPurple)
                 statBadge(value: "\(viewModel.keptClips.count)", label: languageStore.text(.kept), color: AppTheme.successGreen)
                 statBadge(value: formatDuration(viewModel.keptClips.reduce(0) { $0 + $1.duration }), label: languageStore.text(.duration), color: AppTheme.warningYellow)
@@ -1477,7 +1510,8 @@ struct VideoPlayerView: View {
                         Label(row, systemImage: "checkmark.seal.fill")
                             .font(.caption.weight(.medium))
                             .foregroundStyle(AppTheme.subtleText)
-                            .lineLimit(2)
+                            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 5 : 3)
+                            .minimumScaleFactor(0.84)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
@@ -1491,16 +1525,27 @@ struct VideoPlayerView: View {
         .rorkCard(cornerRadius: 16, stroke: AppTheme.successGreen.opacity(0.28), glow: AppTheme.successGreen, glowOpacity: 0.10)
     }
 
+    private var analysisStatGridColumns: [GridItem] {
+        [
+            GridItem(.adaptive(minimum: dynamicTypeSize.isAccessibilitySize ? 126 : 94), spacing: 10, alignment: .top)
+        ]
+    }
+
     private func statBadge(value: String, label: String, color: Color) -> some View {
         VStack(spacing: 4) {
             Text(value)
                 .font(.title3.bold().monospacedDigit())
                 .foregroundStyle(color)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
             Text(label)
                 .font(.caption2)
                 .foregroundStyle(AppTheme.subtleText)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
+                .minimumScaleFactor(0.84)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 58 : 44)
     }
 
     private var analysisQualitySummaryRows: [String] {
