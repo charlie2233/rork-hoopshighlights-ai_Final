@@ -1019,9 +1019,8 @@ struct HoopsClipsTests {
 
         #expect(request.clips.count == HighlightsViewModel.cloudEditCandidateRequestLimit)
         #expect(candidateStarts.contains(Double(strongIndex * 10)))
-        #expect(reviewCandidateCount == 32)
+        #expect(reviewCandidateCount == 45)
         #expect(candidateStarts.contains(2_000.0))
-        #expect(!candidateStarts.contains(1_680.0))
     }
 
     @Test @MainActor func testCloudEditRequestIncludesReviewOnlyUncertainCandidatesWithoutAutoKeepingThem() throws {
@@ -1119,6 +1118,86 @@ struct HoopsClipsTests {
         #expect(request.clips.first { $0.id == reviewOnlySteal.id.uuidString }?.userReviewDecision == "unreviewed")
         #expect(request.clips.first { $0.id == reviewOnlyBlock.id.uuidString }?.userReviewDecision == "unreviewed")
         #expect(request.clips.first { $0.id == ordinaryDiscardedClip.id.uuidString } == nil)
+    }
+
+    @Test @MainActor func testCloudEditRequestKeepsExpandedDefensiveMomentsForGptReview() throws {
+        let viewModel = HighlightsViewModel()
+        viewModel.cloudEditSourceObjectKey = "uploads/source.mp4"
+        let keptClip = Clip(
+            startTime: 8.0,
+            endTime: 14.0,
+            eventCenter: 11.0,
+            action: .madeShot,
+            confidence: 0.9,
+            isKept: true,
+            label: "Made Shot",
+            audioScore: 0.6,
+            visualScore: 0.82,
+            motionScore: 0.8,
+            combinedScore: 0.86,
+            detectionMethod: .cloud
+        )
+        let deflection = Clip(
+            startTime: 20.0,
+            endTime: 25.0,
+            eventCenter: 22.2,
+            action: .unknown,
+            confidence: 0.72,
+            isKept: false,
+            label: "Ball Deflection Into Runout",
+            audioScore: 0.32,
+            visualScore: 0.7,
+            motionScore: 0.74,
+            combinedScore: 0.71,
+            detectionMethod: .cloud
+        )
+        let charge = Clip(
+            startTime: 32.0,
+            endTime: 37.0,
+            eventCenter: 34.0,
+            action: .unknown,
+            confidence: 0.7,
+            isKept: false,
+            label: "Takes Charge",
+            audioScore: 0.3,
+            visualScore: 0.68,
+            motionScore: 0.7,
+            combinedScore: 0.69,
+            detectionMethod: .cloud
+        )
+        let takeaway = Clip(
+            startTime: 44.0,
+            endTime: 49.0,
+            eventCenter: 46.0,
+            action: .unknown,
+            confidence: 0.73,
+            isKept: false,
+            label: "Takeaway Steal",
+            audioScore: 0.34,
+            visualScore: 0.71,
+            motionScore: 0.76,
+            combinedScore: 0.73,
+            detectionMethod: .cloud
+        )
+        viewModel.analysisService.clips = [keptClip, deflection, charge, takeaway]
+
+        let request = try viewModel.createCloudEditRequest(
+            preset: .personalHighlight,
+            targetDurationSeconds: 30,
+            isProUser: false
+        )
+
+        #expect(request.clips.map(\.label) == [
+            "Made Shot",
+            "Ball Deflection Into Runout",
+            "Takes Charge",
+            "Takeaway Steal"
+        ])
+        #expect(request.clips.filter { $0.userReviewDecision == "unreviewed" }.map(\.label) == [
+            "Ball Deflection Into Runout",
+            "Takes Charge",
+            "Takeaway Steal"
+        ])
     }
 
     @Test @MainActor func testCloudEditRequestIncludesStrongSelectedTeamReserveCandidate() throws {

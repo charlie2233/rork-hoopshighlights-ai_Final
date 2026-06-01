@@ -690,9 +690,9 @@ final class HighlightsViewModel {
         )
     }
 
-    nonisolated static let cloudEditCandidateRequestLimit = 160
+    nonisolated static let cloudEditCandidateRequestLimit = 220
     nonisolated private static let cloudEditMinimumReviewCandidateReserve = 8
-    nonisolated private static let cloudEditReviewCandidateReserveDivisor = 5
+    nonisolated private static let cloudEditReviewCandidateReserveDivisor = 4
     nonisolated private static let cloudEditDuplicateOverlapThreshold = 0.68
     nonisolated private static let cloudEditDuplicateEventCenterTolerance = 1.5
     nonisolated private static let cloudEditSelectedTeamReserveMinScore = 0.72
@@ -977,6 +977,13 @@ final class HighlightsViewModel {
             score -= 0.04
         }
 
+        if let defensiveFamily = defensiveCloudEditCandidateFamily(clip) {
+            score += defensiveFamily == "block" || defensiveFamily == "steal" ? 0.14 : 0.10
+        }
+        if clip.needsUserReview {
+            score += 0.05
+        }
+
         return score
     }
 
@@ -988,16 +995,22 @@ final class HighlightsViewModel {
     nonisolated private static func defensiveCloudEditCandidateFamily(_ clip: Clip) -> String? {
         let text = "\(clip.label) \(clip.action.rawValue)".lowercased()
         let tokens = Set(text.split { !$0.isLetter && !$0.isNumber }.map(String.init))
-        if tokens.contains("block") || tokens.contains("blocked") || tokens.contains("contest") || text.contains("blocked shot") {
+        if !tokens.isDisjoint(with: ["block", "blocked", "contest", "contested", "swat", "swatted", "rejection"])
+            || text.contains("blocked shot") {
             return "block"
         }
-        if tokens.contains("steal") || tokens.contains("strip") {
+        if !tokens.isDisjoint(with: ["steal", "strip", "stripped", "takeaway", "pickpocket"]) {
             return "steal"
         }
-        if tokens.contains("turnover") && !tokens.isDisjoint(with: ["forced", "force", "defensive", "defense"]) {
+        if !tokens.isDisjoint(with: ["deflection", "deflected", "charge"])
+            || text.contains("loose ball")
+            || (tokens.contains("turnover") && !tokens.isDisjoint(with: ["forced", "force", "defensive", "defense"])) {
             return "forced_turnover"
         }
-        if text.contains("defensive stop") || text.contains("defense stop") {
+        if text.contains("defensive stop")
+            || text.contains("defense stop")
+            || tokens.contains("lockdown")
+            || (tokens.contains("stop") && !tokens.isDisjoint(with: ["defensive", "defense", "forced"])) {
             return "defensive_stop"
         }
         return nil
