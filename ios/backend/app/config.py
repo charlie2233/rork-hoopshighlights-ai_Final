@@ -50,14 +50,14 @@ class Settings:
     team_quick_scan_timeout_seconds: float = 60.0
     team_quick_scan_video_frame_count: int = 8
     team_quick_scan_clip_frames_per_clip: int = 8
-    team_quick_scan_rich_candidate_clips: int = 160
-    team_quick_scan_max_total_clip_frames: int = 1760
+    team_quick_scan_rich_candidate_clips: int = 220
+    team_quick_scan_max_total_clip_frames: int = 2560
     team_quick_scan_frame_width: int = 720
     team_quick_scan_jpeg_quality: int = 4
     team_quick_scan_max_image_bytes: int = 600_000
     team_quick_scan_min_team_confidence: float = 0.55
-    team_quick_scan_max_candidate_clips: int = 220
-    team_quick_scan_max_output_tokens: int = 12000
+    team_quick_scan_max_candidate_clips: int = 320
+    team_quick_scan_max_output_tokens: int = 18000
 
     @property
     def is_local(self) -> bool:
@@ -236,7 +236,7 @@ def get_settings() -> Settings:
         min_clip_duration_seconds=float(os.getenv("HOOPS_MIN_CLIP_SECONDS", "2.0")),
         max_clip_duration_seconds=float(os.getenv("HOOPS_MAX_CLIP_SECONDS", "15.0")),
         clip_padding_seconds=float(os.getenv("HOOPS_CLIP_PADDING_SECONDS", "0.35")),
-        max_returned_clips=_env_int("HOOPS_MAX_RETURNED_CLIPS", 220, 8, 220),
+        max_returned_clips=_env_int("HOOPS_MAX_RETURNED_CLIPS", 320, 8, 320),
         backend_model_version=os.getenv("HOOPS_BACKEND_MODEL_VERSION", "cloud-v1"),
         use_gemini_relabeling=os.getenv("HOOPS_USE_GEMINI_RELABELING", "false").lower() == "true",
         team_quick_scan_enabled=team_quick_scan_enabled,
@@ -246,14 +246,14 @@ def get_settings() -> Settings:
         team_quick_scan_timeout_seconds=_env_float("HOOPS_TEAM_QUICK_SCAN_TIMEOUT_SECONDS", 60.0, 2.0, 90.0),
         team_quick_scan_video_frame_count=_env_int("HOOPS_TEAM_QUICK_SCAN_VIDEO_FRAME_COUNT", 8, 2, 16),
         team_quick_scan_clip_frames_per_clip=_env_int("HOOPS_TEAM_QUICK_SCAN_CLIP_FRAMES_PER_CLIP", 8, 1, 8),
-        team_quick_scan_rich_candidate_clips=_env_int("HOOPS_TEAM_QUICK_SCAN_RICH_CANDIDATE_CLIPS", 160, 0, 220),
-        team_quick_scan_max_total_clip_frames=_env_int("HOOPS_TEAM_QUICK_SCAN_MAX_TOTAL_CLIP_FRAMES", 1760, 60, 2200),
+        team_quick_scan_rich_candidate_clips=_env_int("HOOPS_TEAM_QUICK_SCAN_RICH_CANDIDATE_CLIPS", 220, 0, 320),
+        team_quick_scan_max_total_clip_frames=_env_int("HOOPS_TEAM_QUICK_SCAN_MAX_TOTAL_CLIP_FRAMES", 2560, 60, 3200),
         team_quick_scan_frame_width=_env_int("HOOPS_TEAM_QUICK_SCAN_FRAME_WIDTH", 720, 320, 1280),
         team_quick_scan_jpeg_quality=_env_int("HOOPS_TEAM_QUICK_SCAN_JPEG_QUALITY", 4, 2, 12),
         team_quick_scan_max_image_bytes=_env_int("HOOPS_TEAM_QUICK_SCAN_MAX_IMAGE_BYTES", 600_000, 40_000, 1_000_000),
         team_quick_scan_min_team_confidence=_env_float("HOOPS_TEAM_QUICK_SCAN_MIN_TEAM_CONFIDENCE", 0.55, 0.0, 0.99),
-        team_quick_scan_max_candidate_clips=_env_int("HOOPS_TEAM_QUICK_SCAN_MAX_CANDIDATE_CLIPS", 220, 1, 220),
-        team_quick_scan_max_output_tokens=_env_int("HOOPS_TEAM_QUICK_SCAN_MAX_OUTPUT_TOKENS", 12000, 512, 12000),
+        team_quick_scan_max_candidate_clips=_env_int("HOOPS_TEAM_QUICK_SCAN_MAX_CANDIDATE_CLIPS", 320, 1, 320),
+        team_quick_scan_max_output_tokens=_env_int("HOOPS_TEAM_QUICK_SCAN_MAX_OUTPUT_TOKENS", 18000, 512, 18000),
     )
 
     settings.validate()

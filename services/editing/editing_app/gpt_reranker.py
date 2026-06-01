@@ -897,7 +897,7 @@ def _quality_filtered_sampled_clips(
             and clip.id not in render_eligible_ids
             and clip.id not in selected_ids
         ]
-        review_only_reserve = min(len(review_only_uncertain), max(1, max_clips // 10), max_clips)
+        review_only_reserve = min(len(review_only_uncertain), max(1, max_clips // 4), max_clips)
         render_slot_limit = max(0, max_clips - review_only_reserve)
 
         for clip in eligible:

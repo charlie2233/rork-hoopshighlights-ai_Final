@@ -38,14 +38,14 @@ def _settings(**overrides):
         "team_quick_scan_timeout_seconds": 12.0,
         "team_quick_scan_video_frame_count": 6,
         "team_quick_scan_clip_frames_per_clip": 8,
-        "team_quick_scan_rich_candidate_clips": 160,
-        "team_quick_scan_max_total_clip_frames": 1760,
+        "team_quick_scan_rich_candidate_clips": 220,
+        "team_quick_scan_max_total_clip_frames": 2560,
         "team_quick_scan_frame_width": 720,
         "team_quick_scan_jpeg_quality": 4,
         "team_quick_scan_max_image_bytes": 500_000,
         "team_quick_scan_min_team_confidence": 0.55,
-        "team_quick_scan_max_candidate_clips": 220,
-        "team_quick_scan_max_output_tokens": 12000,
+        "team_quick_scan_max_candidate_clips": 320,
+        "team_quick_scan_max_output_tokens": 18000,
     }
     values.update(overrides)
     return SimpleNamespace(**values)
@@ -182,10 +182,10 @@ class TeamQuickScanTests(unittest.TestCase):
             **{
                 **settings,
                 "team_quick_scan_timeout_seconds": 24.0,
-                "team_quick_scan_max_candidate_clips": 220,
-                "team_quick_scan_rich_candidate_clips": 160,
+                "team_quick_scan_max_candidate_clips": 320,
+                "team_quick_scan_rich_candidate_clips": 220,
                 "team_quick_scan_clip_frames_per_clip": 8,
-                "team_quick_scan_max_total_clip_frames": 1760,
+                "team_quick_scan_max_total_clip_frames": 2560,
             }
         )
 
@@ -196,7 +196,7 @@ class TeamQuickScanTests(unittest.TestCase):
         self.assertEqual(prescan.team_quick_scan_clip_frames_per_clip, 4)
         self.assertEqual(prescan.team_quick_scan_max_total_clip_frames, 56)
         self.assertEqual(prescan.team_quick_scan_timeout_seconds, 60.0)
-        self.assertEqual(full_settings.team_quick_scan_max_candidate_clips, 220)
+        self.assertEqual(full_settings.team_quick_scan_max_candidate_clips, 320)
 
     def test_disabled_scan_falls_back_without_calling_gpt(self) -> None:
         clips = [_clip("Three Pointer", 8.0, 12.5, 10.2)]
@@ -328,7 +328,7 @@ class TeamQuickScanTests(unittest.TestCase):
             attribution_schema = payload["text"]["format"]["schema"]["properties"]["clipAttributions"]["items"]
             self.assertIn("evidenceFrameRefs", attribution_schema["properties"])
             self.assertIn("evidenceFrameRefs", attribution_schema["required"])
-            self.assertEqual(payload["max_output_tokens"], 12000)
+            self.assertEqual(payload["max_output_tokens"], 18000)
             return _response(
                 {
                     "teams": [
@@ -643,7 +643,8 @@ class TeamQuickScanTests(unittest.TestCase):
         self.assertEqual(_max_quick_scan_total_clip_frames(_settings(team_quick_scan_max_total_clip_frames=600)), 600)
         self.assertEqual(_max_quick_scan_total_clip_frames(_settings(team_quick_scan_max_total_clip_frames=720)), 720)
         self.assertEqual(_max_quick_scan_total_clip_frames(_settings(team_quick_scan_max_total_clip_frames=1200)), 1200)
-        self.assertEqual(_max_quick_scan_total_clip_frames(_settings(team_quick_scan_max_total_clip_frames=2000)), 1280)
+        self.assertEqual(_max_quick_scan_total_clip_frames(_settings(team_quick_scan_max_total_clip_frames=2000)), 2000)
+        self.assertEqual(_max_quick_scan_total_clip_frames(_settings(team_quick_scan_max_total_clip_frames=9999)), 3200)
 
     def test_low_confidence_clip_attribution_is_kept_as_uncertain_signal(self) -> None:
         clips = [_clip("Block", 6.0, 10.5, 8.0)]

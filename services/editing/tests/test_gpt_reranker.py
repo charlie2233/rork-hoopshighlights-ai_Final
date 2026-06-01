@@ -2836,8 +2836,8 @@ class GPTHighlightRerankerTests(unittest.TestCase):
     def test_free_and_pro_sampling_limits(self) -> None:
         settings = GPTHighlightRerankerSettings.from_env()
 
-        self.assertEqual(settings.limits_for("free"), (220, 3))
-        self.assertEqual(settings.limits_for("pro")[0], 220)
+        self.assertEqual(settings.limits_for("free"), (320, 3))
+        self.assertEqual(settings.limits_for("pro")[0], 320)
         self.assertGreaterEqual(settings.limits_for("pro")[1], 5)
         self.assertLessEqual(settings.limits_for("pro")[1], 10)
         self.assertEqual(settings.limits_for("pro")[1], 10)
@@ -2847,17 +2847,17 @@ class GPTHighlightRerankerTests(unittest.TestCase):
     def test_free_sampling_reviews_full_analysis_pool_by_default(self) -> None:
         settings = GPTHighlightRerankerSettings.from_env()
         max_clips, _ = settings.limits_for("free")
-        request = _request("free", 220)
+        request = _request("free", 320)
 
         sampled = gpt_reranker._quality_filtered_sampled_clips(
             gpt_reranker.rank_clips(request.clips),
             max_clips,
         )
 
-        self.assertEqual(max_clips, 220)
-        self.assertEqual(len(sampled), 220)
+        self.assertEqual(max_clips, 320)
+        self.assertEqual(len(sampled), 320)
         self.assertEqual(sampled[0].id, "c0")
-        self.assertEqual(sampled[-1].id, "c219")
+        self.assertEqual(sampled[-1].id, "c319")
 
     def test_sampling_env_overrides_are_launch_bounded(self) -> None:
         env_keys = (
@@ -2888,8 +2888,8 @@ class GPTHighlightRerankerTests(unittest.TestCase):
                 else:
                     os.environ[key] = old_value
 
-        self.assertEqual(settings.limits_for("free"), (220, 10))
-        self.assertEqual(settings.limits_for("pro"), (220, 10))
+        self.assertEqual(settings.limits_for("free"), (320, 10))
+        self.assertEqual(settings.limits_for("pro"), (320, 10))
 
     def test_free_keyframe_env_override_allows_quality_beta_depth(self) -> None:
         env_keys = (
@@ -2912,7 +2912,7 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         request = _request("free", 1)
         sampled_roles = [role for role, _ in gpt_reranker._sample_times_for_clip(request.clips[0], frames_per_clip)]
 
-        self.assertEqual(max_clips, 220)
+        self.assertEqual(max_clips, 320)
         self.assertEqual(frames_per_clip, 10)
         self.assertIn("release", sampled_roles)
         self.assertIn("rimEntry", sampled_roles)
@@ -3050,8 +3050,8 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         sampled_ids = [clip.id for clip in sampled]
 
         self.assertEqual(len(sampled), 8)
-        self.assertEqual(len([clip_id for clip_id in sampled_ids if clip_id.startswith("uncertain_")]), 1)
-        self.assertEqual(len([clip_id for clip_id in sampled_ids if clip_id.startswith("matched_")]), 7)
+        self.assertEqual(len([clip_id for clip_id in sampled_ids if clip_id.startswith("uncertain_")]), 2)
+        self.assertEqual(len([clip_id for clip_id in sampled_ids if clip_id.startswith("matched_")]), 6)
 
     def test_default_model_prioritizes_full_quality_vision_editor(self) -> None:
         model_env_keys = ("HOOPS_AI_CLIP_GPT_MODEL", "HOOPS_GPT_HIGHLIGHT_RERANK_MODEL")

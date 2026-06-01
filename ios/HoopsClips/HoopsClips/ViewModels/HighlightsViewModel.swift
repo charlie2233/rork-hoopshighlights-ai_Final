@@ -724,7 +724,7 @@ final class HighlightsViewModel {
         )
     }
 
-    nonisolated static let cloudEditCandidateRequestLimit = 220
+    nonisolated static let cloudEditCandidateRequestLimit = 320
     nonisolated private static let cloudEditMinimumReviewCandidateReserve = 16
     nonisolated private static let cloudEditReviewCandidateReserveDivisor = 3
     nonisolated private static let cloudEditDuplicateOverlapThreshold = 0.68

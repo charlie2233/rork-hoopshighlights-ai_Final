@@ -1154,8 +1154,8 @@ struct HoopsClipsTests {
         let viewModel = HighlightsViewModel()
         viewModel.cloudEditSourceObjectKey = "uploads/source.mp4"
         var clips: [Clip] = []
-        let strongIndex = 169
-        for index in 0..<180 {
+        let strongIndex = 269
+        for index in 0..<280 {
             let isStrongCandidate = index == strongIndex
             let startTime = Double(index * 10)
             clips.append(
@@ -1176,7 +1176,7 @@ struct HoopsClipsTests {
             )
         }
 
-        for index in 0..<45 {
+        for index in 0..<90 {
             let startTime = 2_000.0 + Double(index * 8)
             clips.append(
                 Clip(
@@ -1208,7 +1208,7 @@ struct HoopsClipsTests {
 
         #expect(request.clips.count == HighlightsViewModel.cloudEditCandidateRequestLimit)
         #expect(candidateStarts.contains(Double(strongIndex * 10)))
-        #expect(reviewCandidateCount == 45)
+        #expect(reviewCandidateCount == 90)
         #expect(candidateStarts.contains(2_000.0))
     }
 
