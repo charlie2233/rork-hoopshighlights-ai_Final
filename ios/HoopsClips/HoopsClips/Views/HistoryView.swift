@@ -432,6 +432,10 @@ private struct HistoryProjectDetailView: View {
     @State private var previewPlayer: AVPlayer?
     @State private var previewTitle: String?
     @State private var showingDeleteConfirmation = false
+    @State private var shareURL: URL?
+    @State private var showingShareSheet = false
+    @State private var shareErrorMessage: String?
+    @State private var showingShareError = false
 
     var body: some View {
         NavigationStack {
@@ -475,6 +479,33 @@ private struct HistoryProjectDetailView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This removes \"\(project.displayTitle)\" and its saved files from this device.")
+        }
+        .sheet(isPresented: $showingShareSheet, onDismiss: clearShareSelection) {
+            if let shareURL {
+                SystemShareSheet(
+                    items: SystemShareSheet.videoItems(
+                        for: shareURL,
+                        title: shareSheetTitle
+                    ),
+                    subject: shareSheetTitle,
+                    completion: { _, _, _, error in
+                        guard let error else { return }
+                        Task { @MainActor in
+                            shareErrorMessage = "Could not open the share sheet: \(error.localizedDescription)"
+                            showingShareError = true
+                        }
+                    }
+                )
+            } else {
+                EmptyView()
+            }
+        }
+        .alert("Share unavailable", isPresented: $showingShareError) {
+            Button("OK") {
+                shareErrorMessage = nil
+            }
+        } message: {
+            Text(shareErrorMessage ?? "The latest export file is missing.")
         }
     }
 
@@ -637,6 +668,20 @@ private struct HistoryProjectDetailView: View {
                 actionLabel(
                     title: "Play Latest Export",
                     subtitle: latestExportURL == nil ? "No export is saved for this project yet" : "Replay the latest saved highlight reel",
+                    icon: "play.rectangle.fill",
+                    tint: AppTheme.successGreen
+                )
+            }
+            .buttonStyle(.plain)
+            .disabled(latestExportURL == nil)
+            .opacity(latestExportURL == nil ? 0.5 : 1.0)
+
+            Button {
+                presentShareSheet(for: latestExportURL)
+            } label: {
+                actionLabel(
+                    title: "Share Latest Export",
+                    subtitle: latestExportURL == nil ? "No export is saved for this project yet" : "Send the saved reel with the iOS share sheet",
                     icon: "square.and.arrow.up.fill",
                     tint: AppTheme.successGreen
                 )
@@ -644,6 +689,7 @@ private struct HistoryProjectDetailView: View {
             .buttonStyle(.plain)
             .disabled(latestExportURL == nil)
             .opacity(latestExportURL == nil ? 0.5 : 1.0)
+            .accessibilityIdentifier("history.project.shareLatestExport")
 
             Button(role: .destructive) {
                 showingDeleteConfirmation = true
@@ -783,6 +829,25 @@ private struct HistoryProjectDetailView: View {
         previewPlayer = AVPlayer(url: url)
         previewPlayer?.play()
         previewTitle = title
+    }
+
+    private var shareSheetTitle: String {
+        "HoopClips Highlight - \(project.displayTitle)"
+    }
+
+    private func presentShareSheet(for url: URL?) {
+        guard let url else { return }
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            shareErrorMessage = "The latest export file is no longer available on this device."
+            showingShareError = true
+            return
+        }
+        shareURL = url
+        showingShareSheet = true
+    }
+
+    private func clearShareSelection() {
+        shareURL = nil
     }
 }
 

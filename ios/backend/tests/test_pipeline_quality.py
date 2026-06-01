@@ -837,6 +837,59 @@ class PipelineQualityTests(unittest.TestCase):
         self.assertNotIn("Made Shot 4", labels)
         self.assertNotIn("Made Shot 7", labels)
 
+    def test_selected_team_review_trim_keeps_uncertain_defensive_families(self) -> None:
+        team_selection = TeamSelection(mode="team", teamId="team_dark", colorLabel="black", includeUncertain=True)
+        matched = [
+            _clip(
+                start=float(index * 5),
+                end=float(index * 5 + 4),
+                label=f"Made Shot {index}",
+                combined=0.97 - (index * 0.01),
+                event_center=float(index * 5 + 2),
+                auto_keep=True,
+            ).model_copy(
+                update={
+                    "teamAttribution": _team_attr(
+                        team_id="team_dark",
+                        label="Dark jerseys",
+                        color_label="black",
+                        confidence=0.94,
+                    )
+                }
+            )
+            for index in range(10)
+        ]
+        uncertain_defense = [
+            _clip(start=55.0, end=59.0, label="Uncertain block", combined=0.93, event_center=57.0, auto_keep=True),
+            _clip(start=60.0, end=64.0, label="Uncertain steal", combined=0.91, event_center=62.0, auto_keep=True),
+            _clip(start=65.0, end=69.0, label="Uncertain forced turnover", combined=0.89, event_center=67.0, auto_keep=True),
+            _clip(start=70.0, end=74.0, label="Uncertain defensive stop", combined=0.87, event_center=72.0, auto_keep=True),
+        ]
+        uncertain_defense = [
+            clip.model_copy(
+                update={
+                    "teamAttribution": _team_attr(
+                        team_id="team_dark",
+                        label="Dark jerseys",
+                        color_label="black",
+                        confidence=0.64,
+                    )
+                }
+            )
+            for clip in uncertain_defense
+        ]
+
+        trimmed = _trim_analysis_clips_for_review([*matched, *uncertain_defense], team_selection, max_clips=8)
+        labels = [clip.label for clip in trimmed]
+
+        self.assertEqual(len(trimmed), 8)
+        self.assertIn("Uncertain block", labels)
+        self.assertIn("Uncertain steal", labels)
+        self.assertIn("Uncertain forced turnover", labels)
+        self.assertIn("Uncertain defensive stop", labels)
+        self.assertNotIn("Made Shot 8", labels)
+        self.assertNotIn("Made Shot 9", labels)
+
     def test_review_trim_reserves_strong_defensive_clip_when_scoring_fills_cap(self) -> None:
         scoring = [
             _clip(

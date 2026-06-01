@@ -819,16 +819,33 @@ struct ReviewView: View {
     }
 
     private func clipCardHeader(_ clip: Clip) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            clipActionIcon(clip)
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 10) {
+                        clipActionIcon(clip)
 
-            VStack(alignment: .leading, spacing: 8) {
-                clipCardText(clip)
+                        confidenceBadge(level: clip.confidenceLevel, value: clip.confidence)
+                            .fixedSize(horizontal: true, vertical: true)
 
-                confidenceBadge(level: clip.confidenceLevel, value: clip.confidence)
-                    .fixedSize(horizontal: true, vertical: true)
+                        Spacer(minLength: 0)
+                    }
+
+                    clipCardText(clip)
+                }
+            } else {
+                HStack(alignment: .top, spacing: 12) {
+                    clipActionIcon(clip)
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        clipCardText(clip)
+
+                        confidenceBadge(level: clip.confidenceLevel, value: clip.confidence)
+                            .fixedSize(horizontal: true, vertical: true)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(12)
     }
@@ -851,7 +868,7 @@ struct ReviewView: View {
                 Text(clip.label)
                     .font(.headline)
                     .foregroundStyle(.white)
-                    .lineLimit(2)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
                     .minimumScaleFactor(0.84)
                     .fixedSize(horizontal: false, vertical: true)
                     .layoutPriority(1)
@@ -892,36 +909,64 @@ struct ReviewView: View {
     }
 
     private func clipDetailHeader(_ clip: Clip) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            clipActionIcon(clip)
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 10) {
+                        clipActionIcon(clip)
+                        clipDetectionBadge(clip)
+                        Spacer(minLength: 0)
+                    }
 
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(clip.label)
-                        .font(.title2.bold())
-                        .foregroundStyle(.white)
-                        .lineLimit(3)
-                        .minimumScaleFactor(0.82)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .layoutPriority(1)
+                    clipDetailTitle(clip)
+                    clipContextBadges(clip)
 
-                    if clip.detectionMethod == .ml {
-                        Text("AI")
-                            .font(.caption2.bold())
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(AppTheme.neonPurple, in: .capsule)
+                    confidenceBadge(level: clip.confidenceLevel, value: clip.confidence)
+                        .fixedSize(horizontal: true, vertical: true)
+                }
+            } else {
+                HStack(alignment: .top, spacing: 12) {
+                    clipActionIcon(clip)
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            clipDetailTitle(clip)
+                            clipDetectionBadge(clip)
+                        }
+
+                        clipContextBadges(clip)
+
+                        confidenceBadge(level: clip.confidenceLevel, value: clip.confidence)
                             .fixedSize(horizontal: true, vertical: true)
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-
-                clipContextBadges(clip)
-
-                confidenceBadge(level: clip.confidenceLevel, value: clip.confidence)
-                    .fixedSize(horizontal: true, vertical: true)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    @ViewBuilder
+    private func clipDetailTitle(_ clip: Clip) -> some View {
+        Text(clip.label)
+            .font(.title2.bold())
+            .foregroundStyle(.white)
+            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 5 : 3)
+            .minimumScaleFactor(0.82)
+            .fixedSize(horizontal: false, vertical: true)
+            .layoutPriority(1)
+    }
+
+    @ViewBuilder
+    private func clipDetectionBadge(_ clip: Clip) -> some View {
+        if clip.detectionMethod == .ml {
+            Text("AI")
+                .font(.caption2.bold())
+                .foregroundStyle(.white)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(AppTheme.neonPurple, in: .capsule)
+                .fixedSize(horizontal: true, vertical: true)
+                .accessibilityLabel("AI detected")
         }
     }
 
