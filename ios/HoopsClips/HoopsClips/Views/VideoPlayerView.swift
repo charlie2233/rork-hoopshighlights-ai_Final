@@ -32,7 +32,8 @@ struct VideoPlayerView: View {
     @State private var showingCloudVideoConsent = false
     @State private var pendingCloudVideoConsentAction: CloudVideoConsentAction?
 
-    private let videoImportReminderNanoseconds: UInt64 = 20 * 1_000_000_000
+    private let videoImportReminderNanoseconds: UInt64 = 8 * 1_000_000_000
+    private let videoImportLongRunningReminderNanoseconds: UInt64 = 45 * 1_000_000_000
     private let videoImportTimeoutNanoseconds: UInt64 = 5 * 60 * 1_000_000_000
     private let videoImportCompletionGraceNanoseconds: UInt64 = 2 * 1_000_000_000
     private let videoImportRecoveryPollNanoseconds: UInt64 = 2 * 1_000_000_000
@@ -304,11 +305,29 @@ struct VideoPlayerView: View {
                         "video_import.slow",
                         metadata: "source=\(source)"
                     )
-                    importStatusMessage = "Still importing this video. Large clips from Photos can take a minute."
+                    importStatusMessage = "Still copying the video. Large Photos clips can take a little while."
                 }
 
                 do {
-                    try await Task.sleep(nanoseconds: videoImportTimeoutNanoseconds - videoImportReminderNanoseconds)
+                    try await Task.sleep(nanoseconds: videoImportLongRunningReminderNanoseconds - videoImportReminderNanoseconds)
+                } catch {
+                    return
+                }
+
+                await MainActor.run {
+                    guard activeImportID == importID, isImportingVideo else { return }
+                    if recoverSuccessfulImportIfNeeded(source: source, phase: "long_running_reminder") {
+                        return
+                    }
+                    LaunchTelemetry.shared.recordStabilityCheckpoint(
+                        "video_import.long_running",
+                        metadata: "source=\(source)"
+                    )
+                    importStatusMessage = "Still saving the project. If it already finished, HoopClips will open it or show it in History."
+                }
+
+                do {
+                    try await Task.sleep(nanoseconds: videoImportTimeoutNanoseconds - videoImportLongRunningReminderNanoseconds)
                 } catch {
                     return
                 }
@@ -322,7 +341,7 @@ struct VideoPlayerView: View {
                         "video_import.timeout",
                         metadata: "source=\(source)"
                     )
-                    importErrorMessage = "HoopClips is still waiting for that video. Try a shorter local clip, or save it to Files and import it again."
+                    importErrorMessage = "HoopClips is still waiting for that video. Check History first if the project saved, or cancel and import from Files."
                     importTask?.cancel()
                     clearImportState()
                 }
@@ -684,7 +703,7 @@ struct VideoPlayerView: View {
                         .minimumScaleFactor(0.86)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    Text("Keep HoopClips open while the video is copied. If it stays here too long, cancel and import from Files.")
+                    Text("Keep HoopClips open while the local copy finishes. If iOS completes it in the background, the project will show in History.")
                         .font(.caption)
                         .foregroundStyle(AppTheme.subtleText)
                         .lineLimit(dynamicTypeSize.isAccessibilitySize ? 5 : 3)
