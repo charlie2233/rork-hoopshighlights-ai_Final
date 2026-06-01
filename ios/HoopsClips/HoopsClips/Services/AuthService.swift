@@ -278,16 +278,28 @@ final class AuthService {
     }
 
     func signOut() {
+        clearTransientAuthState()
         currentUser = nil
         UserDefaults.standard.removeObject(forKey: userDefaultsKey)
         GIDSignIn.sharedInstance.signOut()
     }
 
     private func setUser(_ user: AuthUser) {
+        errorMessage = nil
+        isLoading = false
         currentUser = user
         if let data = try? JSONEncoder().encode(user) {
             UserDefaults.standard.set(data, forKey: userDefaultsKey)
         }
+    }
+
+    private func clearTransientAuthState() {
+        isLoading = false
+        errorMessage = nil
+        emailVerificationCode = nil
+        phoneVerificationCode = nil
+        pendingEmailVerification = nil
+        pendingPhoneVerification = nil
     }
 
     @discardableResult

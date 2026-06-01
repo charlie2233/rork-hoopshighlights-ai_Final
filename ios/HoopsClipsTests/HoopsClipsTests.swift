@@ -85,6 +85,87 @@ struct HoopsClipsTests {
         }
     }
 
+    @Test @MainActor func testSignOutClearsTransientVerificationState() {
+        UserDefaults.standard.removeObject(forKey: "hoops_auth_user")
+        let authService = AuthService(emailAuthClient: FirebaseEmailAuthClient(apiKey: ""))
+
+        authService.signInAnonymously()
+        authService.isLoading = true
+        authService.errorMessage = "Old auth error"
+        authService.emailVerificationCode = "123456"
+        authService.phoneVerificationCode = "654321"
+        authService.pendingEmailVerification = "old@example.com"
+        authService.pendingPhoneVerification = "+15555550123"
+
+        authService.signOut()
+
+        #expect(!authService.isAuthenticated)
+        #expect(authService.isLoading == false)
+        #expect(authService.errorMessage == nil)
+        #expect(authService.emailVerificationCode == nil)
+        #expect(authService.phoneVerificationCode == nil)
+        #expect(authService.pendingEmailVerification == nil)
+        #expect(authService.pendingPhoneVerification == nil)
+        #expect(UserDefaults.standard.data(forKey: "hoops_auth_user") == nil)
+    }
+
+    @Test @MainActor func testResetProjectClearsVisibleVideoForAccountBoundary() {
+        let viewModel = HighlightsViewModel()
+        viewModel.videoURL = URL(fileURLWithPath: "/tmp/account-boundary-source.mov")
+        viewModel.videoDuration = 96
+        viewModel.isVideoLoaded = true
+        viewModel.cloudAnalysisJobID = "analysis_old_account"
+        viewModel.cloudEditSourceObjectKey = "uploads/old-account/source.mp4"
+        viewModel.cloudDetectedTeams = [
+            CloudTeamOption(
+                teamId: "team_old",
+                label: "Old account team",
+                colorLabel: "blue",
+                primaryColorHex: "#0057FF",
+                confidence: 0.94,
+                source: "quick_scan"
+            )
+        ]
+        viewModel.hasConfirmedHighlightTeamSelection = true
+        viewModel.settings.highlightTeamSelection = HighlightTeamSelection(
+            mode: .team,
+            teamId: "team_old",
+            label: "Old account team",
+            colorLabel: "blue"
+        )
+        viewModel.settings.opponentTeamName = "Old opponent"
+        viewModel.analysisService.clips = [
+            Clip(
+                startTime: 8,
+                endTime: 13,
+                eventCenter: 10,
+                action: .steal,
+                confidence: 0.82,
+                isKept: true,
+                label: "Steal",
+                audioScore: 0.5,
+                visualScore: 0.74,
+                motionScore: 0.78,
+                combinedScore: 0.76
+            )
+        ]
+        viewModel.exportService.exportedURL = URL(fileURLWithPath: "/tmp/old-account-export.mp4")
+
+        viewModel.resetProject()
+
+        #expect(viewModel.videoURL == nil)
+        #expect(viewModel.videoDuration == 0)
+        #expect(viewModel.isVideoLoaded == false)
+        #expect(viewModel.clips.isEmpty)
+        #expect(viewModel.exportService.exportedURL == nil)
+        #expect(viewModel.cloudAnalysisJobID == nil)
+        #expect(viewModel.cloudEditSourceObjectKey == nil)
+        #expect(viewModel.cloudDetectedTeams.isEmpty)
+        #expect(viewModel.hasConfirmedHighlightTeamSelection == false)
+        #expect(viewModel.settings.highlightTeamSelection.mode == .all)
+        #expect(viewModel.settings.opponentTeamName == nil)
+    }
+
     @Test @MainActor func testDefaultLocalExportSettingsStayFreeAndCompatible() {
         let viewModel = HighlightsViewModel()
         let now = Date()
