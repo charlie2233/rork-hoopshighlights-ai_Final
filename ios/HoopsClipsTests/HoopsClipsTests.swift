@@ -166,6 +166,38 @@ struct HoopsClipsTests {
         #expect(viewModel.settings.opponentTeamName == nil)
     }
 
+    @Test @MainActor func testAuthenticatedCloudScopesUseSeparateStableInstallIDs() {
+        let scopeA = "anonymous:account-a-\(UUID().uuidString)"
+        let scopeB = "anonymous:account-b-\(UUID().uuidString)"
+        let keyA = HighlightsViewModel.installIDDefaultsKey(forAuthScope: scopeA)
+        let keyB = HighlightsViewModel.installIDDefaultsKey(forAuthScope: scopeB)
+        UserDefaults.standard.removeObject(forKey: keyA)
+        UserDefaults.standard.removeObject(forKey: keyB)
+        defer {
+            UserDefaults.standard.removeObject(forKey: keyA)
+            UserDefaults.standard.removeObject(forKey: keyB)
+        }
+
+        let viewModel = HighlightsViewModel()
+        let signedOutInstallID = viewModel.installID
+
+        #expect(viewModel.applyAuthenticatedCloudScope(scopeA))
+        let accountAInstallID = viewModel.installID
+        #expect(!accountAInstallID.isEmpty)
+        #expect(accountAInstallID != signedOutInstallID)
+
+        #expect(!viewModel.applyAuthenticatedCloudScope(scopeA))
+        #expect(viewModel.installID == accountAInstallID)
+
+        #expect(viewModel.applyAuthenticatedCloudScope(scopeB))
+        let accountBInstallID = viewModel.installID
+        #expect(!accountBInstallID.isEmpty)
+        #expect(accountBInstallID != accountAInstallID)
+
+        #expect(viewModel.applyAuthenticatedCloudScope(scopeA))
+        #expect(viewModel.installID == accountAInstallID)
+    }
+
     @Test @MainActor func testDefaultLocalExportSettingsStayFreeAndCompatible() {
         let viewModel = HighlightsViewModel()
         let now = Date()

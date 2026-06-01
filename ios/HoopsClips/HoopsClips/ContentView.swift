@@ -114,6 +114,7 @@ struct ContentView: View {
             #endif
         }
         .task {
+            viewModel.applyAuthenticatedCloudScope(revenueCatSyncKey)
             await subscriptionManager.syncAuthenticatedUser(authService.currentUser)
         }
         .onChange(of: revenueCatSyncKey) { oldScope, newScope in
@@ -303,22 +304,24 @@ struct ContentView: View {
 
     private func handleAuthenticatedUserScopeChange(from oldScope: String, to newScope: String) {
         guard oldScope != newScope else { return }
-        guard oldScope != "signed-out" else { return }
 
+        viewModel.applyAuthenticatedCloudScope(newScope)
         let reason = newScope == "signed-out" ? "signed_out" : "account_switched"
         resetVisibleProjectForAuthenticationBoundary(reason: reason)
     }
 
     private func resetVisibleProjectForAuthenticationBoundary(reason: String) {
-        guard viewModel.isVideoLoaded || viewModel.currentProjectID != nil || !viewModel.clips.isEmpty else {
-            return
-        }
+        let hasVisibleProject = viewModel.isVideoLoaded
+            || viewModel.currentProjectID != nil
+            || !viewModel.clips.isEmpty
 
-        LaunchTelemetry.shared.recordStabilityCheckpoint(
-            "auth.project_reset",
-            metadata: "reason=\(reason)"
-        )
-        viewModel.resetProject()
+        if hasVisibleProject {
+            LaunchTelemetry.shared.recordStabilityCheckpoint(
+                "auth.project_reset",
+                metadata: "reason=\(reason)"
+            )
+            viewModel.resetProject()
+        }
         selectedTab = AppTab.player.rawValue
         showingPaywall = false
     }

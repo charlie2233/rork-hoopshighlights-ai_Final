@@ -71,6 +71,7 @@ struct AIEditView: View {
     @State private var showPromptExamples = false
     @State private var showTimelineDetails = false
     @State private var showAdvancedAIEditDetails = false
+    @State private var activeInstallID: String?
 
     private let cloudEditService: any CloudEditServicing
     private let proUXFlags = CloudEditProUXFlags.safeDefault
@@ -152,9 +153,43 @@ struct AIEditView: View {
             Text("Your HoopClips video is in your photo library.")
         }
         .task(id: viewModel.installID) {
+            resetCloudEditSessionIfIdentityChanged(to: viewModel.installID)
             await refreshCloudEditVersion()
             await refreshRenderHistory()
         }
+    }
+
+    private func resetCloudEditSessionIfIdentityChanged(to installID: String) {
+        let previousInstallID = activeInstallID
+        activeInstallID = installID
+        guard let previousInstallID, previousInstallID != installID else { return }
+
+        previewPlayer?.pause()
+        selectedPreset = .personalHighlight
+        selectedProTemplate = nil
+        selectedAspectRatio = CloudEditPreset.personalHighlight.aspectRatio
+        selectedDuration = CloudEditPreset.personalHighlight.durationOptions[1]
+        phase = .planning
+        editJob = nil
+        editPlan = nil
+        policySummary = nil
+        renderStatus = nil
+        downloadResponse = nil
+        revisionResponse = nil
+        pendingRevisionCommand = nil
+        renderHistory = []
+        previewPlayer = nil
+        localShareURL = nil
+        errorMessage = nil
+        lockerErrorMessage = nil
+        isWorking = false
+        isPreparingShare = false
+        isLoadingRenderHistory = false
+        lockerBusyRenderJobID = nil
+        showingShareSheet = false
+        showPlanDetails = false
+        showTimelineDetails = false
+        showAdvancedAIEditDetails = false
     }
 
     private var sheetBody: some View {

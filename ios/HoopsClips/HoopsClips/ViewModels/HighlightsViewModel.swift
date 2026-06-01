@@ -1,5 +1,6 @@
 import Foundation
 import AVFoundation
+import CryptoKit
 import PhotosUI
 import SwiftUI
 import UIKit
@@ -7,8 +8,11 @@ import UIKit
 @Observable
 @MainActor
 final class HighlightsViewModel {
+    private static let baseInstallIDDefaultsKey = "hoopsclips.installID.v1"
+    private static let scopedInstallIDDefaultsKeyPrefix = "hoopsclips.installID.scope.v1."
+    private static let signedOutCloudIdentityScope = "signed-out"
+
     private let settingsDefaultsKey = "hoopsclips.analysisSettings.v1"
-    private let installIDDefaultsKey = "hoopsclips.installID.v1"
     private let maxProjectCount = 20
     private let maxProjectEventCount = 50
     private var backgroundTaskID: UIBackgroundTaskIdentifier = .invalid
@@ -47,7 +51,7 @@ final class HighlightsViewModel {
         didSet { persistCurrentProject() }
     }
     var customAudioURL: URL?
-    let installID: String
+    private(set) var installID: String
     var settings: AnalysisSettings {
         didSet { persistSettings() }
     }
@@ -173,17 +177,7 @@ final class HighlightsViewModel {
         Self.applyAIEditLiveSmokeRuntimeOverrides()
         #endif
 
-        let existingInstallID = UserDefaults.standard.string(forKey: installIDDefaultsKey)
-        let resolvedInstallID: String
-        if let existingInstallID, !existingInstallID.isEmpty {
-            resolvedInstallID = existingInstallID
-        } else {
-            resolvedInstallID = UUID().uuidString
-        }
-        installID = resolvedInstallID
-        if existingInstallID != resolvedInstallID {
-            UserDefaults.standard.set(resolvedInstallID, forKey: installIDDefaultsKey)
-        }
+        installID = Self.persistedInstallID(forAuthScope: Self.signedOutCloudIdentityScope)
 
         if let data = UserDefaults.standard.data(forKey: settingsDefaultsKey),
            let decoded = try? JSONDecoder().decode(AnalysisSettings.self, from: data) {
@@ -203,6 +197,45 @@ final class HighlightsViewModel {
         #if DEBUG
         applyAIEditLiveSmokeProjectIfNeeded()
         #endif
+    }
+
+    @discardableResult
+    func applyAuthenticatedCloudScope(_ scope: String) -> Bool {
+        let scopedInstallID = Self.persistedInstallID(forAuthScope: scope)
+        guard installID != scopedInstallID else { return false }
+
+        installID = scopedInstallID
+        return true
+    }
+
+    static func installIDDefaultsKey(forAuthScope scope: String) -> String {
+        let normalizedScope = normalizedCloudIdentityScope(scope)
+        guard normalizedScope != signedOutCloudIdentityScope else {
+            return baseInstallIDDefaultsKey
+        }
+        return scopedInstallIDDefaultsKeyPrefix + hashedCloudIdentityScope(normalizedScope)
+    }
+
+    private static func persistedInstallID(forAuthScope scope: String) -> String {
+        let defaultsKey = installIDDefaultsKey(forAuthScope: scope)
+        if let existingInstallID = UserDefaults.standard.string(forKey: defaultsKey),
+           !existingInstallID.isEmpty {
+            return existingInstallID
+        }
+
+        let newInstallID = UUID().uuidString
+        UserDefaults.standard.set(newInstallID, forKey: defaultsKey)
+        return newInstallID
+    }
+
+    private static func normalizedCloudIdentityScope(_ scope: String) -> String {
+        let trimmed = scope.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? signedOutCloudIdentityScope : trimmed
+    }
+
+    private static func hashedCloudIdentityScope(_ scope: String) -> String {
+        let digest = SHA256.hash(data: Data(scope.utf8))
+        return digest.map { String(format: "%02x", $0) }.joined()
     }
 
     @discardableResult
