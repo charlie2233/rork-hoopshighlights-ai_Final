@@ -314,7 +314,7 @@ struct AIEditView: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             LazyVGrid(columns: heroChipGridColumns, alignment: .leading, spacing: 8) {
-                aiChip(icon: "film.stack.fill", text: "\(viewModel.keptClips.count) kept clips")
+                aiChip(icon: "film.stack.fill", text: clipPoolChipText)
                 aiChip(icon: viewModel.settings.highlightTeamSelection.mode == .team ? "person.2.fill" : "person.3.fill", text: teamTargetChipText)
                 aiChip(icon: selectedAspectRatio.icon, text: selectedAspectRatio.rawValue)
                 aiChip(icon: "timer", text: formattedDuration(selectedDuration))
@@ -2262,15 +2262,19 @@ struct AIEditView: View {
             return "AI Editing Paused"
         }
         if !viewModel.canRequestCloudEdit {
-            if viewModel.keptClips.isEmpty {
-                return "Keep Clips First"
-            }
             return "Finish Cloud Analysis"
         }
         if revisionResponse != nil, downloadResponse == nil {
             return "Make Revised Video"
         }
         return downloadResponse == nil ? "Make My Reel" : "Render Again"
+    }
+
+    private var clipPoolChipText: String {
+        if viewModel.keptClips.isEmpty {
+            return "\(viewModel.cloudEditCandidatePoolCount) AI candidates"
+        }
+        return "\(viewModel.keptClips.count) kept clips"
     }
 
     private var primaryActionIcon: String {

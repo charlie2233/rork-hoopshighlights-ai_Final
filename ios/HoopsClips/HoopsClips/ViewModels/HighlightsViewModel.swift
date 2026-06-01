@@ -73,6 +73,10 @@ final class HighlightsViewModel {
         ).count
     }
 
+    var hasCloudEditCandidatePool: Bool {
+        cloudEditCandidatePoolCount > 0
+    }
+
     var showingVideoPicker = false
     var showingSaveSuccess = false
     var analysisMode: AnalysisExecutionMode = AppRuntimeConfig.shared.launchAnalysisMode
@@ -102,7 +106,7 @@ final class HighlightsViewModel {
     var canRequestCloudEdit: Bool {
         AppConstants.cloudEditEnabled
             && cloudEditSourceObjectKey != nil
-            && !keptClips.isEmpty
+            && hasCloudEditCandidatePool
     }
 
     var cloudEditUnavailableReason: String? {
@@ -112,8 +116,8 @@ final class HighlightsViewModel {
         if cloudEditSourceObjectKey == nil {
             return "Run cloud analysis first so HoopClips has the uploaded source video."
         }
-        if keptClips.isEmpty {
-            return "Keep at least one clip before making an AI edit."
+        if !hasCloudEditCandidatePool {
+            return "Run analysis or review clips so HoopClips has plays for AI Edit."
         }
         return nil
     }

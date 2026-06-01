@@ -29,7 +29,7 @@ struct ExportView: View {
             ZStack {
                 HoopsMotionBackdrop(glowOpacity: 0.20)
 
-                if viewModel.keptClips.isEmpty {
+                if !canShowExportWorkspace {
                     emptyState
                 } else {
                     ScrollView {
@@ -146,8 +146,8 @@ struct ExportView: View {
 
     private var emptyState: some View {
         HoopsEmptyStateCard(
-            title: "No Clips to Export",
-            message: "Keep a few moments in Review first. Then HoopClips can turn them into a share-ready highlight reel.",
+            title: "No AI Edit Candidates",
+            message: "Run analysis first. HoopClips can make the reel from cloud candidates, so manual clip keeping is optional.",
             icon: "square.and.arrow.up.fill"
         )
     }
@@ -155,19 +155,21 @@ struct ExportView: View {
     private var summaryCard: some View {
         VStack(spacing: 12) {
             RorkSectionHeader(
-                title: "Highlight Reel",
+                title: viewModel.keptClips.isEmpty ? "AI Edit Ready" : "Highlight Reel",
                 icon: "film.stack.fill",
-                subtitle: "Kept clips go to AI Edit for cloud rendering"
+                subtitle: viewModel.keptClips.isEmpty
+                    ? "HoopClips will pick the best plays from cloud candidates"
+                    : "Kept clips and review candidates go to AI Edit"
             )
 
             LazyVGrid(columns: summaryMetricGridColumns, alignment: .leading, spacing: 10) {
                 summaryMetric(
-                    value: "\(viewModel.keptClips.count)",
-                    label: "Clips"
+                    value: summaryPrimaryValue,
+                    label: summaryPrimaryLabel
                 )
                 summaryMetric(
-                    value: Clip.formatTime(viewModel.keptClips.reduce(0) { $0 + $1.duration }),
-                    label: "Duration"
+                    value: summarySecondaryValue,
+                    label: summarySecondaryLabel
                 )
             }
 
@@ -194,12 +196,17 @@ struct ExportView: View {
             }
 
             LazyVGrid(columns: summaryClipGridColumns, alignment: .leading, spacing: 8) {
-                ForEach(Array(viewModel.keptClips.prefix(summaryClipPreviewLimit))) { clip in
-                    summaryClipChip(icon: clip.action.icon, text: clip.label)
-                }
+                if viewModel.keptClips.isEmpty {
+                    summaryClipChip(icon: "wand.and.stars", text: "AI will select clips")
+                    summaryClipChip(icon: "checkmark.seal.fill", text: "Review is optional")
+                } else {
+                    ForEach(Array(viewModel.keptClips.prefix(summaryClipPreviewLimit))) { clip in
+                        summaryClipChip(icon: clip.action.icon, text: clip.label)
+                    }
 
-                if summaryClipOverflowCount > 0 {
-                    summaryClipChip(icon: "plus.circle.fill", text: "+\(summaryClipOverflowCount) more")
+                    if summaryClipOverflowCount > 0 {
+                        summaryClipChip(icon: "plus.circle.fill", text: "+\(summaryClipOverflowCount) more")
+                    }
                 }
             }
         }
@@ -847,6 +854,26 @@ struct ExportView: View {
 
     private var hasLockedSelections: Bool {
         isThemeLocked(viewModel.selectedTheme) || isMusicLocked(viewModel.selectedMusic)
+    }
+
+    private var canShowExportWorkspace: Bool {
+        !viewModel.keptClips.isEmpty || viewModel.hasCloudEditCandidatePool
+    }
+
+    private var summaryPrimaryValue: String {
+        viewModel.keptClips.isEmpty ? "\(viewModel.cloudEditCandidatePoolCount)" : "\(viewModel.keptClips.count)"
+    }
+
+    private var summaryPrimaryLabel: String {
+        viewModel.keptClips.isEmpty ? "Candidates" : "Clips"
+    }
+
+    private var summarySecondaryValue: String {
+        viewModel.keptClips.isEmpty ? "AI picks" : Clip.formatTime(viewModel.keptClips.reduce(0) { $0 + $1.duration })
+    }
+
+    private var summarySecondaryLabel: String {
+        viewModel.keptClips.isEmpty ? "Selection" : "Duration"
     }
 
     private var summaryMetricGridColumns: [GridItem] {
