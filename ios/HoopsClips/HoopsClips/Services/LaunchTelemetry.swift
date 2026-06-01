@@ -8,6 +8,7 @@ final class LaunchTelemetry {
     private let runtimeConfig: AppRuntimeConfig
     private let stabilitySessionID = UUID().uuidString
     private let stabilityDefaultsKey = "hoopsclips.stability.currentSession.v1"
+    private let stabilityLastUnexpectedExitKey = "hoopsclips.stability.lastUnexpectedExit.v1"
 
     init(runtimeConfig: AppRuntimeConfig) {
         self.runtimeConfig = runtimeConfig
@@ -15,6 +16,10 @@ final class LaunchTelemetry {
 
     var supportStatusLabel: String {
         runtimeConfig.sentryDSN.isEmpty ? "Logger only" : "DSN staged"
+    }
+
+    var latestUnexpectedExitSummary: String? {
+        UserDefaults.standard.string(forKey: stabilityLastUnexpectedExitKey)
     }
 
     func configure() {
@@ -144,9 +149,28 @@ final class LaunchTelemetry {
 
         let checkpoint = snapshot.lastCheckpoint ?? "none"
         let screen = snapshot.screen ?? "none"
+        let supportSummary = Self.stabilitySupportSummary(
+            lifecycleState: snapshot.lifecycleState,
+            screen: snapshot.screen,
+            checkpoint: snapshot.lastCheckpoint,
+            memoryWarningCount: snapshot.memoryWarningCount
+        )
+        UserDefaults.standard.set(supportSummary, forKey: stabilityLastUnexpectedExitKey)
         logger.error(
             "Previous HoopClips session may have ended unexpectedly; state=\(snapshot.lifecycleState, privacy: .public) screen=\(screen, privacy: .public) checkpoint=\(checkpoint, privacy: .public) memoryWarnings=\(snapshot.memoryWarningCount, privacy: .public)"
         )
+    }
+
+    static func stabilitySupportSummary(
+        lifecycleState: String,
+        screen: String?,
+        checkpoint: String?,
+        memoryWarningCount: Int
+    ) -> String {
+        let safeState = redactedAIEditFailureReason(lifecycleState)
+        let safeScreen = redactedAIEditFailureReason(screen)
+        let safeCheckpoint = redactedAIEditFailureReason(checkpoint)
+        return "Previous session may have ended unexpectedly. State: \(safeState). Screen: \(safeScreen). Last step: \(safeCheckpoint). Memory warnings: \(max(0, memoryWarningCount))."
     }
 
     private func currentStabilitySnapshot() -> StabilitySnapshot {

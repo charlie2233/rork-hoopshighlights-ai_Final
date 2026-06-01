@@ -59,6 +59,7 @@ struct SettingsView: View {
         let exportTheme: String
         let exportQuality: String
         let exportFormat: String
+        let stabilitySummary: String?
     }
 
     private struct FormspreeErrorEnvelope: Decodable {
@@ -1199,6 +1200,8 @@ struct SettingsView: View {
                 )
             }
 
+            stabilityFeedbackCard
+
             VStack(alignment: .leading, spacing: 10) {
                 Text(languageStore.text(.settingsFeedbackType))
                     .font(.caption.weight(.semibold))
@@ -1349,6 +1352,62 @@ struct SettingsView: View {
         }
         .padding(16)
         .rorkCard(cornerRadius: 16, stroke: AppTheme.softBorder, glowOpacity: 0.06)
+    }
+
+    @ViewBuilder
+    private var stabilityFeedbackCard: some View {
+        if let stabilitySummary = LaunchTelemetry.shared.latestUnexpectedExitSummary {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "waveform.path.ecg.rectangle.fill")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(AppTheme.warningYellow)
+                        .frame(width: 24)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("App health note")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.white)
+                        Text(stabilitySummary)
+                            .font(.caption2)
+                            .foregroundStyle(AppTheme.subtleText)
+                            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 8 : 5)
+                            .minimumScaleFactor(0.84)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .layoutPriority(1)
+                }
+
+                Button {
+                    prefillStabilityFeedback(stabilitySummary)
+                } label: {
+                    Label("Report app quit", systemImage: "paperplane.fill")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.86)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 48 : 38)
+                        .padding(.horizontal, 10)
+                        .background(AppTheme.warningYellow.opacity(0.18), in: .rect(cornerRadius: 12))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(AppTheme.warningYellow.opacity(0.26), lineWidth: 1)
+                        }
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("settings.feedback.reportAppQuit")
+            }
+            .padding(12)
+            .rorkCard(
+                cornerRadius: 12,
+                fill: AnyShapeStyle(AppTheme.surfaceBg.opacity(0.50)),
+                stroke: AppTheme.warningYellow.opacity(0.20),
+                glow: AppTheme.warningYellow,
+                glowOpacity: 0.04
+            )
+            .accessibilityIdentifier("settings.feedback.stabilitySummary")
+        }
     }
 
     private var commonFAQSection: some View {
@@ -1761,7 +1820,8 @@ struct SettingsView: View {
             appVersion: "v1.0",
             exportTheme: viewModel.selectedTheme.rawValue,
             exportQuality: viewModel.selectedQuality.rawValue,
-            exportFormat: viewModel.selectedFormat.rawValue
+            exportFormat: viewModel.selectedFormat.rawValue,
+            stabilitySummary: LaunchTelemetry.shared.latestUnexpectedExitSummary
         )
 
         do {
@@ -1810,6 +1870,15 @@ struct SettingsView: View {
         guard parts.count == 2 else { return false }
         let domain = parts[1]
         return !parts[0].isEmpty && domain.contains(".") && !domain.hasPrefix(".") && !domain.hasSuffix(".")
+    }
+
+    private func prefillStabilityFeedback(_ stabilitySummary: String) {
+        feedbackType = .bug
+        let prefix = "The app quit unexpectedly during testing."
+        let diagnosticLine = "Diagnostics: \(stabilitySummary)"
+        let current = feedbackMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+        let separator = current.isEmpty ? "" : "\n\n"
+        feedbackMessage = String((current + separator + prefix + "\n" + diagnosticLine).prefix(1200))
     }
 
     private func formattedTargetDuration(_ duration: Double) -> String {

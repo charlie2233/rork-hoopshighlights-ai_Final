@@ -25,4 +25,22 @@ struct LaunchTelemetryTests {
 
         #expect(redacted == "Cloud rendering failed. Try again in a moment.")
     }
+
+    @Test func testStabilitySupportSummaryRedactsUnsafeContext() {
+        let summary = LaunchTelemetry.stabilitySupportSummary(
+            lifecycleState: "active",
+            screen: "https://cdn.hoopsclips.test/render.mp4?X-Amz-Signature=secret",
+            checkpoint: "video_import.persist uploads/abc123/source.mp4",
+            memoryWarningCount: 2
+        )
+
+        #expect(summary.contains("Previous session may have ended unexpectedly."))
+        #expect(summary.contains("[redacted_url]"))
+        #expect(summary.contains("[redacted_object_key]"))
+        #expect(summary.contains("Memory warnings: 2"))
+        #expect(!summary.contains("https://"))
+        #expect(!summary.contains("X-Amz-Signature"))
+        #expect(!summary.contains("uploads/abc123"))
+        #expect(!summary.contains("secret"))
+    }
 }
