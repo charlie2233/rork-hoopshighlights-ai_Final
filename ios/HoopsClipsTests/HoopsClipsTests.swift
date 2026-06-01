@@ -396,6 +396,30 @@ struct HoopsClipsTests {
         #expect(intent.durationSeconds == 270)
     }
 
+    @Test func testCloudEditUserIntentParsesTeamReelPhraseFromPromptPlaceholder() {
+        let intent = CloudEditUserIntent.parse("make a 4:30 team reel")
+
+        #expect(intent.proTemplate == .teamHighlightPro)
+        #expect(intent.preset == .fullGameHighlight)
+        #expect(intent.aspectRatio == nil)
+        #expect(intent.durationSeconds == 270)
+    }
+
+    @Test func testCloudEditUserIntentParsesCommonTeamVideoPhrases() {
+        let phrases = [
+            "team highlights",
+            "team edit",
+            "team video",
+            "team mixtape"
+        ]
+
+        for phrase in phrases {
+            let intent = CloudEditUserIntent.parse(phrase)
+            #expect(intent.proTemplate == .teamHighlightPro)
+            #expect(intent.preset == .fullGameHighlight)
+        }
+    }
+
     @Test func testCloudEditUserIntentKeepsAspectRatioOutOfDuration() {
         let intent = CloudEditUserIntent.parse("vertical 9:16 cinematic mixtape")
 

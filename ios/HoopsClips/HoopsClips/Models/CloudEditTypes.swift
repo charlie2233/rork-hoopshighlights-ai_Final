@@ -290,14 +290,28 @@ struct CloudEditUserIntent: Equatable, Sendable {
         if containsAny(normalized, ["recruiting", "recruit", "scout", "showcase"]) {
             return .recruitingReelPro
         }
+        if containsAny(
+            normalized,
+            [
+                "team highlight",
+                "team highlights",
+                "team package",
+                "team reel",
+                "team reels",
+                "team edit",
+                "team video",
+                "team mixtape",
+                "season recap",
+                "team-first"
+            ]
+        ) {
+            return .teamHighlightPro
+        }
         if containsAny(normalized, ["cinematic", "mixtape", "vibe edit", "social edit"]) {
             return .cinematicMixtapePro
         }
         if containsAny(normalized, ["nba", "broadcast", "lower third", "lower-third"]) {
             return .nbaRecapPro
-        }
-        if containsAny(normalized, ["team highlight", "team package", "season recap", "team-first"]) {
-            return .teamHighlightPro
         }
         return nil
     }
@@ -312,10 +326,13 @@ struct CloudEditUserIntent: Equatable, Sendable {
         if containsAny(normalized, ["full game", "game recap", "recap", "youtube", "game flow"]) {
             return .fullGameHighlight
         }
+        if let fallbackTemplate {
+            return fallbackTemplate.preset
+        }
         if containsAny(normalized, ["hype", "reel", "tiktok", "instagram", "vertical", "best plays"]) {
             return .personalHighlight
         }
-        return fallbackTemplate?.preset
+        return nil
     }
 
     private static func parseAspectRatio(from normalized: String) -> CloudEditAspectRatio? {
