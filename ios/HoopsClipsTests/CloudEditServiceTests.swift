@@ -29,7 +29,7 @@ struct CloudEditServiceTests {
                 #expect(request.httpMethod == "GET")
                 #expect(request.value(forHTTPHeaderField: "User-Agent") == "HoopClips-iOS/1.0")
                 #expect(request.value(forHTTPHeaderField: "x-trace-id")?.isEmpty == false)
-                #expect(request.timeoutInterval == 30)
+                #expect(request.timeoutInterval == 8)
                 let url = try #require(request.url)
                 #expect(url.path == "/v1/editing/version")
                 #expect(request.httpBody == nil)
