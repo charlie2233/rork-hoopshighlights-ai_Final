@@ -251,12 +251,11 @@ def rerank_edit_request_with_gpt(
         return _with_fallback(request, "fallback", settings.model, reason, len(sampled_clips), len(sampled_frames))
 
     sampled_clip_ids = {clip.id for clip in sampled_clips}
-    valid_decision_ids = [decision.clipId for decision in decisions if decision.clipId in sampled_clip_ids]
-    duplicate_decision_ids = {clip_id for clip_id in valid_decision_ids if valid_decision_ids.count(clip_id) > 1}
+    returned_decision_ids = [decision.clipId for decision in decisions]
+    duplicate_decision_ids = {clip_id for clip_id in returned_decision_ids if returned_decision_ids.count(clip_id) > 1}
     if duplicate_decision_ids:
         return _with_fallback(request, "fallback", settings.model, "duplicate_gpt_decisions", len(sampled_clips), len(sampled_frames))
-    valid_decision_id_set = set(valid_decision_ids)
-    if valid_decision_id_set != sampled_clip_ids:
+    if set(returned_decision_ids) != sampled_clip_ids:
         return _with_fallback(request, "fallback", settings.model, "incomplete_gpt_decisions", len(sampled_clips), len(sampled_frames))
     sampled_decisions = [decision for decision in decisions if decision.clipId in sampled_clip_ids]
 
@@ -484,8 +483,8 @@ def _backfill_underfilled_gpt_result(
         )
 
     backfill_clip_ids = {clip.id for clip in backfill_candidates}
-    valid_backfill_decision_ids = [decision.clipId for decision in backfill_decisions if decision.clipId in backfill_clip_ids]
-    duplicate_backfill_ids = {clip_id for clip_id in valid_backfill_decision_ids if valid_backfill_decision_ids.count(clip_id) > 1}
+    returned_backfill_decision_ids = [decision.clipId for decision in backfill_decisions]
+    duplicate_backfill_ids = {clip_id for clip_id in returned_backfill_decision_ids if returned_backfill_decision_ids.count(clip_id) > 1}
     if duplicate_backfill_ids:
         return _with_fallback(
             request,
@@ -495,7 +494,7 @@ def _backfill_underfilled_gpt_result(
             len(initial_sampled_clips) + len(backfill_candidates),
             len(initial_sampled_frames) + len(backfill_frames),
         )
-    if set(valid_backfill_decision_ids) != backfill_clip_ids:
+    if set(returned_backfill_decision_ids) != backfill_clip_ids:
         return _with_fallback(
             request,
             "fallback",
@@ -902,13 +901,18 @@ def _quality_filtered_sampled_clips(
             add_clip(clip)
             reserved_defensive_count += 1
 
-    for clip in eligible:
+    for clip in remove_duplicate_moments(eligible):
         add_clip(clip)
         if len(selected) >= max_clips:
             break
 
-    return rank_clips(selected)
+    if len(selected) < max_clips:
+        for clip in eligible:
+            add_clip(clip)
+            if len(selected) >= max_clips:
+                break
 
+    return rank_clips(selected)
 
 def _selected_team_quality_filtered_sampled_clips(
     eligible: Sequence[EditCandidateClip],
@@ -1501,6 +1505,7 @@ def _build_openai_payload(
         "aspectRatio": request.aspectRatio,
         "planTier": request.planTier,
     }
+    selection_quality_rules = _gpt_selection_quality_rules(request, sampled_clips)
     user_edit_intent = derive_user_prompt_intent(request.userPrompt, request.planTier)
     if user_edit_intent is not None:
         template_context["userEditIntent"] = user_edit_intent.model_dump(mode="json")
@@ -1550,6 +1555,7 @@ def _build_openai_payload(
                     "task": "Rerank existing HoopClips basketball highlight candidates. Use only these clip IDs. Do not invent clips or exact timestamps.",
                     "templateContext": template_context,
                     "agentTemplateCookbook": agent_template_context,
+                    "selectionQualityRules": selection_quality_rules,
                     "userEditIntent": user_edit_intent.model_dump(mode="json") if user_edit_intent is not None else None,
                     "teamTargeting": request.teamSelection.model_dump(mode="json") if request.teamSelection is not None else {
                         "mode": "all",
@@ -1660,6 +1666,8 @@ def _build_openai_payload(
             f"Non-scoring defensive outcomes also require shotResultEvidence.outcomeConfidence >= {MIN_GPT_DEFENSIVE_OUTCOME_CONFIDENCE:.2f}; use unclear or keep=false when the steal, forced turnover, or stop is guessed. "
             "When defensive roles like challenge, possessionChange, recovery, or defenseOutcome are sampled, cite those roles in shotTrackingEvidence instead of shot-arc or rim roles. "
             "Honor userEditIntent only when it is compatible with the supplied template, plan tier, candidate clips, and safety constraints. "
+            "Honor selectionQualityRules: for long target durations, keep enough non-duplicate, clear, reviewable highlights to satisfy the recommended kept clip count and duration floor when the candidate pool supports it. "
+            "Reject boring, unclear, duplicate, or unsafe clips, but do not over-prune a long reel down to only two or three clips unless the supplied candidates truly lack visible outcomes. "
             "When a selected team is supplied, keep highlights for that team only; exclude confident opponent clips. Keep uncertain team-attribution clips for user review. "
             "For selected-team jobs, prioritize evidence-backed selected-team render candidates before uncertain review-only clips in the final edit. "
             "For teamAttributionStatus=uncertain, userReviewDecision=kept is the only signal that the user explicitly promoted the clip for final editing; otherwise treat it as review-only. "
@@ -1673,6 +1681,29 @@ def _build_openai_payload(
         "input": [{"role": "user", "content": content}],
         "text": {"format": {"type": "json_schema", "name": "hoopclips_gpt_highlight_rerank", "strict": True, "schema": _response_schema()}},
         "max_output_tokens": settings.max_output_tokens,
+    }
+
+
+def _gpt_selection_quality_rules(
+    request: CreateEditJobRequest,
+    sampled_clips: Sequence[EditCandidateClip],
+) -> Dict[str, Any]:
+    available_unique = remove_duplicate_moments(
+        [clip for clip in sampled_clips if is_plan_quality_eligible_clip(clip)]
+    )
+    min_clip_count, min_duration = _gpt_underfill_floor(request, available_unique)
+    target_duration = max(float(request.targetDurationSeconds), 0.0)
+    return {
+        "targetDurationSeconds": request.targetDurationSeconds,
+        "availableQualityCandidateCount": len(available_unique),
+        "minRecommendedKeptClipCount": min_clip_count,
+        "minRecommendedKeptDurationSeconds": round(min_duration, 3),
+        "longTargetDuration": target_duration >= 90.0,
+        "veryLongTargetDuration": target_duration >= 180.0,
+        "selectionPolicy": "maximize clear highlight value while preserving enough quality clips for the requested reel length",
+        "overPrunePolicy": "do_not_keep_only_top_few_for_long_reels_when_more_clear_non_duplicate_candidates_exist",
+        "duplicatePolicy": "reject true duplicates, but use distinct outcomes from the same game stretch when they add story value",
+        "uncertainReviewPolicy": "strong uncertain selected-team clips can stay reviewable; confident opponent or unclear filler clips should not render",
     }
 
 

@@ -80,10 +80,10 @@ final class HoopsClipsUITests: XCTestCase {
         XCTAssertTrue(app.buttons["export.aiEdit.proTemplate.recruitingReel"].exists)
         XCTAssertTrue(app.buttons["export.aiEdit.length.30s"].firstMatch.exists)
         XCTAssertTrue(app.staticTexts["export.aiEdit.policy.limitLabel"].firstMatch.exists)
-        XCTAssertTrue(app.descendants(matching: .any)["export.aiEdit.timeline"].waitForExistence(timeout: 10))
         attachScreenshot(named: "02 Export AI Edit Style Picker", app: app)
 
         tapWhenReady(app.buttons["export.aiEdit.generateButton"], in: app)
+        XCTAssertTrue(app.descendants(matching: .any)["export.aiEdit.timeline"].waitForExistence(timeout: 10))
         XCTAssertTrue(waitForRenderedState(in: app, timeout: 300), "Cloud render should reach Rendered through the live Worker path.")
         XCTAssertTrue(app.descendants(matching: .any)["export.aiEdit.preview"].waitForExistence(timeout: 20))
         XCTAssertTrue(app.descendants(matching: .any)["export.aiEdit.workReceipt"].waitForExistence(timeout: 10))

@@ -195,8 +195,10 @@ struct AIEditView: View {
             if editPlan != nil, downloadResponse != nil || revisionResponse != nil {
                 revisionCard
             }
-            aiWorkTimelineCard
-            if proUXFlags.cloudLockerEnabled {
+            if shouldShowAIWorkTimeline {
+                aiWorkTimelineCard
+            }
+            if shouldShowCloudLocker {
                 cloudLockerCard
             }
 
@@ -221,7 +223,7 @@ struct AIEditView: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("export.aiEdit.section")
 
-            Text("Leave the note blank for an automatic edit, or tell HoopClips what to focus on.")
+            Text("Blank works. Add a side note only if you want a specific focus.")
                 .font(.subheadline)
                 .foregroundStyle(AppTheme.subtleText)
                 .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 3)
@@ -234,11 +236,6 @@ struct AIEditView: View {
                 aiChip(icon: "timer", text: formattedDuration(selectedDuration))
             }
 
-            Text("Status comes from live cloud jobs.")
-                .font(.caption.bold())
-                .foregroundStyle(AppTheme.warningYellow)
-                .fixedSize(horizontal: false, vertical: true)
-                .accessibilityIdentifier("export.aiEdit.backgroundRender.message")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
@@ -394,7 +391,7 @@ struct AIEditView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Smart setup")
+                    Text("Edit options")
                         .font(.headline)
                         .foregroundStyle(.white)
                         .lineLimit(2)
@@ -417,7 +414,7 @@ struct AIEditView: View {
                     showSetupControls.toggle()
                 }
             } label: {
-                Label(showSetupControls ? "Hide setup choices" : "Change style, shape, or length", systemImage: showSetupControls ? "chevron.up.circle.fill" : "slider.horizontal.3")
+                Label(showSetupControls ? "Hide options" : "Change options", systemImage: showSetupControls ? "chevron.up.circle.fill" : "slider.horizontal.3")
                     .font(.caption.bold())
                     .multilineTextAlignment(.center)
                     .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
@@ -666,10 +663,10 @@ struct AIEditView: View {
                         if newValue.count > Self.maxUserPromptCharacters {
                             userEditPrompt = String(newValue.prefix(Self.maxUserPromptCharacters))
                         }
-                    }
+                }
 
                 if userEditPrompt.isEmpty {
-                    Text("Leave blank for best edit, or say: focus defense, NBA recap, 4:30 team reel.")
+                    Text("Try: focus defense, NBA recap, or 4:30 team reel.")
                         .font(.subheadline)
                         .foregroundStyle(AppTheme.subtleText)
                         .padding(.horizontal, 16)
@@ -680,14 +677,6 @@ struct AIEditView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
-
-            Label(defaultCloudEditFocusSummary, systemImage: "checkmark.seal.fill")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(AppTheme.warningYellow)
-                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 5 : 3)
-                .minimumScaleFactor(0.84)
-                .fixedSize(horizontal: false, vertical: true)
-                .accessibilityIdentifier("export.aiEdit.defaultFocusSummary")
 
             if let smartSetupSummary {
                 Label(smartSetupSummary, systemImage: "slider.horizontal.3")
@@ -764,7 +753,7 @@ struct AIEditView: View {
     }
 
     private var promptHeaderTitle: some View {
-        Label("Tell HoopClips (optional)", systemImage: "text.bubble.fill")
+        Label("Side note (optional)", systemImage: "text.bubble.fill")
             .font(.headline)
             .foregroundStyle(.white)
             .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
@@ -936,24 +925,26 @@ struct AIEditView: View {
                 .background(AppTheme.cardBg.opacity(0.58), in: .rect(cornerRadius: 12))
                 .accessibilityIdentifier("export.aiEdit.timeline.current")
 
-            DisclosureGroup(isExpanded: $showTimelineDetails) {
-                VStack(alignment: .leading, spacing: 9) {
-                    ForEach(timeline.steps) { step in
-                        timelineStepRow(step, isDetailed: true)
-                            .accessibilityIdentifier("export.aiEdit.timeline.\(step.stepId)")
+            if hasServerWorkTimeline {
+                DisclosureGroup(isExpanded: $showTimelineDetails) {
+                    VStack(alignment: .leading, spacing: 9) {
+                        ForEach(timeline.steps) { step in
+                            timelineStepRow(step, isDetailed: true)
+                                .accessibilityIdentifier("export.aiEdit.timeline.\(step.stepId)")
+                        }
                     }
+                    .padding(.top, 6)
+                } label: {
+                    Label(showTimelineDetails ? "Hide cloud details" : "Show cloud details", systemImage: "list.bullet.clipboard.fill")
+                        .font(.caption.bold())
+                        .foregroundStyle(AppTheme.subtleText)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.84)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                .padding(.top, 6)
-            } label: {
-                Label(showTimelineDetails ? "Hide cloud details" : "Show cloud details", systemImage: "list.bullet.clipboard.fill")
-                    .font(.caption.bold())
-                    .foregroundStyle(AppTheme.subtleText)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.84)
-                    .fixedSize(horizontal: false, vertical: true)
+                .tint(AppTheme.warningYellow)
+                .accessibilityIdentifier("export.aiEdit.timeline.detailsToggle")
             }
-            .tint(AppTheme.warningYellow)
-            .accessibilityIdentifier("export.aiEdit.timeline.detailsToggle")
         }
         .padding(14)
         .rorkCard(cornerRadius: 16, stroke: AppTheme.neonPurple.opacity(0.16), glow: AppTheme.neonPurple, glowOpacity: 0.05)
@@ -1637,6 +1628,22 @@ struct AIEditView: View {
         )
     }
 
+    private var shouldShowAIWorkTimeline: Bool {
+        hasStartedAIEditJob || hasServerWorkTimeline
+    }
+
+    private var shouldShowCloudLocker: Bool {
+        proUXFlags.cloudLockerEnabled && (hasStartedAIEditJob || !renderHistory.isEmpty)
+    }
+
+    private var hasStartedAIEditJob: Bool {
+        isWorking || editJob != nil || editPlan != nil || renderStatus != nil || revisionResponse != nil
+    }
+
+    private var hasServerWorkTimeline: Bool {
+        renderStatus?.workTimeline != nil
+    }
+
     private var activeWorkReceipt: CloudEditWorkReceipt? {
         if let serverReceipt = renderStatus?.workReceipt {
             return serverReceipt
@@ -2158,7 +2165,7 @@ struct AIEditView: View {
     }
 
     private var selectedSetupSummary: String {
-        "\(selectedTemplateTitle), \(selectedAspectRatio.rawValue), \(formattedDuration(selectedDuration)). HoopClips can use your side note to adjust the plan before cloud rendering."
+        "\(selectedTemplateTitle) - \(selectedAspectRatio.rawValue) - \(formattedDuration(selectedDuration))."
     }
 
     private var sanitizedUserEditPrompt: String? {

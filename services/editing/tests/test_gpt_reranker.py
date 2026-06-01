@@ -645,6 +645,22 @@ class GPTHighlightRerankerTests(unittest.TestCase):
             ["made", "missed", "blocked", "steal", "forced_turnover", "defensive_stop", "unclear", "not_basketball"],
         )
 
+    def test_payload_includes_long_reel_selection_floor_for_gpt(self) -> None:
+        settings = GPTHighlightRerankerSettings.from_env()
+        request = _request("free", 12).model_copy(update={"targetDurationSeconds": 270})
+
+        payload = _build_openai_payload(request, request.clips, [], settings)
+        compact_input = json.loads(payload["input"][0]["content"][0]["text"])
+        rules = compact_input["selectionQualityRules"]
+
+        self.assertEqual(rules["targetDurationSeconds"], 270)
+        self.assertEqual(rules["availableQualityCandidateCount"], 12)
+        self.assertEqual(rules["minRecommendedKeptClipCount"], 10)
+        self.assertTrue(rules["longTargetDuration"])
+        self.assertTrue(rules["veryLongTargetDuration"])
+        self.assertIn("do_not_keep_only_top_few", rules["overPrunePolicy"])
+        self.assertIn("Honor selectionQualityRules", payload["instructions"])
+
     def test_payload_preserves_native_uncertain_outcome_over_provider_made_label(self) -> None:
         settings = GPTHighlightRerankerSettings.from_env()
         clip = {
@@ -2451,6 +2467,93 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertEqual(result.gptRerankSummary.rejectedClipIds, [])
         self.assertEqual([clip.id for clip in result.clips], ["c0", "c1", "c2"])
 
+    def test_extra_unsampled_decision_falls_back_even_when_sampled_ids_complete(self) -> None:
+        settings = GPTHighlightRerankerSettings(
+            enabled=True,
+            api_key="unit-test-key",
+            model="gpt-test",
+            endpoint="https://api.openai.test/v1/responses",
+            timeout_seconds=1.0,
+            max_output_tokens=512,
+            free_max_clips=2,
+            paid_max_clips=24,
+            free_frames_per_clip=3,
+            paid_frames_per_clip=5,
+            frame_width=512,
+            jpeg_quality=5,
+            max_image_bytes=180_000,
+            image_detail="low",
+        )
+        original_extract = gpt_reranker._extract_candidate_keyframes
+        observed_clip_ids: list[str] = []
+
+        def fake_extract(source_path, clips, frames_per_clip, rerank_settings):
+            observed_clip_ids[:] = [clip.id for clip in clips]
+            frames = []
+            for clip in clips:
+                for role, second in gpt_reranker._sample_times_for_clip(clip, frames_per_clip):
+                    frames.append(SampledFrame(clip_id=clip.id, role=role, time_seconds=second, data_url="data:image/jpeg;base64,ZmFrZQ=="))
+            return frames
+
+        def decision(clip_id: str, score: float) -> dict:
+            return {
+                "clipId": clip_id,
+                "keep": True,
+                "rejectReason": None,
+                "highlightScore": score,
+                "watchabilityScore": score,
+                "basketballEvent": "Made Shot",
+                "outcome": "made",
+                "caption": "BUCKET",
+                "reason": "Clear outcome.",
+                "storyRole": "peak",
+                "qualitySignals": _quality_signals(),
+                "shotResultEvidence": _shot_result_evidence(),
+                "shotTrackingEvidence": _shot_tracking_evidence(),
+                "suggestedEdit": {
+                    "slowMotion": False,
+                    "slowMotionCenter": None,
+                    "captionMoment": None,
+                    "cropFocus": "center_action",
+                    "extendBeforeSeconds": 0,
+                    "extendAfterSeconds": 0,
+                },
+            }
+
+        def fake_response_client(payload, api_key, endpoint, timeout_seconds):
+            return {
+                "output_text": json.dumps(
+                    {
+                        "decisions": [
+                            decision(observed_clip_ids[0], 0.9),
+                            decision(observed_clip_ids[1], 0.88),
+                            decision("c2", 1.0),
+                        ],
+                        "storyOrder": [observed_clip_ids[0], observed_clip_ids[1], "c2"],
+                        "planEdit": {
+                            "orderedClipIds": [observed_clip_ids[0], observed_clip_ids[1], "c2"],
+                            "pacing": "fast",
+                            "captions": [],
+                            "slowMotionMoments": [],
+                            "summary": "ok",
+                        },
+                        "summary": "ok",
+                    }
+                )
+            }
+
+        try:
+            gpt_reranker._extract_candidate_keyframes = fake_extract
+            with tempfile.NamedTemporaryFile(suffix=".mp4") as source:
+                result = gpt_reranker.rerank_edit_request_with_gpt(_request("free", 3), Path(source.name), settings, fake_response_client)
+        finally:
+            gpt_reranker._extract_candidate_keyframes = original_extract
+
+        self.assertEqual(observed_clip_ids, ["c0", "c1"])
+        self.assertEqual(result.gptRerankSummary.status, "fallback")
+        self.assertEqual(result.gptRerankSummary.fallbackReason, "incomplete_gpt_decisions")
+        self.assertEqual([clip.id for clip in result.clips], ["c0", "c1", "c2"])
+
     def test_duplicate_gpt_decisions_fall_back(self) -> None:
         settings = GPTHighlightRerankerSettings(
             enabled=True,
@@ -2994,6 +3097,35 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertEqual(len(sampled), 320)
         self.assertEqual(sampled[0].id, "c0")
         self.assertEqual(sampled[-1].id, "c319")
+
+    def test_sampling_keeps_unique_moments_before_duplicate_fill(self) -> None:
+        duplicate_clips = [
+            {**_clip(f"dup_{index}", float(index * 0.4), 0.99 - (index * 0.001)), "duplicateGroup": "same_fast_break"}
+            for index in range(10)
+        ]
+        unique_clips = [
+            _clip(f"unique_{index}", 50.0 + float(index * 7), 0.78 - (index * 0.01))
+            for index in range(5)
+        ]
+        request = CreateEditJobRequest(
+            videoId="video_duplicates",
+            analysisJobId="analysis_duplicates",
+            installId="install-123",
+            sourceObjectKey="uploads/source.mp4",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="free",
+            clips=[*duplicate_clips, *unique_clips],
+        )
+        sampled = gpt_reranker._quality_filtered_sampled_clips(
+            gpt_reranker.rank_clips(request.clips),
+            max_clips=8,
+        )
+        sampled_ids = {clip.id for clip in sampled}
+
+        self.assertEqual(len(sampled), 8)
+        for index in range(5):
+            self.assertIn(f"unique_{index}", sampled_ids)
 
     def test_sampling_env_overrides_are_launch_bounded(self) -> None:
         env_keys = (
