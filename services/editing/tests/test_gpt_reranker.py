@@ -2509,6 +2509,72 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertEqual(full_pool_long_count, 30)
         self.assertGreaterEqual(full_pool_long_duration_floor, 145.0)
 
+    def test_underfill_ignores_review_only_uncertain_selected_team_candidates(self) -> None:
+        matched = {
+            **_clip("matched_keep", 0.0, 0.98),
+            "teamAttribution": {
+                "teamId": "team_dark",
+                "label": "Dark jerseys",
+                "colorLabel": "black",
+                "confidence": 0.94,
+                "source": "quick_scan",
+                "evidenceFrameRefs": ["matched_setup", "matched_result"],
+                "evidenceRoleGroups": ["setup", "outcome"],
+            },
+        }
+        uncertain = [
+            {
+                **_clip(f"review_only_{index}", float(10 + index * 7), 0.9 - (index * 0.01)),
+                "teamAttribution": {
+                    "teamId": "team_dark",
+                    "label": "Dark jerseys",
+                    "colorLabel": "black",
+                    "confidence": 0.66,
+                    "source": "quick_scan",
+                },
+            }
+            for index in range(12)
+        ]
+        request = CreateEditJobRequest(
+            videoId="video_selected_team_underfill",
+            analysisJobId="analysis_selected_team_underfill",
+            installId="install-123",
+            sourceObjectKey="uploads/source.mp4",
+            preset="personal_highlight",
+            targetDurationSeconds=270,
+            planTier="free",
+            teamSelection={
+                "mode": "team",
+                "teamId": "team_dark",
+                "label": "Dark jerseys",
+                "colorLabel": "black",
+                "confidenceThreshold": 0.85,
+                "includeUncertain": True,
+            },
+            clips=[matched, *uncertain],
+        )
+        result = request.model_copy(
+            update={
+                "clips": [request.clips[0]],
+                "gptRerankSummary": gpt_reranker.GPTHighlightRerankSummary(
+                    status="applied",
+                    model="gpt-test",
+                    sampledClipCount=len(request.clips),
+                    sampledFrameCount=len(request.clips) * 3,
+                    returnedDecisionCount=len(request.clips),
+                    keptClipIds=["matched_keep"],
+                    rejectedClipIds=[clip.id for clip in request.clips[1:]],
+                    uncertainReviewClipIds=[clip.id for clip in request.clips[1:]],
+                    rejectedReasonCounts={"needs_manual_team_review": len(request.clips) - 1},
+                ),
+            }
+        )
+
+        render_eligible = gpt_reranker._render_eligible_underfill_clips(request, request.clips)
+
+        self.assertEqual([clip.id for clip in render_eligible], ["matched_keep"])
+        self.assertFalse(gpt_reranker._is_underfilled_gpt_result(request, result, request.clips))
+
     def test_incomplete_gpt_decisions_fallback_without_dropping_sampled_candidates(self) -> None:
         settings = GPTHighlightRerankerSettings(
             enabled=True,

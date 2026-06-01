@@ -594,13 +594,31 @@ def _is_underfilled_gpt_result(
     summary = result.gptRerankSummary
     if summary is None or summary.status != "applied":
         return False
-    available_unique = remove_duplicate_moments([clip for clip in available_clips if is_plan_quality_eligible_clip(clip)])
+    available_unique = _render_eligible_underfill_clips(request, available_clips)
     if not available_unique:
         return False
     min_clip_count, min_duration = _gpt_underfill_floor(request, available_unique)
     kept_unique = remove_duplicate_moments([clip for clip in result.clips if is_plan_quality_eligible_clip(clip)])
     kept_duration = sum(_bounded_gpt_clip_duration(request, clip) for clip in kept_unique)
     return len(kept_unique) < min_clip_count or kept_duration < min_duration
+
+
+def _render_eligible_underfill_clips(
+    request: CreateEditJobRequest,
+    available_clips: Sequence[EditCandidateClip],
+) -> List[EditCandidateClip]:
+    candidates = list(available_clips)
+    if request.teamSelection is not None and request.teamSelection.mode == "team":
+        render_eligible_ids = {
+            clip.id
+            for clip in filter_clips_for_team_selection(
+                candidates,
+                request.teamSelection,
+                include_review_only_uncertain=False,
+            )
+        }
+        candidates = [clip for clip in candidates if clip.id in render_eligible_ids]
+    return remove_duplicate_moments([clip for clip in candidates if is_plan_quality_eligible_clip(clip)])
 
 
 def _gpt_underfill_floor(request: CreateEditJobRequest, available_clips: Sequence[EditCandidateClip]) -> tuple[int, float]:

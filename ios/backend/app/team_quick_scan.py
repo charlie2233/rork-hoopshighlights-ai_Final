@@ -27,11 +27,11 @@ TEAM_QUICK_SCAN_COMPACT_FRAMES_PER_CANDIDATE = 3
 TEAM_QUICK_SCAN_RICH_CANDIDATE_CLIPS = 320
 TEAM_QUICK_SCAN_DEFAULT_TOTAL_CLIP_FRAMES = 2560
 TEAM_QUICK_SCAN_MAX_TOTAL_CLIP_FRAMES = 3200
-TEAM_QUICK_SCAN_PRESCAN_MAX_CANDIDATE_CLIPS = 20
-TEAM_QUICK_SCAN_PRESCAN_RICH_CANDIDATE_CLIPS = 12
-TEAM_QUICK_SCAN_PRESCAN_FRAMES_PER_CANDIDATE = 5
-TEAM_QUICK_SCAN_PRESCAN_MAX_TOTAL_CLIP_FRAMES = 96
-TEAM_QUICK_SCAN_PRESCAN_MIN_TIMEOUT_SECONDS = 75.0
+TEAM_QUICK_SCAN_PRESCAN_MAX_CANDIDATE_CLIPS = 64
+TEAM_QUICK_SCAN_PRESCAN_RICH_CANDIDATE_CLIPS = 32
+TEAM_QUICK_SCAN_PRESCAN_FRAMES_PER_CANDIDATE = 6
+TEAM_QUICK_SCAN_PRESCAN_MAX_TOTAL_CLIP_FRAMES = 288
+TEAM_QUICK_SCAN_PRESCAN_MIN_TIMEOUT_SECONDS = 90.0
 TEAM_QUICK_SCAN_SCORING_OWNERSHIP_ROLES = {"ballhandlersetup", "prerelease", "release"}
 TEAM_QUICK_SCAN_BLOCK_ACTION_ROLES = {"challenge", "balldeflection"}
 TEAM_QUICK_SCAN_POSSESSION_CHANGE_ACTION_ROLES = {
@@ -767,23 +767,87 @@ def _clip_sample_times(clip: CloudClip, count: int) -> list[tuple[str, float]]:
 
 def _is_block_like_label(label: str) -> bool:
     tokens = _label_tokens(label)
-    return bool(tokens & {"block", "blocked", "contest"})
+    return bool(tokens & {"block", "blocked", "contest", "swat", "swatted", "rejection", "reject", "rejected"})
 
 
 def _is_non_scoring_defensive_label(label: str) -> bool:
     tokens = _label_tokens(label)
-    if tokens & {"defense", "defensive", "steal", "strip", "pressure", "lockdown"}:
+    if tokens & {
+        "defense",
+        "defensive",
+        "steal",
+        "stolen",
+        "strip",
+        "stripped",
+        "takeaway",
+        "takeaways",
+        "intercept",
+        "intercepted",
+        "interception",
+        "pickpocket",
+        "poke",
+        "poked",
+        "rip",
+        "ripped",
+        "deflection",
+        "deflected",
+        "charge",
+        "pressure",
+        "lockdown",
+    }:
         return True
-    if "turnover" in tokens and tokens & {"forced", "force", "defensive", "defense", "steal", "strip"}:
+    if "ball" in tokens and tokens & {"loose", "recovery", "recover"}:
+        return True
+    if "turnover" in tokens and tokens & {
+        "forced",
+        "force",
+        "defensive",
+        "defense",
+        "steal",
+        "strip",
+        "takeaway",
+        "deflection",
+        "intercept",
+    }:
         return True
     return tokens == {"stop"} or "defensive stop" in label or "defense stop" in label
 
 
 def _is_possession_change_defensive_label(label: str) -> bool:
     tokens = _label_tokens(label)
-    if tokens & {"steal", "strip"}:
+    if tokens & {
+        "steal",
+        "stolen",
+        "strip",
+        "stripped",
+        "takeaway",
+        "takeaways",
+        "intercept",
+        "intercepted",
+        "interception",
+        "pickpocket",
+        "poke",
+        "poked",
+        "rip",
+        "ripped",
+        "deflection",
+        "deflected",
+        "charge",
+    }:
         return True
-    return "turnover" in tokens and tokens & {"forced", "force", "defensive", "defense", "steal", "strip"}
+    if "ball" in tokens and tokens & {"loose", "recovery", "recover"}:
+        return True
+    return "turnover" in tokens and tokens & {
+        "forced",
+        "force",
+        "defensive",
+        "defense",
+        "steal",
+        "strip",
+        "takeaway",
+        "deflection",
+        "intercept",
+    }
 
 
 def _is_scoring_or_shot_like_label(label: str) -> bool:

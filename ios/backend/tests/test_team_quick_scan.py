@@ -191,12 +191,51 @@ class TeamQuickScanTests(unittest.TestCase):
 
         prescan = team_quick_prescan_settings(full_settings)
 
-        self.assertEqual(prescan.team_quick_scan_max_candidate_clips, 20)
-        self.assertEqual(prescan.team_quick_scan_rich_candidate_clips, 12)
-        self.assertEqual(prescan.team_quick_scan_clip_frames_per_clip, 5)
-        self.assertEqual(prescan.team_quick_scan_max_total_clip_frames, 96)
-        self.assertEqual(prescan.team_quick_scan_timeout_seconds, 75.0)
+        self.assertEqual(prescan.team_quick_scan_max_candidate_clips, 64)
+        self.assertEqual(prescan.team_quick_scan_rich_candidate_clips, 32)
+        self.assertEqual(prescan.team_quick_scan_clip_frames_per_clip, 6)
+        self.assertEqual(prescan.team_quick_scan_max_total_clip_frames, 288)
+        self.assertEqual(prescan.team_quick_scan_timeout_seconds, 90.0)
         self.assertEqual(full_settings.team_quick_scan_max_candidate_clips, 320)
+
+    def test_prescan_frame_budget_uses_rich_and_tail_candidates(self) -> None:
+        clips = [
+            _clip("Made Shot", float(index * 5), float(index * 5 + 4), float(index * 5 + 2))
+            for index in range(80)
+        ]
+        full_settings = Settings(
+            **{
+                **_local_settings(Path("/tmp/hoopclips-prescan-budget")).__dict__,
+                "team_quick_scan_timeout_seconds": 24.0,
+                "team_quick_scan_max_candidate_clips": 320,
+                "team_quick_scan_rich_candidate_clips": 320,
+                "team_quick_scan_clip_frames_per_clip": 8,
+                "team_quick_scan_max_total_clip_frames": 2560,
+                "team_quick_scan_video_frame_count": 2,
+            }
+        )
+        prescan = team_quick_prescan_settings(full_settings)
+
+        with tempfile.TemporaryDirectory(prefix="hoopclips-prescan-budget-") as temp_dir:
+            source_path = Path(temp_dir) / "source.mp4"
+            source_path.write_bytes(b"video")
+            with patch("app.team_quick_scan._extract_frame_data_url", return_value="data:image/jpeg;base64,frame"):
+                frames = _extract_quick_scan_frames(source_path, 420.0, clips, prescan)
+
+        clip_frames = [frame for frame in frames if frame.clip_ref is not None]
+        roles_by_clip = {}
+        for frame in clip_frames:
+            roles_by_clip.setdefault(frame.clip_ref, []).append(frame.role)
+
+        self.assertEqual(len(clip_frames), 288)
+        self.assertEqual(len(roles_by_clip), 64)
+        self.assertEqual(
+            roles_by_clip["clip_0"],
+            ["ballHandlerSetup", "preRelease", "release", "rimApproach", "rimResult", "followThrough"],
+        )
+        self.assertEqual(roles_by_clip["clip_31"], roles_by_clip["clip_0"])
+        self.assertEqual(roles_by_clip["clip_32"], ["ballHandlerSetup", "release", "rimResult"])
+        self.assertNotIn("clip_64", roles_by_clip)
 
     def test_disabled_scan_falls_back_without_calling_gpt(self) -> None:
         clips = [_clip("Three Pointer", 8.0, 12.5, 10.2)]
@@ -583,6 +622,36 @@ class TeamQuickScanTests(unittest.TestCase):
 
         self.assertEqual(roles_by_clip["clip_0"], ["defenseSetup", "possessionChange", "recovery"])
         self.assertEqual(roles_by_clip["clip_1"], ["defenseSetup", "challenge", "defenseOutcome"])
+
+    def test_frame_extraction_uses_defensive_roles_for_expanded_turnover_labels(self) -> None:
+        clips = [
+            _clip("Takeaway", 8.0, 12.0, 10.0),
+            _clip("Interception", 14.0, 18.0, 16.0),
+            _clip("Deflection", 20.0, 24.0, 22.0),
+            _clip("Charge Taken", 26.0, 30.0, 28.0),
+            _clip("Loose Ball Recovery", 32.0, 36.0, 34.0),
+            _clip("Swatted Shot", 38.0, 42.0, 40.0),
+        ]
+
+        with tempfile.TemporaryDirectory(prefix="hoopclips-team-scan-defense-labels-") as temp_dir:
+            source_path = Path(temp_dir) / "source.mp4"
+            source_path.write_bytes(b"video")
+            with patch("app.team_quick_scan._extract_frame_data_url", return_value="data:image/jpeg;base64,frame"):
+                frames = _extract_quick_scan_frames(
+                    source_path,
+                    50.0,
+                    clips,
+                    _settings(team_quick_scan_video_frame_count=0, team_quick_scan_clip_frames_per_clip=3),
+                )
+
+        roles_by_clip = {}
+        for frame in frames:
+            if frame.clip_ref is not None:
+                roles_by_clip.setdefault(frame.clip_ref, []).append(frame.role)
+
+        for clip_ref in ["clip_0", "clip_1", "clip_2", "clip_3", "clip_4"]:
+            self.assertEqual(roles_by_clip[clip_ref], ["defenseSetup", "possessionChange", "recovery"])
+        self.assertEqual(roles_by_clip["clip_5"], ["defenseSetup", "challenge", "defenseOutcome"])
 
     def test_frame_extraction_uses_scoring_roles_for_made_shots(self) -> None:
         clips = [_clip("Made Shot", 8.0, 12.5, 10.0)]
