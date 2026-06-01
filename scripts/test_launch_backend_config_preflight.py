@@ -83,11 +83,12 @@ class LaunchBackendConfigPreflightTests(unittest.TestCase):
     def test_analysis_cloudbuild_requires_team_scan_quality_defaults(self) -> None:
         self.assertEqual(REQUIRED_ANALYSIS_TEAM_SCAN_SUBSTITUTIONS["_MAX_RETURNED_CLIPS"], "320")
         self.assertEqual(REQUIRED_ANALYSIS_TEAM_SCAN_SUBSTITUTIONS["_TEAM_QUICK_SCAN_ENABLED"], "true")
+        self.assertEqual(REQUIRED_ANALYSIS_TEAM_SCAN_SUBSTITUTIONS["_TEAM_QUICK_SCAN_TIMEOUT_SECONDS"], "180")
         self.assertEqual(REQUIRED_ANALYSIS_TEAM_SCAN_SUBSTITUTIONS["_TEAM_QUICK_SCAN_CLIP_FRAMES_PER_CLIP"], "8")
         self.assertEqual(REQUIRED_ANALYSIS_TEAM_SCAN_SUBSTITUTIONS["_TEAM_QUICK_SCAN_RICH_CANDIDATE_CLIPS"], "320")
         self.assertEqual(REQUIRED_ANALYSIS_TEAM_SCAN_SUBSTITUTIONS["_TEAM_QUICK_SCAN_MAX_TOTAL_CLIP_FRAMES"], "2560")
         self.assertEqual(REQUIRED_ANALYSIS_TEAM_SCAN_SUBSTITUTIONS["_TEAM_QUICK_SCAN_MAX_CANDIDATE_CLIPS"], "320")
-        self.assertEqual(REQUIRED_ANALYSIS_TEAM_SCAN_SUBSTITUTIONS["_TEAM_QUICK_SCAN_MAX_OUTPUT_TOKENS"], "18000")
+        self.assertEqual(REQUIRED_ANALYSIS_TEAM_SCAN_SUBSTITUTIONS["_TEAM_QUICK_SCAN_MAX_OUTPUT_TOKENS"], "24000")
 
     def test_team_scan_required_flags_cannot_be_weakened(self) -> None:
         self.assertEqual(
@@ -95,6 +96,7 @@ class LaunchBackendConfigPreflightTests(unittest.TestCase):
             {
                 "_MAX_RETURNED_CLIPS",
                 "_TEAM_QUICK_SCAN_ENABLED",
+                "_TEAM_QUICK_SCAN_TIMEOUT_SECONDS",
                 "_TEAM_QUICK_SCAN_CLIP_FRAMES_PER_CLIP",
                 "_TEAM_QUICK_SCAN_RICH_CANDIDATE_CLIPS",
                 "_TEAM_QUICK_SCAN_MAX_TOTAL_CLIP_FRAMES",

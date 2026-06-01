@@ -27,11 +27,11 @@ TEAM_QUICK_SCAN_COMPACT_FRAMES_PER_CANDIDATE = 3
 TEAM_QUICK_SCAN_RICH_CANDIDATE_CLIPS = 320
 TEAM_QUICK_SCAN_DEFAULT_TOTAL_CLIP_FRAMES = 2560
 TEAM_QUICK_SCAN_MAX_TOTAL_CLIP_FRAMES = 3200
-TEAM_QUICK_SCAN_PRESCAN_MAX_CANDIDATE_CLIPS = 160
-TEAM_QUICK_SCAN_PRESCAN_RICH_CANDIDATE_CLIPS = 128
+TEAM_QUICK_SCAN_PRESCAN_MAX_CANDIDATE_CLIPS = 320
+TEAM_QUICK_SCAN_PRESCAN_RICH_CANDIDATE_CLIPS = 320
 TEAM_QUICK_SCAN_PRESCAN_FRAMES_PER_CANDIDATE = 8
-TEAM_QUICK_SCAN_PRESCAN_MAX_TOTAL_CLIP_FRAMES = 1280
-TEAM_QUICK_SCAN_PRESCAN_MIN_TIMEOUT_SECONDS = 120.0
+TEAM_QUICK_SCAN_PRESCAN_MAX_TOTAL_CLIP_FRAMES = 2560
+TEAM_QUICK_SCAN_PRESCAN_MIN_TIMEOUT_SECONDS = 180.0
 TEAM_QUICK_SCAN_SCORING_OWNERSHIP_ROLES = {"ballhandlersetup", "prerelease", "release"}
 TEAM_QUICK_SCAN_BLOCK_ACTION_ROLES = {"challenge", "balldeflection"}
 TEAM_QUICK_SCAN_POSSESSION_CHANGE_ACTION_ROLES = {
@@ -103,7 +103,7 @@ def apply_team_quick_scan(
 
 
 def team_quick_prescan_settings(settings: Settings) -> Settings:
-    """Use a smaller real GPT vision budget for the interactive team picker."""
+    """Use the quality-beta GPT vision budget for the interactive team picker."""
     return replace(
         settings,
         team_quick_scan_timeout_seconds=max(
@@ -204,7 +204,7 @@ def _build_openai_payload(
                 "schema": _response_schema(candidate_clip_limit),
             }
         },
-        "max_output_tokens": int(getattr(settings, "team_quick_scan_max_output_tokens", 18000)),
+        "max_output_tokens": int(getattr(settings, "team_quick_scan_max_output_tokens", 24000)),
     }
 
 

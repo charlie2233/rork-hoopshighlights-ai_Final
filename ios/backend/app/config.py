@@ -47,7 +47,7 @@ class Settings:
     team_quick_scan_api_key: Optional[str] = None
     team_quick_scan_model: str = "gpt-4.1"
     team_quick_scan_endpoint: str = "https://api.openai.com/v1/responses"
-    team_quick_scan_timeout_seconds: float = 60.0
+    team_quick_scan_timeout_seconds: float = 180.0
     team_quick_scan_video_frame_count: int = 8
     team_quick_scan_clip_frames_per_clip: int = 8
     team_quick_scan_rich_candidate_clips: int = 320
@@ -57,7 +57,7 @@ class Settings:
     team_quick_scan_max_image_bytes: int = 600_000
     team_quick_scan_min_team_confidence: float = 0.55
     team_quick_scan_max_candidate_clips: int = 320
-    team_quick_scan_max_output_tokens: int = 18000
+    team_quick_scan_max_output_tokens: int = 24000
 
     @property
     def is_local(self) -> bool:
@@ -243,7 +243,7 @@ def get_settings() -> Settings:
         team_quick_scan_api_key=os.getenv("HOOPS_OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY") or None,
         team_quick_scan_model=os.getenv("HOOPS_TEAM_QUICK_SCAN_MODEL", os.getenv("HOOPS_AI_CLIP_GPT_MODEL", "gpt-4.1")),
         team_quick_scan_endpoint=os.getenv("HOOPS_TEAM_QUICK_SCAN_ENDPOINT", "https://api.openai.com/v1/responses"),
-        team_quick_scan_timeout_seconds=_env_float("HOOPS_TEAM_QUICK_SCAN_TIMEOUT_SECONDS", 60.0, 2.0, 120.0),
+        team_quick_scan_timeout_seconds=_env_float("HOOPS_TEAM_QUICK_SCAN_TIMEOUT_SECONDS", 180.0, 2.0, 180.0),
         team_quick_scan_video_frame_count=_env_int("HOOPS_TEAM_QUICK_SCAN_VIDEO_FRAME_COUNT", 8, 2, 16),
         team_quick_scan_clip_frames_per_clip=_env_int("HOOPS_TEAM_QUICK_SCAN_CLIP_FRAMES_PER_CLIP", 8, 1, 8),
         team_quick_scan_rich_candidate_clips=_env_int("HOOPS_TEAM_QUICK_SCAN_RICH_CANDIDATE_CLIPS", 320, 0, 320),
@@ -253,7 +253,7 @@ def get_settings() -> Settings:
         team_quick_scan_max_image_bytes=_env_int("HOOPS_TEAM_QUICK_SCAN_MAX_IMAGE_BYTES", 600_000, 40_000, 1_000_000),
         team_quick_scan_min_team_confidence=_env_float("HOOPS_TEAM_QUICK_SCAN_MIN_TEAM_CONFIDENCE", 0.55, 0.0, 0.99),
         team_quick_scan_max_candidate_clips=_env_int("HOOPS_TEAM_QUICK_SCAN_MAX_CANDIDATE_CLIPS", 320, 1, 320),
-        team_quick_scan_max_output_tokens=_env_int("HOOPS_TEAM_QUICK_SCAN_MAX_OUTPUT_TOKENS", 18000, 512, 18000),
+        team_quick_scan_max_output_tokens=_env_int("HOOPS_TEAM_QUICK_SCAN_MAX_OUTPUT_TOKENS", 24000, 512, 24000),
     )
 
     settings.validate()

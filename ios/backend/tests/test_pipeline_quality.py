@@ -152,7 +152,8 @@ class PipelineQualityTests(unittest.TestCase):
         self.assertEqual(settings.team_quick_scan_rich_candidate_clips, 320)
         self.assertEqual(settings.team_quick_scan_max_total_clip_frames, 2560)
         self.assertEqual(settings.team_quick_scan_max_candidate_clips, 320)
-        self.assertEqual(settings.team_quick_scan_max_output_tokens, 18000)
+        self.assertEqual(settings.team_quick_scan_timeout_seconds, 180.0)
+        self.assertEqual(settings.team_quick_scan_max_output_tokens, 24000)
 
     def test_backend_candidate_pool_env_is_clamped_for_review_safety(self) -> None:
         with tempfile.TemporaryDirectory(prefix="hoopclips-settings-") as temp_dir:

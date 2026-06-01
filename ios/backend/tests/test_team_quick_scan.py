@@ -45,7 +45,7 @@ def _settings(**overrides):
         "team_quick_scan_max_image_bytes": 500_000,
         "team_quick_scan_min_team_confidence": 0.55,
         "team_quick_scan_max_candidate_clips": 320,
-        "team_quick_scan_max_output_tokens": 18000,
+        "team_quick_scan_max_output_tokens": 24000,
     }
     values.update(overrides)
     return SimpleNamespace(**values)
@@ -176,7 +176,7 @@ def _poll_analysis_job_until_terminal(client: TestClient, job_id: str, *, attemp
 
 
 class TeamQuickScanTests(unittest.TestCase):
-    def test_prescan_settings_keep_interactive_team_scan_bounded(self) -> None:
+    def test_prescan_settings_use_full_quality_budget_for_interactive_team_scan(self) -> None:
         settings = _local_settings(Path("/tmp/hoopclips-prescan")).__dict__.copy()
         full_settings = Settings(
             **{
@@ -191,17 +191,17 @@ class TeamQuickScanTests(unittest.TestCase):
 
         prescan = team_quick_prescan_settings(full_settings)
 
-        self.assertEqual(prescan.team_quick_scan_max_candidate_clips, 160)
-        self.assertEqual(prescan.team_quick_scan_rich_candidate_clips, 128)
+        self.assertEqual(prescan.team_quick_scan_max_candidate_clips, 320)
+        self.assertEqual(prescan.team_quick_scan_rich_candidate_clips, 320)
         self.assertEqual(prescan.team_quick_scan_clip_frames_per_clip, 8)
-        self.assertEqual(prescan.team_quick_scan_max_total_clip_frames, 1280)
-        self.assertEqual(prescan.team_quick_scan_timeout_seconds, 120.0)
+        self.assertEqual(prescan.team_quick_scan_max_total_clip_frames, 2560)
+        self.assertEqual(prescan.team_quick_scan_timeout_seconds, 180.0)
         self.assertEqual(full_settings.team_quick_scan_max_candidate_clips, 320)
 
     def test_prescan_frame_budget_uses_rich_and_tail_candidates(self) -> None:
         clips = [
             _clip("Made Shot", float(index * 5), float(index * 5 + 4), float(index * 5 + 2))
-            for index in range(80)
+            for index in range(320)
         ]
         full_settings = Settings(
             **{
@@ -227,8 +227,8 @@ class TeamQuickScanTests(unittest.TestCase):
         for frame in clip_frames:
             roles_by_clip.setdefault(frame.clip_ref, []).append(frame.role)
 
-        self.assertEqual(len(clip_frames), 640)
-        self.assertEqual(len(roles_by_clip), 80)
+        self.assertEqual(len(clip_frames), 2560)
+        self.assertEqual(len(roles_by_clip), 320)
         self.assertEqual(
             roles_by_clip["clip_0"],
             [
@@ -242,9 +242,10 @@ class TeamQuickScanTests(unittest.TestCase):
                 "finishContext",
             ],
         )
-        self.assertEqual(roles_by_clip["clip_63"], roles_by_clip["clip_0"])
-        self.assertEqual(roles_by_clip["clip_64"], roles_by_clip["clip_0"])
-        self.assertNotIn("clip_80", roles_by_clip)
+        self.assertEqual(roles_by_clip["clip_127"], roles_by_clip["clip_0"])
+        self.assertEqual(roles_by_clip["clip_128"], roles_by_clip["clip_0"])
+        self.assertEqual(roles_by_clip["clip_319"], roles_by_clip["clip_0"])
+        self.assertNotIn("clip_320", roles_by_clip)
 
     def test_disabled_scan_falls_back_without_calling_gpt(self) -> None:
         clips = [_clip("Three Pointer", 8.0, 12.5, 10.2)]
@@ -376,7 +377,7 @@ class TeamQuickScanTests(unittest.TestCase):
             attribution_schema = payload["text"]["format"]["schema"]["properties"]["clipAttributions"]["items"]
             self.assertIn("evidenceFrameRefs", attribution_schema["properties"])
             self.assertIn("evidenceFrameRefs", attribution_schema["required"])
-            self.assertEqual(payload["max_output_tokens"], 18000)
+            self.assertEqual(payload["max_output_tokens"], 24000)
             return _response(
                 {
                     "teams": [
