@@ -673,9 +673,9 @@ struct HoopsClipsTests {
         let summary = CloudEditUserPromptBuilder.defaultFocusSummary(teamSelection: selection)
 
         #expect(prompt.hasPrefix("Focus on Dark jerseys."))
-        #expect(prompt.contains("Render selected-team matches"))
+        #expect(prompt.contains("Use selected-team matches"))
         #expect(prompt.contains("reject confident opponents"))
-        #expect(prompt.contains("Keep uncertain clips reviewable."))
+        #expect(prompt.contains("Keep unsure team clips reviewable."))
         #expect(summary.hasPrefix("Target: Dark jerseys."))
         #expect(summary.contains("Dark jerseys"))
         #expect(summary.contains("blocks"))
@@ -683,7 +683,34 @@ struct HoopsClipsTests {
         #expect(summary.contains("defensive stops"))
         #expect(summary.contains("crowd/audio cues"))
         #expect(summary.contains("visual proof"))
-        #expect(summary.contains("Uncertain clips stay reviewable."))
+        #expect(summary.contains("Unsure team clips stay reviewable."))
+        #expect(summary.count <= CloudEditUserPromptBuilder.maxFocusSummaryCharacters)
+    }
+
+    @Test func testCloudEditDefaultPromptRespectsConfidentTeamOnlySelection() throws {
+        let selection = HighlightTeamSelection(
+            mode: .team,
+            teamId: "team_dark",
+            label: "Dark jerseys",
+            colorLabel: "black",
+            confidenceThreshold: 0.85,
+            includeUncertain: false
+        )
+        let prompt = try #require(
+            CloudEditUserPromptBuilder.effectivePrompt(
+                userPrompt: nil,
+                teamSelection: selection
+            )
+        )
+        let summary = CloudEditUserPromptBuilder.defaultFocusSummary(teamSelection: selection)
+
+        #expect(prompt.contains("Focus on Dark jerseys."))
+        #expect(prompt.contains("Only confident team matches"))
+        #expect(prompt.contains("reject unsure team clips"))
+        #expect(!prompt.contains("Keep unsure team clips reviewable."))
+        #expect(summary.contains("Only confident team matches."))
+        #expect(!summary.contains("Unsure team clips stay reviewable."))
+        #expect(prompt.count <= CloudEditUserPromptBuilder.maxPromptCharacters)
         #expect(summary.count <= CloudEditUserPromptBuilder.maxFocusSummaryCharacters)
     }
 
@@ -762,7 +789,7 @@ struct HoopsClipsTests {
         #expect(prompt.contains("Defense counts without a make."))
         #expect(prompt.contains("crowd/audio pops"))
         #expect(prompt.contains("verify visible outcome"))
-        #expect(prompt.contains("Keep uncertain clips reviewable."))
+        #expect(prompt.contains("Keep unsure team clips reviewable."))
         #expect(prompt.count <= CloudEditUserPromptBuilder.maxPromptCharacters)
     }
 
@@ -791,7 +818,7 @@ struct HoopsClipsTests {
         #expect(prompt.contains("defensive stops"))
         #expect(prompt.contains("crowd/audio pops"))
         #expect(prompt.contains("verify visible outcome"))
-        #expect(prompt.contains("Keep uncertain clips reviewable."))
+        #expect(prompt.contains("Keep unsure team clips reviewable."))
         #expect(prompt.count <= CloudEditUserPromptBuilder.maxPromptCharacters)
     }
 

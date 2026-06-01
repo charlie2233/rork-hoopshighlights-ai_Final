@@ -1856,6 +1856,43 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertIn("crowd_pop_reserve", {clip.id for clip in sampled})
         self.assertTrue(gpt_reranker.is_audio_reaction_clip(request.clips[-1]))
 
+    def test_gpt_sampling_reserves_multiple_audio_reactions_for_large_candidate_pool(self) -> None:
+        scoring = [
+            _clip(f"score_{index}", float(index * 6), 0.99 - (index * 0.004))
+            for index in range(36)
+        ]
+        crowd_pops = [
+            {
+                **_labeled_clip(f"crowd_pop_{index}", 240.0 + float(index * 6), 0.68 - (index * 0.01), "Crowd Reaction"),
+                "audioPeak": 0.99 - (index * 0.01),
+                "motionScore": 0.82,
+                "watchability": 0.78,
+                "excitement": 0.86,
+                "combinedScore": 0.66 - (index * 0.01),
+            }
+            for index in range(6)
+        ]
+        request = CreateEditJobRequest(
+            videoId="video_audio_reaction_large_reserve",
+            analysisJobId="analysis_audio_reaction_large_reserve",
+            installId="install-123",
+            sourceObjectKey="uploads/source.mp4",
+            preset="personal_highlight",
+            targetDurationSeconds=90,
+            planTier="free",
+            clips=[*scoring, *crowd_pops],
+        )
+
+        sampled = gpt_reranker._quality_filtered_sampled_clips(
+            gpt_reranker.rank_clips(request.clips),
+            24,
+            request=request,
+        )
+        sampled_ids = {clip.id for clip in sampled}
+
+        self.assertGreaterEqual(len([clip_id for clip_id in sampled_ids if clip_id.startswith("crowd_pop_")]), 4)
+        self.assertIn("crowd_pop_0", sampled_ids)
+
     def test_gpt_sampling_reserves_unlabeled_loud_audio_pop_for_review(self) -> None:
         scoring = [
             _clip(f"score_{index}", float(index * 6), 0.99 - (index * 0.01))

@@ -440,7 +440,10 @@ enum CloudEditUserPromptBuilder {
             : nil
         if let selectedTeam {
             let targetSeparator = selectedTeam.hasSuffix("...") ? " " : ". "
-            return "Target: \(selectedTeam)\(targetSeparator)Checks made shots, blocks, steals, defensive stops, and crowd/audio cues with visual proof. Uncertain clips stay reviewable."
+            let teamConfidenceCopy = teamSelection?.includeUncertain == false
+                ? "Only confident team matches."
+                : "Unsure team clips stay reviewable."
+            return "Target: \(selectedTeam)\(targetSeparator)Checks shots, blocks, steals, defensive stops, and crowd/audio cues with visual proof. \(teamConfidenceCopy)"
         }
         return "Target: All teams. Checks made shots, blocks, steals, defensive stops, and crowd/audio cues with visual proof. Uncertain clips stay reviewable."
     }
@@ -449,15 +452,20 @@ enum CloudEditUserPromptBuilder {
         var parts: [String] = []
         if teamSelection?.mode == .team {
             parts.append("Focus on \(teamSelection?.displayTitle ?? "the selected team").")
-            parts.append("Render selected-team matches; reject confident opponents.")
+            parts.append("Use selected-team matches; reject confident opponents.")
+            if teamSelection?.includeUncertain == false {
+                parts.append("Only confident team matches; reject unsure team clips.")
+            } else {
+                parts.append("Keep unsure team clips reviewable.")
+            }
         } else {
             parts.append("Cover both teams.")
+            parts.append("Keep uncertain clips reviewable.")
         }
         parts.append("Use visible makes, blocks, steals, forced turnovers, defensive stops.")
         parts.append("Defense counts without a make.")
         parts.append("Use crowd/audio pops; verify visible outcome.")
-        parts.append("Reject duplicate/filler.")
-        parts.append("Keep uncertain clips reviewable.")
+        parts.append("Reject duplicates/filler.")
         return parts.joined(separator: " ")
     }
 

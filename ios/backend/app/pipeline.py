@@ -57,6 +57,7 @@ AUDIO_REACTION_BOUNDARY_MIN_GAP_SECONDS = 2.25
 AUDIO_REACTION_BOUNDARY_MAX_COUNT = 48
 AUDIO_REACTION_BOUNDARY_CONTEXT_BUCKETS = 4
 AUDIO_REACTION_ONSET_CONTEXT_BUCKETS = 5
+AUDIO_REACTION_SUSTAIN_CONTEXT_BUCKETS = 5
 AUDIO_REACTION_WINDOW_LEAD_SECONDS = 2.75
 AUDIO_REACTION_WINDOW_FOLLOW_SECONDS = 1.5
 UNLABELED_AUDIO_REACTION_MIN_AUDIO_SCORE = 0.92
@@ -344,11 +345,15 @@ def _audio_reaction_review_reserve_limit(max_clips: int, audio_reaction_count: i
     audio_reaction_count = max(0, int(audio_reaction_count))
     if max_clips < 8 or audio_reaction_count == 0:
         return 0
+    if max_clips >= 160:
+        return min(audio_reaction_count, 10)
+    if max_clips >= 80:
+        return min(audio_reaction_count, 6)
     if max_clips >= 40:
-        return min(audio_reaction_count, 3)
+        return min(audio_reaction_count, 4)
     if max_clips >= 20:
-        return min(audio_reaction_count, 2)
-    return 1
+        return min(audio_reaction_count, 3)
+    return min(audio_reaction_count, 2)
 
 
 def _trim_analysis_clips_for_review(
@@ -1367,6 +1372,11 @@ def _audio_pop_signal_for_window(
         max(0, peak_index - AUDIO_REACTION_ONSET_CONTEXT_BUCKETS - 1) : max(0, peak_index - 1)
     ]
     onset_baseline = mean(onset_values or surrounding_values or window_values)
+    sustain_values = audio_profile[
+        peak_index + 1 : min(len(audio_profile), peak_index + AUDIO_REACTION_SUSTAIN_CONTEXT_BUCKETS + 1)
+    ]
+    sustain_mean = mean(sustain_values or [0.0])
+    sustain_above_baseline = max(sustain_mean - baseline, 0.0)
     loudness_gate = clamp((peak_value - 0.48) / 0.28, 0.0, 1.0)
     rise_above_window = max(peak_value - window_mean, 0.0)
     rise_above_baseline = max(peak_value - baseline, 0.0)
@@ -1376,6 +1386,7 @@ def _audio_pop_signal_for_window(
             (rise_above_window * 0.72)
             + (rise_above_baseline * 0.48)
             + (rise_from_onset * 0.58)
+            + (sustain_above_baseline * 0.22)
             + (max(peak_value - 0.70, 0.0) * 0.2)
         )
         * loudness_gate,

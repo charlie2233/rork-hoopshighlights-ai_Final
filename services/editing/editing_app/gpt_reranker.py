@@ -1180,9 +1180,13 @@ def _audio_reaction_sampling_reserve_limit(max_clips: int, candidate_count: int)
     candidate_count = max(0, int(candidate_count))
     if max_clips < 8 or candidate_count == 0:
         return 0
+    if max_clips >= 160:
+        return min(candidate_count, 10)
+    if max_clips >= 80:
+        return min(candidate_count, 6)
     if max_clips >= 24:
-        return min(candidate_count, 2)
-    return 1
+        return min(candidate_count, 4)
+    return min(candidate_count, 2)
 
 
 def _audio_reaction_candidate_quality_key(clip: EditCandidateClip) -> tuple[float, float, float, float, float]:
