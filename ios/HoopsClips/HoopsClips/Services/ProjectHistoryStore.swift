@@ -110,7 +110,7 @@ final class ProjectHistoryStore {
 
             await onProgress?(.generatingPreview)
             let thumbnailURL = projectDirectoryURL.appending(path: "thumbnail.jpg", directoryHint: .notDirectory)
-            try await writeThumbnail(for: asset, to: thumbnailURL)
+            try await writeThumbnailOrFallback(for: asset, durationSeconds: durationSeconds, to: thumbnailURL)
             try Task.checkCancellation()
 
             await onProgress?(.savingProject)
@@ -312,20 +312,99 @@ final class ProjectHistoryStore {
         }.value
     }
 
-    private func writeThumbnail(for asset: AVURLAsset, to outputURL: URL) async throws {
+    private func writeThumbnailOrFallback(for asset: AVURLAsset, durationSeconds: Double, to outputURL: URL) async throws {
+        do {
+            try await writeThumbnail(for: asset, durationSeconds: durationSeconds, to: outputURL)
+        } catch {
+            try await writeFallbackThumbnail(to: outputURL)
+        }
+    }
+
+    private func writeThumbnail(for asset: AVURLAsset, durationSeconds: Double, to outputURL: URL) async throws {
         let sourceURL = asset.url
+        let sampleTimes = thumbnailSampleTimes(durationSeconds: durationSeconds)
         let data = try await Task.detached(priority: .utility) {
             let generator = AVAssetImageGenerator(asset: AVURLAsset(url: sourceURL))
             generator.appliesPreferredTrackTransform = true
             generator.maximumSize = CGSize(width: 400, height: 225)
-            let (image, _) = try await generator.image(at: .zero)
+            var lastError: Error?
+            for seconds in sampleTimes {
+                do {
+                    let time = CMTime(seconds: seconds, preferredTimescale: 600)
+                    let (image, _) = try await generator.image(at: time)
 
-            guard let data = UIImage(cgImage: image).jpegData(compressionQuality: 0.82) else {
+                    guard let data = UIImage(cgImage: image).jpegData(compressionQuality: 0.82) else {
+                        throw ProjectHistoryStoreError.invalidThumbnail
+                    }
+                    return data
+                } catch {
+                    lastError = error
+                }
+            }
+            throw lastError ?? ProjectHistoryStoreError.invalidThumbnail
+        }.value
+
+        try data.write(to: outputURL, options: .atomic)
+    }
+
+    private func writeFallbackThumbnail(to outputURL: URL) async throws {
+        let data = try await Task.detached(priority: .utility) {
+            let format = UIGraphicsImageRendererFormat()
+            format.scale = 1
+            let renderer = UIGraphicsImageRenderer(size: CGSize(width: 400, height: 225), format: format)
+            let image = renderer.image { context in
+                UIColor(red: 0.07, green: 0.04, blue: 0.12, alpha: 1).setFill()
+                context.fill(CGRect(x: 0, y: 0, width: 400, height: 225))
+
+                UIColor(red: 1.0, green: 0.62, blue: 0.16, alpha: 1).setFill()
+                UIBezierPath(ovalIn: CGRect(x: 168, y: 58, width: 64, height: 64)).fill()
+
+                let titleAttributes: [NSAttributedString.Key: Any] = [
+                    .font: UIFont.systemFont(ofSize: 28, weight: .bold),
+                    .foregroundColor: UIColor.white
+                ]
+                let subtitleAttributes: [NSAttributedString.Key: Any] = [
+                    .font: UIFont.systemFont(ofSize: 15, weight: .semibold),
+                    .foregroundColor: UIColor(white: 1, alpha: 0.72)
+                ]
+                "HoopClips".draw(
+                    in: CGRect(x: 0, y: 132, width: 400, height: 34),
+                    withAttributes: titleAttributes.centeredParagraph
+                )
+                "Video imported".draw(
+                    in: CGRect(x: 0, y: 166, width: 400, height: 24),
+                    withAttributes: subtitleAttributes.centeredParagraph
+                )
+            }
+            guard let data = image.jpegData(compressionQuality: 0.82) else {
                 throw ProjectHistoryStoreError.invalidThumbnail
             }
             return data
         }.value
 
         try data.write(to: outputURL, options: .atomic)
+    }
+
+    private func thumbnailSampleTimes(durationSeconds: Double) -> [Double] {
+        guard durationSeconds.isFinite, durationSeconds > 0 else {
+            return [0]
+        }
+        let safeDuration = max(durationSeconds, 0.1)
+        let candidates = [
+            0,
+            min(0.75, safeDuration * 0.15),
+            min(max(1.5, safeDuration * 0.5), max(safeDuration - 0.1, 0))
+        ]
+        return Array(Set(candidates.map { max(0, min($0, max(safeDuration - 0.05, 0))) })).sorted()
+    }
+}
+
+private extension Dictionary where Key == NSAttributedString.Key, Value == Any {
+    var centeredParagraph: Self {
+        var copy = self
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.alignment = .center
+        copy[.paragraphStyle] = paragraphStyle
+        return copy
     }
 }
