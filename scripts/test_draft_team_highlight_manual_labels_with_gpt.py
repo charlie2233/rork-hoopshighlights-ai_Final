@@ -38,6 +38,8 @@ class DraftTeamHighlightManualLabelsWithGPTTests(unittest.TestCase):
         self.assertIn("gpt-test", serialized)
         self.assertIn("fullVideoNotProvided", serialized)
         self.assertIn("label_001", serialized)
+        self.assertIn("motionScore", serialized)
+        self.assertIn("teamEvidence", serialized)
         self.assertIn("data:image/jpeg;base64,<redacted>", serialized)
         self.assertNotIn(str(video_path), serialized)
         self.assertNotIn("X-Amz-Signature", serialized)
@@ -176,9 +178,13 @@ def fixture_files(root: Path) -> tuple[dict, Path]:
                     "predicted": {
                         "label": "Block",
                         "eventCenter": 3.0,
+                        "motionScore": 0.76,
+                        "audioPeak": 0.41,
+                        "watchabilityScore": 0.82,
                         "teamId": "team_black",
                         "teamConfidence": 0.9,
                         "teamAttributionStatus": "matched",
+                        "teamEvidence": {"status": "evidence_backed", "evidenceBacked": True},
                         "sourceUrl": "https://example.test/leak",
                     },
                     "expected": {"teamId": None, "isHighlight": None, "eventType": None, "outcome": None},

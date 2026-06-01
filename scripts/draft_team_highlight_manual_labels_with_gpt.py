@@ -65,6 +65,25 @@ ALLOWED_OUTCOMES = {
 }
 
 ALLOWED_TEAM_IDS = {"team_black", "team_white", "opponent", "unclear", "not_applicable"}
+PROMPT_SAFE_PREDICTED_KEYS = (
+    "label",
+    "eventType",
+    "keep",
+    "outcome",
+    "confidence",
+    "motionScore",
+    "audioPeak",
+    "watchabilityScore",
+    "duplicateGroup",
+    "teamId",
+    "teamConfidence",
+    "teamAttributionStatus",
+    "teamEvidence",
+    "nativeShotSignals",
+    "shotResultEvidence",
+    "shotTrackingEvidence",
+    "qualitySignals",
+)
 
 
 def main() -> int:
@@ -240,6 +259,10 @@ def build_openai_draft_request(
                         "fullVideoNotProvided": True,
                         "keepHumanReviewRequired": True,
                         "blocksStealsDefensiveStopsCanBeHighlights": True,
+                        "blocksStealsForcedTurnoversCanBeSelectedTeamHighlightsWithoutMadeShot": True,
+                        "preferRecallForHumanReview": True,
+                        "useUnclearWhenTeamOrOutcomeIsNotVisible": True,
+                        "useBadWindowWhenClipMissesSetupOrOutcome": True,
                         "uncertainAllowedWhenNotClear": True,
                         "eventTypes": sorted(ALLOWED_EVENT_TYPES),
                         "outcomes": sorted(ALLOWED_OUTCOMES),
@@ -263,7 +286,10 @@ def build_openai_draft_request(
             "candidate clip metadata and sampled keyframes. Never claim human review is complete. Never output "
             "file paths, URLs, storage keys, FFmpeg commands, shell commands, or secrets. Use unclear when the "
             "team, event, or outcome is not visible. Selected-team clips should use the visible team when clear; "
-            "opponent clips should be marked with the opponent team only if the supplied options allow it."
+            "opponent clips should be marked with the opponent team only if the supplied options allow it. "
+            "Blocks, steals, forced turnovers, and defensive stops are real highlights even without a made basket. "
+            "If a play is strong but attribution or outcome is not fully clear, draft the best label with uncertainty "
+            "tags so a human can review it instead of silently dropping it."
         ),
         "input": [{"role": "user", "content": content}],
         "text": {
@@ -329,17 +355,7 @@ def prepare_case_for_gpt(
                 "end": round(end, 3),
                 "duration": round(max(0.0, end - start), 3),
                 "eventCenter": round(event_center, 3),
-                "predicted": sanitize_for_prompt(
-                    {
-                        "label": predicted.get("label"),
-                        "keep": predicted.get("keep"),
-                        "outcome": predicted.get("outcome"),
-                        "confidence": predicted.get("confidence"),
-                        "teamId": predicted.get("teamId"),
-                        "teamConfidence": predicted.get("teamConfidence"),
-                        "teamAttributionStatus": predicted.get("teamAttributionStatus"),
-                    }
-                ),
+                "predicted": compact_predicted_context(predicted),
                 "sampledKeyframes": [{"role": frame["role"], "time": frame["time"]} for frame in frames],
             }
         )
@@ -364,6 +380,15 @@ def prepare_case_for_gpt(
         },
         image_items,
     )
+
+
+def compact_predicted_context(predicted: dict[str, Any]) -> dict[str, Any]:
+    context = {
+        key: predicted.get(key)
+        for key in PROMPT_SAFE_PREDICTED_KEYS
+        if key in predicted and predicted.get(key) is not None
+    }
+    return sanitize_for_prompt(context)
 
 
 def extract_clip_frames(

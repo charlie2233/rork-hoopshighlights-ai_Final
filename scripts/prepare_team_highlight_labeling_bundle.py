@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -11,6 +12,7 @@ REPO_ROOT_FOR_IMPORTS = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT_FOR_IMPORTS) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT_FOR_IMPORTS))
 
+from scripts import draft_team_highlight_manual_labels_with_gpt as gpt_draft
 from scripts.build_launch_team_accuracy_report import build_label_status, load_json
 from scripts.build_team_highlight_label_review_page import (
     build_review_payload,
@@ -30,12 +32,20 @@ def main() -> int:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     manifest = load_json(manifest_path)
-    draft_bundle = load_json(Path(args.draft_bundle).expanduser().resolve()) if args.draft_bundle else None
+    video_paths = parse_video_paths(args.video or [])
     default_video_path = Path(args.video_path).expanduser().resolve() if args.video_path else None
+    draft_bundle, draft_metadata = resolve_draft_bundle(
+        args=args,
+        manifest=manifest,
+        manifest_path=manifest_path,
+        output_dir=output_dir,
+        video_paths=video_paths,
+        default_video_path=default_video_path,
+    )
     payload = build_review_payload(
         manifest=manifest,
         manifest_dir=manifest_path.parent,
-        video_paths=parse_video_paths(args.video or []),
+        video_paths=video_paths,
         video_urls=parse_video_urls(args.video_url or []),
         video_angle_paths=parse_video_angle_paths(args.video_angle or []),
         video_angle_urls=parse_video_angle_urls(args.video_url_angle or []),
@@ -63,6 +73,8 @@ def main() -> int:
         "incompleteClipCount": status_payload["incompleteClipCount"],
         "reviewPageMetadata": review_page_output_metadata(review_page_path, payload),
     }
+    if draft_metadata:
+        metadata["gptDraft"] = draft_metadata
     metadata_path = output_dir / "bundle_metadata.json"
     write_json(metadata_path, metadata)
 
@@ -108,19 +120,108 @@ def parse_args() -> argparse.Namespace:
         help="Add local browser angle as videoId:angleName=http://127.0.0.1:8787/angle.mp4.",
     )
     parser.add_argument("--draft-bundle", help="Optional GPT draft bundle to prefill labels for human review.")
+    parser.add_argument(
+        "--draft-with-gpt",
+        action="store_true",
+        help=(
+            "Generate a GPT vision draft bundle from sampled keyframes and prefill the review page. "
+            "Requires HOOPS_OPENAI_API_KEY or OPENAI_API_KEY unless --draft-mock-response is used."
+        ),
+    )
+    parser.add_argument("--draft-output", help="Where to write the generated GPT draft bundle.")
+    parser.add_argument("--draft-context-output", help="Optional redacted GPT draft context JSON for audit/debug.")
+    parser.add_argument("--draft-mock-response", help="Use a saved OpenAI/structured response JSON instead of calling GPT.")
+    parser.add_argument("--draft-case", action="append", help="Optional caseId filter for GPT drafting. Repeat for subsets.")
+    parser.add_argument("--draft-model", default=gpt_draft.default_model(), help="OpenAI vision-capable model for GPT draft labels.")
+    parser.add_argument("--draft-endpoint", default=os.getenv("HOOPS_OPENAI_RESPONSES_ENDPOINT", "https://api.openai.com/v1/responses"))
+    parser.add_argument("--draft-timeout-seconds", type=float, default=float(os.getenv("HOOPS_TEAM_LABEL_DRAFT_TIMEOUT_SECONDS", "90")))
+    parser.add_argument("--draft-frames-per-clip", type=int, default=int(os.getenv("HOOPS_TEAM_LABEL_DRAFT_FRAMES_PER_CLIP", "5")))
+    parser.add_argument("--draft-frame-width", type=int, default=int(os.getenv("HOOPS_TEAM_LABEL_DRAFT_FRAME_WIDTH", "768")))
+    parser.add_argument("--draft-jpeg-quality", type=int, default=int(os.getenv("HOOPS_TEAM_LABEL_DRAFT_JPEG_QUALITY", "5")))
     parser.add_argument("--title", default="HoopClips Team Highlight Label Review")
     parser.add_argument("--json", action="store_true")
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.draft_bundle and args.draft_with_gpt:
+        parser.error("Use either --draft-bundle or --draft-with-gpt, not both.")
+    return args
 
 
 def write_json(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def resolve_draft_bundle(
+    *,
+    args: argparse.Namespace,
+    manifest: dict[str, Any],
+    manifest_path: Path,
+    output_dir: Path,
+    video_paths: dict[str, Path],
+    default_video_path: Path | None,
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    if args.draft_bundle:
+        draft_path = Path(args.draft_bundle).expanduser().resolve()
+        return load_json(draft_path), {"source": "existing_bundle", "path": str(draft_path)}
+    if not args.draft_with_gpt:
+        return None, None
+
+    draft_output_path = Path(args.draft_output).expanduser().resolve() if args.draft_output else output_dir / "gpt_draft_labels.json"
+    request_payload = gpt_draft.build_openai_draft_request(
+        manifest=manifest,
+        manifest_dir=manifest_path.parent,
+        video_paths=video_paths,
+        default_video_path=default_video_path,
+        model=args.draft_model or gpt_draft.default_model(),
+        frames_per_clip=gpt_draft.clamp_int(args.draft_frames_per_clip, 3, 8),
+        frame_width=gpt_draft.clamp_int(args.draft_frame_width, 256, 1280),
+        jpeg_quality=gpt_draft.clamp_int(args.draft_jpeg_quality, 2, 12),
+        case_filter=set(args.draft_case or []),
+    )
+    if args.draft_context_output:
+        write_json(Path(args.draft_context_output).expanduser().resolve(), gpt_draft.scrub_images_for_context_output(request_payload))
+
+    if args.draft_mock_response:
+        response_payload = load_json(Path(args.draft_mock_response).expanduser().resolve())
+    else:
+        api_key = os.getenv("HOOPS_OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError("Set HOOPS_OPENAI_API_KEY or OPENAI_API_KEY to use --draft-with-gpt.")
+        response_payload = gpt_draft.call_openai_responses(
+            request_payload,
+            api_key=api_key,
+            endpoint=args.draft_endpoint,
+            timeout_seconds=args.draft_timeout_seconds,
+        )
+
+    decisions = gpt_draft.parse_decisions_response(response_payload)
+    draft_bundle = gpt_draft.build_draft_bundle(request_payload["metadata"]["labelCases"], decisions)
+    write_json(draft_output_path, draft_bundle)
+    return draft_bundle, {
+        "source": "gpt_draft_requires_human_review",
+        "path": str(draft_output_path),
+        "model": request_payload["model"],
+        "caseCount": len(draft_bundle["cases"]),
+        "clipCount": sum(len(case.get("clips", [])) for case in draft_bundle["cases"]),
+        "humanReviewRequired": True,
+    }
 
 
 def next_steps_markdown(metadata: dict[str, Any], args: argparse.Namespace) -> str:
     report_path = Path(metadata["outputDir"]) / "team_highlight_accuracy_report.json"
     eval_path = Path(metadata["outputDir"]) / "team_highlight_eval.json"
     manifest = metadata["manifest"]
+    draft_steps: list[str] = []
+    if isinstance(metadata.get("gptDraft"), dict):
+        draft = metadata["gptDraft"]
+        draft_steps = [
+            "",
+            "## GPT Draft",
+            "",
+            f"- Draft bundle: `{draft.get('path')}`",
+            f"- Model: `{draft.get('model', 'provided bundle')}`",
+            "- The draft is prefilled for speed, but every clip still needs human review before launch evidence counts.",
+        ]
     return "\n".join(
         [
             "# HoopClips Team Highlight Labeling Bundle",
@@ -130,6 +231,7 @@ def next_steps_markdown(metadata: dict[str, Any], args: argparse.Namespace) -> s
             f"- Review page: `{metadata['reviewPage']}`",
             f"- Label status: `{metadata['labelStatus']}`",
             f"- Manifest: `{manifest}`",
+            *draft_steps,
             "",
             "## Labeling Flow",
             "",
@@ -161,7 +263,8 @@ def next_steps_markdown(metadata: dict[str, Any], args: argparse.Namespace) -> s
             "## Guardrails",
             "",
             "- The review page uses local playback and cloud metadata only.",
-            "- It does not call GPT, analyze video, render video, export video, or upload video.",
+            "- It only calls GPT when `--draft-with-gpt` is explicitly used, and then sends sampled keyframes plus compact clip metadata only.",
+            "- It does not run product analysis, render video, export video, or upload video.",
             "- Do not paste secrets, R2 credentials, or presigned URLs into label files.",
             "- GPT draft labels, if imported, still require human review before launch evidence can count.",
             "",

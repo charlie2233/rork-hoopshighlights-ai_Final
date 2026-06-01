@@ -234,6 +234,11 @@ class BuildTeamHighlightEvalPayloadTests(unittest.TestCase):
         self.assertTrue(template["clips"][0]["needsLabel"])
         self.assertEqual(template["clips"][0]["predictionClipId"], "clip_made_001")
         self.assertEqual(template["clips"][0]["predicted"]["teamId"], "team_dark")
+        self.assertEqual(template["clips"][0]["predicted"]["motionScore"], 0.7)
+        self.assertEqual(template["clips"][0]["predicted"]["audioPeak"], 0.4)
+        self.assertEqual(template["clips"][0]["predicted"]["watchabilityScore"], 0.82)
+        self.assertEqual(template["clips"][0]["predicted"]["teamEvidence"]["status"], "evidence_backed")
+        self.assertTrue(template["clips"][0]["predicted"]["nativeShotSignals"]["timingWindowOk"])
 
     def test_build_payload_rejects_unfilled_label_template_rows(self) -> None:
         labels = build_label_template(

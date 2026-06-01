@@ -142,16 +142,27 @@ def label_template_row(index: int, clip: dict[str, Any]) -> dict[str, Any]:
 def predicted_summary(clip: dict[str, Any]) -> dict[str, Any]:
     team_attribution = clip.get("teamAttribution") if isinstance(clip.get("teamAttribution"), dict) else {}
     native_shot_signals = clip.get("nativeShotSignals") if isinstance(clip.get("nativeShotSignals"), dict) else {}
-    return {
+    summary = {
         "label": string_or_none(clip.get("label") or clip.get("eventType") or clip.get("basketballEvent")),
+        "eventType": string_or_none(clip.get("eventType") or clip.get("basketballEvent") or clip.get("eventFamily")),
         "keep": bool(clip.get("shouldAutoKeep") if "shouldAutoKeep" in clip else clip.get("keep", True)),
         "confidence": number_or_none(clip.get("confidence")),
+        "motionScore": number_or_none(clip.get("motionScore")),
+        "audioPeak": number_or_none(clip.get("audioPeak") or clip.get("audioScore")),
+        "watchabilityScore": number_or_none(clip.get("watchabilityScore") or clip.get("watchability") or clip.get("combinedScore")),
+        "duplicateGroup": string_or_none(clip.get("duplicateGroup")),
         "teamId": string_or_none(team_attribution.get("teamId")),
         "teamConfidence": number_or_none(team_attribution.get("confidence")),
         "teamAttributionStatus": string_or_none(clip.get("teamAttributionStatus") or team_attribution.get("status")),
         "outcome": string_or_none(clip.get("outcome") or native_shot_signals.get("outcome")),
         "eventCenter": number_or_none(clip.get("eventCenter")),
+        "nativeShotSignals": native_shot_signals or None,
     }
+    for key in ("teamEvidence", "shotResultEvidence", "shotTrackingEvidence", "qualitySignals"):
+        value = clip.get(key)
+        if isinstance(value, dict):
+            summary[key] = value
+    return {key: value for key, value in summary.items() if value is not None}
 
 
 if __name__ == "__main__":
