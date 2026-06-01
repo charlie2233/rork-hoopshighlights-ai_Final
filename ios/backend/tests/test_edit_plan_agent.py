@@ -654,6 +654,15 @@ class EditPlanAgentTests(unittest.TestCase):
                         "teamAttribution": {"teamId": "team_dark", "colorLabel": "black", "confidence": 0.94},
                     },
                     {
+                        **_clip("blank_source_match", 4.5, "Made Shot", 0.92),
+                        "teamAttribution": {
+                            "teamId": "team_dark",
+                            "colorLabel": "black",
+                            "confidence": 0.94,
+                            "source": " ",
+                        },
+                    },
+                    {
                         **_clip("provider_match", 9.0, "Made Shot", 0.91),
                         "teamAttribution": _team_attribution(
                             team_id="team_dark",
@@ -688,6 +697,7 @@ class EditPlanAgentTests(unittest.TestCase):
 
         status_by_id = {clip.id: team_attribution_status(clip, request.teamSelection) for clip in request.clips}
         self.assertEqual(status_by_id["missing_source_match"], "uncertain")
+        self.assertEqual(status_by_id["blank_source_match"], "uncertain")
         self.assertEqual(status_by_id["provider_match"], "uncertain")
         self.assertEqual(status_by_id["provider_evidence_match"], "matched")
         self.assertEqual(status_by_id["manual_match"], "matched")
@@ -701,6 +711,7 @@ class EditPlanAgentTests(unittest.TestCase):
         by_id = {clip["clipId"]: clip for clip in context["candidateClips"]}
 
         self.assertEqual(by_id["missing_source_match"]["teamEvidence"]["status"], "weak_evidence")
+        self.assertEqual(by_id["blank_source_match"]["teamEvidence"]["status"], "weak_evidence")
         self.assertEqual(by_id["provider_match"]["teamEvidence"]["status"], "weak_evidence")
         self.assertEqual(by_id["provider_evidence_match"]["teamEvidence"]["status"], "evidence_backed")
         self.assertEqual(by_id["manual_match"]["teamEvidence"]["status"], "evidence_backed")

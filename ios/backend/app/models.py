@@ -6,7 +6,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Dict, List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class APIModel(BaseModel):
@@ -49,6 +49,16 @@ class TeamOption(APIModel):
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     source: Literal["quick_scan", "provider", "manual", "unknown"] = "unknown"
 
+    @field_validator("source", mode="before")
+    @classmethod
+    def normalize_source(cls, value: object) -> object:
+        if value is None:
+            return "unknown"
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            return normalized or "unknown"
+        return value
+
 
 class ClipTeamAttribution(APIModel):
     teamId: Optional[str] = Field(default=None, min_length=1, max_length=80)
@@ -58,6 +68,16 @@ class ClipTeamAttribution(APIModel):
     source: Literal["quick_scan", "gpt_frame_review", "provider", "manual", "unknown"] = "unknown"
     evidenceFrameRefs: List[str] = Field(default_factory=list, max_length=8)
     evidenceRoleGroups: List[str] = Field(default_factory=list, max_length=3)
+
+    @field_validator("source", mode="before")
+    @classmethod
+    def normalize_source(cls, value: object) -> object:
+        if value is None:
+            return "unknown"
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            return normalized or "unknown"
+        return value
 
 
 class CreateCloudAnalysisJobRequest(APIModel):

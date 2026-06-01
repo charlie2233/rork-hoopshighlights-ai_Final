@@ -1731,10 +1731,30 @@ def _gpt_selection_quality_rules(
     target_duration = max(float(request.targetDurationSeconds), 0.0)
     defense_only = _has_defense_only_intent(request)
     defensive_candidate_count = len([clip for clip in available_unique if _is_defensive_candidate_clip(clip)])
+    selected_team_mode = bool(request.teamSelection is not None and request.teamSelection.mode == "team")
+    selected_team_render_count = 0
+    selected_team_evidence_backed_count = 0
+    selected_team_defensive_count = 0
+    selected_team_uncertain_review_count = 0
+    if selected_team_mode:
+        for clip in available_unique:
+            context = _team_defense_context(clip, request.teamSelection)
+            if context["renderEligibleForSelectedTeam"]:
+                selected_team_render_count += 1
+            if context["renderEligibleForSelectedTeam"] and context["teamEvidenceStatus"] == "evidence_backed":
+                selected_team_evidence_backed_count += 1
+            if context["selectedTeamDefensiveHighlight"]:
+                selected_team_defensive_count += 1
+            if context["reviewOnlyUncertain"]:
+                selected_team_uncertain_review_count += 1
     return {
         "targetDurationSeconds": request.targetDurationSeconds,
         "availableQualityCandidateCount": len(available_unique),
         "defensiveQualityCandidateCount": defensive_candidate_count,
+        "selectedTeamRenderCandidateCount": selected_team_render_count if selected_team_mode else None,
+        "selectedTeamEvidenceBackedCandidateCount": selected_team_evidence_backed_count if selected_team_mode else None,
+        "selectedTeamDefensiveCandidateCount": selected_team_defensive_count if selected_team_mode else None,
+        "selectedTeamUncertainReviewCandidateCount": selected_team_uncertain_review_count if selected_team_mode else None,
         "minRecommendedKeptClipCount": min_clip_count,
         "minRecommendedKeptDurationSeconds": round(min_duration, 3),
         "longTargetDuration": target_duration >= 90.0,

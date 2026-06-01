@@ -1388,6 +1388,58 @@ class TeamHighlightAccuracyEvalTests(unittest.TestCase):
         self.assertEqual(parsed["metrics"]["shotOutcomeEvidenceQuality"], 1.0)
         self.assertEqual(parsed["metrics"]["selectedTeamEvidenceQuality"], 1.0)
 
+    def test_cli_fixture_covers_selected_team_blocks_steals_and_all_teams(self) -> None:
+        fixture = Path(__file__).resolve().parent / "fixtures" / "team_highlight_accuracy_cli_fixture.json"
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "scripts.evaluate_team_highlight_accuracy",
+                str(fixture),
+                "--json",
+                "--min-cases",
+                "2",
+                "--min-clips",
+                "6",
+                "--min-selected-team-highlights",
+                "2",
+                "--min-shot-outcome-evidence-clips",
+                "2",
+                "--min-opponent-highlights",
+                "1",
+                "--min-negative-clips",
+                "1",
+                "--min-bad-window-negatives",
+                "1",
+                "--min-uncertain-review-clips",
+                "0",
+                "--min-all-teams-cases",
+                "1",
+                "--min-made-shot-outcome-evidence-clips",
+                "1",
+                "--min-missed-shot-outcome-evidence-clips",
+                "1",
+                "--min-selected-team-forced-turnovers",
+                "0",
+                "--min-selected-team-defensive-stops",
+                "0",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        parsed = json.loads(result.stdout)
+        self.assertEqual(parsed["status"], "pass")
+        self.assertEqual(parsed["metrics"]["caseCount"], 2)
+        self.assertEqual(parsed["metrics"]["clipCount"], 6)
+        self.assertEqual(parsed["metrics"]["selectedTeamBlockCount"], 1)
+        self.assertEqual(parsed["metrics"]["selectedTeamStealCount"], 1)
+        self.assertEqual(parsed["metrics"]["allTeamsCaseCount"], 1)
+        self.assertEqual(parsed["evidence"]["inputSource"], "synthetic_cli_fixture")
+
     def test_tiny_or_pre_basket_kept_clip_fails_timing_quality(self) -> None:
         report = evaluate_accuracy(
             {

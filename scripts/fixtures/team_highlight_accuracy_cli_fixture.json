@@ -1,0 +1,254 @@
+{
+  "schemaVersion": "team-highlight-eval-v1",
+  "source": "synthetic_cli_fixture",
+  "cases": [
+    {
+      "caseId": "synthetic_team_target_dark",
+      "videoId": "synthetic_video_team_001",
+      "analysisJobId": "synthetic_analysis_team_001",
+      "teamScanJobId": "synthetic_scan_team_001",
+      "teamMode": "team",
+      "selectedTeamId": "team_dark",
+      "selectedTeamColorLabel": "black",
+      "detectedTeams": [
+        {
+          "teamId": "team_dark",
+          "label": "Black jerseys",
+          "colorLabel": "black",
+          "confidence": 0.94
+        },
+        {
+          "teamId": "team_light",
+          "label": "White jerseys",
+          "colorLabel": "white",
+          "confidence": 0.91
+        }
+      ],
+      "clips": [
+        {
+          "expected": {
+            "teamId": "team_dark",
+            "isHighlight": true,
+            "eventType": "block"
+          },
+          "prediction": {
+            "keep": true,
+            "start": 8.0,
+            "end": 11.4,
+            "eventCenter": 9.4,
+            "outcome": "blocked",
+            "teamAttribution": {
+              "teamId": "team_dark",
+              "confidence": 0.94,
+              "evidenceFrameRefs": ["block_challenge", "block_outcome"],
+              "evidenceRoleGroups": ["action", "outcome"]
+            },
+            "qualitySignals": {
+              "ballPathVisible": true,
+              "rimResultVisible": true
+            },
+            "shotResultEvidence": {
+              "releaseToRimContinuity": "partial",
+              "rimResultEvidence": "blocked",
+              "outcomeConfidence": 0.88,
+              "rimEntrySequence": "blocked",
+              "ballApproachFrameRole": null,
+              "rimEntryFrameRole": null,
+              "ballBelowRimOrNetFrameRole": null,
+              "rimEntrySequenceConfidence": 0.88
+            },
+            "shotTrackingEvidence": {
+              "ballVisibleFrameRoles": ["challenge", "defenseOutcome"],
+              "rimVisibleFrameRoles": [],
+              "resultFrameRole": "defenseOutcome",
+              "ballEntersRimFrameRole": null
+            }
+          }
+        },
+        {
+          "expected": {
+            "teamId": "team_dark",
+            "isHighlight": true,
+            "eventType": "steal"
+          },
+          "prediction": {
+            "keep": true,
+            "start": 18.0,
+            "end": 21.4,
+            "eventCenter": 19.3,
+            "outcome": "steal",
+            "teamAttribution": {
+              "teamId": "team_dark",
+              "confidence": 0.93,
+              "evidenceFrameRefs": ["steal_challenge", "steal_recovery"],
+              "evidenceRoleGroups": ["action", "outcome"]
+            },
+            "qualitySignals": {
+              "setupVisible": true,
+              "eventVisible": true,
+              "outcomeVisible": true,
+              "ballPathVisible": true,
+              "playerControlVisible": true,
+              "cleanCamera": true,
+              "fullPlayContext": true,
+              "rimResultVisible": false
+            },
+            "shotResultEvidence": {
+              "releaseToRimContinuity": "missing",
+              "rimResultEvidence": "unclear",
+              "outcomeConfidence": 0.9,
+              "rimEntrySequence": "unclear",
+              "ballApproachFrameRole": null,
+              "rimEntryFrameRole": null,
+              "ballBelowRimOrNetFrameRole": null,
+              "rimEntrySequenceConfidence": 0.0
+            },
+            "shotTrackingEvidence": {
+              "ballVisibleFrameRoles": ["challenge", "possessionChange", "recovery"],
+              "rimVisibleFrameRoles": [],
+              "resultFrameRole": "recovery",
+              "ballEntersRimFrameRole": null,
+              "trajectoryContinuity": "partial"
+            }
+          }
+        },
+        {
+          "expected": {
+            "teamId": "team_light",
+            "isHighlight": true,
+            "eventType": "layup",
+            "outcome": "made"
+          },
+          "prediction": {
+            "keep": false,
+            "teamAttribution": {
+              "teamId": "team_light",
+              "confidence": 0.95
+            }
+          }
+        },
+        {
+          "expected": {
+            "teamId": "team_dark",
+            "isHighlight": false,
+            "eventType": "tiny_clip"
+          },
+          "prediction": {
+            "keep": false,
+            "teamAttribution": {
+              "teamId": "team_dark",
+              "confidence": 0.9
+            }
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "synthetic_all_teams",
+      "videoId": "synthetic_video_all_001",
+      "analysisJobId": "synthetic_analysis_all_001",
+      "teamScanJobId": "synthetic_scan_all_001",
+      "teamMode": "all",
+      "detectedTeams": [
+        {
+          "teamId": "team_dark",
+          "label": "Black jerseys",
+          "colorLabel": "black",
+          "confidence": 0.94
+        },
+        {
+          "teamId": "team_light",
+          "label": "White jerseys",
+          "colorLabel": "white",
+          "confidence": 0.91
+        }
+      ],
+      "clips": [
+        {
+          "expected": {
+            "teamId": "team_dark",
+            "isHighlight": true,
+            "eventType": "made_three",
+            "outcome": "made"
+          },
+          "prediction": {
+            "keep": true,
+            "start": 40.0,
+            "end": 44.0,
+            "eventCenter": 42.0,
+            "outcome": "made",
+            "teamAttribution": {
+              "teamId": "team_dark",
+              "confidence": 0.94,
+              "evidenceFrameRefs": ["make_release", "make_result"],
+              "evidenceRoleGroups": ["action", "outcome"]
+            },
+            "qualitySignals": {
+              "ballPathVisible": true,
+              "rimResultVisible": true
+            },
+            "shotResultEvidence": {
+              "releaseToRimContinuity": "continuous",
+              "rimResultEvidence": "made_visible",
+              "outcomeConfidence": 0.9,
+              "rimEntrySequence": "visible_entry",
+              "ballApproachFrameRole": "rimApproach",
+              "rimEntryFrameRole": "rimEntry",
+              "ballBelowRimOrNetFrameRole": "belowRim",
+              "rimEntrySequenceConfidence": 0.9
+            },
+            "shotTrackingEvidence": {
+              "ballVisibleFrameRoles": ["release", "rimApproach", "rimEntry", "belowRim"],
+              "rimVisibleFrameRoles": ["rimApproach", "rimEntry", "belowRim"],
+              "resultFrameRole": "rimEntry",
+              "ballEntersRimFrameRole": "rimEntry",
+              "trajectoryContinuity": "continuous"
+            }
+          }
+        },
+        {
+          "expected": {
+            "teamId": "team_light",
+            "isHighlight": true,
+            "eventType": "missed_jumper",
+            "outcome": "missed"
+          },
+          "prediction": {
+            "keep": true,
+            "start": 52.0,
+            "end": 56.0,
+            "eventCenter": 54.0,
+            "outcome": "missed",
+            "teamAttribution": {
+              "teamId": "team_light",
+              "confidence": 0.93,
+              "evidenceFrameRefs": ["miss_release", "miss_result"],
+              "evidenceRoleGroups": ["action", "outcome"]
+            },
+            "qualitySignals": {
+              "ballPathVisible": true,
+              "rimResultVisible": true
+            },
+            "shotResultEvidence": {
+              "releaseToRimContinuity": "continuous",
+              "rimResultEvidence": "clear_miss",
+              "outcomeConfidence": 0.86,
+              "rimEntrySequence": "visible_miss",
+              "ballApproachFrameRole": "rimApproach",
+              "rimEntryFrameRole": "rim",
+              "ballBelowRimOrNetFrameRole": null,
+              "rimEntrySequenceConfidence": 0.86
+            },
+            "shotTrackingEvidence": {
+              "ballVisibleFrameRoles": ["release", "rimApproach", "rim"],
+              "rimVisibleFrameRoles": ["rimApproach", "rim"],
+              "resultFrameRole": "rim",
+              "ballEntersRimFrameRole": null,
+              "trajectoryContinuity": "continuous"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

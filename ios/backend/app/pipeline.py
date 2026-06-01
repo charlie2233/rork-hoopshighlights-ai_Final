@@ -270,7 +270,7 @@ def _analysis_team_status(
 
 
 def _analysis_team_evidence_required(attribution: ClipTeamAttribution) -> bool:
-    source = (attribution.source or "").strip().lower()
+    source = (attribution.source or "unknown").strip().lower() or "unknown"
     return source in TEAM_EVIDENCE_REQUIRED_SOURCES
 
 
