@@ -837,6 +837,11 @@ def render_clip_card(case_index: int, case: dict[str, Any], clip: dict[str, Any]
             f'<button class="secondary-button" type="button" onclick="fillFromPrediction({case_index}, {clip_index})">Use prediction</button>',
             f'<button type="button" onclick="markReviewedAndNext({case_index}, {clip_index})">Mark reviewed + next</button>',
             "</div>",
+            '<div class="button-row quick-label-row" aria-label="Quick label actions">',
+            f'<button class="quick-label-button selected-highlight" type="button" onclick="quickLabelClip({case_index}, {clip_index}, \'selected_highlight\')">Selected highlight</button>',
+            f'<button class="quick-label-button not-highlight" type="button" onclick="quickLabelClip({case_index}, {clip_index}, \'not_highlight\')">Not highlight</button>',
+            f'<button class="quick-label-button bad-window" type="button" onclick="quickLabelClip({case_index}, {clip_index}, \'bad_window\')">Bad window</button>',
+            "</div>",
             '<div class="label-grid">',
             f'<label>Reviewed<input class="reviewed" type="checkbox" {reviewed}></label>',
             f'<label>Expected team<select class="expected-team">{team_options(case, expected_team)}</select></label>',
@@ -1088,6 +1093,21 @@ button:disabled {
   background: #30364a;
   color: #f6c95f;
 }
+.quick-label-row {
+  margin-top: -4px;
+}
+.quick-label-button {
+  background: #243047;
+}
+.quick-label-button.selected-highlight {
+  background: #13795b;
+}
+.quick-label-button.not-highlight {
+  background: #5b6475;
+}
+.quick-label-button.bad-window {
+  background: #9a3412;
+}
 .file-button {
   display: inline-flex;
   align-items: center;
@@ -1338,6 +1358,49 @@ function fillFromPrediction(caseIndex, clipIndex) {
   updateProgress();
   saveDraft();
   draftStatus("Prediction copied into this clip. Verify the video, then mark reviewed.");
+}
+
+function selectedTeamValue(casePayload, predicted) {
+  const teamMode = normalizedPredictionText(casePayload.teamMode || casePayload.labelsPayload?.teamMode);
+  const selectedTeam = casePayload.selectedTeamId || casePayload.labelsPayload?.selectedTeamId || "";
+  if (teamMode === "team" && selectedTeam) return selectedTeam;
+  return predicted.teamId || "unclear";
+}
+
+function appendQuickLabelNote(notes, message) {
+  if (!notes || notes.value.includes(message)) return;
+  notes.value = notes.value.trim() ? `${notes.value.trim()} ${message}` : message;
+}
+
+function quickLabelClip(caseIndex, clipIndex, verdict) {
+  const casePayload = reviewData.cases[caseIndex];
+  const clipPayload = casePayload?.labelsPayload?.clips?.[clipIndex];
+  const card = document.querySelector(`[data-case-index="${caseIndex}"][data-clip-index="${clipIndex}"]`);
+  if (!casePayload || !clipPayload || !card) return;
+
+  const predicted = clipPayload.predicted || {};
+  const notes = card.querySelector(".label-notes");
+  if (verdict === "selected_highlight") {
+    setSelectValue(card.querySelector(".expected-team"), selectedTeamValue(casePayload, predicted));
+    setSelectValue(card.querySelector(".expected-highlight"), "true");
+    setSelectValue(card.querySelector(".expected-event"), eventTypeFromPrediction(predicted) || "unclear");
+    setSelectValue(card.querySelector(".expected-outcome"), outcomeFromPrediction(predicted) || "unclear");
+    appendQuickLabelNote(notes, "Quick-labeled as selected-team highlight after human review.");
+  } else if (verdict === "not_highlight") {
+    setSelectValue(card.querySelector(".expected-team"), predicted.teamId || "unclear");
+    setSelectValue(card.querySelector(".expected-highlight"), "false");
+    setSelectValue(card.querySelector(".expected-event"), "boring");
+    setSelectValue(card.querySelector(".expected-outcome"), "not_highlight");
+    appendQuickLabelNote(notes, "Quick-labeled as not a highlight after human review.");
+  } else if (verdict === "bad_window") {
+    setSelectValue(card.querySelector(".expected-team"), "unclear");
+    setSelectValue(card.querySelector(".expected-highlight"), "false");
+    setSelectValue(card.querySelector(".expected-event"), "bad_window");
+    setSelectValue(card.querySelector(".expected-outcome"), "bad_window");
+    appendQuickLabelNote(notes, "Quick-labeled as bad timing window after human review.");
+  }
+
+  markReviewedAndNext(caseIndex, clipIndex);
 }
 
 function applyClipPayloadToCard(caseIndex, clipIndex, clipPayload) {
@@ -1630,7 +1693,7 @@ function handleReviewShortcut(event) {
   if (event.altKey || event.ctrlKey || event.metaKey) return;
 
   const key = String(event.key || "").toLowerCase();
-  if (!["s", "e", "f", "p", "r", "n"].includes(key)) return;
+  if (!["s", "e", "f", "p", "r", "n", "1", "2", "3"].includes(key)) return;
 
   const card = activeClipCard();
   if (!card) return;
@@ -1648,6 +1711,12 @@ function handleReviewShortcut(event) {
     markReviewedAndNext(Number(card.dataset.caseIndex), Number(card.dataset.clipIndex));
   } else if (key === "n") {
     focusNextIncomplete(Number(card.dataset.caseIndex), Number(card.dataset.clipIndex));
+  } else if (key === "1") {
+    quickLabelClip(Number(card.dataset.caseIndex), Number(card.dataset.clipIndex), "selected_highlight");
+  } else if (key === "2") {
+    quickLabelClip(Number(card.dataset.caseIndex), Number(card.dataset.clipIndex), "not_highlight");
+  } else if (key === "3") {
+    quickLabelClip(Number(card.dataset.caseIndex), Number(card.dataset.clipIndex), "bad_window");
   }
 }
 
