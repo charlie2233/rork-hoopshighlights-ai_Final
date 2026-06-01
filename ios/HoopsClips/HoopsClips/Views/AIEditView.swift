@@ -1143,6 +1143,12 @@ struct AIEditView: View {
         ]
     }
 
+    private var revisionCommandGridColumns: [GridItem] {
+        [
+            GridItem(.adaptive(minimum: dynamicTypeSize.isAccessibilitySize ? 168 : 136, maximum: 220), spacing: 8, alignment: .top)
+        ]
+    }
+
     private func aiWorkReceiptCard(_ receipt: CloudEditWorkReceipt) -> some View {
         let receiptPlanTier = receipt.planTier ?? activePolicy.planTier
         let includesBranding = (receipt.watermarkIncluded ?? activePolicy.watermarkRequired) || (receipt.outroIncluded ?? activePolicy.outroRequired)
@@ -1464,7 +1470,7 @@ struct AIEditView: View {
                 Spacer()
             }
 
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 132), spacing: 8)], spacing: 8) {
+            LazyVGrid(columns: revisionCommandGridColumns, alignment: .leading, spacing: 8) {
                 ForEach(revisionCommands) { command in
                     Button {
                         requestRevision(command)
@@ -1472,6 +1478,10 @@ struct AIEditView: View {
                         Label(command.title, systemImage: command.icon)
                             .font(.caption.bold())
                             .foregroundStyle(pendingRevisionCommand == command ? .white : AppTheme.subtleText)
+                            .multilineTextAlignment(.leading)
+                            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
+                            .minimumScaleFactor(0.84)
+                            .fixedSize(horizontal: false, vertical: true)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 10)
