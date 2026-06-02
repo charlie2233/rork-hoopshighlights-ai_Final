@@ -337,6 +337,9 @@ nonisolated struct CloudClip: Codable, Sendable {
     let visualScore: Double
     let motionScore: Double
     let combinedScore: Double
+    let audioCueType: String?
+    let audioCueConfidence: Double?
+    let audioCueTime: Double?
     let detectionMethod: String
     let shouldAutoKeep: Bool
     let shouldEnableSlowMotion: Bool
@@ -361,6 +364,9 @@ nonisolated struct CloudClip: Codable, Sendable {
             visualScore: visualScore,
             motionScore: motionScore,
             combinedScore: combinedScore,
+            audioCueType: audioCueType,
+            audioCueConfidence: audioCueConfidence,
+            audioCueTime: audioCueTime,
             isSlowMotionEnabled: shouldEnableSlowMotion,
             detectionMethod: resolvedMethod,
             nativeShotSignals: nativeShotSignals,

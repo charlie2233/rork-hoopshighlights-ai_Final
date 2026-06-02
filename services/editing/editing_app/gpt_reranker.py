@@ -886,6 +886,9 @@ def _candidate_quality_hints(clip: EditCandidateClip) -> Dict[str, Any]:
         "audioReactionCandidate": is_audio_reaction,
         "audioReactionSource": audio_reaction_source,
         "audioReactionSalienceScore": audio_reaction_salience_score(clip),
+        "audioCueType": clip.audioCueType,
+        "audioCueConfidence": clip.audioCueConfidence,
+        "audioCueTime": round(clip.audioCueTime, 3) if clip.audioCueTime is not None else None,
         "audioReactionGuidance": (
             AUDIO_REACTION_GPT_GUIDANCE
             if is_audio_reaction
@@ -1742,6 +1745,9 @@ def _build_openai_payload(
             "existingLabel": clip.label,
             "motionScore": clip.motionScore,
             "audioPeak": clip.audioPeak,
+            "audioCueType": clip.audioCueType,
+            "audioCueConfidence": clip.audioCueConfidence,
+            "audioCueTime": round(clip.audioCueTime, 3) if clip.audioCueTime is not None else None,
             "confidence": clip.confidence,
             "watchabilityScore": clip.watchability,
             "duplicateGroup": clip.duplicateGroup,
@@ -2013,6 +2019,10 @@ def _build_revision_patch_payload(
                 "label": clip.label,
                 "confidence": clip.confidence,
                 "motionScore": clip.motionScore,
+                "audioPeak": clip.audioPeak,
+                "audioCueType": clip.audioCueType,
+                "audioCueConfidence": clip.audioCueConfidence,
+                "audioCueTime": round(clip.audioCueTime, 3) if clip.audioCueTime is not None else None,
                 "watchabilityScore": clip.watchability,
                 "duplicateGroup": clip.duplicateGroup,
                 "teamAttribution": clip.teamAttribution.model_dump(mode="json") if clip.teamAttribution is not None else None,

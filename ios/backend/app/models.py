@@ -188,6 +188,9 @@ class CloudNativeShotSignals(APIModel):
     outcomeReliabilityScore: float = Field(default=0.0, ge=0.0, le=1.0)
 
 
+AudioCueType = Literal["spike", "cluster", "swell", "steady_noise", "none"]
+
+
 class CloudClip(APIModel):
     startTime: float
     endTime: float
@@ -199,6 +202,9 @@ class CloudClip(APIModel):
     visualScore: float
     motionScore: float
     combinedScore: float
+    audioCueType: Optional[AudioCueType] = None
+    audioCueConfidence: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    audioCueTime: Optional[float] = Field(default=None, ge=0.0)
     detectionMethod: str = "cloud"
     shouldAutoKeep: bool
     shouldEnableSlowMotion: bool
@@ -292,6 +298,8 @@ class CandidateWindow:
     event_context_score: float = 0.0
     audio_pop_score: float = 0.0
     audio_pop_time: Optional[float] = None
+    audio_cue_type: Optional[str] = None
+    audio_cue_confidence: float = 0.0
 
 
 @dataclass

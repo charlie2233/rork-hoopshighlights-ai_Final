@@ -34,6 +34,9 @@ def classify_window(window: CandidateWindow) -> CloudClip:
         visualScore=round(clamp(window.visual_score, 0.0, 1.0), 4),
         motionScore=round(clamp(window.motion_score, 0.0, 1.0), 4),
         combinedScore=round(combined, 4),
+        audioCueType=window.audio_cue_type,
+        audioCueConfidence=round(clamp(window.audio_cue_confidence, 0.0, 1.0), 4) if window.audio_cue_type else None,
+        audioCueTime=round(window.audio_pop_time, 3) if window.audio_pop_time is not None and window.audio_cue_type else None,
         shouldAutoKeep=confidence >= 0.62 and label not in {"Highlight", "Crowd Reaction"},
         shouldEnableSlowMotion=label in {"Dunk", "Posterize"},
     )

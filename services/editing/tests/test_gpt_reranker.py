@@ -241,6 +241,9 @@ class GPTHighlightRerankerTests(unittest.TestCase):
                 "existingLabel",
                 "motionScore",
                 "audioPeak",
+                "audioCueType",
+                "audioCueConfidence",
+                "audioCueTime",
                 "confidence",
                 "watchabilityScore",
                 "duplicateGroup",
@@ -301,6 +304,9 @@ class GPTHighlightRerankerTests(unittest.TestCase):
                     "motionScore": 0.86,
                     "watchability": 0.88,
                     "combinedScore": 0.9,
+                    "audioCueType": "cluster",
+                    "audioCueConfidence": 0.86,
+                    "audioCueTime": 45.0,
                 }
             ],
         )
@@ -321,6 +327,11 @@ class GPTHighlightRerankerTests(unittest.TestCase):
 
         self.assertTrue(compact_clip["qualityHints"]["audioReactionCandidate"])
         self.assertGreater(compact_clip["qualityHints"]["audioReactionSalienceScore"], 0.0)
+        self.assertEqual(compact_clip["audioCueType"], "cluster")
+        self.assertEqual(compact_clip["audioCueConfidence"], 0.86)
+        self.assertEqual(compact_clip["audioCueTime"], 45.0)
+        self.assertEqual(compact_clip["qualityHints"]["audioCueType"], "cluster")
+        self.assertEqual(compact_clip["qualityHints"]["audioCueConfidence"], 0.86)
         self.assertIn("recall hint", compact_clip["qualityHints"]["audioReactionGuidance"])
         self.assertEqual(
             compact_clip["qualityHints"]["audioReactionVerificationRoles"],
@@ -334,6 +345,8 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         )
         self.assertTrue(agent_clip["candidateQuality"]["audioReactionCandidate"])
         self.assertGreater(agent_clip["candidateQuality"]["audioReactionSalienceScore"], 0.0)
+        self.assertEqual(agent_clip["candidateQuality"]["audioCueType"], "cluster")
+        self.assertEqual(agent_clip["candidateQuality"]["audioCueConfidence"], 0.86)
         self.assertTrue(
             compact_input["agentTemplateCookbook"]["decisionGuidance"]["selectionContract"]["audioPopIsRecallHintOnly"]
         )
@@ -1965,6 +1978,34 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertTrue(gpt_reranker.is_audio_reaction_clip(request.clips[-1]))
         self.assertEqual(gpt_reranker.audio_reaction_source_for_clip(request.clips[-1]), "unlabeled_loud_audio_pop")
         self.assertGreater(gpt_reranker.audio_reaction_salience_score(request.clips[-1]), 0.0)
+
+    def test_gpt_uses_recognized_audio_cue_metadata_for_generic_highlight(self) -> None:
+        request = CreateEditJobRequest(
+            videoId="video_recognized_audio_cue",
+            analysisJobId="analysis_recognized_audio_cue",
+            installId="install-123",
+            sourceObjectKey="uploads/source.mp4",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="free",
+            clips=[
+                {
+                    **_labeled_clip("recognized_audio_cue", 72.0, 0.7, "Highlight"),
+                    "audioPeak": 0.8,
+                    "audioCueType": "cluster",
+                    "audioCueConfidence": 0.82,
+                    "audioCueTime": 74.25,
+                    "motionScore": 0.74,
+                    "watchability": 0.62,
+                    "excitement": 0.72,
+                    "combinedScore": 0.64,
+                },
+            ],
+        )
+
+        self.assertTrue(gpt_reranker.is_audio_reaction_clip(request.clips[0]))
+        self.assertEqual(gpt_reranker.audio_reaction_source_for_clip(request.clips[0]), "recognized_crowd_audio_cue")
+        self.assertGreater(gpt_reranker.audio_reaction_salience_score(request.clips[0]), 0.65)
 
     def test_gpt_detects_ios_audio_pop_cue_label_as_recall_hint(self) -> None:
         request = CreateEditJobRequest(

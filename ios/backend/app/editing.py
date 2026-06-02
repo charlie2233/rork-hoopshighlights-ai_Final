@@ -356,6 +356,9 @@ class EditCandidateClip(APIModel):
     watchability: float = Field(default=0.0, ge=0.0, le=1.0)
     motionScore: float = Field(default=0.0, ge=0.0, le=1.0)
     audioPeak: float = Field(default=0.0, ge=0.0, le=1.0)
+    audioCueType: Optional[Literal["spike", "cluster", "swell", "steady_noise", "none"]] = None
+    audioCueConfidence: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    audioCueTime: Optional[float] = Field(default=None, ge=0.0)
     combinedScore: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     duplicateGroup: Optional[str] = Field(default=None, max_length=80)
     nativeShotSignals: Optional[NativeShotSignals] = None
@@ -1940,6 +1943,9 @@ def _compact_agent_candidate_clip(
         "confidence": clip.confidence,
         "motionScore": clip.motionScore,
         "audioPeak": clip.audioPeak,
+        "audioCueType": clip.audioCueType,
+        "audioCueConfidence": clip.audioCueConfidence,
+        "audioCueTime": round(clip.audioCueTime, 3) if clip.audioCueTime is not None else None,
         "watchabilityScore": clip.watchability,
         "duplicateGroup": clip.duplicateGroup,
         "planningScore": clip.planning_score,
@@ -1953,6 +1959,9 @@ def _compact_agent_candidate_clip(
             "audioReactionCandidate": audio_reaction,
             "audioReactionSource": audio_reaction_source,
             "audioReactionSalienceScore": audio_reaction_salience_score(clip),
+            "audioCueType": clip.audioCueType,
+            "audioCueConfidence": clip.audioCueConfidence,
+            "audioCueTime": round(clip.audioCueTime, 3) if clip.audioCueTime is not None else None,
             "audioReactionGuidance": audio_reaction_guidance_for_clip(clip),
             "defensiveFamily": _defensive_highlight_family(clip),
             "genericFiller": is_generic_filler_clip(clip),
@@ -2650,6 +2659,13 @@ def audio_reaction_source_for_clip(clip: EditCandidateClip) -> Optional[str]:
     has_loud_pop = clip.audioPeak >= MIN_UNLABELED_AUDIO_REACTION_PEAK
     has_activity_near_pop = max(clip.motionScore, clip.watchability, clip.excitement) >= MIN_UNLABELED_AUDIO_REACTION_ACTIVITY
     has_context = clip.duration >= MIN_NON_SHOT_LIKE_CLIP_SECONDS and has_minimum_non_shot_event_context(clip)
+    recognized_cue = (
+        clip.audioCueType in {"spike", "cluster", "swell"}
+        and (clip.audioCueConfidence or 0.0) >= 0.55
+        and clip.audioPeak >= 0.72
+    )
+    if is_generic_filler_clip(clip) and recognized_cue and has_activity_near_pop and has_context:
+        return "recognized_crowd_audio_cue"
     if (
         is_generic_filler_clip(clip)
         and has_loud_pop
@@ -2694,12 +2710,15 @@ def audio_reaction_salience_score(clip: EditCandidateClip) -> float:
     activity_score = max(clip.motionScore, clip.watchability, clip.excitement)
     context_score = clip_context_quality_score(clip)
     source_bonus = 0.06 if source in {"explicit_reaction_label", "reaction_label_with_audio_energy"} else 0.0
+    cue_confidence = clip.audioCueConfidence or 0.0
+    cue_bonus = min(cue_confidence * 0.12, 0.12) if clip.audioCueType in {"spike", "cluster", "swell"} else 0.0
     score = (
         (clip.audioPeak * 0.46)
         + (activity_score * 0.20)
         + (context_score * 0.22)
         + (clip.confidence * 0.08)
         + source_bonus
+        + cue_bonus
     )
     if is_generic_filler_clip(clip) and context_score < 0.55:
         score = min(score, 0.64)

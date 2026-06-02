@@ -18,6 +18,7 @@ from app.pipeline import (
     _build_audio_reaction_candidate_windows,
     _annotate_analysis_team_status,
     _analysis_candidate_pool_limit,
+    _audio_pop_signal_for_window,
     _detect_shot_boundaries,
     _detect_audio_reaction_boundaries,
     _detected_teams_from_clips,
@@ -225,6 +226,23 @@ class PipelineQualityTests(unittest.TestCase):
         self.assertTrue(repeated)
         self.assertAlmostEqual(repeated[0].time_seconds or 0.0, isolated[0].time_seconds or 0.0, delta=0.3)
         self.assertGreater(repeated[0].score, isolated[0].score + 0.04)
+        self.assertEqual(isolated[0].cue_type, "spike")
+        self.assertEqual(repeated[0].cue_type, "cluster")
+        self.assertGreater(repeated[0].confidence, isolated[0].confidence)
+
+    def test_audio_reaction_signal_classifies_swell_and_steady_noise(self) -> None:
+        swell = [0.07] * 48
+        swell[21] = 0.78
+        swell[22] = 0.70
+        steady = [0.72] * 48
+
+        swell_signal = _audio_pop_signal_for_window(swell, 18, 26)
+        steady_signal = _audio_pop_signal_for_window(steady, 18, 26)
+
+        self.assertEqual(swell_signal.cue_type, "swell")
+        self.assertGreater(swell_signal.confidence, 0.55)
+        self.assertEqual(steady_signal.cue_type, "steady_noise")
+        self.assertEqual(steady_signal.confidence, 0.0)
 
     def test_candidate_windows_include_crowd_pop_recall_anchor_for_gpt_review(self) -> None:
         audio_profile = [0.06] * 30
@@ -1700,6 +1718,9 @@ class PipelineQualityTests(unittest.TestCase):
         self.assertGreaterEqual(top.combined_score, 0.75)
         self.assertEqual(clip.label, "Crowd Reaction")
         self.assertFalse(clip.shouldAutoKeep)
+        self.assertEqual(clip.audioCueType, "spike")
+        self.assertGreater(clip.audioCueConfidence or 0.0, 0.6)
+        self.assertAlmostEqual(clip.audioCueTime or 0.0, 15.25, delta=0.05)
 
     def test_native_candidate_audio_pop_does_not_reward_steady_loud_background(self) -> None:
         audio_profile = [0.72] * 80

@@ -830,6 +830,9 @@ final class HighlightsViewModel {
                 watchability: max(clip.visualScore, clip.motionScore),
                 motionScore: clip.motionScore,
                 audioPeak: clip.audioScore,
+                audioCueType: clip.audioCueType,
+                audioCueConfidence: clip.audioCueConfidence,
+                audioCueTime: clip.audioCueTime,
                 combinedScore: clip.combinedScore,
                 duplicateGroup: duplicateGroups[clip.id],
                 userReviewDecision: Self.cloudEditUserReviewDecision(

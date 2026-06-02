@@ -19,6 +19,9 @@ nonisolated struct Clip: Identifiable, Codable, Sendable {
     var visualScore: Double
     var motionScore: Double
     var combinedScore: Double
+    var audioCueType: String?
+    var audioCueConfidence: Double?
+    var audioCueTime: Double?
     var playbackSpeed: Double
     var isSlowMotionEnabled: Bool
     var detectionMethod: DetectionMethod
@@ -111,6 +114,9 @@ nonisolated struct Clip: Identifiable, Codable, Sendable {
         visualScore: Double = 0.0,
         motionScore: Double = 0.0,
         combinedScore: Double = 0.0,
+        audioCueType: String? = nil,
+        audioCueConfidence: Double? = nil,
+        audioCueTime: Double? = nil,
         playbackSpeed: Double = 1.0,
         isSlowMotionEnabled: Bool = false,
         detectionMethod: DetectionMethod = .heuristic,
@@ -130,6 +136,9 @@ nonisolated struct Clip: Identifiable, Codable, Sendable {
         self.visualScore = visualScore
         self.motionScore = motionScore
         self.combinedScore = combinedScore
+        self.audioCueType = audioCueType
+        self.audioCueConfidence = audioCueConfidence
+        self.audioCueTime = audioCueTime
         self.playbackSpeed = playbackSpeed
         self.isSlowMotionEnabled = isSlowMotionEnabled
         self.detectionMethod = detectionMethod
@@ -213,10 +222,16 @@ nonisolated struct Clip: Identifiable, Codable, Sendable {
 
     private var audioReactionEvidenceRow: ClipReviewEvidenceRow? {
         guard audioScore >= Self.reviewEvidenceAudioCueThreshold else { return nil }
+        let cueDetail: String
+        if let audioCueDisplayName, let audioCueConfidence {
+            cueDetail = "\(audioCueDisplayName) \(Self.percent(audioCueConfidence)); audio peak \(Self.percent(audioScore)). Check that the play outcome is visible."
+        } else {
+            cueDetail = "Audio peak \(Self.percent(audioScore)). Loud reactions can point to a highlight; check that the play outcome is visible."
+        }
         return ClipReviewEvidenceRow(
             id: "audio",
             title: "Crowd/audio cue",
-            detail: "Audio peak \(Self.percent(audioScore)). Loud reactions can point to a highlight; check that the play outcome is visible.",
+            detail: cueDetail,
             systemImage: "waveform",
             needsReview: true
         )
@@ -226,7 +241,11 @@ nonisolated struct Clip: Identifiable, Codable, Sendable {
         guard duration >= 2.0 else { return false }
         let text = "\(label) \(action.rawValue)".lowercased()
         let hasReactionLabel = Self.hasAudioReactionPhrase(text)
+        let recognizedCue = Self.isRecognizedAudioCue(audioCueType) && (audioCueConfidence ?? 0.0) >= 0.55
         let activityScore = max(visualScore, motionScore, combinedScore)
+        if recognizedCue {
+            return audioScore >= Self.reviewEvidenceAudioCueThreshold && activityScore >= Self.reviewBadgeAudioCueActivityThreshold
+        }
         if hasReactionLabel {
             return audioScore >= Self.reviewEvidenceAudioCueThreshold && activityScore >= Self.reviewBadgeAudioCueActivityThreshold
         }
@@ -259,6 +278,28 @@ nonisolated struct Clip: Identifiable, Codable, Sendable {
         let crowdMarker = text.contains("crowd")
             && ["pop", "cue", "reaction", "spike", "burst", "loud"].contains { text.contains($0) }
         return audioMarker || crowdMarker
+    }
+
+    private var audioCueDisplayName: String? {
+        switch audioCueType {
+        case "cluster":
+            return "Repeated crowd pop"
+        case "swell":
+            return "Crowd swell"
+        case "spike":
+            return "Audio spike"
+        default:
+            return nil
+        }
+    }
+
+    private static func isRecognizedAudioCue(_ cueType: String?) -> Bool {
+        switch cueType {
+        case "cluster", "swell", "spike":
+            return true
+        default:
+            return false
+        }
     }
 
     private var outcomeEvidenceRow: ClipReviewEvidenceRow? {

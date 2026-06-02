@@ -876,6 +876,9 @@ struct CloudEditCandidateClip: Codable, Sendable {
     let watchability: Double
     let motionScore: Double
     let audioPeak: Double
+    let audioCueType: String?
+    let audioCueConfidence: Double?
+    let audioCueTime: Double?
     let combinedScore: Double?
     let duplicateGroup: String?
     let userReviewDecision: String?

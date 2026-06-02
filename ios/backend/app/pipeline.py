@@ -88,6 +88,8 @@ class AudioPopSignal:
     score: float
     time_seconds: Optional[float]
     baseline: float
+    cue_type: str = "none"
+    confidence: float = 0.0
 
 
 def run_analysis(job: StoredJob, settings: Settings, source_path: Path) -> CloudAnalysisResult:
@@ -1382,7 +1384,7 @@ def _audio_pop_signal_for_window(
     ]
     sustain_mean = mean(sustain_values or [0.0])
     sustain_above_baseline = max(sustain_mean - baseline, 0.0)
-    cluster_boost = _audio_reaction_cluster_boost(audio_profile, peak_index, peak_value, baseline)
+    cluster_boost, cluster_count, cluster_mean = _audio_reaction_cluster_boost(audio_profile, peak_index, peak_value, baseline)
     loudness_gate = clamp((peak_value - 0.48) / 0.28, 0.0, 1.0)
     rise_above_window = max(peak_value - window_mean, 0.0)
     rise_above_baseline = max(peak_value - baseline, 0.0)
@@ -1400,8 +1402,31 @@ def _audio_pop_signal_for_window(
         0.0,
         1.0,
     )
+    cue_type = _classify_audio_reaction_cue(
+        peak_value=peak_value,
+        baseline=baseline,
+        rise_above_baseline=rise_above_baseline,
+        rise_from_onset=rise_from_onset,
+        sustain_above_baseline=sustain_above_baseline,
+        cluster_count=cluster_count,
+        cluster_mean=cluster_mean,
+    )
+    cue_confidence = _audio_reaction_cue_confidence(
+        cue_type=cue_type,
+        score=score,
+        peak_value=peak_value,
+        rise_above_baseline=rise_above_baseline,
+        sustain_above_baseline=sustain_above_baseline,
+        cluster_boost=cluster_boost,
+    )
     time_seconds = (peak_index + 0.5) * AUDIO_PROFILE_BUCKET_SECONDS
-    return AudioPopSignal(score=round(score, 4), time_seconds=round(time_seconds, 3), baseline=round(baseline, 4))
+    return AudioPopSignal(
+        score=round(score, 4),
+        time_seconds=round(time_seconds, 3),
+        baseline=round(baseline, 4),
+        cue_type=cue_type,
+        confidence=round(cue_confidence, 4),
+    )
 
 
 def _audio_reaction_cluster_boost(
@@ -1409,20 +1434,69 @@ def _audio_reaction_cluster_boost(
     peak_index: int,
     peak_value: float,
     baseline: float,
-) -> float:
+) -> tuple[float, int, float]:
     if peak_value < AUDIO_REACTION_CLUSTER_MIN_PEAK:
-        return 0.0
+        return 0.0, 0, 0.0
 
     cluster_start = max(0, peak_index - AUDIO_REACTION_CLUSTER_CONTEXT_BUCKETS)
     cluster_end = min(len(audio_profile), peak_index + AUDIO_REACTION_CLUSTER_CONTEXT_BUCKETS + 1)
     elevated_floor = max(0.50, baseline + AUDIO_REACTION_CLUSTER_SPIKE_MARGIN)
     elevated_values = [value for value in audio_profile[cluster_start:cluster_end] if value >= elevated_floor]
     if len(elevated_values) < 2:
-        return 0.0
+        return 0.0, len(elevated_values), mean(elevated_values or [0.0])
 
     density_score = min((len(elevated_values) - 1) / 3.0, 1.0)
     elevation_score = clamp((mean(elevated_values) - baseline) / 0.42, 0.0, 1.0)
-    return clamp((density_score * 0.20) + (elevation_score * 0.16), 0.0, 0.36)
+    return clamp((density_score * 0.20) + (elevation_score * 0.16), 0.0, 0.36), len(elevated_values), mean(elevated_values)
+
+
+def _classify_audio_reaction_cue(
+    *,
+    peak_value: float,
+    baseline: float,
+    rise_above_baseline: float,
+    rise_from_onset: float,
+    sustain_above_baseline: float,
+    cluster_count: int,
+    cluster_mean: float,
+) -> str:
+    if peak_value < 0.50:
+        return "none"
+    if rise_above_baseline < 0.10 and rise_from_onset < 0.10:
+        return "steady_noise"
+    if cluster_count >= 3 and cluster_mean >= max(0.54, baseline + 0.18):
+        return "cluster"
+    if sustain_above_baseline >= 0.12 and peak_value >= max(0.62, baseline + 0.20):
+        return "swell"
+    return "spike"
+
+
+def _audio_reaction_cue_confidence(
+    *,
+    cue_type: str,
+    score: float,
+    peak_value: float,
+    rise_above_baseline: float,
+    sustain_above_baseline: float,
+    cluster_boost: float,
+) -> float:
+    if cue_type in {"none", "steady_noise"}:
+        return 0.0
+    pattern_bonus = {
+        "spike": 0.04,
+        "swell": 0.08,
+        "cluster": 0.12,
+    }.get(cue_type, 0.0)
+    return clamp(
+        (score * 0.58)
+        + (peak_value * 0.18)
+        + (rise_above_baseline * 0.12)
+        + (sustain_above_baseline * 0.08)
+        + (cluster_boost * 0.12)
+        + pattern_bonus,
+        0.0,
+        1.0,
+    )
 
 
 def _audio_pop_context_score(pop_time_seconds: Optional[float], start_time: float, end_time: float) -> float:
@@ -1565,10 +1639,9 @@ def _build_candidate_windows(
         audio_mean = mean(slice_values)
         volatility = max(audio_score - audio_mean, 0.0)
         audio_pop_signal = _audio_pop_signal_for_window(audio_profile, bucket_start, bucket_end)
-        audio_pop_score = round(
-            audio_pop_signal.score * _audio_pop_context_score(audio_pop_signal.time_seconds, time_cursor, end_time),
-            4,
-        )
+        audio_context_score = _audio_pop_context_score(audio_pop_signal.time_seconds, time_cursor, end_time)
+        audio_pop_score = round(audio_pop_signal.score * audio_context_score, 4)
+        audio_cue_confidence = round(audio_pop_signal.confidence * audio_context_score, 4)
         center = (time_cursor + end_time) / 2.0
         center_bias = 1.0 - abs((center / max(duration_seconds, 1.0)) - 0.5) * 1.35
         shot_context_score, shot_event_time = _shot_context_score_for_window(
@@ -1623,6 +1696,8 @@ def _build_candidate_windows(
                 event_context_score=shot_context_score,
                 audio_pop_score=audio_pop_score,
                 audio_pop_time=audio_pop_signal.time_seconds,
+                audio_cue_type=audio_pop_signal.cue_type if audio_cue_confidence > 0.0 else None,
+                audio_cue_confidence=audio_cue_confidence,
             )
         )
 
@@ -1722,6 +1797,8 @@ def _build_audio_reaction_candidate_windows(
                 event_context_score=round(shot_context_score, 4),
                 audio_pop_score=round(signal.score, 4),
                 audio_pop_time=signal.time_seconds,
+                audio_cue_type=signal.cue_type if signal.confidence > 0.0 else None,
+                audio_cue_confidence=round(signal.confidence, 4),
             )
         )
 
@@ -1873,6 +1950,8 @@ def _collapse_windows(group: List[CandidateWindow], settings: Settings) -> Candi
         event_context_score=max(item.event_context_score for item in group),
         audio_pop_score=max(item.audio_pop_score for item in group),
         audio_pop_time=max(group, key=lambda item: item.audio_pop_score).audio_pop_time,
+        audio_cue_type=max(group, key=lambda item: item.audio_cue_confidence).audio_cue_type,
+        audio_cue_confidence=max(item.audio_cue_confidence for item in group),
     )
 
 
