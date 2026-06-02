@@ -21,13 +21,6 @@ private enum AIEditProInfoSheet: Identifiable {
     }
 }
 
-private struct AIEditQuickPrompt: Identifiable {
-    let id: String
-    let title: String
-    let prompt: String
-    let icon: String
-}
-
 struct AIEditView: View {
     @Bindable var viewModel: HighlightsViewModel
     let isProUser: Bool
@@ -76,38 +69,7 @@ struct AIEditView: View {
     private let cloudEditService: any CloudEditServicing
     private let proUXFlags = CloudEditProUXFlags.safeDefault
     private static let maxUserPromptCharacters = CloudEditUserPromptBuilder.maxPromptCharacters
-    private static let quickPrompts: [AIEditQuickPrompt] = [
-        AIEditQuickPrompt(
-            id: "hype",
-            title: "More hype",
-            prompt: "More hype. Prioritize clear made shots, blocks, steals, and big stops.",
-            icon: "bolt.fill"
-        ),
-        AIEditQuickPrompt(
-            id: "defense",
-            title: "Defense only",
-            prompt: "Defense only: blocks, steals, forced turnovers, stops, deflections, and loose balls.",
-            icon: "shield.lefthalf.filled"
-        ),
-        AIEditQuickPrompt(
-            id: "clear-outcomes",
-            title: "Clear outcomes",
-            prompt: "Keep clips with visible outcomes. Leave uncertain strong moments for review.",
-            icon: "scope"
-        ),
-        AIEditQuickPrompt(
-            id: "crowd-pop",
-            title: "Crowd pops",
-            prompt: "Use loud crowd pops as nearby highlight clues; keep only clear plays.",
-            icon: "waveform"
-        ),
-        AIEditQuickPrompt(
-            id: "team-recap",
-            title: "Team recap",
-            prompt: "Clean team recap: balanced players, offense, defense, and game flow.",
-            icon: "person.3.fill"
-        )
-    ]
+    private static let quickPrompts = AIEditQuickPromptLibrary.options
 
     init(
         viewModel: HighlightsViewModel,
@@ -2455,6 +2417,7 @@ struct AIEditView: View {
         let trimmed = userEditPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             userEditPrompt = quickPrompt.prompt
+            applyStructuredUserPromptIntent()
             return
         }
 
@@ -2463,6 +2426,7 @@ struct AIEditView: View {
 
         let separator = trimmed.hasSuffix(".") || trimmed.hasSuffix("!") || trimmed.hasSuffix("?") ? " " : ". "
         userEditPrompt = String((trimmed + separator + quickPrompt.prompt).prefix(Self.maxUserPromptCharacters))
+        applyStructuredUserPromptIntent()
     }
 
     private func applyStructuredUserPromptIntent() {

@@ -794,6 +794,24 @@ struct HoopsClipsTests {
         #expect(AIEditPromptCopy.heroSubtitle.count <= 90)
     }
 
+    @Test func testAIEditQuickPromptsIncludeSimpleLongReelIntent() throws {
+        let prompts = AIEditQuickPromptLibrary.options
+        let longReelPrompt = try #require(prompts.first { $0.id == "long-reel" })
+        let intent = CloudEditUserIntent.parse(longReelPrompt.prompt)
+
+        #expect(prompts.map(\.id).count == Set(prompts.map(\.id)).count)
+        #expect(prompts.allSatisfy { $0.title.count <= 14 })
+        #expect(prompts.allSatisfy { $0.prompt.count <= 100 })
+        #expect(prompts.allSatisfy { !$0.prompt.localizedCaseInsensitiveContains("thinking") })
+        #expect(prompts.allSatisfy { !$0.prompt.localizedCaseInsensitiveContains("ETA") })
+        #expect(longReelPrompt.title == "Long reel")
+        #expect(intent.durationSeconds == 270)
+        #expect(intent.preset == .personalHighlight)
+        #expect(intent.proTemplate == nil)
+        #expect(longReelPrompt.prompt.localizedCaseInsensitiveContains("defense"))
+        #expect(longReelPrompt.prompt.localizedCaseInsensitiveContains("crowd pops"))
+    }
+
     @Test func testCloudEditDefaultPromptCarriesSelectedTeamFocus() throws {
         let selection = HighlightTeamSelection(
             mode: .team,
