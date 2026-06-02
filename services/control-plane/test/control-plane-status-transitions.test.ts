@@ -1320,6 +1320,9 @@ test("legacy inference manifest preserves team and timing metadata", async () =>
             label: "Steal",
             action: "Steal",
             audioScore: 0.44,
+            audioCueType: "cluster",
+            audioCueConfidence: 0.81,
+            audioCueTime: 6.4,
             visualScore: 0.86,
             motionScore: 0.82,
             combinedScore: 0.88,
@@ -1367,6 +1370,9 @@ test("legacy inference manifest preserves team and timing metadata", async () =>
       teamSelection?: typeof teamSelection | null;
       clips: Array<{
         eventCenter?: number | null;
+        audioCueType?: string | null;
+        audioCueConfidence?: number | null;
+        audioCueTime?: number | null;
         nativeShotSignals?: {
           timingWindowOk: boolean;
           outcomeEvidenceSource?: string | null;
@@ -1384,6 +1390,9 @@ test("legacy inference manifest preserves team and timing metadata", async () =>
     "#f4f4f4",
   );
   assert.equal(finalJson.results?.clips[0]?.eventCenter, 6.25);
+  assert.equal(finalJson.results?.clips[0]?.audioCueType, "cluster");
+  assert.equal(finalJson.results?.clips[0]?.audioCueConfidence, 0.81);
+  assert.equal(finalJson.results?.clips[0]?.audioCueTime, 6.4);
   assert.equal(
     finalJson.results?.clips[0]?.nativeShotSignals?.timingWindowOk,
     true,

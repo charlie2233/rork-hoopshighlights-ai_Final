@@ -350,8 +350,10 @@ def _defensive_review_reserve_limit(max_clips: int, defensive_count: int) -> int
 def _audio_reaction_review_reserve_limit(max_clips: int, audio_reaction_count: int) -> int:
     max_clips = max(0, int(max_clips))
     audio_reaction_count = max(0, int(audio_reaction_count))
-    if max_clips < 8 or audio_reaction_count == 0:
+    if max_clips < 4 or audio_reaction_count == 0:
         return 0
+    if max_clips < 8:
+        return min(audio_reaction_count, 1)
     if max_clips >= 160:
         return min(audio_reaction_count, 10)
     if max_clips >= 80:

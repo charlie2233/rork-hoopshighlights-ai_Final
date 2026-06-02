@@ -14,6 +14,7 @@ struct SystemShareSheet: UIViewControllerRepresentable {
 
     func makeUIViewController(context: Context) -> UIActivityViewController {
         let controller = UIActivityViewController(activityItems: items, applicationActivities: nil)
+        configurePopover(for: controller)
 
         if let subject, !subject.isEmpty {
             controller.setValue(subject, forKey: "subject")
@@ -26,7 +27,17 @@ struct SystemShareSheet: UIViewControllerRepresentable {
         return controller
     }
 
-    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {
+        configurePopover(for: uiViewController)
+    }
+
+    private func configurePopover(for controller: UIActivityViewController) {
+        guard let popover = controller.popoverPresentationController else { return }
+        let bounds = controller.view.bounds
+        popover.sourceView = controller.view
+        popover.sourceRect = CGRect(x: bounds.midX, y: bounds.midY, width: 1, height: 1)
+        popover.permittedArrowDirections = []
+    }
 }
 
 private final class VideoActivityItemSource: NSObject, UIActivityItemSource {

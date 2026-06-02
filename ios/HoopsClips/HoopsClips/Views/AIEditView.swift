@@ -1267,7 +1267,7 @@ struct AIEditView: View {
                         Task { await redownloadLockerRender(render) }
                     } label: {
                         Label(
-                            isExpired ? "Expired" : (isBusy && isPreparingShare ? "Preparing Share" : "Share"),
+                            isExpired ? "Expired" : (isBusy && isPreparingShare ? "Preparing Share" : "Share / Open In"),
                             systemImage: isExpired ? "exclamationmark.triangle.fill" : "square.and.arrow.up.fill"
                         )
                             .font(.caption.bold())
@@ -1589,7 +1589,7 @@ struct AIEditView: View {
 
                 Button(action: shareRenderedVideo) {
                     fullWidthActionLabel(
-                        isPreparingShare ? "Getting Video Ready" : "Share",
+                        isPreparingShare ? "Getting Video Ready" : "Share / Open In",
                         systemImage: "square.and.arrow.up.fill",
                         verticalPadding: 12
                     )
@@ -1598,7 +1598,7 @@ struct AIEditView: View {
                 .tint(AppTheme.neonPurple)
                 .disabled(isPreparingShare)
                 .accessibilityIdentifier("export.aiEdit.shareButton")
-                .accessibilityHint("Downloads the finished video and opens the system share sheet.")
+                .accessibilityHint("Downloads the finished video and opens the system share sheet for editors, Files, Photos, and social apps.")
             }
         }
         .padding(14)

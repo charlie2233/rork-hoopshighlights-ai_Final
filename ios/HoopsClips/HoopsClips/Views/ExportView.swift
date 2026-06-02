@@ -763,7 +763,7 @@ struct ExportView: View {
                         presentShareSheet(for: exportedURL)
                     } label: {
                         exportActionLabel(
-                            title: "Share",
+                            title: "Share / Open In",
                             icon: "square.and.arrow.up.fill",
                             foreground: .white,
                             fill: AnyShapeStyle(AppTheme.purpleGradient),
@@ -774,9 +774,9 @@ struct ExportView: View {
                     .disabled(!exportAvailable)
                     .opacity(exportAvailable ? 1.0 : 0.5)
                     .sensoryFeedback(.impact(weight: .light), trigger: shareTrigger)
-                    .accessibilityLabel("Share")
+                    .accessibilityLabel("Share or open in another app")
                     .accessibilityValue(exportAvailable ? exportedURL.lastPathComponent : "Export unavailable")
-                    .accessibilityHint("Opens the system share sheet.")
+                    .accessibilityHint("Opens the system share sheet for CapCut, iMovie, Files, Photos, and social apps.")
 
                     Button {
                         saveTrigger += 1

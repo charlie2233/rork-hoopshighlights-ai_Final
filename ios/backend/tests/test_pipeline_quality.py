@@ -1157,6 +1157,35 @@ class PipelineQualityTests(unittest.TestCase):
         self.assertIn("Crowd Reaction", labels)
         self.assertNotIn("Made Shot 7", labels)
 
+    def test_review_trim_reserves_audio_reaction_candidate_for_small_review_set(self) -> None:
+        scoring = [
+            _clip(
+                start=float(index * 5),
+                end=float(index * 5 + 4),
+                label=f"Made Shot {index}",
+                combined=0.99 - (index * 0.01),
+                event_center=float(index * 5 + 2),
+                auto_keep=True,
+            )
+            for index in range(5)
+        ]
+        crowd_pop = _clip(
+            start=30.0,
+            end=34.0,
+            label="Crowd Reaction",
+            combined=0.64,
+            confidence=0.72,
+            event_center=32.0,
+            auto_keep=False,
+        ).model_copy(update={"audioScore": 0.99, "motionScore": 0.82, "visualScore": 0.46})
+
+        trimmed = _trim_analysis_clips_for_review([*scoring, crowd_pop], None, max_clips=4)
+        labels = [clip.label for clip in trimmed]
+
+        self.assertEqual(len(trimmed), 4)
+        self.assertIn("Crowd Reaction", labels)
+        self.assertNotIn("Made Shot 3", labels)
+
     def test_review_trim_reserves_multiple_audio_reactions_for_large_candidate_pool(self) -> None:
         scoring = [
             _clip(

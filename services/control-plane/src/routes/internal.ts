@@ -553,6 +553,11 @@ function normalizeManifestClip(value: InferenceManifestClipLike): CloudClip {
     shotSubtype: coerceString(value.shotSubtype) ?? null,
     outcome: normalizeOutcome(value.outcome),
     audioScore: clamp01(coerceNumber(value.audioScore) ?? 0),
+    audioCueType: normalizeAudioCueType(value.audioCueType),
+    audioCueConfidence: normalizeOptionalUnitInterval(
+      value.audioCueConfidence,
+    ),
+    audioCueTime: coerceNumber(value.audioCueTime) ?? null,
     visualScore: clamp01(coerceNumber(value.visualScore) ?? 0),
     motionScore: clamp01(coerceNumber(value.motionScore) ?? 0),
     combinedScore: clamp01(coerceNumber(value.combinedScore) ?? confidence),
@@ -632,6 +637,9 @@ type InferenceManifestClipLike = {
   shotSubtype?: unknown;
   outcome?: unknown;
   audioScore?: unknown;
+  audioCueType?: unknown;
+  audioCueConfidence?: unknown;
+  audioCueTime?: unknown;
   visualScore?: unknown;
   motionScore?: unknown;
   combinedScore?: unknown;
@@ -696,6 +704,26 @@ function normalizeOutcome(
     return value;
   }
   return null;
+}
+
+function normalizeAudioCueType(
+  value: unknown,
+): CloudClip["audioCueType"] {
+  if (
+    value === "spike" ||
+    value === "cluster" ||
+    value === "swell" ||
+    value === "steady_noise" ||
+    value === "none"
+  ) {
+    return value;
+  }
+  return null;
+}
+
+function normalizeOptionalUnitInterval(value: unknown): number | null {
+  const numberValue = coerceNumber(value);
+  return numberValue === null ? null : clamp01(numberValue);
 }
 
 function normalizeLabelScores(value: unknown): CloudClip["topLabels"] {
