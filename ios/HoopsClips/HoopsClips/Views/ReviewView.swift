@@ -252,9 +252,9 @@ struct ReviewView: View {
     private var highConfidencePendingSubtitle: String {
         let noun = highConfidencePendingCount == 1 ? "clip" : "clips"
         if selectedTeamFilterIsAvailable {
-            return "\(highConfidencePendingCount) target \(noun)"
+            return "\(highConfidencePendingCount) target team \(noun)"
         }
-        return "\(highConfidencePendingCount) \(noun)"
+        return "\(highConfidencePendingCount) strong \(noun)"
     }
 
     private var lowConfidenceKeptCount: Int {
@@ -266,6 +266,11 @@ struct ReviewView: View {
                     teamSelection: viewModel.settings.highlightTeamSelection
                 )
         }.count
+    }
+
+    private var lowConfidenceKeptSubtitle: String {
+        let noun = lowConfidenceKeptCount == 1 ? "clip" : "clips"
+        return "\(lowConfidenceKeptCount) \(noun) safe to skip"
     }
 
     private var selectedTeamFilterIsAvailable: Bool {
@@ -410,7 +415,7 @@ struct ReviewView: View {
     private var quickActionsBar: some View {
         LazyVGrid(columns: reviewActionGridColumns, spacing: 10) {
             reviewQuickActionButton(
-                title: "Keep Best",
+                title: "Keep Strong",
                 subtitle: highConfidencePendingSubtitle,
                 icon: "checkmark.seal.fill",
                 tint: AppTheme.successGreen,
@@ -422,8 +427,8 @@ struct ReviewView: View {
             }
 
             reviewQuickActionButton(
-                title: "Skip Low",
-                subtitle: "\(lowConfidenceKeptCount) safe clips",
+                title: "Skip Weak",
+                subtitle: lowConfidenceKeptSubtitle,
                 icon: "xmark.seal.fill",
                 tint: AppTheme.dangerRed,
                 isDisabled: lowConfidenceKeptCount == 0
@@ -443,7 +448,7 @@ struct ReviewView: View {
     }
 
     private var reviewActionGridColumns: [GridItem] {
-        let minimumWidth: CGFloat = dynamicTypeSize.isAccessibilitySize ? 168 : 132
+        let minimumWidth: CGFloat = dynamicTypeSize.isAccessibilitySize ? 176 : 148
         return [
             GridItem(.adaptive(minimum: minimumWidth, maximum: 260), spacing: 10, alignment: .top)
         ]
@@ -528,26 +533,31 @@ struct ReviewView: View {
                 Image(systemName: icon)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(tint)
-                    .frame(width: 28, height: 28)
+                    .frame(width: 32, height: 32)
                     .background(tint.opacity(0.12), in: .circle)
+                    .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.white)
                         .lineLimit(2)
+                        .minimumScaleFactor(0.84)
                         .fixedSize(horizontal: false, vertical: true)
                     Text(subtitle)
                         .font(.caption2.monospacedDigit())
                         .foregroundStyle(AppTheme.subtleText)
                         .lineLimit(2)
+                        .minimumScaleFactor(0.82)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+                .layoutPriority(1)
 
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 10)
+            .frame(minHeight: dynamicTypeSize.isAccessibilitySize ? 68 : 54, alignment: .leading)
             .background(
                 AppTheme.cardBg.opacity(isDisabled ? 0.35 : 0.75),
                 in: .rect(cornerRadius: 12)
@@ -739,75 +749,7 @@ struct ReviewView: View {
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
 
-            HStack(spacing: 8) {
-                Button {
-                    expandedClipID = expandedClipID == clip.id ? nil : clip.id
-                } label: {
-                    Image(systemName: "chart.bar.fill")
-                        .font(.caption)
-                        .foregroundStyle(AppTheme.subtleText)
-                        .padding(8)
-                }
-                .accessibilityLabel(expandedClipID == clip.id ? "Hide score details" : "Show score details")
-                .accessibilityValue("Combined score \(Int(clip.combinedScore * 100)) percent")
-                .accessibilityHint("Shows audio, motion, visual, and combined score breakdown.")
-
-                if clip.action == .dunk {
-                    Button {
-                        HoopsAccessibility.animate(reduceMotion: reduceMotion) {
-                            viewModel.toggleSlowMotion(clip)
-                        }
-                    } label: {
-                        Image(systemName: clip.isSlowMotionEnabled ? "tortoise.fill" : "hare.fill")
-                            .font(.caption)
-                            .foregroundStyle(clip.isSlowMotionEnabled ? AppTheme.neonPurple : AppTheme.subtleText)
-                            .padding(8)
-                            .background(
-                                clip.isSlowMotionEnabled ? AppTheme.neonPurple.opacity(0.15) : Color.clear,
-                                in: .circle
-                            )
-                    }
-                    .accessibilityLabel(clip.isSlowMotionEnabled ? "Disable slow motion" : "Enable slow motion")
-                    .accessibilityValue(clip.isSlowMotionEnabled ? "Selected" : "Not selected")
-                    .accessibilityHint("Applies slow motion to this dunk clip in the exported reel.")
-                    .hoopsSelectedState(clip.isSlowMotionEnabled)
-                }
-
-                Spacer()
-
-                Button {
-                    HoopsAccessibility.animate(reduceMotion: reduceMotion) {
-                        viewModel.toggleClip(clip)
-                        if clip.isKept {
-                            discardTrigger += 1
-                        } else {
-                            keepTrigger += 1
-                        }
-                    }
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: clip.isKept ? "xmark" : "checkmark")
-                            .font(.caption.bold())
-                        Text(clip.isKept ? "Skip" : "Keep")
-                            .font(.caption.bold())
-                    }
-                    .foregroundStyle(clip.isKept ? AppTheme.dangerRed : AppTheme.successGreen)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
-                    .background(
-                        (clip.isKept ? AppTheme.dangerRed : AppTheme.successGreen).opacity(0.15),
-                        in: .capsule
-                    )
-                }
-                .sensoryFeedback(.impact(weight: .light), trigger: keepTrigger)
-                .sensoryFeedback(.impact(weight: .light), trigger: discardTrigger)
-                .accessibilityLabel(clip.isKept ? "Skip clip" : "Keep clip")
-                .accessibilityValue(clip.isKept ? "Kept" : "Skipped")
-                .accessibilityHint("Toggles whether this clip is included in the finished video.")
-                .hoopsSelectedState(clip.isKept)
-            }
-            .padding(.horizontal, 12)
-            .padding(.bottom, 8)
+            clipCardActions(clip: clip)
         }
         .rorkCard(
             cornerRadius: 16,
@@ -816,6 +758,117 @@ struct ReviewView: View {
             glowOpacity: clip.isKept ? 0.09 : 0.04
         )
         .opacity(clip.isKept ? 1.0 : 0.6)
+    }
+
+    private func clipCardActions(clip: Clip) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) {
+                clipScoreDetailsButton(clip)
+                clipSlowMotionButton(clip)
+
+                Spacer(minLength: 8)
+
+                clipKeepSkipButton(clip)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    clipScoreDetailsButton(clip)
+                    clipSlowMotionButton(clip)
+                    Spacer(minLength: 0)
+                }
+
+                clipKeepSkipButton(clip, fillsWidth: true)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.bottom, 8)
+    }
+
+    private var clipActionIconSize: CGFloat {
+        dynamicTypeSize.isAccessibilitySize ? 48 : 40
+    }
+
+    private var clipKeepSkipMinHeight: CGFloat {
+        dynamicTypeSize.isAccessibilitySize ? 48 : 40
+    }
+
+    private func clipScoreDetailsButton(_ clip: Clip) -> some View {
+        Button {
+            expandedClipID = expandedClipID == clip.id ? nil : clip.id
+        } label: {
+            Image(systemName: "chart.bar.fill")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(AppTheme.subtleText)
+                .frame(width: clipActionIconSize, height: clipActionIconSize)
+                .background(AppTheme.cardBg.opacity(0.45), in: .circle)
+                .contentShape(Circle())
+        }
+        .accessibilityLabel(expandedClipID == clip.id ? "Hide score details" : "Show score details")
+        .accessibilityValue("Combined score \(Int(clip.combinedScore * 100)) percent")
+        .accessibilityHint("Shows audio, motion, visual, and combined score breakdown.")
+    }
+
+    @ViewBuilder
+    private func clipSlowMotionButton(_ clip: Clip) -> some View {
+        if clip.action == .dunk {
+            Button {
+                HoopsAccessibility.animate(reduceMotion: reduceMotion) {
+                    viewModel.toggleSlowMotion(clip)
+                }
+            } label: {
+                Image(systemName: clip.isSlowMotionEnabled ? "tortoise.fill" : "hare.fill")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(clip.isSlowMotionEnabled ? AppTheme.neonPurple : AppTheme.subtleText)
+                    .frame(width: clipActionIconSize, height: clipActionIconSize)
+                    .background(
+                        clip.isSlowMotionEnabled ? AppTheme.neonPurple.opacity(0.15) : AppTheme.cardBg.opacity(0.45),
+                        in: .circle
+                    )
+                    .contentShape(Circle())
+            }
+            .accessibilityLabel(clip.isSlowMotionEnabled ? "Disable slow motion" : "Enable slow motion")
+            .accessibilityValue(clip.isSlowMotionEnabled ? "Selected" : "Not selected")
+            .accessibilityHint("Applies slow motion to this dunk clip in the exported reel.")
+            .hoopsSelectedState(clip.isSlowMotionEnabled)
+        }
+    }
+
+    private func clipKeepSkipButton(_ clip: Clip, fillsWidth: Bool = false) -> some View {
+        let tint = clip.isKept ? AppTheme.dangerRed : AppTheme.successGreen
+
+        return Button {
+            HoopsAccessibility.animate(reduceMotion: reduceMotion) {
+                viewModel.toggleClip(clip)
+                if clip.isKept {
+                    discardTrigger += 1
+                } else {
+                    keepTrigger += 1
+                }
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: clip.isKept ? "xmark" : "checkmark")
+                    .font(.caption.bold())
+                    .accessibilityHidden(true)
+                Text(clip.isKept ? "Skip" : "Keep")
+                    .font(.caption.bold())
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.82)
+            }
+            .foregroundStyle(tint)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .frame(minWidth: fillsWidth ? 0 : 86, maxWidth: fillsWidth ? .infinity : nil, minHeight: clipKeepSkipMinHeight)
+            .background(tint.opacity(0.15), in: .capsule)
+            .contentShape(Capsule())
+        }
+        .sensoryFeedback(.impact(weight: .light), trigger: keepTrigger)
+        .sensoryFeedback(.impact(weight: .light), trigger: discardTrigger)
+        .accessibilityLabel(clip.isKept ? "Skip clip" : "Keep clip")
+        .accessibilityValue(clip.isKept ? "Kept" : "Skipped")
+        .accessibilityHint("Toggles whether this clip is included in the finished video.")
+        .hoopsSelectedState(clip.isKept)
     }
 
     private func clipCardHeader(_ clip: Clip) -> some View {
