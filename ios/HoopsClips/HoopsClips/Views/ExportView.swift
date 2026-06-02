@@ -763,7 +763,7 @@ struct ExportView: View {
                         presentShareSheet(for: exportedURL)
                     } label: {
                         exportActionLabel(
-                            title: "Share / Open In",
+                            title: "Share",
                             icon: "square.and.arrow.up.fill",
                             foreground: .white,
                             fill: AnyShapeStyle(AppTheme.purpleGradient),

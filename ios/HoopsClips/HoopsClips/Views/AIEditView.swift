@@ -1267,7 +1267,7 @@ struct AIEditView: View {
                         Task { await redownloadLockerRender(render) }
                     } label: {
                         Label(
-                            isExpired ? "Expired" : (isBusy && isPreparingShare ? "Preparing Share" : "Share / Open In"),
+                            isExpired ? "Expired" : (isBusy && isPreparingShare ? "Preparing" : "Share"),
                             systemImage: isExpired ? "exclamationmark.triangle.fill" : "square.and.arrow.up.fill"
                         )
                             .font(.caption.bold())
@@ -1589,7 +1589,7 @@ struct AIEditView: View {
 
                 Button(action: shareRenderedVideo) {
                     fullWidthActionLabel(
-                        isPreparingShare ? "Getting Video Ready" : "Share / Open In",
+                        isPreparingShare ? "Preparing" : "Share",
                         systemImage: "square.and.arrow.up.fill",
                         verticalPadding: 12
                     )

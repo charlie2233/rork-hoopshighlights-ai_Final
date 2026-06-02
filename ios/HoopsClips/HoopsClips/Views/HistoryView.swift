@@ -683,7 +683,7 @@ private struct HistoryProjectDetailView: View {
                 presentShareSheet(for: latestExportURL)
             } label: {
                 actionLabel(
-                    title: "Share / Open In",
+                    title: "Share",
                     subtitle: latestExportURL == nil ? HistoryProjectActionCopy.exportMissingSubtitle : HistoryProjectActionCopy.shareAvailableSubtitle,
                     icon: "square.and.arrow.up.fill",
                     tint: AppTheme.successGreen
@@ -877,7 +877,7 @@ nonisolated enum HistoryProjectActionCopy {
     static let sourceMissingSubtitle = "Source file missing"
     static let exportAvailableSubtitle = "Preview saved reel"
     static let exportMissingSubtitle = "No saved export yet"
-    static let shareAvailableSubtitle = "Editors, Files, Photos, social"
+    static let shareAvailableSubtitle = "Opens the share sheet"
     static let deleteSubtitle = "Remove saved files"
 }
 
