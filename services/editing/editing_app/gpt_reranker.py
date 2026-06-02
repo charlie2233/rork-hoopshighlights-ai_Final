@@ -979,6 +979,7 @@ def _candidate_quality_hints(clip: EditCandidateClip) -> Dict[str, Any]:
         "timingWindowOk": timing_window_ok,
         "requiresVisibleOutcome": True,
         "rejectIfOnlyBasketOrAftermath": True,
+        "actionContextGuidance": "keep_only_if_setup_event_result_visible; reject_late_fragment_post_play_dead_ball_or_reaction_only",
     }
 
 
@@ -1899,6 +1900,9 @@ def _build_openai_payload(
                     "teamTargetingRules": _team_targeting_rules(request.teamSelection),
                     "shotTrackerRules": {
                         "preferCompletePlayContext": True,
+                        "requireSetupEventResultForKeptClip": True,
+                        "rejectLateFragmentOrPostPlayOnly": True,
+                        "rejectDeadBallScoreboardHuddleOnly": True,
                         "rejectTinyClips": True,
                         "rejectPreBasketOnlyClips": True,
                         "treatLabelOnlyOutcomeEvidenceAsUnverified": True,
@@ -1986,6 +1990,8 @@ def _build_openai_payload(
             "outcome sanity, boring/duplicate rejection, concise captions, story order, and safe edit suggestions. "
             "Act like a basketball shot-tracker: for made shots, verify visible setup, release, ball path, rim/result, and aftermath. "
             "Treat outcomeEvidenceSource=label_only as unverified until the sampled frames visibly prove the result. "
+            "Prefer full action-to-result context: setup or lead-in, basketball event, visible outcome, and follow-through must be sampled for kept clips when those roles exist. "
+            "Reject late fragments, dead-ball clips, scoreboard-only/huddle-only clips, post-play-only aftermath, reaction-only clips, and clips that show only the basket or celebration without the causal play. "
             "Treat Crowd Reaction, crowd-pop, and audio-pop candidates as recall hints only; do not keep them or claim made, missed, blocked, steal, forced_turnover, or defensive_stop outcomes unless sampled keyframes visibly show the basketball event, ball/player control, and outcome. "
             "When reactionLeadIn, reactionBuild, reactionAftermath, or reactionFollowThrough roles are sampled, inspect those before/after-audio-pop frames to verify whether the loud crowd moment belongs to a real play; keep=false if the frames only show crowd noise, dead ball, scoreboard, huddles, or post-play aftermath. "
             "For made or missed shots, releaseVisible, shotArcVisible, and rimResultVisible must all be true; do not infer a make from a label or late rim-only aftermath. "
@@ -2078,6 +2084,7 @@ def _gpt_selection_quality_rules(
         "veryLongReelPolicy": "for reels near 4:30, preserve a fuller sequence of clear offense, defense, transition, and story moments instead of compressing to a short mixtape",
         "defenseOnlyPolicy": "when requested, prioritize blocks, steals, forced turnovers, defensive stops, deflections, charges, pressure, and loose-ball recoveries; use offensive makes only when defensive candidates cannot satisfy a reviewable reel",
         "audioReactionFocusPolicy": "when requested, use loud crowd/audio reaction candidates as nearby recall clues for review, but keep only clips where sampled frames show real basketball action and a visible outcome",
+        "actionContextPolicy": "prefer setup_event_result_follow_through; reject late fragments, dead balls, scoreboard or huddle only, post-play-only aftermath, and reaction-only clips",
         "overPrunePolicy": "do_not_keep_only_top_few_for_long_reels_when_more_clear_non_duplicate_candidates_exist",
         "duplicatePolicy": "reject true duplicates, but use distinct outcomes from the same game stretch when they add story value",
         "uncertainReviewPolicy": "strong uncertain selected-team clips can stay reviewable; confident opponent or unclear filler clips should not render",
