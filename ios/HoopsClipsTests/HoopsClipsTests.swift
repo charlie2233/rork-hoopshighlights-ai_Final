@@ -789,9 +789,12 @@ struct HoopsClipsTests {
         #expect(AIEditPromptCopy.placeholder.contains("NBA recap"))
         #expect(AIEditPromptCopy.placeholder.contains("4:30 reel"))
         #expect(AIEditPromptCopy.quickFocusTitle == "Tap a focus")
+        #expect(AIEditPromptCopy.clearNoteTitle == "Clear note")
         #expect(AIEditPromptCopy.title.count <= 30)
         #expect(AIEditPromptCopy.placeholder.count <= 60)
         #expect(AIEditPromptCopy.heroSubtitle.count <= 90)
+        #expect(AIEditPromptCopy.clearNoteTitle.count <= 12)
+        #expect(AIEditPromptCopy.clearNoteAccessibilityHint.count <= 80)
     }
 
     @Test func testAIEditQuickPromptsIncludeSimpleLongReelIntent() throws {

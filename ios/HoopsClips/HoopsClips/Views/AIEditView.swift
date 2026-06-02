@@ -837,12 +837,20 @@ struct AIEditView: View {
             if dynamicTypeSize.isAccessibilitySize {
                 VStack(alignment: .leading, spacing: 6) {
                     promptHeaderTitle
-                    promptCharacterCount
+                    HStack(alignment: .center, spacing: 10) {
+                        promptCharacterCount
+                        if !userEditPrompt.isEmpty {
+                            clearNoteButton
+                        }
+                    }
                 }
             } else {
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
                     promptHeaderTitle
                     Spacer(minLength: 8)
+                    if !userEditPrompt.isEmpty {
+                        clearNoteButton
+                    }
                     promptCharacterCount
                 }
             }
@@ -865,6 +873,21 @@ struct AIEditView: View {
             .lineLimit(1)
             .minimumScaleFactor(0.76)
             .accessibilityLabel("\(userEditPrompt.count) of \(Self.maxUserPromptCharacters) characters used")
+    }
+
+    private var clearNoteButton: some View {
+        Button {
+            userEditPrompt = ""
+        } label: {
+            Label(AIEditPromptCopy.clearNoteTitle, systemImage: "xmark.circle.fill")
+                .font(.caption.weight(.semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(AppTheme.warningYellow)
+        .accessibilityIdentifier("export.aiEdit.userPrompt.clear")
+        .accessibilityHint(AIEditPromptCopy.clearNoteAccessibilityHint)
     }
 
     private func optionHeader(title: String, value: String) -> some View {
