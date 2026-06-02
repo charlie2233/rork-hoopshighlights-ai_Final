@@ -719,7 +719,7 @@ struct HoopsClipsTests {
         )
         #expect(reminder?.contains("switch apps") == true)
         #expect(reminder?.contains("cloud analysis job") == true)
-        #expect(reminder?.count ?? 0 <= 100)
+        #expect(reminder?.count ?? 0 <= 82)
         #expect(reminder?.localizedCaseInsensitiveContains("thinking") == false)
         #expect(reminder?.localizedCaseInsensitiveContains("ETA") == false)
 
@@ -729,8 +729,8 @@ struct HoopsClipsTests {
             teamSelection: .allTeams
         )
         #expect(uploadDetail.contains("Keep HoopClips open during upload"))
-        #expect(uploadDetail.contains("After cloud handoff"))
-        #expect(uploadDetail.count <= 100)
+        #expect(uploadDetail.contains("After handoff"))
+        #expect(uploadDetail.count <= 82)
 
         let selectedTeamDetail = CloudAnalysisProgressCopy.detail(
             statusMessage: "Finding candidate clips",
@@ -874,17 +874,17 @@ struct HoopsClipsTests {
             )
         )
 
-        #expect(prompt.contains("Cover both teams."))
-        #expect(prompt.contains("visible makes"))
+        #expect(prompt.contains("All teams."))
+        #expect(prompt.contains("full action-to-result"))
+        #expect(prompt.contains("avoid late fragments"))
+        #expect(prompt.contains("makes"))
         #expect(prompt.contains("blocks"))
         #expect(prompt.contains("steals"))
-        #expect(prompt.contains("forced turnovers"))
-        #expect(prompt.contains("Defense counts without a make."))
-        #expect(prompt.contains("crowd/audio pops"))
-        #expect(prompt.contains("crowd/audio pops"))
-        #expect(prompt.contains("verify visible outcome"))
-        #expect(prompt.contains("verify visible outcome"))
-        #expect(prompt.contains("Reject duplicate"))
+        #expect(prompt.contains("turnovers"))
+        #expect(prompt.contains("Defense counts without makes."))
+        #expect(prompt.contains("Crowd pops/audio"))
+        #expect(prompt.contains("verify outcome"))
+        #expect(prompt.contains("Reject duplicates/dead balls."))
         #expect(prompt.count <= CloudEditUserPromptBuilder.maxPromptCharacters)
     }
 
@@ -918,6 +918,9 @@ struct HoopsClipsTests {
         #expect(intent.proTemplate == nil)
         #expect(longReelPrompt.prompt.localizedCaseInsensitiveContains("defense"))
         #expect(longReelPrompt.prompt.localizedCaseInsensitiveContains("crowd pops"))
+        let clearOutcomePrompt = try #require(prompts.first { $0.id == "clear-outcomes" })
+        #expect(clearOutcomePrompt.prompt.localizedCaseInsensitiveContains("action-to-result"))
+        #expect(clearOutcomePrompt.prompt.localizedCaseInsensitiveContains("review"))
     }
 
     @Test func testCloudEditDefaultPromptCarriesSelectedTeamFocus() throws {
@@ -937,10 +940,11 @@ struct HoopsClipsTests {
         )
         let summary = CloudEditUserPromptBuilder.defaultFocusSummary(teamSelection: selection)
 
-        #expect(prompt.hasPrefix("Focus on Dark jerseys."))
-        #expect(prompt.contains("Use selected-team matches"))
-        #expect(prompt.contains("reject confident opponents"))
-        #expect(prompt.contains("Keep unsure team clips reviewable."))
+        #expect(prompt.hasPrefix("Team: Dark jerseys."))
+        #expect(prompt.contains("Reject clear opponents"))
+        #expect(prompt.contains("keep unsure clips reviewable"))
+        #expect(prompt.contains("full action-to-result"))
+        #expect(prompt.contains("avoid late fragments"))
         #expect(summary.hasPrefix("Target: Dark jerseys."))
         #expect(summary.contains("Dark jerseys"))
         #expect(summary.contains("blocks"))
@@ -970,10 +974,10 @@ struct HoopsClipsTests {
         )
         let summary = CloudEditUserPromptBuilder.defaultFocusSummary(teamSelection: selection)
 
-        #expect(prompt.contains("Focus on Dark jerseys."))
+        #expect(prompt.contains("Team: Dark jerseys."))
         #expect(prompt.contains("Only confident team matches"))
-        #expect(prompt.contains("reject unsure team clips"))
-        #expect(!prompt.contains("Keep unsure team clips reviewable."))
+        #expect(prompt.contains("Reject clear opponents and unsure team clips."))
+        #expect(!prompt.contains("keep unsure clips reviewable"))
         #expect(summary.contains("Only confident team matches."))
         #expect(!summary.contains("Unsure team clips stay reviewable."))
         #expect(prompt.count <= CloudEditUserPromptBuilder.maxPromptCharacters)
@@ -1022,15 +1026,17 @@ struct HoopsClipsTests {
         )
 
         #expect(prompt.hasPrefix("Make it a short defense reel."))
-        #expect(prompt.contains("Cover both teams."))
-        #expect(prompt.contains("visible makes"))
+        #expect(prompt.contains("All teams."))
+        #expect(prompt.contains("full action-to-result"))
+        #expect(prompt.contains("avoid late fragments"))
+        #expect(prompt.contains("makes"))
         #expect(prompt.contains("blocks"))
         #expect(prompt.contains("steals"))
-        #expect(prompt.contains("forced turnovers"))
-        #expect(prompt.contains("Defense counts without a make."))
-        #expect(prompt.contains("crowd/audio pops"))
-        #expect(prompt.contains("verify visible outcome"))
-        #expect(prompt.contains("Reject duplicate"))
+        #expect(prompt.contains("turnovers"))
+        #expect(prompt.contains("Defense counts without makes."))
+        #expect(prompt.contains("Crowd pops/audio"))
+        #expect(prompt.contains("verify outcome"))
+        #expect(prompt.contains("Reject duplicates/dead balls."))
         #expect(prompt.count <= CloudEditUserPromptBuilder.maxPromptCharacters)
     }
 
@@ -1050,13 +1056,14 @@ struct HoopsClipsTests {
             )
         )
 
-        #expect(prompt.hasPrefix("Make this a 4:30 team reel. Focus on White jerseys."))
-        #expect(prompt.contains("reject confident opponents"))
-        #expect(prompt.contains("defensive stops"))
-        #expect(prompt.contains("Defense counts without a make."))
-        #expect(prompt.contains("crowd/audio pops"))
-        #expect(prompt.contains("verify visible outcome"))
-        #expect(prompt.contains("Keep unsure team clips reviewable."))
+        #expect(prompt.hasPrefix("Make this a 4:30 team reel. Team: White jerseys."))
+        #expect(prompt.contains("Reject clear opponents"))
+        #expect(prompt.contains("full action-to-result"))
+        #expect(prompt.contains("avoid late fragments"))
+        #expect(prompt.contains("Defense counts without makes."))
+        #expect(prompt.contains("Crowd pops/audio"))
+        #expect(prompt.contains("verify outcome"))
+        #expect(prompt.contains("keep unsure clips reviewable"))
         #expect(prompt.count <= CloudEditUserPromptBuilder.maxPromptCharacters)
     }
 
@@ -1080,12 +1087,12 @@ struct HoopsClipsTests {
         )
 
         #expect(prompt.hasPrefix("please make a polished"))
-        #expect(prompt.contains("Focus on White jerseys."))
-        #expect(prompt.contains("reject confident opponents"))
-        #expect(prompt.contains("defensive stops"))
-        #expect(prompt.contains("crowd/audio pops"))
-        #expect(prompt.contains("verify visible outcome"))
-        #expect(prompt.contains("Keep unsure team clips reviewable."))
+        #expect(prompt.contains("Team: White jerseys."))
+        #expect(prompt.contains("Reject clear opponents"))
+        #expect(prompt.contains("full action-to-result"))
+        #expect(prompt.contains("Crowd pops/audio"))
+        #expect(prompt.contains("verify outcome"))
+        #expect(prompt.contains("keep unsure clips reviewable"))
         #expect(prompt.count <= CloudEditUserPromptBuilder.maxPromptCharacters)
     }
 

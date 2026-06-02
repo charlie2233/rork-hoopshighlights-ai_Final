@@ -451,21 +451,22 @@ enum CloudEditUserPromptBuilder {
     private static func defaultAccuracyPrompt(teamSelection: HighlightTeamSelection?) -> String {
         var parts: [String] = []
         if teamSelection?.mode == .team {
-            parts.append("Focus on \(teamSelection?.displayTitle ?? "the selected team").")
-            parts.append("Use selected-team matches; reject confident opponents.")
+            parts.append("Team: \(compactFocusSummaryTeamTitle(teamSelection?.displayTitle ?? "selected team")).")
             if teamSelection?.includeUncertain == false {
-                parts.append("Only confident team matches; reject unsure team clips.")
+                parts.append("Reject clear opponents and unsure team clips.")
+                parts.append("Only confident team matches.")
             } else {
-                parts.append("Keep unsure team clips reviewable.")
+                parts.append("Reject clear opponents; keep unsure clips reviewable.")
             }
         } else {
-            parts.append("Cover both teams.")
+            parts.append("All teams.")
             parts.append("Keep uncertain clips reviewable.")
         }
-        parts.append("Use visible makes, blocks, steals, forced turnovers, defensive stops.")
-        parts.append("Defense counts without a make.")
-        parts.append("Use crowd/audio pops as clues; verify visible outcome.")
-        parts.append("Reject duplicates.")
+        parts.append("Prefer full action-to-result; avoid late fragments.")
+        parts.append("Include makes, blocks, steals, turnovers, stops.")
+        parts.append("Defense counts without makes.")
+        parts.append("Crowd pops/audio are clues; verify outcome.")
+        parts.append("Reject duplicates/dead balls.")
         return parts.joined(separator: " ")
     }
 

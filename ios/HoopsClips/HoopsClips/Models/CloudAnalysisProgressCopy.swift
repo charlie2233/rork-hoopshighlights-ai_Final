@@ -11,7 +11,7 @@ nonisolated enum CloudAnalysisProgressCopy {
         let status = statusMessage.lowercased()
 
         if status.contains("upload") {
-            return "Keep HoopClips open during upload. After cloud handoff, you can switch apps and come back for clips."
+            return "Keep HoopClips open during upload. After handoff, switch apps for clips."
         }
 
         if status.contains("team") || status.contains("jersey") {
@@ -41,7 +41,7 @@ nonisolated enum CloudAnalysisProgressCopy {
             || status.contains("audio")
             || status.contains("action") {
             if analysisMode == .cloud {
-                return "Cloud analysis keeps running after handoff. Reopen HoopClips to see the latest clips."
+                return "Cloud keeps running after handoff. Reopen HoopClips for latest clips."
             }
             return "Scoring motion, audio peaks, and basketball action."
         }
@@ -79,10 +79,10 @@ nonisolated enum CloudAnalysisProgressCopy {
             || status.contains("action")
             || status.contains("finalizing")
             || status.contains("refining") {
-            return "Safe to switch apps after upload. HoopClips keeps the cloud analysis job attached to this project."
+            return "After upload, switch apps; HoopClips keeps this cloud analysis job attached."
         }
 
-        return "After cloud handoff, you can switch apps and reopen HoopClips for real job status."
+        return "After handoff, switch apps and reopen HoopClips for real job status."
     }
 
     private static func compactTeamTitle(_ title: String) -> String {

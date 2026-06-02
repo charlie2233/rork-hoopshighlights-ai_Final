@@ -30,7 +30,7 @@ enum AIEditQuickPromptLibrary {
         AIEditQuickPrompt(
             id: "clear-outcomes",
             title: "Clear outcomes",
-            prompt: "Keep clips with visible outcomes. Leave uncertain strong moments for review.",
+            prompt: "Keep full action-to-result clips. Leave strong uncertain plays for review.",
             icon: "scope"
         ),
         AIEditQuickPrompt(
