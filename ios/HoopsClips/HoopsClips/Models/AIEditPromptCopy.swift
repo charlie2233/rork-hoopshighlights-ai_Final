@@ -17,7 +17,7 @@ enum AIEditBackgroundJobCopy {
 
         switch phase {
         case .planning:
-            return "Once you start AI Edit, you can switch apps while HoopClips works in the cloud."
+            return "Cloud source is ready. Start AI Edit, then switch apps; HoopClips keeps the cloud job attached."
         case .planReady:
             return "The plan is ready. After render starts, you can switch apps and come back for the finished video."
         case .renderRequested, .created, .queued, .rendering:

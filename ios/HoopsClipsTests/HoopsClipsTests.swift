@@ -646,9 +646,17 @@ struct HoopsClipsTests {
     @Test func testAIEditBackgroundReminderOnlyAppearsForCloudJobs() {
         #expect(AIEditBackgroundJobCopy.reminder(for: .queued, hasCloudSource: false) == nil)
 
+        let planningReminder = AIEditBackgroundJobCopy.reminder(for: .planning, hasCloudSource: true)
+        #expect(planningReminder?.contains("Start AI Edit") == true)
+        #expect(planningReminder?.contains("switch apps") == true)
+        #expect(planningReminder?.contains("cloud job") == true)
+        #expect(planningReminder?.count ?? 0 <= 100)
+
         let queuedReminder = AIEditBackgroundJobCopy.reminder(for: .queued, hasCloudSource: true)
         #expect(queuedReminder?.contains("switch apps") == true)
         #expect(queuedReminder?.contains("cloud job") == true)
+        #expect(queuedReminder?.contains("reopen the app") == true)
+        #expect(queuedReminder?.count ?? 0 <= 110)
         #expect(queuedReminder?.localizedCaseInsensitiveContains("thinking") == false)
         #expect(queuedReminder?.localizedCaseInsensitiveContains("ETA") == false)
 
