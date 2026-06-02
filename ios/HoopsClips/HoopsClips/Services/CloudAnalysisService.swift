@@ -4,6 +4,8 @@ import UniformTypeIdentifiers
 struct CloudAnalysisService {
     private static let analysisPollTimeoutSeconds: UInt64 = 8 * 60
     private static let maxPollDelaySeconds = 5
+    private static let maxVisibleProgressStageCharacters = 72
+    private static let maxVisibleBackendMessageCharacters = 96
     private let session: URLSession
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
@@ -17,12 +19,30 @@ struct CloudAnalysisService {
     }
 
     static func safeProgressStage(_ stage: String, fallback: String) -> String {
-        let trimmed = stage.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
+        safeVisibleMessage(stage, fallback: fallback, maxCharacters: maxVisibleProgressStageCharacters)
+    }
+
+    static func safeBackendMessage(_ message: String, fallback: String) -> String {
+        safeVisibleMessage(message, fallback: fallback, maxCharacters: maxVisibleBackendMessageCharacters)
+    }
+
+    private static func safeVisibleMessage(_ message: String, fallback: String, maxCharacters: Int) -> String {
+        let compact = message
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !compact.isEmpty else {
             return fallback
         }
 
-        let normalized = trimmed.lowercased()
+        let normalized = compact.lowercased()
+        if normalized.contains("retry") && normalized.contains("timed out") {
+            return "Cloud analysis is retrying."
+        }
+        if normalized.contains("timed out") || normalized.contains("timeout") || normalized.contains("request time") {
+            return "Cloud request timed out. Try again."
+        }
+
         let forbiddenMarkers = [
             "thinking",
             "eta ",
@@ -37,6 +57,13 @@ struct CloudAnalysisService {
             "uploads/",
             "renders/",
             "render_logs/",
+            "source object key",
+            "sourceobjectkey",
+            "object_key",
+            "s3://",
+            ".r2.cloudflarestorage.com",
+            "amazonaws.com",
+            "authorization",
             "r2 ",
             "bucket",
             "secret",
@@ -50,7 +77,22 @@ struct CloudAnalysisService {
             return fallback
         }
 
-        return trimmed
+        return clippedVisibleMessage(compact, maxCharacters: maxCharacters)
+    }
+
+    private static func clippedVisibleMessage(_ message: String, maxCharacters: Int) -> String {
+        guard maxCharacters > 3, message.count > maxCharacters else {
+            return message
+        }
+
+        let rawPrefixEnd = message.index(message.startIndex, offsetBy: maxCharacters - 3)
+        let rawPrefix = String(message[..<rawPrefixEnd])
+        let clippedPrefix = rawPrefix
+            .split(separator: " ")
+            .dropLast()
+            .joined(separator: " ")
+        let prefix = clippedPrefix.isEmpty ? rawPrefix.trimmingCharacters(in: .whitespacesAndNewlines) : clippedPrefix
+        return "\(prefix)..."
     }
 
     func analyzeVideo(
@@ -297,7 +339,7 @@ struct CloudAnalysisService {
             case .failed:
                 throw CloudAnalysisError.backend(
                     code: job.errorCode ?? "analysis_failed",
-                    message: job.errorMessage ?? "Analysis failed."
+                    message: Self.safeBackendMessage(job.errorMessage ?? "", fallback: "Cloud analysis failed. Try again.")
                 )
             case .expired:
                 throw CloudAnalysisError.backend(
@@ -340,7 +382,7 @@ struct CloudAnalysisService {
             }
             throw CloudAnalysisError.backend(
                 code: apiError?.errorCode ?? "http_\(http.statusCode)",
-                message: apiError?.errorMessage ?? "Analysis request failed."
+                message: Self.safeBackendMessage(apiError?.errorMessage ?? "", fallback: "Analysis request failed.")
             )
         }
 

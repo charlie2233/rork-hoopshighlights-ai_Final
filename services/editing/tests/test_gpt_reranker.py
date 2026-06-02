@@ -1316,6 +1316,43 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertIn("reactionBuild", sampled_roles)
         self.assertIn("reactionAftermath", sampled_roles)
 
+    def test_source_context_expansion_keeps_longer_pre_crowd_pop_context_for_gpt(self) -> None:
+        request = CreateEditJobRequest(
+            videoId="video_expand_delayed_audio_reaction",
+            analysisJobId="analysis_expand_delayed_audio_reaction",
+            installId="install-123",
+            sourceObjectKey="uploads/source.mp4",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="free",
+            clips=[
+                {
+                    **_clip("delayed_crowd_pop", 44.8, 0.86),
+                    "label": "Crowd Reaction",
+                    "end": 45.8,
+                    "eventCenter": 45.2,
+                    "watchability": 0.84,
+                    "motionScore": 0.82,
+                    "audioPeak": 0.99,
+                    "audioCueType": "cluster",
+                    "audioCueConfidence": 0.9,
+                    "audioCueTime": 45.2,
+                },
+            ],
+        )
+
+        expanded = expand_shot_candidate_windows_for_source_context(request, source_duration_seconds=60.0)
+        crowd_pop = expanded.clips[0]
+        sampled_roles = [role for role, _ in gpt_reranker._sample_times_for_clip(crowd_pop, 8)]
+
+        self.assertLessEqual(crowd_pop.start, 41.0)
+        self.assertGreaterEqual(crowd_pop.end, 46.8)
+        self.assertGreaterEqual(crowd_pop.eventCenter - crowd_pop.start, 4.2)
+        self.assertGreaterEqual(crowd_pop.end - crowd_pop.eventCenter, 1.6)
+        self.assertIn("reactionLeadIn", sampled_roles)
+        self.assertIn("reactionBuild", sampled_roles)
+        self.assertIn("reactionAftermath", sampled_roles)
+
     def test_source_context_expansion_leaves_weak_label_only_crowd_reaction_unchanged(self) -> None:
         request = CreateEditJobRequest(
             videoId="video_weak_audio_label",

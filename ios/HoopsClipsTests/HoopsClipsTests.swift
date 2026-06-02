@@ -586,6 +586,40 @@ struct HoopsClipsTests {
         #expect(CloudAnalysisService.safeProgressStage("", fallback: fallback) == fallback)
         #expect(CloudAnalysisService.safeProgressStage("  Scanning jersey colors  ", fallback: fallback) == "Scanning jersey colors")
         #expect(CloudAnalysisService.safeProgressStage("Finding candidate clips", fallback: fallback) == "Finding candidate clips")
+        #expect(CloudAnalysisService.safeProgressStage("Finalizing\nclips\tfrom cloud", fallback: fallback) == "Finalizing clips from cloud")
+    }
+
+    @Test func testCloudAnalysisVisibleCopyStaysShortAndReadable() {
+        let fallback = "Analyzing frames in cloud"
+        let longStage = "Analyzing frames, jerseys, sound reactions, defensive stops, transition plays, duplicate groups, and review-ready clips"
+        let safeStage = CloudAnalysisService.safeProgressStage(longStage, fallback: fallback)
+
+        #expect(safeStage.count <= 72)
+        #expect(safeStage.hasSuffix("..."))
+        #expect(!safeStage.localizedCaseInsensitiveContains("thinking"))
+        #expect(!safeStage.localizedCaseInsensitiveContains("ETA"))
+    }
+
+    @Test func testCloudAnalysisBackendMessagesAreFriendlyAndSecretSafe() {
+        let fallback = "Cloud analysis failed. Try again."
+
+        #expect(
+            CloudAnalysisService.safeBackendMessage("Request timed out while contacting upstream.", fallback: fallback)
+                == "Cloud request timed out. Try again."
+        )
+        #expect(
+            CloudAnalysisService.safeBackendMessage("Processing timed out; retry scheduled.", fallback: fallback)
+                == "Cloud analysis is retrying."
+        )
+        #expect(
+            CloudAnalysisService.safeBackendMessage("GET https://storage.example.test/uploads/job/source.mp4?x-amz-signature=abc", fallback: fallback)
+                == fallback
+        )
+
+        let longMessage = "The analysis service returned a detailed internal diagnostic that is too long for compact phone layouts and should be shortened before display"
+        let safeMessage = CloudAnalysisService.safeBackendMessage(longMessage, fallback: fallback)
+        #expect(safeMessage.count <= 96)
+        #expect(safeMessage.hasSuffix("..."))
     }
 
     @Test @MainActor func testCloudEditRequestEncodesOptionalUserPrompt() throws {

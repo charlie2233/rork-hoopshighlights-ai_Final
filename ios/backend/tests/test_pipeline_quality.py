@@ -12,6 +12,7 @@ from unittest.mock import patch
 
 from app.config import get_settings
 from app.pipeline import (
+    AudioPopSignal,
     TEAM_SELECTION_PREFILTER_MULTIPLIER,
     _analysis_team_diagnostic_counts,
     _backfill_segmented_candidate_windows,
@@ -26,6 +27,7 @@ from app.pipeline import (
     _defensive_label_family,
     _is_audio_reaction_candidate,
     _is_audio_reaction_label,
+    _is_high_salience_audio_reaction_signal,
     _is_defensive_label,
     _merge_hybrid_detection_clips,
     _native_shot_signals_for_analysis_clip,
@@ -451,6 +453,46 @@ class PipelineQualityTests(unittest.TestCase):
         self.assertGreaterEqual(reaction_window.event_context_score, 0.45)
         self.assertNotEqual(reaction_clip.label, "Crowd Reaction")
         self.assertTrue(reaction_clip.shouldAutoKeep)
+
+    def test_high_salience_crowd_pop_anchors_delayed_visual_play_for_gpt_review(self) -> None:
+        settings = SimpleNamespace(
+            min_clip_duration_seconds=2.0,
+            max_clip_duration_seconds=10.0,
+            clip_padding_seconds=0.0,
+            max_returned_clips=8,
+        )
+        audio_profile = [0.06] * 56
+        audio_profile[23] = 0.74
+        audio_profile[24] = 1.0
+        audio_profile[25] = 0.84
+
+        windows = _build_audio_reaction_candidate_windows(
+            duration_seconds=28.0,
+            audio_profile=audio_profile,
+            shot_boundaries=[6.0],
+            settings=settings,
+        )
+        reaction_window = max(windows, key=lambda window: window.audio_pop_score)
+        reaction_clip = classify_window(reaction_window)
+
+        self.assertAlmostEqual(reaction_window.audio_pop_time or 0.0, 12.25, delta=0.3)
+        self.assertAlmostEqual(reaction_window.peak_time, 6.0, delta=0.05)
+        self.assertLessEqual(reaction_window.start_time, 4.05)
+        self.assertGreaterEqual(reaction_window.end_time, 13.0)
+        self.assertGreaterEqual(reaction_window.event_context_score, 0.45)
+        self.assertNotEqual(reaction_clip.label, "Crowd Reaction")
+        self.assertTrue(reaction_clip.shouldAutoKeep)
+
+    def test_super_loud_isolated_spike_counts_as_high_salience_audio_reaction(self) -> None:
+        signal = AudioPopSignal(
+            score=0.58,
+            time_seconds=10.25,
+            baseline=0.08,
+            cue_type="spike",
+            confidence=0.70,
+        )
+
+        self.assertTrue(_is_high_salience_audio_reaction_signal(signal))
 
     def test_run_analysis_applies_quick_scan_before_selected_team_filter(self) -> None:
         native = [
