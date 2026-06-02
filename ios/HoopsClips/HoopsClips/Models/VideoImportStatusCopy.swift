@@ -1,19 +1,19 @@
 import Foundation
 
 enum VideoImportStatusCopy {
-    static let readingFromPhotos = "Reading video from Photos..."
+    static let readingFromPhotos = "Reading from Photos..."
     static let checkingDetails = "Checking video details..."
-    static let checkedSaving = "Video checked. Saving to HoopClips..."
+    static let checkedSaving = "Checked. Saving to HoopClips..."
     static let copyingSource = "Copying video into HoopClips..."
     static let readingMetadata = "Reading video details..."
     static let generatingPreview = "Building project preview..."
     static let openingProject = "Opening project..."
     static let slowReminder = "Still saving. HoopClips keeps checking automatically."
-    static let longRunningReminder = "Still saving. If iOS finished the copy, HoopClips will open it here."
-    static let statusDetail = "Large videos can take a moment. HoopClips keeps checking and opens the project when ready."
-    static let historyActionTitle = "Open History"
-    static let recoveryAlertTitle = "Open from History"
-    static let timeoutRecovery = "HoopClips is still waiting. If iOS finished the copy, open the project from History."
-    static let savedButNotVisible = "HoopClips saved the video. Open it from History if it does not appear here."
-    static let defaultFailure = "HoopClips could not read that video. Try importing it from Files or choose another clip."
+    static let longRunningReminder = "Still saving. Check History if the video finished."
+    static let statusDetail = "Keep HoopClips open while importing. Check History if it finished."
+    static let historyActionTitle = "Check History"
+    static let recoveryAlertTitle = "Check History"
+    static let timeoutRecovery = "Still waiting. Check History if the video finished saving."
+    static let savedButNotVisible = "Video saved. Check History if it is not here."
+    static let defaultFailure = "Could not read that video. Try Files or another clip."
 }

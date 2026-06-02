@@ -93,16 +93,19 @@ struct HoopsClipsTests {
         ]
 
         for message in statusMessages {
-            #expect(message.count <= 92)
+            #expect(message.count <= 72)
             #expect(!message.localizedCaseInsensitiveContains("thinking"))
             #expect(!message.localizedCaseInsensitiveContains(" ETA"))
             #expect(!message.localizedCaseInsensitiveContains("estimated time"))
         }
         #expect(VideoImportStatusCopy.slowReminder.contains("keeps checking"))
-        #expect(VideoImportStatusCopy.longRunningReminder.contains("open it here"))
-        #expect(VideoImportStatusCopy.statusDetail.contains("opens the project"))
-        #expect(VideoImportStatusCopy.historyActionTitle == "Open History")
-        #expect(VideoImportStatusCopy.recoveryAlertTitle == "Open from History")
+        #expect(VideoImportStatusCopy.longRunningReminder.contains("Check History"))
+        #expect(VideoImportStatusCopy.statusDetail.contains("Keep HoopClips open"))
+        #expect(VideoImportStatusCopy.statusDetail.contains("Check History"))
+        #expect(VideoImportStatusCopy.timeoutRecovery.contains("Check History"))
+        #expect(VideoImportStatusCopy.savedButNotVisible.contains("Check History"))
+        #expect(VideoImportStatusCopy.historyActionTitle == "Check History")
+        #expect(VideoImportStatusCopy.recoveryAlertTitle == "Check History")
     }
 
     @Test func testVideoImportPreflightAcceptsLongerFourMinuteThirtyEditSource() throws {
