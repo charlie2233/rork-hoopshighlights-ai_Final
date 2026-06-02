@@ -88,6 +88,10 @@ DEFENSIVE_CONTEXT_EXPANSION_LEAD_SECONDS = 1.6
 DEFENSIVE_CONTEXT_EXPANSION_FOLLOW_THROUGH_SECONDS = 1.2
 DEFENSIVE_CONTEXT_EXPANSION_TARGET_SECONDS = 4.5
 DEFENSIVE_CONTEXT_EXPANSION_MAX_SECONDS = 7.0
+AUDIO_REACTION_CONTEXT_EXPANSION_LEAD_SECONDS = 3.2
+AUDIO_REACTION_CONTEXT_EXPANSION_FOLLOW_THROUGH_SECONDS = 1.4
+AUDIO_REACTION_CONTEXT_EXPANSION_TARGET_SECONDS = 6.0
+AUDIO_REACTION_CONTEXT_EXPANSION_MAX_SECONDS = 8.0
 TEAM_EVIDENCE_GPT_GUIDANCE = (
     "Treat teamEvidence as authoritative for selected-team confidence: teamEvidence.status=evidence_backed means the "
     "jersey-color attribution has enough cited frame and role evidence; teamEvidence.status=weak_evidence, "
@@ -746,6 +750,8 @@ def _expand_candidate_clip_for_source_context(clip: EditCandidateClip, source_du
         return _expand_defensive_candidate_clip(clip, source_duration_seconds)
     if is_shot_like_clip(clip):
         return _expand_shot_candidate_clip(clip, source_duration_seconds)
+    if _should_expand_audio_reaction_candidate(clip):
+        return _expand_audio_reaction_candidate_clip(clip, source_duration_seconds)
     return clip
 
 
@@ -814,6 +820,56 @@ def _expand_defensive_candidate_clip(clip: EditCandidateClip, source_duration_se
             "eventCenter": round(event_center, 3),
         }
     )
+
+
+def _should_expand_audio_reaction_candidate(clip: EditCandidateClip) -> bool:
+    if audio_reaction_source_for_clip(clip) is None:
+        return False
+    if clip.audioCueTime is not None:
+        return True
+    if clip.audioCueType in {"spike", "cluster", "swell"} and (clip.audioCueConfidence or 0.0) >= 0.55:
+        return True
+    return (
+        clip.audioPeak >= 0.72
+        and max(clip.motionScore, clip.watchability, clip.excitement) >= 0.60
+    )
+
+
+def _expand_audio_reaction_candidate_clip(clip: EditCandidateClip, source_duration_seconds: float) -> EditCandidateClip:
+    source_duration = max(source_duration_seconds, clip.end)
+    event_center = _audio_reaction_context_anchor(clip, source_duration)
+    start = min(clip.start, event_center - AUDIO_REACTION_CONTEXT_EXPANSION_LEAD_SECONDS)
+    end = max(clip.end, event_center + AUDIO_REACTION_CONTEXT_EXPANSION_FOLLOW_THROUGH_SECONDS)
+
+    if end - start < AUDIO_REACTION_CONTEXT_EXPANSION_TARGET_SECONDS:
+        missing = AUDIO_REACTION_CONTEXT_EXPANSION_TARGET_SECONDS - (end - start)
+        start -= missing * 0.72
+        end += missing * 0.28
+
+    start, end = _clamp_expanded_window(start, end, source_duration)
+    if end - start > AUDIO_REACTION_CONTEXT_EXPANSION_MAX_SECONDS:
+        preferred_lead = min(
+            AUDIO_REACTION_CONTEXT_EXPANSION_MAX_SECONDS - AUDIO_REACTION_CONTEXT_EXPANSION_FOLLOW_THROUGH_SECONDS,
+            max(AUDIO_REACTION_CONTEXT_EXPANSION_LEAD_SECONDS, AUDIO_REACTION_CONTEXT_EXPANSION_MAX_SECONDS * 0.70),
+        )
+        start = event_center - preferred_lead
+        end = start + AUDIO_REACTION_CONTEXT_EXPANSION_MAX_SECONDS
+        start, end = _clamp_expanded_window(start, end, source_duration)
+
+    if end - start <= clip.duration and abs(event_center - clip.eventCenter) < 0.001:
+        return clip
+    return clip.model_copy(
+        update={
+            "start": round(start, 3),
+            "end": round(end, 3),
+            "eventCenter": round(event_center, 3),
+        }
+    )
+
+
+def _audio_reaction_context_anchor(clip: EditCandidateClip, source_duration_seconds: float) -> float:
+    cue_time = clip.audioCueTime if clip.audioCueTime is not None else clip.eventCenter
+    return min(max(cue_time, 0.0), max(source_duration_seconds, 0.001))
 
 
 def _clamp_expanded_window(start: float, end: float, source_duration_seconds: float) -> tuple[float, float]:

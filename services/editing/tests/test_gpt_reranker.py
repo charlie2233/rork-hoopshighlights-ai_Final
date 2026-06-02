@@ -1272,6 +1272,77 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertEqual([clip.id for clip in sampled], ["thin_steal"])
         self.assertIn("possessionChange", sampled_roles)
 
+    def test_source_context_expansion_salvages_loud_audio_reaction_windows_before_gpt(self) -> None:
+        request = CreateEditJobRequest(
+            videoId="video_expand_audio_reaction",
+            analysisJobId="analysis_expand_audio_reaction",
+            installId="install-123",
+            sourceObjectKey="uploads/source.mp4",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="free",
+            clips=[
+                {
+                    **_clip("thin_crowd_pop", 40.2, 0.86),
+                    "label": "Crowd Reaction",
+                    "end": 41.05,
+                    "eventCenter": 40.65,
+                    "watchability": 0.84,
+                    "motionScore": 0.82,
+                    "audioPeak": 0.93,
+                    "audioCueType": "cluster",
+                    "audioCueConfidence": 0.88,
+                    "audioCueTime": 41.2,
+                },
+            ],
+        )
+
+        expanded = expand_shot_candidate_windows_for_source_context(request, source_duration_seconds=60.0)
+        crowd_pop = expanded.clips[0]
+        hints = gpt_reranker._candidate_quality_hints(crowd_pop)
+        sampled = gpt_reranker._quality_filtered_sampled_clips(expanded.clips, max_clips=1)
+        sampled_roles = [role for role, _ in gpt_reranker._sample_times_for_clip(crowd_pop, 8)]
+
+        self.assertLess(crowd_pop.start, 40.2)
+        self.assertGreater(crowd_pop.end, 41.05)
+        self.assertAlmostEqual(crowd_pop.eventCenter, 41.2, delta=0.001)
+        self.assertGreaterEqual(crowd_pop.eventCenter - crowd_pop.start, 3.2)
+        self.assertGreaterEqual(crowd_pop.end - crowd_pop.eventCenter, 1.4)
+        self.assertTrue(hints["audioReactionCandidate"])
+        self.assertTrue(hints["timingWindowOk"])
+        self.assertEqual(hints["audioCueType"], "cluster")
+        self.assertEqual([clip.id for clip in sampled], ["thin_crowd_pop"])
+        self.assertIn("reactionLeadIn", sampled_roles)
+        self.assertIn("reactionBuild", sampled_roles)
+        self.assertIn("reactionAftermath", sampled_roles)
+
+    def test_source_context_expansion_leaves_weak_label_only_crowd_reaction_unchanged(self) -> None:
+        request = CreateEditJobRequest(
+            videoId="video_weak_audio_label",
+            analysisJobId="analysis_weak_audio_label",
+            installId="install-123",
+            sourceObjectKey="uploads/source.mp4",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="free",
+            clips=[
+                {
+                    **_clip("weak_crowd_reaction", 20.0, 0.8),
+                    "label": "Crowd Reaction",
+                    "end": 21.8,
+                    "eventCenter": 20.9,
+                    "audioPeak": 0.40,
+                },
+            ],
+        )
+
+        expanded = expand_shot_candidate_windows_for_source_context(request, source_duration_seconds=60.0)
+        weak_reaction = expanded.clips[0]
+
+        self.assertEqual(weak_reaction.start, 20.0)
+        self.assertEqual(weak_reaction.end, 21.8)
+        self.assertEqual(weak_reaction.eventCenter, 20.9)
+
     def test_blocked_shot_uses_defensive_context_and_keyframes_before_gpt(self) -> None:
         request = CreateEditJobRequest(
             videoId="video_expand_blocked_shot",
