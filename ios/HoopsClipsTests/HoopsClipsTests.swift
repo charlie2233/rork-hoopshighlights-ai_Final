@@ -919,7 +919,9 @@ struct HoopsClipsTests {
         #expect(longReelPrompt.prompt.localizedCaseInsensitiveContains("defense"))
         #expect(longReelPrompt.prompt.localizedCaseInsensitiveContains("crowd pops"))
         let clearOutcomePrompt = try #require(prompts.first { $0.id == "clear-outcomes" })
+        #expect(clearOutcomePrompt.title == "Full plays")
         #expect(clearOutcomePrompt.prompt.localizedCaseInsensitiveContains("action-to-result"))
+        #expect(clearOutcomePrompt.prompt.localizedCaseInsensitiveContains("visible outcome"))
         #expect(clearOutcomePrompt.prompt.localizedCaseInsensitiveContains("review"))
     }
 

@@ -298,6 +298,16 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertIn("defense_only", intent.structuredSummary)
         self.assertEqual(intent.tone, "hype")
 
+    def test_user_prompt_full_play_language_maps_to_clarity_focus(self) -> None:
+        intent = derive_user_prompt_intent(
+            "Full plays: action-to-result, visible outcome; avoid late fragments and dead balls.",
+            "free",
+        )
+
+        assert intent is not None
+        self.assertIn("clarity", intent.focusAreas)
+        self.assertIn("full_action_context", intent.structuredSummary)
+
     def test_user_prompt_intent_is_policy_gated_and_structured_only(self) -> None:
         free_intent = derive_user_prompt_intent("make it NBA recap 30s vertical mixtape", "free")
         pro_intent = derive_user_prompt_intent("make it NBA recap 30s vertical mixtape", "pro")

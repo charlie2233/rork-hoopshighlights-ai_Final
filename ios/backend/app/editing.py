@@ -1355,6 +1355,26 @@ def derive_user_prompt_intent(user_prompt: Optional[str], plan_tier: PlanTier = 
         tone = tone or "balanced"
         pacing = "chronological"
         structured_summary.append("clean_game_story")
+    if any(term in text for term in (
+        "clear outcome",
+        "clear outcomes",
+        "visible outcome",
+        "visible result",
+        "full play",
+        "full plays",
+        "show the play",
+        "action-to-result",
+        "action to result",
+        "setup to result",
+        "late fragment",
+        "late fragments",
+        "dead ball",
+        "dead balls",
+        "complete play",
+        "complete plays",
+    )):
+        add_unique(focus_areas, "clarity")
+        structured_summary.append("full_action_context")
     if any(term in text for term in ("shorter", "trim", "tight")):
         add_unique(style_intents, "shorter")
         pacing = pacing or "fast"

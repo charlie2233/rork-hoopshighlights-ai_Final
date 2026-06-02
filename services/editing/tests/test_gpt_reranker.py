@@ -1571,6 +1571,36 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertIn("careful review as nearby timing clues", payload["instructions"])
         self.assertNotIn("Use loud crowd pops", json.dumps(payload))
 
+    def test_payload_marks_full_play_prompt_as_structured_clarity_intent(self) -> None:
+        settings = GPTHighlightRerankerSettings.from_env()
+        request = _request().model_copy(
+            update={
+                "userPrompt": (
+                    "Full plays: action-to-result, visible outcome; "
+                    "avoid late fragments and dead balls."
+                )
+            }
+        )
+        frame = SampledFrame(
+            clip_id="c0",
+            role="start",
+            time_seconds=0.0,
+            data_url="data:image/jpeg;base64,ZmFrZQ==",
+        )
+
+        payload = _build_openai_payload(request, request.clips[:1], [frame], settings)
+        compact_input = json.loads(payload["input"][0]["content"][0]["text"])
+        intent = compact_input["userEditIntent"]
+        rules = compact_input["selectionQualityRules"]
+
+        self.assertIn("clarity", intent["focusAreas"])
+        self.assertIn("full_action_context", intent["structuredSummary"])
+        self.assertTrue(rules["clarityFocusRequested"])
+        self.assertIn("complete setup-to-result plays", payload["instructions"])
+        self.assertNotIn("Full plays", json.dumps(payload))
+        self.assertNotIn("Full plays", json.dumps(compact_input))
+        self.assertNotIn("action-to-result", json.dumps(compact_input))
+
     def test_revision_patch_payload_uses_agent_template_cookbook(self) -> None:
         settings = GPTHighlightRerankerSettings.from_env()
         request = _request("internal").model_copy(

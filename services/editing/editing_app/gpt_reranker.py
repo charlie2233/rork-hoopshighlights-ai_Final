@@ -2010,6 +2010,7 @@ def _build_openai_payload(
             "Honor userEditIntent only when it is compatible with the supplied template, plan tier, candidate clips, and safety constraints. "
             "When selectionQualityRules.defenseOnlyRequested is true, build a defense-first edit from blocks, steals, forced turnovers, defensive stops, deflections, charges, pressure, and loose-ball recoveries; include ordinary offensive makes only when there are not enough clear defensive candidates for a reviewable result. "
             "When selectionQualityRules.audioReactionFocusRequested is true, give loud crowd/audio reaction candidates careful review as nearby timing clues, but keep them only when sampled frames show real basketball action and a visible outcome. "
+            "When selectionQualityRules.clarityFocusRequested is true, strongly prefer complete setup-to-result plays and reject late fragments, reaction-only aftermath, or clips that show only a basket/result without the causal action. "
             "Honor selectionQualityRules: for long target durations, keep enough non-duplicate, clear, reviewable highlights to satisfy the recommended kept clip count and duration floor when the candidate pool supports it. "
             "For very long reels near 4:30, build a fuller edit with offense, defense, transition, and story variety; do not collapse it into a short best-of reel when clear candidates exist. "
             "Reject boring, unclear, duplicate, or unsafe clips, but do not over-prune a long reel down to only two or three clips unless the supplied candidates truly lack visible outcomes. "
@@ -2048,6 +2049,7 @@ def _gpt_selection_quality_rules(
     defense_only = _has_defense_only_intent(request)
     user_intent = derive_user_prompt_intent(request.userPrompt, request.planTier)
     audio_reaction_focus = bool(user_intent and "audio_reaction" in user_intent.focusAreas)
+    clarity_focus = bool(user_intent and "clarity" in user_intent.focusAreas)
     defensive_candidate_count = len([clip for clip in render_eligible_unique if _is_defensive_candidate_clip(clip)])
     selected_team_render_count = 0
     selected_team_evidence_backed_count = 0
@@ -2080,10 +2082,12 @@ def _gpt_selection_quality_rules(
         "veryLongTargetDuration": target_duration >= 180.0,
         "defenseOnlyRequested": defense_only,
         "audioReactionFocusRequested": audio_reaction_focus,
+        "clarityFocusRequested": clarity_focus,
         "selectionPolicy": "maximize clear highlight value while preserving enough quality clips for the requested reel length",
         "veryLongReelPolicy": "for reels near 4:30, preserve a fuller sequence of clear offense, defense, transition, and story moments instead of compressing to a short mixtape",
         "defenseOnlyPolicy": "when requested, prioritize blocks, steals, forced turnovers, defensive stops, deflections, charges, pressure, and loose-ball recoveries; use offensive makes only when defensive candidates cannot satisfy a reviewable reel",
         "audioReactionFocusPolicy": "when requested, use loud crowd/audio reaction candidates as nearby recall clues for review, but keep only clips where sampled frames show real basketball action and a visible outcome",
+        "clarityFocusPolicy": "when requested, favor complete setup-event-result-follow-through clips and reject late fragments even if the final basket or celebration is visible",
         "actionContextPolicy": "prefer setup_event_result_follow_through; reject late fragments, dead balls, scoreboard or huddle only, post-play-only aftermath, and reaction-only clips",
         "overPrunePolicy": "do_not_keep_only_top_few_for_long_reels_when_more_clear_non_duplicate_candidates_exist",
         "duplicatePolicy": "reject true duplicates, but use distinct outcomes from the same game stretch when they add story value",
