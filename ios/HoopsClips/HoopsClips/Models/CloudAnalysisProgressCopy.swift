@@ -1,6 +1,8 @@
 import Foundation
 
 nonisolated enum CloudAnalysisProgressCopy {
+    private static let maxVisibleTeamTitleCharacters = 28
+
     static func detail(
         statusMessage: String,
         analysisMode: AnalysisExecutionMode,
@@ -26,7 +28,9 @@ nonisolated enum CloudAnalysisProgressCopy {
             || status.contains("clip")
             || status.contains("highlight") {
             if analysisMode == .cloud, teamSelection.mode == .team {
-                return "Focusing on \(teamSelection.displayTitle) and keeping uncertain plays for Review."
+                let teamTitle = compactTeamTitle(teamSelection.displayTitle)
+                let separator = teamTitle.hasSuffix("...") ? " " : " and "
+                return "Focusing on \(teamTitle)\(separator)keeping uncertain plays for Review."
             }
             return "Building a high-recall clip pool from both teams for Review."
         }
@@ -79,5 +83,25 @@ nonisolated enum CloudAnalysisProgressCopy {
         }
 
         return "After cloud handoff, you can switch apps and reopen HoopClips for real job status."
+    }
+
+    private static func compactTeamTitle(_ title: String) -> String {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let visibleTitle = trimmed.isEmpty ? "selected team" : trimmed
+        guard visibleTitle.count > maxVisibleTeamTitleCharacters else {
+            return visibleTitle
+        }
+
+        let prefixLength = max(0, maxVisibleTeamTitleCharacters - 3)
+        let rawPrefix = String(visibleTitle.prefix(prefixLength))
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let wordSafePrefix: String
+        if let lastSpace = rawPrefix.lastIndex(of: " ") {
+            wordSafePrefix = String(rawPrefix[..<lastSpace])
+        } else {
+            wordSafePrefix = rawPrefix
+        }
+
+        return (wordSafePrefix.isEmpty ? rawPrefix : wordSafePrefix) + "..."
     }
 }

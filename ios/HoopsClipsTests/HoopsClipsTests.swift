@@ -689,6 +689,19 @@ struct HoopsClipsTests {
         )
         #expect(selectedTeamDetail.contains("Blue jerseys"))
         #expect(selectedTeamDetail.contains("uncertain plays"))
+
+        let longTeamDetail = CloudAnalysisProgressCopy.detail(
+            statusMessage: "Finding candidate clips",
+            analysisMode: .cloud,
+            teamSelection: HighlightTeamSelection(
+                mode: .team,
+                label: "Eastside Varsity Elite National Championship White Jerseys"
+            )
+        )
+        #expect(longTeamDetail.count <= 82)
+        #expect(longTeamDetail.contains("..."))
+        #expect(!longTeamDetail.contains("Championship"))
+        #expect(longTeamDetail.contains("uncertain plays"))
     }
 
     @Test func testCloudAnalysisBackendMessagesAreFriendlyAndSecretSafe() {
