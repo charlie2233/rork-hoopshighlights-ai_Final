@@ -263,11 +263,15 @@ final class HighlightsViewModel {
             clearPendingCloudAnalysisJob()
             settings.highlightTeamSelection = .allTeams
             settings.opponentTeamName = nil
-            let project = try await projectStore.createProjectFromImportedVideo(
-                sourceURL: url.standardizedFileURL,
-                consumeSourceAfterImport: consumeSourceAfterImport,
-                onProgress: importProgress
-            )
+            let sourceURL = url.standardizedFileURL
+            let project = try await Task.detached(priority: .userInitiated) {
+                let backgroundStore = ProjectHistoryStore()
+                return try await backgroundStore.createProjectFromImportedVideo(
+                    sourceURL: sourceURL,
+                    consumeSourceAfterImport: consumeSourceAfterImport,
+                    onProgress: importProgress
+                )
+            }.value
             try Task.checkCancellation()
             insertProject(project, makeCurrent: true)
             applyPersistedProject(project)
