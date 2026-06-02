@@ -604,6 +604,19 @@ struct HoopsClipsTests {
         #expect(CloudEditRenderState.rendered.displayLabel == "Your reel is ready")
     }
 
+    @Test func testAIEditBackgroundReminderOnlyAppearsForCloudJobs() {
+        #expect(AIEditBackgroundJobCopy.reminder(for: .queued, hasCloudSource: false) == nil)
+
+        let queuedReminder = AIEditBackgroundJobCopy.reminder(for: .queued, hasCloudSource: true)
+        #expect(queuedReminder?.contains("switch apps") == true)
+        #expect(queuedReminder?.contains("cloud job") == true)
+        #expect(queuedReminder?.localizedCaseInsensitiveContains("thinking") == false)
+        #expect(queuedReminder?.localizedCaseInsensitiveContains("ETA") == false)
+
+        let renderedReminder = AIEditBackgroundJobCopy.reminder(for: .rendered, hasCloudSource: true)
+        #expect(renderedReminder == nil)
+    }
+
     @Test func testCloudAnalysisProgressStageSanitizesFakeThinkingEtaAndSensitiveText() {
         let fallback = "Analyzing frames in cloud"
         let unsafeStages = [

@@ -1734,7 +1734,7 @@ struct VideoPlayerView: View {
         let status = viewModel.analysisService.statusMessage.lowercased()
 
         if status.contains("upload") {
-            return "Uploading the source video to the cloud before analysis starts."
+            return "Keep HoopClips open during upload. Once the cloud job starts, you can switch apps and come back for clips."
         }
 
         if status.contains("team") || status.contains("jersey") {
@@ -1742,7 +1742,7 @@ struct VideoPlayerView: View {
         }
 
         if status.contains("queued") || status.contains("waiting") {
-            return "Cloud worker is next in line; the next update appears when the job advances."
+            return "Cloud worker is next in line. You can switch apps and reopen HoopClips to refresh real job status."
         }
 
         if status.contains("candidate") || status.contains("finding") || status.contains("detecting") || status.contains("clip") || status.contains("highlight") {
@@ -1753,7 +1753,10 @@ struct VideoPlayerView: View {
         }
 
         if status.contains("frame") || status.contains("scoring") || status.contains("motion") || status.contains("audio") || status.contains("action") {
-            return "Scoring motion, audio peaks, and basketball action in the cloud."
+            if viewModel.analysisMode == .cloud {
+                return "Cloud analysis keeps running after the job starts. Reopen HoopClips to see the latest clips."
+            }
+            return "Scoring motion, audio peaks, and basketball action."
         }
 
         if status.contains("finalizing") || status.contains("refining") {
@@ -1761,7 +1764,7 @@ struct VideoPlayerView: View {
         }
 
         if viewModel.analysisMode == .cloud {
-            return "Cloud analysis is active; the next update appears when the backend advances."
+            return "Cloud analysis is active. You can switch apps and reopen HoopClips for the latest result."
         }
 
         return "Analysis is running on device because cloud mode is unavailable."

@@ -1014,6 +1014,16 @@ struct AIEditView: View {
                     .accessibilityIdentifier("export.aiEdit.activeWorkPhrase")
             }
 
+            if let backgroundJobReminderText {
+                Label(backgroundJobReminderText, systemImage: "rectangle.on.rectangle")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.86))
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 5 : 3)
+                    .minimumScaleFactor(0.84)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("export.aiEdit.backgroundReminder")
+            }
+
             if let renderStatus, let duration = renderStatus.durationSeconds {
                 Text("Rendered duration: \(Clip.formatTime(duration))")
                     .font(.caption.monospacedDigit())
@@ -2503,6 +2513,13 @@ struct AIEditView: View {
         case .cancelled:
             return "Render was cancelled."
         }
+    }
+
+    private var backgroundJobReminderText: String? {
+        AIEditBackgroundJobCopy.reminder(
+            for: phase,
+            hasCloudSource: viewModel.cloudEditSourceObjectKey != nil
+        )
     }
 
     private var activeAIWorkPhrase: String? {
