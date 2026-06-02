@@ -670,6 +670,17 @@ struct HoopsClipsTests {
         #expect(prompt.count <= CloudEditUserPromptBuilder.maxPromptCharacters)
     }
 
+    @Test func testAIEditPromptCopyStaysShortVisibleAndPlain() {
+        #expect(AIEditPromptCopy.title == "Tell HoopClips how to edit")
+        #expect(AIEditPromptCopy.placeholder.contains("defense"))
+        #expect(AIEditPromptCopy.placeholder.contains("NBA recap"))
+        #expect(AIEditPromptCopy.placeholder.contains("4:30 reel"))
+        #expect(AIEditPromptCopy.quickFocusTitle == "Tap a focus")
+        #expect(AIEditPromptCopy.title.count <= 30)
+        #expect(AIEditPromptCopy.placeholder.count <= 60)
+        #expect(AIEditPromptCopy.heroSubtitle.count <= 90)
+    }
+
     @Test func testCloudEditDefaultPromptCarriesSelectedTeamFocus() throws {
         let selection = HighlightTeamSelection(
             mode: .team,
@@ -696,7 +707,7 @@ struct HoopsClipsTests {
         #expect(summary.contains("blocks"))
         #expect(summary.contains("steals"))
         #expect(summary.contains("defensive stops"))
-        #expect(summary.contains("crowd/audio cues"))
+        #expect(summary.contains("loud crowd/audio cues"))
         #expect(summary.contains("visual proof"))
         #expect(summary.contains("Unsure team clips stay reviewable."))
         #expect(summary.count <= CloudEditUserPromptBuilder.maxFocusSummaryCharacters)
@@ -737,7 +748,7 @@ struct HoopsClipsTests {
         #expect(summary.contains("blocks"))
         #expect(summary.contains("steals"))
         #expect(summary.contains("defensive stops"))
-        #expect(summary.contains("crowd/audio cues"))
+        #expect(summary.contains("loud crowd/audio cues"))
         #expect(summary.contains("visual proof"))
         #expect(summary.contains("Uncertain clips stay reviewable."))
         #expect(summary.count <= CloudEditUserPromptBuilder.maxFocusSummaryCharacters)
@@ -756,7 +767,7 @@ struct HoopsClipsTests {
         let summary = CloudEditUserPromptBuilder.defaultFocusSummary(teamSelection: selection)
 
         #expect(summary.hasPrefix("Target: Eastside National Varsity Showcase..."))
-        #expect(summary.contains("crowd/audio cues"))
+        #expect(summary.contains("loud crowd/audio cues"))
         #expect(summary.contains("visual proof"))
         #expect(summary.count <= CloudEditUserPromptBuilder.maxFocusSummaryCharacters)
     }

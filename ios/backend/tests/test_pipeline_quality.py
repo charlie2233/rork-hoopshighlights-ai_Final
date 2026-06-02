@@ -1328,6 +1328,35 @@ class PipelineQualityTests(unittest.TestCase):
         self.assertIn("Highlight", labels)
         self.assertNotIn("Made Shot 7", labels)
 
+    def test_review_trim_reserves_super_loud_crowd_pop_with_modest_action_context(self) -> None:
+        scoring = [
+            _clip(
+                start=float(index * 5),
+                end=float(index * 5 + 4),
+                label=f"Made Shot {index}",
+                combined=0.99 - (index * 0.01),
+                event_center=float(index * 5 + 2),
+                auto_keep=True,
+            )
+            for index in range(9)
+        ]
+        super_loud_pop = _clip(
+            start=55.0,
+            end=59.0,
+            label="Highlight",
+            combined=0.50,
+            confidence=0.58,
+            event_center=57.0,
+            auto_keep=False,
+        ).model_copy(update={"audioScore": 0.99, "motionScore": 0.50, "visualScore": 0.43})
+
+        trimmed = _trim_analysis_clips_for_review([*scoring, super_loud_pop], None, max_clips=8)
+        labels = [clip.label for clip in trimmed]
+
+        self.assertTrue(_is_audio_reaction_candidate(super_loud_pop))
+        self.assertIn("Highlight", labels)
+        self.assertNotIn("Made Shot 7", labels)
+
     def test_review_trim_reserves_recognized_audio_cue_below_raw_loud_threshold(self) -> None:
         scoring = [
             _clip(

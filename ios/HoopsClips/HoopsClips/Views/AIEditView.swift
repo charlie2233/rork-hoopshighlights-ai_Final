@@ -98,7 +98,7 @@ struct AIEditView: View {
         AIEditQuickPrompt(
             id: "crowd-pop",
             title: "Crowd pops",
-            prompt: "Use loud crowd pops, bench reactions, and audio spikes as highlight clues, but only keep them when the play outcome is visible.",
+            prompt: "Use very loud crowd pops, bench reactions, and audio spikes as nearby highlight clues, but only keep them when the play outcome is visible.",
             icon: "waveform"
         ),
         AIEditQuickPrompt(
@@ -313,7 +313,7 @@ struct AIEditView: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("export.aiEdit.section")
 
-            Text("Blank works. Add a side note only if you want a specific focus.")
+            Text(AIEditPromptCopy.heroSubtitle)
                 .font(.subheadline)
                 .foregroundStyle(AppTheme.subtleText)
                 .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 3)
@@ -777,6 +777,8 @@ struct AIEditView: View {
                             .stroke(AppTheme.softBorder, lineWidth: 1)
                     }
                     .accessibilityIdentifier("export.aiEdit.userPrompt")
+                    .accessibilityLabel(AIEditPromptCopy.accessibilityLabel)
+                    .accessibilityHint(AIEditPromptCopy.accessibilityHint)
                     .onChange(of: userEditPrompt) { _, newValue in
                         if newValue.count > Self.maxUserPromptCharacters {
                             userEditPrompt = String(newValue.prefix(Self.maxUserPromptCharacters))
@@ -784,7 +786,7 @@ struct AIEditView: View {
                 }
 
                 if userEditPrompt.isEmpty {
-                    Text("Optional: defense, NBA recap, 4:30 team reel.")
+                    Text(AIEditPromptCopy.placeholder)
                         .font(.subheadline)
                         .foregroundStyle(AppTheme.subtleText)
                         .padding(.horizontal, 16)
@@ -829,7 +831,7 @@ struct AIEditView: View {
 
     private var quickPromptPicker: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Label("Quick focus", systemImage: "lightbulb.fill")
+            Label(AIEditPromptCopy.quickFocusTitle, systemImage: "lightbulb.fill")
                 .font(.caption.bold())
                 .foregroundStyle(AppTheme.warningYellow)
                 .lineLimit(2)
@@ -886,7 +888,7 @@ struct AIEditView: View {
     }
 
     private var promptHeaderTitle: some View {
-        Label("Side note (optional)", systemImage: "text.bubble.fill")
+        Label(AIEditPromptCopy.title, systemImage: "text.bubble.fill")
             .font(.headline)
             .foregroundStyle(.white)
             .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
