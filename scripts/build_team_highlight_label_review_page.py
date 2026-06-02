@@ -700,6 +700,7 @@ def render_progress_summary(payload: dict[str, Any]) -> str:
             ),
             priority_summary,
             '<p class="lede" id="draft-status">Local draft not loaded.</p>',
+            '<p class="review-position" id="review-position">Current queue position will appear here.</p>',
             "</div>",
             '<div class="button-row">',
             '<button type="button" onclick="focusNextIncomplete()">Next incomplete</button>',
@@ -1086,6 +1087,17 @@ video {
   background: #f6c95f;
   color: #171923;
 }
+.review-position {
+  display: inline-flex;
+  max-width: 100%;
+  color: #f5f7fb;
+  background: #202535;
+  border: 1px solid #3a4562;
+  border-radius: 999px;
+  padding: 7px 11px;
+  font-size: 13px;
+  font-weight: 800;
+}
 .button-row {
   display: flex;
   flex-wrap: wrap;
@@ -1190,6 +1202,7 @@ JS = r"""
 const reviewData = JSON.parse(document.getElementById("review-data").textContent);
 window.reviewData = reviewData;
 let currentPriorityFilter = "all";
+let currentFocusedCard = null;
 
 function videoElementId(videoId, angleId = "main") {
   const safe = String(videoId || "source").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -1237,6 +1250,31 @@ function draftStorageKey() {
 function draftStatus(message) {
   const status = document.getElementById("draft-status");
   if (status) status.textContent = message;
+}
+
+function completionCounts() {
+  const cards = allClipCards({ visibleOnly: false });
+  const complete = cards.filter(clipCompleteFromCard).length;
+  return { total: cards.length, complete, remaining: cards.length - complete };
+}
+
+function updateReviewPosition(card = currentFocusedCard) {
+  const row = document.getElementById("review-position");
+  if (!row) return;
+  const visibleCards = allClipCards();
+  const counts = completionCounts();
+  if (!visibleCards.length) {
+    row.textContent = `No visible clips in this filter. Overall ${counts.complete}/${counts.total} complete.`;
+    return;
+  }
+  const activeCard = card && visibleCards.includes(card)
+    ? card
+    : (visibleCards.find(candidate => !clipCompleteFromCard(candidate)) || visibleCards[0]);
+  currentFocusedCard = activeCard;
+  const visibleIndex = visibleCards.indexOf(activeCard) + 1;
+  const priority = (activeCard?.dataset?.reviewPriority || "standard_review").replace(/_/g, " ");
+  const status = clipCompleteFromCard(activeCard) ? "complete" : "needs review";
+  row.textContent = `Current ${visibleIndex}/${visibleCards.length} visible (${priority}, ${status}). Overall ${counts.complete}/${counts.total} complete.`;
 }
 
 function safeLocalStorage() {
@@ -1558,7 +1596,8 @@ function restoreDraft() {
         applyClipPayloadToCard(caseIndex, clipIndex, currentClip);
       });
     });
-    draftStatus(`Local draft restored from ${new Date(payload.savedAt).toLocaleString()}.`);
+    const counts = completionCounts();
+    draftStatus(`Local draft restored from ${new Date(payload.savedAt).toLocaleString()}: ${counts.complete}/${counts.total} complete.`);
   } catch (_error) {
     draftStatus("Saved draft ignored because it could not be read.");
   }
@@ -1582,6 +1621,7 @@ function updatePriorityFilterVisibility() {
   document.querySelectorAll(".priority-filter-button").forEach(button => {
     button.classList.toggle("active", button.dataset.priorityFilter === currentPriorityFilter);
   });
+  updateReviewPosition();
 }
 
 function setPriorityFilter(priority) {
@@ -1614,6 +1654,7 @@ function updateProgress() {
     readyButton.disabled = incomplete > 0;
     readyButton.textContent = incomplete > 0 ? `Finish ${incomplete} label${incomplete === 1 ? "" : "s"} first` : "Download launch-ready labels";
   }
+  updateReviewPosition();
 }
 
 function allClipCards(options = {}) {
@@ -1670,6 +1711,8 @@ function focusClipCard(card) {
   }
   card.scrollIntoView({ behavior: "smooth", block: "center" });
   card.focus({ preventScroll: true });
+  currentFocusedCard = card;
+  updateReviewPosition(card);
   const casePayload = reviewData.cases[Number(card.dataset.caseIndex)];
   const clipPayload = casePayload?.clips?.[Number(card.dataset.clipIndex)];
   const videos = videoElementsFor(casePayload?.videoId);
