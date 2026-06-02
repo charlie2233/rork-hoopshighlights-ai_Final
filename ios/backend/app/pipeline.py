@@ -63,8 +63,13 @@ AUDIO_REACTION_CLUSTER_MIN_PEAK = 0.56
 AUDIO_REACTION_CLUSTER_SPIKE_MARGIN = 0.16
 AUDIO_REACTION_WINDOW_LEAD_SECONDS = 3.4
 AUDIO_REACTION_WINDOW_FOLLOW_SECONDS = 1.7
+AUDIO_REACTION_HIGH_SALIENCE_WINDOW_LEAD_SECONDS = 4.4
+AUDIO_REACTION_HIGH_SALIENCE_WINDOW_FOLLOW_SECONDS = 2.2
 AUDIO_REACTION_VISUAL_EVENT_LOOKBACK_SECONDS = 4.25
+AUDIO_REACTION_HIGH_SALIENCE_VISUAL_EVENT_LOOKBACK_SECONDS = 5.75
 AUDIO_REACTION_VISUAL_EVENT_POST_POP_SECONDS = 0.9
+HIGH_SALIENCE_AUDIO_REACTION_MIN_SCORE = 0.62
+HIGH_SALIENCE_AUDIO_REACTION_MIN_CONFIDENCE = 0.74
 UNLABELED_AUDIO_REACTION_MIN_AUDIO_SCORE = 0.92
 UNLABELED_AUDIO_REACTION_MIN_ACTIVITY_SCORE = 0.58
 UNLABELED_AUDIO_REACTION_MIN_COMBINED_SCORE = 0.50
@@ -1620,15 +1625,24 @@ def _detect_audio_reaction_boundaries(audio_profile: Sequence[float]) -> List[Au
 def _visual_event_anchor_before_audio_reaction(
     pop_time_seconds: float,
     shot_boundaries: Sequence[float],
+    lookback_seconds: float = AUDIO_REACTION_VISUAL_EVENT_LOOKBACK_SECONDS,
 ) -> Optional[float]:
     candidates = [
         boundary
         for boundary in shot_boundaries
-        if 0.0 <= pop_time_seconds - boundary <= AUDIO_REACTION_VISUAL_EVENT_LOOKBACK_SECONDS
+        if 0.0 <= pop_time_seconds - boundary <= lookback_seconds
     ]
     if not candidates:
         return None
     return max(candidates)
+
+
+def _is_high_salience_audio_reaction_signal(signal: AudioPopSignal) -> bool:
+    if signal.score >= HIGH_SALIENCE_AUDIO_REACTION_MIN_SCORE:
+        return True
+    if signal.confidence >= HIGH_SALIENCE_AUDIO_REACTION_MIN_CONFIDENCE:
+        return True
+    return signal.cue_type in {"cluster", "swell"} and signal.confidence >= 0.68
 
 
 def _extract_audio_profile(path: Path, duration_seconds: float) -> List[float]:
@@ -1804,7 +1818,27 @@ def _build_audio_reaction_candidate_windows(
             continue
 
         event_time = clamp(signal.time_seconds, 0.0, duration_seconds)
-        visual_event_anchor = _visual_event_anchor_before_audio_reaction(event_time, shot_boundaries)
+        high_salience_signal = _is_high_salience_audio_reaction_signal(signal)
+        lookback_seconds = (
+            AUDIO_REACTION_HIGH_SALIENCE_VISUAL_EVENT_LOOKBACK_SECONDS
+            if high_salience_signal
+            else AUDIO_REACTION_VISUAL_EVENT_LOOKBACK_SECONDS
+        )
+        lead_seconds = (
+            AUDIO_REACTION_HIGH_SALIENCE_WINDOW_LEAD_SECONDS
+            if high_salience_signal
+            else AUDIO_REACTION_WINDOW_LEAD_SECONDS
+        )
+        follow_seconds = (
+            AUDIO_REACTION_HIGH_SALIENCE_WINDOW_FOLLOW_SECONDS
+            if high_salience_signal
+            else AUDIO_REACTION_WINDOW_FOLLOW_SECONDS
+        )
+        visual_event_anchor = _visual_event_anchor_before_audio_reaction(
+            event_time,
+            shot_boundaries,
+            lookback_seconds=lookback_seconds,
+        )
         if visual_event_anchor is not None:
             visual_event_anchor = clamp(visual_event_anchor, 0.0, duration_seconds)
             start_time = max(0.0, visual_event_anchor - NATIVE_SHOT_CONTEXT_TARGET_LEAD_SECONDS)
@@ -1816,11 +1850,11 @@ def _build_audio_reaction_candidate_windows(
                 ),
             )
         else:
-            start_time = max(0.0, event_time - AUDIO_REACTION_WINDOW_LEAD_SECONDS)
-            end_time = min(duration_seconds, event_time + AUDIO_REACTION_WINDOW_FOLLOW_SECONDS)
+            start_time = max(0.0, event_time - lead_seconds)
+            end_time = min(duration_seconds, event_time + follow_seconds)
         target_duration = min(
             settings.max_clip_duration_seconds,
-            max(settings.min_clip_duration_seconds, AUDIO_REACTION_WINDOW_LEAD_SECONDS + AUDIO_REACTION_WINDOW_FOLLOW_SECONDS),
+            max(settings.min_clip_duration_seconds, lead_seconds + follow_seconds),
         )
         if end_time - start_time < target_duration:
             missing = target_duration - (end_time - start_time)
@@ -1833,10 +1867,10 @@ def _build_audio_reaction_candidate_windows(
         if end_time - start_time < settings.min_clip_duration_seconds:
             continue
         if end_time - start_time > settings.max_clip_duration_seconds:
-            start_time = max(0.0, event_time - min(AUDIO_REACTION_WINDOW_LEAD_SECONDS, settings.max_clip_duration_seconds * 0.62))
+            start_time = max(0.0, event_time - min(lead_seconds, settings.max_clip_duration_seconds * 0.68))
             end_time = min(duration_seconds, start_time + settings.max_clip_duration_seconds)
             if event_time > end_time:
-                end_time = min(duration_seconds, event_time + AUDIO_REACTION_WINDOW_FOLLOW_SECONDS)
+                end_time = min(duration_seconds, event_time + follow_seconds)
                 start_time = max(0.0, end_time - settings.max_clip_duration_seconds)
 
         bucket_start = max(int(start_time / AUDIO_PROFILE_BUCKET_SECONDS), 0)

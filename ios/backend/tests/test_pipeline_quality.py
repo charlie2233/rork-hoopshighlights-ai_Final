@@ -351,6 +351,63 @@ class PipelineQualityTests(unittest.TestCase):
         self.assertLessEqual(reaction_window.start_time, 2.35)
         self.assertGreaterEqual(reaction_window.end_time, 9.0)
 
+    def test_super_loud_crowd_pop_keeps_wider_pre_reaction_context(self) -> None:
+        settings = SimpleNamespace(
+            min_clip_duration_seconds=2.0,
+            max_clip_duration_seconds=8.0,
+            clip_padding_seconds=0.0,
+            max_returned_clips=8,
+        )
+        audio_profile = [0.06] * 40
+        audio_profile[19] = 0.72
+        audio_profile[20] = 1.0
+        audio_profile[21] = 0.82
+
+        windows = _build_audio_reaction_candidate_windows(
+            duration_seconds=20.0,
+            audio_profile=audio_profile,
+            shot_boundaries=[],
+            settings=settings,
+        )
+        reaction_window = max(windows, key=lambda window: window.audio_pop_score)
+        reaction_clip = classify_window(reaction_window)
+
+        self.assertAlmostEqual(reaction_window.audio_pop_time or 0.0, 10.25, delta=0.3)
+        self.assertLessEqual(reaction_window.start_time, 5.9)
+        self.assertGreaterEqual(reaction_window.end_time, 12.0)
+        self.assertEqual(reaction_window.audio_cue_type, "cluster")
+        self.assertEqual(reaction_clip.label, "Crowd Reaction")
+        self.assertFalse(reaction_clip.shouldAutoKeep)
+
+    def test_super_loud_crowd_pop_extends_visual_play_lookback_for_gpt_review(self) -> None:
+        settings = SimpleNamespace(
+            min_clip_duration_seconds=2.0,
+            max_clip_duration_seconds=9.0,
+            clip_padding_seconds=0.0,
+            max_returned_clips=8,
+        )
+        audio_profile = [0.06] * 40
+        audio_profile[19] = 0.72
+        audio_profile[20] = 1.0
+        audio_profile[21] = 0.82
+
+        windows = _build_audio_reaction_candidate_windows(
+            duration_seconds=20.0,
+            audio_profile=audio_profile,
+            shot_boundaries=[5.0],
+            settings=settings,
+        )
+        reaction_window = max(windows, key=lambda window: window.audio_pop_score)
+        reaction_clip = classify_window(reaction_window)
+
+        self.assertAlmostEqual(reaction_window.audio_pop_time or 0.0, 10.25, delta=0.3)
+        self.assertAlmostEqual(reaction_window.peak_time, 5.0, delta=0.05)
+        self.assertLessEqual(reaction_window.start_time, 3.05)
+        self.assertGreaterEqual(reaction_window.end_time, 11.0)
+        self.assertGreaterEqual(reaction_window.event_context_score, 0.45)
+        self.assertNotEqual(reaction_clip.label, "Crowd Reaction")
+        self.assertTrue(reaction_clip.shouldAutoKeep)
+
     def test_run_analysis_applies_quick_scan_before_selected_team_filter(self) -> None:
         native = [
             _clip(start=7.5, end=12.0, label="Three Pointer", combined=0.86, event_center=10.0, auto_keep=True),

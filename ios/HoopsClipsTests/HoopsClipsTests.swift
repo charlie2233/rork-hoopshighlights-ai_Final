@@ -50,6 +50,34 @@ struct HoopsClipsTests {
         #expect(!VideoImportPolicy.shouldConsumeTemporaryImportedVideo(at: filesURL))
     }
 
+    @Test func testVideoImportStatusCopyStaysVisibleAndRecoveryFocused() {
+        let statusMessages = [
+            VideoImportStatusCopy.readingFromPhotos,
+            VideoImportStatusCopy.checkingDetails,
+            VideoImportStatusCopy.checkedSaving,
+            VideoImportStatusCopy.copyingSource,
+            VideoImportStatusCopy.readingMetadata,
+            VideoImportStatusCopy.generatingPreview,
+            VideoImportStatusCopy.openingProject,
+            VideoImportStatusCopy.slowReminder,
+            VideoImportStatusCopy.longRunningReminder,
+            VideoImportStatusCopy.statusDetail,
+            VideoImportStatusCopy.timeoutRecovery,
+            VideoImportStatusCopy.savedButNotVisible,
+            VideoImportStatusCopy.defaultFailure
+        ]
+
+        for message in statusMessages {
+            #expect(message.count <= 92)
+            #expect(!message.localizedCaseInsensitiveContains("thinking"))
+            #expect(!message.localizedCaseInsensitiveContains("ETA"))
+        }
+        #expect(VideoImportStatusCopy.slowReminder.contains("keeps checking"))
+        #expect(VideoImportStatusCopy.statusDetail.contains("opens the project"))
+        #expect(VideoImportStatusCopy.historyActionTitle == "Open History")
+        #expect(VideoImportStatusCopy.recoveryAlertTitle == "Open from History")
+    }
+
     @Test func testVideoImportPreflightAcceptsLongerFourMinuteThirtyEditSource() throws {
         let summary = try VideoImportPolicy.evaluatePreflight(
             fileSizeBytes: 320 * 1024 * 1024,

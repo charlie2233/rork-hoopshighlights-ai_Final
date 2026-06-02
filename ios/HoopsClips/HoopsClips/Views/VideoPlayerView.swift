@@ -176,7 +176,7 @@ struct VideoPlayerView: View {
                 set: { if !$0 { clearImportError() } }
             )) {
                 if importRecoveryOffersHistory {
-                    Button("Open History") {
+                    Button(VideoImportStatusCopy.historyActionTitle) {
                         LaunchTelemetry.shared.recordStabilityCheckpoint("video_import.open_history_from_alert")
                         clearImportError()
                         onOpenHistory()
@@ -215,7 +215,7 @@ struct VideoPlayerView: View {
                 try Task.checkCancellation()
 
                 await MainActor.run {
-                    importStatusMessage = "Reading video from Photos..."
+                    importStatusMessage = VideoImportStatusCopy.readingFromPhotos
                 }
                 guard let importedVideo = try await VideoImportTransfer.loadFileBackedVideo(from: item) else {
                     await MainActor.run {
@@ -320,7 +320,7 @@ struct VideoPlayerView: View {
                         metadata: "source=\(source)"
                     )
                     importRecoveryOffersHistory = true
-                    importStatusMessage = "Still copying. You can check History if it already saved."
+                    importStatusMessage = VideoImportStatusCopy.slowReminder
                 }
 
                 do {
@@ -339,7 +339,7 @@ struct VideoPlayerView: View {
                         metadata: "source=\(source)"
                     )
                     importRecoveryOffersHistory = true
-                    importStatusMessage = "Still saving. If iOS finished it in the background, it will be in History."
+                    importStatusMessage = VideoImportStatusCopy.longRunningReminder
                 }
 
                 do {
@@ -358,7 +358,7 @@ struct VideoPlayerView: View {
                         metadata: "source=\(source)"
                     )
                     showImportRecoveryError(
-                        "HoopClips is still waiting for that video. It may already be saved in History."
+                        VideoImportStatusCopy.timeoutRecovery
                     )
                     importTask?.cancel()
                     clearImportState()
@@ -383,7 +383,7 @@ struct VideoPlayerView: View {
 
     private func preflightVideoImport(url: URL, source: String) async -> VideoImportPreflightSummary? {
         await MainActor.run {
-            importStatusMessage = "Checking video details..."
+            importStatusMessage = VideoImportStatusCopy.checkingDetails
         }
 
         do {
@@ -393,7 +393,7 @@ struct VideoPlayerView: View {
                 metadata: summary.telemetryMetadata(source: source)
             )
             await MainActor.run {
-                importStatusMessage = "Video checked. Saving to HoopClips..."
+                importStatusMessage = VideoImportStatusCopy.checkedSaving
             }
             return summary
         } catch let error as VideoImportPreflightError {
@@ -449,7 +449,7 @@ struct VideoPlayerView: View {
             if recoverSuccessfulImportIfNeeded(source: source, phase: "operation_loaded") {
                 return
             }
-            importStatusMessage = "Opening project..."
+            importStatusMessage = VideoImportStatusCopy.openingProject
             Task { @MainActor in
                 do {
                     try await Task.sleep(nanoseconds: videoImportCompletionGraceNanoseconds)
@@ -468,7 +468,7 @@ struct VideoPlayerView: View {
                 )
                 clearImportState()
                 showImportRecoveryError(
-                    "HoopClips saved the video, but this screen could not open it yet. Open it from History."
+                    VideoImportStatusCopy.savedButNotVisible
                 )
             }
             return
@@ -480,12 +480,12 @@ struct VideoPlayerView: View {
 
         clearImportState()
         if importErrorMessage == nil {
-            importErrorMessage = "HoopClips could not read that video. Try importing it from Files or choose another clip."
+            importErrorMessage = VideoImportStatusCopy.defaultFailure
         }
     }
 
     private var importAlertTitle: String {
-        importRecoveryOffersHistory ? "Check History" : "Video Import Failed"
+        importRecoveryOffersHistory ? VideoImportStatusCopy.recoveryAlertTitle : "Video Import Failed"
     }
 
     private func showImportRecoveryError(_ message: String) {
@@ -751,7 +751,7 @@ struct VideoPlayerView: View {
                         .minimumScaleFactor(0.86)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    Text("Large videos can take a moment. If it finishes in the background, open it from History.")
+                    Text(VideoImportStatusCopy.statusDetail)
                         .font(.caption)
                         .foregroundStyle(AppTheme.subtleText)
                         .lineLimit(dynamicTypeSize.isAccessibilitySize ? 5 : 3)
@@ -767,7 +767,7 @@ struct VideoPlayerView: View {
                         openHistoryFromImportRecovery()
                     } label: {
                         importStatusActionLabel(
-                            title: "Check History",
+                            title: VideoImportStatusCopy.historyActionTitle,
                             icon: "clock.arrow.circlepath",
                             foreground: AppTheme.warningYellow,
                             fill: AppTheme.warningYellow.opacity(0.12),
@@ -775,7 +775,7 @@ struct VideoPlayerView: View {
                         )
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("Check History")
+                    .accessibilityLabel(VideoImportStatusCopy.historyActionTitle)
                     .accessibilityHint("Opens History in case the video was already saved there.")
                     .accessibilityIdentifier("import.status.checkHistoryButton")
                 }
@@ -2206,13 +2206,13 @@ private extension ProjectImportPhase {
     var importStatusMessage: String {
         switch self {
         case .copyingSource:
-            return "Copying video into HoopClips..."
+            return VideoImportStatusCopy.copyingSource
         case .readingMetadata:
-            return "Reading video details..."
+            return VideoImportStatusCopy.readingMetadata
         case .generatingPreview:
-            return "Building project preview..."
+            return VideoImportStatusCopy.generatingPreview
         case .savingProject:
-            return "Opening project..."
+            return VideoImportStatusCopy.openingProject
         }
     }
 }
