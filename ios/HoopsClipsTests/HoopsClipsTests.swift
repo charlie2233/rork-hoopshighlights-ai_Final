@@ -3164,6 +3164,30 @@ struct HoopsClipsTests {
         #expect(clip.reviewEvidenceRows.contains { $0.title == "Crowd/audio cue" && $0.detail.contains("99%") })
     }
 
+    @Test func testClipReviewEvidenceNamesSuperLoudRepeatedCrowdPop() {
+        let clip = Clip(
+            startTime: 44.0,
+            endTime: 49.0,
+            eventCenter: 46.5,
+            action: .unknown,
+            confidence: 0.67,
+            isKept: false,
+            label: "Highlight",
+            audioScore: 0.99,
+            visualScore: 0.48,
+            motionScore: 0.58,
+            combinedScore: 0.53,
+            audioCueType: "super_loud_cluster",
+            audioCueConfidence: 0.82,
+            detectionMethod: .cloud
+        )
+
+        #expect(clip.reviewBadges == [.audioCue])
+        #expect(clip.reviewEvidenceRows.contains { row in
+            row.title == "Crowd/audio cue" && row.detail.contains("Super loud crowd pop")
+        })
+    }
+
     @Test func testClipReviewBadgesRecognizeAudioSpikeCuePhrase() {
         let clip = Clip(
             startTime: 12.0,

@@ -489,6 +489,7 @@ def _audio_reaction_reserved_clip_quality_key(
 def _audio_reaction_review_salience_score(clip: CloudClip) -> float:
     cue_confidence = clip.audioCueConfidence or 0.0
     cue_bonus = {
+        "super_loud_cluster": 0.12,
         "cluster": 0.08,
         "swell": 0.06,
         "spike": 0.04,
@@ -1082,7 +1083,7 @@ def _is_audio_reaction_candidate(clip: CloudClip) -> bool:
         return False
     activity_score = max(clip.motionScore, clip.visualScore, clip.confidence)
     recognized_cue = (
-        clip.audioCueType in {"spike", "cluster", "swell"}
+        clip.audioCueType in {"spike", "cluster", "super_loud_cluster", "swell"}
         and (clip.audioCueConfidence or 0.0) >= RECOGNIZED_AUDIO_REACTION_MIN_CUE_CONFIDENCE
         and clip.audioScore >= RECOGNIZED_AUDIO_REACTION_MIN_AUDIO_SCORE
     )
@@ -1547,6 +1548,12 @@ def _classify_audio_reaction_cue(
         return "none"
     if rise_above_baseline < 0.10 and rise_from_onset < 0.10:
         return "steady_noise"
+    if (
+        peak_value >= 0.94
+        and cluster_count >= 3
+        and cluster_mean >= max(0.62, baseline + 0.24)
+    ):
+        return "super_loud_cluster"
     if cluster_count >= 3 and cluster_mean >= max(0.54, baseline + 0.18):
         return "cluster"
     if sustain_above_baseline >= 0.12 and peak_value >= max(0.62, baseline + 0.20):
@@ -1569,6 +1576,7 @@ def _audio_reaction_cue_confidence(
         "spike": 0.04,
         "swell": 0.08,
         "cluster": 0.12,
+        "super_loud_cluster": 0.18,
     }.get(cue_type, 0.0)
     return clamp(
         (score * 0.58)
@@ -1649,6 +1657,8 @@ def _is_high_salience_audio_reaction_signal(signal: AudioPopSignal) -> bool:
         return True
     if signal.confidence >= HIGH_SALIENCE_AUDIO_REACTION_MIN_CONFIDENCE:
         return True
+    if signal.cue_type == "super_loud_cluster":
+        return signal.confidence >= 0.62
     if signal.cue_type == "spike" and signal.score >= 0.56 and signal.confidence >= 0.68:
         return True
     return signal.cue_type in {"cluster", "swell"} and signal.confidence >= 0.68
@@ -2033,7 +2043,7 @@ def _is_audio_reaction_candidate_window(window: CandidateWindow) -> bool:
         return False
     if window.audio_pop_score < AUDIO_REACTION_BOUNDARY_MIN_SCORE:
         return False
-    recognized_cue = window.audio_cue_type in {"spike", "cluster", "swell"}
+    recognized_cue = window.audio_cue_type in {"spike", "cluster", "super_loud_cluster", "swell"}
     super_loud = window.audio_score >= SUPER_LOUD_AUDIO_REACTION_MIN_AUDIO_SCORE
     return recognized_cue or super_loud
 
@@ -2050,6 +2060,7 @@ def _audio_reaction_window_quality_key(window: CandidateWindow) -> tuple[float, 
         )
     ) else 0.0
     cue_bonus = {
+        "super_loud_cluster": 0.12,
         "cluster": 0.08,
         "swell": 0.06,
         "spike": 0.04,

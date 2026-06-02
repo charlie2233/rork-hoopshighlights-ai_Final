@@ -282,6 +282,8 @@ nonisolated struct Clip: Identifiable, Codable, Sendable {
 
     private var audioCueDisplayName: String? {
         switch audioCueType {
+        case "super_loud_cluster":
+            return "Super loud crowd pop"
         case "cluster":
             return "Repeated crowd pop"
         case "swell":
@@ -295,7 +297,7 @@ nonisolated struct Clip: Identifiable, Codable, Sendable {
 
     private static func isRecognizedAudioCue(_ cueType: String?) -> Bool {
         switch cueType {
-        case "cluster", "swell", "spike":
+        case "super_loud_cluster", "cluster", "swell", "spike":
             return true
         default:
             return false

@@ -2138,6 +2138,34 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertEqual(gpt_reranker.audio_reaction_source_for_clip(request.clips[0]), "recognized_crowd_audio_cue")
         self.assertGreater(gpt_reranker.audio_reaction_salience_score(request.clips[0]), 0.65)
 
+    def test_gpt_detects_super_loud_cluster_as_audio_reaction_recall_hint(self) -> None:
+        request = CreateEditJobRequest(
+            videoId="video_super_loud_cluster",
+            analysisJobId="analysis_super_loud_cluster",
+            installId="install-123",
+            sourceObjectKey="uploads/source.mp4",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="free",
+            clips=[
+                {
+                    **_labeled_clip("super_loud_cluster", 72.0, 0.7, "Highlight"),
+                    "audioPeak": 0.99,
+                    "audioCueType": "super_loud_cluster",
+                    "audioCueConfidence": 0.86,
+                    "audioCueTime": 74.25,
+                    "motionScore": 0.58,
+                    "watchability": 0.52,
+                    "excitement": 0.74,
+                    "combinedScore": 0.54,
+                },
+            ],
+        )
+
+        self.assertTrue(gpt_reranker.is_audio_reaction_clip(request.clips[0]))
+        self.assertEqual(gpt_reranker.audio_reaction_source_for_clip(request.clips[0]), "recognized_crowd_audio_cue")
+        self.assertGreater(gpt_reranker.audio_reaction_salience_score(request.clips[0]), 0.65)
+
     def test_gpt_detects_ios_audio_pop_cue_label_as_recall_hint(self) -> None:
         request = CreateEditJobRequest(
             videoId="video_ios_audio_pop_label",

@@ -829,7 +829,7 @@ def _should_expand_audio_reaction_candidate(clip: EditCandidateClip) -> bool:
         return False
     if clip.audioCueTime is not None:
         return True
-    if clip.audioCueType in {"spike", "cluster", "swell"} and (clip.audioCueConfidence or 0.0) >= 0.55:
+    if clip.audioCueType in {"spike", "cluster", "super_loud_cluster", "swell"} and (clip.audioCueConfidence or 0.0) >= 0.55:
         return True
     return (
         clip.audioPeak >= 0.72

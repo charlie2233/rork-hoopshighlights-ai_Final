@@ -160,7 +160,7 @@ export interface CloudClip {
   shotSubtype?: string | null;
   outcome?: "made" | "missed" | "blocked" | "uncertain" | null;
   audioScore: number;
-  audioCueType?: "spike" | "cluster" | "swell" | "steady_noise" | "none" | null;
+  audioCueType?: "spike" | "cluster" | "super_loud_cluster" | "swell" | "steady_noise" | "none" | null;
   audioCueConfidence?: number | null;
   audioCueTime?: number | null;
   visualScore: number;
@@ -457,7 +457,7 @@ export interface EditCandidateClip {
   watchability?: number;
   motionScore?: number;
   audioPeak?: number;
-  audioCueType?: "spike" | "cluster" | "swell" | "steady_noise" | "none" | null;
+  audioCueType?: "spike" | "cluster" | "super_loud_cluster" | "swell" | "steady_noise" | "none" | null;
   audioCueConfidence?: number | null;
   audioCueTime?: number | null;
   combinedScore?: number | null;

@@ -712,6 +712,7 @@ function normalizeAudioCueType(
   if (
     value === "spike" ||
     value === "cluster" ||
+    value === "super_loud_cluster" ||
     value === "swell" ||
     value === "steady_noise" ||
     value === "none"

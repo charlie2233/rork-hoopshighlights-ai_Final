@@ -247,6 +247,18 @@ class PipelineQualityTests(unittest.TestCase):
         self.assertEqual(steady_signal.cue_type, "steady_noise")
         self.assertEqual(steady_signal.confidence, 0.0)
 
+    def test_audio_reaction_signal_classifies_super_loud_repeated_crowd_pop(self) -> None:
+        crowd_pop = [0.07] * 48
+        crowd_pop[19] = 0.74
+        crowd_pop[20] = 1.0
+        crowd_pop[21] = 0.88
+
+        signal = _audio_pop_signal_for_window(crowd_pop, 17, 24)
+
+        self.assertEqual(signal.cue_type, "super_loud_cluster")
+        self.assertGreaterEqual(signal.confidence, 0.68)
+        self.assertTrue(_is_high_salience_audio_reaction_signal(signal))
+
     def test_audio_reaction_boundaries_keep_long_game_crowd_pop_candidates(self) -> None:
         audio_profile = [0.07] * 520
         for index in range(12, 12 + (70 * 6), 6):
@@ -257,7 +269,7 @@ class PipelineQualityTests(unittest.TestCase):
         boundaries = _detect_audio_reaction_boundaries(audio_profile)
 
         self.assertGreaterEqual(len(boundaries), 60)
-        self.assertTrue(all(boundary.cue_type in {"spike", "cluster", "swell"} for boundary in boundaries[:60]))
+        self.assertTrue(all(boundary.cue_type in {"spike", "cluster", "super_loud_cluster", "swell"} for boundary in boundaries[:60]))
 
     def test_full_candidate_cap_reserves_loud_crowd_pops_for_gpt_review(self) -> None:
         segmented = [
@@ -421,7 +433,7 @@ class PipelineQualityTests(unittest.TestCase):
         self.assertAlmostEqual(reaction_window.audio_pop_time or 0.0, 10.25, delta=0.3)
         self.assertLessEqual(reaction_window.start_time, 5.9)
         self.assertGreaterEqual(reaction_window.end_time, 12.0)
-        self.assertEqual(reaction_window.audio_cue_type, "cluster")
+        self.assertEqual(reaction_window.audio_cue_type, "super_loud_cluster")
         self.assertEqual(reaction_clip.label, "Crowd Reaction")
         self.assertFalse(reaction_clip.shouldAutoKeep)
 

@@ -188,7 +188,7 @@ class CloudNativeShotSignals(APIModel):
     outcomeReliabilityScore: float = Field(default=0.0, ge=0.0, le=1.0)
 
 
-AudioCueType = Literal["spike", "cluster", "swell", "steady_noise", "none"]
+AudioCueType = Literal["spike", "cluster", "super_loud_cluster", "swell", "steady_noise", "none"]
 
 
 class CloudClip(APIModel):
