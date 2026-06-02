@@ -492,7 +492,17 @@ struct HoopsClipsTests {
             showAllOptions: false
         )
 
-        #expect(visible == [30, 60, 90, 120, 270])
+        #expect(visible == [30, 60, 120, 270])
+    }
+
+    @Test func testAIEditLengthChoicesExposeFourThirtyByDefault() {
+        let visible = AIEditView.visibleDurationOptions(
+            allowedOptions: CloudEditPreset.personalHighlight.durationOptions,
+            selectedDuration: 30,
+            showAllOptions: false
+        )
+
+        #expect(visible == [30, 60, 120, 270])
     }
 
     @Test func testAIEditLengthChoicesCanRevealAllAllowedDurations() {

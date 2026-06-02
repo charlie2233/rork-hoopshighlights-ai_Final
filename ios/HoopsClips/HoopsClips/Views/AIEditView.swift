@@ -2604,7 +2604,7 @@ struct AIEditView: View {
         let sortedAllowed = allowedOptions.sorted()
         guard !showAllOptions else { return sortedAllowed }
 
-        let commonDurations = [30, 60, 90, 120]
+        let commonDurations = [30, 60, 120, 270]
         var options = sortedAllowed.filter { commonDurations.contains($0) }
         if options.isEmpty {
             options = Array(sortedAllowed.prefix(4))
