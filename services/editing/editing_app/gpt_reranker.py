@@ -92,6 +92,8 @@ AUDIO_REACTION_CONTEXT_EXPANSION_LEAD_SECONDS = 3.2
 AUDIO_REACTION_CONTEXT_EXPANSION_FOLLOW_THROUGH_SECONDS = 1.4
 AUDIO_REACTION_CONTEXT_EXPANSION_TARGET_SECONDS = 6.0
 AUDIO_REACTION_CONTEXT_EXPANSION_MAX_SECONDS = 8.0
+MIN_GPT_AUDIO_REACTION_REVIEW_SALIENCE = 0.68
+MIN_GPT_AUDIO_REACTION_REVIEW_ACTIVITY = 0.42
 TEAM_EVIDENCE_GPT_GUIDANCE = (
     "Treat teamEvidence as authoritative for selected-team confidence: teamEvidence.status=evidence_backed means the "
     "jersey-color attribution has enough cited frame and role evidence; teamEvidence.status=weak_evidence, "
@@ -917,6 +919,7 @@ def _candidate_quality_hints(clip: EditCandidateClip) -> Dict[str, Any]:
     is_defensive = _is_defensive_candidate_clip(clip)
     audio_reaction_source = audio_reaction_source_for_clip(clip)
     is_audio_reaction = audio_reaction_source is not None
+    plan_quality_eligible = is_plan_quality_eligible_clip(clip)
     requires_shot_timing = is_shot_like and not is_defensive
     if requires_shot_timing:
         min_duration = max(MIN_PLAN_CLIP_SECONDS, MIN_GPT_SHOT_LIKE_CANDIDATE_SECONDS)
@@ -930,6 +933,19 @@ def _candidate_quality_hints(clip: EditCandidateClip) -> Dict[str, Any]:
         min_duration = max(MIN_PLAN_CLIP_SECONDS, MIN_GPT_NON_SHOT_CANDIDATE_SECONDS)
         min_lead_in = MIN_NON_SHOT_CONTEXT_LEAD_IN_SECONDS
         min_follow_through = MIN_NON_SHOT_CONTEXT_FOLLOW_THROUGH_SECONDS
+    timing_window_ok = (
+        duration >= min_duration
+        and lead_in >= min_lead_in
+        and follow_through >= min_follow_through
+    )
+    audio_review_only_candidate = (
+        is_audio_reaction
+        and not plan_quality_eligible
+        and timing_window_ok
+        and audio_reaction_salience_score(clip) >= MIN_GPT_AUDIO_REACTION_REVIEW_SALIENCE
+        and max(clip.motionScore, clip.watchability, clip.excitement) >= MIN_GPT_AUDIO_REACTION_REVIEW_ACTIVITY
+        and clip.audioCueType != "steady_noise"
+    )
     return {
         "durationSeconds": duration,
         "defensiveEventLike": is_defensive,
@@ -942,6 +958,8 @@ def _candidate_quality_hints(clip: EditCandidateClip) -> Dict[str, Any]:
         "audioReactionCandidate": is_audio_reaction,
         "audioReactionSource": audio_reaction_source,
         "audioReactionSalienceScore": audio_reaction_salience_score(clip),
+        "planQualityEligible": plan_quality_eligible,
+        "gptReviewOnlyAudioReactionCandidate": audio_review_only_candidate,
         "audioCueType": clip.audioCueType,
         "audioCueConfidence": clip.audioCueConfidence,
         "audioCueTime": round(clip.audioCueTime, 3) if clip.audioCueTime is not None else None,
@@ -958,14 +976,19 @@ def _candidate_quality_hints(clip: EditCandidateClip) -> Dict[str, Any]:
         "nativeShotSignals": native_shot_signals_for_clip(clip).model_dump(mode="json"),
         "outcomeEvidenceSource": clip_outcome_evidence_source(clip),
         "outcomeReliabilityScore": clip_outcome_reliability_score(clip),
-        "timingWindowOk": (
-            duration >= min_duration
-            and lead_in >= min_lead_in
-            and follow_through >= min_follow_through
-        ),
+        "timingWindowOk": timing_window_ok,
         "requiresVisibleOutcome": True,
         "rejectIfOnlyBasketOrAftermath": True,
     }
+
+
+def _is_gpt_audio_reaction_review_candidate(
+    clip: EditCandidateClip,
+    hints: Dict[str, Any],
+) -> bool:
+    if clip.userReviewDecision == "discarded":
+        return False
+    return bool(hints.get("gptReviewOnlyAudioReactionCandidate"))
 
 
 def _quality_filtered_sampled_clips(
@@ -974,19 +997,25 @@ def _quality_filtered_sampled_clips(
     request: Optional[CreateEditJobRequest] = None,
 ) -> List[EditCandidateClip]:
     eligible: List[EditCandidateClip] = []
+    audio_reaction_review_candidates: List[EditCandidateClip] = []
     for clip in clips:
-        if not is_plan_quality_eligible_clip(clip):
-            continue
         hints = _candidate_quality_hints(clip)
-        if not hints["timingWindowOk"]:
+        if is_plan_quality_eligible_clip(clip) and hints["timingWindowOk"]:
+            eligible.append(clip)
             continue
-        eligible.append(clip)
+        if _is_gpt_audio_reaction_review_candidate(clip, hints):
+            audio_reaction_review_candidates.append(clip)
 
     if request and request.teamSelection is not None and request.teamSelection.mode == "team":
-        return _selected_team_quality_filtered_sampled_clips(eligible, max_clips, request)
+        return _selected_team_quality_filtered_sampled_clips(
+            eligible,
+            max_clips,
+            request,
+            audio_reaction_review_candidates,
+        )
 
-    if len(eligible) <= max_clips:
-        return eligible
+    if len(eligible) + len(audio_reaction_review_candidates) <= max_clips:
+        return rank_clips([*eligible, *audio_reaction_review_candidates])
 
     selected: List[EditCandidateClip] = []
     selected_ids: set[str] = set()
@@ -1027,7 +1056,8 @@ def _quality_filtered_sampled_clips(
 
     audio_reaction_reserve = _audio_reaction_sampling_reserve_limit(max_clips, len(eligible))
     audio_reaction_added = 0
-    for clip in sorted(eligible, key=_audio_reaction_candidate_quality_key, reverse=True):
+    audio_reaction_pool = [*eligible, *audio_reaction_review_candidates]
+    for clip in sorted(audio_reaction_pool, key=_audio_reaction_candidate_quality_key, reverse=True):
         if audio_reaction_added >= audio_reaction_reserve:
             break
         if clip.id in selected_ids or not is_audio_reaction_clip(clip):
@@ -1052,6 +1082,7 @@ def _selected_team_quality_filtered_sampled_clips(
     eligible: Sequence[EditCandidateClip],
     max_clips: int,
     request: CreateEditJobRequest,
+    audio_reaction_review_candidates: Sequence[EditCandidateClip] = (),
 ) -> List[EditCandidateClip]:
     team_selection = request.teamSelection
     if team_selection is None:
@@ -1081,6 +1112,16 @@ def _selected_team_quality_filtered_sampled_clips(
         if team_selection.includeUncertain
         else []
     )
+    review_only_audio_reactions = _selected_team_review_priority_order(
+        [
+            clip
+            for clip in audio_reaction_review_candidates
+            if team_attribution_status(clip, team_selection) != "opponent"
+        ]
+    )
+    review_only_candidates = _unique_clips_preserving_order(
+        [*review_only_uncertain, *review_only_audio_reactions]
+    )
 
     selected: List[EditCandidateClip] = []
     selected_ids: set[str] = set()
@@ -1091,7 +1132,7 @@ def _selected_team_quality_filtered_sampled_clips(
         selected.append(clip)
         selected_ids.add(clip.id)
 
-    review_only_reserve = min(len(review_only_uncertain), max(1, max_clips // 3), max_clips)
+    review_only_reserve = min(len(review_only_candidates), max(1, max_clips // 3), max_clips)
     render_slot_limit = max(0, max_clips - review_only_reserve)
     defensive_render_reserve = min(
         _defensive_sampling_reserve_limit(request, max_clips),
@@ -1137,7 +1178,7 @@ def _selected_team_quality_filtered_sampled_clips(
             break
 
     review_only_added = 0
-    for clip in review_only_uncertain:
+    for clip in review_only_candidates:
         add_clip(clip)
         if clip.id in selected_ids:
             review_only_added += 1
@@ -1151,12 +1192,23 @@ def _selected_team_quality_filtered_sampled_clips(
                 break
 
     if len(selected) < max_clips:
-        for clip in review_only_uncertain:
+        for clip in review_only_candidates:
             add_clip(clip)
             if len(selected) >= max_clips:
                 break
 
     return _selected_team_final_sample_order(selected, team_selection)
+
+
+def _unique_clips_preserving_order(clips: Sequence[EditCandidateClip]) -> List[EditCandidateClip]:
+    seen: set[str] = set()
+    unique: List[EditCandidateClip] = []
+    for clip in clips:
+        if clip.id in seen:
+            continue
+        unique.append(clip)
+        seen.add(clip.id)
+    return unique
 
 
 def _selected_team_render_priority_order(

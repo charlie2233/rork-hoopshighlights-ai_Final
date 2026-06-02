@@ -2128,6 +2128,108 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertEqual(gpt_reranker.audio_reaction_source_for_clip(request.clips[0]), "super_loud_audio_pop")
         self.assertGreater(gpt_reranker.audio_reaction_salience_score(request.clips[0]), 0.0)
 
+    def test_gpt_sampling_reserves_super_loud_audio_review_candidate_below_plan_quality(self) -> None:
+        scoring = [
+            _clip(f"score_{index}", float(index * 6), 0.99 - (index * 0.01))
+            for index in range(9)
+        ]
+        request = CreateEditJobRequest(
+            videoId="video_super_loud_audio_review_lane",
+            analysisJobId="analysis_super_loud_audio_review_lane",
+            installId="install-123",
+            sourceObjectKey="uploads/source.mp4",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="free",
+            clips=[
+                *scoring,
+                {
+                    **_labeled_clip("super_loud_review_only", 72.0, 0.43, "Highlight"),
+                    "audioPeak": 0.99,
+                    "motionScore": 0.5,
+                    "watchability": 0.41,
+                    "excitement": 0.5,
+                    "combinedScore": 0.5,
+                },
+            ],
+        )
+        review_candidate = request.clips[-1]
+
+        sampled = gpt_reranker._quality_filtered_sampled_clips(
+            gpt_reranker.rank_clips(request.clips),
+            8,
+            request=request,
+        )
+        hints = gpt_reranker._candidate_quality_hints(review_candidate)
+
+        self.assertFalse(gpt_reranker.is_plan_quality_eligible_clip(review_candidate))
+        self.assertTrue(gpt_reranker.is_audio_reaction_clip(review_candidate))
+        self.assertTrue(hints["gptReviewOnlyAudioReactionCandidate"])
+        self.assertIn("super_loud_review_only", {clip.id for clip in sampled})
+
+    def test_selected_team_sampling_keeps_audio_review_candidate_for_manual_review(self) -> None:
+        scoring = [
+            {
+                **_clip(f"team_score_{index}", float(index * 6), 0.99 - (index * 0.01)),
+                "teamAttribution": {
+                    "teamId": "team_dark",
+                    "label": "Dark jerseys",
+                    "colorLabel": "black",
+                    "confidence": 0.92,
+                    "source": "quick_scan",
+                    "evidenceFrameRefs": [f"clip_{index}_action", f"clip_{index}_result"],
+                    "evidenceRoleGroups": ["action", "outcome"],
+                },
+            }
+            for index in range(9)
+        ]
+        request = CreateEditJobRequest(
+            videoId="video_team_audio_review_lane",
+            analysisJobId="analysis_team_audio_review_lane",
+            installId="install-123",
+            sourceObjectKey="uploads/source.mp4",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="free",
+            teamSelection={
+                "mode": "team",
+                "teamId": "team_dark",
+                "label": "Dark jerseys",
+                "colorLabel": "black",
+                "confidenceThreshold": 0.85,
+                "includeUncertain": True,
+            },
+            clips=[
+                *scoring,
+                {
+                    **_labeled_clip("team_super_loud_review_only", 72.0, 0.43, "Highlight"),
+                    "audioPeak": 0.99,
+                    "motionScore": 0.5,
+                    "watchability": 0.41,
+                    "excitement": 0.5,
+                    "combinedScore": 0.5,
+                    "teamAttribution": {
+                        "teamId": "team_dark",
+                        "label": "Dark jerseys",
+                        "colorLabel": "black",
+                        "confidence": 0.62,
+                        "source": "quick_scan",
+                    },
+                },
+            ],
+        )
+
+        sampled = gpt_reranker._quality_filtered_sampled_clips(
+            gpt_reranker.rank_clips(request.clips),
+            8,
+            request=request,
+        )
+        sampled_ids = {clip.id for clip in sampled}
+
+        self.assertIn("team_super_loud_review_only", sampled_ids)
+        self.assertFalse(gpt_reranker.is_plan_quality_eligible_clip(request.clips[-1]))
+        self.assertEqual(gpt_reranker.team_attribution_status(request.clips[-1], request.teamSelection), "uncertain")
+
     def test_gpt_audio_reaction_detection_ignores_weak_audio_only_filler(self) -> None:
         request = CreateEditJobRequest(
             videoId="video_weak_audio_only",
