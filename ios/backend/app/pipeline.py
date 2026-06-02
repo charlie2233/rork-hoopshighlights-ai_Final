@@ -1008,12 +1008,40 @@ def _is_audio_reaction_label(label: str) -> bool:
     } or ("crowd" in tokens and "reaction" in tokens)
 
 
+def _is_audio_reaction_context_label(label: str) -> bool:
+    normalized = label.strip().lower()
+    tokens = set(re.findall(r"[a-z0-9]+", normalized))
+    if not normalized:
+        return False
+    if normalized in {"highlight", "clip", "play", "moment"} or normalized.endswith(" highlight"):
+        return True
+    if "shot attempt" in normalized or "scoring chance" in normalized or "basketball action" in normalized:
+        return True
+    return bool(
+        tokens
+        & {
+            "basket",
+            "bucket",
+            "drive",
+            "dunk",
+            "finish",
+            "jumper",
+            "layup",
+            "make",
+            "made",
+            "score",
+            "scoring",
+            "shot",
+            "three",
+            "transition",
+        }
+    )
+
+
 def _is_audio_reaction_candidate(clip: CloudClip) -> bool:
     if _is_audio_reaction_label(clip.label):
         return True
-    normalized = clip.label.strip().lower()
-    generic_label = normalized in {"highlight", "clip", "play", "moment"} or normalized.endswith(" highlight")
-    if not generic_label:
+    if not _is_audio_reaction_context_label(clip.label):
         return False
     return (
         clip.audioScore >= UNLABELED_AUDIO_REACTION_MIN_AUDIO_SCORE

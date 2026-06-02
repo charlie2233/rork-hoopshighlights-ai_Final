@@ -259,6 +259,7 @@ struct RorkMetricChip: View {
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            .layoutPriority(1)
 
             Spacer(minLength: 0)
         }

@@ -1033,6 +1033,9 @@ struct VideoPlayerView: View {
                     Text("Highlight Team")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.white)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
+                        .minimumScaleFactor(0.86)
+                        .fixedSize(horizontal: false, vertical: true)
                     Text(teamTargetSubtitle)
                         .font(.caption2)
                         .foregroundStyle(AppTheme.subtleText)
@@ -1040,6 +1043,7 @@ struct VideoPlayerView: View {
                         .minimumScaleFactor(0.9)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+                .layoutPriority(1)
 
                 Spacer(minLength: 0)
             }
@@ -1058,6 +1062,8 @@ struct VideoPlayerView: View {
                 Label("Not sure? Use All teams and check plays in Review.", systemImage: "questionmark.circle.fill")
                     .font(.caption.weight(.medium))
                     .foregroundStyle(AppTheme.subtleText)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 3)
+                    .minimumScaleFactor(0.84)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -1242,6 +1248,9 @@ struct VideoPlayerView: View {
                 }
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(AppTheme.neonPurple)
+                .lineLimit(2)
+                .minimumScaleFactor(0.82)
+                .fixedSize(horizontal: false, vertical: true)
             } else {
                 Image(systemName: "sparkles")
                     .font(.caption)
@@ -1610,6 +1619,10 @@ struct VideoPlayerView: View {
             Text("Cloud analysis runs in HoopClips backend for this build.")
                 .font(.caption)
                 .foregroundStyle(AppTheme.subtleText)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
+                .minimumScaleFactor(0.84)
+                .fixedSize(horizontal: false, vertical: true)
+                .layoutPriority(1)
             Spacer()
         }
         .padding(.horizontal, 12)

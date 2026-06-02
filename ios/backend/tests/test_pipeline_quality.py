@@ -1252,6 +1252,35 @@ class PipelineQualityTests(unittest.TestCase):
         self.assertIn("Highlight", labels)
         self.assertNotIn("Made Shot 7", labels)
 
+    def test_review_trim_reserves_loud_crowd_pop_on_basketball_context_label(self) -> None:
+        scoring = [
+            _clip(
+                start=float(index * 5),
+                end=float(index * 5 + 4),
+                label=f"Made Shot {index}",
+                combined=0.99 - (index * 0.01),
+                event_center=float(index * 5 + 2),
+                auto_keep=True,
+            )
+            for index in range(9)
+        ]
+        possible_layup = _clip(
+            start=55.0,
+            end=59.0,
+            label="Possible Layup",
+            combined=0.62,
+            confidence=0.72,
+            event_center=57.0,
+            auto_keep=False,
+        ).model_copy(update={"audioScore": 0.97, "motionScore": 0.74, "visualScore": 0.48})
+
+        trimmed = _trim_analysis_clips_for_review([*scoring, possible_layup], None, max_clips=8)
+        labels = [clip.label for clip in trimmed]
+
+        self.assertTrue(_is_audio_reaction_candidate(possible_layup))
+        self.assertIn("Possible Layup", labels)
+        self.assertNotIn("Made Shot 7", labels)
+
     def test_unlabeled_audio_only_filler_is_not_audio_reaction_candidate(self) -> None:
         filler = _clip(
             start=12.0,
