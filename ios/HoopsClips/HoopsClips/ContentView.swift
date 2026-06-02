@@ -223,6 +223,9 @@ struct ContentView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .task(id: viewModel.currentProjectID) {
+            await viewModel.resumeInFlightCloudAnalysisIfNeeded()
+        }
         .sheet(isPresented: $showingPaywall) {
             PaywallView(subscriptionManager: subscriptionManager, authService: authService)
         }

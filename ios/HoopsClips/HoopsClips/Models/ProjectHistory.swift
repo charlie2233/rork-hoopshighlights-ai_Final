@@ -185,6 +185,7 @@ nonisolated struct ProjectEventRecord: Identifiable, Codable, Sendable {
 
 nonisolated enum ProjectEventKind: String, Codable, Sendable, CaseIterable {
     case imported
+    case analysisStarted
     case analysisCompleted
     case analysisFailed
     case exportCompleted
@@ -196,6 +197,8 @@ nonisolated enum ProjectEventKind: String, Codable, Sendable, CaseIterable {
         switch self {
         case .imported:
             return "Imported"
+        case .analysisStarted:
+            return "Analysis Started"
         case .analysisCompleted:
             return "Analysis Completed"
         case .analysisFailed:

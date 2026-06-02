@@ -2,6 +2,8 @@ import Foundation
 import UniformTypeIdentifiers
 
 struct CloudAnalysisService {
+    typealias HandoffHandler = @MainActor @Sendable (_ jobID: String, _ sourceObjectKey: String?) -> Void
+
     private static let analysisPollTimeoutSeconds: UInt64 = 8 * 60
     private static let maxPollDelaySeconds = 5
     private static let maxVisibleProgressStageCharacters = 72
@@ -102,6 +104,7 @@ struct CloudAnalysisService {
         appVersion: String = "v1.0",
         analysisVersion: String = "v1",
         teamSelection: HighlightTeamSelection? = nil,
+        onCloudHandoff: HandoffHandler? = nil,
         progress: @escaping @MainActor @Sendable (Double, String) -> Void
     ) async throws -> CloudAnalysisResult {
         guard let baseURL = configuredBaseURL() else {
@@ -129,6 +132,7 @@ struct CloudAnalysisService {
 
         progress(0.28, "Starting cloud clip search")
         _ = try await startJob(baseURL: baseURL, jobID: job.jobId, installID: installID, teamSelection: teamSelection)
+        await onCloudHandoff?(job.jobId, job.sourceObjectKey)
 
         return try await pollJob(
             baseURL: baseURL,
@@ -184,6 +188,7 @@ struct CloudAnalysisService {
         _ preparedJob: PreparedCloudAnalysisJob,
         teamSelection: HighlightTeamSelection? = nil,
         installID: String,
+        onCloudHandoff: HandoffHandler? = nil,
         progress: @escaping @MainActor @Sendable (Double, String) -> Void
     ) async throws -> CloudAnalysisResult {
         guard let baseURL = configuredBaseURL() else {
@@ -197,12 +202,32 @@ struct CloudAnalysisService {
             installID: installID,
             teamSelection: teamSelection
         )
+        await onCloudHandoff?(preparedJob.job.jobId, preparedJob.job.sourceObjectKey)
 
         return try await pollJob(
             baseURL: baseURL,
             jobID: preparedJob.job.jobId,
             sourceObjectKey: preparedJob.job.sourceObjectKey,
             initialPollAfterSeconds: preparedJob.job.pollAfterSeconds,
+            progress: progress
+        )
+    }
+
+    func resumeAnalysisJob(
+        jobID: String,
+        sourceObjectKey: String?,
+        progress: @escaping @MainActor @Sendable (Double, String) -> Void
+    ) async throws -> CloudAnalysisResult {
+        guard let baseURL = configuredBaseURL() else {
+            throw CloudAnalysisError.notConfigured
+        }
+
+        progress(0.45, "Reconnecting to cloud analysis")
+        return try await pollJob(
+            baseURL: baseURL,
+            jobID: jobID,
+            sourceObjectKey: sourceObjectKey,
+            initialPollAfterSeconds: 1,
             progress: progress
         )
     }

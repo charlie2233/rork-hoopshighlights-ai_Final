@@ -329,7 +329,10 @@ final class HighlightsViewModel {
                 result = try await cloudAnalysisService.analyzePreparedVideo(
                     preparedJob,
                     teamSelection: settings.highlightTeamSelection,
-                    installID: installID
+                    installID: installID,
+                    onCloudHandoff: { [weak self] jobID, sourceObjectKey in
+                        self?.recordCloudAnalysisHandoff(jobID: jobID, sourceObjectKey: sourceObjectKey)
+                    }
                 ) { [weak service = analysisService] progress, status in
                     service?.updateExternalAnalysis(progress: progress, status: status)
                 }
@@ -338,29 +341,15 @@ final class HighlightsViewModel {
                     url: url,
                     duration: videoDuration,
                     installID: installID,
-                    teamSelection: settings.highlightTeamSelection
+                    teamSelection: settings.highlightTeamSelection,
+                    onCloudHandoff: { [weak self] jobID, sourceObjectKey in
+                        self?.recordCloudAnalysisHandoff(jobID: jobID, sourceObjectKey: sourceObjectKey)
+                    }
                 ) { [weak service = analysisService] progress, status in
                     service?.updateExternalAnalysis(progress: progress, status: status)
                 }
             }
-            cloudQuotaRemaining = nil
-            analysisService.applyCloudAnalysis(result, duration: videoDuration)
-            cloudAnalysisJobID = result.analysisJobId
-            cloudEditSourceObjectKey = result.sourceObjectKey
-            cloudDetectedTeams = result.detectedTeams
-            if let effectiveTeamSelection = result.teamSelection {
-                settings.highlightTeamSelection = effectiveTeamSelection
-                hasConfirmedHighlightTeamSelection = true
-            } else if result.detectedTeams.isEmpty {
-                hasConfirmedHighlightTeamSelection = true
-            }
-            pendingCloudAnalysisJob = nil
-            applyDefaultRedundantClipSuppression()
-            AnalysisNotificationService.shared.notifyAnalysisCompleted(
-                clipsCount: analysisService.clips.count,
-                usedFallback: false
-            )
-            recordAnalysisCompleted()
+            applyCompletedCloudAnalysisResult(result, usedFallback: false)
             LaunchTelemetry.shared.recordStabilityCheckpoint(
                 "analysis.completed",
                 metadata: "mode=cloud clips=\(analysisService.clips.count)"
@@ -379,6 +368,94 @@ final class HighlightsViewModel {
             await fallbackToLocalAnalysis(from: error)
         } catch {
             await fallbackToLocalAnalysis(from: CloudAnalysisError.network(error.localizedDescription))
+        }
+    }
+
+    func resumeInFlightCloudAnalysisIfNeeded() async {
+        guard AppConstants.cloudAnalysisEnabled,
+              !analysisService.isAnalyzing,
+              analysisService.clips.isEmpty,
+              lastAnalyzedAt == nil,
+              let jobID = cloudAnalysisJobID,
+              let sourceObjectKey = cloudEditSourceObjectKey else {
+            return
+        }
+
+        await AnalysisNotificationService.shared.prepareForAnalysis()
+        beginBackgroundAnalysisTask()
+        defer { endBackgroundAnalysisTask() }
+        analysisMode = .cloud
+        isCloudFallbackOffered = false
+        analysisService.beginExternalAnalysis(status: "Reconnecting to cloud analysis", progress: 0.45)
+        LaunchTelemetry.shared.recordStabilityCheckpoint("analysis.resume.started", metadata: "mode=cloud")
+
+        do {
+            let result = try await cloudAnalysisService.resumeAnalysisJob(
+                jobID: jobID,
+                sourceObjectKey: sourceObjectKey
+            ) { [weak service = analysisService] progress, status in
+                service?.updateExternalAnalysis(progress: progress, status: status)
+            }
+            guard cloudAnalysisJobID == jobID else { return }
+            applyCompletedCloudAnalysisResult(result, usedFallback: false)
+            LaunchTelemetry.shared.recordStabilityCheckpoint(
+                "analysis.resume.completed",
+                metadata: "mode=cloud clips=\(analysisService.clips.count)"
+            )
+        } catch let error where error.isTaskCancellation {
+            analysisService.finishExternalAnalysis(with: "Cloud analysis paused")
+            LaunchTelemetry.shared.recordStabilityCheckpoint("analysis.resume.cancelled", metadata: "mode=cloud")
+        } catch let error as CloudAnalysisError {
+            handleInFlightCloudAnalysisResumeFailure(error)
+        } catch {
+            handleInFlightCloudAnalysisResumeFailure(CloudAnalysisError.network(error.localizedDescription))
+        }
+    }
+
+    private func recordCloudAnalysisHandoff(jobID: String, sourceObjectKey: String?) {
+        cloudAnalysisJobID = jobID
+        cloudEditSourceObjectKey = sourceObjectKey ?? cloudEditSourceObjectKey
+        lastAnalysisStatusSummary = "Cloud analysis is running"
+        persistCurrentProject(
+            reason: .analysisStarted,
+            message: "Cloud analysis started. Reopen HoopClips to refresh real job status."
+        )
+    }
+
+    private func applyCompletedCloudAnalysisResult(_ result: CloudAnalysisResult, usedFallback: Bool) {
+        cloudQuotaRemaining = nil
+        analysisService.applyCloudAnalysis(result, duration: videoDuration)
+        cloudAnalysisJobID = result.analysisJobId ?? cloudAnalysisJobID
+        cloudEditSourceObjectKey = result.sourceObjectKey ?? cloudEditSourceObjectKey
+        cloudDetectedTeams = result.detectedTeams
+        if let effectiveTeamSelection = result.teamSelection {
+            settings.highlightTeamSelection = effectiveTeamSelection
+            hasConfirmedHighlightTeamSelection = true
+        } else if result.detectedTeams.isEmpty {
+            hasConfirmedHighlightTeamSelection = true
+        }
+        pendingCloudAnalysisJob = nil
+        applyDefaultRedundantClipSuppression()
+        AnalysisNotificationService.shared.notifyAnalysisCompleted(
+            clipsCount: analysisService.clips.count,
+            usedFallback: usedFallback
+        )
+        recordAnalysisCompleted()
+    }
+
+    private func handleInFlightCloudAnalysisResumeFailure(_ error: CloudAnalysisError) {
+        switch error {
+        case .backend(let code, _) where code == "expired" || code == "analysis_failed":
+            let message = error.errorDescription ?? "Cloud analysis failed. Try again."
+            analysisService.finishExternalAnalysis(with: message)
+            recordAnalysisFailure(message: message)
+            LaunchTelemetry.shared.recordStabilityCheckpoint("analysis.resume.failed", metadata: "mode=cloud code=\(code)")
+        default:
+            let message = "Cloud analysis is still running. Reopen HoopClips to refresh status."
+            analysisService.finishExternalAnalysis(with: message)
+            lastAnalysisStatusSummary = message
+            persistCurrentProject()
+            LaunchTelemetry.shared.recordStabilityCheckpoint("analysis.resume.paused", metadata: "mode=cloud")
         }
     }
 
