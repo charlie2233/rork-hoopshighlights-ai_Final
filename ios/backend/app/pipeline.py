@@ -1811,7 +1811,8 @@ def _build_candidate_windows(
     if segmented:
         return _backfill_segmented_candidate_windows(segmented, windows, resolved_limit)
 
-    return sorted(windows, key=lambda item: item.combined_score, reverse=True)[:resolved_limit]
+    ranked = sorted(windows, key=lambda item: item.combined_score, reverse=True)[:resolved_limit]
+    return _reserve_audio_reaction_candidate_windows(ranked, windows, resolved_limit)
 
 
 def _build_audio_reaction_candidate_windows(

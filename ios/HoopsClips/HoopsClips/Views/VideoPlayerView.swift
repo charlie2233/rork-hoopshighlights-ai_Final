@@ -2091,11 +2091,30 @@ enum VideoImportPolicy {
     }
 
     private static func fileSizeBytes(for url: URL) throws -> Int64 {
-        let values = try url.resourceValues(forKeys: [.fileSizeKey])
-        guard let fileSize = values.fileSize, fileSize > 0 else {
-            throw VideoImportPreflightError.unreadableFileSize
+        let resourceFileSize = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize
+        let attributesFileSize = try? FileManager.default.attributesOfItem(atPath: url.path)[.size]
+        return try resolvedFileSizeBytes(
+            resourceFileSize: resourceFileSize,
+            attributesFileSize: attributesFileSize
+        )
+    }
+
+    static func resolvedFileSizeBytes(resourceFileSize: Int?, attributesFileSize: Any?) throws -> Int64 {
+        if let resourceFileSize, resourceFileSize > 0 {
+            return Int64(resourceFileSize)
         }
-        return Int64(fileSize)
+
+        if let attributesFileSize = attributesFileSize as? NSNumber, attributesFileSize.int64Value > 0 {
+            return attributesFileSize.int64Value
+        }
+        if let attributesFileSize = attributesFileSize as? Int64, attributesFileSize > 0 {
+            return attributesFileSize
+        }
+        if let attributesFileSize = attributesFileSize as? Int, attributesFileSize > 0 {
+            return Int64(attributesFileSize)
+        }
+
+        throw VideoImportPreflightError.unreadableFileSize
     }
 
     private static func availableCapacityBytesForImport() -> Int64? {

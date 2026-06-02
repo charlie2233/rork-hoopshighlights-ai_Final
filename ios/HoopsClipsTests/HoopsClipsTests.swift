@@ -50,6 +50,31 @@ struct HoopsClipsTests {
         #expect(!VideoImportPolicy.shouldConsumeTemporaryImportedVideo(at: filesURL))
     }
 
+    @Test func testVideoImportPolicyFallsBackToFileAttributesForSize() throws {
+        let attributesSize = NSNumber(value: Int64(248_000_000))
+
+        #expect(try VideoImportPolicy.resolvedFileSizeBytes(
+            resourceFileSize: nil,
+            attributesFileSize: attributesSize
+        ) == 248_000_000)
+        #expect(try VideoImportPolicy.resolvedFileSizeBytes(
+            resourceFileSize: 144_000_000,
+            attributesFileSize: attributesSize
+        ) == 144_000_000)
+
+        do {
+            _ = try VideoImportPolicy.resolvedFileSizeBytes(
+                resourceFileSize: 0,
+                attributesFileSize: nil
+            )
+            Issue.record("Expected missing file size to fail.")
+        } catch let error as VideoImportPreflightError {
+            #expect(error.code == "unreadable_file_size")
+        } catch {
+            Issue.record("Unexpected error type: \(error)")
+        }
+    }
+
     @Test func testVideoImportStatusCopyStaysVisibleAndRecoveryFocused() {
         let statusMessages = [
             VideoImportStatusCopy.readingFromPhotos,

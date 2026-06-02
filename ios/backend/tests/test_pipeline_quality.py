@@ -2129,6 +2129,41 @@ class PipelineQualityTests(unittest.TestCase):
         self.assertGreater(clip.audioCueConfidence or 0.0, 0.6)
         self.assertAlmostEqual(clip.audioCueTime or 0.0, 15.25, delta=0.05)
 
+    def test_raw_candidate_fallback_reserves_loud_crowd_pop_for_review(self) -> None:
+        audio_profile = [0.62] * 80
+        loud_crowd_pop = CandidateWindow(
+            start_time=15.0,
+            end_time=20.5,
+            peak_time=18.0,
+            audio_score=1.0,
+            visual_score=0.36,
+            motion_score=0.72,
+            combined_score=0.30,
+            event_context_score=0.0,
+            audio_pop_score=0.84,
+            audio_pop_time=18.0,
+            audio_cue_type="cluster",
+            audio_cue_confidence=0.88,
+        )
+
+        with (
+            patch("app.pipeline._segment_with_hysteresis", return_value=[]),
+            patch("app.pipeline._build_audio_reaction_candidate_windows", return_value=[loud_crowd_pop]),
+        ):
+            windows = _build_candidate_windows(
+                duration_seconds=40.0,
+                audio_profile=audio_profile,
+                shot_boundaries=[],
+                settings=_settings(),
+                clip_limit=4,
+            )
+
+        self.assertEqual(len(windows), 4)
+        self.assertTrue(any(window.audio_pop_time == 18.0 for window in windows))
+        reserved = next(window for window in windows if window.audio_pop_time == 18.0)
+        self.assertEqual(reserved.audio_cue_type, "cluster")
+        self.assertGreater(reserved.audio_pop_score, 0.8)
+
     def test_native_candidate_audio_pop_does_not_reward_steady_loud_background(self) -> None:
         audio_profile = [0.72] * 80
 
