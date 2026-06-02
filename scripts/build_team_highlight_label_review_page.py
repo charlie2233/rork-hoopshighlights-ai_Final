@@ -706,7 +706,7 @@ def render_progress_summary(payload: dict[str, Any]) -> str:
             '<button type="button" onclick="focusNextIncomplete()">Next incomplete</button>',
             '<button type="button" onclick="focusNextCloseReview()">Next close review</button>',
             '<button id="download-ready-button" type="button" onclick="downloadLaunchReadyLabels()" disabled>Finish labels first</button>',
-            '<button type="button" onclick="downloadAllCaseLabels()">Download all labels</button>',
+            '<button id="download-checkpoint-button" type="button" onclick="downloadProgressCheckpoint()">Download progress checkpoint</button>',
             '<label class="file-button">Import draft bundle<input id="bundle-import" type="file" accept="application/json" onchange="importDraftBundle(event)"></label>',
             '<button type="button" onclick="clearSavedDraft()">Clear saved draft</button>',
             "</div>",
@@ -1699,6 +1699,12 @@ function updateProgress() {
     readyButton.disabled = incomplete > 0;
     readyButton.textContent = incomplete > 0 ? `Finish ${incomplete} label${incomplete === 1 ? "" : "s"} first` : "Download launch-ready labels";
   }
+  const checkpointButton = document.getElementById("download-checkpoint-button");
+  if (checkpointButton) {
+    checkpointButton.textContent = complete > 0
+      ? `Download checkpoint (${complete}/${total})`
+      : "Download progress checkpoint";
+  }
   updateReviewPosition();
 }
 
@@ -1886,6 +1892,25 @@ function downloadAllCaseLabels() {
   downloadLabelBundle();
 }
 
+function downloadProgressCheckpoint() {
+  updateProgress();
+  const counts = completionCounts();
+  const now = new Date();
+  const safeTimestamp = now.toISOString().replace(/[:.]/g, "-");
+  downloadLabelBundle({
+    source: "team_highlight_label_review_page_progress_checkpoint",
+    filename: `team_highlight_manual_labels_progress_${safeTimestamp}.json`,
+    extra: {
+      savedAt: now.toISOString(),
+      clipCount: counts.total,
+      completeClipCount: counts.complete,
+      incompleteClipCount: counts.remaining,
+      launchReady: counts.remaining === 0,
+    },
+  });
+  draftStatus(`Progress checkpoint downloaded: ${counts.complete}/${counts.total} complete. Apply with --allow-incomplete only if you are saving a partial review session.`);
+}
+
 function downloadLaunchReadyLabels() {
   updateProgress();
   const cards = Array.from(document.querySelectorAll("[data-case-index][data-clip-index]"));
@@ -1898,17 +1923,18 @@ function downloadLaunchReadyLabels() {
   downloadLabelBundle();
 }
 
-function downloadLabelBundle() {
+function downloadLabelBundle(options = {}) {
   updateAllCases();
   const bundlePayload = {
     schemaVersion: "team-highlight-manual-label-bundle-v1",
-    source: "team_highlight_label_review_page",
+    source: options.source || "team_highlight_label_review_page",
+    ...(options.extra || {}),
     cases: reviewData.cases.map(casePayload => casePayload.labelsPayload),
   };
   const blob = new Blob([JSON.stringify(bundlePayload, null, 2) + "\n"], { type: "application/json" });
   const link = document.createElement("a");
   link.href = URL.createObjectURL(blob);
-  link.download = "team_highlight_manual_labels_bundle.json";
+  link.download = options.filename || "team_highlight_manual_labels_bundle.json";
   document.body.appendChild(link);
   link.click();
   link.remove();
