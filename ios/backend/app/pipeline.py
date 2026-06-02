@@ -68,6 +68,8 @@ AUDIO_REACTION_VISUAL_EVENT_POST_POP_SECONDS = 0.75
 UNLABELED_AUDIO_REACTION_MIN_AUDIO_SCORE = 0.92
 UNLABELED_AUDIO_REACTION_MIN_ACTIVITY_SCORE = 0.58
 UNLABELED_AUDIO_REACTION_MIN_COMBINED_SCORE = 0.50
+RECOGNIZED_AUDIO_REACTION_MIN_AUDIO_SCORE = 0.72
+RECOGNIZED_AUDIO_REACTION_MIN_CUE_CONFIDENCE = 0.55
 VisualFrameSignal = Tuple[float, ...]
 
 
@@ -462,16 +464,36 @@ def _review_reserved_clip_quality_key(
 
 def _audio_reaction_reserved_clip_quality_key(
     item: tuple[int, CloudClip],
-) -> tuple[float, float, float, float, float, int]:
+) -> tuple[float, float, float, float, float, float, int]:
     index, clip = item
+    cue_confidence = clip.audioCueConfidence or 0.0
     return (
+        _audio_reaction_review_salience_score(clip),
         clip.audioScore,
+        cue_confidence,
         clip.combinedScore,
         clip.motionScore,
         clip.confidence,
-        clip.visualScore,
         -index,
     )
+
+
+def _audio_reaction_review_salience_score(clip: CloudClip) -> float:
+    cue_confidence = clip.audioCueConfidence or 0.0
+    cue_bonus = {
+        "cluster": 0.08,
+        "swell": 0.06,
+        "spike": 0.04,
+    }.get(clip.audioCueType or "none", 0.0)
+    activity_score = max(clip.motionScore, clip.visualScore, clip.confidence)
+    score = (
+        (clip.audioScore * 0.64)
+        + (clip.combinedScore * 0.12)
+        + (activity_score * 0.12)
+        + (cue_confidence * 0.08)
+        + cue_bonus
+    )
+    return round(clamp(score, 0.0, 1.0), 4)
 
 
 def _annotate_analysis_team_status(
@@ -1043,9 +1065,20 @@ def _is_audio_reaction_candidate(clip: CloudClip) -> bool:
         return True
     if not _is_audio_reaction_context_label(clip.label):
         return False
+    activity_score = max(clip.motionScore, clip.visualScore, clip.confidence)
+    recognized_cue = (
+        clip.audioCueType in {"spike", "cluster", "swell"}
+        and (clip.audioCueConfidence or 0.0) >= RECOGNIZED_AUDIO_REACTION_MIN_CUE_CONFIDENCE
+        and clip.audioScore >= RECOGNIZED_AUDIO_REACTION_MIN_AUDIO_SCORE
+    )
+    if recognized_cue:
+        return (
+            activity_score >= UNLABELED_AUDIO_REACTION_MIN_ACTIVITY_SCORE
+            and clip.combinedScore >= UNLABELED_AUDIO_REACTION_MIN_COMBINED_SCORE
+        )
     return (
         clip.audioScore >= UNLABELED_AUDIO_REACTION_MIN_AUDIO_SCORE
-        and max(clip.motionScore, clip.visualScore, clip.confidence) >= UNLABELED_AUDIO_REACTION_MIN_ACTIVITY_SCORE
+        and activity_score >= UNLABELED_AUDIO_REACTION_MIN_ACTIVITY_SCORE
         and clip.combinedScore >= UNLABELED_AUDIO_REACTION_MIN_COMBINED_SCORE
     )
 

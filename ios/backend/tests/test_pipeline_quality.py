@@ -1252,6 +1252,104 @@ class PipelineQualityTests(unittest.TestCase):
         self.assertIn("Highlight", labels)
         self.assertNotIn("Made Shot 7", labels)
 
+    def test_review_trim_reserves_recognized_audio_cue_below_raw_loud_threshold(self) -> None:
+        scoring = [
+            _clip(
+                start=float(index * 5),
+                end=float(index * 5 + 4),
+                label=f"Made Shot {index}",
+                combined=0.99 - (index * 0.01),
+                event_center=float(index * 5 + 2),
+                auto_keep=True,
+            )
+            for index in range(9)
+        ]
+        recognized_pop = _clip(
+            start=55.0,
+            end=59.0,
+            label="Highlight",
+            combined=0.61,
+            confidence=0.7,
+            event_center=57.0,
+            auto_keep=False,
+        ).model_copy(
+            update={
+                "audioScore": 0.81,
+                "audioCueType": "cluster",
+                "audioCueConfidence": 0.84,
+                "audioCueTime": 57.1,
+                "motionScore": 0.76,
+                "visualScore": 0.52,
+            }
+        )
+
+        trimmed = _trim_analysis_clips_for_review([*scoring, recognized_pop], None, max_clips=8)
+        labels = [clip.label for clip in trimmed]
+
+        self.assertTrue(_is_audio_reaction_candidate(recognized_pop))
+        self.assertIn("Highlight", labels)
+        self.assertNotIn("Made Shot 7", labels)
+
+    def test_review_trim_prefers_richer_audio_cue_when_only_one_reaction_slot_exists(self) -> None:
+        scoring = [
+            _clip(
+                start=float(index * 5),
+                end=float(index * 5 + 4),
+                label=f"Made Shot {index}",
+                combined=0.99 - (index * 0.01),
+                event_center=float(index * 5 + 2),
+                auto_keep=True,
+            )
+            for index in range(5)
+        ]
+        isolated_spike = _clip(
+            start=30.0,
+            end=34.0,
+            label="Highlight",
+            combined=0.54,
+            confidence=0.62,
+            event_center=32.0,
+            auto_keep=False,
+        ).model_copy(
+            update={
+                "audioScore": 0.92,
+                "audioCueType": "spike",
+                "audioCueConfidence": 0.56,
+                "motionScore": 0.62,
+                "visualScore": 0.45,
+            }
+        )
+        clustered_pop = _clip(
+            start=36.0,
+            end=40.0,
+            label="Possible Layup",
+            combined=0.63,
+            confidence=0.74,
+            event_center=38.0,
+            auto_keep=False,
+        ).model_copy(
+            update={
+                "audioScore": 0.88,
+                "audioCueType": "cluster",
+                "audioCueConfidence": 0.88,
+                "audioCueTime": 38.2,
+                "motionScore": 0.76,
+                "visualScore": 0.52,
+            }
+        )
+
+        trimmed = _trim_analysis_clips_for_review(
+            [*scoring, isolated_spike, clustered_pop],
+            None,
+            max_clips=4,
+        )
+        labels = [clip.label for clip in trimmed]
+
+        self.assertTrue(_is_audio_reaction_candidate(isolated_spike))
+        self.assertTrue(_is_audio_reaction_candidate(clustered_pop))
+        self.assertIn("Possible Layup", labels)
+        self.assertNotIn("Highlight", labels)
+
     def test_review_trim_reserves_loud_crowd_pop_on_basketball_context_label(self) -> None:
         scoring = [
             _clip(

@@ -981,10 +981,10 @@ struct VideoPlayerView: View {
                     startAnalysisFromButton()
                 } label: {
                     HStack(spacing: 12) {
-                        Image(systemName: "brain.head.profile.fill")
+                        Image(systemName: analysisButtonIcon)
                             .font(.title3)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(languageStore.text(.analyzeWithAI))
+                            Text(analysisButtonTitle)
                                 .font(.headline)
                                 .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
                                 .minimumScaleFactor(0.84)
@@ -1118,11 +1118,20 @@ struct VideoPlayerView: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .layoutPriority(1)
                     .accessibilityIdentifier(selection.accessibilityIdentifier)
+
+                Text(selection.displaySubtitle)
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(isConfirmedSelection ? AppTheme.darkBg.opacity(0.78) : AppTheme.subtleText)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 3)
+                    .minimumScaleFactor(0.82)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .layoutPriority(1)
             }
             .foregroundStyle(isConfirmedSelection ? AppTheme.darkBg : AppTheme.neonPurple)
-            .frame(maxWidth: .infinity, minHeight: dynamicTypeSize >= .accessibility1 ? 92 : 72)
+            .frame(maxWidth: .infinity, minHeight: dynamicTypeSize >= .accessibility1 ? 116 : 92)
             .padding(.horizontal, 8)
-            .padding(.vertical, 8)
+            .padding(.vertical, 10)
             .background(
                 isConfirmedSelection ? AppTheme.neonPurple : AppTheme.neonPurple.opacity(0.10),
                 in: .rect(cornerRadius: 12)
@@ -1773,6 +1782,32 @@ struct VideoPlayerView: View {
             return "Choose a team or All teams first"
         }
         return languageStore.text(.analysisButtonSubtitle)
+    }
+
+    private var analysisButtonTitle: String {
+        if requiresProForCurrentVideo {
+            return languageStore.text(.goPro)
+        }
+        if viewModel.isCloudTeamScanInProgress {
+            return "Scanning Teams"
+        }
+        if viewModel.requiresHighlightTeamSelectionConfirmation {
+            return "Choose Team First"
+        }
+        return languageStore.text(.analyzeWithAI)
+    }
+
+    private var analysisButtonIcon: String {
+        if requiresProForCurrentVideo {
+            return "lock.fill"
+        }
+        if viewModel.isCloudTeamScanInProgress {
+            return "person.3.sequence.fill"
+        }
+        if viewModel.requiresHighlightTeamSelectionConfirmation {
+            return "hand.tap.fill"
+        }
+        return "brain.head.profile.fill"
     }
 
     private var analysisSectionSubtitle: String {
