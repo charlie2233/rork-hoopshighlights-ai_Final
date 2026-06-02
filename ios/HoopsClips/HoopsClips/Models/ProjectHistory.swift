@@ -1,6 +1,6 @@
 import Foundation
 
-struct PersistedProjectLibrary: Codable, Sendable {
+nonisolated struct PersistedProjectLibrary: Codable, Sendable {
     static let currentSchemaVersion = 1
 
     var schemaVersion: Int
@@ -22,7 +22,7 @@ struct PersistedProjectLibrary: Codable, Sendable {
     }
 }
 
-struct PersistedProjectRecord: Identifiable, Codable, Sendable {
+nonisolated struct PersistedProjectRecord: Identifiable, Codable, Sendable {
     let id: UUID
     var title: String
     var sourceFilename: String
@@ -164,7 +164,7 @@ struct PersistedProjectRecord: Identifiable, Codable, Sendable {
     }
 }
 
-struct ProjectEventRecord: Identifiable, Codable, Sendable {
+nonisolated struct ProjectEventRecord: Identifiable, Codable, Sendable {
     let id: UUID
     let timestamp: Date
     let kind: ProjectEventKind
@@ -183,7 +183,7 @@ struct ProjectEventRecord: Identifiable, Codable, Sendable {
     }
 }
 
-enum ProjectEventKind: String, Codable, Sendable, CaseIterable {
+nonisolated enum ProjectEventKind: String, Codable, Sendable, CaseIterable {
     case imported
     case analysisCompleted
     case analysisFailed

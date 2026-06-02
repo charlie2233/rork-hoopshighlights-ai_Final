@@ -23,7 +23,7 @@ enum ProjectImportPhase: Equatable, Sendable {
     case savingProject
 }
 
-final class ProjectHistoryStore {
+nonisolated final class ProjectHistoryStore {
     private let fileManager: FileManager
     private let libraryRootURL: URL
     private let projectsRootURL: URL

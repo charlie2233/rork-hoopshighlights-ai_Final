@@ -2765,11 +2765,14 @@ struct HoopsClipsTests {
 
     @Test func testCloudEditStatusRefreshPolicyDoesNotBlockTransientVersionFailures() {
         let gatewayTimeout = CloudEditError.backend(code: "http_504", message: "Request timed out.")
+        let cloudflareTimeout = CloudEditError.backend(code: "http_524", message: "A timeout occurred.")
         let urlTimeout = URLError(.timedOut)
 
         #expect(!CloudEditStatusRefreshPolicy.blocksRendering(for: gatewayTimeout))
+        #expect(!CloudEditStatusRefreshPolicy.blocksRendering(for: cloudflareTimeout))
         #expect(!CloudEditStatusRefreshPolicy.blocksRendering(for: urlTimeout))
         #expect(CloudEditStatusRefreshPolicy.statusMessage(for: gatewayTimeout) == "Cloud status is slow. You can still start the edit.")
+        #expect(CloudEditStatusRefreshPolicy.statusMessage(for: cloudflareTimeout) == "Cloud status is slow. You can still start the edit.")
         #expect(CloudEditStatusRefreshPolicy.statusMessage(for: urlTimeout) == "Cloud status is slow. You can still start the edit.")
     }
 
