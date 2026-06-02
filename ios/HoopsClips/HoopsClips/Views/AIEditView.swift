@@ -31,6 +31,7 @@ struct AIEditView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
     @State private var selectedPreset: CloudEditPreset = .personalHighlight
     @State private var selectedProTemplate: CloudEditProTemplate?
     @State private var selectedAspectRatio: CloudEditAspectRatio = CloudEditPreset.personalHighlight.aspectRatio
@@ -65,6 +66,7 @@ struct AIEditView: View {
     @State private var showAdvancedAIEditDetails = false
     @State private var showAllDurationOptions = false
     @State private var activeInstallID: String?
+    @State private var foregroundRefreshTask: Task<Void, Never>?
 
     private let cloudEditService: any CloudEditServicing
     private let proUXFlags = CloudEditProUXFlags.safeDefault
@@ -125,6 +127,10 @@ struct AIEditView: View {
             await refreshCloudEditVersion()
             await refreshRenderHistory()
         }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            refreshCloudEditAfterForegroundIfNeeded()
+        }
     }
 
     private func resetCloudEditSessionIfIdentityChanged(to installID: String) {
@@ -132,6 +138,8 @@ struct AIEditView: View {
         activeInstallID = installID
         guard let previousInstallID, previousInstallID != installID else { return }
 
+        foregroundRefreshTask?.cancel()
+        foregroundRefreshTask = nil
         previewPlayer?.pause()
         selectedPreset = .personalHighlight
         selectedProTemplate = nil
@@ -159,6 +167,16 @@ struct AIEditView: View {
         showTimelineDetails = false
         showAdvancedAIEditDetails = false
         showAllDurationOptions = false
+    }
+
+    private func refreshCloudEditAfterForegroundIfNeeded() {
+        guard foregroundRefreshTask == nil else { return }
+
+        foregroundRefreshTask = Task { @MainActor in
+            await refreshCloudEditVersion()
+            await refreshRenderHistory()
+            foregroundRefreshTask = nil
+        }
     }
 
     private var sheetBody: some View {
@@ -2791,12 +2809,29 @@ struct AIEditView: View {
                 limit: 20
             )
             renderHistory = history.renders
+            syncVisibleRenderFromHistory(history.renders)
             lockerErrorMessage = nil
         } catch {
             if showError {
                 lockerErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             }
         }
+    }
+
+    @MainActor
+    private func syncVisibleRenderFromHistory(_ renders: [CloudEditRenderStatusResponse]) {
+        guard let refreshedRender = CloudEditForegroundRefreshPolicy.matchingRenderStatus(
+            currentRender: renderStatus,
+            activeEditJobID: editJob?.editJobId ?? editPlan?.editJobId,
+            activeRevisionID: revisionResponse?.revisionId,
+            history: renders
+        ) else {
+            return
+        }
+
+        renderStatus = refreshedRender
+        policySummary = refreshedRender.policy ?? policySummary
+        phase = refreshedRender.status
     }
 
     @MainActor

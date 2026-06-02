@@ -1086,6 +1086,42 @@ struct CloudEditRenderHistoryResponse: Codable, Sendable {
     let renders: [CloudEditRenderStatusResponse]
 }
 
+enum CloudEditForegroundRefreshPolicy {
+    static func matchingRenderStatus(
+        currentRender: CloudEditRenderStatusResponse?,
+        activeEditJobID: String?,
+        activeRevisionID: String?,
+        history: [CloudEditRenderStatusResponse]
+    ) -> CloudEditRenderStatusResponse? {
+        if let currentRender {
+            if let exactRender = history.first(where: { $0.renderJobId == currentRender.renderJobId }) {
+                return exactRender
+            }
+
+            let revisionID = currentRender.revisionId ?? activeRevisionID
+            if let revisionID,
+               let revisionRender = history.first(where: {
+                   $0.editJobId == currentRender.editJobId && $0.revisionId == revisionID
+               }) {
+                return revisionRender
+            }
+
+            return history.first(where: { $0.editJobId == currentRender.editJobId })
+        }
+
+        guard let activeEditJobID else { return nil }
+
+        if let activeRevisionID,
+           let revisionRender = history.first(where: {
+               $0.editJobId == activeEditJobID && $0.revisionId == activeRevisionID
+           }) {
+            return revisionRender
+        }
+
+        return history.first(where: { $0.editJobId == activeEditJobID })
+    }
+}
+
 struct CloudEditDownloadResponse: Codable, Sendable {
     let editJobId: String
     let renderJobId: String

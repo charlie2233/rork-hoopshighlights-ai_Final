@@ -27,6 +27,7 @@ struct VideoPlayerView: View {
     @State private var activeImportID: UUID?
     @State private var importTask: Task<Void, Never>?
     @State private var teamScanTask: Task<Void, Never>?
+    @State private var foregroundAnalysisResumeTask: Task<Void, Never>?
     @State private var importBackgroundTaskID: UIBackgroundTaskIdentifier = .invalid
     @State private var importErrorMessage: String?
     @State private var importRecoveryOffersHistory = false
@@ -102,6 +103,7 @@ struct VideoPlayerView: View {
             .onAppear {
                 syncPlayer(with: viewModel.videoURL)
                 completeImportAfterLoadedVideo()
+                resumeCloudAnalysisAfterForegroundIfNeeded()
             }
             .onChange(of: viewModel.videoURL) { _, newValue in
                 syncPlayer(with: newValue)
@@ -127,6 +129,7 @@ struct VideoPlayerView: View {
             .onChange(of: scenePhase) { _, phase in
                 guard phase == .active else { return }
                 recoverCompletedImportIfNeeded()
+                resumeCloudAnalysisAfterForegroundIfNeeded()
             }
             .onChange(of: isImportingVideo) { _, isImporting in
                 HoopsAccessibility.announce(isImporting ? currentImportStatusMessage : "Video import finished.")
@@ -518,6 +521,15 @@ struct VideoPlayerView: View {
         guard viewModel.recoverVisibleProjectFromStoreIfNeeded() else { return }
         completeImportAfterLoadedVideo()
         startTeamScanIfNeeded()
+    }
+
+    private func resumeCloudAnalysisAfterForegroundIfNeeded() {
+        guard foregroundAnalysisResumeTask == nil else { return }
+
+        foregroundAnalysisResumeTask = Task { @MainActor in
+            await viewModel.resumeInFlightCloudAnalysisIfNeeded()
+            foregroundAnalysisResumeTask = nil
+        }
     }
 
     private func recoverSuccessfulImportIfNeeded(source: String, phase: String = "visible") -> Bool {

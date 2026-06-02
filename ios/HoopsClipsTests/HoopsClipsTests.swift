@@ -3029,6 +3029,95 @@ struct HoopsClipsTests {
         #expect(CloudEditStatusRefreshPolicy.statusMessage(for: urlTimeout) == "Cloud status is slow. You can still start the edit.")
     }
 
+    @Test func testCloudEditForegroundRefreshMatchesExactRenderJob() {
+        let current = makeCloudEditRenderStatus(
+            editJobId: "edit-1",
+            renderJobId: "render-old",
+            status: .queued
+        )
+        let olderSameEdit = makeCloudEditRenderStatus(
+            editJobId: "edit-1",
+            renderJobId: "render-other",
+            status: .failed
+        )
+        let refreshed = makeCloudEditRenderStatus(
+            editJobId: "edit-1",
+            renderJobId: "render-old",
+            status: .rendered,
+            durationSeconds: 30
+        )
+
+        let match = CloudEditForegroundRefreshPolicy.matchingRenderStatus(
+            currentRender: current,
+            activeEditJobID: "edit-1",
+            activeRevisionID: nil,
+            history: [olderSameEdit, refreshed]
+        )
+
+        #expect(match?.renderJobId == "render-old")
+        #expect(match?.status == .rendered)
+        #expect(match?.durationSeconds == 30)
+    }
+
+    @Test func testCloudEditForegroundRefreshPrefersActiveRevisionRender() {
+        let baseRender = makeCloudEditRenderStatus(
+            editJobId: "edit-2",
+            revisionId: nil,
+            renderJobId: "render-base",
+            status: .rendered
+        )
+        let revisionRender = makeCloudEditRenderStatus(
+            editJobId: "edit-2",
+            revisionId: "rev-more-hype",
+            renderJobId: "render-revision",
+            status: .rendering
+        )
+
+        let match = CloudEditForegroundRefreshPolicy.matchingRenderStatus(
+            currentRender: nil,
+            activeEditJobID: "edit-2",
+            activeRevisionID: "rev-more-hype",
+            history: [baseRender, revisionRender]
+        )
+
+        #expect(match?.renderJobId == "render-revision")
+        #expect(match?.revisionId == "rev-more-hype")
+        #expect(match?.status == .rendering)
+    }
+
+    private func makeCloudEditRenderStatus(
+        editJobId: String,
+        revisionId: String? = nil,
+        renderJobId: String,
+        status: CloudEditRenderState,
+        durationSeconds: Double? = nil
+    ) -> CloudEditRenderStatusResponse {
+        CloudEditRenderStatusResponse(
+            editJobId: editJobId,
+            revisionId: revisionId,
+            renderJobId: renderJobId,
+            renderer: "ffmpeg",
+            rendererVersion: "test-renderer",
+            planVersion: "test-plan",
+            templateId: "personal_highlight_v1",
+            status: status,
+            outputObjectKey: status == .rendered ? "renders/\(renderJobId)/output.mp4" : nil,
+            renderLogObjectKey: nil,
+            durationSeconds: durationSeconds,
+            aspectRatio: .vertical,
+            traceId: "trace-\(renderJobId)",
+            failureReason: status == .failed ? "render_failed" : nil,
+            validationErrors: nil,
+            planTier: .free,
+            policy: nil,
+            retryCount: nil,
+            outputBytes: nil,
+            retentionMetadata: nil,
+            workTimeline: nil,
+            workReceipt: nil
+        )
+    }
+
     @Test func testCloudEditStatusRefreshPolicyBlocksRealConfigFailures() {
         let unauthorized = CloudEditError.backend(code: "http_401", message: "Cloud editing auth failed.")
 
