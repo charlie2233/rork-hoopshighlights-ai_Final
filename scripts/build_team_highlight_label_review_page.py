@@ -837,6 +837,7 @@ def render_clip_card(case_index: int, case: dict[str, Any], clip: dict[str, Any]
             f'<p class="clip-meta">{escape(str(clip.get("predictionClipId") or clip.get("labelId") or ""))} | {start}s to {finish}s</p>',
             f'<p>Predicted team: <strong>{escape(str(predicted.get("teamId") or "unknown"))}</strong> ({escape(format_number(predicted.get("teamConfidence")))}) | Status: {escape(str(predicted.get("teamAttributionStatus") or "unknown"))}</p>',
             f'<p>Outcome: {escape(str(predicted.get("outcome") or "unknown"))} | Keep: {escape(str(predicted.get("keep")))}</p>',
+            '<p class="missing-fields" aria-live="polite">Needs: reviewed, team, highlight, event, outcome</p>',
             '<div class="button-row">',
             jump_button(case.get("videoId"), start, "Start"),
             jump_button(case.get("videoId"), event, "Event"),
@@ -1050,6 +1051,20 @@ video {
 .clip-card.complete {
   border-color: #1f9d6a;
   background: #172620;
+}
+.missing-fields {
+  color: #ffe29a;
+  background: #352b17;
+  border: 1px solid #4d3b17;
+  border-radius: 10px;
+  padding: 7px 9px;
+  font-size: 13px;
+  font-weight: 800;
+}
+.clip-card.complete .missing-fields {
+  color: #b8f5d8;
+  background: #173026;
+  border-color: #1f9d6a;
 }
 .review-priority {
   display: inline-flex;
@@ -1273,7 +1288,8 @@ function updateReviewPosition(card = currentFocusedCard) {
   currentFocusedCard = activeCard;
   const visibleIndex = visibleCards.indexOf(activeCard) + 1;
   const priority = (activeCard?.dataset?.reviewPriority || "standard_review").replace(/_/g, " ");
-  const status = clipCompleteFromCard(activeCard) ? "complete" : "needs review";
+  const missing = missingFieldsFromCard(activeCard);
+  const status = missing.length ? `needs ${missing.join("/")}` : "complete";
   row.textContent = `Current ${visibleIndex}/${visibleCards.length} visible (${priority}, ${status}). Overall ${counts.complete}/${counts.total} complete.`;
 }
 
@@ -1307,14 +1323,40 @@ function updateClip(caseIndex, clipIndex) {
   clip.labelingNotes = card.querySelector(".label-notes").value.trim();
 }
 
+function missingFieldsFromCard(card) {
+  if (!card) return ["clip"];
+  const missing = [];
+  if (!card.querySelector(".reviewed")?.checked) missing.push("reviewed");
+  if (!card.querySelector(".expected-team")?.value) missing.push("team");
+  if (card.querySelector(".expected-highlight")?.value === "unknown") missing.push("highlight");
+  if (!card.querySelector(".expected-event")?.value) missing.push("event");
+  if (!card.querySelector(".expected-outcome")?.value) missing.push("outcome");
+  return missing;
+}
+
 function clipCompleteFromCard(card) {
-  return Boolean(
-    card.querySelector(".reviewed")?.checked &&
-    card.querySelector(".expected-team")?.value &&
-    card.querySelector(".expected-highlight")?.value !== "unknown" &&
-    card.querySelector(".expected-event")?.value &&
-    card.querySelector(".expected-outcome")?.value
-  );
+  return missingFieldsFromCard(card).length === 0;
+}
+
+function updateClipMissingFields(card) {
+  const row = card?.querySelector?.(".missing-fields");
+  if (!row) return;
+  const missing = missingFieldsFromCard(card);
+  row.textContent = missing.length ? `Needs: ${missing.join(", ")}` : "Complete";
+}
+
+function focusFirstMissingField(card) {
+  if (!card) return;
+  const fieldSelectors = [
+    [".reviewed", () => !card.querySelector(".reviewed")?.checked],
+    [".expected-team", () => !card.querySelector(".expected-team")?.value],
+    [".expected-highlight", () => card.querySelector(".expected-highlight")?.value === "unknown"],
+    [".expected-event", () => !card.querySelector(".expected-event")?.value],
+    [".expected-outcome", () => !card.querySelector(".expected-outcome")?.value],
+  ];
+  const match = fieldSelectors.find(([_selector, isMissing]) => isMissing());
+  const field = match ? card.querySelector(match[0]) : null;
+  if (field) field.focus({ preventScroll: true });
 }
 
 function updateCase(caseIndex) {
@@ -1644,7 +1686,10 @@ function updateProgress() {
     complete += caseComplete;
     const row = document.getElementById(`case-progress-${caseIndex}`);
     if (row) row.textContent = `${caseComplete} / ${caseTotal} clips complete. ${caseTotal - caseComplete} remaining.`;
-    cards.forEach(card => card.classList.toggle("complete", clipCompleteFromCard(card)));
+    cards.forEach(card => {
+      card.classList.toggle("complete", clipCompleteFromCard(card));
+      updateClipMissingFields(card);
+    });
   });
   const overall = document.getElementById("overall-progress");
   if (overall) overall.innerHTML = `<strong>${complete}</strong> / ${total} clips complete. ${total - complete} still need labels.`;
@@ -1755,13 +1800,13 @@ function focusNextCloseReview() {
 function markReviewedAndNext(caseIndex, clipIndex) {
   const card = document.querySelector(`[data-case-index="${caseIndex}"][data-clip-index="${clipIndex}"]`);
   if (!card) return;
-  if (!card.querySelector(".expected-team")?.value ||
-      card.querySelector(".expected-highlight")?.value === "unknown" ||
-      !card.querySelector(".expected-event")?.value ||
-      !card.querySelector(".expected-outcome")?.value) {
-    draftStatus("Fill team, highlight, event, and outcome before marking this clip reviewed.");
+  const missing = missingFieldsFromCard(card).filter(field => field !== "reviewed");
+  if (missing.length > 0) {
+    draftStatus(`Fill ${missing.join(", ")} before marking this clip reviewed.`);
     card.scrollIntoView({ behavior: "smooth", block: "center" });
     card.focus({ preventScroll: true });
+    updateClipMissingFields(card);
+    focusFirstMissingField(card);
     return;
   }
   card.querySelector(".reviewed").checked = true;
