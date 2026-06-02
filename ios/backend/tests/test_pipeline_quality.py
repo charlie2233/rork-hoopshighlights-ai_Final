@@ -244,6 +244,18 @@ class PipelineQualityTests(unittest.TestCase):
         self.assertEqual(steady_signal.cue_type, "steady_noise")
         self.assertEqual(steady_signal.confidence, 0.0)
 
+    def test_audio_reaction_boundaries_keep_long_game_crowd_pop_candidates(self) -> None:
+        audio_profile = [0.07] * 520
+        for index in range(12, 12 + (70 * 6), 6):
+            audio_profile[index - 1] = 0.54
+            audio_profile[index] = 0.98
+            audio_profile[index + 1] = 0.62
+
+        boundaries = _detect_audio_reaction_boundaries(audio_profile)
+
+        self.assertGreaterEqual(len(boundaries), 60)
+        self.assertTrue(all(boundary.cue_type in {"spike", "cluster", "swell"} for boundary in boundaries[:60]))
+
     def test_candidate_windows_include_crowd_pop_recall_anchor_for_gpt_review(self) -> None:
         audio_profile = [0.06] * 30
         audio_profile[11] = 0.58
@@ -314,6 +326,30 @@ class PipelineQualityTests(unittest.TestCase):
         self.assertGreaterEqual(reaction_window.event_context_score, 0.45)
         self.assertNotEqual(reaction_clip.label, "Crowd Reaction")
         self.assertTrue(reaction_clip.shouldAutoKeep)
+
+    def test_audio_reaction_window_anchors_earlier_visual_play_before_late_crowd_pop(self) -> None:
+        settings = SimpleNamespace(
+            min_clip_duration_seconds=2.0,
+            max_clip_duration_seconds=8.0,
+            clip_padding_seconds=0.0,
+            max_returned_clips=8,
+        )
+        audio_profile = [0.06] * 36
+        audio_profile[16] = 0.96
+        audio_profile[17] = 0.70
+
+        windows = _build_audio_reaction_candidate_windows(
+            duration_seconds=18.0,
+            audio_profile=audio_profile,
+            shot_boundaries=[4.25],
+            settings=settings,
+        )
+        reaction_window = max(windows, key=lambda window: window.audio_pop_score)
+
+        self.assertAlmostEqual(reaction_window.audio_pop_time or 0.0, 8.25, delta=0.3)
+        self.assertAlmostEqual(reaction_window.peak_time, 4.25, delta=0.05)
+        self.assertLessEqual(reaction_window.start_time, 2.35)
+        self.assertGreaterEqual(reaction_window.end_time, 9.0)
 
     def test_run_analysis_applies_quick_scan_before_selected_team_filter(self) -> None:
         native = [
@@ -1221,6 +1257,46 @@ class PipelineQualityTests(unittest.TestCase):
         audio_reaction_labels = [clip.label for clip in trimmed if _is_audio_reaction_candidate(clip)]
 
         self.assertGreaterEqual(len(audio_reaction_labels), 4)
+        self.assertIn("Crowd Reaction 0", audio_reaction_labels)
+
+    def test_review_trim_reserves_more_audio_reactions_for_internal_candidate_pool(self) -> None:
+        scoring = [
+            _clip(
+                start=float(index * 5),
+                end=float(index * 5 + 4),
+                label=f"Made Shot {index}",
+                combined=0.99 - (index * 0.001),
+                event_center=float(index * 5 + 2),
+                auto_keep=True,
+            )
+            for index in range(180)
+        ]
+        crowd_pops = [
+            _clip(
+                start=920.0 + float(index * 5),
+                end=924.0 + float(index * 5),
+                label=f"Crowd Reaction {index}",
+                combined=0.66 - (index * 0.004),
+                confidence=0.7,
+                event_center=922.0 + float(index * 5),
+                auto_keep=False,
+            ).model_copy(
+                update={
+                    "audioScore": 0.99 - (index * 0.006),
+                    "audioCueType": "cluster" if index % 2 == 0 else "spike",
+                    "audioCueConfidence": 0.86 - (index * 0.006),
+                    "audioCueTime": 922.0 + float(index * 5),
+                    "motionScore": 0.78,
+                    "visualScore": 0.48,
+                }
+            )
+            for index in range(18)
+        ]
+
+        trimmed = _trim_analysis_clips_for_review([*scoring, *crowd_pops], None, max_clips=160)
+        audio_reaction_labels = [clip.label for clip in trimmed if _is_audio_reaction_candidate(clip)]
+
+        self.assertGreaterEqual(len(audio_reaction_labels), 16)
         self.assertIn("Crowd Reaction 0", audio_reaction_labels)
 
     def test_review_trim_reserves_unlabeled_loud_crowd_pop_candidate(self) -> None:

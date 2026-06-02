@@ -54,17 +54,17 @@ AUDIO_PROFILE_BUCKET_SECONDS = 0.5
 AUDIO_POP_EVENT_CENTER_THRESHOLD = 0.45
 AUDIO_REACTION_BOUNDARY_MIN_SCORE = 0.32
 AUDIO_REACTION_BOUNDARY_MIN_GAP_SECONDS = 2.25
-AUDIO_REACTION_BOUNDARY_MAX_COUNT = 48
+AUDIO_REACTION_BOUNDARY_MAX_COUNT = 96
 AUDIO_REACTION_BOUNDARY_CONTEXT_BUCKETS = 4
 AUDIO_REACTION_ONSET_CONTEXT_BUCKETS = 5
 AUDIO_REACTION_SUSTAIN_CONTEXT_BUCKETS = 5
 AUDIO_REACTION_CLUSTER_CONTEXT_BUCKETS = 4
 AUDIO_REACTION_CLUSTER_MIN_PEAK = 0.56
 AUDIO_REACTION_CLUSTER_SPIKE_MARGIN = 0.16
-AUDIO_REACTION_WINDOW_LEAD_SECONDS = 2.75
-AUDIO_REACTION_WINDOW_FOLLOW_SECONDS = 1.5
-AUDIO_REACTION_VISUAL_EVENT_LOOKBACK_SECONDS = 3.25
-AUDIO_REACTION_VISUAL_EVENT_POST_POP_SECONDS = 0.75
+AUDIO_REACTION_WINDOW_LEAD_SECONDS = 3.4
+AUDIO_REACTION_WINDOW_FOLLOW_SECONDS = 1.7
+AUDIO_REACTION_VISUAL_EVENT_LOOKBACK_SECONDS = 4.25
+AUDIO_REACTION_VISUAL_EVENT_POST_POP_SECONDS = 0.9
 UNLABELED_AUDIO_REACTION_MIN_AUDIO_SCORE = 0.92
 UNLABELED_AUDIO_REACTION_MIN_ACTIVITY_SCORE = 0.58
 UNLABELED_AUDIO_REACTION_MIN_COMBINED_SCORE = 0.50
@@ -357,13 +357,13 @@ def _audio_reaction_review_reserve_limit(max_clips: int, audio_reaction_count: i
     if max_clips < 8:
         return min(audio_reaction_count, 1)
     if max_clips >= 160:
-        return min(audio_reaction_count, 10)
+        return min(audio_reaction_count, 16)
     if max_clips >= 80:
-        return min(audio_reaction_count, 6)
+        return min(audio_reaction_count, 10)
     if max_clips >= 40:
-        return min(audio_reaction_count, 4)
+        return min(audio_reaction_count, 6)
     if max_clips >= 20:
-        return min(audio_reaction_count, 3)
+        return min(audio_reaction_count, 4)
     return min(audio_reaction_count, 2)
 
 
@@ -1568,7 +1568,7 @@ def _audio_pop_context_score(pop_time_seconds: Optional[float], start_time: floa
     lead_in = max(pop_time_seconds - start_time, 0.0)
     follow = max(end_time - pop_time_seconds, 0.0)
     lead_score = min(lead_in / 1.6, 1.0)
-    follow_score = min(follow / 0.8, 1.0)
+    follow_score = min(follow / 1.3, 1.0)
     return clamp((lead_score * 0.75) + (follow_score * 0.25), 0.0, 1.0)
 
 
@@ -2000,7 +2000,22 @@ def _collapse_windows(group: List[CandidateWindow], settings: Settings) -> Candi
     if duration < settings.min_clip_duration_seconds:
         end_time = start_time + settings.min_clip_duration_seconds
     if end_time - start_time > settings.max_clip_duration_seconds:
-        end_time = start_time + settings.max_clip_duration_seconds
+        if (
+            peak_window.audio_pop_score >= AUDIO_POP_EVENT_CENTER_THRESHOLD
+            and peak_window.audio_pop_time is not None
+            and peak_window.event_context_score < 0.45
+        ):
+            preferred_lead = min(
+                AUDIO_REACTION_WINDOW_LEAD_SECONDS,
+                settings.max_clip_duration_seconds * 0.62,
+            )
+            start_time = max(0.0, peak_window.audio_pop_time - preferred_lead)
+            end_time = min(
+                max(group_end, peak_window.audio_pop_time + AUDIO_REACTION_WINDOW_FOLLOW_SECONDS),
+                start_time + settings.max_clip_duration_seconds,
+            )
+        else:
+            end_time = start_time + settings.max_clip_duration_seconds
 
     return CandidateWindow(
         start_time=start_time,
