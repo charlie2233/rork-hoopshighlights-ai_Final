@@ -136,7 +136,25 @@ class SubmissionReadinessPreflightTests(unittest.TestCase):
                     "clipCount": 54,
                     "completeClipCount": 7,
                     "incompleteClipCount": 47,
+                    "reviewPageMetadata": {
+                        "draftPrefill": {
+                            "appliedClipCount": 54,
+                            "skippedClipCount": 1,
+                        },
+                        "reviewPriorityCounts": {
+                            "needs_close_review": 49,
+                            "standard_review": 5,
+                        },
+                    },
                 },
+            )
+            (bundle_dir / "team_highlight_label_review.html").write_text(
+                "Next close review\nJ/L scrub\nfunction scrubVideosForCard\nDownload launch-ready labels\n",
+                encoding="utf-8",
+            )
+            (bundle_dir / "next_steps.md").write_text(
+                "Use `Next close review` first\n`J/L` scrub back/forward\nDownload launch-ready labels\n",
+                encoding="utf-8",
             )
             collector = Collector()
 
@@ -148,7 +166,58 @@ class SubmissionReadinessPreflightTests(unittest.TestCase):
         self.assertIn("47 remaining", detail)
         self.assertIn("team_highlight_label_review.html", detail)
         self.assertIn("next_steps.md", detail)
+        self.assertIn("GPT draft prefilled 54 clip(s)", detail)
+        self.assertIn("49 close-review", detail)
         self.assertIn("GPT draft labels do not count", detail)
+        self.assertNotIn("Labeling bundle looks stale", detail)
+
+    def test_missing_team_accuracy_report_warns_when_labeling_bundle_is_stale(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            manifest_path = repo_root / "artifacts/team_highlight_accuracy_manifest.json"
+            write_json(manifest_path, {"schemaVersion": "team-highlight-accuracy-manifest-v1", "cases": []})
+            bundle_dir = repo_root / "artifacts/team_highlight_labeling_bundle"
+            write_json(
+                bundle_dir / "label_status.json",
+                {
+                    "schemaVersion": "team-highlight-label-status-v1",
+                    "status": "incomplete",
+                    "clipCount": 54,
+                    "completeClipCount": 0,
+                    "incompleteClipCount": 54,
+                },
+            )
+            write_json(
+                bundle_dir / "bundle_metadata.json",
+                {
+                    "schemaVersion": "team-highlight-labeling-bundle-v1",
+                    "reviewPage": "artifacts/team_highlight_labeling_bundle/team_highlight_label_review.html",
+                    "labelStatus": "artifacts/team_highlight_labeling_bundle/label_status.json",
+                    "clipCount": 54,
+                    "completeClipCount": 0,
+                    "incompleteClipCount": 54,
+                    "gptDraft": {
+                        "path": "artifacts/team_highlight_labeling_bundle/gpt_draft_labels.json",
+                    },
+                },
+            )
+            (bundle_dir / "team_highlight_label_review.html").write_text("Next incomplete\n", encoding="utf-8")
+            (bundle_dir / "next_steps.md").write_text("Use the review page.\n", encoding="utf-8")
+            collector = Collector()
+
+            check_team_highlight_accuracy_report(repo_root, collector, None)
+
+        self.assertTrue(has_failures(collector.findings))
+        detail = collector.findings[0].detail
+        self.assertIn("Labeling bundle looks stale or incomplete", detail)
+        self.assertIn("video scrub shortcuts", detail)
+        self.assertIn("scrub shortcut instruction", detail)
+        self.assertIn("prepare_team_highlight_labeling_bundle.py", detail)
+        self.assertIn("team_highlight_accuracy_manifest.json", detail)
+        self.assertIn("--video-path", detail)
+        self.assertIn("/absolute/path/to/source.mp4", detail)
+        self.assertIn("--draft-bundle", detail)
+        self.assertIn("gpt_draft_labels.json", detail)
 
     def test_missing_team_accuracy_report_points_to_manifest_when_bundle_missing(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

@@ -6,6 +6,7 @@ import json
 import os
 import plistlib
 import re
+import shlex
 import subprocess
 import sys
 from dataclasses import asdict, dataclass
@@ -141,6 +142,18 @@ DEFAULT_LABELING_BUNDLE_DIR = Path("artifacts/team_highlight_labeling_bundle")
 DEFAULT_LABELING_BUNDLE_METADATA = DEFAULT_LABELING_BUNDLE_DIR / "bundle_metadata.json"
 DEFAULT_LABELING_BUNDLE_STATUS = DEFAULT_LABELING_BUNDLE_DIR / "label_status.json"
 DEFAULT_LABELING_BUNDLE_NEXT_STEPS = DEFAULT_LABELING_BUNDLE_DIR / "next_steps.md"
+DEFAULT_LABELING_BUNDLE_REVIEW_PAGE = DEFAULT_LABELING_BUNDLE_DIR / "team_highlight_label_review.html"
+LABELING_BUNDLE_REVIEW_PAGE_MARKERS = (
+    ("Next close review", "close-review jump"),
+    ("J/L scrub", "video scrub shortcuts"),
+    ("function scrubVideosForCard", "synced video scrub controls"),
+    ("Download launch-ready labels", "launch-ready label export guard"),
+)
+LABELING_BUNDLE_NEXT_STEPS_MARKERS = (
+    ("Use `Next close review` first", "close-review first instruction"),
+    ("`J/L` scrub back/forward", "scrub shortcut instruction"),
+    ("Download launch-ready labels", "launch-ready label export instruction"),
+)
 PLACEHOLDER_VALUES = {"", "YOUR_TEAM_ID", "$(HOOPS_DEVELOPMENT_TEAM)"}
 UUID_RE = re.compile(r"^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$")
 TEAM_ACCURACY_THRESHOLD_TO_METRIC = (
@@ -463,9 +476,13 @@ def team_labeling_bundle_hint(repo_root: Path) -> str:
             if incomplete is not None:
                 progress += f", {int(incomplete)} remaining"
             progress += "."
+        draft_detail = labeling_bundle_draft_detail(metadata)
+        staleness_detail = labeling_bundle_staleness_detail(repo_root, review_page, next_steps_path, metadata)
         return (
             f"{progress} Continue human review at {rel(review_page, repo_root)}; "
             f"status: {rel(status_label, repo_root)}; next steps: {rel(next_steps_path, repo_root)}. "
+            f"{draft_detail}"
+            f"{staleness_detail}"
             "GPT draft labels do not count until every clip is human-reviewed and the launch report is rebuilt."
         ).strip()
 
@@ -478,6 +495,98 @@ def team_labeling_bundle_hint(repo_root: Path) -> str:
             f"--output-dir {rel(repo_root / DEFAULT_LABELING_BUNDLE_DIR, repo_root)}`."
         )
     return ""
+
+
+def labeling_bundle_draft_detail(metadata: dict[str, object] | None) -> str:
+    review_metadata = metadata.get("reviewPageMetadata") if metadata else None
+    if not isinstance(review_metadata, dict):
+        return ""
+    draft_prefill = review_metadata.get("draftPrefill")
+    priority_counts = review_metadata.get("reviewPriorityCounts")
+    details: list[str] = []
+    if isinstance(draft_prefill, dict):
+        applied = number_or_none(draft_prefill.get("appliedClipCount"))
+        skipped = number_or_none(draft_prefill.get("skippedClipCount"))
+        if applied is not None:
+            details.append(f"GPT draft prefilled {int(applied)} clip(s)")
+            if skipped is not None:
+                details[-1] += f" and skipped {int(skipped)}"
+    if isinstance(priority_counts, dict):
+        close_review = number_or_none(priority_counts.get("needs_close_review"))
+        standard_review = number_or_none(priority_counts.get("standard_review"))
+        if close_review is not None or standard_review is not None:
+            priority_parts = []
+            if close_review is not None:
+                priority_parts.append(f"{int(close_review)} close-review")
+            if standard_review is not None:
+                priority_parts.append(f"{int(standard_review)} standard-review")
+            details.append("review priority queue: " + ", ".join(priority_parts))
+    return f"{'; '.join(details)}. " if details else ""
+
+
+def labeling_bundle_staleness_detail(
+    repo_root: Path,
+    review_page: Path,
+    next_steps_path: Path,
+    metadata: dict[str, object] | None,
+) -> str:
+    missing: list[str] = []
+    review_text = read_text(review_page)
+    if review_text is None:
+        missing.append(f"review page {rel(review_page, repo_root)} is missing or unreadable")
+    else:
+        missing.extend(label for marker, label in LABELING_BUNDLE_REVIEW_PAGE_MARKERS if marker not in review_text)
+
+    next_steps_text = read_text(next_steps_path)
+    if next_steps_text is None:
+        missing.append(f"next steps {rel(next_steps_path, repo_root)} is missing or unreadable")
+    else:
+        missing.extend(label for marker, label in LABELING_BUNDLE_NEXT_STEPS_MARKERS if marker not in next_steps_text)
+
+    if not missing:
+        return ""
+
+    detail = "Labeling bundle looks stale or incomplete"
+    detail += f" (missing {', '.join(missing)})."
+    regenerate_command = labeling_bundle_regenerate_command(repo_root, metadata)
+    if regenerate_command:
+        detail += (
+            f" Regenerate before review with `{regenerate_command}`. "
+            "For multi-video bundles, replace --video-path with repeated --video videoId=/path.mp4 mappings."
+        )
+    else:
+        detail += " Regenerate the labeling bundle from current scripts before review."
+    return f"{detail} "
+
+
+def labeling_bundle_regenerate_command(repo_root: Path, metadata: dict[str, object] | None) -> str:
+    manifest_path = repo_root / DEFAULT_TEAM_ACCURACY_MANIFEST
+    if not manifest_path.exists():
+        return ""
+    command = [
+        "python3",
+        "scripts/prepare_team_highlight_labeling_bundle.py",
+        "--manifest",
+        rel(manifest_path, repo_root),
+        "--video-path",
+        "/absolute/path/to/source.mp4",
+        "--output-dir",
+        rel(repo_root / DEFAULT_LABELING_BUNDLE_DIR, repo_root),
+    ]
+    draft_bundle_path = labeling_bundle_draft_path(metadata)
+    if draft_bundle_path:
+        command.extend(["--draft-bundle", rel(draft_bundle_path, repo_root)])
+    return " ".join(shlex.quote(part) for part in command)
+
+
+def labeling_bundle_draft_path(metadata: dict[str, object] | None) -> Path | None:
+    gpt_draft = metadata.get("gptDraft") if metadata else None
+    if not isinstance(gpt_draft, dict):
+        return None
+    raw_path = gpt_draft.get("path")
+    if not isinstance(raw_path, str) or not raw_path.strip():
+        return None
+    return Path(raw_path).expanduser()
 
 
 def metadata_path_from_payload(repo_root: Path, payload: dict[str, object] | None, key: str, fallback: Path) -> Path:
