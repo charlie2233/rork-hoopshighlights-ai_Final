@@ -1921,7 +1921,7 @@ def _backfill_segmented_candidate_windows(
 
     kept = list(segmented[:resolved_limit])
     if len(kept) >= resolved_limit:
-        return sorted(kept, key=_candidate_window_recall_key, reverse=True)[:resolved_limit]
+        return _reserve_audio_reaction_candidate_windows(kept, windows, resolved_limit)
 
     for window in sorted(windows, key=_candidate_window_recall_key, reverse=True):
         if len(kept) >= resolved_limit:
@@ -1930,7 +1930,130 @@ def _backfill_segmented_candidate_windows(
             continue
         kept.append(window)
 
-    return sorted(kept, key=_candidate_window_recall_key, reverse=True)[:resolved_limit]
+    return _reserve_audio_reaction_candidate_windows(kept, windows, resolved_limit)
+
+
+def _audio_reaction_window_reserve_limit(max_windows: int, audio_reaction_count: int) -> int:
+    max_windows = max(0, int(max_windows))
+    audio_reaction_count = max(0, int(audio_reaction_count))
+    if max_windows < 4 or audio_reaction_count == 0:
+        return 0
+    if max_windows >= 320:
+        return min(audio_reaction_count, 32)
+    if max_windows >= 160:
+        return min(audio_reaction_count, 24)
+    if max_windows >= 80:
+        return min(audio_reaction_count, 16)
+    if max_windows >= 40:
+        return min(audio_reaction_count, 10)
+    if max_windows >= 20:
+        return min(audio_reaction_count, 6)
+    if max_windows >= 8:
+        return min(audio_reaction_count, 3)
+    return min(audio_reaction_count, 1)
+
+
+def _reserve_audio_reaction_candidate_windows(
+    kept: Sequence[CandidateWindow],
+    windows: Sequence[CandidateWindow],
+    resolved_limit: int,
+) -> List[CandidateWindow]:
+    resolved_limit = max(0, int(resolved_limit))
+    if resolved_limit == 0:
+        return []
+
+    selected = list(kept[:resolved_limit])
+    audio_candidates = [window for window in windows if _is_audio_reaction_candidate_window(window)]
+    reserve_limit = _audio_reaction_window_reserve_limit(resolved_limit, len(audio_candidates))
+    if reserve_limit == 0:
+        return sorted(selected, key=_candidate_window_recall_key, reverse=True)[:resolved_limit]
+
+    selected_audio_count = sum(1 for window in selected if _is_audio_reaction_candidate_window(window))
+    if selected_audio_count >= reserve_limit:
+        return sorted(selected, key=_candidate_window_recall_key, reverse=True)[:resolved_limit]
+
+    for candidate in sorted(audio_candidates, key=_audio_reaction_window_quality_key, reverse=True):
+        if selected_audio_count >= reserve_limit:
+            break
+
+        duplicate_index = next(
+            (
+                index
+                for index, existing in enumerate(selected)
+                if _candidate_window_overlap_ratio(candidate, existing) > NATIVE_RECALL_BACKFILL_OVERLAP_RATIO
+            ),
+            None,
+        )
+        if duplicate_index is not None:
+            existing = selected[duplicate_index]
+            if _is_audio_reaction_candidate_window(existing):
+                continue
+            if _audio_reaction_window_quality_key(candidate) > _audio_reaction_window_quality_key(existing):
+                selected[duplicate_index] = candidate
+                selected_audio_count += 1
+            continue
+
+        if len(selected) < resolved_limit:
+            selected.append(candidate)
+            selected_audio_count += 1
+            continue
+
+        replacement_index = _audio_reaction_replacement_index(selected)
+        if replacement_index is None:
+            break
+        selected[replacement_index] = candidate
+        selected_audio_count += 1
+
+    return sorted(selected, key=_candidate_window_recall_key, reverse=True)[:resolved_limit]
+
+
+def _audio_reaction_replacement_index(windows: Sequence[CandidateWindow]) -> Optional[int]:
+    replacement_candidates = [
+        (index, window)
+        for index, window in enumerate(windows)
+        if not _is_audio_reaction_candidate_window(window)
+    ]
+    if not replacement_candidates:
+        return None
+    return min(replacement_candidates, key=lambda item: _candidate_window_recall_key(item[1]))[0]
+
+
+def _is_audio_reaction_candidate_window(window: CandidateWindow) -> bool:
+    if window.audio_pop_time is None:
+        return False
+    if window.audio_pop_score < AUDIO_REACTION_BOUNDARY_MIN_SCORE:
+        return False
+    recognized_cue = window.audio_cue_type in {"spike", "cluster", "swell"}
+    super_loud = window.audio_score >= SUPER_LOUD_AUDIO_REACTION_MIN_AUDIO_SCORE
+    return recognized_cue or super_loud
+
+
+def _audio_reaction_window_quality_key(window: CandidateWindow) -> tuple[float, float, float, float, float, float, float, float]:
+    cue_confidence = window.audio_cue_confidence or 0.0
+    high_salience = 1.0 if _is_high_salience_audio_reaction_signal(
+        AudioPopSignal(
+            score=window.audio_pop_score,
+            time_seconds=window.audio_pop_time,
+            baseline=0.0,
+            cue_type=window.audio_cue_type or "none",
+            confidence=cue_confidence,
+        )
+    ) else 0.0
+    cue_bonus = {
+        "cluster": 0.08,
+        "swell": 0.06,
+        "spike": 0.04,
+    }.get(window.audio_cue_type or "none", 0.0)
+    return (
+        high_salience,
+        window.audio_pop_score + cue_bonus,
+        cue_confidence,
+        window.audio_score,
+        window.event_context_score,
+        window.combined_score,
+        window.motion_score,
+        window.visual_score,
+    )
 
 
 def _candidate_window_recall_key(window: CandidateWindow) -> tuple[float, float, float, float, float]:

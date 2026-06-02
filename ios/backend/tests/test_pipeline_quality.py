@@ -14,6 +14,7 @@ from app.config import get_settings
 from app.pipeline import (
     TEAM_SELECTION_PREFILTER_MULTIPLIER,
     _analysis_team_diagnostic_counts,
+    _backfill_segmented_candidate_windows,
     _build_candidate_windows,
     _build_audio_reaction_candidate_windows,
     _annotate_analysis_team_status,
@@ -255,6 +256,49 @@ class PipelineQualityTests(unittest.TestCase):
 
         self.assertGreaterEqual(len(boundaries), 60)
         self.assertTrue(all(boundary.cue_type in {"spike", "cluster", "swell"} for boundary in boundaries[:60]))
+
+    def test_full_candidate_cap_reserves_loud_crowd_pops_for_gpt_review(self) -> None:
+        segmented = [
+            CandidateWindow(
+                start_time=index * 5.0,
+                end_time=(index * 5.0) + 4.5,
+                peak_time=(index * 5.0) + 2.5,
+                audio_score=0.35,
+                visual_score=0.78 - (index * 0.01),
+                motion_score=0.72 - (index * 0.01),
+                combined_score=0.88 - (index * 0.01),
+                event_context_score=0.82 - (index * 0.01),
+            )
+            for index in range(8)
+        ]
+        crowd_pops = [
+            CandidateWindow(
+                start_time=60.0 + (index * 6.0),
+                end_time=65.5 + (index * 6.0),
+                peak_time=63.0 + (index * 6.0),
+                audio_score=1.0 - (index * 0.02),
+                visual_score=0.36,
+                motion_score=0.72,
+                combined_score=0.74,
+                event_context_score=0.0,
+                audio_pop_score=0.76 - (index * 0.04),
+                audio_pop_time=63.0 + (index * 6.0),
+                audio_cue_type="cluster",
+                audio_cue_confidence=0.82 - (index * 0.04),
+            )
+            for index in range(4)
+        ]
+
+        kept = _backfill_segmented_candidate_windows(
+            segmented=segmented,
+            windows=[*segmented, *crowd_pops],
+            resolved_limit=8,
+        )
+
+        kept_crowd_pops = [window for window in kept if window.audio_pop_score >= 0.32]
+        self.assertEqual(len(kept), 8)
+        self.assertGreaterEqual(len(kept_crowd_pops), 3)
+        self.assertTrue(all(window.audio_cue_type == "cluster" for window in kept_crowd_pops))
 
     def test_candidate_windows_include_crowd_pop_recall_anchor_for_gpt_review(self) -> None:
         audio_profile = [0.06] * 30
