@@ -34,8 +34,8 @@ struct VideoPlayerView: View {
     @State private var showingCloudVideoConsent = false
     @State private var pendingCloudVideoConsentAction: CloudVideoConsentAction?
 
-    private let videoImportReminderNanoseconds: UInt64 = 8 * 1_000_000_000
-    private let videoImportLongRunningReminderNanoseconds: UInt64 = 45 * 1_000_000_000
+    private let videoImportReminderNanoseconds: UInt64 = 4 * 1_000_000_000
+    private let videoImportLongRunningReminderNanoseconds: UInt64 = 30 * 1_000_000_000
     private let videoImportTimeoutNanoseconds: UInt64 = 5 * 60 * 1_000_000_000
     private let videoImportCompletionGraceNanoseconds: UInt64 = 2 * 1_000_000_000
     private let videoImportRecoveryPollNanoseconds: UInt64 = 2 * 1_000_000_000
@@ -320,7 +320,7 @@ struct VideoPlayerView: View {
                         metadata: "source=\(source)"
                     )
                     importRecoveryOffersHistory = true
-                    importStatusMessage = "Still copying the video. If it already finished, check History."
+                    importStatusMessage = "Still copying. You can check History if it already saved."
                 }
 
                 do {
@@ -339,7 +339,7 @@ struct VideoPlayerView: View {
                         metadata: "source=\(source)"
                     )
                     importRecoveryOffersHistory = true
-                    importStatusMessage = "Still saving the project. If it already finished, HoopClips will open it or show it in History."
+                    importStatusMessage = "Still saving. If iOS finished it in the background, it will be in History."
                 }
 
                 do {
@@ -751,7 +751,7 @@ struct VideoPlayerView: View {
                         .minimumScaleFactor(0.86)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    Text("Keep HoopClips open while the local copy finishes. If iOS completes it in the background, the project will show in History.")
+                    Text("Large videos can take a moment. If it finishes in the background, open it from History.")
                         .font(.caption)
                         .foregroundStyle(AppTheme.subtleText)
                         .lineLimit(dynamicTypeSize.isAccessibilitySize ? 5 : 3)
