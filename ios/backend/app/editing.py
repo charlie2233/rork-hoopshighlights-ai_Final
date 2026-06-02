@@ -137,6 +137,22 @@ MIN_NATIVE_OUTCOME_CONFLICT_CONFIDENCE = 0.65
 GPT_CANDIDATE_REVIEW_LIMIT = 320
 GPT_NON_SCORING_DEFENSIVE_OUTCOMES = {"steal", "forced_turnover", "defensive_stop"}
 GPT_SHOT_RESULT_OUTCOMES = {"made", "missed", "blocked"}
+DEFAULT_GPT_OUTCOME_CAPTIONS: Dict[str, str] = {
+    "made": "BUCKET",
+    "missed": "GOOD LOOK",
+    "blocked": "BLOCKED",
+    "steal": "STEAL",
+    "forced_turnover": "FORCED TURNOVER",
+    "defensive_stop": "DEFENSIVE STOP",
+}
+MADE_OUTCOME_CAPTION_PATTERN = re.compile(
+    r"\b(bucket|buckets|splash|cash|money|swish|bang|count it|and[-\s]?1|3pt)\b",
+    re.IGNORECASE,
+)
+NON_MADE_OUTCOME_CAPTION_PATTERN = re.compile(
+    r"\b(miss|missed|no good|blocked|block|stuffed|steal|stolen|turnover|defensive stop)\b",
+    re.IGNORECASE,
+)
 TEAM_EVIDENCE_REQUIRED_SOURCES = {"quick_scan", "gpt_frame_review", "provider", "unknown"}
 MIN_CONFIDENT_TEAM_EVIDENCE_FRAME_REFS = 2
 MIN_CONFIDENT_TEAM_EVIDENCE_ROLE_GROUPS = 2
@@ -3280,7 +3296,8 @@ def apply_gpt_highlight_rerank(
         suggested = decision.suggestedEdit
         plan_caption = plan_captions_by_id.get(clip.id)
         plan_slow_motion = plan_slow_motion_by_id.get(clip.id)
-        caption = plan_caption.caption if plan_caption is not None else decision.caption
+        raw_caption = plan_caption.caption if plan_caption is not None else decision.caption
+        caption = _sanitized_gpt_caption(decision, raw_caption)
         caption_moment = plan_caption.captionMoment if plan_caption is not None else suggested.captionMoment
         if plan_caption is not None:
             applied_plan_caption_clip_ids.add(clip.id)
@@ -3294,7 +3311,7 @@ def apply_gpt_highlight_rerank(
         updated = clip.model_copy(
             update={
                 "label": event_label[:80],
-                "captionHint": caption[:MAX_CAPTION_LENGTH],
+                "captionHint": caption,
                 "combinedScore": round((clip.planning_score * 0.25) + (decision.highlightScore * 0.55) + (decision.watchabilityScore * 0.2), 4),
                 "nativeShotSignals": _validated_gpt_native_shot_signals(clip, decision),
                 "gptOutcome": _validated_gpt_outcome(decision),
@@ -3452,6 +3469,33 @@ def _validated_gpt_outcome(
     if decision.outcome in GPT_SHOT_RESULT_OUTCOMES or decision.outcome in GPT_NON_SCORING_DEFENSIVE_OUTCOMES:
         return decision.outcome  # type: ignore[return-value]
     return None
+
+
+def _sanitized_gpt_caption(decision: GPTHighlightClipDecision, caption: str) -> str:
+    validated_outcome = _validated_gpt_outcome(decision)
+    normalized_caption = " ".join(caption.split()).strip()
+    if validated_outcome is None:
+        return normalized_caption[:MAX_CAPTION_LENGTH]
+
+    fallback = DEFAULT_GPT_OUTCOME_CAPTIONS[validated_outcome]
+    if not normalized_caption:
+        return fallback
+    if _caption_conflicts_with_outcome(normalized_caption, validated_outcome):
+        return fallback
+    return normalized_caption[:MAX_CAPTION_LENGTH]
+
+
+def _caption_conflicts_with_outcome(caption: str, outcome: str) -> bool:
+    normalized = caption.strip().lower()
+    if not normalized:
+        return False
+    if outcome == "made":
+        return bool(NON_MADE_OUTCOME_CAPTION_PATTERN.search(normalized))
+    if outcome in {"missed", "blocked", "steal", "forced_turnover", "defensive_stop"}:
+        if "no bucket" in normalized or "not a bucket" in normalized:
+            return False
+        return bool(MADE_OUTCOME_CAPTION_PATTERN.search(normalized))
+    return False
 
 
 def _validated_gpt_outcome_evidence_source(
