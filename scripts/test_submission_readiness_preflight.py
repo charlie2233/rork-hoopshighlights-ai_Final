@@ -870,6 +870,25 @@ Current device information:
 
             self.assertFalse(has_failures(collector.findings))
 
+    def test_ios_signing_checks_app_target_build_number_not_test_targets(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            create_ready_fixture(repo_root)
+            project_path = repo_root / "ios/HoopsClips.xcodeproj/project.pbxproj"
+            project_path.write_text(
+                ios_project_fixture(app_build_number="13", test_build_number=EXPECTED_IOS_BUILD_NUMBER),
+                encoding="utf-8",
+            )
+            collector = Collector()
+            with patch(
+                "scripts.submission_readiness_preflight.github_environment_names",
+                return_value={"HOOPS_DEVELOPMENT_TEAM"},
+            ):
+                check_ios_signing(repo_root, collector)
+
+        failures = [finding for finding in collector.findings if finding.status == "fail"]
+        self.assertTrue(any("build number" in finding.detail for finding in failures))
+
     def test_endpoint_label_omits_scheme_and_query(self) -> None:
         label = redacted_endpoint_label("https://example.test/v1/editing/version?token=secret")
 
@@ -1179,16 +1198,7 @@ def write_json(path: Path, payload: object) -> None:
 def create_ready_fixture(repo_root: Path) -> Path:
     project_path = repo_root / "ios/HoopsClips.xcodeproj/project.pbxproj"
     project_path.parent.mkdir(parents=True, exist_ok=True)
-    project_path.write_text(
-        """
-        PRODUCT_BUNDLE_IDENTIFIER = "atrak.charlie.hoopsclips";
-        MARKETING_VERSION = 1.0.0;
-        CURRENT_PROJECT_VERSION = 7;
-        CODE_SIGN_STYLE = Automatic;
-        DEVELOPMENT_TEAM = "$(HOOPS_DEVELOPMENT_TEAM)";
-        """,
-        encoding="utf-8",
-    )
+    project_path.write_text(ios_project_fixture(), encoding="utf-8")
 
     config_dir = repo_root / "ios/HoopsClips/HoopsClips/Config"
     config_dir.mkdir(parents=True, exist_ok=True)
@@ -1225,6 +1235,42 @@ def create_ready_fixture(repo_root: Path) -> Path:
     archive_path.mkdir(parents=True, exist_ok=True)
     write_archive_info_plist(archive_path)
     return archive_path
+
+
+def ios_project_fixture(*, app_build_number: str = EXPECTED_IOS_BUILD_NUMBER, test_build_number: str = "7") -> str:
+    return f"""
+        105FC59E2E9EAD3200EA8BCF /* Debug */ = {{
+            isa = XCBuildConfiguration;
+            buildSettings = {{
+                CODE_SIGN_STYLE = Automatic;
+                CURRENT_PROJECT_VERSION = {app_build_number};
+                DEVELOPMENT_TEAM = "$(HOOPS_DEVELOPMENT_TEAM)";
+                MARKETING_VERSION = {EXPECTED_IOS_MARKETING_VERSION};
+                PRODUCT_BUNDLE_IDENTIFIER = "{EXPECTED_IOS_BUNDLE_ID}";
+            }};
+            name = Debug;
+        }};
+        105FC59F2E9EAD3200EA8BCF /* Release */ = {{
+            isa = XCBuildConfiguration;
+            buildSettings = {{
+                CODE_SIGN_STYLE = Automatic;
+                CURRENT_PROJECT_VERSION = {app_build_number};
+                DEVELOPMENT_TEAM = "$(HOOPS_DEVELOPMENT_TEAM)";
+                MARKETING_VERSION = {EXPECTED_IOS_MARKETING_VERSION};
+                PRODUCT_BUNDLE_IDENTIFIER = "{EXPECTED_IOS_BUNDLE_ID}";
+            }};
+            name = Release;
+        }};
+        195FC59E2E9EAD3200EA8BCF /* Tests Debug */ = {{
+            isa = XCBuildConfiguration;
+            buildSettings = {{
+                CURRENT_PROJECT_VERSION = {test_build_number};
+                MARKETING_VERSION = {EXPECTED_IOS_MARKETING_VERSION};
+                PRODUCT_BUNDLE_IDENTIFIER = "{EXPECTED_IOS_BUNDLE_ID}.tests";
+            }};
+            name = Debug;
+        }};
+    """
 
 
 def write_archive_info_plist(archive_path: Path, *, build_number: str = EXPECTED_IOS_BUILD_NUMBER) -> None:

@@ -30,7 +30,7 @@ DEFAULT_WORKER_BASE_URL = "https://hoopsclips-control-plane-staging.charliehan-l
 DEFAULT_EDITING_VERSION_URL = "https://hoopclips-editing-staging-npya43jiia-uc.a.run.app/version"
 EXPECTED_IOS_BUNDLE_ID = "atrak.charlie.hoopsclips"
 EXPECTED_IOS_MARKETING_VERSION = "1.0.0"
-EXPECTED_IOS_BUILD_NUMBER = "7"
+EXPECTED_IOS_BUILD_NUMBER = "14"
 KNOWN_CONFLICTING_BUNDLE_IDS = ("app.rork.hoopshighlights-ai",)
 REQUIRED_FEATURE_FLAGS = (
     "aiEditEnabled",
@@ -604,14 +604,14 @@ def check_ios_signing(repo_root: Path, collector: Collector) -> None:
         collector.fail("ios project", rel(project_path, repo_root), "iOS Xcode project is missing.")
         return
 
-    for needle, label in (
-        (f'PRODUCT_BUNDLE_IDENTIFIER = "{EXPECTED_IOS_BUNDLE_ID}";', f"bundle id {EXPECTED_IOS_BUNDLE_ID}"),
-        (f"MARKETING_VERSION = {EXPECTED_IOS_MARKETING_VERSION};", f"marketing version {EXPECTED_IOS_MARKETING_VERSION}"),
-        (f"CURRENT_PROJECT_VERSION = {EXPECTED_IOS_BUILD_NUMBER};", f"build number {EXPECTED_IOS_BUILD_NUMBER}"),
-        ("CODE_SIGN_STYLE = Automatic;", "automatic signing"),
-        ('DEVELOPMENT_TEAM = "$(HOOPS_DEVELOPMENT_TEAM)";', "team resolved from HOOPS_DEVELOPMENT_TEAM"),
+    for key, expected, label in (
+        ("PRODUCT_BUNDLE_IDENTIFIER", EXPECTED_IOS_BUNDLE_ID, f"bundle id {EXPECTED_IOS_BUNDLE_ID}"),
+        ("MARKETING_VERSION", EXPECTED_IOS_MARKETING_VERSION, f"marketing version {EXPECTED_IOS_MARKETING_VERSION}"),
+        ("CURRENT_PROJECT_VERSION", EXPECTED_IOS_BUILD_NUMBER, f"build number {EXPECTED_IOS_BUILD_NUMBER}"),
+        ("CODE_SIGN_STYLE", "Automatic", "automatic signing"),
+        ("DEVELOPMENT_TEAM", "$(HOOPS_DEVELOPMENT_TEAM)", "team resolved from HOOPS_DEVELOPMENT_TEAM"),
     ):
-        if needle in project_text:
+        if app_target_build_setting_matches(project_text, key, expected):
             collector.pass_("ios project setting", rel(project_path, repo_root), f"Project includes {label}.")
         else:
             collector.fail("ios project setting", rel(project_path, repo_root), f"Project is missing {label}.")
@@ -625,6 +625,26 @@ def check_ios_signing(repo_root: Path, collector: Collector) -> None:
         collector.pass_("ios signing team", rel(local_secrets_path, repo_root), "Development team is configured without printing its value.")
     else:
         collector.fail("ios signing team", rel(local_secrets_path, repo_root), "HOOPS_DEVELOPMENT_TEAM is missing or placeholder.")
+
+
+def app_target_build_setting_matches(project_text: str, key: str, expected: str) -> bool:
+    return any(build_setting_value(block, key) == expected for block in app_target_build_setting_blocks(project_text))
+
+
+def app_target_build_setting_blocks(project_text: str) -> list[str]:
+    blocks = [match.group("body") for match in re.finditer(r"buildSettings = \{(?P<body>.*?)^\s*\};", project_text, re.S | re.M)]
+    return [block for block in blocks if build_setting_value(block, "PRODUCT_BUNDLE_IDENTIFIER") == EXPECTED_IOS_BUNDLE_ID]
+
+
+def build_setting_value(block: str, key: str) -> str | None:
+    pattern = re.compile(rf"^\s*{re.escape(key)}\s*=\s*(.+?);\s*$", re.M)
+    match = pattern.search(block)
+    if not match:
+        return None
+    value = match.group(1).strip()
+    if len(value) >= 2 and value[0] == '"' and value[-1] == '"':
+        value = value[1:-1]
+    return value
 
 
 def check_export_options(repo_root: Path, collector: Collector) -> None:
