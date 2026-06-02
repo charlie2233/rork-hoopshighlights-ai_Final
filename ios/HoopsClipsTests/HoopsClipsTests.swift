@@ -1393,6 +1393,18 @@ struct HoopsClipsTests {
         #expect(HistoryProjectActionCopy.openAvailableSubtitle == "Open in Player, Review, Export")
     }
 
+    @Test func testReviewProgressCopyShowsSelectedAndCheckCounts() {
+        let summary = ReviewProgressCopy.summary(selectedCount: 8, totalCount: 12, needsCheckCount: 3)
+        let noCheckSummary = ReviewProgressCopy.summary(selectedCount: 8, totalCount: 12, needsCheckCount: 0)
+        let accessibility = ReviewProgressCopy.accessibilityValue(selectedCount: 1, totalCount: 2, needsCheckCount: 1)
+
+        #expect(ReviewProgressCopy.title == "Selected clips")
+        #expect(summary == "8/12 selected, 3 to check")
+        #expect(noCheckSummary == "8/12 selected")
+        #expect(summary.count <= 32)
+        #expect(accessibility == "1 clip selected for edit out of 2 clips. 1 clip needs a closer check.")
+    }
+
     @Test @MainActor func testCloudEditRequestSendsFullBackendCandidatePoolAndReviewReserve() throws {
         let viewModel = HighlightsViewModel()
         viewModel.cloudEditSourceObjectKey = "uploads/source.mp4"

@@ -191,38 +191,55 @@ struct ReviewView: View {
 
     private var reviewProgressStrip: some View {
         let total = max(viewModel.clips.count, 1)
-        let progress = Double(viewModel.keptClips.count) / Double(total)
+        let selectedCount = viewModel.keptClips.count
+        let needsCheckCount = viewModel.needsReviewClips.count
+        let progress = Double(selectedCount) / Double(total)
+        let summary = ReviewProgressCopy.summary(
+            selectedCount: selectedCount,
+            totalCount: viewModel.clips.count,
+            needsCheckCount: needsCheckCount
+        )
 
         return VStack(alignment: .leading, spacing: 10) {
             ViewThatFits(in: .horizontal) {
                 HStack {
-                    Label("Review Progress", systemImage: "checklist")
+                    Label(ReviewProgressCopy.title, systemImage: "checklist")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.white)
                         .lineLimit(2)
                     Spacer()
-                    Text("\(viewModel.keptClips.count)/\(viewModel.clips.count) kept")
+                    Text(summary)
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(AppTheme.subtleText)
-                        .lineLimit(1)
+                        .lineLimit(2)
                         .minimumScaleFactor(0.84)
+                        .multilineTextAlignment(.trailing)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 VStack(alignment: .leading, spacing: 3) {
-                    Label("Review Progress", systemImage: "checklist")
+                    Label(ReviewProgressCopy.title, systemImage: "checklist")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.white)
-                    Text("\(viewModel.keptClips.count)/\(viewModel.clips.count) kept")
+                    Text(summary)
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(AppTheme.subtleText)
+                        .lineLimit(3)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
 
             ProgressView(value: progress)
                 .tint(AppTheme.neonPurple)
                 .scaleEffect(y: 1.8)
-                .accessibilityLabel("Review progress")
-                .accessibilityValue("\(viewModel.keptClips.count) of \(viewModel.clips.count) clips kept")
+                .accessibilityLabel(ReviewProgressCopy.title)
+                .accessibilityValue(
+                    ReviewProgressCopy.accessibilityValue(
+                        selectedCount: selectedCount,
+                        totalCount: viewModel.clips.count,
+                        needsCheckCount: needsCheckCount
+                    )
+                )
 
             HStack(spacing: 8) {
                 RorkMetricChip(
