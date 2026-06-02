@@ -1467,12 +1467,27 @@ struct VideoPlayerView: View {
                 .lineLimit(dynamicTypeSize.isAccessibilitySize ? 5 : 3)
                 .minimumScaleFactor(0.84)
                 .fixedSize(horizontal: false, vertical: true)
+
+            if let analysisBackgroundReminderText {
+                Label(analysisBackgroundReminderText, systemImage: "cloud.fill")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(AppTheme.neonPurple)
+                    .multilineTextAlignment(.leading)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
+                    .minimumScaleFactor(0.84)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(AppTheme.neonPurple.opacity(0.12), in: .rect(cornerRadius: 12))
+                    .accessibilityIdentifier("analysis.cloudBackgroundReminder")
+            }
         }
         .padding(16)
         .rorkCard(cornerRadius: 16, stroke: AppTheme.accentPurple.opacity(0.2))
         .accessibilityElement(children: .combine)
         .accessibilityLabel(analysisProgressTitle)
-        .accessibilityValue("\(Int(viewModel.analysisService.progress * 100)) percent. \(viewModel.analysisService.statusMessage). \(analysisProgressDetailText)")
+        .accessibilityValue(analysisProgressAccessibilityValue)
     }
 
     private var analysisProgressHeader: some View {
@@ -1731,43 +1746,30 @@ struct VideoPlayerView: View {
     }
 
     private var analysisProgressDetailText: String {
-        let status = viewModel.analysisService.statusMessage.lowercased()
+        CloudAnalysisProgressCopy.detail(
+            statusMessage: viewModel.analysisService.statusMessage,
+            analysisMode: viewModel.analysisMode,
+            teamSelection: viewModel.settings.highlightTeamSelection
+        )
+    }
 
-        if status.contains("upload") {
-            return "Keep HoopClips open during upload. Once the cloud job starts, you can switch apps and come back for clips."
+    private var analysisBackgroundReminderText: String? {
+        CloudAnalysisProgressCopy.backgroundReminder(
+            statusMessage: viewModel.analysisService.statusMessage,
+            analysisMode: viewModel.analysisMode
+        )
+    }
+
+    private var analysisProgressAccessibilityValue: String {
+        var parts = [
+            "\(Int(viewModel.analysisService.progress * 100)) percent.",
+            viewModel.analysisService.statusMessage,
+            analysisProgressDetailText
+        ]
+        if let analysisBackgroundReminderText {
+            parts.append(analysisBackgroundReminderText)
         }
-
-        if status.contains("team") || status.contains("jersey") {
-            return "Scanning jersey colors so you can target one team or keep all teams."
-        }
-
-        if status.contains("queued") || status.contains("waiting") {
-            return "Cloud worker is next in line. You can switch apps and reopen HoopClips to refresh real job status."
-        }
-
-        if status.contains("candidate") || status.contains("finding") || status.contains("detecting") || status.contains("clip") || status.contains("highlight") {
-            if viewModel.settings.highlightTeamSelection.mode == .team {
-                return "Focusing on \(viewModel.settings.highlightTeamSelection.displayTitle) and keeping uncertain plays for Review."
-            }
-            return "Building a high-recall clip pool from both teams for Review."
-        }
-
-        if status.contains("frame") || status.contains("scoring") || status.contains("motion") || status.contains("audio") || status.contains("action") {
-            if viewModel.analysisMode == .cloud {
-                return "Cloud analysis keeps running after the job starts. Reopen HoopClips to see the latest clips."
-            }
-            return "Scoring motion, audio peaks, and basketball action."
-        }
-
-        if status.contains("finalizing") || status.contains("refining") {
-            return "Validated clips are coming back for Review."
-        }
-
-        if viewModel.analysisMode == .cloud {
-            return "Cloud analysis is active. You can switch apps and reopen HoopClips for the latest result."
-        }
-
-        return "Analysis is running on device because cloud mode is unavailable."
+        return parts.joined(separator: " ")
     }
 
     private var requiresProForCurrentVideo: Bool {

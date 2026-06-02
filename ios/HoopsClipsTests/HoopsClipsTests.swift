@@ -649,6 +649,48 @@ struct HoopsClipsTests {
         #expect(!safeStage.localizedCaseInsensitiveContains("ETA"))
     }
 
+    @Test func testCloudAnalysisBackgroundReminderIsHonestAndVisible() {
+        #expect(
+            CloudAnalysisProgressCopy.backgroundReminder(
+                statusMessage: "Uploading source video",
+                analysisMode: .cloud
+            ) == nil
+        )
+        #expect(
+            CloudAnalysisProgressCopy.backgroundReminder(
+                statusMessage: "Finding candidate clips",
+                analysisMode: .local
+            ) == nil
+        )
+
+        let reminder = CloudAnalysisProgressCopy.backgroundReminder(
+            statusMessage: "Finding candidate clips",
+            analysisMode: .cloud
+        )
+        #expect(reminder?.contains("switch apps") == true)
+        #expect(reminder?.contains("cloud analysis job") == true)
+        #expect(reminder?.count ?? 0 <= 100)
+        #expect(reminder?.localizedCaseInsensitiveContains("thinking") == false)
+        #expect(reminder?.localizedCaseInsensitiveContains("ETA") == false)
+
+        let uploadDetail = CloudAnalysisProgressCopy.detail(
+            statusMessage: "Preparing cloud upload",
+            analysisMode: .cloud,
+            teamSelection: .allTeams
+        )
+        #expect(uploadDetail.contains("Keep HoopClips open during upload"))
+        #expect(uploadDetail.contains("After cloud handoff"))
+        #expect(uploadDetail.count <= 100)
+
+        let selectedTeamDetail = CloudAnalysisProgressCopy.detail(
+            statusMessage: "Finding candidate clips",
+            analysisMode: .cloud,
+            teamSelection: HighlightTeamSelection(mode: .team, label: "Blue jerseys")
+        )
+        #expect(selectedTeamDetail.contains("Blue jerseys"))
+        #expect(selectedTeamDetail.contains("uncertain plays"))
+    }
+
     @Test func testCloudAnalysisBackendMessagesAreFriendlyAndSecretSafe() {
         let fallback = "Cloud analysis failed. Try again."
 
