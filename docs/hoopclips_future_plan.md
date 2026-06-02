@@ -25,8 +25,8 @@ HoopClips should feel like a real basketball editing product: easy for players, 
    - Add device smoke evidence for 1GB+ and long iPhone camera videos.
 
 3. Cloud version/render check reliability
-   - Investigate export timeout on cloud editing version check.
-   - Make version checks resilient with short timeout, clear retry, and no fake status.
+   - Advisory cloud editing version checks use a short timeout and stay non-blocking for transient network slowness.
+   - Confirm the repaired version check on a real device against staging.
    - Confirm staging Worker -> Cloud Run -> R2 render status path.
 
 4. Submission evidence
@@ -120,7 +120,7 @@ HoopClips should feel like a real basketball editing product: easy for players, 
 
 - Internal TestFlight installed-device smoke is still required.
 - Preparing-video import reliability still needs real-device proof with large Photos videos.
-- Cloud editing version check timeout needs device/staging proof.
+- Cloud editing version check timeout repair needs device/staging proof.
 - App Store submission should wait for real smoke evidence.
 - Production cloud cutover remains gated by auth, storage, observability, render reliability, and confirmed-label/accuracy evidence.
 

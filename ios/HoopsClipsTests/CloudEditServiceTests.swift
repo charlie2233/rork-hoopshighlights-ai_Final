@@ -63,7 +63,7 @@ struct CloudEditServiceTests {
             #expect(capturedMethod == "GET")
             #expect(capturedUserAgent == "HoopClips-iOS/1.0")
             #expect(capturedTraceID?.isEmpty == false)
-            #expect(capturedTimeout == 15)
+            #expect(capturedTimeout == 6)
             #expect(capturedPath == "/v1/editing/version")
             #expect(capturedHTTPBody == nil)
             #expect(version.service == "hoopclips-editing")

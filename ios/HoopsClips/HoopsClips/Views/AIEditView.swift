@@ -2506,7 +2506,7 @@ struct AIEditView: View {
         case .planReady:
             return "HoopClips picked clips and applied your style. Next step is making the finished video."
         case .renderRequested, .created, .queued:
-            return "Your highlight reel is queued. You can leave the app - HoopClips keeps editing in the cloud."
+            return "Your reel is queued. You can switch apps while HoopClips keeps editing in the cloud."
         case .rendering:
             return "Making your highlight reel in the cloud. Come back anytime to check the finished video."
         case .rendered:

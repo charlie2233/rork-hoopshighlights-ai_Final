@@ -418,7 +418,7 @@ final class HighlightsViewModel {
         lastAnalysisStatusSummary = "Cloud analysis is running"
         persistCurrentProject(
             reason: .analysisStarted,
-            message: "Cloud analysis started. Reopen HoopClips to refresh real job status."
+            message: "Cloud analysis started. You can switch apps after upload and reopen HoopClips for real job status."
         )
     }
 
@@ -451,7 +451,7 @@ final class HighlightsViewModel {
             recordAnalysisFailure(message: message)
             LaunchTelemetry.shared.recordStabilityCheckpoint("analysis.resume.failed", metadata: "mode=cloud code=\(code)")
         default:
-            let message = "Cloud analysis is still running. Reopen HoopClips to refresh status."
+            let message = "Cloud analysis is still running. You can switch apps and reopen HoopClips to refresh status."
             analysisService.finishExternalAnalysis(with: message)
             lastAnalysisStatusSummary = message
             persistCurrentProject()
