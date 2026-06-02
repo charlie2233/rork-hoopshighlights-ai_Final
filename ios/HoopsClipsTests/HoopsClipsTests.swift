@@ -3952,10 +3952,11 @@ struct HoopsClipsTests {
         #expect(viewModel.priorityReviewClips.map(\.label) == [
             "Weak Side Block",
             "Full Court Pressure Stop",
-            "Possible Dark Shot",
             "Possible Dark Layup",
+            "Possible Dark Shot",
             "Crowd Pop Cue"
         ])
+        #expect(viewModel.priorityReviewSummary == "4 team checks / 2 defense / 1 sound cue")
         #expect(viewModel.audioReactionReviewClips.map(\.label) == ["Crowd Pop Cue"])
         #expect(!HighlightsViewModel.isPriorityReviewClip(cleanClip, teamSelection: selectedTeam))
         #expect(HighlightsViewModel.isBlockReviewClip(blockClip))

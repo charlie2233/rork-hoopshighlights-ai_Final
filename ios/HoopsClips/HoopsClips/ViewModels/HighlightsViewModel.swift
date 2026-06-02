@@ -67,6 +67,10 @@ final class HighlightsViewModel {
         Self.priorityReviewClips(from: clips, teamSelection: settings.highlightTeamSelection)
     }
 
+    var priorityReviewSummary: String? {
+        Self.priorityReviewSummary(from: clips, teamSelection: settings.highlightTeamSelection)
+    }
+
     var audioReactionReviewClips: [Clip] {
         clips.filter(Self.isAudioReactionReviewClip)
     }
@@ -675,7 +679,61 @@ final class HighlightsViewModel {
         from clips: [Clip],
         teamSelection: HighlightTeamSelection = .allTeams
     ) -> [Clip] {
-        clips.filter { isPriorityReviewClip($0, teamSelection: teamSelection) }
+        clips
+            .filter { isPriorityReviewClip($0, teamSelection: teamSelection) }
+            .sorted { lhs, rhs in
+                let lhsWeight = priorityReviewSortWeight(lhs, teamSelection: teamSelection)
+                let rhsWeight = priorityReviewSortWeight(rhs, teamSelection: teamSelection)
+                if lhsWeight != rhsWeight {
+                    return lhsWeight > rhsWeight
+                }
+
+                let lhsScore = priorityReviewSortScore(lhs)
+                let rhsScore = priorityReviewSortScore(rhs)
+                if lhsScore != rhsScore {
+                    return lhsScore > rhsScore
+                }
+
+                return lhs.startTime < rhs.startTime
+            }
+    }
+
+    nonisolated static func priorityReviewSummary(
+        from clips: [Clip],
+        teamSelection: HighlightTeamSelection = .allTeams
+    ) -> String? {
+        let priorityClips = priorityReviewClips(from: clips, teamSelection: teamSelection)
+        guard !priorityClips.isEmpty else { return nil }
+
+        let teamCheckCount = priorityClips.filter {
+            needsTeamReview($0, teamSelection: teamSelection)
+        }.count
+        let defenseCount = priorityClips.filter(isDefensiveReviewClip).count
+        let soundCount = priorityClips.filter(isAudioReactionReviewClip).count
+        let outcomeTimingCount = priorityClips.filter {
+            let badges = reviewBadges(for: $0, teamSelection: teamSelection)
+            return badges.contains(.outcomeUncertain) || badges.contains(.timingUncertain)
+        }.count
+
+        var parts: [String] = []
+        if teamCheckCount > 0 {
+            parts.append("\(teamCheckCount) team \(teamCheckCount == 1 ? "check" : "checks")")
+        }
+        if defenseCount > 0 {
+            parts.append("\(defenseCount) defense")
+        }
+        if soundCount > 0 {
+            parts.append("\(soundCount) sound \(soundCount == 1 ? "cue" : "cues")")
+        }
+        if outcomeTimingCount > 0 {
+            parts.append("\(outcomeTimingCount) outcome/timing")
+        }
+
+        if parts.isEmpty {
+            return "\(priorityClips.count) clip\(priorityClips.count == 1 ? "" : "s") need a closer look."
+        }
+
+        return parts.prefix(3).joined(separator: " / ")
     }
 
     nonisolated static func isPriorityReviewClip(
@@ -685,6 +743,39 @@ final class HighlightsViewModel {
         needsUserReview(clip, teamSelection: teamSelection)
             || isDefensiveReviewClip(clip)
             || isAudioReactionReviewClip(clip)
+    }
+
+    nonisolated private static func priorityReviewSortWeight(
+        _ clip: Clip,
+        teamSelection: HighlightTeamSelection
+    ) -> Int {
+        var weight = 0
+        if isBlockReviewClip(clip) || isStealReviewClip(clip) {
+            weight = max(weight, 500)
+        } else if isDefensiveReviewClip(clip) {
+            weight = max(weight, 440)
+        }
+        if needsTeamReview(clip, teamSelection: teamSelection) {
+            weight = max(weight, 360)
+        }
+        if clip.reviewBadges.contains(.outcomeUncertain) || clip.reviewBadges.contains(.timingUncertain) {
+            weight = max(weight, 320)
+        }
+        if isAudioReactionReviewClip(clip) {
+            weight = max(weight, 260)
+        }
+        if needsUserReview(clip, teamSelection: teamSelection) {
+            weight += 20
+        }
+        return weight
+    }
+
+    nonisolated private static func priorityReviewSortScore(_ clip: Clip) -> Double {
+        let watchability = max(clip.visualScore, clip.motionScore)
+        return (clip.combinedScore * 0.50)
+            + (clip.confidence * 0.24)
+            + (watchability * 0.20)
+            + (clip.audioScore * 0.06)
     }
 
     nonisolated static func reviewBadges(
