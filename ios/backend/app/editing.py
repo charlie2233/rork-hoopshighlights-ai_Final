@@ -2630,6 +2630,30 @@ def is_generic_filler_clip(clip: EditCandidateClip) -> bool:
     return normalized in {"highlight", "clip", "play", "moment"} or normalized.endswith(" highlight")
 
 
+def is_audio_reaction_context_label(clip: EditCandidateClip) -> bool:
+    if is_generic_filler_clip(clip):
+        return True
+    normalized = clip.label.strip().lower()
+    tokens = set(re.findall(r"[a-z0-9]+", normalized))
+    if not tokens:
+        return False
+    if tokens & {"made", "make", "bucket", "scored", "score", "miss", "missed", "blocked"}:
+        return False
+    if "shot attempt" in normalized or "scoring chance" in normalized or "basketball action" in normalized:
+        return True
+    if tokens & {"possible", "attempt", "chance"} and tokens & {
+        "drive",
+        "finish",
+        "jumper",
+        "layup",
+        "shot",
+        "three",
+        "transition",
+    }:
+        return True
+    return bool(tokens & {"drive", "layup", "take", "transition"})
+
+
 def is_audio_reaction_clip(clip: EditCandidateClip) -> bool:
     return audio_reaction_source_for_clip(clip) is not None
 
@@ -2664,26 +2688,33 @@ def audio_reaction_source_for_clip(clip: EditCandidateClip) -> Optional[str]:
         and (clip.audioCueConfidence or 0.0) >= 0.55
         and clip.audioPeak >= 0.72
     )
-    if is_generic_filler_clip(clip) and recognized_cue and has_activity_near_pop and has_context:
+    has_audio_context_label = is_audio_reaction_context_label(clip)
+    if has_audio_context_label and recognized_cue and has_activity_near_pop and has_context:
+        if not is_generic_filler_clip(clip):
+            return "recognized_basketball_audio_cue"
         return "recognized_crowd_audio_cue"
     if (
-        is_generic_filler_clip(clip)
+        has_audio_context_label
         and has_loud_pop
         and has_activity_near_pop
         and has_context
         and clip.confidence >= MIN_UNLABELED_AUDIO_REACTION_CONFIDENCE
     ):
+        if not is_generic_filler_clip(clip):
+            return "basketball_context_loud_audio_pop"
         return "unlabeled_loud_audio_pop"
 
     has_super_loud_pop = clip.audioPeak >= MIN_SUPER_LOUD_AUDIO_REACTION_PEAK
     has_some_activity_near_pop = max(clip.motionScore, clip.watchability, clip.excitement) >= MIN_SUPER_LOUD_AUDIO_REACTION_ACTIVITY
     if (
-        is_generic_filler_clip(clip)
+        has_audio_context_label
         and has_super_loud_pop
         and has_some_activity_near_pop
         and has_context
         and clip.confidence >= MIN_SUPER_LOUD_AUDIO_REACTION_CONFIDENCE
     ):
+        if not is_generic_filler_clip(clip):
+            return "basketball_context_super_loud_audio_pop"
         return "super_loud_audio_pop"
 
     return None

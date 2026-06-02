@@ -26,6 +26,7 @@ from app.editing import (
     TEMPLATE_PACK_REGISTRY,
     apply_gpt_highlight_rerank,
     apply_edit_plan_patch,
+    audio_reaction_source_for_clip,
     build_agent_editing_context,
     build_edit_context,
     derive_user_prompt_intent,
@@ -1143,6 +1144,40 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertNotIn("sourceObjectKey", serialized)
         self.assertNotIn("downloadUrl", serialized)
         self.assertNotIn("presigned", serialized.lower())
+
+    def test_agent_editing_context_marks_basketball_audio_cue_as_recall_hint(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                clips=[
+                    {
+                        **_clip("possible_layup_pop", 0.0, "Possible Layup", 0.78),
+                        "audioPeak": 0.97,
+                        "audioCueType": "spike",
+                        "audioCueConfidence": 0.88,
+                        "audioCueTime": 3.3,
+                        "motionScore": 0.76,
+                        "watchability": 0.74,
+                    },
+                    _clip("ordinary_three", 9.0, "Made Shot", 0.82),
+                ],
+            )
+        )
+
+        context = build_agent_editing_context(
+            request.templateId,
+            summarize_clip_pool(request.clips),
+            request.clips,
+        )
+        by_id = {clip["clipId"]: clip for clip in context["candidateClips"]}
+        possible_layup = by_id["possible_layup_pop"]
+
+        self.assertEqual(audio_reaction_source_for_clip(request.clips[0]), "recognized_basketball_audio_cue")
+        self.assertEqual(context["candidateQualitySummary"]["audioReactionCandidates"], 1)
+        self.assertTrue(possible_layup["candidateQuality"]["audioReactionCandidate"])
+        self.assertEqual(possible_layup["candidateQuality"]["audioReactionSource"], "recognized_basketball_audio_cue")
+        self.assertGreater(possible_layup["candidateQuality"]["audioReactionSalienceScore"], 0.7)
+        self.assertIn("recall hint only", possible_layup["candidateQuality"]["audioReactionGuidance"])
+        self.assertFalse(by_id["ordinary_three"]["candidateQuality"]["audioReactionCandidate"])
 
     def test_native_shot_signals_preserve_analysis_outcome_hint_without_relaxing_timing(self) -> None:
         request = CreateEditJobRequest(
@@ -3166,6 +3201,49 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertEqual(reranked.clips, [])
         self.assertEqual(reranked.gptRerankSummary.fallbackReason, "all_clips_rejected")
         self.assertIn("audio_only_hype", reranked.gptRerankSummary.rejectedClipIds)
+        self.assertEqual(reranked.gptRerankSummary.rejectedReasonCounts["audio_reaction_requires_sampled_visual_evidence"], 1)
+        self.assertEqual(job.status, "failed")
+
+    def test_gpt_highlight_rerank_rejects_basketball_audio_cue_without_sampled_visual_support(self) -> None:
+        request = CreateEditJobRequest(
+            **_request_payload(
+                targetDurationSeconds=15,
+                clips=[
+                    {
+                        **_clip("possible_layup_pop", 0.0, "Possible Layup", 0.78),
+                        "watchability": 0.74,
+                        "motionScore": 0.76,
+                        "audioPeak": 0.97,
+                        "audioCueType": "spike",
+                        "audioCueConfidence": 0.88,
+                        "audioCueTime": 3.3,
+                    }
+                ],
+            )
+        )
+        decisions = [
+            GPTHighlightClipDecision(
+                clipId="possible_layup_pop",
+                keep=True,
+                highlightScore=0.95,
+                watchabilityScore=0.9,
+                basketballEvent="Made Shot",
+                outcome="made",
+                caption="TOUGH TAKE",
+                reason="GPT overclaimed a made layup from a loud basketball-context audio cue.",
+                qualitySignals=_quality_signals(),
+                shotResultEvidence=_shot_result_evidence(),
+                shotTrackingEvidence=_shot_tracking_evidence(),
+                suggestedEdit=GPTHighlightSuggestedEdit(),
+            )
+        ]
+
+        reranked = apply_gpt_highlight_rerank(request, decisions, "gpt-test", 1, 8)
+        job = build_edit_job(reranked, "edit_basketball_audio_cue_claim")
+
+        self.assertEqual(reranked.clips, [])
+        self.assertEqual(reranked.gptRerankSummary.fallbackReason, "all_clips_rejected")
+        self.assertIn("possible_layup_pop", reranked.gptRerankSummary.rejectedClipIds)
         self.assertEqual(reranked.gptRerankSummary.rejectedReasonCounts["audio_reaction_requires_sampled_visual_evidence"], 1)
         self.assertEqual(job.status, "failed")
 
