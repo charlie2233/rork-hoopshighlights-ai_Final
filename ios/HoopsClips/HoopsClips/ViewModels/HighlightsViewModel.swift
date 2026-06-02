@@ -66,6 +66,10 @@ final class HighlightsViewModel {
     var priorityReviewClips: [Clip] {
         Self.priorityReviewClips(from: clips, teamSelection: settings.highlightTeamSelection)
     }
+
+    var audioReactionReviewClips: [Clip] {
+        clips.filter(Self.isAudioReactionReviewClip)
+    }
     var cloudEditCandidatePoolCount: Int {
         Self.cloudEditRequestCandidateClips(
             from: clips,
@@ -585,7 +589,9 @@ final class HighlightsViewModel {
         _ clip: Clip,
         teamSelection: HighlightTeamSelection = .allTeams
     ) -> Bool {
-        needsUserReview(clip, teamSelection: teamSelection) || isDefensiveReviewClip(clip)
+        needsUserReview(clip, teamSelection: teamSelection)
+            || isDefensiveReviewClip(clip)
+            || isAudioReactionReviewClip(clip)
     }
 
     nonisolated static func priorityReviewClips(
@@ -601,6 +607,7 @@ final class HighlightsViewModel {
     ) -> Bool {
         needsUserReview(clip, teamSelection: teamSelection)
             || isDefensiveReviewClip(clip)
+            || isAudioReactionReviewClip(clip)
     }
 
     nonisolated static func reviewBadges(
@@ -643,6 +650,10 @@ final class HighlightsViewModel {
 
     nonisolated static func isDefensiveReviewClip(_ clip: Clip) -> Bool {
         defensiveCloudEditCandidateFamily(clip) != nil
+    }
+
+    nonisolated static func isAudioReactionReviewClip(_ clip: Clip) -> Bool {
+        clip.reviewBadges.contains(.audioCue) || isAudioReactionCloudEditCandidate(clip)
     }
 
     nonisolated static func isBlockReviewClip(_ clip: Clip) -> Bool {
@@ -1157,6 +1168,7 @@ final class HighlightsViewModel {
             reserveFirstMissing { defensiveCloudEditCandidateFamily($0) == family }
         }
         reserveFirstMissing { isAudioReactionCloudEditCandidate($0) }
+        reserveFirstMissing { hasUncertainReviewSignal($0, teamSelection: teamSelection) }
         reserveFirstMissing { needsUserReview($0, teamSelection: teamSelection) }
 
         if !reserveIDs.isEmpty {
@@ -1179,6 +1191,15 @@ final class HighlightsViewModel {
         }
 
         return selected.prefix(cappedLimit).sorted { $0.startTime < $1.startTime }
+    }
+
+    nonisolated private static func hasUncertainReviewSignal(
+        _ clip: Clip,
+        teamSelection: HighlightTeamSelection
+    ) -> Bool {
+        needsTeamReview(clip, teamSelection: teamSelection)
+            || clip.reviewBadges.contains(.outcomeUncertain)
+            || clip.reviewBadges.contains(.timingUncertain)
     }
 
     nonisolated private static func isCloudEditCandidateQualityEligible(_ clip: Clip) -> Bool {

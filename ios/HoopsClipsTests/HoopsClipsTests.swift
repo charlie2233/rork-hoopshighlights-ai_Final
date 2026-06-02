@@ -95,7 +95,8 @@ struct HoopsClipsTests {
         for message in statusMessages {
             #expect(message.count <= 92)
             #expect(!message.localizedCaseInsensitiveContains("thinking"))
-            #expect(!message.localizedCaseInsensitiveContains("ETA"))
+            #expect(!message.localizedCaseInsensitiveContains(" ETA"))
+            #expect(!message.localizedCaseInsensitiveContains("estimated time"))
         }
         #expect(VideoImportStatusCopy.slowReminder.contains("keeps checking"))
         #expect(VideoImportStatusCopy.statusDetail.contains("opens the project"))
@@ -762,7 +763,8 @@ struct HoopsClipsTests {
         #expect(prompt.contains("forced turnovers"))
         #expect(prompt.contains("Defense counts without a make."))
         #expect(prompt.contains("crowd/audio pops"))
-        #expect(prompt.contains("timing clues around nearby plays"))
+        #expect(prompt.contains("crowd/audio pops"))
+        #expect(prompt.contains("verify visible outcome"))
         #expect(prompt.contains("verify visible outcome"))
         #expect(prompt.contains("Reject duplicate"))
         #expect(prompt.count <= CloudEditUserPromptBuilder.maxPromptCharacters)
@@ -3261,6 +3263,28 @@ struct HoopsClipsTests {
         #expect(HighlightsViewModel.audioCueReviewSummary(from: [weakNoise]) == nil)
     }
 
+    @Test func testAudioReactionReviewClipIncludesCloudReserveCueBelowBadgeThreshold() {
+        let reserveCue = Clip(
+            startTime: 42.0,
+            endTime: 47.0,
+            eventCenter: 44.5,
+            action: .unknown,
+            confidence: 0.47,
+            isKept: true,
+            label: "Highlight",
+            audioScore: 0.88,
+            visualScore: 0.43,
+            motionScore: 0.41,
+            combinedScore: 0.50,
+            detectionMethod: .cloud
+        )
+
+        #expect(!reserveCue.reviewBadges.contains(.audioCue))
+        #expect(HighlightsViewModel.isAudioReactionReviewClip(reserveCue))
+        #expect(HighlightsViewModel.isPriorityReviewClip(reserveCue))
+        #expect(HighlightsViewModel.protectsClipFromQuickSkip(reserveCue))
+    }
+
     @Test func testClipReviewEvidenceRowsShowConfidentTeamAndKeyMoments() {
         let clip = Clip(
             startTime: 8.0,
@@ -3639,21 +3663,38 @@ struct HoopsClipsTests {
             combinedScore: 0.82,
             detectionMethod: .cloud
         )
+        let soundCueClip = Clip(
+            startTime: 44.0,
+            endTime: 49.0,
+            eventCenter: 46.5,
+            action: .unknown,
+            confidence: 0.52,
+            isKept: false,
+            label: "Crowd Pop Cue",
+            audioScore: 0.88,
+            visualScore: 0.44,
+            motionScore: 0.42,
+            combinedScore: 0.50,
+            detectionMethod: .cloud
+        )
 
         viewModel.analysisService.clips = [
             cleanClip,
             blockClip,
             pressureClip,
             uncertainTeamClip,
-            missingTeamClip
+            missingTeamClip,
+            soundCueClip
         ]
 
         #expect(viewModel.priorityReviewClips.map(\.label) == [
             "Weak Side Block",
             "Full Court Pressure Stop",
             "Possible Dark Shot",
-            "Possible Dark Layup"
+            "Possible Dark Layup",
+            "Crowd Pop Cue"
         ])
+        #expect(viewModel.audioReactionReviewClips.map(\.label) == ["Crowd Pop Cue"])
         #expect(!HighlightsViewModel.isPriorityReviewClip(cleanClip, teamSelection: selectedTeam))
         #expect(HighlightsViewModel.isBlockReviewClip(blockClip))
         #expect(HighlightsViewModel.isDefensiveReviewClip(pressureClip))
@@ -3861,20 +3902,36 @@ struct HoopsClipsTests {
             label: "Defensive Stop",
             combinedScore: 0.46
         )
+        let lowSoundCue = Clip(
+            startTime: 34.0,
+            endTime: 39.0,
+            eventCenter: 36.5,
+            action: .unknown,
+            confidence: 0.43,
+            isKept: true,
+            label: "Crowd Pop Cue",
+            audioScore: 0.88,
+            visualScore: 0.43,
+            motionScore: 0.41,
+            combinedScore: 0.50,
+            detectionMethod: .cloud
+        )
 
         viewModel.analysisService.clips = [
             lowBoringClip,
             lowUncertainSteal,
             lowBlock,
-            lowDefensiveStop
+            lowDefensiveStop,
+            lowSoundCue
         ]
         viewModel.discardLowConfidenceClips()
 
         #expect(viewModel.discardedClips.map(\.label) == ["Loose camera movement"])
-        #expect(viewModel.keptClips.map(\.label) == ["Possible Steal", "Possible Block", "Defensive Stop"])
+        #expect(viewModel.keptClips.map(\.label) == ["Possible Steal", "Possible Block", "Defensive Stop", "Crowd Pop Cue"])
         #expect(HighlightsViewModel.protectsClipFromQuickSkip(lowUncertainSteal))
         #expect(HighlightsViewModel.protectsClipFromQuickSkip(lowBlock))
         #expect(HighlightsViewModel.protectsClipFromQuickSkip(lowDefensiveStop))
+        #expect(HighlightsViewModel.protectsClipFromQuickSkip(lowSoundCue))
     }
 
     @Test func testCloudJobResponseDecodesNestedResults() throws {

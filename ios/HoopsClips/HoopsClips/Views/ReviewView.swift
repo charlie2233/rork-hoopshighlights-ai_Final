@@ -30,6 +30,7 @@ struct ReviewView: View {
         case defense = "Defense"
         case blocks = "Blocks"
         case steals = "Steals"
+        case sound = "Sound"
         case needsReview = "Check"
         case kept = "Kept"
         case discarded = "Skipped"
@@ -45,6 +46,7 @@ struct ReviewView: View {
         case .defense: base = viewModel.clips.filter(isDefensiveClip)
         case .blocks: base = viewModel.clips.filter(isBlockClip)
         case .steals: base = viewModel.clips.filter(isStealClip)
+        case .sound: base = viewModel.audioReactionReviewClips
         case .needsReview: base = viewModel.needsReviewClips
         case .kept: base = viewModel.keptClips
         case .discarded: base = viewModel.discardedClips
@@ -296,7 +298,7 @@ struct ReviewView: View {
 
     private var availableFilterOptions: [FilterOption] {
         var options: [FilterOption] = [.all]
-        let optionalOptions: [FilterOption] = [.priority, .selectedTeam, .teamUncertain, .defense, .blocks, .steals, .needsReview, .kept, .discarded]
+        let optionalOptions: [FilterOption] = [.priority, .selectedTeam, .teamUncertain, .defense, .blocks, .steals, .sound, .needsReview, .kept, .discarded]
 
         for option in optionalOptions where shouldShowFilter(option) {
             options.append(option)
@@ -317,7 +319,7 @@ struct ReviewView: View {
             return clipCount(for: option) > 0
         case .selectedTeam:
             return selectedTeamFilterIsAvailable && clipCount(for: option) > 0
-        case .teamUncertain, .defense, .blocks, .steals, .needsReview, .kept, .discarded:
+        case .teamUncertain, .defense, .blocks, .steals, .sound, .needsReview, .kept, .discarded:
             return clipCount(for: option) > 0
         }
     }
@@ -358,7 +360,7 @@ struct ReviewView: View {
                             .lineLimit(2)
                             .minimumScaleFactor(0.86)
                             .fixedSize(horizontal: false, vertical: true)
-                        Text("Team calls, blocks, steals, forced turnovers, and unclear outcomes are queued here.")
+                        Text("Team calls, blocks, steals, loud sound clues, and unclear outcomes are queued here.")
                             .font(.caption)
                             .foregroundStyle(AppTheme.subtleText)
                             .lineLimit(3)
@@ -414,12 +416,18 @@ struct ReviewView: View {
                 label: "Team Check",
                 tint: AppTheme.warningYellow
             )
+            RorkMetricChip(
+                icon: "waveform",
+                value: "\(clipCount(for: .sound))",
+                label: "Sound",
+                tint: .blue
+            )
         }
         .padding(10)
         .rorkCard(cornerRadius: 14, fill: AnyShapeStyle(AppTheme.surfaceBg.opacity(0.45)), stroke: AppTheme.softBorder, glowOpacity: 0.03)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Review context")
-        .accessibilityValue("\(selectedTeamSummaryTitle), \(clipCount(for: .defense)) defensive clips, \(clipCount(for: .teamUncertain)) clips need team check")
+        .accessibilityValue("\(selectedTeamSummaryTitle), \(clipCount(for: .defense)) defensive clips, \(clipCount(for: .teamUncertain)) clips need team check, \(clipCount(for: .sound)) sound-reaction clips")
     }
 
     private var reviewContextGridColumns: [GridItem] {
@@ -593,34 +601,41 @@ struct ReviewView: View {
     }
 
     private var filterBar: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(availableFilterOptions, id: \.self) { option in
-                    Button {
-                        HoopsAccessibility.animate(reduceMotion: reduceMotion) { filterOption = option }
-                    } label: {
-                        Text(filterTitle(for: option))
-                            .font(.subheadline.weight(.medium))
-                            .lineLimit(2)
-                            .minimumScaleFactor(0.86)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .foregroundStyle(filterOption == option ? .white : AppTheme.subtleText)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 8)
-                            .background(
-                                filterOption == option ? AppTheme.accentPurple : AppTheme.cardBg,
-                                in: .capsule
-                            )
-                    }
-                    .accessibilityLabel("\(option.rawValue) clips")
-                    .accessibilityValue(filterAccessibilityValue(for: option))
-                    .accessibilityHint("Filters the review list.")
-                    .hoopsSelectedState(filterOption == option)
+        LazyVGrid(columns: filterGridColumns, alignment: .leading, spacing: 8) {
+            ForEach(availableFilterOptions, id: \.self) { option in
+                Button {
+                    HoopsAccessibility.animate(reduceMotion: reduceMotion) { filterOption = option }
+                } label: {
+                    Text(filterTitle(for: option))
+                        .font(.subheadline.weight(.medium))
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.84)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 48 : 36)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 8)
+                        .foregroundStyle(filterOption == option ? .white : AppTheme.subtleText)
+                        .background(
+                            filterOption == option ? AppTheme.accentPurple : AppTheme.cardBg,
+                            in: .capsule
+                        )
                 }
+                .accessibilityLabel("\(option.rawValue) clips")
+                .accessibilityValue(filterAccessibilityValue(for: option))
+                .accessibilityHint("Filters the review list.")
+                .hoopsSelectedState(filterOption == option)
             }
         }
         .padding(10)
         .rorkCard(cornerRadius: 14, fill: AnyShapeStyle(AppTheme.surfaceBg.opacity(0.45)), stroke: AppTheme.softBorder, glowOpacity: 0.03)
+    }
+
+    private var filterGridColumns: [GridItem] {
+        let minimumWidth: CGFloat = dynamicTypeSize.isAccessibilitySize ? 150 : 94
+        return [
+            GridItem(.adaptive(minimum: minimumWidth, maximum: 180), spacing: 8, alignment: .top)
+        ]
     }
 
     private var clipsList: some View {
@@ -678,6 +693,8 @@ struct ReviewView: View {
             return "No block clips"
         case .steals:
             return "No steal clips"
+        case .sound:
+            return "No sound cues"
         case .needsReview:
             return "No clips to check"
         case .kept:
@@ -703,6 +720,8 @@ struct ReviewView: View {
             return "Blocks \(clipCount(for: option))"
         case .steals:
             return "Steals \(clipCount(for: option))"
+        case .sound:
+            return "Sound \(clipCount(for: option))"
         case .needsReview:
             return "Check \(viewModel.needsReviewClips.count)"
         case .kept:
@@ -733,6 +752,8 @@ struct ReviewView: View {
             return viewModel.clips.filter(isBlockClip).count
         case .steals:
             return viewModel.clips.filter(isStealClip).count
+        case .sound:
+            return viewModel.audioReactionReviewClips.count
         case .needsReview:
             return viewModel.needsReviewClips.count
         case .kept:

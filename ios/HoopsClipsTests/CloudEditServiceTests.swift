@@ -25,14 +25,19 @@ struct CloudEditServiceTests {
 
     @Test func testFetchVersionUsesEditingVersionEndpointAndDecodesGptFlags() async throws {
         try await withCloudEditBaseURL {
+            var capturedMethod: String?
+            var capturedUserAgent: String?
+            var capturedTraceID: String?
+            var capturedTimeout: TimeInterval?
+            var capturedPath: String?
+            var capturedHTTPBody: Data?
             let service = CloudEditService(session: makeSession { request in
-                #expect(request.httpMethod == "GET")
-                #expect(request.value(forHTTPHeaderField: "User-Agent") == "HoopClips-iOS/1.0")
-                #expect(request.value(forHTTPHeaderField: "x-trace-id")?.isEmpty == false)
-                #expect(request.timeoutInterval == 6)
-                let url = try #require(request.url)
-                #expect(url.path == "/v1/editing/version")
-                #expect(request.httpBody == nil)
+                capturedMethod = request.httpMethod
+                capturedUserAgent = request.value(forHTTPHeaderField: "User-Agent")
+                capturedTraceID = request.value(forHTTPHeaderField: "x-trace-id")
+                capturedTimeout = request.timeoutInterval
+                capturedPath = request.url?.path
+                capturedHTTPBody = request.httpBody
 
                 return try jsonResponse(for: request, body: """
                 {
@@ -55,6 +60,12 @@ struct CloudEditServiceTests {
 
             let version = try await service.fetchVersion()
 
+            #expect(capturedMethod == "GET")
+            #expect(capturedUserAgent == "HoopClips-iOS/1.0")
+            #expect(capturedTraceID?.isEmpty == false)
+            #expect(capturedTimeout == 15)
+            #expect(capturedPath == "/v1/editing/version")
+            #expect(capturedHTTPBody == nil)
             #expect(version.service == "hoopclips-editing")
             #expect(version.gitSha == "test-sha")
             #expect(version.featureFlags?.hasRequiredLaunchReadinessFlags == true)

@@ -877,7 +877,7 @@ nonisolated enum HistoryProjectActionCopy {
     static let sourceMissingSubtitle = "Source file missing"
     static let exportAvailableSubtitle = "Preview saved reel"
     static let exportMissingSubtitle = "No saved export yet"
-    static let shareAvailableSubtitle = "Opens the share sheet"
+    static let shareAvailableSubtitle = "Use iOS share sheet"
     static let deleteSubtitle = "Remove saved files"
 }
 

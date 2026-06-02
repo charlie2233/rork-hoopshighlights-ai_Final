@@ -464,8 +464,8 @@ enum CloudEditUserPromptBuilder {
         }
         parts.append("Use visible makes, blocks, steals, forced turnovers, defensive stops.")
         parts.append("Defense counts without a make.")
-        parts.append("Use loud crowd/audio pops as timing clues around nearby plays; verify visible outcome.")
-        parts.append("Reject duplicates/filler.")
+        parts.append("Use crowd/audio pops as clues; verify visible outcome.")
+        parts.append("Reject duplicates.")
         return parts.joined(separator: " ")
     }
 
