@@ -1529,6 +1529,29 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertIn("defense-first edit", payload["instructions"])
         self.assertNotIn("Defense only", json.dumps(payload))
 
+    def test_payload_marks_crowd_pop_focus_as_structured_audio_reaction_intent(self) -> None:
+        settings = GPTHighlightRerankerSettings.from_env()
+        request = _request().model_copy(
+            update={"userPrompt": "Use loud crowd pops as nearby highlight clues; keep only clear plays."}
+        )
+        frame = SampledFrame(
+            clip_id="c0",
+            role="start",
+            time_seconds=0.0,
+            data_url="data:image/jpeg;base64,ZmFrZQ==",
+        )
+
+        payload = _build_openai_payload(request, request.clips[:1], [frame], settings)
+        compact_input = json.loads(payload["input"][0]["content"][0]["text"])
+        intent = compact_input["userEditIntent"]
+        rules = compact_input["selectionQualityRules"]
+
+        self.assertIn("audio_reaction", intent["focusAreas"])
+        self.assertIn("audio_reaction_focus", intent["structuredSummary"])
+        self.assertTrue(rules["audioReactionFocusRequested"])
+        self.assertIn("careful review as nearby timing clues", payload["instructions"])
+        self.assertNotIn("Use loud crowd pops", json.dumps(payload))
+
     def test_revision_patch_payload_uses_agent_template_cookbook(self) -> None:
         settings = GPTHighlightRerankerSettings.from_env()
         request = _request("internal").model_copy(
@@ -2139,6 +2162,40 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertTrue(gpt_reranker.is_audio_reaction_clip(request.clips[0]))
         self.assertEqual(gpt_reranker.audio_reaction_source_for_clip(request.clips[0]), "explicit_reaction_label")
         self.assertGreater(gpt_reranker.audio_reaction_salience_score(request.clips[0]), 0.0)
+
+    def test_gpt_detects_loud_cheer_and_bench_reaction_labels_as_recall_hints(self) -> None:
+        request = CreateEditJobRequest(
+            videoId="video_audio_reaction_label_variants",
+            analysisJobId="analysis_audio_reaction_label_variants",
+            installId="install-123",
+            sourceObjectKey="uploads/source.mp4",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="free",
+            clips=[
+                {
+                    **_labeled_clip("loud_cheer", 42.0, 0.58, "Loud Cheer"),
+                    "audioPeak": 0.96,
+                    "motionScore": 0.52,
+                    "watchability": 0.5,
+                    "excitement": 0.72,
+                    "combinedScore": 0.56,
+                },
+                {
+                    **_labeled_clip("bench_reaction", 50.0, 0.6, "Bench Reaction"),
+                    "audioPeak": 0.94,
+                    "motionScore": 0.5,
+                    "watchability": 0.52,
+                    "excitement": 0.7,
+                    "combinedScore": 0.55,
+                },
+            ],
+        )
+
+        for clip in request.clips:
+            self.assertTrue(gpt_reranker.is_audio_reaction_clip(clip))
+            self.assertEqual(gpt_reranker.audio_reaction_source_for_clip(clip), "explicit_reaction_label")
+            self.assertGreater(gpt_reranker.audio_reaction_salience_score(clip), 0.0)
 
     def test_gpt_detects_super_loud_audio_pop_with_some_action_context(self) -> None:
         request = CreateEditJobRequest(

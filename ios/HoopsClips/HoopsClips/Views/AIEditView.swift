@@ -80,31 +80,31 @@ struct AIEditView: View {
         AIEditQuickPrompt(
             id: "hype",
             title: "More hype",
-            prompt: "Make it more hype and prioritize clear made shots, blocks, steals, and big defensive stops.",
+            prompt: "More hype. Prioritize clear made shots, blocks, steals, and big stops.",
             icon: "bolt.fill"
         ),
         AIEditQuickPrompt(
             id: "defense",
             title: "Defense only",
-            prompt: "Defense only: prioritize blocks, steals, forced turnovers, stops, deflections, charges, and loose balls. Use offense only if there are not enough clear defensive clips.",
+            prompt: "Defense only: blocks, steals, forced turnovers, stops, deflections, and loose balls.",
             icon: "shield.lefthalf.filled"
         ),
         AIEditQuickPrompt(
             id: "clear-outcomes",
             title: "Clear outcomes",
-            prompt: "Prefer clips with a visible outcome. Keep uncertain but strong moments so I can review them.",
+            prompt: "Keep clips with visible outcomes. Leave uncertain strong moments for review.",
             icon: "scope"
         ),
         AIEditQuickPrompt(
             id: "crowd-pop",
             title: "Crowd pops",
-            prompt: "Use very loud crowd pops, bench reactions, and audio spikes as nearby highlight clues, but only keep them when the play outcome is visible.",
+            prompt: "Use loud crowd pops as nearby highlight clues; keep only clear plays.",
             icon: "waveform"
         ),
         AIEditQuickPrompt(
             id: "team-recap",
             title: "Team recap",
-            prompt: "Make a clean team recap with balanced players, offense, defense, and game flow.",
+            prompt: "Clean team recap: balanced players, offense, defense, and game flow.",
             icon: "person.3.fill"
         )
     ]

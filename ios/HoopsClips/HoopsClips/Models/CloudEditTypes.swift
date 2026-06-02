@@ -443,9 +443,9 @@ enum CloudEditUserPromptBuilder {
             let teamConfidenceCopy = teamSelection?.includeUncertain == false
                 ? "Only confident team matches."
                 : "Unsure team clips stay reviewable."
-            return "Target: \(selectedTeam)\(targetSeparator)Checks shots, blocks, steals, defensive stops, and loud crowd/audio cues with visual proof. \(teamConfidenceCopy)"
+            return "Target: \(selectedTeam)\(targetSeparator)Looks for visible shots, blocks, steals, stops, and crowd pops. \(teamConfidenceCopy)"
         }
-        return "Target: All teams. Checks made shots, blocks, steals, defensive stops, and loud crowd/audio cues with visual proof. Uncertain clips stay reviewable."
+        return "Target: All teams. Looks for visible shots, blocks, steals, stops, and crowd pops. Uncertain clips stay reviewable."
     }
 
     private static func defaultAccuracyPrompt(teamSelection: HighlightTeamSelection?) -> String {
@@ -464,7 +464,7 @@ enum CloudEditUserPromptBuilder {
         }
         parts.append("Use visible makes, blocks, steals, forced turnovers, defensive stops.")
         parts.append("Defense counts without a make.")
-        parts.append("Use crowd/audio pops; verify visible outcome.")
+        parts.append("Use loud crowd/audio pops as timing clues around nearby plays; verify visible outcome.")
         parts.append("Reject duplicates/filler.")
         return parts.joined(separator: " ")
     }

@@ -1033,9 +1033,16 @@ def _is_audio_reaction_label(label: str) -> bool:
     return normalized in {
         "audio pop",
         "audio reaction",
+        "bench reaction",
         "crowd pop",
+        "crowd roar",
         "crowd reaction",
-    } or ("crowd" in tokens and "reaction" in tokens)
+        "loud cheer",
+    } or (
+        "crowd" in tokens and tokens & {"reaction", "pop", "roar", "cheer"}
+    ) or (
+        "bench" in tokens and "reaction" in tokens
+    )
 
 
 def _is_audio_reaction_context_label(label: str) -> bool:

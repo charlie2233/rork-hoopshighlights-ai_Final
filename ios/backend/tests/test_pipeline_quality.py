@@ -1333,6 +1333,9 @@ class PipelineQualityTests(unittest.TestCase):
         labels = [clip.label for clip in trimmed]
 
         self.assertTrue(_is_audio_reaction_label("Crowd Reaction"))
+        self.assertTrue(_is_audio_reaction_label("Loud Cheer"))
+        self.assertTrue(_is_audio_reaction_label("Bench Reaction"))
+        self.assertTrue(_is_audio_reaction_label("Crowd Roar"))
         self.assertIn("Crowd Reaction", labels)
         self.assertNotIn("Made Shot 7", labels)
 

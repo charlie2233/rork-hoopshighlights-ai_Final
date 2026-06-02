@@ -78,6 +78,7 @@ UserPromptFocusArea = Literal[
     "clarity",
     "game_flow",
     "energy",
+    "audio_reaction",
 ]
 UserPromptTone = Literal["hype", "broadcast_clean", "coach_clean", "cinematic", "formal", "balanced"]
 UserPromptPacing = Literal["fast", "balanced", "cinematic", "chronological", "coach_review"]
@@ -1337,6 +1338,22 @@ def derive_user_prompt_intent(user_prompt: Optional[str], plan_tier: PlanTier = 
     if any(term in text for term in ("music", "beat", "song")) and audio_preference is None:
         audio_preference = "music_forward"
         structured_summary.append("music_forward")
+    if any(term in text for term in (
+        "crowd pop",
+        "crowd pops",
+        "crowd reaction",
+        "crowd reactions",
+        "audio pop",
+        "audio pops",
+        "audio spike",
+        "audio spikes",
+        "bench reaction",
+        "bench reactions",
+        "loud cheer",
+        "loud cheers",
+    )):
+        add_unique(focus_areas, "audio_reaction")
+        structured_summary.append("audio_reaction_focus")
     if any(term in text for term in ("finish", "layup", "dunk", "rim")):
         add_unique(focus_areas, "finishes")
     if any(term in text for term in ("shoot", "shot", "jumper", "three", "3pt", "corner")):
@@ -2666,9 +2683,15 @@ def audio_reaction_source_for_clip(clip: EditCandidateClip) -> Optional[str]:
         "audio reaction",
         "audio reaction cue",
         "audio cue",
+        "bench reaction",
+        "bench reaction cue",
         "crowd pop",
         "crowd pop cue",
+        "crowd roar",
+        "crowd roar cue",
         "crowd reaction",
+        "loud cheer",
+        "loud cheer cue",
     } or _has_audio_reaction_phrase(normalized)
     if explicit_reaction_label:
         return "explicit_reaction_label"
@@ -2722,12 +2745,15 @@ def audio_reaction_source_for_clip(clip: EditCandidateClip) -> Optional[str]:
 
 def _has_audio_reaction_phrase(normalized: str) -> bool:
     audio_marker = "audio" in normalized and any(
-        token in normalized for token in ("pop", "cue", "reaction", "spike", "burst")
+        token in normalized for token in ("pop", "cue", "reaction", "spike", "burst", "cheer", "roar")
     )
     crowd_marker = "crowd" in normalized and any(
-        token in normalized for token in ("pop", "cue", "reaction", "spike", "burst", "loud")
+        token in normalized for token in ("pop", "cue", "reaction", "spike", "burst", "loud", "cheer", "roar")
     )
-    return audio_marker or crowd_marker
+    bench_marker = "bench" in normalized and any(
+        token in normalized for token in ("reaction", "pop", "cheer", "roar")
+    )
+    return audio_marker or crowd_marker or bench_marker
 
 
 def audio_reaction_guidance_for_clip(clip: EditCandidateClip) -> Optional[str]:
