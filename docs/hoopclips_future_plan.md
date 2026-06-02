@@ -20,8 +20,8 @@ HoopClips should feel like a real basketball editing product: easy for players, 
    - Run cloud team scan, team selection, analysis, Review, AI Edit render, preview, revision, and share/open-in.
 
 2. Preparing-video reliability
-   - Finish the Photos import fix: file-backed transfers only, broader video content types, no `Data.self` fallback, copy work off MainActor.
-   - Confirm closing/reopening is no longer needed for imports to appear.
+   - Photos import now uses file-backed transfers only, broader video content types, no `Data.self` fallback, copy work off MainActor, and active recovery for saved imports.
+   - Confirm on a real device that closing/reopening is no longer needed for imports to appear.
    - Add device smoke evidence for 1GB+ and long iPhone camera videos.
 
 3. Cloud version/render check reliability
@@ -119,7 +119,7 @@ HoopClips should feel like a real basketball editing product: easy for players, 
 ## Current Known Blockers
 
 - Internal TestFlight installed-device smoke is still required.
-- Preparing-video import reliability still needs the file-backed Photos import fix.
+- Preparing-video import reliability still needs real-device proof with large Photos videos.
 - Cloud editing version check timeout needs device/staging proof.
 - App Store submission should wait for real smoke evidence.
 - Production cloud cutover remains gated by auth, storage, observability, render reliability, and confirmed-label/accuracy evidence.

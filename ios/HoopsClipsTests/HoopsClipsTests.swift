@@ -1646,6 +1646,51 @@ struct HoopsClipsTests {
         #expect(accessibility == "1 clip selected for edit out of 2 clips. 1 clip needs a closer check.")
     }
 
+    @Test func testReviewFilterDisplayPolicyKeepsActiveHiddenFilterVisible() {
+        let available = ["all", "priority", "team", "defense", "blocks", "sound", "kept"]
+        let primary: Set<String> = ["all", "priority", "team"]
+
+        let visible = ReviewFilterDisplayPolicy.visibleItems(
+            available: available,
+            primary: primary,
+            active: "blocks",
+            showAll: false
+        )
+        let hidden = ReviewFilterDisplayPolicy.hiddenItems(
+            available: available,
+            primary: primary,
+            active: "blocks",
+            showAll: false
+        )
+
+        #expect(visible == ["all", "priority", "team", "blocks"])
+        #expect(hidden == ["defense", "sound", "kept"])
+        #expect(ReviewFilterDisplayPolicy.moreFiltersTitle(hiddenCount: hidden.count, showAll: false) == "More 3")
+    }
+
+    @Test func testReviewFilterDisplayPolicyShowsAllFiltersWhenExpanded() {
+        let available = ["all", "priority", "team", "defense"]
+        let primary: Set<String> = ["all", "priority"]
+
+        #expect(
+            ReviewFilterDisplayPolicy.visibleItems(
+                available: available,
+                primary: primary,
+                active: "defense",
+                showAll: true
+            ) == available
+        )
+        #expect(
+            ReviewFilterDisplayPolicy.hiddenItems(
+                available: available,
+                primary: primary,
+                active: "defense",
+                showAll: true
+            ).isEmpty
+        )
+        #expect(ReviewFilterDisplayPolicy.moreFiltersTitle(hiddenCount: 0, showAll: true) == "Less")
+    }
+
     @Test @MainActor func testCloudEditRequestSendsFullBackendCandidatePoolAndReviewReserve() throws {
         let viewModel = HighlightsViewModel()
         viewModel.cloudEditSourceObjectKey = "uploads/source.mp4"

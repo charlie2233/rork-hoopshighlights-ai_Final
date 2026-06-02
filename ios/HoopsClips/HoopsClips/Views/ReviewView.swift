@@ -13,6 +13,7 @@ struct ReviewView: View {
     @State private var hasAutoFocusedPriorityFilter = false
     @State private var sortByScore = true
     @State private var expandedClipID: UUID?
+    @State private var showAllFilterChips = false
     @State private var keepTrigger = 0
     @State private var discardTrigger = 0
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -298,9 +299,8 @@ struct ReviewView: View {
 
     private var availableFilterOptions: [FilterOption] {
         var options: [FilterOption] = [.all]
-        let optionalOptions: [FilterOption] = [.priority, .selectedTeam, .teamUncertain, .defense, .blocks, .steals, .sound, .needsReview, .kept, .discarded]
 
-        for option in optionalOptions where shouldShowFilter(option) {
+        for option in allOptionalFilterOptions where shouldShowFilter(option) {
             options.append(option)
         }
 
@@ -308,6 +308,32 @@ struct ReviewView: View {
             options.append(filterOption)
         }
         return options
+    }
+
+    private var visibleFilterOptions: [FilterOption] {
+        ReviewFilterDisplayPolicy.visibleItems(
+            available: availableFilterOptions,
+            primary: primaryFilterOptions,
+            active: filterOption,
+            showAll: showAllFilterChips
+        )
+    }
+
+    private var hiddenFilterOptions: [FilterOption] {
+        ReviewFilterDisplayPolicy.hiddenItems(
+            available: availableFilterOptions,
+            primary: primaryFilterOptions,
+            active: filterOption,
+            showAll: showAllFilterChips
+        )
+    }
+
+    private var allOptionalFilterOptions: [FilterOption] {
+        [.priority, .selectedTeam, .teamUncertain, .defense, .blocks, .steals, .sound, .needsReview, .kept, .discarded]
+    }
+
+    private var primaryFilterOptions: Set<FilterOption> {
+        [.all, .priority, .selectedTeam, .teamUncertain, .needsReview]
     }
 
     private func shouldShowFilter(_ option: FilterOption) -> Bool {
@@ -602,33 +628,77 @@ struct ReviewView: View {
 
     private var filterBar: some View {
         LazyVGrid(columns: filterGridColumns, alignment: .leading, spacing: 8) {
-            ForEach(availableFilterOptions, id: \.self) { option in
-                Button {
-                    HoopsAccessibility.animate(reduceMotion: reduceMotion) { filterOption = option }
-                } label: {
-                    Text(filterTitle(for: option))
-                        .font(.subheadline.weight(.medium))
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.84)
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 48 : 36)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 8)
-                        .foregroundStyle(filterOption == option ? .white : AppTheme.subtleText)
-                        .background(
-                            filterOption == option ? AppTheme.accentPurple : AppTheme.cardBg,
-                            in: .capsule
-                        )
-                }
-                .accessibilityLabel("\(option.rawValue) clips")
-                .accessibilityValue(filterAccessibilityValue(for: option))
-                .accessibilityHint("Filters the review list.")
-                .hoopsSelectedState(filterOption == option)
+            ForEach(visibleFilterOptions, id: \.self) { option in
+                filterChip(option)
+            }
+
+            if !hiddenFilterOptions.isEmpty || showAllFilterChips {
+                moreFiltersChip
             }
         }
         .padding(10)
         .rorkCard(cornerRadius: 14, fill: AnyShapeStyle(AppTheme.surfaceBg.opacity(0.45)), stroke: AppTheme.softBorder, glowOpacity: 0.03)
+    }
+
+    private func filterChip(_ option: FilterOption) -> some View {
+        Button {
+            HoopsAccessibility.animate(reduceMotion: reduceMotion) { filterOption = option }
+        } label: {
+            filterChipLabel(
+                title: filterTitle(for: option),
+                isSelected: filterOption == option,
+                icon: nil
+            )
+        }
+        .accessibilityLabel("\(option.rawValue) clips")
+        .accessibilityValue(filterAccessibilityValue(for: option))
+        .accessibilityHint("Filters the review list.")
+        .hoopsSelectedState(filterOption == option)
+    }
+
+    private var moreFiltersChip: some View {
+        Button {
+            HoopsAccessibility.animate(reduceMotion: reduceMotion) {
+                showAllFilterChips.toggle()
+            }
+        } label: {
+            filterChipLabel(
+                title: ReviewFilterDisplayPolicy.moreFiltersTitle(
+                    hiddenCount: hiddenFilterOptions.count,
+                    showAll: showAllFilterChips
+                ),
+                isSelected: showAllFilterChips,
+                icon: showAllFilterChips ? "chevron.up" : "line.3.horizontal.decrease.circle"
+            )
+        }
+        .accessibilityLabel(showAllFilterChips ? "Show fewer review filters" : "Show more review filters")
+        .accessibilityValue(showAllFilterChips ? "All filters visible" : "\(hiddenFilterOptions.count) filters hidden")
+        .accessibilityHint("Shows or hides extra filters like defense, blocks, steals, sound, kept, and skipped.")
+    }
+
+    private func filterChipLabel(title: String, isSelected: Bool, icon: String?) -> some View {
+        Label {
+            Text(title)
+                .font(.subheadline.weight(.medium))
+                .lineLimit(2)
+                .minimumScaleFactor(0.84)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+        } icon: {
+            if let icon {
+                Image(systemName: icon)
+                    .font(.caption.weight(.semibold))
+                    .accessibilityHidden(true)
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 48 : 36)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .foregroundStyle(isSelected ? .white : AppTheme.subtleText)
+        .background(
+            isSelected ? AppTheme.accentPurple : AppTheme.cardBg,
+            in: .capsule
+        )
     }
 
     private var filterGridColumns: [GridItem] {
