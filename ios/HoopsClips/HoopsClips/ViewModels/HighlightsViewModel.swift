@@ -180,7 +180,7 @@ final class HighlightsViewModel {
         historyProjects.filter { $0.id != currentProjectID }
     }
 
-    init() {
+    init(projectStore: ProjectHistoryStore = ProjectHistoryStore()) {
         #if DEBUG
         Self.applyAIEditLiveSmokeRuntimeOverrides()
         #endif
@@ -194,8 +194,8 @@ final class HighlightsViewModel {
             settings = AnalysisSettings()
         }
 
-        let store = ProjectHistoryStore()
-        projectStore = store
+        let store = projectStore
+        self.projectStore = store
         projectLibrary = (try? store.loadLibrary()) ?? .empty
         currentProjectID = projectLibrary.currentProjectID
 
@@ -1527,6 +1527,17 @@ final class HighlightsViewModel {
         return isVideoLoaded
     }
 
+    @discardableResult
+    func recoverVisibleProjectFromStoreIfNeeded() -> Bool {
+        if reconcileCurrentProjectLoadState() {
+            return true
+        }
+
+        refreshProjectLibrarySnapshot(adoptPersistedCurrentProject: !isVideoLoaded)
+        repairBrokenProjectReferences()
+        return reconcileCurrentProjectLoadState()
+    }
+
     func canOpenProject(_ project: PersistedProjectRecord) -> Bool {
         projectSourceURL(for: project) != nil
     }
@@ -1770,10 +1781,10 @@ final class HighlightsViewModel {
         }
     }
 
-    private func refreshProjectLibrarySnapshot() {
+    private func refreshProjectLibrarySnapshot(adoptPersistedCurrentProject: Bool = false) {
         if let reloadedLibrary = try? projectStore.loadLibrary() {
             projectLibrary = reloadedLibrary
-            if currentProjectID == nil {
+            if adoptPersistedCurrentProject || currentProjectID == nil {
                 currentProjectID = reloadedLibrary.currentProjectID
             } else {
                 projectLibrary.currentProjectID = currentProjectID

@@ -99,6 +99,7 @@ struct HoopsClipsTests {
             #expect(!message.localizedCaseInsensitiveContains("estimated time"))
         }
         #expect(VideoImportStatusCopy.slowReminder.contains("keeps checking"))
+        #expect(VideoImportStatusCopy.longRunningReminder.contains("open it here"))
         #expect(VideoImportStatusCopy.statusDetail.contains("opens the project"))
         #expect(VideoImportStatusCopy.historyActionTitle == "Open History")
         #expect(VideoImportStatusCopy.recoveryAlertTitle == "Open from History")
@@ -240,6 +241,44 @@ struct HoopsClipsTests {
         #expect(viewModel.hasConfirmedHighlightTeamSelection == false)
         #expect(viewModel.settings.highlightTeamSelection.mode == .all)
         #expect(viewModel.settings.opponentTeamName == nil)
+    }
+
+    @Test @MainActor func testImportRecoveryReloadsPersistedProjectWithoutRelaunch() throws {
+        let tempRoot = URL.temporaryDirectory
+            .appending(path: "hoopclips-import-recovery-\(UUID().uuidString)", directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+        let store = ProjectHistoryStore(libraryRootURL: tempRoot)
+        try store.saveLibrary(.empty)
+        let viewModel = HighlightsViewModel(projectStore: store)
+        #expect(viewModel.isVideoLoaded == false)
+        viewModel.currentProjectID = UUID()
+
+        let projectID = UUID()
+        let projectDirectory = tempRoot.appending(path: "projects/\(projectID.uuidString)", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: projectDirectory, withIntermediateDirectories: true)
+        let sourceURL = projectDirectory.appending(path: "source.mov", directoryHint: .notDirectory)
+        try Data([0x00, 0x00, 0x00, 0x18]).write(to: sourceURL)
+
+        let now = Date()
+        let project = PersistedProjectRecord(
+            id: projectID,
+            title: "Late Saved Import",
+            sourceFilename: "source.mov",
+            sourceRelativePath: "projects/\(projectID.uuidString)/source.mov",
+            sourceDuration: 84,
+            thumbnailRelativePath: "projects/\(projectID.uuidString)/thumbnail.jpg",
+            createdAt: now,
+            updatedAt: now,
+            lastOpenedAt: now
+        )
+        try store.saveLibrary(PersistedProjectLibrary(currentProjectID: projectID, projects: [project]))
+
+        #expect(viewModel.recoverVisibleProjectFromStoreIfNeeded())
+        #expect(viewModel.currentProjectID == projectID)
+        #expect(viewModel.isVideoLoaded)
+        #expect(viewModel.videoURL == sourceURL)
+        #expect(viewModel.videoDuration == 84)
     }
 
     @Test @MainActor func testAuthenticatedCloudScopesUseSeparateStableInstallIDs() {

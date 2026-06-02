@@ -31,14 +31,16 @@ nonisolated final class ProjectHistoryStore {
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
 
-    init(fileManager: FileManager = .default) {
+    init(fileManager: FileManager = .default, libraryRootURL: URL? = nil) {
         self.fileManager = fileManager
 
         let applicationSupportURL = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? URL.temporaryDirectory
-        libraryRootURL = applicationSupportURL.appending(path: "ProjectLibrary", directoryHint: .isDirectory)
-        projectsRootURL = libraryRootURL.appending(path: "projects", directoryHint: .isDirectory)
-        manifestURL = libraryRootURL.appending(path: "library.json", directoryHint: .notDirectory)
+        let resolvedLibraryRootURL = libraryRootURL
+            ?? applicationSupportURL.appending(path: "ProjectLibrary", directoryHint: .isDirectory)
+        self.libraryRootURL = resolvedLibraryRootURL
+        projectsRootURL = resolvedLibraryRootURL.appending(path: "projects", directoryHint: .isDirectory)
+        manifestURL = resolvedLibraryRootURL.appending(path: "library.json", directoryHint: .notDirectory)
 
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]

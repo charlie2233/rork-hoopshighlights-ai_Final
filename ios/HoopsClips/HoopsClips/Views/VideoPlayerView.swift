@@ -506,7 +506,7 @@ struct VideoPlayerView: View {
     }
 
     private func completeImportAfterLoadedVideo() {
-        guard viewModel.reconcileCurrentProjectLoadState() else { return }
+        guard viewModel.recoverVisibleProjectFromStoreIfNeeded() else { return }
         syncPlayer(with: viewModel.videoURL)
         clearImportError()
         if isImportingVideo || activeImportID != nil || importTask != nil {
@@ -515,13 +515,13 @@ struct VideoPlayerView: View {
     }
 
     private func recoverCompletedImportIfNeeded() {
-        guard viewModel.reconcileCurrentProjectLoadState() else { return }
+        guard viewModel.recoverVisibleProjectFromStoreIfNeeded() else { return }
         completeImportAfterLoadedVideo()
         startTeamScanIfNeeded()
     }
 
     private func recoverSuccessfulImportIfNeeded(source: String, phase: String = "visible") -> Bool {
-        if viewModel.reconcileCurrentProjectLoadState() {
+        if viewModel.recoverVisibleProjectFromStoreIfNeeded() {
             LaunchTelemetry.shared.recordStabilityCheckpoint(
                 "video_import.visible",
                 metadata: "source=\(source) phase=\(phase)"
