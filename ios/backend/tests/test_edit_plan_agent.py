@@ -2190,7 +2190,7 @@ class EditPlanAgentTests(unittest.TestCase):
         self.assertTrue(is_plan_quality_eligible_clip(request.clips[0]))
         self.assertEqual(reranked.gptRerankSummary.status, "applied")
         self.assertEqual([clip.id for clip in reranked.clips], ["steal_finish"])
-        self.assertEqual(reranked.clips[0].label, "Steal (steal)")
+        self.assertEqual(reranked.clips[0].label, "Steal")
 
     def test_gpt_defensive_decision_citing_unsampled_shot_role_is_rejected(self) -> None:
         request = CreateEditJobRequest(

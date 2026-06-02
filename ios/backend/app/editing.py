@@ -145,12 +145,28 @@ DEFAULT_GPT_OUTCOME_CAPTIONS: Dict[str, str] = {
     "forced_turnover": "FORCED TURNOVER",
     "defensive_stop": "DEFENSIVE STOP",
 }
+DEFAULT_GPT_OUTCOME_LABELS: Dict[str, str] = {
+    "made": "Made Shot",
+    "missed": "Missed Shot",
+    "blocked": "Block",
+    "steal": "Steal",
+    "forced_turnover": "Forced Turnover",
+    "defensive_stop": "Defensive Stop",
+}
 MADE_OUTCOME_CAPTION_PATTERN = re.compile(
     r"\b(bucket|buckets|splash|cash|money|swish|bang|count it|and[-\s]?1|3pt)\b",
     re.IGNORECASE,
 )
 NON_MADE_OUTCOME_CAPTION_PATTERN = re.compile(
     r"\b(miss|missed|no good|blocked|block|stuffed|steal|stolen|turnover|defensive stop)\b",
+    re.IGNORECASE,
+)
+MADE_OUTCOME_EVENT_LABEL_PATTERN = re.compile(
+    r"\b(made\s+(shot|jumper|layup|three|bucket)|bucket|buckets|splash|swish|cash|money|bang|count it|and[-\s]?1|3pt|three[-\s]?pointer)\b",
+    re.IGNORECASE,
+)
+NON_MADE_OUTCOME_EVENT_LABEL_PATTERN = re.compile(
+    r"\b(miss|missed|no good|blocked|block|stuffed|steal|stolen|turnover|forced turnover|defensive stop)\b",
     re.IGNORECASE,
 )
 TEAM_EVIDENCE_REQUIRED_SOURCES = {"quick_scan", "gpt_frame_review", "provider", "unknown"}
@@ -3290,9 +3306,7 @@ def apply_gpt_highlight_rerank(
             rejected_reason_by_clip_id[clip.id] = rejection_reason
             _increment_reason_count(rejected_reason_counts, rejection_reason)
             continue
-        event_label = decision.basketballEvent.strip() or clip.label
-        if decision.outcome != "unclear" and decision.outcome != "not_basketball":
-            event_label = f"{event_label} ({decision.outcome})"
+        event_label = _sanitized_gpt_event_label(decision, clip.label)
         suggested = decision.suggestedEdit
         plan_caption = plan_captions_by_id.get(clip.id)
         plan_slow_motion = plan_slow_motion_by_id.get(clip.id)
@@ -3485,6 +3499,21 @@ def _sanitized_gpt_caption(decision: GPTHighlightClipDecision, caption: str) -> 
     return normalized_caption[:MAX_CAPTION_LENGTH]
 
 
+def _sanitized_gpt_event_label(decision: GPTHighlightClipDecision, fallback_label: str) -> str:
+    validated_outcome = _validated_gpt_outcome(decision)
+    raw_label = decision.basketballEvent.strip() or fallback_label
+    normalized_label = " ".join(raw_label.split()).strip()
+    if validated_outcome is None:
+        return (normalized_label or fallback_label)[:80]
+
+    fallback = DEFAULT_GPT_OUTCOME_LABELS[validated_outcome]
+    if not normalized_label:
+        return fallback
+    if _event_label_conflicts_with_outcome(normalized_label, validated_outcome):
+        return fallback
+    return normalized_label[:80]
+
+
 def _caption_conflicts_with_outcome(caption: str, outcome: str) -> bool:
     normalized = caption.strip().lower()
     if not normalized:
@@ -3495,6 +3524,17 @@ def _caption_conflicts_with_outcome(caption: str, outcome: str) -> bool:
         if "no bucket" in normalized or "not a bucket" in normalized:
             return False
         return bool(MADE_OUTCOME_CAPTION_PATTERN.search(normalized))
+    return False
+
+
+def _event_label_conflicts_with_outcome(label: str, outcome: str) -> bool:
+    normalized = label.strip().lower()
+    if not normalized:
+        return False
+    if outcome == "made":
+        return bool(NON_MADE_OUTCOME_EVENT_LABEL_PATTERN.search(normalized))
+    if outcome in {"missed", "blocked", "steal", "forced_turnover", "defensive_stop"}:
+        return bool(MADE_OUTCOME_EVENT_LABEL_PATTERN.search(normalized))
     return False
 
 

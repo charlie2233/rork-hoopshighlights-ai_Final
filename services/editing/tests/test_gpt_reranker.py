@@ -4220,6 +4220,149 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertEqual([clip.id for clip in result.clips], ["stop"])
         self.assertEqual(result.clips[0].captionHint, "MADE HIM MISS")
 
+    def test_gpt_event_label_sanitizer_replaces_label_that_conflicts_with_outcome(self) -> None:
+        request = CreateEditJobRequest(
+            videoId="video_event_label_guard",
+            analysisJobId="analysis_event_label_guard",
+            installId="install-123",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="free",
+            clips=[{**_clip("steal", 10.0, 0.88), "label": "Steal"}],
+        )
+        sampled_roles = ["start", "eventCenter", "finish", "challenge", "possessionChange", "recovery"]
+        decision = GPTHighlightClipDecision(
+            clipId="steal",
+            keep=True,
+            highlightScore=0.9,
+            watchabilityScore=0.84,
+            basketballEvent="Made Shot",
+            outcome="steal",
+            caption="STEAL",
+            reason="Defender clearly takes possession and controls the ball.",
+            qualitySignals=_quality_signals(
+                releaseVisible=False,
+                shotArcVisible=False,
+                rimResultVisible=False,
+                reason="Defensive event and possession change are visible.",
+            ),
+            shotResultEvidence=_shot_result_evidence(
+                releaseToRimContinuity="missing",
+                rimResultEvidence="unclear",
+                outcomeConfidence=0.84,
+                rimEntrySequence="unclear",
+                ballApproachFrameRole=None,
+                rimEntryFrameRole=None,
+                ballBelowRimOrNetFrameRole=None,
+                rimEntrySequenceConfidence=0.0,
+            ),
+            shotTrackingEvidence=_shot_tracking_evidence(
+                ballVisibleFrameRoles=["challenge", "possessionChange", "recovery"],
+                rimVisibleFrameRoles=[],
+                releaseFrameRole=None,
+                resultFrameRole="recovery",
+                ballEntersRimFrameRole=None,
+                trajectoryContinuity="partial",
+            ),
+            suggestedEdit=GPTHighlightSuggestedEdit(cropFocus="ball"),
+        )
+
+        result = apply_gpt_highlight_rerank(
+            request,
+            [decision],
+            "gpt-test",
+            1,
+            len(sampled_roles),
+            sampled_frame_roles_by_clip={"steal": sampled_roles},
+        )
+
+        self.assertEqual([clip.id for clip in result.clips], ["steal"])
+        self.assertEqual(result.clips[0].label, "Steal")
+        self.assertEqual(result.clips[0].captionHint, "STEAL")
+
+    def test_gpt_event_label_sanitizer_does_not_append_raw_outcome_suffix(self) -> None:
+        request = CreateEditJobRequest(
+            videoId="video_event_label_clean",
+            analysisJobId="analysis_event_label_clean",
+            installId="install-123",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="free",
+            clips=[_clip("make", 10.0, 0.9)],
+        )
+        decision = GPTHighlightClipDecision(**_gpt_decision_payload("make"))
+
+        result = apply_gpt_highlight_rerank(
+            request,
+            [decision],
+            "gpt-test",
+            1,
+            5,
+            sampled_frame_roles_by_clip={"make": ["start", "release", "outcome", "rim", "postOutcome", "finish"]},
+        )
+
+        self.assertEqual([clip.id for clip in result.clips], ["make"])
+        self.assertEqual(result.clips[0].label, "Made Shot")
+
+    def test_gpt_event_label_sanitizer_keeps_non_conflicting_defensive_label(self) -> None:
+        request = CreateEditJobRequest(
+            videoId="video_event_label_defense",
+            analysisJobId="analysis_event_label_defense",
+            installId="install-123",
+            preset="personal_highlight",
+            targetDurationSeconds=30,
+            planTier="free",
+            clips=[{**_clip("stop", 10.0, 0.88), "label": "Defensive Stop"}],
+        )
+        decision = GPTHighlightClipDecision(
+            clipId="stop",
+            keep=True,
+            highlightScore=0.9,
+            watchabilityScore=0.84,
+            basketballEvent="Made him miss",
+            outcome="defensive_stop",
+            caption="MADE HIM MISS",
+            reason="The defender forces a tough miss with clear control and outcome.",
+            qualitySignals=_quality_signals(
+                releaseVisible=False,
+                shotArcVisible=False,
+                rimResultVisible=False,
+                reason="Defensive stop is visible.",
+            ),
+            shotResultEvidence=_shot_result_evidence(
+                releaseToRimContinuity="missing",
+                rimResultEvidence="unclear",
+                outcomeConfidence=0.84,
+                rimEntrySequence="unclear",
+                ballApproachFrameRole=None,
+                rimEntryFrameRole=None,
+                ballBelowRimOrNetFrameRole=None,
+                rimEntrySequenceConfidence=0.0,
+            ),
+            shotTrackingEvidence=_shot_tracking_evidence(
+                ballVisibleFrameRoles=["challenge", "defenseOutcome"],
+                rimVisibleFrameRoles=[],
+                releaseFrameRole=None,
+                resultFrameRole="defenseOutcome",
+                ballEntersRimFrameRole=None,
+                trajectoryContinuity="partial",
+            ),
+            suggestedEdit=GPTHighlightSuggestedEdit(cropFocus="ball"),
+        )
+
+        result = apply_gpt_highlight_rerank(
+            request,
+            [decision],
+            "gpt-test",
+            1,
+            5,
+            sampled_frame_roles_by_clip={"stop": ["start", "eventCenter", "finish", "challenge", "defenseOutcome"]},
+        )
+
+        self.assertEqual([clip.id for clip in result.clips], ["stop"])
+        self.assertEqual(result.clips[0].label, "Made him miss")
+        self.assertEqual(result.clips[0].captionHint, "MADE HIM MISS")
+
     def test_blocked_keep_requires_sampled_challenge_and_outcome_roles(self) -> None:
         request = CreateEditJobRequest(
             videoId="video_block_validation",
