@@ -1,11 +1,12 @@
 # Release Device Smoke Report
 
-## Active snapshot (2026-06-02)
-- Branch: `codex/phase-launch-proof-next` (`bc37b0e`)
+## Active snapshot (2026-06-03)
+- Branch: `codex/phase-launch-proof-next` (`eb3c868`)
 - Focus: internal TestFlight/launch-readiness proof (staging + submission gates), not current public Release status.
 - Latest authoritative checks:
   - `python3 scripts/launch_backend_config_preflight.py --json` → `pass=85 warn=12 fail=0`.
   - `python3 scripts/submission_readiness_preflight.py --skip-live --json` → `pass=22 warn=6 fail=4`.
+    - Fails: missing `CLOUDFLARE_API_TOKEN`, `GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_DEPLOY_SERVICE_ACCOUNT`, `GCP_PROJECT_ID`, `GCP_REGION`; missing iOS upload inputs and unreviewed accuracy bundle.
   - `python3 scripts/submission_readiness_preflight --json` → `pass=22 warn=4 fail=6`.
     - Failures include URLError live probes + missing required environment inputs.
   - `python3 scripts/staging_version_probe.py --json` → worker and editing version probes failed with `Probe failed: URLError` in this environment.
@@ -16,7 +17,7 @@
 ## Automated validation status at snapshot
 - Backend configuration posture remains clean for staging intent (`pass=85`, no hard fails).
 - Submission readiness is still blocked by missing environment inputs and unverified live backend/device path.
-- CI/main branch preflight status fetch currently does not return in this environment.
+- CI/main branch workflow/state fetch currently does not return in this environment (`gh run list` fails here), and deploy preflight run state is not visible here.
 - Known known blockers from live evidence:
   - Missing cloud deploy inputs for `cloud-edit-deploy-preflight`.
   - Missing iOS upload inputs for `ios-testflight-upload`.
@@ -55,7 +56,24 @@
 | Accessibility Reduce Motion | blocked | Verify using `ios/docs/checklists/release-accessibility-smoke-checklist.md` once device is online. |
 
 ## Blockers
-- Missing deploy secrets and iOS upload secrets in environment are still unresolved.
+- Missing deploy secrets in environment are still unresolved:
+  - `CLOUDFLARE_API_TOKEN`
+  - `GCP_WORKLOAD_IDENTITY_PROVIDER`
+  - `GCP_DEPLOY_SERVICE_ACCOUNT`
+  - `GCP_PROJECT_ID`
+  - `GCP_REGION`
+- Missing iOS upload inputs in environment are still unresolved:
+  - `HOOPS_DEVELOPMENT_TEAM`
+  - `HOOPS_REVENUECAT_API_KEY`
+  - `HOOPS_GOOGLE_CLIENT_ID`
+  - `HOOPS_GOOGLE_REVERSED_CLIENT_ID`
+  - `HOOPS_FIREBASE_AUTH_API_KEY`
+  - `HOOPS_SENTRY_DSN`
+  - `APP_STORE_CONNECT_KEY_ID`
+  - `APP_STORE_CONNECT_ISSUER_ID`
+  - `APP_STORE_CONNECT_API_KEY_BASE64`
+  - `HOOPS_PRIVACY_POLICY_URL`
+  - `HOOPS_TERMS_OF_SERVICE_URL`
 - `team_highlight_labeling_bundle` is still incomplete (`0/54` clips reviewed), so launch-ready accuracy gate is unproven.
 - iPhone import/review/export/share flow from installed TestFlight app is unproven in this environment.
 - Live backend version probes currently fail with URLError from this environment; rerun from authorized, networked context.
