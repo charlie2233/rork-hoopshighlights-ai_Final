@@ -812,7 +812,7 @@ def render_case_sections(payload: dict[str, Any]) -> str:
                     f'<p class="label-progress" id="case-progress-{case_index}">{case_reviewed} / {case_total} clips reviewed. {case_remaining} remaining.</p>',
                     f'<p class="path">Labels file: {escape(str(case.get("labelsPath") or ""))}</p>',
                     "</div>",
-                    f'<button type="button" onclick="downloadCaseLabels({case_index})">Download filled labels</button>',
+                    f'<button type="button" onclick="downloadCaseLabels({case_index})">Download case checkpoint</button>',
                     "</div>",
                     '<div class="clip-grid">',
                     clips_html,
