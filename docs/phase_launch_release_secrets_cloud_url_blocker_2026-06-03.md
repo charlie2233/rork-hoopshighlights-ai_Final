@@ -55,3 +55,32 @@ If Rork provides a different production Worker URL, use that confirmed URL for b
 ## Why this matters
 
 Release builds require non-empty cloud analysis and cloud edit base URLs. If these remain blank, the Release app cannot prove the cloud-owned launch path and should not proceed to signed archive, TestFlight upload, or installed-device smoke as launch evidence.
+
+## 2026-06-03 current branch refresh - 245794e
+
+Current recheck: 2026-06-03T21:16:57Z
+Branch: `codex/phase-launch-proof-next`
+Checked tip: `245794e60356c72e24321ec29af9f14ecb2b0d4b`
+
+Fresh no-secret branch proof on this tip:
+
+- Cloud Edit Deploy Preflight: `26913261169`, conclusion `success`, head `245794e`.
+- iOS Internal TestFlight Upload with `operation=codecheck`: `26913261147`, conclusion `success`, head `245794e`.
+
+Current production variable check still shows only:
+
+- `HOOPS_PRIVACY_POLICY_URL=https://rork.com/privacy`
+- `HOOPS_TERMS_OF_SERVICE_URL=https://rork.com/terms`
+
+Still missing visible production variables:
+
+- `HOOPS_CLOUD_ANALYSIS_BASE_URL`
+- `HOOPS_CLOUD_EDIT_BASE_URL`
+
+Latest Release Secrets Preflight evidence remains unchanged:
+
+- Run `26884199422`: `failure`, head `86fdc33`, branch `codex/phase-launch-proof-next`, dispatched 2026-06-03T12:17:59Z.
+
+The green no-secret branch workflows above do not close this blocker. The blocker closes only after the production cloud URL variables are set or otherwise proven through a secret-safe release-owner path and `release-secrets-preflight.yml` passes on the launch branch tip.
+
+Do not proceed to signed archive/upload or installed TestFlight smoke as launch evidence while Release builds cannot prove non-empty cloud analysis and edit base URLs.
