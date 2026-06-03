@@ -5,10 +5,13 @@
 - Focus: internal TestFlight/launch-readiness proof (staging + submission gates), not current public Release status.
 - Latest authoritative checks:
   - `python3 scripts/launch_backend_config_preflight.py --json` → `pass=85 warn=12 fail=0`.
+  - Snapshot files:
+    - `artifacts/launch_readiness/submission_readiness_skip_live_2026-06-03.json`
+    - `artifacts/launch_readiness/submission_readiness_live_2026-06-03.json`
   - `python3 scripts/submission_readiness_preflight.py --skip-live --json` → `pass=22 warn=6 fail=4`.
     - Fails: missing `CLOUDFLARE_API_TOKEN`, `GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_DEPLOY_SERVICE_ACCOUNT`, `GCP_PROJECT_ID`, `GCP_REGION`; missing iOS upload inputs and unreviewed accuracy bundle.
   - `python3 scripts/submission_readiness_preflight --json` → `pass=22 warn=4 fail=6`.
-    - Failures include URLError live probes + missing required environment inputs.
+    - Failures include live DNS/route probe errors (`URLError`) and missing required environment inputs.
   - `python3 scripts/staging_version_probe.py --json` → worker and editing version probes failed with `Probe failed: URLError` in this environment.
 - Untracked root folders remain preserved and intentionally unstaged:
   - `HoopsClips.xcodeproj/`
@@ -16,7 +19,7 @@
 
 ## Automated validation status at snapshot
 - Backend configuration posture remains clean for staging intent (`pass=85`, no hard fails).
-- Submission readiness is still blocked by missing environment inputs and unverified live backend/device path.
+- Submission readiness is still blocked by missing environment inputs and live backend probe errors in this environment.
 - CI/main branch workflow/state fetch currently does not return in this environment (`gh run list` fails here), and deploy preflight run state is not visible here.
 - Known known blockers from live evidence:
   - Missing cloud deploy inputs for `cloud-edit-deploy-preflight`.
