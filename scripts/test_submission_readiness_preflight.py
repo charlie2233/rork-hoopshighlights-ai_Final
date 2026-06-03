@@ -118,46 +118,7 @@ class SubmissionReadinessPreflightTests(unittest.TestCase):
     def test_missing_team_accuracy_report_points_to_existing_labeling_bundle(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             repo_root = Path(temp_dir)
-            bundle_dir = repo_root / "artifacts/team_highlight_labeling_bundle"
-            write_json(
-                bundle_dir / "label_status.json",
-                {
-                    "schemaVersion": "team-highlight-label-status-v1",
-                    "status": "incomplete",
-                    "clipCount": 54,
-                    "completeClipCount": 7,
-                    "incompleteClipCount": 47,
-                },
-            )
-            write_json(
-                bundle_dir / "bundle_metadata.json",
-                {
-                    "schemaVersion": "team-highlight-labeling-bundle-v1",
-                    "reviewPage": "artifacts/team_highlight_labeling_bundle/team_highlight_label_review.html",
-                    "labelStatus": "artifacts/team_highlight_labeling_bundle/label_status.json",
-                    "clipCount": 54,
-                    "completeClipCount": 7,
-                    "incompleteClipCount": 47,
-                    "reviewPageMetadata": {
-                        "draftPrefill": {
-                            "appliedClipCount": 54,
-                            "skippedClipCount": 1,
-                        },
-                        "reviewPriorityCounts": {
-                            "needs_close_review": 49,
-                            "standard_review": 5,
-                        },
-                    },
-                },
-            )
-            (bundle_dir / "team_highlight_label_review.html").write_text(
-                "Next close review\nJ/L scrub\nfunction scrubVideosForCard\nDownload launch-ready labels\n",
-                encoding="utf-8",
-            )
-            (bundle_dir / "next_steps.md").write_text(
-                "Use `Next close review` first\n`J/L` scrub back/forward\nDownload launch-ready labels\n",
-                encoding="utf-8",
-            )
+            create_labeling_bundle_fixture(repo_root, complete_clip_count=7, incomplete_clip_count=47)
             collector = Collector()
 
             check_team_highlight_accuracy_report(repo_root, collector, None)
@@ -271,6 +232,7 @@ class SubmissionReadinessPreflightTests(unittest.TestCase):
     def test_team_accuracy_report_rejects_temporary_draft_path(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             repo_root = Path(temp_dir)
+            create_labeling_bundle_fixture(repo_root, complete_clip_count=0, incomplete_clip_count=54)
             report_path = (
                 repo_root
                 / "artifacts/team_highlight_labeling_bundle/temp_mapped_draft/team_highlight_accuracy_report.json"
@@ -284,6 +246,10 @@ class SubmissionReadinessPreflightTests(unittest.TestCase):
         detail = collector.findings[0].detail
         self.assertIn("temporary/draft", detail)
         self.assertIn("temp_mapped_draft", detail)
+        self.assertIn("0/54 clips complete", detail)
+        self.assertIn("team_highlight_label_review.html", detail)
+        self.assertIn("GPT draft prefilled 54 clip(s)", detail)
+        self.assertIn("GPT draft labels do not count", detail)
 
     def test_team_accuracy_report_does_not_reject_unrelated_draft_substring(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -1263,6 +1229,55 @@ def launch_grade_team_accuracy_report(
         "failures": [],
         "evidence": evidence,
     }
+
+
+def create_labeling_bundle_fixture(
+    repo_root: Path,
+    *,
+    complete_clip_count: int,
+    incomplete_clip_count: int,
+    clip_count: int = 54,
+) -> None:
+    bundle_dir = repo_root / "artifacts/team_highlight_labeling_bundle"
+    write_json(
+        bundle_dir / "label_status.json",
+        {
+            "schemaVersion": "team-highlight-label-status-v1",
+            "status": "incomplete",
+            "clipCount": clip_count,
+            "completeClipCount": complete_clip_count,
+            "incompleteClipCount": incomplete_clip_count,
+        },
+    )
+    write_json(
+        bundle_dir / "bundle_metadata.json",
+        {
+            "schemaVersion": "team-highlight-labeling-bundle-v1",
+            "reviewPage": "artifacts/team_highlight_labeling_bundle/team_highlight_label_review.html",
+            "labelStatus": "artifacts/team_highlight_labeling_bundle/label_status.json",
+            "clipCount": clip_count,
+            "completeClipCount": complete_clip_count,
+            "incompleteClipCount": incomplete_clip_count,
+            "reviewPageMetadata": {
+                "draftPrefill": {
+                    "appliedClipCount": clip_count,
+                    "skippedClipCount": 1,
+                },
+                "reviewPriorityCounts": {
+                    "needs_close_review": 49,
+                    "standard_review": 5,
+                },
+            },
+        },
+    )
+    (bundle_dir / "team_highlight_label_review.html").write_text(
+        "Next close review\nJ/L scrub\nfunction scrubVideosForCard\nDownload launch-ready labels\n",
+        encoding="utf-8",
+    )
+    (bundle_dir / "next_steps.md").write_text(
+        "Use `Next close review` first\n`J/L` scrub back/forward\nDownload launch-ready labels\n",
+        encoding="utf-8",
+    )
 
 
 def write_json(path: Path, payload: object) -> None:

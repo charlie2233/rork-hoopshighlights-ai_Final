@@ -439,7 +439,12 @@ def check_team_highlight_accuracy_report(repo_root: Path, collector: Collector, 
             failures.append(f"{metric_name} {metric_value:g} is below launch default {default_value:g}")
 
     if failures:
-        collector.fail(check_name, display_path, "; ".join(failures[:8]) + ("." if len(failures) <= 8 else "; additional failures omitted."))
+        detail = "; ".join(failures[:8]) + ("." if len(failures) <= 8 else "; additional failures omitted.")
+        if draft_path_marker:
+            hint = team_labeling_bundle_hint(repo_root)
+            if hint:
+                detail = f"{detail} {hint}"
+        collector.fail(check_name, display_path, detail)
         return
 
     collector.pass_(
