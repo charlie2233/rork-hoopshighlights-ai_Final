@@ -141,8 +141,8 @@ struct HistoryView: View {
                         Button {
                             selectedProject = project
                         } label: {
-                            historyActionLabel(title: "Details", icon: "info.circle.fill", tint: AppTheme.neonPurple)
-                                .accessibilityLabel("Show details for \(project.displayTitle)")
+                            historyActionLabel(title: "Saved Project", icon: "info.circle.fill", tint: AppTheme.neonPurple)
+                                .accessibilityLabel("Show saved project details for \(project.displayTitle)")
                         }
                         .buttonStyle(.plain)
                         .accessibilityIdentifier("history.project.details")
@@ -631,7 +631,7 @@ private struct HistoryProjectDetailView: View {
             RorkSectionHeader(
                 title: "Actions",
                 icon: "bolt.fill",
-                subtitle: "Open, preview, or share"
+                subtitle: "Resume, watch, share, or delete"
             )
 
             Button {
@@ -639,7 +639,7 @@ private struct HistoryProjectDetailView: View {
                 dismiss()
             } label: {
                 actionLabel(
-                    title: isCurrentProject ? "Currently Open" : "Open Project",
+                    title: isCurrentProject ? "Currently Open" : "Resume Project",
                     subtitle: canOpenProject
                         ? HistoryProjectActionCopy.openAvailableSubtitle
                         : HistoryProjectActionCopy.openUnavailableSubtitle,
@@ -655,7 +655,7 @@ private struct HistoryProjectDetailView: View {
                 startPreview(url: sourceURL, title: "Source Video")
             } label: {
                 actionLabel(
-                    title: "Play Source",
+                    title: "Watch Source",
                     subtitle: sourceURL == nil ? HistoryProjectActionCopy.sourceMissingSubtitle : HistoryProjectActionCopy.sourceAvailableSubtitle,
                     icon: "video.fill",
                     tint: AppTheme.warningYellow
