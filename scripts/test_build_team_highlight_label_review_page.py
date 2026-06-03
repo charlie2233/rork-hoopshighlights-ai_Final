@@ -134,7 +134,7 @@ class BuildTeamHighlightLabelReviewPageTests(unittest.TestCase):
         self.assertIn('["input", "select", "textarea"].includes(targetTag)', page)
         self.assertIn('seekClipFromCard(card, "event")', page)
         self.assertIn("markReviewedAndNext(Number(card.dataset.caseIndex)", page)
-        self.assertIn("Use prediction", page)
+        self.assertIn("Copy prediction", page)
         self.assertIn("fillFromPrediction", page)
         self.assertIn("eventTypeFromPrediction", page)
         self.assertIn("outcomeFromPrediction", page)
@@ -443,6 +443,7 @@ class BuildTeamHighlightLabelReviewPageTests(unittest.TestCase):
             },
         )
         self.assertIn("GPT draft prefilled 1 clips", page)
+        self.assertIn("drafts are data-entry help only until watched and marked reviewed", page)
         self.assertIn("draftPrefill", page)
         self.assertIn("prefill:${draftPrefill.source", page)
         self.assertIn('value="team_black" selected', page)

@@ -675,7 +675,11 @@ def render_progress_summary(payload: dict[str, Any]) -> str:
     if draft_prefill:
         applied = int(draft_prefill.get("appliedClipCount") or 0)
         skipped = int(draft_prefill.get("skippedClipCount") or 0)
-        review_copy = "Human review is still required." if draft_prefill.get("humanReviewRequired") else "Downloaded labels may already include reviewed rows."
+        review_copy = (
+            "Human review is still required; drafts are data-entry help only until watched and marked reviewed."
+            if draft_prefill.get("humanReviewRequired")
+            else "Downloaded labels may already include reviewed rows."
+        )
         draft_line = (
             f'<p class="lede">GPT draft prefilled {applied} clips'
             f'{f"; skipped {skipped}" if skipped else ""}. {escape(review_copy)}</p>'
@@ -854,7 +858,7 @@ def render_clip_card(case_index: int, case: dict[str, Any], clip: dict[str, Any]
             jump_button(case.get("videoId"), start, "Start"),
             jump_button(case.get("videoId"), event, "Event"),
             jump_button(case.get("videoId"), finish, "Finish"),
-            f'<button class="secondary-button" type="button" onclick="fillFromPrediction({case_index}, {clip_index})">Use prediction</button>',
+            f'<button class="secondary-button" type="button" onclick="fillFromPrediction({case_index}, {clip_index})">Copy prediction</button>',
             f'<button type="button" onclick="markReviewedAndNext({case_index}, {clip_index})">Mark reviewed + next</button>',
             "</div>",
             '<div class="button-row quick-label-row" aria-label="Quick label actions">',
