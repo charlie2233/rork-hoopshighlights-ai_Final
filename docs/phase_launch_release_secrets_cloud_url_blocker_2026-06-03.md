@@ -84,3 +84,70 @@ Latest Release Secrets Preflight evidence remains unchanged:
 The green no-secret branch workflows above do not close this blocker. The blocker closes only after the production cloud URL variables are set or otherwise proven through a secret-safe release-owner path and `release-secrets-preflight.yml` passes on the launch branch tip.
 
 Do not proceed to signed archive/upload or installed TestFlight smoke as launch evidence while Release builds cannot prove non-empty cloud analysis and edit base URLs.
+
+## 2026-06-03 current branch refresh - 981b779
+
+Current recheck: 2026-06-03T22:29:07Z
+Branch: `codex/phase-launch-proof-next`
+Checked tip: `981b779da854430a07c7e83a091c8e901ec8a358`
+
+Fresh no-secret branch proof on this tip:
+
+- Cloud Edit Deploy Preflight: `26917078142`, conclusion `success`, head
+  `981b779`.
+- Cloud preflight jobs:
+  - `Worker typecheck and dry run`: `success`.
+  - `Editing backend Python tests`: `success`.
+  - `Secret-safe launch evidence snapshot`: `success`.
+- iOS Internal TestFlight Upload with `operation=codecheck`: `26916769964`,
+  conclusion `success`, head `981b779`.
+
+Fresh release blocker proof on this tip:
+
+- Release Secrets Preflight: `26917020148`, conclusion `failure`, head
+  `981b779`.
+- Failed job: `Validate production release secrets`.
+- The job reported all required team, RevenueCat, Google, Firebase, privacy,
+  terms, and Sentry values as present.
+- The only missing required production values reported by the job were:
+  - `HOOPS_CLOUD_ANALYSIS_BASE_URL`
+  - `HOOPS_CLOUD_EDIT_BASE_URL`
+
+Fresh launch evidence snapshot from Cloud run `26917078142`:
+
+- `launchReady=false`
+- `openBlockers=5`
+- `labelStatus.source=trackedSummary`
+- `labelStatus.status=incomplete`
+- `labelStatus.completeClipCount=0`
+- `labelStatus.clipCount=54`
+- `releaseSecretsPreflight.latest.databaseId=26917020148`
+- `releaseSecretsPreflight.latest.conclusion=failure`
+- `productionVariables.missingRequired`:
+  - `HOOPS_CLOUD_ANALYSIS_BASE_URL`
+  - `HOOPS_CLOUD_EDIT_BASE_URL`
+
+Current launch blocker summary:
+
+- Missing production cloud URL variables:
+  `HOOPS_CLOUD_ANALYSIS_BASE_URL`,
+  `HOOPS_CLOUD_EDIT_BASE_URL`.
+- Release Secrets Preflight is not passing:
+  `26917020148 completed/failure`.
+- Human-reviewed accuracy labels remain incomplete: `0/54`,
+  `status=incomplete`.
+- Signed App Store Connect archive/upload is not proven.
+- Installed trusted-device TestFlight smoke is not proven.
+
+This remains an external release-owner decision gate, not a code failure. The
+repo's candidate internal TestFlight value remains:
+
+```text
+https://hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev
+```
+
+Do not set that URL in the GitHub `production` environment unless the release
+owner explicitly confirms that Release smoke should point at the staging Worker
+for this launch gate. If a production Worker URL is provided instead, use the
+confirmed production URL for both variables and rerun Release Secrets Preflight
+before claiming this blocker closed.

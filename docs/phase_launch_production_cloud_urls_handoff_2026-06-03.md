@@ -21,7 +21,7 @@ The required production cloud URL variables are missing:
 
 Latest `Release Secrets Preflight` evidence:
 
-- Run `26884199422`: `failure`
+- Run `26917020148`: `failure` on `981b779`.
 
 Do not claim the production cloud gate is green until the missing URL variables
 are set and Release Secrets Preflight passes on the current launch branch.
@@ -94,9 +94,19 @@ A current non-secret GitHub environment check still shows only:
 
 The production environment still does not visibly expose
 `HOOPS_CLOUD_ANALYSIS_BASE_URL` or `HOOPS_CLOUD_EDIT_BASE_URL`.
-The latest `Release Secrets Preflight` run remains `26884199422`, completed
-`failure` on `86fdc33` at `2026-06-03T12:17:59Z`.
+The latest `Release Secrets Preflight` run is `26917020148`, completed
+`failure` on `981b779` at `2026-06-03T22:29:07Z`.
 
-Do not rerun release preflight as launch evidence until the production cloud URL
-variables are set or the release owner confirms a different non-secret evidence
-source.
+Fresh same-head proof after that failure:
+
+- Cloud Edit Deploy Preflight: `26917078142`, `success` on `981b779`.
+- Launch evidence snapshot from `26917078142`: `launchReady=false`,
+  `openBlockers=5`, and
+  `Release Secrets Preflight is not passing: 26917020148 completed/failure`.
+- iOS Internal TestFlight Upload `operation=codecheck`: `26916769964`,
+  `success` on `981b779`; signed archive/upload remained intentionally
+  skipped in codecheck mode.
+
+Do not treat rerunning release preflight as launch-green evidence until the
+production cloud URL variables are set or the release owner confirms a different
+non-secret evidence source.
