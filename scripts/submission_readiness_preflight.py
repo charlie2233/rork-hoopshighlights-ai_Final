@@ -157,6 +157,9 @@ BLOCKER_DOCS = (
     ('docs/phase_launch_current_tip_external_gate_handoff_2026-06-03.md',
      'This current-tip proof does not close production cloud URLs/secrets,',
      'Current-tip external gate handoff still documents unresolved launch gates.'),
+    ('docs/phase_launch_label_bundle_video_source_handoff_2026-06-03.md',
+     "Missing source video path or local video URL for videoId '326_1770329282'.",
+     'Label bundle video-source handoff still documents unresolved accuracy labeling inputs.'),
 )
 DEFAULT_TEAM_ACCURACY_MANIFEST = Path("artifacts/team_highlight_accuracy_manifest.json")
 DEFAULT_LABELING_BUNDLE_DIR = Path("artifacts/team_highlight_labeling_bundle")
