@@ -82,3 +82,16 @@ run remains `26884199422`, completed `failure` on `86fdc33` at
 This current-tip proof does not close production cloud URLs/secrets,
 human-reviewed accuracy labels, signed archive/TestFlight upload, or installed
 TestFlight smoke.
+
+## 2026-06-03 `64ddebc` proof refresh
+
+Current branch tip `64ddebc` (`chore: track current tip external gate handoff`) keeps the consolidated external-gate handoff visible to `scripts/submission_readiness_preflight.py` blocker-doc coverage.
+
+Remote branch proof for `64ddebc`:
+
+- Cloud Edit Deploy Preflight `26900804785`: success
+- iOS Internal TestFlight Upload codecheck `26900804722`: success
+- Cloud Edit Deploy Preflight duplicate dispatch `26900909850`: success
+- iOS Internal TestFlight Upload codecheck duplicate dispatch `26900909936`: success
+
+This proof only confirms the current branch keeps the external blockers represented in readiness preflight coverage and that the safe cloud/iOS codecheck workflows passed for the new tip. It does not close production cloud URL/secrets, Release Secrets Preflight, Apple signing/archive, human label coverage, or installed TestFlight smoke blockers.
