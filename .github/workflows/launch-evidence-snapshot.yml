@@ -50,8 +50,12 @@ jobs:
           print('currentHeadHasSupportingProof=' + str(snapshot['supportingBranchProof'].get('currentHeadHasSupportingProof')))
           print('missingProductionVariables=' + ','.join(snapshot['productionVariables'].get('missingRequired', [])))
           print('releaseSecretsPreflightPassing=' + str(snapshot['releaseSecretsPreflight'].get('isPassing')))
+          print('labelStatusFileExists=' + str(snapshot['labelStatus'].get('exists')))
           print('labelStatus=' + str(snapshot['labelStatus'].get('status')))
-          print('labelComplete=' + str(snapshot['labelStatus'].get('completeClipCount')) + '/' + str(snapshot['labelStatus'].get('clipCount')))
+          if snapshot['labelStatus'].get('exists'):
+              print('labelComplete=' + str(snapshot['labelStatus'].get('completeClipCount')) + '/' + str(snapshot['labelStatus'].get('clipCount')))
+          else:
+              print('labelComplete=missing')
           print('launchEvidenceEligible=' + str(snapshot['labelStatus'].get('launchEvidenceEligible')))
           PY
 

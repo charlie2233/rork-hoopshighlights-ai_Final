@@ -142,7 +142,16 @@ def production_variable_snapshot(repo_root: Path) -> dict[str, Any]:
 def label_status_snapshot(repo_root: Path, label_status_path: Path) -> dict[str, Any]:
     path = label_status_path if label_status_path.is_absolute() else repo_root / label_status_path
     if not path.exists():
-        return {"path": str(label_status_path), "exists": False}
+        return {
+            "path": str(label_status_path),
+            "exists": False,
+            "status": "missing",
+            "clipCount": None,
+            "completeClipCount": None,
+            "incompleteClipCount": None,
+            "launchEvidenceEligible": False,
+            "missingFieldCounts": {},
+        }
     payload = json.loads(path.read_text())
     return {
         "path": str(label_status_path),
@@ -166,6 +175,15 @@ def latest_success_for_head(runs: list[dict[str, Any]], workflow_name: str, head
     return None
 
 
+def latest_for_head(runs: list[dict[str, Any]], workflow_name: str, head: str | None) -> dict[str, Any] | None:
+    if not head:
+        return None
+    for run_item in runs:
+        if run_item.get("workflowName") == workflow_name and run_item.get("headSha") == head:
+            return run_item
+    return None
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Collect a secret-safe launch evidence snapshot.")
     parser.add_argument("--repo-root", default=".", help="Repository root. Defaults to current directory.")
@@ -183,6 +201,8 @@ def main() -> int:
     labels = label_status_snapshot(repo_root, args.label_status)
 
     head = git.get("head")
+    cloud_latest_run = latest_for_head(runs, "Cloud Edit Deploy Preflight", head)
+    ios_latest_run = latest_for_head(runs, "iOS Internal TestFlight Upload", head)
     cloud_run = latest_success_for_head(runs, "Cloud Edit Deploy Preflight", head)
     ios_run = latest_success_for_head(runs, "iOS Internal TestFlight Upload", head)
     latest_release = release_runs[0] if release_runs else None
@@ -194,10 +214,12 @@ def main() -> int:
         "branch": args.branch,
         "git": git,
         "supportingBranchProof": {
+            "cloudEditDeployPreflightLatestForHead": cloud_latest_run,
+            "iosInternalTestFlightCodecheckLatestForHead": ios_latest_run,
             "cloudEditDeployPreflightSuccessForHead": cloud_run,
             "iosInternalTestFlightCodecheckSuccessForHead": ios_run,
             "currentHeadHasSupportingProof": bool(cloud_run and ios_run),
-            "note": "Supporting proof only; not production cutover, signed upload, installed smoke, or human-reviewed accuracy proof.",
+            "note": "Supporting proof only; not production cutover, signed upload, installed smoke, or human-reviewed accuracy proof. If this snapshot runs inside a workflow for the current head, the latest current-head runs may still be in progress and success fields may remain null until a later refresh.",
         },
         "productionVariables": production_variables,
         "releaseSecretsPreflight": {
