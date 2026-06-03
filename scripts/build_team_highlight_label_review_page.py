@@ -683,6 +683,10 @@ def render_progress_summary(payload: dict[str, Any]) -> str:
         f'<button type="button" class="priority-filter-button" data-priority-filter="quick_check" onclick="setPriorityFilter(\'quick_check\')">Quick {priority_counts.get("quick_check", 0)}</button>'
         "</div>"
     )
+    review_order = (
+        '<p class="review-order"><strong>Review order:</strong> start with Close review clips, '
+        'then Standard review, then Quick checks. Quick checks still need the video watched before marking reviewed.</p>'
+    )
     return "\n".join(
         [
             '<section class="panel summary-panel">',
@@ -699,12 +703,13 @@ def render_progress_summary(payload: dict[str, Any]) -> str:
                 "</p>"
             ),
             priority_summary,
+            review_order,
             '<p class="lede" id="draft-status">Local draft not loaded.</p>',
             '<p class="review-position" id="review-position">Current queue position will appear here.</p>',
             "</div>",
             '<div class="button-row">',
-            '<button type="button" onclick="focusNextIncomplete()">Next incomplete</button>',
             '<button type="button" onclick="focusNextCloseReview()">Next close review</button>',
+            '<button type="button" onclick="focusNextIncomplete()">Next incomplete</button>',
             '<button id="download-ready-button" type="button" onclick="downloadLaunchReadyLabels()" disabled>Finish labels first</button>',
             '<button id="download-checkpoint-button" type="button" onclick="downloadProgressCheckpoint()">Download progress checkpoint</button>',
             '<label class="file-button">Import draft bundle<input id="bundle-import" type="file" accept="application/json" onchange="importDraftBundle(event)"></label>',
@@ -980,6 +985,16 @@ h1, h2, h3, p {
   color: #d8deea;
   background: #202535;
   border: 1px solid #333b52;
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.review-order {
+  max-width: 920px;
+  color: #f5f7fb;
+  background: #251d11;
+  border: 1px solid #4d3b17;
   border-radius: 12px;
   padding: 10px 12px;
   font-size: 13px;
