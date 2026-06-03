@@ -618,6 +618,47 @@ class BuildTeamHighlightLabelReviewPageTests(unittest.TestCase):
         self.assertIn("review-priority quick-check", page)
         self.assertIn("No close-review clips remain", page)
 
+    def test_rendered_review_progress_requires_reviewed_by_human(self) -> None:
+        page = render_review_page(
+            {
+                "cases": [
+                    {
+                        "caseId": "case_a",
+                        "videoId": "video_a",
+                        "clips": [
+                            {
+                                "labelId": "label_001",
+                                "predictionClipId": "clip_1",
+                                "start": 1.0,
+                                "end": 5.0,
+                                "eventCenter": 3.0,
+                                "needsLabel": False,
+                                "reviewedByHuman": False,
+                                "predicted": {"teamId": "team_black", "keep": True},
+                                "expected": {
+                                    "teamId": "team_black",
+                                    "isHighlight": True,
+                                    "eventType": "made_shot",
+                                    "outcome": "made",
+                                },
+                                "reviewPriority": {
+                                    "key": "quick_check",
+                                    "label": "Quick check",
+                                    "detail": "High-confidence draft; still verify before marking reviewed.",
+                                },
+                            }
+                        ],
+                    }
+                ],
+            },
+            title="Review",
+        )
+
+        self.assertIn("<strong>0</strong> / 1 clips reviewed. 1 still need labels.", page)
+        self.assertIn("0 / 1 clips reviewed. 1 remaining.", page)
+        self.assertNotIn('class="clip-card complete"', page)
+        self.assertNotIn('class="reviewed" type="checkbox" checked', page)
+
 
 def write_json(path: Path, payload: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)

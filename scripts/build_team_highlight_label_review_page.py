@@ -451,6 +451,8 @@ def review_clip_payload(index: int, clip: dict[str, Any]) -> dict[str, Any]:
     if event_center is None and start is not None and end is not None:
         event_center = round((start + end) / 2.0, 3)
     review_priority = review_priority_for_clip(clip=clip, predicted=predicted, expected=expected)
+    reviewed_by_human = bool_or_none(clip.get("reviewedByHuman"))
+    complete = clip_review_complete(clip)
     return {
         "index": index,
         "labelId": string_or_none(clip.get("labelId")) or f"label_{index:03d}",
@@ -458,13 +460,17 @@ def review_clip_payload(index: int, clip: dict[str, Any]) -> dict[str, Any]:
         "start": start,
         "end": end,
         "eventCenter": event_center,
-        "needsLabel": clip.get("needsLabel") is not False,
-        "reviewedByHuman": bool_or_none(clip.get("reviewedByHuman")),
+        "needsLabel": not complete,
+        "reviewedByHuman": reviewed_by_human,
         "predicted": sanitize_for_review(predicted),
         "expected": sanitize_for_review(expected),
         "labelingNotes": string_or_none(clip.get("labelingNotes")) or "",
         "reviewPriority": review_priority,
     }
+
+
+def clip_review_complete(clip: dict[str, Any]) -> bool:
+    return clip.get("needsLabel") is False and bool_or_none(clip.get("reviewedByHuman")) is True
 
 
 def review_priority_for_clip(*, clip: dict[str, Any], predicted: dict[str, Any], expected: dict[str, Any]) -> dict[str, str]:
@@ -616,7 +622,8 @@ def prefill_clip_from_draft(target_clip: dict[str, Any], draft_clip: dict[str, A
     expected = draft_clip.get("expected") if isinstance(draft_clip.get("expected"), dict) else {}
     target_clip["expected"] = sanitize_for_review(expected)
     target_clip["labelingNotes"] = string_or_none(draft_clip.get("labelingNotes")) or string_or_none(target_clip.get("labelingNotes")) or ""
-    target_clip["needsLabel"] = True if human_review_required else draft_clip.get("needsLabel") is not False
+    target_clip["reviewedByHuman"] = False if human_review_required else bool_or_none(draft_clip.get("reviewedByHuman"))
+    target_clip["needsLabel"] = True if human_review_required else not clip_review_complete(draft_clip)
 
 
 def sanitize_for_review(value: Any) -> Any:
@@ -668,7 +675,7 @@ def render_progress_summary(payload: dict[str, Any]) -> str:
             continue
         clips = [clip for clip in case.get("clips", []) if isinstance(clip, dict)]
         total += len(clips)
-        remaining += sum(1 for clip in clips if clip.get("needsLabel") is not False)
+        remaining += sum(1 for clip in clips if not clip_review_complete(clip))
     reviewed = total - remaining
     draft_prefill = payload.get("draftPrefill") if isinstance(payload.get("draftPrefill"), dict) else None
     draft_line = ""
@@ -791,7 +798,7 @@ def render_case_sections(payload: dict[str, Any]) -> str:
         color = case.get("selectedTeamColorLabel") or "any color"
         teams = ", ".join(team_label(team) for team in case.get("detectedTeams", []) if isinstance(team, dict)) or "none"
         case_total = sum(1 for clip in case.get("clips", []) if isinstance(clip, dict))
-        case_remaining = sum(1 for clip in case.get("clips", []) if isinstance(clip, dict) and clip.get("needsLabel") is not False)
+        case_remaining = sum(1 for clip in case.get("clips", []) if isinstance(clip, dict) and not clip_review_complete(clip))
         case_reviewed = case_total - case_remaining
         sections.append(
             "\n".join(
@@ -830,8 +837,9 @@ def render_clip_card(case_index: int, case: dict[str, Any], clip: dict[str, Any]
     expected_event = string_or_none(expected.get("eventType")) or ""
     expected_outcome = string_or_none(expected.get("outcome")) or ""
     is_highlight = expected.get("isHighlight")
-    reviewed = "checked" if clip.get("needsLabel") is False else ""
-    complete_class = " complete" if clip.get("needsLabel") is False else ""
+    complete = clip_review_complete(clip)
+    reviewed = "checked" if complete else ""
+    complete_class = " complete" if complete else ""
     priority = clip.get("reviewPriority") if isinstance(clip.get("reviewPriority"), dict) else {}
     priority_key = string_or_none(priority.get("key")) or "standard_review"
     priority_class = priority_key.replace("_", "-")
