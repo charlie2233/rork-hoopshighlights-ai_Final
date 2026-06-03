@@ -88,6 +88,7 @@ class LaunchProviderInputHandoffTests(unittest.TestCase):
 
         self.assertEqual(payload["repo"], "charlie2233/rork-hoopshighlights-ai_Final")
         self.assertEqual(payload["ref"], "codex/test-ref")
+        self.assertIn("expectedHeadSha", payload)
         self.assertTrue(any(item["name"] == "APP_STORE_CONNECT_API_KEY_BASE64" for item in payload["githubSecrets"]))
         self.assertTrue(any(item["name"] == "HOOPS_TERMS_OF_SERVICE_URL" for item in payload["githubVariables"]))
         self.assertTrue(any(item["name"] == "HOOPS_OPENAI_API_KEY" for item in payload["gcpSecretManagerSecrets"]))
@@ -101,6 +102,10 @@ class LaunchProviderInputHandoffTests(unittest.TestCase):
         self.assertIn("Do not stop after reporting the missing secret", payload["atlasAgentPrompt"])
         self.assertIn("Cloud deploy credential check triggered: yes/no", payload["atlasAgentPrompt"])
         self.assertIn("GitHub run URL:", payload["atlasAgentPrompt"])
+        self.assertIn("Expected workflow head SHA for current-tip proof:", payload["atlasAgentPrompt"])
+        self.assertIn("GitHub run head SHA:", payload["atlasAgentPrompt"])
+        self.assertIn("GitHub run head SHA matches expected current SHA: yes/no", payload["atlasAgentPrompt"])
+        self.assertIn("Do not count an older successful run as current proof", payload["atlasAgentPrompt"])
         self.assertIn("Final conclusion:", payload["atlasAgentPrompt"])
         self.assertIn("Secret Manager Viewer", payload["atlasAgentPrompt"])
         self.assertIn("deploy service account has Secret Manager Viewer metadata access: yes/no", payload["atlasAgentPrompt"])

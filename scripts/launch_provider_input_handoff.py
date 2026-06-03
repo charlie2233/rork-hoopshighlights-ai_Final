@@ -79,6 +79,7 @@ class Handoff:
     repo: str
     environment: str
     ref: str
+    expectedHeadSha: str | None
     githubSecrets: list[HandoffInput]
     githubVariables: list[HandoffInput]
     gcpSecretManagerSecrets: list[HandoffInput]
@@ -236,11 +237,12 @@ def build_handoff(ref: str | None = None, today: date | None = None) -> Handoff:
         "Create a signed archive/IPA through the iOS internal TestFlight workflow, then run the installed TestFlight smoke.",
         "Do not submit to Apple until upload, processing, installed smoke, cloud render, revision, preview, and share/open-in are all proven.",
     ]
-    atlas_prompt = build_atlas_agent_prompt(workflow_ref, cloudflare_form_guide)
+    atlas_prompt = build_atlas_agent_prompt(workflow_ref, cloudflare_form_guide, workflow_sha)
     return Handoff(
         repo=REPO,
         environment=ENVIRONMENT,
         ref=workflow_ref,
+        expectedHeadSha=workflow_sha,
         githubSecrets=github_secrets,
         githubVariables=github_variables,
         gcpSecretManagerSecrets=gcp_secret_manager_secrets,
@@ -261,6 +263,7 @@ def render_markdown(handoff: Handoff) -> str:
         f"Repository: `{handoff.repo}`",
         f"GitHub environment: `{handoff.environment}`",
         f"GitHub ref for verification workflows: `{handoff.ref}`",
+        f"Expected workflow head SHA: `{handoff.expectedHeadSha or 'unknown'}`",
         "",
         "Use these commands locally or in the provider UI. Do not paste secret values into chat, docs, commits, logs, or screenshots.",
         "",
@@ -319,14 +322,16 @@ def render_cloudflare_form_guide(guide: CloudflareTokenFormGuide) -> list[str]:
     return rows
 
 
-def build_atlas_agent_prompt(ref: str, cloudflare_guide: CloudflareTokenFormGuide) -> str:
+def build_atlas_agent_prompt(ref: str, cloudflare_guide: CloudflareTokenFormGuide, expected_head_sha: str | None = None) -> str:
     secret_list = "\n".join(f"   - {name}" for name in REQUIRED_SECRET_MANAGER_SECRETS)
     cloudflare_requirements = "\n".join(f"   - {item}" for item in CLOUDFLARE_TOKEN_REQUIREMENTS)
     cloudflare_permissions = "\n".join(f"   - {item}" for item in cloudflare_guide.permissions)
     cloudflare_notes = "\n".join(f"   - {item}" for item in cloudflare_guide.notes)
     workflow_command = f"gh workflow run cloud-edit-deploy-preflight.yml --repo {REPO} --ref {shlex.quote(ref)} -f operation=credential-check"
+    expected_sha = expected_head_sha or "unknown"
     return f"""For repo {REPO}, GitHub environment {ENVIRONMENT}, repair only provider-side launch deploy blockers.
 Use GitHub Actions workflow ref {ref} for verification/deploy reruns, not stale main, unless the operator explicitly asks to validate main.
+Expected workflow head SHA for current-tip proof: {expected_sha}. Do not count an older successful run as current proof unless the run's head SHA exactly matches this value.
 
 Do not paste, reveal, summarize, screenshot, or return private key material, API tokens, R2 credentials, OpenAI keys, Secret Manager secret values, or full presigned URLs.
 
@@ -366,6 +371,8 @@ Do not paste, reveal, summarize, screenshot, or return private key material, API
    - GitHub staging CLOUDFLARE_API_TOKEN updated: yes/no
    - Cloud deploy credential check triggered: yes/no
    - GitHub run URL:
+   - GitHub run head SHA:
+   - GitHub run head SHA matches expected current SHA: yes/no
    - Final conclusion:
    - Any provider-side blocker that remains, by name only
 """
