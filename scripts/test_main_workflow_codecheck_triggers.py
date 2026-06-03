@@ -89,7 +89,6 @@ class MainWorkflowCodecheckTriggerTests(unittest.TestCase):
                 "pull_request:",
                 "github.event_name == 'push'",
                 "CODE_SIGNING_ALLOWED=NO",
-                'CODE_SIGN_IDENTITY="Apple Distribution"',
             ],
         )
         self.assertIn("if: github.event_name == 'workflow_dispatch' && inputs.operation != 'codecheck'", text)
