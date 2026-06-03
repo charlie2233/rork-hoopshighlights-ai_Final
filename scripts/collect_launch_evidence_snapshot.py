@@ -195,6 +195,43 @@ def label_status_snapshot(repo_root: Path, label_status_path: Path, summary_path
     }
 
 
+def label_review_guidance(labels: dict[str, Any]) -> dict[str, Any]:
+    missing_fields = {
+        str(key): value
+        for key, value in (labels.get("missingFieldCounts") or {}).items()
+        if value
+    }
+    missing_required_fields = sorted(missing_fields)
+    launch_evidence_eligible = bool(labels.get("launchEvidenceEligible"))
+    complete = labels.get("completeClipCount")
+    total = labels.get("clipCount")
+    incomplete = labels.get("incompleteClipCount")
+    remaining = incomplete
+    if remaining is None and total is not None and complete is not None:
+        remaining = max(int(total) - int(complete), 0)
+
+    next_actions: list[str] = []
+    if not launch_evidence_eligible:
+        next_actions = [
+            "Open the generated team highlight labeling bundle.",
+            "Complete human review for every launch clip before rebuilding evidence.",
+            "Fill expected.eventType, expected.isHighlight, expected.outcome, expected.teamId, needsLabel=false, and reviewedByHuman=true.",
+            "Rebuild label_status.json and the launch-grade team accuracy report after review.",
+        ]
+
+    return {
+        "status": "complete" if launch_evidence_eligible else "human_review_required",
+        "source": labels.get("source"),
+        "sourceIsLaunchEvidence": labels.get("source") == "generatedStatus" and launch_evidence_eligible,
+        "reviewedClipCount": complete,
+        "totalClipCount": total,
+        "remainingClipCount": remaining,
+        "missingRequiredFields": missing_required_fields,
+        "missingRequiredFieldCounts": missing_fields,
+        "nextActions": next_actions,
+    }
+
+
 def latest_success_for_head(runs: list[dict[str, Any]], workflow_name: str, head: str | None) -> dict[str, Any] | None:
     if not head:
         return None
@@ -275,6 +312,7 @@ def main() -> int:
     cloud_run = latest_success_for_head(runs, "Cloud Edit Deploy Preflight", head)
     ios_run = latest_success_for_head(runs, "iOS Internal TestFlight Upload", head)
     latest_release = release_runs[0] if release_runs else None
+    label_review = label_review_guidance(labels)
 
     open_blockers = launch_blockers(production_variables, latest_release, labels)
     snapshot = {
@@ -297,6 +335,7 @@ def main() -> int:
             "isPassing": bool(latest_release and latest_release.get("status") == "completed" and latest_release.get("conclusion") == "success"),
         },
         "labelStatus": labels,
+        "labelReview": label_review,
         "launchReadiness": {
             "launchReady": len(open_blockers) == 0,
             "openBlockers": open_blockers,

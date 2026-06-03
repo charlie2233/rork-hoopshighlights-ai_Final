@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 
 from scripts.collect_launch_evidence_snapshot import (
+    label_review_guidance,
     label_status_snapshot,
     latest_for_head,
     latest_success_for_head,
@@ -147,6 +148,53 @@ class CollectLaunchEvidenceSnapshotTest(unittest.TestCase):
 
         self.assertEqual(latest["databaseId"], 1)
         self.assertEqual(success["databaseId"], 2)
+
+    def test_label_review_guidance_turns_incomplete_summary_into_reviewer_actions(self):
+        guidance = label_review_guidance(
+            {
+                "source": "trackedSummary",
+                "status": "incomplete",
+                "clipCount": 54,
+                "completeClipCount": 0,
+                "incompleteClipCount": 54,
+                "launchEvidenceEligible": False,
+                "missingFieldCounts": {
+                    "expected.eventType": 54,
+                    "expected.isHighlight": 54,
+                    "expected.outcome": 54,
+                    "expected.teamId": 54,
+                    "needsLabel=false": 54,
+                    "reviewedByHuman=true": 54,
+                },
+            }
+        )
+
+        self.assertEqual(guidance["status"], "human_review_required")
+        self.assertFalse(guidance["sourceIsLaunchEvidence"])
+        self.assertEqual(guidance["reviewedClipCount"], 0)
+        self.assertEqual(guidance["remainingClipCount"], 54)
+        self.assertIn("expected.outcome", guidance["missingRequiredFields"])
+        self.assertIn("reviewedByHuman=true", guidance["missingRequiredFields"])
+        self.assertIn("Complete human review", " ".join(guidance["nextActions"]))
+
+    def test_label_review_guidance_marks_generated_complete_status_as_launch_evidence(self):
+        guidance = label_review_guidance(
+            {
+                "source": "generatedStatus",
+                "status": "complete",
+                "clipCount": 54,
+                "completeClipCount": 54,
+                "incompleteClipCount": 0,
+                "launchEvidenceEligible": True,
+                "missingFieldCounts": {},
+            }
+        )
+
+        self.assertEqual(guidance["status"], "complete")
+        self.assertTrue(guidance["sourceIsLaunchEvidence"])
+        self.assertEqual(guidance["remainingClipCount"], 0)
+        self.assertEqual(guidance["missingRequiredFields"], [])
+        self.assertEqual(guidance["nextActions"], [])
 
 
 if __name__ == "__main__":
