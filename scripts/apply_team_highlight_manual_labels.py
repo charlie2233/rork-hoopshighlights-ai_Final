@@ -101,6 +101,13 @@ def apply_manual_labels(
         raise ValueError("Manifest must contain a non-empty cases array.")
 
     bundled_labels = load_label_bundle(bundle_path) if bundle_path is not None else {}
+    warnings: list[str] = []
+    if allow_incomplete:
+        warnings.append(
+            "Partial checkpoint mode: --allow-incomplete output is not launch evidence. "
+            "After every clip is human-reviewed, reapply the final bundle without --allow-incomplete "
+            "before building the launch accuracy report."
+        )
     case_reports: list[dict[str, Any]] = []
     total_complete = 0
     total_incomplete = 0
@@ -141,6 +148,8 @@ def apply_manual_labels(
         "schemaVersion": "team-highlight-manual-label-apply-v1",
         "status": status,
         "mode": "apply" if apply else "dry_run",
+        "launchEvidenceEligible": not allow_incomplete and total_incomplete == 0,
+        "warnings": warnings,
         "caseCount": len(case_reports),
         "appliedCaseCount": applied_count,
         "completeClipCount": total_complete,
@@ -275,6 +284,9 @@ def forbidden_label_paths(value: Any, prefix: str = "") -> list[str]:
 def print_text_report(report: dict[str, Any]) -> None:
     print(f"status={report['status']}")
     print(f"mode={report['mode']}")
+    print(f"launchEvidenceEligible={str(report.get('launchEvidenceEligible', False)).lower()}")
+    for warning in report.get("warnings", []):
+        print(f"warning={warning}")
     print(f"cases={report['caseCount']}")
     print(f"clips={report['completeClipCount']} complete / {report['completeClipCount'] + report['incompleteClipCount']} total")
     for case in report["cases"]:
