@@ -3212,6 +3212,24 @@ struct HoopsClipsTests {
         #expect(CloudEditError.friendlyBackendMessage(code: "ai_edit_template_pack_disabled", fallback: "fallback").contains("Template packs"))
     }
 
+    @Test func testCloudEditUnknownBackendMessagesStaySafeForDisplay() {
+        let unsafeFallback = "Almost there, ETA 2 minutes at https://cdn.hoopsclips.test/renders/edit.mp4?X-Amz-Signature=secret"
+        let friendly = CloudEditError.friendlyBackendMessage(code: "unknown_backend_state", fallback: unsafeFallback)
+        #expect(friendly == "Cloud editing request failed.")
+
+        let rawBackendError = CloudEditError.backend(
+            code: "unknown_backend_state",
+            message: "Hang tight, your render will be ready soon with token abc123"
+        )
+        #expect(rawBackendError.errorDescription == "Cloud editing request failed.")
+
+        let timeoutFallback = CloudEditError.friendlyBackendMessage(code: "http_524", fallback: "Request timed out after 60 seconds")
+        #expect(timeoutFallback == "Cloud editing timed out. Try again.")
+
+        let safeFallback = CloudEditError.friendlyBackendMessage(code: "validation_warning", fallback: "Choose a shorter edit and try again.")
+        #expect(safeFallback == "Choose a shorter edit and try again.")
+    }
+
     @Test func testBundledMusicTracksHaveUniqueFilenames() {
         let filenames = MusicTrack.allCases.compactMap(\.filename)
 

@@ -1166,7 +1166,7 @@ enum CloudEditError: Error, LocalizedError, Sendable {
         case .timedOut:
             return "Cloud rendering took too long. Try again with a shorter edit."
         case .backend(_, let message):
-            return message
+            return Self.safeBackendDisplayMessage(message)
         case .network(let description):
             return description
         }
@@ -1223,8 +1223,84 @@ enum CloudEditError: Error, LocalizedError, Sendable {
         case "template_asset_missing":
             return "This template is missing a required asset. Try another template while we fix it."
         default:
-            return fallback
+            return safeBackendDisplayMessage(fallback)
         }
+    }
+
+    private static func safeBackendDisplayMessage(_ message: String) -> String {
+        let safeFallback = "Cloud editing request failed."
+        let compact = message
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !compact.isEmpty else {
+            return safeFallback
+        }
+
+        let normalized = compact.lowercased()
+        if normalized.contains("retry") && normalized.contains("timed out") {
+            return "Cloud editing is retrying."
+        }
+        if normalized.contains("timed out") || normalized.contains("timeout") || normalized.contains("request time") {
+            return "Cloud editing timed out. Try again."
+        }
+
+        let forbiddenMarkers = [
+            "thinking",
+            "almost there",
+            "hang tight",
+            "just a moment",
+            "please wait",
+            "soon",
+            "estimate",
+            "eta ",
+            " eta",
+            "eta:",
+            "http://",
+            "https://",
+            "presigned",
+            "signature",
+            "x-amz",
+            "x-goog",
+            "uploads/",
+            "renders/",
+            "render_logs/",
+            "source object key",
+            "sourceobjectkey",
+            "object_key",
+            "s3://",
+            ".r2.cloudflarestorage.com",
+            "amazonaws.com",
+            "authorization",
+            "r2 ",
+            "bucket",
+            "secret",
+            "token",
+            "credential",
+            "api_key",
+            "apikey",
+            "access_key"
+        ]
+        guard !forbiddenMarkers.contains(where: { normalized.contains($0) }) else {
+            return safeFallback
+        }
+
+        return clippedBackendDisplayMessage(compact, maxCharacters: 96)
+    }
+
+    private static func clippedBackendDisplayMessage(_ message: String, maxCharacters: Int) -> String {
+        guard maxCharacters > 3, message.count > maxCharacters else {
+            return message
+        }
+
+        let rawPrefixEnd = message.index(message.startIndex, offsetBy: maxCharacters - 3)
+        let rawPrefix = String(message[..<rawPrefixEnd])
+        let clippedPrefix = rawPrefix
+            .split(separator: " ")
+            .dropLast()
+            .joined(separator: " ")
+        let prefix = clippedPrefix.isEmpty ? rawPrefix.trimmingCharacters(in: .whitespacesAndNewlines) : clippedPrefix
+        return "\(prefix)..."
     }
 }
 
