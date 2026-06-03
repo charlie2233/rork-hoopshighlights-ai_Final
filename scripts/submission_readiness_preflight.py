@@ -160,6 +160,9 @@ BLOCKER_DOCS = (
     ('docs/phase_launch_label_bundle_video_source_handoff_2026-06-03.md',
      'complete clips: `0/54`',
      'Label bundle handoff still documents unresolved human-reviewed accuracy labels.'),
+    ('docs/phase_launch_label_review_execution_handoff_2026-06-03.md',
+     'complete clips: `0/54`',
+     'Label review execution handoff still documents unresolved human-reviewed accuracy labels.'),
 )
 DEFAULT_TEAM_ACCURACY_MANIFEST = Path("artifacts/team_highlight_accuracy_manifest.json")
 DEFAULT_LABELING_BUNDLE_DIR = Path("artifacts/team_highlight_labeling_bundle")
