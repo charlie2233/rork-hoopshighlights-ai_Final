@@ -99,13 +99,13 @@ struct HoopsClipsTests {
             #expect(!message.localizedCaseInsensitiveContains("estimated time"))
         }
         #expect(VideoImportStatusCopy.slowReminder.contains("keeps checking"))
-        #expect(VideoImportStatusCopy.longRunningReminder.contains("Check History"))
+        #expect(VideoImportStatusCopy.longRunningReminder.contains("Open History"))
         #expect(VideoImportStatusCopy.statusDetail.contains("Keep HoopClips open"))
-        #expect(VideoImportStatusCopy.statusDetail.contains("Check History"))
-        #expect(VideoImportStatusCopy.timeoutRecovery.contains("Check History"))
-        #expect(VideoImportStatusCopy.savedButNotVisible.contains("Check History"))
-        #expect(VideoImportStatusCopy.historyActionTitle == "Check History")
-        #expect(VideoImportStatusCopy.recoveryAlertTitle == "Check History")
+        #expect(VideoImportStatusCopy.statusDetail.contains("Open History"))
+        #expect(VideoImportStatusCopy.timeoutRecovery.contains("Open History"))
+        #expect(VideoImportStatusCopy.savedButNotVisible.contains("Open History"))
+        #expect(VideoImportStatusCopy.historyActionTitle == "Open History")
+        #expect(VideoImportStatusCopy.recoveryAlertTitle == "Open History")
     }
 
     @Test func testVideoImportPreflightAcceptsLongerFourMinuteThirtyEditSource() throws {

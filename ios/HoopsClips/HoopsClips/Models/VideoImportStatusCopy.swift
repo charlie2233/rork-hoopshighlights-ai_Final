@@ -10,7 +10,7 @@ enum VideoImportStatusCopy {
     static let openingProject = "Opening project..."
     static let slowReminder = "Still saving. Keep HoopClips open while the source is copied."
     static let longRunningReminder = "Still saving. Check History if this screen closes."
-    static let statusDetail = "Keep HoopClips open while saving. Check History if this takes longer."
+    static let statusDetail = "Keep HoopClips open while saving. Open History if this takes longer."
     static let historyActionTitle = "Check History"
     static let recoveryAlertTitle = "Check History"
     static let timeoutRecovery = "Import is taking too long. Check History if it finished while this screen was open."
