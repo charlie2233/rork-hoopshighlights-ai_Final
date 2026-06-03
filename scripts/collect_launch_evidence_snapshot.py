@@ -224,6 +224,93 @@ def testflight_proof_handoff(
     }
 
 
+def ios_usability_and_import_handoff(
+    *,
+    installed_testflight_smoke_proven: bool = False,
+    import_history_proven: bool = False,
+    readable_controls_proven: bool = False,
+    export_share_proven: bool = False,
+) -> dict[str, Any]:
+    complete = installed_testflight_smoke_proven and import_history_proven and readable_controls_proven and export_share_proven
+    next_actions: list[str] = []
+    if not installed_testflight_smoke_proven:
+        next_actions.append("Run trusted-device installed TestFlight smoke on the uploaded build.")
+    if not import_history_proven:
+        next_actions.append("Prove Photos/file import, long import recovery, background recovery, and project history actions.")
+    if not readable_controls_proven:
+        next_actions.append("Prove readable controls on small phones and dynamic type with no hidden text, fake thinking, or vague ETAs.")
+    if not export_share_proven:
+        next_actions.append("Prove finished MP4 preview, download, share sheet, and open-in-editor handoff.")
+
+    return {
+        "status": "complete" if complete else "blocked",
+        "installedTestFlightSmokeRequired": True,
+        "iosScope": [
+            "Photos/file import",
+            "team choice",
+            "edit intent/options/notes",
+            "upload and cloud job status",
+            "clip/edit-plan review",
+            "finished MP4 preview",
+            "download",
+            "share sheet",
+            "open in common editors",
+            "history resume/source/saved reel/share/delete",
+        ],
+        "cloudBoundary": "iOS must remain the control surface; analysis, GPT selection, edit planning, rendering, storage, revisions, and policy stay backend-owned.",
+        "stableAccessibilityIdsToSmoke": [
+            "export.aiEdit.planCard.free",
+            "export.aiEdit.proValueCard",
+            "export.aiEdit.proTemplate.*",
+            "export.aiEdit.proInfoSheet",
+            "export.aiEdit.workReceipt",
+            "export.aiEdit.watermarkUpsell",
+        ],
+        "requiredProof": {
+            "importHistory": {
+                "status": "proven" if import_history_proven else "not_proven",
+                "requirements": [
+                    "import real basketball footage from Photos or Files",
+                    "recover from long import/backgrounding",
+                    "resume project from history",
+                    "watch source and saved reel from history",
+                    "share and delete from history with plain copy",
+                ],
+            },
+            "readableControls": {
+                "status": "proven" if readable_controls_proven else "not_proven",
+                "requirements": [
+                    "short visible labels",
+                    "small phone layout",
+                    "dynamic type layout",
+                    "no cramped buttons",
+                    "no hidden words",
+                    "no fake thinking",
+                    "no vague ETAs",
+                ],
+            },
+            "exportShare": {
+                "status": "proven" if export_share_proven else "not_proven",
+                "requirements": [
+                    "finished MP4 preview",
+                    "download",
+                    "share sheet",
+                    "open in CapCut/iMovie/Adobe/Files/Photos or available editors",
+                    "no unsupported local iOS rendering dependency",
+                ],
+            },
+        },
+        "doNotClaimFrom": [
+            "iOS codecheck alone",
+            "simulator-only UI smoke",
+            "unit tests without installed build",
+            "local-only rendering fallback",
+            "docs without trusted-device evidence",
+        ],
+        "nextActions": next_actions,
+    }
+
+
 def cloud_backend_readiness_handoff(
     production_variables: dict[str, Any],
     release_preflight_passing: bool,
@@ -512,6 +599,7 @@ def main() -> int:
     production_variables = production_variable_snapshot(repo_root)
     production_url_handoff = production_cloud_url_handoff(production_variables, args.branch)
     testflight_handoff = testflight_proof_handoff(args.branch)
+    ios_usability_handoff = ios_usability_and_import_handoff()
     labels = label_status_snapshot(repo_root, args.label_status, args.label_status_summary)
 
     head = git.get("head")
@@ -549,6 +637,7 @@ def main() -> int:
         "productionCloudUrlHandoff": production_url_handoff,
         "cloudBackendReadinessHandoff": cloud_backend_handoff,
         "testFlightProofHandoff": testflight_handoff,
+        "iosUsabilityAndImportHandoff": ios_usability_handoff,
         "releaseSecretsPreflight": {
             "latest": latest_release,
             "currentHead": current_head_release,

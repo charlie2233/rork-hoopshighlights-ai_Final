@@ -5,6 +5,7 @@ from pathlib import Path
 
 from scripts.collect_launch_evidence_snapshot import (
     cloud_backend_readiness_handoff,
+    ios_usability_and_import_handoff,
     label_review_guidance,
     label_status_snapshot,
     latest_for_head,
@@ -290,6 +291,36 @@ class CollectLaunchEvidenceSnapshotTest(unittest.TestCase):
         self.assertEqual(handoff["liveBackendStatus"]["status"], "proven")
         self.assertEqual(handoff["renderReliability"]["status"], "proven")
         self.assertEqual(handoff["jobStateReporting"]["status"], "proven")
+        self.assertEqual(handoff["nextActions"], [])
+
+    def test_ios_usability_and_import_handoff_requires_installed_device_proof(self):
+        handoff = ios_usability_and_import_handoff()
+
+        self.assertEqual(handoff["status"], "blocked")
+        self.assertTrue(handoff["installedTestFlightSmokeRequired"])
+        self.assertIn("Photos/file import", handoff["iosScope"])
+        self.assertIn("history resume/source/saved reel/share/delete", handoff["iosScope"])
+        self.assertIn("export.aiEdit.workReceipt", handoff["stableAccessibilityIdsToSmoke"])
+        self.assertIn("backend-owned", handoff["cloudBoundary"])
+        self.assertEqual(handoff["requiredProof"]["importHistory"]["status"], "not_proven")
+        self.assertEqual(handoff["requiredProof"]["readableControls"]["status"], "not_proven")
+        self.assertEqual(handoff["requiredProof"]["exportShare"]["status"], "not_proven")
+        self.assertIn("iOS codecheck alone", handoff["doNotClaimFrom"])
+        self.assertIn("simulator-only UI smoke", handoff["doNotClaimFrom"])
+        self.assertIn("Run trusted-device installed TestFlight smoke", " ".join(handoff["nextActions"]))
+
+    def test_ios_usability_and_import_handoff_can_represent_completed_installed_smoke(self):
+        handoff = ios_usability_and_import_handoff(
+            installed_testflight_smoke_proven=True,
+            import_history_proven=True,
+            readable_controls_proven=True,
+            export_share_proven=True,
+        )
+
+        self.assertEqual(handoff["status"], "complete")
+        self.assertEqual(handoff["requiredProof"]["importHistory"]["status"], "proven")
+        self.assertEqual(handoff["requiredProof"]["readableControls"]["status"], "proven")
+        self.assertEqual(handoff["requiredProof"]["exportShare"]["status"], "proven")
         self.assertEqual(handoff["nextActions"], [])
 
 
