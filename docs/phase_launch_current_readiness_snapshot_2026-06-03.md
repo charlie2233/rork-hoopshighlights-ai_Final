@@ -165,3 +165,13 @@ Cloud Edit Deploy Preflight run `26894535587` completed `success` on `cdac97a`.
 This refresh only proves the safe CI/codecheck path for the current branch head.
 It does not close production cloud URL/secrets, human-reviewed label coverage,
 signed archive/TestFlight upload, or installed TestFlight smoke gates.
+
+## 2026-06-03 import-copy CI refresh
+
+Latest branch evidence now points at `a1ebc7f chore: align import history action copy`.
+Cloud Edit Deploy Preflight run `26896716521` completed `success` on `a1ebc7f`.
+`iOS Internal TestFlight Upload` codecheck run `26896716452` completed `success` on `a1ebc7f`.
+
+This refresh covers the current safe branch proof after import/history copy
+alignment. It does not close production cloud URL/secrets, human-reviewed label
+coverage, signed archive/TestFlight upload, or installed TestFlight smoke gates.
