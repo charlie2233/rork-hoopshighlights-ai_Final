@@ -9,6 +9,9 @@ Commit: `3b746b6`
   - Result: `status=pass`, `pass=85`, `warn=12`, `fail=0`
 - Command: `python3 scripts/submission_readiness_preflight.py --skip-live --json`
   - Result: `status=fail`, `pass=22`, `warn=6`, `fail=4`
+- Command: `python3 scripts/submission_readiness_preflight.py --json`
+  - Result: `status=fail`, `pass=22`, `warn=4`, `fail=6`
+  - Live route probes failed with URLError in this environment; deploy/input checks still block.
 
 ## Submission Fails
 
@@ -32,7 +35,9 @@ Commit: `3b746b6`
 ## Current Warnings
 
 - `devicectl` connected-device state could not be read in this environment.
+- `xcrun devicectl list devices` cannot finish in this environment (`CoreDeviceService` timeout), so iOS availability cannot be confirmed locally.
 - Live staging Worker and direct editing `/version` probes are currently skipped/failed by `staging_version_probe.py` with `URLError` in this environment.
+- `gh auth status` is currently showing an invalid token in this environment, so `gh run list` checks are unavailable.
 - `docs/` launch blocker notes still intentionally include production cutover and credential staging blockers.
 
 ## Passes and Non-Blockers
