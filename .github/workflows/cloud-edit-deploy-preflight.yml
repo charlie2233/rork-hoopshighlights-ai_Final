@@ -29,6 +29,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
   id-token: write
 
 jobs:
@@ -498,3 +499,47 @@ jobs:
             npx wrangler deployments list --env staging
             npx wrangler rollback <version-id> --env staging --yes --message "rollback <git-sha>"
           CHECKLIST
+
+  launch-evidence-snapshot:
+    name: Secret-safe launch evidence snapshot
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Collect launch evidence snapshot
+        run: |
+          set -euo pipefail
+          branch="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          python3 scripts/collect_launch_evidence_snapshot.py \
+            --branch "$branch" \
+            --label-status artifacts/team_highlight_labeling_bundle/label_status.json \
+            --output artifacts/launch_readiness/launch-evidence-snapshot.json
+
+      - name: Print non-secret blocker summary
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          snapshot = json.loads(Path('artifacts/launch_readiness/launch-evidence-snapshot.json').read_text())
+          print('head=' + str(snapshot['git'].get('headShort')))
+          print('branch=' + str(snapshot.get('branch')))
+          print('currentHeadHasSupportingProof=' + str(snapshot['supportingBranchProof'].get('currentHeadHasSupportingProof')))
+          print('missingProductionVariables=' + ','.join(snapshot['productionVariables'].get('missingRequired', [])))
+          print('releaseSecretsPreflightPassing=' + str(snapshot['releaseSecretsPreflight'].get('isPassing')))
+          print('labelStatus=' + str(snapshot['labelStatus'].get('status')))
+          print('labelComplete=' + str(snapshot['labelStatus'].get('completeClipCount')) + '/' + str(snapshot['labelStatus'].get('clipCount')))
+          print('launchEvidenceEligible=' + str(snapshot['labelStatus'].get('launchEvidenceEligible')))
+          PY
+
+      - name: Upload launch evidence snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: launch-evidence-snapshot
+          path: artifacts/launch_readiness/launch-evidence-snapshot.json
+          if-no-files-found: error
+          retention-days: 14
