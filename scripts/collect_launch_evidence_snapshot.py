@@ -224,6 +224,98 @@ def testflight_proof_handoff(
     }
 
 
+def cloud_backend_readiness_handoff(
+    production_variables: dict[str, Any],
+    release_preflight_passing: bool,
+    cloud_latest_run: dict[str, Any] | None,
+    cloud_success_run: dict[str, Any] | None,
+    *,
+    live_backend_status_proven: bool = False,
+    render_reliability_proven: bool = False,
+    job_state_reporting_proven: bool = False,
+) -> dict[str, Any]:
+    missing_variables = list(production_variables.get("missingRequired") or [])
+    deploy_preflight_status = "proven_current_head" if cloud_success_run else "pending_or_unproven"
+    complete = (
+        not missing_variables
+        and release_preflight_passing
+        and bool(cloud_success_run)
+        and live_backend_status_proven
+        and render_reliability_proven
+        and job_state_reporting_proven
+    )
+    next_actions: list[str] = []
+    if missing_variables:
+        next_actions.append("Confirm and set production cloud URL variables before Release smoke.")
+    if not release_preflight_passing:
+        next_actions.append("Rerun Release Secrets Preflight on the current launch branch head after production URLs are set.")
+    if not cloud_success_run:
+        next_actions.append("Rerun Cloud Edit Deploy Preflight and require current-head success.")
+    if not live_backend_status_proven:
+        next_actions.append("Record secret-safe live backend status for analysis, editing, rendering, storage, and policy routes.")
+    if not render_reliability_proven:
+        next_actions.append("Record cloud render reliability proof with finished MP4, preview, download, and share/open evidence.")
+    if not job_state_reporting_proven:
+        next_actions.append("Record job-state reporting proof for upload, analysis, edit planning, rendering, revision, and download states.")
+
+    return {
+        "status": "complete" if complete else "blocked",
+        "cloudOwnedPathRequired": True,
+        "backendOwns": [
+            "analysis",
+            "GPT selection",
+            "edit planning",
+            "rendering",
+            "storage",
+            "revisions",
+            "policy",
+            "job-state reporting",
+        ],
+        "iosScope": [
+            "upload",
+            "style and target-length selection",
+            "generated clip/edit-plan review",
+            "job status",
+            "finished MP4 preview",
+            "download",
+            "share/open in editors",
+        ],
+        "productionCloudUrls": {
+            "status": "configured" if not missing_variables else "blocked",
+            "missingVariables": missing_variables,
+        },
+        "releaseSecretsPreflight": {
+            "status": "passing" if release_preflight_passing else "blocked",
+            "currentHeadRequired": True,
+        },
+        "cloudDeployPreflight": {
+            "status": deploy_preflight_status,
+            "latestForHead": cloud_latest_run,
+            "successForHead": cloud_success_run,
+        },
+        "liveBackendStatus": {
+            "status": "proven" if live_backend_status_proven else "not_proven",
+            "requiredProof": "Secret-safe live backend status for production cloud analysis/edit/render/storage routes.",
+        },
+        "renderReliability": {
+            "status": "proven" if render_reliability_proven else "not_proven",
+            "requiredProof": "Cloud-rendered finished MP4 can be previewed, downloaded, and shared/opened without local-only rendering.",
+        },
+        "jobStateReporting": {
+            "status": "proven" if job_state_reporting_proven else "not_proven",
+            "requiredProof": "Upload, analysis, edit planning, rendering, revision, and download states are observable and not fake/vague.",
+        },
+        "doNotClaimFrom": [
+            "green iOS codecheck alone",
+            "simulator-only UI smoke",
+            "staging-only endpoint without release-owner confirmation",
+            "local AVFoundation rendering",
+            "docs without live backend evidence",
+        ],
+        "nextActions": next_actions,
+    }
+
+
 def label_status_snapshot(repo_root: Path, label_status_path: Path, summary_path: Path | None) -> dict[str, Any]:
     path = label_status_path if label_status_path.is_absolute() else repo_root / label_status_path
     if not path.exists():
@@ -431,6 +523,12 @@ def main() -> int:
     current_head_release = release_preflight_for_head(release_runs, head)
     release_preflight_passing = release_preflight_is_passing(current_head_release)
     label_review = label_review_guidance(labels)
+    cloud_backend_handoff = cloud_backend_readiness_handoff(
+        production_variables,
+        release_preflight_passing,
+        cloud_latest_run,
+        cloud_run,
+    )
 
     open_blockers = launch_blockers(production_variables, latest_release, labels, current_head_release=current_head_release)
     snapshot = {
@@ -449,6 +547,7 @@ def main() -> int:
         },
         "productionVariables": production_variables,
         "productionCloudUrlHandoff": production_url_handoff,
+        "cloudBackendReadinessHandoff": cloud_backend_handoff,
         "testFlightProofHandoff": testflight_handoff,
         "releaseSecretsPreflight": {
             "latest": latest_release,

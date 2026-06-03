@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 
 from scripts.collect_launch_evidence_snapshot import (
+    cloud_backend_readiness_handoff,
     label_review_guidance,
     label_status_snapshot,
     latest_for_head,
@@ -248,6 +249,48 @@ class CollectLaunchEvidenceSnapshotTest(unittest.TestCase):
         self.assertEqual(handoff["status"], "complete")
         self.assertEqual(handoff["signedArchiveUpload"]["status"], "proven")
         self.assertEqual(handoff["installedTrustedDeviceSmoke"]["status"], "proven")
+
+    def test_cloud_backend_readiness_handoff_keeps_cloud_gate_blocked_without_live_proof(self):
+        handoff = cloud_backend_readiness_handoff(
+            {"missingRequired": ["HOOPS_CLOUD_ANALYSIS_BASE_URL", "HOOPS_CLOUD_EDIT_BASE_URL"]},
+            release_preflight_passing=False,
+            cloud_latest_run={"databaseId": 1, "status": "completed", "conclusion": "success"},
+            cloud_success_run={"databaseId": 1, "status": "completed", "conclusion": "success"},
+        )
+
+        self.assertEqual(handoff["status"], "blocked")
+        self.assertTrue(handoff["cloudOwnedPathRequired"])
+        self.assertIn("analysis", handoff["backendOwns"])
+        self.assertIn("rendering", handoff["backendOwns"])
+        self.assertIn("upload", handoff["iosScope"])
+        self.assertEqual(handoff["productionCloudUrls"]["status"], "blocked")
+        self.assertEqual(handoff["releaseSecretsPreflight"]["status"], "blocked")
+        self.assertEqual(handoff["cloudDeployPreflight"]["status"], "proven_current_head")
+        self.assertEqual(handoff["liveBackendStatus"]["status"], "not_proven")
+        self.assertEqual(handoff["renderReliability"]["status"], "not_proven")
+        self.assertEqual(handoff["jobStateReporting"]["status"], "not_proven")
+        self.assertIn("green iOS codecheck alone", handoff["doNotClaimFrom"])
+        self.assertIn("local AVFoundation rendering", handoff["doNotClaimFrom"])
+        self.assertIn("Record cloud render reliability proof", " ".join(handoff["nextActions"]))
+
+    def test_cloud_backend_readiness_handoff_can_represent_complete_cloud_backend_proof(self):
+        handoff = cloud_backend_readiness_handoff(
+            {"missingRequired": []},
+            release_preflight_passing=True,
+            cloud_latest_run={"databaseId": 1, "status": "completed", "conclusion": "success"},
+            cloud_success_run={"databaseId": 1, "status": "completed", "conclusion": "success"},
+            live_backend_status_proven=True,
+            render_reliability_proven=True,
+            job_state_reporting_proven=True,
+        )
+
+        self.assertEqual(handoff["status"], "complete")
+        self.assertEqual(handoff["productionCloudUrls"]["status"], "configured")
+        self.assertEqual(handoff["releaseSecretsPreflight"]["status"], "passing")
+        self.assertEqual(handoff["liveBackendStatus"]["status"], "proven")
+        self.assertEqual(handoff["renderReliability"]["status"], "proven")
+        self.assertEqual(handoff["jobStateReporting"]["status"], "proven")
+        self.assertEqual(handoff["nextActions"], [])
 
 
 if __name__ == "__main__":
