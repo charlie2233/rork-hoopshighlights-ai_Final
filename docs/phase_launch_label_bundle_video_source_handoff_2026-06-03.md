@@ -1,19 +1,10 @@
-# Phase Launch label bundle video source handoff - 2026-06-03
+# Phase Launch label bundle handoff - 2026-06-03
 
 ## Current status
 
-The launch team/highlight accuracy labels are still incomplete and are not launch evidence.
+The launch team/highlight reviewer bundle can now be generated locally because the source video was found on this workstation. The bundle is still not launch evidence because the human labels remain incomplete.
 
-Current status command:
-
-```bash
-python3 scripts/build_launch_team_accuracy_report.py \
-  --manifest artifacts/team_highlight_accuracy_manifest.json \
-  --label-status \
-  --json
-```
-
-Current result:
+Current label status:
 
 - `status`: `incomplete`
 - `launchEvidenceEligible`: `false`
@@ -22,59 +13,55 @@ Current result:
 - affected cases: `launch_label_case_all_001` (`0/30`) and `launch_label_case_team_001` (`0/24`)
 - every clip is still missing `needsLabel=false`, `reviewedByHuman=true`, `expected.teamId`, `expected.isHighlight`, `expected.eventType`, and `expected.outcome`
 
-## Bundle generation blocker
+## Source video input
 
-Attempting to generate the reviewer bundle from the committed manifest failed because the source video location is not in the repo artifact tree:
-
-```bash
-python3 scripts/prepare_team_highlight_labeling_bundle.py \
-  --manifest artifacts/team_highlight_accuracy_manifest.json \
-  --output-dir artifacts/team_highlight_labeling_bundle \
-  --title "HoopClips Launch Team Highlight Labels" \
-  --json
-```
-
-The generator reported:
+The required local source video for manifest video ID `326_1770329282` is available at:
 
 ```text
-Missing source video path or local video URL for videoId '326_1770329282'.
+/Users/hanfei/Downloads/326_1770329282.mp4
 ```
 
-This is an intentional guard. Do not generate a fake review bundle with a placeholder video path, and do not mark the labels complete from GPT draft data. The reviewer bundle needs a real local source video path or a local browser URL for `326_1770329282`.
+Do not commit the source video. It is only used as the local review media input for the label-review page.
 
-## Safe handoff command
+## Bundle generation command
 
-Once the source video is available locally, run one of these commands from the repo root.
-
-Local file path:
+The reviewer bundle was generated from the repo root with:
 
 ```bash
 python3 scripts/prepare_team_highlight_labeling_bundle.py \
   --manifest artifacts/team_highlight_accuracy_manifest.json \
   --output-dir artifacts/team_highlight_labeling_bundle \
-  --video 326_1770329282=/absolute/path/to/source.mp4 \
+  --video 326_1770329282=/Users/hanfei/Downloads/326_1770329282.mp4 \
   --title "HoopClips Launch Team Highlight Labels" \
   --json
 ```
 
-Local browser URL:
+Generator result:
 
-```bash
-python3 scripts/prepare_team_highlight_labeling_bundle.py \
-  --manifest artifacts/team_highlight_accuracy_manifest.json \
-  --output-dir artifacts/team_highlight_labeling_bundle \
-  --video-url 326_1770329282=http://127.0.0.1:8787/source.mp4 \
-  --title "HoopClips Launch Team Highlight Labels" \
-  --json
-```
+- `schemaVersion`: `team-highlight-labeling-bundle-v1`
+- `status`: `incomplete`
+- `caseCount`: `2`
+- `clipCount`: `54`
+- `completeClipCount`: `0`
+- `incompleteClipCount`: `54`
+- review priorities: `47` `needs_close_review`, `7` `standard_review`
+- video angles: `1`
 
-Expected bundle outputs include:
+Generated local bundle outputs:
 
 - `artifacts/team_highlight_labeling_bundle/team_highlight_label_review.html`
 - `artifacts/team_highlight_labeling_bundle/bundle_metadata.json`
-- `artifacts/team_highlight_labeling_bundle/label_progress.json`
+- `artifacts/team_highlight_labeling_bundle/label_status.json`
 - `artifacts/team_highlight_labeling_bundle/next_steps.md`
+- `artifacts/team_highlight_labeling_bundle/temp_mapped_draft/launch_label_case_all_001_manual_labels_template_mapped.json`
+- `artifacts/team_highlight_labeling_bundle/temp_mapped_draft/launch_label_case_team_001_manual_labels_template_mapped.json`
+- `artifacts/team_highlight_labeling_bundle/temp_mapped_draft/launch_label_mapped_manifest.json`
+- `artifacts/team_highlight_labeling_bundle/temp_mapped_draft/launch_label_mapped_manifest_abs.json`
+- `artifacts/team_highlight_labeling_bundle/temp_mapped_draft/team_highlight_accuracy_report.json`
+- `artifacts/team_highlight_labeling_bundle/temp_mapped_draft/team_highlight_eval.json`
+
+These bundle files are ignored by `.gitignore` through the `artifacts/` rule. They are present locally for review on this workstation, but they are not committed to the branch.
 
 ## Launch evidence rule
 
-The bundle is only a reviewer tool. Launch accuracy evidence remains blocked until all 54 clips have human-reviewed labels with `needsLabel=false`, `reviewedByHuman=true`, and the required expected fields filled in.
+The bundle is only a reviewer tool. Launch accuracy evidence remains blocked until all 54 clips have human-reviewed labels with `needsLabel=false`, `reviewedByHuman=true`, and the required expected fields filled in. GPT draft labels and generated bundle files do not count as human-reviewed launch evidence.
