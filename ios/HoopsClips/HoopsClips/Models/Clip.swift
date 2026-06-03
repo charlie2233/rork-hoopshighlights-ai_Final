@@ -165,9 +165,9 @@ nonisolated struct Clip: Identifiable, Codable, Sendable {
             return "Kept as a defensive highlight with strong motion, ball pressure, or possession-change signals."
         }
         if confidence >= 0.8 {
-            return "Kept because confidence is high and the clip has strong highlight signals."
+            return "Suggested keep: high confidence and strong highlight signals. Confirm before the final edit."
         }
-        return "Kept as a possible highlight; review it before making the final edit."
+        return "Suggested keep: possible highlight. Review it before making the final edit."
     }
 
     private var keyframeEvidenceText: String {
