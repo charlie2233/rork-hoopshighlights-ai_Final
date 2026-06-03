@@ -135,3 +135,39 @@ credentials, private keys, or full presigned URLs.
 The accuracy gate is still open. The next launch-critical action is human review
 of all 54 clips, then applying the completed bundle, building the launch
 accuracy report, and rerunning submission readiness with that report.
+
+## 2026-06-03 current label-status check
+
+Current command:
+
+```bash
+python3 scripts/build_launch_team_accuracy_report.py \
+  --manifest artifacts/team_highlight_accuracy_manifest.json \
+  --label-status \
+  --json
+```
+
+Result remains incomplete and not launch evidence:
+
+- Status: `incomplete`
+- Launch evidence eligible: `false`
+- Cases: `2`
+- Clips: `54`
+- Complete clips: `0`
+- Incomplete clips: `54`
+- `launch_label_case_all_001`: `0/30` complete
+- `launch_label_case_team_001`: `0/24` complete
+
+Missing fields still total `54` each for:
+
+- `needsLabel=false`
+- `reviewedByHuman=true`
+- `expected.teamId`
+- `expected.isHighlight`
+- `expected.eventType`
+- `expected.outcome`
+
+The command exits non-zero while labels are incomplete. That is expected and
+keeps this gate blocked until a human reviewer completes all 54 clips, applies
+the final bundle without `--allow-incomplete`, and rebuilds the launch accuracy
+report.
