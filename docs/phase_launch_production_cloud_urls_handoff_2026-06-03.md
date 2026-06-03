@@ -84,3 +84,19 @@ This blocker can be marked resolved only after:
 - The launch readiness snapshot is updated with the passing run ID.
 
 Until then, internal TestFlight readiness remains incomplete.
+
+## 2026-06-03 current production-variable check
+
+A current non-secret GitHub environment check still shows only:
+
+- `HOOPS_PRIVACY_POLICY_URL=https://rork.com/privacy`
+- `HOOPS_TERMS_OF_SERVICE_URL=https://rork.com/terms`
+
+The production environment still does not visibly expose
+`HOOPS_CLOUD_ANALYSIS_BASE_URL` or `HOOPS_CLOUD_EDIT_BASE_URL`.
+The latest `Release Secrets Preflight` run remains `26884199422`, completed
+`failure` on `86fdc33` at `2026-06-03T12:17:59Z`.
+
+Do not rerun release preflight as launch evidence until the production cloud URL
+variables are set or the release owner confirms a different non-secret evidence
+source.
