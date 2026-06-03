@@ -1679,7 +1679,7 @@ struct HoopsClipsTests {
         #expect(HistoryProjectActionCopy.openAvailableSubtitle == "Continue editing this project")
         #expect(HistoryProjectActionCopy.sourceAvailableSubtitle == "Watch original video")
         #expect(HistoryProjectActionCopy.exportAvailableSubtitle == "Watch saved reel")
-        #expect(HistoryProjectActionCopy.shareMissingMessage == "Saved reel missing. Re-export.")
+        #expect(HistoryProjectActionCopy.shareMissingMessage == "Saved reel missing. Run AI Edit again.")
     }
 
     @Test func testExportMissingReelCopyUsesPlainSavedReelLanguage() {
@@ -1692,8 +1692,8 @@ struct HoopsClipsTests {
         #expect(exportCopy.allSatisfy { !$0.contains("export file") })
         #expect(exportCopy.allSatisfy { !$0.contains("exported file") })
         #expect(exportCopy.allSatisfy { $0.count <= 52 })
-        #expect(ExportReelCopy.previewMissingMessage == "Saved reel missing. Re-export to preview.")
-        #expect(ExportReelCopy.previewShareMissingMessage == "Saved reel missing. Re-export to preview or share.")
+        #expect(ExportReelCopy.previewMissingMessage == "Saved reel missing. Run AI Edit again to preview.")
+        #expect(ExportReelCopy.previewShareMissingMessage == "Saved reel missing. Run AI Edit again to preview or share.")
     }
 
     @Test func testReviewProgressCopyShowsSelectedAndCheckCounts() {
