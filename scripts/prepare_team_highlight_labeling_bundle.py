@@ -246,6 +246,8 @@ def next_steps_markdown(metadata: dict[str, Any], args: argparse.Namespace) -> s
             "9. Use `R` or `Mark reviewed + next` until the page enables `Download launch-ready labels`.",
             "10. Apply the downloaded `team_highlight_manual_labels_bundle.json`, then build the launch report.",
             "",
+            "Launch evidence requires every clip in the final bundle to have `needsLabel=false` and `reviewedByHuman=true`; filled expected fields alone are not enough.",
+            "",
             "The page auto-saves a local browser draft as you label. Still download a progress checkpoint before pausing and the launch-ready bundle before final reporting.",
             "",
             "## Commands To Save Partial Progress",

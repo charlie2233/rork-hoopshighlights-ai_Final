@@ -119,6 +119,32 @@ class ApplyTeamHighlightManualLabelsTests(unittest.TestCase):
         self.assertEqual(report["status"], "blocked")
         self.assertIn("incomplete", report["cases"][0]["errors"][0])
 
+    def test_blocks_needs_label_false_without_human_review(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="hoopclips-label-apply-") as temp_dir:
+            root = Path(temp_dir)
+            analysis_path = root / "analysis.json"
+            labels_path = root / "labels.json"
+            downloads_dir = root / "downloads"
+            downloads_dir.mkdir()
+            write_json(analysis_path, {"results": {"clips": []}})
+            write_json(labels_path, label_payload(needs_label=True))
+            incomplete = label_payload(needs_label=False)
+            incomplete["clips"][0]["reviewedByHuman"] = False
+            write_json(downloads_dir / "case_a_manual_labels.json", incomplete)
+
+            report = apply_manual_labels(
+                manifest={"cases": [{"caseId": "case_a", "analysisResult": "analysis.json", "labels": "labels.json"}]},
+                manifest_dir=root,
+                downloads_dir=downloads_dir,
+                explicit_sources={},
+                apply=True,
+                allow_incomplete=False,
+            )
+
+        self.assertEqual(report["status"], "blocked")
+        self.assertIn("incomplete", report["cases"][0]["errors"][0])
+        self.assertEqual(report["cases"][0]["incompleteExamples"][0]["missingFields"], ["reviewedByHuman=true"])
+
     def test_allow_incomplete_apply_warns_partial_not_launch_evidence(self) -> None:
         with tempfile.TemporaryDirectory(prefix="hoopclips-label-apply-") as temp_dir:
             root = Path(temp_dir)
