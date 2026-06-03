@@ -128,7 +128,14 @@ def build_label_status(*, manifest: dict[str, Any], manifest_dir: Path) -> dict[
     case_statuses: list[dict[str, Any]] = []
     total_clips = 0
     complete_clips = 0
-    missing_field_counts: dict[str, int] = {}
+    missing_field_counts: dict[str, int] = {
+        "needsLabel=false": 0,
+        "reviewedByHuman=true": 0,
+        "expected.teamId": 0,
+        "expected.isHighlight": 0,
+        "expected.eventType": 0,
+        "expected.outcome": 0,
+    }
     for index, raw_entry in enumerate(entries):
         if not isinstance(raw_entry, dict):
             raise ValueError(f"Manifest case {index} must be an object.")
