@@ -75,7 +75,7 @@
 - File the failure with device model, iOS version, clip duration, whether the clip is from Photos or Files, and the non-secret cloud job/status IDs.
 
 ### Export/save fails
-- Confirm the latest reel appears in Export.
+- Confirm the saved reel appears in Export.
 - Capture whether failure occurs during render or Photos save.
 
 ## Rollback

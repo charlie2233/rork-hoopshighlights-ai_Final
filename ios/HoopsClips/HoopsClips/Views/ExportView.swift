@@ -276,7 +276,7 @@ struct ExportView: View {
             .tint(AppTheme.neonPurple)
             .accessibilityIdentifier("export.localSetup.advancedButton")
             .accessibilityValue(showAdvancedLocalExportControls ? "Advanced export options shown" : "Advanced export options hidden")
-            .accessibilityHint("Shows or hides local export theme, music, quality, format, and effects options.")
+            .accessibilityHint("Shows or hides style, music, quality, format, and effects options.")
         }
         .padding(14)
         .rorkCard(cornerRadius: 16, stroke: AppTheme.neonPurple.opacity(0.16), glow: AppTheme.neonPurple, glowOpacity: 0.04)
