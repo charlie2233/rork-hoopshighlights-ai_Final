@@ -561,7 +561,7 @@ private struct HistoryProjectDetailView: View {
                 detailLine(label: "Created", value: project.createdAt.formatted(date: .abbreviated, time: .shortened))
                 detailLine(label: "Updated", value: project.updatedAt.formatted(date: .abbreviated, time: .shortened))
                 if let lastExportedAt = project.lastExportedAt {
-                    detailLine(label: "Last Export", value: lastExportedAt.formatted(date: .abbreviated, time: .shortened))
+                    detailLine(label: "Saved Reel", value: lastExportedAt.formatted(date: .abbreviated, time: .shortened))
                 }
                 if let analysisStatusSummary = project.analysisStatusSummary, !analysisStatusSummary.isEmpty {
                     detailLine(label: "Status", value: analysisStatusSummary)
