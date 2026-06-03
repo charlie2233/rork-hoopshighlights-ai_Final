@@ -1665,6 +1665,20 @@ struct HoopsClipsTests {
         #expect(HistoryProjectActionCopy.shareMissingMessage == "Saved reel missing. Re-export.")
     }
 
+    @Test func testExportMissingReelCopyUsesPlainSavedReelLanguage() {
+        let exportCopy = [
+            ExportReelCopy.previewMissingMessage,
+            ExportReelCopy.previewShareMissingMessage,
+        ]
+
+        #expect(exportCopy.allSatisfy { $0.contains("Saved reel") })
+        #expect(exportCopy.allSatisfy { !$0.contains("export file") })
+        #expect(exportCopy.allSatisfy { !$0.contains("exported file") })
+        #expect(exportCopy.allSatisfy { $0.count <= 52 })
+        #expect(ExportReelCopy.previewMissingMessage == "Saved reel missing. Re-export to preview.")
+        #expect(ExportReelCopy.previewShareMissingMessage == "Saved reel missing. Re-export to preview or share.")
+    }
+
     @Test func testReviewProgressCopyShowsSelectedAndCheckCounts() {
         let summary = ReviewProgressCopy.summary(selectedCount: 8, totalCount: 12, needsCheckCount: 3)
         let noCheckSummary = ReviewProgressCopy.summary(selectedCount: 8, totalCount: 12, needsCheckCount: 0)

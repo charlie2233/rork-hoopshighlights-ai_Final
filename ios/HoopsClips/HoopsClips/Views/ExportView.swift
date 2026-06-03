@@ -745,7 +745,7 @@ struct ExportView: View {
                         Label("Export preview unavailable", systemImage: "exclamationmark.triangle.fill")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(AppTheme.warningYellow)
-                        Text("The latest export file is no longer available on this device. Re-export to preview or share it again.")
+                        Text(ExportReelCopy.previewShareMissingMessage)
                             .font(.caption2)
                             .foregroundStyle(AppTheme.subtleText)
                     }
@@ -1164,7 +1164,7 @@ struct ExportView: View {
                     ContentUnavailableView {
                         Label("Review Unavailable", systemImage: "video.slash.fill")
                     } description: {
-                        Text("This exported file is no longer available. Re-export the reel to preview it again.")
+                        Text(ExportReelCopy.previewMissingMessage)
                     }
                     .foregroundStyle(.white)
                     .padding(16)
@@ -1233,4 +1233,9 @@ struct ExportView: View {
             teardownExpandedExportPreviewPlayer()
         }
     }
+}
+
+nonisolated enum ExportReelCopy {
+    static let previewMissingMessage = "Saved reel missing. Re-export to preview."
+    static let previewShareMissingMessage = "Saved reel missing. Re-export to preview or share."
 }
