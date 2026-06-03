@@ -63,7 +63,7 @@ enum AppConstants {
     }
 
     static var localVideoExportUnavailableMessage: String {
-        "Cloud rendering is required for this build. Use AI Edit to render, preview, download, or share."
+        "Cloud rendering is required. Use AI Edit to make the saved reel, then preview, download, or share."
     }
 
     static var cloudAnalysisEnabled: Bool {

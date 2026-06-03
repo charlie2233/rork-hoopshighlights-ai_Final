@@ -155,6 +155,9 @@ struct LaunchRuntimeConfigTests {
         #expect(service.exportProgress == 0.0)
         #expect(service.exportedURL == nil)
         #expect(service.statusMessage == AppConstants.localVideoExportUnavailableMessage)
+        #expect(service.statusMessage.contains("AI Edit"))
+        #expect(service.statusMessage.contains("saved reel"))
+        #expect(!service.statusMessage.localizedCaseInsensitiveContains("local render"))
     }
 
     @Test func testCloudEditEndpointIsRequiredAndRequiresSecureURLInProduction() {

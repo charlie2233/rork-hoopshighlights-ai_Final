@@ -1046,7 +1046,7 @@ struct ExportView: View {
             return "Selected options include Pro-only features and will open the paywall."
         }
         if isCloudRequired {
-            return "Cloud rendering is required for this build. Use AI Edit to render, preview, download, or share."
+            return "Cloud rendering is required. Use AI Edit to make the saved reel, then preview, download, or share."
         }
         return "Creates a video from kept clips."
     }
