@@ -10,6 +10,7 @@ from scripts.collect_launch_evidence_snapshot import (
     latest_success_for_head,
     production_cloud_url_handoff,
     release_preflight_for_head,
+    testflight_proof_handoff,
 )
 
 
@@ -222,6 +223,31 @@ class CollectLaunchEvidenceSnapshotTest(unittest.TestCase):
         self.assertEqual(handoff["status"], "configured")
         self.assertFalse(handoff["requiresReleaseOwnerConfirmation"])
         self.assertEqual(handoff["missingVariables"], [])
+
+    def test_testflight_proof_handoff_keeps_codecheck_from_counting_as_launch_evidence(self):
+        handoff = testflight_proof_handoff("codex/test-branch")
+
+        self.assertEqual(handoff["status"], "blocked")
+        self.assertEqual(handoff["signedArchiveUpload"]["status"], "not_proven")
+        self.assertEqual(handoff["installedTrustedDeviceSmoke"]["status"], "not_proven")
+        self.assertIn("operation=upload", handoff["signedArchiveUpload"]["commandAfterReleaseGatesPass"])
+        self.assertIn("--ref codex/test-branch", handoff["signedArchiveUpload"]["commandAfterReleaseGatesPass"])
+        self.assertTrue(handoff["codecheckIsNotLaunchEvidence"])
+        self.assertIn("operation=codecheck", handoff["doNotClaimFrom"])
+        self.assertIn("skipped archive job", handoff["doNotClaimFrom"])
+        self.assertIn("App Store Connect private key contents", handoff["doNotReturn"])
+        self.assertIn("trusted internal tester", " ".join(handoff["installedTrustedDeviceSmoke"]["requiredProof"]))
+
+    def test_testflight_proof_handoff_can_represent_completed_external_proof(self):
+        handoff = testflight_proof_handoff(
+            "codex/test-branch",
+            signed_archive_upload_proven=True,
+            installed_testflight_smoke_proven=True,
+        )
+
+        self.assertEqual(handoff["status"], "complete")
+        self.assertEqual(handoff["signedArchiveUpload"]["status"], "proven")
+        self.assertEqual(handoff["installedTrustedDeviceSmoke"]["status"], "proven")
 
 
 if __name__ == "__main__":

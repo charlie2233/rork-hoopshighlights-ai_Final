@@ -177,6 +177,53 @@ def production_cloud_url_handoff(production_variables: dict[str, Any], branch: s
     }
 
 
+def testflight_proof_handoff(
+    branch: str,
+    *,
+    signed_archive_upload_proven: bool = False,
+    installed_testflight_smoke_proven: bool = False,
+) -> dict[str, Any]:
+    signed_status = "proven" if signed_archive_upload_proven else "not_proven"
+    installed_status = "proven" if installed_testflight_smoke_proven else "not_proven"
+    return {
+        "status": "complete" if signed_archive_upload_proven and installed_testflight_smoke_proven else "blocked",
+        "signedArchiveUpload": {
+            "status": signed_status,
+            "requiredProof": [
+                "Signed App Store Connect archive job completes successfully on the current launch branch head",
+                "Internal TestFlight upload completes successfully for the same build",
+                "Proof includes run ID, head SHA, build number, and non-secret job conclusion only",
+            ],
+            "commandAfterReleaseGatesPass": f"gh workflow run ios-testflight-upload.yml --ref {branch} -f operation=upload",
+        },
+        "installedTrustedDeviceSmoke": {
+            "status": installed_status,
+            "requiredProof": [
+                "A trusted internal tester installs the uploaded build from TestFlight",
+                "Tester imports real basketball footage",
+                "Tester starts the cloud-owned AI edit path and verifies preview/download/share without local-only rendering",
+                "Proof records device/build/date and non-secret smoke result only",
+            ],
+        },
+        "codecheckIsNotLaunchEvidence": True,
+        "doNotClaimFrom": [
+            "operation=codecheck",
+            "skipped archive job",
+            "simulator-only runs",
+            "local UI smoke without installed TestFlight build",
+        ],
+        "doNotReturn": [
+            "App Store Connect private key contents",
+            "base64 API key values",
+            "Apple credentials",
+            "private video files",
+            "rendered MP4 contents",
+            "presigned URLs",
+        ],
+        "note": "Keep archive/upload and installed smoke blocked until production cloud URLs/secrets and Release Secrets Preflight are proven for the current launch branch head.",
+    }
+
+
 def label_status_snapshot(repo_root: Path, label_status_path: Path, summary_path: Path | None) -> dict[str, Any]:
     path = label_status_path if label_status_path.is_absolute() else repo_root / label_status_path
     if not path.exists():
@@ -372,6 +419,7 @@ def main() -> int:
     release_runs = release_preflight_runs(repo_root, 5)
     production_variables = production_variable_snapshot(repo_root)
     production_url_handoff = production_cloud_url_handoff(production_variables, args.branch)
+    testflight_handoff = testflight_proof_handoff(args.branch)
     labels = label_status_snapshot(repo_root, args.label_status, args.label_status_summary)
 
     head = git.get("head")
@@ -401,6 +449,7 @@ def main() -> int:
         },
         "productionVariables": production_variables,
         "productionCloudUrlHandoff": production_url_handoff,
+        "testFlightProofHandoff": testflight_handoff,
         "releaseSecretsPreflight": {
             "latest": latest_release,
             "currentHead": current_head_release,
