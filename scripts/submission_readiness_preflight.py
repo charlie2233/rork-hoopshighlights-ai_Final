@@ -1134,6 +1134,21 @@ def _safe_probe_error_detail(error: Exception) -> str:
     return ""
 
 
+def _gh_stderr_detail(stderr: str, command_desc: str) -> str:
+    message = (stderr or "").strip()
+    if not message:
+        return f"gh {command_desc} returned a non-zero exit code."
+    compact = " ".join(message.splitlines())
+    compact = compact.replace("x-oauth-basic", "<redacted>")
+    lower = compact.lower()
+    if "auth" in lower or "login" in lower or "token" in lower:
+        return (
+            f"gh {command_desc} needs a valid GitHub login. Run `gh auth login` and retry from an authorized environment."
+            f" Original error: {compact[:180]}"
+        )
+    return f"gh {command_desc} failed: {compact[:180]}"
+
+
 def check_ci_deploy_inputs(collector: Collector) -> None:
     required = (*REQUIRED_DEPLOY_SECRET_INPUTS, *REQUIRED_DEPLOY_VARIABLE_INPUTS)
     github_secret_names = github_environment_names("secret")
@@ -1169,7 +1184,7 @@ def check_github_workflow_runs(repo_root: Path, collector: Collector) -> None:
             ],
             check=False,
             stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
             text=True,
             timeout=20,
         )
@@ -1177,7 +1192,11 @@ def check_github_workflow_runs(repo_root: Path, collector: Collector) -> None:
         collector.warn("github workflow status", "GitHub Actions", "Could not inspect latest main-branch workflow runs.")
         return
     if result.returncode != 0:
-        collector.warn("github workflow status", "GitHub Actions", "gh run list did not return workflow state.")
+        collector.warn(
+            "github workflow status",
+            "GitHub Actions",
+            _gh_stderr_detail(result.stderr or "", "run list"),
+        )
         return
     try:
         runs = json.loads(result.stdout or "[]")
@@ -1248,7 +1267,7 @@ def check_secret_gated_deploy_preflight(repo_root: Path, collector: Collector) -
             ],
             check=False,
             stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
             text=True,
             timeout=20,
         )
@@ -1256,7 +1275,11 @@ def check_secret_gated_deploy_preflight(repo_root: Path, collector: Collector) -
         collector.warn(check_name, "GitHub Actions", "Could not inspect secret-gated deploy preflight workflow_dispatch runs.")
         return
     if result.returncode != 0:
-        collector.warn(check_name, "GitHub Actions", "gh run list did not return secret-gated deploy preflight state.")
+        collector.warn(
+            check_name,
+            "GitHub Actions",
+            _gh_stderr_detail(result.stderr or "", "run list --workflow cloud-edit-deploy-preflight.yml"),
+        )
         return
     try:
         runs = json.loads(result.stdout or "[]")
