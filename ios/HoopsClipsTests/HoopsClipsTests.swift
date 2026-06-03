@@ -782,6 +782,10 @@ struct HoopsClipsTests {
             CloudAnalysisService.safeBackendMessage("Analysis should finish in 2 minutes.", fallback: fallback)
                 == fallback
         )
+        #expect(
+            CloudAnalysisService.safeBackendMessage("Analysis should finish in about 1 hour.", fallback: fallback)
+                == fallback
+        )
 
         let longMessage = "The analysis service returned a detailed internal diagnostic that is too long for compact phone layouts and should be shortened before display"
         let safeMessage = CloudAnalysisService.safeBackendMessage(longMessage, fallback: fallback)
@@ -3265,6 +3269,9 @@ struct HoopsClipsTests {
 
         let vagueTimeFallback = CloudEditError.friendlyBackendMessage(code: "unknown_backend_state", fallback: "Your export should be ready in 30 seconds.")
         #expect(vagueTimeFallback == "Cloud editing request failed.")
+
+        let vagueHourFallback = CloudEditError.friendlyBackendMessage(code: "unknown_backend_state", fallback: "Your export should be ready in about 1 hour.")
+        #expect(vagueHourFallback == "Cloud editing request failed.")
 
         let safeFallback = CloudEditError.friendlyBackendMessage(code: "validation_warning", fallback: "Choose a shorter edit and try again.")
         #expect(safeFallback == "Choose a shorter edit and try again.")

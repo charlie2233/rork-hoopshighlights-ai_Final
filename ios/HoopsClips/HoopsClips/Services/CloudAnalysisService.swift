@@ -60,6 +60,8 @@ struct CloudAnalysisService {
             "minutes",
             "second",
             "seconds",
+            "hour",
+            "hours",
             "http://",
             "https://",
             "presigned",
