@@ -671,6 +671,10 @@ struct HoopsClipsTests {
         let fallback = "Analyzing frames in cloud"
         let unsafeStages = [
             "AI is thinking about the best clips",
+            "Almost there, finishing clips",
+            "Hang tight while the cloud catches up",
+            "Estimated time: 2 minutes",
+            "Your video will be ready soon",
             "ETA 2 minutes",
             "Uploading https://storage.example.test/upload/source.mp4",
             "Reading uploads/job_123/source.mp4",

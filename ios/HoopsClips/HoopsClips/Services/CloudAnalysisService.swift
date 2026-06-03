@@ -47,6 +47,12 @@ struct CloudAnalysisService {
 
         let forbiddenMarkers = [
             "thinking",
+            "almost there",
+            "hang tight",
+            "just a moment",
+            "please wait",
+            "soon",
+            "estimate",
             "eta ",
             " eta",
             "eta:",
