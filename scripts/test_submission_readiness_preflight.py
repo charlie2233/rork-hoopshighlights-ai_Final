@@ -268,6 +268,34 @@ class SubmissionReadinessPreflightTests(unittest.TestCase):
         self.assertTrue(has_failures(collector.findings))
         self.assertIn("evaluator evidence", collector.findings[0].detail)
 
+    def test_team_accuracy_report_rejects_temporary_draft_path(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            report_path = (
+                repo_root
+                / "artifacts/team_highlight_labeling_bundle/temp_mapped_draft/team_highlight_accuracy_report.json"
+            )
+            write_json(report_path, launch_grade_team_accuracy_report())
+            collector = Collector()
+
+            check_team_highlight_accuracy_report(repo_root, collector, report_path)
+
+        self.assertTrue(has_failures(collector.findings))
+        detail = collector.findings[0].detail
+        self.assertIn("temporary/draft", detail)
+        self.assertIn("temp_mapped_draft", detail)
+
+    def test_team_accuracy_report_does_not_reject_unrelated_draft_substring(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            report_path = repo_root / "artifacts/undrafted_cases/team_highlight_accuracy_report.json"
+            write_json(report_path, launch_grade_team_accuracy_report())
+            collector = Collector()
+
+            check_team_highlight_accuracy_report(repo_root, collector, report_path)
+
+        self.assertFalse(has_failures(collector.findings))
+
     def test_team_accuracy_report_rejects_synthetic_or_incomplete_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             repo_root = Path(temp_dir)

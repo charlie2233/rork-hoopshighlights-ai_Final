@@ -184,6 +184,12 @@ TEAM_ACCURACY_THRESHOLD_TO_METRIC = (
 )
 EXPECTED_TEAM_ACCURACY_INPUT_SCHEMA = "team-highlight-eval-v1"
 EXPECTED_TEAM_ACCURACY_INPUT_SOURCE = "real_cloud_analysis_with_manual_labels"
+DRAFT_TEAM_ACCURACY_REPORT_PATH_MARKERS = (
+    "temp_mapped_draft",
+    "draft",
+    "drafts",
+    "gpt_draft",
+)
 
 
 @dataclass(frozen=True)
@@ -381,6 +387,9 @@ def check_team_highlight_accuracy_report(repo_root: Path, collector: Collector, 
         return
 
     failures: list[str] = []
+    draft_path_marker = draft_team_accuracy_report_path_marker(report_path)
+    if draft_path_marker:
+        failures.append(f"report path includes temporary/draft marker {draft_path_marker}")
     if status != "pass":
         failures.append(f"report status is {status or 'missing'}")
 
@@ -445,6 +454,17 @@ def check_team_highlight_accuracy_report(repo_root: Path, collector: Collector, 
             f"{int(metrics['uncertainReviewCount'])} uncertain review clip(s)."
         ),
     )
+
+
+def draft_team_accuracy_report_path_marker(report_path: Path) -> str | None:
+    for part in report_path.parts:
+        normalized = part.lower()
+        stem = Path(normalized).stem
+        if normalized in DRAFT_TEAM_ACCURACY_REPORT_PATH_MARKERS or stem in DRAFT_TEAM_ACCURACY_REPORT_PATH_MARKERS:
+            return part
+        if stem.startswith("draft_") or stem.endswith("_draft"):
+            return part
+    return None
 
 
 def missing_team_accuracy_report_detail(repo_root: Path) -> str:
