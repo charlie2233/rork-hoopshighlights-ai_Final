@@ -870,14 +870,14 @@ private struct HistoryProjectDetailView: View {
 }
 
 nonisolated enum HistoryProjectActionCopy {
-    static let emptyPreviewHint = "Choose Source or Export below."
-    static let openAvailableSubtitle = "Open in Player, Review, Export"
+    static let emptyPreviewHint = "Choose a saved video below."
+    static let openAvailableSubtitle = "Continue editing this project"
     static let openUnavailableSubtitle = "Source video missing"
-    static let sourceAvailableSubtitle = "Preview original video"
+    static let sourceAvailableSubtitle = "Watch original video"
     static let sourceMissingSubtitle = "Source file missing"
-    static let exportAvailableSubtitle = "Preview saved reel"
+    static let exportAvailableSubtitle = "Watch saved reel"
     static let exportMissingSubtitle = "No saved export yet"
-    static let shareAvailableSubtitle = "Use iOS share sheet"
+    static let shareAvailableSubtitle = "Share saved reel"
     static let deleteSubtitle = "Remove saved files"
 }
 

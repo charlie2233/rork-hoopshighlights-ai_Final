@@ -1649,9 +1649,14 @@ struct HoopsClipsTests {
         ]
 
         #expect(actionCopy.allSatisfy { !$0.contains("Latest Export") })
+        #expect(actionCopy.allSatisfy { !$0.contains("Player") })
+        #expect(actionCopy.allSatisfy { !$0.contains("Review") })
         #expect(actionCopy.allSatisfy { $0.count <= 32 })
-        #expect(HistoryProjectActionCopy.shareAvailableSubtitle == "Use iOS share sheet")
-        #expect(HistoryProjectActionCopy.openAvailableSubtitle == "Open in Player, Review, Export")
+        #expect(HistoryProjectActionCopy.emptyPreviewHint == "Choose a saved video below.")
+        #expect(HistoryProjectActionCopy.shareAvailableSubtitle == "Share saved reel")
+        #expect(HistoryProjectActionCopy.openAvailableSubtitle == "Continue editing this project")
+        #expect(HistoryProjectActionCopy.sourceAvailableSubtitle == "Watch original video")
+        #expect(HistoryProjectActionCopy.exportAvailableSubtitle == "Watch saved reel")
     }
 
     @Test func testReviewProgressCopyShowsSelectedAndCheckCounts() {
