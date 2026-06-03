@@ -155,3 +155,13 @@ HoopClips has current safe CI proof and a reachable internal staging backend
 with cloud edit/GPT capabilities enabled. Internal TestFlight readiness is still
 not complete because the production environment, human-reviewed accuracy
 evidence, Apple signing, and installed-device smoke gates remain unresolved.
+
+## 2026-06-03 current-head CI refresh
+
+Latest branch evidence now points at `cdac97a chore: clarify export copy for cloud launch`.
+Cloud Edit Deploy Preflight run `26894535587` completed `success` on `cdac97a`.
+`iOS Internal TestFlight Upload` codecheck run `26894535488` completed `success` on `cdac97a`.
+
+This refresh only proves the safe CI/codecheck path for the current branch head.
+It does not close production cloud URL/secrets, human-reviewed label coverage,
+signed archive/TestFlight upload, or installed TestFlight smoke gates.
