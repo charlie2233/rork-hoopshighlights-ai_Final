@@ -18,7 +18,7 @@ That means the app is still not launch-ready on the team/highlight accuracy gate
 
 ## Changes
 
-- Added a `Use prediction` button to every clip card in the local team-highlight label review page.
+- Added a `Copy prediction` button to every clip card in the local team-highlight label review page.
 - Added a `p` keyboard shortcut for the active clip.
 - The fast-fill action copies the existing HoopClips prediction into expected team/highlight/event/outcome fields.
 - It always leaves `Reviewed` unchecked, so human review is still required before evidence counts.
@@ -50,7 +50,7 @@ Result:
 - `python3 -m unittest scripts.test_build_team_highlight_label_review_page scripts.test_prepare_team_highlight_labeling_bundle -v` - 10 tests passed
 - `python3 -m unittest discover -s scripts -p 'test_*.py'` - 139 tests passed
 - `git diff --check` - passed
-- generated review HTML contains `Use prediction`, the fast-fill function, local video path, and no presigned signature text
+- generated review HTML contains `Copy prediction`, the fast-fill function, local video path, and no presigned signature text
 - extracted review-page JavaScript passed `node --check`
 - `python3 scripts/build_launch_team_accuracy_report.py --manifest artifacts/team_highlight_accuracy_manifest.json --label-status --json` correctly exits non-zero because labels remain incomplete
 
@@ -60,4 +60,4 @@ Browser automation was attempted, but local Browser MCP requires a pin in this e
 
 ## Next Step
 
-Open the review page, use `Use prediction` to prefill each clip, verify the actual video, then click `Mark reviewed + next`. After all 54 clips are reviewed, download launch-ready labels and run the report command from `artifacts/team_highlight_labeling_bundle/next_steps.md`.
+Open the review page, use `Copy prediction` to copy the draft into fields, watch the source video, then click `Mark reviewed + next`. GPT drafts are data-entry help only and do not count as launch evidence until each clip is watched and marked reviewed. After all 54 clips are reviewed, download launch-ready labels and run the report command from `artifacts/team_highlight_labeling_bundle/next_steps.md`.
