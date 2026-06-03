@@ -1,41 +1,43 @@
 # Release Device Smoke Report
 
 ## Active snapshot (2026-06-03)
-- Branch: `codex/phase-launch-proof-next` (`832fd12` after label-review handoff cleanup)
+- Branch: `codex/phase-launch-proof-next`
+- Evidence head before this report refresh: `2976d4b`
 - Focus: internal TestFlight/launch-readiness proof (staging + submission gates), not current public Release status.
 - Latest authoritative checks:
-  - `python3 scripts/launch_backend_config_preflight.py --json` -> `pass=85 warn=12 fail=0`.
-  - Snapshot files:
-    - `artifacts/launch_readiness/submission_readiness_skip_live_2026-06-03.json`
-    - `artifacts/launch_readiness/submission_readiness_live_2026-06-03.json`
-  - `python3 scripts/submission_readiness_preflight.py --team-accuracy-report artifacts/team_highlight_labeling_bundle/temp_mapped_draft/team_highlight_accuracy_report.json --json` -> `pass=26 warn=1 fail=7`.
-    - Required cloud deploy and iOS upload input names are visible locally or in the GitHub staging environment without printing secret values.
-    - Live Worker `/v1/editing/version` and direct editing `/version` both return non-secret feature-flag state.
-    - Direct editing `/version` still reports a stale `gitSha`, so current source must be deployed before submission-readiness can be claimed.
-    - Human-review status from `python3 scripts/build_launch_team_accuracy_report.py --manifest artifacts/team_highlight_accuracy_manifest.json --label-status --json`:
-      - `caseCount=2`, `clipCount=54`, `completeClipCount=0`, `incompleteClipCount=54`
-      - `launch_label_case_all_001`: `30/30` incomplete
-      - `launch_label_case_team_001`: `24/24` incomplete
-    - The `temp_mapped_draft` accuracy report is rejected as draft evidence and does not count toward launch readiness.
-  - Latest branch-dispatched workflow evidence is positive but stale to the current tip:
-    - `Cloud Edit Deploy Preflight` run `26860674510`: success on `bc37b0e`.
-    - `iOS Internal TestFlight Upload` runs `26860672121`, `26860897604`, and `26861050768`: success on `bc37b0e`.
-    - Current branch tip is `832fd12`, so rerun branch workflows after any launch-meaningful code/config change before treating them as current-tip proof.
-  - Latest main workflow failures are stale relative to this branch but still real until main is updated and rerun:
-    - `Cloud Edit Deploy Preflight` run `26766947519`: main expected quick-scan max candidate clips `160`; this branch expects the current default `320`.
-    - `iOS Internal TestFlight Upload` run `26766947563`: main expected build `11`; this branch aligns internal staging build `14`.
+  - `Cloud Edit Deploy Preflight` run `26885100097`: success on `2976d4b`.
+    - Worker typecheck/dry run passed.
+    - Editing backend Python tests passed.
+    - Secret-gated deploy credential jobs were skipped; deploy credentials remain unproven until the workflow is run in the credential/deploy mode.
+  - `iOS Internal TestFlight Upload` run `26885101901`: success on `2976d4b` with `operation=codecheck`.
+    - No-secret internal staging codecheck passed.
+    - Signed TestFlight archive job was skipped intentionally.
+  - `Release Secrets Preflight` run `26884199422`: failed on `86fdc33`.
+    - Non-secret missing GitHub `production` environment variables:
+      - `HOOPS_CLOUD_ANALYSIS_BASE_URL`
+      - `HOOPS_CLOUD_EDIT_BASE_URL`
+    - Handoff: `docs/phase_launch_release_secrets_cloud_url_blocker_2026-06-03.md`
+  - Secret-free live backend status snapshot:
+    - `GET https://hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev/v1/editing/version` returned HTTP `200`.
+    - Response reported cloud FFmpeg render support, AI Edit render/revision/template flags, GPT clip editor/planner/revision flags, and GPT highlight reranker configured.
+    - Handoff: `docs/phase_launch_live_backend_status_2026-06-03.md`
+  - Human-reviewed label gate remains open:
+    - Latest inspected label bundle status: `caseCount=2`, `clipCount=54`, `completeClipCount=0`, `incompleteClipCount=54`.
+    - `launch_label_case_all_001`: `30/30` incomplete.
+    - `launch_label_case_team_001`: `24/24` incomplete.
+    - GPT draft/mapped labels do not count as launch evidence until every clip has `needsLabel=false` and `reviewedByHuman=true`.
 - Untracked root folders remain preserved and intentionally unstaged:
   - `HoopsClips.xcodeproj/`
   - `HoopsHighlightsAI.xcodeproj/`
 
 ## Automated validation status at snapshot
-- Backend configuration posture remains clean for staging intent (`pass=85`, no hard fails).
-- Submission readiness is still blocked by label evidence, installed TestFlight smoke, stale direct editing deploy SHA, failed main workflow state, skipped secret-gated deploy proof, and current-tip workflow freshness.
-- CI/main branch workflow logs show code-side failures that are fixed on this branch, but they must be proven on main after landing.
+- Current branch has green safe CI proof for cloud preflight and iOS no-secret codecheck at `2976d4b`.
+- Submission readiness is still blocked by label evidence, installed TestFlight smoke, skipped secret-gated deploy proof, missing production cloud URL variables, and signed archive/TestFlight upload proof.
+- Branch proof is not a substitute for main/default-branch proof after landing.
 - Known known blockers from live evidence:
-  - Secret-gated deploy workflow job remains `skipped`, so provider credential readiness is not launch-proven.
+  - GitHub `production` variables `HOOPS_CLOUD_ANALYSIS_BASE_URL` and `HOOPS_CLOUD_EDIT_BASE_URL` are missing.
+  - Secret-gated deploy workflow jobs remain `skipped`, so provider credential readiness is not launch-proven.
   - Connected iPhone unavailable in this environment for physical smoke tests.
-  - Direct editing service deploy SHA is stale.
   - Human-reviewed team/highlight label bundle is incomplete (`0/54`).
 
 
@@ -71,10 +73,11 @@
 | Accessibility Reduce Motion | blocked | Verify using `ios/docs/checklists/release-accessibility-smoke-checklist.md` once device is online. |
 
 ## Blockers
+- GitHub `production` environment is missing `HOOPS_CLOUD_ANALYSIS_BASE_URL` and `HOOPS_CLOUD_EDIT_BASE_URL`; `Release Secrets Preflight` run `26884199422` failed until those non-secret variables are confirmed and set.
 - Required deploy and iOS upload input-name checks pass without exposing values, but the secret-gated deploy job is still skipped and must be rerun as `credential-check`, then `preflight` or `deploy`.
 - `team_highlight_labeling_bundle` is still incomplete (`0/54` clips reviewed), so launch-ready accuracy gate is unproven.
 - iPhone import/review/export/share flow from installed TestFlight app is unproven in this environment.
-- Live backend version probes return feature flags, but direct editing deploy SHA is stale; deploy current source before claiming readiness.
+- Internal staging Worker `/v1/editing/version` is live and reports cloud/GPT/render capability, but this does not close production cloud cutover or installed TestFlight smoke.
 - This branch did not perform signed archive/upload steps; it documents snapshot state only.
 
 ## Historical notes
