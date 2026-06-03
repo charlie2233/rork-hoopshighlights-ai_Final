@@ -1,7 +1,8 @@
 # Phase Launch Active Readiness Snapshot (2026-06-03)
 
 Branch: `codex/phase-launch-proof-next`
-Evidence commit: `3bf34f7`
+Live preflight evidence commit: `3bf34f7`
+Latest branch review before this cleanup: `8726dfc`
 
 ## Preflight Verification Run
 
@@ -33,8 +34,12 @@ Evidence commit: `3bf34f7`
    - Current source must be deployed before submission-readiness can be claimed.
 
 4. **Main GitHub workflow status**
-   - Latest main-branch `Cloud Edit Deploy Preflight` run failed at `2026-06-01T16:11:23Z`.
-   - Latest main-branch `iOS Internal TestFlight Upload` run failed at `2026-06-01T16:11:23Z`.
+   - Latest main-branch `Cloud Edit Deploy Preflight` run `26766947519` failed at `2026-06-01T16:11:23Z`.
+   - Root cause observed from logs: main expected `team_quick_scan_max_candidate_clips=160`, while current launch config uses `320`.
+   - This branch already updates the backend test/config expectation to `320`, but main must receive the branch and rerun before this blocker can be marked closed.
+   - Latest main-branch `iOS Internal TestFlight Upload` run `26766947563` failed at `2026-06-01T16:11:23Z`.
+   - Root cause observed from logs: main expected `CURRENT_PROJECT_VERSION=11`, while current internal staging build is `14`.
+   - This branch already aligns the workflow metadata check, preflight constant, verify script, and Xcode project build number to `14`, but main must receive the branch and rerun before this blocker can be marked closed.
 
 5. **Secret-gated deploy preflight**
    - The secret-gated deploy job is still not launch-proven: `status=completed`, `conclusion=skipped`.
@@ -61,6 +66,6 @@ Evidence commit: `3bf34f7`
 
 - Finish manual human review to produce a launch-grade label report (`artifacts/team_highlight_accuracy_report.json`) then rerun submission readiness.
 - Deploy current editing source so direct editing `/version` reports the current git SHA.
-- Repair/rerun failed main workflows, including secret-gated `Cloud Edit Deploy Preflight` and `iOS Internal TestFlight Upload`.
-- Install TestFlight internal build on trusted device and complete the full import→analysis→export→render→revision→share smoke with screenshot evidence.
+- Land this branch on main, then rerun failed main workflows, including secret-gated `Cloud Edit Deploy Preflight` and `iOS Internal TestFlight Upload`.
+- Install TestFlight internal build on trusted device and complete the full import -> analysis -> export -> render -> revision -> share smoke with screenshot evidence.
 - Keep production/public cloud cutover blocked until production auth, storage, observability, rollback, label evidence, and installed TestFlight proof are complete.

@@ -1170,7 +1170,7 @@ def _gh_stderr_detail(stderr: str, command_desc: str) -> str:
     if not message:
         return f"gh {command_desc} returned a non-zero exit code."
     compact = " ".join(message.splitlines())
-    compact = compact.replace("x-oauth-basic", "<redacted>")
+    compact = _redact_diagnostic_text(compact)
     lower = compact.lower()
     if "auth" in lower or "login" in lower or "token" in lower:
         return (
@@ -1178,6 +1178,14 @@ def _gh_stderr_detail(stderr: str, command_desc: str) -> str:
             f" Original error: {compact[:180]}"
         )
     return f"gh {command_desc} failed: {compact[:180]}"
+
+
+def _redact_diagnostic_text(message: str) -> str:
+    redacted = message.replace("x-oauth-basic", "<redacted>")
+    redacted = re.sub(r"(?i)(authorization:\s*bearer\s+)\S+", r"\1<redacted>", redacted)
+    redacted = re.sub(r"\b(?:ghp|gho|ghu|ghs|ghr|github_pat)_[A-Za-z0-9_]+\b", "<redacted-token>", redacted)
+    redacted = re.sub(r"\b[A-Za-z0-9+/=_-]{48,}\b", "<redacted-token>", redacted)
+    return redacted
 
 
 def check_ci_deploy_inputs(collector: Collector) -> None:

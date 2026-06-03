@@ -36,6 +36,7 @@ from scripts.submission_readiness_preflight import (
     parse_devicectl_devices,
     redacted_endpoint_label,
     run_checks,
+    _gh_stderr_detail,
 )
 
 
@@ -868,6 +869,18 @@ Current device information:
         self.assertTrue(has_failures(collector.findings))
         self.assertIn("GitHub staging name lookup was incomplete", collector.findings[0].detail)
         self.assertIn("valid GitHub login", collector.findings[0].detail)
+
+    def test_github_stderr_detail_redacts_token_like_values(self) -> None:
+        detail = _gh_stderr_detail(
+            "HTTP 401 Authorization: bearer ghp_abcdefghijklmnopqrstuvwxyz1234567890ABCDEFG\n"
+            "fallback token abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
+            "run list",
+        )
+
+        self.assertIn("<redacted-token>", detail)
+        self.assertIn("Authorization: bearer <redacted>", detail)
+        self.assertNotIn("ghp_", detail)
+        self.assertNotIn("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789", detail)
 
     def test_ios_upload_inputs_can_come_from_github_environment_names(self) -> None:
         def fake_github_lookup(kind: str) -> GithubEnvironmentNameLookup:
