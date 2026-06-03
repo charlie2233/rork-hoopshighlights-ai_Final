@@ -82,3 +82,23 @@
 
 ## Historical notes
 - Prior entries in this file include previous build 4/27 Release-device verification from older branches and are retained for historical context.
+
+## 2026-06-03 current handoff update
+
+Current launch branch evidence before installed-device smoke:
+
+- Branch: `codex/phase-launch-proof-next`
+- HEAD: `a780814 docs: link signing handoff in readiness snapshot`
+- `Cloud Edit Deploy Preflight` run `26892016399`: `success`
+- `iOS Internal TestFlight Upload` codecheck run `26892019111`: `success`
+
+Installed TestFlight smoke remains unproven. Use the current handoff before
+claiming this report green:
+
+- `docs/phase_launch_installed_testflight_smoke_handoff_2026-06-03.md`
+
+The smoke result should be added here only after a current TestFlight-installed
+build runs on a trusted physical iPhone through import, team choice, cloud
+analysis, Review, cloud render, preview, download/save, share/open-in, revision,
+and History recovery. Keep production URL, human accuracy review, and Apple
+signing/archive blockers separate unless each has current passing evidence.
