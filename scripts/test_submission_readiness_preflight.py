@@ -133,6 +133,14 @@ class SubmissionReadinessPreflightTests(unittest.TestCase):
         self.assertIn("next_steps.md", detail)
         self.assertIn("GPT draft prefilled 54 clip(s)", detail)
         self.assertIn("49 close-review", detail)
+        self.assertIn("Launch label gate requires", detail)
+        self.assertIn("expected.teamId", detail)
+        self.assertIn("expected.isHighlight", detail)
+        self.assertIn("expected.eventType", detail)
+        self.assertIn("expected.outcome", detail)
+        self.assertIn("needsLabel=false", detail)
+        self.assertIn("reviewedByHuman=true", detail)
+        self.assertIn("current status still reports missing", detail)
         self.assertIn("GPT draft labels do not count", detail)
         self.assertNotIn("Labeling bundle looks stale", detail)
 
@@ -1354,7 +1362,11 @@ def create_labeling_bundle_fixture(
             "clipCount": clip_count,
             "completeClipCount": complete_clip_count,
             "incompleteClipCount": incomplete_clip_count,
-            "missingFieldCounts": {
+                "missingFieldCounts": {
+                "expected.teamId": incomplete_clip_count,
+                "expected.isHighlight": incomplete_clip_count,
+                "expected.eventType": incomplete_clip_count,
+                "expected.outcome": incomplete_clip_count,
                 "needsLabel=false": incomplete_clip_count,
                 "reviewedByHuman=true": incomplete_clip_count,
             },
@@ -1382,7 +1394,8 @@ def create_labeling_bundle_fixture(
         },
     )
     (bundle_dir / "team_highlight_label_review.html").write_text(
-        "Next close review\nJ/L scrub\nfunction scrubVideosForCard\nDownload launch-ready labels\n",
+        "Next close review\nJ/L scrub\nfunction scrubVideosForCard\nDownload launch-ready labels\n"
+        "Launch evidence checklist\nneedsLabel=false\nreviewedByHuman=true\n",
         encoding="utf-8",
     )
     (bundle_dir / "next_steps.md").write_text(
@@ -1390,6 +1403,12 @@ def create_labeling_bundle_fixture(
         "`J/L` scrub back/forward\n"
         "Use `P` to copy the HoopClips/GPT draft into fields as data-entry help only; "
         "it is not evidence until you watch the video and mark reviewed.\n"
+        "Launch Evidence Checklist\n"
+        "expected.teamId\n"
+        "expected.isHighlight\n"
+        "expected.eventType\n"
+        "expected.outcome\n"
+        "final bundle is applied without `--allow-incomplete`\n"
         "Download launch-ready labels\n",
         encoding="utf-8",
     )

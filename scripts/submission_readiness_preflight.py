@@ -187,6 +187,9 @@ LABELING_BUNDLE_REVIEW_PAGE_MARKERS = (
     ("J/L scrub", "video scrub shortcuts"),
     ("function scrubVideosForCard", "synced video scrub controls"),
     ("Download launch-ready labels", "launch-ready label export guard"),
+    ("Launch evidence checklist", "launch evidence checklist"),
+    ("needsLabel=false", "launch needsLabel requirement"),
+    ("reviewedByHuman=true", "launch human-review requirement"),
 )
 LABELING_BUNDLE_NEXT_STEPS_MARKERS = (
     ("Use `Next close review` first", "close-review first instruction"),
@@ -194,6 +197,20 @@ LABELING_BUNDLE_NEXT_STEPS_MARKERS = (
     ("data-entry help only", "GPT draft data-entry-only warning"),
     ("not evidence until you watch the video and mark reviewed", "GPT draft human-review evidence warning"),
     ("Download launch-ready labels", "launch-ready label export instruction"),
+    ("Launch Evidence Checklist", "launch evidence checklist"),
+    ("expected.teamId", "expected team checklist item"),
+    ("expected.isHighlight", "expected highlight checklist item"),
+    ("expected.eventType", "expected event checklist item"),
+    ("expected.outcome", "expected outcome checklist item"),
+    ("final bundle is applied without `--allow-incomplete`", "final complete-bundle warning"),
+)
+REQUIRED_LABEL_REVIEW_FIELDS = (
+    "expected.teamId",
+    "expected.isHighlight",
+    "expected.eventType",
+    "expected.outcome",
+    "needsLabel=false",
+    "reviewedByHuman=true",
 )
 PLACEHOLDER_VALUES = {"", "YOUR_TEAM_ID", "$(HOOPS_DEVELOPMENT_TEAM)"}
 UUID_RE = re.compile(r"^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$")
@@ -550,11 +567,13 @@ def team_labeling_bundle_hint(repo_root: Path) -> str:
             progress += "."
         draft_detail = labeling_bundle_draft_detail(metadata)
         staleness_detail = labeling_bundle_staleness_detail(repo_root, review_page, next_steps_path, metadata, status)
+        launch_gate_detail = labeling_bundle_launch_gate_detail(status)
         return (
             f"{progress} Continue human review at {rel(review_page, repo_root)}; "
             f"status: {rel(status_label, repo_root)}; next steps: {rel(next_steps_path, repo_root)}. "
             f"{draft_detail}"
             f"{staleness_detail}"
+            f"{launch_gate_detail}"
             "GPT draft labels do not count until every clip is human-reviewed and the launch report is rebuilt."
         ).strip()
 
@@ -594,6 +613,23 @@ def labeling_bundle_draft_detail(metadata: dict[str, object] | None) -> str:
                 priority_parts.append(f"{int(standard_review)} standard-review")
             details.append("review priority queue: " + ", ".join(priority_parts))
     return f"{'; '.join(details)}. " if details else ""
+
+
+def labeling_bundle_launch_gate_detail(status: dict[str, object] | None) -> str:
+    base = "Launch label gate requires " + ", ".join(REQUIRED_LABEL_REVIEW_FIELDS) + " for every clip"
+    if not isinstance(status, dict):
+        return base + ". "
+    missing_field_counts = status.get("missingFieldCounts")
+    if not isinstance(missing_field_counts, dict):
+        return base + ". "
+    missing = [
+        field
+        for field in REQUIRED_LABEL_REVIEW_FIELDS
+        if number_or_none(missing_field_counts.get(field)) not in (None, 0)
+    ]
+    if missing:
+        return base + f"; current status still reports missing {', '.join(missing)}. "
+    return base + ". "
 
 
 def labeling_bundle_staleness_detail(
