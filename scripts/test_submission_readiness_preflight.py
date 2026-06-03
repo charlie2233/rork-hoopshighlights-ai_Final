@@ -638,6 +638,46 @@ Current device information:
         self.assertFalse(has_failures(collector.findings))
         self.assertTrue(all("no workflow-relevant files changed afterward" in finding.detail for finding in collector.findings))
 
+    def test_github_workflow_runs_fail_cloud_preflight_when_launch_smoke_script_changed(self) -> None:
+        payload = [
+            {
+                "workflowName": "iOS Internal TestFlight Upload",
+                "headSha": "old1234567890",
+                "status": "completed",
+                "conclusion": "success",
+                "createdAt": "2026-05-23T21:27:18Z",
+            },
+            {
+                "workflowName": "Cloud Edit Deploy Preflight",
+                "headSha": "old1234567890",
+                "status": "completed",
+                "conclusion": "success",
+                "createdAt": "2026-05-23T20:31:19Z",
+            },
+        ]
+        collector = Collector()
+
+        def fake_run(command: list[str], **_kwargs: object) -> SimpleNamespace:
+            if command[:3] == ["gh", "run", "list"]:
+                return SimpleNamespace(returncode=0, stdout=json.dumps(payload))
+            if command[:3] == ["git", "diff", "--name-only"]:
+                return SimpleNamespace(returncode=0, stdout="scripts/worker_team_scan_smoke.py\n")
+            return SimpleNamespace(returncode=1, stdout="")
+
+        with patch(
+            "scripts.submission_readiness_preflight.subprocess.run",
+            side_effect=fake_run,
+        ), patch(
+            "scripts.submission_readiness_preflight.run_git",
+            return_value="abc1234567890\n",
+        ):
+            check_github_workflow_runs(Path.cwd(), collector)
+
+        failures = [finding for finding in collector.findings if finding.status == "fail"]
+        self.assertEqual(len(failures), 1)
+        self.assertEqual(failures[0].path, "Cloud Edit Deploy Preflight")
+        self.assertIn("not current checkout", failures[0].detail)
+
     def test_github_workflow_runs_pass_when_latest_required_runs_match_current_sha(self) -> None:
         payload = [
             {
@@ -814,7 +854,7 @@ Current device information:
             if command[:3] == ["gh", "run", "view"]:
                 return SimpleNamespace(returncode=0, stdout=json.dumps(run_view_payload))
             if command[:3] == ["git", "diff", "--name-only"]:
-                return SimpleNamespace(returncode=0, stdout="docs/phase_launch51_testflight_build4_readiness.md\nscripts/submission_readiness_preflight.py\n")
+                return SimpleNamespace(returncode=0, stdout="docs/phase_launch51_testflight_build4_readiness.md\n")
             return SimpleNamespace(returncode=1, stdout="")
 
         collector = Collector()

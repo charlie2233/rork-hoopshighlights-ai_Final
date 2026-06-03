@@ -102,6 +102,14 @@ IOS_UPLOAD_RELEVANT_PREFIXES = (
 )
 CLOUD_DEPLOY_RELEVANT_PREFIXES = (
     ".github/workflows/cloud-edit-deploy-preflight.yml",
+    "scripts/launch_backend_config_preflight.py",
+    "scripts/launch_provider_input_handoff.py",
+    "scripts/submission_readiness_preflight.py",
+    "scripts/test_launch_backend_config_preflight.py",
+    "scripts/test_launch_provider_input_handoff.py",
+    "scripts/test_submission_readiness_preflight.py",
+    "scripts/test_worker_team_scan_smoke.py",
+    "scripts/worker_team_scan_smoke.py",
     "services/control-plane/",
     "services/editing/",
     "services/inference/",
