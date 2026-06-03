@@ -88,6 +88,10 @@ final class HoopsClipsUITests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["export.aiEdit.preview"].waitForExistence(timeout: 20))
         XCTAssertTrue(app.descendants(matching: .any)["export.aiEdit.workReceipt"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.descendants(matching: .any)["export.aiEdit.revision.card"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", "thinking")).firstMatch.exists)
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", "ETA")).firstMatch.exists)
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", "almost there")).firstMatch.exists)
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", "hang tight")).firstMatch.exists)
         attachScreenshot(named: "03 Export AI Edit Rendered Preview", app: app)
 
         tapWhenReady(app.descendants(matching: .any)["export.aiEdit.revision.moreHype"], in: app)
@@ -96,12 +100,20 @@ final class HoopsClipsUITests: XCTestCase {
         tapWhenReady(renderRevisionButton, in: app)
         XCTAssertTrue(waitForRenderedState(in: app, timeout: 300), "Cloud revision render should reach Rendered through the live Worker path.")
         XCTAssertTrue(app.descendants(matching: .any)["export.aiEdit.preview"].waitForExistence(timeout: 20))
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", "thinking")).firstMatch.exists)
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", "ETA")).firstMatch.exists)
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", "almost there")).firstMatch.exists)
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", "hang tight")).firstMatch.exists)
         attachScreenshot(named: "04 Export AI Edit Revised Preview", app: app)
 
         let shareButton = app.buttons["export.aiEdit.shareButton"]
         XCTAssertTrue(shareButton.waitForExistence(timeout: 20))
         tapWhenReady(shareButton, in: app)
         XCTAssertTrue(waitForSystemShareSurface(in: app, timeout: 60), "System share sheet should open with the downloaded MP4 file.")
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", "thinking")).firstMatch.exists)
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", "ETA")).firstMatch.exists)
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", "almost there")).firstMatch.exists)
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", "hang tight")).firstMatch.exists)
         attachScreenshot(named: "05 Export AI Edit Share Sheet", app: app)
     }
 
