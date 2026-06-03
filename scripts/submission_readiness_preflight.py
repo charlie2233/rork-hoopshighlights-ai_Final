@@ -1184,7 +1184,7 @@ def check_ci_deploy_inputs(collector: Collector) -> None:
         collector.fail(
             "cloud deploy inputs",
             "environment",
-            f"Missing required deploy input name(s): {', '.join(missing)}.",
+            missing_input_detail(missing, label="deploy", workflow="cloud-edit-deploy-preflight.yml"),
         )
     else:
         collector.pass_("cloud deploy inputs", "environment", "Required deploy input names are present locally or in the GitHub staging environment without printing values.")
@@ -1495,9 +1495,22 @@ def check_ios_upload_inputs(collector: Collector) -> None:
     github_names = github_secret_names | github_variable_names
     missing = [name for name in required if not os.getenv(name) and name not in github_names]
     if missing:
-        collector.fail("ios upload inputs", "environment", f"Missing required iOS upload input name(s): {', '.join(missing)}.")
+        collector.fail(
+            "ios upload inputs",
+            "environment",
+            missing_input_detail(missing, label="iOS upload", workflow="ios-testflight-upload.yml"),
+        )
     else:
         collector.pass_("ios upload inputs", "environment", "Required iOS upload input names are present locally or in the GitHub staging environment without printing values.")
+
+
+def missing_input_detail(missing: list[str], *, label: str, workflow: str) -> str:
+    return (
+        f"Missing required {label} input name(s): {', '.join(missing)}. "
+        "Checked local environment values and GitHub staging environment secret/variable names only; "
+        "secret values are not needed for this check and must not be pasted into logs. "
+        f"Configure the missing names in the GitHub staging environment, then rerun `{workflow}` or this preflight from an authorized `gh` session."
+    )
 
 
 def worker_base_url_from_internal_staging(repo_root: Path) -> str | None:

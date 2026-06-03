@@ -836,6 +836,18 @@ Current device information:
 
         self.assertFalse(has_failures(collector.findings))
 
+    def test_deploy_inputs_failure_points_to_name_only_github_staging_check(self) -> None:
+        collector = Collector()
+        with patch.dict(os.environ, {}, clear=True), patch("scripts.submission_readiness_preflight.github_environment_names", return_value=set()):
+            check_ci_deploy_inputs(collector)
+
+        self.assertTrue(has_failures(collector.findings))
+        detail = collector.findings[0].detail
+        self.assertIn("Missing required deploy input name(s)", detail)
+        self.assertIn("GitHub staging environment secret/variable names only", detail)
+        self.assertIn("secret values are not needed", detail)
+        self.assertIn("cloud-edit-deploy-preflight.yml", detail)
+
     def test_ios_upload_inputs_can_come_from_github_environment_names(self) -> None:
         def fake_github_names(kind: str) -> set[str]:
             if kind == "secret":
@@ -849,6 +861,18 @@ Current device information:
             check_ios_upload_inputs(collector)
 
         self.assertFalse(has_failures(collector.findings))
+
+    def test_ios_upload_inputs_failure_points_to_name_only_github_staging_check(self) -> None:
+        collector = Collector()
+        with patch.dict(os.environ, {}, clear=True), patch("scripts.submission_readiness_preflight.github_environment_names", return_value=set()):
+            check_ios_upload_inputs(collector)
+
+        self.assertTrue(has_failures(collector.findings))
+        detail = collector.findings[0].detail
+        self.assertIn("Missing required iOS upload input name(s)", detail)
+        self.assertIn("GitHub staging environment secret/variable names only", detail)
+        self.assertIn("secret values are not needed", detail)
+        self.assertIn("ios-testflight-upload.yml", detail)
 
     def test_ios_signing_team_can_come_from_github_environment_secret_name(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
