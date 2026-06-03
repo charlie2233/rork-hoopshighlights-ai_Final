@@ -8,6 +8,7 @@ from scripts.collect_launch_evidence_snapshot import (
     label_status_snapshot,
     latest_for_head,
     latest_success_for_head,
+    production_cloud_url_handoff,
     release_preflight_for_head,
 )
 
@@ -196,6 +197,31 @@ class CollectLaunchEvidenceSnapshotTest(unittest.TestCase):
         self.assertEqual(guidance["remainingClipCount"], 0)
         self.assertEqual(guidance["missingRequiredFields"], [])
         self.assertEqual(guidance["nextActions"], [])
+
+    def test_production_cloud_url_handoff_lists_release_owner_actions_without_secret_values(self):
+        handoff = production_cloud_url_handoff(
+            {"missingRequired": ["HOOPS_CLOUD_ANALYSIS_BASE_URL", "HOOPS_CLOUD_EDIT_BASE_URL"]},
+            "codex/test-branch",
+        )
+
+        self.assertEqual(handoff["status"], "blocked")
+        self.assertTrue(handoff["requiresReleaseOwnerConfirmation"])
+        self.assertTrue(handoff["secretSafe"])
+        self.assertIn("HOOPS_CLOUD_ANALYSIS_BASE_URL", handoff["missingVariables"])
+        self.assertIn("HOOPS_CLOUD_EDIT_BASE_URL", handoff["missingVariables"])
+        self.assertIn("staging", handoff["candidateInternalTestFlightWorkerUrl"])
+        self.assertIn("URL query strings", handoff["doNotReturn"])
+        self.assertIn("--body '<confirmed-analysis-base-url>'", "\n".join(handoff["commandsAfterConfirmation"]))
+        self.assertIn("--ref codex/test-branch", "\n".join(handoff["commandsAfterConfirmation"]))
+        self.assertIn("Release Secrets Preflight passes", "\n".join(handoff["proofRequiredAfterSetting"]))
+        self.assertNotIn("ghp_", json.dumps(handoff))
+
+    def test_production_cloud_url_handoff_marks_configured_when_urls_are_present(self):
+        handoff = production_cloud_url_handoff({"missingRequired": []}, "codex/test-branch")
+
+        self.assertEqual(handoff["status"], "configured")
+        self.assertFalse(handoff["requiresReleaseOwnerConfirmation"])
+        self.assertEqual(handoff["missingVariables"], [])
 
 
 if __name__ == "__main__":

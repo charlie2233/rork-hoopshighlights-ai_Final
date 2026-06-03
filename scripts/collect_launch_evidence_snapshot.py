@@ -23,6 +23,7 @@ REQUIRED_PRODUCTION_VARIABLES = [
     "HOOPS_CLOUD_ANALYSIS_BASE_URL",
     "HOOPS_CLOUD_EDIT_BASE_URL",
 ]
+CANDIDATE_INTERNAL_TESTFLIGHT_WORKER_URL = "https://hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev"
 SAFE_SUPPORTING_VARIABLES = [
     "HOOPS_PRIVACY_POLICY_URL",
     "HOOPS_TERMS_OF_SERVICE_URL",
@@ -137,6 +138,42 @@ def production_variable_snapshot(repo_root: Path) -> dict[str, Any]:
         "requiredPresence": {name: name in names for name in REQUIRED_PRODUCTION_VARIABLES},
         "supportingPresence": {name: name in names for name in SAFE_SUPPORTING_VARIABLES},
         "missingRequired": [name for name in REQUIRED_PRODUCTION_VARIABLES if name not in names],
+    }
+
+
+def production_cloud_url_handoff(production_variables: dict[str, Any], branch: str) -> dict[str, Any]:
+    missing = list(production_variables.get("missingRequired") or [])
+    return {
+        "status": "blocked" if missing else "configured",
+        "missingVariables": missing,
+        "variablesToConfirm": REQUIRED_PRODUCTION_VARIABLES,
+        "candidateInternalTestFlightWorkerUrl": CANDIDATE_INTERNAL_TESTFLIGHT_WORKER_URL,
+        "requiresReleaseOwnerConfirmation": bool(missing),
+        "mustConfirmBeforeSetting": True,
+        "secretSafe": True,
+        "doNotReturn": [
+            "secret values",
+            "tokens",
+            "private keys",
+            "base64 values",
+            "credential contents",
+            "URL query strings",
+        ],
+        "commandsAfterConfirmation": [
+            "gh variable set HOOPS_CLOUD_ANALYSIS_BASE_URL --env production --body '<confirmed-analysis-base-url>'",
+            "gh variable set HOOPS_CLOUD_EDIT_BASE_URL --env production --body '<confirmed-edit-base-url>'",
+            f"gh workflow run release-secrets-preflight.yml --ref {branch}",
+            f"gh workflow run cloud-edit-deploy-preflight.yml --ref {branch}",
+        ],
+        "proofRequiredAfterSetting": [
+            "gh variable list --env production shows both cloud URL variable names",
+            "Release Secrets Preflight passes on the current launch branch head",
+            "A refreshed launch evidence snapshot reports releaseSecretsPreflight.isPassing=true",
+        ],
+        "note": (
+            "Use the candidate staging Worker URL only if the release owner explicitly confirms "
+            "internal TestFlight Release smoke should point at staging for this launch gate."
+        ),
     }
 
 
@@ -334,6 +371,7 @@ def main() -> int:
     runs = branch_workflows(repo_root, args.branch, args.workflow_limit)
     release_runs = release_preflight_runs(repo_root, 5)
     production_variables = production_variable_snapshot(repo_root)
+    production_url_handoff = production_cloud_url_handoff(production_variables, args.branch)
     labels = label_status_snapshot(repo_root, args.label_status, args.label_status_summary)
 
     head = git.get("head")
@@ -362,6 +400,7 @@ def main() -> int:
             "note": "Supporting proof only; not production cutover, signed upload, installed smoke, or human-reviewed accuracy proof. If this snapshot runs inside a workflow for the current head, the latest current-head runs may still be in progress and success fields may remain null until a later refresh.",
         },
         "productionVariables": production_variables,
+        "productionCloudUrlHandoff": production_url_handoff,
         "releaseSecretsPreflight": {
             "latest": latest_release,
             "currentHead": current_head_release,
