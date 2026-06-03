@@ -101,7 +101,8 @@ def build_label_template(
         "source": "real_cloud_analysis_label_template",
         "instructions": [
             "Fill every clip before running build_team_highlight_eval_payload.py.",
-            "Set needsLabel to false only after expected.teamId, expected.isHighlight, and expected.eventType are correct.",
+            "Set needsLabel to false only after expected.teamId, expected.isHighlight, expected.eventType, and expected.outcome are correct.",
+            "Set reviewedByHuman to true only after watching the source video; GPT/predicted fields are data-entry help, not evidence.",
             "Keep opponent clips, boring clips, bad timing windows, and uncertain review clips in this file so precision and recall are not inflated.",
             "Do not paste secrets, storage credentials, or presigned URLs into this labels file.",
         ],
@@ -128,6 +129,7 @@ def label_template_row(index: int, clip: dict[str, Any]) -> dict[str, Any]:
         "start": start,
         "end": end,
         "needsLabel": True,
+        "reviewedByHuman": False,
         "predicted": predicted_summary(clip),
         "expected": {
             "teamId": None,

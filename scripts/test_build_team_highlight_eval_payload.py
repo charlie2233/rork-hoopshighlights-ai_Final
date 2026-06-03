@@ -242,6 +242,7 @@ class BuildTeamHighlightEvalPayloadTests(unittest.TestCase):
         self.assertEqual(template["selectedTeamColorLabel"], "black")
         self.assertEqual(len(template["clips"]), 2)
         self.assertTrue(template["clips"][0]["needsLabel"])
+        self.assertFalse(template["clips"][0]["reviewedByHuman"])
         self.assertEqual(template["clips"][0]["predictionClipId"], "clip_made_001")
         self.assertEqual(template["clips"][0]["predicted"]["teamId"], "team_dark")
         self.assertEqual(template["clips"][0]["predicted"]["motionScore"], 0.7)
