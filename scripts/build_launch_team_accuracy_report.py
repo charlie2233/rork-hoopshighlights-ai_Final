@@ -26,16 +26,22 @@ from scripts.evaluate_team_highlight_accuracy import evaluate_accuracy
 def main() -> int:
     args = parse_args()
     manifest_path = Path(args.manifest).resolve()
+    manifest = load_json(manifest_path)
     if args.label_status:
-        status_payload = build_label_status(manifest=load_json(manifest_path), manifest_dir=manifest_path.parent)
+        status_payload = build_label_status(manifest=manifest, manifest_dir=manifest_path.parent)
         if args.json:
             print(json.dumps(status_payload, indent=2, sort_keys=True))
         else:
             print_label_status(status_payload)
         return 0 if status_payload["status"] == "complete" else 1
 
+    status_payload = build_label_status(manifest=manifest, manifest_dir=manifest_path.parent)
+    if status_payload["status"] != "complete":
+        print_incomplete_label_status(status_payload, as_json=args.json)
+        return 1
+
     eval_payload = build_launch_eval_payload(
-        manifest=load_json(manifest_path),
+        manifest=manifest,
         manifest_dir=manifest_path.parent,
         min_overlap_ratio=args.min_overlap_ratio,
         allow_unlabeled_predictions=args.allow_unlabeled_predictions,
@@ -201,6 +207,29 @@ def print_label_status(status_payload: dict[str, Any]) -> None:
             f"- {case['caseId']}: {case['completeClipCount']} complete / {case['clipCount']} total "
             f"({case['incompleteClipCount']} incomplete)"
         )
+
+
+def print_incomplete_label_status(status_payload: dict[str, Any], *, as_json: bool) -> None:
+    if as_json:
+        print(
+            json.dumps(
+                {
+                    "schemaVersion": "team-highlight-launch-report-build-v1",
+                    "status": "blocked",
+                    "reason": "manual_labels_incomplete",
+                    "message": "Finish human review before building a launch accuracy report.",
+                    "labelStatus": status_payload,
+                },
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return
+
+    print("status=blocked")
+    print("reason=manual_labels_incomplete")
+    print("Finish human review before building a launch accuracy report.")
+    print_label_status(status_payload)
 
 
 class ManifestCaseEntry:

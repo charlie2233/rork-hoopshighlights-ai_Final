@@ -141,6 +141,67 @@ class BuildLaunchTeamAccuracyReportTests(unittest.TestCase):
             self.assertEqual(json.loads(eval_output.read_text(encoding="utf-8"))["source"], "real_cloud_analysis_with_manual_labels")
             self.assertEqual(json.loads(report_output.read_text(encoding="utf-8"))["status"], "fail")
 
+    def test_cli_blocks_report_outputs_when_manual_labels_are_incomplete(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="hoopclips-launch-incomplete-labels-") as temp_dir:
+            temp_path = Path(temp_dir)
+            analysis_path = temp_path / "analysis.json"
+            labels_path = temp_path / "labels.json"
+            manifest_path = temp_path / "manifest.json"
+            eval_output = temp_path / "out" / "team_highlight_eval.json"
+            report_output = temp_path / "out" / "team_highlight_accuracy_report.json"
+
+            write_json(analysis_path, selected_team_analysis_payload())
+            write_json(
+                labels_path,
+                {
+                    "caseId": "selected_case",
+                    "videoId": "video_selected",
+                    "selectedTeamId": "team_dark",
+                    "clips": [
+                        {
+                            "labelId": "made_001",
+                            "predictionIndex": 0,
+                            "predictionClipId": "clip_selected_made",
+                            "needsLabel": True,
+                            "expected": {"teamId": None, "isHighlight": None, "eventType": None, "outcome": None},
+                        }
+                    ],
+                },
+            )
+            write_json(manifest_path, {"cases": [{"analysisResult": "analysis.json", "labels": "labels.json"}]})
+
+            import sys
+
+            old_argv = sys.argv
+            try:
+                sys.argv = [
+                    "build_launch_team_accuracy_report.py",
+                    "--manifest",
+                    str(manifest_path),
+                    "--eval-output",
+                    str(eval_output),
+                    "--report-output",
+                    str(report_output),
+                    "--json",
+                ]
+                output = StringIO()
+                with redirect_stdout(output):
+                    exit_code = main()
+            finally:
+                sys.argv = old_argv
+
+            payload = json.loads(output.getvalue())
+            eval_output_exists = eval_output.exists()
+            report_output_exists = report_output.exists()
+
+        self.assertEqual(exit_code, 1)
+        self.assertFalse(eval_output_exists)
+        self.assertFalse(report_output_exists)
+        self.assertEqual(payload["status"], "blocked")
+        self.assertEqual(payload["reason"], "manual_labels_incomplete")
+        self.assertEqual(payload["labelStatus"]["completeClipCount"], 0)
+        self.assertEqual(payload["labelStatus"]["incompleteClipCount"], 1)
+
     def test_label_status_summarizes_every_incomplete_manifest_case(self) -> None:
         with tempfile.TemporaryDirectory(prefix="hoopclips-launch-label-status-") as temp_dir:
             temp_path = Path(temp_dir)
