@@ -33,7 +33,15 @@ SENSITIVE_KEY_FRAGMENTS = (
     "uploadurl",
 )
 SAFE_URL_KEYS = {"workerurl"}
-PRESIGNED_URL_MARKERS = ("X-Amz-", "Signature=", "Credential=", "AccessKeyId=", "token=")
+PRESIGNED_URL_MARKERS = (
+    "X-Amz-",
+    "X-Goog-",
+    "Signature=",
+    "Credential=",
+    "GoogleAccessId=",
+    "AccessKeyId=",
+    "token=",
+)
 
 
 def main() -> int:

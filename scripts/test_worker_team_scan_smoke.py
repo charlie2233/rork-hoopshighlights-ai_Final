@@ -18,6 +18,7 @@ class WorkerTeamScanSmokeTests(unittest.TestCase):
                 "sourceUrl": "https://r2.example.test/source?Signature=secret",
                 "resultObjectKey": "results/private.json",
                 "credential": "abc",
+                "signedGcsNote": "https://storage.googleapis.com/bucket/render.mp4?x-goog-signature=secret",
                 "message": "kept",
             },
         }
@@ -30,6 +31,7 @@ class WorkerTeamScanSmokeTests(unittest.TestCase):
         self.assertEqual(redacted["nested"]["sourceUrl"], "[redacted]")
         self.assertEqual(redacted["nested"]["resultObjectKey"], "[redacted]")
         self.assertEqual(redacted["nested"]["credential"], "[redacted]")
+        self.assertEqual(redacted["nested"]["signedGcsNote"], "[redacted]")
         self.assertEqual(redacted["nested"]["message"], "kept")
 
     def test_run_smoke_uploads_scans_and_can_start_selected_team_without_printing_urls(self) -> None:
