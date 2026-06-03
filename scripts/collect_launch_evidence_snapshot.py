@@ -242,10 +242,29 @@ def latest_success_for_head(runs: list[dict[str, Any]], workflow_name: str, head
     return None
 
 
+def release_preflight_is_passing(run_item: dict[str, Any] | None) -> bool:
+    return bool(run_item and run_item.get("status") == "completed" and run_item.get("conclusion") == "success")
+
+
+def release_preflight_for_head(runs: list[dict[str, Any]], head: str | None) -> dict[str, Any] | None:
+    if not head:
+        return None
+    for run_item in runs:
+        if run_item.get("headSha") == head:
+            return run_item
+    return None
+
+
+def short_sha(value: Any) -> str:
+    text = str(value or "")
+    return text[:7] if text else "unknown"
+
+
 def launch_blockers(
     production_variables: dict[str, Any],
     latest_release: dict[str, Any] | None,
     labels: dict[str, Any],
+    current_head_release: dict[str, Any] | None = None,
     signed_archive_upload_proven: bool = False,
     installed_testflight_smoke_proven: bool = False,
 ) -> list[str]:
@@ -253,18 +272,29 @@ def launch_blockers(
     missing_variables = production_variables.get("missingRequired") or []
     if missing_variables:
         blockers.append("Missing production cloud URL variables: " + ", ".join(missing_variables))
-    if not (latest_release and latest_release.get("status") == "completed" and latest_release.get("conclusion") == "success"):
-        if latest_release:
+    if not release_preflight_is_passing(current_head_release):
+        if current_head_release:
             blockers.append(
-                "Release Secrets Preflight is not passing: "
-                + str(latest_release.get("databaseId"))
+                "Release Secrets Preflight is not passing on current head: "
+                + str(current_head_release.get("databaseId"))
                 + " "
+                + str(current_head_release.get("status"))
+                + "/"
+                + str(current_head_release.get("conclusion"))
+            )
+        elif latest_release:
+            blockers.append(
+                "Release Secrets Preflight has no current-head run evidence; latest run "
+                + str(latest_release.get("databaseId"))
+                + " was "
                 + str(latest_release.get("status"))
                 + "/"
                 + str(latest_release.get("conclusion"))
+                + " on "
+                + short_sha(latest_release.get("headSha"))
             )
         else:
-            blockers.append("Release Secrets Preflight has no recent run evidence")
+            blockers.append("Release Secrets Preflight has no current-head run evidence")
     if not labels.get("launchEvidenceEligible"):
         status = labels.get("status") or "unknown"
         complete = labels.get("completeClipCount")
@@ -312,9 +342,11 @@ def main() -> int:
     cloud_run = latest_success_for_head(runs, "Cloud Edit Deploy Preflight", head)
     ios_run = latest_success_for_head(runs, "iOS Internal TestFlight Upload", head)
     latest_release = release_runs[0] if release_runs else None
+    current_head_release = release_preflight_for_head(release_runs, head)
+    release_preflight_passing = release_preflight_is_passing(current_head_release)
     label_review = label_review_guidance(labels)
 
-    open_blockers = launch_blockers(production_variables, latest_release, labels)
+    open_blockers = launch_blockers(production_variables, latest_release, labels, current_head_release=current_head_release)
     snapshot = {
         "generatedAt": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         "secretSafe": True,
@@ -332,7 +364,10 @@ def main() -> int:
         "productionVariables": production_variables,
         "releaseSecretsPreflight": {
             "latest": latest_release,
-            "isPassing": bool(latest_release and latest_release.get("status") == "completed" and latest_release.get("conclusion") == "success"),
+            "currentHead": current_head_release,
+            "currentHeadRequired": True,
+            "latestIsCurrentHead": bool(latest_release and latest_release.get("headSha") == head),
+            "isPassing": release_preflight_passing,
         },
         "labelStatus": labels,
         "labelReview": label_review,
@@ -343,7 +378,7 @@ def main() -> int:
         },
         "remainingRequiredEvidence": {
             "productionCloudUrls": bool(production_variables.get("missingRequired")),
-            "releaseSecretsPreflight": not bool(latest_release and latest_release.get("status") == "completed" and latest_release.get("conclusion") == "success"),
+            "releaseSecretsPreflight": not release_preflight_passing,
             "humanReviewedLabels": not bool(labels.get("launchEvidenceEligible")),
             "signedArchiveUpload": True,
             "installedTestFlightSmoke": True,

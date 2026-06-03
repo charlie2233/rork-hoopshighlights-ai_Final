@@ -8,6 +8,7 @@ from scripts.collect_launch_evidence_snapshot import (
     label_status_snapshot,
     latest_for_head,
     latest_success_for_head,
+    release_preflight_for_head,
 )
 
 
@@ -220,12 +221,41 @@ class LaunchBlockerSummaryTest(unittest.TestCase):
     def test_launch_blockers_empty_when_all_external_gates_are_proven(self):
         from scripts.collect_launch_evidence_snapshot import launch_blockers
 
+        release_run = {"databaseId": 1, "status": "completed", "conclusion": "success", "headSha": "abcdef123"}
         blockers = launch_blockers(
             production_variables={"missingRequired": []},
-            latest_release={"databaseId": 1, "status": "completed", "conclusion": "success"},
+            latest_release=release_run,
             labels={"status": "complete", "completeClipCount": 54, "clipCount": 54, "launchEvidenceEligible": True},
+            current_head_release=release_run,
             signed_archive_upload_proven=True,
             installed_testflight_smoke_proven=True,
         )
 
         self.assertEqual(blockers, [])
+
+    def test_launch_blockers_require_release_preflight_on_current_head(self):
+        from scripts.collect_launch_evidence_snapshot import launch_blockers
+
+        blockers = launch_blockers(
+            production_variables={"missingRequired": []},
+            latest_release={"databaseId": 10, "status": "completed", "conclusion": "success", "headSha": "oldhead123"},
+            labels={"status": "complete", "completeClipCount": 54, "clipCount": 54, "launchEvidenceEligible": True},
+            current_head_release=None,
+            signed_archive_upload_proven=True,
+            installed_testflight_smoke_proven=True,
+        )
+
+        self.assertEqual(len(blockers), 1)
+        self.assertIn("no current-head run evidence", blockers[0])
+        self.assertIn("oldhead", blockers[0])
+
+    def test_release_preflight_for_head_selects_current_head_run(self):
+        head = "abcdef123456"
+        runs = [
+            {"databaseId": 1, "headSha": "oldhead", "status": "completed", "conclusion": "success"},
+            {"databaseId": 2, "headSha": head, "status": "completed", "conclusion": "failure"},
+        ]
+
+        selected = release_preflight_for_head(runs, head)
+
+        self.assertEqual(selected["databaseId"], 2)
