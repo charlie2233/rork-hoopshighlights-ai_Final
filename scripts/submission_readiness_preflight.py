@@ -137,6 +137,11 @@ BLOCKER_DOCS = (
         "live staging Worker still returned `404`",
         "Live iOS kill-switch state is not proven through the Worker.",
     ),
+    (
+        "docs/phase_launch_release_secrets_cloud_url_blocker_2026-06-03.md",
+        "Release Secrets Preflight: `26884199422` failed",
+        "Release Secrets Preflight is still blocked by missing production cloud URL variables.",
+    ),
 )
 DEFAULT_TEAM_ACCURACY_MANIFEST = Path("artifacts/team_highlight_accuracy_manifest.json")
 DEFAULT_LABELING_BUNDLE_DIR = Path("artifacts/team_highlight_labeling_bundle")
