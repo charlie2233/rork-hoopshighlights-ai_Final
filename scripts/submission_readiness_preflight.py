@@ -508,7 +508,7 @@ def team_labeling_bundle_hint(repo_root: Path) -> str:
                 progress += f", {int(incomplete)} remaining"
             progress += "."
         draft_detail = labeling_bundle_draft_detail(metadata)
-        staleness_detail = labeling_bundle_staleness_detail(repo_root, review_page, next_steps_path, metadata)
+        staleness_detail = labeling_bundle_staleness_detail(repo_root, review_page, next_steps_path, metadata, status)
         return (
             f"{progress} Continue human review at {rel(review_page, repo_root)}; "
             f"status: {rel(status_label, repo_root)}; next steps: {rel(next_steps_path, repo_root)}. "
@@ -560,8 +560,12 @@ def labeling_bundle_staleness_detail(
     review_page: Path,
     next_steps_path: Path,
     metadata: dict[str, object] | None,
+    status: dict[str, object] | None,
 ) -> str:
     missing: list[str] = []
+    if labeling_bundle_status_missing_human_review_gate(status):
+        missing.append("status file reviewedByHuman=true counts")
+
     review_text = read_text(review_page)
     if review_text is None:
         missing.append(f"review page {rel(review_page, repo_root)} is missing or unreadable")
@@ -588,6 +592,17 @@ def labeling_bundle_staleness_detail(
     else:
         detail += " Regenerate the labeling bundle from current scripts before review."
     return f"{detail} "
+
+
+def labeling_bundle_status_missing_human_review_gate(status: dict[str, object] | None) -> bool:
+    if not status:
+        return False
+    if status.get("status") != "incomplete":
+        return False
+    missing_field_counts = status.get("missingFieldCounts")
+    if not isinstance(missing_field_counts, dict):
+        return True
+    return "reviewedByHuman=true" not in missing_field_counts
 
 
 def labeling_bundle_regenerate_command(repo_root: Path, metadata: dict[str, object] | None) -> str:

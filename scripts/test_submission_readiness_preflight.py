@@ -251,6 +251,7 @@ class SubmissionReadinessPreflightTests(unittest.TestCase):
         self.assertIn("0/54 clips complete", detail)
         self.assertIn("team_highlight_label_review.html", detail)
         self.assertIn("GPT draft prefilled 54 clip(s)", detail)
+        self.assertIn("status file reviewedByHuman=true counts", detail)
         self.assertIn("GPT draft labels do not count", detail)
 
     def test_team_accuracy_report_does_not_reject_unrelated_draft_substring(self) -> None:
