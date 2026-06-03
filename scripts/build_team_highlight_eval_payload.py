@@ -197,7 +197,7 @@ def manual_label_completion_missing_fields(label: dict[str, Any]) -> list[str]:
     missing: list[str] = []
     if label.get("needsLabel") is not False:
         missing.append("needsLabel=false")
-    if label.get("needsLabel") is False and bool_or_none(label.get("reviewedByHuman")) is not True:
+    if bool_or_none(label.get("reviewedByHuman")) is not True:
         missing.append("reviewedByHuman=true")
     missing.extend(manual_label_expected_missing_fields(label))
     return missing

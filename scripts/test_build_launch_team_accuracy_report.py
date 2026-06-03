@@ -271,7 +271,7 @@ class BuildLaunchTeamAccuracyReportTests(unittest.TestCase):
         self.assertEqual(status["completeClipCount"], 1)
         self.assertEqual(status["incompleteClipCount"], 2)
         self.assertEqual(status["missingFieldCounts"]["needsLabel=false"], 1)
-        self.assertEqual(status["missingFieldCounts"]["reviewedByHuman=true"], 0)
+        self.assertEqual(status["missingFieldCounts"]["reviewedByHuman=true"], 1)
         self.assertEqual(status["missingFieldCounts"]["expected.outcome"], 2)
         self.assertEqual(status["missingFieldCounts"]["expected.teamId"], 1)
         self.assertEqual(status["missingFieldCounts"]["expected.isHighlight"], 1)
