@@ -8,11 +8,12 @@ This is the secret-safe external handoff for the remaining HoopClips internal Te
 
 - repo: `charlie2233/rork-hoopshighlights-ai_Final`
 - branch: `codex/phase-launch-proof-next`
-- latest checked tip before this handoff: `83912de`
-- latest safe cloud preflight on that tip: `26905183085`, success
-- latest no-secret iOS codecheck on that tip: `26905183043`, success
+- current recheck: 2026-06-03T21:10:03Z
+- latest checked tip before this handoff refresh: `bd329f7a536fa7456093f7b27ff9c026b3043a96`
+- latest safe cloud preflight on that tip: `26912829790`, success
+- latest no-secret iOS codecheck on that tip: `26912829701`, success
 
-These green runs are useful branch proof, but they do not close production URL/secrets, Release Secrets Preflight, signed archive/upload, installed TestFlight smoke, or human label gates.
+These green runs are useful current branch proof, but they do not close production URL/secrets, Release Secrets Preflight, signed archive/upload, installed TestFlight smoke, or human label gates.
 
 ## Release-owner actions
 
