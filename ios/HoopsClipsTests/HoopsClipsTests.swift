@@ -791,6 +791,10 @@ struct HoopsClipsTests {
                 == fallback
         )
         #expect(
+            CloudAnalysisService.safeBackendMessage("Worker raised exception with stack trace line 1.", fallback: fallback)
+                == fallback
+        )
+        #expect(
             CloudAnalysisService.safeBackendMessage("Worker failed with trace_id abc123.", fallback: fallback)
                 == fallback
         )
@@ -3292,6 +3296,9 @@ struct HoopsClipsTests {
 
         let sessionFallback = CloudEditError.friendlyBackendMessage(code: "unknown_backend_state", fallback: "Session cookie refresh failed for session_id sid_123.")
         #expect(sessionFallback == "Cloud editing request failed.")
+
+        let oauthFallback = CloudEditError.friendlyBackendMessage(code: "unknown_backend_state", fallback: "OAuth grant_type failed after CSRF nonce mismatch.")
+        #expect(oauthFallback == "Cloud editing request failed.")
 
         let traceFallback = CloudEditError.friendlyBackendMessage(code: "unknown_backend_state", fallback: "Render failed with request_id req_123.")
         #expect(traceFallback == "Cloud editing request failed.")
