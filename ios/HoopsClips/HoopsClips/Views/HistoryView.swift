@@ -505,7 +505,7 @@ private struct HistoryProjectDetailView: View {
                 shareErrorMessage = nil
             }
         } message: {
-            Text(shareErrorMessage ?? "The latest export file is missing.")
+            Text(shareErrorMessage ?? HistoryProjectActionCopy.shareMissingMessage)
         }
     }
 
@@ -855,12 +855,12 @@ private struct HistoryProjectDetailView: View {
 
     private func presentShareSheet(for url: URL?) {
         guard let url else {
-            shareErrorMessage = "The latest export file is no longer available on this device."
+            shareErrorMessage = HistoryProjectActionCopy.shareMissingMessage
             showingShareError = true
             return
         }
         guard FileManager.default.fileExists(atPath: url.path) else {
-            shareErrorMessage = "The latest export file is no longer available on this device."
+            shareErrorMessage = HistoryProjectActionCopy.shareMissingMessage
             showingShareError = true
             return
         }
@@ -882,6 +882,7 @@ nonisolated enum HistoryProjectActionCopy {
     static let exportAvailableSubtitle = "Watch saved reel"
     static let exportMissingSubtitle = "No saved export yet"
     static let shareAvailableSubtitle = "Share saved reel"
+    static let shareMissingMessage = "Saved reel missing. Re-export."
     static let deleteSubtitle = "Remove saved files"
 }
 

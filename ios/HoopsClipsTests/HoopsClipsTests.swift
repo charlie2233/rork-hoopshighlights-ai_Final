@@ -1649,6 +1649,7 @@ struct HoopsClipsTests {
             HistoryProjectActionCopy.exportAvailableSubtitle,
             HistoryProjectActionCopy.exportMissingSubtitle,
             HistoryProjectActionCopy.shareAvailableSubtitle,
+            HistoryProjectActionCopy.shareMissingMessage,
             HistoryProjectActionCopy.deleteSubtitle,
         ]
 
@@ -1661,6 +1662,7 @@ struct HoopsClipsTests {
         #expect(HistoryProjectActionCopy.openAvailableSubtitle == "Continue editing this project")
         #expect(HistoryProjectActionCopy.sourceAvailableSubtitle == "Watch original video")
         #expect(HistoryProjectActionCopy.exportAvailableSubtitle == "Watch saved reel")
+        #expect(HistoryProjectActionCopy.shareMissingMessage == "Saved reel missing. Re-export.")
     }
 
     @Test func testReviewProgressCopyShowsSelectedAndCheckCounts() {
