@@ -1,0 +1,20 @@
+{
+  "generatedAt": "2026-06-03T22:04:06Z",
+  "sourceLabelStatusPath": "artifacts/team_highlight_labeling_bundle/label_status.json",
+  "sourceKind": "tracked_non_secret_summary",
+  "status": "incomplete",
+  "clipCount": 54,
+  "completeClipCount": 0,
+  "incompleteClipCount": 54,
+  "launchEvidenceEligible": false,
+  "missingFieldCounts": {
+    "expected.eventType": 54,
+    "expected.isHighlight": 54,
+    "expected.outcome": 54,
+    "expected.teamId": 54,
+    "needsLabel=false": 54,
+    "reviewedByHuman=true": 54
+  },
+  "notLaunchEvidence": true,
+  "note": "This summary is non-secret and tracked so GitHub evidence snapshots can represent the known label blocker when generated local label artifacts are absent. It is not launch evidence. Launch evidence requires the generated label_status.json to report complete human review and the launch accuracy report to be rebuilt."
+}

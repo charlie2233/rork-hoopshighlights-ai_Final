@@ -18,6 +18,7 @@ from typing import Any
 
 DEFAULT_BRANCH = "codex/phase-launch-proof-next"
 DEFAULT_LABEL_STATUS = Path("artifacts/team_highlight_labeling_bundle/label_status.json")
+DEFAULT_LABEL_STATUS_SUMMARY = Path("docs/launch_evidence/label_status_summary_2026-06-03.json")
 REQUIRED_PRODUCTION_VARIABLES = [
     "HOOPS_CLOUD_ANALYSIS_BASE_URL",
     "HOOPS_CLOUD_EDIT_BASE_URL",
@@ -139,12 +140,38 @@ def production_variable_snapshot(repo_root: Path) -> dict[str, Any]:
     }
 
 
-def label_status_snapshot(repo_root: Path, label_status_path: Path) -> dict[str, Any]:
+def label_status_snapshot(repo_root: Path, label_status_path: Path, summary_path: Path | None) -> dict[str, Any]:
     path = label_status_path if label_status_path.is_absolute() else repo_root / label_status_path
     if not path.exists():
+        summary_payload: dict[str, Any] | None = None
+        summary_exists = False
+        if summary_path is not None:
+            resolved_summary = summary_path if summary_path.is_absolute() else repo_root / summary_path
+            if resolved_summary.exists():
+                summary_exists = True
+                summary_payload = json.loads(resolved_summary.read_text())
+        if summary_payload is not None:
+            return {
+                "path": str(label_status_path),
+                "exists": False,
+                "source": "trackedSummary",
+                "summaryPath": str(summary_path),
+                "summaryExists": summary_exists,
+                "summaryGeneratedAt": summary_payload.get("generatedAt"),
+                "status": summary_payload.get("status", "missing"),
+                "clipCount": summary_payload.get("clipCount"),
+                "completeClipCount": summary_payload.get("completeClipCount"),
+                "incompleteClipCount": summary_payload.get("incompleteClipCount"),
+                "launchEvidenceEligible": summary_payload.get("launchEvidenceEligible", False),
+                "missingFieldCounts": summary_payload.get("missingFieldCounts", {}),
+                "notLaunchEvidence": summary_payload.get("notLaunchEvidence", True),
+            }
         return {
             "path": str(label_status_path),
             "exists": False,
+            "source": "missing",
+            "summaryPath": str(summary_path) if summary_path is not None else None,
+            "summaryExists": False,
             "status": "missing",
             "clipCount": None,
             "completeClipCount": None,
@@ -156,6 +183,9 @@ def label_status_snapshot(repo_root: Path, label_status_path: Path) -> dict[str,
     return {
         "path": str(label_status_path),
         "exists": True,
+        "source": "generatedStatus",
+        "summaryPath": str(summary_path) if summary_path is not None else None,
+        "summaryExists": False,
         "status": payload.get("status"),
         "clipCount": payload.get("clipCount"),
         "completeClipCount": payload.get("completeClipCount"),
@@ -190,6 +220,7 @@ def main() -> int:
     parser.add_argument("--branch", default=DEFAULT_BRANCH, help="Launch branch to inspect.")
     parser.add_argument("--workflow-limit", type=int, default=12, help="Number of branch workflow runs to inspect.")
     parser.add_argument("--label-status", type=Path, default=DEFAULT_LABEL_STATUS, help="Label status JSON path.")
+    parser.add_argument("--label-status-summary", type=Path, default=DEFAULT_LABEL_STATUS_SUMMARY, help="Tracked non-secret label status summary fallback.")
     parser.add_argument("--output", type=Path, help="Optional JSON output path.")
     args = parser.parse_args()
 
@@ -198,7 +229,7 @@ def main() -> int:
     runs = branch_workflows(repo_root, args.branch, args.workflow_limit)
     release_runs = release_preflight_runs(repo_root, 5)
     production_variables = production_variable_snapshot(repo_root)
-    labels = label_status_snapshot(repo_root, args.label_status)
+    labels = label_status_snapshot(repo_root, args.label_status, args.label_status_summary)
 
     head = git.get("head")
     cloud_latest_run = latest_for_head(runs, "Cloud Edit Deploy Preflight", head)

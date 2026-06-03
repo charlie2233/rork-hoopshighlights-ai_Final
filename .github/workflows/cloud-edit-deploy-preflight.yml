@@ -517,6 +517,7 @@ jobs:
           python3 scripts/collect_launch_evidence_snapshot.py \
             --branch "$branch" \
             --label-status artifacts/team_highlight_labeling_bundle/label_status.json \
+            --label-status-summary docs/launch_evidence/label_status_summary_2026-06-03.json \
             --output artifacts/launch_readiness/launch-evidence-snapshot.json
 
       - name: Print non-secret blocker summary
@@ -532,8 +533,9 @@ jobs:
           print('missingProductionVariables=' + ','.join(snapshot['productionVariables'].get('missingRequired', [])))
           print('releaseSecretsPreflightPassing=' + str(snapshot['releaseSecretsPreflight'].get('isPassing')))
           print('labelStatusFileExists=' + str(snapshot['labelStatus'].get('exists')))
+          print('labelStatusSource=' + str(snapshot['labelStatus'].get('source')))
           print('labelStatus=' + str(snapshot['labelStatus'].get('status')))
-          if snapshot['labelStatus'].get('exists'):
+          if snapshot['labelStatus'].get('clipCount') is not None:
               print('labelComplete=' + str(snapshot['labelStatus'].get('completeClipCount')) + '/' + str(snapshot['labelStatus'].get('clipCount')))
           else:
               print('labelComplete=missing')

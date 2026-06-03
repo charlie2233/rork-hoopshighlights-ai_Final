@@ -51,8 +51,9 @@ jobs:
           print('missingProductionVariables=' + ','.join(snapshot['productionVariables'].get('missingRequired', [])))
           print('releaseSecretsPreflightPassing=' + str(snapshot['releaseSecretsPreflight'].get('isPassing')))
           print('labelStatusFileExists=' + str(snapshot['labelStatus'].get('exists')))
+          print('labelStatusSource=' + str(snapshot['labelStatus'].get('source')))
           print('labelStatus=' + str(snapshot['labelStatus'].get('status')))
-          if snapshot['labelStatus'].get('exists'):
+          if snapshot['labelStatus'].get('clipCount') is not None:
               print('labelComplete=' + str(snapshot['labelStatus'].get('completeClipCount')) + '/' + str(snapshot['labelStatus'].get('clipCount')))
           else:
               print('labelComplete=missing')
