@@ -142,6 +142,18 @@ BLOCKER_DOCS = (
         "Release Secrets Preflight: `26884199422` failed",
         "Release Secrets Preflight is still blocked by missing production cloud URL variables.",
     ),
+    ('docs/phase_launch_production_cloud_urls_handoff_2026-06-03.md',
+     'The required production cloud URL variables are missing:',
+     'Production cloud URL handoff still documents missing production cloud URL variables.'),
+    ('docs/phase_launch_accuracy_reviewer_handoff_2026-06-03.md',
+     '- Complete clips: `0`',
+     'Human-reviewed accuracy handoff still documents 0/54 complete label coverage.'),
+    ('docs/phase_launch_installed_testflight_smoke_handoff_2026-06-03.md',
+     'Installed TestFlight smoke: `unproven`',
+     'Installed TestFlight smoke handoff still documents unproven trusted-device smoke.'),
+    ('docs/phase_launch_build15_signing_handoff_2026-06-03.md',
+     'Signed iOS archive preflight is not green for build `15` yet.',
+     'Apple signing handoff still documents blocked signed archive/TestFlight upload proof.'),
 )
 DEFAULT_TEAM_ACCURACY_MANIFEST = Path("artifacts/team_highlight_accuracy_manifest.json")
 DEFAULT_LABELING_BUNDLE_DIR = Path("artifacts/team_highlight_labeling_bundle")
