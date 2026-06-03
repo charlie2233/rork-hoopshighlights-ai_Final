@@ -7,7 +7,7 @@ complete.
 ## Branch state
 
 - Branch: `codex/phase-launch-proof-next`
-- HEAD: `f10c444 chore: sanitize cloud analysis required fallback`
+- HEAD: `9ca51ff docs: add launch accuracy reviewer handoff`
 - Upstream: `origin/codex/phase-launch-proof-next`
 - Divergence after sync: `0 ahead / 0 behind`
 - Tracked working tree: clean
@@ -17,8 +17,8 @@ complete.
 
 ## Current safe CI evidence
 
-- `Cloud Edit Deploy Preflight` run `26888827798`: `success` on `f10c444`
-- `iOS Internal TestFlight Upload` codecheck run `26888829900`: `success` on `f10c444`
+- `Cloud Edit Deploy Preflight` run `26890293836`: `success` on `9ca51ff`
+- `iOS Internal TestFlight Upload` codecheck run `26890296487`: `success` on `9ca51ff`
 
 The signed archive/upload path was not retried in this snapshot because Apple
 signing remains externally blocked.
@@ -108,6 +108,20 @@ Current missing launch fields across all 54 clips:
 This means the GPT/team-highlight accuracy gate is still unproven. The label
 bundle must be human-reviewed before the launch readiness report can claim real
 clip-selection quality.
+
+## Current blocker handoffs
+
+Two current handoff docs now make the remaining external/human launch gates
+actionable without claiming they are complete:
+
+- Production cloud URL handoff:
+  `docs/phase_launch_production_cloud_urls_handoff_2026-06-03.md`
+- Human accuracy reviewer handoff:
+  `docs/phase_launch_accuracy_reviewer_handoff_2026-06-03.md`
+
+These documents provide secret-safe next steps for the release owner and human
+reviewer. They do not close the production URL gate or the human-reviewed
+accuracy gate by themselves.
 
 ## Remaining launch blockers
 
