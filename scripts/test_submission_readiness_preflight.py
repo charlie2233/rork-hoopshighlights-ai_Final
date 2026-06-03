@@ -16,6 +16,7 @@ from scripts.submission_readiness_preflight import (
     EXPECTED_IOS_BUNDLE_ID,
     EXPECTED_IOS_BUILD_NUMBER,
     EXPECTED_IOS_MARKETING_VERSION,
+    GithubEnvironmentNameLookup,
     REQUIRED_IOS_UPLOAD_SECRET_INPUTS,
     REQUIRED_IOS_UPLOAD_VARIABLE_INPUTS,
     check_upload_artifact,
@@ -823,22 +824,30 @@ Current device information:
         self.assertIn("no deploy-relevant files changed", collector.findings[0].detail)
 
     def test_deploy_inputs_can_come_from_github_environment_names(self) -> None:
-        def fake_github_names(kind: str) -> set[str]:
+        def fake_github_lookup(kind: str) -> GithubEnvironmentNameLookup:
             if kind == "secret":
-                return {"CLOUDFLARE_API_TOKEN", "GCP_WORKLOAD_IDENTITY_PROVIDER", "GCP_DEPLOY_SERVICE_ACCOUNT"}
+                return GithubEnvironmentNameLookup(
+                    {"CLOUDFLARE_API_TOKEN", "GCP_WORKLOAD_IDENTITY_PROVIDER", "GCP_DEPLOY_SERVICE_ACCOUNT"}
+                )
             if kind == "variable":
-                return {"GCP_PROJECT_ID", "GCP_REGION"}
-            return set()
+                return GithubEnvironmentNameLookup({"GCP_PROJECT_ID", "GCP_REGION"})
+            return GithubEnvironmentNameLookup(set())
 
         collector = Collector()
-        with patch.dict(os.environ, {}, clear=True), patch("scripts.submission_readiness_preflight.github_environment_names", side_effect=fake_github_names):
+        with patch.dict(os.environ, {}, clear=True), patch(
+            "scripts.submission_readiness_preflight.github_environment_name_lookup",
+            side_effect=fake_github_lookup,
+        ):
             check_ci_deploy_inputs(collector)
 
         self.assertFalse(has_failures(collector.findings))
 
     def test_deploy_inputs_failure_points_to_name_only_github_staging_check(self) -> None:
         collector = Collector()
-        with patch.dict(os.environ, {}, clear=True), patch("scripts.submission_readiness_preflight.github_environment_names", return_value=set()):
+        with patch.dict(os.environ, {}, clear=True), patch(
+            "scripts.submission_readiness_preflight.github_environment_name_lookup",
+            return_value=GithubEnvironmentNameLookup(set()),
+        ):
             check_ci_deploy_inputs(collector)
 
         self.assertTrue(has_failures(collector.findings))
@@ -848,23 +857,41 @@ Current device information:
         self.assertIn("secret values are not needed", detail)
         self.assertIn("cloud-edit-deploy-preflight.yml", detail)
 
+    def test_deploy_inputs_failure_reports_unavailable_github_name_lookup(self) -> None:
+        collector = Collector()
+        with patch.dict(os.environ, {}, clear=True), patch(
+            "scripts.submission_readiness_preflight.github_environment_name_lookup",
+            return_value=GithubEnvironmentNameLookup(set(), "gh secret list --env staging needs a valid GitHub login"),
+        ):
+            check_ci_deploy_inputs(collector)
+
+        self.assertTrue(has_failures(collector.findings))
+        self.assertIn("GitHub staging name lookup was incomplete", collector.findings[0].detail)
+        self.assertIn("valid GitHub login", collector.findings[0].detail)
+
     def test_ios_upload_inputs_can_come_from_github_environment_names(self) -> None:
-        def fake_github_names(kind: str) -> set[str]:
+        def fake_github_lookup(kind: str) -> GithubEnvironmentNameLookup:
             if kind == "secret":
-                return set(REQUIRED_IOS_UPLOAD_SECRET_INPUTS)
+                return GithubEnvironmentNameLookup(set(REQUIRED_IOS_UPLOAD_SECRET_INPUTS))
             if kind == "variable":
-                return set(REQUIRED_IOS_UPLOAD_VARIABLE_INPUTS)
-            return set()
+                return GithubEnvironmentNameLookup(set(REQUIRED_IOS_UPLOAD_VARIABLE_INPUTS))
+            return GithubEnvironmentNameLookup(set())
 
         collector = Collector()
-        with patch.dict(os.environ, {}, clear=True), patch("scripts.submission_readiness_preflight.github_environment_names", side_effect=fake_github_names):
+        with patch.dict(os.environ, {}, clear=True), patch(
+            "scripts.submission_readiness_preflight.github_environment_name_lookup",
+            side_effect=fake_github_lookup,
+        ):
             check_ios_upload_inputs(collector)
 
         self.assertFalse(has_failures(collector.findings))
 
     def test_ios_upload_inputs_failure_points_to_name_only_github_staging_check(self) -> None:
         collector = Collector()
-        with patch.dict(os.environ, {}, clear=True), patch("scripts.submission_readiness_preflight.github_environment_names", return_value=set()):
+        with patch.dict(os.environ, {}, clear=True), patch(
+            "scripts.submission_readiness_preflight.github_environment_name_lookup",
+            return_value=GithubEnvironmentNameLookup(set()),
+        ):
             check_ios_upload_inputs(collector)
 
         self.assertTrue(has_failures(collector.findings))
