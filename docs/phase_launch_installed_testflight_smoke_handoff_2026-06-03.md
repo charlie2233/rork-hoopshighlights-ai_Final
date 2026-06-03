@@ -156,3 +156,31 @@ download/share/open-in path with non-secret evidence.
 
 Keep preserving unrelated local files. The current checkout still has untracked
 root Xcode project folders that must not be staged unless explicitly requested.
+
+## 2026-06-03 current branch proof refresh - 2f2ffae
+
+This refresh updates the branch proof available before a trusted-device installed TestFlight smoke. It does not mark installed smoke complete.
+
+Current branch: `codex/phase-launch-proof-next`
+Current pushed tip: `2f2ffae`
+
+Fresh no-secret workflow proof on this tip:
+
+- `Cloud Edit Deploy Preflight` run `26911966539`: `success`
+- `iOS Internal TestFlight Upload` with `operation=codecheck` run `26911966470`: `success`
+
+What this proof covers:
+
+- The launch branch still passes the safe cloud-edit preflight lane.
+- The launch branch still passes the safe iOS TestFlight workflow codecheck lane.
+- The latest handoff docs and iOS backend-status copy guardrails are present on the pushed branch.
+
+What this proof does not cover:
+
+- It is not a signed App Store Connect archive/upload proof.
+- It is not proof that the current internal TestFlight build is processed or installable.
+- It is not installed-app smoke evidence from a trusted iPhone.
+- It is not production cloud readiness proof; production `HOOPS_CLOUD_ANALYSIS_BASE_URL` and `HOOPS_CLOUD_EDIT_BASE_URL` are still not visible in GitHub production variables.
+- It is not GPT clipping quality proof; the current label bundle is still `0/54` complete and `launchEvidenceEligible=false`.
+
+Trusted-device tester should use the smoke steps above only after release owner confirms the intended TestFlight build is installed from TestFlight and the intended backend environment is selected. Record non-secret evidence only: build number, backend host name, workflow run IDs, visible app status copy, screenshots/video timestamps, and pass/fail notes. Do not return secrets, tokens, private key contents, presigned URLs, private video contents, or full storage object URLs.
