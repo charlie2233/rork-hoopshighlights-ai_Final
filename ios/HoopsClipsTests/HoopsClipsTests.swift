@@ -785,6 +785,18 @@ struct HoopsClipsTests {
         #expect(safeMessage.hasSuffix("..."))
     }
 
+    @Test func testCloudRequiredAnalysisFallbackCopyDoesNotLeakLocalOrBackendDetails() {
+        let message = CloudAnalysisFallbackCopy.cloudRequiredMessage
+        #expect(message == "Cloud analysis is required. Try again when the cloud service is available.")
+        #expect(message.contains("Cloud analysis"))
+        #expect(!message.localizedCaseInsensitiveContains("local analysis"))
+        #expect(!message.localizedCaseInsensitiveContains("fallback"))
+        #expect(!message.localizedCaseInsensitiveContains("token"))
+        #expect(!message.localizedCaseInsensitiveContains("http://"))
+        #expect(!message.localizedCaseInsensitiveContains("https://"))
+        #expect(CloudAnalysisFallbackCopy.cloudRequiredTelemetryReason == "cloud_required_no_local_fallback")
+    }
+
     @Test @MainActor func testCloudEditRequestEncodesOptionalUserPrompt() throws {
         let nativeSignals = NativeShotSignals(
             isShotLike: true,

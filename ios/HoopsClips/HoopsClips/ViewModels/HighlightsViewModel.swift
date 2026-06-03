@@ -5,6 +5,11 @@ import PhotosUI
 import SwiftUI
 import UIKit
 
+nonisolated enum CloudAnalysisFallbackCopy {
+    static let cloudRequiredMessage = "Cloud analysis is required. Try again when the cloud service is available."
+    static let cloudRequiredTelemetryReason = "cloud_required_no_local_fallback"
+}
+
 @Observable
 @MainActor
 final class HighlightsViewModel {
@@ -592,7 +597,7 @@ final class HighlightsViewModel {
 
     private func runPrimaryLocalAnalysis(for url: URL, status: String) async {
         guard !AppConstants.requiresCloudVideoPipeline else {
-            let message = "Cloud analysis is required for this build."
+            let message = CloudAnalysisFallbackCopy.cloudRequiredMessage
             analysisMode = .cloud
             isCloudFallbackOffered = false
             analysisService.finishExternalAnalysis(with: message)
@@ -2075,14 +2080,14 @@ final class HighlightsViewModel {
         cloudAnalysisJobID = nil
         cloudEditSourceObjectKey = nil
         if AppConstants.requiresCloudVideoPipeline {
-            let message = "Cloud analysis is required for this build. \(error.localizedDescription)"
+            let message = CloudAnalysisFallbackCopy.cloudRequiredMessage
             analysisMode = .cloud
             isCloudFallbackOffered = false
             analysisService.finishExternalAnalysis(with: message)
             recordAnalysisFailure(message: message)
             LaunchTelemetry.shared.recordStabilityCheckpoint(
                 "analysis.failed",
-                metadata: "mode=cloud reason=\(error.localizedDescription)"
+                metadata: "mode=cloud reason=\(CloudAnalysisFallbackCopy.cloudRequiredTelemetryReason)"
             )
             return
         }
