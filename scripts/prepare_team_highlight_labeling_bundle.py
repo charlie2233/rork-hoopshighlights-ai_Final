@@ -240,7 +240,7 @@ def next_steps_markdown(metadata: dict[str, Any], args: argparse.Namespace) -> s
             "3. Use `Next incomplete` after close-review clips are done, then finish standard and quick-check clips.",
             "4. Quick-check clips are faster, but they still require watching the video before marking reviewed.",
             "5. Use keyboard playback while the clip card is active: `S/E/F` jump start/event/finish, `J/L` scrub back/forward 0.5s, `K` play/pause synced angles.",
-            "6. Use `P` to copy the HoopClips/GPT draft into the fields, then verify the video before accepting it.",
+            "6. Use `P` to copy the HoopClips/GPT draft into fields as data-entry help only; it is not evidence until you watch the video and mark reviewed.",
             "7. For obvious clips, use `1` selected-team highlight, `2` not highlight, or `3` bad window after watching the clip.",
             "8. Use `Download progress checkpoint` any time you want to save a partial session outside browser storage.",
             "9. Use `R` or `Mark reviewed + next` until the page enables `Download launch-ready labels`.",

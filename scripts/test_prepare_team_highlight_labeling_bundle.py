@@ -116,6 +116,8 @@ class PrepareTeamHighlightLabelingBundleTests(unittest.TestCase):
         self.assertIn("Next close review", next_steps)
         self.assertIn("uncertainty or weak evidence", next_steps)
         self.assertIn("Quick-check clips are faster", next_steps)
+        self.assertIn("data-entry help only", next_steps)
+        self.assertIn("not evidence until you watch the video and mark reviewed", next_steps)
         self.assertIn("J/L", next_steps)
         self.assertIn("K", next_steps)
         self.assertIn("The page auto-saves a local browser draft", next_steps)
