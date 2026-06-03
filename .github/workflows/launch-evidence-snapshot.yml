@@ -58,6 +58,9 @@ jobs:
           else:
               print('labelComplete=missing')
           print('launchEvidenceEligible=' + str(snapshot['labelStatus'].get('launchEvidenceEligible')))
+          print('launchReady=' + str(snapshot['launchReadiness'].get('launchReady')))
+          for blocker in snapshot['launchReadiness'].get('openBlockers', []):
+              print('openBlocker=' + blocker)
           PY
 
       - name: Upload launch evidence snapshot

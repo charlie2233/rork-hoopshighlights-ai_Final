@@ -151,3 +151,33 @@ class CollectLaunchEvidenceSnapshotTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class LaunchBlockerSummaryTest(unittest.TestCase):
+    def test_launch_blockers_list_all_open_external_gates(self):
+        from scripts.collect_launch_evidence_snapshot import launch_blockers
+
+        blockers = launch_blockers(
+            production_variables={"missingRequired": ["HOOPS_CLOUD_ANALYSIS_BASE_URL", "HOOPS_CLOUD_EDIT_BASE_URL"]},
+            latest_release={"databaseId": 26884199422, "status": "completed", "conclusion": "failure"},
+            labels={"status": "incomplete", "completeClipCount": 0, "clipCount": 54, "launchEvidenceEligible": False},
+        )
+
+        self.assertEqual(len(blockers), 5)
+        self.assertIn("HOOPS_CLOUD_ANALYSIS_BASE_URL", blockers[0])
+        self.assertIn("26884199422", blockers[1])
+        self.assertIn("0/54", blockers[2])
+        self.assertIn("Signed App Store Connect archive/upload", blockers[3])
+        self.assertIn("Installed trusted-device TestFlight smoke", blockers[4])
+
+    def test_launch_blockers_empty_when_all_external_gates_are_proven(self):
+        from scripts.collect_launch_evidence_snapshot import launch_blockers
+
+        blockers = launch_blockers(
+            production_variables={"missingRequired": []},
+            latest_release={"databaseId": 1, "status": "completed", "conclusion": "success"},
+            labels={"status": "complete", "completeClipCount": 54, "clipCount": 54, "launchEvidenceEligible": True},
+            signed_archive_upload_proven=True,
+            installed_testflight_smoke_proven=True,
+        )
+
+        self.assertEqual(blockers, [])

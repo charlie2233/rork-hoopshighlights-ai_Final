@@ -205,6 +205,44 @@ def latest_success_for_head(runs: list[dict[str, Any]], workflow_name: str, head
     return None
 
 
+def launch_blockers(
+    production_variables: dict[str, Any],
+    latest_release: dict[str, Any] | None,
+    labels: dict[str, Any],
+    signed_archive_upload_proven: bool = False,
+    installed_testflight_smoke_proven: bool = False,
+) -> list[str]:
+    blockers: list[str] = []
+    missing_variables = production_variables.get("missingRequired") or []
+    if missing_variables:
+        blockers.append("Missing production cloud URL variables: " + ", ".join(missing_variables))
+    if not (latest_release and latest_release.get("status") == "completed" and latest_release.get("conclusion") == "success"):
+        if latest_release:
+            blockers.append(
+                "Release Secrets Preflight is not passing: "
+                + str(latest_release.get("databaseId"))
+                + " "
+                + str(latest_release.get("status"))
+                + "/"
+                + str(latest_release.get("conclusion"))
+            )
+        else:
+            blockers.append("Release Secrets Preflight has no recent run evidence")
+    if not labels.get("launchEvidenceEligible"):
+        status = labels.get("status") or "unknown"
+        complete = labels.get("completeClipCount")
+        total = labels.get("clipCount")
+        if complete is not None and total is not None:
+            blockers.append(f"Human-reviewed accuracy labels incomplete: {complete}/{total}, status={status}")
+        else:
+            blockers.append(f"Human-reviewed accuracy labels missing or incomplete: status={status}")
+    if not signed_archive_upload_proven:
+        blockers.append("Signed App Store Connect archive/upload is not proven")
+    if not installed_testflight_smoke_proven:
+        blockers.append("Installed trusted-device TestFlight smoke is not proven")
+    return blockers
+
+
 def latest_for_head(runs: list[dict[str, Any]], workflow_name: str, head: str | None) -> dict[str, Any] | None:
     if not head:
         return None
@@ -238,6 +276,7 @@ def main() -> int:
     ios_run = latest_success_for_head(runs, "iOS Internal TestFlight Upload", head)
     latest_release = release_runs[0] if release_runs else None
 
+    open_blockers = launch_blockers(production_variables, latest_release, labels)
     snapshot = {
         "generatedAt": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         "secretSafe": True,
@@ -258,6 +297,11 @@ def main() -> int:
             "isPassing": bool(latest_release and latest_release.get("status") == "completed" and latest_release.get("conclusion") == "success"),
         },
         "labelStatus": labels,
+        "launchReadiness": {
+            "launchReady": len(open_blockers) == 0,
+            "openBlockers": open_blockers,
+            "note": "A true value requires external evidence for production URLs/secrets, Release Secrets Preflight, human-reviewed labels, signed upload, and installed TestFlight smoke.",
+        },
         "remainingRequiredEvidence": {
             "productionCloudUrls": bool(production_variables.get("missingRequired")),
             "releaseSecretsPreflight": not bool(latest_release and latest_release.get("status") == "completed" and latest_release.get("conclusion") == "success"),
