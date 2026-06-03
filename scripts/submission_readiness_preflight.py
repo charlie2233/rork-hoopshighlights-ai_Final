@@ -154,6 +154,9 @@ BLOCKER_DOCS = (
     ('docs/phase_launch_build15_signing_handoff_2026-06-03.md',
      'Signed iOS archive preflight is not green for build `15` yet.',
      'Apple signing handoff still documents blocked signed archive/TestFlight upload proof.'),
+    ('docs/phase_launch_current_tip_external_gate_handoff_2026-06-03.md',
+     'This current-tip proof does not close production cloud URLs/secrets,',
+     'Current-tip external gate handoff still documents unresolved launch gates.'),
 )
 DEFAULT_TEAM_ACCURACY_MANIFEST = Path("artifacts/team_highlight_accuracy_manifest.json")
 DEFAULT_LABELING_BUNDLE_DIR = Path("artifacts/team_highlight_labeling_bundle")
