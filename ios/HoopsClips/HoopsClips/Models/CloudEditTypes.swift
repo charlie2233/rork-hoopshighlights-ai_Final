@@ -1292,7 +1292,13 @@ enum CloudEditError: Error, LocalizedError, Sendable {
             "credential",
             "api_key",
             "apikey",
-            "access_key"
+            "access_key",
+            "trace_id",
+            "trace id",
+            "request_id",
+            "request id",
+            "correlation_id",
+            "correlation id"
         ]
         guard !forbiddenMarkers.contains(where: { normalized.contains($0) }) else {
             return safeFallback

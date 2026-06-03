@@ -783,6 +783,10 @@ struct HoopsClipsTests {
                 == fallback
         )
         #expect(
+            CloudAnalysisService.safeBackendMessage("Worker failed with trace_id abc123.", fallback: fallback)
+                == fallback
+        )
+        #expect(
             CloudAnalysisService.safeBackendMessage("Analysis should finish in 2 minutes.", fallback: fallback)
                 == fallback
         )
@@ -3274,6 +3278,9 @@ struct HoopsClipsTests {
 
         let credentialFallback = CloudEditError.friendlyBackendMessage(code: "unknown_backend_state", fallback: "Credential refresh failed for access_key abc123.")
         #expect(credentialFallback == "Cloud editing request failed.")
+
+        let traceFallback = CloudEditError.friendlyBackendMessage(code: "unknown_backend_state", fallback: "Render failed with request_id req_123.")
+        #expect(traceFallback == "Cloud editing request failed.")
 
         let timeoutFallback = CloudEditError.friendlyBackendMessage(code: "http_524", fallback: "Request timed out after 60 seconds")
         #expect(timeoutFallback == "Cloud editing timed out. Try again.")
