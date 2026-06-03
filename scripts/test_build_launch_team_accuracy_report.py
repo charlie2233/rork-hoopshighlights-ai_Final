@@ -258,6 +258,8 @@ class BuildLaunchTeamAccuracyReportTests(unittest.TestCase):
 
         self.assertEqual(status["schemaVersion"], "team-highlight-label-status-v1")
         self.assertEqual(status["status"], "incomplete")
+        self.assertFalse(status["launchEvidenceEligible"])
+        self.assertIn("not launch evidence", status["warnings"][0])
         self.assertEqual(status["caseCount"], 2)
         self.assertEqual(status["clipCount"], 3)
         self.assertEqual(status["completeClipCount"], 1)

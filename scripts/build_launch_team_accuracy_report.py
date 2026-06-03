@@ -182,9 +182,18 @@ def build_label_status(*, manifest: dict[str, Any], manifest_dir: Path) -> dict[
         )
 
     incomplete_clips = total_clips - complete_clips
+    launch_evidence_eligible = incomplete_clips == 0
+    warnings = []
+    if not launch_evidence_eligible:
+        warnings.append(
+            "Manual labels are not launch evidence until every clip has needsLabel=false, "
+            "reviewedByHuman=true, and required expected fields."
+        )
     return {
         "schemaVersion": "team-highlight-label-status-v1",
         "status": "complete" if incomplete_clips == 0 else "incomplete",
+        "launchEvidenceEligible": launch_evidence_eligible,
+        "warnings": warnings,
         "caseCount": len(case_statuses),
         "clipCount": total_clips,
         "completeClipCount": complete_clips,
@@ -196,6 +205,9 @@ def build_label_status(*, manifest: dict[str, Any], manifest_dir: Path) -> dict[
 
 def print_label_status(status_payload: dict[str, Any]) -> None:
     print(f"status={status_payload['status']}")
+    print(f"launchEvidenceEligible={str(status_payload.get('launchEvidenceEligible', False)).lower()}")
+    for warning in status_payload.get("warnings", []):
+        print(f"warning={warning}")
     print(f"cases={status_payload['caseCount']}")
     print(f"clips={status_payload['completeClipCount']} complete / {status_payload['clipCount']} total")
     if status_payload["missingFieldCounts"]:
