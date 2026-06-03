@@ -139,3 +139,20 @@ The installed TestFlight smoke blocker can be marked resolved only after:
 - The current readiness snapshot is updated with the passing smoke evidence.
 
 Until then, internal TestFlight readiness remains incomplete.
+
+## 2026-06-03 current branch proof before installed-device smoke
+
+Current branch tip before this handoff refresh was
+`cc2cac0 chore: clarify label review checkpoint copy`.
+Safe branch proof on that commit:
+
+- Cloud Edit Deploy Preflight run `26899359298`: `success`
+- `iOS Internal TestFlight Upload` codecheck run `26899359347`: `success`
+
+This proof only covers remote branch preflight/codecheck. Installed TestFlight
+smoke is still `unproven` until a trusted device installs the TestFlight build
+and records the full import -> cloud analysis -> AI Edit -> MP4 preview ->
+download/share/open-in path with non-secret evidence.
+
+Keep preserving unrelated local files. The current checkout still has untracked
+root Xcode project folders that must not be staged unless explicitly requested.
