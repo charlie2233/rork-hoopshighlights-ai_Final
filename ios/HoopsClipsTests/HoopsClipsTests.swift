@@ -677,6 +677,11 @@ struct HoopsClipsTests {
             "Your video will be ready soon",
             "ETA 2 minutes",
             "Uploading https://storage.example.test/upload/source.mp4",
+            "Processing",
+            "Queued",
+            "running",
+            "in_progress",
+            "pending",
             "Reading uploads/job_123/source.mp4",
             "Using R2 bucket credentials",
             "Presigned URL ready"

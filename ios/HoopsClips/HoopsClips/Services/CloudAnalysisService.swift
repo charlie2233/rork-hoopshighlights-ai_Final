@@ -85,6 +85,29 @@ struct CloudAnalysisService {
             return fallback
         }
 
+        let genericStage = normalized
+            .replacingOccurrences(of: "_", with: " ")
+            .replacingOccurrences(of: "-", with: " ")
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
+            .trimmingCharacters(in: .punctuationCharacters)
+        let genericStageMarkers = [
+            "created",
+            "queued",
+            "queueing",
+            "pending",
+            "processing",
+            "running",
+            "started",
+            "submitted",
+            "working",
+            "in progress",
+            "loading"
+        ]
+        guard !genericStageMarkers.contains(genericStage) else {
+            return fallback
+        }
+
         return clippedVisibleMessage(compact, maxCharacters: maxCharacters)
     }
 
