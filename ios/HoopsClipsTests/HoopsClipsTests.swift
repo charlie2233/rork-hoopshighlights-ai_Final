@@ -779,6 +779,10 @@ struct HoopsClipsTests {
                 == fallback
         )
         #expect(
+            CloudAnalysisService.safeBackendMessage("Authorization Bearer token was rejected upstream.", fallback: fallback)
+                == fallback
+        )
+        #expect(
             CloudAnalysisService.safeBackendMessage("Analysis should finish in 2 minutes.", fallback: fallback)
                 == fallback
         )
@@ -3267,6 +3271,9 @@ struct HoopsClipsTests {
             message: "Hang tight, your render will be ready soon with token abc123"
         )
         #expect(rawBackendError.errorDescription == "Cloud editing request failed.")
+
+        let credentialFallback = CloudEditError.friendlyBackendMessage(code: "unknown_backend_state", fallback: "Credential refresh failed for access_key abc123.")
+        #expect(credentialFallback == "Cloud editing request failed.")
 
         let timeoutFallback = CloudEditError.friendlyBackendMessage(code: "http_524", fallback: "Request timed out after 60 seconds")
         #expect(timeoutFallback == "Cloud editing timed out. Try again.")
