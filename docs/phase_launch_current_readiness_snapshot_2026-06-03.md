@@ -175,3 +175,17 @@ Cloud Edit Deploy Preflight run `26896716521` completed `success` on `a1ebc7f`.
 This refresh covers the current safe branch proof after import/history copy
 alignment. It does not close production cloud URL/secrets, human-reviewed label
 coverage, signed archive/TestFlight upload, or installed TestFlight smoke gates.
+
+## 2026-06-03 staging backend version probe
+
+Staging editing version probe returned HTTP `200` from
+`/v1/editing/version` with non-secret fields:
+
+- service: `hoopclips-editing`
+- backend model version: `editing-cloud-v1`
+- backend git SHA: `3eeb6f16d5f33ca2b9902169dfcc13e2cdc0ada7`
+
+This proves the staging version endpoint is reachable and reporting current
+editing service identity. It does not prove production cloud URLs/secrets,
+release deploy readiness, installed TestFlight smoke, or launch-grade label
+coverage.
