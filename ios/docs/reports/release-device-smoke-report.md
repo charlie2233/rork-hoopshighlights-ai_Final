@@ -1,7 +1,7 @@
 # Release Device Smoke Report
 
 ## Active snapshot (2026-06-03)
-- Branch: `codex/phase-launch-proof-next` (`9a86e99`)
+- Branch: `codex/phase-launch-proof-next` (`c5011b4`)
 - Focus: internal TestFlight/launch-readiness proof (staging + submission gates), not current public Release status.
 - Latest authoritative checks:
   - `python3 scripts/launch_backend_config_preflight.py --json` → `pass=85 warn=12 fail=0`.
@@ -16,7 +16,7 @@
       - `launch_label_case_team_001`: `24/24` incomplete
   - `python3 scripts/submission_readiness_preflight --json` → `pass=22 warn=4 fail=6`.
     - Failures include live DNS/route probe errors (`URLError`) and missing required environment inputs.
-    - The live report includes `expectedGitSha=5f2e5ffc23a5b07317c75b2d35eadf370fef83e8` and both route checks failing due DNS resolution in this environment.
+    - The live checks include `expectedGitSha` reported by probe tooling as `c5011b45e354c0dfe6cdad00268979886a941cbb`; both route checks fail due DNS resolution in this environment.
   - `python3 scripts/staging_version_probe.py --json` → `pass: fail`.
     - Diagnosis: `staging_version_unready` with both `worker` and `editing` route `URLError` failures.
 - Untracked root folders remain preserved and intentionally unstaged:
