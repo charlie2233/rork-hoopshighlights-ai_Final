@@ -580,7 +580,7 @@ private struct HistoryProjectDetailView: View {
             RorkSectionHeader(
                 title: "Playback",
                 icon: "play.rectangle.fill",
-                subtitle: "Preview the saved source or latest export"
+                subtitle: "Preview the source video or saved reel"
             )
 
             if let previewPlayer {
@@ -666,7 +666,7 @@ private struct HistoryProjectDetailView: View {
             .opacity(sourceURL == nil ? 0.5 : 1.0)
 
             Button {
-                startPreview(url: latestExportURL, title: "Latest Export")
+                startPreview(url: latestExportURL, title: "Saved Reel")
             } label: {
                 actionLabel(
                     title: "Play Export",

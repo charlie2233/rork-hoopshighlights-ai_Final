@@ -977,7 +977,7 @@ final class HighlightsViewModel {
         let success = await exportService.saveToPhotos(url: url)
         if success {
             showingSaveSuccess = true
-            persistCurrentProject(reason: .saveToPhotos, message: "Saved the latest export to Photos")
+            persistCurrentProject(reason: .saveToPhotos, message: "Saved reel to Photos")
         }
     }
 

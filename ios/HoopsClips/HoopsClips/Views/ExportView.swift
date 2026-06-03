@@ -676,7 +676,7 @@ struct ExportView: View {
                 RorkSectionHeader(
                     title: "Review & Share",
                     icon: "paperplane.fill",
-                    subtitle: "Preview the latest export before saving or sharing"
+                    subtitle: "Preview the saved reel before saving or sharing"
                 )
 
                 if exportAvailable {
@@ -733,10 +733,10 @@ struct ExportView: View {
                             .buttonStyle(.plain)
                             .padding(10)
                             .accessibilityLabel("Expand export preview")
-                            .accessibilityHint("Opens a larger preview of the latest exported reel.")
+                            .accessibilityHint("Opens a larger preview of the saved reel.")
                         }
 
-                        Text("Your latest export opens in review first. You can reopen it here anytime.")
+                        Text("Your saved reel opens in review first. You can reopen it here anytime.")
                             .font(.caption2)
                             .foregroundStyle(AppTheme.subtleText)
                     }
@@ -796,7 +796,7 @@ struct ExportView: View {
                     .sensoryFeedback(.impact(weight: .light), trigger: saveTrigger)
                     .accessibilityLabel("Save to Photos")
                     .accessibilityValue(exportAvailable ? "Ready" : "Export unavailable")
-                        .accessibilityHint("Saves the latest exported reel to your photo library.")
+                        .accessibilityHint("Saves the saved reel to Photos.")
                 }
             }
             .padding(16)
