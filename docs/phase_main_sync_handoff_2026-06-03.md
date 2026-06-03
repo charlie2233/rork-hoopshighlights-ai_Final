@@ -7,8 +7,8 @@ Record the current branch-to-main state before any `main` update so the launch-r
 ## Current Branch Evidence
 
 - Working branch: `codex/phase-launch-proof-next`
-- Latest pushed commit: `c8d64c9 chore: tighten readiness diagnostics before merge`
-- Remote sync state from the last inspection: branch was `0` commits behind `origin/main` and `25` commits ahead.
+- Latest pushed commit at this inspection: `832fd12 chore: align label review handoff copy`
+- Remote sync state from the last inspection: branch was `0` commits behind `origin/main` and `35` commits ahead.
 - Local dirty state at inspection time only included preserved untracked root Xcode folders:
   - `HoopsClips.xcodeproj/`
   - `HoopsHighlightsAI.xcodeproj/`
@@ -29,6 +29,12 @@ The launch branch contains code-side fixes for the latest observed main workflow
   - Root cause from logs: main expected `CURRENT_PROJECT_VERSION=11`, while the current internal staging build is `14`.
   - Branch status: fixed on `codex/phase-launch-proof-next`; not proven on `main` until landed and rerun.
 
+The branch also has successful dispatched workflow evidence, but not at the current tip:
+
+- `Cloud Edit Deploy Preflight` run `26860674510`: success on `bc37b0e`.
+- `iOS Internal TestFlight Upload` runs `26860672121`, `26860897604`, and `26861050768`: success on `bc37b0e`.
+- Current branch tip is `832fd12`, so those runs are positive evidence for the branch direction but are stale for current-tip or post-merge launch proof.
+
 ## Safe Main-Sync Gate
 
 Before updating `main`, confirm all of the following:
@@ -37,6 +43,7 @@ Before updating `main`, confirm all of the following:
 - `git status --short --branch` shows no tracked dirty files and only the known unrelated untracked root Xcode folders.
 - `git rev-list --left-right --count origin/main...HEAD` still reports `0` behind.
 - The branch tip is still the intended launch-readiness commit.
+- Any required branch workflow proof has been rerun at the intended launch tip, or the operator accepts that the latest successful branch runs are stale to `832fd12`.
 - The operator explicitly approves updating `main`.
 
 If all checks pass and approval is explicit, the intended next action is a fast-forward style main update followed by rerunning the failed main workflows. Do not force-push `main`.

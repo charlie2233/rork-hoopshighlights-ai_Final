@@ -2,7 +2,8 @@
 
 Branch: `codex/phase-launch-proof-next`
 Live preflight evidence commit: `3bf34f7`
-Latest branch review before this cleanup: `8726dfc`
+Latest branch tip checked after this cleanup: `832fd12`
+Branch-to-main state at this check: `0` behind `origin/main`, `35` ahead.
 
 ## Preflight Verification Run
 
@@ -41,7 +42,13 @@ Latest branch review before this cleanup: `8726dfc`
    - Root cause observed from logs: main expected `CURRENT_PROJECT_VERSION=11`, while current internal staging build is `14`.
    - This branch already aligns the workflow metadata check, preflight constant, verify script, and Xcode project build number to `14`, but main must receive the branch and rerun before this blocker can be marked closed.
 
-5. **Secret-gated deploy preflight**
+5. **Current-tip branch workflow freshness**
+   - Live GitHub evidence found successful branch-dispatched runs on `bc37b0e`, not on the current tip `832fd12`.
+   - `Cloud Edit Deploy Preflight` run `26860674510`: success on `bc37b0e`.
+   - `iOS Internal TestFlight Upload` runs `26860672121`, `26860897604`, and `26861050768`: success on `bc37b0e`.
+   - These runs are useful branch evidence, but current-tip launch proof still requires rerunning the workflows after landing the latest label/evidence-safety commits.
+
+6. **Secret-gated deploy preflight**
    - The secret-gated deploy job is still not launch-proven: `status=completed`, `conclusion=skipped`.
    - The preflight recommends `operation=credential-check` while repairing provider credentials, then `operation=preflight` or `operation=deploy`.
 
@@ -67,5 +74,6 @@ Latest branch review before this cleanup: `8726dfc`
 - Finish manual human review to produce a launch-grade label report (`artifacts/team_highlight_accuracy_report.json`) then rerun submission readiness.
 - Deploy current editing source so direct editing `/version` reports the current git SHA.
 - Land this branch on main, then rerun failed main workflows, including secret-gated `Cloud Edit Deploy Preflight` and `iOS Internal TestFlight Upload`.
+- Rerun branch or post-merge workflows at the current launch tip before treating CI evidence as fresh.
 - Install TestFlight internal build on trusted device and complete the full import -> analysis -> export -> render -> revision -> share smoke with screenshot evidence.
 - Keep production/public cloud cutover blocked until production auth, storage, observability, rollback, label evidence, and installed TestFlight proof are complete.

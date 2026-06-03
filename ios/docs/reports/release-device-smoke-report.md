@@ -1,7 +1,7 @@
 # Release Device Smoke Report
 
 ## Active snapshot (2026-06-03)
-- Branch: `codex/phase-launch-proof-next` (`8726dfc` before this cleanup)
+- Branch: `codex/phase-launch-proof-next` (`832fd12` after label-review handoff cleanup)
 - Focus: internal TestFlight/launch-readiness proof (staging + submission gates), not current public Release status.
 - Latest authoritative checks:
   - `python3 scripts/launch_backend_config_preflight.py --json` -> `pass=85 warn=12 fail=0`.
@@ -17,6 +17,10 @@
       - `launch_label_case_all_001`: `30/30` incomplete
       - `launch_label_case_team_001`: `24/24` incomplete
     - The `temp_mapped_draft` accuracy report is rejected as draft evidence and does not count toward launch readiness.
+  - Latest branch-dispatched workflow evidence is positive but stale to the current tip:
+    - `Cloud Edit Deploy Preflight` run `26860674510`: success on `bc37b0e`.
+    - `iOS Internal TestFlight Upload` runs `26860672121`, `26860897604`, and `26861050768`: success on `bc37b0e`.
+    - Current branch tip is `832fd12`, so rerun branch workflows after any launch-meaningful code/config change before treating them as current-tip proof.
   - Latest main workflow failures are stale relative to this branch but still real until main is updated and rerun:
     - `Cloud Edit Deploy Preflight` run `26766947519`: main expected quick-scan max candidate clips `160`; this branch expects the current default `320`.
     - `iOS Internal TestFlight Upload` run `26766947563`: main expected build `11`; this branch aligns internal staging build `14`.
@@ -26,7 +30,7 @@
 
 ## Automated validation status at snapshot
 - Backend configuration posture remains clean for staging intent (`pass=85`, no hard fails).
-- Submission readiness is still blocked by label evidence, installed TestFlight smoke, stale direct editing deploy SHA, failed main workflow state, and skipped secret-gated deploy proof.
+- Submission readiness is still blocked by label evidence, installed TestFlight smoke, stale direct editing deploy SHA, failed main workflow state, skipped secret-gated deploy proof, and current-tip workflow freshness.
 - CI/main branch workflow logs show code-side failures that are fixed on this branch, but they must be proven on main after landing.
 - Known known blockers from live evidence:
   - Secret-gated deploy workflow job remains `skipped`, so provider credential readiness is not launch-proven.
