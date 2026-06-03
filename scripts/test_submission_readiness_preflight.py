@@ -177,6 +177,8 @@ class SubmissionReadinessPreflightTests(unittest.TestCase):
         self.assertIn("Labeling bundle looks stale or incomplete", detail)
         self.assertIn("video scrub shortcuts", detail)
         self.assertIn("scrub shortcut instruction", detail)
+        self.assertIn("GPT draft data-entry-only warning", detail)
+        self.assertIn("GPT draft human-review evidence warning", detail)
         self.assertIn("prepare_team_highlight_labeling_bundle.py", detail)
         self.assertIn("team_highlight_accuracy_manifest.json", detail)
         self.assertIn("--video-path", detail)
@@ -1340,7 +1342,11 @@ def create_labeling_bundle_fixture(
         encoding="utf-8",
     )
     (bundle_dir / "next_steps.md").write_text(
-        "Use `Next close review` first\n`J/L` scrub back/forward\nDownload launch-ready labels\n",
+        "Use `Next close review` first\n"
+        "`J/L` scrub back/forward\n"
+        "Use `P` to copy the HoopClips/GPT draft into fields as data-entry help only; "
+        "it is not evidence until you watch the video and mark reviewed.\n"
+        "Download launch-ready labels\n",
         encoding="utf-8",
     )
 

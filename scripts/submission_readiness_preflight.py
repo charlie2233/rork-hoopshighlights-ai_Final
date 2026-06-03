@@ -152,6 +152,8 @@ LABELING_BUNDLE_REVIEW_PAGE_MARKERS = (
 LABELING_BUNDLE_NEXT_STEPS_MARKERS = (
     ("Use `Next close review` first", "close-review first instruction"),
     ("`J/L` scrub back/forward", "scrub shortcut instruction"),
+    ("data-entry help only", "GPT draft data-entry-only warning"),
+    ("not evidence until you watch the video and mark reviewed", "GPT draft human-review evidence warning"),
     ("Download launch-ready labels", "launch-ready label export instruction"),
 )
 PLACEHOLDER_VALUES = {"", "YOUR_TEAM_ID", "$(HOOPS_DEVELOPMENT_TEAM)"}
