@@ -177,9 +177,9 @@ def build_eval_payload(
 
 
 def validate_manual_label_row(label: dict[str, Any]) -> None:
-    if "needsLabel" not in label:
-        return
     label_id = string_or_none(label.get("labelId") or label.get("id") or label.get("predictionClipId")) or "unknown"
+    if "needsLabel" not in label:
+        raise ValueError(f"Manual label row {label_id} is missing needsLabel=false; finish labeling before building eval payload.")
     if label.get("needsLabel") is not False:
         raise ValueError(f"Manual label row {label_id} still has needsLabel=true; finish labeling before building eval payload.")
 
@@ -195,7 +195,7 @@ def validate_manual_label_row(label: dict[str, Any]) -> None:
 
 def manual_label_completion_missing_fields(label: dict[str, Any]) -> list[str]:
     missing: list[str] = []
-    if "needsLabel" in label and label.get("needsLabel") is not False:
+    if label.get("needsLabel") is not False:
         missing.append("needsLabel=false")
     if label.get("needsLabel") is False and bool_or_none(label.get("reviewedByHuman")) is not True:
         missing.append("reviewedByHuman=true")

@@ -71,12 +71,16 @@ class BuildTeamHighlightEvalPayloadTests(unittest.TestCase):
                         "labelId": "made_001",
                         "start": 10.1,
                         "end": 14.1,
+                        "needsLabel": False,
+                        "reviewedByHuman": True,
                         "expected": {"teamId": "team_dark", "isHighlight": True, "eventType": "made_three", "outcome": "made"},
                     },
                     {
                         "labelId": "steal_001",
                         "start": 30.1,
                         "end": 33.1,
+                        "needsLabel": False,
+                        "reviewedByHuman": True,
                         "expected": {"teamId": "team_dark", "isHighlight": True, "eventType": "steal", "outcome": "steal"},
                     },
                 ],
@@ -149,6 +153,8 @@ class BuildTeamHighlightEvalPayloadTests(unittest.TestCase):
                         "predictionIndex": 0,
                         "start": 10.0,
                         "end": 14.0,
+                        "needsLabel": False,
+                        "reviewedByHuman": True,
                         "expected": {"teamId": "team_dark", "isHighlight": True, "eventType": "made_shot", "outcome": "made"},
                     }
                 ],
@@ -168,14 +174,16 @@ class BuildTeamHighlightEvalPayloadTests(unittest.TestCase):
                 labels={
                     "selectedTeamId": "team_dark",
                     "clips": [
-                        {
-                            "labelId": "made_001",
-                            "predictionIndex": 0,
-                            "predictionClipId": "clip_old_001",
-                            "start": 10.0,
-                            "end": 14.0,
-                            "expected": {"teamId": "team_dark", "isHighlight": True, "eventType": "made_shot", "outcome": "made"},
-                        }
+                    {
+                        "labelId": "made_001",
+                        "predictionIndex": 0,
+                        "predictionClipId": "clip_old_001",
+                        "start": 10.0,
+                        "end": 14.0,
+                        "needsLabel": False,
+                        "reviewedByHuman": True,
+                        "expected": {"teamId": "team_dark", "isHighlight": True, "eventType": "made_shot", "outcome": "made"},
+                    }
                     ],
                 },
             )
@@ -191,14 +199,16 @@ class BuildTeamHighlightEvalPayloadTests(unittest.TestCase):
                 labels={
                     "selectedTeamId": "team_dark",
                     "clips": [
-                        {
-                            "labelId": "made_001",
-                            "predictionIndex": 0,
-                            "predictionClipId": "clip_made_001",
-                            "start": 40.0,
-                            "end": 44.0,
-                            "expected": {"teamId": "team_dark", "isHighlight": True, "eventType": "made_shot", "outcome": "made"},
-                        }
+                    {
+                        "labelId": "made_001",
+                        "predictionIndex": 0,
+                        "predictionClipId": "clip_made_001",
+                        "start": 40.0,
+                        "end": 44.0,
+                        "needsLabel": False,
+                        "reviewedByHuman": True,
+                        "expected": {"teamId": "team_dark", "isHighlight": True, "eventType": "made_shot", "outcome": "made"},
+                    }
                     ],
                 },
             )
@@ -275,6 +285,23 @@ class BuildTeamHighlightEvalPayloadTests(unittest.TestCase):
 
         self.assertEqual(payload["cases"][0]["clips"][0]["expected"]["teamId"], "team_dark")
         self.assertTrue(payload["cases"][0]["clips"][0]["expected"]["isHighlight"])
+
+    def test_build_payload_rejects_legacy_rows_without_explicit_human_review_fields(self) -> None:
+        with self.assertRaisesRegex(ValueError, "missing needsLabel=false"):
+            build_eval_payload(
+                analysis={"jobId": "job_real_001", "results": {"clips": [{**analysis_clip(10.0, 14.0, "Made Shot", True, "team_dark", 0.94), "id": "clip_made_001"}]}},
+                labels={
+                    "caseId": "legacy_case",
+                    "selectedTeamId": "team_dark",
+                    "clips": [
+                        {
+                            "labelId": "legacy_001",
+                            "predictionClipId": "clip_made_001",
+                            "expected": {"teamId": "team_dark", "isHighlight": True, "eventType": "made_shot", "outcome": "made"},
+                        }
+                    ],
+                },
+            )
 
     def test_build_payload_requires_outcome_for_reviewed_launch_labels(self) -> None:
         labels = build_label_template(
