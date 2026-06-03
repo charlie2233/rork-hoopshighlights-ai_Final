@@ -1,7 +1,7 @@
 # Release Device Smoke Report
 
 ## Active snapshot (2026-06-03)
-- Branch: `codex/phase-launch-proof-next` (`eb3c868`)
+- Branch: `codex/phase-launch-proof-next` (`5f2e5ff`)
 - Focus: internal TestFlight/launch-readiness proof (staging + submission gates), not current public Release status.
 - Latest authoritative checks:
   - `python3 scripts/launch_backend_config_preflight.py --json` → `pass=85 warn=12 fail=0`.
@@ -9,10 +9,12 @@
     - `artifacts/launch_readiness/submission_readiness_skip_live_2026-06-03.json`
     - `artifacts/launch_readiness/submission_readiness_live_2026-06-03.json`
   - `python3 scripts/submission_readiness_preflight.py --skip-live --json` → `pass=22 warn=6 fail=4`.
-    - Fails: missing `CLOUDFLARE_API_TOKEN`, `GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_DEPLOY_SERVICE_ACCOUNT`, `GCP_PROJECT_ID`, `GCP_REGION`; missing iOS upload inputs and unreviewed accuracy bundle.
+    - Fails: missing `CLOUDFLARE_API_TOKEN`, `GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_DEPLOY_SERVICE_ACCOUNT`, `GCP_PROJECT_ID`, `GCP_REGION`; missing iOS upload inputs; and unreviewed accuracy bundle.
   - `python3 scripts/submission_readiness_preflight --json` → `pass=22 warn=4 fail=6`.
     - Failures include live DNS/route probe errors (`URLError`) and missing required environment inputs.
-  - `python3 scripts/staging_version_probe.py --json` → worker and editing version probes failed with `Probe failed: URLError` in this environment.
+    - The live report includes `expectedGitSha=5f2e5ffc23a5b07317c75b2d35eadf370fef83e8` and both route checks failing due DNS resolution in this environment.
+  - `python3 scripts/staging_version_probe.py --json` → `pass: fail`.
+    - Diagnosis: `staging_version_unready` with both `worker` and `editing` route `URLError` failures.
 - Untracked root folders remain preserved and intentionally unstaged:
   - `HoopsClips.xcodeproj/`
   - `HoopsHighlightsAI.xcodeproj/`
@@ -26,6 +28,7 @@
   - Missing iOS upload inputs for `ios-testflight-upload`.
   - Connected iPhone unavailable in this environment for physical smoke tests.
   - Live version probes are unreachable from this environment (`URLError`).
+- The live run checks now also report an expected staging git SHA of `5f2e5ffc23a5b07317c75b2d35eadf370fef83e8` but cannot verify current route response payloads due DNS resolution failure.
 
 ## Manual real-device validation required
 - Install internal TestFlight build on trusted, trusted iPhone.
