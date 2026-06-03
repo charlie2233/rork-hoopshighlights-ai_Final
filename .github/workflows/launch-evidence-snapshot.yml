@@ -1,0 +1,64 @@
+name: Launch Evidence Snapshot
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: Branch to inspect for launch workflow proof
+        required: false
+        default: codex/phase-launch-proof-next
+      label_status_path:
+        description: Label status JSON path
+        required: false
+        default: artifacts/team_highlight_labeling_bundle/label_status.json
+  pull_request:
+    paths:
+      - .github/workflows/launch-evidence-snapshot.yml
+      - scripts/collect_launch_evidence_snapshot.py
+      - docs/phase_launch_evidence_refresh_runbook_2026-06-03.md
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  snapshot:
+    name: Collect secret-safe launch evidence snapshot
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Collect launch evidence snapshot
+        run: |
+          python3 scripts/collect_launch_evidence_snapshot.py \
+            --branch "${{ github.event.inputs.branch || 'codex/phase-launch-proof-next' }}" \
+            --label-status "${{ github.event.inputs.label_status_path || 'artifacts/team_highlight_labeling_bundle/label_status.json' }}" \
+            --output artifacts/launch_readiness/launch-evidence-snapshot.json
+
+      - name: Print non-secret blocker summary
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          snapshot = json.loads(Path('artifacts/launch_readiness/launch-evidence-snapshot.json').read_text())
+          print('head=' + str(snapshot['git'].get('headShort')))
+          print('branch=' + str(snapshot.get('branch')))
+          print('currentHeadHasSupportingProof=' + str(snapshot['supportingBranchProof'].get('currentHeadHasSupportingProof')))
+          print('missingProductionVariables=' + ','.join(snapshot['productionVariables'].get('missingRequired', [])))
+          print('releaseSecretsPreflightPassing=' + str(snapshot['releaseSecretsPreflight'].get('isPassing')))
+          print('labelStatus=' + str(snapshot['labelStatus'].get('status')))
+          print('labelComplete=' + str(snapshot['labelStatus'].get('completeClipCount')) + '/' + str(snapshot['labelStatus'].get('clipCount')))
+          print('launchEvidenceEligible=' + str(snapshot['labelStatus'].get('launchEvidenceEligible')))
+          PY
+
+      - name: Upload launch evidence snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: launch-evidence-snapshot
+          path: artifacts/launch_readiness/launch-evidence-snapshot.json
+          if-no-files-found: error
+          retention-days: 14
