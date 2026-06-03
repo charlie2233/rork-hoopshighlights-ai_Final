@@ -284,6 +284,7 @@ class BuildTeamHighlightEvalPayloadTests(unittest.TestCase):
             selected_team_id="team_dark",
         )
         labels["clips"][0]["needsLabel"] = False
+        labels["clips"][0]["reviewedByHuman"] = True
         labels["clips"][0]["expected"] = {
             "teamId": "team_dark",
             "isHighlight": True,

@@ -199,11 +199,14 @@ class BuildLaunchTeamAccuracyReportTests(unittest.TestCase):
         self.assertEqual(status["status"], "incomplete")
         self.assertEqual(status["caseCount"], 2)
         self.assertEqual(status["clipCount"], 3)
-        self.assertEqual(status["completeClipCount"], 0)
-        self.assertEqual(status["incompleteClipCount"], 3)
-        self.assertEqual(status["missingFieldCounts"]["needsLabel=false"], 2)
-        self.assertEqual(status["missingFieldCounts"]["reviewedByHuman=true"], 2)
+        self.assertEqual(status["completeClipCount"], 1)
+        self.assertEqual(status["incompleteClipCount"], 2)
+        self.assertEqual(status["missingFieldCounts"]["needsLabel=false"], 1)
+        self.assertEqual(status["missingFieldCounts"]["reviewedByHuman=true"], 0)
         self.assertEqual(status["missingFieldCounts"]["expected.outcome"], 2)
+        self.assertEqual(status["missingFieldCounts"]["expected.teamId"], 1)
+        self.assertEqual(status["missingFieldCounts"]["expected.isHighlight"], 1)
+        self.assertEqual(status["missingFieldCounts"]["expected.eventType"], 1)
         self.assertEqual(status["cases"][0]["incompleteExamples"][0]["labelId"], "needs_review")
 
 
