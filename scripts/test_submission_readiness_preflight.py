@@ -6,6 +6,7 @@ import unittest
 from dataclasses import asdict
 from pathlib import Path
 from types import SimpleNamespace
+from urllib.error import URLError
 from unittest.mock import patch
 
 from scripts.evaluate_team_highlight_accuracy import AccuracyThresholds
@@ -26,6 +27,7 @@ from scripts.submission_readiness_preflight import (
     check_ios_signing,
     check_ios_upload_inputs,
     check_live_editing_version,
+    check_live_worker_version,
     check_secret_gated_deploy_preflight,
     check_team_highlight_accuracy_report,
     has_failures,
@@ -1081,6 +1083,51 @@ Current device information:
             self.assertEqual(len(failures), 1)
             self.assertEqual(failures[0].check, "live editing git sha")
             self.assertIn("does not match", failures[0].detail)
+
+    def test_live_editing_version_includes_network_error_detail_on_urLError(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            collector = Collector()
+
+            with patch(
+                "scripts.submission_readiness_preflight.fetch_version_payload",
+                return_value=URLError("Name or service not known"),
+            ):
+                check_live_editing_version(
+                    "https://editing.example.test/version",
+                    collector,
+                    repo_root=repo_root,
+                    skip_live=False,
+                    timeout_seconds=1.0,
+                )
+
+            failures = [finding for finding in collector.findings if finding.status == "fail"]
+            self.assertEqual(len(failures), 1)
+            self.assertEqual(failures[0].check, "live editing version route")
+            self.assertIn("Probe failed: URLError", failures[0].detail)
+            self.assertIn("Name or service not known", failures[0].detail)
+            self.assertIn("authorized/networked environment", failures[0].detail)
+
+    def test_live_worker_version_includes_network_error_detail_on_urLError(self) -> None:
+        collector = Collector()
+
+        with patch(
+            "scripts.submission_readiness_preflight.fetch_version_payload",
+            return_value=URLError("certificate verify failed"),
+        ):
+            check_live_worker_version(
+                "https://worker.example.test",
+                collector,
+                skip_live=False,
+                timeout_seconds=1.0,
+            )
+
+        failures = [finding for finding in collector.findings if finding.status == "fail"]
+        self.assertEqual(len(failures), 1)
+        self.assertEqual(failures[0].check, "live worker version route")
+        self.assertIn("Probe failed: URLError", failures[0].detail)
+        self.assertIn("certificate verify failed", failures[0].detail)
+        self.assertIn("authorized/networked environment", failures[0].detail)
 
     def test_live_editing_version_passes_when_only_docs_changed_after_deploy(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

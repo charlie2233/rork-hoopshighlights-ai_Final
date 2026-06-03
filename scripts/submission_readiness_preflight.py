@@ -986,11 +986,21 @@ def check_live_worker_version(worker_base_url: str, collector: Collector, *, ski
     if isinstance(result, HTTPError):
         result.close()
         error = result
-        collector.fail("live worker version route", endpoint_label, f"Returned HTTP {error.code}; staging Worker must proxy editing /version before submission.")
+        reason = _safe_probe_error_detail(error)
+        detail = f"Returned HTTP {error.code}"
+        if reason:
+            detail += f" ({reason})"
+        detail += "; staging Worker must proxy editing /version before submission."
+        collector.fail("live worker version route", endpoint_label, detail)
         return
     if isinstance(result, (OSError, URLError)):
         error = result
-        collector.fail("live worker version route", endpoint_label, f"Probe failed: {type(error).__name__}.")
+        detail = _safe_probe_error_detail(error)
+        hint = "Retry this check from an authorized/networked environment and confirm staging Worker deploy is current."
+        if detail:
+            collector.fail("live worker version route", endpoint_label, f"Probe failed: {type(error).__name__} ({detail}). {hint}")
+        else:
+            collector.fail("live worker version route", endpoint_label, f"Probe failed: {type(error).__name__}. {hint}")
         return
 
     status_code, body = result
@@ -1027,11 +1037,21 @@ def check_live_editing_version(editing_version_url: str, collector: Collector, *
     if isinstance(result, HTTPError):
         result.close()
         error = result
-        collector.fail("live editing version route", endpoint_label, f"Returned HTTP {error.code}; staging editing service must expose /version before submission.")
+        reason = _safe_probe_error_detail(error)
+        detail = f"Returned HTTP {error.code}"
+        if reason:
+            detail += f" ({reason})"
+        detail += "; staging editing service must expose /version before submission."
+        collector.fail("live editing version route", endpoint_label, detail)
         return
     if isinstance(result, (OSError, URLError)):
         error = result
-        collector.fail("live editing version route", endpoint_label, f"Probe failed: {type(error).__name__}.")
+        detail = _safe_probe_error_detail(error)
+        hint = "Retry this check from an authorized/networked environment and verify Cloud Run/Wrangler routing before re-running preflight."
+        if detail:
+            collector.fail("live editing version route", endpoint_label, f"Probe failed: {type(error).__name__} ({detail}). {hint}")
+        else:
+            collector.fail("live editing version route", endpoint_label, f"Probe failed: {type(error).__name__}. {hint}")
         return
 
     status_code, body = result
@@ -1092,6 +1112,26 @@ def fetch_version_payload(endpoint: str, *, timeout_seconds: float) -> tuple[int
         return error
     except (OSError, URLError) as error:
         return error
+
+
+def _safe_probe_error_detail(error: Exception) -> str:
+    reason = getattr(error, "reason", None)
+    if reason is None and isinstance(error, OSError):
+        reason = getattr(error, "strerror", None)
+    if isinstance(reason, str):
+        return reason.strip()
+    if isinstance(reason, Exception):
+        reason_message = str(reason).strip()
+        return reason_message
+    if isinstance(reason, tuple):
+        reason_message = " ".join(str(item).strip() for item in reason if str(item).strip())
+        if reason_message:
+            return reason_message
+    if isinstance(error, OSError) and error.args:
+        reason_message = " ".join(str(item).strip() for item in error.args if str(item).strip())
+        if reason_message:
+            return reason_message
+    return ""
 
 
 def check_ci_deploy_inputs(collector: Collector) -> None:
