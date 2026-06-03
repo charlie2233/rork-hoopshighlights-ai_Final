@@ -705,6 +705,18 @@ def render_progress_summary(payload: dict[str, Any]) -> str:
         '<p class="review-order"><strong>Review order:</strong> start with Close review clips, '
         'then Standard review, then Quick checks. Quick checks still need the video watched before marking reviewed.</p>'
     )
+    launch_checklist = (
+        '<div class="launch-checklist">'
+        '<h3>Launch evidence checklist</h3>'
+        f'<p><strong>{reviewed}</strong> / {total} clips reviewed. <strong>{remaining}</strong> clips remain.</p>'
+        '<ul>'
+        '<li>Watch the source video before marking a clip reviewed.</li>'
+        '<li>Fill expected.teamId, expected.isHighlight, expected.eventType, and expected.outcome.</li>'
+        '<li>Each launch clip must save as needsLabel=false and reviewedByHuman=true.</li>'
+        '<li>GPT draft fields and progress checkpoints are data-entry help only, not launch evidence.</li>'
+        '</ul>'
+        '</div>'
+    )
     return "\n".join(
         [
             '<section class="panel summary-panel">',
@@ -713,6 +725,7 @@ def render_progress_summary(payload: dict[str, Any]) -> str:
             "<h2>Label Progress</h2>",
             f'<p id="overall-progress"><strong>{reviewed}</strong> / {total} clips reviewed. {remaining} still need labels.</p>',
             '<p class="lede">A clip is complete when it is marked reviewed and has expected team, highlight, event, and outcome fields filled.</p>',
+            launch_checklist,
             draft_line,
             (
                 '<p class="shortcut-strip">'
