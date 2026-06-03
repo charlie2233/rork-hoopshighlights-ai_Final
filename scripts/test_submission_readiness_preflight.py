@@ -638,7 +638,7 @@ Current device information:
         self.assertFalse(has_failures(collector.findings))
         self.assertTrue(all("no workflow-relevant files changed afterward" in finding.detail for finding in collector.findings))
 
-    def test_github_workflow_runs_fail_cloud_preflight_when_launch_smoke_script_changed(self) -> None:
+    def test_github_workflow_runs_fail_cloud_preflight_when_launch_script_changed(self) -> None:
         payload = [
             {
                 "workflowName": "iOS Internal TestFlight Upload",
@@ -661,7 +661,7 @@ Current device information:
             if command[:3] == ["gh", "run", "list"]:
                 return SimpleNamespace(returncode=0, stdout=json.dumps(payload))
             if command[:3] == ["git", "diff", "--name-only"]:
-                return SimpleNamespace(returncode=0, stdout="scripts/worker_team_scan_smoke.py\n")
+                return SimpleNamespace(returncode=0, stdout="scripts/build_launch_team_accuracy_report.py\n")
             return SimpleNamespace(returncode=1, stdout="")
 
         with patch(
@@ -1354,6 +1354,10 @@ def create_labeling_bundle_fixture(
             "clipCount": clip_count,
             "completeClipCount": complete_clip_count,
             "incompleteClipCount": incomplete_clip_count,
+            "missingFieldCounts": {
+                "needsLabel=false": incomplete_clip_count,
+                "reviewedByHuman=true": incomplete_clip_count,
+            },
         },
     )
     write_json(
