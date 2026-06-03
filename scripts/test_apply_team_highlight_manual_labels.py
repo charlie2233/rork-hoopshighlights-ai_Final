@@ -167,6 +167,7 @@ def label_payload(*, needs_label: bool) -> dict:
                 "labelId": "label_001",
                 "predictionClipId": "clip_001",
                 "needsLabel": needs_label,
+                "reviewedByHuman": True if not needs_label else None,
                 "expected": {
                     "teamId": "team_black",
                     "isHighlight": True,

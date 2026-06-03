@@ -15,7 +15,13 @@ if str(REPO_ROOT_FOR_IMPORTS) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT_FOR_IMPORTS))
 
 from scripts.build_launch_team_accuracy_report import manifest_case_entry
-from scripts.build_team_highlight_eval_payload import extract_analysis_result, load_json, number_or_none, string_or_none
+from scripts.build_team_highlight_eval_payload import (
+    bool_or_none,
+    extract_analysis_result,
+    load_json,
+    number_or_none,
+    string_or_none,
+)
 
 
 FORBIDDEN_REVIEW_KEYS = {
@@ -453,6 +459,7 @@ def review_clip_payload(index: int, clip: dict[str, Any]) -> dict[str, Any]:
         "end": end,
         "eventCenter": event_center,
         "needsLabel": clip.get("needsLabel") is not False,
+        "reviewedByHuman": bool_or_none(clip.get("reviewedByHuman")),
         "predicted": sanitize_for_review(predicted),
         "expected": sanitize_for_review(expected),
         "labelingNotes": string_or_none(clip.get("labelingNotes")) or "",
@@ -1328,7 +1335,9 @@ function updateClip(caseIndex, clipIndex) {
   const expectedEvent = card.querySelector(".expected-event").value.trim();
   const expectedOutcome = card.querySelector(".expected-outcome").value.trim();
   const expectedHighlight = boolFromSelect(card.querySelector(".expected-highlight").value);
-  clip.needsLabel = !card.querySelector(".reviewed").checked;
+  const reviewed = !!card.querySelector(".reviewed").checked;
+  clip.needsLabel = !reviewed;
+  clip.reviewedByHuman = reviewed;
   clip.expected = {
     teamId: expectedTeam || null,
     isHighlight: expectedHighlight,
@@ -1519,7 +1528,8 @@ function applyClipPayloadToCard(caseIndex, clipIndex, clipPayload) {
   if (!card || !clipPayload) return;
   const expected = clipPayload.expected || {};
   const highlightValue = expected.isHighlight === true ? "true" : expected.isHighlight === false ? "false" : "unknown";
-  card.querySelector(".reviewed").checked = clipPayload.needsLabel === false;
+  const reviewed = clipPayload.needsLabel === false && clipPayload.reviewedByHuman === true;
+  card.querySelector(".reviewed").checked = reviewed;
   setSelectValue(card.querySelector(".expected-team"), expected.teamId);
   setSelectValue(card.querySelector(".expected-highlight"), highlightValue);
   setSelectValue(card.querySelector(".expected-event"), expected.eventType);
@@ -1554,6 +1564,7 @@ function applyDraftClipToCard(caseIndex, clipIndex, draftClip, humanReviewRequir
   };
   currentClip.labelingNotes = draftClip.labelingNotes || currentClip.labelingNotes || "";
   currentClip.needsLabel = humanReviewRequired ? true : draftClip.needsLabel !== false;
+  currentClip.reviewedByHuman = humanReviewRequired ? false : draftClip.reviewedByHuman === true;
   applyClipPayloadToCard(caseIndex, clipIndex, currentClip);
   return true;
 }

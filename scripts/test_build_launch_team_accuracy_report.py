@@ -163,6 +163,7 @@ class BuildLaunchTeamAccuracyReportTests(unittest.TestCase):
                         {
                             "labelId": "complete_negative",
                             "needsLabel": False,
+                            "reviewedByHuman": True,
                             "expected": {"teamId": "team_light", "isHighlight": "false", "eventType": "bad_window", "outcome": "bad_window"},
                         },
                     ],
@@ -177,6 +178,7 @@ class BuildLaunchTeamAccuracyReportTests(unittest.TestCase):
                         {
                             "labelId": "missing_outcome",
                             "needsLabel": False,
+                            "reviewedByHuman": True,
                             "expected": {"teamId": "team_dark", "isHighlight": True, "eventType": "steal"},
                         }
                     ],
@@ -197,9 +199,10 @@ class BuildLaunchTeamAccuracyReportTests(unittest.TestCase):
         self.assertEqual(status["status"], "incomplete")
         self.assertEqual(status["caseCount"], 2)
         self.assertEqual(status["clipCount"], 3)
-        self.assertEqual(status["completeClipCount"], 1)
-        self.assertEqual(status["incompleteClipCount"], 2)
-        self.assertEqual(status["missingFieldCounts"]["needsLabel=false"], 1)
+        self.assertEqual(status["completeClipCount"], 0)
+        self.assertEqual(status["incompleteClipCount"], 3)
+        self.assertEqual(status["missingFieldCounts"]["needsLabel=false"], 2)
+        self.assertEqual(status["missingFieldCounts"]["reviewedByHuman=true"], 2)
         self.assertEqual(status["missingFieldCounts"]["expected.outcome"], 2)
         self.assertEqual(status["cases"][0]["incompleteExamples"][0]["labelId"], "needs_review")
 

@@ -255,12 +255,13 @@ class BuildTeamHighlightEvalPayloadTests(unittest.TestCase):
             )
 
         labels["clips"][0]["needsLabel"] = False
-        with self.assertRaisesRegex(ValueError, "is incomplete"):
+        with self.assertRaisesRegex(ValueError, "reviewedByHuman"):
             build_eval_payload(
                 analysis={"jobId": "job_real_001", "results": {"clips": [{**analysis_clip(10.0, 14.0, "Made Shot", True, "team_dark", 0.94), "id": "clip_made_001"}]}},
                 labels=labels,
             )
 
+        labels["clips"][0]["reviewedByHuman"] = True
         labels["clips"][0]["expected"] = {
             "teamId": "team_dark",
             "isHighlight": True,
@@ -308,6 +309,7 @@ class BuildTeamHighlightEvalPayloadTests(unittest.TestCase):
                         "start": 10.0,
                         "end": 14.0,
                         "needsLabel": False,
+                        "reviewedByHuman": True,
                         "expected": {
                             "teamId": "team_dark",
                             "isHighlight": "false",

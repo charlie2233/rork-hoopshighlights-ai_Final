@@ -183,6 +183,9 @@ def validate_manual_label_row(label: dict[str, Any]) -> None:
     if label.get("needsLabel") is not False:
         raise ValueError(f"Manual label row {label_id} still has needsLabel=true; finish labeling before building eval payload.")
 
+    if bool_or_none(label.get("reviewedByHuman")) is not True:
+        raise ValueError(f"Manual label row {label_id} still has reviewedByHuman not set to true; finish human review before building eval payload.")
+
     missing = manual_label_expected_missing_fields(label)
     if missing == ["expected"]:
         raise ValueError(f"Manual label row {label_id} expected must be an object.")
@@ -194,6 +197,8 @@ def manual_label_completion_missing_fields(label: dict[str, Any]) -> list[str]:
     missing: list[str] = []
     if "needsLabel" in label and label.get("needsLabel") is not False:
         missing.append("needsLabel=false")
+    if label.get("needsLabel") is False and bool_or_none(label.get("reviewedByHuman")) is not True:
+        missing.append("reviewedByHuman=true")
     missing.extend(manual_label_expected_missing_fields(label))
     return missing
 
