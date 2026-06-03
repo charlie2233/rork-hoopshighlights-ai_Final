@@ -1736,6 +1736,10 @@ function updateProgress() {
     const incomplete = total - complete;
     readyButton.disabled = incomplete > 0;
     readyButton.textContent = incomplete > 0 ? `Finish ${incomplete} label${incomplete === 1 ? "" : "s"} first` : "Download launch-ready labels";
+    readyButton.title = incomplete > 0
+      ? `${incomplete} clip label${incomplete === 1 ? "" : "s"} still incomplete; checkpoint downloads are not launch evidence.`
+      : "All clips complete; download the final launch-ready label bundle.";
+    readyButton.setAttribute("aria-label", readyButton.title);
   }
   const checkpointButton = document.getElementById("download-checkpoint-button");
   if (checkpointButton) {
