@@ -7,7 +7,7 @@ complete.
 ## Branch state
 
 - Branch: `codex/phase-launch-proof-next`
-- HEAD: `1ea244c chore: clarify cloud render required copy`
+- HEAD: `f10c444 chore: sanitize cloud analysis required fallback`
 - Upstream: `origin/codex/phase-launch-proof-next`
 - Divergence after sync: `0 ahead / 0 behind`
 - Tracked working tree: clean
@@ -17,11 +17,23 @@ complete.
 
 ## Current safe CI evidence
 
-- `Cloud Edit Deploy Preflight` run `26888070725`: `success` on `1ea244c`
-- `iOS Internal TestFlight Upload` codecheck run `26888073178`: `success` on `1ea244c`
+- `Cloud Edit Deploy Preflight` run `26888827798`: `success` on `f10c444`
+- `iOS Internal TestFlight Upload` codecheck run `26888829900`: `success` on `f10c444`
 
 The signed archive/upload path was not retried in this snapshot because Apple
 signing remains externally blocked.
+
+## Current iOS control-surface guardrail
+
+The cloud-required analysis fallback path now uses a fixed safe message instead
+of appending raw backend or network error descriptions to visible status:
+
+`Cloud analysis is required. Try again when the cloud service is available.`
+
+Telemetry records the stable non-secret reason
+`cloud_required_no_local_fallback` for this path. This keeps the internal build
+from implying hidden local analysis while avoiding backend URL, token, or
+request-detail leakage in user-facing copy.
 
 ## Live backend evidence
 
