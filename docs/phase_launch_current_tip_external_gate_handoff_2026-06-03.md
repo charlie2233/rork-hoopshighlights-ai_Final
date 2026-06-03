@@ -58,3 +58,27 @@ It must not return private keys, base64 key material, API tokens, R2 credentials
 4. Trigger only the cheap deploy `credential-check` first when repairing provider credentials.
 5. Count workflow proof only when the run head SHA matches the expected launch-tip SHA.
 6. Keep public cloud cutover blocked until production auth, storage, observability, rollback, render reliability, label evidence, and installed TestFlight proof are all complete.
+
+## 2026-06-03 current-tip refresh
+
+Current branch tip before this handoff refresh was
+`56bb842 chore: clarify label review launch-ready gate`.
+
+Safe branch proof on that tip:
+
+- Cloud Edit Deploy Preflight run `26900042638`: `success`
+- `iOS Internal TestFlight Upload` codecheck run `26900042665`: `success`
+
+Current production environment variable check still visibly exposes only:
+
+- `HOOPS_PRIVACY_POLICY_URL=https://rork.com/privacy`
+- `HOOPS_TERMS_OF_SERVICE_URL=https://rork.com/terms`
+
+`HOOPS_CLOUD_ANALYSIS_BASE_URL` and `HOOPS_CLOUD_EDIT_BASE_URL` remain missing
+from the visible production environment. The latest `Release Secrets Preflight`
+run remains `26884199422`, completed `failure` on `86fdc33` at
+`2026-06-03T12:17:59Z`.
+
+This current-tip proof does not close production cloud URLs/secrets,
+human-reviewed accuracy labels, signed archive/TestFlight upload, or installed
+TestFlight smoke.
