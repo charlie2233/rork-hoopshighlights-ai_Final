@@ -7,7 +7,7 @@ complete.
 ## Branch state
 
 - Branch: `codex/phase-launch-proof-next`
-- HEAD: `9ca51ff docs: add launch accuracy reviewer handoff`
+- HEAD: `af158ea docs: add installed TestFlight smoke handoff`
 - Upstream: `origin/codex/phase-launch-proof-next`
 - Divergence after sync: `0 ahead / 0 behind`
 - Tracked working tree: clean
@@ -17,8 +17,8 @@ complete.
 
 ## Current safe CI evidence
 
-- `Cloud Edit Deploy Preflight` run `26890293836`: `success` on `9ca51ff`
-- `iOS Internal TestFlight Upload` codecheck run `26890296487`: `success` on `9ca51ff`
+- `Cloud Edit Deploy Preflight` run `26891158559`: `success` on `af158ea`
+- `iOS Internal TestFlight Upload` codecheck run `26891160972`: `success` on `af158ea`
 
 The signed archive/upload path was not retried in this snapshot because Apple
 signing remains externally blocked.
@@ -111,17 +111,19 @@ clip-selection quality.
 
 ## Current blocker handoffs
 
-Two current handoff docs now make the remaining external/human launch gates
+Three current handoff docs now make the remaining external/human launch gates
 actionable without claiming they are complete:
 
 - Production cloud URL handoff:
   `docs/phase_launch_production_cloud_urls_handoff_2026-06-03.md`
 - Human accuracy reviewer handoff:
   `docs/phase_launch_accuracy_reviewer_handoff_2026-06-03.md`
+- Installed TestFlight smoke handoff:
+  `docs/phase_launch_installed_testflight_smoke_handoff_2026-06-03.md`
 
 These documents provide secret-safe next steps for the release owner and human
-reviewer. They do not close the production URL gate or the human-reviewed
-accuracy gate by themselves.
+reviewer/tester. They do not close the production URL gate, the human-reviewed
+accuracy gate, or the installed TestFlight smoke gate by themselves.
 
 ## Remaining launch blockers
 
