@@ -3,9 +3,9 @@
 ## Current branch proof
 
 - branch: `codex/phase-launch-proof-next`
-- checked tip: `b565600`
-- Cloud Edit Deploy Preflight: `26905535632`, success, head `b565600`
-- iOS Internal TestFlight Upload codecheck: `26905535511`, success, head `b565600`
+- checked tip: `6e57c1c`
+- Cloud Edit Deploy Preflight: `26906797958`, success, head `6e57c1c`
+- iOS Internal TestFlight Upload codecheck: `26906797584`, success, head `6e57c1c`
 
 These green runs are current branch proof for safe preflight/codecheck coverage. They are not production cutover proof, not signed archive/upload proof, not installed TestFlight smoke proof, and not human-reviewed GPT accuracy proof.
 
@@ -13,9 +13,9 @@ These green runs are current branch proof for safe preflight/codecheck coverage.
 
 | Area | Evidence | Status |
 | --- | --- | --- |
-| Branch sync | `b565600` pushed to `origin/codex/phase-launch-proof-next` | proven current |
-| Cloud preflight/code path | run `26905535632` success | proven current for safe preflight only |
-| iOS no-secret codecheck | run `26905535511` success | proven current for codecheck only |
+| Branch sync | `6e57c1c` pushed to `origin/codex/phase-launch-proof-next` | proven current |
+| Cloud preflight/code path | run `26906797958` success | proven current for safe preflight only |
+| iOS no-secret codecheck | run `26906797584` success | proven current for codecheck only |
 | Label-review tooling | local review page generated at `artifacts/team_highlight_labeling_bundle/team_highlight_label_review.html` | tool ready locally, labels incomplete |
 | Secret-safe external handoff | `docs/phase_launch_release_owner_gate_handoff_2026-06-03.md` | handoff ready, gates open |
 
@@ -44,3 +44,15 @@ Do not claim internal TestFlight readiness until all of these are true on curren
 ## Guardrail
 
 Green codecheck, green dry-run deploy preflight, generated local label-review tools, or GPT draft labels are not launch evidence by themselves. They are supporting proof only.
+
+## 2026-06-03 current-tip refresh
+
+Current recheck on branch tip `6e57c1c` confirms:
+
+- Cloud Edit Deploy Preflight `26906797958`: success
+- iOS Internal TestFlight Upload codecheck `26906797584`: success
+- production variables still only show `HOOPS_PRIVACY_POLICY_URL` and `HOOPS_TERMS_OF_SERVICE_URL`
+- `HOOPS_CLOUD_ANALYSIS_BASE_URL` and `HOOPS_CLOUD_EDIT_BASE_URL` are still not visible in production variables
+- latest Release Secrets Preflight remains `26884199422`, failure, head `86fdc33`
+
+This refresh does not close production cloud URLs/secrets, signed archive/upload, installed TestFlight smoke, or human-reviewed labels.
