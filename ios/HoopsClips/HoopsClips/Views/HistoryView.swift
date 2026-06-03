@@ -854,7 +854,11 @@ private struct HistoryProjectDetailView: View {
     }
 
     private func presentShareSheet(for url: URL?) {
-        guard let url else { return }
+        guard let url else {
+            shareErrorMessage = "The latest export file is no longer available on this device."
+            showingShareError = true
+            return
+        }
         guard FileManager.default.fileExists(atPath: url.path) else {
             shareErrorMessage = "The latest export file is no longer available on this device."
             showingShareError = true
