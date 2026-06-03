@@ -2333,7 +2333,7 @@ struct AIEditView: View {
 
     private func revisionPlannerText(for response: CloudEditRevisionResponse) -> String? {
         if response.gptRevisionPatchApplied == true {
-            return "HoopClips planned this revision and approved it for rendering."
+            return "HoopClips planned this revision and is ready to render it."
         }
         switch response.gptRevisionPatchStatus {
         case "fallback":
@@ -2502,7 +2502,7 @@ struct AIEditView: View {
     private var renderStateGuidance: String {
         switch phase {
         case .planning:
-            return "Cloud is preparing your edit plan from approved clips."
+            return "Cloud is preparing your edit plan from selected clips."
         case .planReady:
             return "Plan is ready. Start render to create the finished video."
         case .renderRequested, .created, .queued:
@@ -2543,11 +2543,11 @@ struct AIEditView: View {
         case .planReady:
             return "Plan is ready. Next step: render the finished MP4."
         case .renderRequested, .created:
-            return "Sending approved plan to the cloud render service."
+            return "Sending the edit plan to the cloud render service."
         case .queued:
             return "Cloud edit is in queue. HoopClips refreshes from live job status."
         case .rendering:
-            return "HoopClips is producing the approved MP4."
+            return "HoopClips is producing the cloud MP4."
         case .rendered, .failed, .failedTimeout, .cancelled:
             return nil
         }
@@ -2570,7 +2570,7 @@ struct AIEditView: View {
         case "adding_watermark_outro":
             return "Plan rules, watermark, and outro are being validated."
         case "rendering_mp4":
-            return "HoopClips is rendering the approved MP4."
+            return "HoopClips is rendering the cloud MP4."
         case "finalizing_download":
             return "Preparing preview and share access."
         default:
