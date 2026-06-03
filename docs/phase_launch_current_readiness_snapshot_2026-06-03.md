@@ -7,7 +7,7 @@ complete.
 ## Branch state
 
 - Branch: `codex/phase-launch-proof-next`
-- HEAD: `b5c8c1e docs: link installed smoke handoff in snapshot`
+- HEAD: `a603891 docs: refresh release device smoke handoff`
 - Upstream: `origin/codex/phase-launch-proof-next`
 - Divergence after sync: `0 ahead / 0 behind`
 - Tracked working tree: clean
@@ -17,8 +17,8 @@ complete.
 
 ## Current safe CI evidence
 
-- `Cloud Edit Deploy Preflight` run `26891579001`: `success` on `b5c8c1e`
-- `iOS Internal TestFlight Upload` codecheck run `26891582650`: `success` on `b5c8c1e`
+- `Cloud Edit Deploy Preflight` run `26892400426`: `success` on `a603891`
+- `iOS Internal TestFlight Upload` codecheck run `26892403128`: `success` on `a603891`
 
 The signed archive/upload path was not retried in this snapshot because Apple
 signing remains externally blocked.
@@ -120,12 +120,16 @@ actionable without claiming they are complete:
   `docs/phase_launch_accuracy_reviewer_handoff_2026-06-03.md`
 - Installed TestFlight smoke handoff:
   `docs/phase_launch_installed_testflight_smoke_handoff_2026-06-03.md`
+- Release device smoke report:
+  `ios/docs/reports/release-device-smoke-report.md`
 - Apple signing/archive handoff:
   `docs/phase_launch_build15_signing_handoff_2026-06-03.md`
 
 These documents provide secret-safe next steps for the release owner and human
 reviewer/tester. They do not close the production URL gate, the human-reviewed
-accuracy gate, the installed TestFlight smoke gate, or the Apple signing/archive gate by themselves.
+accuracy gate, the installed TestFlight smoke gate, or the Apple signing/archive
+gate by themselves. The release device smoke report is the tester-facing place
+to record the real device result after it happens.
 
 ## Remaining launch blockers
 
