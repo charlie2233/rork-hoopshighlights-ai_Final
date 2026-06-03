@@ -7,7 +7,7 @@ complete.
 ## Branch state
 
 - Branch: `codex/phase-launch-proof-next`
-- HEAD: `a603891 docs: refresh release device smoke handoff`
+- HEAD: `d6bb77f chore: track launch handoff blocker docs`
 - Upstream: `origin/codex/phase-launch-proof-next`
 - Divergence after sync: `0 ahead / 0 behind`
 - Tracked working tree: clean
@@ -17,8 +17,8 @@ complete.
 
 ## Current safe CI evidence
 
-- `Cloud Edit Deploy Preflight` run `26892400426`: `success` on `a603891`
-- `iOS Internal TestFlight Upload` codecheck run `26892403128`: `success` on `a603891`
+- `Cloud Edit Deploy Preflight` run `26893331773`: `success` on `d6bb77f`
+- `iOS Internal TestFlight Upload` codecheck run `26893333825`: `success` on `d6bb77f`
 
 The signed archive/upload path was not retried in this snapshot because Apple
 signing remains externally blocked.
@@ -140,6 +140,14 @@ to record the real device result after it happens.
 - Apple signing and current signed archive/TestFlight upload remain externally
   blocked.
 - Installed TestFlight smoke on a trusted device remains unproven.
+
+## Readiness preflight blocker-doc coverage
+
+`scripts/submission_readiness_preflight.py` now tracks the current production
+cloud URL, human accuracy review, installed TestFlight smoke, and Apple
+signing/archive handoff docs as blocker evidence. This keeps the preflight red
+while those documents still contain their unresolved markers. It does not close
+any gate by itself.
 
 ## Current conclusion
 
