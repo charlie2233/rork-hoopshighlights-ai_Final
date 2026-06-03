@@ -778,6 +778,10 @@ struct HoopsClipsTests {
             CloudAnalysisService.safeBackendMessage("GET https://storage.example.test/uploads/job/source.mp4?x-amz-signature=abc", fallback: fallback)
                 == fallback
         )
+        #expect(
+            CloudAnalysisService.safeBackendMessage("Analysis should finish in 2 minutes.", fallback: fallback)
+                == fallback
+        )
 
         let longMessage = "The analysis service returned a detailed internal diagnostic that is too long for compact phone layouts and should be shortened before display"
         let safeMessage = CloudAnalysisService.safeBackendMessage(longMessage, fallback: fallback)
@@ -3258,6 +3262,9 @@ struct HoopsClipsTests {
 
         let timeoutFallback = CloudEditError.friendlyBackendMessage(code: "http_524", fallback: "Request timed out after 60 seconds")
         #expect(timeoutFallback == "Cloud editing timed out. Try again.")
+
+        let vagueTimeFallback = CloudEditError.friendlyBackendMessage(code: "unknown_backend_state", fallback: "Your export should be ready in 30 seconds.")
+        #expect(vagueTimeFallback == "Cloud editing request failed.")
 
         let safeFallback = CloudEditError.friendlyBackendMessage(code: "validation_warning", fallback: "Choose a shorter edit and try again.")
         #expect(safeFallback == "Choose a shorter edit and try again.")
