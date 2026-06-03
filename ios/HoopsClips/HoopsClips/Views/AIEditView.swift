@@ -2502,19 +2502,19 @@ struct AIEditView: View {
     private var renderStateGuidance: String {
         switch phase {
         case .planning:
-            return "Ready to ask HoopClips to build your AI edit in the cloud."
+            return "Cloud is preparing your edit plan from approved clips."
         case .planReady:
-            return "HoopClips picked clips and applied your style. Next step is making the finished video."
+            return "Plan is ready. Start render to create the finished video."
         case .renderRequested, .created, .queued:
-            return "Your reel is queued. You can switch apps while HoopClips keeps the cloud job running."
+            return "Render is in queue. You can switch apps while HoopClips keeps rendering."
         case .rendering:
-            return "Making your highlight reel in the cloud. You can switch apps and come back for the finished video."
+            return "Making your highlight reel in the cloud. Return for the finished file."
         case .rendered:
             return "Your video is ready to preview and share."
         case .failed:
-            return "The video did not finish. You can retry when HoopClips is ready."
+            return "The video did not finish. Retry when the backend is available."
         case .failedTimeout:
-            return "Making the video timed out. Try a shorter edit or retry when HoopClips is ready."
+            return "Render timed out. Try a shorter duration and retry."
         case .cancelled:
             return "Render was cancelled."
         }
@@ -2539,15 +2539,15 @@ struct AIEditView: View {
 
         switch phase {
         case .planning:
-            return "Cloud edit is reviewing candidate clips and building the plan."
+            return "Cloud edit is reviewing candidate clips to build a plan."
         case .planReady:
-            return "The edit plan is ready; making the video is the next real step."
+            return "Plan is ready. Next step: render the finished MP4."
         case .renderRequested, .created:
-            return "The approved edit plan is being sent to HoopClips."
+            return "Sending approved plan to the cloud render service."
         case .queued:
-            return "Cloud edit is queued; HoopClips will keep checking real job status."
+            return "Cloud edit is in queue. HoopClips refreshes from live job status."
         case .rendering:
-            return "HoopClips is producing the approved video."
+            return "HoopClips is producing the approved MP4."
         case .rendered, .failed, .failedTimeout, .cancelled:
             return nil
         }
@@ -2558,21 +2558,21 @@ struct AIEditView: View {
         case "video_uploaded":
             return "Cloud source is ready for editing."
         case "finding_highlights":
-            return "Cloud job is reviewing candidate clips."
+            return "Cloud job is scanning candidate highlights."
         case "selecting_best_clips":
-            return "Cloud job is selecting highlights from the candidate pool."
+            return "Cloud job is selecting the best highlights."
         case "removing_duplicates":
-            return "Cloud job is checking duplicate and low-value moments."
+            return "Cloud job is removing duplicates and weak moments."
         case "applying_template":
-            return "Template rules are being applied to the edit plan."
+            return "Template rules are being applied."
         case "adding_slow_motion":
             return "Slow-motion moments are being validated in the edit plan."
         case "adding_watermark_outro":
             return "Plan rules, watermark, and outro are being validated."
         case "rendering_mp4":
-            return "HoopClips is producing the approved video."
+            return "HoopClips is rendering the approved MP4."
         case "finalizing_download":
-            return "Preview and share access are being finalized."
+            return "Preparing preview and share access."
         default:
             return "HoopClips is updating this edit from real cloud job status."
         }

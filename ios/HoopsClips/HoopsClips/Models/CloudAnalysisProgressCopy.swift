@@ -11,7 +11,7 @@ nonisolated enum CloudAnalysisProgressCopy {
         let status = statusMessage.lowercased()
 
         if status.contains("upload") {
-            return "Keep HoopClips open during upload. After handoff, switch apps for clips."
+            return "Upload is active. Keep HoopClips open until upload finishes; then you can switch apps."
         }
 
         if status.contains("team") || status.contains("jersey") {
@@ -19,7 +19,7 @@ nonisolated enum CloudAnalysisProgressCopy {
         }
 
         if status.contains("queued") || status.contains("waiting") {
-            return "Cloud worker is next in line. Reopen HoopClips to refresh real job status."
+            return "Cloud job is waiting in queue. Return to HoopClips to refresh live status."
         }
 
         if status.contains("candidate")
@@ -30,7 +30,7 @@ nonisolated enum CloudAnalysisProgressCopy {
             if analysisMode == .cloud, teamSelection.mode == .team {
                 let teamTitle = compactTeamTitle(teamSelection.displayTitle)
                 let separator = teamTitle.hasSuffix("...") ? " " : " and "
-                return "Focusing on \(teamTitle)\(separator)keeping uncertain plays for Review."
+                return "Focusing on \(teamTitle)\(separator)including uncertain plays for Review."
             }
             return "Building a high-recall clip pool from both teams for Review."
         }
@@ -41,17 +41,17 @@ nonisolated enum CloudAnalysisProgressCopy {
             || status.contains("audio")
             || status.contains("action") {
             if analysisMode == .cloud {
-                return "Cloud keeps running after handoff. Reopen HoopClips for latest clips."
+                return "Cloud analysis is still running. Return to HoopClips to see the latest clips."
             }
             return "Scoring motion, audio peaks, and basketball action."
         }
 
         if status.contains("finalizing") || status.contains("refining") {
-            return "Validated clips are coming back for Review."
+            return "Cloud is validating candidates and preparing Review."
         }
 
         if analysisMode == .cloud {
-            return "Cloud analysis is active. Reopen HoopClips for the latest result."
+            return "Cloud analysis is active. Reopen HoopClips to see the latest result."
         }
 
         return "Analysis is running on device because cloud mode is unavailable."
@@ -79,10 +79,10 @@ nonisolated enum CloudAnalysisProgressCopy {
             || status.contains("action")
             || status.contains("finalizing")
             || status.contains("refining") {
-            return "After upload, switch apps; HoopClips keeps this cloud analysis job attached."
+            return "You can leave HoopClips while this runs. Status refreshes when you return."
         }
 
-        return "After handoff, switch apps and reopen HoopClips for real job status."
+        return "You can leave HoopClips while this runs and reopen it for real job status."
     }
 
     private static func compactTeamTitle(_ title: String) -> String {

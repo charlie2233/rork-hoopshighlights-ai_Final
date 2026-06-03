@@ -305,7 +305,7 @@ final class HighlightsViewModel {
     func startAnalysis() async {
         guard let url = videoURL else { return }
         guard !requiresHighlightTeamSelectionConfirmation else {
-            cloudTeamScanStatusMessage = "Choose a team before analysis"
+            cloudTeamScanStatusMessage = "Choose a team before analysis starts."
             return
         }
         await AnalysisNotificationService.shared.prepareForAnalysis()
@@ -422,7 +422,7 @@ final class HighlightsViewModel {
         lastAnalysisStatusSummary = "Cloud analysis is running"
         persistCurrentProject(
             reason: .analysisStarted,
-            message: "Cloud analysis started. You can switch apps after upload and reopen HoopClips for real job status."
+            message: "Cloud analysis started. You can leave HoopClips now and open it again for live status."
         )
     }
 
@@ -455,7 +455,7 @@ final class HighlightsViewModel {
             recordAnalysisFailure(message: message)
             LaunchTelemetry.shared.recordStabilityCheckpoint("analysis.resume.failed", metadata: "mode=cloud code=\(code)")
         default:
-            let message = "Cloud analysis is still running. You can switch apps and reopen HoopClips to refresh status."
+            let message = "Cloud analysis is still running. Return to HoopClips to refresh status."
             analysisService.finishExternalAnalysis(with: message)
             lastAnalysisStatusSummary = message
             persistCurrentProject()
