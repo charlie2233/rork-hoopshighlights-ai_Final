@@ -115,6 +115,34 @@ This means provider credential access is no longer merely skipped/unproven, but
 provider-auth deploy execution is still not fully closed until the release owner
 approves any later deploy step.
 
+## Live backend status probe
+
+Submission preflight was rerun without `--skip-live` on 2026-06-04 to collect
+non-secret live route evidence. No deploy, upload, or secret-printing operation
+was run.
+
+- Command:
+
+```bash
+python3 scripts/submission_readiness_preflight.py \
+  --archive-path /Users/hanfei/rork-hoopshighlights-ai_Final/artifacts/testflight/HoopClips.xcarchive \
+  --json
+```
+
+- Result summary: `status=fail`, `18` fail, `27` pass, `1` warn.
+- Passing live-route evidence:
+  - Staging Worker `/v1/editing/version` returned non-secret AI Edit
+    kill-switch state.
+  - Direct editing service `/version` returned non-secret AI Edit kill-switch
+    state.
+- Remaining live backend blocker:
+  - Direct editing service `gitSha` does not match the current checkout, so the
+    current source is not proven live for submission.
+
+This improves the live-status evidence from skipped probes to real route
+responses, but it does not prove production backend readiness, render
+reliability, job-state reporting, or finished MP4 delivery.
+
 ## Main-branch workflow refresh
 
 The stale June 1 main-branch failures were refreshed with workflow-dispatch
