@@ -788,7 +788,7 @@ struct VideoPlayerView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(VideoImportStatusCopy.historyActionTitle)
-                    .accessibilityHint("Opens History in case the video was already saved there.")
+                    .accessibilityHint(VideoImportStatusCopy.historyActionHint)
                     .accessibilityIdentifier("import.status.checkHistoryButton")
                 }
 
