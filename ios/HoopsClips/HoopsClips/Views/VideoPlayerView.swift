@@ -803,6 +803,7 @@ struct VideoPlayerView: View {
                         stroke: AppTheme.softBorder
                     )
                 }
+                .accessibilityIdentifier("import.status.cancelButton")
                 .buttonStyle(.plain)
                 .accessibilityLabel(languageStore.text(.cancelImport))
                 .accessibilityValue(currentImportStatusMessage)
