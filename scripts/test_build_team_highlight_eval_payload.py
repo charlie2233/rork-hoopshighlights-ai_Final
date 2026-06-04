@@ -282,16 +282,15 @@ class BuildTeamHighlightEvalPayloadTests(unittest.TestCase):
         self.assertEqual(template["omittedDuplicateClips"][0]["keptPredictionIndex"], 1)
 
     def test_label_template_can_override_clip_window_padding(self) -> None:
+        clips = [
+            {**analysis_clip(1.0, 4.0, "Early Play", True, "team_dark", 0.94), "id": "clip_early_001"},
+            {**analysis_clip(18.0, 20.0, "Late Play", True, "team_dark", 0.94), "id": "clip_late_001"},
+        ]
         template = build_label_template(
             analysis={
                 "jobId": "job_real_001",
                 "durationSeconds": 21.0,
-                "results": {
-                    "clips": [
-                        {**analysis_clip(1.0, 4.0, "Early Play", True, "team_dark", 0.94), "id": "clip_early_001"},
-                        {**analysis_clip(18.0, 20.0, "Late Play", True, "team_dark", 0.94), "id": "clip_late_001"},
-                    ]
-                },
+                "results": {"clips": clips},
             },
             case_id="real_game_001",
             video_id="video_real_001",

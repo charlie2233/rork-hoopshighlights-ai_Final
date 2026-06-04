@@ -101,7 +101,7 @@ class PrepareTeamHighlightLabelingBundleTests(unittest.TestCase):
 
         self.assertEqual(metadata["schemaVersion"], "team-highlight-labeling-bundle-v1")
         self.assertEqual(metadata["status"], "incomplete")
-        self.assertEqual(metadata["reviewQueue"], str(output_dir / "review_queue.md"))
+        self.assertEqual(Path(metadata["reviewQueue"]).resolve(), (output_dir / "review_queue.md").resolve())
         self.assertEqual(metadata["reviewQueueRowCount"], 1)
         self.assertEqual(metadata["reviewPageMetadata"]["videoAngleCount"], 2)
         self.assertIn('id="video-video-a-main"', review_page)
