@@ -169,6 +169,7 @@ struct HistoryView: View {
                                 .accessibilityLabel("Delete \(project.displayTitle)")
                         }
                         .buttonStyle(.plain)
+                        .accessibilityIdentifier("history.project.delete")
                     }
                 }
                 .contextMenu {
