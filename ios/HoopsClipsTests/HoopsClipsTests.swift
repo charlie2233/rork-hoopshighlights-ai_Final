@@ -104,6 +104,8 @@ struct HoopsClipsTests {
         #expect(VideoImportStatusCopy.statusDetail.contains("Open History"))
         #expect(VideoImportStatusCopy.timeoutRecovery.contains("Open History"))
         #expect(VideoImportStatusCopy.savedButNotVisible.contains("Open History"))
+        #expect(VideoImportStatusCopy.longRunningReminder.contains("resume"))
+        #expect(VideoImportStatusCopy.savedButNotVisible.contains("watch source"))
         #expect(VideoImportStatusCopy.historyActionTitle == "Open History")
         #expect(VideoImportStatusCopy.recoveryAlertTitle == "Open History")
     }
