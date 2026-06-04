@@ -40,7 +40,14 @@ class WorkerTeamScanSmokeTests(unittest.TestCase):
             video_path.write_bytes(b"fake-video")
             calls: list[tuple[str, str, dict[str, object] | None]] = []
 
-            def fake_request(method: str, base_url: str, path: str, payload: dict[str, object] | None = None, trace_id: str = "") -> dict[str, object]:
+            def fake_request(
+                method: str,
+                base_url: str,
+                path: str,
+                payload: dict[str, object] | None = None,
+                trace_id: str = "",
+                timeout_seconds: float = 90.0,
+            ) -> dict[str, object]:
                 calls.append((method, path, payload))
                 if path == "v1/analysis/jobs":
                     return {
@@ -95,7 +102,14 @@ class WorkerTeamScanSmokeTests(unittest.TestCase):
             video_path = Path(temp_dir) / "team-scan.mp4"
             video_path.write_bytes(b"fake-video")
 
-            def fake_request(method: str, base_url: str, path: str, payload: dict[str, object] | None = None, trace_id: str = "") -> dict[str, object]:
+            def fake_request(
+                method: str,
+                base_url: str,
+                path: str,
+                payload: dict[str, object] | None = None,
+                trace_id: str = "",
+                timeout_seconds: float = 90.0,
+            ) -> dict[str, object]:
                 if path == "v1/analysis/jobs":
                     return {"jobId": "job_123", "uploadUrl": "https://r2.example.test/upload?X-Amz-Signature=secret"}
                 if path == "v1/analysis/jobs/job_123/team-scan":
@@ -124,6 +138,8 @@ def make_args(video_path: Path, **overrides: object) -> SimpleNamespace:
         "selected_team_id": None,
         "selected_color_label": None,
         "confidence_threshold": 0.85,
+        "request_timeout_seconds": 90.0,
+        "upload_timeout_seconds": 120.0,
     }
     values.update(overrides)
     return SimpleNamespace(**values)

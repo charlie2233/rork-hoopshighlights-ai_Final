@@ -18,7 +18,14 @@ class CollectTeamHighlightAccuracyCaseTests(unittest.TestCase):
             manifest_path = root / "manifest.json"
             calls: list[tuple[str, str, dict[str, object] | None]] = []
 
-            def fake_request(method: str, _base_url: str, path: str, payload: dict[str, object] | None = None, trace_id: str = "") -> dict[str, object]:
+            def fake_request(
+                method: str,
+                _base_url: str,
+                path: str,
+                payload: dict[str, object] | None = None,
+                trace_id: str = "",
+                timeout_seconds: float = 90.0,
+            ) -> dict[str, object]:
                 calls.append((method, path, payload))
                 if path == "v1/analysis/jobs":
                     return {
@@ -79,7 +86,14 @@ class CollectTeamHighlightAccuracyCaseTests(unittest.TestCase):
             video_path.write_bytes(b"fake video")
             paths: list[str] = []
 
-            def fake_request(method: str, _base_url: str, path: str, payload: dict[str, object] | None = None, trace_id: str = "") -> dict[str, object]:
+            def fake_request(
+                method: str,
+                _base_url: str,
+                path: str,
+                payload: dict[str, object] | None = None,
+                trace_id: str = "",
+                timeout_seconds: float = 90.0,
+            ) -> dict[str, object]:
                 paths.append(path)
                 if path == "v1/analysis/jobs":
                     return {"jobId": "job_123", "uploadUrl": "https://r2.example.test/upload?X-Amz-Signature=secret"}
@@ -111,7 +125,9 @@ def make_args(video_path: Path, output_dir: Path, manifest_path: Path, **overrid
         "confidence_threshold": 0.85,
         "allow_scan_unavailable": False,
         "poll_interval_seconds": 0.01,
+        "request_timeout_seconds": 90.0,
         "timeout_seconds": 1.0,
+        "upload_timeout_seconds": 120.0,
         "install_id": "accuracy-install",
         "app_version": "accuracy-test",
         "analysis_version": "accuracy-test",

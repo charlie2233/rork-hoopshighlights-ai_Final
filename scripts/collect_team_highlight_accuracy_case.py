@@ -63,7 +63,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--confidence-threshold", type=float, default=float(os.getenv("HOOPS_TEAM_SCAN_SMOKE_CONFIDENCE_THRESHOLD", "0.85")))
     parser.add_argument("--allow-scan-unavailable", action="store_true")
     parser.add_argument("--poll-interval-seconds", type=float, default=5.0)
+    parser.add_argument("--request-timeout-seconds", type=float, default=float(os.getenv("HOOPS_TEAM_HIGHLIGHT_ACCURACY_REQUEST_TIMEOUT_SECONDS", "90")))
     parser.add_argument("--timeout-seconds", type=float, default=900.0)
+    parser.add_argument("--upload-timeout-seconds", type=float, default=float(os.getenv("HOOPS_TEAM_HIGHLIGHT_ACCURACY_UPLOAD_TIMEOUT_SECONDS", "120")))
     parser.add_argument("--install-id", default=os.getenv("HOOPS_SMOKE_INSTALL_ID", "team-highlight-accuracy-collector"))
     parser.add_argument("--app-version", default=os.getenv("HOOPS_SMOKE_APP_VERSION", "team-highlight-accuracy-collector"))
     parser.add_argument("--analysis-version", default=os.getenv("HOOPS_SMOKE_ANALYSIS_VERSION", "team-highlight-accuracy-collector"))
@@ -75,8 +77,12 @@ def parse_args() -> argparse.Namespace:
         raise SmokeError("Duration must be positive.", {"durationSeconds": args.duration_seconds})
     if args.poll_interval_seconds <= 0:
         raise SmokeError("Poll interval must be positive.", {"pollIntervalSeconds": args.poll_interval_seconds})
+    if args.request_timeout_seconds <= 0:
+        raise SmokeError("Request timeout must be positive.", {"requestTimeoutSeconds": args.request_timeout_seconds})
     if args.timeout_seconds <= 0:
         raise SmokeError("Timeout must be positive.", {"timeoutSeconds": args.timeout_seconds})
+    if args.upload_timeout_seconds <= 0:
+        raise SmokeError("Upload timeout must be positive.", {"uploadTimeoutSeconds": args.upload_timeout_seconds})
     return args
 
 
@@ -92,14 +98,33 @@ def collect_case(args: argparse.Namespace) -> dict[str, Any]:
     case_dir.mkdir(parents=True, exist_ok=True)
 
     trace_id = f"accuracy_case_{safe_path_segment(case_id)}_{int(time.time())}"
-    created = request_json("POST", base_url, "v1/analysis/jobs", build_create_payload(args, video_path), trace_id=trace_id)
+    created = request_json(
+        "POST",
+        base_url,
+        "v1/analysis/jobs",
+        build_create_payload(args, video_path),
+        trace_id=trace_id,
+        timeout_seconds=args.request_timeout_seconds,
+    )
     job_id = require_string(created, "jobId")
-    upload_video(require_string(created, "uploadUrl"), created.get("uploadHeaders") if isinstance(created.get("uploadHeaders"), dict) else {}, video_path)
+    upload_video(
+        require_string(created, "uploadUrl"),
+        created.get("uploadHeaders") if isinstance(created.get("uploadHeaders"), dict) else {},
+        video_path,
+        timeout_seconds=args.upload_timeout_seconds,
+    )
 
     detected_teams: list[dict[str, Any]] = []
     selected_team: dict[str, Any] | None = None
     if args.team_mode == "team":
-        scan = request_json("POST", base_url, f"v1/analysis/jobs/{job_id}/team-scan", {"installId": args.install_id}, trace_id=trace_id)
+        scan = request_json(
+            "POST",
+            base_url,
+            f"v1/analysis/jobs/{job_id}/team-scan",
+            {"installId": args.install_id},
+            trace_id=trace_id,
+            timeout_seconds=args.request_timeout_seconds,
+        )
         detected_teams = normalize_detected_teams(scan.get("detectedTeams"))
         if not detected_teams and not args.allow_scan_unavailable:
             raise SmokeError("Team scan returned no selectable teams.", {"jobId": job_id, "scan": scan})
@@ -116,8 +141,9 @@ def collect_case(args: argparse.Namespace) -> dict[str, Any]:
         f"v1/analysis/jobs/{job_id}/start",
         {"installId": args.install_id, "teamSelection": team_selection_payload(args, selected_team)},
         trace_id=trace_id,
+        timeout_seconds=args.request_timeout_seconds,
     )
-    final_job = poll_job(base_url, job_id, trace_id, args.timeout_seconds, args.poll_interval_seconds)
+    final_job = poll_job(base_url, job_id, trace_id, args.timeout_seconds, args.poll_interval_seconds, args.request_timeout_seconds)
     if final_job.get("status") not in {"completed", "succeeded"} or not isinstance(final_job.get("results"), dict):
         raise SmokeError("Cloud analysis did not complete with result metadata.", {"jobId": job_id, "job": final_job})
 
@@ -201,11 +227,18 @@ def team_selection_payload(args: argparse.Namespace, selected_team: dict[str, An
     }
 
 
-def poll_job(base_url: str, job_id: str, trace_id: str, timeout_seconds: float, poll_interval_seconds: float) -> dict[str, Any]:
+def poll_job(
+    base_url: str,
+    job_id: str,
+    trace_id: str,
+    timeout_seconds: float,
+    poll_interval_seconds: float,
+    request_timeout_seconds: float,
+) -> dict[str, Any]:
     deadline = time.monotonic() + timeout_seconds
     last_job: dict[str, Any] | None = None
     while time.monotonic() <= deadline:
-        job = request_json("GET", base_url, f"v1/analysis/jobs/{job_id}", trace_id=trace_id)
+        job = request_json("GET", base_url, f"v1/analysis/jobs/{job_id}", trace_id=trace_id, timeout_seconds=request_timeout_seconds)
         last_job = job
         status = str(job.get("status") or "").lower()
         if status in TERMINAL_STATUSES:

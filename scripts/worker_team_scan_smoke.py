@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import http.client
 import json
 import mimetypes
 import os
@@ -10,7 +11,7 @@ import sys
 import time
 from typing import Any, Dict, Optional
 from urllib.error import HTTPError, URLError
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit
 from urllib.request import Request, urlopen
 
 
@@ -42,6 +43,7 @@ PRESIGNED_URL_MARKERS = (
     "AccessKeyId=",
     "token=",
 )
+UPLOAD_CHUNK_BYTES = 1024 * 1024
 
 
 def main() -> int:
@@ -70,6 +72,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--selected-team-id", default=os.getenv("HOOPS_TEAM_SCAN_SMOKE_SELECTED_TEAM_ID"))
     parser.add_argument("--selected-color-label", default=os.getenv("HOOPS_TEAM_SCAN_SMOKE_SELECTED_COLOR_LABEL"))
     parser.add_argument("--confidence-threshold", type=float, default=float(os.getenv("HOOPS_TEAM_SCAN_SMOKE_CONFIDENCE_THRESHOLD", "0.85")))
+    parser.add_argument("--request-timeout-seconds", type=float, default=float(os.getenv("HOOPS_TEAM_SCAN_SMOKE_REQUEST_TIMEOUT_SECONDS", "90")))
+    parser.add_argument("--upload-timeout-seconds", type=float, default=float(os.getenv("HOOPS_TEAM_SCAN_SMOKE_UPLOAD_TIMEOUT_SECONDS", "120")))
     args = parser.parse_args()
     if not args.worker_url:
         raise SmokeError("WORKER_BASE_URL is required for team-scan smoke.", {})
@@ -79,6 +83,10 @@ def parse_args() -> argparse.Namespace:
         raise SmokeError("Choose only one of --start-selected-team or --start-all-teams.", {})
     if args.duration_seconds <= 0:
         raise SmokeError("Duration must be positive.", {"durationSeconds": args.duration_seconds})
+    if args.request_timeout_seconds <= 0:
+        raise SmokeError("Request timeout must be positive.", {"requestTimeoutSeconds": args.request_timeout_seconds})
+    if args.upload_timeout_seconds <= 0:
+        raise SmokeError("Upload timeout must be positive.", {"uploadTimeoutSeconds": args.upload_timeout_seconds})
     return args
 
 
@@ -90,11 +98,11 @@ def run_smoke(args: argparse.Namespace) -> Dict[str, Any]:
     base_url = args.worker_url.rstrip("/") + "/"
     trace_id = "team_scan_smoke_" + str(int(time.time()))
     create_payload = build_create_payload(args, video_path)
-    created = request_json("POST", base_url, "v1/analysis/jobs", create_payload, trace_id=trace_id)
+    created = request_json("POST", base_url, "v1/analysis/jobs", create_payload, trace_id=trace_id, timeout_seconds=args.request_timeout_seconds)
     job_id = require_string(created, "jobId")
     upload_url = require_string(created, "uploadUrl")
     upload_headers = created.get("uploadHeaders") if isinstance(created.get("uploadHeaders"), dict) else {}
-    upload_video(upload_url, upload_headers, video_path)
+    upload_video(upload_url, upload_headers, video_path, timeout_seconds=args.upload_timeout_seconds)
 
     scan = request_json(
         "POST",
@@ -102,6 +110,7 @@ def run_smoke(args: argparse.Namespace) -> Dict[str, Any]:
         f"v1/analysis/jobs/{job_id}/team-scan",
         {"installId": args.install_id},
         trace_id=trace_id,
+        timeout_seconds=args.request_timeout_seconds,
     )
     detected_teams = normalize_detected_teams(scan.get("detectedTeams"))
     if not detected_teams and not args.allow_unavailable:
@@ -131,7 +140,7 @@ def run_smoke(args: argparse.Namespace) -> Dict[str, Any]:
                 "includeUncertain": True,
             },
         }
-        start = request_json("POST", base_url, f"v1/analysis/jobs/{job_id}/start", start_payload, trace_id=trace_id)
+        start = request_json("POST", base_url, f"v1/analysis/jobs/{job_id}/start", start_payload, trace_id=trace_id, timeout_seconds=args.request_timeout_seconds)
         result["analysisStart"] = {
             "mode": "team",
             "teamId": selected.get("teamId"),
@@ -145,6 +154,7 @@ def run_smoke(args: argparse.Namespace) -> Dict[str, Any]:
             f"v1/analysis/jobs/{job_id}/start",
             {"installId": args.install_id, "teamSelection": {"mode": "all"}},
             trace_id=trace_id,
+            timeout_seconds=args.request_timeout_seconds,
         )
         result["analysisStart"] = {"mode": "all", "status": start.get("status")}
 
@@ -164,11 +174,19 @@ def build_create_payload(args: argparse.Namespace, video_path: Path) -> Dict[str
     }
 
 
-def request_json(method: str, base_url: str, path: str, payload: Optional[Dict[str, Any]] = None, trace_id: str = "") -> Dict[str, Any]:
+def request_json(
+    method: str,
+    base_url: str,
+    path: str,
+    payload: Optional[Dict[str, Any]] = None,
+    trace_id: str = "",
+    *,
+    timeout_seconds: float = 90.0,
+) -> Dict[str, Any]:
     data = json.dumps(payload).encode("utf-8") if payload is not None else None
     headers = {"Content-Type": "application/json", "User-Agent": "HoopClipsTeamScanSmoke/1.0", "x-trace-id": trace_id}
     try:
-        with urlopen(Request(urljoin(base_url, path), data=data, headers=headers, method=method), timeout=90) as response:
+        with urlopen(Request(urljoin(base_url, path), data=data, headers=headers, method=method), timeout=timeout_seconds) as response:
             return json.loads(response.read().decode("utf-8"))
     except HTTPError as error:
         body = error.read().decode("utf-8", errors="replace")
@@ -182,19 +200,45 @@ def request_json(method: str, base_url: str, path: str, payload: Optional[Dict[s
         ) from error
     except URLError as error:
         raise SmokeError(f"{method} {path} failed", {"reason": str(error)}) from error
+    except OSError as error:
+        raise SmokeError(f"{method} {path} failed", {"reason": str(error)}) from error
 
 
-def upload_video(upload_url: str, upload_headers: Dict[str, Any], video_path: Path) -> None:
-    headers = {str(key): str(value) for key, value in upload_headers.items()}
-    data = video_path.read_bytes()
+def upload_video(upload_url: str, upload_headers: Dict[str, Any], video_path: Path, *, timeout_seconds: float = 120.0) -> None:
+    headers = {str(key): str(value) for key, value in upload_headers.items() if str(key).lower() != "content-length"}
+    parsed = urlsplit(upload_url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise SmokeError("Upload failed.", {"reason": "Invalid upload URL"})
+    request_path = parsed.path or "/"
+    if parsed.query:
+        request_path += "?" + parsed.query
+    connection_cls = http.client.HTTPSConnection if parsed.scheme == "https" else http.client.HTTPConnection
+    connection: http.client.HTTPConnection | None = None
     try:
-        with urlopen(Request(upload_url, data=data, headers=headers, method="PUT"), timeout=120) as response:
+        connection = connection_cls(parsed.hostname, parsed.port, timeout=timeout_seconds)
+        connection.putrequest("PUT", request_path)
+        for key, value in headers.items():
+            connection.putheader(key, value)
+        connection.putheader("Content-Length", str(video_path.stat().st_size))
+        connection.endheaders()
+        with video_path.open("rb") as handle:
+            while True:
+                chunk = handle.read(UPLOAD_CHUNK_BYTES)
+                if not chunk:
+                    break
+                connection.send(chunk)
+        response = connection.getresponse()
+        try:
             if response.status >= 400:
-                raise SmokeError("Upload failed.", {"status": response.status})
-    except HTTPError as error:
-        raise SmokeError("Upload failed.", {"status": error.code, "headers": dict(error.headers)}) from error
-    except URLError as error:
+                raise SmokeError("Upload failed.", {"status": response.status, "headers": dict(response.getheaders())})
+            response.read()
+        finally:
+            response.close()
+    except OSError as error:
         raise SmokeError("Upload failed.", {"reason": str(error)}) from error
+    finally:
+        if connection is not None:
+            connection.close()
 
 
 def normalize_detected_teams(value: object) -> list[Dict[str, Any]]:
