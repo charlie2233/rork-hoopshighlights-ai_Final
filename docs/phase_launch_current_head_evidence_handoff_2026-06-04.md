@@ -106,15 +106,14 @@ without running a deploy.
 - Cloud Edit Deploy Preflight `operation=preflight`:
   - Run: `26927305142`
   - Head: `e26f05d`
-  - Status at handoff update: `in_progress`
-  - Completed jobs at handoff update: secret-safe launch evidence snapshot
-    `success`, Worker typecheck and dry run `success`
-  - Pending job at handoff update: editing backend Python tests
+  - Result: `success`
+  - Passed jobs: editing backend Python tests, Worker typecheck and dry run,
+    secret-safe launch evidence snapshot, cloud edit deploy secret verification
   - No deploy operation was run
 
 This means provider credential access is no longer merely skipped/unproven, but
-provider-auth launch readiness is still not fully closed until the non-deploy
-preflight finishes green and the release owner approves any later deploy step.
+provider-auth deploy execution is still not fully closed until the release owner
+approves any later deploy step.
 
 ## Main-branch workflow refresh
 
