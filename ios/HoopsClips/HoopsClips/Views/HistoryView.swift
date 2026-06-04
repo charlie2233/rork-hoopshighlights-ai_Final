@@ -189,6 +189,7 @@ struct HistoryView: View {
         }
         .padding(16)
         .rorkCard(cornerRadius: 16, stroke: AppTheme.softBorder, glowOpacity: 0.05)
+        .accessibilityIdentifier("history.detail.actions")
     }
 
     private func historyRow(for project: PersistedProjectRecord) -> some View {
