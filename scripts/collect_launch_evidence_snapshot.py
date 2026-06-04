@@ -645,6 +645,21 @@ def latest_for_head(runs: list[dict[str, Any]], workflow_name: str, head: str | 
     return None
 
 
+def workflow_timing_caveats(runs: list[dict[str, Any] | None]) -> list[str]:
+    caveats: list[str] = []
+    for run_item in runs:
+        if not run_item:
+            continue
+        if run_item.get("status") == "completed":
+            continue
+        workflow_name = run_item.get("workflowName") or "workflow"
+        database_id = run_item.get("databaseId") or "unknown"
+        caveats.append(
+            f"{workflow_name} run {database_id} was {run_item.get('status') or 'unknown'} when the snapshot was generated; rerun the snapshot after it completes for final status."
+        )
+    return caveats
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Collect a secret-safe launch evidence snapshot.")
     parser.add_argument("--repo-root", default=".", help="Repository root. Defaults to current directory.")
@@ -690,6 +705,7 @@ def main() -> int:
     latest_release = release_runs[0] if release_runs else None
     current_head_release = release_preflight_for_head(release_runs, head)
     release_preflight_passing = release_preflight_is_passing(current_head_release)
+    timing_caveats = workflow_timing_caveats([current_head_release, cloud_latest_run, ios_latest_run])
     label_review = label_review_guidance(labels)
     gpt_accuracy_handoff = gpt_clipping_accuracy_handoff(labels)
     cloud_backend_handoff = cloud_backend_readiness_handoff(
@@ -743,6 +759,7 @@ def main() -> int:
             "latestIsCurrentHead": bool(latest_release and latest_release.get("headSha") == head),
             "isPassing": release_preflight_passing,
         },
+        "workflowTimingCaveats": timing_caveats,
         "labelStatus": labels,
         "labelReview": label_review,
         "launchReadiness": {
