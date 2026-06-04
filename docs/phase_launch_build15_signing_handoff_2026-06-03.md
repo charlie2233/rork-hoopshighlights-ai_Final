@@ -26,6 +26,7 @@ Signed iOS archive preflight is not green for build `15` yet. The latest repo st
 
 Observed failed runs:
 
+- `ade3ec0` signed archive preflight retry: GitHub Actions run `26927591040`
 - `af93d57` signed archive preflight retry: GitHub Actions run `26877074295`
 - `af93d57` initial signed archive preflight: GitHub Actions run `26876817391`
 - `b7b3a0a` distribution-signing experiment: GitHub Actions run `26877277110`
@@ -34,6 +35,23 @@ The distribution-signing experiment was reverted in `46ac2ac` because Xcode repo
 
 - Apple account reached the maximum number of certificates.
 - No matching provisioning profile was available for bundle ID `atrak.charlie.hoopsclips`.
+
+## 2026-06-04 current-branch retry
+
+The signed archive path was rerun on branch `codex/phase-launch-proof-next` at
+head `ade3ec0` with `iOS Internal TestFlight Upload` operation `preflight`.
+The run failed before upload, and no App Store Connect upload was attempted.
+
+- Run: `26927591040`
+- Job: `Build internal staging TestFlight archive`
+- Result: `failure`
+- Non-secret failure symptoms:
+  - Apple account reached the maximum number of certificates.
+  - No matching iOS App Development provisioning profile was available for
+    bundle ID `atrak.charlie.hoopsclips`.
+
+This confirms the signed archive blocker is still Apple account/provisioning
+state, not an iOS source compile failure.
 
 ## Secret-safe Apple Developer handoff
 
