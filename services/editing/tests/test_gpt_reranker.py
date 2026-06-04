@@ -848,11 +848,15 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         self.assertEqual(compact_clip["nativeShotSignals"]["setupContextScore"], 1.0)
         self.assertEqual(compact_clip["nativeShotSignals"]["outcomeContextScore"], 1.0)
         rich_shot_roles = ["belowRim", "preEvent", "release", "rimApproach", "rimEntry", "shotArcEarly", "shotArcLate"]
-        self.assertEqual(shot_rules["requiredShotContextKeyframes"], rich_shot_roles)
+        self.assertEqual(shot_rules["requiredShotContextKeyframes"], [])
         pro_request = _request("pro", 1)
-        pro_payload = _build_openai_payload(pro_request, pro_request.clips[:1], frames, settings)
+        pro_frames = [
+            SampledFrame(clip_id="c0", role=role, time_seconds=float(index), data_url="data:image/jpeg;base64,ZmFrZQ==")
+            for index, role in enumerate(["start", *rich_shot_roles, "eventCenter", "finish"])
+        ]
+        pro_payload = _build_openai_payload(pro_request, pro_request.clips[:1], pro_frames, settings)
         pro_input = json.loads(pro_payload["input"][0]["content"][0]["text"])
-        self.assertEqual(pro_input["shotTrackerRules"]["requiredShotContextKeyframes"], rich_shot_roles)
+        self.assertEqual(pro_input["shotTrackerRules"]["requiredShotContextKeyframes"], ["outcome", "preEvent", "release"])
         self.assertIn("qualitySignals", decision_properties)
         self.assertIn("qualitySignals", decision_schema["required"])
         quality_required = decision_properties["qualitySignals"]["required"]
@@ -4508,39 +4512,38 @@ class GPTHighlightRerankerTests(unittest.TestCase):
     def test_free_and_pro_sampling_limits(self) -> None:
         settings = GPTHighlightRerankerSettings.from_env()
 
-        self.assertEqual(settings.limits_for("free"), (320, 10))
-        self.assertEqual(settings.limits_for("pro")[0], 320)
+        self.assertEqual(settings.limits_for("free"), (8, 3))
+        self.assertEqual(settings.limits_for("pro")[0], 30)
         self.assertGreaterEqual(settings.limits_for("pro")[1], 5)
-        self.assertLessEqual(settings.limits_for("pro")[1], 10)
-        self.assertEqual(settings.limits_for("pro")[1], 10)
+        self.assertLessEqual(settings.limits_for("pro")[1], 8)
+        self.assertEqual(settings.limits_for("pro")[1], 6)
         self.assertEqual(settings.timeout_seconds, 120.0)
         self.assertEqual(settings.max_output_tokens, 24000)
 
-    def test_free_default_keyframes_include_setup_and_outcome_context(self) -> None:
+        public_status = settings.public_status()
+        self.assertEqual(public_status["ai_clip_gpt_max_candidates_free"], 8)
+        self.assertEqual(public_status["ai_clip_gpt_max_candidates_pro"], 30)
+        self.assertEqual(public_status["ai_clip_gpt_max_candidates_internal"], 30)
+        self.assertEqual(public_status["ai_clip_gpt_keyframes_per_clip"], {"free": 3, "pro": 6, "internal": 6})
+
+    def test_free_default_keyframes_use_compact_start_center_finish_context(self) -> None:
         settings = GPTHighlightRerankerSettings.from_env()
         _, frames_per_clip = settings.limits_for("free")
         request = _request("free", 1)
 
         sampled_roles = [role for role, _ in gpt_reranker._sample_times_for_clip(request.clips[0], frames_per_clip)]
 
-        self.assertEqual(frames_per_clip, 10)
+        self.assertEqual(frames_per_clip, 3)
         self.assertEqual(
             {
                 "start",
-                "preEvent",
-                "release",
-                "shotArcEarly",
-                "shotArcLate",
-                "rimApproach",
                 "eventCenter",
-                "rimEntry",
-                "belowRim",
                 "finish",
             },
             set(sampled_roles),
         )
 
-    def test_free_sampling_reviews_full_analysis_pool_by_default(self) -> None:
+    def test_free_sampling_reviews_compact_top_pool_by_default(self) -> None:
         settings = GPTHighlightRerankerSettings.from_env()
         max_clips, _ = settings.limits_for("free")
         request = _request("free", 320)
@@ -4550,10 +4553,10 @@ class GPTHighlightRerankerTests(unittest.TestCase):
             max_clips,
         )
 
-        self.assertEqual(max_clips, 320)
-        self.assertEqual(len(sampled), 320)
+        self.assertEqual(max_clips, 8)
+        self.assertEqual(len(sampled), 8)
         self.assertEqual(sampled[0].id, "c0")
-        self.assertEqual(sampled[-1].id, "c319")
+        self.assertEqual(sampled[-1].id, "c7")
 
     def test_sampling_keeps_unique_moments_before_duplicate_fill(self) -> None:
         duplicate_clips = [
@@ -4637,7 +4640,7 @@ class GPTHighlightRerankerTests(unittest.TestCase):
         request = _request("free", 1)
         sampled_roles = [role for role, _ in gpt_reranker._sample_times_for_clip(request.clips[0], frames_per_clip)]
 
-        self.assertEqual(max_clips, 320)
+        self.assertEqual(max_clips, 8)
         self.assertEqual(frames_per_clip, 10)
         self.assertIn("release", sampled_roles)
         self.assertIn("rimEntry", sampled_roles)
