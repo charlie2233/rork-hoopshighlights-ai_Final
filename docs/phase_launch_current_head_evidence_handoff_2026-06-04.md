@@ -90,6 +90,32 @@ point at that staging Worker for this gate. Until then, keep Release Secrets
 Preflight red and keep signed archive/upload and installed TestFlight smoke
 blocked.
 
+## Provider-auth credential refresh
+
+The cloud deploy provider-auth gate was advanced on branch commit `e26f05d`
+without running a deploy.
+
+- Cloud Edit Deploy Preflight `operation=credential-check`:
+  - Run: `26927251153`
+  - Head: `e26f05d`
+  - Result: `success`
+  - Passed jobs: `Verify cloud deploy credentials only`, secret-safe launch
+    evidence snapshot
+  - Skipped jobs: Worker dry run, backend Python tests, and cloud edit deploy
+    secret verification, as expected for credential-check mode
+- Cloud Edit Deploy Preflight `operation=preflight`:
+  - Run: `26927305142`
+  - Head: `e26f05d`
+  - Status at handoff update: `in_progress`
+  - Completed jobs at handoff update: secret-safe launch evidence snapshot
+    `success`, Worker typecheck and dry run `success`
+  - Pending job at handoff update: editing backend Python tests
+  - No deploy operation was run
+
+This means provider credential access is no longer merely skipped/unproven, but
+provider-auth launch readiness is still not fully closed until the non-deploy
+preflight finishes green and the release owner approves any later deploy step.
+
 ## Main-branch workflow refresh
 
 The stale June 1 main-branch failures were refreshed with workflow-dispatch
