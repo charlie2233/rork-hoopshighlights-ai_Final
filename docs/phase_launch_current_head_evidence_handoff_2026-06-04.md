@@ -65,6 +65,31 @@ branch workflows were rerun on branch commit `021994d`.
     - `HOOPS_CLOUD_ANALYSIS_BASE_URL`
     - `HOOPS_CLOUD_EDIT_BASE_URL`
 
+## Production cloud URL decision boundary
+
+The current non-secret GitHub `production` environment variable check still
+shows only:
+
+- `HOOPS_PRIVACY_POLICY_URL=https://rork.com/privacy`
+- `HOOPS_TERMS_OF_SERVICE_URL=https://rork.com/terms`
+
+The production environment still does not expose:
+
+- `HOOPS_CLOUD_ANALYSIS_BASE_URL`
+- `HOOPS_CLOUD_EDIT_BASE_URL`
+
+These are GitHub environment variables, not masked secrets, but setting them is
+still a release decision. `Release Secrets Preflight` requires
+`HOOPS_CLOUD_LAUNCH_MODE=enabled` plus non-empty production cloud analysis/edit
+URLs, and `ios/docs/runbooks/public-launch-cloud-gated.md` says the correct
+decision is no-go if production cloud endpoints are not ready.
+
+Do not set the internal staging Worker as either production URL unless the
+release owner explicitly confirms that internal TestFlight Release builds should
+point at that staging Worker for this gate. Until then, keep Release Secrets
+Preflight red and keep signed archive/upload and installed TestFlight smoke
+blocked.
+
 ## Main-branch workflow refresh
 
 The stale June 1 main-branch failures were refreshed with workflow-dispatch
