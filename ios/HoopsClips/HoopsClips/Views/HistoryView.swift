@@ -595,11 +595,13 @@ private struct HistoryProjectDetailView: View {
                     .accessibilityLabel("Project video preview")
                     .accessibilityValue(previewTitle ?? "Saved project media")
                     .accessibilityHint("Use playback controls to preview this saved project.")
+                    .accessibilityIdentifier("history.detail.videoPreview")
 
                 if let previewTitle {
                     Text(previewTitle)
                         .font(.caption)
                         .foregroundStyle(AppTheme.subtleText)
+                        .accessibilityIdentifier("history.detail.previewTitle")
                 }
             } else {
                 VStack(spacing: 8) {
