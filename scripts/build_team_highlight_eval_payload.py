@@ -316,7 +316,9 @@ def verify_explicit_prediction_match(label: dict[str, Any], clip: dict[str, Any]
     ):
         return
     overlap = max(0.0, min(label_end, clip_end) - max(label_start, clip_start))
-    overlap_ratio = overlap / max(label_end - label_start, 0.001)
+    label_duration = max(label_end - label_start, 0.001)
+    clip_duration = max(clip_end - clip_start, 0.001)
+    overlap_ratio = overlap / min(label_duration, clip_duration)
     if overlap_ratio < min_overlap_ratio:
         raise ValueError(
             f"predictionIndex {index} time window {label_start}-{label_end} does not overlap analysis clip "

@@ -244,9 +244,14 @@ class BuildTeamHighlightEvalPayloadTests(unittest.TestCase):
         self.assertEqual(template["temporalDedupe"]["originalClipCount"], 2)
         self.assertEqual(template["temporalDedupe"]["reviewClipCount"], 2)
         self.assertEqual(template["temporalDedupe"]["omittedClipCount"], 0)
+        self.assertEqual(template["clipWindowPadding"], {"preRollSeconds": 1.5, "postRollSeconds": 2.5})
         self.assertTrue(template["clips"][0]["needsLabel"])
         self.assertFalse(template["clips"][0]["reviewedByHuman"])
         self.assertEqual(template["clips"][0]["predictionClipId"], "clip_made_001")
+        self.assertEqual(template["clips"][0]["start"], 8.5)
+        self.assertEqual(template["clips"][0]["end"], 16.5)
+        self.assertEqual(template["clips"][0]["predictionStart"], 10.0)
+        self.assertEqual(template["clips"][0]["predictionEnd"], 14.0)
         self.assertEqual(template["clips"][0]["predicted"]["teamId"], "team_dark")
         self.assertEqual(template["clips"][0]["predicted"]["motionScore"], 0.7)
         self.assertEqual(template["clips"][0]["predicted"]["audioPeak"], 0.4)
@@ -275,6 +280,31 @@ class BuildTeamHighlightEvalPayloadTests(unittest.TestCase):
         self.assertEqual(template["clips"][1]["predictionIndex"], 2)
         self.assertEqual(template["omittedDuplicateClips"][0]["predictionIndex"], 0)
         self.assertEqual(template["omittedDuplicateClips"][0]["keptPredictionIndex"], 1)
+
+    def test_label_template_can_override_clip_window_padding(self) -> None:
+        template = build_label_template(
+            analysis={
+                "jobId": "job_real_001",
+                "durationSeconds": 21.0,
+                "results": {
+                    "clips": [
+                        {**analysis_clip(1.0, 4.0, "Early Play", True, "team_dark", 0.94), "id": "clip_early_001"},
+                        {**analysis_clip(18.0, 20.0, "Late Play", True, "team_dark", 0.94), "id": "clip_late_001"},
+                    ]
+                },
+            },
+            case_id="real_game_001",
+            video_id="video_real_001",
+            selected_team_id="team_dark",
+            clip_window_pre_roll_seconds=3.0,
+            clip_window_post_roll_seconds=4.0,
+        )
+
+        self.assertEqual(template["clipWindowPadding"], {"preRollSeconds": 3.0, "postRollSeconds": 4.0})
+        self.assertEqual(template["clips"][0]["start"], 0.0)
+        self.assertEqual(template["clips"][0]["end"], 8.0)
+        self.assertEqual(template["clips"][1]["start"], 15.0)
+        self.assertEqual(template["clips"][1]["end"], 21.0)
 
         for row in template["clips"]:
             row["needsLabel"] = False

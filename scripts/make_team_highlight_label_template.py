@@ -28,6 +28,8 @@ from scripts.build_team_highlight_eval_payload import (
 DEFAULT_TEMPORAL_DEDUPE_MIN_OVERLAP_RATIO = 0.25
 DEFAULT_TEMPORAL_DEDUPE_CENTER_TOLERANCE_SECONDS = 4.0
 DEFAULT_TEMPORAL_DEDUPE_START_TOLERANCE_SECONDS = 4.0
+DEFAULT_CLIP_WINDOW_PRE_ROLL_SECONDS = 1.5
+DEFAULT_CLIP_WINDOW_POST_ROLL_SECONDS = 2.5
 
 
 def main() -> int:
@@ -44,6 +46,8 @@ def main() -> int:
         temporal_dedupe_min_overlap_ratio=args.temporal_dedupe_min_overlap_ratio,
         temporal_dedupe_center_tolerance_seconds=args.temporal_dedupe_center_tolerance_seconds,
         temporal_dedupe_start_tolerance_seconds=args.temporal_dedupe_start_tolerance_seconds,
+        clip_window_pre_roll_seconds=args.clip_window_pre_roll_seconds,
+        clip_window_post_roll_seconds=args.clip_window_post_roll_seconds,
     )
     output = json.dumps(payload, indent=2, sort_keys=True)
     if args.output:
@@ -72,6 +76,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--temporal-dedupe-min-overlap-ratio", type=float, default=DEFAULT_TEMPORAL_DEDUPE_MIN_OVERLAP_RATIO)
     parser.add_argument("--temporal-dedupe-center-tolerance-seconds", type=float, default=DEFAULT_TEMPORAL_DEDUPE_CENTER_TOLERANCE_SECONDS)
     parser.add_argument("--temporal-dedupe-start-tolerance-seconds", type=float, default=DEFAULT_TEMPORAL_DEDUPE_START_TOLERANCE_SECONDS)
+    parser.add_argument("--clip-window-pre-roll-seconds", type=float, default=DEFAULT_CLIP_WINDOW_PRE_ROLL_SECONDS)
+    parser.add_argument("--clip-window-post-roll-seconds", type=float, default=DEFAULT_CLIP_WINDOW_POST_ROLL_SECONDS)
     return parser.parse_args()
 
 
@@ -88,6 +94,8 @@ def build_label_template(
     temporal_dedupe_min_overlap_ratio: float = DEFAULT_TEMPORAL_DEDUPE_MIN_OVERLAP_RATIO,
     temporal_dedupe_center_tolerance_seconds: float = DEFAULT_TEMPORAL_DEDUPE_CENTER_TOLERANCE_SECONDS,
     temporal_dedupe_start_tolerance_seconds: float = DEFAULT_TEMPORAL_DEDUPE_START_TOLERANCE_SECONDS,
+    clip_window_pre_roll_seconds: float = DEFAULT_CLIP_WINDOW_PRE_ROLL_SECONDS,
+    clip_window_post_roll_seconds: float = DEFAULT_CLIP_WINDOW_POST_ROLL_SECONDS,
 ) -> dict[str, Any]:
     result = extract_analysis_result(analysis)
     analysis_job_id = string_or_none(
@@ -113,6 +121,12 @@ def build_label_template(
             threshold = number_or_none(team_selection.get("confidenceThreshold"))
 
     clips = [clip for clip in result.get("clips", []) if isinstance(clip, dict)]
+    source_duration_seconds = number_or_none(
+        analysis.get("durationSeconds")
+        or result.get("durationSeconds")
+        or analysis.get("sourceDurationSeconds")
+        or result.get("sourceDurationSeconds")
+    )
     dedupe_result = temporal_dedupe_clips(
         clips,
         enabled=temporal_dedupe,
@@ -139,9 +153,22 @@ def build_label_template(
         "selectedTeamColorLabel": resolved_color_label,
         "confidenceThreshold": threshold if threshold is not None else 0.85,
         "detectedTeams": detected_teams,
+        "clipWindowPadding": {
+            "preRollSeconds": max(0.0, clip_window_pre_roll_seconds),
+            "postRollSeconds": max(0.0, clip_window_post_roll_seconds),
+        },
         "temporalDedupe": dedupe_result["metadata"],
         "omittedDuplicateClips": dedupe_result["omittedDuplicateClips"],
-        "clips": [label_template_row(int(item["predictionIndex"]), item["clip"]) for item in kept_clips],
+        "clips": [
+            label_template_row(
+                int(item["predictionIndex"]),
+                item["clip"],
+                pre_roll_seconds=clip_window_pre_roll_seconds,
+                post_roll_seconds=clip_window_post_roll_seconds,
+                source_duration_seconds=source_duration_seconds,
+            )
+            for item in kept_clips
+        ],
     }
 
 
@@ -292,16 +319,51 @@ def clip_event_center(clip: dict[str, Any]) -> float | None:
     return round((start + end) / 2.0, 3)
 
 
-def label_template_row(index: int, clip: dict[str, Any]) -> dict[str, Any]:
+def padded_clip_window(
+    *,
+    start: float | None,
+    end: float | None,
+    pre_roll_seconds: float,
+    post_roll_seconds: float,
+    source_duration_seconds: float | None,
+) -> tuple[float | None, float | None]:
+    if start is None or end is None:
+        return start, end
+    padded_start = max(0.0, start - max(0.0, pre_roll_seconds))
+    padded_end = end + max(0.0, post_roll_seconds)
+    if source_duration_seconds is not None and source_duration_seconds > 0:
+        padded_end = min(source_duration_seconds, padded_end)
+    if padded_end <= padded_start:
+        padded_end = end
+    return round(padded_start, 3), round(padded_end, 3)
+
+
+def label_template_row(
+    index: int,
+    clip: dict[str, Any],
+    *,
+    pre_roll_seconds: float = DEFAULT_CLIP_WINDOW_PRE_ROLL_SECONDS,
+    post_roll_seconds: float = DEFAULT_CLIP_WINDOW_POST_ROLL_SECONDS,
+    source_duration_seconds: float | None = None,
+) -> dict[str, Any]:
     start = number_or_none(clip.get("startTime", clip.get("start")))
     end = number_or_none(clip.get("endTime", clip.get("end")))
+    padded_start, padded_end = padded_clip_window(
+        start=start,
+        end=end,
+        pre_roll_seconds=pre_roll_seconds,
+        post_roll_seconds=post_roll_seconds,
+        source_duration_seconds=source_duration_seconds,
+    )
     clip_id = string_or_none(clip.get("id") or clip.get("clipId")) or f"prediction_{index:03d}"
     return {
         "labelId": f"label_{index:03d}_{clip_id}",
         "predictionIndex": index,
         "predictionClipId": clip_id,
-        "start": start,
-        "end": end,
+        "start": padded_start,
+        "end": padded_end,
+        "predictionStart": start,
+        "predictionEnd": end,
         "needsLabel": True,
         "reviewedByHuman": False,
         "predicted": predicted_summary(clip),
