@@ -668,6 +668,27 @@ def workflow_run_with_name(run_item: dict[str, Any] | None, workflow_name: str) 
     return named_run
 
 
+def proof_is_supported(asserted: bool, source: str | None) -> bool:
+    return asserted and bool((source or "").strip())
+
+
+def external_proof_entry(asserted: bool, source: str | None) -> dict[str, Any]:
+    clean_source = (source or "").strip()
+    accepted = proof_is_supported(asserted, clean_source)
+    if accepted:
+        status = "proven"
+    elif asserted:
+        status = "missing_source"
+    else:
+        status = "not_proven"
+    return {
+        "asserted": asserted,
+        "accepted": accepted,
+        "status": status,
+        "source": clean_source or None,
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Collect a secret-safe launch evidence snapshot.")
     parser.add_argument("--repo-root", default=".", help="Repository root. Defaults to current directory.")
@@ -684,9 +705,37 @@ def main() -> int:
     parser.add_argument("--live-backend-status-proven", action="store_true", help="Mark live production backend status proof as externally verified.")
     parser.add_argument("--render-reliability-proven", action="store_true", help="Mark cloud render reliability with finished MP4 evidence as externally verified.")
     parser.add_argument("--job-state-reporting-proven", action="store_true", help="Mark end-to-end cloud job-state reporting proof as externally verified.")
+    parser.add_argument("--signed-archive-upload-proof-source", help="Non-secret source proving signed App Store Connect archive/upload.")
+    parser.add_argument("--installed-testflight-smoke-proof-source", help="Non-secret source proving trusted-device installed TestFlight smoke.")
+    parser.add_argument("--import-history-proof-source", help="Non-secret source proving Photos/File import, recovery, and history actions.")
+    parser.add_argument("--readable-controls-proof-source", help="Non-secret source proving small-phone and dynamic-type readable controls.")
+    parser.add_argument("--export-share-proof-source", help="Non-secret source proving finished MP4 preview/download/share/open-in-editor.")
+    parser.add_argument("--live-backend-status-proof-source", help="Non-secret source proving live production backend status.")
+    parser.add_argument("--render-reliability-proof-source", help="Non-secret source proving cloud render reliability with finished MP4 evidence.")
+    parser.add_argument("--job-state-reporting-proof-source", help="Non-secret source proving end-to-end cloud job-state reporting.")
     args = parser.parse_args()
 
     repo_root = Path(args.repo_root).resolve()
+    accepted_external_proofs = {
+        "signedArchiveUpload": proof_is_supported(args.signed_archive_upload_proven, args.signed_archive_upload_proof_source),
+        "installedTestFlightSmoke": proof_is_supported(args.installed_testflight_smoke_proven, args.installed_testflight_smoke_proof_source),
+        "importHistoryReliability": proof_is_supported(args.import_history_proven, args.import_history_proof_source),
+        "readableControls": proof_is_supported(args.readable_controls_proven, args.readable_controls_proof_source),
+        "exportShare": proof_is_supported(args.export_share_proven, args.export_share_proof_source),
+        "liveBackendStatus": proof_is_supported(args.live_backend_status_proven, args.live_backend_status_proof_source),
+        "renderReliability": proof_is_supported(args.render_reliability_proven, args.render_reliability_proof_source),
+        "jobStateReporting": proof_is_supported(args.job_state_reporting_proven, args.job_state_reporting_proof_source),
+    }
+    external_proof_sources = {
+        "signedArchiveUpload": external_proof_entry(args.signed_archive_upload_proven, args.signed_archive_upload_proof_source),
+        "installedTestFlightSmoke": external_proof_entry(args.installed_testflight_smoke_proven, args.installed_testflight_smoke_proof_source),
+        "importHistoryReliability": external_proof_entry(args.import_history_proven, args.import_history_proof_source),
+        "readableControls": external_proof_entry(args.readable_controls_proven, args.readable_controls_proof_source),
+        "exportShare": external_proof_entry(args.export_share_proven, args.export_share_proof_source),
+        "liveBackendStatus": external_proof_entry(args.live_backend_status_proven, args.live_backend_status_proof_source),
+        "renderReliability": external_proof_entry(args.render_reliability_proven, args.render_reliability_proof_source),
+        "jobStateReporting": external_proof_entry(args.job_state_reporting_proven, args.job_state_reporting_proof_source),
+    }
     git = git_snapshot(repo_root)
     runs = branch_workflows(repo_root, args.branch, args.workflow_limit)
     release_runs = release_preflight_runs(repo_root, 5)
@@ -694,14 +743,14 @@ def main() -> int:
     production_url_handoff = production_cloud_url_handoff(production_variables, args.branch)
     testflight_handoff = testflight_proof_handoff(
         args.branch,
-        signed_archive_upload_proven=args.signed_archive_upload_proven,
-        installed_testflight_smoke_proven=args.installed_testflight_smoke_proven,
+        signed_archive_upload_proven=accepted_external_proofs["signedArchiveUpload"],
+        installed_testflight_smoke_proven=accepted_external_proofs["installedTestFlightSmoke"],
     )
     ios_usability_handoff = ios_usability_and_import_handoff(
-        installed_testflight_smoke_proven=args.installed_testflight_smoke_proven,
-        import_history_proven=args.import_history_proven,
-        readable_controls_proven=args.readable_controls_proven,
-        export_share_proven=args.export_share_proven,
+        installed_testflight_smoke_proven=accepted_external_proofs["installedTestFlightSmoke"],
+        import_history_proven=accepted_external_proofs["importHistoryReliability"],
+        readable_controls_proven=accepted_external_proofs["readableControls"],
+        export_share_proven=accepted_external_proofs["exportShare"],
     )
     labels = label_status_snapshot(repo_root, args.label_status, args.label_status_summary)
 
@@ -727,9 +776,9 @@ def main() -> int:
         release_preflight_passing,
         cloud_latest_run,
         cloud_run,
-        live_backend_status_proven=args.live_backend_status_proven,
-        render_reliability_proven=args.render_reliability_proven,
-        job_state_reporting_proven=args.job_state_reporting_proven,
+        live_backend_status_proven=accepted_external_proofs["liveBackendStatus"],
+        render_reliability_proven=accepted_external_proofs["renderReliability"],
+        job_state_reporting_proven=accepted_external_proofs["jobStateReporting"],
     )
 
     open_blockers = launch_blockers(
@@ -737,14 +786,14 @@ def main() -> int:
         latest_release,
         labels,
         current_head_release=current_head_release,
-        signed_archive_upload_proven=args.signed_archive_upload_proven,
-        installed_testflight_smoke_proven=args.installed_testflight_smoke_proven,
-        import_history_proven=args.import_history_proven,
-        readable_controls_proven=args.readable_controls_proven,
-        export_share_proven=args.export_share_proven,
-        live_backend_status_proven=args.live_backend_status_proven,
-        render_reliability_proven=args.render_reliability_proven,
-        job_state_reporting_proven=args.job_state_reporting_proven,
+        signed_archive_upload_proven=accepted_external_proofs["signedArchiveUpload"],
+        installed_testflight_smoke_proven=accepted_external_proofs["installedTestFlightSmoke"],
+        import_history_proven=accepted_external_proofs["importHistoryReliability"],
+        readable_controls_proven=accepted_external_proofs["readableControls"],
+        export_share_proven=accepted_external_proofs["exportShare"],
+        live_backend_status_proven=accepted_external_proofs["liveBackendStatus"],
+        render_reliability_proven=accepted_external_proofs["renderReliability"],
+        job_state_reporting_proven=accepted_external_proofs["jobStateReporting"],
     )
     snapshot = {
         "generatedAt": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
@@ -761,6 +810,7 @@ def main() -> int:
             "note": "Supporting proof only; not production cutover, signed upload, installed smoke, or human-reviewed accuracy proof. If this snapshot runs inside a workflow for the current head, the latest current-head runs may still be in progress and success fields may remain null until a later refresh.",
         },
         "productionVariables": production_variables,
+        "externalProofSources": external_proof_sources,
         "productionCloudUrlHandoff": production_url_handoff,
         "cloudBackendReadinessHandoff": cloud_backend_handoff,
         "testFlightProofHandoff": testflight_handoff,
@@ -785,16 +835,16 @@ def main() -> int:
             "productionCloudUrls": bool(production_variables.get("missingRequired")),
             "releaseSecretsPreflight": not release_preflight_passing,
             "humanReviewedLabels": not bool(labels.get("launchEvidenceEligible")),
-            "signedArchiveUpload": not args.signed_archive_upload_proven,
-            "installedTestFlightSmoke": not args.installed_testflight_smoke_proven,
-            "importHistoryReliability": not args.import_history_proven,
-            "readableControls": not args.readable_controls_proven,
-            "exportShare": not args.export_share_proven,
-            "liveBackendStatus": not args.live_backend_status_proven,
-            "renderReliability": not args.render_reliability_proven,
-            "jobStateReporting": not args.job_state_reporting_proven,
+            "signedArchiveUpload": not accepted_external_proofs["signedArchiveUpload"],
+            "installedTestFlightSmoke": not accepted_external_proofs["installedTestFlightSmoke"],
+            "importHistoryReliability": not accepted_external_proofs["importHistoryReliability"],
+            "readableControls": not accepted_external_proofs["readableControls"],
+            "exportShare": not accepted_external_proofs["exportShare"],
+            "liveBackendStatus": not accepted_external_proofs["liveBackendStatus"],
+            "renderReliability": not accepted_external_proofs["renderReliability"],
+            "jobStateReporting": not accepted_external_proofs["jobStateReporting"],
         },
-        "redactionReminder": "Do not add secrets, tokens, private keys, base64 values, presigned URLs, private video contents, or rendered MP4 contents to this snapshot.",
+        "redactionReminder": "Do not add secrets, tokens, private keys, base64 values, presigned URLs, private video contents, rendered MP4 contents, or private proof artifacts to this snapshot.",
     }
 
     text = json.dumps(snapshot, indent=2, sort_keys=True) + "\n"
