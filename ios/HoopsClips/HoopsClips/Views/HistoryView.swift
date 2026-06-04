@@ -28,6 +28,7 @@ struct HistoryView: View {
                                     title: "Current Project",
                                     icon: "bolt.circle.fill",
                                     subtitle: "Your active session is saved automatically",
+                                    accessibilityIdentifier: "history.section.currentProject",
                                     projects: [currentProject]
                                 )
                             }
@@ -37,6 +38,7 @@ struct HistoryView: View {
                                     title: "Past Projects",
                                     icon: "clock.arrow.circlepath",
                                     subtitle: "Reopen past runs and replay saved videos",
+                                    accessibilityIdentifier: "history.section.pastProjects",
                                     projects: viewModel.pastProjectRecords
                                 )
                             }
@@ -124,6 +126,7 @@ struct HistoryView: View {
         title: String,
         icon: String,
         subtitle: String,
+        accessibilityIdentifier: String,
         projects: [PersistedProjectRecord]
     ) -> some View {
         VStack(spacing: 12) {
@@ -575,6 +578,7 @@ private struct HistoryProjectDetailView: View {
         }
         .padding(16)
         .rorkCard(cornerRadius: 16, stroke: AppTheme.softBorder, glowOpacity: 0.05)
+        .accessibilityIdentifier(accessibilityIdentifier)
     }
 
     private var playbackCard: some View {
