@@ -579,7 +579,7 @@ private struct HistoryProjectDetailView: View {
         }
         .padding(16)
         .rorkCard(cornerRadius: 16, stroke: AppTheme.softBorder, glowOpacity: 0.05)
-        .accessibilityIdentifier(accessibilityIdentifier)
+        .accessibilityIdentifier("history.detail.playback")
     }
 
     private var playbackCard: some View {
