@@ -653,6 +653,14 @@ def main() -> int:
     parser.add_argument("--label-status", type=Path, default=DEFAULT_LABEL_STATUS, help="Label status JSON path.")
     parser.add_argument("--label-status-summary", type=Path, default=DEFAULT_LABEL_STATUS_SUMMARY, help="Tracked non-secret label status summary fallback.")
     parser.add_argument("--output", type=Path, help="Optional JSON output path.")
+    parser.add_argument("--signed-archive-upload-proven", action="store_true", help="Mark signed App Store Connect archive/upload proof as externally verified.")
+    parser.add_argument("--installed-testflight-smoke-proven", action="store_true", help="Mark trusted-device installed TestFlight smoke proof as externally verified.")
+    parser.add_argument("--import-history-proven", action="store_true", help="Mark Photos/File import, recovery, and history actions as externally verified.")
+    parser.add_argument("--readable-controls-proven", action="store_true", help="Mark small-phone and dynamic-type readable controls as externally verified.")
+    parser.add_argument("--export-share-proven", action="store_true", help="Mark finished MP4 preview/download/share/open-in-editor proof as externally verified.")
+    parser.add_argument("--live-backend-status-proven", action="store_true", help="Mark live production backend status proof as externally verified.")
+    parser.add_argument("--render-reliability-proven", action="store_true", help="Mark cloud render reliability with finished MP4 evidence as externally verified.")
+    parser.add_argument("--job-state-reporting-proven", action="store_true", help="Mark end-to-end cloud job-state reporting proof as externally verified.")
     args = parser.parse_args()
 
     repo_root = Path(args.repo_root).resolve()
@@ -661,8 +669,17 @@ def main() -> int:
     release_runs = release_preflight_runs(repo_root, 5)
     production_variables = production_variable_snapshot(repo_root)
     production_url_handoff = production_cloud_url_handoff(production_variables, args.branch)
-    testflight_handoff = testflight_proof_handoff(args.branch)
-    ios_usability_handoff = ios_usability_and_import_handoff()
+    testflight_handoff = testflight_proof_handoff(
+        args.branch,
+        signed_archive_upload_proven=args.signed_archive_upload_proven,
+        installed_testflight_smoke_proven=args.installed_testflight_smoke_proven,
+    )
+    ios_usability_handoff = ios_usability_and_import_handoff(
+        installed_testflight_smoke_proven=args.installed_testflight_smoke_proven,
+        import_history_proven=args.import_history_proven,
+        readable_controls_proven=args.readable_controls_proven,
+        export_share_proven=args.export_share_proven,
+    )
     labels = label_status_snapshot(repo_root, args.label_status, args.label_status_summary)
 
     head = git.get("head")
@@ -680,9 +697,25 @@ def main() -> int:
         release_preflight_passing,
         cloud_latest_run,
         cloud_run,
+        live_backend_status_proven=args.live_backend_status_proven,
+        render_reliability_proven=args.render_reliability_proven,
+        job_state_reporting_proven=args.job_state_reporting_proven,
     )
 
-    open_blockers = launch_blockers(production_variables, latest_release, labels, current_head_release=current_head_release)
+    open_blockers = launch_blockers(
+        production_variables,
+        latest_release,
+        labels,
+        current_head_release=current_head_release,
+        signed_archive_upload_proven=args.signed_archive_upload_proven,
+        installed_testflight_smoke_proven=args.installed_testflight_smoke_proven,
+        import_history_proven=args.import_history_proven,
+        readable_controls_proven=args.readable_controls_proven,
+        export_share_proven=args.export_share_proven,
+        live_backend_status_proven=args.live_backend_status_proven,
+        render_reliability_proven=args.render_reliability_proven,
+        job_state_reporting_proven=args.job_state_reporting_proven,
+    )
     snapshot = {
         "generatedAt": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         "secretSafe": True,
@@ -721,14 +754,14 @@ def main() -> int:
             "productionCloudUrls": bool(production_variables.get("missingRequired")),
             "releaseSecretsPreflight": not release_preflight_passing,
             "humanReviewedLabels": not bool(labels.get("launchEvidenceEligible")),
-            "signedArchiveUpload": True,
-            "installedTestFlightSmoke": True,
-            "importHistoryReliability": True,
-            "readableControls": True,
-            "exportShare": True,
-            "liveBackendStatus": True,
-            "renderReliability": True,
-            "jobStateReporting": True,
+            "signedArchiveUpload": not args.signed_archive_upload_proven,
+            "installedTestFlightSmoke": not args.installed_testflight_smoke_proven,
+            "importHistoryReliability": not args.import_history_proven,
+            "readableControls": not args.readable_controls_proven,
+            "exportShare": not args.export_share_proven,
+            "liveBackendStatus": not args.live_backend_status_proven,
+            "renderReliability": not args.render_reliability_proven,
+            "jobStateReporting": not args.job_state_reporting_proven,
         },
         "redactionReminder": "Do not add secrets, tokens, private keys, base64 values, presigned URLs, private video contents, or rendered MP4 contents to this snapshot.",
     }
