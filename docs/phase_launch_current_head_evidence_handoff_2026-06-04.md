@@ -143,6 +143,32 @@ This improves the live-status evidence from skipped probes to real route
 responses, but it does not prove production backend readiness, render
 reliability, job-state reporting, or finished MP4 delivery.
 
+## Staging deploy and live SHA refresh
+
+The staging cloud deploy path was run on branch commit `ecada4c` to resolve the
+live editing-service `gitSha` mismatch. This was a staging deploy, not a
+production cloud cutover and not an iOS upload.
+
+- Cloud Edit Deploy Preflight `operation=deploy`:
+  - Run: `26927820278`
+  - Head: `ecada4c`
+  - Result: `success`
+  - Passed jobs: Worker typecheck and dry run, secret-safe launch evidence
+    snapshot, editing backend Python tests, cloud edit deploy secret
+    verification
+- Post-deploy submission preflight was rerun without `--skip-live`:
+  - Result summary: `status=fail`, `17` fail, `28` pass, `1` warn
+  - Staging Worker `/v1/editing/version` returned non-secret AI Edit
+    kill-switch state
+  - Direct editing service `/version` returned non-secret AI Edit kill-switch
+    state
+  - Direct editing service `gitSha` now matches the current checkout
+
+This closes the stale-live-editing-service SHA evidence gap for the staging
+backend. It does not close production cloud URL variables, Release Secrets
+Preflight, signed archive/upload, installed TestFlight smoke, human-reviewed
+accuracy labels, render reliability, or finished MP4 export/share proof.
+
 ## Main-branch workflow refresh
 
 The stale June 1 main-branch failures were refreshed with workflow-dispatch
