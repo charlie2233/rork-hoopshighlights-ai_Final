@@ -651,6 +651,7 @@ private struct HistoryProjectDetailView: View {
             .buttonStyle(.plain)
             .disabled(!canOpenProject || isCurrentProject)
             .opacity((canOpenProject && !isCurrentProject) ? 1.0 : 0.5)
+            .accessibilityIdentifier("history.detail.resumeProject")
 
             Button {
                 startPreview(url: sourceURL, title: "Source Video")
@@ -665,12 +666,13 @@ private struct HistoryProjectDetailView: View {
             .buttonStyle(.plain)
             .disabled(sourceURL == nil)
             .opacity(sourceURL == nil ? 0.5 : 1.0)
+            .accessibilityIdentifier("history.detail.watchSource")
 
             Button {
                 startPreview(url: latestExportURL, title: "Saved Reel")
             } label: {
                 actionLabel(
-                    title: "Play Export",
+                    title: "Watch Saved Reel",
                     subtitle: latestExportURL == nil ? HistoryProjectActionCopy.exportMissingSubtitle : HistoryProjectActionCopy.exportAvailableSubtitle,
                     icon: "play.rectangle.fill",
                     tint: AppTheme.successGreen
@@ -679,6 +681,7 @@ private struct HistoryProjectDetailView: View {
             .buttonStyle(.plain)
             .disabled(latestExportURL == nil)
             .opacity(latestExportURL == nil ? 0.5 : 1.0)
+            .accessibilityIdentifier("history.detail.watchSavedReel")
 
             Button {
                 presentShareSheet(for: latestExportURL)
@@ -706,6 +709,7 @@ private struct HistoryProjectDetailView: View {
                 )
             }
             .buttonStyle(.plain)
+            .accessibilityIdentifier("history.detail.deleteProject")
         }
         .padding(16)
         .rorkCard(cornerRadius: 16, stroke: AppTheme.softBorder, glowOpacity: 0.05)
