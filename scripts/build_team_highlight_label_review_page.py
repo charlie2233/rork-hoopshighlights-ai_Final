@@ -729,13 +729,14 @@ def render_progress_summary(payload: dict[str, Any]) -> str:
             draft_line,
             (
                 '<p class="shortcut-strip">'
-                '<strong>Shortcuts:</strong> S/E/F jump, J/L scrub, K play/pause, P use prediction, '
+                '<strong>Shortcuts:</strong> Click card or Enter/Space plays the clip window, S/E/F jump, J/L scrub, K play/pause, P use prediction, '
                 'R reviewed, N next, 1 selected, 2 not highlight, 3 bad window.'
                 "</p>"
             ),
             priority_summary,
             review_order,
             '<p class="lede" id="draft-status">Local draft not loaded.</p>',
+            '<p class="playback-status" id="clip-playback-status">Click any clip card or Play clip to jump to its start; playback auto-pauses at the clip end.</p>',
             '<p class="review-position" id="review-position">Current queue position will appear here.</p>',
             "</div>",
             '<div class="button-row">',
@@ -876,6 +877,7 @@ def render_clip_card(case_index: int, case: dict[str, Any], clip: dict[str, Any]
             f'<p>Outcome: {escape(str(predicted.get("outcome") or "unknown"))} | Keep: {escape(str(predicted.get("keep")))}</p>',
             '<p class="missing-fields" aria-live="polite">Needs: reviewed, team, highlight, event, outcome</p>',
             '<div class="button-row">',
+            f'<button class="watch-button" type="button" onclick="playClipWindow({case_index}, {clip_index})">Play clip</button>',
             jump_button(case.get("videoId"), start, "Start"),
             jump_button(case.get("videoId"), event, "Event"),
             jump_button(case.get("videoId"), finish, "Finish"),
@@ -1099,6 +1101,10 @@ video {
   border-color: #1f9d6a;
   background: #172620;
 }
+.clip-card.playing {
+  border-color: #f6c95f;
+  box-shadow: 0 0 0 3px rgba(246, 201, 95, 0.18);
+}
 .missing-fields {
   color: #ffe29a;
   background: #352b17;
@@ -1160,6 +1166,17 @@ video {
   font-size: 13px;
   font-weight: 800;
 }
+.playback-status {
+  display: inline-flex;
+  max-width: 100%;
+  color: #b8f5d8;
+  background: #173026;
+  border: 1px solid #1f9d6a;
+  border-radius: 999px;
+  padding: 7px 11px;
+  font-size: 13px;
+  font-weight: 800;
+}
 .button-row {
   display: flex;
   flex-wrap: wrap;
@@ -1182,6 +1199,10 @@ button:disabled {
 .secondary-button {
   background: #30364a;
   color: #f6c95f;
+}
+.watch-button {
+  background: #f6c95f;
+  color: #171923;
 }
 .quick-label-row {
   margin-top: -4px;
@@ -1265,6 +1286,7 @@ const reviewData = JSON.parse(document.getElementById("review-data").textContent
 window.reviewData = reviewData;
 let currentPriorityFilter = "all";
 let currentFocusedCard = null;
+let activeClipPlayback = null;
 
 function videoElementId(videoId, angleId = "main") {
   const safe = String(videoId || "source").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -1286,12 +1308,98 @@ function videoElementsFor(videoId) {
 function seekClip(videoId, seconds) {
   const videos = videoElementsFor(videoId);
   if (!videos.length) return;
+  clearActiveClipPlayback();
   const targetTime = Math.max(0, Number(seconds) || 0);
   videos.forEach(video => {
     video.currentTime = targetTime;
   });
   videos[0].scrollIntoView({ behavior: "smooth", block: "center" });
   videos[0].play().catch(() => {});
+}
+
+function playbackStatus(message) {
+  const status = document.getElementById("clip-playback-status");
+  if (status) status.textContent = message;
+}
+
+function markerSeconds(card, marker) {
+  const raw = card?.dataset?.[`${marker}Seconds`];
+  if (raw === undefined || raw === "") return null;
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : null;
+}
+
+function clipTitle(card) {
+  return card?.querySelector?.("h3")?.textContent?.trim() || "Clip";
+}
+
+function clearActiveClipPlayback() {
+  if (activeClipPlayback?.card) {
+    activeClipPlayback.card.classList.remove("playing");
+  }
+  activeClipPlayback = null;
+}
+
+function setActiveClipPlayback(card) {
+  clearActiveClipPlayback();
+  const endSeconds = markerSeconds(card, "finish");
+  activeClipPlayback = {
+    card,
+    videoId: card.dataset.videoId,
+    endSeconds,
+  };
+  card.classList.add("playing");
+  currentFocusedCard = card;
+  updateReviewPosition(card);
+  return activeClipPlayback;
+}
+
+function pauseVideosForCard(card) {
+  if (!card) return;
+  videoElementsFor(card.dataset.videoId).forEach(video => video.pause());
+}
+
+function playClipWindowFromCard(card, marker = "start") {
+  if (!card) return;
+  const videos = videoElementsFor(card.dataset.videoId);
+  if (!videos.length) {
+    playbackStatus("No source video is mapped for this clip.");
+    return;
+  }
+  const startSeconds = markerSeconds(card, marker) ?? markerSeconds(card, "start") ?? 0;
+  const endSeconds = markerSeconds(card, "finish");
+  setActiveClipPlayback(card);
+  videos.forEach(video => {
+    video.currentTime = Math.max(0, startSeconds);
+    video.play().catch(() => {});
+  });
+  videos[0].scrollIntoView({ behavior: "smooth", block: "center" });
+  card.focus({ preventScroll: true });
+  playbackStatus(`${clipTitle(card)} playing from ${startSeconds.toFixed(1)}s${endSeconds !== null ? ` to ${endSeconds.toFixed(1)}s, then auto-pause.` : "."}`);
+}
+
+function playClipWindow(caseIndex, clipIndex) {
+  const card = document.querySelector(`[data-case-index="${caseIndex}"][data-clip-index="${clipIndex}"]`);
+  playClipWindowFromCard(card);
+}
+
+function handleClipEndTimeUpdate(event) {
+  if (!activeClipPlayback || activeClipPlayback.endSeconds === null) return;
+  const videos = videoElementsFor(activeClipPlayback.videoId);
+  if (!videos.includes(event.currentTarget)) return;
+  if (event.currentTarget.currentTime < activeClipPlayback.endSeconds - 0.05) return;
+  videos.forEach(video => video.pause());
+  playbackStatus(`${clipTitle(activeClipPlayback.card)} paused at clip end ${activeClipPlayback.endSeconds.toFixed(1)}s. Label it, then press R or Next.`);
+}
+
+function targetIsClipControl(target) {
+  return Boolean(target?.closest?.("button, input, select, textarea, label, a"));
+}
+
+function handleClipCardClick(event) {
+  const card = event.target?.closest?.(".clip-card");
+  if (!card || targetIsClipControl(event.target)) return;
+  playClipWindowFromCard(card);
 }
 
 function boolFromSelect(value) {
@@ -1778,6 +1886,10 @@ function activeClipCard() {
 
 function seekClipFromCard(card, marker) {
   if (!card) return;
+  if (marker === "start") {
+    playClipWindowFromCard(card, "start");
+    return;
+  }
   const seconds = card.dataset[`${marker}Seconds`];
   if (seconds === undefined || seconds === "") return;
   seekClip(card.dataset.videoId, seconds);
@@ -1787,6 +1899,7 @@ function scrubVideosForCard(card, deltaSeconds) {
   if (!card) return;
   const videos = videoElementsFor(card.dataset.videoId);
   if (!videos.length) return;
+  setActiveClipPlayback(card);
   const baseTime = Number.isFinite(videos[0].currentTime) ? videos[0].currentTime : Number(card.dataset.eventSeconds || 0);
   const targetTime = Math.max(0, baseTime + deltaSeconds);
   videos.forEach(video => {
@@ -1800,13 +1913,20 @@ function togglePlaybackForCard(card) {
   const videos = videoElementsFor(card.dataset.videoId);
   if (!videos.length) return;
   const shouldPlay = videos.some(video => video.paused);
+  setActiveClipPlayback(card);
+  const endSeconds = markerSeconds(card, "finish");
+  const startSeconds = markerSeconds(card, "start") ?? 0;
   videos.forEach(video => {
     if (shouldPlay) {
+      if (endSeconds !== null && video.currentTime >= endSeconds - 0.05) {
+        video.currentTime = startSeconds;
+      }
       video.play().catch(() => {});
     } else {
       video.pause();
     }
   });
+  playbackStatus(shouldPlay ? `${clipTitle(card)} playing; it will auto-pause at the clip end.` : `${clipTitle(card)} paused.`);
   draftStatus(shouldPlay ? "Playing synced angles." : "Paused synced angles.");
 }
 
@@ -1826,8 +1946,10 @@ function focusClipCard(card) {
     const targetTime = Math.max(0, Number(clipPayload.eventCenter) || 0);
     videos.forEach(video => {
       video.currentTime = targetTime;
+      video.pause();
     });
   }
+  playbackStatus(`${clipTitle(card)} selected. Click the card or Play clip to watch start-to-finish.`);
   return true;
 }
 
@@ -1885,13 +2007,15 @@ function handleReviewShortcut(event) {
   if (event.altKey || event.ctrlKey || event.metaKey) return;
 
   const key = String(event.key || "").toLowerCase();
-  if (!["s", "e", "f", "j", "k", "l", "p", "r", "n", "1", "2", "3"].includes(key)) return;
+  if (![" ", "enter", "s", "e", "f", "j", "k", "l", "p", "r", "n", "1", "2", "3"].includes(key)) return;
 
   const card = activeClipCard();
   if (!card) return;
 
   event.preventDefault();
-  if (key === "s") {
+  if (key === " " || key === "enter") {
+    playClipWindowFromCard(card);
+  } else if (key === "s") {
     seekClipFromCard(card, "start");
   } else if (key === "e") {
     seekClipFromCard(card, "event");
@@ -2000,7 +2124,11 @@ window.addEventListener("input", updateProgress);
 window.addEventListener("change", updateProgress);
 window.addEventListener("input", saveDraft);
 window.addEventListener("change", saveDraft);
+window.addEventListener("click", handleClipCardClick);
 window.addEventListener("keydown", handleReviewShortcut);
+document.querySelectorAll("video").forEach(video => {
+  video.addEventListener("timeupdate", handleClipEndTimeUpdate);
+});
 restoreDraft();
 updateProgress();
 """.strip()
