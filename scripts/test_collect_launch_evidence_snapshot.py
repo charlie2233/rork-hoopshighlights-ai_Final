@@ -68,6 +68,10 @@ class CollectLaunchEvidenceSnapshotTest(unittest.TestCase):
                     {
                         "generatedAt": "2026-06-03T22:04:06Z",
                         "sourceKind": "tracked_non_secret_summary",
+                        "reviewPagePath": "artifacts/team_highlight_labeling_bundle/team_highlight_label_review.html",
+                        "manifestPath": "artifacts/team_highlight_accuracy_manifest.json",
+                        "reviewerHandoffPath": "docs/phase_launch_accuracy_reviewer_handoff_2026-06-03.md",
+                        "executionHandoffPath": "docs/phase_launch_label_review_execution_handoff_2026-06-03.md",
                         "status": "incomplete",
                         "clipCount": 54,
                         "completeClipCount": 0,
@@ -83,8 +87,13 @@ class CollectLaunchEvidenceSnapshotTest(unittest.TestCase):
 
             self.assertFalse(snapshot["exists"])
             self.assertEqual(snapshot["source"], "trackedSummary")
+            self.assertEqual(snapshot["sourceKind"], "tracked_non_secret_summary")
             self.assertEqual(snapshot["summaryPath"], str(summary))
             self.assertEqual(snapshot["summaryGeneratedAt"], "2026-06-03T22:04:06Z")
+            self.assertEqual(snapshot["reviewPagePath"], "artifacts/team_highlight_labeling_bundle/team_highlight_label_review.html")
+            self.assertEqual(snapshot["manifestPath"], "artifacts/team_highlight_accuracy_manifest.json")
+            self.assertEqual(snapshot["reviewerHandoffPath"], "docs/phase_launch_accuracy_reviewer_handoff_2026-06-03.md")
+            self.assertEqual(snapshot["executionHandoffPath"], "docs/phase_launch_label_review_execution_handoff_2026-06-03.md")
             self.assertEqual(snapshot["status"], "incomplete")
             self.assertEqual(snapshot["completeClipCount"], 0)
             self.assertEqual(snapshot["clipCount"], 54)
