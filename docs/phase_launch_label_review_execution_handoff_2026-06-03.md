@@ -12,8 +12,9 @@ Use this handoff to finish the human-reviewed launch accuracy labels for HoopCli
 - launch evidence eligible: `false`
 - complete clips: `0/54`
 - incomplete clips: `54/54`
-- close-review priority clips: `47`
-- standard-review clips: `7`
+- review priority: use `Next close review` first, then finish every remaining
+  incomplete clip. Priority counts are review-page guidance only; the
+  authoritative launch blocker is still `0/54` complete.
 
 ## Browser reviewer task
 

@@ -11,8 +11,9 @@ does not replace human review.
 - Clips: `54`
 - Complete clips: `0`
 - Incomplete clips: `54`
-- Close-review priority clips: `49`
-- Standard-review clips: `5`
+- Review priority: start with the review page's `Next close review` queue, then
+  finish every remaining incomplete clip. Priority counts are review-page
+  guidance only; they are not launch evidence.
 
 Current required fields missing across all 54 clips:
 
@@ -157,6 +158,8 @@ Result remains incomplete and not launch evidence:
 - Incomplete clips: `54`
 - `launch_label_case_all_001`: `0/30` complete
 - `launch_label_case_team_001`: `0/24` complete
+- Authoritative launch blocker: `0/54` clips are human-reviewed, so the launch
+  accuracy report must not be treated as ready.
 
 Missing fields still total `54` each for:
 
