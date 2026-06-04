@@ -578,6 +578,9 @@ def launch_blockers(
     import_history_proven: bool = False,
     readable_controls_proven: bool = False,
     export_share_proven: bool = False,
+    live_backend_status_proven: bool = False,
+    render_reliability_proven: bool = False,
+    job_state_reporting_proven: bool = False,
 ) -> list[str]:
     blockers: list[str] = []
     missing_variables = production_variables.get("missingRequired") or []
@@ -606,6 +609,12 @@ def launch_blockers(
             )
         else:
             blockers.append("Release Secrets Preflight has no current-head run evidence")
+    if not live_backend_status_proven:
+        blockers.append("Live production backend status is not proven")
+    if not render_reliability_proven:
+        blockers.append("Cloud render reliability is not proven with finished MP4 evidence")
+    if not job_state_reporting_proven:
+        blockers.append("Cloud job-state reporting is not proven end to end")
     if not labels.get("launchEvidenceEligible"):
         status = labels.get("status") or "unknown"
         complete = labels.get("completeClipCount")
@@ -717,6 +726,9 @@ def main() -> int:
             "importHistoryReliability": True,
             "readableControls": True,
             "exportShare": True,
+            "liveBackendStatus": True,
+            "renderReliability": True,
+            "jobStateReporting": True,
         },
         "redactionReminder": "Do not add secrets, tokens, private keys, base64 values, presigned URLs, private video contents, or rendered MP4 contents to this snapshot.",
     }
