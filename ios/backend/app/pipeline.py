@@ -32,6 +32,9 @@ NATIVE_DEFENSIVE_CONTEXT_TARGET_SECONDS = 4.0
 NATIVE_DEFENSIVE_CONTEXT_MIN_LEAD_SECONDS = 0.6
 NATIVE_DEFENSIVE_CONTEXT_MIN_FOLLOW_THROUGH_SECONDS = 0.5
 HYBRID_OVERLAP_DEDUPE_RATIO = 0.55
+TEMPORAL_DEDUPE_MIN_OVERLAP_RATIO = 0.25
+TEMPORAL_DEDUPE_CENTER_GAP_SECONDS = 1.25
+TEMPORAL_DEDUPE_SCORE_BOOST_WEIGHT = 0.22
 VISUAL_EVENT_SAMPLE_FPS = 2.0
 VISUAL_EVENT_FRAME_WIDTH = 64
 VISUAL_EVENT_FRAME_HEIGHT = 36
@@ -108,11 +111,11 @@ def run_analysis(job: StoredJob, settings: Settings, source_path: Path) -> Cloud
         raise PipelineError("upload_missing", "The uploaded video could not be found.")
 
     if job.file_size_bytes > settings.max_file_size_bytes:
-        raise PipelineError("file_too_large", "Videos larger than 500 MB are not supported in cloud analysis v1.")
+        raise PipelineError("file_too_large", "Videos larger than 2 GB are not supported in cloud analysis v1.")
 
     duration_seconds = _probe_duration(source_path, fallback=job.duration_seconds)
     if duration_seconds > settings.max_duration_seconds:
-        raise PipelineError("unsupported_duration", "Videos longer than 30 minutes are not supported in cloud analysis right now.")
+        raise PipelineError("unsupported_duration", "Videos longer than 75 minutes are not supported in cloud analysis right now.")
 
     provider_tags: list[str] = []
     candidate_pool_limit = _analysis_candidate_pool_limit(settings, job.team_selection)
@@ -141,6 +144,8 @@ def run_analysis(job: StoredJob, settings: Settings, source_path: Path) -> Cloud
                 external_clips=external_clips,
                 native_clips=native_clips,
                 clip_limit=candidate_pool_limit,
+                duration_seconds=duration_seconds,
+                settings=settings,
             )
             candidate_segments = len(external_clips) + native_candidate_segments
         else:
@@ -586,7 +591,8 @@ def _normalize_analysis_clips(
         normalized_clip = _normalize_clip_for_analysis_context(clip, duration_seconds, settings)
         if normalized_clip is not None:
             normalized.append(normalized_clip)
-    return normalized[: (clip_limit or settings.max_returned_clips)]
+    merged = _merge_near_duplicate_analysis_clips(normalized, duration_seconds=duration_seconds, settings=settings)
+    return merged[: (clip_limit or settings.max_returned_clips)]
 
 
 def _normalize_clip_for_analysis_context(
@@ -869,6 +875,8 @@ def _merge_hybrid_detection_clips(
     external_clips: Sequence[CloudClip],
     native_clips: Sequence[CloudClip],
     clip_limit: int,
+    duration_seconds: float,
+    settings: Settings,
 ) -> list[CloudClip]:
     ranked = sorted([*external_clips, *native_clips], key=_hybrid_clip_quality_key, reverse=True)
     kept: list[CloudClip] = []
@@ -877,18 +885,166 @@ def _merge_hybrid_detection_clips(
             (
                 index
                 for index, existing in enumerate(kept)
-                if _clip_overlap_ratio(clip, existing) > HYBRID_OVERLAP_DEDUPE_RATIO
+                if _clips_describe_same_highlight_timeframe(clip, existing)
             ),
             None,
         )
         if duplicate_index is None:
             kept.append(clip)
             continue
-        if _hybrid_clip_quality_key(clip) > _hybrid_clip_quality_key(kept[duplicate_index]):
-            kept[duplicate_index] = clip
+        kept[duplicate_index] = _merge_duplicate_cloud_clips(
+            kept[duplicate_index],
+            clip,
+            duration_seconds=duration_seconds,
+            settings=settings,
+        )
 
     kept.sort(key=_hybrid_clip_quality_key, reverse=True)
     return kept[:clip_limit]
+
+
+def _merge_near_duplicate_analysis_clips(
+    clips: Sequence[CloudClip],
+    *,
+    duration_seconds: float,
+    settings: Settings,
+) -> list[CloudClip]:
+    kept: list[CloudClip] = []
+    for clip in clips:
+        duplicate_index = next(
+            (
+                index
+                for index, existing in enumerate(kept)
+                if _clips_describe_same_highlight_timeframe(clip, existing)
+            ),
+            None,
+        )
+        if duplicate_index is None:
+            kept.append(clip)
+            continue
+        kept[duplicate_index] = _merge_duplicate_cloud_clips(
+            kept[duplicate_index],
+            clip,
+            duration_seconds=duration_seconds,
+            settings=settings,
+        )
+    return kept
+
+
+def _clips_describe_same_highlight_timeframe(left: CloudClip, right: CloudClip) -> bool:
+    overlap_ratio = _clip_overlap_ratio(left, right)
+    if overlap_ratio > HYBRID_OVERLAP_DEDUPE_RATIO:
+        return True
+    left_center = _clip_merge_center(left)
+    right_center = _clip_merge_center(right)
+    center_gap = abs(left_center - right_center)
+    return center_gap <= TEMPORAL_DEDUPE_CENTER_GAP_SECONDS and overlap_ratio >= TEMPORAL_DEDUPE_MIN_OVERLAP_RATIO
+
+
+def _merge_duplicate_cloud_clips(
+    left: CloudClip,
+    right: CloudClip,
+    *,
+    duration_seconds: float,
+    settings: Settings,
+) -> CloudClip:
+    best = max((left, right), key=_hybrid_clip_quality_key)
+    audio_clip = max((left, right), key=lambda clip: ((clip.audioCueConfidence or 0.0), clip.audioScore, clip.combinedScore))
+    team_clip = max((left, right), key=_clip_team_attribution_quality)
+    start_time, end_time, event_center = _merged_duplicate_clip_window(left, right, duration_seconds=duration_seconds, settings=settings)
+    merged = best.model_copy(
+        update={
+            "startTime": start_time,
+            "endTime": end_time,
+            "eventCenter": event_center,
+            "confidence": _merged_duplicate_score(left.confidence, right.confidence),
+            "audioScore": _merged_duplicate_score(left.audioScore, right.audioScore),
+            "visualScore": _merged_duplicate_score(left.visualScore, right.visualScore),
+            "motionScore": _merged_duplicate_score(left.motionScore, right.motionScore),
+            "combinedScore": _merged_duplicate_score(left.combinedScore, right.combinedScore),
+            "audioCueType": audio_clip.audioCueType,
+            "audioCueConfidence": audio_clip.audioCueConfidence,
+            "audioCueTime": audio_clip.audioCueTime,
+            "teamAttribution": team_clip.teamAttribution,
+            "teamAttributionStatus": team_clip.teamAttributionStatus,
+            "shouldAutoKeep": left.shouldAutoKeep or right.shouldAutoKeep,
+            "shouldEnableSlowMotion": left.shouldEnableSlowMotion or right.shouldEnableSlowMotion,
+        }
+    )
+    auto_keep_allowed = _analysis_clip_auto_keep_allowed(merged)
+    return merged.model_copy(
+        update={
+            "shouldAutoKeep": merged.shouldAutoKeep and auto_keep_allowed,
+            "shouldEnableSlowMotion": merged.shouldEnableSlowMotion and auto_keep_allowed,
+            "nativeShotSignals": _native_shot_signals_for_analysis_clip(merged),
+        }
+    )
+
+
+def _merged_duplicate_clip_window(
+    left: CloudClip,
+    right: CloudClip,
+    *,
+    duration_seconds: float,
+    settings: Settings,
+) -> tuple[float, float, float]:
+    duration_seconds = max(0.0, duration_seconds)
+    start_time = clamp(min(left.startTime, right.startTime), 0.0, duration_seconds)
+    end_time = clamp(max(left.endTime, right.endTime), 0.0, duration_seconds)
+    event_center = clamp(_weighted_clip_merge_center(left, right), 0.0, duration_seconds)
+    max_duration = min(settings.max_clip_duration_seconds, duration_seconds) if duration_seconds > 0 else settings.max_clip_duration_seconds
+    min_duration = min(settings.min_clip_duration_seconds, duration_seconds) if duration_seconds > 0 else settings.min_clip_duration_seconds
+
+    if max_duration > 0 and end_time - start_time > max_duration:
+        start_time = max(0.0, event_center - (max_duration / 2.0))
+        end_time = min(duration_seconds, start_time + max_duration)
+        if end_time - start_time < max_duration:
+            start_time = max(0.0, end_time - max_duration)
+
+    if min_duration > 0 and end_time - start_time < min_duration:
+        missing = min_duration - (end_time - start_time)
+        start_time = max(0.0, start_time - (missing / 2.0))
+        end_time = min(duration_seconds, end_time + (missing / 2.0))
+        if end_time - start_time < min_duration:
+            start_time = max(0.0, min(start_time, duration_seconds - min_duration))
+            end_time = min(duration_seconds, start_time + min_duration)
+
+    event_center = clamp(event_center, start_time, end_time)
+    return round(start_time, 3), round(end_time, 3), round(event_center, 3)
+
+
+def _merged_duplicate_score(left_score: float, right_score: float) -> float:
+    stronger = max(left_score, right_score)
+    weaker = min(left_score, right_score)
+    return round(clamp(stronger + (weaker * TEMPORAL_DEDUPE_SCORE_BOOST_WEIGHT), 0.0, 1.0), 4)
+
+
+def _weighted_clip_merge_center(left: CloudClip, right: CloudClip) -> float:
+    if left.eventCenter is not None and right.eventCenter is None:
+        return left.eventCenter
+    if right.eventCenter is not None and left.eventCenter is None:
+        return right.eventCenter
+    left_weight = max(left.combinedScore, 0.001)
+    right_weight = max(right.combinedScore, 0.001)
+    return ((left_weight * _clip_merge_center(left)) + (right_weight * _clip_merge_center(right))) / (left_weight + right_weight)
+
+
+def _clip_merge_center(clip: CloudClip) -> float:
+    if clip.eventCenter is not None:
+        return clip.eventCenter
+    return (clip.startTime + clip.endTime) / 2.0
+
+
+def _clip_team_attribution_quality(clip: CloudClip) -> float:
+    status_score = {
+        "matched": 0.35,
+        "all": 0.2,
+        "uncertain": 0.05,
+        "opponent": -0.4,
+        None: 0.0,
+    }.get(clip.teamAttributionStatus, 0.0)
+    attribution_confidence = clip.teamAttribution.confidence if clip.teamAttribution is not None else 0.0
+    return status_score + attribution_confidence
 
 
 def _hybrid_clip_quality_key(clip: CloudClip) -> tuple[float, float, float, float, float, float, float]:

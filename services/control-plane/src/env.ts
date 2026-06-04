@@ -65,8 +65,8 @@ export function resolveRuntimeConfig(env: Env): RuntimeConfig {
       1800,
     ),
     maxInferenceAttempts: toPositiveInt(env.MAX_INFERENCE_ATTEMPTS, 3),
-    maxFileSizeBytes: toPositiveInt(env.MAX_FILE_SIZE_BYTES, 500 * 1024 * 1024),
-    maxDurationSeconds: toPositiveNumber(env.MAX_DURATION_SECONDS, 1800),
+    maxFileSizeBytes: toPositiveInt(env.MAX_FILE_SIZE_BYTES, 2 * 1024 * 1024 * 1024),
+    maxDurationSeconds: toPositiveNumber(env.MAX_DURATION_SECONDS, 4500),
   };
 }
 

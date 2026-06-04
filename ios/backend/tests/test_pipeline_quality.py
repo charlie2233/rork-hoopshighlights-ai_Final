@@ -1882,11 +1882,48 @@ class PipelineQualityTests(unittest.TestCase):
             external_clips=[weak_provider_clip],
             native_clips=[complete_native_clip],
             clip_limit=4,
+            duration_seconds=30.0,
+            settings=_settings(),
         )
 
         self.assertEqual(len(clips), 1)
         self.assertEqual(clips[0].label, "Three Pointer")
         self.assertEqual(clips[0].eventCenter, 10.0)
+        self.assertGreater(clips[0].combinedScore, weak_provider_clip.combinedScore)
+
+    def test_hybrid_merge_combines_same_timeframe_scores_instead_of_returning_repeats(self) -> None:
+        first_signal = _clip(
+            start=5.0,
+            end=9.0,
+            label="Made Shot",
+            combined=0.7,
+            confidence=0.72,
+            event_center=7.0,
+            auto_keep=True,
+        )
+        second_signal = _clip(
+            start=5.35,
+            end=9.1,
+            label="Made Shot",
+            combined=0.62,
+            confidence=0.7,
+            event_center=7.2,
+            auto_keep=True,
+        )
+
+        clips = _merge_hybrid_detection_clips(
+            external_clips=[first_signal],
+            native_clips=[second_signal],
+            clip_limit=4,
+            duration_seconds=30.0,
+            settings=_settings(),
+        )
+
+        self.assertEqual(len(clips), 1)
+        self.assertAlmostEqual(clips[0].startTime, 5.0)
+        self.assertAlmostEqual(clips[0].endTime, 9.1)
+        self.assertGreater(clips[0].combinedScore, first_signal.combinedScore)
+        self.assertLessEqual(clips[0].combinedScore, 1.0)
 
     def test_analysis_normalization_expands_tiny_shot_clip_with_event_center(self) -> None:
         tiny = _clip(

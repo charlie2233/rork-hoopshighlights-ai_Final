@@ -88,7 +88,7 @@ async def materialize_remote_source(
                             continue
                         written += len(chunk)
                         if written > max_file_size_bytes:
-                            raise APIError(413, "file_too_large", "Videos larger than 500 MB are not supported in cloud analysis v1.")
+                            raise APIError(413, "file_too_large", "Videos larger than 2 GB are not supported in cloud analysis v1.")
                         output.write(chunk)
 
         if written <= 0:
@@ -465,9 +465,9 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
         try:
             _require_public_api_enabled()
             if request.durationSeconds > resolved_settings.max_duration_seconds:
-                raise APIError(400, "unsupported_duration", "Videos longer than 30 minutes are not supported in cloud analysis right now.")
+                raise APIError(400, "unsupported_duration", "Videos longer than 75 minutes are not supported in cloud analysis right now.")
             if request.fileSizeBytes > resolved_settings.max_file_size_bytes:
-                raise APIError(400, "file_too_large", "Videos larger than 500 MB are not supported in cloud analysis v1.")
+                raise APIError(400, "file_too_large", "Videos larger than 2 GB are not supported in cloud analysis v1.")
 
             quota_remaining = await runtime.job_store.reserve_quota(request.installId)
             job_id = uuid4().hex
@@ -500,7 +500,7 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
                 if not payload:
                     raise APIError(400, "empty_upload", "The uploaded file body was empty.")
                 if len(payload) > resolved_settings.max_file_size_bytes:
-                    raise APIError(413, "file_too_large", "Videos larger than 500 MB are not supported in cloud analysis v1.")
+                    raise APIError(413, "file_too_large", "Videos larger than 2 GB are not supported in cloud analysis v1.")
 
                 storage_path = runtime.storage.accept_local_upload(job, payload)
                 await runtime.job_store.mark_uploaded(job_id, storage_path)

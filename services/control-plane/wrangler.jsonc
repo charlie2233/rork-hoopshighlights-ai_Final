@@ -71,7 +71,7 @@
     "SELECTED_TEAM_PROCESSING_TIMEOUT_SECONDS": "1800",
     "MAX_INFERENCE_ATTEMPTS": "3",
     "MAX_FILE_SIZE_BYTES": "524288000",
-    "MAX_DURATION_SECONDS": "1800",
+    "MAX_DURATION_SECONDS": "4500",
     "R2_ACCOUNT_ID": "",
     "R2_UPLOAD_BUCKET_NAME": "hoopsclips-uploads",
     "R2_RESULT_BUCKET_NAME": "hoopsclips-results"
@@ -102,7 +102,7 @@
         "SELECTED_TEAM_PROCESSING_TIMEOUT_SECONDS": "1800",
         "MAX_INFERENCE_ATTEMPTS": "3",
         "MAX_FILE_SIZE_BYTES": "524288000",
-        "MAX_DURATION_SECONDS": "1800",
+        "MAX_DURATION_SECONDS": "4500",
         "R2_ACCOUNT_ID": "78fb4442e6e37b2c46d7e539c6e79172",
         "R2_UPLOAD_BUCKET_NAME": "hoopsclips-uploads-staging",
         "R2_RESULT_BUCKET_NAME": "hoopsclips-results-staging"

@@ -94,7 +94,7 @@ Then you can selectively install dependencies into isolated virtualenvs:
 - `HOOPS_AUTOHIGHLIGHT_REPO_PATH`: explicit autohighlight checkout path
 - `HOOPS_AUTOHIGHLIGHT_PYTHON`: Python executable for the autohighlight virtualenv
 - `HOOPS_DAILY_QUOTA`: per-install rolling quota (default `3`)
-- `HOOPS_MAX_DURATION_SECONDS`: max backend video duration (default `1800`)
+- `HOOPS_MAX_DURATION_SECONDS`: max backend video duration (default `4500`)
 - `HOOPS_MAX_FILE_SIZE_BYTES`: max video size for v1 (default `524288000`)
 - `HOOPS_MAX_RETURNED_CLIPS`: high-recall cloud analysis candidate pool returned to iOS and AI Edit, clamped to `8...320` (default `320`); cloud analysis may inspect up to 1,280 pre-trim candidates before team filtering and review trimming.
 - `HOOPS_BACKEND_MODEL_VERSION`: version string exposed in diagnostics (default `cloud-v1`)
@@ -225,5 +225,5 @@ Remaining before public cloud cutover:
 
 ## Current tier behavior
 - Free tier is enforced in the iOS client: videos longer than 15 minutes require Pro before analysis starts.
-- The backend allows up to 30 minutes so Pro users are not blocked by the old cap.
+- The backend allows up to 75 minutes so longer full-game sources are not blocked by the old cap.
 - Backend subscription validation is still not implemented in this pass, so the 15-minute free-tier rule remains a client-side product rule.
