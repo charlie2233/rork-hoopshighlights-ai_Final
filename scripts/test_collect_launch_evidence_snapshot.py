@@ -385,12 +385,15 @@ class LaunchBlockerSummaryTest(unittest.TestCase):
             labels={"status": "incomplete", "completeClipCount": 0, "clipCount": 54, "launchEvidenceEligible": False},
         )
 
-        self.assertEqual(len(blockers), 5)
+        self.assertEqual(len(blockers), 8)
         self.assertIn("HOOPS_CLOUD_ANALYSIS_BASE_URL", blockers[0])
         self.assertIn("26884199422", blockers[1])
         self.assertIn("0/54", blockers[2])
         self.assertIn("Signed App Store Connect archive/upload", blockers[3])
         self.assertIn("Installed trusted-device TestFlight smoke", blockers[4])
+        self.assertIn("Import/history reliability proof", blockers[5])
+        self.assertIn("readable controls proof", blockers[6])
+        self.assertIn("preview/download/share/open-in-editor", blockers[7])
 
     def test_launch_blockers_empty_when_all_external_gates_are_proven(self):
         from scripts.collect_launch_evidence_snapshot import launch_blockers
@@ -403,6 +406,9 @@ class LaunchBlockerSummaryTest(unittest.TestCase):
             current_head_release=release_run,
             signed_archive_upload_proven=True,
             installed_testflight_smoke_proven=True,
+            import_history_proven=True,
+            readable_controls_proven=True,
+            export_share_proven=True,
         )
 
         self.assertEqual(blockers, [])
@@ -417,6 +423,9 @@ class LaunchBlockerSummaryTest(unittest.TestCase):
             current_head_release=None,
             signed_archive_upload_proven=True,
             installed_testflight_smoke_proven=True,
+            import_history_proven=True,
+            readable_controls_proven=True,
+            export_share_proven=True,
         )
 
         self.assertEqual(len(blockers), 1)

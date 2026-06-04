@@ -575,6 +575,9 @@ def launch_blockers(
     current_head_release: dict[str, Any] | None = None,
     signed_archive_upload_proven: bool = False,
     installed_testflight_smoke_proven: bool = False,
+    import_history_proven: bool = False,
+    readable_controls_proven: bool = False,
+    export_share_proven: bool = False,
 ) -> list[str]:
     blockers: list[str] = []
     missing_variables = production_variables.get("missingRequired") or []
@@ -615,6 +618,12 @@ def launch_blockers(
         blockers.append("Signed App Store Connect archive/upload is not proven")
     if not installed_testflight_smoke_proven:
         blockers.append("Installed trusted-device TestFlight smoke is not proven")
+    if not import_history_proven:
+        blockers.append("Import/history reliability proof is not proven on an installed TestFlight build")
+    if not readable_controls_proven:
+        blockers.append("Small-phone and dynamic-type readable controls proof is not proven")
+    if not export_share_proven:
+        blockers.append("Finished MP4 preview/download/share/open-in-editor proof is not proven")
     return blockers
 
 
@@ -697,7 +706,7 @@ def main() -> int:
         "launchReadiness": {
             "launchReady": len(open_blockers) == 0,
             "openBlockers": open_blockers,
-            "note": "A true value requires external evidence for production URLs/secrets, Release Secrets Preflight, human-reviewed labels, signed upload, and installed TestFlight smoke.",
+            "note": "A true value requires external evidence for production URLs/secrets, Release Secrets Preflight, human-reviewed labels, signed upload, installed TestFlight smoke, import/history recovery, readable controls, and export/share/open-in-editor.",
         },
         "remainingRequiredEvidence": {
             "productionCloudUrls": bool(production_variables.get("missingRequired")),
@@ -705,6 +714,9 @@ def main() -> int:
             "humanReviewedLabels": not bool(labels.get("launchEvidenceEligible")),
             "signedArchiveUpload": True,
             "installedTestFlightSmoke": True,
+            "importHistoryReliability": True,
+            "readableControls": True,
+            "exportShare": True,
         },
         "redactionReminder": "Do not add secrets, tokens, private keys, base64 values, presigned URLs, private video contents, or rendered MP4 contents to this snapshot.",
     }
