@@ -5,6 +5,7 @@ from pathlib import Path
 
 from scripts.collect_launch_evidence_snapshot import (
     cloud_backend_readiness_handoff,
+    gpt_clipping_accuracy_handoff,
     ios_usability_and_import_handoff,
     label_review_guidance,
     label_status_snapshot,
@@ -321,6 +322,53 @@ class CollectLaunchEvidenceSnapshotTest(unittest.TestCase):
         self.assertEqual(handoff["requiredProof"]["importHistory"]["status"], "proven")
         self.assertEqual(handoff["requiredProof"]["readableControls"]["status"], "proven")
         self.assertEqual(handoff["requiredProof"]["exportShare"]["status"], "proven")
+        self.assertEqual(handoff["nextActions"], [])
+
+    def test_gpt_clipping_accuracy_handoff_keeps_draft_labels_from_counting(self):
+        handoff = gpt_clipping_accuracy_handoff(
+            {
+                "status": "incomplete",
+                "completeClipCount": 0,
+                "clipCount": 54,
+                "incompleteClipCount": 54,
+                "launchEvidenceEligible": False,
+                "missingFieldCounts": {
+                    "expected.eventType": 54,
+                    "expected.outcome": 54,
+                    "reviewedByHuman=true": 54,
+                },
+            }
+        )
+
+        self.assertEqual(handoff["status"], "blocked")
+        self.assertFalse(handoff["launchEvidenceEligible"])
+        self.assertEqual(handoff["humanReviewedClipCount"], 0)
+        self.assertEqual(handoff["totalClipCount"], 54)
+        self.assertEqual(handoff["remainingClipCount"], 54)
+        self.assertIn("team-aware selected-team highlight precision and recall", handoff["requiredProof"])
+        self.assertIn("defensive context", handoff["requiredProof"])
+        self.assertIn("crowd/audio reaction recall", handoff["requiredProof"])
+        self.assertIn("shot outcome correctness", handoff["requiredProof"])
+        self.assertIn("GPT draft labels without human review", handoff["doNotClaimFrom"])
+        self.assertIn("0/54 label coverage", handoff["doNotClaimFrom"])
+        self.assertIn("Complete human review", " ".join(handoff["nextActions"]))
+
+    def test_gpt_clipping_accuracy_handoff_can_represent_launch_eligible_labels(self):
+        handoff = gpt_clipping_accuracy_handoff(
+            {
+                "status": "complete",
+                "completeClipCount": 54,
+                "clipCount": 54,
+                "incompleteClipCount": 0,
+                "launchEvidenceEligible": True,
+                "missingFieldCounts": {},
+            }
+        )
+
+        self.assertEqual(handoff["status"], "complete")
+        self.assertTrue(handoff["launchEvidenceEligible"])
+        self.assertEqual(handoff["humanReviewedClipCount"], 54)
+        self.assertEqual(handoff["remainingClipCount"], 0)
         self.assertEqual(handoff["nextActions"], [])
 
 

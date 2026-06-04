@@ -403,6 +403,51 @@ def cloud_backend_readiness_handoff(
     }
 
 
+def gpt_clipping_accuracy_handoff(labels: dict[str, Any]) -> dict[str, Any]:
+    launch_evidence_eligible = bool(labels.get("launchEvidenceEligible"))
+    complete = labels.get("completeClipCount")
+    total = labels.get("clipCount")
+    incomplete = labels.get("incompleteClipCount")
+    missing_fields = labels.get("missingFieldCounts") if isinstance(labels.get("missingFieldCounts"), dict) else {}
+    next_actions: list[str] = []
+    if not launch_evidence_eligible:
+        next_actions = [
+            "Complete human review for every GPT-selected launch clip.",
+            "Rebuild the launch-grade team accuracy report from real cloud analysis with manual labels.",
+            "Prove team-aware selection quality with selected-team and opponent clips.",
+            "Prove offensive and defensive event context, including blocks, steals, forced turnovers, and defensive stops.",
+            "Prove crowd/audio reaction recall and shot outcome correctness on real clips.",
+            "Keep uncertain clips review-safe instead of silently promoting them into the finished edit.",
+        ]
+
+    return {
+        "status": "complete" if launch_evidence_eligible else "blocked",
+        "launchEvidenceEligible": launch_evidence_eligible,
+        "humanReviewedClipCount": complete,
+        "totalClipCount": total,
+        "remainingClipCount": incomplete,
+        "missingFieldCounts": missing_fields,
+        "requiredProof": [
+            "team-aware selected-team highlight precision and recall",
+            "opponent and negative clip coverage",
+            "offensive context",
+            "defensive context",
+            "crowd/audio reaction recall",
+            "shot outcome correctness",
+            "review-safe uncertain clips",
+            "real cloud analysis evidence, not synthetic or draft-only labels",
+        ],
+        "doNotClaimFrom": [
+            "GPT draft labels without human review",
+            "0/54 label coverage",
+            "unit tests alone",
+            "synthetic fixtures alone",
+            "candidate-only reranker output without launch-grade report",
+        ],
+        "nextActions": next_actions,
+    }
+
+
 def label_status_snapshot(repo_root: Path, label_status_path: Path, summary_path: Path | None) -> dict[str, Any]:
     path = label_status_path if label_status_path.is_absolute() else repo_root / label_status_path
     if not path.exists():
@@ -611,6 +656,7 @@ def main() -> int:
     current_head_release = release_preflight_for_head(release_runs, head)
     release_preflight_passing = release_preflight_is_passing(current_head_release)
     label_review = label_review_guidance(labels)
+    gpt_accuracy_handoff = gpt_clipping_accuracy_handoff(labels)
     cloud_backend_handoff = cloud_backend_readiness_handoff(
         production_variables,
         release_preflight_passing,
@@ -638,6 +684,7 @@ def main() -> int:
         "cloudBackendReadinessHandoff": cloud_backend_handoff,
         "testFlightProofHandoff": testflight_handoff,
         "iosUsabilityAndImportHandoff": ios_usability_handoff,
+        "gptClippingAccuracyHandoff": gpt_accuracy_handoff,
         "releaseSecretsPreflight": {
             "latest": latest_release,
             "currentHead": current_head_release,
