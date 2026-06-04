@@ -660,6 +660,14 @@ def workflow_timing_caveats(runs: list[dict[str, Any] | None]) -> list[str]:
     return caveats
 
 
+def workflow_run_with_name(run_item: dict[str, Any] | None, workflow_name: str) -> dict[str, Any] | None:
+    if not run_item or run_item.get("workflowName"):
+        return run_item
+    named_run = dict(run_item)
+    named_run["workflowName"] = workflow_name
+    return named_run
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Collect a secret-safe launch evidence snapshot.")
     parser.add_argument("--repo-root", default=".", help="Repository root. Defaults to current directory.")
@@ -705,7 +713,13 @@ def main() -> int:
     latest_release = release_runs[0] if release_runs else None
     current_head_release = release_preflight_for_head(release_runs, head)
     release_preflight_passing = release_preflight_is_passing(current_head_release)
-    timing_caveats = workflow_timing_caveats([current_head_release, cloud_latest_run, ios_latest_run])
+    timing_caveats = workflow_timing_caveats(
+        [
+            workflow_run_with_name(current_head_release, "Release Secrets Preflight"),
+            cloud_latest_run,
+            ios_latest_run,
+        ]
+    )
     label_review = label_review_guidance(labels)
     gpt_accuracy_handoff = gpt_clipping_accuracy_handoff(labels)
     cloud_backend_handoff = cloud_backend_readiness_handoff(
