@@ -87,6 +87,24 @@ Result:
 - Prove live backend status, cloud job-state reporting, render reliability, and
   finished MP4 preview/download/share/open-in-editor behavior with real evidence
 
+## Label bundle refresh
+
+The local label review bundle was regenerated from the current scripts on
+2026-06-04 with:
+
+```bash
+python3 scripts/prepare_team_highlight_labeling_bundle.py \
+  --manifest artifacts/team_highlight_accuracy_manifest.json \
+  --video-path /Users/hanfei/Downloads/326_1770329282.mp4 \
+  --output-dir artifacts/team_highlight_labeling_bundle \
+  --json
+```
+
+After regeneration, submission preflight no longer reports the bundle as stale
+or missing launch checklist markers. The accuracy gate still fails, correctly:
+the regenerated bundle remains `0/54` clips complete and all launch-required
+human label fields still need review before the accuracy report can count.
+
 ## Safe next actions
 
 1. Set the two missing production cloud URL variables using secret-safe account
