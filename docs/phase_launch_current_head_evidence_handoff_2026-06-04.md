@@ -37,6 +37,34 @@ repairing the History screen build regression. It is not a launch-ready signoff.
     - `HOOPS_CLOUD_ANALYSIS_BASE_URL`
     - `HOOPS_CLOUD_EDIT_BASE_URL`
 
+## Branch workflow refresh
+
+After the evidence handoff and main-refresh documentation updates, the launch
+branch workflows were rerun on branch commit `021994d`.
+
+- Branch Cloud Edit Deploy Preflight:
+  - Run: `26925293779`
+  - Head: `021994d`
+  - Result: `success`
+  - Passed jobs: editing backend Python tests, secret-safe launch evidence
+    snapshot, Worker typecheck and dry run
+  - Skipped jobs: cloud deploy credential/deploy secret checks, so provider-auth
+    launch readiness is still not proven
+- Branch iOS Internal TestFlight Upload:
+  - Run: `26925294949`
+  - Head: `021994d`
+  - Result: `success`
+  - Passed job: no-secret internal staging codecheck
+  - Skipped job: internal staging TestFlight archive, so signed archive/upload
+    proof is still not complete
+- Branch Release Secrets Preflight:
+  - Run: `26925292785`
+  - Head: `021994d`
+  - Result: `failure`
+  - Missing production variables:
+    - `HOOPS_CLOUD_ANALYSIS_BASE_URL`
+    - `HOOPS_CLOUD_EDIT_BASE_URL`
+
 ## Main-branch workflow refresh
 
 The stale June 1 main-branch failures were refreshed with workflow-dispatch
