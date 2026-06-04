@@ -120,6 +120,7 @@ struct HistoryView: View {
             message: "Import a video and HoopClips will keep the project, timeline, and saved export here.",
             icon: "clock.arrow.circlepath"
         )
+        .accessibilityIdentifier("history.emptyState")
     }
 
     private func projectSection(

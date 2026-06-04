@@ -261,6 +261,7 @@ def ios_usability_and_import_handoff(
         "stableAccessibilityIdsToSmoke": [
             "import.status.checkHistoryButton",
             "import.status.cancelButton",
+            "history.emptyState",
             "history.section.currentProject",
             "history.section.pastProjects",
             "history.project.details",

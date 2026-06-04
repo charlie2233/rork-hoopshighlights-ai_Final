@@ -312,6 +312,7 @@ class CollectLaunchEvidenceSnapshotTest(unittest.TestCase):
         self.assertIn("history resume/source/saved reel/share/delete", handoff["iosScope"])
         self.assertIn("import.status.checkHistoryButton", handoff["stableAccessibilityIdsToSmoke"])
         self.assertIn("import.status.cancelButton", handoff["stableAccessibilityIdsToSmoke"])
+        self.assertIn("history.emptyState", handoff["stableAccessibilityIdsToSmoke"])
         self.assertIn("history.section.currentProject", handoff["stableAccessibilityIdsToSmoke"])
         self.assertIn("history.detail.watchSavedReel", handoff["stableAccessibilityIdsToSmoke"])
         self.assertIn("history.detail.deleteProject", handoff["stableAccessibilityIdsToSmoke"])
