@@ -23,6 +23,7 @@ from scripts.build_team_highlight_label_review_page import (
     render_review_page,
     review_page_output_metadata,
 )
+from scripts.export_team_highlight_review_queue import build_review_queue, render_markdown_queue
 
 
 def main() -> int:
@@ -60,12 +61,26 @@ def main() -> int:
     status_path = output_dir / "label_status.json"
     write_json(status_path, status_payload)
 
+    review_queue_path = output_dir / "review_queue.md"
+    review_queue_rows = build_review_queue(manifest_path=manifest_path, include_complete=False, limit=0)
+    review_queue_path.write_text(
+        render_markdown_queue(
+            manifest_path=manifest_path,
+            rows=review_queue_rows,
+            include_complete=False,
+            limit=0,
+        ),
+        encoding="utf-8",
+    )
+
     metadata = {
         "schemaVersion": "team-highlight-labeling-bundle-v1",
         "manifest": str(manifest_path),
         "outputDir": str(output_dir),
         "reviewPage": str(review_page_path),
         "labelStatus": str(status_path),
+        "reviewQueue": str(review_queue_path),
+        "reviewQueueRowCount": len(review_queue_rows),
         "status": status_payload["status"],
         "caseCount": status_payload["caseCount"],
         "clipCount": status_payload["clipCount"],
@@ -230,21 +245,23 @@ def next_steps_markdown(metadata: dict[str, Any], args: argparse.Namespace) -> s
             "",
             f"- Review page: `{metadata['reviewPage']}`",
             f"- Label status: `{metadata['labelStatus']}`",
+            f"- Review queue: `{metadata['reviewQueue']}`",
             f"- Manifest: `{manifest}`",
             *draft_steps,
             "",
             "## Labeling Flow",
             "",
             "1. Open the review page in a browser.",
-            "2. Use `Next close review` first. These clips have uncertainty or weak evidence and should get the most careful watch.",
-            "3. Use `Next incomplete` after close-review clips are done, then finish standard and quick-check clips.",
-            "4. Quick-check clips are faster, but they still require watching the video before marking reviewed.",
-            "5. Use keyboard playback while the clip card is active: `S/E/F` jump start/event/finish, `J/L` scrub back/forward 0.5s, `K` play/pause synced angles.",
-            "6. Use `P` to copy the HoopClips/GPT draft into fields as data-entry help only; it is not evidence until you watch the video and mark reviewed.",
-            "7. For obvious clips, use `1` selected-team highlight, `2` not highlight, or `3` bad window after watching the clip.",
-            "8. Use `Download progress checkpoint` any time you want to save a partial session outside browser storage.",
-            "9. Use `R` or `Mark reviewed + next` until the page enables `Download launch-ready labels`.",
-            "10. Apply the downloaded `team_highlight_manual_labels_bundle.json`, then build the launch report.",
+            "2. Keep the review queue open as a checklist of remaining label windows and missing launch fields; it is navigation help only, not evidence.",
+            "3. Use `Next close review` first. These clips have uncertainty or weak evidence and should get the most careful watch.",
+            "4. Use `Next incomplete` after close-review clips are done, then finish standard and quick-check clips.",
+            "5. Quick-check clips are faster, but they still require watching the video before marking reviewed.",
+            "6. Use keyboard playback while the clip card is active: `S/E/F` jump start/event/finish, `J/L` scrub back/forward 0.5s, `K` play/pause synced angles.",
+            "7. Use `P` to copy the HoopClips/GPT draft into fields as data-entry help only; it is not evidence until you watch the video and mark reviewed.",
+            "8. For obvious clips, use `1` selected-team highlight, `2` not highlight, or `3` bad window after watching the clip.",
+            "9. Use `Download progress checkpoint` any time you want to save a partial session outside browser storage.",
+            "10. Use `R` or `Mark reviewed + next` until the page enables `Download launch-ready labels`.",
+            "11. Apply the downloaded `team_highlight_manual_labels_bundle.json`, then build the launch report.",
             "",
             "Launch evidence requires every clip in the final bundle to have `needsLabel=false` and `reviewedByHuman=true`; filled expected fields alone are not enough.",
             "",
@@ -253,6 +270,7 @@ def next_steps_markdown(metadata: dict[str, Any], args: argparse.Namespace) -> s
             f"- Current label status: `{metadata['status']}`.",
             f"- Reviewed clips: `{metadata['completeClipCount']}` of `{metadata['clipCount']}`.",
             f"- Remaining clips: `{metadata['incompleteClipCount']}`.",
+            f"- Review queue rows: `{metadata['reviewQueueRowCount']}` incomplete clips.",
             "- Every launch clip must have `expected.teamId` filled.",
             "- Every launch clip must have `expected.isHighlight` filled.",
             "- Every launch clip must have `expected.eventType` filled.",
@@ -262,6 +280,17 @@ def next_steps_markdown(metadata: dict[str, Any], args: argparse.Namespace) -> s
             "- GPT drafts, copied fields, and partial checkpoints do not count as launch evidence until the final bundle is applied without `--allow-incomplete` and the launch-grade report is rebuilt.",
             "",
             "The page auto-saves a local browser draft as you label. Still download a progress checkpoint before pausing and the launch-ready bundle before final reporting.",
+            "",
+            "## Commands To Refresh Review Queue",
+            "",
+            "Use this when labels or the manifest change and you want a fresh Markdown checklist. The queue does not mark clips reviewed.",
+            "",
+            "```bash",
+            "python3 scripts/export_team_highlight_review_queue.py \\",
+            f"  --manifest {shell_quote(manifest)} \\",
+            f"  --output {shell_quote(metadata['reviewQueue'])} \\",
+            "  --json",
+            "```",
             "",
             "## Commands To Save Partial Progress",
             "",
