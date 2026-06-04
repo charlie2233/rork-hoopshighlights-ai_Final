@@ -119,6 +119,7 @@ def build_eval_payload(
             if confidence_threshold is not None
             else number_or_none(label_case.get("confidenceThreshold"))
         )
+        intentionally_omitted_prediction_indexes = omitted_duplicate_prediction_indexes(label_case)
         matched_prediction_indexes: set[int] = set()
         clips: list[dict[str, Any]] = []
         for raw_label in ensure_list(label_case.get("clips")):
@@ -145,7 +146,7 @@ def build_eval_payload(
             unlabeled = [
                 describe_prediction_clip(index, clip)
                 for index, clip in enumerate(prediction_clips)
-                if index not in matched_prediction_indexes
+                if index not in matched_prediction_indexes and index not in intentionally_omitted_prediction_indexes
             ]
             if unlabeled:
                 raise ValueError(
@@ -234,6 +235,23 @@ def normalize_label_cases(labels: dict[str, Any]) -> list[dict[str, Any]]:
     if isinstance(labels.get("clips"), list):
         return [labels]
     return []
+
+
+def omitted_duplicate_prediction_indexes(label_case: dict[str, Any]) -> set[int]:
+    omitted: set[int] = set()
+    for item in ensure_list(label_case.get("omittedDuplicateClips")):
+        if not isinstance(item, dict):
+            continue
+        index = integer_or_none(item.get("predictionIndex") if "predictionIndex" in item else item.get("predictionClipIndex"))
+        if index is not None:
+            omitted.add(index)
+    dedupe = label_case.get("temporalDedupe")
+    if isinstance(dedupe, dict):
+        for value in ensure_list(dedupe.get("omittedPredictionIndexes")):
+            index = integer_or_none(value)
+            if index is not None:
+                omitted.add(index)
+    return omitted
 
 
 def resolve_prediction_index(

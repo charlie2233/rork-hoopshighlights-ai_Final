@@ -25,6 +25,11 @@ from scripts.build_team_highlight_eval_payload import (
 )
 
 
+DEFAULT_TEMPORAL_DEDUPE_MIN_OVERLAP_RATIO = 0.25
+DEFAULT_TEMPORAL_DEDUPE_CENTER_TOLERANCE_SECONDS = 4.0
+DEFAULT_TEMPORAL_DEDUPE_START_TOLERANCE_SECONDS = 4.0
+
+
 def main() -> int:
     args = parse_args()
     payload = build_label_template(
@@ -35,6 +40,10 @@ def main() -> int:
         selected_team_id=args.selected_team_id,
         selected_team_color_label=args.selected_team_color_label,
         confidence_threshold=args.confidence_threshold,
+        temporal_dedupe=not args.no_temporal_dedupe,
+        temporal_dedupe_min_overlap_ratio=args.temporal_dedupe_min_overlap_ratio,
+        temporal_dedupe_center_tolerance_seconds=args.temporal_dedupe_center_tolerance_seconds,
+        temporal_dedupe_start_tolerance_seconds=args.temporal_dedupe_start_tolerance_seconds,
     )
     output = json.dumps(payload, indent=2, sort_keys=True)
     if args.output:
@@ -59,6 +68,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--selected-team-id", help="Override selected team id for selected-team labeling.")
     parser.add_argument("--selected-team-color-label", help="Override selected team jersey color label.")
     parser.add_argument("--confidence-threshold", type=float, help="Override selected-team confidence threshold.")
+    parser.add_argument("--no-temporal-dedupe", action="store_true", help="Keep every cloud candidate, including near-identical overlapping windows.")
+    parser.add_argument("--temporal-dedupe-min-overlap-ratio", type=float, default=DEFAULT_TEMPORAL_DEDUPE_MIN_OVERLAP_RATIO)
+    parser.add_argument("--temporal-dedupe-center-tolerance-seconds", type=float, default=DEFAULT_TEMPORAL_DEDUPE_CENTER_TOLERANCE_SECONDS)
+    parser.add_argument("--temporal-dedupe-start-tolerance-seconds", type=float, default=DEFAULT_TEMPORAL_DEDUPE_START_TOLERANCE_SECONDS)
     return parser.parse_args()
 
 
@@ -71,6 +84,10 @@ def build_label_template(
     selected_team_id: str | None = None,
     selected_team_color_label: str | None = None,
     confidence_threshold: float | None = None,
+    temporal_dedupe: bool = True,
+    temporal_dedupe_min_overlap_ratio: float = DEFAULT_TEMPORAL_DEDUPE_MIN_OVERLAP_RATIO,
+    temporal_dedupe_center_tolerance_seconds: float = DEFAULT_TEMPORAL_DEDUPE_CENTER_TOLERANCE_SECONDS,
+    temporal_dedupe_start_tolerance_seconds: float = DEFAULT_TEMPORAL_DEDUPE_START_TOLERANCE_SECONDS,
 ) -> dict[str, Any]:
     result = extract_analysis_result(analysis)
     analysis_job_id = string_or_none(
@@ -96,6 +113,14 @@ def build_label_template(
             threshold = number_or_none(team_selection.get("confidenceThreshold"))
 
     clips = [clip for clip in result.get("clips", []) if isinstance(clip, dict)]
+    dedupe_result = temporal_dedupe_clips(
+        clips,
+        enabled=temporal_dedupe,
+        min_overlap_ratio=temporal_dedupe_min_overlap_ratio,
+        center_tolerance_seconds=temporal_dedupe_center_tolerance_seconds,
+        start_tolerance_seconds=temporal_dedupe_start_tolerance_seconds,
+    )
+    kept_clips = dedupe_result["keptClips"]
     return {
         "schemaVersion": "team-highlight-manual-label-template-v1",
         "source": "real_cloud_analysis_label_template",
@@ -114,8 +139,157 @@ def build_label_template(
         "selectedTeamColorLabel": resolved_color_label,
         "confidenceThreshold": threshold if threshold is not None else 0.85,
         "detectedTeams": detected_teams,
-        "clips": [label_template_row(index, clip) for index, clip in enumerate(clips)],
+        "temporalDedupe": dedupe_result["metadata"],
+        "omittedDuplicateClips": dedupe_result["omittedDuplicateClips"],
+        "clips": [label_template_row(int(item["predictionIndex"]), item["clip"]) for item in kept_clips],
     }
+
+
+def temporal_dedupe_clips(
+    clips: list[dict[str, Any]],
+    *,
+    enabled: bool,
+    min_overlap_ratio: float,
+    center_tolerance_seconds: float,
+    start_tolerance_seconds: float,
+) -> dict[str, Any]:
+    indexed_clips = [{"predictionIndex": index, "clip": clip} for index, clip in enumerate(clips)]
+    if not enabled:
+        return {
+            "keptClips": indexed_clips,
+            "omittedDuplicateClips": [],
+            "metadata": {
+                "enabled": False,
+                "originalClipCount": len(clips),
+                "reviewClipCount": len(clips),
+                "omittedClipCount": 0,
+            },
+        }
+
+    kept_by_index: dict[int, dict[str, Any]] = {}
+    omitted: list[dict[str, Any]] = []
+    ranked = sorted(indexed_clips, key=lambda item: (-clip_quality_score(item["clip"]), clip_start(item["clip"]) or 0.0, item["predictionIndex"]))
+    for candidate in ranked:
+        duplicate_kept = first_temporal_duplicate(candidate, kept_by_index.values(), min_overlap_ratio, center_tolerance_seconds, start_tolerance_seconds)
+        if duplicate_kept is None:
+            kept_by_index[int(candidate["predictionIndex"])] = candidate
+            continue
+        omitted.append(omitted_duplicate_payload(candidate, duplicate_kept))
+
+    kept = sorted(kept_by_index.values(), key=lambda item: int(item["predictionIndex"]))
+    omitted.sort(key=lambda item: int(item["predictionIndex"]))
+    return {
+        "keptClips": kept,
+        "omittedDuplicateClips": omitted,
+        "metadata": {
+            "enabled": True,
+            "strategy": "ranked_temporal_overlap",
+            "minOverlapRatio": min_overlap_ratio,
+            "centerToleranceSeconds": center_tolerance_seconds,
+            "startToleranceSeconds": start_tolerance_seconds,
+            "originalClipCount": len(clips),
+            "reviewClipCount": len(kept),
+            "omittedClipCount": len(omitted),
+        },
+    }
+
+
+def first_temporal_duplicate(
+    candidate: dict[str, Any],
+    kept_candidates: Any,
+    min_overlap_ratio: float,
+    center_tolerance_seconds: float,
+    start_tolerance_seconds: float,
+) -> dict[str, Any] | None:
+    for kept in kept_candidates:
+        if temporal_duplicate(candidate["clip"], kept["clip"], min_overlap_ratio, center_tolerance_seconds, start_tolerance_seconds):
+            return kept
+    return None
+
+
+def temporal_duplicate(
+    left: dict[str, Any],
+    right: dict[str, Any],
+    min_overlap_ratio: float,
+    center_tolerance_seconds: float,
+    start_tolerance_seconds: float,
+) -> bool:
+    left_start = clip_start(left)
+    left_end = clip_end(left)
+    right_start = clip_start(right)
+    right_end = clip_end(right)
+    if left_start is None or left_end is None or right_start is None or right_end is None:
+        return False
+    if left_end <= left_start or right_end <= right_start:
+        return False
+
+    overlap = max(0.0, min(left_end, right_end) - max(left_start, right_start))
+    min_duration = max(min(left_end - left_start, right_end - right_start), 0.001)
+    overlap_ratio = overlap / min_duration
+    if overlap_ratio >= min_overlap_ratio:
+        return True
+
+    left_center = clip_event_center(left)
+    right_center = clip_event_center(right)
+    if left_center is not None and right_center is not None and abs(left_center - right_center) <= center_tolerance_seconds:
+        return True
+
+    return abs(left_start - right_start) <= start_tolerance_seconds and overlap > 0
+
+
+def omitted_duplicate_payload(candidate: dict[str, Any], kept: dict[str, Any]) -> dict[str, Any]:
+    clip = candidate["clip"]
+    kept_clip = kept["clip"]
+    return {
+        "predictionIndex": int(candidate["predictionIndex"]),
+        "predictionClipId": string_or_none(clip.get("id") or clip.get("clipId")) or f"prediction_{int(candidate['predictionIndex']):03d}",
+        "start": clip_start(clip),
+        "end": clip_end(clip),
+        "eventCenter": clip_event_center(clip),
+        "keptPredictionIndex": int(kept["predictionIndex"]),
+        "keptPredictionClipId": string_or_none(kept_clip.get("id") or kept_clip.get("clipId")) or f"prediction_{int(kept['predictionIndex']):03d}",
+        "reason": "temporal_overlap_duplicate",
+    }
+
+
+def clip_quality_score(clip: dict[str, Any]) -> float:
+    team_attribution = clip.get("teamAttribution") if isinstance(clip.get("teamAttribution"), dict) else {}
+    native_shot_signals = clip.get("nativeShotSignals") if isinstance(clip.get("nativeShotSignals"), dict) else {}
+    score = 0.0
+    if bool(clip.get("shouldAutoKeep") if "shouldAutoKeep" in clip else clip.get("keep", True)):
+        score += 2.0
+    for value in (
+        clip.get("watchabilityScore"),
+        clip.get("watchability"),
+        clip.get("combinedScore"),
+        clip.get("confidence"),
+        clip.get("motionScore"),
+        clip.get("audioPeak"),
+        clip.get("audioScore"),
+        team_attribution.get("confidence"),
+        native_shot_signals.get("outcomeReliabilityScore"),
+    ):
+        score += number_or_none(value) or 0.0
+    return score
+
+
+def clip_start(clip: dict[str, Any]) -> float | None:
+    return number_or_none(clip.get("startTime", clip.get("start")))
+
+
+def clip_end(clip: dict[str, Any]) -> float | None:
+    return number_or_none(clip.get("endTime", clip.get("end")))
+
+
+def clip_event_center(clip: dict[str, Any]) -> float | None:
+    center = number_or_none(clip.get("eventCenter"))
+    if center is not None:
+        return center
+    start = clip_start(clip)
+    end = clip_end(clip)
+    if start is None or end is None:
+        return None
+    return round((start + end) / 2.0, 3)
 
 
 def label_template_row(index: int, clip: dict[str, Any]) -> dict[str, Any]:

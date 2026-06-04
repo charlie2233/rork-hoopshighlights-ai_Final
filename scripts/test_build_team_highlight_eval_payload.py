@@ -241,6 +241,9 @@ class BuildTeamHighlightEvalPayloadTests(unittest.TestCase):
         self.assertEqual(template["selectedTeamId"], "team_dark")
         self.assertEqual(template["selectedTeamColorLabel"], "black")
         self.assertEqual(len(template["clips"]), 2)
+        self.assertEqual(template["temporalDedupe"]["originalClipCount"], 2)
+        self.assertEqual(template["temporalDedupe"]["reviewClipCount"], 2)
+        self.assertEqual(template["temporalDedupe"]["omittedClipCount"], 0)
         self.assertTrue(template["clips"][0]["needsLabel"])
         self.assertFalse(template["clips"][0]["reviewedByHuman"])
         self.assertEqual(template["clips"][0]["predictionClipId"], "clip_made_001")
@@ -250,6 +253,40 @@ class BuildTeamHighlightEvalPayloadTests(unittest.TestCase):
         self.assertEqual(template["clips"][0]["predicted"]["watchabilityScore"], 0.82)
         self.assertEqual(template["clips"][0]["predicted"]["teamEvidence"]["status"], "evidence_backed")
         self.assertTrue(template["clips"][0]["predicted"]["nativeShotSignals"]["timingWindowOk"])
+
+    def test_label_template_collapses_near_duplicate_prediction_windows_before_review(self) -> None:
+        clips = [
+            {**analysis_clip(10.0, 15.0, "Loose Candidate", True, "team_dark", 0.70), "id": "clip_loose_001", "watchabilityScore": 0.20},
+            {**analysis_clip(11.0, 16.0, "Better Candidate", True, "team_dark", 0.95), "id": "clip_better_001", "watchabilityScore": 0.95},
+            {**analysis_clip(40.0, 44.0, "Different Play", True, "team_dark", 0.90), "id": "clip_other_001", "watchabilityScore": 0.80},
+        ]
+        template = build_label_template(
+            analysis={"jobId": "job_real_001", "results": {"clips": clips}},
+            case_id="real_game_001",
+            video_id="video_real_001",
+            selected_team_id="team_dark",
+        )
+
+        self.assertEqual(template["temporalDedupe"]["originalClipCount"], 3)
+        self.assertEqual(template["temporalDedupe"]["reviewClipCount"], 2)
+        self.assertEqual(template["temporalDedupe"]["omittedClipCount"], 1)
+        self.assertEqual(template["clips"][0]["predictionIndex"], 1)
+        self.assertEqual(template["clips"][0]["predictionClipId"], "clip_better_001")
+        self.assertEqual(template["clips"][1]["predictionIndex"], 2)
+        self.assertEqual(template["omittedDuplicateClips"][0]["predictionIndex"], 0)
+        self.assertEqual(template["omittedDuplicateClips"][0]["keptPredictionIndex"], 1)
+
+        for row in template["clips"]:
+            row["needsLabel"] = False
+            row["reviewedByHuman"] = True
+            row["expected"] = {
+                "teamId": "team_dark",
+                "isHighlight": True,
+                "eventType": "made_shot",
+                "outcome": "made",
+            }
+        payload = build_eval_payload(analysis={"jobId": "job_real_001", "results": {"clips": clips}}, labels=template)
+        self.assertEqual(len(payload["cases"][0]["clips"]), 2)
 
     def test_build_payload_rejects_unfilled_label_template_rows(self) -> None:
         labels = build_label_template(
