@@ -20,6 +20,8 @@ struct ReviewView: View {
     @State private var discardTrigger = 0
     @State private var reviewUndoToast: ReviewDecisionUndoToast?
     @State private var reviewUndoToastDismissTask: Task<Void, Never>?
+    @State private var reviewScrubProgress = 0.0
+    @State private var clipFeedbackTags: [UUID: Set<ReviewFeedbackTag>] = [:]
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     private let tabTransitionAnimation = Animation.interactiveSpring(
         response: 0.42,
@@ -39,6 +41,38 @@ struct ReviewView: View {
         case needsReview = "Check"
         case kept = "Kept"
         case discarded = "Skipped"
+    }
+
+    private enum ReviewFeedbackTag: String, CaseIterable, Identifiable {
+        case duplicate
+        case wrongTeam
+        case badWindow
+
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .duplicate: return "Duplicate"
+            case .wrongTeam: return "Wrong team"
+            case .badWindow: return "Bad window"
+            }
+        }
+
+        var icon: String {
+            switch self {
+            case .duplicate: return "rectangle.on.rectangle.angled"
+            case .wrongTeam: return "person.2.slash.fill"
+            case .badWindow: return "crop"
+            }
+        }
+
+        var tint: Color {
+            switch self {
+            case .duplicate: return AppTheme.warningYellow
+            case .wrongTeam: return AppTheme.dangerRed
+            case .badWindow: return .orange
+            }
+        }
     }
 
     private struct ReviewDecisionUndoToast: Identifiable, Equatable {
@@ -399,8 +433,10 @@ struct ReviewView: View {
             VStack(alignment: .leading, spacing: 14) {
                 reviewCarouselHeader(clip: clip)
                 reviewCarouselPlayer(clip: clip)
+                reviewClipScrubber(clip)
                 reviewCarouselClipSummary(clip)
                 reviewDecisionButtons(clip: clip)
+                reviewFeedbackTags(clip)
                 reviewCarouselEvidenceChips(clip)
 
                 if expandedClipID == clip.id {
@@ -477,6 +513,49 @@ struct ReviewView: View {
             .padding(16)
             .rorkCard(cornerRadius: 18, stroke: AppTheme.softBorder, glowOpacity: 0.04)
         }
+    }
+
+    private func reviewClipScrubber(_ clip: Clip) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Label("Clip scrubber", systemImage: "slider.horizontal.3")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.white)
+
+                Spacer()
+
+                Text("\(clip.formattedStartTime) - \(clip.formattedEndTime)")
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(AppTheme.subtleText)
+            }
+
+            Slider(
+                value: Binding(
+                    get: { reviewScrubProgress },
+                    set: { value in
+                        reviewScrubProgress = value
+                        seekCurrentClip(to: value)
+                    }
+                ),
+                in: 0...1
+            )
+            .tint(AppTheme.neonPurple)
+            .accessibilityIdentifier("review.carousel.clipScrubber")
+            .accessibilityLabel("Clip scrubber")
+            .accessibilityValue("\(Int(reviewScrubProgress * 100)) percent")
+
+            HStack {
+                Text(clip.formattedStartTime)
+                Spacer()
+                Text(clip.formattedDuration)
+                Spacer()
+                Text(clip.formattedEndTime)
+            }
+            .font(.caption2.monospacedDigit())
+            .foregroundStyle(AppTheme.subtleText)
+        }
+        .padding(12)
+        .background(AppTheme.cardBg.opacity(0.42), in: .rect(cornerRadius: 14))
     }
 
     private func reviewCarouselHeader(clip: Clip) -> some View {
@@ -582,6 +661,16 @@ struct ReviewView: View {
                 Spacer()
             }
             .padding(12)
+            .gesture(
+                DragGesture(minimumDistance: 44)
+                    .onEnded { value in
+                        if value.translation.width > 72 {
+                            setClip(clip, keep: true)
+                        } else if value.translation.width < -72 {
+                            setClip(clip, keep: false)
+                        }
+                    }
+            )
         }
     }
 
@@ -658,6 +747,55 @@ struct ReviewView: View {
                 reviewDecisionButton(clip: clip, keep: false)
             }
         }
+    }
+
+    private func reviewFeedbackTags(_ clip: Clip) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Quick feedback")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(AppTheme.subtleText)
+
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) {
+                    ForEach(ReviewFeedbackTag.allCases) { tag in
+                        reviewFeedbackTagButton(tag, clip: clip)
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(ReviewFeedbackTag.allCases) { tag in
+                        reviewFeedbackTagButton(tag, clip: clip, fillsWidth: true)
+                    }
+                }
+            }
+        }
+    }
+
+    private func reviewFeedbackTagButton(_ tag: ReviewFeedbackTag, clip: Clip, fillsWidth: Bool = false) -> some View {
+        let isSelected = clipFeedbackTags[clip.id, default: []].contains(tag)
+
+        return Button {
+            toggleFeedbackTag(tag, for: clip)
+        } label: {
+            Label(tag.title, systemImage: tag.icon)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(isSelected ? .white : tag.tint)
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .frame(maxWidth: fillsWidth ? .infinity : nil, alignment: .center)
+                .background(tag.tint.opacity(isSelected ? 0.46 : 0.13), in: .capsule)
+                .overlay(
+                    Capsule()
+                        .stroke(tag.tint.opacity(isSelected ? 0.58 : 0.22), lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("review.carousel.feedback.\(tag.rawValue)")
+        .accessibilityLabel(tag.title)
+        .accessibilityValue(isSelected ? "Selected" : "Not selected")
+        .hoopsSelectedState(isSelected)
     }
 
     private func reviewDecisionButton(clip: Clip, keep: Bool) -> some View {
@@ -761,6 +899,23 @@ struct ReviewView: View {
             focusedClipID = filteredClips[targetIndex].id
         }
         prepareClipPlayer(for: filteredClips[targetIndex])
+    }
+
+    private func seekCurrentClip(to progress: Double) {
+        guard let clip = currentReviewClip else { return }
+        let clampedProgress = max(0, min(progress, 1))
+        let targetSeconds = clip.startTime + (clip.duration * clampedProgress)
+        clipPlayer?.seek(to: CMTime(seconds: targetSeconds, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
+    }
+
+    private func toggleFeedbackTag(_ tag: ReviewFeedbackTag, for clip: Clip) {
+        var tags = clipFeedbackTags[clip.id, default: []]
+        if tags.contains(tag) {
+            tags.remove(tag)
+        } else {
+            tags.insert(tag)
+        }
+        clipFeedbackTags[clip.id] = tags
     }
 
     private func setClip(_ clip: Clip, keep: Bool) {
@@ -2099,6 +2254,7 @@ struct ReviewView: View {
 
     private func prepareClipPlayer(for clip: Clip) {
         teardownClipPlayer()
+        reviewScrubProgress = 0
         clipPlaybackRange = clip.startTime...clip.endTime
 
         guard let url = viewModel.videoURL else { return }
