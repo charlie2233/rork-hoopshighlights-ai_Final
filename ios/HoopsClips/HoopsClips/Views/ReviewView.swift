@@ -7,6 +7,7 @@ struct ReviewView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var selectedClip: Clip?
     @State private var clipPlayer: AVPlayer?
+    @AppStorage("hoops.previewAudioMuted.v1") private var previewAudioMuted = false
     @State private var clipLoopObserverToken: NSObjectProtocol?
     @State private var clipPlaybackRange: ClosedRange<Double>?
     @State private var filterOption: FilterOption = .all
@@ -1504,6 +1505,8 @@ struct ReviewView: View {
         playerItem.forwardPlaybackEndTime = clipEnd
 
         let player = AVPlayer(playerItem: playerItem)
+        player.isMuted = previewAudioMuted
+        player.volume = previewAudioMuted ? 0 : 1
         clipLoopObserverToken = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime,
             object: playerItem,
@@ -1532,6 +1535,11 @@ struct ReviewView: View {
         }
     }
 
+    private func applyClipPreviewAudioMute() {
+        clipPlayer?.isMuted = previewAudioMuted
+        clipPlayer?.volume = previewAudioMuted ? 0 : 1
+    }
+
     private func clipDetailSheet(clip: Clip) -> some View {
         NavigationStack {
             ZStack {
@@ -1540,16 +1548,33 @@ struct ReviewView: View {
                 ScrollView {
                     VStack(spacing: 20) {
                         if let clipPlayer {
-                            VideoPlayer(player: clipPlayer)
-                                .frame(height: 220)
-                                .clipShape(.rect(cornerRadius: 16))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 16)
-                                        .stroke(AppTheme.accentPurple.opacity(0.3), lineWidth: 1)
-                                )
-                                .accessibilityLabel("Clip preview")
-                                .accessibilityValue("\(clip.label), \(clip.formattedStartTime) to \(clip.formattedEndTime)")
-                                .accessibilityHint("Loops the selected highlight clip.")
+                            ZStack(alignment: .topTrailing) {
+                                VideoPlayer(player: clipPlayer)
+                                    .frame(height: 220)
+                                    .clipShape(.rect(cornerRadius: 16))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 16)
+                                            .stroke(AppTheme.accentPurple.opacity(0.3), lineWidth: 1)
+                                    )
+                                    .accessibilityLabel("Clip preview")
+                                    .accessibilityValue("\(clip.label), \(clip.formattedStartTime) to \(clip.formattedEndTime)")
+                                    .accessibilityHint("Loops the selected highlight clip.")
+
+                                Button {
+                                    previewAudioMuted.toggle()
+                                    applyClipPreviewAudioMute()
+                                } label: {
+                                    Image(systemName: previewAudioMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                                        .font(.caption.weight(.bold))
+                                        .foregroundStyle(.white)
+                                        .padding(9)
+                                        .background(.black.opacity(0.58), in: Circle())
+                                }
+                                .buttonStyle(.plain)
+                                .padding(10)
+                                .accessibilityIdentifier("review.clipPreview.muteToggle")
+                                .accessibilityLabel(previewAudioMuted ? "Unmute clip preview" : "Mute clip preview")
+                            }
                         } else {
                             ContentUnavailableView {
                                 Label("Clip Preview Unavailable", systemImage: "video.slash.fill")

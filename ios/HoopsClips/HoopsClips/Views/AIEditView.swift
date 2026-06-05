@@ -49,6 +49,7 @@ struct AIEditView: View {
     @State private var serviceStatusBlocksRendering = false
     @State private var serviceStatusIsChecking = false
     @State private var renderHistory: [CloudEditRenderStatusResponse] = []
+    @AppStorage("hoops.previewAudioMuted.v1") private var previewAudioMuted = false
     @State private var previewPlayer: AVPlayer?
     @State private var localShareURL: URL?
     @State private var errorMessage: String?
@@ -1398,9 +1399,28 @@ struct AIEditView: View {
 
     private func previewCard(player: AVPlayer) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Preview")
-                .font(.headline)
+            HStack(spacing: 12) {
+                Text("Preview")
+                    .font(.headline)
+                    .foregroundStyle(.white)
+
+                Spacer()
+
+                Button {
+                    previewAudioMuted.toggle()
+                    applyPreviewAudioMute()
+                } label: {
+                    Label(previewAudioMuted ? "Unmute" : "Mute", systemImage: previewAudioMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                        .font(.caption.weight(.semibold))
+                }
+                .buttonStyle(.plain)
                 .foregroundStyle(.white)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(.white.opacity(0.12), in: Capsule())
+                .accessibilityIdentifier("export.aiEdit.preview.muteToggle")
+                .accessibilityLabel(previewAudioMuted ? "Unmute preview" : "Mute preview")
+            }
 
             VideoPlayer(player: player)
                 .frame(height: 320)
@@ -1415,6 +1435,11 @@ struct AIEditView: View {
         }
         .padding(14)
         .rorkCard(cornerRadius: 16, stroke: AppTheme.softBorder, glowOpacity: 0.04)
+    }
+
+    private func applyPreviewAudioMute() {
+        previewPlayer?.isMuted = previewAudioMuted
+        previewPlayer?.volume = previewAudioMuted ? 0 : 1
     }
 
     private var proBenefitsSheet: some View {
@@ -3223,6 +3248,7 @@ struct AIEditView: View {
         viewModel.attachCloudRenderedExport(from: temporaryURL)
         localShareURL = viewModel.exportService.exportedURL ?? temporaryURL
         previewPlayer = AVPlayer(url: localShareURL ?? temporaryURL)
+        applyPreviewAudioMute()
         previewPlayer?.play()
     }
 

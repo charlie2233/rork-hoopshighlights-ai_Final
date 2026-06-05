@@ -12,8 +12,9 @@ from ..editing import CaptionStyle, EditPlan, EditPlanClip, get_template_pack
 from ..models import APIError
 
 
-RENDERER_VERSION = "ffmpeg-renderer-v1.1"
+RENDERER_VERSION = "ffmpeg-renderer-v1.2"
 BRANDED_OUTRO_BACKGROUND = "0x1b1208"
+RENDER_SLOW_MOTION_SEGMENTS = False
 
 
 def ffmpeg_diagnostics(ffmpeg_binary: Optional[str] = None, ffprobe_binary: Optional[str] = None) -> Dict[str, object]:
@@ -155,6 +156,7 @@ class FfmpegRenderer:
                 "outroAssetId": plan.outro.assetId or template.outroProfile.assetId,
                 "clipCount": len(plan.clips),
                 "segmentCount": len(segment_paths),
+                "slowMotionSegmentsRendered": RENDER_SLOW_MOTION_SEGMENTS,
                 "durationSeconds": duration,
                 "commands": [self._redact_command(command) for command in commands],
             },
@@ -361,6 +363,9 @@ class FfmpegRenderer:
         ]
 
     def _split_clip_for_slow_motion(self, clip: EditPlanClip) -> List[Tuple[float, float, float]]:
+        if not RENDER_SLOW_MOTION_SEGMENTS:
+            return [(clip.sourceStart, clip.sourceEnd, 1.0)]
+
         slow_ranges = [
             (effect.sourceStart, effect.sourceEnd, effect.speed or 1.0)
             for effect in clip.effects

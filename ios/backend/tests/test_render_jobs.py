@@ -11,7 +11,7 @@ import unittest
 from fastapi.testclient import TestClient
 
 from app.config import Settings
-from app.editing import CreateEditJobRequest, EditPlan, EditPlanClip, build_edit_job, get_template_pack
+from app.editing import CreateEditJobRequest, EditPlan, EditPlanClip, EditPlanEffect, build_edit_job, get_template_pack
 from app.main import create_app
 from app.renderers.ffmpeg_renderer import FfmpegRenderer
 from app.rendering import validate_render_request
@@ -261,6 +261,21 @@ class RenderJobTests(unittest.TestCase):
         joined = " ".join(command)
         self.assertIn("color=c=0x1b1208", joined)
         self.assertNotIn("color=c=black", joined)
+
+    def test_renderer_ignores_slow_motion_segments_to_avoid_black_retime_gaps(self) -> None:
+        renderer = FfmpegRenderer(ffmpeg_binary="ffmpeg", ffprobe_binary="ffprobe")
+        clip = EditPlanClip(
+            clipId="c1",
+            sourceStart=4.0,
+            sourceEnd=8.5,
+            eventCenter=6.0,
+            timelineStart=0.0,
+            timelineEnd=4.5,
+            label="Made Shot",
+            caption="BUCKET",
+            effects=[EditPlanEffect(type="slow_motion", sourceStart=5.5, sourceEnd=6.5, speed=0.5)],
+        )
+        self.assertEqual(renderer._split_clip_for_slow_motion(clip), [(4.0, 8.5, 1.0)])
 
     @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "ffmpeg and ffprobe are required")
     def test_render_failure_records_failure_reason_and_log(self) -> None:

@@ -436,6 +436,7 @@ private struct HistoryProjectDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var previewPlayer: AVPlayer?
+    @AppStorage("hoops.previewAudioMuted.v1") private var previewAudioMuted = false
     @State private var previewTitle: String?
     @State private var showingDeleteConfirmation = false
     @State private var shareURL: URL?
@@ -591,17 +592,34 @@ private struct HistoryProjectDetailView: View {
             )
 
             if let previewPlayer {
-                VideoPlayer(player: previewPlayer)
-                    .frame(height: 220)
-                    .clipShape(.rect(cornerRadius: 16))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 16)
-                            .stroke(AppTheme.softBorder, lineWidth: 1)
-                    )
-                    .accessibilityLabel("Project video preview")
-                    .accessibilityValue(previewTitle ?? "Saved project media")
-                    .accessibilityHint("Use playback controls to preview this saved project.")
-                    .accessibilityIdentifier("history.detail.videoPreview")
+                ZStack(alignment: .topTrailing) {
+                    VideoPlayer(player: previewPlayer)
+                        .frame(height: 220)
+                        .clipShape(.rect(cornerRadius: 16))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16)
+                                .stroke(AppTheme.softBorder, lineWidth: 1)
+                        )
+                        .accessibilityLabel("Project video preview")
+                        .accessibilityValue(previewTitle ?? "Saved project media")
+                        .accessibilityHint("Use playback controls to preview this saved project.")
+                        .accessibilityIdentifier("history.detail.videoPreview")
+
+                    Button {
+                        previewAudioMuted.toggle()
+                        applyHistoryPreviewAudioMute()
+                    } label: {
+                        Image(systemName: previewAudioMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(.white)
+                            .padding(9)
+                            .background(.black.opacity(0.58), in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .padding(10)
+                    .accessibilityIdentifier("history.preview.muteToggle")
+                    .accessibilityLabel(previewAudioMuted ? "Unmute history preview" : "Mute history preview")
+                }
 
                 if let previewTitle {
                     Text(previewTitle)
@@ -859,8 +877,14 @@ private struct HistoryProjectDetailView: View {
         guard let url else { return }
         previewPlayer?.pause()
         previewPlayer = AVPlayer(url: url)
+        applyHistoryPreviewAudioMute()
         previewPlayer?.play()
         previewTitle = title
+    }
+
+    private func applyHistoryPreviewAudioMute() {
+        previewPlayer?.isMuted = previewAudioMuted
+        previewPlayer?.volume = previewAudioMuted ? 0 : 1
     }
 
     private var shareSheetTitle: String {

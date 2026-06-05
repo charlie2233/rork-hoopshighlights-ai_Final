@@ -392,6 +392,7 @@ final class VideoExportService {
 
 internal let exportSlowMotionSourceWindowDuration = 1.5
 internal let exportSlowMotionPlaybackRate = 0.5
+internal let exportSegmentedSlowMotionEnabled = false
 internal let nonProExportOutroDuration = 2.0
 
 internal func brandedOutroDuration(isProUser: Bool) -> Double {
@@ -420,7 +421,7 @@ internal func shouldApplyExportSlowMotion(to clip: Clip, options: ExportPostProc
 }
 
 internal func canApplySegmentedSlowMotion(sourceDuration: Double) -> Bool {
-    sourceDuration > exportSlowMotionSourceWindowDuration
+    exportSegmentedSlowMotionEnabled && sourceDuration > exportSlowMotionSourceWindowDuration
 }
 
 internal func exportedClipOutputDuration(sourceDuration: Double, shouldSlowMotion: Bool) -> Double {

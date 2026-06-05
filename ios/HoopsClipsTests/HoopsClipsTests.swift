@@ -4900,6 +4900,11 @@ struct HoopsClipsTests {
         #expect(shouldApplyExportSlowMotion(to: clip, options: options))
     }
 
+    @Test func testSegmentedSlowMotionIsDisabledForCleanPreviewExports() {
+        #expect(!canApplySegmentedSlowMotion(sourceDuration: 5.0))
+        #expect(exportedClipOutputDuration(sourceDuration: 5.0, shouldSlowMotion: true) == 5.0)
+    }
+
     @Test func testActionZoomScaleReturnsIdentityOutsideActiveWindow() {
         let scale = actionZoomScale(
             at: 0.0,

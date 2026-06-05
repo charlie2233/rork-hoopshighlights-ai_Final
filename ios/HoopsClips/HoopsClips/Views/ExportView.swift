@@ -17,6 +17,7 @@ struct ExportView: View {
     @State private var musicPreviewManager = MusicPreviewManager()
     @State private var exportPreviewPlayer: AVPlayer?
     @State private var expandedExportPreviewPlayer: AVPlayer?
+    @AppStorage("hoops.previewAudioMuted.v1") private var previewAudioMuted = false
     @State private var shareURL: URL?
     @State private var lastAutoPresentedExportURL: URL?
     @State private var shareErrorMessage: String?
@@ -683,10 +684,14 @@ struct ExportView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Group {
                             if let exportPreviewPlayer {
-                                VideoPlayer(player: exportPreviewPlayer)
-                                    .accessibilityLabel("Export preview")
-                                    .accessibilityValue(exportedURL.lastPathComponent)
-                                    .accessibilityHint("Use playback controls to review the exported highlight reel.")
+                                ZStack(alignment: .topTrailing) {
+                                    VideoPlayer(player: exportPreviewPlayer)
+                                        .accessibilityLabel("Export preview")
+                                        .accessibilityValue(exportedURL.lastPathComponent)
+                                        .accessibilityHint("Use playback controls to review the exported highlight reel.")
+
+                                    exportPreviewMuteButton(accessibilityIdentifier: "export.preview.muteToggle")
+                                }
                             } else {
                                 ProgressView()
                                     .tint(AppTheme.neonPurple)
@@ -1123,6 +1128,7 @@ struct ExportView: View {
 
         exportPreviewPlayer?.pause()
         exportPreviewPlayer = AVPlayer(url: url)
+        applyExportPreviewAudioMute()
     }
 
     private func configureExpandedExportPreviewPlayer(for url: URL?) {
@@ -1138,6 +1144,7 @@ struct ExportView: View {
 
         expandedExportPreviewPlayer?.pause()
         expandedExportPreviewPlayer = AVPlayer(url: url)
+        applyExportPreviewAudioMute()
     }
 
     private func teardownExportPreviewPlayer() {
@@ -1153,6 +1160,30 @@ struct ExportView: View {
     private func pausePreviewPlayers() {
         exportPreviewPlayer?.pause()
         expandedExportPreviewPlayer?.pause()
+    }
+
+    private func applyExportPreviewAudioMute() {
+        exportPreviewPlayer?.isMuted = previewAudioMuted
+        exportPreviewPlayer?.volume = previewAudioMuted ? 0 : 1
+        expandedExportPreviewPlayer?.isMuted = previewAudioMuted
+        expandedExportPreviewPlayer?.volume = previewAudioMuted ? 0 : 1
+    }
+
+    private func exportPreviewMuteButton(accessibilityIdentifier: String) -> some View {
+        Button {
+            previewAudioMuted.toggle()
+            applyExportPreviewAudioMute()
+        } label: {
+            Image(systemName: previewAudioMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.white)
+                .padding(9)
+                .background(.black.opacity(0.58), in: Circle())
+        }
+        .buttonStyle(.plain)
+        .padding(10)
+        .accessibilityIdentifier(accessibilityIdentifier)
+        .accessibilityLabel(previewAudioMuted ? "Unmute export preview" : "Mute export preview")
     }
 
     private func exportPreviewSheet(url: URL) -> some View {
@@ -1192,15 +1223,19 @@ struct ExportView: View {
                                 .foregroundStyle(AppTheme.subtleText)
                         }
 
-                        VideoPlayer(player: expandedExportPreviewPlayer)
-                            .clipShape(.rect(cornerRadius: 16))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 16)
-                                    .stroke(AppTheme.accentPurple.opacity(0.28), lineWidth: 1)
-                            )
-                            .accessibilityLabel("Expanded export preview")
-                            .accessibilityValue(url.lastPathComponent)
-                            .accessibilityHint("Use playback controls to review the exported highlight reel.")
+                        ZStack(alignment: .topTrailing) {
+                            VideoPlayer(player: expandedExportPreviewPlayer)
+                                .clipShape(.rect(cornerRadius: 16))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 16)
+                                        .stroke(AppTheme.accentPurple.opacity(0.28), lineWidth: 1)
+                                )
+                                .accessibilityLabel("Expanded export preview")
+                                .accessibilityValue(url.lastPathComponent)
+                                .accessibilityHint("Use playback controls to review the exported highlight reel.")
+
+                            exportPreviewMuteButton(accessibilityIdentifier: "export.preview.expanded.muteToggle")
+                        }
                     }
                     .padding(16)
                 } else {

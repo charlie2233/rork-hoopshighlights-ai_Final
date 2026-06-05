@@ -32,6 +32,7 @@ struct VideoPlayerView: View {
     @State private var importErrorMessage: String?
     @State private var importRecoveryOffersHistory = false
     @State private var lastAnalysisAnnouncementPercent = -1
+    @AppStorage("hoops.previewAudioMuted.v1") private var previewAudioMuted = false
     @State private var showingCloudVideoConsent = false
     @State private var pendingCloudVideoConsentAction: CloudVideoConsentAction?
 
@@ -653,6 +654,12 @@ struct VideoPlayerView: View {
 
         player?.pause()
         player = AVPlayer(url: url)
+        applySourcePreviewAudioMute()
+    }
+
+    private func applySourcePreviewAudioMute() {
+        player?.isMuted = previewAudioMuted
+        player?.volume = previewAudioMuted ? 0 : 1
     }
 
     private func returnToImportHome() {
@@ -894,15 +901,32 @@ struct VideoPlayerView: View {
             )
 
             if let player = player {
-                VideoPlayer(player: player)
-                    .frame(height: 220)
-                    .clipShape(.rect(cornerRadius: 16))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 16)
-                            .stroke(AppTheme.accentPurple.opacity(0.3), lineWidth: 1)
-                    )
-                    .accessibilityLabel("Source video preview")
-                    .accessibilityHint("Use playback controls to review the imported video.")
+                ZStack(alignment: .topTrailing) {
+                    VideoPlayer(player: player)
+                        .frame(height: 220)
+                        .clipShape(.rect(cornerRadius: 16))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16)
+                                .stroke(AppTheme.accentPurple.opacity(0.3), lineWidth: 1)
+                        )
+                        .accessibilityLabel("Source video preview")
+                        .accessibilityHint("Use playback controls to review the imported video.")
+
+                    Button {
+                        previewAudioMuted.toggle()
+                        applySourcePreviewAudioMute()
+                    } label: {
+                        Image(systemName: previewAudioMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(.white)
+                            .padding(9)
+                            .background(.black.opacity(0.58), in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .padding(10)
+                    .accessibilityIdentifier("source.preview.muteToggle")
+                    .accessibilityLabel(previewAudioMuted ? "Unmute source preview" : "Mute source preview")
+                }
             } else if let thumbnail = viewModel.videoThumbnail {
                 Image(decorative: thumbnail, scale: 1.0)
                     .resizable()
