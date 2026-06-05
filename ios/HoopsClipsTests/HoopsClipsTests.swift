@@ -891,13 +891,14 @@ struct HoopsClipsTests {
                     audioCueType: nil,
                     audioCueConfidence: nil,
                     audioCueTime: nil,
-                    combinedScore: 0.9,
-                    duplicateGroup: nil,
-                    userReviewDecision: "kept",
-                    nativeShotSignals: nativeSignals,
-                    teamAttribution: teamAttribution,
-                    teamAttributionStatus: "matched"
-                )
+	                    combinedScore: 0.9,
+	                    duplicateGroup: nil,
+	                    userReviewDecision: "kept",
+	                    reviewFeedbackTags: ["duplicate", "bad_window"],
+	                    nativeShotSignals: nativeSignals,
+	                    teamAttribution: teamAttribution,
+	                    teamAttributionStatus: "matched"
+	                )
             ]
         )
 
@@ -907,21 +908,23 @@ struct HoopsClipsTests {
         #expect(payload["userPrompt"] as? String == "Make it more hype and focus on defense.")
         #expect(payload["sourceObjectKey"] as? String == "uploads/source.mp4")
         let clips = try #require(payload["clips"] as? [[String: Any]])
-        let encodedSignals = try #require(clips.first?["nativeShotSignals"] as? [String: Any])
+	        let firstClip = try #require(clips.first)
+	        let encodedSignals = try #require(firstClip["nativeShotSignals"] as? [String: Any])
         #expect(encodedSignals["outcome"] as? String == "made")
         #expect(encodedSignals["timingWindowOk"] as? Bool == true)
         let encodedTeamSelection = try #require(payload["teamSelection"] as? [String: Any])
         #expect(encodedTeamSelection["mode"] as? String == "team")
         #expect(encodedTeamSelection["teamId"] as? String == "team_dark")
         #expect(encodedTeamSelection["confidenceThreshold"] as? Double == 0.85)
-        let encodedTeamAttribution = try #require(clips.first?["teamAttribution"] as? [String: Any])
-        #expect(encodedTeamAttribution["teamId"] as? String == "team_dark")
-        #expect(encodedTeamAttribution["confidence"] as? Double == 0.91)
-        #expect(encodedTeamAttribution["evidenceFrameRefs"] as? [String] == ["clip_1_release", "clip_1_result"])
-        #expect(encodedTeamAttribution["evidenceRoleGroups"] as? [String] == ["action", "outcome"])
-        #expect(clips.first?["teamAttributionStatus"] as? String == "matched")
-        #expect(clips.first?["userReviewDecision"] as? String == "kept")
-    }
+	        let encodedTeamAttribution = try #require(firstClip["teamAttribution"] as? [String: Any])
+	        #expect(encodedTeamAttribution["teamId"] as? String == "team_dark")
+	        #expect(encodedTeamAttribution["confidence"] as? Double == 0.91)
+	        #expect(encodedTeamAttribution["evidenceFrameRefs"] as? [String] == ["clip_1_release", "clip_1_result"])
+	        #expect(encodedTeamAttribution["evidenceRoleGroups"] as? [String] == ["action", "outcome"])
+	        #expect(firstClip["teamAttributionStatus"] as? String == "matched")
+	        #expect(firstClip["userReviewDecision"] as? String == "kept")
+	        #expect(firstClip["reviewFeedbackTags"] as? [String] == ["duplicate", "bad_window"])
+	    }
 
     @Test func testCloudEditDefaultPromptAddsAccuracyGuidanceWhenUserLeavesNoteEmpty() throws {
         let prompt = try #require(

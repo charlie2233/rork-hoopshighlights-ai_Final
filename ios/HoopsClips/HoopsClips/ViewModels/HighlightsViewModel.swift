@@ -310,7 +310,7 @@ final class HighlightsViewModel {
     func startAnalysis() async {
         guard let url = videoURL else { return }
         guard !requiresHighlightTeamSelectionConfirmation else {
-            cloudTeamScanStatusMessage = "Choose a team before analysis starts."
+            cloudTeamScanStatusMessage = "Choose a team before analysis"
             return
         }
         await AnalysisNotificationService.shared.prepareForAnalysis()

@@ -42,7 +42,7 @@ nonisolated enum CloudAnalysisProgressCopy {
         let status = statusMessage.lowercased()
 
         if status.contains("upload") {
-            return "Upload is active. Keep HoopClips open until upload finishes; then you can switch apps."
+            return "Keep HoopClips open during upload. After handoff, you can switch apps."
         }
 
         if status.contains("team") || status.contains("jersey") {
@@ -82,7 +82,7 @@ nonisolated enum CloudAnalysisProgressCopy {
         }
 
         if analysisMode == .cloud {
-            return "Cloud analysis is active. Reopen HoopClips to see the latest result."
+            return "Cloud analysis job is active. You can switch apps and reopen HoopClips."
         }
 
         return "Analysis is running on device because cloud mode is unavailable."

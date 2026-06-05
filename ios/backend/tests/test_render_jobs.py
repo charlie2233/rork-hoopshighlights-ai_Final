@@ -155,10 +155,10 @@ class RenderJobTests(unittest.TestCase):
         self.assertEqual(log_payload["traceId"], status_payload["traceId"])
         self.assertEqual(log_payload["outputObjectKey"], status_payload["outputObjectKey"])
         self.assertEqual(log_payload["clipCount"], 2)
-        self.assertEqual(log_payload["ffmpeg"]["rendererVersion"], "ffmpeg-renderer-v1")
+        self.assertEqual(log_payload["ffmpeg"]["rendererVersion"], "ffmpeg-renderer-v1.2")
         self.assertGreater(log_payload["ffmpeg"]["segmentCount"], log_payload["clipCount"])
         self.assertTrue(any("setpts=" in command for command in log_payload["ffmpeg"]["commands"]))
-        self.assertTrue(any("atempo=" in command for command in log_payload["ffmpeg"]["commands"]))
+        self.assertFalse(any("atempo=" in command for command in log_payload["ffmpeg"]["commands"]))
         self.assertAlmostEqual(float(media_payload["format"]["duration"]), status_payload["durationSeconds"], delta=0.25)
 
         download_response = client.get(f"/v1/edit-jobs/{edit_job_id}/download-url", params={"installId": "install-123"})
@@ -273,6 +273,7 @@ class RenderJobTests(unittest.TestCase):
             timelineEnd=4.5,
             label="Made Shot",
             caption="BUCKET",
+            cropMode="rim",
             effects=[EditPlanEffect(type="slow_motion", sourceStart=5.5, sourceEnd=6.5, speed=0.5)],
         )
         self.assertEqual(renderer._split_clip_for_slow_motion(clip), [(4.0, 8.5, 1.0)])
