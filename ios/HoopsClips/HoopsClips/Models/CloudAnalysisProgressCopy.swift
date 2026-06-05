@@ -3,6 +3,37 @@ import Foundation
 nonisolated enum CloudAnalysisProgressCopy {
     private static let maxVisibleTeamTitleCharacters = 28
 
+    static func approximateRemainingTime(
+        statusMessage: String,
+        analysisMode: AnalysisExecutionMode,
+        progress: Double,
+        durationSeconds: Double
+    ) -> String? {
+        guard analysisMode == .cloud,
+              durationSeconds.isFinite,
+              durationSeconds > 0 else {
+            return nil
+        }
+
+        let status = statusMessage.lowercased()
+        let totalRange = approximateAnalysisRangeMinutes(for: durationSeconds)
+        if status.contains("upload") {
+            return "Upload first; after handoff, analysis is roughly \(formatMinuteRange(totalRange)). Large files can take a while."
+        }
+
+        if status.contains("queued") || status.contains("waiting") {
+            return "Queue can add time; once running, analysis is roughly \(formatMinuteRange(totalRange))."
+        }
+
+        let boundedProgress = min(max(progress, 0.05), 0.95)
+        let remainingScale = max(0.08, 1.0 - boundedProgress)
+        let remainingRange = (
+            lower: max(1, Int(ceil(Double(totalRange.lower) * remainingScale))),
+            upper: max(1, Int(ceil(Double(totalRange.upper) * remainingScale)))
+        )
+        return "Approx time left: about \(formatMinuteRange(remainingRange)). Rough guide; long games can take a while."
+    }
+
     static func detail(
         statusMessage: String,
         analysisMode: AnalysisExecutionMode,
@@ -103,5 +134,19 @@ nonisolated enum CloudAnalysisProgressCopy {
         }
 
         return (wordSafePrefix.isEmpty ? rawPrefix : wordSafePrefix) + "..."
+    }
+
+    private static func approximateAnalysisRangeMinutes(for durationSeconds: Double) -> (lower: Int, upper: Int) {
+        let sourceMinutes = max(1.0, durationSeconds / 60.0)
+        let lower = max(1.0, (sourceMinutes * 0.16) + 0.8)
+        let upper = max(lower + 1.0, (sourceMinutes * 0.32) + 2.0)
+        return (Int(ceil(lower)), Int(ceil(upper)))
+    }
+
+    private static func formatMinuteRange(_ range: (lower: Int, upper: Int)) -> String {
+        if range.upper <= range.lower {
+            return "\(range.lower) min"
+        }
+        return "\(range.lower)-\(range.upper) min"
     }
 }

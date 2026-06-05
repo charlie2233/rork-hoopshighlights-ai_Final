@@ -1481,6 +1481,21 @@ struct VideoPlayerView: View {
                 .minimumScaleFactor(0.84)
                 .fixedSize(horizontal: false, vertical: true)
 
+            if let analysisApproximateRemainingText {
+                Label(analysisApproximateRemainingText, systemImage: "clock.badge.checkmark")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.88))
+                    .multilineTextAlignment(.leading)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 5 : 3)
+                    .minimumScaleFactor(0.84)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.white.opacity(0.07), in: .rect(cornerRadius: 12))
+                    .accessibilityIdentifier("analysis.approximateRemainingTime")
+            }
+
             if let analysisBackgroundReminderText {
                 Label(analysisBackgroundReminderText, systemImage: "cloud.fill")
                     .font(.caption2.weight(.semibold))
@@ -1766,6 +1781,15 @@ struct VideoPlayerView: View {
         )
     }
 
+    private var analysisApproximateRemainingText: String? {
+        CloudAnalysisProgressCopy.approximateRemainingTime(
+            statusMessage: viewModel.analysisService.statusMessage,
+            analysisMode: viewModel.analysisMode,
+            progress: viewModel.analysisService.progress,
+            durationSeconds: viewModel.videoDuration
+        )
+    }
+
     private var analysisBackgroundReminderText: String? {
         CloudAnalysisProgressCopy.backgroundReminder(
             statusMessage: viewModel.analysisService.statusMessage,
@@ -1779,6 +1803,9 @@ struct VideoPlayerView: View {
             viewModel.analysisService.statusMessage,
             analysisProgressDetailText
         ]
+        if let analysisApproximateRemainingText {
+            parts.append(analysisApproximateRemainingText)
+        }
         if let analysisBackgroundReminderText {
             parts.append(analysisBackgroundReminderText)
         }
