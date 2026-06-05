@@ -773,6 +773,10 @@ class EditingServiceTests(unittest.TestCase):
         self.assertTrue(free_policy.outroRequired)
         self.assertFalse(free_policy.premiumTemplatesAllowed)
         self.assertEqual(pro_policy.maxRenderSeconds, 270)
+        self.assertEqual(free_policy.maxSourceVideoSeconds, 1800)
+        self.assertEqual(pro_policy.maxSourceVideoSeconds, 4500)
+        self.assertEqual(internal_policy.maxSourceVideoSeconds, 4500)
+        self.assertEqual(dev_policy.maxSourceVideoSeconds, 7200)
         self.assertTrue(internal_policy.premiumTemplatesAllowed)
         self.assertEqual(internal_policy.maxRenderSeconds, 270)
         self.assertEqual(dev_policy.maxRenderSeconds, 270)
@@ -1280,7 +1284,8 @@ class EditingServiceTests(unittest.TestCase):
     def test_policy_rejection_emits_safe_policy_failed_event(self) -> None:
         client = TestClient(create_app(self._settings()))
         request = self._edit_request()
-        long_source_clip = request.clips[0].model_copy(update={"end": 601.0, "eventCenter": 300.0})
+        max_source_seconds = get_plan_tier_policy("free").maxSourceVideoSeconds
+        long_source_clip = request.clips[0].model_copy(update={"end": max_source_seconds + 1.0, "eventCenter": 300.0})
         request = request.model_copy(update={"clips": [long_source_clip, request.clips[1]], "templateId": "personal_highlight_v1"})
         output = StringIO()
 
