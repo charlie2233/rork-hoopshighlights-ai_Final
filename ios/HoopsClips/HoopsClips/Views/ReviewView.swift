@@ -14,6 +14,7 @@ struct ReviewView: View {
     @State private var hasAutoFocusedPriorityFilter = false
     @State private var sortByScore = true
     @State private var expandedClipID: UUID?
+    @State private var focusedClipID: UUID?
     @State private var showAllFilterChips = false
     @State private var keepTrigger = 0
     @State private var discardTrigger = 0
@@ -71,12 +72,12 @@ struct ReviewView: View {
                         VStack(spacing: 16) {
                             headerStats
                             reviewProgressStrip
+                            reviewCarousel
+                            filterBar
                             priorityReviewCard
                             reviewContextStrip
                             quickActionsBar
                             aiEditEntryCard
-                            filterBar
-                            clipsList
                         }
                         .padding(.horizontal, 16)
                         .padding(.top, 8)
@@ -111,9 +112,23 @@ struct ReviewView: View {
                     }
                 }
             }
-            .onAppear(perform: focusPriorityReviewIfNeeded)
+            .onAppear {
+                focusPriorityReviewIfNeeded()
+                settleFocusedClipIfNeeded()
+            }
             .onChange(of: priorityReviewClips.map(\.id)) { _, _ in
                 focusPriorityReviewIfNeeded()
+                settleFocusedClipIfNeeded()
+            }
+            .onChange(of: filteredClips.map(\.id)) { _, _ in
+                settleFocusedClipIfNeeded()
+            }
+            .onChange(of: currentReviewClip?.id) { _, _ in
+                if let currentReviewClip {
+                    prepareClipPlayer(for: currentReviewClip)
+                } else {
+                    teardownClipPlayer()
+                }
             }
             .sheet(item: $selectedClip, onDismiss: teardownClipPlayer) { clip in
                 clipDetailSheet(clip: clip)
@@ -262,6 +277,385 @@ struct ReviewView: View {
         }
         .padding(14)
         .rorkCard(cornerRadius: 16, stroke: AppTheme.softBorder, glowOpacity: 0.06)
+    }
+
+    private var currentReviewIndex: Int {
+        guard !filteredClips.isEmpty else { return 0 }
+        if let focusedClipID,
+           let index = filteredClips.firstIndex(where: { $0.id == focusedClipID }) {
+            return index
+        }
+        return 0
+    }
+
+    private var currentReviewClip: Clip? {
+        guard !filteredClips.isEmpty else { return nil }
+        return filteredClips[currentReviewIndex]
+    }
+
+    private var canReviewPreviousClip: Bool {
+        currentReviewClip != nil && currentReviewIndex > 0
+    }
+
+    private var canReviewNextClip: Bool {
+        currentReviewClip != nil && currentReviewIndex < filteredClips.count - 1
+    }
+
+    private var reviewCarouselChipColumns: [GridItem] {
+        let minimumWidth: CGFloat = dynamicTypeSize.isAccessibilitySize ? 142 : 92
+        return [
+            GridItem(.adaptive(minimum: minimumWidth, maximum: 190), spacing: 8, alignment: .top)
+        ]
+    }
+
+    @ViewBuilder
+    private var reviewCarousel: some View {
+        if let clip = currentReviewClip {
+            VStack(alignment: .leading, spacing: 14) {
+                reviewCarouselHeader(clip: clip)
+                reviewCarouselPlayer(clip: clip)
+                reviewCarouselClipSummary(clip)
+                reviewDecisionButtons(clip: clip)
+                reviewCarouselEvidenceChips(clip)
+
+                if expandedClipID == clip.id {
+                    VStack(alignment: .leading, spacing: 12) {
+                        clipScoreBreakdown(clip: clip, includeDivider: false)
+                        clipEvidenceRows(clip: clip, maxRows: 3)
+                    }
+                    .padding(12)
+                    .background(AppTheme.cardBg.opacity(0.58), in: .rect(cornerRadius: 14))
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                }
+            }
+            .padding(14)
+            .rorkCard(
+                cornerRadius: 24,
+                fill: AnyShapeStyle(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.11, green: 0.08, blue: 0.05).opacity(0.96),
+                            AppTheme.surfaceBg.opacity(0.94)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                ),
+                stroke: clip.isKept ? AppTheme.successGreen.opacity(0.28) : AppTheme.dangerRed.opacity(0.20),
+                glow: clip.isKept ? AppTheme.successGreen : AppTheme.warningYellow,
+                glowOpacity: 0.08
+            )
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("review.carousel")
+        } else {
+            VStack(alignment: .leading, spacing: 12) {
+                Label(emptyFilterTitle, systemImage: "line.3.horizontal.decrease.circle")
+                    .font(.headline)
+                    .foregroundStyle(.white)
+
+                Text("Try All clips or another filter to keep reviewing.")
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.subtleText)
+
+                Button {
+                    HoopsAccessibility.animate(reduceMotion: reduceMotion) {
+                        filterOption = .all
+                        focusedClipID = viewModel.clips.first?.id
+                    }
+                    settleFocusedClipIfNeeded()
+                } label: {
+                    Label("Show All Clips", systemImage: "film.stack.fill")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(AppTheme.neonPurple.opacity(0.22), in: .capsule)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(16)
+            .rorkCard(cornerRadius: 18, stroke: AppTheme.softBorder, glowOpacity: 0.04)
+        }
+    }
+
+    private func reviewCarouselHeader(clip: Clip) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .center, spacing: 10) {
+                Label("Clip \(currentReviewIndex + 1) of \(filteredClips.count)", systemImage: "play.rectangle.fill")
+                    .font(.headline.weight(.heavy))
+                    .foregroundStyle(.white)
+
+                Spacer(minLength: 0)
+
+                Text(clip.isKept ? "KEEPING" : "NAH")
+                    .font(.caption.bold().monospaced())
+                    .foregroundStyle(clip.isKept ? AppTheme.successGreen : AppTheme.dangerRed)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background((clip.isKept ? AppTheme.successGreen : AppTheme.dangerRed).opacity(0.14), in: .capsule)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Label("Clip \(currentReviewIndex + 1) of \(filteredClips.count)", systemImage: "play.rectangle.fill")
+                    .font(.headline.weight(.heavy))
+                    .foregroundStyle(.white)
+                Text(clip.isKept ? "Keeping this one" : "Marked nah")
+                    .font(.caption.bold().monospaced())
+                    .foregroundStyle(clip.isKept ? AppTheme.successGreen : AppTheme.dangerRed)
+            }
+        }
+    }
+
+    private func reviewCarouselPlayer(clip: Clip) -> some View {
+        ZStack {
+            Group {
+                if let clipPlayer {
+                    VideoPlayer(player: clipPlayer)
+                        .accessibilityLabel("Current review clip preview")
+                        .accessibilityValue("\(clip.label), \(clip.formattedStartTime) to \(clip.formattedEndTime)")
+                        .accessibilityHint("Loops the current clip while you choose Keep or Nah.")
+                } else {
+                    ContentUnavailableView {
+                        Label("Preview Unavailable", systemImage: "video.slash.fill")
+                    } description: {
+                        Text("The source video is not available, but you can still keep or nah this clip.")
+                    }
+                    .foregroundStyle(.white)
+                    .background(AppTheme.cardBg)
+                }
+            }
+            .frame(height: dynamicTypeSize.isAccessibilitySize ? 320 : 286)
+            .clipShape(.rect(cornerRadius: 20))
+            .overlay(
+                RoundedRectangle(cornerRadius: 20)
+                    .stroke(.white.opacity(0.12), lineWidth: 1)
+            )
+
+            HStack {
+                reviewCarouselArrowButton(systemImage: "chevron.left", accessibilityLabel: "Previous clip", isEnabled: canReviewPreviousClip) {
+                    moveFocusedClip(by: -1)
+                }
+
+                Spacer()
+
+                reviewCarouselArrowButton(systemImage: "chevron.right", accessibilityLabel: "Next clip", isEnabled: canReviewNextClip) {
+                    moveFocusedClip(by: 1)
+                }
+            }
+            .padding(.horizontal, 10)
+
+            VStack {
+                HStack {
+                    Spacer()
+                    Button {
+                        previewAudioMuted.toggle()
+                        applyClipPreviewAudioMute()
+                    } label: {
+                        Image(systemName: previewAudioMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(.white)
+                            .padding(10)
+                            .background(.black.opacity(0.62), in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("review.carousel.muteToggle")
+                    .accessibilityLabel(previewAudioMuted ? "Unmute current clip" : "Mute current clip")
+                }
+                Spacer()
+            }
+            .padding(12)
+        }
+    }
+
+    private func reviewCarouselArrowButton(
+        systemImage: String,
+        accessibilityLabel: String,
+        isEnabled: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button {
+            action()
+        } label: {
+            Image(systemName: systemImage)
+                .font(.title3.weight(.heavy))
+                .foregroundStyle(.white)
+                .frame(width: 46, height: 66)
+                .background(.black.opacity(isEnabled ? 0.58 : 0.20), in: .capsule)
+                .overlay(
+                    Capsule()
+                        .stroke(.white.opacity(isEnabled ? 0.18 : 0.06), lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
+        .disabled(!isEnabled)
+        .opacity(isEnabled ? 1.0 : 0.44)
+        .accessibilityLabel(accessibilityLabel)
+    }
+
+    private func reviewCarouselClipSummary(_ clip: Clip) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 12) {
+                clipActionIcon(clip)
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(clip.label)
+                        .font(.title3.bold())
+                        .foregroundStyle(.white)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
+                        .minimumScaleFactor(0.82)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    clipTimingText(clip)
+                    clipContextBadges(clip)
+                }
+                .layoutPriority(1)
+            }
+
+            Button {
+                HoopsAccessibility.animate(reduceMotion: reduceMotion) {
+                    expandedClipID = expandedClipID == clip.id ? nil : clip.id
+                }
+            } label: {
+                Label(expandedClipID == clip.id ? "Hide why" : "Why this clip?", systemImage: "checkmark.seal.fill")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(AppTheme.warningYellow)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(AppTheme.warningYellow.opacity(0.12), in: .capsule)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("review.carousel.whyButton")
+        }
+    }
+
+    private func reviewDecisionButtons(clip: Clip) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 10) {
+                reviewDecisionButton(clip: clip, keep: true)
+                reviewDecisionButton(clip: clip, keep: false)
+            }
+
+            VStack(spacing: 10) {
+                reviewDecisionButton(clip: clip, keep: true)
+                reviewDecisionButton(clip: clip, keep: false)
+            }
+        }
+    }
+
+    private func reviewDecisionButton(clip: Clip, keep: Bool) -> some View {
+        let tint = keep ? AppTheme.successGreen : AppTheme.dangerRed
+        let isSelected = clip.isKept == keep
+
+        return Button {
+            setClip(clip, keep: keep)
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: keep ? "checkmark.circle.fill" : "xmark.circle.fill")
+                    .font(.title3.weight(.heavy))
+                    .accessibilityHidden(true)
+                Text(keep ? "KEEP" : "NAH")
+                    .font(.headline.weight(.heavy))
+                    .tracking(0.8)
+                    .lineLimit(1)
+            }
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 64 : 56)
+            .background(
+                LinearGradient(
+                    colors: [
+                        tint.opacity(isSelected ? 0.98 : 0.62),
+                        tint.opacity(isSelected ? 0.72 : 0.36)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ),
+                in: .rect(cornerRadius: 18)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 18)
+                    .stroke(.white.opacity(isSelected ? 0.28 : 0.12), lineWidth: 1)
+            )
+            .shadow(color: tint.opacity(isSelected ? 0.28 : 0.08), radius: isSelected ? 18 : 8, y: 8)
+        }
+        .buttonStyle(.plain)
+        .sensoryFeedback(.impact(weight: .medium), trigger: keep ? keepTrigger : discardTrigger)
+        .accessibilityIdentifier(keep ? "review.carousel.keepButton" : "review.carousel.nahButton")
+        .accessibilityLabel(keep ? "Keep clip" : "Nah, skip clip")
+        .accessibilityValue(isSelected ? "Selected" : "Not selected")
+        .hoopsSelectedState(isSelected)
+    }
+
+    private func reviewCarouselEvidenceChips(_ clip: Clip) -> some View {
+        LazyVGrid(columns: reviewCarouselChipColumns, alignment: .leading, spacing: 8) {
+            RorkMetricChip(
+                icon: "chart.bar.fill",
+                value: "\(Int(clip.combinedScore * 100))%",
+                label: "Score",
+                tint: AppTheme.neonPurple
+            )
+            RorkMetricChip(
+                icon: "scope",
+                value: "\(Int(clip.confidence * 100))%",
+                label: "Confidence",
+                tint: actionColor(for: clip.action)
+            )
+            RorkMetricChip(
+                icon: "timer",
+                value: clip.formattedDuration,
+                label: "Length",
+                tint: AppTheme.warningYellow
+            )
+            RorkMetricChip(
+                icon: clipNeedsTeamReview(clip) ? "person.2.badge.gearshape.fill" : "checkmark.seal.fill",
+                value: clipNeedsTeamReview(clip) ? "Check" : "Ready",
+                label: "Review",
+                tint: clipNeedsTeamReview(clip) ? AppTheme.warningYellow : AppTheme.successGreen
+            )
+        }
+    }
+
+    private func settleFocusedClipIfNeeded() {
+        guard let firstClip = filteredClips.first else {
+            focusedClipID = nil
+            teardownClipPlayer()
+            return
+        }
+
+        if let focusedClipID,
+           let focusedClip = filteredClips.first(where: { $0.id == focusedClipID }) {
+            if clipPlayer == nil {
+                prepareClipPlayer(for: focusedClip)
+            }
+            return
+        }
+
+        focusedClipID = firstClip.id
+        prepareClipPlayer(for: firstClip)
+    }
+
+    private func moveFocusedClip(by offset: Int) {
+        guard currentReviewClip != nil else { return }
+        let targetIndex = currentReviewIndex + offset
+        guard filteredClips.indices.contains(targetIndex) else { return }
+
+        HoopsAccessibility.animate(reduceMotion: reduceMotion) {
+            expandedClipID = nil
+            focusedClipID = filteredClips[targetIndex].id
+        }
+        prepareClipPlayer(for: filteredClips[targetIndex])
+    }
+
+    private func setClip(_ clip: Clip, keep: Bool) {
+        HoopsAccessibility.animate(reduceMotion: reduceMotion) {
+            if clip.isKept != keep {
+                viewModel.toggleClip(clip)
+            }
+            if keep {
+                keepTrigger += 1
+            } else {
+                discardTrigger += 1
+            }
+        }
     }
 
     private var highConfidencePendingCount: Int {
