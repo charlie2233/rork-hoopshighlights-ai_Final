@@ -701,7 +701,7 @@ internal final class ExportThemeRenderer {
             let bounds = CGRect(origin: .zero, size: size)
             let cg = ctx.cgContext
 
-            UIColor.black.setFill()
+            UIColor(red: 0.106, green: 0.071, blue: 0.031, alpha: 1).setFill()
             cg.fill(bounds)
 
             let accentTop = UIColor(
@@ -1170,11 +1170,11 @@ nonisolated private func renderBrandedOutroFrame(
     outroStartTime: Double,
     labelCache: ClipLabelOverlayCache
 ) -> CIImage {
-    let black = CIImage(color: .black).cropped(to: extent)
+    let brandedBackground = CIImage(color: CIColor(red: 0.106, green: 0.071, blue: 0.031, alpha: 1)).cropped(to: extent)
     let local = max(0, compositionTime - outroStartTime)
     let fadeIn = min(1, max(0, local / 0.22))
     let alpha = 0.98 * fadeIn
-    guard alpha > 0.01 else { return black }
+    guard alpha > 0.01 else { return brandedBackground }
 
     let overlay = labelCache.endSlate()
     let overlayExtent = overlay.extent
@@ -1183,7 +1183,7 @@ nonisolated private func renderBrandedOutroFrame(
             translationX: extent.minX - overlayExtent.minX,
             y: extent.minY - overlayExtent.minY
         ))
-    return positioned.composited(over: black).cropped(to: extent)
+    return positioned.composited(over: brandedBackground).cropped(to: extent)
 }
 
 nonisolated private func applyingAlpha(to image: CIImage, alpha: Double) -> CIImage {

@@ -12,7 +12,8 @@ from ..editing import CaptionStyle, EditPlan, EditPlanClip, get_template_pack
 from ..models import APIError
 
 
-RENDERER_VERSION = "ffmpeg-renderer-v1"
+RENDERER_VERSION = "ffmpeg-renderer-v1.1"
+BRANDED_OUTRO_BACKGROUND = "0x1b1208"
 
 
 def ffmpeg_diagnostics(ffmpeg_binary: Optional[str] = None, ffprobe_binary: Optional[str] = None) -> Dict[str, object]:
@@ -149,6 +150,7 @@ class FfmpegRenderer:
                 "templateId": plan.templateId,
                 "captionStyle": template.captionStyle.styleId,
                 "templateSignature": template_signature,
+                "outroBackground": "branded_court_slate",
                 "watermarkAssetId": plan.watermark.assetId or template.watermarkProfile.assetId,
                 "outroAssetId": plan.outro.assetId or template.outroProfile.assetId,
                 "clipCount": len(plan.clips),
@@ -265,7 +267,7 @@ class FfmpegRenderer:
             "-f",
             "lavfi",
             "-i",
-            f"color=c=black:s={width}x{height}:d={duration:.3f}:r=30",
+            f"color=c={BRANDED_OUTRO_BACKGROUND}:s={width}x{height}:d={duration:.3f}:r=30",
             "-f",
             "lavfi",
             "-i",

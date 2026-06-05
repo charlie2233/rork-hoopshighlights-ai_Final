@@ -248,6 +248,20 @@ class RenderJobTests(unittest.TestCase):
         self.assertIn("crop=720:1280:(iw-ow)*0.50:(ih-oh)*0.28", filter_complex)
         self.assertNotIn("crop=720:1280,setsar", filter_complex)
 
+    def test_renderer_outro_uses_branded_slate_instead_of_black_screen(self) -> None:
+        renderer = FfmpegRenderer(ffmpeg_binary="ffmpeg", ffprobe_binary="ffprobe")
+        command = renderer._outro_command(
+            self._temp_dir / "outro.mp4",
+            duration=1.2,
+            width=720,
+            height=1280,
+            template_name="Personal Highlight",
+        )
+
+        joined = " ".join(command)
+        self.assertIn("color=c=0x1b1208", joined)
+        self.assertNotIn("color=c=black", joined)
+
     @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "ffmpeg and ffprobe are required")
     def test_render_failure_records_failure_reason_and_log(self) -> None:
         invalid_source_key = "sources/not_a_video.mp4"
