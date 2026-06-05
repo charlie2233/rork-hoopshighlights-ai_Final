@@ -18,6 +18,8 @@ struct ReviewView: View {
     @State private var showAllFilterChips = false
     @State private var keepTrigger = 0
     @State private var discardTrigger = 0
+    @State private var reviewUndoToast: ReviewDecisionUndoToast?
+    @State private var reviewUndoToastDismissTask: Task<Void, Never>?
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     private let tabTransitionAnimation = Animation.interactiveSpring(
         response: 0.42,
@@ -37,6 +39,22 @@ struct ReviewView: View {
         case needsReview = "Check"
         case kept = "Kept"
         case discarded = "Skipped"
+    }
+
+    private struct ReviewDecisionUndoToast: Identifiable, Equatable {
+        let id = UUID()
+        let clipID: UUID
+        let clipLabel: String
+        let previousKeep: Bool
+        let decidedKeep: Bool
+
+        var title: String {
+            decidedKeep ? "Kept clip" : "Marked nah"
+        }
+
+        var message: String {
+            "\(clipLabel) updated. Undo if that was a misclick."
+        }
     }
 
     private var filteredClips: [Clip] {
@@ -84,6 +102,8 @@ struct ReviewView: View {
                         .padding(.bottom, 100)
                     }
                 }
+
+                reviewUndoToastView
             }
             .navigationTitle("Review")
             .navigationBarTitleDisplayMode(.large)
@@ -130,6 +150,9 @@ struct ReviewView: View {
                     teardownClipPlayer()
                 }
             }
+            .onDisappear {
+                reviewUndoToastDismissTask?.cancel()
+            }
             .sheet(item: $selectedClip, onDismiss: teardownClipPlayer) { clip in
                 clipDetailSheet(clip: clip)
             }
@@ -142,6 +165,68 @@ struct ReviewView: View {
             message: "Import a video and run analysis. Your best plays will land here ready to keep, skip, and fine-tune.",
             icon: "film.stack.fill"
         )
+    }
+
+    @ViewBuilder
+    private var reviewUndoToastView: some View {
+        if let reviewUndoToast {
+            VStack {
+                Spacer()
+
+                HStack(spacing: 12) {
+                    Image(systemName: reviewUndoToast.decidedKeep ? "checkmark.circle.fill" : "xmark.circle.fill")
+                        .font(.title3.weight(.bold))
+                        .foregroundStyle(reviewUndoToast.decidedKeep ? AppTheme.successGreen : AppTheme.dangerRed)
+                        .accessibilityHidden(true)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(reviewUndoToast.title)
+                            .font(.subheadline.weight(.heavy))
+                            .foregroundStyle(.white)
+                        Text(reviewUndoToast.message)
+                            .font(.caption)
+                            .foregroundStyle(AppTheme.subtleText)
+                            .lineLimit(2)
+                    }
+                    .layoutPriority(1)
+
+                    Button {
+                        undoLastReviewDecision(reviewUndoToast)
+                    } label: {
+                        Text("Undo")
+                            .font(.caption.weight(.heavy))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(AppTheme.neonPurple.opacity(0.32), in: .capsule)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("review.carousel.undoToast.undoButton")
+                    .accessibilityLabel("Undo last review decision")
+                }
+                .padding(14)
+                .background(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.05, green: 0.04, blue: 0.15).opacity(0.96),
+                            AppTheme.accentPurple.opacity(0.42)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    in: .rect(cornerRadius: 18)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18)
+                        .stroke(AppTheme.neonPurple.opacity(0.34), lineWidth: 1)
+                )
+                .shadow(color: AppTheme.neonPurple.opacity(0.24), radius: 18, y: 8)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 88)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .accessibilityIdentifier("review.carousel.undoToast")
+            }
+        }
     }
 
     private var headerStats: some View {
@@ -679,8 +764,11 @@ struct ReviewView: View {
     }
 
     private func setClip(_ clip: Clip, keep: Bool) {
+        let previousKeep = clip.isKept
+        let visibleClipsBeforeDecision = filteredClips
+
         HoopsAccessibility.animate(reduceMotion: reduceMotion) {
-            if clip.isKept != keep {
+            if previousKeep != keep {
                 viewModel.toggleClip(clip)
             }
             if keep {
@@ -688,6 +776,95 @@ struct ReviewView: View {
             } else {
                 discardTrigger += 1
             }
+        }
+
+        showUndoToast(for: clip, previousKeep: previousKeep, decidedKeep: keep)
+        advanceAfterDecision(from: clip, visibleClipsBeforeDecision: visibleClipsBeforeDecision)
+    }
+
+    private func advanceAfterDecision(from clip: Clip, visibleClipsBeforeDecision: [Clip]) {
+        guard let previousIndex = visibleClipsBeforeDecision.firstIndex(where: { $0.id == clip.id }) else {
+            settleFocusedClipIfNeeded()
+            return
+        }
+
+        if visibleClipsBeforeDecision.indices.contains(previousIndex + 1) {
+            let nextClip = visibleClipsBeforeDecision[previousIndex + 1]
+            guard filteredClips.contains(where: { $0.id == nextClip.id }) else {
+                settleFocusedClipIfNeeded()
+                return
+            }
+
+            HoopsAccessibility.animate(reduceMotion: reduceMotion) {
+                expandedClipID = nil
+                focusedClipID = nextClip.id
+            }
+            prepareClipPlayer(for: nextClip)
+        } else if filteredClips.contains(where: { $0.id == clip.id }) {
+            return
+        } else if visibleClipsBeforeDecision.indices.contains(previousIndex - 1) {
+            let previousClip = visibleClipsBeforeDecision[previousIndex - 1]
+            guard filteredClips.contains(where: { $0.id == previousClip.id }) else {
+                settleFocusedClipIfNeeded()
+                return
+            }
+
+            HoopsAccessibility.animate(reduceMotion: reduceMotion) {
+                expandedClipID = nil
+                focusedClipID = previousClip.id
+            }
+            prepareClipPlayer(for: previousClip)
+        } else {
+            settleFocusedClipIfNeeded()
+        }
+    }
+
+    private func showUndoToast(for clip: Clip, previousKeep: Bool, decidedKeep: Bool) {
+        let toast = ReviewDecisionUndoToast(
+            clipID: clip.id,
+            clipLabel: clip.label,
+            previousKeep: previousKeep,
+            decidedKeep: decidedKeep
+        )
+
+        reviewUndoToastDismissTask?.cancel()
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
+            reviewUndoToast = toast
+        }
+
+        reviewUndoToastDismissTask = Task {
+            try? await Task.sleep(nanoseconds: 4_000_000_000)
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                guard reviewUndoToast?.id == toast.id else { return }
+                withAnimation(.easeOut(duration: 0.18)) {
+                    reviewUndoToast = nil
+                }
+            }
+        }
+    }
+
+    private func undoLastReviewDecision(_ toast: ReviewDecisionUndoToast) {
+        reviewUndoToastDismissTask?.cancel()
+
+        guard let clip = viewModel.clips.first(where: { $0.id == toast.clipID }) else {
+            withAnimation(.easeOut(duration: 0.18)) {
+                reviewUndoToast = nil
+            }
+            return
+        }
+
+        HoopsAccessibility.animate(reduceMotion: reduceMotion) {
+            if clip.isKept != toast.previousKeep {
+                viewModel.toggleClip(clip)
+            }
+            expandedClipID = nil
+            focusedClipID = clip.id
+        }
+        prepareClipPlayer(for: clip)
+
+        withAnimation(.easeOut(duration: 0.18)) {
+            reviewUndoToast = nil
         }
     }
 
