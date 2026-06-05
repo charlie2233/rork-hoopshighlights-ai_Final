@@ -82,7 +82,7 @@ nonisolated enum CloudAnalysisProgressCopy {
         }
 
         if analysisMode == .cloud {
-            return "Cloud analysis job is active. You can switch apps and reopen HoopClips."
+            return "Your cloud analysis job is active; you can switch apps and reopen HoopClips."
         }
 
         return "Analysis is running on device because cloud mode is unavailable."

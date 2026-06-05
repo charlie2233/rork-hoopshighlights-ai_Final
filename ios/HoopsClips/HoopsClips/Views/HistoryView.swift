@@ -920,7 +920,7 @@ nonisolated enum HistoryProjectActionCopy {
     static let exportAvailableSubtitle = "Watch saved reel"
     static let exportMissingSubtitle = "No saved export yet"
     static let shareAvailableSubtitle = "Share saved reel"
-    static let shareMissingMessage = "Saved reel missing. Run AI Edit."
+    static let shareMissingMessage = "Saved reel missing. Run AI Edit again."
     static let deleteSubtitle = "Remove saved files"
 }
 

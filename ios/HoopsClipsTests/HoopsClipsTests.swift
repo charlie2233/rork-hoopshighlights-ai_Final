@@ -1731,8 +1731,8 @@ struct HoopsClipsTests {
         #expect(exportCopy.allSatisfy { !$0.contains("export file") })
         #expect(exportCopy.allSatisfy { !$0.contains("exported file") })
         #expect(exportCopy.allSatisfy { $0.count <= 52 })
-        #expect(ExportReelCopy.previewMissingMessage == "Saved reel missing. Run AI Edit again to preview.")
-        #expect(ExportReelCopy.previewShareMissingMessage == "Saved reel missing. Run AI Edit again to preview or share.")
+        #expect(ExportReelCopy.previewMissingMessage == "Saved reel missing. Run AI Edit to preview.")
+        #expect(ExportReelCopy.previewShareMissingMessage == "Saved reel missing. Run AI Edit to preview/share.")
     }
 
     @Test func testReviewProgressCopyShowsSelectedAndCheckCounts() {
