@@ -450,7 +450,7 @@ struct ReviewView: View {
             .accessibilityIdentifier("review.carousel")
         } else {
             VStack(alignment: .leading, spacing: 12) {
-                Label(emptyFilterTitle, systemImage: "line.3.horizontal.decrease.circle")
+                Label(emptyStateTitle, systemImage: "line.3.horizontal.decrease.circle")
                     .font(.headline)
                     .foregroundStyle(.white)
 
