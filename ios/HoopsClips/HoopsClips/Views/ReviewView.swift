@@ -334,17 +334,33 @@ struct ReviewView: View {
                 fill: AnyShapeStyle(
                     LinearGradient(
                         colors: [
-                            Color(red: 0.11, green: 0.08, blue: 0.05).opacity(0.96),
-                            AppTheme.surfaceBg.opacity(0.94)
+                            Color(red: 0.04, green: 0.03, blue: 0.12).opacity(0.98),
+                            AppTheme.accentPurple.opacity(0.26),
+                            AppTheme.surfaceBg.opacity(0.96)
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
                 ),
-                stroke: clip.isKept ? AppTheme.successGreen.opacity(0.28) : AppTheme.dangerRed.opacity(0.20),
-                glow: clip.isKept ? AppTheme.successGreen : AppTheme.warningYellow,
-                glowOpacity: 0.08
+                stroke: AppTheme.neonPurple.opacity(0.32),
+                glow: AppTheme.neonPurple,
+                glowOpacity: 0.14
             )
+            .overlay {
+                RoundedRectangle(cornerRadius: 24)
+                    .stroke(
+                        LinearGradient(
+                            colors: [
+                                AppTheme.neonPurple.opacity(0.52),
+                                .white.opacity(0.08),
+                                AppTheme.accentPurple.opacity(0.24)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1
+                    )
+            }
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("review.carousel")
         } else {
@@ -380,10 +396,19 @@ struct ReviewView: View {
 
     private func reviewCarouselHeader(clip: Clip) -> some View {
         ViewThatFits(in: .horizontal) {
-            HStack(alignment: .center, spacing: 10) {
-                Label("Clip \(currentReviewIndex + 1) of \(filteredClips.count)", systemImage: "play.rectangle.fill")
-                    .font(.headline.weight(.heavy))
-                    .foregroundStyle(.white)
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Review Clips")
+                        .font(.title3.weight(.heavy))
+                        .foregroundStyle(.white)
+
+                    Label("Clip \(currentReviewIndex + 1) of \(filteredClips.count)", systemImage: "sparkles")
+                        .font(.caption.bold().monospacedDigit())
+                        .foregroundStyle(AppTheme.neonPurple)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(AppTheme.neonPurple.opacity(0.16), in: .capsule)
+                }
 
                 Spacer(minLength: 0)
 
@@ -396,12 +421,19 @@ struct ReviewView: View {
             }
 
             VStack(alignment: .leading, spacing: 6) {
-                Label("Clip \(currentReviewIndex + 1) of \(filteredClips.count)", systemImage: "play.rectangle.fill")
-                    .font(.headline.weight(.heavy))
+                Text("Review Clips")
+                    .font(.title3.weight(.heavy))
                     .foregroundStyle(.white)
-                Text(clip.isKept ? "Keeping this one" : "Marked nah")
-                    .font(.caption.bold().monospaced())
-                    .foregroundStyle(clip.isKept ? AppTheme.successGreen : AppTheme.dangerRed)
+
+                HStack(spacing: 8) {
+                    Label("Clip \(currentReviewIndex + 1) of \(filteredClips.count)", systemImage: "sparkles")
+                        .font(.caption.bold().monospacedDigit())
+                        .foregroundStyle(AppTheme.neonPurple)
+
+                    Text(clip.isKept ? "KEEPING" : "NAH")
+                        .font(.caption.bold().monospaced())
+                        .foregroundStyle(clip.isKept ? AppTheme.successGreen : AppTheme.dangerRed)
+                }
             }
         }
     }
@@ -428,8 +460,9 @@ struct ReviewView: View {
             .clipShape(.rect(cornerRadius: 20))
             .overlay(
                 RoundedRectangle(cornerRadius: 20)
-                    .stroke(.white.opacity(0.12), lineWidth: 1)
+                    .stroke(AppTheme.neonPurple.opacity(0.42), lineWidth: 1)
             )
+            .shadow(color: AppTheme.neonPurple.opacity(0.24), radius: 18, y: 10)
 
             HStack {
                 reviewCarouselArrowButton(systemImage: "chevron.left", accessibilityLabel: "Previous clip", isEnabled: canReviewPreviousClip) {
@@ -455,7 +488,7 @@ struct ReviewView: View {
                             .font(.caption.weight(.bold))
                             .foregroundStyle(.white)
                             .padding(10)
-                            .background(.black.opacity(0.62), in: Circle())
+                            .background(AppTheme.neonPurple.opacity(0.52), in: Circle())
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("review.carousel.muteToggle")
@@ -480,10 +513,10 @@ struct ReviewView: View {
                 .font(.title3.weight(.heavy))
                 .foregroundStyle(.white)
                 .frame(width: 46, height: 66)
-                .background(.black.opacity(isEnabled ? 0.58 : 0.20), in: .capsule)
+                .background(AppTheme.neonPurple.opacity(isEnabled ? 0.46 : 0.16), in: .capsule)
                 .overlay(
                     Capsule()
-                        .stroke(.white.opacity(isEnabled ? 0.18 : 0.06), lineWidth: 1)
+                        .stroke(AppTheme.neonPurple.opacity(isEnabled ? 0.34 : 0.10), lineWidth: 1)
                 )
         }
         .buttonStyle(.plain)
@@ -518,10 +551,10 @@ struct ReviewView: View {
             } label: {
                 Label(expandedClipID == clip.id ? "Hide why" : "Why this clip?", systemImage: "checkmark.seal.fill")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(AppTheme.warningYellow)
+                    .foregroundStyle(AppTheme.neonPurple)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
-                    .background(AppTheme.warningYellow.opacity(0.12), in: .capsule)
+                    .background(AppTheme.neonPurple.opacity(0.14), in: .capsule)
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("review.carousel.whyButton")
