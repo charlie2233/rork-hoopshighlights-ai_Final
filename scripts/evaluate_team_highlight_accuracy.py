@@ -131,6 +131,9 @@ class AccuracyMetrics:
     opponentHighlightCount: int
     negativeClipCount: int
     badWindowNegativeCount: int
+    duplicateFeedbackCount: int
+    wrongTeamFeedbackCount: int
+    badWindowFeedbackCount: int
     selectedTeamEvidenceClipCount: int
     badSelectedTeamEvidenceCount: int
 
@@ -277,6 +280,9 @@ def evaluate_accuracy(payload: dict[str, Any], thresholds: AccuracyThresholds | 
             opponentHighlightCount=0,
             negativeClipCount=0,
             badWindowNegativeCount=0,
+            duplicateFeedbackCount=0,
+            wrongTeamFeedbackCount=0,
+            badWindowFeedbackCount=0,
             selectedTeamEvidenceClipCount=0,
             badSelectedTeamEvidenceCount=0,
         )
@@ -311,6 +317,9 @@ def evaluate_accuracy(payload: dict[str, Any], thresholds: AccuracyThresholds | 
         "opponent_highlights": 0,
         "negative_clips": 0,
         "bad_window_negative_clips": 0,
+        "duplicate_feedback": 0,
+        "wrong_team_feedback": 0,
+        "bad_window_feedback": 0,
     }
 
     for case in cases:
@@ -332,6 +341,13 @@ def evaluate_accuracy(payload: dict[str, Any], thresholds: AccuracyThresholds | 
             event_type = normalize_event_type(clip["expected"].get("eventType"))
             expected_shot_outcome = expected_outcome_for_clip(clip["expected"])
             prediction = clip["prediction"]
+            review_feedback_tags = {normalize_event_type(tag) for tag in prediction.get("reviewFeedbackTags", [])}
+            if "duplicate" in review_feedback_tags:
+                counts["duplicate_feedback"] += 1
+            if "wrong_team" in review_feedback_tags:
+                counts["wrong_team_feedback"] += 1
+            if "bad_window" in review_feedback_tags:
+                counts["bad_window_feedback"] += 1
             keep = bool(prediction.get("keep"))
             include_for_review = bool(prediction.get("includeForReview") or keep)
             predicted_team_id = string_or_none(prediction.get("teamId"))
@@ -462,6 +478,9 @@ def evaluate_accuracy(payload: dict[str, Any], thresholds: AccuracyThresholds | 
         opponentHighlightCount=counts["opponent_highlights"],
         negativeClipCount=counts["negative_clips"],
         badWindowNegativeCount=counts["bad_window_negative_clips"],
+        duplicateFeedbackCount=counts["duplicate_feedback"],
+        wrongTeamFeedbackCount=counts["wrong_team_feedback"],
+        badWindowFeedbackCount=counts["bad_window_feedback"],
         selectedTeamEvidenceClipCount=counts["selected_team_evidence_predictions"],
         badSelectedTeamEvidenceCount=(
             counts["selected_team_evidence_predictions"] - counts["good_selected_team_evidence_predictions"]
@@ -685,6 +704,7 @@ def normalize_clip(raw_clip: dict[str, Any]) -> dict[str, dict[str, Any]] | None
         "shotResultEvidence": shot_result_evidence,
         "shotTrackingEvidence": shot_tracking_evidence,
         "qualitySignals": quality_signals,
+        "reviewFeedbackTags": string_list(prediction.get("reviewFeedbackTags") or raw_clip.get("reviewFeedbackTags")),
     }
     return {"expected": normalized_expected, "prediction": normalized_prediction}
 

@@ -28,6 +28,7 @@ nonisolated struct Clip: Identifiable, Codable, Sendable {
     var nativeShotSignals: NativeShotSignals?
     var teamAttribution: ClipTeamAttribution?
     var teamAttributionStatus: String?
+    var reviewFeedbackTags: [ClipReviewFeedbackTag]
 
     var duration: Double { endTime - startTime }
 
@@ -122,7 +123,8 @@ nonisolated struct Clip: Identifiable, Codable, Sendable {
         detectionMethod: DetectionMethod = .heuristic,
         nativeShotSignals: NativeShotSignals? = nil,
         teamAttribution: ClipTeamAttribution? = nil,
-        teamAttributionStatus: String? = nil
+        teamAttributionStatus: String? = nil,
+        reviewFeedbackTags: [ClipReviewFeedbackTag] = []
     ) {
         self.id = id
         self.startTime = startTime
@@ -145,6 +147,59 @@ nonisolated struct Clip: Identifiable, Codable, Sendable {
         self.nativeShotSignals = nativeShotSignals
         self.teamAttribution = teamAttribution
         self.teamAttributionStatus = teamAttributionStatus
+        self.reviewFeedbackTags = reviewFeedbackTags
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case startTime
+        case endTime
+        case eventCenter
+        case action
+        case confidence
+        case isKept
+        case label
+        case audioScore
+        case visualScore
+        case motionScore
+        case combinedScore
+        case audioCueType
+        case audioCueConfidence
+        case audioCueTime
+        case playbackSpeed
+        case isSlowMotionEnabled
+        case detectionMethod
+        case nativeShotSignals
+        case teamAttribution
+        case teamAttributionStatus
+        case reviewFeedbackTags
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        startTime = try container.decode(Double.self, forKey: .startTime)
+        endTime = try container.decode(Double.self, forKey: .endTime)
+        eventCenter = try container.decodeIfPresent(Double.self, forKey: .eventCenter)
+        action = try container.decodeIfPresent(HighlightAction.self, forKey: .action) ?? .unknown
+        confidence = try container.decodeIfPresent(Double.self, forKey: .confidence) ?? 0.0
+        isKept = try container.decodeIfPresent(Bool.self, forKey: .isKept) ?? true
+        let decodedLabel = try container.decodeIfPresent(String.self, forKey: .label) ?? ""
+        label = decodedLabel.isEmpty ? action.rawValue : decodedLabel
+        audioScore = try container.decodeIfPresent(Double.self, forKey: .audioScore) ?? 0.0
+        visualScore = try container.decodeIfPresent(Double.self, forKey: .visualScore) ?? 0.0
+        motionScore = try container.decodeIfPresent(Double.self, forKey: .motionScore) ?? 0.0
+        combinedScore = try container.decodeIfPresent(Double.self, forKey: .combinedScore) ?? 0.0
+        audioCueType = try container.decodeIfPresent(String.self, forKey: .audioCueType)
+        audioCueConfidence = try container.decodeIfPresent(Double.self, forKey: .audioCueConfidence)
+        audioCueTime = try container.decodeIfPresent(Double.self, forKey: .audioCueTime)
+        playbackSpeed = try container.decodeIfPresent(Double.self, forKey: .playbackSpeed) ?? 1.0
+        isSlowMotionEnabled = try container.decodeIfPresent(Bool.self, forKey: .isSlowMotionEnabled) ?? false
+        detectionMethod = try container.decodeIfPresent(DetectionMethod.self, forKey: .detectionMethod) ?? .heuristic
+        nativeShotSignals = try container.decodeIfPresent(NativeShotSignals.self, forKey: .nativeShotSignals)
+        teamAttribution = try container.decodeIfPresent(ClipTeamAttribution.self, forKey: .teamAttribution)
+        teamAttributionStatus = try container.decodeIfPresent(String.self, forKey: .teamAttributionStatus)
+        reviewFeedbackTags = try container.decodeIfPresent([ClipReviewFeedbackTag].self, forKey: .reviewFeedbackTags) ?? []
     }
 
     static func formatTime(_ time: Double) -> String {
@@ -437,6 +492,14 @@ nonisolated enum ClipReviewBadge: String, Codable, Sendable, Equatable, Hashable
         case .timingUncertain: return "clip timing needs review"
         }
     }
+}
+
+nonisolated enum ClipReviewFeedbackTag: String, Codable, Sendable, Equatable, Hashable, CaseIterable, Identifiable {
+    case duplicate
+    case wrongTeam = "wrong_team"
+    case badWindow = "bad_window"
+
+    var id: String { rawValue }
 }
 
 nonisolated enum ConfidenceLevel: String, Codable, Sendable {

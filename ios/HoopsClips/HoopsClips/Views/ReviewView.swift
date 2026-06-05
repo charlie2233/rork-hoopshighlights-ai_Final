@@ -9,6 +9,7 @@ struct ReviewView: View {
     @State private var clipPlayer: AVPlayer?
     @AppStorage("hoops.previewAudioMuted.v1") private var previewAudioMuted = false
     @State private var clipLoopObserverToken: NSObjectProtocol?
+    @State private var clipTimeObserverToken: Any?
     @State private var clipPlaybackRange: ClosedRange<Double>?
     @State private var filterOption: FilterOption = .all
     @State private var hasAutoFocusedPriorityFilter = false
@@ -21,7 +22,6 @@ struct ReviewView: View {
     @State private var reviewUndoToast: ReviewDecisionUndoToast?
     @State private var reviewUndoToastDismissTask: Task<Void, Never>?
     @State private var reviewScrubProgress = 0.0
-    @State private var clipFeedbackTags: [UUID: Set<ReviewFeedbackTag>] = [:]
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     private let tabTransitionAnimation = Animation.interactiveSpring(
         response: 0.42,
@@ -43,37 +43,7 @@ struct ReviewView: View {
         case discarded = "Skipped"
     }
 
-    private enum ReviewFeedbackTag: String, CaseIterable, Identifiable {
-        case duplicate
-        case wrongTeam
-        case badWindow
-
-        var id: String { rawValue }
-
-        var title: String {
-            switch self {
-            case .duplicate: return "Duplicate"
-            case .wrongTeam: return "Wrong team"
-            case .badWindow: return "Bad window"
-            }
-        }
-
-        var icon: String {
-            switch self {
-            case .duplicate: return "rectangle.on.rectangle.angled"
-            case .wrongTeam: return "person.2.slash.fill"
-            case .badWindow: return "crop"
-            }
-        }
-
-        var tint: Color {
-            switch self {
-            case .duplicate: return AppTheme.warningYellow
-            case .wrongTeam: return AppTheme.dangerRed
-            case .badWindow: return .orange
-            }
-        }
-    }
+    private typealias ReviewFeedbackTag = ClipReviewFeedbackTag
 
     private struct ReviewDecisionUndoToast: Identifiable, Equatable {
         let id = UUID()
@@ -772,7 +742,7 @@ struct ReviewView: View {
     }
 
     private func reviewFeedbackTagButton(_ tag: ReviewFeedbackTag, clip: Clip, fillsWidth: Bool = false) -> some View {
-        let isSelected = clipFeedbackTags[clip.id, default: []].contains(tag)
+        let isSelected = clip.reviewFeedbackTags.contains(tag)
 
         return Button {
             toggleFeedbackTag(tag, for: clip)
@@ -909,13 +879,7 @@ struct ReviewView: View {
     }
 
     private func toggleFeedbackTag(_ tag: ReviewFeedbackTag, for clip: Clip) {
-        var tags = clipFeedbackTags[clip.id, default: []]
-        if tags.contains(tag) {
-            tags.remove(tag)
-        } else {
-            tags.insert(tag)
-        }
-        clipFeedbackTags[clip.id] = tags
+        viewModel.toggleReviewFeedbackTag(tag, for: clip)
     }
 
     private func setClip(_ clip: Clip, keep: Bool) {
@@ -2279,12 +2243,17 @@ struct ReviewView: View {
         }
 
         clipPlayer = player
+        startClipProgressObserver(for: player, clip: clip)
         player.seek(to: clipStart, toleranceBefore: .zero, toleranceAfter: .zero) { _ in
             player.play()
         }
     }
 
     private func teardownClipPlayer() {
+        if let clipTimeObserverToken {
+            clipPlayer?.removeTimeObserver(clipTimeObserverToken)
+            self.clipTimeObserverToken = nil
+        }
         clipPlayer?.pause()
         clipPlayer = nil
         clipPlaybackRange = nil
@@ -2292,6 +2261,18 @@ struct ReviewView: View {
         if let clipLoopObserverToken {
             NotificationCenter.default.removeObserver(clipLoopObserverToken)
             self.clipLoopObserverToken = nil
+        }
+    }
+
+    private func startClipProgressObserver(for player: AVPlayer, clip: Clip) {
+        clipTimeObserverToken = player.addPeriodicTimeObserver(
+            forInterval: CMTime(seconds: 0.18, preferredTimescale: 600),
+            queue: .main
+        ) { time in
+            guard focusedClipID == clip.id else { return }
+            let duration = max(clip.duration, 0.001)
+            let progress = (time.seconds - clip.startTime) / duration
+            reviewScrubProgress = max(0.0, min(progress, 1.0))
         }
     }
 
@@ -2410,5 +2391,31 @@ struct ReviewView: View {
         let reviewNotes = contextualReviewBadges(for: clip).map(\.accessibilityLabel)
         let reviewText = reviewNotes.isEmpty ? "" : " Review flags: \(reviewNotes.joined(separator: ", "))."
         return "\(keepState). Confidence \(Int(clip.confidence * 100)) percent. Duration \(clip.formattedDuration).\(reviewText)"
+    }
+}
+
+private extension ClipReviewFeedbackTag {
+    var title: String {
+        switch self {
+        case .duplicate: return "Duplicate"
+        case .wrongTeam: return "Wrong team"
+        case .badWindow: return "Bad window"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .duplicate: return "rectangle.on.rectangle.angled"
+        case .wrongTeam: return "person.2.slash.fill"
+        case .badWindow: return "crop"
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .duplicate: return AppTheme.warningYellow
+        case .wrongTeam: return AppTheme.dangerRed
+        case .badWindow: return .orange
+        }
     }
 }

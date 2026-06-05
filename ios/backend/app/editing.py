@@ -398,6 +398,7 @@ class EditCandidateClip(APIModel):
     teamAttribution: Optional[ClipTeamAttribution] = None
     teamAttributionStatus: Optional[Literal["all", "matched", "opponent", "uncertain"]] = None
     userReviewDecision: Optional[Literal["kept", "discarded", "unreviewed"]] = None
+    reviewFeedbackTags: List[Literal["duplicate", "wrong_team", "bad_window"]] = Field(default_factory=list, max_length=8)
     captionHint: Optional[str] = Field(default=None, max_length=MAX_CAPTION_LENGTH)
     gptHighlightScore: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     gptWatchabilityScore: Optional[float] = Field(default=None, ge=0.0, le=1.0)
@@ -1448,6 +1449,7 @@ class EditClipPoolSummary(APIModel):
     totalCandidateDuration: float
     topLabels: List[str]
     duplicateGroups: int
+    reviewFeedbackTagCounts: Dict[str, int] = Field(default_factory=dict)
 
 
 class EditContext(APIModel):
@@ -1847,9 +1849,12 @@ class StoredEditJob:
 
 def summarize_clip_pool(clips: Sequence[EditCandidateClip]) -> Dict[str, object]:
     labels: Dict[str, int] = {}
+    review_feedback_tags: Dict[str, int] = {}
     duplicate_groups = set()
     for clip in clips:
         labels[clip.label] = labels.get(clip.label, 0) + 1
+        for tag in clip.reviewFeedbackTags:
+            review_feedback_tags[tag] = review_feedback_tags.get(tag, 0) + 1
         if clip.duplicateGroup:
             duplicate_groups.add(clip.duplicateGroup)
     return {
@@ -1857,6 +1862,7 @@ def summarize_clip_pool(clips: Sequence[EditCandidateClip]) -> Dict[str, object]
         "totalCandidateDuration": round(sum(clip.duration for clip in clips), 2),
         "topLabels": [label for label, _ in sorted(labels.items(), key=lambda item: item[1], reverse=True)[:5]],
         "duplicateGroups": len(duplicate_groups),
+        "reviewFeedbackTagCounts": review_feedback_tags,
     }
 
 
@@ -1987,8 +1993,9 @@ def _clip_pool_summary_payload(clip_pool_summary: object) -> Dict[str, object]:
             "totalCandidateDuration": float(clip_pool_summary.get("totalCandidateDuration", 0.0)),
             "topLabels": list(clip_pool_summary.get("topLabels", []))[:5],
             "duplicateGroups": int(clip_pool_summary.get("duplicateGroups", 0)),
+            "reviewFeedbackTagCounts": dict(clip_pool_summary.get("reviewFeedbackTagCounts", {})),
         }
-    return {"clipCount": 0, "totalCandidateDuration": 0.0, "topLabels": [], "duplicateGroups": 0}
+    return {"clipCount": 0, "totalCandidateDuration": 0.0, "topLabels": [], "duplicateGroups": 0, "reviewFeedbackTagCounts": {}}
 
 
 def _compact_agent_candidate_clip(

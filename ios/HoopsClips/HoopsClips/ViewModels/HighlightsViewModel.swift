@@ -628,6 +628,18 @@ final class HighlightsViewModel {
         persistCurrentProject()
     }
 
+    func toggleReviewFeedbackTag(_ tag: ClipReviewFeedbackTag, for clip: Clip) {
+        guard let index = analysisService.clips.firstIndex(where: { $0.id == clip.id }) else { return }
+        var tags = Set(analysisService.clips[index].reviewFeedbackTags)
+        if tags.contains(tag) {
+            tags.remove(tag)
+        } else {
+            tags.insert(tag)
+        }
+        analysisService.clips[index].reviewFeedbackTags = ClipReviewFeedbackTag.allCases.filter { tags.contains($0) }
+        persistCurrentProject()
+    }
+
     func toggleSlowMotion(_ clip: Clip) {
         guard let index = analysisService.clips.firstIndex(where: { $0.id == clip.id }) else { return }
         analysisService.clips[index].isSlowMotionEnabled.toggle()
@@ -1027,6 +1039,7 @@ final class HighlightsViewModel {
                     for: clip,
                     teamSelection: settings.highlightTeamSelection
                 ),
+                reviewFeedbackTags: clip.reviewFeedbackTags.map(\.rawValue),
                 nativeShotSignals: clip.nativeShotSignals,
                 teamAttribution: clip.teamAttribution,
                 teamAttributionStatus: clip.teamAttributionStatus
