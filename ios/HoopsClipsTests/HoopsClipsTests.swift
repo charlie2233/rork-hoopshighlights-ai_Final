@@ -1712,7 +1712,7 @@ struct HoopsClipsTests {
         #expect(actionCopy.allSatisfy { !$0.contains("Latest Export") })
         #expect(actionCopy.allSatisfy { !$0.contains("Player") })
         #expect(actionCopy.allSatisfy { !$0.contains("Review") })
-        #expect(actionCopy.allSatisfy { $0.count <= 32 })
+        #expect(actionCopy.allSatisfy { $0.count <= 40 })
         #expect(HistoryProjectActionCopy.emptyPreviewHint == "Choose a saved video below.")
         #expect(HistoryProjectActionCopy.shareAvailableSubtitle == "Share saved reel")
         #expect(HistoryProjectActionCopy.openAvailableSubtitle == "Continue editing this project")

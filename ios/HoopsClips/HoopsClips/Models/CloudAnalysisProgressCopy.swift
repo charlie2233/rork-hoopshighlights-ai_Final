@@ -110,10 +110,10 @@ nonisolated enum CloudAnalysisProgressCopy {
             || status.contains("action")
             || status.contains("finalizing")
             || status.contains("refining") {
-            return "You can leave HoopClips while this runs. Status refreshes when you return."
+            return "Your cloud analysis job is active; you can switch apps and reopen HoopClips."
         }
 
-        return "You can leave HoopClips while this runs and reopen it for real job status."
+        return "Your cloud analysis job is active; you can switch apps and reopen HoopClips."
     }
 
     private static func compactTeamTitle(_ title: String) -> String {
