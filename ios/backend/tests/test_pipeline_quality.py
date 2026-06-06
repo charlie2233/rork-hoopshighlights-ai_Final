@@ -32,6 +32,7 @@ from app.pipeline import (
     _merge_hybrid_detection_clips,
     _native_shot_signals_for_analysis_clip,
     _normalize_clip_for_analysis_context,
+    _review_clip_limit_for_source,
     _shot_context_score_for_window,
     build_team_quick_scan_candidate_clips,
     _trim_analysis_clips_for_review,
@@ -1759,6 +1760,61 @@ class PipelineQualityTests(unittest.TestCase):
         )
 
         self.assertEqual(diagnostics.get("audioReactionReviewSegments"), 1)
+
+    def test_review_clip_limit_scales_large_candidate_pool_by_source_length(self) -> None:
+        clips = [
+            _clip(
+                start=float(index * 3),
+                end=float((index * 3) + 4),
+                label="Highlight",
+                combined=0.72,
+                event_center=float((index * 3) + 2),
+                auto_keep=False,
+            )
+            for index in range(80)
+        ]
+
+        self.assertEqual(_review_clip_limit_for_source(clips, 320), 9)
+
+        long_game_clips = [
+            _clip(
+                start=float(index * 30),
+                end=float((index * 30) + 6),
+                label="Highlight",
+                combined=0.72,
+                event_center=float((index * 30) + 3),
+                auto_keep=False,
+            )
+            for index in range(140)
+        ]
+
+        self.assertEqual(_review_clip_limit_for_source(long_game_clips, 320), 96)
+
+    def test_trim_analysis_clips_prefers_contextual_auto_keep_over_generic_fill(self) -> None:
+        clips = [
+            _clip(
+                start=float(index * 5),
+                end=float((index * 5) + 4),
+                label="Highlight",
+                combined=0.78 - (index * 0.01),
+                event_center=float((index * 5) + 2),
+                auto_keep=False,
+            )
+            for index in range(10)
+        ]
+        contextual_make = _clip(
+            start=80.0,
+            end=85.0,
+            label="Three Pointer",
+            combined=0.74,
+            event_center=82.0,
+            auto_keep=True,
+        )
+
+        trimmed = _trim_analysis_clips_for_review([*clips, contextual_make], None, 320)
+
+        self.assertLess(len(trimmed), len(clips) + 1)
+        self.assertIn("Three Pointer", [clip.label for clip in trimmed])
 
     def test_run_analysis_hybrid_merges_native_pool_when_provider_returns_limited_clips(self) -> None:
         external = [

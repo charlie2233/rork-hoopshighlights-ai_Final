@@ -81,6 +81,10 @@ SUPER_LOUD_AUDIO_REACTION_MIN_ACTIVITY_SCORE = 0.46
 SUPER_LOUD_AUDIO_REACTION_MIN_COMBINED_SCORE = 0.48
 RECOGNIZED_AUDIO_REACTION_MIN_AUDIO_SCORE = 0.72
 RECOGNIZED_AUDIO_REACTION_MIN_CUE_CONFIDENCE = 0.55
+ANALYSIS_REVIEW_SECONDS_PER_CLIP = 30.0
+ANALYSIS_REVIEW_MIN_CLIPS = 8
+ANALYSIS_REVIEW_MAX_CLIPS = 96
+ANALYSIS_REVIEW_SOURCE_CAP_TRIGGER = 320
 VisualFrameSignal = Tuple[float, ...]
 
 
@@ -385,7 +389,7 @@ def _trim_analysis_clips_for_review(
     team_selection: Optional[TeamSelection],
     max_clips: int,
 ) -> list[CloudClip]:
-    max_clips = max(0, int(max_clips))
+    max_clips = _review_clip_limit_for_source(clips, max_clips)
     if max_clips == 0:
         return []
 
@@ -460,7 +464,7 @@ def _trim_analysis_clips_for_review(
     )[:uncertain_reserve]:
         add_clip(index, clip)
 
-    for index, clip in indexed_clips:
+    for index, clip in sorted(indexed_clips, key=_review_fill_clip_quality_key, reverse=True):
         add_clip(index, clip)
         if len(selected) >= max_clips:
             break
@@ -468,11 +472,44 @@ def _trim_analysis_clips_for_review(
     return [clip for _, clip in sorted(selected, key=lambda item: item[0])]
 
 
+def _review_clip_limit_for_source(clips: Sequence[CloudClip], max_clips: int) -> int:
+    requested_limit = max(0, int(max_clips))
+    if requested_limit == 0 or not clips:
+        return 0
+    if requested_limit < ANALYSIS_REVIEW_SOURCE_CAP_TRIGGER:
+        return min(requested_limit, len(clips))
+
+    source_span_seconds = max((max(clip.endTime, clip.startTime) for clip in clips), default=0.0)
+    duration_scaled_limit = int(math.ceil(source_span_seconds / ANALYSIS_REVIEW_SECONDS_PER_CLIP))
+    effective_limit = max(ANALYSIS_REVIEW_MIN_CLIPS, duration_scaled_limit)
+    effective_limit = min(effective_limit, ANALYSIS_REVIEW_MAX_CLIPS)
+    return min(requested_limit, effective_limit, len(clips))
+
+
 def _review_reserved_clip_quality_key(
     item: tuple[int, CloudClip],
 ) -> tuple[float, float, float, float, float, float, float, int]:
     index, clip = item
     return (*_hybrid_clip_quality_key(clip), -index)
+
+
+def _review_fill_clip_quality_key(
+    item: tuple[int, CloudClip],
+) -> tuple[float, float, float, float, float, float, float, float, int]:
+    index, clip = item
+    auto_keep_allowed = _analysis_clip_auto_keep_allowed(clip)
+    defensive_label = _is_defensive_label(clip.label)
+    return (
+        1.0 if auto_keep_allowed else 0.0,
+        1.0 if _is_shot_like_label(clip.label) and not defensive_label else 0.0,
+        1.0 if defensive_label else 0.0,
+        _analysis_clip_context_score(clip),
+        0.0 if _is_audio_reaction_candidate(clip) else 1.0,
+        clip.combinedScore,
+        clip.confidence,
+        clip.motionScore,
+        -index,
+    )
 
 
 def _audio_reaction_reserved_clip_quality_key(
