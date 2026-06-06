@@ -1120,6 +1120,43 @@ Current device information:
             self.assertIn("maximum number of certificates", detail)
             self.assertIn("No profiles for 'atrak.charlie.hoopsclips' were found", detail)
 
+    def test_upload_artifact_prefers_current_ci_archive_failure_over_stale_default_archive(self) -> None:
+        run_list_payload = [
+            {
+                "databaseId": 222,
+                "headSha": "abc1234567890",
+                "event": "workflow_dispatch",
+                "status": "completed",
+                "conclusion": "failure",
+                "createdAt": "2026-06-06T05:51:22Z",
+            }
+        ]
+        archive_log = "Choose a certificate to revoke. Your account has reached the maximum number of certificates."
+
+        def fake_run(command: list[str], **_kwargs: object) -> SimpleNamespace:
+            if command[:3] == ["gh", "run", "list"]:
+                return SimpleNamespace(returncode=0, stdout=json.dumps(run_list_payload))
+            if command[:3] == ["gh", "run", "view"]:
+                return SimpleNamespace(returncode=0, stdout=archive_log)
+            return SimpleNamespace(returncode=1, stdout="")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            stale_archive = repo_root / "ios/build/HoopsClips-InternalStaging-Build14.xcarchive"
+            stale_archive.mkdir(parents=True, exist_ok=True)
+            write_archive_info_plist(stale_archive, build_number="14")
+            collector = Collector()
+            with patch("scripts.submission_readiness_preflight.subprocess.run", side_effect=fake_run), patch(
+                "scripts.submission_readiness_preflight.run_git",
+                return_value="abc1234567890\n",
+            ):
+                check_upload_artifact(repo_root, collector, None)
+
+            self.assertTrue(has_failures(collector.findings))
+            detail = collector.findings[0].detail
+            self.assertIn("maximum number of certificates", detail)
+            self.assertNotIn("CFBundleVersion", detail)
+
     def test_upload_artifact_accepts_prior_ci_upload_when_only_docs_changed(self) -> None:
         run_list_payload = [
             {
