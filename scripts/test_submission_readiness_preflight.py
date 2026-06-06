@@ -144,6 +144,29 @@ class SubmissionReadinessPreflightTests(unittest.TestCase):
         self.assertIn("GPT draft labels do not count", detail)
         self.assertNotIn("Labeling bundle looks stale", detail)
 
+    def test_missing_team_accuracy_report_can_point_to_custom_labeling_bundle(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            bundle_dir = Path("artifacts/team_highlight_labeling_bundle_launch_current_reduced")
+            create_labeling_bundle_fixture(
+                repo_root,
+                complete_clip_count=0,
+                incomplete_clip_count=18,
+                clip_count=18,
+                bundle_dir=bundle_dir,
+            )
+            collector = Collector()
+
+            check_team_highlight_accuracy_report(repo_root, collector, None, labeling_bundle_dir=bundle_dir)
+
+        self.assertTrue(has_failures(collector.findings))
+        detail = collector.findings[0].detail
+        self.assertIn("0/18 clips complete", detail)
+        self.assertIn("18 remaining", detail)
+        self.assertIn("team_highlight_labeling_bundle_launch_current_reduced/team_highlight_label_review.html", detail)
+        self.assertIn("team_highlight_labeling_bundle_launch_current_reduced/label_status.json", detail)
+        self.assertNotIn("0/54 clips complete", detail)
+
     def test_missing_team_accuracy_report_warns_when_labeling_bundle_is_stale(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             repo_root = Path(temp_dir)
@@ -1352,8 +1375,12 @@ def create_labeling_bundle_fixture(
     complete_clip_count: int,
     incomplete_clip_count: int,
     clip_count: int = 54,
+    bundle_dir: Path = Path("artifacts/team_highlight_labeling_bundle"),
 ) -> None:
-    bundle_dir = repo_root / "artifacts/team_highlight_labeling_bundle"
+    bundle_dir = repo_root / bundle_dir
+    bundle_rel = bundle_dir.relative_to(repo_root).as_posix()
+    close_review_count = max(0, clip_count - 5)
+    standard_review_count = min(5, clip_count)
     write_json(
         bundle_dir / "label_status.json",
         {
@@ -1362,7 +1389,7 @@ def create_labeling_bundle_fixture(
             "clipCount": clip_count,
             "completeClipCount": complete_clip_count,
             "incompleteClipCount": incomplete_clip_count,
-                "missingFieldCounts": {
+            "missingFieldCounts": {
                 "expected.teamId": incomplete_clip_count,
                 "expected.isHighlight": incomplete_clip_count,
                 "expected.eventType": incomplete_clip_count,
@@ -1376,8 +1403,8 @@ def create_labeling_bundle_fixture(
         bundle_dir / "bundle_metadata.json",
         {
             "schemaVersion": "team-highlight-labeling-bundle-v1",
-            "reviewPage": "artifacts/team_highlight_labeling_bundle/team_highlight_label_review.html",
-            "labelStatus": "artifacts/team_highlight_labeling_bundle/label_status.json",
+            "reviewPage": f"{bundle_rel}/team_highlight_label_review.html",
+            "labelStatus": f"{bundle_rel}/label_status.json",
             "clipCount": clip_count,
             "completeClipCount": complete_clip_count,
             "incompleteClipCount": incomplete_clip_count,
@@ -1387,8 +1414,8 @@ def create_labeling_bundle_fixture(
                     "skippedClipCount": 1,
                 },
                 "reviewPriorityCounts": {
-                    "needs_close_review": 49,
-                    "standard_review": 5,
+                    "needs_close_review": close_review_count,
+                    "standard_review": standard_review_count,
                 },
             },
         },

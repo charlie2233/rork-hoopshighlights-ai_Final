@@ -281,12 +281,14 @@ class Collector:
 def main() -> int:
     args = parse_args()
     repo_root = Path(args.repo_root).resolve()
+    labeling_bundle_dir = resolve_repo_path(repo_root, Path(args.labeling_bundle_dir))
     findings = run_checks(
         repo_root,
         worker_base_url=args.worker_base_url,
         editing_version_url=args.editing_version_url,
         archive_path=Path(args.archive_path).resolve() if args.archive_path else None,
         team_accuracy_report_path=Path(args.team_accuracy_report).resolve() if args.team_accuracy_report else None,
+        labeling_bundle_dir=labeling_bundle_dir,
         skip_live=args.skip_live,
         timeout_seconds=args.timeout_seconds,
     )
@@ -325,6 +327,14 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Path to a JSON report from `python3 -m scripts.evaluate_team_highlight_accuracy <labels.json> --json` using launch-grade default thresholds.",
     )
+    parser.add_argument(
+        "--labeling-bundle-dir",
+        default=str(DEFAULT_LABELING_BUNDLE_DIR),
+        help=(
+            "Labeling bundle directory to use when explaining a missing --team-accuracy-report. "
+            "This does not weaken the launch accuracy gate; it only points the blocker message at the current review bundle."
+        ),
+    )
     parser.add_argument("--timeout-seconds", type=float, default=10.0, help="Timeout for the live Worker version probe.")
     parser.add_argument("--skip-live", action="store_true", help="Skip live Worker probe and report it as a warning.")
     parser.add_argument("--json", action="store_true", help="Emit machine-readable findings.")
@@ -338,13 +348,14 @@ def run_checks(
     editing_version_url: str = DEFAULT_EDITING_VERSION_URL,
     archive_path: Path | None = None,
     team_accuracy_report_path: Path | None = None,
+    labeling_bundle_dir: Path = DEFAULT_LABELING_BUNDLE_DIR,
     skip_live: bool = False,
     timeout_seconds: float = 10.0,
 ) -> list[Finding]:
     collector = Collector()
     check_git_state(repo_root, collector)
     check_backend_config_preflight(repo_root, collector)
-    check_team_highlight_accuracy_report(repo_root, collector, team_accuracy_report_path)
+    check_team_highlight_accuracy_report(repo_root, collector, team_accuracy_report_path, labeling_bundle_dir)
     check_ios_signing(repo_root, collector)
     check_export_options(repo_root, collector)
     check_bundle_id_references(repo_root, collector)
@@ -414,13 +425,18 @@ def check_backend_config_preflight(repo_root: Path, collector: Collector) -> Non
         collector.pass_("backend config preflight", "scripts/launch_backend_config_preflight.py", detail)
 
 
-def check_team_highlight_accuracy_report(repo_root: Path, collector: Collector, report_path: Path | None) -> None:
+def check_team_highlight_accuracy_report(
+    repo_root: Path,
+    collector: Collector,
+    report_path: Path | None,
+    labeling_bundle_dir: Path = DEFAULT_LABELING_BUNDLE_DIR,
+) -> None:
     check_name = "team highlight accuracy evidence"
     if report_path is None:
         collector.fail(
             check_name,
             "scripts/evaluate_team_highlight_accuracy.py",
-            missing_team_accuracy_report_detail(repo_root),
+            missing_team_accuracy_report_detail(repo_root, labeling_bundle_dir),
         )
         return
 
@@ -505,7 +521,7 @@ def check_team_highlight_accuracy_report(repo_root: Path, collector: Collector, 
     if failures:
         detail = "; ".join(failures[:8]) + ("." if len(failures) <= 8 else "; additional failures omitted.")
         if draft_path_marker:
-            hint = team_labeling_bundle_hint(repo_root)
+            hint = team_labeling_bundle_hint(repo_root, labeling_bundle_dir)
             if hint:
                 detail = f"{detail} {hint}"
         collector.fail(check_name, display_path, detail)
@@ -536,19 +552,20 @@ def draft_team_accuracy_report_path_marker(report_path: Path) -> str | None:
     return None
 
 
-def missing_team_accuracy_report_detail(repo_root: Path) -> str:
+def missing_team_accuracy_report_detail(repo_root: Path, labeling_bundle_dir: Path = DEFAULT_LABELING_BUNDLE_DIR) -> str:
     base = (
         "Missing --team-accuracy-report from a launch-grade labeled footage run; "
         "85% selected-team/highlight quality is unproven."
     )
-    hint = team_labeling_bundle_hint(repo_root)
+    hint = team_labeling_bundle_hint(repo_root, labeling_bundle_dir)
     return f"{base} {hint}" if hint else base
 
 
-def team_labeling_bundle_hint(repo_root: Path) -> str:
-    metadata_path = repo_root / DEFAULT_LABELING_BUNDLE_METADATA
-    status_path = repo_root / DEFAULT_LABELING_BUNDLE_STATUS
-    next_steps_path = repo_root / DEFAULT_LABELING_BUNDLE_NEXT_STEPS
+def team_labeling_bundle_hint(repo_root: Path, labeling_bundle_dir: Path = DEFAULT_LABELING_BUNDLE_DIR) -> str:
+    bundle_dir = resolve_repo_path(repo_root, labeling_bundle_dir)
+    metadata_path = bundle_dir / "bundle_metadata.json"
+    status_path = bundle_dir / "label_status.json"
+    next_steps_path = bundle_dir / "next_steps.md"
     metadata = read_json_object(metadata_path)
     status = read_json_object(status_path)
 
@@ -557,8 +574,8 @@ def team_labeling_bundle_hint(repo_root: Path) -> str:
         complete = number_or_none(source.get("completeClipCount"))
         total = number_or_none(source.get("clipCount"))
         incomplete = number_or_none(source.get("incompleteClipCount"))
-        review_page = metadata_path_from_payload(repo_root, metadata, "reviewPage", DEFAULT_LABELING_BUNDLE_DIR / "team_highlight_label_review.html")
-        status_label = metadata_path_from_payload(repo_root, metadata, "labelStatus", DEFAULT_LABELING_BUNDLE_STATUS)
+        review_page = metadata_path_from_payload(repo_root, metadata, "reviewPage", bundle_dir / "team_highlight_label_review.html")
+        status_label = metadata_path_from_payload(repo_root, metadata, "labelStatus", bundle_dir / "label_status.json")
         progress = ""
         if complete is not None and total is not None:
             progress = f" Existing labeling bundle progress: {int(complete)}/{int(total)} clips complete"
@@ -566,7 +583,7 @@ def team_labeling_bundle_hint(repo_root: Path) -> str:
                 progress += f", {int(incomplete)} remaining"
             progress += "."
         draft_detail = labeling_bundle_draft_detail(metadata)
-        staleness_detail = labeling_bundle_staleness_detail(repo_root, review_page, next_steps_path, metadata, status)
+        staleness_detail = labeling_bundle_staleness_detail(repo_root, bundle_dir, review_page, next_steps_path, metadata, status)
         launch_gate_detail = labeling_bundle_launch_gate_detail(status)
         return (
             f"{progress} Continue human review at {rel(review_page, repo_root)}; "
@@ -634,6 +651,7 @@ def labeling_bundle_launch_gate_detail(status: dict[str, object] | None) -> str:
 
 def labeling_bundle_staleness_detail(
     repo_root: Path,
+    bundle_dir: Path,
     review_page: Path,
     next_steps_path: Path,
     metadata: dict[str, object] | None,
@@ -660,7 +678,7 @@ def labeling_bundle_staleness_detail(
 
     detail = "Labeling bundle looks stale or incomplete"
     detail += f" (missing {', '.join(missing)})."
-    regenerate_command = labeling_bundle_regenerate_command(repo_root, metadata)
+    regenerate_command = labeling_bundle_regenerate_command(repo_root, bundle_dir, metadata)
     if regenerate_command:
         detail += (
             f" Regenerate before review with `{regenerate_command}`. "
@@ -682,8 +700,8 @@ def labeling_bundle_status_missing_human_review_gate(status: dict[str, object] |
     return "reviewedByHuman=true" not in missing_field_counts
 
 
-def labeling_bundle_regenerate_command(repo_root: Path, metadata: dict[str, object] | None) -> str:
-    manifest_path = repo_root / DEFAULT_TEAM_ACCURACY_MANIFEST
+def labeling_bundle_regenerate_command(repo_root: Path, bundle_dir: Path, metadata: dict[str, object] | None) -> str:
+    manifest_path = labeling_bundle_manifest_path(repo_root, bundle_dir, metadata)
     if not manifest_path.exists():
         return ""
     command = [
@@ -694,12 +712,23 @@ def labeling_bundle_regenerate_command(repo_root: Path, metadata: dict[str, obje
         "--video-path",
         "/absolute/path/to/source.mp4",
         "--output-dir",
-        rel(repo_root / DEFAULT_LABELING_BUNDLE_DIR, repo_root),
+        rel(bundle_dir, repo_root),
     ]
     draft_bundle_path = labeling_bundle_draft_path(metadata)
     if draft_bundle_path:
         command.extend(["--draft-bundle", rel(draft_bundle_path, repo_root)])
     return " ".join(shlex.quote(part) for part in command)
+
+
+def labeling_bundle_manifest_path(repo_root: Path, bundle_dir: Path, metadata: dict[str, object] | None) -> Path:
+    raw_value = metadata.get("manifest") if metadata else None
+    if isinstance(raw_value, str) and raw_value.strip():
+        path = Path(raw_value).expanduser()
+        return path if path.is_absolute() else repo_root / path
+    local_manifest = bundle_dir / "manifest.json"
+    if local_manifest.exists():
+        return local_manifest
+    return repo_root / DEFAULT_TEAM_ACCURACY_MANIFEST
 
 
 def labeling_bundle_draft_path(metadata: dict[str, object] | None) -> Path | None:
@@ -718,6 +747,11 @@ def metadata_path_from_payload(repo_root: Path, payload: dict[str, object] | Non
         path = Path(raw_value).expanduser()
         return path if path.is_absolute() else repo_root / path
     return repo_root / fallback
+
+
+def resolve_repo_path(repo_root: Path, path: Path) -> Path:
+    expanded = path.expanduser()
+    return expanded if expanded.is_absolute() else repo_root / expanded
 
 
 def check_ios_signing(repo_root: Path, collector: Collector) -> None:
