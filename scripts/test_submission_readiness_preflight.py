@@ -19,6 +19,8 @@ from scripts.submission_readiness_preflight import (
     GithubEnvironmentNameLookup,
     REQUIRED_IOS_UPLOAD_SECRET_INPUTS,
     REQUIRED_IOS_UPLOAD_VARIABLE_INPUTS,
+    REQUIRED_PRODUCTION_CLOUD_URL_VARIABLE_INPUTS,
+    check_production_cloud_url_inputs,
     check_upload_artifact,
     check_bundle_id_references,
     check_blocker_docs,
@@ -97,6 +99,7 @@ class SubmissionReadinessPreflightTests(unittest.TestCase):
                     "GCP_DEPLOY_SERVICE_ACCOUNT": "present",
                     "GCP_PROJECT_ID": "present",
                     "GCP_REGION": "present",
+                    **{name: "present" for name in REQUIRED_PRODUCTION_CLOUD_URL_VARIABLE_INPUTS},
                     **{name: "present" for name in REQUIRED_IOS_UPLOAD_SECRET_INPUTS},
                     **{name: "present" for name in REQUIRED_IOS_UPLOAD_VARIABLE_INPUTS},
                 },
@@ -945,6 +948,32 @@ Current device information:
         self.assertTrue(has_failures(collector.findings))
         self.assertIn("GitHub staging name lookup was incomplete", collector.findings[0].detail)
         self.assertIn("valid GitHub login", collector.findings[0].detail)
+
+    def test_production_cloud_url_inputs_can_come_from_github_production_variables(self) -> None:
+        collector = Collector()
+        with patch.dict(os.environ, {}, clear=True), patch(
+            "scripts.submission_readiness_preflight.github_production_variable_name_lookup",
+            return_value=GithubEnvironmentNameLookup(set(REQUIRED_PRODUCTION_CLOUD_URL_VARIABLE_INPUTS)),
+        ):
+            check_production_cloud_url_inputs(collector)
+
+        self.assertFalse(has_failures(collector.findings))
+
+    def test_production_cloud_url_inputs_failure_points_to_name_only_github_production_check(self) -> None:
+        collector = Collector()
+        with patch.dict(os.environ, {}, clear=True), patch(
+            "scripts.submission_readiness_preflight.github_production_variable_name_lookup",
+            return_value=GithubEnvironmentNameLookup(set(), "gh variable list --env production needs a valid GitHub login"),
+        ):
+            check_production_cloud_url_inputs(collector)
+
+        self.assertTrue(has_failures(collector.findings))
+        detail = collector.findings[0].detail
+        self.assertIn("Missing required production cloud URL input name(s)", detail)
+        self.assertIn("GitHub production environment variable names only", detail)
+        self.assertIn("GitHub production name lookup was incomplete", detail)
+        self.assertIn("secret values are not needed", detail)
+        self.assertIn("release-secrets-preflight.yml", detail)
 
     def test_github_stderr_detail_redacts_token_like_values(self) -> None:
         detail = _gh_stderr_detail(

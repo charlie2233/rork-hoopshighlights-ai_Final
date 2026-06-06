@@ -1450,6 +1450,7 @@ def check_production_cloud_url_inputs(collector: Collector) -> None:
                 lookup_details=github_lookup_unavailable_details(github_variable_lookup),
                 environment_label="GitHub production environment variable names only",
                 configure_label="GitHub production environment",
+                lookup_label="GitHub production name lookup",
             ),
         )
     else:
@@ -1819,6 +1820,7 @@ def missing_input_detail(
     lookup_details: list[str] | None = None,
     environment_label: str = "GitHub staging environment secret/variable names only",
     configure_label: str = "GitHub staging environment",
+    lookup_label: str = "GitHub staging name lookup",
 ) -> str:
     detail = (
         f"Missing required {label} input name(s): {', '.join(missing)}. "
@@ -1827,7 +1829,7 @@ def missing_input_detail(
         f"Configure the missing names in the {configure_label}, then rerun `{workflow}` or this preflight from an authorized `gh` session."
     )
     if lookup_details:
-        detail += f" GitHub name lookup was incomplete: {'; '.join(lookup_details)}."
+        detail += f" {lookup_label} was incomplete: {'; '.join(lookup_details)}."
     return detail
 
 
