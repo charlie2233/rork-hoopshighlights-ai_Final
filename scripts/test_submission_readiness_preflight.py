@@ -1188,6 +1188,53 @@ Current device information:
             self.assertIn("maximum number of certificates", detail)
             self.assertNotIn("CFBundleVersion", detail)
 
+    def test_upload_artifact_reports_current_codecheck_success_without_upload_proof(self) -> None:
+        run_list_payload = [
+            {
+                "databaseId": 333,
+                "headSha": "abc1234567890",
+                "event": "workflow_dispatch",
+                "status": "completed",
+                "conclusion": "success",
+                "createdAt": "2026-06-06T08:13:24Z",
+            },
+            {
+                "databaseId": 222,
+                "headSha": "old1234567890",
+                "event": "workflow_dispatch",
+                "status": "completed",
+                "conclusion": "failure",
+                "createdAt": "2026-06-06T05:51:22Z",
+            },
+        ]
+
+        def fake_run(command: list[str], **_kwargs: object) -> SimpleNamespace:
+            if command[:3] == ["gh", "run", "list"]:
+                return SimpleNamespace(returncode=0, stdout=json.dumps(run_list_payload))
+            if command[:3] == ["gh", "run", "view"]:
+                return SimpleNamespace(returncode=0, stdout="Unsigned codecheck completed.")
+            return SimpleNamespace(returncode=1, stdout="")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            stale_archive = repo_root / "ios/build/HoopsClips-InternalStaging-Build14.xcarchive"
+            stale_archive.mkdir(parents=True, exist_ok=True)
+            write_archive_info_plist(stale_archive, build_number="14")
+            collector = Collector()
+            with patch("scripts.submission_readiness_preflight.subprocess.run", side_effect=fake_run), patch(
+                "scripts.submission_readiness_preflight.run_git",
+                return_value="abc1234567890\n",
+            ):
+                check_upload_artifact(repo_root, collector, None)
+
+            self.assertTrue(has_failures(collector.findings))
+            detail = collector.findings[0].detail
+            self.assertIn("completed successfully", detail)
+            self.assertIn("upload log proof was not found", detail)
+            self.assertIn("codecheck-only run", detail)
+            self.assertNotIn("CFBundleVersion", detail)
+            self.assertNotIn("maximum number of certificates", detail)
+
     def test_upload_artifact_accepts_prior_ci_upload_when_only_docs_changed(self) -> None:
         run_list_payload = [
             {

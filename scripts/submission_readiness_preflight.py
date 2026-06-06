@@ -889,6 +889,9 @@ def check_upload_artifact(repo_root: Path, collector: Collector, archive_path: P
     if valid:
         collector.pass_("upload artifact", "repo", f"{len(valid)} upload artifact candidate(s) found.")
     elif metadata_failures:
+        if archive_path is None and (workflow_missing_upload_detail := current_testflight_workflow_missing_upload_detail(repo_root)):
+            collector.fail("upload artifact", "iOS Internal TestFlight Upload", workflow_missing_upload_detail)
+            return
         if archive_path is None and (workflow_failure_detail := current_testflight_workflow_failure_detail(repo_root)):
             collector.fail("upload artifact", "iOS Internal TestFlight Upload", workflow_failure_detail)
             return
@@ -898,6 +901,8 @@ def check_upload_artifact(repo_root: Path, collector: Collector, archive_path: P
         collector.fail("upload artifact", rel(archive_path, repo_root), "Requested archive/IPA path does not exist.")
     elif current_testflight_upload_proof(repo_root):
         collector.pass_("upload artifact", "GitHub Actions", "Successful internal TestFlight upload log proof exists, and no iOS upload-relevant files changed afterward.")
+    elif workflow_missing_upload_detail := current_testflight_workflow_missing_upload_detail(repo_root):
+        collector.fail("upload artifact", "iOS Internal TestFlight Upload", workflow_missing_upload_detail)
     elif workflow_failure_detail := current_testflight_workflow_failure_detail(repo_root):
         collector.fail("upload artifact", "iOS Internal TestFlight Upload", workflow_failure_detail)
     else:
@@ -948,6 +953,28 @@ def current_testflight_workflow_failure_detail(repo_root: Path) -> str:
             f"Current-branch internal TestFlight archive/upload workflow status={status} "
             f"conclusion={conclusion} at {created_at}; inspect run {run_id or 'unknown'}."
         )
+    return ""
+
+
+def current_testflight_workflow_missing_upload_detail(repo_root: Path) -> str:
+    runs = current_testflight_workflow_dispatch_runs(repo_root)
+    current_sha = current_git_sha(repo_root)
+    if not current_sha:
+        return ""
+    for run in runs:
+        head_sha = str(run.get("headSha") or "")
+        if not commit_is_current_or_unchanged_for_paths(repo_root, head_sha, current_sha, IOS_UPLOAD_RELEVANT_PREFIXES):
+            continue
+        status = str(run.get("status") or "unknown")
+        conclusion = str(run.get("conclusion") or "unknown")
+        created_at = str(run.get("createdAt") or "unknown")
+        if status == "completed" and conclusion == "success" and not testflight_upload_log_has_markers(run.get("databaseId")):
+            return (
+                "Current-branch iOS workflow completed successfully at "
+                f"{created_at}, but internal TestFlight upload log proof was not found; "
+                "this may be a codecheck-only run and does not prove signed archive/upload."
+            )
+        return ""
     return ""
 
 
