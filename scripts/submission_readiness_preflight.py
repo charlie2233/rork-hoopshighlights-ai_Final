@@ -66,6 +66,10 @@ REQUIRED_IOS_UPLOAD_VARIABLE_INPUTS = (
     "HOOPS_PRIVACY_POLICY_URL",
     "HOOPS_TERMS_OF_SERVICE_URL",
 )
+REQUIRED_PRODUCTION_CLOUD_URL_VARIABLE_INPUTS = (
+    "HOOPS_CLOUD_ANALYSIS_BASE_URL",
+    "HOOPS_CLOUD_EDIT_BASE_URL",
+)
 REQUIRED_IOS_UPLOAD_WORKFLOW_SNIPPETS = (
     "environment: staging",
     "ios/scripts/materialize_local_secrets.sh",
@@ -371,6 +375,7 @@ def run_checks(
     check_live_worker_version(resolved_worker_base_url, collector, skip_live=skip_live, timeout_seconds=timeout_seconds)
     check_live_editing_version(editing_version_url, collector, repo_root=repo_root, skip_live=skip_live, timeout_seconds=timeout_seconds)
     check_ci_deploy_inputs(collector)
+    check_production_cloud_url_inputs(collector)
     check_github_workflow_runs(repo_root, collector)
     check_secret_gated_deploy_preflight(repo_root, collector)
     check_blocker_docs(repo_root, collector)
@@ -1427,6 +1432,34 @@ def check_ci_deploy_inputs(collector: Collector) -> None:
         collector.pass_("cloud deploy inputs", "environment", "Required deploy input names are present locally or in the GitHub staging environment without printing values.")
 
 
+def check_production_cloud_url_inputs(collector: Collector) -> None:
+    github_variable_lookup = github_production_variable_name_lookup()
+    missing = [
+        name
+        for name in REQUIRED_PRODUCTION_CLOUD_URL_VARIABLE_INPUTS
+        if not os.getenv(name) and name not in github_variable_lookup.names
+    ]
+    if missing:
+        collector.fail(
+            "production cloud URL inputs",
+            "environment",
+            missing_input_detail(
+                missing,
+                label="production cloud URL",
+                workflow="release-secrets-preflight.yml",
+                lookup_details=github_lookup_unavailable_details(github_variable_lookup),
+                environment_label="GitHub production environment variable names only",
+                configure_label="GitHub production environment",
+            ),
+        )
+    else:
+        collector.pass_(
+            "production cloud URL inputs",
+            "environment",
+            "Required production cloud URL variable names are present locally or in the GitHub production environment without printing values.",
+        )
+
+
 def check_github_workflow_runs(repo_root: Path, collector: Collector) -> None:
     current_sha = current_git_sha(repo_root)
     try:
@@ -1704,6 +1737,26 @@ def github_environment_name_lookup(kind: str) -> GithubEnvironmentNameLookup:
     return GithubEnvironmentNameLookup({str(item.get("name")) for item in payload if isinstance(item, dict) and item.get("name")})
 
 
+def github_production_variable_name_lookup() -> GithubEnvironmentNameLookup:
+    args = ["gh", "variable", "list", "--env", "production", "--json", "name"]
+    command_desc = "variable list --env production"
+    try:
+        result = subprocess.run(args, check=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=20)
+    except OSError as error:
+        return GithubEnvironmentNameLookup(set(), f"gh {command_desc} could not run: {type(error).__name__}")
+    except subprocess.TimeoutExpired:
+        return GithubEnvironmentNameLookup(set(), f"gh {command_desc} timed out")
+    if result.returncode != 0:
+        return GithubEnvironmentNameLookup(set(), _gh_stderr_detail(result.stderr, command_desc))
+    try:
+        payload = json.loads(result.stdout or "[]")
+    except json.JSONDecodeError:
+        return GithubEnvironmentNameLookup(set(), f"gh {command_desc} returned invalid JSON")
+    if not isinstance(payload, list):
+        return GithubEnvironmentNameLookup(set(), f"gh {command_desc} returned an unexpected JSON shape")
+    return GithubEnvironmentNameLookup({str(item.get("name")) for item in payload if isinstance(item, dict) and item.get("name")})
+
+
 def check_blocker_docs(repo_root: Path, collector: Collector) -> None:
     for doc_path, marker, detail in BLOCKER_DOCS:
         path = repo_root / doc_path
@@ -1758,15 +1811,23 @@ def github_lookup_unavailable_details(*lookups: GithubEnvironmentNameLookup) -> 
     return [lookup.unavailable_detail for lookup in lookups if lookup.unavailable_detail]
 
 
-def missing_input_detail(missing: list[str], *, label: str, workflow: str, lookup_details: list[str] | None = None) -> str:
+def missing_input_detail(
+    missing: list[str],
+    *,
+    label: str,
+    workflow: str,
+    lookup_details: list[str] | None = None,
+    environment_label: str = "GitHub staging environment secret/variable names only",
+    configure_label: str = "GitHub staging environment",
+) -> str:
     detail = (
         f"Missing required {label} input name(s): {', '.join(missing)}. "
-        "Checked local environment values and GitHub staging environment secret/variable names only; "
+        f"Checked local environment values and {environment_label}; "
         "secret values are not needed for this check and must not be pasted into logs. "
-        f"Configure the missing names in the GitHub staging environment, then rerun `{workflow}` or this preflight from an authorized `gh` session."
+        f"Configure the missing names in the {configure_label}, then rerun `{workflow}` or this preflight from an authorized `gh` session."
     )
     if lookup_details:
-        detail += f" GitHub staging name lookup was incomplete: {'; '.join(lookup_details)}."
+        detail += f" GitHub name lookup was incomplete: {'; '.join(lookup_details)}."
     return detail
 
 
