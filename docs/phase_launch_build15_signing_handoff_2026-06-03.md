@@ -1,57 +1,41 @@
-# Phase Launch Build 15 Signing Handoff - 2026-06-03
+# Phase Launch Build 15 Signing Handoff - updated 2026-06-06
 
 ## Current branch
 
-- Branch: `codex/phase-launch-proof-next`
-- Current code head before this docs-only note: `46ac2ac3f09f7805f5ae4848806d05c45396f0e8`
-- Internal TestFlight marketing/build target: `1.0.0` build `15`
-- Build `15` was created because build `14` was already uploaded successfully from older branch head `bc37b0ec5613ecee87d90e057245abeb92865800`.
+- Branch: `codex/phase-clip1-gpt-led-highlight-editor`
+- Current signing target: HoopClips `1.0.0` build `15`
+- Bundle ID: `atrak.charlie.hoopsclips`
+- Current signing evidence doc: `docs/phase_launch_build15_archive_signing_recheck_2026-06-06.md`
 
 ## Current-head proof that is green
 
-These runs are on `46ac2ac3f09f7805f5ae4848806d05c45396f0e8`.
+Latest staging/cloud proof on the branch:
 
-- Cloud Edit Deploy Preflight `operation=preflight`: GitHub Actions run `26877407142`
-  - Worker typecheck and dry run: success
-  - Editing backend Python tests plus launch script tests: success
-  - Secret-gated cloud edit deploy preflight: success
-  - No deploy or rollback was requested.
-- iOS Internal TestFlight Upload `operation=codecheck`: GitHub Actions run `26877408870`
-  - No-secret internal staging codecheck: success
-  - Signed archive/upload path was skipped by design.
+- Cloud Edit Deploy Preflight run `27055102528`: success
+- Worker and editing service `/version`: `200`
+- Deployed SHA: `dd860a62a4a012867b30099fc886c7530aaa16ff`
 
-## Signed archive blocker
+The iOS workflow input check also proves required TestFlight upload input names
+are present without printing values.
 
-Signed iOS archive preflight is not green for build `15` yet. The latest repo state keeps automatic signing, which is the same signing mode that previously produced build `14`.
+## Current signed archive blocker
 
-Observed failed runs:
+Signed archive/upload is still blocked by Apple account/provisioning state.
+The latest current-branch archive attempts reached the signing step and failed
+with non-secret markers:
 
-- `ade3ec0` signed archive preflight retry: GitHub Actions run `26927591040`
-- `af93d57` signed archive preflight retry: GitHub Actions run `26877074295`
-- `af93d57` initial signed archive preflight: GitHub Actions run `26876817391`
-- `b7b3a0a` distribution-signing experiment: GitHub Actions run `26877277110`
+- Apple account has reached the maximum number of certificates.
+- No provisioning profile was found for bundle id `atrak.charlie.hoopsclips`.
 
-The distribution-signing experiment was reverted in `46ac2ac` because Xcode reported a signing-mode conflict. The actionable blocker from the automatic-signing attempts is Apple account/provisioning state, not a source compile failure:
+Most relevant current-branch runs:
 
-- Apple account reached the maximum number of certificates.
-- No matching provisioning profile was available for bundle ID `atrak.charlie.hoopsclips`.
+- `27054133236`: original archive attempt on current branch; failed at signed archive.
+- `27054196968`: manual `Apple Distribution` identity experiment; failed because it conflicted with automatic signing.
+- `27054245288`: corrected automatic-signing workflow with global `DEVELOPMENT_TEAM`; failed on Apple certificate/profile capacity.
 
-## 2026-06-04 current-branch retry
-
-The signed archive path was rerun on branch `codex/phase-launch-proof-next` at
-head `ade3ec0` with `iOS Internal TestFlight Upload` operation `preflight`.
-The run failed before upload, and no App Store Connect upload was attempted.
-
-- Run: `26927591040`
-- Job: `Build internal staging TestFlight archive`
-- Result: `failure`
-- Non-secret failure symptoms:
-  - Apple account reached the maximum number of certificates.
-  - No matching iOS App Development provisioning profile was available for
-    bundle ID `atrak.charlie.hoopsclips`.
-
-This confirms the signed archive blocker is still Apple account/provisioning
-state, not an iOS source compile failure.
+The workflow now keeps automatic signing and passes `DEVELOPMENT_TEAM` globally
+so Swift Package targets inherit the team. The remaining failure is account-side
+certificate/profile capacity, not a source compile failure.
 
 ## Secret-safe Apple Developer handoff
 
@@ -62,24 +46,24 @@ Fix HoopClips Apple signing for internal TestFlight.
 
 App bundle ID: atrak.charlie.hoopsclips
 Marketing/build waiting for upload: 1.0.0 build 15
-Branch head to rerun after signing repair: 46ac2ac3f09f7805f5ae4848806d05c45396f0e8
+Branch to rerun after signing repair: codex/phase-clip1-gpt-led-highlight-editor
 
-GitHub Actions evidence:
-- Cloud preflight run 26877407142 passed.
-- iOS no-secret codecheck run 26877408870 passed.
-- Signed archive preflight failed because Apple signing/provisioning is unavailable.
+Current GitHub Actions evidence:
+- Cloud deploy/preflight run 27055102528 passed.
+- iOS archive run 27054245288 failed at Apple signing/provisioning.
+- Failure markers: max Apple certificates; no profile for atrak.charlie.hoopsclips.
 
 Please do not return private keys, certificate files, passwords, tokens, base64 values, credentials, or full secret contents.
 
 Needed outcome:
 1. Revoke or clean up an unused Apple signing certificate if required.
 2. Ensure automatic signing can create or use a valid profile for bundle ID atrak.charlie.hoopsclips.
-3. Return only non-secret status: what was fixed, the visible certificate/profile names if helpful, and whether CI can rerun iOS operation=preflight.
+3. Return only non-secret status: what was fixed, the visible certificate/profile names if helpful, and whether CI can rerun iOS operation=archive.
 ```
 
 ## Next steps after Apple signing is repaired
 
-1. Rerun `iOS Internal TestFlight Upload` with `operation=preflight` on branch `codex/phase-launch-proof-next`.
-2. If the signed archive preflight passes, run `operation=upload` for build `15`.
+1. Rerun `iOS Internal TestFlight Upload` with `operation=archive` on branch `codex/phase-clip1-gpt-led-highlight-editor`.
+2. If the signed archive metadata passes, run `operation=upload` for build `15`.
 3. After App Store Connect processing, run installed TestFlight smoke on a trusted iPhone.
 4. Do not mark launch ready until the human-reviewed accuracy report and installed TestFlight smoke are both proven.
