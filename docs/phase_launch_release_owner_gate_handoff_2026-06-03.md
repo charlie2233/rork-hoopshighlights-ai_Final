@@ -114,10 +114,10 @@ Do not upload private source video, finished MP4, or presigned media URLs into c
 Use the local reviewer bundle already generated on this workstation:
 
 ```text
-/Users/hanfei/rork-hoopshighlights-ai_Final/artifacts/team_highlight_labeling_bundle/team_highlight_label_review.html
+/Users/hanfei/rork-hoopshighlights-ai_Final/artifacts/team_highlight_labeling_bundle_launch_current_reduced/team_highlight_label_review.html
 ```
 
-Current status remains `0/54` complete. Launch evidence requires:
+Current reduced review status remains `0/18` complete. Launch evidence requires:
 
 - `status=complete`
 - `launchEvidenceEligible=true`

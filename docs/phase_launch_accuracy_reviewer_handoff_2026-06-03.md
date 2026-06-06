@@ -1,21 +1,25 @@
-# Launch Accuracy Reviewer Handoff - 2026-06-03
+# Launch Accuracy Reviewer Handoff - updated 2026-06-06
 
 This handoff is for the human reviewer who can close the HoopClips
 team-highlight accuracy evidence gate. It does not mark the gate complete and
-does not replace human review.
+it does not replace human review.
 
 ## Current status
 
-- Label bundle status: `incomplete`
-- Cases: `2`
-- Clips: `54`
-- Complete clips: `0`
-- Incomplete clips: `54`
-- Review priority: start with the review page's `Next close review` queue, then
-  finish every remaining incomplete clip. Priority counts are review-page
-  guidance only; they are not launch evidence.
+The launch accuracy gate is still open, but the active review workload has been
+reduced from the older noisy bundle to the current combined reduced bundle.
 
-Current required fields missing across all 54 clips:
+Current reduced review bundle:
+
+- Bundle status: `incomplete`
+- Cases: `2`
+- Clips: `18`
+- Complete clips: `0/18`
+- Incomplete clips: `18/18`
+- Review priority: `18` close-review clips
+- Launch evidence eligible: `false`
+
+Current required fields missing across the incomplete clips:
 
 - `needsLabel=false`
 - `reviewedByHuman=true`
@@ -31,29 +35,29 @@ label.
 ## Review inputs
 
 - Review page:
-  `artifacts/team_highlight_labeling_bundle/team_highlight_label_review.html`
+  `artifacts/team_highlight_labeling_bundle_launch_current_reduced/team_highlight_label_review.html`
 - Label status:
-  `artifacts/team_highlight_labeling_bundle/label_status.json`
-- Manifest:
-  `artifacts/team_highlight_accuracy_manifest.json`
-- Source label templates:
-  - `artifacts/team_highlight_accuracy/launch_label_case_all_001/manual_labels_template.json`
-  - `artifacts/team_highlight_accuracy/launch_label_case_team_001/manual_labels_template.json`
+  `artifacts/team_highlight_labeling_bundle_launch_current_reduced/label_status.json`
+- Combined manifest:
+  `artifacts/team_highlight_labeling_bundle_launch_current_reduced/manifest.json`
+- Reduced Troy source case:
+  `launch_label_troy_white_slice_10m_15m_current_reduced_001`
+- Second source case:
+  `launch_label_second_game_326_all_001`
 
-The mapped draft bundle under
-`artifacts/team_highlight_labeling_bundle/temp_mapped_draft/` is a review aid
-only. Do not apply it as final launch evidence unless every clip has been
-watched and marked human-reviewed in the review page.
+The generated bundle files live under `artifacts/` and are ignored by git. They
+are local reviewer tools on this workstation, not launch evidence by
+themselves.
 
 ## Human review workflow
 
-Open the review page from the repo root:
+Open the current reduced review page from the repo root:
 
 ```bash
-open artifacts/team_highlight_labeling_bundle/team_highlight_label_review.html
+open artifacts/team_highlight_labeling_bundle_launch_current_reduced/team_highlight_label_review.html
 ```
 
-Use the page to review every clip. Start with the `Next close review` queue so
+Use the page to review every clip. Start with the close-review queue so
 uncertain clips are handled first.
 
 Useful review actions:
@@ -77,7 +81,7 @@ For every final clip, confirm:
 - `expected.outcome`
 
 Download progress checkpoints during review if needed. A checkpoint is not
-launch-ready until all 54 clips are complete.
+launch-ready until all 18 clips are complete.
 
 ## Apply completed labels
 
@@ -86,15 +90,15 @@ After the review page downloads a completed
 
 ```bash
 python3 scripts/apply_team_highlight_manual_labels.py \
-  --manifest artifacts/team_highlight_accuracy_manifest.json \
+  --manifest artifacts/team_highlight_labeling_bundle_launch_current_reduced/manifest.json \
   --bundle ~/Downloads/team_highlight_manual_labels_bundle.json
 ```
 
-If validation passes and all 54 clips are complete, apply it:
+If validation passes and all 18 clips are complete, apply it:
 
 ```bash
 python3 scripts/apply_team_highlight_manual_labels.py \
-  --manifest artifacts/team_highlight_accuracy_manifest.json \
+  --manifest artifacts/team_highlight_labeling_bundle_launch_current_reduced/manifest.json \
   --bundle ~/Downloads/team_highlight_manual_labels_bundle.json \
   --apply
 ```
@@ -107,23 +111,24 @@ After applying the completed labels, build the launch-grade report:
 
 ```bash
 python3 scripts/build_launch_team_accuracy_report.py \
-  --manifest artifacts/team_highlight_accuracy_manifest.json \
-  --eval-output artifacts/team_highlight_accuracy/team_highlight_eval_payload.json \
-  --report-output artifacts/team_highlight_accuracy/team_highlight_accuracy_report.json
+  --manifest artifacts/team_highlight_labeling_bundle_launch_current_reduced/manifest.json \
+  --eval-output artifacts/team_highlight_labeling_bundle_launch_current_reduced/team_highlight_eval.json \
+  --report-output artifacts/team_highlight_labeling_bundle_launch_current_reduced/team_highlight_accuracy_report.json
 ```
 
-Then run submission readiness with the report:
+Then run submission readiness with the report and current bundle path:
 
 ```bash
 python3 scripts/submission_readiness_preflight.py \
-  --team-accuracy-report artifacts/team_highlight_accuracy/team_highlight_accuracy_report.json
+  --labeling-bundle-dir artifacts/team_highlight_labeling_bundle_launch_current_reduced \
+  --team-accuracy-report artifacts/team_highlight_labeling_bundle_launch_current_reduced/team_highlight_accuracy_report.json
 ```
 
 ## Completion evidence to report back
 
 Report only non-secret status:
 
-- `label_status.json` shows `54/54` complete.
+- `label_status.json` shows `18/18` complete.
 - The completed bundle was applied without `--allow-incomplete`.
 - The launch accuracy report path.
 - The submission readiness result and any failing check names.
@@ -133,44 +138,6 @@ credentials, private keys, or full presigned URLs.
 
 ## Current conclusion
 
-The accuracy gate is still open. The next launch-critical action is human review
-of all 54 clips, then applying the completed bundle, building the launch
-accuracy report, and rerunning submission readiness with that report.
-
-## 2026-06-03 current label-status check
-
-Current command:
-
-```bash
-python3 scripts/build_launch_team_accuracy_report.py \
-  --manifest artifacts/team_highlight_accuracy_manifest.json \
-  --label-status \
-  --json
-```
-
-Result remains incomplete and not launch evidence:
-
-- Status: `incomplete`
-- Launch evidence eligible: `false`
-- Cases: `2`
-- Clips: `54`
-- Complete clips: `0`
-- Incomplete clips: `54`
-- `launch_label_case_all_001`: `0/30` complete
-- `launch_label_case_team_001`: `0/24` complete
-- Authoritative launch blocker: `0/54` clips are human-reviewed, so the launch
-  accuracy report must not be treated as ready.
-
-Missing fields still total `54` each for:
-
-- `needsLabel=false`
-- `reviewedByHuman=true`
-- `expected.teamId`
-- `expected.isHighlight`
-- `expected.eventType`
-- `expected.outcome`
-
-The command exits non-zero while labels are incomplete. That is expected and
-keeps this gate blocked until a human reviewer completes all 54 clips, applies
-the final bundle without `--allow-incomplete`, and rebuilds the launch accuracy
-report.
+The accuracy gate remains open. The next launch-critical action is human review
+of all 18 current reduced clips, then applying the completed bundle, building
+the launch accuracy report, and rerunning submission readiness with that report.
