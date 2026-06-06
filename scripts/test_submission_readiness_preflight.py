@@ -509,6 +509,8 @@ Current device information:
         self.assertTrue(has_failures(collector.findings))
         self.assertIn("tunnelState=unavailable", collector.findings[0].detail)
         self.assertIn("developerModeStatus=enabled", collector.findings[0].detail)
+        self.assertIn("Recovery: unlock the iPhone", collector.findings[0].detail)
+        self.assertIn("connect it by USB", collector.findings[0].detail)
 
     def test_github_workflow_runs_fail_when_latest_required_runs_failed(self) -> None:
         payload = [

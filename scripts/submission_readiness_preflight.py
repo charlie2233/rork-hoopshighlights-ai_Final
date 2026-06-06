@@ -1106,10 +1106,12 @@ def check_connected_ios_device(collector: Collector) -> None:
         states = ", ".join(sorted({device["state"] for device in unavailable_iphones}))
         detail = unavailable_ios_device_detail(unavailable_iphones[0]["identifier"])
         detail_suffix = f" Device detail: {detail}." if detail else ""
+        recovery_hint = unavailable_ios_device_recovery_hint(detail)
+        recovery_suffix = f" {recovery_hint}" if recovery_hint else ""
         collector.fail(
             "connected ios device",
             "xcrun devicectl",
-            f"iPhone device(s) detected but unavailable for install/smoke testing: {states}.{detail_suffix}",
+            f"iPhone device(s) detected but unavailable for install/smoke testing: {states}.{detail_suffix}{recovery_suffix}",
         )
     else:
         collector.fail("connected ios device", "xcrun devicectl", "No available physical iPhone detected for installed TestFlight smoke.")
@@ -1141,6 +1143,17 @@ def unavailable_ios_device_detail(identifier: str) -> str | None:
         if value:
             fields.append(f"{field}={value}")
     return ", ".join(fields) or None
+
+
+def unavailable_ios_device_recovery_hint(detail: str | None) -> str:
+    if not detail:
+        return ""
+    if "tunnelState=unavailable" in detail or "ddiServicesAvailable=false" in detail:
+        return (
+            "Recovery: unlock the iPhone, connect it by USB or put it on the same local network as this Mac, "
+            "then reopen Xcode Devices or rerun devicectl before installed TestFlight smoke."
+        )
+    return ""
 
 
 def devicectl_detail_field(output: str, field: str) -> str | None:
