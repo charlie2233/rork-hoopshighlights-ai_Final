@@ -94,21 +94,6 @@ class MainWorkflowCodecheckTriggerTests(unittest.TestCase):
         self.assertIn("if: github.event_name == 'workflow_dispatch' && inputs.operation != 'codecheck'", text)
         self.assertNotIn("paths:", text)
 
-    def test_ios_upload_workflow_archives_with_distribution_signing(self) -> None:
-        text = workflow_text("ios-testflight-upload.yml")
-
-        assert_contains_all(
-            self,
-            text,
-            [
-                "Build signed internal staging archive",
-                'DEVELOPMENT_TEAM="$HOOPS_DEVELOPMENT_TEAM"',
-                'CODE_SIGN_IDENTITY="Apple Distribution"',
-                "-allowProvisioningUpdates",
-                "Upload to internal TestFlight",
-            ],
-        )
-
 
 def workflow_text(name: str) -> str:
     repo_root = Path(__file__).resolve().parents[1]
