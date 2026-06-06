@@ -89,3 +89,26 @@ Conclusion:
 - Forcing `CODE_SIGN_IDENTITY="Apple Distribution"` is not compatible with the current automatic-signing project settings.
 - The workflow was adjusted again to remove the manual identity override and instead pass `DEVELOPMENT_TEAM="$HOOPS_DEVELOPMENT_TEAM"` globally to the archive command so Swift Package targets inherit the team while automatic signing remains in control.
 - If the next archive still returns certificate-capacity or missing-profile errors, that is an Apple Developer account/provisioning action rather than a workflow identity mismatch.
+
+## Follow-up archive attempt after global `DEVELOPMENT_TEAM`
+
+A third archive run was attempted after replacing the manual `CODE_SIGN_IDENTITY` override with global `DEVELOPMENT_TEAM="$HOOPS_DEVELOPMENT_TEAM"`:
+
+- Run: `27054245288`
+- Head SHA: `5fb189d559d3184e7bf1aecb88db9281e829e19a`
+
+This returned to the Apple account/provisioning-capacity failure:
+
+```text
+** ARCHIVE FAILED **
+ios/HoopsClips.xcodeproj: error: Choose a certificate to revoke. Your account has reached the maximum number of certificates. To create a new one, you must choose a certificate to revoke.
+ios/HoopsClips.xcodeproj: error: No profiles for 'atrak.charlie.hoopsclips' were found: Xcode couldn't find any iOS App Development provisioning profiles matching 'atrak.charlie.hoopsclips'.
+```
+
+Current conclusion:
+
+- Required workflow inputs are present.
+- Internal staging config verification passes.
+- Build number expectation is `15` on the branch workflow.
+- The remaining Build 15 archive blocker is Apple Developer account signing/provisioning capacity for bundle id `atrak.charlie.hoopsclips`.
+- Release owner must free certificate capacity or provide a valid signing/profile path before archive/upload can pass.
