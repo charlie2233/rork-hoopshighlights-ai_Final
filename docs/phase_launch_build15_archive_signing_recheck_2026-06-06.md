@@ -68,3 +68,24 @@ If the next archive attempt still fails with certificate-capacity or missing-pro
 3. Rerun `ios-testflight-upload.yml` with `operation=archive`.
 4. After archive metadata passes, rerun with `operation=upload` for internal TestFlight.
 
+
+## Follow-up archive attempt after forcing `Apple Distribution`
+
+A second archive run was attempted after adding `CODE_SIGN_IDENTITY="Apple Distribution"`:
+
+- Run: `27054196968`
+- Head SHA: `4b9b6f8b4a3b2c62156f32a6ee0b4c5191ba0f61`
+
+This also failed. Non-secret failure summary:
+
+```text
+note: Using codesigning identity override: Apple Distribution
+Signing for Swift Package targets requires a development team.
+HoopsClips has conflicting provisioning settings. HoopsClips is automatically signed for development, but a conflicting code signing identity Apple Distribution has been manually specified.
+```
+
+Conclusion:
+
+- Forcing `CODE_SIGN_IDENTITY="Apple Distribution"` is not compatible with the current automatic-signing project settings.
+- The workflow was adjusted again to remove the manual identity override and instead pass `DEVELOPMENT_TEAM="$HOOPS_DEVELOPMENT_TEAM"` globally to the archive command so Swift Package targets inherit the team while automatic signing remains in control.
+- If the next archive still returns certificate-capacity or missing-profile errors, that is an Apple Developer account/provisioning action rather than a workflow identity mismatch.
