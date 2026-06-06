@@ -14,7 +14,7 @@ Current-head non-secret proof is green:
 
 Release production configuration proof is blocked:
 
-- Release Secrets Preflight: `26884199422` failed on `86fdc33eb53033ed7d527c69adbdf07c0cb96872`.
+- Release Secrets Preflight previously recorded missing production cloud URL inputs on `86fdc33eb53033ed7d527c69adbdf07c0cb96872`.
 - Failed job: `Validate production release secrets`.
 - Non-secret missing GitHub `production` environment variables:
   - `HOOPS_CLOUD_ANALYSIS_BASE_URL`

@@ -43,4 +43,4 @@ The green deploy-preflight run is useful branch proof, but it does not replace R
 
 ## Launch gate conclusion
 
-Production cloud cutover remains blocked until release owners set and confirm the production cloud URL variables, fix any required secret values/settings, and rerun Release Secrets Preflight to a green result on the current launch branch tip.
+Production cloud cutover is not ready yet until release owners set and confirm the production cloud URL variables, fix any required secret values/settings, and rerun Release Secrets Preflight to a green result on the current launch branch tip.

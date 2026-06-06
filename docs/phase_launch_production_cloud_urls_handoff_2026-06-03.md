@@ -14,7 +14,7 @@ Latest verified GitHub `production` environment variables only show:
 - `HOOPS_PRIVACY_POLICY_URL=https://rork.com/privacy`
 - `HOOPS_TERMS_OF_SERVICE_URL=https://rork.com/terms`
 
-The required production cloud URL variables are missing:
+Production environment still needs these cloud URL variable names:
 
 - `HOOPS_CLOUD_ANALYSIS_BASE_URL`
 - `HOOPS_CLOUD_EDIT_BASE_URL`
