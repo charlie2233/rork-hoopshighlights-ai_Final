@@ -89,6 +89,12 @@ TESTFLIGHT_UPLOAD_LOG_MARKERS = (
     "Uploaded HoopsClips",
     "Internal TestFlight upload command completed",
 )
+TESTFLIGHT_SIGNING_FAILURE_MARKERS = (
+    "maximum number of certificates",
+    "No profiles for 'atrak.charlie.hoopsclips' were found",
+    "requires a development team",
+    "conflicting provisioning settings",
+)
 IOS_UPLOAD_RELEVANT_PREFIXES = (
     ".github/workflows/ios-testflight-upload.yml",
     "ios/HoopsClips/",
@@ -884,14 +890,60 @@ def check_upload_artifact(repo_root: Path, collector: Collector, archive_path: P
         collector.fail("upload artifact", rel(archive_path, repo_root), "Requested archive/IPA path does not exist.")
     elif current_testflight_upload_proof(repo_root):
         collector.pass_("upload artifact", "GitHub Actions", "Successful internal TestFlight upload log proof exists, and no iOS upload-relevant files changed afterward.")
+    elif workflow_failure_detail := current_testflight_workflow_failure_detail(repo_root):
+        collector.fail("upload artifact", "iOS Internal TestFlight Upload", workflow_failure_detail)
     else:
         collector.fail("upload artifact", "repo", "No .xcarchive or .ipa upload artifact found under the expected build output locations.")
 
 
 def current_testflight_upload_proof(repo_root: Path) -> bool:
+    runs = current_testflight_workflow_dispatch_runs(repo_root)
     current_sha = current_git_sha(repo_root)
     if not current_sha:
         return False
+    matching_runs = [
+        run
+        for run in runs
+        if isinstance(run, dict)
+        and run.get("status") == "completed"
+        and run.get("conclusion") == "success"
+        and commit_is_current_or_unchanged_for_paths(repo_root, str(run.get("headSha") or ""), current_sha, IOS_UPLOAD_RELEVANT_PREFIXES)
+    ]
+    for run in matching_runs:
+        if testflight_upload_log_has_markers(run.get("databaseId")):
+            return True
+    return False
+
+
+def current_testflight_workflow_failure_detail(repo_root: Path) -> str:
+    runs = current_testflight_workflow_dispatch_runs(repo_root)
+    current_sha = current_git_sha(repo_root)
+    if not current_sha:
+        return ""
+    for run in runs:
+        head_sha = str(run.get("headSha") or "")
+        if not commit_is_current_or_unchanged_for_paths(repo_root, head_sha, current_sha, IOS_UPLOAD_RELEVANT_PREFIXES):
+            continue
+        status = str(run.get("status") or "unknown")
+        conclusion = str(run.get("conclusion") or "unknown")
+        created_at = str(run.get("createdAt") or "unknown")
+        if status == "completed" and conclusion == "success":
+            continue
+        run_id = run.get("databaseId")
+        detail = testflight_workflow_failure_log_detail(run_id)
+        if detail:
+            return (
+                f"Current-branch internal TestFlight archive/upload workflow status={status} "
+                f"conclusion={conclusion} at {created_at}; {detail}"
+            )
+        return (
+            f"Current-branch internal TestFlight archive/upload workflow status={status} "
+            f"conclusion={conclusion} at {created_at}; inspect run {run_id or 'unknown'}."
+        )
+    return ""
+
+
+def current_testflight_workflow_dispatch_runs(repo_root: Path) -> list[dict[str, object]]:
     try:
         result = subprocess.run(
             [
@@ -902,8 +954,6 @@ def current_testflight_upload_proof(repo_root: Path) -> bool:
                 "charlie2233/rork-hoopshighlights-ai_Final",
                 "--workflow",
                 IOS_TESTFLIGHT_UPLOAD_WORKFLOW_FILE,
-                "--branch",
-                "main",
                 "--limit",
                 "20",
                 "--json",
@@ -916,29 +966,21 @@ def current_testflight_upload_proof(repo_root: Path) -> bool:
             timeout=20,
         )
     except (OSError, subprocess.TimeoutExpired):
-        return False
+        return []
     if result.returncode != 0:
-        return False
+        return []
     try:
         runs = json.loads(result.stdout or "[]")
     except json.JSONDecodeError:
-        return False
+        return []
     if not isinstance(runs, list):
-        return False
-
-    matching_runs = [
+        return []
+    return [
         run
         for run in runs
         if isinstance(run, dict)
         and run.get("event") == "workflow_dispatch"
-        and run.get("status") == "completed"
-        and run.get("conclusion") == "success"
-        and commit_is_current_or_unchanged_for_paths(repo_root, str(run.get("headSha") or ""), current_sha, IOS_UPLOAD_RELEVANT_PREFIXES)
     ]
-    for run in matching_runs:
-        if testflight_upload_log_has_markers(run.get("databaseId")):
-            return True
-    return False
 
 
 def testflight_upload_log_has_markers(run_id: object) -> bool:
@@ -966,6 +1008,40 @@ def testflight_upload_log_has_markers(run_id: object) -> bool:
     if result.returncode != 0:
         return False
     return all(marker in result.stdout for marker in TESTFLIGHT_UPLOAD_LOG_MARKERS)
+
+
+def testflight_workflow_failure_log_detail(run_id: object) -> str:
+    if run_id in (None, ""):
+        return ""
+    try:
+        result = subprocess.run(
+            [
+                "gh",
+                "run",
+                "view",
+                str(run_id),
+                "--repo",
+                "charlie2233/rork-hoopshighlights-ai_Final",
+                "--log",
+            ],
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    if result.returncode != 0:
+        return ""
+    matched = [
+        marker
+        for marker in TESTFLIGHT_SIGNING_FAILURE_MARKERS
+        if marker in result.stdout
+    ]
+    if matched:
+        return "signing/provisioning failure markers found: " + ", ".join(matched) + "."
+    return ""
 
 
 def commit_is_current_or_unchanged_for_paths(repo_root: Path, base_sha: str, current_sha: str, path_prefixes: tuple[str, ...]) -> bool:
