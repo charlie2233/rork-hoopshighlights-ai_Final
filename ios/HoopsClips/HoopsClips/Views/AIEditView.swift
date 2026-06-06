@@ -61,7 +61,7 @@ struct AIEditView: View {
     @State private var lockerBusyRenderJobID: String?
     @State private var showingShareSheet = false
     @State private var proInfoSheet: AIEditProInfoSheet?
-    @State private var showPlanDetails = false
+    @State private var showPlanDetails = true
     @State private var showSetupControls = false
     @State private var showTimelineDetails = false
     @State private var showAdvancedAIEditDetails = false
@@ -164,7 +164,7 @@ struct AIEditView: View {
         isLoadingRenderHistory = false
         lockerBusyRenderJobID = nil
         showingShareSheet = false
-        showPlanDetails = false
+        showPlanDetails = true
         showTimelineDetails = false
         showAdvancedAIEditDetails = false
         showAllDurationOptions = false
@@ -212,6 +212,10 @@ struct AIEditView: View {
                 formatPicker
                 durationPicker
             }
+            planTierCard
+            if activePolicy.planTier.isFree, proUXFlags.proUpsellEnabled {
+                proValueCard
+            }
             actionCard
             statusCard
             if let previewPlayer {
@@ -231,11 +235,6 @@ struct AIEditView: View {
 
                 if let receipt = activeWorkReceipt {
                     aiWorkReceiptCard(receipt)
-                }
-
-                planTierCard
-                if activePolicy.planTier.isFree, proUXFlags.proUpsellEnabled {
-                    proValueCard
                 }
             }
         }
@@ -363,6 +362,12 @@ struct AIEditView: View {
                             .fixedSize(horizontal: false, vertical: true)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
+                    Label("My AI Edits: rendered videos expire in \(policy.renderRetentionDays) days on \(policy.displayName).", systemImage: "externaldrive.fill")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(AppTheme.subtleText)
+                        .lineLimit(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .padding(.top, 4)
             } label: {
@@ -432,7 +437,7 @@ struct AIEditView: View {
             }
 
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 138), spacing: 8)], spacing: 8) {
-                ForEach(Array(CloudEditPolicySummary.proValueRows.prefix(4)), id: \.self) { row in
+                ForEach(CloudEditPolicySummary.proValueRows, id: \.self) { row in
                     Label(row, systemImage: "sparkles")
                         .font(.caption2.bold())
                         .foregroundStyle(.white.opacity(0.9))

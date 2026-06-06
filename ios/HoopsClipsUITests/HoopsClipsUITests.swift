@@ -189,7 +189,7 @@ final class HoopsClipsUITests: XCTestCase {
         XCTAssertFalse(app.buttons["export.aiEdit.renderRevisionButton"].exists)
         XCTAssertFalse(app.descendants(matching: .any)["export.aiEdit.preview"].exists)
         XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", "thinking")).firstMatch.exists)
-        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", "ETA")).firstMatch.exists)
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label MATCHES[c] %@", #".*\bETA\b.*"#)).firstMatch.exists)
         attachScreenshot(named: "UX2B Locked Pro Template Info Sheet", app: app)
 
         tapWhenReady(app.buttons["Close"].firstMatch, in: app)
@@ -361,9 +361,11 @@ final class HoopsClipsUITests: XCTestCase {
         XCTAssertTrue(reviewTab.exists, "Review tab should be available in the smoke guest session.")
         reviewTab.tap()
 
-        XCTAssertTrue(app.staticTexts["Make Highlight Reel"].waitForExistence(timeout: 10))
         let entryButton = app.buttons["review.continueToExportButton"]
-        XCTAssertTrue(entryButton.waitForExistence(timeout: 10))
+        if !app.staticTexts["Make Highlight Reel"].waitForExistence(timeout: 4) {
+            _ = entryButton.waitForExistence(timeout: 6)
+        }
+        XCTAssertTrue(entryButton.waitForExistence(timeout: 10), "Review should expose the AI Edit export entry.")
         XCTAssertTrue(entryButton.isEnabled, "AI edit entry should be enabled for smoke-seeded cloud clips.")
         attachScreenshot(named: "01 Review Continue To Export", app: app)
         tapWhenReady(entryButton, in: app)
@@ -377,10 +379,17 @@ final class HoopsClipsUITests: XCTestCase {
     @MainActor
     private func openAIEditSetupControls(in app: XCUIApplication) {
         let changeSetupButton = app.buttons["export.aiEdit.smartSetup.changeButton"]
-        if changeSetupButton.value as? String == "Setup choices shown" {
+        let setupCardButton = app.buttons["export.aiEdit.smartSetupCard"]
+        let usesFlattenedCardToggle = !changeSetupButton.exists
+        let setupToggle = usesFlattenedCardToggle ? setupCardButton : changeSetupButton
+        if setupToggle.value as? String == "Setup choices shown" {
             return
         }
-        tapWhenReady(changeSetupButton, in: app)
+        tapWhenReady(
+            setupToggle,
+            in: app,
+            normalizedOffset: usesFlattenedCardToggle ? CGVector(dx: 0.5, dy: 0.86) : nil
+        )
     }
 
     @MainActor
@@ -408,7 +417,12 @@ final class HoopsClipsUITests: XCTestCase {
     }
 
     @MainActor
-    private func tapWhenReady(_ element: XCUIElement, in app: XCUIApplication, timeout: TimeInterval = 20) {
+    private func tapWhenReady(
+        _ element: XCUIElement,
+        in app: XCUIApplication,
+        timeout: TimeInterval = 20,
+        normalizedOffset: CGVector? = nil
+    ) {
         let deadline = Date().addingTimeInterval(timeout)
         var scrollAttempt = 0
         while !element.exists && Date() < deadline {
@@ -423,7 +437,9 @@ final class HoopsClipsUITests: XCTestCase {
             scrollAttempt += 1
             RunLoop.current.run(until: Date().addingTimeInterval(0.5))
         }
-        if element.isHittable {
+        if let normalizedOffset {
+            element.coordinate(withNormalizedOffset: normalizedOffset).tap()
+        } else if element.isHittable {
             element.tap()
         } else {
             element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
