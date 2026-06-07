@@ -7,19 +7,27 @@ This is the secret-safe external handoff for the remaining HoopClips internal Te
 ## Current branch
 
 - repo: `charlie2233/rork-hoopshighlights-ai_Final`
-- branch: `codex/phase-launch-proof-next`
-- current recheck: 2026-06-03T21:10:03Z
-- latest checked tip before this handoff refresh: `bd329f7a536fa7456093f7b27ff9c026b3043a96`
-- latest safe cloud preflight on that tip: `26912829790`, success
-- latest no-secret iOS codecheck on that tip: `26912829701`, success
+- branch: `codex/phase-clip1-gpt-led-highlight-editor`
+- current recheck: 2026-06-07T06:01:11Z
+- latest checked tip before this handoff refresh: `73c8dca8888e9f90d18faea4237cc7964789a96d`
+- latest internal TestFlight upload proof: `27082807084`, success
+- latest Release Secrets Preflight proof: `27084311582`, success
 
-These green runs are useful current branch proof, but they do not close production URL/secrets, Release Secrets Preflight, signed archive/upload, installed TestFlight smoke, or human label gates.
+These green runs close the release-owner production cloud URL variable, release-secret preflight, and signed archive/upload proof for the current branch. They do not close installed TestFlight smoke or human label gates.
+
+## Current resolved release-owner gates
+
+- Production environment variables `HOOPS_CLOUD_ANALYSIS_BASE_URL` and `HOOPS_CLOUD_EDIT_BASE_URL` are present in GitHub `production`.
+- Release Secrets Preflight `27084311582` completed successfully on `73c8dca8888e9f90d18faea4237cc7964789a96d`.
+- Internal TestFlight upload `27082807084` completed successfully; no iOS upload-relevant files changed afterward.
 
 ## Release-owner actions
 
-### 1. Set production cloud URL variables
+### 1. Production cloud URL variables
 
-In GitHub environment `production`, confirm or set these non-secret environment variables:
+Status: resolved on 2026-06-07.
+
+In GitHub environment `production`, these non-secret environment variables are now present:
 
 - `HOOPS_CLOUD_ANALYSIS_BASE_URL`
 - `HOOPS_CLOUD_EDIT_BASE_URL`
@@ -52,36 +60,34 @@ Release owners must confirm that required values are current and usable. Return 
 
 Do not return secret values.
 
-### 3. Rerun Release Secrets Preflight
+### 3. Release Secrets Preflight
 
-Only after production variables/secrets are fixed or explicitly confirmed, rerun:
+Status: resolved on 2026-06-07.
+
+Latest green run:
 
 ```bash
-gh workflow run release-secrets-preflight.yml --ref codex/phase-launch-proof-next
+gh run view 27084311582 --repo charlie2233/rork-hoopshighlights-ai_Final
 ```
 
-Then report:
+- branch: `codex/phase-clip1-gpt-led-highlight-editor`
+- head SHA: `73c8dca8888e9f90d18faea4237cc7964789a96d`
+- conclusion: success
+- URL: `https://github.com/charlie2233/rork-hoopshighlights-ai_Final/actions/runs/27084311582`
 
-- run ID
-- branch
-- head SHA
-- conclusion
-- URL
+### 4. Signed archive/upload path
 
-Latest known status before this handoff: `26884199422`, failure, head `86fdc33`.
+Status: resolved for current upload-relevant code on 2026-06-07.
 
-### 4. Run signed archive/upload path
+Latest green run:
 
-Only after signing, profile, App Store Connect, and release-secret checks are ready, run the signed TestFlight/archive operation using the repo workflow controls. Report only:
+- run ID: `27082807084`
+- head SHA: `8b4f349d841dd3110babfb1522d805e299dbc6a4`
+- archive job conclusion: success
+- upload job conclusion: success
+- URL: `https://github.com/charlie2233/rork-hoopshighlights-ai_Final/actions/runs/27082807084`
 
-- run ID
-- build number
-- archive job conclusion
-- upload job conclusion
-- App Store Connect processing status if visible
-- TestFlight build availability status
-
-Do not return signing certificate contents, `.p12` data, private keys, provisioning profile contents, issuer private key contents, API key values, or full JWTs.
+Do not return signing certificate contents, `.p12` data, private keys, provisioning profile contents, issuer private key contents, API key values, or full JWTs if this path is rerun.
 
 ### 5. Complete installed TestFlight smoke
 
@@ -135,4 +141,4 @@ Do not paste full label JSON unless explicitly requested.
 
 ## Completion rule
 
-This release-owner handoff remains open until production cloud URLs/secrets, Release Secrets Preflight, signed archive/upload, installed TestFlight smoke, and human labels are all proven current on the launch branch.
+This release-owner handoff is closed for production cloud URL variables, Release Secrets Preflight, and signed archive/upload proof on the current branch. Installed TestFlight smoke and human labels remain tracked by their dedicated handoff docs.
