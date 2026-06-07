@@ -1235,6 +1235,47 @@ Current device information:
             self.assertNotIn("CFBundleVersion", detail)
             self.assertNotIn("maximum number of certificates", detail)
 
+    def test_upload_artifact_prefers_current_upload_proof_over_stale_local_archive(self) -> None:
+        run_list_payload = [
+            {
+                "databaseId": 444,
+                "headSha": "abc1234567890",
+                "event": "workflow_dispatch",
+                "status": "completed",
+                "conclusion": "success",
+                "createdAt": "2026-06-07T04:36:20Z",
+            },
+        ]
+        upload_log = "\n".join(
+            [
+                "Progress 9%: Upload succeeded.",
+                "Uploaded HoopsClips",
+                "Internal TestFlight upload command completed",
+            ]
+        )
+
+        def fake_run(command: list[str], **_kwargs: object) -> SimpleNamespace:
+            if command[:3] == ["gh", "run", "list"]:
+                return SimpleNamespace(returncode=0, stdout=json.dumps(run_list_payload))
+            if command[:3] == ["gh", "run", "view"]:
+                return SimpleNamespace(returncode=0, stdout=upload_log)
+            return SimpleNamespace(returncode=1, stdout="")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            stale_archive = repo_root / "ios/build/HoopsClips-InternalStaging-Build14.xcarchive"
+            stale_archive.mkdir(parents=True, exist_ok=True)
+            write_archive_info_plist(stale_archive, build_number="14")
+            collector = Collector()
+            with patch("scripts.submission_readiness_preflight.subprocess.run", side_effect=fake_run), patch(
+                "scripts.submission_readiness_preflight.run_git",
+                return_value="abc1234567890\n",
+            ):
+                check_upload_artifact(repo_root, collector, None)
+
+            self.assertFalse(has_failures(collector.findings))
+            self.assertIn("Successful internal TestFlight upload log proof exists", collector.findings[0].detail)
+
     def test_upload_artifact_accepts_prior_ci_upload_when_only_docs_changed(self) -> None:
         run_list_payload = [
             {

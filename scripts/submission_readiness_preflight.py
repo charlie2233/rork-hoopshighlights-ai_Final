@@ -889,6 +889,9 @@ def check_upload_artifact(repo_root: Path, collector: Collector, archive_path: P
     if valid:
         collector.pass_("upload artifact", "repo", f"{len(valid)} upload artifact candidate(s) found.")
     elif metadata_failures:
+        if archive_path is None and current_testflight_upload_proof(repo_root):
+            collector.pass_("upload artifact", "GitHub Actions", "Successful internal TestFlight upload log proof exists, and no iOS upload-relevant files changed afterward.")
+            return
         if archive_path is None and (workflow_missing_upload_detail := current_testflight_workflow_missing_upload_detail(repo_root)):
             collector.fail("upload artifact", "iOS Internal TestFlight Upload", workflow_missing_upload_detail)
             return
