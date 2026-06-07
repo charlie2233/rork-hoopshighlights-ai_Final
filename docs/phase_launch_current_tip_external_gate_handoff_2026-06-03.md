@@ -2,21 +2,21 @@
 
 ## Purpose
 
-Record the current external proof gap for `codex/phase-launch-proof-next` without exposing secrets or treating stale workflow success as launch evidence.
+Record the current external proof state for `main` without exposing secrets or treating stale workflow success as launch evidence.
 
 This is a handoff artifact only. It does not mark HoopClips ready for internal TestFlight, does not approve public cloud cutover, and does not replace the required human-reviewed accuracy report or installed-device smoke.
 
 ## Current Branch State
 
-- Branch: `codex/phase-launch-proof-next`
-- Pre-handoff branch tip observed before this note: `08389ce`
-- Remote sync state at inspection: `0` ahead / `0` behind `origin/codex/phase-launch-proof-next`
-- Branch-to-main state at inspection: `0` behind / `43` ahead of `origin/main`
+- Branch: `main`
+- Current checked tip: `39322802b6da18c49699f91cdf78b2e59ea1cb7b`
+- Remote sync state at inspection: `0` ahead / `0` behind `origin/main`
+- Branch-to-main state at inspection: launch branch has been fast-forwarded into `main`
 - Preserved unrelated untracked root folders remain unstaged:
   - `HoopsClips.xcodeproj/`
   - `HoopsHighlightsAI.xcodeproj/`
 
-## Stale Branch Workflow Evidence
+## Historical Branch Workflow Evidence
 
 Latest successful branch-dispatched runs are not current-tip proof because they ran on `bc37b0e`, not the observed branch tip `08389ce`:
 
@@ -29,12 +29,10 @@ These runs are useful historical evidence that the branch direction has worked b
 
 ## Current External Gates Still Open
 
-- Rerun required branch workflows at the intended launch tip and confirm each run head SHA matches that tip.
-- Complete secret-gated cloud deploy proof without printing or returning secret values.
-- Deploy current editing source so live `/version` reports the current git SHA.
-- Land or deliberately update `main`, then rerun the failed main cloud deploy and TestFlight upload workflows.
 - Finish all human-reviewed label rows, apply without `--allow-incomplete`, rebuild `artifacts/team_highlight_accuracy_report.json`, and rerun submission readiness with `--team-accuracy-report`.
 - Install the internal TestFlight build on a trusted iPhone and complete the full import -> team choice -> cloud analysis -> Review -> AI Edit render -> preview -> revision -> download -> share/open-in smoke.
+
+The current `main` tip has fresh successful proof for the main Cloud Edit Deploy Preflight and internal TestFlight upload workflows. Production cloud URL inputs, release-secret preflight, deploy credential preflight, signed archive, archive metadata, and build `16` internal TestFlight upload are no longer open in this handoff.
 
 ## Secret-Safe Return Rules For Provider Or Browser Work
 
@@ -79,9 +77,7 @@ from the visible production environment. The latest `Release Secrets Preflight`
 run remains `26884199422`, completed `failure` on `86fdc33` at
 `2026-06-03T12:17:59Z`.
 
-This current-tip proof does not close production cloud URLs/secrets,
-human-reviewed accuracy labels, signed archive/TestFlight upload, or installed
-TestFlight smoke.
+This older 2026-06-03 proof is superseded by the 2026-06-07 `main` proof below. Human-reviewed accuracy labels and installed TestFlight smoke remain open in their dedicated evidence paths.
 
 ## 2026-06-03 `64ddebc` proof refresh
 
@@ -94,4 +90,19 @@ Remote branch proof for `64ddebc`:
 - Cloud Edit Deploy Preflight duplicate dispatch `26900909850`: success
 - iOS Internal TestFlight Upload codecheck duplicate dispatch `26900909936`: success
 
-This proof only confirms the current branch keeps the external blockers represented in readiness preflight coverage and that the safe cloud/iOS codecheck workflows passed for the new tip. It does not close production cloud URL/secrets, Release Secrets Preflight, Apple signing/archive, human label coverage, or installed TestFlight smoke blockers.
+This older proof only confirmed that the branch kept the external blockers represented in readiness preflight coverage and that safe cloud/iOS codecheck workflows passed for that tip. It is superseded by the 2026-06-07 `main` proof below.
+
+## 2026-06-07 `main` proof refresh
+
+Current `main` tip:
+
+- `39322802b6da18c49699f91cdf78b2e59ea1cb7b`
+- Commit: `Align TestFlight metadata check with build 16`
+
+Current non-secret workflow proof:
+
+- Cloud Edit Deploy Preflight run `27086530548`: `success`
+- iOS Internal TestFlight Upload run `27086530557`: `success`
+- TestFlight upload build: `16`
+
+This closes the stale current-tip external gate handoff for production cloud URL inputs, release-secret/deploy credential preflight, main Cloud Edit Deploy Preflight proof, signed archive proof, archive metadata proof, and internal TestFlight upload proof. The remaining launch gates are tracked separately: human-reviewed team-highlight accuracy evidence and installed trusted-device TestFlight smoke.
