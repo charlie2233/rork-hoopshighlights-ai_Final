@@ -233,6 +233,19 @@ struct ContentView: View {
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 appTabBar
             }
+
+            if selectedTab == AppTab.settings.rawValue, !isRookieGuideVisible {
+                VStack {
+                    Spacer(minLength: 0)
+                    HStack {
+                        Spacer(minLength: 0)
+                        rookieGuideReplayButton
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, tabButtonHeight + 20)
+                }
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
         }
         .preferredColorScheme(.dark)
         .overlay {
@@ -309,6 +322,13 @@ struct ContentView: View {
         return ZStack {
             Color.black.opacity(0.58)
                 .ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                Spacer(minLength: 0)
+                rookieGuideTabCoachMark(step: step)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, tabButtonHeight + 8)
+            }
 
             VStack(spacing: 0) {
                 Spacer(minLength: 0)
@@ -423,6 +443,60 @@ struct ContentView: View {
         .accessibilityIdentifier("rookieGuide.overlay")
     }
 
+    private var rookieGuideReplayButton: some View {
+        Button {
+            restartRookieGuide()
+        } label: {
+            Label("重看新手教程", systemImage: "questionmark.circle.fill")
+                .font(.caption.bold())
+                .foregroundStyle(.white)
+                .padding(.horizontal, 13)
+                .padding(.vertical, 10)
+                .background(AppTheme.accentPurple.opacity(0.86), in: .capsule)
+                .overlay(
+                    Capsule()
+                        .stroke(AppTheme.neonPurple.opacity(0.32), lineWidth: 1)
+                )
+                .shadow(color: AppTheme.neonPurple.opacity(0.24), radius: 14, x: 0, y: 8)
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("settings.rookieGuide.replayButton")
+        .accessibilityLabel("Replay rookie guide")
+        .accessibilityHint("Shows the step by step beginner tutorial again.")
+    }
+
+    private func rookieGuideTabCoachMark(step: RookieGuideStep) -> some View {
+        GeometryReader { proxy in
+            let centerX = rookieGuideTabCenterX(for: step.tab, width: proxy.size.width)
+
+            ZStack(alignment: .bottomLeading) {
+                VStack(spacing: 5) {
+                    Text(step.tab.title(using: languageStore))
+                        .font(.caption.bold())
+                        .foregroundStyle(.black)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(AppTheme.warningYellow, in: .capsule)
+
+                    Image(systemName: "arrowtriangle.down.fill")
+                        .font(.caption.bold())
+                        .foregroundStyle(AppTheme.warningYellow)
+                        .shadow(color: AppTheme.warningYellow.opacity(0.32), radius: 8, x: 0, y: 0)
+                }
+                .position(x: centerX, y: proxy.size.height / 2)
+            }
+        }
+        .frame(height: 44)
+        .accessibilityHidden(true)
+    }
+
+    private func rookieGuideTabCenterX(for tab: AppTab, width: CGFloat) -> CGFloat {
+        let tabCount = CGFloat(AppTab.allCases.count)
+        let availableWidth = max(width - 20, 1)
+        let tabWidth = availableWidth / max(tabCount, 1)
+        return 10 + tabWidth * (CGFloat(tab.rawValue) + 0.5)
+    }
+
     private var rookieGuideProgressDots: some View {
         HStack(spacing: 7) {
             ForEach(0..<rookieGuideSteps.count, id: \.self) { index in
@@ -446,6 +520,14 @@ struct ContentView: View {
         selectedTab = AppTab.player.rawValue
         isRookieGuideVisible = true
         LaunchTelemetry.shared.recordStabilityCheckpoint("rookie_guide.started")
+    }
+
+    private func restartRookieGuide() {
+        rookieGuideCompleted = false
+        rookieGuideStepIndex = 0
+        selectedTab = AppTab.player.rawValue
+        isRookieGuideVisible = true
+        LaunchTelemetry.shared.recordStabilityCheckpoint("rookie_guide.replayed")
     }
 
     private func showNextRookieGuideStep() {
