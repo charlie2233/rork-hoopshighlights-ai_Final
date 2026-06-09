@@ -282,15 +282,75 @@ struct HoopsBrandMark: View {
     var showsShadow = true
 
     var body: some View {
-        Image("BrandMark")
-            .resizable()
-            .interpolation(.high)
-            .antialiased(true)
-            .scaledToFit()
-            .frame(width: size, height: size)
-            .clipShape(.rect(cornerRadius: cornerRadius ?? size * 0.22, style: .continuous))
-            .shadow(color: Color.black.opacity(showsShadow ? 0.34 : 0), radius: size * 0.10, x: 0, y: size * 0.045)
-            .accessibilityHidden(true)
+        let radius = cornerRadius ?? size * 0.24
+        let innerSize = size * 0.76
+
+        ZStack {
+            RoundedRectangle(cornerRadius: radius, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            AppTheme.neonPurple.opacity(0.92),
+                            AppTheme.deepPurple.opacity(0.95),
+                            AppTheme.cardBg
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+
+            Circle()
+                .stroke(AppTheme.warningYellow.opacity(0.42), lineWidth: max(size * 0.026, 1.2))
+                .frame(width: size * 0.70, height: size * 0.70)
+                .offset(x: size * 0.12, y: -size * 0.10)
+                .blendMode(.screen)
+
+            RoundedRectangle(cornerRadius: radius * 0.82, style: .continuous)
+                .fill(
+                    RadialGradient(
+                        colors: [
+                            Color.white.opacity(0.18),
+                            AppTheme.accentPurple.opacity(0.22),
+                            Color.clear
+                        ],
+                        center: .topLeading,
+                        startRadius: 0,
+                        endRadius: size * 0.84
+                    )
+                )
+                .padding(size * 0.055)
+
+            Image("BrandMark")
+                .resizable()
+                .interpolation(.high)
+                .antialiased(true)
+                .scaledToFit()
+                .frame(width: innerSize, height: innerSize)
+                .clipShape(.rect(cornerRadius: radius * 0.66, style: .continuous))
+                .shadow(color: AppTheme.warningYellow.opacity(showsShadow ? 0.26 : 0), radius: size * 0.055, x: 0, y: 0)
+
+            RoundedRectangle(cornerRadius: radius, style: .continuous)
+                .stroke(
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(0.42),
+                            AppTheme.neonPurple.opacity(0.24),
+                            AppTheme.warningYellow.opacity(0.26)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: max(size * 0.018, 1)
+                )
+
+            RoundedRectangle(cornerRadius: radius * 0.82, style: .continuous)
+                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                .padding(size * 0.07)
+        }
+        .frame(width: size, height: size)
+        .shadow(color: AppTheme.neonPurple.opacity(showsShadow ? 0.28 : 0), radius: size * 0.15, x: 0, y: size * 0.07)
+        .shadow(color: Color.black.opacity(showsShadow ? 0.30 : 0), radius: size * 0.09, x: 0, y: size * 0.05)
+        .accessibilityHidden(true)
     }
 }
 
