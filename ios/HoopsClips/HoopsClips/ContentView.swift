@@ -91,9 +91,48 @@ struct ContentView: View {
         let id: Int
         let tab: AppTab
         let icon: String
-        let title: String
-        let body: String
-        let tip: String
+        let englishTitle: String
+        let chineseTitle: String
+        let spanishTitle: String
+        let englishBody: String
+        let chineseBody: String
+        let spanishBody: String
+        let englishTip: String
+        let chineseTip: String
+        let spanishTip: String
+
+        func title(for language: AppLanguage) -> String {
+            switch language {
+            case .english:
+                return englishTitle
+            case .chinese:
+                return chineseTitle
+            case .spanish:
+                return spanishTitle
+            }
+        }
+
+        func body(for language: AppLanguage) -> String {
+            switch language {
+            case .english:
+                return englishBody
+            case .chinese:
+                return chineseBody
+            case .spanish:
+                return spanishBody
+            }
+        }
+
+        func tip(for language: AppLanguage) -> String {
+            switch language {
+            case .english:
+                return englishTip
+            case .chinese:
+                return chineseTip
+            case .spanish:
+                return spanishTip
+            }
+        }
     }
 
     private var needsVerification: Bool {
@@ -271,41 +310,71 @@ struct ContentView: View {
                 id: 1,
                 tab: .player,
                 icon: "play.circle.fill",
-                title: "1. 导入比赛视频",
-                body: "Start here. Pick a game video, choose your team, then let cloud AI find highlight candidates.",
-                tip: "提示: 分析可能需要一点时间。"
+                englishTitle: "Import a game",
+                chineseTitle: "导入比赛视频",
+                spanishTitle: "Importa un partido",
+                englishBody: "Pick a video, choose your team, then start cloud analysis.",
+                chineseBody: "选择视频，选好球队，然后开始云端分析。",
+                spanishBody: "Elige un video, selecciona tu equipo y empieza el análisis en la nube.",
+                englishTip: "Analysis can take a little while.",
+                chineseTip: "分析可能需要一点时间。",
+                spanishTip: "El análisis puede tardar un poco."
             ),
             RookieGuideStep(
                 id: 2,
                 tab: .review,
                 icon: "film.stack.fill",
-                title: "2. 快速审核片段",
-                body: "Watch one clip at a time. Tap KEEP for good moments, NAH for weak clips, and tag problems like duplicate or wrong team.",
-                tip: "提示: Swipe left/right also works."
+                englishTitle: "Review clips",
+                chineseTitle: "审核片段",
+                spanishTitle: "Revisa clips",
+                englishBody: "Watch one clip. Keep strong plays, skip weak ones, and tag issues.",
+                chineseBody: "一次看一个片段。好的保留，不好的跳过，也可以标记问题。",
+                spanishBody: "Mira un clip. Guarda las buenas jugadas, descarta las débiles y marca problemas.",
+                englishTip: "Swipe left or right to decide faster.",
+                chineseTip: "左右滑动可以更快选择。",
+                spanishTip: "Desliza a la izquierda o derecha para decidir más rápido."
             ),
             RookieGuideStep(
                 id: 3,
                 tab: .export,
                 icon: "square.and.arrow.up.fill",
-                title: "3. 生成你的集锦",
-                body: "Use Export to choose style, length, and format. HoopClips renders the final MP4 in the cloud.",
-                tip: "提示: 渲染时可以稍等或切回来看。"
+                englishTitle: "Make the reel",
+                chineseTitle: "生成集锦",
+                spanishTitle: "Crea el reel",
+                englishBody: "Choose style, length, and format. HoopClips renders the MP4 in the cloud.",
+                chineseBody: "选择风格、时长和比例。HoopClips 会在云端生成 MP4。",
+                spanishBody: "Elige estilo, duración y formato. HoopClips renderiza el MP4 en la nube.",
+                englishTip: "You can wait here or come back later.",
+                chineseTip: "可以等一下，也可以之后回来查看。",
+                spanishTip: "Puedes esperar aquí o volver después."
             ),
             RookieGuideStep(
                 id: 4,
                 tab: .history,
                 icon: "clock.arrow.circlepath",
-                title: "4. 找回之前项目",
-                body: "History keeps your recent games and cloud renders so you can reopen, re-render, save, or share later.",
-                tip: "提示: Free cloud videos can expire."
+                englishTitle: "Find past work",
+                chineseTitle: "找回项目",
+                spanishTitle: "Encuentra trabajos",
+                englishBody: "Open recent games and finished cloud renders from History.",
+                chineseBody: "在历史记录里打开最近的视频和已生成的云端作品。",
+                spanishBody: "Abre partidos recientes y renders terminados desde Historial.",
+                englishTip: "Free cloud videos can expire.",
+                chineseTip: "免费云端视频可能会过期。",
+                spanishTip: "Los videos gratuitos en la nube pueden caducar."
             ),
             RookieGuideStep(
                 id: 5,
                 tab: .settings,
                 icon: "gearshape.fill",
-                title: "5. 调整偏好设置",
-                body: "Settings is where you manage language, account, Pro status, and workflow defaults.",
-                tip: "提示: 新手不用改太多，先跑完一次流程就好。"
+                englishTitle: "Tune settings",
+                chineseTitle: "调整设置",
+                spanishTitle: "Ajusta opciones",
+                englishBody: "Manage language, account, Pro status, and workflow defaults.",
+                chineseBody: "管理语言、账号、Pro 状态和流程默认设置。",
+                spanishBody: "Administra idioma, cuenta, estado Pro y preferencias de flujo.",
+                englishTip: "First run the basic flow once.",
+                chineseTip: "新手先跑完一次基础流程就好。",
+                spanishTip: "Primero completa el flujo básico una vez."
             )
         ]
     }
@@ -320,7 +389,7 @@ struct ContentView: View {
         let isLastStep = rookieGuideStepIndex >= rookieGuideSteps.count - 1
 
         return ZStack {
-            Color.black.opacity(0.58)
+            Color.black.opacity(0.46)
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
@@ -333,10 +402,10 @@ struct ContentView: View {
             VStack(spacing: 0) {
                 Spacer(minLength: 0)
 
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 14) {
                     HStack(spacing: 10) {
-                        Label("新手教程", systemImage: "sparkles")
-                            .font(.headline.bold())
+                        Label(rookieGuideTitle, systemImage: "sparkles")
+                            .font(.subheadline.bold())
                             .foregroundStyle(.white)
 
                         Spacer(minLength: 0)
@@ -351,43 +420,47 @@ struct ContentView: View {
 
                     HStack(alignment: .top, spacing: 12) {
                         ZStack {
-                            RoundedRectangle(cornerRadius: 15, style: .continuous)
-                                .fill(AppTheme.accentPurple.opacity(0.24))
-                                .frame(width: 50, height: 50)
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .fill(.white.opacity(0.08))
+                                .frame(width: 46, height: 46)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                        .stroke(AppTheme.neonPurple.opacity(0.18), lineWidth: 1)
+                                )
                             Image(systemName: step.icon)
-                                .font(.title3.bold())
+                                .font(.headline.bold())
                                 .foregroundStyle(AppTheme.warningYellow)
                         }
                         .accessibilityHidden(true)
 
-                        VStack(alignment: .leading, spacing: 7) {
-                            Text(step.title)
-                                .font(.title3.weight(.heavy))
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(step.title(for: languageStore.selectedLanguage))
+                                .font(.title3.weight(.bold))
                                 .foregroundStyle(.white)
                                 .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
                                 .minimumScaleFactor(0.84)
                                 .fixedSize(horizontal: false, vertical: true)
 
-                            Text(step.body)
-                                .font(.subheadline.weight(.semibold))
+                            Text(step.body(for: languageStore.selectedLanguage))
+                                .font(.callout.weight(.medium))
                                 .foregroundStyle(AppTheme.subtleText)
-                                .lineSpacing(3)
+                                .lineSpacing(2)
                                 .lineLimit(dynamicTypeSize.isAccessibilitySize ? 8 : 4)
                                 .minimumScaleFactor(0.84)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                     }
 
-                    Label(step.tip, systemImage: "lightbulb.fill")
+                    Label(step.tip(for: languageStore.selectedLanguage), systemImage: "lightbulb.fill")
                         .font(.caption.bold())
-                        .foregroundStyle(AppTheme.warningYellow)
+                        .foregroundStyle(.white.opacity(0.86))
                         .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
                         .minimumScaleFactor(0.82)
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 9)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(AppTheme.warningYellow.opacity(0.10), in: .rect(cornerRadius: 13))
+                        .background(.white.opacity(0.07), in: .rect(cornerRadius: 13))
 
                     rookieGuideProgressDots
 
@@ -395,7 +468,7 @@ struct ContentView: View {
                         Button {
                             skipRookieGuide()
                         } label: {
-                            Text("跳过")
+                            Text(rookieGuideSkipTitle)
                                 .font(.subheadline.bold())
                                 .foregroundStyle(AppTheme.subtleText)
                                 .frame(maxWidth: .infinity)
@@ -409,7 +482,7 @@ struct ContentView: View {
                             Button {
                                 showPreviousRookieGuideStep()
                             } label: {
-                                Text("上一步")
+                                Text(rookieGuideBackTitle)
                                     .font(.subheadline.bold())
                                     .foregroundStyle(.white)
                                     .frame(maxWidth: .infinity)
@@ -423,7 +496,7 @@ struct ContentView: View {
                         Button {
                             showNextRookieGuideStep()
                         } label: {
-                            Text(isLastStep ? "完成" : "下一步")
+                            Text(isLastStep ? rookieGuideDoneTitle : rookieGuideNextTitle)
                                 .font(.subheadline.bold())
                                 .foregroundStyle(.black)
                                 .frame(maxWidth: .infinity)
@@ -434,8 +507,8 @@ struct ContentView: View {
                         .accessibilityIdentifier("rookieGuide.nextButton")
                     }
                 }
-                .padding(18)
-                .rorkCard(cornerRadius: 24, stroke: AppTheme.neonPurple.opacity(0.28), glow: AppTheme.neonPurple, glowOpacity: 0.20)
+                .padding(16)
+                .rorkCard(cornerRadius: 22, stroke: AppTheme.neonPurple.opacity(0.20), glow: AppTheme.neonPurple, glowOpacity: 0.12)
                 .padding(.horizontal, 16)
                 .padding(.bottom, tabButtonHeight + 28)
             }
@@ -447,7 +520,7 @@ struct ContentView: View {
         Button {
             restartRookieGuide()
         } label: {
-            Label("重看新手教程", systemImage: "questionmark.circle.fill")
+            Label(rookieGuideReplayTitle, systemImage: "questionmark.circle.fill")
                 .font(.caption.bold())
                 .foregroundStyle(.white)
                 .padding(.horizontal, 13)
@@ -473,10 +546,10 @@ struct ContentView: View {
                 VStack(spacing: 5) {
                     Text(step.tab.title(using: languageStore))
                         .font(.caption.bold())
-                        .foregroundStyle(.black)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(AppTheme.warningYellow, in: .capsule)
+                            .foregroundStyle(.black)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(AppTheme.warningYellow.opacity(0.94), in: .capsule)
 
                     Image(systemName: "arrowtriangle.down.fill")
                         .font(.caption.bold())
@@ -512,6 +585,65 @@ struct ContentView: View {
 
     private var selectedTabTelemetryName: String {
         AppTab(rawValue: selectedTab)?.telemetryName ?? "unknown"
+    }
+
+    private var rookieGuideTitle: String {
+        rookieGuideCopy(
+            english: "Quick guide",
+            chinese: "新手教程",
+            spanish: "Guía rápida"
+        )
+    }
+
+    private var rookieGuideSkipTitle: String {
+        rookieGuideCopy(
+            english: "Skip",
+            chinese: "跳过",
+            spanish: "Omitir"
+        )
+    }
+
+    private var rookieGuideBackTitle: String {
+        rookieGuideCopy(
+            english: "Back",
+            chinese: "上一步",
+            spanish: "Atrás"
+        )
+    }
+
+    private var rookieGuideNextTitle: String {
+        rookieGuideCopy(
+            english: "Next",
+            chinese: "下一步",
+            spanish: "Siguiente"
+        )
+    }
+
+    private var rookieGuideDoneTitle: String {
+        rookieGuideCopy(
+            english: "Done",
+            chinese: "完成",
+            spanish: "Listo"
+        )
+    }
+
+    private var rookieGuideReplayTitle: String {
+        rookieGuideCopy(
+            english: "Replay guide",
+            chinese: "重看新手教程",
+            spanish: "Ver guía"
+        )
+    }
+
+    private func rookieGuideCopy(english: String, chinese: String, spanish: String) -> String {
+        switch languageStore.selectedLanguage {
+        case .english:
+            return english
+        case .chinese:
+            return chinese
+        case .spanish:
+            return spanish
+        }
     }
 
     private func activateRookieGuideIfNeeded() {
