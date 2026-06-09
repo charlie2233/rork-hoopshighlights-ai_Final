@@ -13,7 +13,10 @@ struct ContentView: View {
     @State private var showingPaywall = false
     @State private var didShowSignInScreen = false
     @State private var isShowingPostSignInTransition = false
+    @State private var isRookieGuideVisible = false
+    @State private var rookieGuideStepIndex = 0
     @AppStorage("hoopsclips.visibleProjectAuthScopeKey.v1") private var visibleProjectAuthScopeKey = "signed-out"
+    @AppStorage("hoopsclips.rookieGuide.completed.v1") private var rookieGuideCompleted = false
     @GestureState private var tabBarDragTranslation: CGFloat = 0
     @Namespace private var tabSelectionNamespace
 
@@ -82,6 +85,15 @@ struct ContentView: View {
     private enum AppTabBarLayout {
         case fixed
         case scrollable
+    }
+
+    private struct RookieGuideStep: Identifiable {
+        let id: Int
+        let tab: AppTab
+        let icon: String
+        let title: String
+        let body: String
+        let tip: String
     }
 
     private var needsVerification: Bool {
@@ -223,6 +235,15 @@ struct ContentView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .overlay {
+            if isRookieGuideVisible {
+                rookieGuideOverlay
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+            }
+        }
+        .onAppear {
+            activateRookieGuideIfNeeded()
+        }
         .task(id: viewModel.currentProjectID) {
             await viewModel.resumeInFlightCloudAnalysisIfNeeded()
         }
@@ -231,8 +252,241 @@ struct ContentView: View {
         }
     }
 
+    private var rookieGuideSteps: [RookieGuideStep] {
+        [
+            RookieGuideStep(
+                id: 1,
+                tab: .player,
+                icon: "play.circle.fill",
+                title: "1. 导入比赛视频",
+                body: "Start here. Pick a game video, choose your team, then let cloud AI find highlight candidates.",
+                tip: "提示: 分析可能需要一点时间。"
+            ),
+            RookieGuideStep(
+                id: 2,
+                tab: .review,
+                icon: "film.stack.fill",
+                title: "2. 快速审核片段",
+                body: "Watch one clip at a time. Tap KEEP for good moments, NAH for weak clips, and tag problems like duplicate or wrong team.",
+                tip: "提示: Swipe left/right also works."
+            ),
+            RookieGuideStep(
+                id: 3,
+                tab: .export,
+                icon: "square.and.arrow.up.fill",
+                title: "3. 生成你的集锦",
+                body: "Use Export to choose style, length, and format. HoopClips renders the final MP4 in the cloud.",
+                tip: "提示: 渲染时可以稍等或切回来看。"
+            ),
+            RookieGuideStep(
+                id: 4,
+                tab: .history,
+                icon: "clock.arrow.circlepath",
+                title: "4. 找回之前项目",
+                body: "History keeps your recent games and cloud renders so you can reopen, re-render, save, or share later.",
+                tip: "提示: Free cloud videos can expire."
+            ),
+            RookieGuideStep(
+                id: 5,
+                tab: .settings,
+                icon: "gearshape.fill",
+                title: "5. 调整偏好设置",
+                body: "Settings is where you manage language, account, Pro status, and workflow defaults.",
+                tip: "提示: 新手不用改太多，先跑完一次流程就好。"
+            )
+        ]
+    }
+
+    private var activeRookieGuideStep: RookieGuideStep {
+        let clampedIndex = min(max(rookieGuideStepIndex, 0), rookieGuideSteps.count - 1)
+        return rookieGuideSteps[clampedIndex]
+    }
+
+    private var rookieGuideOverlay: some View {
+        let step = activeRookieGuideStep
+        let isLastStep = rookieGuideStepIndex >= rookieGuideSteps.count - 1
+
+        return ZStack {
+            Color.black.opacity(0.58)
+                .ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                Spacer(minLength: 0)
+
+                VStack(alignment: .leading, spacing: 16) {
+                    HStack(spacing: 10) {
+                        Label("新手教程", systemImage: "sparkles")
+                            .font(.headline.bold())
+                            .foregroundStyle(.white)
+
+                        Spacer(minLength: 0)
+
+                        Text("\(rookieGuideStepIndex + 1)/\(rookieGuideSteps.count)")
+                            .font(.caption.bold())
+                            .foregroundStyle(AppTheme.warningYellow)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(AppTheme.warningYellow.opacity(0.12), in: .capsule)
+                    }
+
+                    HStack(alignment: .top, spacing: 12) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 15, style: .continuous)
+                                .fill(AppTheme.accentPurple.opacity(0.24))
+                                .frame(width: 50, height: 50)
+                            Image(systemName: step.icon)
+                                .font(.title3.bold())
+                                .foregroundStyle(AppTheme.warningYellow)
+                        }
+                        .accessibilityHidden(true)
+
+                        VStack(alignment: .leading, spacing: 7) {
+                            Text(step.title)
+                                .font(.title3.weight(.heavy))
+                                .foregroundStyle(.white)
+                                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
+                                .minimumScaleFactor(0.84)
+                                .fixedSize(horizontal: false, vertical: true)
+
+                            Text(step.body)
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(AppTheme.subtleText)
+                                .lineSpacing(3)
+                                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 8 : 4)
+                                .minimumScaleFactor(0.84)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+
+                    Label(step.tip, systemImage: "lightbulb.fill")
+                        .font(.caption.bold())
+                        .foregroundStyle(AppTheme.warningYellow)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
+                        .minimumScaleFactor(0.82)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 9)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(AppTheme.warningYellow.opacity(0.10), in: .rect(cornerRadius: 13))
+
+                    rookieGuideProgressDots
+
+                    HStack(spacing: 10) {
+                        Button {
+                            skipRookieGuide()
+                        } label: {
+                            Text("跳过")
+                                .font(.subheadline.bold())
+                                .foregroundStyle(AppTheme.subtleText)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 13)
+                                .background(AppTheme.cardBg.opacity(0.65), in: .rect(cornerRadius: 14))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("rookieGuide.skipButton")
+
+                        if rookieGuideStepIndex > 0 {
+                            Button {
+                                showPreviousRookieGuideStep()
+                            } label: {
+                                Text("上一步")
+                                    .font(.subheadline.bold())
+                                    .foregroundStyle(.white)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 13)
+                                    .background(AppTheme.accentPurple.opacity(0.26), in: .rect(cornerRadius: 14))
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityIdentifier("rookieGuide.backButton")
+                        }
+
+                        Button {
+                            showNextRookieGuideStep()
+                        } label: {
+                            Text(isLastStep ? "完成" : "下一步")
+                                .font(.subheadline.bold())
+                                .foregroundStyle(.black)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 13)
+                                .background(AppTheme.warningYellow, in: .rect(cornerRadius: 14))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("rookieGuide.nextButton")
+                    }
+                }
+                .padding(18)
+                .rorkCard(cornerRadius: 24, stroke: AppTheme.neonPurple.opacity(0.28), glow: AppTheme.neonPurple, glowOpacity: 0.20)
+                .padding(.horizontal, 16)
+                .padding(.bottom, tabButtonHeight + 28)
+            }
+        }
+        .accessibilityIdentifier("rookieGuide.overlay")
+    }
+
+    private var rookieGuideProgressDots: some View {
+        HStack(spacing: 7) {
+            ForEach(0..<rookieGuideSteps.count, id: \.self) { index in
+                Capsule()
+                    .fill(index == rookieGuideStepIndex ? AppTheme.warningYellow : AppTheme.subtleText.opacity(0.35))
+                    .frame(width: index == rookieGuideStepIndex ? 24 : 8, height: 8)
+                    .animation(reduceMotion ? nil : .snappy(duration: 0.18), value: rookieGuideStepIndex)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityHidden(true)
+    }
+
     private var selectedTabTelemetryName: String {
         AppTab(rawValue: selectedTab)?.telemetryName ?? "unknown"
+    }
+
+    private func activateRookieGuideIfNeeded() {
+        guard !rookieGuideCompleted, !isRookieGuideVisible else { return }
+        rookieGuideStepIndex = 0
+        selectedTab = AppTab.player.rawValue
+        isRookieGuideVisible = true
+        LaunchTelemetry.shared.recordStabilityCheckpoint("rookie_guide.started")
+    }
+
+    private func showNextRookieGuideStep() {
+        guard rookieGuideStepIndex < rookieGuideSteps.count - 1 else {
+            completeRookieGuide()
+            return
+        }
+
+        showRookieGuideStep(rookieGuideStepIndex + 1)
+    }
+
+    private func showPreviousRookieGuideStep() {
+        showRookieGuideStep(max(rookieGuideStepIndex - 1, 0))
+    }
+
+    private func showRookieGuideStep(_ index: Int) {
+        let clampedIndex = min(max(index, 0), rookieGuideSteps.count - 1)
+        let targetTab = rookieGuideSteps[clampedIndex].tab
+
+        guard reduceMotion == false else {
+            rookieGuideStepIndex = clampedIndex
+            selectedTab = targetTab.rawValue
+            return
+        }
+
+        withAnimation(tabSwipeAnimation) {
+            rookieGuideStepIndex = clampedIndex
+            selectedTab = targetTab.rawValue
+        }
+    }
+
+    private func skipRookieGuide() {
+        rookieGuideCompleted = true
+        isRookieGuideVisible = false
+        LaunchTelemetry.shared.recordStabilityCheckpoint("rookie_guide.skipped")
+    }
+
+    private func completeRookieGuide() {
+        rookieGuideCompleted = true
+        isRookieGuideVisible = false
+        LaunchTelemetry.shared.recordStabilityCheckpoint("rookie_guide.completed")
     }
 
     private var appTabBar: some View {
