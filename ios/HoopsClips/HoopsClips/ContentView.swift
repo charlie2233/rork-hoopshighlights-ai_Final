@@ -109,6 +109,8 @@ struct ContentView: View {
                 return chineseTitle
             case .spanish:
                 return spanishTitle
+            @unknown default:
+                return englishTitle
             }
         }
 
@@ -120,6 +122,8 @@ struct ContentView: View {
                 return chineseBody
             case .spanish:
                 return spanishBody
+            @unknown default:
+                return englishBody
             }
         }
 
@@ -131,6 +135,8 @@ struct ContentView: View {
                 return chineseTip
             case .spanish:
                 return spanishTip
+            @unknown default:
+                return englishTip
             }
         }
     }
@@ -643,6 +649,8 @@ struct ContentView: View {
             return chinese
         case .spanish:
             return spanish
+        @unknown default:
+            return english
         }
     }
 
