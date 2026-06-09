@@ -61,7 +61,7 @@ struct AIEditView: View {
     @State private var lockerBusyRenderJobID: String?
     @State private var showingShareSheet = false
     @State private var proInfoSheet: AIEditProInfoSheet?
-    @State private var showPlanDetails = true
+    @State private var showPlanDetails = false
     @State private var showSetupControls = false
     @State private var showTimelineDetails = false
     @State private var showAdvancedAIEditDetails = false
@@ -164,7 +164,7 @@ struct AIEditView: View {
         isLoadingRenderHistory = false
         lockerBusyRenderJobID = nil
         showingShareSheet = false
-        showPlanDetails = true
+        showPlanDetails = false
         showTimelineDetails = false
         showAdvancedAIEditDetails = false
         showAllDurationOptions = false
@@ -205,8 +205,10 @@ struct AIEditView: View {
     private var workflowContent: some View {
         VStack(spacing: 18) {
             heroCard
-            promptCard
             smartSetupCard
+            if showSetupControls || !userEditPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                promptCard
+            }
             if showSetupControls {
                 stylePicker
                 formatPicker
@@ -284,33 +286,116 @@ struct AIEditView: View {
     }
 
     private var heroCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Label("Make My Reel", systemImage: "wand.and.stars")
-                .font(.title2.bold())
-                .foregroundStyle(.white)
-                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
-                .minimumScaleFactor(0.84)
-                .fixedSize(horizontal: false, vertical: true)
-                .accessibilityIdentifier("export.aiEdit.section")
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 14) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("EXPORT")
+                        .font(.caption2.bold())
+                        .tracking(1.4)
+                        .foregroundStyle(AppTheme.warningYellow)
 
-            Text(AIEditPromptCopy.heroSubtitle)
-                .font(.subheadline)
-                .foregroundStyle(AppTheme.subtleText)
-                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 3)
-                .minimumScaleFactor(0.84)
-                .fixedSize(horizontal: false, vertical: true)
+                    Text("Make the reel")
+                        .font(.largeTitle.bold())
+                        .foregroundStyle(.white)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.76)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("export.aiEdit.section")
 
-            LazyVGrid(columns: heroChipGridColumns, alignment: .leading, spacing: 8) {
-                aiChip(icon: "film.stack.fill", text: clipPoolChipText)
-                aiChip(icon: viewModel.settings.highlightTeamSelection.mode == .team ? "person.2.fill" : "person.3.fill", text: teamTargetChipText)
-                aiChip(icon: selectedAspectRatio.icon, text: selectedAspectRatio.rawValue)
-                aiChip(icon: "timer", text: formattedDuration(selectedDuration))
+                    Text(activeAIWorkPhrase ?? "Cloud edit picks, renders, and saves the MP4.")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(AppTheme.subtleText)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
+                        .minimumScaleFactor(0.84)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 0)
+
+                ZStack {
+                    Circle()
+                        .fill(AppTheme.neonPurple.opacity(0.22))
+                        .frame(width: 58, height: 58)
+                    Image(systemName: phase == .rendered ? "checkmark.seal.fill" : "wand.and.stars.inverse")
+                        .font(.title2.bold())
+                        .foregroundStyle(phase == .rendered ? AppTheme.successGreen : AppTheme.warningYellow)
+                }
+                .accessibilityHidden(true)
             }
 
+            HStack(spacing: 10) {
+                exportHeroMetric(icon: "film.stack.fill", value: clipPoolChipText)
+                exportHeroMetric(icon: selectedAspectRatio.icon, value: selectedAspectRatio.rawValue)
+                exportHeroMetric(icon: "timer", value: formattedDuration(selectedDuration))
+            }
+
+            HStack(spacing: 8) {
+                Label(activePolicy.displayName, systemImage: activePolicy.planTier.isFree ? "person.crop.circle" : "crown.fill")
+                    .font(.caption.bold())
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
+                    .background(AppTheme.cardBg.opacity(0.68), in: .capsule)
+
+                Label(teamTargetChipText, systemImage: viewModel.settings.highlightTeamSelection.mode == .team ? "person.2.fill" : "person.3.fill")
+                    .font(.caption.bold())
+                    .foregroundStyle(AppTheme.subtleText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
+                    .background(AppTheme.cardBg.opacity(0.5), in: .capsule)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
-        .rorkCard(cornerRadius: 18, stroke: AppTheme.accentPurple.opacity(0.22), glow: AppTheme.neonPurple, glowOpacity: 0.10)
+        .padding(18)
+        .background(
+            LinearGradient(
+                colors: [
+                    AppTheme.accentPurple.opacity(0.9),
+                    AppTheme.cardBg.opacity(0.94),
+                    AppTheme.neonPurple.opacity(0.22)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            ),
+            in: .rect(cornerRadius: 24)
+        )
+        .overlay(alignment: .topTrailing) {
+            Circle()
+                .fill(AppTheme.neonPurple.opacity(0.18))
+                .frame(width: 120, height: 120)
+                .blur(radius: 18)
+                .offset(x: 36, y: -42)
+                .allowsHitTesting(false)
+        }
+        .overlay(
+            RoundedRectangle(cornerRadius: 24)
+                .stroke(AppTheme.neonPurple.opacity(0.22), lineWidth: 1)
+        )
+        .shadow(color: AppTheme.neonPurple.opacity(0.18), radius: 18, x: 0, y: 10)
+    }
+
+    private func exportHeroMetric(icon: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Image(systemName: icon)
+                .font(.caption.bold())
+                .foregroundStyle(AppTheme.warningYellow)
+            Text(value)
+                .font(.caption.bold())
+                .foregroundStyle(.white)
+                .lineLimit(2)
+                .minimumScaleFactor(0.78)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 9)
+        .background(.white.opacity(0.07), in: .rect(cornerRadius: 14))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(.white.opacity(0.08), lineWidth: 1)
+        )
     }
 
     private var planTierCard: some View {
@@ -327,13 +412,13 @@ struct AIEditView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Current plan: \(policy.displayName)")
+                    Text("\(policy.displayName) plan")
                         .font(.headline)
                         .foregroundStyle(.white)
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
                         .accessibilityIdentifier("export.aiEdit.plan.current")
-                    Text("\(policy.maxDailyRenders) AI edits/day - \(policy.maxOutputResolution) max")
+                    Text("\(policy.maxDailyRenders)/day - \(policy.maxOutputResolution)")
                         .font(.caption.bold())
                         .foregroundStyle(AppTheme.warningYellow)
                         .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
@@ -371,7 +456,7 @@ struct AIEditView: View {
                 }
                 .padding(.top, 4)
             } label: {
-                Label("Plan limits", systemImage: "list.bullet.clipboard.fill")
+                Label("Limits", systemImage: "list.bullet.clipboard.fill")
                     .font(.caption.bold())
                     .foregroundStyle(AppTheme.subtleText)
             }
