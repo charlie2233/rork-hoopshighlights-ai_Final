@@ -30,7 +30,7 @@ DEFAULT_WORKER_BASE_URL = "https://hoopsclips-control-plane-staging.charliehan-l
 DEFAULT_EDITING_VERSION_URL = "https://hoopclips-editing-staging-npya43jiia-uc.a.run.app/version"
 EXPECTED_IOS_BUNDLE_ID = "atrak.charlie.hoopsclips"
 EXPECTED_IOS_MARKETING_VERSION = "1.0.0"
-EXPECTED_IOS_BUILD_NUMBER = "16"
+EXPECTED_IOS_BUILD_NUMBER = "17"
 KNOWN_CONFLICTING_BUNDLE_IDS = ("app.rork.hoopshighlights-ai",)
 REQUIRED_FEATURE_FLAGS = (
     "aiEditEnabled",
