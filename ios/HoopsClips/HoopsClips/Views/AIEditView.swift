@@ -221,7 +221,9 @@ struct AIEditView: View {
             if activePolicy.planTier.isFree, proUXFlags.proUpsellEnabled {
                 proValueCard
             }
-            statusCard
+            if shouldShowStatusNoticeCard {
+                statusCard
+            }
             if let previewPlayer {
                 previewCard(player: previewPlayer)
             }
@@ -2523,6 +2525,13 @@ struct AIEditView: View {
         return "Cloud editing config check failed."
     }
 
+    private var shouldShowStatusNoticeCard: Bool {
+        cloudEditActionBlockedMessage != nil
+            || errorMessage != nil
+            || serviceStatusBlocksRendering
+            || (!serviceStatusIsChecking && serviceStatusErrorMessage != nil)
+    }
+
     private var appBuildPillText: String {
         let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String
         guard let build, !build.isEmpty else { return "Build -" }
@@ -2788,7 +2797,7 @@ struct AIEditView: View {
         ]
 
         if hasStartedAIEditJob {
-            summary.append("cloud status")
+            summary.append("job proof")
         }
         if activeWorkReceipt != nil {
             summary.append("receipt")
