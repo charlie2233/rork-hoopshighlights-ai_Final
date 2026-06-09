@@ -165,7 +165,6 @@ jobs:
             -authenticationKeyID "$APP_STORE_CONNECT_KEY_ID" \
             -authenticationKeyIssuerID "$APP_STORE_CONNECT_ISSUER_ID" \
             DEVELOPMENT_TEAM="$HOOPS_DEVELOPMENT_TEAM" \
-            CODE_SIGN_IDENTITY="Apple Distribution" \
             -hideShellScriptEnvironment
           echo "Archive created"
 
