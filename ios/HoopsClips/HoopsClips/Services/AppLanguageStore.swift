@@ -276,6 +276,28 @@ enum AppTextKey {
     case settingsFeedbackSendFailure
     case settingsFeedbackNetworkError
     case settingsFeedbackSentThanks
+    case rookieGuideTitle
+    case rookieGuideSkip
+    case rookieGuideBack
+    case rookieGuideNext
+    case rookieGuideDone
+    case rookieGuideReplay
+    case rookieGuideReplayHint
+    case rookieGuideImportTitle
+    case rookieGuideImportBody
+    case rookieGuideImportTip
+    case rookieGuideReviewTitle
+    case rookieGuideReviewBody
+    case rookieGuideReviewTip
+    case rookieGuideExportTitle
+    case rookieGuideExportBody
+    case rookieGuideExportTip
+    case rookieGuideHistoryTitle
+    case rookieGuideHistoryBody
+    case rookieGuideHistoryTip
+    case rookieGuideSettingsTitle
+    case rookieGuideSettingsBody
+    case rookieGuideSettingsTip
     case settingsDeveloperFootnote
 }
 
@@ -538,6 +560,28 @@ extension AppLanguage {
         .settingsFeedbackSendFailure: "Couldn't send feedback right now. Please try again.",
         .settingsFeedbackNetworkError: "Network error while sending feedback. Check connection and try again.",
         .settingsFeedbackSentThanks: "Thanks. Your feedback was sent.",
+        .rookieGuideTitle: "Quick guide",
+        .rookieGuideSkip: "Skip",
+        .rookieGuideBack: "Back",
+        .rookieGuideNext: "Next",
+        .rookieGuideDone: "Done",
+        .rookieGuideReplay: "Replay guide",
+        .rookieGuideReplayHint: "Shows the beginner guide again.",
+        .rookieGuideImportTitle: "Import your game",
+        .rookieGuideImportBody: "Pick Photos or Files, then let HoopClips upload the source video for cloud AI analysis.",
+        .rookieGuideImportTip: "Start here when you have a new game.",
+        .rookieGuideReviewTitle: "Review clips",
+        .rookieGuideReviewBody: "Swipe or tap KEEP / NAH to train the clip list before export.",
+        .rookieGuideReviewTip: "Feedback tags help accuracy reports improve.",
+        .rookieGuideExportTitle: "Build the reel",
+        .rookieGuideExportBody: "Choose style, length, and AI Edit. Rendering stays cloud-owned so your phone stays free.",
+        .rookieGuideExportTip: "Use the prompt box for tone, not secret commands.",
+        .rookieGuideHistoryTitle: "Find saved work",
+        .rookieGuideHistoryBody: "History keeps your latest projects, exports, and cloud render status in one place.",
+        .rookieGuideHistoryTip: "Come back here when a render finishes.",
+        .rookieGuideSettingsTitle: "Tune your setup",
+        .rookieGuideSettingsBody: "Change language, replay this guide, adjust defaults, and send feedback from Settings.",
+        .rookieGuideSettingsTip: "Replay the guide anytime from Settings.",
         .settingsDeveloperFootnote: "Developer-only launch diagnostics are hidden from production users."
     ]
 
@@ -764,6 +808,28 @@ extension AppLanguage {
         .settingsFeedbackSendFailure: "现在无法发送反馈，请稍后再试。",
         .settingsFeedbackNetworkError: "发送反馈时出现网络错误。请检查连接后重试。",
         .settingsFeedbackSentThanks: "谢谢，你的反馈已发送。",
+        .rookieGuideTitle: "新手教程",
+        .rookieGuideSkip: "跳过",
+        .rookieGuideBack: "上一步",
+        .rookieGuideNext: "下一步",
+        .rookieGuideDone: "完成",
+        .rookieGuideReplay: "重看新手教程",
+        .rookieGuideReplayHint: "再次显示新手教程。",
+        .rookieGuideImportTitle: "导入比赛",
+        .rookieGuideImportBody: "从照片或文件选择视频，然后让 HoopClips 上传源视频做云端 AI 分析。",
+        .rookieGuideImportTip: "有新比赛时，从这里开始。",
+        .rookieGuideReviewTitle: "审核片段",
+        .rookieGuideReviewBody: "左右滑动或点击 KEEP / NAH，先整理片段再导出。",
+        .rookieGuideReviewTip: "反馈标签会帮助准确率报告变好。",
+        .rookieGuideExportTitle: "生成集锦",
+        .rookieGuideExportBody: "选择风格、时长和 AI Edit。渲染由云端负责，手机只负责预览和控制。",
+        .rookieGuideExportTip: "提示词用来描述风格，不是绕过规则的命令。",
+        .rookieGuideHistoryTitle: "查看保存内容",
+        .rookieGuideHistoryBody: "历史页集中显示最近项目、导出结果和云端渲染状态。",
+        .rookieGuideHistoryTip: "渲染完成后可以回到这里查看。",
+        .rookieGuideSettingsTitle: "调整设置",
+        .rookieGuideSettingsBody: "在设置里切换语言、重看教程、调整默认值，也可以发送反馈。",
+        .rookieGuideSettingsTip: "以后随时可以从设置重看教程。",
         .settingsDeveloperFootnote: "开发者发布诊断信息已对正式用户隐藏。"
     ]
 
@@ -990,6 +1056,28 @@ extension AppLanguage {
         .settingsFeedbackSendFailure: "No se pudo enviar el feedback ahora. Inténtalo de nuevo.",
         .settingsFeedbackNetworkError: "Error de red al enviar feedback. Revisa la conexión e inténtalo de nuevo.",
         .settingsFeedbackSentThanks: "Gracias. Tu feedback fue enviado.",
+        .rookieGuideTitle: "Guía rápida",
+        .rookieGuideSkip: "Omitir",
+        .rookieGuideBack: "Atrás",
+        .rookieGuideNext: "Siguiente",
+        .rookieGuideDone: "Listo",
+        .rookieGuideReplay: "Ver guía",
+        .rookieGuideReplayHint: "Muestra la guía para principiantes otra vez.",
+        .rookieGuideImportTitle: "Importa tu partido",
+        .rookieGuideImportBody: "Elige Fotos o Archivos y deja que HoopClips suba el video para análisis de IA en la nube.",
+        .rookieGuideImportTip: "Empieza aquí cuando tengas un partido nuevo.",
+        .rookieGuideReviewTitle: "Revisa clips",
+        .rookieGuideReviewBody: "Desliza o toca KEEP / NAH para ordenar la lista antes de exportar.",
+        .rookieGuideReviewTip: "Las etiquetas de feedback ayudan a mejorar los reportes de precisión.",
+        .rookieGuideExportTitle: "Crea el reel",
+        .rookieGuideExportBody: "Elige estilo, duración y AI Edit. El render se queda en la nube para liberar tu teléfono.",
+        .rookieGuideExportTip: "Usa el prompt para estilo, no para comandos secretos.",
+        .rookieGuideHistoryTitle: "Encuentra guardados",
+        .rookieGuideHistoryBody: "Historial reúne proyectos recientes, exportaciones y estado de renders en la nube.",
+        .rookieGuideHistoryTip: "Vuelve aquí cuando termine un render.",
+        .rookieGuideSettingsTitle: "Ajusta la app",
+        .rookieGuideSettingsBody: "Cambia idioma, repite esta guía, ajusta valores por defecto y envía feedback desde Settings.",
+        .rookieGuideSettingsTip: "Puedes repetir la guía desde Settings cuando quieras.",
         .settingsDeveloperFootnote: "Los diagnósticos de lanzamiento para desarrolladores están ocultos para usuarios de producción."
     ]
 
@@ -1216,6 +1304,28 @@ extension AppLanguage {
         .settingsFeedbackSendFailure: "Impossible d'envoyer le retour maintenant. Réessaie.",
         .settingsFeedbackNetworkError: "Erreur réseau pendant l'envoi du retour. Vérifie la connexion et réessaie.",
         .settingsFeedbackSentThanks: "Merci. Ton retour a été envoyé.",
+        .rookieGuideTitle: "Guide rapide",
+        .rookieGuideSkip: "Ignorer",
+        .rookieGuideBack: "Retour",
+        .rookieGuideNext: "Suivant",
+        .rookieGuideDone: "Terminé",
+        .rookieGuideReplay: "Revoir le guide",
+        .rookieGuideReplayHint: "Affiche à nouveau le guide débutant.",
+        .rookieGuideImportTitle: "Importe ton match",
+        .rookieGuideImportBody: "Choisis Photos ou Fichiers, puis laisse HoopClips envoyer la vidéo pour l'analyse IA cloud.",
+        .rookieGuideImportTip: "Commence ici quand tu as un nouveau match.",
+        .rookieGuideReviewTitle: "Revois les clips",
+        .rookieGuideReviewBody: "Balaye ou touche KEEP / NAH pour trier les clips avant l'export.",
+        .rookieGuideReviewTip: "Les tags de retour aident les rapports de précision.",
+        .rookieGuideExportTitle: "Crée le reel",
+        .rookieGuideExportBody: "Choisis le style, la durée et AI Edit. Le rendu reste dans le cloud pour garder ton téléphone libre.",
+        .rookieGuideExportTip: "Utilise le prompt pour le style, pas pour contourner les règles.",
+        .rookieGuideHistoryTitle: "Retrouve tes exports",
+        .rookieGuideHistoryBody: "Historique regroupe les projets récents, exports et statuts de rendu cloud.",
+        .rookieGuideHistoryTip: "Reviens ici quand un rendu est terminé.",
+        .rookieGuideSettingsTitle: "Règle ton app",
+        .rookieGuideSettingsBody: "Change la langue, relance ce guide, ajuste les valeurs par défaut et envoie un retour depuis Réglages.",
+        .rookieGuideSettingsTip: "Tu peux revoir le guide depuis Réglages quand tu veux.",
         .settingsDeveloperFootnote: "Les diagnostics de lancement réservés aux développeurs sont masqués pour les utilisateurs en production."
     ]
 }
