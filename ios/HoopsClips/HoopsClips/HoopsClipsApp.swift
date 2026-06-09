@@ -42,14 +42,14 @@ struct HoopsClipsApp: App {
     }
 
     private static func configureNavigationTitlePlacement() {
-        let titleOffset = UIOffset(horizontal: 8, vertical: -4)
+        let titleOffset = UIOffset(horizontal: 12, vertical: -2)
         let titleParagraph = NSMutableParagraphStyle()
         titleParagraph.firstLineHeadIndent = titleOffset.horizontal
         titleParagraph.headIndent = titleOffset.horizontal
 
         let titleAttributes: [NSAttributedString.Key: Any] = [
             .foregroundColor: UIColor.white,
-            .baselineOffset: 2,
+            .baselineOffset: 1,
             .paragraphStyle: titleParagraph
         ]
 

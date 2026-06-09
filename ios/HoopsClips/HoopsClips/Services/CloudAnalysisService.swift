@@ -214,7 +214,7 @@ struct CloudAnalysisService {
 
         progress(0.28, "Starting cloud clip search")
         _ = try await startJob(baseURL: baseURL, jobID: job.jobId, installID: installID, teamSelection: teamSelection)
-        await onCloudHandoff?(job.jobId, job.sourceObjectKey)
+        onCloudHandoff?(job.jobId, job.sourceObjectKey)
 
         return try await pollJob(
             baseURL: baseURL,
@@ -284,7 +284,7 @@ struct CloudAnalysisService {
             installID: installID,
             teamSelection: teamSelection
         )
-        await onCloudHandoff?(preparedJob.job.jobId, preparedJob.job.sourceObjectKey)
+        onCloudHandoff?(preparedJob.job.jobId, preparedJob.job.sourceObjectKey)
 
         return try await pollJob(
             baseURL: baseURL,
