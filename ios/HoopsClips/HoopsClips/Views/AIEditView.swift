@@ -205,11 +205,14 @@ struct AIEditView: View {
     private var workflowContent: some View {
         VStack(spacing: 18) {
             heroCard
-            smartSetupCard
+            actionCard
+            compactExportSetupCard
+            exportProgressCard
             if showSetupControls || !userEditPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 promptCard
             }
             if showSetupControls {
+                smartSetupCard
                 stylePicker
                 formatPicker
                 durationPicker
@@ -218,11 +221,11 @@ struct AIEditView: View {
             if activePolicy.planTier.isFree, proUXFlags.proUpsellEnabled {
                 proValueCard
             }
-            actionCard
             statusCard
             if let previewPlayer {
                 previewCard(player: previewPlayer)
             }
+            exportBottomDock
             if editPlan != nil, downloadResponse != nil || revisionResponse != nil {
                 revisionCard
             }
@@ -289,10 +292,19 @@ struct AIEditView: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top, spacing: 14) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("EXPORT")
-                        .font(.caption2.bold())
-                        .tracking(1.4)
-                        .foregroundStyle(AppTheme.warningYellow)
+                    HStack(spacing: 8) {
+                        Text("EXPORT")
+                            .font(.caption2.bold())
+                            .tracking(1.4)
+                            .foregroundStyle(AppTheme.warningYellow)
+
+                        Text(appBuildPillText)
+                            .font(.caption2.bold())
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(AppTheme.cardBg.opacity(0.66), in: .capsule)
+                    }
 
                     Text("Make the reel")
                         .font(.largeTitle.bold())
@@ -302,7 +314,7 @@ struct AIEditView: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .accessibilityIdentifier("export.aiEdit.section")
 
-                    Text(activeAIWorkPhrase ?? "Cloud edit picks, renders, and saves the MP4.")
+                    Text("Cloud picks and renders your MP4.")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(AppTheme.subtleText)
                         .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
@@ -396,6 +408,186 @@ struct AIEditView: View {
             RoundedRectangle(cornerRadius: 14)
                 .stroke(.white.opacity(0.08), lineWidth: 1)
         )
+    }
+
+    private var compactExportSetupCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .center, spacing: 10) {
+                Label("Setup", systemImage: "slider.horizontal.3")
+                    .font(.headline)
+                    .foregroundStyle(.white)
+
+                Spacer(minLength: 0)
+
+                Button {
+                    HoopsAccessibility.animate(reduceMotion: reduceMotion, .snappy(duration: 0.18)) {
+                        showSetupControls.toggle()
+                    }
+                } label: {
+                    Text(showSetupControls ? "Done" : "Change")
+                        .font(.caption.bold())
+                        .foregroundStyle(AppTheme.warningYellow)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                        .background(AppTheme.warningYellow.opacity(0.12), in: .capsule)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("export.aiEdit.smartSetup.changeButton")
+            }
+
+            HStack(spacing: 8) {
+                exportSetupChip(selectedTemplateTitle, icon: "sparkles")
+                exportSetupChip(selectedAspectRatio.rawValue, icon: selectedAspectRatio.icon)
+                exportSetupChip(formattedDuration(selectedDuration), icon: "timer")
+            }
+
+            if !showSetupControls {
+                Button {
+                    HoopsAccessibility.animate(reduceMotion: reduceMotion, .snappy(duration: 0.18)) {
+                        showSetupControls = true
+                    }
+                } label: {
+                    Label(userEditPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Add note" : "Edit note", systemImage: "text.bubble.fill")
+                        .font(.caption.bold())
+                        .foregroundStyle(AppTheme.subtleText)
+                        .padding(.horizontal, 11)
+                        .padding(.vertical, 7)
+                        .background(AppTheme.cardBg.opacity(0.56), in: .capsule)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("export.aiEdit.prompt.addNote")
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(AppTheme.cardBg.opacity(0.78), in: .rect(cornerRadius: 18))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(AppTheme.neonPurple.opacity(0.18), lineWidth: 1)
+        )
+        .accessibilityIdentifier("export.aiEdit.smartSetupCard")
+    }
+
+    private func exportSetupChip(_ text: String, icon: String) -> some View {
+        Label(text, systemImage: icon)
+            .font(.caption.bold())
+            .foregroundStyle(.white)
+            .lineLimit(1)
+            .minimumScaleFactor(0.74)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity)
+            .background(AppTheme.accentPurple.opacity(0.26), in: .rect(cornerRadius: 12))
+    }
+
+    private var exportProgressCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .center, spacing: 14) {
+                ZStack {
+                    Circle()
+                        .stroke(AppTheme.cardBg.opacity(0.9), lineWidth: 8)
+                    Circle()
+                        .trim(from: 0, to: exportProgressValue)
+                        .stroke(
+                            LinearGradient(
+                                colors: [AppTheme.neonPurple, AppTheme.warningYellow],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            style: StrokeStyle(lineWidth: 8, lineCap: .round)
+                        )
+                        .rotationEffect(.degrees(-90))
+                    Image(systemName: exportProgressIcon)
+                        .font(.headline.bold())
+                        .foregroundStyle(exportProgressTint)
+                }
+                .frame(width: 58, height: 58)
+                .accessibilityHidden(true)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(exportProgressTitle)
+                        .font(.headline)
+                        .foregroundStyle(.white)
+                        .accessibilityIdentifier("export.aiEdit.statusLabel")
+                    Text(exportProgressSubtitle)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(AppTheme.subtleText)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 0)
+            }
+
+            HStack(spacing: 6) {
+                ForEach(Array(exportTimelineSteps.enumerated()), id: \.offset) { _, step in
+                    HStack(spacing: 5) {
+                        Circle()
+                            .fill(step.isComplete ? AppTheme.successGreen : (step.isActive ? AppTheme.warningYellow : AppTheme.subtleText.opacity(0.38)))
+                            .frame(width: 7, height: 7)
+                        Text(step.title)
+                            .font(.caption2.bold())
+                            .foregroundStyle(step.isComplete || step.isActive ? .white : AppTheme.subtleText)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.74)
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+            }
+        }
+        .padding(14)
+        .background(AppTheme.cardBg.opacity(0.74), in: .rect(cornerRadius: 18))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(exportProgressTint.opacity(0.18), lineWidth: 1)
+        )
+        .accessibilityIdentifier("export.aiEdit.renderProgressCard")
+    }
+
+    private var exportBottomDock: some View {
+        HStack(spacing: 10) {
+            exportDockButton(title: "Preview", icon: "play.rectangle.fill", isEnabled: downloadResponse != nil) {
+                HoopsAccessibility.announce(downloadResponse == nil ? "Preview will unlock after render." : "Preview is ready above.")
+            }
+
+            exportDockButton(title: "Save", icon: "square.and.arrow.down.fill", isEnabled: downloadResponse != nil && !isPreparingShare) {
+                Task { await saveRenderedVideoToPhotos() }
+            }
+
+            exportDockButton(title: "Share", icon: "square.and.arrow.up.fill", isEnabled: downloadResponse != nil && !isPreparingShare) {
+                shareRenderedVideo()
+            }
+        }
+        .padding(8)
+        .background(AppTheme.cardBg.opacity(0.72), in: .rect(cornerRadius: 18))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(AppTheme.neonPurple.opacity(0.14), lineWidth: 1)
+        )
+        .accessibilityIdentifier("export.aiEdit.bottomDock")
+    }
+
+    private func exportDockButton(
+        title: String,
+        icon: String,
+        isEnabled: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            VStack(spacing: 5) {
+                Image(systemName: icon)
+                    .font(.subheadline.bold())
+                Text(title)
+                    .font(.caption2.bold())
+            }
+            .foregroundStyle(isEnabled ? .white : AppTheme.subtleText.opacity(0.58))
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 10)
+            .background(isEnabled ? AppTheme.accentPurple.opacity(0.28) : AppTheme.cardBg.opacity(0.34), in: .rect(cornerRadius: 13))
+        }
+        .buttonStyle(.plain)
+        .disabled(!isEnabled)
+        .accessibilityIdentifier("export.aiEdit.bottomDock.\(title.lowercased())")
     }
 
     private var planTierCard: some View {
@@ -2329,6 +2521,110 @@ struct AIEditView: View {
             return "Cloud editing config check failed: \(serviceStatusErrorMessage)"
         }
         return "Cloud editing config check failed."
+    }
+
+    private var appBuildPillText: String {
+        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String
+        guard let build, !build.isEmpty else { return "Build -" }
+        return "Build \(build)"
+    }
+
+    private var exportProgressValue: CGFloat {
+        switch phase {
+        case .planning:
+            return hasStartedAIEditJob ? 0.22 : 0.08
+        case .planReady:
+            return 0.38
+        case .renderRequested, .created, .queued:
+            return 0.58
+        case .rendering:
+            return 0.78
+        case .rendered:
+            return 1
+        case .failed, .failedTimeout, .cancelled:
+            return 1
+        }
+    }
+
+    private var exportProgressTitle: String {
+        switch phase {
+        case .planning:
+            return hasStartedAIEditJob || isWorking ? "Analyzing clips" : "Ready to export"
+        case .planReady:
+            return "Edit plan ready"
+        case .renderRequested, .created, .queued:
+            return "Render queued"
+        case .rendering:
+            return "Rendering MP4"
+        case .rendered:
+            return "Your reel is ready"
+        case .failed, .failedTimeout:
+            return "Render failed"
+        case .cancelled:
+            return "Render cancelled"
+        }
+    }
+
+    private var exportProgressSubtitle: String {
+        if phase == .rendered {
+            return "Preview, save, or share below."
+        }
+        if phase == .failed || phase == .failedTimeout || phase == .cancelled {
+            return "Try again when the cloud job is available."
+        }
+        if isWorking || hasStartedAIEditJob {
+            return "This can take a while."
+        }
+        return "Pick setup, then make the reel."
+    }
+
+    private var exportProgressIcon: String {
+        switch phase {
+        case .rendered:
+            return "checkmark"
+        case .failed, .failedTimeout, .cancelled:
+            return "exclamationmark"
+        case .rendering, .renderRequested, .created, .queued:
+            return "film"
+        default:
+            return "sparkles"
+        }
+    }
+
+    private var exportProgressTint: Color {
+        switch phase {
+        case .rendered:
+            return AppTheme.successGreen
+        case .failed, .failedTimeout, .cancelled:
+            return AppTheme.dangerRed
+        case .rendering, .renderRequested, .created, .queued:
+            return AppTheme.warningYellow
+        default:
+            return AppTheme.neonPurple
+        }
+    }
+
+    private var exportTimelineSteps: [(title: String, isComplete: Bool, isActive: Bool)] {
+        let activeIndex: Int
+        switch phase {
+        case .planning:
+            activeIndex = 0
+        case .planReady:
+            activeIndex = 1
+        case .renderRequested, .created, .queued, .rendering, .failed, .failedTimeout, .cancelled:
+            activeIndex = 2
+        case .rendered:
+            activeIndex = 3
+        }
+
+        let steps = ["Analyze", "Edit", "Render", "Share"]
+        return steps.enumerated().map { index, title in
+            (
+                title: title,
+                isComplete: phase == .rendered ? true : index < activeIndex,
+                isActive: phase == .rendered ? false : index == activeIndex
+            )
+        }
     }
 
     private var primaryActionDisabled: Bool {
