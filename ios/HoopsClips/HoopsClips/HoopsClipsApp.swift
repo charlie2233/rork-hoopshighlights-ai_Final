@@ -42,10 +42,11 @@ struct HoopsClipsApp: App {
     }
 
     private static func configureNavigationTitlePlacement() {
-        let titleOffset = UIOffset(horizontal: 12, vertical: -2)
+        let titleLeadingInset: CGFloat = 24
+        let titleOffset = UIOffset(horizontal: 0, vertical: -2)
         let titleParagraph = NSMutableParagraphStyle()
-        titleParagraph.firstLineHeadIndent = titleOffset.horizontal
-        titleParagraph.headIndent = titleOffset.horizontal
+        titleParagraph.firstLineHeadIndent = titleLeadingInset
+        titleParagraph.headIndent = titleLeadingInset
 
         let titleAttributes: [NSAttributedString.Key: Any] = [
             .foregroundColor: UIColor.white,
@@ -63,6 +64,8 @@ struct HoopsClipsApp: App {
 
         let navigationBar = UINavigationBar.appearance()
         navigationBar.tintColor = UIColor(AppTheme.neonPurple)
+        navigationBar.layoutMargins.left = titleLeadingInset
+        navigationBar.layoutMargins.right = 16
         navigationBar.standardAppearance = navigationAppearance
         navigationBar.scrollEdgeAppearance = navigationAppearance
         navigationBar.compactAppearance = navigationAppearance
