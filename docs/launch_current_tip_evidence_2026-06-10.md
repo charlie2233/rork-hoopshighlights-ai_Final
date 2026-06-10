@@ -1,44 +1,44 @@
 # HoopClips current-tip launch evidence - 2026-06-10
 
-This document captures the launch evidence for the current `main` tip after the
-navigation title cleanup, TestFlight signing fix, and staging cloud redeploy.
+This document captures the current launch evidence for `main` after the build-19 TestFlight refresh and current-tip staging cloud redeploy.
 
 ## Current checkout
 
 - Branch: `main`
-- Commit: `06a7775c0b46505c1eec453ceab0f7602532cd7d`
-- Short commit: `06a7775c Archive TestFlight build without development signing`
-- Repo hygiene before this evidence pass:
-  - `git status --short --branch`: `## main...origin/main`
-  - `git diff --stat`: no output
-  - `git diff --check`: no output
+- Commit: `8dea6baab81f2cb66f0cc86c6f6d926b73e85352`
+- Short commit: `8dea6baa Align TestFlight archive metadata check with build 19`
+- App build number: `19`
+- Marketing version: `1.0.0`
+- Bundle ID: `atrak.charlie.hoopsclips`
+
+Repo hygiene before the current evidence update:
+
+- `git status --short --branch`: `## main...origin/main`
+- Intentional launch-proof changes since build 18:
+  - app target `CURRENT_PROJECT_VERSION` bumped to `19`
+  - internal staging verifier expected build bumped to `19`
+  - TestFlight archive metadata verifier expected `CFBundleVersion` bumped to `19`
 
 ## iOS unit tests
 
-- Lane: XcodeBuildMCP `test_sim`
+- Tool: XcodeBuildMCP `test_sim`
 - Project: `/Users/hanfei/rork-hoopshighlights-ai_Final/ios/HoopsClips.xcodeproj`
 - Scheme: `HoopsClips`
 - Simulator: `iPhone 17`
-- Test selector: `-only-testing:HoopsClipsTests`
+- Selector: `-only-testing:HoopsClipsTests`
 - Result: `SUCCEEDED`
 - Count: `181 passed, 0 failed, 0 skipped`
 - Diagnostics: `warnings: []`, `errors: []`
 - Build log:
-  `/Users/hanfei/Library/Developer/XcodeBuildMCP/workspaces/rork-hoopshighlights-ai_Final-b63ced5e161c/logs/test_sim_2026-06-10T07-44-29-676Z_pid5998_325fc96c.log`
+  `/Users/hanfei/Library/Developer/XcodeBuildMCP/workspaces/rork-hoopshighlights-ai_Final-b63ced5e161c/logs/test_sim_2026-06-10T07-56-52-806Z_pid5998_9e77d34a.log`
 - Result bundle:
-  `/Users/hanfei/Library/Developer/XcodeBuildMCP/workspaces/rork-hoopshighlights-ai_Final-b63ced5e161c/result-bundles/test_sim_2026-06-10T07-44-29-676Z_pid5998_c4ed679b.xcresult`
+  `/Users/hanfei/Library/Developer/XcodeBuildMCP/workspaces/rork-hoopshighlights-ai_Final-b63ced5e161c/result-bundles/test_sim_2026-06-10T07-56-52-806Z_pid5998_fcef3cb3.xcresult`
 
-Notes:
-
-- This confirms the `CloudAnalysisService` await-warning cleanup is clean on
-  current `main`.
-- The focused unit lane includes the app language store, cloud analysis copy,
-  cloud edit request/response, duplicate suppression, render status, runtime
-  config, telemetry redaction, and import-policy tests.
+This verifies the `CloudAnalysisService` await-warning cleanup remains clean after the build-19 bump.
 
 ## Simulator screenshot pass
 
-Build and launch:
+Build and launch evidence:
 
 - XcodeBuildMCP `build_sim`: `SUCCEEDED`, diagnostics `warnings: []`, `errors: []`
 - XcodeBuildMCP `build_run_sim`: `SUCCEEDED`, diagnostics `warnings: []`, `errors: []`
@@ -62,31 +62,29 @@ Screenshots captured:
 
 Visual QA result:
 
-- Native page titles are no longer clipped or too far left on Player, Review,
-  Export, History, or Settings.
-- Rookie guide overlay is readable in the English pass and does not stack copy
-  into unusable columns.
-- Export empty state does not show the duplicated status-card progress content.
+- Native page titles are no longer clipped or too far left on Player, Review, Export, History, or Settings.
+- Rookie guide overlay is readable in the English pass and does not stack copy into unusable columns.
+- Export empty state does not show duplicated status-card progress content.
 
-Remaining screenshot QA:
+Remaining screenshot QA recommendation:
 
-- A Chinese-language rookie guide screenshot pass is still recommended before
-  public launch, because copy length and wrapping can differ materially.
+- Add an automated Chinese-language rookie guide screenshot pass before public launch.
 
 ## TestFlight upload proof
 
-- Workflow: `iOS Internal TestFlight Upload`
-- Run ID: `27259751307`
-- URL:
-  `https://github.com/charlie2233/rork-hoopshighlights-ai_Final/actions/runs/27259751307`
-- Event: `workflow_dispatch`
-- Commit: `06a7775c0b46505c1eec453ceab0f7602532cd7d`
-- Conclusion: `success`
-- App target build number in current project: `18`
-- Marketing version: `1.0.0`
-- Bundle ID: `atrak.charlie.hoopsclips`
+Current successful upload:
 
-Successful workflow steps included:
+- Workflow: `iOS Internal TestFlight Upload`
+- Run ID: `27262373169`
+- URL: `https://github.com/charlie2233/rork-hoopshighlights-ai_Final/actions/runs/27262373169`
+- Event: `workflow_dispatch`
+- Commit: `8dea6baab81f2cb66f0cc86c6f6d926b73e85352`
+- Conclusion: `success`
+- Job: `Build internal staging TestFlight archive`
+- Job duration: `7m4s`
+- App build: `19`
+
+Successful steps included:
 
 - Verify internal staging build settings
 - Materialize App Store Connect API key
@@ -96,29 +94,28 @@ Successful workflow steps included:
 - Print next-step summary
 - Remove App Store Connect API key
 
-Notes:
+Superseded attempts:
 
-- Build `18` does not need to be bumped for this pass because the current-main
-  workflow upload succeeded.
-- Earlier failed upload attempts were superseded by commit `06a7775c`, which
-  archives without development signing and lets export/upload signing handle the
-  distribution step.
+- `27261937838` failed because internal staging verifier still expected build `18` after the app was bumped to `19`.
+- `27262035365` failed because archive metadata verifier still expected `CFBundleVersion=18` after the archive correctly resolved to `19`.
+- Both verifier mismatches are now fixed on current `main`.
 
 ## Staging cloud deploy proof
 
+Current successful deploy:
+
 - Workflow: `Cloud Edit Deploy Preflight`
-- Run ID: `27260636955`
-- URL:
-  `https://github.com/charlie2233/rork-hoopshighlights-ai_Final/actions/runs/27260636955`
+- Run ID: `27262781244`
+- URL: `https://github.com/charlie2233/rork-hoopshighlights-ai_Final/actions/runs/27262781244`
 - Event: `workflow_dispatch`
-- Commit: `06a7775c0b46505c1eec453ceab0f7602532cd7d`
+- Commit: `8dea6baab81f2cb66f0cc86c6f6d926b73e85352`
 - Conclusion: `success`
 
-Successful workflow jobs included:
+Successful jobs included:
 
+- Secret-safe launch evidence snapshot
 - Worker typecheck and dry run
 - Editing backend Python tests
-- Secret-safe launch evidence snapshot
 - Verify cloud edit deploy secrets
 - Verify editing deploy preflight
 - Verify Wrangler token authentication
@@ -132,17 +129,31 @@ Successful workflow jobs included:
 
 ## Current cloud endpoint proof
 
+Independent endpoint checks after deploy:
+
+Worker `/v1/editing/version`:
+
+```json
+{
+  "backendModelVersion": "editing-cloud-v1",
+  "gitSha": "8dea6baab81f2cb66f0cc86c6f6d926b73e85352",
+  "matchesHead": true,
+  "service": "hoopclips-editing"
+}
+```
+
 Direct editing `/version`:
 
 ```json
 {
   "backendModelVersion": "editing-cloud-v1",
-  "gitSha": "06a7775c0b46505c1eec453ceab0f7602532cd7d",
+  "gitSha": "8dea6baab81f2cb66f0cc86c6f6d926b73e85352",
+  "matchesHead": true,
   "service": "hoopclips-editing"
 }
 ```
 
-Direct editing feature flags:
+Current feature flags from both Worker and direct editing:
 
 ```json
 {
@@ -159,7 +170,7 @@ Direct editing feature flags:
 }
 ```
 
-Direct editing GPT reranker:
+GPT reranker:
 
 ```json
 {
@@ -186,111 +197,56 @@ Direct editing `/readyz`:
 }
 ```
 
-Worker `/v1/editing/version`:
-
-```json
-{
-  "backendModelVersion": "editing-cloud-v1",
-  "gitSha": "06a7775c0b46505c1eec453ceab0f7602532cd7d",
-  "service": "hoopclips-editing"
-}
-```
-
-Worker feature flags:
-
-```json
-{
-  "aiClipGptEditorEnabled": true,
-  "aiClipGptPlanEditEnabled": true,
-  "aiClipGptRevisionEnabled": true,
-  "aiEditEnabled": true,
-  "aiEditFreeWatermarkRequired": true,
-  "aiEditLiveRenderEnabled": true,
-  "aiEditProExportsEnabled": false,
-  "aiEditRevisionEnabled": true,
-  "aiEditTemplatePackEnabled": true,
-  "gptHighlightRerankerEnabled": true
-}
-```
-
-Worker GPT reranker:
-
-```json
-{
-  "configured": true,
-  "enabled": true,
-  "model": "gpt-4.1"
-}
-```
-
-Notes:
-
-- A Python `urllib` request returned `403`, but the same Worker URL with the
-  workflow-equivalent `curl` request returned HTTP `200` and current JSON.
-- The CI deploy workflow also verified Worker `/v1/editing/version` immediately
-  after the deploy.
-
 ## Real cloud render smoke
 
 Source:
 
-- File: `/tmp/hoopclips-live-smoke-real/troy-buzzer-smoke.mp4`
-- Source object key:
-  `uploads/c11b2c648bb844fabe2b5ca328eec2a1/troy-buzzer-smoke.mp4`
-- Source fixture basis: Troy vs El Dorado real-game clip, short buzzer-beater
-  window from the user's 57-minute source video.
+- Local file: `/tmp/hoopclips-live-smoke-real/troy-buzzer-smoke.mp4`
+- Source object key: `uploads/2bf987c8305345d8a08965cf6d849892/troy-buzzer-smoke.mp4`
+- Fixture basis: real Troy vs El Dorado basketball clip from the user's source video.
 
-Post-deploy smoke summary:
+Current-main post-deploy smoke:
 
-- Summary file:
-  `/tmp/hoopclips-live-smoke-real/real-troy-current-smoke-1781077292/real_troy_postdeploy_smoke_summary.json`
-- Install ID: `real-troy-current-smoke-1781077292`
-- Edit job ID: `edit_17ea5d9d1a6e4cc48598bbc4a1601eb2`
-- Base render job ID: `render_eb3ff351f6344728ad09ff6e637ca1c5`
-- Revision ID: `rev_7aeb51677bc3421da20236b9cbc6a824`
-- Revision render job ID: `render_3f92f8650b39467d8bbfad8e19d08e7e`
+- Summary file: `/tmp/hoopclips-live-smoke-real/real-troy-current-main-smoke-1781079768/real_troy_current_main_smoke_summary.json`
+- Install ID: `real-troy-current-main-smoke-1781079768`
+- Worker URL: `https://hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev`
+- Version SHA during smoke: `8dea6baab81f2cb66f0cc86c6f6d926b73e85352`
+- Backend model version: `editing-cloud-v1`
+- GPT reranker: enabled, configured, model `gpt-4.1`
+- Edit job ID: `edit_b467334a661b4c448cd132eeec8bdb67`
+- Base render job ID: `render_d65f4db091604de1b0436689e799f43e`
+- Revision ID: `rev_28c443f360d64acb8d736d695453eb4d`
+- Revision render job ID: `render_b6b0cf2368b84b9e8195e375881d49cf`
 
-Base media proof:
+Base render downloaded MP4:
 
-```json
-{
-  "audioCodec": "aac",
-  "duration": "13.822005",
-  "format": "mov,mp4,m4a,3gp,3g2,mj2",
-  "height": 1280,
-  "size": "1129425",
-  "videoCodec": "h264",
-  "width": 720
-}
-```
+- Path: `/tmp/hoopclips-live-smoke-real/real-troy-current-main-smoke-1781079768/base.mp4`
+- Container: `mov,mp4,m4a,3gp,3g2,mj2`
+- Duration: `13.822005s`
+- Size: `1011528` bytes
+- Video: H.264, `720x1280`, `9:16`, `30/1`, `yuv420p`
+- Audio: AAC LC, stereo, `44100 Hz`
 
-Revision media proof:
+Revision render downloaded MP4:
 
-```json
-{
-  "audioCodec": "aac",
-  "duration": "13.822005",
-  "format": "mov,mp4,m4a,3gp,3g2,mj2",
-  "height": 1280,
-  "size": "1138712",
-  "videoCodec": "h264",
-  "width": 720
-}
-```
+- Path: `/tmp/hoopclips-live-smoke-real/real-troy-current-main-smoke-1781079768/revised.mp4`
+- Container: `mov,mp4,m4a,3gp,3g2,mj2`
+- Duration: `13.822005s`
+- Size: `1020977` bytes
+- Video: H.264, `720x1280`, `9:16`, `30/1`, `yuv420p`
+- Audio: AAC LC, stereo, `44100 Hz`
 
 Notes:
 
-- This smoke proves Worker to Cloud Run to R2-backed render flow on real
-  basketball footage, including a revision render.
-- Synthetic smoke fixtures are now stale for GPT-enabled staging because the GPT
-  reranker correctly rejects non-basketball synthetic clips with an empty clip
-  list. The real Troy clip is the stronger launch smoke.
+- This smoke proves Worker to Cloud Run to R2-backed render flow on real basketball footage after the current-tip deploy.
+- It also proves the revision render path by producing a More Hype revised MP4.
+- Synthetic smoke fixtures remain a poor GPT-enabled launch signal because GPT can correctly reject synthetic non-basketball clips.
 
 ## Real iPhone TestFlight smoke
 
 Status: not final-proofed.
 
-Current local device check after the evidence doc was first created:
+Current local device check from this evidence pass:
 
 ```text
 charlie's iPhone / charlie的iPhone
@@ -299,15 +255,13 @@ State: available (paired)
 Model: iPhone 15 Pro (iPhone16,1)
 ```
 
-Notes:
+Limits of Mac-side proof:
 
-- XcodeBuildMCP device workflows are not enabled in this session; only simulator
-  workflows are available through the MCP tool.
-- A read-only `devicectl device info apps` check for the HoopClips bundle hung
-  and was stopped, so installed TestFlight app state is not proven from the Mac.
+- XcodeBuildMCP device workflows are not enabled in this session; only simulator workflows are available through the MCP tool.
+- A read-only `devicectl device info apps` check for the HoopClips bundle previously hung and was stopped, so installed TestFlight app state is not proven from the Mac.
 - The user still needs to complete the real on-device TestFlight tap-through.
 
-Required phone flow still to capture on TestFlight build `18`:
+Required phone flow still to capture on TestFlight build `19`:
 
 - Install/open TestFlight build
 - Import video
@@ -334,19 +288,12 @@ Evidence to capture from the phone smoke:
 
 ## Remaining launch blockers
 
-1. Real iPhone TestFlight full smoke is still missing final proof. The phone is
-   now paired/available, but the installed TestFlight app state and full user
-   flow have not been proven.
-2. Production cutover still needs an explicit release-owner decision after the
-   real phone smoke passes.
-3. Accuracy is accepted risk for this launch pass, but formal 85% labeled
-   accuracy proof is still not completed.
+1. Real iPhone TestFlight full smoke is still missing final proof. The phone is paired/available, and build `19` is uploaded, but the installed app flow has not been proven.
+2. Production cutover still needs an explicit release-owner go/no-go after the real phone smoke passes.
+3. Accuracy is accepted risk for this launch pass, but formal 85% labeled accuracy proof is still not completed.
 
 ## Recommended next improvements
 
-1. Add an in-app smoke checklist/debug sheet that can copy build number, Worker
-   SHA, Cloud Run SHA, analysis job ID, render job ID, and revision ID.
-2. Add bilingual screenshot QA for the rookie guide so English and Chinese copy
-   wrapping are both caught before upload.
-3. Add a real-basketball smoke fixture path to replace the old synthetic smoke
-   scripts when GPT reranking is enabled.
+1. Add an in-app smoke checklist/debug sheet that can copy build number, Worker SHA, Cloud Run SHA, analysis job ID, render job ID, and revision ID.
+2. Add bilingual screenshot QA for the rookie guide so English and Chinese copy wrapping are both caught before upload.
+3. Replace synthetic smoke scripts with a real-basketball GPT smoke fixture path for GPT-reranker-enabled staging.
