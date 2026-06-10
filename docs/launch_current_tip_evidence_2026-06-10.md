@@ -5,8 +5,8 @@ This document captures the current launch evidence for `main` after the build-19
 ## Evidence baseline
 
 - Branch: `main`
-- Evidence baseline commit: `b221f99a40fc6b7c3053d6a540be9b14f742a012`
-- Short commit: `b221f99a Document physical phone build state`
+- Evidence baseline commit: `4772b3183f0e5c66b013974950ce2f63e8ba23fa`
+- Short commit: `4772b318 Update phone launch evidence for build 19`
 - App build number: `19`
 - Marketing version: `1.0.0`
 - Bundle ID: `atrak.charlie.hoopsclips`
@@ -14,7 +14,7 @@ This document captures the current launch evidence for `main` after the build-19
 Binary/runtime note:
 
 - The latest app-code, build-setting, TestFlight-upload, and staging-cloud-deploy proof is commit `8dea6baab81f2cb66f0cc86c6f6d926b73e85352`.
-- The only checkout change from `8dea6baab81f2cb66f0cc86c6f6d926b73e85352` to current `main` is this launch evidence document.
+- The only checkout changes from `8dea6baab81f2cb66f0cc86c6f6d926b73e85352` through the latest evidence baseline are launch evidence document updates.
 - Therefore the installed TestFlight build `19` still matches the current app binary and cloud launch proof; the repository can be documentation-only ahead of the uploaded binary/deployed runtime without changing the app artifact.
 
 Repo hygiene before the current evidence update:
@@ -109,9 +109,9 @@ Superseded attempts:
 Latest doc-only push codecheck:
 
 - Workflow: `iOS Internal TestFlight Upload`
-- Run ID: `27263714166`
-- URL: `https://github.com/charlie2233/rork-hoopshighlights-ai_Final/actions/runs/27263714166`
-- Commit: `b221f99a40fc6b7c3053d6a540be9b14f742a012`
+- Run ID: `27264119710`
+- URL: `https://github.com/charlie2233/rork-hoopshighlights-ai_Final/actions/runs/27264119710`
+- Commit: `4772b3183f0e5c66b013974950ce2f63e8ba23fa`
 - Conclusion: `success`
 - Notes: archive/upload job was skipped on push; no-secret internal staging codecheck passed, including internal staging config verification, export-options validation, and Debug test build without signing.
 
@@ -145,9 +145,9 @@ Successful jobs included:
 Latest doc-only push codecheck:
 
 - Workflow: `Cloud Edit Deploy Preflight`
-- Run ID: `27263714193`
-- URL: `https://github.com/charlie2233/rork-hoopshighlights-ai_Final/actions/runs/27263714193`
-- Commit: `b221f99a40fc6b7c3053d6a540be9b14f742a012`
+- Run ID: `27264119612`
+- URL: `https://github.com/charlie2233/rork-hoopshighlights-ai_Final/actions/runs/27264119612`
+- Commit: `4772b3183f0e5c66b013974950ce2f63e8ba23fa`
 - Conclusion: `success`
 - Notes: deploy jobs were skipped on push; Worker typecheck/dry run and editing backend Python tests passed.
 
