@@ -100,6 +100,14 @@ Superseded attempts:
 - `27262035365` failed because archive metadata verifier still expected `CFBundleVersion=18` after the archive correctly resolved to `19`.
 - Both verifier mismatches are now fixed on current `main`.
 
+Latest doc-only push codecheck:
+
+- Workflow: `iOS Internal TestFlight Upload`
+- Run ID: `27263364914`
+- Commit: `80d5fe176a1a88e9496d51f0906cbdd3c64f8da5`
+- Conclusion: `success`
+- Notes: archive/upload job was skipped on push; no-secret internal staging codecheck passed, including internal staging config verification, export-options validation, and Debug test build without signing.
+
 ## Staging cloud deploy proof
 
 Current successful deploy:
@@ -126,6 +134,14 @@ Successful jobs included:
 - Verify direct editing version after deploy
 - Deploy staging Worker
 - Verify Worker editing version after deploy
+
+Latest doc-only push codecheck:
+
+- Workflow: `Cloud Edit Deploy Preflight`
+- Run ID: `27263364902`
+- Commit: `80d5fe176a1a88e9496d51f0906cbdd3c64f8da5`
+- Conclusion: `success`
+- Notes: deploy jobs were skipped on push; Worker typecheck/dry run and editing backend Python tests passed.
 
 ## Current cloud endpoint proof
 
@@ -255,11 +271,27 @@ State: available (paired)
 Model: iPhone 15 Pro (iPhone16,1)
 ```
 
-Limits of Mac-side proof:
+Mac-side app install/launch proof:
 
+- HoopClips bundle launch succeeded on the paired iPhone:
+  `Launched application with atrak.charlie.hoopsclips bundle identifier.`
+- Installed HoopClips app metadata on the phone:
+  - Name: `HoopClips`
+  - Bundle ID: `atrak.charlie.hoopsclips`
+  - Version: `1.0.0`
+  - Bundle Version: `16`
+- TestFlight app is installed:
+  - Bundle ID: `com.apple.TestFlight`
+  - Version: `4.2.1`
+  - Bundle Version: `628.1`
+- TestFlight launch succeeded on the paired iPhone:
+  `Launched application with com.apple.TestFlight bundle identifier.`
+
+Current phone-smoke blocker:
+
+- The phone currently has HoopClips build `16`, not uploaded build `19`.
+- The user needs to update HoopClips inside TestFlight to build `19` before the full smoke can count as current launch proof.
 - XcodeBuildMCP device workflows are not enabled in this session; only simulator workflows are available through the MCP tool.
-- A read-only `devicectl device info apps` check for the HoopClips bundle previously hung and was stopped, so installed TestFlight app state is not proven from the Mac.
-- The user still needs to complete the real on-device TestFlight tap-through.
 
 Required phone flow still to capture on TestFlight build `19`:
 
@@ -288,7 +320,7 @@ Evidence to capture from the phone smoke:
 
 ## Remaining launch blockers
 
-1. Real iPhone TestFlight full smoke is still missing final proof. The phone is paired/available, and build `19` is uploaded, but the installed app flow has not been proven.
+1. Real iPhone TestFlight full smoke is still missing final proof. The phone is paired/available, TestFlight is installed, and build `19` is uploaded, but the phone currently has HoopClips build `16`; update to build `19` first.
 2. Production cutover still needs an explicit release-owner go/no-go after the real phone smoke passes.
 3. Accuracy is accepted risk for this launch pass, but formal 85% labeled accuracy proof is still not completed.
 
