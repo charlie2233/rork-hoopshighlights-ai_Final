@@ -290,14 +290,22 @@ Notes:
 
 Status: not final-proofed.
 
-Current local device check:
+Current local device check after the evidence doc was first created:
 
 ```text
 charlie's iPhone / charlie的iPhone
 Identifier: E5786BB6-0095-5509-8B85-110C0B5CE6D3
-State: unavailable
+State: available (paired)
 Model: iPhone 15 Pro (iPhone16,1)
 ```
+
+Notes:
+
+- XcodeBuildMCP device workflows are not enabled in this session; only simulator
+  workflows are available through the MCP tool.
+- A read-only `devicectl device info apps` check for the HoopClips bundle hung
+  and was stopped, so installed TestFlight app state is not proven from the Mac.
+- The user still needs to complete the real on-device TestFlight tap-through.
 
 Required phone flow still to capture on TestFlight build `18`:
 
@@ -326,8 +334,9 @@ Evidence to capture from the phone smoke:
 
 ## Remaining launch blockers
 
-1. Real iPhone TestFlight full smoke is still missing final proof because the
-   connected device currently reports `unavailable`.
+1. Real iPhone TestFlight full smoke is still missing final proof. The phone is
+   now paired/available, but the installed TestFlight app state and full user
+   flow have not been proven.
 2. Production cutover still needs an explicit release-owner decision after the
    real phone smoke passes.
 3. Accuracy is accepted risk for this launch pass, but formal 85% labeled
