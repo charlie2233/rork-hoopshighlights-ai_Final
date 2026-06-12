@@ -152,6 +152,9 @@ struct ContentView: View {
         .onChange(of: selectedTab) { oldValue, newValue in
             recordTabSwitchBreadcrumb(fromRawValue: oldValue, toRawValue: newValue, phase: "active", trigger: "state")
         }
+        .onChange(of: reviewSafetySignature) { _, _ in
+            resetReviewTabIfNeeded(reason: "review_state_changed")
+        }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
             LaunchTelemetry.shared.recordMemoryWarning(screen: selectedTabTelemetryName)
         }
@@ -497,7 +500,31 @@ struct ContentView: View {
     }
 
     private var activeTab: AppTab {
-        AppTab(rawValue: selectedTab) ?? .player
+        let tab = AppTab(rawValue: selectedTab) ?? .player
+        if tab == .review, !hasCurrentReviewableClips {
+            return .player
+        }
+        return tab
+    }
+
+    private var hasCurrentReviewableClips: Bool {
+        guard viewModel.isVideoLoaded, !viewModel.clips.isEmpty else { return false }
+        return viewModel.clips.contains(isReviewableClip)
+    }
+
+    private var currentReviewableClipCount: Int {
+        viewModel.clips.filter(isReviewableClip).count
+    }
+
+    private var reviewSafetySignature: String {
+        [
+            "selected=\(selectedTab)",
+            "videoLoaded=\(viewModel.isVideoLoaded)",
+            "duration=\(viewModel.videoDuration)",
+            "clips=\(viewModel.clips.count)",
+            "reviewable=\(currentReviewableClipCount)",
+            "project=\(viewModel.currentProjectID?.uuidString ?? "none")"
+        ].joined(separator: "|")
     }
 
     @ViewBuilder
@@ -769,6 +796,10 @@ struct ContentView: View {
     private func selectTab(_ tab: AppTab) {
         guard selectedTab != tab.rawValue else { return }
         recordTabSwitchBreadcrumb(fromRawValue: selectedTab, toRawValue: tab.rawValue, phase: "requested", trigger: "tab_bar")
+        if tab == .review, !hasCurrentReviewableClips {
+            resetToDefaultTabAfterReviewBlock(reason: "no_reviewable_clips")
+            return
+        }
         guard !reduceMotion else {
             selectedTab = tab.rawValue
             return
@@ -798,6 +829,49 @@ struct ContentView: View {
         let targetRawValue = min(max(selectedTab + delta, firstTab), lastTab)
         guard let targetTab = AppTab(rawValue: targetRawValue) else { return }
         selectTab(targetTab)
+    }
+
+    private func resetReviewTabIfNeeded(reason: String) {
+        guard selectedTab == AppTab.review.rawValue, !hasCurrentReviewableClips else { return }
+        resetToDefaultTabAfterReviewBlock(reason: reason)
+    }
+
+    private func resetToDefaultTabAfterReviewBlock(reason: String) {
+        LaunchTelemetry.shared.recordStabilityCheckpoint(
+            "tab.switch.blocked",
+            metadata: reviewBlockMetadata(reason: reason)
+        )
+        guard selectedTab != AppTab.player.rawValue else { return }
+
+        if reduceMotion {
+            selectedTab = AppTab.player.rawValue
+        } else {
+            withAnimation(tabSwipeAnimation) {
+                selectedTab = AppTab.player.rawValue
+            }
+        }
+        HoopsAccessibility.announce("No reviewable clips yet. Opening Player.")
+    }
+
+    private func reviewBlockMetadata(reason: String) -> String {
+        [
+            "reason=\(reason)",
+            "videoLoaded=\(viewModel.isVideoLoaded)",
+            "clips=\(viewModel.clips.count)",
+            "reviewable=\(currentReviewableClipCount)",
+            "videoDuration=\(viewModel.videoDuration)",
+            "project=\(viewModel.currentProjectID?.uuidString ?? "none")"
+        ].joined(separator: " ")
+    }
+
+    private func isReviewableClip(_ clip: Clip) -> Bool {
+        guard clip.startTime.isFinite, clip.endTime.isFinite else { return false }
+        let sourceDuration = viewModel.videoDuration
+        let hasFiniteSourceDuration = sourceDuration.isFinite && sourceDuration > 0
+        let upperBound = hasFiniteSourceDuration ? sourceDuration : max(clip.startTime, clip.endTime)
+        let start = max(0, min(clip.startTime, upperBound))
+        let end = max(0, min(clip.endTime, upperBound))
+        return end > start
     }
 
     private func recordTabSwitchBreadcrumb(

@@ -11,9 +11,11 @@ final class LaunchTelemetry {
     private let stabilityLastUnexpectedExitKey = "hoopsclips.stability.lastUnexpectedExit.v1"
     private let latestAIEditProofKey = "hoopsclips.launchProof.latestAIEdit.v1"
     private let latestCrashReportDeliveryKey = "hoopsclips.stability.latestCrashReportDelivery.v1"
+    private let pendingCrashReportsKey = "hoopsclips.stability.pendingCrashReports.v1"
     private let crashReportSentFingerprintKey = "hoopsclips.stability.crashReportSentFingerprint.v1"
     private static let crashReportEndpoint = "https://formspree.io/f/mbdzrwbo"
     private static let crashReportRecipientEmail = "charliehan112@gmail.com"
+    private static let maxPendingCrashReports = 8
 
     init(runtimeConfig: AppRuntimeConfig) {
         self.runtimeConfig = runtimeConfig
@@ -37,6 +39,7 @@ final class LaunchTelemetry {
 
     func configure() {
         recordPreviousSessionIfNeeded()
+        retryPendingCrashReportsIfNeeded()
         updateStabilitySnapshot(
             lifecycleState: "launching",
             screen: nil,
@@ -183,6 +186,7 @@ final class LaunchTelemetry {
                 forKey: latestCrashReportDeliveryKey
             )
             logger.error("Manual Formspree crash proof failed: \(safeError, privacy: .public)")
+            queueCrashReportForRetry(payload, reason: safeError)
             return false
         }
     }
@@ -380,8 +384,14 @@ final class LaunchTelemetry {
                 )
             } catch {
                 let safeError = Self.redactedAIEditFailureReason(error.localizedDescription)
+                Self.queueCrashReportForRetry(
+                    payload,
+                    reason: safeError,
+                    pendingKey: "hoopsclips.stability.pendingCrashReports.v1",
+                    deliveryKey: "hoopsclips.stability.latestCrashReportDelivery.v1"
+                )
                 UserDefaults.standard.set(
-                    "failed at \(Self.isoString(Date())) endpoint=formspree error=\(safeError)",
+                    "failed and queued retry at \(Self.isoString(Date())) endpoint=formspree error=\(safeError)",
                     forKey: "hoopsclips.stability.latestCrashReportDelivery.v1"
                 )
             }
@@ -406,6 +416,88 @@ final class LaunchTelemetry {
                 userInfo: [NSLocalizedDescriptionKey: "Formspree crash report failed with HTTP \(statusCode)."]
             )
         }
+    }
+
+    private func retryPendingCrashReportsIfNeeded() {
+        let pendingReports = Self.loadPendingCrashReports(from: pendingCrashReportsKey)
+        guard !pendingReports.isEmpty else { return }
+
+        let pendingKey = pendingCrashReportsKey
+        let deliveryKey = latestCrashReportDeliveryKey
+        UserDefaults.standard.set(
+            "retrying \(pendingReports.count) report(s) at \(Self.isoString(Date())) endpoint=formspree",
+            forKey: deliveryKey
+        )
+
+        Task.detached(priority: .utility) {
+            var remainingReports: [CrashBreadcrumbReport] = []
+            var sentCount = 0
+            var lastError = "none"
+
+            for payload in pendingReports {
+                do {
+                    try await Self.postCrashBreadcrumbReport(payload)
+                    sentCount += 1
+                } catch {
+                    lastError = Self.redactedAIEditFailureReason(error.localizedDescription)
+                    remainingReports.append(payload)
+                }
+            }
+
+            Self.savePendingCrashReports(remainingReports, to: pendingKey)
+            let status: String
+            if remainingReports.isEmpty {
+                status = "retry sent \(sentCount) report(s) at \(Self.isoString(Date())) endpoint=formspree"
+            } else {
+                status = "retry partial at \(Self.isoString(Date())) endpoint=formspree sent=\(sentCount) remaining=\(remainingReports.count) error=\(lastError)"
+            }
+            UserDefaults.standard.set(status, forKey: deliveryKey)
+        }
+    }
+
+    private func queueCrashReportForRetry(_ payload: CrashBreadcrumbReport, reason: String) {
+        Self.queueCrashReportForRetry(
+            payload,
+            reason: reason,
+            pendingKey: pendingCrashReportsKey,
+            deliveryKey: latestCrashReportDeliveryKey
+        )
+    }
+
+    private static func queueCrashReportForRetry(
+        _ payload: CrashBreadcrumbReport,
+        reason: String,
+        pendingKey: String,
+        deliveryKey: String
+    ) {
+        let safeReason = redactedAIEditFailureReason(reason)
+        var pendingReports = loadPendingCrashReports(from: pendingKey)
+        if !pendingReports.contains(where: { $0.retryFingerprint == payload.retryFingerprint }) {
+            pendingReports.append(payload)
+        }
+        savePendingCrashReports(pendingReports, to: pendingKey)
+        UserDefaults.standard.set(
+            "queued retry at \(isoString(Date())) endpoint=formspree count=\(min(pendingReports.count, maxPendingCrashReports)) error=\(safeReason)",
+            forKey: deliveryKey
+        )
+    }
+
+    private static func loadPendingCrashReports(from key: String) -> [CrashBreadcrumbReport] {
+        guard let data = UserDefaults.standard.data(forKey: key),
+              let reports = try? JSONDecoder().decode([CrashBreadcrumbReport].self, from: data) else {
+            return []
+        }
+        return reports
+    }
+
+    private static func savePendingCrashReports(_ reports: [CrashBreadcrumbReport], to key: String) {
+        let cappedReports = Array(reports.suffix(maxPendingCrashReports))
+        guard !cappedReports.isEmpty else {
+            UserDefaults.standard.removeObject(forKey: key)
+            return
+        }
+        guard let data = try? JSONEncoder().encode(cappedReports) else { return }
+        UserDefaults.standard.set(data, forKey: key)
     }
 
     private static func crashReportFingerprint(for snapshot: StabilitySnapshot) -> String {
@@ -472,6 +564,20 @@ private struct CrashBreadcrumbReport: Codable, Sendable {
     var lastUpdatedAt: String
     var queuedAt: String
     var privacyNote: String
+
+    var retryFingerprint: String {
+        [
+            subject,
+            source,
+            sessionID,
+            appVersion,
+            buildVersion,
+            previousBuildVersion,
+            lastUpdatedAt,
+            lastCheckpoint,
+            proofText.map { String($0.prefix(160)) } ?? "none"
+        ].joined(separator: "|")
+    }
 
     enum CodingKeys: String, CodingKey {
         case subject = "_subject"
