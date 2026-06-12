@@ -509,7 +509,7 @@ struct ContentView: View {
 
     private var hasCurrentReviewableClips: Bool {
         guard viewModel.isVideoLoaded, !viewModel.clips.isEmpty else { return false }
-        return viewModel.clips.contains(isReviewableClip)
+        return viewModel.clips.contains(where: isReviewableClip)
     }
 
     private var currentReviewableClipCount: Int {

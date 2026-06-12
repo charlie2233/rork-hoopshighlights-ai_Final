@@ -375,7 +375,7 @@ final class LaunchTelemetry {
         )
         logger.notice("Queued Formspree crash breadcrumb report for previous unexpected exit.")
 
-        Task.detached(priority: .utility) {
+        Task(priority: .utility) {
             do {
                 try await Self.postCrashBreadcrumbReport(payload)
                 UserDefaults.standard.set(
@@ -429,7 +429,7 @@ final class LaunchTelemetry {
             forKey: deliveryKey
         )
 
-        Task.detached(priority: .utility) {
+        Task(priority: .utility) {
             var remainingReports: [CrashBreadcrumbReport] = []
             var sentCount = 0
             var lastError = "none"
