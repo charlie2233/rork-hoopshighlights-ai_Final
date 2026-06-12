@@ -202,34 +202,9 @@ struct ContentView: View {
         ZStack {
             HoopsMotionBackdrop(glowOpacity: 0.18, courtOpacity: 0.08)
 
-            TabView(selection: $selectedTab) {
-                VideoPlayerView(
-                    viewModel: viewModel,
-                    onOpenHistory: {
-                        selectTab(.history)
-                    }
-                )
-                    .id("player-\(revenueCatSyncKey)")
-                    .environment(subscriptionManager)
-                    .environment(authService)
-                    .tag(AppTab.player.rawValue)
-
-                ReviewView(viewModel: viewModel, selectedTab: $selectedTab)
-                    .tag(AppTab.review.rawValue)
-
-                ExportView(viewModel: viewModel)
-                    .environment(subscriptionManager)
-                    .environment(authService)
-                    .tag(AppTab.export.rawValue)
-
-                HistoryView(viewModel: viewModel)
-                    .tag(AppTab.history.rawValue)
-
-                SettingsView(viewModel: viewModel, authService: authService, subscriptionManager: subscriptionManager)
-                    .tag(AppTab.settings.rawValue)
-            }
-            .tabViewStyle(.page(indexDisplayMode: .never))
-            .indexViewStyle(.page(backgroundDisplayMode: .never))
+            activeTabContent
+                .transition(reduceMotion ? .identity : .opacity.combined(with: .scale(scale: 0.995)))
+                .animation(reduceMotion ? nil : tabSelectionAnimation, value: activeTab.id)
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 appTabBar
             }
@@ -516,6 +491,40 @@ struct ContentView: View {
 
     private var selectedTabTelemetryName: String {
         AppTab(rawValue: selectedTab)?.telemetryName ?? "unknown"
+    }
+
+    private var activeTab: AppTab {
+        AppTab(rawValue: selectedTab) ?? .player
+    }
+
+    @ViewBuilder
+    private var activeTabContent: some View {
+        switch activeTab {
+        case .player:
+            VideoPlayerView(
+                viewModel: viewModel,
+                onOpenHistory: {
+                    selectTab(.history)
+                }
+            )
+            .id("player-\(revenueCatSyncKey)")
+            .environment(subscriptionManager)
+            .environment(authService)
+
+        case .review:
+            ReviewView(viewModel: viewModel, selectedTab: $selectedTab)
+
+        case .export:
+            ExportView(viewModel: viewModel)
+                .environment(subscriptionManager)
+                .environment(authService)
+
+        case .history:
+            HistoryView(viewModel: viewModel)
+
+        case .settings:
+            SettingsView(viewModel: viewModel, authService: authService, subscriptionManager: subscriptionManager)
+        }
     }
 
     private func activateRookieGuideIfNeeded() {
