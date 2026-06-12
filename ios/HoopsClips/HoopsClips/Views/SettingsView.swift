@@ -20,6 +20,9 @@ struct SettingsView: View {
     @State private var feedbackBanner: FeedbackBanner?
     @State private var expandedFAQIDs: Set<String> = []
     @State private var smokeProofCopied = false
+    @State private var isSendingSmokeProof = false
+    @State private var smokeProofSendSucceeded = false
+    @State private var smokeProofSendFailed = false
 
     private enum FeedbackType: String, CaseIterable, Identifiable {
         case suggestion = "Suggestion"
@@ -504,6 +507,28 @@ struct SettingsView: View {
             .accessibilityIdentifier("settings.smokeProof.copyButton")
             .accessibilityHint(languageStore.text(.settingsSmokeProofPrivacy))
 
+            Button {
+                sendSmokeProof()
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: smokeProofSendIcon)
+                    Text(smokeProofSendLabel)
+                        .font(.subheadline.weight(.bold))
+                    Spacer(minLength: 0)
+                }
+                .foregroundStyle(smokeProofSendSucceeded ? .black : .white)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 13)
+                .background(
+                    smokeProofSendBackground,
+                    in: .rect(cornerRadius: 15)
+                )
+            }
+            .buttonStyle(.plain)
+            .disabled(isSendingSmokeProof)
+            .accessibilityIdentifier("settings.smokeProof.sendButton")
+            .accessibilityHint(languageStore.text(.settingsSmokeProofPrivacy))
+
             Text(languageStore.text(.settingsSmokeProofPrivacy))
                 .font(.caption2)
                 .foregroundStyle(AppTheme.subtleText)
@@ -627,6 +652,63 @@ struct SettingsView: View {
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
             smokeProofCopied = false
+        }
+    }
+
+    private var smokeProofSendLabel: String {
+        if isSendingSmokeProof {
+            return languageStore.text(.settingsSmokeProofSending)
+        }
+        if smokeProofSendSucceeded {
+            return languageStore.text(.settingsSmokeProofSent)
+        }
+        if smokeProofSendFailed {
+            return languageStore.text(.settingsSmokeProofSendFailed)
+        }
+        return languageStore.text(.settingsSmokeProofSend)
+    }
+
+    private var smokeProofSendIcon: String {
+        if isSendingSmokeProof {
+            return "paperplane.circle.fill"
+        }
+        if smokeProofSendSucceeded {
+            return "checkmark.circle.fill"
+        }
+        if smokeProofSendFailed {
+            return "exclamationmark.triangle.fill"
+        }
+        return "paperplane.fill"
+    }
+
+    private var smokeProofSendBackground: Color {
+        if smokeProofSendSucceeded {
+            return AppTheme.successGreen
+        }
+        if smokeProofSendFailed {
+            return AppTheme.dangerRed.opacity(0.78)
+        }
+        return AppTheme.neonPurple.opacity(0.72)
+    }
+
+    private func sendSmokeProof() {
+        guard !isSendingSmokeProof else { return }
+        let proof = smokeProofText
+        isSendingSmokeProof = true
+        smokeProofSendSucceeded = false
+        smokeProofSendFailed = false
+        LaunchTelemetry.shared.recordStabilityCheckpoint("smoke_proof.manual_send_requested", metadata: "build=\(appBuildNumber)")
+
+        Task { @MainActor in
+            let sent = await LaunchTelemetry.shared.sendManualCrashProof(proof)
+            isSendingSmokeProof = false
+            smokeProofSendSucceeded = sent
+            smokeProofSendFailed = !sent
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.8) {
+                smokeProofSendSucceeded = false
+                smokeProofSendFailed = false
+            }
         }
     }
 

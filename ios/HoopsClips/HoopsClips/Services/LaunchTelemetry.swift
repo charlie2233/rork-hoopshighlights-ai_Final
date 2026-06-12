@@ -131,6 +131,62 @@ final class LaunchTelemetry {
         )
     }
 
+    @discardableResult
+    func sendManualCrashProof(_ proofText: String) async -> Bool {
+        let snapshot = currentStabilitySnapshot()
+        let queuedAt = Date()
+        let payload = CrashBreadcrumbReport(
+            subject: "HoopClips manual crash proof",
+            recipientEmail: Self.crashReportRecipientEmail,
+            replyToEmail: Self.crashReportRecipientEmail,
+            source: "HoopClips iOS Settings manual proof",
+            message: "Manual smoke/crash proof sent from Settings.",
+            proofText: proofText,
+            appVersion: Self.bundleShortVersion,
+            buildVersion: Self.bundleBuildVersion,
+            previousAppVersion: snapshot.appVersion,
+            previousBuildVersion: snapshot.buildVersion,
+            environmentName: runtimeConfig.environmentName,
+            cloudLaunchMode: runtimeConfig.cloudLaunchMode.rawValue,
+            sessionID: snapshot.sessionID,
+            lifecycleState: Self.redactedAIEditFailureReason(snapshot.lifecycleState),
+            screen: Self.redactedAIEditFailureReason(snapshot.screen),
+            lastCheckpoint: Self.redactedAIEditFailureReason(snapshot.lastCheckpoint),
+            lastMetadata: Self.redactedAIEditFailureReason(snapshot.lastMetadata),
+            latestAIEditProof: latestAIEditProofSummary,
+            latestUnexpectedExit: latestUnexpectedExitSummary,
+            memoryWarningCount: max(0, snapshot.memoryWarningCount),
+            launchedAt: Self.isoString(snapshot.launchedAt),
+            lastUpdatedAt: Self.isoString(snapshot.lastUpdatedAt),
+            queuedAt: Self.isoString(queuedAt),
+            privacyNote: "No secrets, presigned URLs, object keys, or local file URLs are included."
+        )
+
+        UserDefaults.standard.set(
+            "manual queued at \(Self.isoString(queuedAt)) endpoint=formspree",
+            forKey: latestCrashReportDeliveryKey
+        )
+        logger.notice("Manual Formspree crash proof send requested from Settings.")
+
+        do {
+            try await Self.postCrashBreadcrumbReport(payload)
+            UserDefaults.standard.set(
+                "manual sent at \(Self.isoString(Date())) endpoint=formspree",
+                forKey: latestCrashReportDeliveryKey
+            )
+            logger.notice("Manual Formspree crash proof sent.")
+            return true
+        } catch {
+            let safeError = Self.redactedAIEditFailureReason(error.localizedDescription)
+            UserDefaults.standard.set(
+                "manual failed at \(Self.isoString(Date())) endpoint=formspree error=\(safeError)",
+                forKey: latestCrashReportDeliveryKey
+            )
+            logger.error("Manual Formspree crash proof failed: \(safeError, privacy: .public)")
+            return false
+        }
+    }
+
     private func recordLatestAIEditProof(
         eventName: String,
         editJobID: String?,
@@ -287,6 +343,7 @@ final class LaunchTelemetry {
             replyToEmail: Self.crashReportRecipientEmail,
             source: "HoopClips iOS LaunchTelemetry",
             message: supportSummary,
+            proofText: nil,
             appVersion: Self.bundleShortVersion,
             buildVersion: Self.bundleBuildVersion,
             previousAppVersion: snapshot.appVersion,
@@ -298,6 +355,8 @@ final class LaunchTelemetry {
             screen: Self.redactedAIEditFailureReason(snapshot.screen),
             lastCheckpoint: Self.redactedAIEditFailureReason(snapshot.lastCheckpoint),
             lastMetadata: Self.redactedAIEditFailureReason(snapshot.lastMetadata),
+            latestAIEditProof: latestAIEditProofSummary,
+            latestUnexpectedExit: supportSummary,
             memoryWarningCount: max(0, snapshot.memoryWarningCount),
             launchedAt: Self.isoString(snapshot.launchedAt),
             lastUpdatedAt: Self.isoString(snapshot.lastUpdatedAt),
@@ -394,6 +453,7 @@ private struct CrashBreadcrumbReport: Codable, Sendable {
     var replyToEmail: String
     var source: String
     var message: String
+    var proofText: String?
     var appVersion: String
     var buildVersion: String
     var previousAppVersion: String
@@ -405,6 +465,8 @@ private struct CrashBreadcrumbReport: Codable, Sendable {
     var screen: String
     var lastCheckpoint: String
     var lastMetadata: String
+    var latestAIEditProof: String?
+    var latestUnexpectedExit: String?
     var memoryWarningCount: Int
     var launchedAt: String
     var lastUpdatedAt: String
@@ -417,6 +479,7 @@ private struct CrashBreadcrumbReport: Codable, Sendable {
         case replyToEmail = "_replyto"
         case source
         case message
+        case proofText
         case appVersion
         case buildVersion
         case previousAppVersion
@@ -428,6 +491,8 @@ private struct CrashBreadcrumbReport: Codable, Sendable {
         case screen
         case lastCheckpoint
         case lastMetadata
+        case latestAIEditProof
+        case latestUnexpectedExit
         case memoryWarningCount
         case launchedAt
         case lastUpdatedAt
