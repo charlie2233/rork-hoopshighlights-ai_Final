@@ -1,21 +1,21 @@
 # HoopClips current-tip launch evidence - 2026-06-10
 
-This document captures the current launch evidence for `main` after the build-20 TestFlight refresh and current-tip staging cloud redeploy.
+This document captures the current launch evidence for `main` after the build-21 TestFlight refresh and current-tip staging cloud redeploy.
 
 ## Evidence baseline
 
 - Branch: `main`
-- Evidence baseline commit: `bd3e0757573031522494ead249c758df1ad53c38`
-- Short commit: `bd3e0757 Bump internal TestFlight build to 20`
-- App build number: `20`
+- Evidence baseline commit: `df2e0d8c8dd85388ec8e7b7b5985689d43b1550d`
+- Short commit: `df2e0d8c Stabilize tab switching for TestFlight`
+- App build number: `21`
 - Marketing version: `1.0.0`
 - Bundle ID: `atrak.charlie.hoopsclips`
 
 Binary/runtime note:
 
-- The latest app-code, build-setting, and TestFlight-upload proof is commit `bd3e0757573031522494ead249c758df1ad53c38`. The latest staging-cloud-deploy runtime proof remains commit `8dea6baab81f2cb66f0cc86c6f6d926b73e85352`.
-- The checkout changes from `8dea6baab81f2cb66f0cc86c6f6d926b73e85352` through the latest evidence baseline are launch evidence updates plus the iOS build-number/verifier bump from `19` to `20`.
-- Therefore TestFlight build `20` now matches the current app binary proof, while staging cloud runtime remains on the latest backend-deployed SHA because no backend runtime changes were made after that deploy.
+- The latest app-code, build-setting, and TestFlight-upload proof is commit `df2e0d8c8dd85388ec8e7b7b5985689d43b1550d`. The latest staging-cloud-deploy runtime proof remains commit `8dea6baab81f2cb66f0cc86c6f6d926b73e85352`.
+- The checkout changes from `8dea6baab81f2cb66f0cc86c6f6d926b73e85352` through the latest evidence baseline are launch evidence updates, the iOS build-number/verifier bump to `21`, and the tab-switch stability fix.
+- Therefore TestFlight build `21` now matches the current app binary proof, while staging cloud runtime remains on the latest backend-deployed SHA because no backend runtime changes were made after that deploy.
 
 Repo hygiene before the current evidence update:
 
@@ -81,14 +81,14 @@ Remaining screenshot QA recommendation:
 Current successful upload:
 
 - Workflow: `iOS Internal TestFlight Upload`
-- Run ID: `27264722859`
-- URL: `https://github.com/charlie2233/rork-hoopshighlights-ai_Final/actions/runs/27264722859`
+- Run ID: `27398222478`
+- URL: `https://github.com/charlie2233/rork-hoopshighlights-ai_Final/actions/runs/27398222478`
 - Event: `workflow_dispatch`
-- Commit: `bd3e0757573031522494ead249c758df1ad53c38`
+- Commit: `df2e0d8c8dd85388ec8e7b7b5985689d43b1550d`
 - Conclusion: `success`
 - Job: `Build internal staging TestFlight archive`
 - Job duration: `7m4s`
-- App build: `20`
+- App build: `21`
 
 Successful steps included:
 
@@ -102,7 +102,7 @@ Successful steps included:
 
 Superseded attempts:
 
-- `27262373169` succeeded for build `19`, but was superseded by current-main build `20` after documentation-only commits made a literal current-tip upload desirable.
+- `27264722859` succeeded for build `20`, but was superseded by build `21` after the tab-switch stability fix.
 - `27261937838` failed because internal staging verifier still expected build `18` after the app was bumped to `19`.
 - `27262035365` failed because archive metadata verifier still expected `CFBundleVersion=18` after the archive correctly resolved to `19`.
 - Both verifier mismatches are now fixed on current `main`.
@@ -110,8 +110,8 @@ Superseded attempts:
 Latest build-number push codecheck:
 
 - Workflow: `iOS Internal TestFlight Upload`
-- Run ID: `27264721312`
-- URL: `https://github.com/charlie2233/rork-hoopshighlights-ai_Final/actions/runs/27264721312`
+- Run ID: `27398219605`
+- URL: `https://github.com/charlie2233/rork-hoopshighlights-ai_Final/actions/runs/27398219605`
 - Commit: `bd3e0757573031522494ead249c758df1ad53c38`
 - Conclusion: `success`
 - Notes: archive/upload job was skipped on push; no-secret internal staging codecheck passed, including internal staging config verification, export-options validation, and Debug test build without signing.
@@ -146,8 +146,8 @@ Successful jobs included:
 Latest build-number push codecheck:
 
 - Workflow: `Cloud Edit Deploy Preflight`
-- Run ID: `27264721871`
-- URL: `https://github.com/charlie2233/rork-hoopshighlights-ai_Final/actions/runs/27264721871`
+- Run ID: `27398219617`
+- URL: `https://github.com/charlie2233/rork-hoopshighlights-ai_Final/actions/runs/27398219617`
 - Commit: `bd3e0757573031522494ead249c758df1ad53c38`
 - Conclusion: `success`
 - Notes: deploy jobs were skipped on push; Worker typecheck/dry run and editing backend Python tests passed.
@@ -299,12 +299,12 @@ Mac-side app install/launch proof:
 
 Current phone-smoke blocker:
 
-- TestFlight build `20` is uploaded, but the phone still has HoopClips build `19` installed.
-- The user needs to update HoopClips inside TestFlight to build `20`.
-- The full manual in-app TestFlight smoke is still not final-proofed on build `20`.
+- TestFlight build `21` is uploaded for the tab-switch stability fix; phone install status still needs to be rechecked after TestFlight processing.
+- The user needs to update HoopClips inside TestFlight to build `21`.
+- The full manual in-app TestFlight smoke is still not final-proofed on build `21`.
 - XcodeBuildMCP device workflows are not enabled in this session; only simulator workflows are available through the MCP tool.
 
-Required phone flow still to capture on TestFlight build `20`:
+Required phone flow still to capture on TestFlight build `21`:
 
 - Install/open TestFlight build
 - Import video
@@ -331,7 +331,7 @@ Evidence to capture from the phone smoke:
 
 ## Remaining launch blockers
 
-1. Real iPhone TestFlight full smoke is still missing final proof. The phone is paired/available and TestFlight build `20` is uploaded, but the phone still has HoopClips build `19`; update to build `20`, then capture the in-app import/analyze/review/export/edit/revise/share flow.
+1. Real iPhone TestFlight full smoke is still missing final proof. The phone is paired/available and TestFlight build `21` is uploaded for the tab-switch stability fix; update to build `21`, then capture the in-app import/analyze/review/export/edit/revise/share flow.
 2. Production cutover still needs an explicit release-owner go/no-go after the real phone smoke passes.
 3. Accuracy is accepted risk for this launch pass, but formal 85% labeled accuracy proof is still not completed.
 
