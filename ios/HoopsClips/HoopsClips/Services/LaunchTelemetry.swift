@@ -10,6 +10,10 @@ final class LaunchTelemetry {
     private let stabilityDefaultsKey = "hoopsclips.stability.currentSession.v1"
     private let stabilityLastUnexpectedExitKey = "hoopsclips.stability.lastUnexpectedExit.v1"
     private let latestAIEditProofKey = "hoopsclips.launchProof.latestAIEdit.v1"
+    private let latestCrashReportDeliveryKey = "hoopsclips.stability.latestCrashReportDelivery.v1"
+    private let crashReportSentFingerprintKey = "hoopsclips.stability.crashReportSentFingerprint.v1"
+    private static let crashReportEndpoint = "https://formspree.io/f/mbdzrwbo"
+    private static let crashReportRecipientEmail = "charliehan112@gmail.com"
 
     init(runtimeConfig: AppRuntimeConfig) {
         self.runtimeConfig = runtimeConfig
@@ -25,6 +29,10 @@ final class LaunchTelemetry {
 
     var latestAIEditProofSummary: String? {
         UserDefaults.standard.string(forKey: latestAIEditProofKey)
+    }
+
+    var latestCrashReportDeliverySummary: String? {
+        UserDefaults.standard.string(forKey: latestCrashReportDeliveryKey)
     }
 
     func configure() {
@@ -158,6 +166,11 @@ final class LaunchTelemetry {
             options: .regularExpression
         )
         value = value.replacingOccurrences(
+            of: #"file://[^\s]+"#,
+            with: "[redacted_file_url]",
+            options: .regularExpression
+        )
+        value = value.replacingOccurrences(
             of: #"\b(?:uploads|edits)/[A-Za-z0-9._/\-]+"#,
             with: "[redacted_object_key]",
             options: .regularExpression
@@ -175,9 +188,7 @@ final class LaunchTelemetry {
     }
 
     private func recordPreviousSessionIfNeeded() {
-        guard let snapshot = loadStabilitySnapshot(),
-              snapshot.appVersion == Self.bundleShortVersion,
-              snapshot.buildVersion == Self.bundleBuildVersion else {
+        guard let snapshot = loadStabilitySnapshot() else {
             return
         }
 
@@ -196,6 +207,7 @@ final class LaunchTelemetry {
         logger.error(
             "Previous HoopClips session may have ended unexpectedly; state=\(snapshot.lifecycleState, privacy: .public) screen=\(screen, privacy: .public) checkpoint=\(checkpoint, privacy: .public) memoryWarnings=\(snapshot.memoryWarningCount, privacy: .public)"
         )
+        enqueueUnexpectedExitReport(snapshot: snapshot, supportSummary: supportSummary)
     }
 
     static func stabilitySupportSummary(
@@ -262,6 +274,97 @@ final class LaunchTelemetry {
         UserDefaults.standard.set(data, forKey: stabilityDefaultsKey)
     }
 
+    private func enqueueUnexpectedExitReport(snapshot: StabilitySnapshot, supportSummary: String) {
+        let fingerprint = Self.crashReportFingerprint(for: snapshot)
+        guard UserDefaults.standard.string(forKey: crashReportSentFingerprintKey) != fingerprint else {
+            return
+        }
+
+        let queuedAt = Date()
+        let payload = CrashBreadcrumbReport(
+            subject: "HoopClips crash breadcrumb",
+            recipientEmail: Self.crashReportRecipientEmail,
+            replyToEmail: Self.crashReportRecipientEmail,
+            source: "HoopClips iOS LaunchTelemetry",
+            message: supportSummary,
+            appVersion: Self.bundleShortVersion,
+            buildVersion: Self.bundleBuildVersion,
+            previousAppVersion: snapshot.appVersion,
+            previousBuildVersion: snapshot.buildVersion,
+            environmentName: runtimeConfig.environmentName,
+            cloudLaunchMode: runtimeConfig.cloudLaunchMode.rawValue,
+            sessionID: snapshot.sessionID,
+            lifecycleState: Self.redactedAIEditFailureReason(snapshot.lifecycleState),
+            screen: Self.redactedAIEditFailureReason(snapshot.screen),
+            lastCheckpoint: Self.redactedAIEditFailureReason(snapshot.lastCheckpoint),
+            lastMetadata: Self.redactedAIEditFailureReason(snapshot.lastMetadata),
+            memoryWarningCount: max(0, snapshot.memoryWarningCount),
+            launchedAt: Self.isoString(snapshot.launchedAt),
+            lastUpdatedAt: Self.isoString(snapshot.lastUpdatedAt),
+            queuedAt: Self.isoString(queuedAt),
+            privacyNote: "No secrets, presigned URLs, object keys, or local file URLs are included."
+        )
+
+        UserDefaults.standard.set(fingerprint, forKey: crashReportSentFingerprintKey)
+        UserDefaults.standard.set(
+            "queued at \(Self.isoString(queuedAt)) endpoint=formspree",
+            forKey: latestCrashReportDeliveryKey
+        )
+        logger.notice("Queued Formspree crash breadcrumb report for previous unexpected exit.")
+
+        Task.detached(priority: .utility) {
+            do {
+                try await Self.postCrashBreadcrumbReport(payload)
+                UserDefaults.standard.set(
+                    "sent at \(Self.isoString(Date())) endpoint=formspree",
+                    forKey: "hoopsclips.stability.latestCrashReportDelivery.v1"
+                )
+            } catch {
+                let safeError = Self.redactedAIEditFailureReason(error.localizedDescription)
+                UserDefaults.standard.set(
+                    "failed at \(Self.isoString(Date())) endpoint=formspree error=\(safeError)",
+                    forKey: "hoopsclips.stability.latestCrashReportDelivery.v1"
+                )
+            }
+        }
+    }
+
+    private static func postCrashBreadcrumbReport(_ payload: CrashBreadcrumbReport) async throws {
+        guard let url = URL(string: crashReportEndpoint) else { return }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.httpBody = try JSONEncoder().encode(payload)
+
+        let (_, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200..<300).contains(httpResponse.statusCode) else {
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
+            throw NSError(
+                domain: "HoopClipsCrashReport",
+                code: statusCode,
+                userInfo: [NSLocalizedDescriptionKey: "Formspree crash report failed with HTTP \(statusCode)."]
+            )
+        }
+    }
+
+    private static func crashReportFingerprint(for snapshot: StabilitySnapshot) -> String {
+        [
+            snapshot.sessionID,
+            snapshot.appVersion,
+            snapshot.buildVersion,
+            isoString(snapshot.lastUpdatedAt),
+            snapshot.lifecycleState,
+            snapshot.screen ?? "none",
+            snapshot.lastCheckpoint ?? "none"
+        ].joined(separator: "|")
+    }
+
+    private static func isoString(_ date: Date) -> String {
+        ISO8601DateFormatter().string(from: date)
+    }
+
     private static var bundleShortVersion: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
     }
@@ -283,4 +386,52 @@ private struct StabilitySnapshot: Codable {
     var lastMetadata: String?
     var memoryWarningCount: Int
     var lastMemoryWarningAt: Date?
+}
+
+private struct CrashBreadcrumbReport: Codable, Sendable {
+    var subject: String
+    var recipientEmail: String
+    var replyToEmail: String
+    var source: String
+    var message: String
+    var appVersion: String
+    var buildVersion: String
+    var previousAppVersion: String
+    var previousBuildVersion: String
+    var environmentName: String
+    var cloudLaunchMode: String
+    var sessionID: String
+    var lifecycleState: String
+    var screen: String
+    var lastCheckpoint: String
+    var lastMetadata: String
+    var memoryWarningCount: Int
+    var launchedAt: String
+    var lastUpdatedAt: String
+    var queuedAt: String
+    var privacyNote: String
+
+    enum CodingKeys: String, CodingKey {
+        case subject = "_subject"
+        case recipientEmail = "email"
+        case replyToEmail = "_replyto"
+        case source
+        case message
+        case appVersion
+        case buildVersion
+        case previousAppVersion
+        case previousBuildVersion
+        case environmentName
+        case cloudLaunchMode
+        case sessionID
+        case lifecycleState
+        case screen
+        case lastCheckpoint
+        case lastMetadata
+        case memoryWarningCount
+        case launchedAt
+        case lastUpdatedAt
+        case queuedAt
+        case privacyNote
+    }
 }

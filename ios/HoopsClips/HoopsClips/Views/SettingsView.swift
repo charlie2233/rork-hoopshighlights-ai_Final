@@ -587,6 +587,7 @@ struct SettingsView: View {
         let sourceObjectKeyState = viewModel.cloudEditSourceObjectKey == nil ? "none" : "available_redacted"
         let latestAIEditProof = LaunchTelemetry.shared.latestAIEditProofSummary ?? "none"
         let latestUnexpectedExit = LaunchTelemetry.shared.latestUnexpectedExitSummary ?? "none"
+        let latestCrashReportDelivery = LaunchTelemetry.shared.latestCrashReportDeliverySummary ?? "none"
 
         return [
             "HoopClips Smoke Proof",
@@ -610,6 +611,7 @@ struct SettingsView: View {
             "sourceObjectKey=\(sourceObjectKeyState)",
             "latestAIEditProof=\(latestAIEditProof)",
             "latestUnexpectedExit=\(latestUnexpectedExit)",
+            "latestCrashReportDelivery=\(latestCrashReportDelivery)",
             "note=no secrets or presigned URLs included"
         ].joined(separator: "\n")
     }
