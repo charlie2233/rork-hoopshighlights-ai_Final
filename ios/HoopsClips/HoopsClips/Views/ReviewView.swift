@@ -61,6 +61,19 @@ struct ReviewView: View {
         }
     }
 
+    private struct ReviewPlaybackWindow {
+        let start: Double
+        let end: Double
+
+        var duration: Double {
+            max(end - start, 0.001)
+        }
+
+        var range: ClosedRange<Double> {
+            start...end
+        }
+    }
+
     private var filteredClips: [Clip] {
         let base: [Clip]
         switch filterOption {
@@ -872,9 +885,10 @@ struct ReviewView: View {
     }
 
     private func seekCurrentClip(to progress: Double) {
-        guard let clip = currentReviewClip else { return }
+        guard let clip = currentReviewClip,
+              let window = playbackWindow(for: clip, logsInvalidWindow: false) else { return }
         let clampedProgress = max(0, min(progress, 1))
-        let targetSeconds = clip.startTime + (clip.duration * clampedProgress)
+        let targetSeconds = window.start + (window.duration * clampedProgress)
         clipPlayer?.seek(to: CMTime(seconds: targetSeconds, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
     }
 
@@ -2219,13 +2233,17 @@ struct ReviewView: View {
     private func prepareClipPlayer(for clip: Clip) {
         teardownClipPlayer()
         reviewScrubProgress = 0
-        clipPlaybackRange = clip.startTime...clip.endTime
+        guard let window = playbackWindow(for: clip, logsInvalidWindow: true) else {
+            clipPlaybackRange = nil
+            return
+        }
+        clipPlaybackRange = window.range
 
         guard let url = viewModel.videoURL else { return }
 
         let playerItem = AVPlayerItem(url: url)
-        let clipEnd = CMTime(seconds: clip.endTime, preferredTimescale: 600)
-        let clipStart = CMTime(seconds: clip.startTime, preferredTimescale: 600)
+        let clipEnd = CMTime(seconds: window.end, preferredTimescale: 600)
+        let clipStart = CMTime(seconds: window.start, preferredTimescale: 600)
         playerItem.forwardPlaybackEndTime = clipEnd
 
         let player = AVPlayer(playerItem: playerItem)
@@ -2243,7 +2261,7 @@ struct ReviewView: View {
         }
 
         clipPlayer = player
-        startClipProgressObserver(for: player, clip: clip)
+        startClipProgressObserver(for: player, clip: clip, window: window)
         player.seek(to: clipStart, toleranceBefore: .zero, toleranceAfter: .zero) { _ in
             player.play()
         }
@@ -2264,14 +2282,49 @@ struct ReviewView: View {
         }
     }
 
-    private func startClipProgressObserver(for player: AVPlayer, clip: Clip) {
+    private func playbackWindow(for clip: Clip, logsInvalidWindow: Bool) -> ReviewPlaybackWindow? {
+        guard clip.startTime.isFinite, clip.endTime.isFinite else {
+            if logsInvalidWindow {
+                recordInvalidPlaybackWindow(for: clip, reason: "non_finite")
+            }
+            return nil
+        }
+
+        let sourceDuration = viewModel.videoDuration
+        let hasFiniteSourceDuration = sourceDuration.isFinite && sourceDuration > 0
+        let upperBound = hasFiniteSourceDuration ? sourceDuration : max(clip.startTime, clip.endTime)
+        let start = max(0, min(clip.startTime, upperBound))
+        let end = max(0, min(clip.endTime, upperBound))
+        guard end > start else {
+            if logsInvalidWindow {
+                recordInvalidPlaybackWindow(for: clip, reason: "end_before_start")
+            }
+            return nil
+        }
+
+        return ReviewPlaybackWindow(start: start, end: end)
+    }
+
+    private func recordInvalidPlaybackWindow(for clip: Clip, reason: String) {
+        LaunchTelemetry.shared.recordStabilityCheckpoint(
+            "review.preview.bad_window",
+            metadata: [
+                "reason=\(reason)",
+                "clip=\(clip.id.uuidString)",
+                "start=\(clip.startTime)",
+                "end=\(clip.endTime)",
+                "videoDuration=\(viewModel.videoDuration)"
+            ].joined(separator: " ")
+        )
+    }
+
+    private func startClipProgressObserver(for player: AVPlayer, clip: Clip, window: ReviewPlaybackWindow) {
         clipTimeObserverToken = player.addPeriodicTimeObserver(
             forInterval: CMTime(seconds: 0.18, preferredTimescale: 600),
             queue: .main
         ) { time in
             guard focusedClipID == clip.id else { return }
-            let duration = max(clip.duration, 0.001)
-            let progress = (time.seconds - clip.startTime) / duration
+            let progress = (time.seconds - window.start) / window.duration
             reviewScrubProgress = max(0.0, min(progress, 1.0))
         }
     }
