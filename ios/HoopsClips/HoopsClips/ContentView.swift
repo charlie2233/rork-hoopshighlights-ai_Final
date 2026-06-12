@@ -149,6 +149,9 @@ struct ContentView: View {
         .onChange(of: scenePhase) { _, phase in
             LaunchTelemetry.shared.recordLifecycleState(phase.hoopsTelemetryName, screen: selectedTabTelemetryName)
         }
+        .onChange(of: selectedTab) { oldValue, newValue in
+            recordTabSwitchBreadcrumb(fromRawValue: oldValue, toRawValue: newValue, phase: "active", trigger: "state")
+        }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
             LaunchTelemetry.shared.recordMemoryWarning(screen: selectedTabTelemetryName)
         }
@@ -765,7 +768,7 @@ struct ContentView: View {
 
     private func selectTab(_ tab: AppTab) {
         guard selectedTab != tab.rawValue else { return }
-        LaunchTelemetry.shared.recordStabilityCheckpoint("tab.selected", metadata: "tab=\(tab.telemetryName)")
+        recordTabSwitchBreadcrumb(fromRawValue: selectedTab, toRawValue: tab.rawValue, phase: "requested", trigger: "tab_bar")
         guard !reduceMotion else {
             selectedTab = tab.rawValue
             return
@@ -795,6 +798,25 @@ struct ContentView: View {
         let targetRawValue = min(max(selectedTab + delta, firstTab), lastTab)
         guard let targetTab = AppTab(rawValue: targetRawValue) else { return }
         selectTab(targetTab)
+    }
+
+    private func recordTabSwitchBreadcrumb(
+        fromRawValue: Int,
+        toRawValue: Int,
+        phase: String,
+        trigger: String
+    ) {
+        let fromTab = AppTab(rawValue: fromRawValue)?.telemetryName ?? "invalid_\(fromRawValue)"
+        let toTab = AppTab(rawValue: toRawValue)?.telemetryName ?? "invalid_\(toRawValue)"
+        let metadata = [
+            "from=\(fromTab)",
+            "to=\(toTab)",
+            "trigger=\(trigger)",
+            "videoLoaded=\(viewModel.isVideoLoaded)",
+            "clips=\(viewModel.clips.count)",
+            "project=\(viewModel.currentProjectID?.uuidString ?? "none")"
+        ].joined(separator: " ")
+        LaunchTelemetry.shared.recordStabilityCheckpoint("tab.switch.\(phase)", metadata: metadata)
     }
 }
 

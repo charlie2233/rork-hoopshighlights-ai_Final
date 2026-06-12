@@ -276,6 +276,15 @@ enum AppTextKey {
     case settingsFeedbackSendFailure
     case settingsFeedbackNetworkError
     case settingsFeedbackSentThanks
+    case settingsSmokeProofTitle
+    case settingsSmokeProofSubtitle
+    case settingsSmokeProofCopy
+    case settingsSmokeProofCopied
+    case settingsSmokeProofPrivacy
+    case settingsSmokeProofBuild
+    case settingsSmokeProofCloud
+    case settingsSmokeProofProject
+    case settingsSmokeProofAnalysis
     case rookieGuideTitle
     case rookieGuideSkip
     case rookieGuideBack
@@ -560,6 +569,15 @@ extension AppLanguage {
         .settingsFeedbackSendFailure: "Couldn't send feedback right now. Please try again.",
         .settingsFeedbackNetworkError: "Network error while sending feedback. Check connection and try again.",
         .settingsFeedbackSentThanks: "Thanks. Your feedback was sent.",
+        .settingsSmokeProofTitle: "Smoke proof",
+        .settingsSmokeProofSubtitle: "Copy build, cloud, project, and job evidence for launch checks.",
+        .settingsSmokeProofCopy: "Copy smoke proof",
+        .settingsSmokeProofCopied: "Smoke proof copied",
+        .settingsSmokeProofPrivacy: "No secrets, object paths, or presigned URLs are included.",
+        .settingsSmokeProofBuild: "Build",
+        .settingsSmokeProofCloud: "Cloud",
+        .settingsSmokeProofProject: "Project",
+        .settingsSmokeProofAnalysis: "Analysis",
         .rookieGuideTitle: "Quick guide",
         .rookieGuideSkip: "Skip",
         .rookieGuideBack: "Back",
@@ -808,6 +826,15 @@ extension AppLanguage {
         .settingsFeedbackSendFailure: "现在无法发送反馈，请稍后再试。",
         .settingsFeedbackNetworkError: "发送反馈时出现网络错误。请检查连接后重试。",
         .settingsFeedbackSentThanks: "谢谢，你的反馈已发送。",
+        .settingsSmokeProofTitle: "测试凭证",
+        .settingsSmokeProofSubtitle: "复制版本、云端、项目和任务信息，方便发布检查。",
+        .settingsSmokeProofCopy: "复制测试凭证",
+        .settingsSmokeProofCopied: "已复制测试凭证",
+        .settingsSmokeProofPrivacy: "不会包含密钥、对象路径或预签名链接。",
+        .settingsSmokeProofBuild: "版本",
+        .settingsSmokeProofCloud: "云端",
+        .settingsSmokeProofProject: "项目",
+        .settingsSmokeProofAnalysis: "分析",
         .rookieGuideTitle: "新手教程",
         .rookieGuideSkip: "跳过",
         .rookieGuideBack: "上一步",
@@ -1056,6 +1083,15 @@ extension AppLanguage {
         .settingsFeedbackSendFailure: "No se pudo enviar el feedback ahora. Inténtalo de nuevo.",
         .settingsFeedbackNetworkError: "Error de red al enviar feedback. Revisa la conexión e inténtalo de nuevo.",
         .settingsFeedbackSentThanks: "Gracias. Tu feedback fue enviado.",
+        .settingsSmokeProofTitle: "Prueba de smoke",
+        .settingsSmokeProofSubtitle: "Copia evidencia de build, nube, proyecto y jobs para revisión de lanzamiento.",
+        .settingsSmokeProofCopy: "Copiar prueba",
+        .settingsSmokeProofCopied: "Prueba copiada",
+        .settingsSmokeProofPrivacy: "No incluye secretos, rutas de objetos ni URLs prefirmadas.",
+        .settingsSmokeProofBuild: "Build",
+        .settingsSmokeProofCloud: "Nube",
+        .settingsSmokeProofProject: "Proyecto",
+        .settingsSmokeProofAnalysis: "Análisis",
         .rookieGuideTitle: "Guía rápida",
         .rookieGuideSkip: "Omitir",
         .rookieGuideBack: "Atrás",
@@ -1304,6 +1340,15 @@ extension AppLanguage {
         .settingsFeedbackSendFailure: "Impossible d'envoyer le retour maintenant. Réessaie.",
         .settingsFeedbackNetworkError: "Erreur réseau pendant l'envoi du retour. Vérifie la connexion et réessaie.",
         .settingsFeedbackSentThanks: "Merci. Ton retour a été envoyé.",
+        .settingsSmokeProofTitle: "Preuve smoke",
+        .settingsSmokeProofSubtitle: "Copie les preuves de build, cloud, projet et jobs pour le lancement.",
+        .settingsSmokeProofCopy: "Copier la preuve",
+        .settingsSmokeProofCopied: "Preuve copiée",
+        .settingsSmokeProofPrivacy: "Aucun secret, chemin d'objet ni URL présignée n'est inclus.",
+        .settingsSmokeProofBuild: "Build",
+        .settingsSmokeProofCloud: "Cloud",
+        .settingsSmokeProofProject: "Projet",
+        .settingsSmokeProofAnalysis: "Analyse",
         .rookieGuideTitle: "Guide rapide",
         .rookieGuideSkip: "Ignorer",
         .rookieGuideBack: "Retour",

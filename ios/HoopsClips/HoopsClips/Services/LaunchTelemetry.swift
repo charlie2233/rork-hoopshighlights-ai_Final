@@ -9,6 +9,7 @@ final class LaunchTelemetry {
     private let stabilitySessionID = UUID().uuidString
     private let stabilityDefaultsKey = "hoopsclips.stability.currentSession.v1"
     private let stabilityLastUnexpectedExitKey = "hoopsclips.stability.lastUnexpectedExit.v1"
+    private let latestAIEditProofKey = "hoopsclips.launchProof.latestAIEdit.v1"
 
     init(runtimeConfig: AppRuntimeConfig) {
         self.runtimeConfig = runtimeConfig
@@ -20,6 +21,10 @@ final class LaunchTelemetry {
 
     var latestUnexpectedExitSummary: String? {
         UserDefaults.standard.string(forKey: stabilityLastUnexpectedExitKey)
+    }
+
+    var latestAIEditProofSummary: String? {
+        UserDefaults.standard.string(forKey: latestAIEditProofKey)
     }
 
     func configure() {
@@ -104,10 +109,42 @@ final class LaunchTelemetry {
         planTier: String? = nil,
         failureReason: String? = nil
     ) {
+        let safeName = Self.redactedAIEditFailureReason(name)
         let safeFailureReason = Self.redactedAIEditFailureReason(failureReason)
-        logger.notice(
-            "AIEdit event=\(name, privacy: .public) editJobId=\(editJobID ?? "none", privacy: .public) renderJobId=\(renderJobID ?? "none", privacy: .public) revisionId=\(revisionID ?? "none", privacy: .public) templateId=\(templateID ?? "none", privacy: .public) planTier=\(planTier ?? "none", privacy: .public) failureReason=\(safeFailureReason, privacy: .public)"
+        recordLatestAIEditProof(
+            eventName: safeName,
+            editJobID: editJobID,
+            renderJobID: renderJobID,
+            revisionID: revisionID,
+            templateID: templateID
         )
+        logger.notice(
+            "AIEdit event=\(safeName, privacy: .public) editJobId=\(editJobID ?? "none", privacy: .public) renderJobId=\(renderJobID ?? "none", privacy: .public) revisionId=\(revisionID ?? "none", privacy: .public) templateId=\(templateID ?? "none", privacy: .public) planTier=\(planTier ?? "none", privacy: .public) failureReason=\(safeFailureReason, privacy: .public)"
+        )
+    }
+
+    private func recordLatestAIEditProof(
+        eventName: String,
+        editJobID: String?,
+        renderJobID: String?,
+        revisionID: String?,
+        templateID: String?
+    ) {
+        guard editJobID?.isEmpty == false
+            || renderJobID?.isEmpty == false
+            || revisionID?.isEmpty == false
+            || templateID?.isEmpty == false else {
+            return
+        }
+
+        let proof = [
+            "event=\(eventName)",
+            "editJobId=\(editJobID ?? "none")",
+            "renderJobId=\(renderJobID ?? "none")",
+            "revisionId=\(revisionID ?? "none")",
+            "templateId=\(templateID ?? "none")"
+        ].joined(separator: " ")
+        UserDefaults.standard.set(proof, forKey: latestAIEditProofKey)
     }
 
     static func redactedAIEditFailureReason(_ rawValue: String?) -> String {

@@ -1,5 +1,6 @@
 import SwiftUI
 import Foundation
+import UIKit
 
 struct SettingsView: View {
     @Bindable var viewModel: HighlightsViewModel
@@ -18,6 +19,7 @@ struct SettingsView: View {
     @State private var isSubmittingFeedback = false
     @State private var feedbackBanner: FeedbackBanner?
     @State private var expandedFAQIDs: Set<String> = []
+    @State private var smokeProofCopied = false
 
     private enum FeedbackType: String, CaseIterable, Identifiable {
         case suggestion = "Suggestion"
@@ -126,6 +128,9 @@ struct SettingsView: View {
                         AnyView(languageSettingsCard)
                         AnyView(workflowHubLink)
                         AnyView(supportHubLink)
+                        if shouldShowSmokeProofCard {
+                            AnyView(smokeProofCard)
+                        }
                         AnyView(aboutHubLink)
                         #if DEBUG
                         AnyView(runtimeStatusCard)
@@ -430,6 +435,84 @@ struct SettingsView: View {
         }
     }
 
+    private var shouldShowSmokeProofCard: Bool {
+        AppConstants.environmentName != "production" || AppConstants.cloudLaunchMode == .internalOnly
+    }
+
+    private var smokeProofCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            RorkSectionHeader(
+                title: languageStore.text(.settingsSmokeProofTitle),
+                icon: "doc.on.clipboard.fill",
+                subtitle: languageStore.text(.settingsSmokeProofSubtitle)
+            )
+
+            HStack(spacing: 10) {
+                SettingsPreviewStat(
+                    icon: "number.circle.fill",
+                    value: appBuildNumber,
+                    label: languageStore.text(.settingsSmokeProofBuild),
+                    tint: AppTheme.warningYellow
+                )
+                .settingsPreviewStatCard()
+
+                SettingsPreviewStat(
+                    icon: "icloud.fill",
+                    value: AppConstants.cloudLaunchStatusLabel,
+                    label: languageStore.text(.settingsSmokeProofCloud),
+                    tint: AppConstants.cloudAnalysisEnabled ? AppTheme.successGreen : AppTheme.subtleText
+                )
+                .settingsPreviewStatCard()
+            }
+
+            HStack(spacing: 10) {
+                SettingsPreviewStat(
+                    icon: "folder.fill",
+                    value: viewModel.currentProjectID == nil ? "None" : "Ready",
+                    label: languageStore.text(.settingsSmokeProofProject),
+                    tint: viewModel.currentProjectID == nil ? AppTheme.subtleText : AppTheme.successGreen
+                )
+                .settingsPreviewStatCard()
+
+                SettingsPreviewStat(
+                    icon: "scope",
+                    value: viewModel.cloudAnalysisJobID == nil ? "None" : "Job",
+                    label: languageStore.text(.settingsSmokeProofAnalysis),
+                    tint: viewModel.cloudAnalysisJobID == nil ? AppTheme.subtleText : AppTheme.neonPurple
+                )
+                .settingsPreviewStatCard()
+            }
+
+            Button {
+                copySmokeProof()
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: smokeProofCopied ? "checkmark.circle.fill" : "doc.on.doc.fill")
+                    Text(languageStore.text(smokeProofCopied ? .settingsSmokeProofCopied : .settingsSmokeProofCopy))
+                        .font(.subheadline.weight(.bold))
+                    Spacer(minLength: 0)
+                }
+                .foregroundStyle(smokeProofCopied ? .black : .white)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 13)
+                .background(
+                    smokeProofCopied ? AppTheme.successGreen : AppTheme.accentPurple.opacity(0.72),
+                    in: .rect(cornerRadius: 15)
+                )
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("settings.smokeProof.copyButton")
+            .accessibilityHint(languageStore.text(.settingsSmokeProofPrivacy))
+
+            Text(languageStore.text(.settingsSmokeProofPrivacy))
+                .font(.caption2)
+                .foregroundStyle(AppTheme.subtleText)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(16)
+        .rorkCard(cornerRadius: 18, stroke: AppTheme.neonPurple.opacity(0.18), glow: AppTheme.neonPurple, glowOpacity: 0.05)
+    }
+
     private var aboutHubLink: some View {
         settingsHubLink(
             title: languageStore.text(.aboutPrivacy),
@@ -487,6 +570,62 @@ struct SettingsView: View {
                 tint: AppTheme.neonPurple
             )
         ]
+    }
+
+    private var appVersionString: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
+    }
+
+    private var appBuildNumber: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown"
+    }
+
+    private var smokeProofText: String {
+        let generatedAt = ISO8601DateFormatter().string(from: Date())
+        let currentProjectID = viewModel.currentProjectID?.uuidString ?? "none"
+        let analysisJobID = viewModel.cloudAnalysisJobID ?? "none"
+        let sourceObjectKeyState = viewModel.cloudEditSourceObjectKey == nil ? "none" : "available_redacted"
+        let latestAIEditProof = LaunchTelemetry.shared.latestAIEditProofSummary ?? "none"
+        let latestUnexpectedExit = LaunchTelemetry.shared.latestUnexpectedExitSummary ?? "none"
+
+        return [
+            "HoopClips Smoke Proof",
+            "generatedAt=\(generatedAt)",
+            "appVersion=\(appVersionString)",
+            "build=\(appBuildNumber)",
+            "environment=\(AppConstants.environmentName)",
+            "cloudLaunchMode=\(AppConstants.cloudLaunchMode.rawValue)",
+            "cloudAnalysisBaseURL=\(proofValue(AppConstants.cloudAnalysisBaseURL))",
+            "cloudEditBaseURL=\(proofValue(AppConstants.cloudEditBaseURL))",
+            "installID=\(viewModel.installID)",
+            "projectID=\(currentProjectID)",
+            "videoLoaded=\(viewModel.isVideoLoaded)",
+            "videoDurationSeconds=\(Int(viewModel.videoDuration.rounded()))",
+            "clips=\(viewModel.clips.count)",
+            "keptClips=\(viewModel.keptClips.count)",
+            "discardedClips=\(viewModel.discardedClips.count)",
+            "needsReviewClips=\(viewModel.needsReviewClips.count)",
+            "cloudEditCandidatePool=\(viewModel.cloudEditCandidatePoolCount)",
+            "analysisJobID=\(analysisJobID)",
+            "sourceObjectKey=\(sourceObjectKeyState)",
+            "latestAIEditProof=\(latestAIEditProof)",
+            "latestUnexpectedExit=\(latestUnexpectedExit)",
+            "note=no secrets or presigned URLs included"
+        ].joined(separator: "\n")
+    }
+
+    private func proofValue(_ value: String) -> String {
+        value.isEmpty ? "none" : value
+    }
+
+    private func copySmokeProof() {
+        UIPasteboard.general.string = smokeProofText
+        smokeProofCopied = true
+        LaunchTelemetry.shared.recordStabilityCheckpoint("smoke_proof.copied", metadata: "build=\(appBuildNumber)")
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
+            smokeProofCopied = false
+        }
     }
 
     private var accountDisplayName: String {
