@@ -16,6 +16,7 @@ final class HighlightsViewModel {
     private static let baseInstallIDDefaultsKey = "hoopsclips.installID.v1"
     private static let scopedInstallIDDefaultsKeyPrefix = "hoopsclips.installID.scope.v1."
     private static let signedOutCloudIdentityScope = "signed-out"
+    private static let cloudTeamScanSoftTimeoutNanoseconds: UInt64 = 3 * 1_000_000_000
 
     private let settingsDefaultsKey = "hoopsclips.analysisSettings.v1"
     private let maxProjectCount = 20
@@ -29,6 +30,13 @@ final class HighlightsViewModel {
     private var lastAnalysisStatusSummary: String?
     private var lastAnalyzedAt: Date?
     private var lastExportedAt: Date?
+
+    private enum CloudTeamScanRaceResult {
+        case completed(PreparedCloudAnalysisJob)
+        case timedOut
+    }
+
+    private struct CloudTeamScanSoftTimeoutError: Error {}
 
     var currentProjectID: UUID?
     var videoURL: URL?
@@ -497,16 +505,44 @@ final class HighlightsViewModel {
         analysisMode = .cloud
 
         do {
-            let preparedJob = try await cloudAnalysisService.prepareTeamScan(
-                url: url,
-                duration: videoDuration,
-                installID: installID
-            ) { [weak self] progress, status in
+            let scanDuration = videoDuration
+            let scanInstallID = installID
+            let progressHandler: @MainActor @Sendable (Double, String) -> Void = { [weak self] progress, status in
                 self?.cloudTeamScanStatusMessage = status
                 self?.analysisService.updateExternalAnalysis(progress: progress, status: status)
             }
 
-            guard videoURL?.standardizedFileURL == scanSourceURL else { return }
+            let preparedJob = try await withThrowingTaskGroup(of: CloudTeamScanRaceResult.self) { group in
+                group.addTask {
+                    let preparedJob = try await CloudAnalysisService().prepareTeamScan(
+                        url: scanSourceURL,
+                        duration: scanDuration,
+                        installID: scanInstallID,
+                        progress: progressHandler
+                    )
+                    return .completed(preparedJob)
+                }
+                group.addTask {
+                    try await Task.sleep(nanoseconds: Self.cloudTeamScanSoftTimeoutNanoseconds)
+                    return .timedOut
+                }
+
+                guard let result = try await group.next() else {
+                    group.cancelAll()
+                    throw CancellationError()
+                }
+                group.cancelAll()
+
+                switch result {
+                case .completed(let preparedJob):
+                    return preparedJob
+                case .timedOut:
+                    throw CloudTeamScanSoftTimeoutError()
+                }
+            }
+
+            guard activeCloudTeamScanID == scanID,
+                  videoURL?.standardizedFileURL == scanSourceURL else { return }
             pendingCloudAnalysisJob = preparedJob
             cloudDetectedTeams = preparedJob.detectedTeams
             resetStaleHighlightTeamSelection(against: preparedJob.detectedTeams)
@@ -518,14 +554,22 @@ final class HighlightsViewModel {
                 "team_scan.completed",
                 metadata: "teams=\(preparedJob.detectedTeams.count)"
             )
+        } catch is CloudTeamScanSoftTimeoutError {
+            finishTeamScanWithoutDetectedTeams(
+                scanID: scanID,
+                sourceURL: scanSourceURL,
+                reason: "soft_timeout"
+            )
         } catch let error where error.isTaskCancellation {
-            if videoURL?.standardizedFileURL == scanSourceURL {
+            if activeCloudTeamScanID == scanID,
+               videoURL?.standardizedFileURL == scanSourceURL {
                 clearPendingCloudAnalysisJob()
             }
             LaunchTelemetry.shared.recordStabilityCheckpoint("team_scan.cancelled")
             return
         } catch let error as CloudAnalysisError {
-            guard videoURL?.standardizedFileURL == scanSourceURL else { return }
+            guard activeCloudTeamScanID == scanID,
+                  videoURL?.standardizedFileURL == scanSourceURL else { return }
             if case .quotaExceeded(let remaining) = error {
                 cloudQuotaRemaining = remaining
             }
@@ -540,7 +584,8 @@ final class HighlightsViewModel {
                 metadata: "reason=\(error.localizedDescription)"
             )
         } catch {
-            guard videoURL?.standardizedFileURL == scanSourceURL else { return }
+            guard activeCloudTeamScanID == scanID,
+                  videoURL?.standardizedFileURL == scanSourceURL else { return }
             cloudTeamScanErrorMessage = error.localizedDescription
             cloudTeamScanStatusMessage = "Team scan unavailable"
             pendingCloudAnalysisJob = nil
@@ -552,6 +597,24 @@ final class HighlightsViewModel {
                 metadata: "reason=\(error.localizedDescription)"
             )
         }
+    }
+
+    private func finishTeamScanWithoutDetectedTeams(scanID: UUID, sourceURL: URL, reason: String) {
+        guard activeCloudTeamScanID == scanID,
+              videoURL?.standardizedFileURL == sourceURL else { return }
+
+        pendingCloudAnalysisJob = nil
+        cloudDetectedTeams = []
+        settings.highlightTeamSelection = .allTeams
+        hasConfirmedHighlightTeamSelection = true
+        cloudTeamScanErrorMessage = nil
+        cloudTeamScanStatusMessage = "No teams found. Use All teams for solo or personal highlights."
+        isCloudTeamScanInProgress = false
+        activeCloudTeamScanID = nil
+        LaunchTelemetry.shared.recordStabilityCheckpoint(
+            "team_scan.fast_fallback",
+            metadata: "reason=\(reason)"
+        )
     }
 
     func confirmHighlightTeamSelection(_ selection: HighlightTeamSelection) {

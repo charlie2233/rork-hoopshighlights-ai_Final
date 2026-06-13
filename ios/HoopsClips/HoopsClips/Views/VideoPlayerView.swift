@@ -1252,8 +1252,11 @@ struct VideoPlayerView: View {
         if !viewModel.cloudDetectedTeams.isEmpty {
             return "Uncertain team plays stay in Review so you can decide."
         }
+        if let statusMessage = viewModel.cloudTeamScanStatusMessage, !statusMessage.isEmpty {
+            return statusMessage
+        }
         return cloudVideoConsentAccepted
-            ? "Team choices appear after the cloud scan finds jersey colors."
+            ? "For solo or personal highlights, use All teams. Team scan falls back quickly if no jersey colors are found."
             : "First scan asks before uploading video to the HoopClips cloud."
     }
 
@@ -1302,7 +1305,7 @@ struct VideoPlayerView: View {
                     .font(.caption)
                     .padding(.top, 1)
                     .foregroundStyle(AppTheme.subtleText)
-                Text("Use All teams until jersey colors are detected.")
+                Text("Use All teams for solo/personal highlights or until jersey colors are detected.")
                     .font(.caption.weight(.medium))
                     .foregroundStyle(AppTheme.subtleText)
                     .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 3)

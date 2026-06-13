@@ -38,7 +38,7 @@ nonisolated struct HighlightTeamSelection: Codable, Sendable, Equatable {
 
     var displaySubtitle: String {
         if mode == .all {
-            return "Keep highlights from both teams"
+            return "Solo clips, personal highlights, or both teams"
         }
         return includeUncertain ? "Keep uncertain clips for review" : "Only confident matches"
     }

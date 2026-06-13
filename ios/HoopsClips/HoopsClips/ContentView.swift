@@ -559,20 +559,46 @@ struct ContentView: View {
 
     @ViewBuilder
     private var activeTabContent: some View {
+        ZStack {
+            persistentTabLayer(.player) {
+                VideoPlayerView(
+                    viewModel: viewModel,
+                    onOpenHistory: {
+                        selectTab(.history)
+                    }
+                )
+                .id("player-\(revenueCatSyncKey)")
+                .environment(subscriptionManager)
+                .environment(authService)
+            }
+
+            transientActiveTabLayer
+        }
+    }
+
+    private func persistentTabLayer<Content: View>(
+        _ tab: AppTab,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        let isActive = activeTab == tab
+
+        return content()
+            .opacity(isActive ? 1 : 0)
+            .allowsHitTesting(isActive)
+            .accessibilityHidden(!isActive)
+            .zIndex(isActive ? 1 : 0)
+    }
+
+    @ViewBuilder
+    private var transientActiveTabLayer: some View {
         switch activeTab {
         case .player:
-            VideoPlayerView(
-                viewModel: viewModel,
-                onOpenHistory: {
-                    selectTab(.history)
-                }
-            )
-            .id("player-\(revenueCatSyncKey)")
-            .environment(subscriptionManager)
-            .environment(authService)
+            EmptyView()
 
         case .review:
-            ReviewView(viewModel: viewModel, selectedTab: $selectedTab)
+            if hasCurrentReviewableClips {
+                ReviewView(viewModel: viewModel, selectedTab: $selectedTab)
+            }
 
         case .export:
             ExportView(viewModel: viewModel)
