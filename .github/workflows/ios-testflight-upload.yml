@@ -203,7 +203,7 @@ jobs:
 
           require_archive_value "CFBundleIdentifier" "atrak.charlie.hoopsclips"
           require_archive_value "CFBundleShortVersionString" "1.0.0"
-          require_archive_value "CFBundleVersion" "26"
+          require_archive_value "CFBundleVersion" "27"
           require_app_value "HOOPSAppEnvironment" "internal_staging"
           require_app_value "HOOPSCloudLaunchMode" "internal_only"
           require_app_value "HOOPSCloudAnalysisBaseURL" "https://hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev"
