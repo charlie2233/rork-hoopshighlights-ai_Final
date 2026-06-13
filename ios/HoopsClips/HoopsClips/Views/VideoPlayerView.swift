@@ -1054,7 +1054,6 @@ struct VideoPlayerView: View {
                 .accessibilityIdentifier("analysis.startButton")
 
                 if AppConstants.requiresCloudVideoPipeline {
-                    cloudAnalysisPathView
                 }
             }
         }
@@ -1692,24 +1691,6 @@ struct VideoPlayerView: View {
     private func countSummary(_ count: Int, singular: String, plural: String) -> String? {
         guard count > 0 else { return nil }
         return "\(count) \(count == 1 ? singular : plural)"
-    }
-
-    private var cloudAnalysisPathView: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "cloud.fill")
-                .foregroundStyle(AppTheme.subtleText)
-            Text("Cloud analysis runs in HoopClips backend for this build.")
-                .font(.caption)
-                .foregroundStyle(AppTheme.subtleText)
-                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
-                .minimumScaleFactor(0.84)
-                .fixedSize(horizontal: false, vertical: true)
-                .layoutPriority(1)
-            Spacer()
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .rorkCard(cornerRadius: 12, fill: AnyShapeStyle(AppTheme.surfaceBg.opacity(0.65)), stroke: AppTheme.softBorder, glowOpacity: 0.03)
     }
 
     private var projectOverviewCard: some View {
