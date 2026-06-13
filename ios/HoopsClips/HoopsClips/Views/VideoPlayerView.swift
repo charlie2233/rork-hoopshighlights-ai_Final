@@ -1054,67 +1054,68 @@ struct VideoPlayerView: View {
         .rorkCard(cornerRadius: 18, stroke: AppTheme.softBorder)
     }
 
+    @ViewBuilder
     private var teamTargetControl: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top, spacing: 10) {
-                ZStack {
-                    Circle()
-                        .fill(AppTheme.neonPurple.opacity(0.14))
-                        .frame(width: 34, height: 34)
-                    Image(systemName: "person.3.fill")
-                        .font(.headline)
-                        .foregroundStyle(AppTheme.neonPurple)
-                }
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Highlight Team")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.white)
-                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
-                        .minimumScaleFactor(0.86)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Text(teamTargetSubtitle)
-                        .font(.caption2)
-                        .foregroundStyle(AppTheme.subtleText)
-                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 4)
-                        .minimumScaleFactor(0.9)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .layoutPriority(1)
-
+        if viewModel.isCloudTeamScanInProgress {
+            HStack(spacing: 10) {
+                ProgressView()
+                    .tint(AppTheme.neonPurple)
+                    .controlSize(.small)
+                Text("Finding teams...")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(AppTheme.subtleText)
                 Spacer(minLength: 0)
             }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(AppTheme.surfaceBg.opacity(0.58), in: .rect(cornerRadius: 14))
+            .accessibilityIdentifier("analysis.teamTarget.scanning")
+        } else if shouldShowTeamChoiceGrid {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Pick team")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(AppTheme.subtleText)
 
-            teamScanStatusRow
-
-            LazyVGrid(columns: teamTargetGridColumns, alignment: .leading, spacing: 8) {
-                ForEach(viewModel.availableHighlightTeamChoices, id: \.selectionKey) { selection in
-                    teamTargetButton(selection)
+                LazyVGrid(columns: teamTargetGridColumns, alignment: .leading, spacing: 8) {
+                    ForEach(viewModel.availableHighlightTeamChoices, id: \.selectionKey) { selection in
+                        teamTargetButton(selection)
+                    }
                 }
             }
-
-            if viewModel.settings.highlightTeamSelection.mode == .team {
-                selectedTeamNameField
-            } else if viewModel.requiresHighlightTeamSelectionConfirmation {
-                Label("Not sure? Use All teams and check plays in Review.", systemImage: "questionmark.circle.fill")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(AppTheme.subtleText)
-                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 3)
-                    .minimumScaleFactor(0.84)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            opponentTeamNameField
+            .padding(12)
+            .background(AppTheme.surfaceBg.opacity(0.58), in: .rect(cornerRadius: 14))
+            .accessibilityIdentifier("analysis.teamTarget.section")
         }
-        .padding(14)
-        .accessibilityIdentifier("analysis.teamTarget.section")
-        .rorkCard(
-            cornerRadius: 16,
-            fill: AnyShapeStyle(AppTheme.surfaceBg.opacity(0.68)),
-            stroke: AppTheme.neonPurple.opacity(0.18),
-            glow: AppTheme.neonPurple,
-            glowOpacity: 0.04
+    }
+
+    private var shouldShowTeamChoiceGrid: Bool {
+        viewModel.requiresHighlightTeamSelectionConfirmation || !viewModel.cloudDetectedTeams.isEmpty
+    }
+
+    private var personalHighlightReadyPill: some View {
+        HStack(spacing: 9) {
+            Image(systemName: "person.crop.circle.fill")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(AppTheme.neonPurple)
+            Text("Personal highlight ready")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.white)
+            Spacer(minLength: 0)
+            Text("No team setup needed")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(AppTheme.subtleText)
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(AppTheme.neonPurple.opacity(0.10), in: .rect(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(AppTheme.neonPurple.opacity(0.22), lineWidth: 1)
         )
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("analysis.teamTarget.personalReady")
     }
 
     private var teamTargetGridColumns: [GridItem] {
@@ -1134,7 +1135,7 @@ struct VideoPlayerView: View {
                 viewModel.confirmHighlightTeamSelection(selection)
             }
         } label: {
-            VStack(spacing: dynamicTypeSize.isAccessibilitySize ? 8 : 6) {
+            HStack(spacing: 8) {
                 if selection.mode == .all {
                     Image(systemName: "person.3.fill")
                         .font(.caption.weight(.bold))
@@ -1149,26 +1150,20 @@ struct VideoPlayerView: View {
                 }
                 Text(selection.displayTitle)
                     .font(.caption.weight(.semibold))
-                    .multilineTextAlignment(.center)
-                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 4)
+                    .lineLimit(1)
                     .minimumScaleFactor(0.82)
-                    .fixedSize(horizontal: false, vertical: true)
                     .layoutPriority(1)
                     .accessibilityIdentifier(selection.accessibilityIdentifier)
 
-                Text(selection.displaySubtitle)
-                    .font(.caption2.weight(.medium))
-                    .foregroundStyle(isConfirmedSelection ? AppTheme.darkBg.opacity(0.78) : AppTheme.subtleText)
-                    .multilineTextAlignment(.center)
-                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 3)
-                    .minimumScaleFactor(0.82)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .layoutPriority(1)
+                if isConfirmedSelection {
+                    Image(systemName: "checkmark")
+                        .font(.caption2.weight(.bold))
+                }
             }
             .foregroundStyle(isConfirmedSelection ? AppTheme.darkBg : AppTheme.neonPurple)
-            .frame(maxWidth: .infinity, minHeight: dynamicTypeSize >= .accessibility1 ? 116 : 92)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, minHeight: 42)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
             .background(
                 isConfirmedSelection ? AppTheme.neonPurple : AppTheme.neonPurple.opacity(0.10),
                 in: .rect(cornerRadius: 12)
