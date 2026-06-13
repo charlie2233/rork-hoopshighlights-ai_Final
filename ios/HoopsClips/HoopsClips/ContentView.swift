@@ -508,7 +508,7 @@ struct ContentView: View {
     }
 
     private var hasCurrentReviewableClips: Bool {
-        guard viewModel.isVideoLoaded, !viewModel.clips.isEmpty else { return false }
+        guard viewModel.isVideoLoaded, viewModel.videoURL != nil, !viewModel.clips.isEmpty else { return false }
         return viewModel.clips.contains(where: isReviewableClip)
     }
 
@@ -523,6 +523,7 @@ struct ContentView: View {
             "duration=\(viewModel.videoDuration)",
             "clips=\(viewModel.clips.count)",
             "reviewable=\(currentReviewableClipCount)",
+            "guard=\(reviewGuardReasonSummary)",
             "project=\(viewModel.currentProjectID?.uuidString ?? "none")"
         ].joined(separator: "|")
     }
@@ -860,18 +861,52 @@ struct ContentView: View {
             "clips=\(viewModel.clips.count)",
             "reviewable=\(currentReviewableClipCount)",
             "videoDuration=\(viewModel.videoDuration)",
+            "guard=\(reviewGuardReasonSummary)",
             "project=\(viewModel.currentProjectID?.uuidString ?? "none")"
         ].joined(separator: " ")
     }
 
     private func isReviewableClip(_ clip: Clip) -> Bool {
-        guard clip.startTime.isFinite, clip.endTime.isFinite else { return false }
+        reviewClipInvalidReason(clip) == nil
+    }
+
+    private var reviewGuardReasonSummary: String {
+        if !viewModel.isVideoLoaded { return "video_not_loaded" }
+        if viewModel.videoURL == nil { return "missing_source_url" }
+        if viewModel.clips.isEmpty { return "no_clips" }
+        let reasons = viewModel.clips.compactMap(reviewClipInvalidReason)
+        if reasons.isEmpty { return "ok" }
+        let uniqueReasons = Array(Set(reasons)).sorted()
+        return uniqueReasons.prefix(4).joined(separator: ",")
+    }
+
+    private func reviewClipInvalidReason(_ clip: Clip) -> String? {
+        guard clip.startTime.isFinite, clip.endTime.isFinite else { return "non_finite_window" }
         let sourceDuration = viewModel.videoDuration
-        let hasFiniteSourceDuration = sourceDuration.isFinite && sourceDuration > 0
-        let upperBound = hasFiniteSourceDuration ? sourceDuration : max(clip.startTime, clip.endTime)
+        guard sourceDuration.isFinite, sourceDuration > 0 else { return "invalid_source_duration" }
+        let upperBound = sourceDuration
         let start = max(0, min(clip.startTime, upperBound))
         let end = max(0, min(clip.endTime, upperBound))
-        return end > start
+        guard end > start else { return "empty_window" }
+        guard clip.confidence.isFinite,
+              clip.audioScore.isFinite,
+              clip.visualScore.isFinite,
+              clip.motionScore.isFinite,
+              clip.combinedScore.isFinite,
+              clip.playbackSpeed.isFinite,
+              clip.playbackSpeed > 0 else {
+            return "non_finite_score"
+        }
+        if let eventCenter = clip.eventCenter, !eventCenter.isFinite {
+            return "non_finite_event_center"
+        }
+        if let audioCueConfidence = clip.audioCueConfidence, !audioCueConfidence.isFinite {
+            return "non_finite_audio_confidence"
+        }
+        if let audioCueTime = clip.audioCueTime, !audioCueTime.isFinite {
+            return "non_finite_audio_time"
+        }
+        return nil
     }
 
     private func recordTabSwitchBreadcrumb(

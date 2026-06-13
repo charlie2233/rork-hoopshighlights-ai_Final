@@ -1987,6 +1987,10 @@ final class HighlightsViewModel {
             applyTeamChoiceUISmokeProject()
             return
         }
+        if fixture == .reviewCrash {
+            applyReviewCrashSmokeProject()
+            return
+        }
 
         guard let resolvedSourceObjectKey = AIEditUISmokeConfig.sourceObjectKey else { return }
 
@@ -2085,6 +2089,63 @@ final class HighlightsViewModel {
         analysisService.statusMessage = "Choose a team before analysis"
         analysisService.lastRunDiagnostics = nil
         analysisService.clips = []
+    }
+
+    private func applyReviewCrashSmokeProject() {
+        currentProjectID = UUID(uuidString: "518439B5-5684-4407-8302-56D5457FFDDF")
+        projectLibrary.currentProjectID = currentProjectID
+        videoURL = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("hoopclips-review-crash-smoke.mov")
+        videoDuration = 0
+        videoThumbnail = nil
+        isVideoLoaded = true
+        analysisMode = .cloud
+        cloudAnalysisJobID = "review-crash-smoke-analysis"
+        cloudEditSourceObjectKey = nil
+        lastAnalysisStatusSummary = "Found 2 highlights"
+        lastAnalyzedAt = Date()
+        cloudQuotaRemaining = nil
+        isCloudFallbackOffered = false
+        pendingCloudAnalysisJob = nil
+
+        analysisService.isAnalyzing = false
+        analysisService.progress = 1
+        analysisService.statusMessage = "Found 2 highlights"
+        analysisService.lastRunDiagnostics = nil
+        analysisService.clips = [
+            Clip(
+                startTime: 12,
+                endTime: 12,
+                action: .madeShot,
+                confidence: Double.nan,
+                isKept: true,
+                label: "Broken saved clip",
+                audioScore: 0.4,
+                visualScore: 0.8,
+                motionScore: 0.7,
+                combinedScore: Double.nan,
+                playbackSpeed: 1,
+                isSlowMotionEnabled: false,
+                detectionMethod: .cloud
+            ),
+            Clip(
+                startTime: 28,
+                endTime: 33,
+                eventCenter: Double.infinity,
+                action: .fastBreak,
+                confidence: 0.91,
+                isKept: true,
+                label: "Missing source duration",
+                audioScore: 0.5,
+                visualScore: 0.9,
+                motionScore: 0.87,
+                combinedScore: 0.9,
+                audioCueConfidence: Double.nan,
+                playbackSpeed: 1,
+                isSlowMotionEnabled: false,
+                detectionMethod: .cloud
+            )
+        ]
     }
     #endif
 

@@ -138,6 +138,7 @@ final class LaunchTelemetry {
     func sendManualCrashProof(_ proofText: String) async -> Bool {
         let snapshot = currentStabilitySnapshot()
         let queuedAt = Date()
+        let diagnosis = Self.crashDiagnosis(for: snapshot)
         let payload = CrashBreadcrumbReport(
             subject: "HoopClips manual crash proof",
             recipientEmail: Self.crashReportRecipientEmail,
@@ -158,6 +159,9 @@ final class LaunchTelemetry {
             lastMetadata: Self.redactedAIEditFailureReason(snapshot.lastMetadata),
             latestAIEditProof: latestAIEditProofSummary,
             latestUnexpectedExit: latestUnexpectedExitSummary,
+            diagnosisTitle: diagnosis.title,
+            likelyCause: diagnosis.likelyCause,
+            suggestedFix: diagnosis.suggestedFix,
             memoryWarningCount: max(0, snapshot.memoryWarningCount),
             launchedAt: Self.isoString(snapshot.launchedAt),
             lastUpdatedAt: Self.isoString(snapshot.lastUpdatedAt),
@@ -263,11 +267,17 @@ final class LaunchTelemetry {
             checkpoint: snapshot.lastCheckpoint,
             memoryWarningCount: snapshot.memoryWarningCount
         )
-        UserDefaults.standard.set(supportSummary, forKey: stabilityLastUnexpectedExitKey)
+        let diagnosis = Self.crashDiagnosis(for: snapshot)
+        let diagnosedSummary = [
+            supportSummary,
+            "Likely cause: \(diagnosis.likelyCause)",
+            "Suggested fix: \(diagnosis.suggestedFix)"
+        ].joined(separator: " ")
+        UserDefaults.standard.set(diagnosedSummary, forKey: stabilityLastUnexpectedExitKey)
         logger.error(
             "Previous HoopClips session may have ended unexpectedly; state=\(snapshot.lifecycleState, privacy: .public) screen=\(screen, privacy: .public) checkpoint=\(checkpoint, privacy: .public) memoryWarnings=\(snapshot.memoryWarningCount, privacy: .public)"
         )
-        enqueueUnexpectedExitReport(snapshot: snapshot, supportSummary: supportSummary)
+        enqueueUnexpectedExitReport(snapshot: snapshot, supportSummary: diagnosedSummary, diagnosis: diagnosis)
     }
 
     static func stabilitySupportSummary(
@@ -334,7 +344,11 @@ final class LaunchTelemetry {
         UserDefaults.standard.set(data, forKey: stabilityDefaultsKey)
     }
 
-    private func enqueueUnexpectedExitReport(snapshot: StabilitySnapshot, supportSummary: String) {
+    private func enqueueUnexpectedExitReport(
+        snapshot: StabilitySnapshot,
+        supportSummary: String,
+        diagnosis: CrashDiagnosis
+    ) {
         let fingerprint = Self.crashReportFingerprint(for: snapshot)
         guard UserDefaults.standard.string(forKey: crashReportSentFingerprintKey) != fingerprint else {
             return
@@ -361,6 +375,9 @@ final class LaunchTelemetry {
             lastMetadata: Self.redactedAIEditFailureReason(snapshot.lastMetadata),
             latestAIEditProof: latestAIEditProofSummary,
             latestUnexpectedExit: supportSummary,
+            diagnosisTitle: diagnosis.title,
+            likelyCause: diagnosis.likelyCause,
+            suggestedFix: diagnosis.suggestedFix,
             memoryWarningCount: max(0, snapshot.memoryWarningCount),
             launchedAt: Self.isoString(snapshot.launchedAt),
             lastUpdatedAt: Self.isoString(snapshot.lastUpdatedAt),
@@ -512,6 +529,41 @@ final class LaunchTelemetry {
         ].joined(separator: "|")
     }
 
+    private static func crashDiagnosis(for snapshot: StabilitySnapshot) -> CrashDiagnosis {
+        let checkpoint = snapshot.lastCheckpoint ?? "none"
+        let metadata = snapshot.lastMetadata ?? ""
+
+        if checkpoint == "tab.switch.requested", metadata.contains("to=review") {
+            return CrashDiagnosis(
+                title: "Review tab crash during tab switch",
+                likelyCause: "The restored project reached Review after the tab request, but Review did not become active. This usually means saved clips or source video metadata looked present but were unsafe for Review rendering.",
+                suggestedFix: "Block Review unless the current project has a source URL, positive finite source duration, and at least one clip with finite timing and scores. If blocked, return to Player and show repair/reset options."
+            )
+        }
+
+        if checkpoint == "tab.switch.blocked", metadata.contains("to=review") || metadata.contains("reason=") {
+            return CrashDiagnosis(
+                title: "Review tab prevented unsafe project",
+                likelyCause: "HoopClips detected that the current project did not have review-safe clips before opening Review.",
+                suggestedFix: "Keep the user on Player, rerun analysis, or repair the saved project before opening Review."
+            )
+        }
+
+        if checkpoint == "review.preview.bad_window" {
+            return CrashDiagnosis(
+                title: "Review preview bad clip window",
+                likelyCause: "A clip had non-finite, empty, or out-of-bounds playback timing.",
+                suggestedFix: "Clamp or discard the clip before Review playback and ask the user to rerun analysis if all clips are invalid."
+            )
+        }
+
+        return CrashDiagnosis(
+            title: "Unexpected app exit",
+            likelyCause: "The previous session stopped before a normal background or termination lifecycle event.",
+            suggestedFix: "Use the last checkpoint and metadata to identify the screen/action, then add a guard or recovery path around that transition."
+        )
+    }
+
     private static func isoString(_ date: Date) -> String {
         ISO8601DateFormatter().string(from: date)
     }
@@ -539,6 +591,12 @@ private struct StabilitySnapshot: Codable {
     var lastMemoryWarningAt: Date?
 }
 
+private struct CrashDiagnosis: Sendable {
+    var title: String
+    var likelyCause: String
+    var suggestedFix: String
+}
+
 private struct CrashBreadcrumbReport: Codable, Sendable {
     var subject: String
     var recipientEmail: String
@@ -559,6 +617,9 @@ private struct CrashBreadcrumbReport: Codable, Sendable {
     var lastMetadata: String
     var latestAIEditProof: String?
     var latestUnexpectedExit: String?
+    var diagnosisTitle: String
+    var likelyCause: String
+    var suggestedFix: String
     var memoryWarningCount: Int
     var launchedAt: String
     var lastUpdatedAt: String
@@ -599,6 +660,9 @@ private struct CrashBreadcrumbReport: Codable, Sendable {
         case lastMetadata
         case latestAIEditProof
         case latestUnexpectedExit
+        case diagnosisTitle
+        case likelyCause
+        case suggestedFix
         case memoryWarningCount
         case launchedAt
         case lastUpdatedAt

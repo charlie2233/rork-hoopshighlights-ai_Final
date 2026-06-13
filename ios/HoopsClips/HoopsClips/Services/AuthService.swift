@@ -322,22 +322,31 @@ enum AIEditUITestFixture: String {
     case stagingRenderReady = "staging_render_ready"
     case failingRender = "failing_render"
     case teamChoice = "team_choice"
+    case reviewCrash = "review_crash"
 }
 
 enum AIEditUISmokeConfig {
     static var isEnabled: Bool {
         ProcessInfo.processInfo.arguments.contains("--hoops-ai-edit-live-smoke")
             || ProcessInfo.processInfo.arguments.contains("--hoops-team-choice-ui-smoke")
+            || ProcessInfo.processInfo.arguments.contains("--hoops-review-crash-smoke")
             || truthy(environment["HOOPS_UI_SMOKE_MODE"])
             || smokeMode == AIEditUITestFixture.teamChoice.rawValue
+            || smokeMode == AIEditUITestFixture.reviewCrash.rawValue
     }
 
     static var fixture: AIEditUITestFixture {
         if ProcessInfo.processInfo.arguments.contains("--hoops-team-choice-ui-smoke") {
             return .teamChoice
         }
+        if ProcessInfo.processInfo.arguments.contains("--hoops-review-crash-smoke") {
+            return .reviewCrash
+        }
         if smokeMode == AIEditUITestFixture.teamChoice.rawValue {
             return .teamChoice
+        }
+        if smokeMode == AIEditUITestFixture.reviewCrash.rawValue {
+            return .reviewCrash
         }
         let rawFixture = trimmed(environment["HOOPS_AI_EDIT_TEST_FIXTURE"]) ?? ""
         return AIEditUITestFixture(rawValue: rawFixture) ?? .stagingRenderReady
@@ -375,7 +384,7 @@ enum AIEditUISmokeConfig {
         switch fixture {
         case .stagingRenderReady, .failingRender:
             return "uploads/25a101ba8d234fd98094bd112276161f/source.mp4"
-        case .teamChoice:
+        case .teamChoice, .reviewCrash:
             return nil
         }
     }
