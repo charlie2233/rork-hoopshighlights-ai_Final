@@ -110,6 +110,8 @@ final class HighlightsViewModel {
     var isCloudTeamScanInProgress = false
     var cloudTeamScanStatusMessage: String?
     var cloudTeamScanErrorMessage: String?
+    var isVideoImportInProgress = false
+    var videoImportStatusMessage: String?
 
     var analysisModeDisplayName: String {
         switch analysisMode {
@@ -615,6 +617,18 @@ final class HighlightsViewModel {
             "team_scan.fast_fallback",
             metadata: "reason=\(reason)"
         )
+    }
+
+    func updateVideoImportProgress(_ message: String) {
+        isVideoImportInProgress = true
+        videoImportStatusMessage = message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? "Importing video..."
+            : message
+    }
+
+    func clearVideoImportProgress() {
+        isVideoImportInProgress = false
+        videoImportStatusMessage = nil
     }
 
     func confirmHighlightTeamSelection(_ selection: HighlightTeamSelection) {

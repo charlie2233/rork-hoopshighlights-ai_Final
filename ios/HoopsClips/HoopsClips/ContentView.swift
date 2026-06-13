@@ -244,6 +244,17 @@ struct ContentView: View {
                 .zIndex(3)
             }
 
+            if shouldShowGlobalImportBanner {
+                VStack {
+                    GlobalImportProgressBanner(message: viewModel.videoImportStatusMessage ?? "Importing video...")
+                        .padding(.horizontal, 16)
+                        .padding(.top, 12)
+                    Spacer(minLength: 0)
+                }
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .zIndex(4)
+            }
+
             if selectedTab == AppTab.settings.rawValue, !isRookieGuideVisible {
                 VStack {
                     Spacer(minLength: 0)
@@ -526,6 +537,10 @@ struct ContentView: View {
 
     private var selectedTabTelemetryName: String {
         AppTab(rawValue: selectedTab)?.telemetryName ?? "unknown"
+    }
+
+    private var shouldShowGlobalImportBanner: Bool {
+        viewModel.isVideoImportInProgress && activeTab != .player && !isRookieGuideVisible
     }
 
     private var activeTab: AppTab {
@@ -1121,6 +1136,44 @@ private struct ReviewUnavailableRecoveryCard: View {
         )
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("review.unavailable.card")
+    }
+}
+
+private struct GlobalImportProgressBanner: View {
+    let message: String
+
+    var body: some View {
+        HStack(spacing: 10) {
+            ProgressView()
+                .tint(AppTheme.neonPurple)
+                .controlSize(.small)
+                .accessibilityHidden(true)
+
+            Text(shortMessage)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 13)
+        .padding(.vertical, 10)
+        .background(AppTheme.cardBg.opacity(0.96), in: .rect(cornerRadius: 16))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(AppTheme.neonPurple.opacity(0.24), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.20), radius: 14, x: 0, y: 8)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Import in progress")
+        .accessibilityValue(shortMessage)
+        .accessibilityIdentifier("global.importProgress.banner")
+    }
+
+    private var shortMessage: String {
+        let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "Importing video..." : trimmed
     }
 }
 

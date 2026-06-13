@@ -220,6 +220,7 @@ struct VideoPlayerView: View {
 
                 await MainActor.run {
                     importStatusMessage = VideoImportStatusCopy.readingFromPhotos
+                    viewModel.updateVideoImportProgress(importStatusMessage)
                 }
                 guard let importedVideo = try await VideoImportTransfer.loadFileBackedVideo(from: item) else {
                     await MainActor.run {
@@ -281,6 +282,7 @@ struct VideoPlayerView: View {
         activeImportID = importID
         isImportingVideo = true
         importStatusMessage = languageStore.text(.preparingVideo)
+        viewModel.updateVideoImportProgress(importStatusMessage)
         clearImportError()
         beginImportBackgroundTask(source: source)
         LaunchTelemetry.shared.recordStabilityCheckpoint(
@@ -325,6 +327,7 @@ struct VideoPlayerView: View {
                     )
                     importRecoveryOffersHistory = true
                     importStatusMessage = VideoImportStatusCopy.slowReminder
+                    viewModel.updateVideoImportProgress(importStatusMessage)
                 }
 
                 do {
@@ -344,6 +347,7 @@ struct VideoPlayerView: View {
                     )
                     importRecoveryOffersHistory = true
                     importStatusMessage = VideoImportStatusCopy.longRunningReminder
+                    viewModel.updateVideoImportProgress(importStatusMessage)
                 }
 
                 do {
@@ -388,6 +392,7 @@ struct VideoPlayerView: View {
     private func preflightVideoImport(url: URL, source: String) async -> VideoImportPreflightSummary? {
         await MainActor.run {
             importStatusMessage = VideoImportStatusCopy.checkingDetails
+            viewModel.updateVideoImportProgress(importStatusMessage)
         }
 
         do {
@@ -398,6 +403,7 @@ struct VideoPlayerView: View {
             )
             await MainActor.run {
                 importStatusMessage = VideoImportStatusCopy.checkedSaving
+                viewModel.updateVideoImportProgress(importStatusMessage)
             }
             return summary
         } catch let error as VideoImportPreflightError {
@@ -424,6 +430,7 @@ struct VideoPlayerView: View {
     private func updateImportStatus(for phase: ProjectImportPhase) async {
         await MainActor.run {
             importStatusMessage = phase.importStatusMessage
+            viewModel.updateVideoImportProgress(importStatusMessage)
         }
     }
 
@@ -454,6 +461,7 @@ struct VideoPlayerView: View {
                 return
             }
             importStatusMessage = VideoImportStatusCopy.openingProject
+            viewModel.updateVideoImportProgress(importStatusMessage)
             Task { @MainActor in
                 do {
                     try await Task.sleep(nanoseconds: videoImportCompletionGraceNanoseconds)
@@ -633,11 +641,12 @@ struct VideoPlayerView: View {
         importStatusMessage = ""
         activeImportID = nil
         importTask = nil
+        viewModel.clearVideoImportProgress()
         endImportBackgroundTask()
     }
 
     private var currentImportStatusMessage: String {
-        importStatusMessage.isEmpty ? languageStore.text(.preparingVideo) : importStatusMessage
+        viewModel.videoImportStatusMessage ?? (importStatusMessage.isEmpty ? languageStore.text(.preparingVideo) : importStatusMessage)
     }
 
     private func syncPlayer(with url: URL?) {
