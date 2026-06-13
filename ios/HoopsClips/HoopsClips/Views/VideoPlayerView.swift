@@ -51,7 +51,6 @@ struct VideoPlayerView: View {
                     VStack(spacing: 24) {
                         if viewModel.isVideoLoaded {
                             videoSection
-                            projectOverviewCard
                             analysisSection
                         } else {
                             importSection
