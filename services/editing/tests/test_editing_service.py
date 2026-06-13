@@ -284,12 +284,13 @@ class EditingServiceTests(unittest.TestCase):
         self.assertNotIn("sourceUrl", payload)
         self.assertNotIn("sourceObjectKey", payload)
         materialize.assert_called_once()
-        build_candidates.assert_called_once()
         apply_scan.assert_called_once()
-        prescan_settings = build_candidates.call_args.args[2]
-        self.assertEqual(prescan_settings.team_quick_scan_max_candidate_clips, 320)
-        self.assertEqual(prescan_settings.team_quick_scan_clip_frames_per_clip, 8)
-        self.assertEqual(prescan_settings.team_quick_scan_timeout_seconds, 180.0)
+        build_candidates.assert_not_called()
+        self.assertEqual(apply_scan.call_args.args[2], [])
+        prescan_settings = apply_scan.call_args.args[3]
+        self.assertEqual(prescan_settings.team_quick_scan_max_candidate_clips, 1)
+        self.assertEqual(prescan_settings.team_quick_scan_clip_frames_per_clip, 1)
+        self.assertEqual(prescan_settings.team_quick_scan_timeout_seconds, 3.0)
         self.assertIs(apply_scan.call_args.args[3], prescan_settings)
         self.assertEqual(cleanup_calls, [True])
 

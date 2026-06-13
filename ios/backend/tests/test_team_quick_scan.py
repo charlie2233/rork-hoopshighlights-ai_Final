@@ -176,7 +176,7 @@ def _poll_analysis_job_until_terminal(client: TestClient, job_id: str, *, attemp
 
 
 class TeamQuickScanTests(unittest.TestCase):
-    def test_prescan_settings_use_full_quality_budget_for_interactive_team_scan(self) -> None:
+    def test_prescan_settings_use_fast_context_budget_for_interactive_team_scan(self) -> None:
         settings = _local_settings(Path("/tmp/hoopclips-prescan")).__dict__.copy()
         full_settings = Settings(
             **{
@@ -191,14 +191,15 @@ class TeamQuickScanTests(unittest.TestCase):
 
         prescan = team_quick_prescan_settings(full_settings)
 
-        self.assertEqual(prescan.team_quick_scan_max_candidate_clips, 320)
-        self.assertEqual(prescan.team_quick_scan_rich_candidate_clips, 320)
-        self.assertEqual(prescan.team_quick_scan_clip_frames_per_clip, 8)
-        self.assertEqual(prescan.team_quick_scan_max_total_clip_frames, 2560)
-        self.assertEqual(prescan.team_quick_scan_timeout_seconds, 180.0)
+        self.assertEqual(prescan.team_quick_scan_video_frame_count, 5)
+        self.assertEqual(prescan.team_quick_scan_max_candidate_clips, 1)
+        self.assertEqual(prescan.team_quick_scan_rich_candidate_clips, 0)
+        self.assertEqual(prescan.team_quick_scan_clip_frames_per_clip, 1)
+        self.assertEqual(prescan.team_quick_scan_max_total_clip_frames, 1)
+        self.assertEqual(prescan.team_quick_scan_timeout_seconds, 3.0)
         self.assertEqual(full_settings.team_quick_scan_max_candidate_clips, 320)
 
-    def test_prescan_frame_budget_uses_rich_and_tail_candidates(self) -> None:
+    def test_prescan_frame_budget_uses_few_context_frames_and_one_clip_safety_cap(self) -> None:
         clips = [
             _clip("Made Shot", float(index * 5), float(index * 5 + 4), float(index * 5 + 2))
             for index in range(320)
@@ -227,7 +228,10 @@ class TeamQuickScanTests(unittest.TestCase):
         for frame in clip_frames:
             roles_by_clip.setdefault(frame.clip_ref, []).append(frame.role)
 
-        self.assertEqual(len(clip_frames), 2560)
+        video_frames = [frame for frame in frames if frame.clip_ref is None]
+        self.assertEqual(len(video_frames), 2)
+        self.assertEqual(len(clip_frames), 1)
+        self.assertEqual(next(iter(roles_by_clip.values())), ["ballHandlerSetup"])
         self.assertEqual(len(roles_by_clip), 320)
         self.assertEqual(
             roles_by_clip["clip_0"],

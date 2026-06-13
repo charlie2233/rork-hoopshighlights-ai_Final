@@ -44,7 +44,7 @@ from .models import (
     TeamSelection,
     now_utc,
 )
-from .pipeline import build_team_quick_scan_candidate_clips, run_analysis
+from .pipeline import run_analysis
 from .render_storage import RenderStorage
 from .renderers.ffmpeg_renderer import FfmpegRenderer
 from .rendering import (
@@ -530,17 +530,11 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
             job = await _require_job(job_id)
             source = await runtime.storage.materialize_source(job)
             prescan_settings = team_quick_prescan_settings(resolved_settings)
-            candidate_clips = await run_in_threadpool(
-                build_team_quick_scan_candidate_clips,
-                source.local_path,
-                job.duration_seconds,
-                prescan_settings,
-            )
             _, detected_teams, applied = await run_in_threadpool(
                 apply_team_quick_scan,
                 source.local_path,
                 job.duration_seconds,
-                candidate_clips,
+                [],
                 prescan_settings,
             )
             status = "scanned" if applied and detected_teams else "unavailable"
@@ -578,17 +572,11 @@ def create_router(settings: Optional[Settings] = None) -> APIRouter:
                 resolved_settings.upload_root,
             )
             prescan_settings = team_quick_prescan_settings(resolved_settings)
-            candidate_clips = await run_in_threadpool(
-                build_team_quick_scan_candidate_clips,
-                source.local_path,
-                request.durationSeconds,
-                prescan_settings,
-            )
             _, detected_teams, applied = await run_in_threadpool(
                 apply_team_quick_scan,
                 source.local_path,
                 request.durationSeconds,
-                candidate_clips,
+                [],
                 prescan_settings,
             )
             status = "scanned" if applied and detected_teams else "unavailable"

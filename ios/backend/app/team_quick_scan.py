@@ -27,11 +27,12 @@ TEAM_QUICK_SCAN_COMPACT_FRAMES_PER_CANDIDATE = 3
 TEAM_QUICK_SCAN_RICH_CANDIDATE_CLIPS = 320
 TEAM_QUICK_SCAN_DEFAULT_TOTAL_CLIP_FRAMES = 2560
 TEAM_QUICK_SCAN_MAX_TOTAL_CLIP_FRAMES = 3200
-TEAM_QUICK_SCAN_PRESCAN_MAX_CANDIDATE_CLIPS = 320
-TEAM_QUICK_SCAN_PRESCAN_RICH_CANDIDATE_CLIPS = 320
-TEAM_QUICK_SCAN_PRESCAN_FRAMES_PER_CANDIDATE = 8
-TEAM_QUICK_SCAN_PRESCAN_MAX_TOTAL_CLIP_FRAMES = 2560
-TEAM_QUICK_SCAN_PRESCAN_MIN_TIMEOUT_SECONDS = 180.0
+TEAM_QUICK_SCAN_PRESCAN_VIDEO_FRAME_COUNT = 5
+TEAM_QUICK_SCAN_PRESCAN_MAX_CANDIDATE_CLIPS = 1
+TEAM_QUICK_SCAN_PRESCAN_RICH_CANDIDATE_CLIPS = 0
+TEAM_QUICK_SCAN_PRESCAN_FRAMES_PER_CANDIDATE = 1
+TEAM_QUICK_SCAN_PRESCAN_MAX_TOTAL_CLIP_FRAMES = 1
+TEAM_QUICK_SCAN_PRESCAN_TIMEOUT_SECONDS = 3.0
 TEAM_QUICK_SCAN_SCORING_OWNERSHIP_ROLES = {"ballhandlersetup", "prerelease", "release"}
 TEAM_QUICK_SCAN_BLOCK_ACTION_ROLES = {"challenge", "balldeflection"}
 TEAM_QUICK_SCAN_POSSESSION_CHANGE_ACTION_ROLES = {
@@ -103,12 +104,21 @@ def apply_team_quick_scan(
 
 
 def team_quick_prescan_settings(settings: Settings) -> Settings:
-    """Use the quality-beta GPT vision budget for the interactive team picker."""
+    """Use a tiny GPT vision budget for the interactive team picker.
+
+    The picker only needs jersey-color team options. Full candidate ownership
+    attribution still happens later in the normal analysis path.
+    """
+    configured_timeout = float(getattr(settings, "team_quick_scan_timeout_seconds", 24.0))
     return replace(
         settings,
-        team_quick_scan_timeout_seconds=max(
-            float(getattr(settings, "team_quick_scan_timeout_seconds", 24.0)),
-            TEAM_QUICK_SCAN_PRESCAN_MIN_TIMEOUT_SECONDS,
+        team_quick_scan_timeout_seconds=max(2.0, min(configured_timeout, TEAM_QUICK_SCAN_PRESCAN_TIMEOUT_SECONDS)),
+        team_quick_scan_video_frame_count=max(
+            2,
+            min(
+                int(getattr(settings, "team_quick_scan_video_frame_count", TEAM_QUICK_SCAN_PRESCAN_VIDEO_FRAME_COUNT)),
+                TEAM_QUICK_SCAN_PRESCAN_VIDEO_FRAME_COUNT,
+            ),
         ),
         team_quick_scan_max_candidate_clips=min(
             int(getattr(settings, "team_quick_scan_max_candidate_clips", TEAM_QUICK_SCAN_MAX_CANDIDATE_CLIPS)),

@@ -110,6 +110,8 @@ Then you can selectively install dependencies into isolated virtualenvs:
 - `HOOPS_TEAM_QUICK_SCAN_MAX_CANDIDATE_CLIPS`: maximum analysis candidates included in team quick scan attribution, clamped to `1...320` (default `320`)
 - `HOOPS_TEAM_QUICK_SCAN_MIN_TEAM_CONFIDENCE`: minimum confidence to expose a detected team option (default `0.55`). Clip filtering still treats attribution below `0.85` as uncertain.
 - `HOOPS_TEAM_QUICK_SCAN_MAX_OUTPUT_TOKENS`: structured-output budget for team options and clip attributions, clamped to `512...24000` (default `24000`)
+
+Interactive pre-analysis team scan intentionally uses a much smaller derived budget than full analysis: up to 5 source-video context frames, no candidate-clip generation, and a 3 second GPT request cap. If no obvious jersey-color teams are found quickly, iOS continues with `All teams`, which is also the personal/single-player highlight path. Full per-clip team attribution still happens during the normal cloud analysis path when enabled.
 - Interactive team prescan uses the quality-beta accuracy preset derived from these settings: up to 320 candidate clips, 320 rich candidates, 8 role frames per rich candidate, and 2,560 total clip frames.
 - `HOOPS_RENDER_STORAGE_PROVIDER`: `local` or `r2` (default `local`)
 - `HOOPS_RENDER_DOWNLOAD_TTL_SECONDS`: signed/local render download URL TTL (default `900`)
