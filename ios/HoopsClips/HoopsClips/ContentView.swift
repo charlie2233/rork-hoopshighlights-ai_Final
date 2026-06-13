@@ -15,6 +15,7 @@ struct ContentView: View {
     @State private var isShowingPostSignInTransition = false
     @State private var isRookieGuideVisible = false
     @State private var rookieGuideStepIndex = 0
+    @State private var reviewRecoveryNotice: ReviewRecoveryNotice?
     @AppStorage("hoopsclips.visibleProjectAuthScopeKey.v1") private var visibleProjectAuthScopeKey = "signed-out"
     @AppStorage("hoopsclips.rookieGuide.completed.v1") private var rookieGuideCompleted = false
     @GestureState private var tabBarDragTranslation: CGFloat = 0
@@ -94,6 +95,19 @@ struct ContentView: View {
         let titleKey: AppTextKey
         let bodyKey: AppTextKey
         let tipKey: AppTextKey
+    }
+
+    fileprivate struct ReviewRecoveryNotice: Identifiable, Equatable {
+        let id = UUID()
+        let reason: String
+        let clipCount: Int
+        let reviewableClipCount: Int
+
+        static func == (lhs: ReviewRecoveryNotice, rhs: ReviewRecoveryNotice) -> Bool {
+            lhs.reason == rhs.reason
+                && lhs.clipCount == rhs.clipCount
+                && lhs.reviewableClipCount == rhs.reviewableClipCount
+        }
     }
 
     private var needsVerification: Bool {
@@ -213,6 +227,21 @@ struct ContentView: View {
                 .animation(reduceMotion ? nil : tabSelectionAnimation, value: activeTab.id)
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 appTabBar
+            }
+
+            if let reviewRecoveryNotice, !isRookieGuideVisible {
+                VStack {
+                    Spacer(minLength: 0)
+                    ReviewUnavailableRecoveryCard(
+                        notice: reviewRecoveryNotice,
+                        onRerunAnalysis: openPlayerFromReviewRecovery,
+                        onDismiss: dismissReviewRecoveryNotice
+                    )
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, tabButtonHeight + 24)
+                }
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .zIndex(3)
             }
 
             if selectedTab == AppTab.settings.rawValue, !isRookieGuideVisible {
@@ -801,6 +830,7 @@ struct ContentView: View {
             resetToDefaultTabAfterReviewBlock(reason: "no_reviewable_clips")
             return
         }
+        dismissReviewRecoveryNotice()
         guard !reduceMotion else {
             selectedTab = tab.rawValue
             return
@@ -833,7 +863,12 @@ struct ContentView: View {
     }
 
     private func resetReviewTabIfNeeded(reason: String) {
-        guard selectedTab == AppTab.review.rawValue, !hasCurrentReviewableClips else { return }
+        if hasCurrentReviewableClips {
+            dismissReviewRecoveryNotice()
+            return
+        }
+
+        guard selectedTab == AppTab.review.rawValue else { return }
         resetToDefaultTabAfterReviewBlock(reason: reason)
     }
 
@@ -842,6 +877,7 @@ struct ContentView: View {
             "tab.switch.blocked",
             metadata: reviewBlockMetadata(reason: reason)
         )
+        showReviewRecoveryNotice()
         guard selectedTab != AppTab.player.rawValue else { return }
 
         if reduceMotion {
@@ -851,7 +887,41 @@ struct ContentView: View {
                 selectedTab = AppTab.player.rawValue
             }
         }
-        HoopsAccessibility.announce("No reviewable clips yet. Opening Player.")
+        HoopsAccessibility.announce("Review unavailable. Re-run analysis from Player.")
+    }
+
+    private func showReviewRecoveryNotice() {
+        let notice = ReviewRecoveryNotice(
+            reason: reviewGuardReasonSummary,
+            clipCount: viewModel.clips.count,
+            reviewableClipCount: currentReviewableClipCount
+        )
+        guard reviewRecoveryNotice != notice else { return }
+
+        if reduceMotion {
+            reviewRecoveryNotice = notice
+        } else {
+            withAnimation(tabSelectionAnimation) {
+                reviewRecoveryNotice = notice
+            }
+        }
+    }
+
+    private func dismissReviewRecoveryNotice() {
+        guard reviewRecoveryNotice != nil else { return }
+
+        if reduceMotion {
+            reviewRecoveryNotice = nil
+        } else {
+            withAnimation(tabSelectionAnimation) {
+                reviewRecoveryNotice = nil
+            }
+        }
+    }
+
+    private func openPlayerFromReviewRecovery() {
+        dismissReviewRecoveryNotice()
+        selectTab(.player)
     }
 
     private func reviewBlockMetadata(reason: String) -> String {
@@ -926,6 +996,105 @@ struct ContentView: View {
             "project=\(viewModel.currentProjectID?.uuidString ?? "none")"
         ].joined(separator: " ")
         LaunchTelemetry.shared.recordStabilityCheckpoint("tab.switch.\(phase)", metadata: metadata)
+    }
+}
+
+private struct ReviewUnavailableRecoveryCard: View {
+    let notice: ContentView.ReviewRecoveryNotice
+    let onRerunAnalysis: () -> Void
+    let onDismiss: () -> Void
+
+    private var reasonCopy: String {
+        switch notice.reason {
+        case "video_not_loaded":
+            return "No source video is loaded."
+        case "missing_source_url":
+            return "The source video file is missing."
+        case "no_clips":
+            return "No clips are ready for Review."
+        case "invalid_source_duration":
+            return "The source video duration could not be verified."
+        case "empty_window":
+            return "The clip windows are empty or outside the video."
+        case "non_finite_window", "non_finite_score", "non_finite_event_center", "non_finite_audio_confidence", "non_finite_audio_time":
+            return "Some clip data is not safe to preview."
+        default:
+            return "Clip data needs a fresh analysis pass."
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(AppTheme.warningYellow.opacity(0.16))
+                        .frame(width: 42, height: 42)
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(AppTheme.warningYellow)
+                }
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("Review unavailable")
+                        .font(.headline.weight(.bold))
+                        .foregroundStyle(.white)
+                    Text("Re-run analysis to rebuild clean clip windows before reviewing.")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(AppTheme.subtleText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 8)
+
+                Button(action: onDismiss) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(AppTheme.subtleText)
+                        .frame(width: 32, height: 32)
+                        .background(AppTheme.cardBg.opacity(0.82), in: Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Dismiss Review unavailable message")
+            }
+
+            Text("\(notice.reviewableClipCount)/\(notice.clipCount) clips reviewable. \(reasonCopy)")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(AppTheme.warningYellow)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Button(action: onRerunAnalysis) {
+                Label("Re-run analysis", systemImage: "arrow.clockwise.circle.fill")
+                    .font(.subheadline.weight(.bold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 13)
+                    .foregroundStyle(.white)
+                    .background(
+                        LinearGradient(
+                            colors: [AppTheme.neonPurple, AppTheme.accentPurple],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    )
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("review.unavailable.rerunAnalysis")
+            .accessibilityHint("Opens Player so you can run analysis again.")
+        }
+        .padding(18)
+        .background(
+            RoundedRectangle(cornerRadius: 26, style: .continuous)
+                .fill(AppTheme.cardBg.opacity(0.98))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 26, style: .continuous)
+                        .stroke(AppTheme.warningYellow.opacity(0.34), lineWidth: 1)
+                }
+                .shadow(color: .black.opacity(0.35), radius: 22, x: 0, y: 14)
+        )
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("review.unavailable.card")
     }
 }
 
