@@ -36,6 +36,33 @@ struct CloudAnalysisService {
         return teamScan ? "Uploading video for team scan" : "Uploading video to cloud"
     }
 
+    private static func uploadProgressMessage(
+        stage: String,
+        fraction: Double,
+        elapsedSeconds: TimeInterval,
+        stalled: Bool = false
+    ) -> String {
+        let boundedFraction = min(max(fraction, 0), 1)
+        let percent = Int((boundedFraction * 100).rounded(.down))
+        let slowHint = stalled ? " · connection may be slow" : ""
+        return "\(stage) \(percent)% · \(formatUploadElapsedTime(elapsedSeconds))\(slowHint)"
+    }
+
+    private static func formatUploadElapsedTime(_ elapsedSeconds: TimeInterval) -> String {
+        let totalSeconds = max(0, Int(elapsedSeconds.rounded(.down)))
+        let hours = totalSeconds / 3600
+        let minutes = (totalSeconds % 3600) / 60
+        let seconds = totalSeconds % 60
+
+        if hours > 0 {
+            return "\(hours)h \(minutes)m"
+        }
+        if minutes > 0 {
+            return "\(minutes)m \(seconds)s"
+        }
+        return "\(seconds)s"
+    }
+
     private static func safeVisibleMessage(_ message: String, fallback: String, maxCharacters: Int) -> String {
         let compact = message
             .split(whereSeparator: \.isWhitespace)
@@ -402,21 +429,53 @@ struct CloudAnalysisService {
             request.setValue(value, forHTTPHeaderField: header)
         }
 
-        let delegate = CloudUploadProgressDelegate { fraction in
+        let tracker = CloudUploadProgressTracker()
+        let reportUploadProgress: @Sendable (_ fraction: Double, _ stalled: Bool) -> Void = { fraction, stalled in
             let boundedFraction = min(max(fraction, 0), 1)
             let progressValue = progressStart + ((progressEnd - progressStart) * boundedFraction)
-            let percent = Int((boundedFraction * 100).rounded(.down))
+            let elapsedSeconds = tracker.elapsedSeconds
+            let message = Self.uploadProgressMessage(
+                stage: stage,
+                fraction: boundedFraction,
+                elapsedSeconds: elapsedSeconds,
+                stalled: stalled
+            )
             Task { @MainActor in
-                progress(progressValue, "\(stage) \(percent)%")
+                progress(progressValue, message)
+            }
+        }
+        let delegate = CloudUploadProgressDelegate { fraction in
+            tracker.update(fraction: fraction)
+            reportUploadProgress(fraction, false)
+        }
+        let uploadMonitorTask = Task {
+            while !Task.isCancelled {
+                do {
+                    try await Task.sleep(nanoseconds: 10 * 1_000_000_000)
+                } catch {
+                    return
+                }
+
+                let snapshot = tracker.snapshot()
+                let stalled = snapshot.secondsSinceProgress >= 60 && snapshot.fraction < 0.99
+                reportUploadProgress(snapshot.fraction, stalled)
             }
         }
         let uploadSession = URLSession(configuration: session.configuration, delegate: delegate, delegateQueue: nil)
         defer {
+            uploadMonitorTask.cancel()
             uploadSession.finishTasksAndInvalidate()
         }
 
         let (_, response) = try await uploadSession.upload(for: request, fromFile: url)
-        progress(progressEnd, "\(stage) 100%")
+        progress(
+            progressEnd,
+            Self.uploadProgressMessage(
+                stage: stage,
+                fraction: 1,
+                elapsedSeconds: tracker.elapsedSeconds
+            )
+        )
 
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw CloudAnalysisError.uploadFailed
@@ -544,6 +603,42 @@ struct CloudAnalysisService {
         } catch {
             throw CloudAnalysisError.invalidResponse
         }
+    }
+}
+
+private final class CloudUploadProgressTracker: @unchecked Sendable {
+    private let lock = NSLock()
+    private let startedAt = Date()
+    private var lastProgressAt = Date()
+    private var latestFraction = 0.0
+
+    var elapsedSeconds: TimeInterval {
+        Date().timeIntervalSince(startedAt)
+    }
+
+    func update(fraction: Double) {
+        let boundedFraction = min(max(fraction, 0), 1)
+        lock.lock()
+        if boundedFraction > latestFraction + 0.001 {
+            latestFraction = boundedFraction
+            lastProgressAt = Date()
+        } else {
+            latestFraction = max(latestFraction, boundedFraction)
+        }
+        lock.unlock()
+    }
+
+    func snapshot() -> (fraction: Double, elapsedSeconds: TimeInterval, secondsSinceProgress: TimeInterval) {
+        let now = Date()
+        lock.lock()
+        let fraction = latestFraction
+        let lastProgressAt = lastProgressAt
+        lock.unlock()
+        return (
+            fraction: fraction,
+            elapsedSeconds: now.timeIntervalSince(startedAt),
+            secondsSinceProgress: now.timeIntervalSince(lastProgressAt)
+        )
     }
 }
 
