@@ -217,8 +217,16 @@ struct CloudAnalysisService {
             )
         )
 
-        progress(0.15, Self.uploadProgressStage(fileSizeBytes: fileInfo.fileSizeBytes))
-        try await uploadVideo(to: job, from: url)
+        let uploadStage = Self.uploadProgressStage(fileSizeBytes: fileInfo.fileSizeBytes)
+        progress(0.15, uploadStage)
+        try await uploadVideo(
+            to: job,
+            from: url,
+            stage: uploadStage,
+            progressStart: 0.15,
+            progressEnd: 0.27,
+            progress: progress
+        )
 
         progress(0.28, "Starting cloud clip search")
         _ = try await startJob(baseURL: baseURL, jobID: job.jobId, installID: installID, teamSelection: teamSelection)
@@ -260,8 +268,16 @@ struct CloudAnalysisService {
             )
         )
 
-        progress(0.14, Self.uploadProgressStage(fileSizeBytes: fileInfo.fileSizeBytes, teamScan: true))
-        try await uploadVideo(to: job, from: url)
+        let uploadStage = Self.uploadProgressStage(fileSizeBytes: fileInfo.fileSizeBytes, teamScan: true)
+        progress(0.14, uploadStage)
+        try await uploadVideo(
+            to: job,
+            from: url,
+            stage: uploadStage,
+            progressStart: 0.14,
+            progressEnd: 0.19,
+            progress: progress
+        )
 
         progress(0.20, "Scanning jersey colors")
         let scan = try await scanJobTeams(baseURL: baseURL, jobID: job.jobId, installID: installID)
@@ -368,7 +384,14 @@ struct CloudAnalysisService {
         )
     }
 
-    private func uploadVideo(to job: CreateCloudAnalysisJobResponse, from url: URL) async throws {
+    private func uploadVideo(
+        to job: CreateCloudAnalysisJobResponse,
+        from url: URL,
+        stage: String,
+        progressStart: Double,
+        progressEnd: Double,
+        progress: @escaping @MainActor @Sendable (Double, String) -> Void
+    ) async throws {
         guard let uploadURL = URL(string: job.uploadUrl) else {
             throw CloudAnalysisError.invalidResponse
         }
@@ -379,7 +402,22 @@ struct CloudAnalysisService {
             request.setValue(value, forHTTPHeaderField: header)
         }
 
-        let (_, response) = try await session.upload(for: request, fromFile: url)
+        let delegate = CloudUploadProgressDelegate { fraction in
+            let boundedFraction = min(max(fraction, 0), 1)
+            let progressValue = progressStart + ((progressEnd - progressStart) * boundedFraction)
+            let percent = Int((boundedFraction * 100).rounded(.down))
+            Task { @MainActor in
+                progress(progressValue, "\(stage) \(percent)%")
+            }
+        }
+        let uploadSession = URLSession(configuration: session.configuration, delegate: delegate, delegateQueue: nil)
+        defer {
+            uploadSession.finishTasksAndInvalidate()
+        }
+
+        let (_, response) = try await uploadSession.upload(for: request, fromFile: url)
+        progress(progressEnd, "\(stage) 100%")
+
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw CloudAnalysisError.uploadFailed
         }
@@ -506,5 +544,25 @@ struct CloudAnalysisService {
         } catch {
             throw CloudAnalysisError.invalidResponse
         }
+    }
+}
+
+private final class CloudUploadProgressDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+    private let onProgress: @Sendable (Double) -> Void
+
+    init(onProgress: @escaping @Sendable (Double) -> Void) {
+        self.onProgress = onProgress
+        super.init()
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        didSendBodyData bytesSent: Int64,
+        totalBytesSent: Int64,
+        totalBytesExpectedToSend: Int64
+    ) {
+        guard totalBytesExpectedToSend > 0 else { return }
+        onProgress(Double(totalBytesSent) / Double(totalBytesExpectedToSend))
     }
 }
