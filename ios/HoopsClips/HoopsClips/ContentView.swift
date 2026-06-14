@@ -229,7 +229,7 @@ struct ContentView: View {
                 appTabBar
             }
 
-            if let reviewRecoveryNotice, !isRookieGuideVisible {
+            if let reviewRecoveryNotice, !isRookieGuideVisible, !isReviewWaitingForAnalysis {
                 VStack {
                     Spacer(minLength: 0)
                     ReviewUnavailableRecoveryCard(
@@ -543,9 +543,13 @@ struct ContentView: View {
         viewModel.isVideoImportInProgress && activeTab != .player && !isRookieGuideVisible
     }
 
+    private var isReviewWaitingForAnalysis: Bool {
+        viewModel.isVideoLoaded && viewModel.analysisService.isAnalyzing
+    }
+
     private var activeTab: AppTab {
         let tab = AppTab(rawValue: selectedTab) ?? .player
-        if tab == .review, !hasCurrentReviewableClips {
+        if tab == .review, !hasCurrentReviewableClips, !isReviewWaitingForAnalysis {
             return .player
         }
         return tab
@@ -613,6 +617,14 @@ struct ContentView: View {
         case .review:
             if hasCurrentReviewableClips {
                 ReviewView(viewModel: viewModel, selectedTab: $selectedTab)
+            } else if isReviewWaitingForAnalysis {
+                ReviewAnalysisWaitingView(
+                    title: languageStore.text(.tabReview),
+                    progress: viewModel.analysisService.progress,
+                    statusMessage: viewModel.analysisService.statusMessage,
+                    detailText: reviewAnalysisDetailText,
+                    approximateRemainingText: reviewAnalysisApproximateRemainingText
+                )
             }
 
         case .export:
@@ -868,8 +880,12 @@ struct ContentView: View {
         guard selectedTab != tab.rawValue else { return }
         recordTabSwitchBreadcrumb(fromRawValue: selectedTab, toRawValue: tab.rawValue, phase: "requested", trigger: "tab_bar")
         if tab == .review, !hasCurrentReviewableClips {
+            if isReviewWaitingForAnalysis {
+                dismissReviewRecoveryNotice()
+            } else {
             resetToDefaultTabAfterReviewBlock(reason: "no_reviewable_clips")
             return
+            }
         }
         dismissReviewRecoveryNotice()
         guard !reduceMotion else {
@@ -904,7 +920,7 @@ struct ContentView: View {
     }
 
     private func resetReviewTabIfNeeded(reason: String) {
-        if hasCurrentReviewableClips {
+        if hasCurrentReviewableClips || isReviewWaitingForAnalysis {
             dismissReviewRecoveryNotice()
             return
         }
@@ -969,6 +985,8 @@ struct ContentView: View {
         [
             "reason=\(reason)",
             "videoLoaded=\(viewModel.isVideoLoaded)",
+            "analyzing=\(viewModel.analysisService.isAnalyzing)",
+            "progress=\(viewModel.analysisService.progress)",
             "clips=\(viewModel.clips.count)",
             "reviewable=\(currentReviewableClipCount)",
             "videoDuration=\(viewModel.videoDuration)",
@@ -1037,6 +1055,134 @@ struct ContentView: View {
             "project=\(viewModel.currentProjectID?.uuidString ?? "none")"
         ].joined(separator: " ")
         LaunchTelemetry.shared.recordStabilityCheckpoint("tab.switch.\(phase)", metadata: metadata)
+    }
+
+    private var reviewAnalysisDetailText: String {
+        CloudAnalysisProgressCopy.detail(
+            statusMessage: viewModel.analysisService.statusMessage,
+            analysisMode: viewModel.analysisMode,
+            teamSelection: viewModel.settings.highlightTeamSelection
+        )
+    }
+
+    private var reviewAnalysisApproximateRemainingText: String? {
+        CloudAnalysisProgressCopy.approximateRemainingTime(
+            statusMessage: viewModel.analysisService.statusMessage,
+            analysisMode: viewModel.analysisMode,
+            progress: viewModel.analysisService.progress,
+            durationSeconds: viewModel.videoDuration
+        )
+    }
+}
+
+private struct ReviewAnalysisWaitingView: View {
+    let title: String
+    let progress: Double
+    let statusMessage: String
+    let detailText: String
+    let approximateRemainingText: String?
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    private var safeProgress: Double {
+        guard progress.isFinite else { return 0 }
+        return min(max(progress, 0), 1)
+    }
+
+    private var progressPercentText: String {
+        "\(Int(safeProgress * 100))%"
+    }
+
+    private var visibleStatusMessage: String {
+        let trimmed = statusMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "Analysis is starting..." : trimmed
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                HoopsMotionBackdrop(glowOpacity: 0.18, courtOpacity: 0.08)
+
+                VStack(spacing: 18) {
+                    Spacer(minLength: 20)
+
+                    VStack(alignment: .leading, spacing: 16) {
+                        HStack(alignment: .center, spacing: 12) {
+                            ZStack {
+                                Circle()
+                                    .fill(AppTheme.neonPurple.opacity(0.18))
+                                    .frame(width: 46, height: 46)
+                                ProgressView()
+                                    .tint(AppTheme.neonPurple)
+                            }
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Analyzing, please wait")
+                                    .font(.headline.weight(.bold))
+                                    .foregroundStyle(.white)
+                                Text("Review will open automatically when clips are ready.")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(AppTheme.subtleText)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+
+                            Spacer(minLength: 0)
+
+                            Text(progressPercentText)
+                                .font(.subheadline.weight(.bold).monospacedDigit())
+                                .foregroundStyle(AppTheme.neonPurple)
+                        }
+
+                        ProgressView(value: safeProgress)
+                            .tint(AppTheme.accentPurple)
+                            .scaleEffect(y: 2)
+                            .accessibilityLabel("Analysis progress")
+                            .accessibilityValue(progressPercentText)
+
+                        Text(visibleStatusMessage)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.white.opacity(0.92))
+                            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
+                            .minimumScaleFactor(0.84)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        Text(detailText)
+                            .font(.caption)
+                            .foregroundStyle(AppTheme.subtleText)
+                            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 5 : 3)
+                            .minimumScaleFactor(0.84)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        if let approximateRemainingText {
+                            Label(approximateRemainingText, systemImage: "clock.badge.checkmark")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.white.opacity(0.9))
+                                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 5 : 3)
+                                .minimumScaleFactor(0.84)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 8)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(.white.opacity(0.07), in: .rect(cornerRadius: 12))
+                                .accessibilityIdentifier("review.analysisWaiting.approximateRemainingTime")
+                        }
+                    }
+                    .padding(18)
+                    .rorkCard(cornerRadius: 24, stroke: AppTheme.neonPurple.opacity(0.26), glow: AppTheme.neonPurple, glowOpacity: 0.08)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("Analyzing, please wait")
+                    .accessibilityValue("\(progressPercentText). \(visibleStatusMessage). \(detailText)")
+                    .accessibilityIdentifier("review.analysisWaiting.card")
+
+                    Spacer(minLength: 80)
+                }
+                .padding(.horizontal, 16)
+            }
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.large)
+            .toolbarBackground(AppTheme.darkBg, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+        }
     }
 }
 

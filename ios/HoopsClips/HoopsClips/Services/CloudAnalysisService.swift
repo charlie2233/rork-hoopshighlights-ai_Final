@@ -28,6 +28,14 @@ struct CloudAnalysisService {
         safeVisibleMessage(message, fallback: fallback, maxCharacters: maxVisibleBackendMessageCharacters)
     }
 
+    private static func uploadProgressStage(fileSizeBytes: Int64, teamScan: Bool = false) -> String {
+        let megabytes = Double(max(fileSizeBytes, 0)) / 1_048_576.0
+        if megabytes >= 350 {
+            return teamScan ? "Uploading large video for team scan" : "Uploading large video to cloud"
+        }
+        return teamScan ? "Uploading video for team scan" : "Uploading video to cloud"
+    }
+
     private static func safeVisibleMessage(_ message: String, fallback: String, maxCharacters: Int) -> String {
         let compact = message
             .split(whereSeparator: \.isWhitespace)
@@ -209,7 +217,7 @@ struct CloudAnalysisService {
             )
         )
 
-        progress(0.15, "Uploading video to cloud")
+        progress(0.15, Self.uploadProgressStage(fileSizeBytes: fileInfo.fileSizeBytes))
         try await uploadVideo(to: job, from: url)
 
         progress(0.28, "Starting cloud clip search")
@@ -252,7 +260,7 @@ struct CloudAnalysisService {
             )
         )
 
-        progress(0.14, "Uploading video for team scan")
+        progress(0.14, Self.uploadProgressStage(fileSizeBytes: fileInfo.fileSizeBytes, teamScan: true))
         try await uploadVideo(to: job, from: url)
 
         progress(0.20, "Scanning jersey colors")

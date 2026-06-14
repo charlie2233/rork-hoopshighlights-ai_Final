@@ -18,7 +18,7 @@ nonisolated enum CloudAnalysisProgressCopy {
         let status = statusMessage.lowercased()
         let totalRange = approximateAnalysisRangeMinutes(for: durationSeconds)
         if status.contains("upload") {
-            return "Upload first; after handoff, analysis is roughly \(formatMinuteRange(totalRange)). Large files can take a while."
+            return "Upload speed depends on connection; after upload, analysis is about \(formatMinuteRange(totalRange))."
         }
 
         if status.contains("queued") || status.contains("waiting") {
