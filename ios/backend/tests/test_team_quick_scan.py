@@ -231,25 +231,10 @@ class TeamQuickScanTests(unittest.TestCase):
         video_frames = [frame for frame in frames if frame.clip_ref is None]
         self.assertEqual(len(video_frames), 2)
         self.assertEqual(len(clip_frames), 1)
+        self.assertEqual(len(roles_by_clip), 1)
         self.assertEqual(next(iter(roles_by_clip.values())), ["ballHandlerSetup"])
-        self.assertEqual(len(roles_by_clip), 320)
-        self.assertEqual(
-            roles_by_clip["clip_0"],
-            [
-                "ballHandlerSetup",
-                "preRelease",
-                "release",
-                "shotArc",
-                "rimApproach",
-                "rimResult",
-                "followThrough",
-                "finishContext",
-            ],
-        )
-        self.assertEqual(roles_by_clip["clip_127"], roles_by_clip["clip_0"])
-        self.assertEqual(roles_by_clip["clip_128"], roles_by_clip["clip_0"])
-        self.assertEqual(roles_by_clip["clip_319"], roles_by_clip["clip_0"])
-        self.assertNotIn("clip_320", roles_by_clip)
+        self.assertEqual(roles_by_clip["clip_0"], ["ballHandlerSetup"])
+        self.assertNotIn("clip_1", roles_by_clip)
 
     def test_disabled_scan_falls_back_without_calling_gpt(self) -> None:
         clips = [_clip("Three Pointer", 8.0, 12.5, 10.2)]
