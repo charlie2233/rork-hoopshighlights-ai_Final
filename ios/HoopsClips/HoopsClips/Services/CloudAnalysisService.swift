@@ -54,6 +54,9 @@ struct CloudAnalysisService {
             let speed = elapsedSeconds > 0 ? Double(max(uploadedBytes, 0)) / elapsedSeconds : 0
             if speed > 0 {
                 parts.append(formatUploadSpeed(bytesPerSecond: speed))
+                if boundedFraction < 0.995 {
+                    parts.append("about \(formatUploadRemainingTime(uploadedBytes: uploadedBytes, totalBytes: totalBytes, bytesPerSecond: speed)) left")
+                }
             }
         }
 
@@ -98,6 +101,16 @@ struct CloudAnalysisService {
 
         let kbPerSecond = max(bytesPerSecond, 0) / 1_024.0
         return "\(Int(kbPerSecond.rounded())) KB/s"
+    }
+
+    private static func formatUploadRemainingTime(uploadedBytes: Int64, totalBytes: Int64, bytesPerSecond: Double) -> String {
+        guard bytesPerSecond > 0 else {
+            return "calculating"
+        }
+
+        let remainingBytes = max(totalBytes - uploadedBytes, 0)
+        let remainingSeconds = Double(remainingBytes) / bytesPerSecond
+        return formatUploadElapsedTime(remainingSeconds)
     }
 
     private static func safeVisibleMessage(_ message: String, fallback: String, maxCharacters: Int) -> String {
