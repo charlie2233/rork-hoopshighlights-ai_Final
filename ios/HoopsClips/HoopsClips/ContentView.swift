@@ -1232,11 +1232,7 @@ private struct ReviewAnalysisWaitingView: View {
                                 .foregroundStyle(AppTheme.neonPurple)
                         }
 
-                        ProgressView(value: safeProgress)
-                            .tint(AppTheme.accentPurple)
-                            .scaleEffect(y: 2)
-                            .accessibilityLabel("Analysis progress")
-                            .accessibilityValue(progressPercentText)
+                        analysisProgressBar
 
                         TinyAnalysisPipelineTracker(currentStage: pipelineStage)
 
@@ -1268,20 +1264,7 @@ private struct ReviewAnalysisWaitingView: View {
                                 .accessibilityIdentifier("review.analysisWaiting.approximateRemainingTime")
                         }
 
-                        Button(role: .cancel, action: onCancel) {
-                            Label(pipelineStage.cancelTitle, systemImage: "xmark.circle.fill")
-                                .font(.caption.weight(.bold))
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 11)
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.white)
-                        .background(AppTheme.warningRed.opacity(0.18), in: .rect(cornerRadius: 14))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 14)
-                                .stroke(AppTheme.warningRed.opacity(0.32), lineWidth: 1)
-                        }
-                        .accessibilityIdentifier("review.analysisWaiting.cancelUpload")
+                        cancelButton
                     }
                     .padding(18)
                     .rorkCard(cornerRadius: 24, stroke: AppTheme.neonPurple.opacity(0.26), glow: AppTheme.neonPurple, glowOpacity: 0.08)
@@ -1299,6 +1282,31 @@ private struct ReviewAnalysisWaitingView: View {
             .toolbarBackground(AppTheme.darkBg, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
         }
+    }
+
+    private var analysisProgressBar: some View {
+        ProgressView(value: safeProgress)
+            .tint(AppTheme.accentPurple)
+            .scaleEffect(y: 2)
+            .accessibilityLabel("Analysis progress")
+            .accessibilityValue(progressPercentText)
+    }
+
+    private var cancelButton: some View {
+        Button(role: .cancel, action: onCancel) {
+            Label(pipelineStage.cancelTitle, systemImage: "xmark.circle.fill")
+                .font(.caption.weight(.bold))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 11)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.white)
+        .background(AppTheme.dangerRed.opacity(0.18), in: .rect(cornerRadius: 14))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(AppTheme.dangerRed.opacity(0.32), lineWidth: 1)
+        }
+        .accessibilityIdentifier("review.analysisWaiting.cancelUpload")
     }
 }
 
@@ -1422,16 +1430,7 @@ private struct GlobalImportProgressBanner: View {
 
                 Spacer(minLength: 0)
 
-                Button(role: .cancel, action: onCancel) {
-                    Text("Cancel")
-                        .font(.caption2.weight(.bold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(AppTheme.warningRed.opacity(0.20), in: Capsule())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(stage.cancelTitle)
+                cancelButton
             }
 
             TinyAnalysisPipelineTracker(currentStage: stage)
@@ -1453,6 +1452,19 @@ private struct GlobalImportProgressBanner: View {
     private var shortMessage: String {
         let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? "Importing video..." : trimmed
+    }
+
+    private var cancelButton: some View {
+        Button(role: .cancel, action: onCancel) {
+            Text("Cancel")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(AppTheme.dangerRed.opacity(0.20), in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(stage.cancelTitle)
     }
 }
 
@@ -1510,10 +1522,10 @@ private struct TinyAnalysisPipelineTracker: View {
         let foreground = isCurrent || isComplete ? Color.white : AppTheme.subtleText
         let fill = isCurrent
             ? AppTheme.neonPurple.opacity(0.28)
-            : (isComplete ? AppTheme.accentGreen.opacity(0.20) : Color.white.opacity(0.06))
+            : (isComplete ? AppTheme.successGreen.opacity(0.20) : Color.white.opacity(0.06))
         let stroke = isCurrent
             ? AppTheme.neonPurple.opacity(0.54)
-            : (isComplete ? AppTheme.accentGreen.opacity(0.38) : Color.white.opacity(0.08))
+            : (isComplete ? AppTheme.successGreen.opacity(0.38) : Color.white.opacity(0.08))
 
         return Text(stage.title)
             .font(.caption2.weight(.bold))
