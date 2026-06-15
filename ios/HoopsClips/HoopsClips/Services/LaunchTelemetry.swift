@@ -209,6 +209,71 @@ final class LaunchTelemetry {
         }
     }
 
+    @discardableResult
+    func sendAutomaticUploadStallProof(_ proofText: String) async -> Bool {
+        let snapshot = currentStabilitySnapshot()
+        let queuedAt = Date()
+        let diagnosis = CrashDiagnosis(
+            title: "Cloud upload appears stuck",
+            likelyCause: "The upload monitor saw no meaningful byte progress for several minutes while video upload or import was active.",
+            suggestedFix: "Use the upload proof fields to compare uploaded bytes, speed, elapsed time, and seconds since progress. If bytes stopped moving, show retry/cancel and preserve the current project so the user can try again."
+        )
+        let payload = CrashBreadcrumbReport(
+            subject: "HoopClips stuck upload proof",
+            recipientEmail: Self.crashReportRecipientEmail,
+            replyToEmail: Self.crashReportRecipientEmail,
+            source: "HoopClips iOS Upload Monitor",
+            message: "Automatic upload-stall proof sent after upload progress stopped moving.",
+            proofText: proofText,
+            appVersion: Self.bundleShortVersion,
+            buildVersion: Self.bundleBuildVersion,
+            previousAppVersion: snapshot.appVersion,
+            previousBuildVersion: snapshot.buildVersion,
+            environmentName: runtimeConfig.environmentName,
+            cloudLaunchMode: runtimeConfig.cloudLaunchMode.rawValue,
+            sessionID: snapshot.sessionID,
+            lifecycleState: Self.redactedAIEditFailureReason(snapshot.lifecycleState),
+            screen: Self.redactedAIEditFailureReason(snapshot.screen),
+            lastCheckpoint: Self.redactedAIEditFailureReason(snapshot.lastCheckpoint),
+            lastMetadata: Self.redactedAIEditFailureReason(snapshot.lastMetadata),
+            latestAIEditProof: latestAIEditProofSummary,
+            latestUnexpectedExit: latestUnexpectedExitSummary,
+            diagnosisTitle: diagnosis.title,
+            likelyCause: diagnosis.likelyCause,
+            suggestedFix: diagnosis.suggestedFix,
+            memoryWarningCount: max(0, snapshot.memoryWarningCount),
+            launchedAt: Self.isoString(snapshot.launchedAt),
+            lastUpdatedAt: Self.isoString(snapshot.lastUpdatedAt),
+            queuedAt: Self.isoString(queuedAt),
+            privacyNote: "No secrets, presigned URLs, object keys, or local file URLs are included."
+        )
+
+        UserDefaults.standard.set(
+            "upload-stall queued at \(Self.isoString(queuedAt)) endpoint=formspree",
+            forKey: latestCrashReportDeliveryKey
+        )
+        logger.notice("Automatic Formspree upload-stall proof requested.")
+
+        do {
+            try await Self.postCrashBreadcrumbReport(payload)
+            UserDefaults.standard.set(
+                "upload-stall sent at \(Self.isoString(Date())) endpoint=formspree",
+                forKey: latestCrashReportDeliveryKey
+            )
+            logger.notice("Automatic Formspree upload-stall proof sent.")
+            return true
+        } catch {
+            let safeError = Self.redactedAIEditFailureReason(error.localizedDescription)
+            UserDefaults.standard.set(
+                "upload-stall failed at \(Self.isoString(Date())) endpoint=formspree error=\(safeError)",
+                forKey: latestCrashReportDeliveryKey
+            )
+            logger.error("Automatic Formspree upload-stall proof failed: \(safeError, privacy: .public)")
+            queueCrashReportForRetry(payload, reason: safeError)
+            return false
+        }
+    }
+
     private func recordLatestAIEditProof(
         eventName: String,
         editJobID: String?,

@@ -113,6 +113,28 @@ struct CloudAnalysisService {
         return formatUploadElapsedTime(remainingSeconds)
     }
 
+    private static func uploadStallProofText(stage: String, snapshot: CloudUploadProgressSnapshot) -> String {
+        var fields = [
+            "source=CloudAnalysisService.uploadMonitor",
+            "stage=\(stage.split(whereSeparator: \.isWhitespace).joined(separator: "_"))",
+            "percent=\(Int((min(max(snapshot.fraction, 0), 1) * 100).rounded(.down)))",
+            "elapsed=\(formatUploadElapsedTime(snapshot.elapsedSeconds))",
+            "secondsSinceProgress=\(Int(snapshot.secondsSinceProgress.rounded(.down)))"
+        ]
+
+        if let uploadedBytes = snapshot.uploadedBytes, let totalBytes = snapshot.totalBytes, totalBytes > 0 {
+            fields.append("bytes=\(formatUploadByteProgress(uploadedBytes: uploadedBytes, totalBytes: totalBytes).replacingOccurrences(of: " ", with: "_"))")
+            let speed = snapshot.elapsedSeconds > 0 ? Double(max(uploadedBytes, 0)) / snapshot.elapsedSeconds : 0
+            if speed > 0 {
+                fields.append("speed=\(formatUploadSpeed(bytesPerSecond: speed).replacingOccurrences(of: " ", with: "_"))")
+                fields.append("eta=\(formatUploadRemainingTime(uploadedBytes: uploadedBytes, totalBytes: totalBytes, bytesPerSecond: speed).replacingOccurrences(of: " ", with: "_"))")
+            }
+        }
+
+        fields.append("privacy=no_urls_no_object_keys_no_local_file_paths")
+        return fields.joined(separator: " ")
+    }
+
     private static func safeVisibleMessage(_ message: String, fallback: String, maxCharacters: Int) -> String {
         let compact = message
             .split(whereSeparator: \.isWhitespace)
@@ -511,6 +533,14 @@ struct CloudAnalysisService {
                 let snapshot = tracker.snapshot()
                 let stalled = snapshot.secondsSinceProgress >= 60 && snapshot.fraction < 0.99
                 reportUploadProgress(snapshot, stalled)
+                if snapshot.secondsSinceProgress >= 180,
+                   snapshot.fraction < 0.99,
+                   tracker.markStallProofSentIfNeeded() {
+                    let proofText = Self.uploadStallProofText(stage: stage, snapshot: snapshot)
+                    Task(priority: .utility) {
+                        await LaunchTelemetry.shared.sendAutomaticUploadStallProof(proofText)
+                    }
+                }
             }
         }
         let uploadSession = URLSession(configuration: session.configuration, delegate: delegate, delegateQueue: nil)
@@ -676,6 +706,7 @@ private final class CloudUploadProgressTracker: @unchecked Sendable {
     private var latestFraction = 0.0
     private var latestUploadedBytes: Int64?
     private var latestTotalBytes: Int64?
+    private var didSendStallProof = false
 
     var elapsedSeconds: TimeInterval {
         Date().timeIntervalSince(startedAt)
@@ -720,6 +751,14 @@ private final class CloudUploadProgressTracker: @unchecked Sendable {
             uploadedBytes: uploadedBytes,
             totalBytes: totalBytes
         )
+    }
+
+    func markStallProofSentIfNeeded() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !didSendStallProof else { return false }
+        didSendStallProof = true
+        return true
     }
 }
 

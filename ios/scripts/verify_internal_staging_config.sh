@@ -41,7 +41,7 @@ require_exact "HOOPS_CLOUD_ANALYSIS_BASE_URL" "https://hoopsclips-control-plane-
 require_exact "HOOPS_CLOUD_EDIT_BASE_URL" "https://hoopsclips-control-plane-staging.charliehan-lifepage.workers.dev"
 require_exact "PRODUCT_BUNDLE_IDENTIFIER" "atrak.charlie.hoopsclips"
 require_exact "MARKETING_VERSION" "1.0.0"
-require_exact "CURRENT_PROJECT_VERSION" "35"
+require_exact "CURRENT_PROJECT_VERSION" "36"
 require_exact "INFOPLIST_FILE" "HoopsClips/App-Info.plist"
 
 printf 'Internal staging Release config is explicit and cloud-enabled for staging only.\n'
