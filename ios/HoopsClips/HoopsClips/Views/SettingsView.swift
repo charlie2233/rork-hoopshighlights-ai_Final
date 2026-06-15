@@ -610,6 +610,7 @@ struct SettingsView: View {
         let currentProjectID = viewModel.currentProjectID?.uuidString ?? "none"
         let analysisJobID = viewModel.cloudAnalysisJobID ?? "none"
         let sourceObjectKeyState = viewModel.cloudEditSourceObjectKey == nil ? "none" : "available_redacted"
+        let analysisProgressPercent = Int((min(max(viewModel.analysisService.progress, 0), 1) * 100).rounded(.down))
         let latestAIEditProof = LaunchTelemetry.shared.latestAIEditProofSummary ?? "none"
         let latestUnexpectedExit = LaunchTelemetry.shared.latestUnexpectedExitSummary ?? "none"
         let latestCrashReportDelivery = LaunchTelemetry.shared.latestCrashReportDeliverySummary ?? "none"
@@ -627,6 +628,15 @@ struct SettingsView: View {
             "projectID=\(currentProjectID)",
             "videoLoaded=\(viewModel.isVideoLoaded)",
             "videoDurationSeconds=\(Int(viewModel.videoDuration.rounded()))",
+            "videoImportInProgress=\(viewModel.isVideoImportInProgress)",
+            "videoImportStatus=\(proofTextValue(viewModel.videoImportStatusMessage))",
+            "analysisMode=\(viewModel.analysisMode.rawValue)",
+            "analysisIsAnalyzing=\(viewModel.analysisService.isAnalyzing)",
+            "analysisProgressPercent=\(analysisProgressPercent)",
+            "analysisStatus=\(proofTextValue(viewModel.analysisService.statusMessage))",
+            "cloudTeamScanInProgress=\(viewModel.isCloudTeamScanInProgress)",
+            "cloudTeamScanStatus=\(proofTextValue(viewModel.cloudTeamScanStatusMessage))",
+            "cloudQuotaRemaining=\(viewModel.cloudQuotaRemaining.map(String.init) ?? "unknown")",
             "clips=\(viewModel.clips.count)",
             "keptClips=\(viewModel.keptClips.count)",
             "discardedClips=\(viewModel.discardedClips.count)",
@@ -643,6 +653,10 @@ struct SettingsView: View {
 
     private func proofValue(_ value: String) -> String {
         value.isEmpty ? "none" : value
+    }
+
+    private func proofTextValue(_ value: String?) -> String {
+        LaunchTelemetry.redactedAIEditFailureReason(value)
     }
 
     private func copySmokeProof() {
