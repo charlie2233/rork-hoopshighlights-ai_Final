@@ -67,10 +67,24 @@ final class LaunchTelemetry {
             lifecycleState: safeState,
             screen: safeScreen == "none" ? nil : safeScreen,
             checkpoint: "lifecycle.\(safeState)",
-            metadata: nil
+            metadata: "build=\(Self.bundleBuildVersion)"
         )
         logger.notice(
             "Lifecycle state=\(safeState, privacy: .public) screen=\(safeScreen, privacy: .public)"
+        )
+    }
+
+    func recordRuntimeState(screen: String?, metadata: String) {
+        let safeScreen = Self.redactedAIEditFailureReason(screen)
+        let safeMetadata = Self.redactedAIEditFailureReason(metadata)
+        updateStabilitySnapshot(
+            lifecycleState: nil,
+            screen: safeScreen == "none" ? nil : safeScreen,
+            checkpoint: "runtime.state",
+            metadata: safeMetadata == "none" ? "build=\(Self.bundleBuildVersion)" : safeMetadata
+        )
+        logger.notice(
+            "Runtime state screen=\(safeScreen, privacy: .public) metadata=\(safeMetadata, privacy: .public)"
         )
     }
 
@@ -532,6 +546,7 @@ final class LaunchTelemetry {
     private static func crashDiagnosis(for snapshot: StabilitySnapshot) -> CrashDiagnosis {
         let checkpoint = snapshot.lastCheckpoint ?? "none"
         let metadata = snapshot.lastMetadata ?? ""
+        let normalizedMetadata = metadata.lowercased()
 
         if checkpoint == "tab.switch.requested", metadata.contains("to=review") {
             return CrashDiagnosis(
@@ -546,6 +561,24 @@ final class LaunchTelemetry {
                 title: "Review tab prevented unsafe project",
                 likelyCause: "HoopClips detected that the current project did not have review-safe clips before opening Review.",
                 suggestedFix: "Keep the user on Player, rerun analysis, or repair the saved project before opening Review."
+            )
+        }
+
+        if checkpoint == "runtime.state",
+           normalizedMetadata.contains("importing=true") || normalizedMetadata.contains("upload") {
+            return CrashDiagnosis(
+                title: "Unexpected exit during cloud upload/import",
+                likelyCause: "The app was importing or uploading video when the previous session ended. The most useful proof is the runtime metadata: upload percent, uploaded size, speed, ETA, and whether analysis had started.",
+                suggestedFix: "Use the runtime metadata to decide whether the upload stalled, the app was killed while active, or the cloud analysis handoff failed. Keep upload progress resumable and show retry/cancel if transfer stops moving."
+            )
+        }
+
+        if checkpoint == "runtime.state",
+           normalizedMetadata.contains("analyzing=true") {
+            return CrashDiagnosis(
+                title: "Unexpected exit during cloud analysis",
+                likelyCause: "Cloud analysis was active when the previous session ended. The app should keep Review in a waiting state instead of showing rerun while analysis is still in progress.",
+                suggestedFix: "Restore the in-progress analysis state, keep Review on the analyzing/wait screen, and use the recorded progress/status metadata to identify the last completed analysis stage."
             )
         }
 

@@ -159,15 +159,20 @@ struct ContentView: View {
         }
         .onAppear {
             LaunchTelemetry.shared.recordLifecycleState("active", screen: selectedTabTelemetryName)
+            recordRuntimeStateBreadcrumb(reason: "appear")
         }
         .onChange(of: scenePhase) { _, phase in
             LaunchTelemetry.shared.recordLifecycleState(phase.hoopsTelemetryName, screen: selectedTabTelemetryName)
+            recordRuntimeStateBreadcrumb(reason: "lifecycle_\(phase.hoopsTelemetryName)")
         }
         .onChange(of: selectedTab) { oldValue, newValue in
             recordTabSwitchBreadcrumb(fromRawValue: oldValue, toRawValue: newValue, phase: "active", trigger: "state")
         }
         .onChange(of: reviewSafetySignature) { _, _ in
             resetReviewTabIfNeeded(reason: "review_state_changed")
+        }
+        .onChange(of: runtimeStateSignature) { _, _ in
+            recordRuntimeStateBreadcrumb(reason: "state_changed")
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
             LaunchTelemetry.shared.recordMemoryWarning(screen: selectedTabTelemetryName)
@@ -569,6 +574,22 @@ struct ContentView: View {
             "selected=\(selectedTab)",
             "videoLoaded=\(viewModel.isVideoLoaded)",
             "duration=\(viewModel.videoDuration)",
+            "clips=\(viewModel.clips.count)",
+            "reviewable=\(currentReviewableClipCount)",
+            "guard=\(reviewGuardReasonSummary)",
+            "project=\(viewModel.currentProjectID?.uuidString ?? "none")"
+        ].joined(separator: "|")
+    }
+
+    private var runtimeStateSignature: String {
+        [
+            "tab=\(selectedTabTelemetryName)",
+            "videoLoaded=\(viewModel.isVideoLoaded)",
+            "importing=\(viewModel.isVideoImportInProgress)",
+            "importStatus=\(telemetryValue(viewModel.videoImportStatusMessage))",
+            "analyzing=\(viewModel.analysisService.isAnalyzing)",
+            "progress=\(analysisProgressPercent)",
+            "analysisStatus=\(telemetryValue(viewModel.analysisService.statusMessage))",
             "clips=\(viewModel.clips.count)",
             "reviewable=\(currentReviewableClipCount)",
             "guard=\(reviewGuardReasonSummary)",
@@ -995,6 +1016,46 @@ struct ContentView: View {
         ].joined(separator: " ")
     }
 
+    private func recordRuntimeStateBreadcrumb(reason: String) {
+        LaunchTelemetry.shared.recordRuntimeState(
+            screen: selectedTabTelemetryName,
+            metadata: runtimeStateMetadata(reason: reason)
+        )
+    }
+
+    private func runtimeStateMetadata(reason: String) -> String {
+        [
+            "reason=\(reason)",
+            "build=\(appBuildNumberForTelemetry)",
+            "screen=\(selectedTabTelemetryName)",
+            "videoLoaded=\(viewModel.isVideoLoaded)",
+            "importing=\(viewModel.isVideoImportInProgress)",
+            "importStatus=\(telemetryValue(viewModel.videoImportStatusMessage))",
+            "analyzing=\(viewModel.analysisService.isAnalyzing)",
+            "progress=\(analysisProgressPercent)",
+            "analysisMode=\(telemetryValue(viewModel.analysisModeDisplayName))",
+            "analysisStatus=\(telemetryValue(viewModel.analysisService.statusMessage))",
+            "clips=\(viewModel.clips.count)",
+            "reviewable=\(currentReviewableClipCount)",
+            "guard=\(reviewGuardReasonSummary)",
+            "project=\(viewModel.currentProjectID?.uuidString ?? "none")"
+        ].joined(separator: " ")
+    }
+
+    private var analysisProgressPercent: Int {
+        Int((min(max(viewModel.analysisService.progress, 0), 1) * 100).rounded(.down))
+    }
+
+    private var appBuildNumberForTelemetry: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown"
+    }
+
+    private func telemetryValue(_ rawValue: String?) -> String {
+        LaunchTelemetry.redactedAIEditFailureReason(rawValue)
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: "_")
+    }
+
     private func isReviewableClip(_ clip: Clip) -> Bool {
         reviewClipInvalidReason(clip) == nil
     }
@@ -1051,7 +1112,13 @@ struct ContentView: View {
             "to=\(toTab)",
             "trigger=\(trigger)",
             "videoLoaded=\(viewModel.isVideoLoaded)",
+            "importing=\(viewModel.isVideoImportInProgress)",
+            "analyzing=\(viewModel.analysisService.isAnalyzing)",
+            "progress=\(analysisProgressPercent)",
+            "analysisStatus=\(telemetryValue(viewModel.analysisService.statusMessage))",
             "clips=\(viewModel.clips.count)",
+            "reviewable=\(currentReviewableClipCount)",
+            "guard=\(reviewGuardReasonSummary)",
             "project=\(viewModel.currentProjectID?.uuidString ?? "none")"
         ].joined(separator: " ")
         LaunchTelemetry.shared.recordStabilityCheckpoint("tab.switch.\(phase)", metadata: metadata)
