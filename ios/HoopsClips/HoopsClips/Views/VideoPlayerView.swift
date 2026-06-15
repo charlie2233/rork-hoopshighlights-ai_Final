@@ -586,8 +586,7 @@ struct VideoPlayerView: View {
         }
 
         analysisStarted = true
-        Task {
-            await viewModel.startAnalysis()
+        viewModel.startAnalysisTask {
             if viewModel.clips.isEmpty {
                 showingNoClipsAlert = true
             }
@@ -631,6 +630,7 @@ struct VideoPlayerView: View {
         importTask?.cancel()
         teamScanTask?.cancel()
         teamScanTask = nil
+        viewModel.cancelActiveUploadOrAnalysis()
         LaunchTelemetry.shared.recordStabilityCheckpoint("video_import.cancel_requested")
         clearImportState()
     }

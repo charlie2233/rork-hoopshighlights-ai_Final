@@ -27,6 +27,7 @@ final class HighlightsViewModel {
     private var suppressProjectPersistence = false
     private var pendingCloudAnalysisJob: PreparedCloudAnalysisJob?
     private var activeCloudTeamScanID: UUID?
+    @ObservationIgnored private var activeAnalysisTask: Task<Void, Never>?
     private var lastAnalysisStatusSummary: String?
     private var lastAnalyzedAt: Date?
     private var lastExportedAt: Date?
@@ -112,6 +113,10 @@ final class HighlightsViewModel {
     var cloudTeamScanErrorMessage: String?
     var isVideoImportInProgress = false
     var videoImportStatusMessage: String?
+
+    var canCancelUploadOrAnalysis: Bool {
+        isVideoImportInProgress || analysisService.isAnalyzing || activeAnalysisTask != nil
+    }
 
     var analysisModeDisplayName: String {
         switch analysisMode {
@@ -388,6 +393,42 @@ final class HighlightsViewModel {
         } catch {
             await fallbackToLocalAnalysis(from: CloudAnalysisError.network(error.localizedDescription))
         }
+    }
+
+    func startAnalysisTask(onNoClips: @escaping @MainActor () -> Void) {
+        guard activeAnalysisTask == nil else { return }
+
+        activeAnalysisTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.activeAnalysisTask = nil }
+
+            await self.startAnalysis()
+
+            guard !Task.isCancelled else { return }
+            if self.clips.isEmpty {
+                onNoClips()
+            }
+        }
+    }
+
+    func cancelActiveUploadOrAnalysis() {
+        activeAnalysisTask?.cancel()
+        activeAnalysisTask = nil
+        pendingCloudAnalysisJob = nil
+
+        if isVideoImportInProgress {
+            clearVideoImportProgress()
+        }
+
+        if analysisService.isAnalyzing {
+            analysisService.finishExternalAnalysis(with: "Upload cancelled")
+        }
+
+        isCloudFallbackOffered = false
+        LaunchTelemetry.shared.recordStabilityCheckpoint(
+            "upload.cancel_requested",
+            metadata: "mode=\(analysisMode.rawValue) progress=\(analysisService.progress)"
+        )
     }
 
     func resumeInFlightCloudAnalysisIfNeeded() async {

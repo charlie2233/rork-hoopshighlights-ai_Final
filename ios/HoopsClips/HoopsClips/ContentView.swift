@@ -249,9 +249,13 @@ struct ContentView: View {
                 .zIndex(3)
             }
 
-            if shouldShowGlobalImportBanner {
+            if shouldShowGlobalPipelineBanner {
                 VStack {
-                    GlobalImportProgressBanner(message: viewModel.videoImportStatusMessage ?? "Importing video...")
+                    GlobalImportProgressBanner(
+                        message: pipelineStatusMessage,
+                        stage: pipelineStage,
+                        onCancel: viewModel.cancelActiveUploadOrAnalysis
+                    )
                         .padding(.horizontal, 16)
                         .padding(.top, 12)
                     Spacer(minLength: 0)
@@ -544,12 +548,36 @@ struct ContentView: View {
         AppTab(rawValue: selectedTab)?.telemetryName ?? "unknown"
     }
 
-    private var shouldShowGlobalImportBanner: Bool {
-        viewModel.isVideoImportInProgress && activeTab != .player && !isRookieGuideVisible
+    private var shouldShowGlobalPipelineBanner: Bool {
+        (viewModel.isVideoImportInProgress || viewModel.analysisService.isAnalyzing)
+            && activeTab != .player
+            && activeTab != .review
+            && !isRookieGuideVisible
     }
 
     private var isReviewWaitingForAnalysis: Bool {
         viewModel.isVideoLoaded && viewModel.analysisService.isAnalyzing
+    }
+
+    private var pipelineStatusMessage: String {
+        if let videoImportStatusMessage = viewModel.videoImportStatusMessage,
+           !videoImportStatusMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return videoImportStatusMessage
+        }
+
+        let status = viewModel.analysisService.statusMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+        return status.isEmpty ? "Preparing upload..." : status
+    }
+
+    private var pipelineStage: AnalysisPipelineStage {
+        let status = pipelineStatusMessage.lowercased()
+        if hasCurrentReviewableClips, !viewModel.analysisService.isAnalyzing, !viewModel.isVideoImportInProgress {
+            return .reviewReady
+        }
+        if viewModel.isVideoImportInProgress || status.contains("upload") {
+            return .uploading
+        }
+        return .analyzing
     }
 
     private var activeTab: AppTab {
@@ -644,7 +672,9 @@ struct ContentView: View {
                     progress: viewModel.analysisService.progress,
                     statusMessage: viewModel.analysisService.statusMessage,
                     detailText: reviewAnalysisDetailText,
-                    approximateRemainingText: reviewAnalysisApproximateRemainingText
+                    approximateRemainingText: reviewAnalysisApproximateRemainingText,
+                    pipelineStage: pipelineStage,
+                    onCancel: viewModel.cancelActiveUploadOrAnalysis
                 )
             }
 
@@ -1148,6 +1178,8 @@ private struct ReviewAnalysisWaitingView: View {
     let statusMessage: String
     let detailText: String
     let approximateRemainingText: String?
+    let pipelineStage: AnalysisPipelineStage
+    let onCancel: () -> Void
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -1206,6 +1238,8 @@ private struct ReviewAnalysisWaitingView: View {
                             .accessibilityLabel("Analysis progress")
                             .accessibilityValue(progressPercentText)
 
+                        TinyAnalysisPipelineTracker(currentStage: pipelineStage)
+
                         Text(visibleStatusMessage)
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(.white.opacity(0.92))
@@ -1233,6 +1267,21 @@ private struct ReviewAnalysisWaitingView: View {
                                 .background(.white.opacity(0.07), in: .rect(cornerRadius: 12))
                                 .accessibilityIdentifier("review.analysisWaiting.approximateRemainingTime")
                         }
+
+                        Button(role: .cancel, action: onCancel) {
+                            Label(pipelineStage.cancelTitle, systemImage: "xmark.circle.fill")
+                                .font(.caption.weight(.bold))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 11)
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.white)
+                        .background(AppTheme.warningRed.opacity(0.18), in: .rect(cornerRadius: 14))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 14)
+                                .stroke(AppTheme.warningRed.opacity(0.32), lineWidth: 1)
+                        }
+                        .accessibilityIdentifier("review.analysisWaiting.cancelUpload")
                     }
                     .padding(18)
                     .rorkCard(cornerRadius: 24, stroke: AppTheme.neonPurple.opacity(0.26), glow: AppTheme.neonPurple, glowOpacity: 0.08)
@@ -1354,21 +1403,38 @@ private struct ReviewUnavailableRecoveryCard: View {
 
 private struct GlobalImportProgressBanner: View {
     let message: String
+    let stage: AnalysisPipelineStage
+    let onCancel: () -> Void
 
     var body: some View {
-        HStack(spacing: 10) {
-            ProgressView()
-                .tint(AppTheme.neonPurple)
-                .controlSize(.small)
-                .accessibilityHidden(true)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                ProgressView()
+                    .tint(AppTheme.neonPurple)
+                    .controlSize(.small)
+                    .accessibilityHidden(true)
 
-            Text(shortMessage)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.white)
-                .lineLimit(1)
-                .minimumScaleFactor(0.82)
+                Text(shortMessage)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.82)
 
-            Spacer(minLength: 0)
+                Spacer(minLength: 0)
+
+                Button(role: .cancel, action: onCancel) {
+                    Text("Cancel")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(AppTheme.warningRed.opacity(0.20), in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(stage.cancelTitle)
+            }
+
+            TinyAnalysisPipelineTracker(currentStage: stage)
         }
         .padding(.horizontal, 13)
         .padding(.vertical, 10)
@@ -1387,6 +1453,79 @@ private struct GlobalImportProgressBanner: View {
     private var shortMessage: String {
         let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? "Importing video..." : trimmed
+    }
+}
+
+private enum AnalysisPipelineStage: Int, CaseIterable {
+    case uploading
+    case analyzing
+    case reviewReady
+
+    var title: String {
+        switch self {
+        case .uploading:
+            return "Uploading"
+        case .analyzing:
+            return "Analyzing"
+        case .reviewReady:
+            return "Review ready"
+        }
+    }
+
+    var cancelTitle: String {
+        switch self {
+        case .uploading:
+            return "Cancel upload"
+        case .analyzing, .reviewReady:
+            return "Cancel analysis"
+        }
+    }
+}
+
+private struct TinyAnalysisPipelineTracker: View {
+    let currentStage: AnalysisPipelineStage
+
+    var body: some View {
+        HStack(spacing: 6) {
+            ForEach(AnalysisPipelineStage.allCases, id: \.self) { stage in
+                pipelineChip(stage)
+
+                if stage != AnalysisPipelineStage.allCases.last {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(AppTheme.subtleText.opacity(0.58))
+                        .accessibilityHidden(true)
+                }
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Progress pipeline")
+        .accessibilityValue(AnalysisPipelineStage.allCases.map(\.title).joined(separator: " to "))
+        .accessibilityIdentifier("analysis.pipeline.tracker")
+    }
+
+    private func pipelineChip(_ stage: AnalysisPipelineStage) -> some View {
+        let isCurrent = stage == currentStage
+        let isComplete = stage.rawValue < currentStage.rawValue
+        let foreground = isCurrent || isComplete ? Color.white : AppTheme.subtleText
+        let fill = isCurrent
+            ? AppTheme.neonPurple.opacity(0.28)
+            : (isComplete ? AppTheme.accentGreen.opacity(0.20) : Color.white.opacity(0.06))
+        let stroke = isCurrent
+            ? AppTheme.neonPurple.opacity(0.54)
+            : (isComplete ? AppTheme.accentGreen.opacity(0.38) : Color.white.opacity(0.08))
+
+        return Text(stage.title)
+            .font(.caption2.weight(.bold))
+            .foregroundStyle(foreground)
+            .lineLimit(1)
+            .minimumScaleFactor(0.72)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background(fill, in: Capsule())
+            .overlay {
+                Capsule().stroke(stroke, lineWidth: 1)
+            }
     }
 }
 
