@@ -113,9 +113,18 @@ final class HighlightsViewModel {
     var cloudTeamScanErrorMessage: String?
     var isVideoImportInProgress = false
     var videoImportStatusMessage: String?
+    var didCancelUploadOrAnalysis = false
 
     var canCancelUploadOrAnalysis: Bool {
         isVideoImportInProgress || analysisService.isAnalyzing || activeAnalysisTask != nil
+    }
+
+    var canRetryUploadAfterCancel: Bool {
+        didCancelUploadOrAnalysis
+            && videoURL != nil
+            && !isVideoImportInProgress
+            && !analysisService.isAnalyzing
+            && activeAnalysisTask == nil
     }
 
     var analysisModeDisplayName: String {
@@ -397,6 +406,7 @@ final class HighlightsViewModel {
 
     func startAnalysisTask(onNoClips: @escaping @MainActor () -> Void) {
         guard activeAnalysisTask == nil else { return }
+        didCancelUploadOrAnalysis = false
 
         activeAnalysisTask = Task { @MainActor [weak self] in
             guard let self else { return }
@@ -412,6 +422,7 @@ final class HighlightsViewModel {
     }
 
     func cancelActiveUploadOrAnalysis() {
+        let hadCancelableState = canCancelUploadOrAnalysis
         activeAnalysisTask?.cancel()
         activeAnalysisTask = nil
         pendingCloudAnalysisJob = nil
@@ -424,11 +435,24 @@ final class HighlightsViewModel {
             analysisService.finishExternalAnalysis(with: "Upload cancelled")
         }
 
+        if hadCancelableState {
+            didCancelUploadOrAnalysis = true
+        }
+
         isCloudFallbackOffered = false
         LaunchTelemetry.shared.recordStabilityCheckpoint(
             "upload.cancel_requested",
             metadata: "mode=\(analysisMode.rawValue) progress=\(analysisService.progress)"
         )
+    }
+
+    func retryUploadAfterCancel() {
+        guard canRetryUploadAfterCancel else { return }
+        LaunchTelemetry.shared.recordStabilityCheckpoint(
+            "upload.retry_requested",
+            metadata: "mode=\(analysisMode.rawValue)"
+        )
+        startAnalysisTask {}
     }
 
     func resumeInFlightCloudAnalysisIfNeeded() async {

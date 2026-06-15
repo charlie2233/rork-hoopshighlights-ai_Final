@@ -264,6 +264,17 @@ struct ContentView: View {
                 .zIndex(4)
             }
 
+            if viewModel.canRetryUploadAfterCancel, !isRookieGuideVisible {
+                VStack {
+                    UploadRetryCard(onRetry: viewModel.retryUploadAfterCancel)
+                        .padding(.horizontal, 16)
+                        .padding(.top, 12)
+                    Spacer(minLength: 0)
+                }
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .zIndex(5)
+            }
+
             if selectedTab == AppTab.settings.rawValue, !isRookieGuideVisible {
                 VStack {
                     Spacer(minLength: 0)
@@ -1465,6 +1476,56 @@ private struct GlobalImportProgressBanner: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(stage.cancelTitle)
+    }
+}
+
+private struct UploadRetryCard: View {
+    let onRetry: () -> Void
+
+    var body: some View {
+        HStack(spacing: 11) {
+            Image(systemName: "arrow.clockwise.circle.fill")
+                .font(.system(size: 18, weight: .bold))
+                .foregroundStyle(AppTheme.neonPurple)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Upload canceled")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.white)
+                Text("Safe to retry when you are ready.")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(AppTheme.subtleText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.82)
+            }
+
+            Spacer(minLength: 0)
+
+            Button(action: onRetry) {
+                Text("Retry upload")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(AppTheme.neonPurple.opacity(0.26), in: Capsule())
+                    .overlay {
+                        Capsule().stroke(AppTheme.neonPurple.opacity(0.42), lineWidth: 1)
+                    }
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("upload.retryAfterCancel.button")
+        }
+        .padding(.horizontal, 13)
+        .padding(.vertical, 11)
+        .background(AppTheme.cardBg.opacity(0.97), in: .rect(cornerRadius: 16))
+        .overlay {
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(AppTheme.neonPurple.opacity(0.24), lineWidth: 1)
+        }
+        .shadow(color: .black.opacity(0.20), radius: 14, x: 0, y: 8)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("upload.retryAfterCancel.card")
     }
 }
 
