@@ -40,12 +40,30 @@ struct CloudAnalysisService {
         stage: String,
         fraction: Double,
         elapsedSeconds: TimeInterval,
+        uploadedBytes: Int64? = nil,
+        totalBytes: Int64? = nil,
         stalled: Bool = false
     ) -> String {
         let boundedFraction = min(max(fraction, 0), 1)
         let percent = Int((boundedFraction * 100).rounded(.down))
-        let slowHint = stalled ? " · connection may be slow" : ""
-        return "\(stage) \(percent)% · \(formatUploadElapsedTime(elapsedSeconds))\(slowHint)"
+        var parts = ["\(stage) \(percent)%"]
+
+        if let uploadedBytes, let totalBytes, totalBytes > 0 {
+            parts.append(formatUploadByteProgress(uploadedBytes: uploadedBytes, totalBytes: totalBytes))
+
+            let speed = elapsedSeconds > 0 ? Double(max(uploadedBytes, 0)) / elapsedSeconds : 0
+            if speed > 0 {
+                parts.append(formatUploadSpeed(bytesPerSecond: speed))
+            }
+        }
+
+        parts.append(formatUploadElapsedTime(elapsedSeconds))
+
+        if stalled {
+            parts.append("connection may be slow")
+        }
+
+        return parts.joined(separator: " · ")
     }
 
     private static func formatUploadElapsedTime(_ elapsedSeconds: TimeInterval) -> String {
@@ -61,6 +79,25 @@ struct CloudAnalysisService {
             return "\(minutes)m \(seconds)s"
         }
         return "\(seconds)s"
+    }
+
+    private static func formatUploadByteProgress(uploadedBytes: Int64, totalBytes: Int64) -> String {
+        let uploadedMB = Double(max(uploadedBytes, 0)) / 1_048_576.0
+        let totalMB = Double(max(totalBytes, 1)) / 1_048_576.0
+        if totalMB >= 100 {
+            return "\(Int(uploadedMB.rounded()))/\(Int(totalMB.rounded())) MB"
+        }
+        return String(format: "%.1f/%.1f MB", uploadedMB, totalMB)
+    }
+
+    private static func formatUploadSpeed(bytesPerSecond: Double) -> String {
+        let mbPerSecond = max(bytesPerSecond, 0) / 1_048_576.0
+        if mbPerSecond >= 1 {
+            return String(format: "%.1f MB/s", mbPerSecond)
+        }
+
+        let kbPerSecond = max(bytesPerSecond, 0) / 1_024.0
+        return "\(Int(kbPerSecond.rounded())) KB/s"
     }
 
     private static func safeVisibleMessage(_ message: String, fallback: String, maxCharacters: Int) -> String {
@@ -430,23 +467,25 @@ struct CloudAnalysisService {
         }
 
         let tracker = CloudUploadProgressTracker()
-        let reportUploadProgress: @Sendable (_ fraction: Double, _ stalled: Bool) -> Void = { fraction, stalled in
+        let reportUploadProgress: @Sendable (_ snapshot: CloudUploadProgressSnapshot, _ stalled: Bool) -> Void = { snapshot, stalled in
+            let fraction = snapshot.fraction
             let boundedFraction = min(max(fraction, 0), 1)
             let progressValue = progressStart + ((progressEnd - progressStart) * boundedFraction)
-            let elapsedSeconds = tracker.elapsedSeconds
             let message = Self.uploadProgressMessage(
                 stage: stage,
                 fraction: boundedFraction,
-                elapsedSeconds: elapsedSeconds,
+                elapsedSeconds: snapshot.elapsedSeconds,
+                uploadedBytes: snapshot.uploadedBytes,
+                totalBytes: snapshot.totalBytes,
                 stalled: stalled
             )
             Task { @MainActor in
                 progress(progressValue, message)
             }
         }
-        let delegate = CloudUploadProgressDelegate { fraction in
-            tracker.update(fraction: fraction)
-            reportUploadProgress(fraction, false)
+        let delegate = CloudUploadProgressDelegate { uploadedBytes, totalBytes in
+            tracker.update(uploadedBytes: uploadedBytes, totalBytes: totalBytes)
+            reportUploadProgress(tracker.snapshot(), false)
         }
         let uploadMonitorTask = Task {
             while !Task.isCancelled {
@@ -458,7 +497,7 @@ struct CloudAnalysisService {
 
                 let snapshot = tracker.snapshot()
                 let stalled = snapshot.secondsSinceProgress >= 60 && snapshot.fraction < 0.99
-                reportUploadProgress(snapshot.fraction, stalled)
+                reportUploadProgress(snapshot, stalled)
             }
         }
         let uploadSession = URLSession(configuration: session.configuration, delegate: delegate, delegateQueue: nil)
@@ -468,12 +507,15 @@ struct CloudAnalysisService {
         }
 
         let (_, response) = try await uploadSession.upload(for: request, fromFile: url)
+        let finalSnapshot = tracker.snapshot()
         progress(
             progressEnd,
             Self.uploadProgressMessage(
                 stage: stage,
                 fraction: 1,
-                elapsedSeconds: tracker.elapsedSeconds
+                elapsedSeconds: tracker.elapsedSeconds,
+                uploadedBytes: finalSnapshot.uploadedBytes,
+                totalBytes: finalSnapshot.totalBytes
             )
         )
 
@@ -606,18 +648,36 @@ struct CloudAnalysisService {
     }
 }
 
+private struct CloudUploadProgressSnapshot: Sendable {
+    let fraction: Double
+    let elapsedSeconds: TimeInterval
+    let secondsSinceProgress: TimeInterval
+    let uploadedBytes: Int64?
+    let totalBytes: Int64?
+}
+
 private final class CloudUploadProgressTracker: @unchecked Sendable {
     private let lock = NSLock()
     private let startedAt = Date()
     private var lastProgressAt = Date()
     private var latestFraction = 0.0
+    private var latestUploadedBytes: Int64?
+    private var latestTotalBytes: Int64?
 
     var elapsedSeconds: TimeInterval {
         Date().timeIntervalSince(startedAt)
     }
 
-    func update(fraction: Double) {
-        let boundedFraction = min(max(fraction, 0), 1)
+    func update(uploadedBytes: Int64, totalBytes: Int64) {
+        let safeUploadedBytes = max(uploadedBytes, 0)
+        let safeTotalBytes = max(totalBytes, 0)
+        let boundedFraction: Double
+        if safeTotalBytes > 0 {
+            boundedFraction = min(max(Double(safeUploadedBytes) / Double(safeTotalBytes), 0), 1)
+        } else {
+            boundedFraction = latestFraction
+        }
+
         lock.lock()
         if boundedFraction > latestFraction + 0.001 {
             latestFraction = boundedFraction
@@ -625,27 +685,35 @@ private final class CloudUploadProgressTracker: @unchecked Sendable {
         } else {
             latestFraction = max(latestFraction, boundedFraction)
         }
+        latestUploadedBytes = safeUploadedBytes
+        if safeTotalBytes > 0 {
+            latestTotalBytes = safeTotalBytes
+        }
         lock.unlock()
     }
 
-    func snapshot() -> (fraction: Double, elapsedSeconds: TimeInterval, secondsSinceProgress: TimeInterval) {
+    func snapshot() -> CloudUploadProgressSnapshot {
         let now = Date()
         lock.lock()
         let fraction = latestFraction
         let lastProgressAt = lastProgressAt
+        let uploadedBytes = latestUploadedBytes
+        let totalBytes = latestTotalBytes
         lock.unlock()
-        return (
+        return CloudUploadProgressSnapshot(
             fraction: fraction,
             elapsedSeconds: now.timeIntervalSince(startedAt),
-            secondsSinceProgress: now.timeIntervalSince(lastProgressAt)
+            secondsSinceProgress: now.timeIntervalSince(lastProgressAt),
+            uploadedBytes: uploadedBytes,
+            totalBytes: totalBytes
         )
     }
 }
 
 private final class CloudUploadProgressDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
-    private let onProgress: @Sendable (Double) -> Void
+    private let onProgress: @Sendable (_ uploadedBytes: Int64, _ totalBytes: Int64) -> Void
 
-    init(onProgress: @escaping @Sendable (Double) -> Void) {
+    init(onProgress: @escaping @Sendable (_ uploadedBytes: Int64, _ totalBytes: Int64) -> Void) {
         self.onProgress = onProgress
         super.init()
     }
@@ -658,6 +726,6 @@ private final class CloudUploadProgressDelegate: NSObject, URLSessionTaskDelegat
         totalBytesExpectedToSend: Int64
     ) {
         guard totalBytesExpectedToSend > 0 else { return }
-        onProgress(Double(totalBytesSent) / Double(totalBytesExpectedToSend))
+        onProgress(totalBytesSent, totalBytesExpectedToSend)
     }
 }
