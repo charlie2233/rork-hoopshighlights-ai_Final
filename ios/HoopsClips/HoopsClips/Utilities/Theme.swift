@@ -12,6 +12,12 @@ enum AppTheme {
     static let successGreen = Color(red: 0.298, green: 0.851, blue: 0.392)
     static let dangerRed = Color(red: 0.957, green: 0.263, blue: 0.345)
     static let warningYellow = Color(red: 1.0, green: 0.804, blue: 0.0)
+    static let courtBlue = Color(red: 0.118, green: 0.622, blue: 0.976)
+    static let rimOrange = Color(red: 1.0, green: 0.431, blue: 0.161)
+    static let mintGlow = Color(red: 0.137, green: 0.890, blue: 0.694)
+    static let rosePink = Color(red: 1.0, green: 0.318, blue: 0.612)
+    static let iceBlue = Color(red: 0.420, green: 0.840, blue: 1.0)
+    static let limePunch = Color(red: 0.718, green: 1.0, blue: 0.235)
     static let cardBorder = accentPurple.opacity(0.18)
     static let softBorder = Color.white.opacity(0.06)
 
@@ -26,6 +32,20 @@ enum AppTheme {
         startPoint: .topLeading,
         endPoint: .bottomTrailing
     )
+
+    static func accentCardFill(_ accent: Color, opacity: Double = 0.20) -> AnyShapeStyle {
+        AnyShapeStyle(
+            LinearGradient(
+                colors: [
+                    accent.opacity(opacity),
+                    surfaceBg.opacity(0.62),
+                    cardBg.opacity(0.94)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
+    }
 
     @ViewBuilder
     static var meshBackground: some View {
@@ -100,6 +120,7 @@ struct RorkSectionHeader: View {
     let title: String
     let icon: String
     var subtitle: String?
+    var accent: Color = AppTheme.neonPurple
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
@@ -123,11 +144,11 @@ struct RorkSectionHeader: View {
     private var headerIcon: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(AppTheme.accentPurple.opacity(0.15))
+                .fill(accent.opacity(0.15))
                 .frame(width: 34, height: 34)
             Image(systemName: icon)
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(AppTheme.neonPurple)
+                .foregroundStyle(accent)
         }
         .accessibilityHidden(true)
     }
@@ -265,10 +286,20 @@ struct RorkMetricChip: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
-        .background(AppTheme.surfaceBg.opacity(0.75), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background(
+            LinearGradient(
+                colors: [
+                    tint.opacity(0.13),
+                    AppTheme.surfaceBg.opacity(0.72)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            ),
+            in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+        )
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(AppTheme.softBorder, lineWidth: 1)
+                .stroke(tint.opacity(0.20), lineWidth: 1)
         )
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(label)

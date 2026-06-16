@@ -185,11 +185,11 @@ struct SettingsView: View {
             HStack(alignment: .center, spacing: 14) {
                 ZStack {
                     Circle()
-                        .fill(AppTheme.accentPurple.opacity(0.16))
+                        .fill(accountAnalysisPathTint.opacity(0.18))
                         .frame(width: 52, height: 52)
                     Image(systemName: authMethodIcon)
                         .font(.title3.weight(.semibold))
-                        .foregroundStyle(AppTheme.neonPurple)
+                        .foregroundStyle(accountAnalysisPathTint)
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
@@ -235,9 +235,10 @@ struct SettingsView: View {
         .padding(16)
         .rorkCard(
             cornerRadius: 20,
-            fill: AnyShapeStyle(AppTheme.surfaceBg.opacity(0.58)),
-            stroke: AppTheme.softBorder,
-            glowOpacity: 0.02
+            fill: AppTheme.accentCardFill(accountAnalysisPathTint, opacity: 0.13),
+            stroke: accountAnalysisPathTint.opacity(0.18),
+            glow: accountAnalysisPathTint,
+            glowOpacity: 0.04
         )
     }
 
@@ -259,10 +260,10 @@ struct SettingsView: View {
                 HStack(spacing: 12) {
                     ZStack {
                         RoundedRectangle(cornerRadius: 11, style: .continuous)
-                            .fill(AppTheme.accentPurple.opacity(0.14))
+                            .fill(AppTheme.rosePink.opacity(0.16))
                             .frame(width: 38, height: 38)
                         Image(systemName: "character.bubble.fill")
-                            .foregroundStyle(AppTheme.neonPurple)
+                            .foregroundStyle(AppTheme.rosePink)
                     }
 
                     VStack(alignment: .leading, spacing: 3) {
@@ -294,9 +295,10 @@ struct SettingsView: View {
         .padding(16)
         .rorkCard(
             cornerRadius: 18,
-            fill: AnyShapeStyle(AppTheme.surfaceBg.opacity(0.48)),
-            stroke: AppTheme.softBorder,
-            glowOpacity: 0.02
+            fill: AppTheme.accentCardFill(AppTheme.rosePink, opacity: 0.12),
+            stroke: AppTheme.rosePink.opacity(0.18),
+            glow: AppTheme.rosePink,
+            glowOpacity: 0.04
         )
     }
 
@@ -305,13 +307,13 @@ struct SettingsView: View {
             title: languageStore.text(.workflowDefaults),
             subtitle: languageStore.text(.workflowDefaultsSubtitle),
             icon: "waveform.and.magnifyingglass",
-            accent: AppTheme.neonPurple,
+            accent: AppTheme.courtBlue,
             stats: [
                 SettingsPreviewStat(
                     icon: "scope",
                     value: "\(Int(viewModel.settings.confidenceThreshold * 100))%",
                     label: languageStore.text(.settingsThreshold),
-                    tint: AppTheme.neonPurple
+                    tint: AppTheme.courtBlue
                 ),
                 SettingsPreviewStat(
                     icon: "clock.badge.checkmark.fill",
@@ -323,7 +325,7 @@ struct SettingsView: View {
                     icon: "gauge.with.dots.needle.67percent",
                     value: formattedFrameRate(viewModel.settings.framesSampledPerSecond),
                     label: languageStore.text(.settingsSampling),
-                    tint: AppTheme.successGreen
+                    tint: AppTheme.mintGlow
                 )
             ]
         ) {
@@ -418,13 +420,13 @@ struct SettingsView: View {
             title: languageStore.text(.supportCenter),
             subtitle: languageStore.text(.supportCenterSubtitle),
             icon: "bubble.left.and.exclamationmark.bubble.right.fill",
-            accent: AppTheme.warningYellow,
+            accent: AppTheme.rimOrange,
             stats: [
                 SettingsPreviewStat(
                     icon: feedbackType.icon,
                     value: languageStore.text(feedbackType.textKey),
                     label: languageStore.text(.settingsDraftType),
-                    tint: AppTheme.warningYellow
+                    tint: AppTheme.rimOrange
                 ),
                 SettingsPreviewStat(
                     icon: "text.alignleft",
@@ -481,7 +483,7 @@ struct SettingsView: View {
                     icon: "scope",
                     value: viewModel.cloudAnalysisJobID == nil ? "None" : "Job",
                     label: languageStore.text(.settingsSmokeProofAnalysis),
-                    tint: viewModel.cloudAnalysisJobID == nil ? AppTheme.subtleText : AppTheme.neonPurple
+                    tint: viewModel.cloudAnalysisJobID == nil ? AppTheme.subtleText : AppTheme.courtBlue
                 )
                 .settingsPreviewStatCard()
             }
@@ -535,7 +537,13 @@ struct SettingsView: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(16)
-        .rorkCard(cornerRadius: 18, stroke: AppTheme.neonPurple.opacity(0.18), glow: AppTheme.neonPurple, glowOpacity: 0.05)
+        .rorkCard(
+            cornerRadius: 18,
+            fill: AppTheme.accentCardFill(AppTheme.mintGlow, opacity: 0.12),
+            stroke: AppTheme.mintGlow.opacity(0.20),
+            glow: AppTheme.mintGlow,
+            glowOpacity: 0.05
+        )
     }
 
     private var aboutHubLink: some View {
@@ -543,7 +551,7 @@ struct SettingsView: View {
             title: languageStore.text(.aboutPrivacy),
             subtitle: languageStore.text(.aboutPrivacySubtitle),
             icon: "lock.doc.fill",
-            accent: AppTheme.neonPurple,
+            accent: AppTheme.iceBlue,
             stats: [
                 SettingsPreviewStat(
                     icon: "internaldrive.fill",
@@ -555,7 +563,7 @@ struct SettingsView: View {
                     icon: "brain.head.profile.fill",
                     value: languageStore.text(.settingsVisionAudio),
                     label: languageStore.text(.settingsEngine),
-                    tint: AppTheme.neonPurple
+                    tint: AppTheme.iceBlue
                 )
             ]
         ) {
@@ -756,7 +764,7 @@ struct SettingsView: View {
     }
 
     private var accountAnalysisPathTint: Color {
-        AppConstants.cloudAnalysisEnabled ? AppTheme.neonPurple : AppTheme.successGreen
+        AppConstants.cloudAnalysisEnabled ? AppTheme.courtBlue : AppTheme.successGreen
     }
 
     private func settingsInlineStat(icon: String, value: String, label: String, tint: Color) -> some View {
@@ -965,10 +973,10 @@ struct SettingsView: View {
             .padding(16)
             .rorkCard(
                 cornerRadius: 18,
-                fill: AnyShapeStyle(AppTheme.surfaceBg.opacity(0.48)),
-                stroke: AppTheme.softBorder,
+                fill: AppTheme.accentCardFill(accent, opacity: 0.12),
+                stroke: accent.opacity(0.18),
                 glow: accent,
-                glowOpacity: 0.02
+                glowOpacity: 0.045
             )
         }
         .buttonStyle(.plain)
@@ -2175,6 +2183,12 @@ private extension SettingsView.SettingsPreviewStat {
         }
         .frame(maxWidth: .infinity, minHeight: 78)
         .padding(.vertical, 12)
-        .rorkCard(cornerRadius: 14, fill: AnyShapeStyle(AppTheme.surfaceBg.opacity(0.72)), stroke: AppTheme.softBorder, glowOpacity: 0.04)
+        .rorkCard(
+            cornerRadius: 14,
+            fill: AppTheme.accentCardFill(tint, opacity: 0.10),
+            stroke: tint.opacity(0.18),
+            glow: tint,
+            glowOpacity: 0.035
+        )
     }
 }

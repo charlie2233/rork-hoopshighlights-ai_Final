@@ -28,6 +28,7 @@ struct HistoryView: View {
                                     title: "Current Project",
                                     icon: "bolt.circle.fill",
                                     subtitle: "Your active session is saved automatically",
+                                    accent: AppTheme.rimOrange,
                                     accessibilityIdentifier: "history.section.currentProject",
                                     projects: [currentProject]
                                 )
@@ -38,6 +39,7 @@ struct HistoryView: View {
                                     title: "Past Projects",
                                     icon: "clock.arrow.circlepath",
                                     subtitle: "Reopen past runs and replay saved videos",
+                                    accent: AppTheme.courtBlue,
                                     accessibilityIdentifier: "history.section.pastProjects",
                                     projects: viewModel.pastProjectRecords
                                 )
@@ -127,6 +129,7 @@ struct HistoryView: View {
         title: String,
         icon: String,
         subtitle: String,
+        accent: Color,
         accessibilityIdentifier: String,
         projects: [PersistedProjectRecord]
     ) -> some View {
@@ -134,7 +137,8 @@ struct HistoryView: View {
             RorkSectionHeader(
                 title: title,
                 icon: icon,
-                subtitle: subtitle
+                subtitle: subtitle,
+                accent: accent
             )
 
             ForEach(projects) { project in
@@ -145,7 +149,7 @@ struct HistoryView: View {
                         Button {
                             selectedProject = project
                         } label: {
-                            historyActionLabel(title: "Saved Project", icon: "info.circle.fill", tint: AppTheme.neonPurple)
+                            historyActionLabel(title: "Saved Project", icon: "info.circle.fill", tint: AppTheme.courtBlue)
                                 .accessibilityLabel("Show saved project details for \(project.displayTitle)")
                         }
                         .buttonStyle(.plain)
@@ -192,7 +196,13 @@ struct HistoryView: View {
             }
         }
         .padding(16)
-        .rorkCard(cornerRadius: 16, stroke: AppTheme.softBorder, glowOpacity: 0.05)
+        .rorkCard(
+            cornerRadius: 18,
+            fill: AppTheme.accentCardFill(accent, opacity: 0.14),
+            stroke: accent.opacity(0.22),
+            glow: accent,
+            glowOpacity: 0.06
+        )
         .accessibilityIdentifier("history.detail.actions")
     }
 
@@ -212,10 +222,20 @@ struct HistoryView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
-        .background(AppTheme.surfaceBg.opacity(0.72), in: RoundedRectangle(cornerRadius: 14))
+        .background(
+            LinearGradient(
+                colors: [
+                    historyProjectAccent(for: project).opacity(0.16),
+                    AppTheme.surfaceBg.opacity(0.70)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            ),
+            in: RoundedRectangle(cornerRadius: 14)
+        )
         .overlay(
             RoundedRectangle(cornerRadius: 14)
-                .stroke(AppTheme.softBorder, lineWidth: 1)
+                .stroke(historyProjectAccent(for: project).opacity(0.20), lineWidth: 1)
             )
     }
 
@@ -229,9 +249,9 @@ struct HistoryView: View {
                 ZStack {
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .fill(AppTheme.surfaceBg)
-                    Image(systemName: "video.fill")
+                    Image(systemName: project.hasLatestExport ? "play.rectangle.fill" : "video.fill")
                         .font(isExpanded ? .title2 : .title3)
-                        .foregroundStyle(AppTheme.neonPurple)
+                        .foregroundStyle(historyProjectAccent(for: project))
                 }
             }
         }
@@ -240,7 +260,7 @@ struct HistoryView: View {
         .clipShape(.rect(cornerRadius: 12))
         .overlay(
             RoundedRectangle(cornerRadius: 12)
-                .stroke(AppTheme.softBorder, lineWidth: 1)
+                .stroke(historyProjectAccent(for: project).opacity(0.24), lineWidth: 1)
         )
         .accessibilityHidden(true)
     }
@@ -261,6 +281,7 @@ struct HistoryView: View {
                 historyBadge(
                     icon: "film.stack.fill",
                     text: project.historyClipBadgeText,
+                    tint: AppTheme.courtBlue,
                     accessibilityLabel: project.historyClipBadgeAccessibilityText
                 )
 
@@ -268,6 +289,7 @@ struct HistoryView: View {
                     historyBadge(
                         icon: "square.and.arrow.up.fill",
                         text: project.historyExportBadgeText,
+                        tint: AppTheme.successGreen,
                         accessibilityLabel: "Saved reel ready to preview or share"
                     )
                 }
@@ -275,14 +297,16 @@ struct HistoryView: View {
                 if let analysisMode = project.analysisMode {
                     historyBadge(
                         icon: userFacingAnalysisModeIcon(analysisMode),
-                        text: userFacingAnalysisModeLabel(analysisMode)
+                        text: userFacingAnalysisModeLabel(analysisMode),
+                        tint: AppTheme.rimOrange
                     )
                 }
 
                 if let teamTarget = projectTeamTargetShortLabel(project) {
                     historyBadge(
                         icon: project.highlightTeamSelection?.mode == .team ? "person.2.fill" : "person.3.fill",
-                        text: teamTarget
+                        text: teamTarget,
+                        tint: AppTheme.mintGlow
                     )
                 }
             }
@@ -363,7 +387,7 @@ struct HistoryView: View {
         ]
     }
 
-    private func historyBadge(icon: String, text: String, accessibilityLabel: String? = nil) -> some View {
+    private func historyBadge(icon: String, text: String, tint: Color, accessibilityLabel: String? = nil) -> some View {
         HStack(spacing: 4) {
             Image(systemName: icon)
                 .font(.caption2.weight(.semibold))
@@ -377,7 +401,11 @@ struct HistoryView: View {
         .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 38 : 28, alignment: .center)
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
-        .background(AppTheme.cardBg, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(tint.opacity(0.13), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(tint.opacity(0.22), lineWidth: 1)
+        )
         .accessibilityLabel(accessibilityLabel ?? text)
     }
 
@@ -396,6 +424,19 @@ struct HistoryView: View {
                 RoundedRectangle(cornerRadius: 12)
                     .stroke(tint.opacity(0.26), lineWidth: 1)
             )
+    }
+
+    private func historyProjectAccent(for project: PersistedProjectRecord) -> Color {
+        if viewModel.currentProjectID == project.id {
+            return AppTheme.rimOrange
+        }
+        if project.hasLatestExport {
+            return AppTheme.successGreen
+        }
+        if project.cloudAnalysisJobID != nil {
+            return AppTheme.courtBlue
+        }
+        return AppTheme.rosePink
     }
 
     private func beginRenaming(_ project: PersistedProjectRecord) {
@@ -579,7 +620,13 @@ private struct HistoryProjectDetailView: View {
             }
         }
         .padding(16)
-        .rorkCard(cornerRadius: 16, stroke: AppTheme.softBorder, glowOpacity: 0.05)
+        .rorkCard(
+            cornerRadius: 16,
+            fill: AppTheme.accentCardFill(AppTheme.courtBlue, opacity: 0.11),
+            stroke: AppTheme.courtBlue.opacity(0.18),
+            glow: AppTheme.courtBlue,
+            glowOpacity: 0.04
+        )
         .accessibilityIdentifier("history.detail.playback")
     }
 
@@ -588,7 +635,8 @@ private struct HistoryProjectDetailView: View {
             RorkSectionHeader(
                 title: "Playback",
                 icon: "play.rectangle.fill",
-                subtitle: "Preview the source video or saved reel"
+                subtitle: "Preview the source video or saved reel",
+                accent: AppTheme.courtBlue
             )
 
             if let previewPlayer {
@@ -650,7 +698,13 @@ private struct HistoryProjectDetailView: View {
             }
         }
         .padding(16)
-        .rorkCard(cornerRadius: 16, stroke: AppTheme.softBorder, glowOpacity: 0.05)
+        .rorkCard(
+            cornerRadius: 16,
+            fill: AppTheme.accentCardFill(AppTheme.courtBlue, opacity: 0.10),
+            stroke: AppTheme.courtBlue.opacity(0.18),
+            glow: AppTheme.courtBlue,
+            glowOpacity: 0.04
+        )
         .accessibilityIdentifier("history.detail.playback")
     }
 
@@ -659,7 +713,8 @@ private struct HistoryProjectDetailView: View {
             RorkSectionHeader(
                 title: "Actions",
                 icon: "bolt.fill",
-                subtitle: "Resume, watch, share, or delete"
+                subtitle: "Resume, watch, share, or delete",
+                accent: AppTheme.rimOrange
             )
 
             Button {
@@ -739,7 +794,13 @@ private struct HistoryProjectDetailView: View {
             .accessibilityIdentifier("history.detail.deleteProject")
         }
         .padding(16)
-        .rorkCard(cornerRadius: 16, stroke: AppTheme.softBorder, glowOpacity: 0.05)
+        .rorkCard(
+            cornerRadius: 16,
+            fill: AppTheme.accentCardFill(AppTheme.rimOrange, opacity: 0.10),
+            stroke: AppTheme.rimOrange.opacity(0.18),
+            glow: AppTheme.rimOrange,
+            glowOpacity: 0.04
+        )
     }
 
     private var timelineCard: some View {
@@ -747,7 +808,8 @@ private struct HistoryProjectDetailView: View {
             RorkSectionHeader(
                 title: "What Happened",
                 icon: "list.bullet.rectangle.fill",
-                subtitle: "Recent project events"
+                subtitle: "Recent project events",
+                accent: AppTheme.rosePink
             )
 
             if project.events.isEmpty {
@@ -786,7 +848,13 @@ private struct HistoryProjectDetailView: View {
             }
         }
         .padding(16)
-        .rorkCard(cornerRadius: 16, stroke: AppTheme.softBorder, glowOpacity: 0.05)
+        .rorkCard(
+            cornerRadius: 16,
+            fill: AppTheme.accentCardFill(AppTheme.rosePink, opacity: 0.10),
+            stroke: AppTheme.rosePink.opacity(0.18),
+            glow: AppTheme.rosePink,
+            glowOpacity: 0.04
+        )
     }
 
     private var detailMetricGridColumns: [GridItem] {
