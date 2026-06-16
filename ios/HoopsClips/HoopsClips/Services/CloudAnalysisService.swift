@@ -543,7 +543,11 @@ struct CloudAnalysisService {
                 }
             }
         }
-        let uploadSession = URLSession(configuration: session.configuration, delegate: delegate, delegateQueue: nil)
+        let uploadSession = URLSession(
+            configuration: uploadSessionConfiguration(for: job.jobId),
+            delegate: delegate,
+            delegateQueue: nil
+        )
         defer {
             uploadMonitorTask.cancel()
             uploadSession.finishTasksAndInvalidate()
@@ -565,6 +569,25 @@ struct CloudAnalysisService {
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw CloudAnalysisError.uploadFailed
         }
+    }
+
+    private func uploadSessionConfiguration(for jobID: String) -> URLSessionConfiguration {
+        let sanitizedJobID = jobID
+            .filter { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }
+            .prefix(48)
+        let identifierSuffix = sanitizedJobID.isEmpty ? UUID().uuidString : String(sanitizedJobID)
+        let configuration = URLSessionConfiguration.background(
+            withIdentifier: "atrrak.hoopsclips.cloud-upload.\(identifierSuffix).\(UUID().uuidString)"
+        )
+        configuration.sessionSendsLaunchEvents = true
+        configuration.isDiscretionary = false
+        configuration.waitsForConnectivity = true
+        configuration.allowsCellularAccess = true
+        configuration.allowsExpensiveNetworkAccess = true
+        configuration.allowsConstrainedNetworkAccess = true
+        configuration.timeoutIntervalForRequest = 60
+        configuration.timeoutIntervalForResource = 2 * 60 * 60
+        return configuration
     }
 
     private func startJob(

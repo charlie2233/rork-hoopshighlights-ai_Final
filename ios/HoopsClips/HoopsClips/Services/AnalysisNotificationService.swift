@@ -23,8 +23,6 @@ final class AnalysisNotificationService: NSObject {
     }
 
     func notifyAnalysisCompleted(clipsCount: Int, usedFallback: Bool) {
-        guard UIApplication.shared.applicationState != .active else { return }
-
         Task {
             let center = UNUserNotificationCenter.current()
             let settings = await center.notificationSettings()
@@ -32,13 +30,21 @@ final class AnalysisNotificationService: NSObject {
             guard status == .authorized || status == .provisional || status == .ephemeral else { return }
 
             let content = UNMutableNotificationContent()
-            content.title = "Analysis Complete"
+            content.title = clipsCount > 0 ? "Review ready" : "Analysis finished"
             if clipsCount > 0 {
-                content.body = "Your highlight scan finished and found \(clipsCount) clip\(clipsCount == 1 ? "" : "s")."
+                content.body = "HoopClips found \(clipsCount) clip\(clipsCount == 1 ? "" : "s"). Open Review to keep or nah."
             } else {
                 content.body = "Your highlight scan finished, but no strong clips were detected."
             }
             content.sound = .default
+            content.threadIdentifier = "hoopclips-analysis"
+            content.categoryIdentifier = "analysis-complete"
+            content.userInfo = [
+                "source": "HoopClips",
+                "event": "analysis_completed",
+                "clipsCount": clipsCount,
+                "usedFallback": usedFallback
+            ]
 
             let request = UNNotificationRequest(
                 identifier: "analysis-complete-\(UUID().uuidString)",

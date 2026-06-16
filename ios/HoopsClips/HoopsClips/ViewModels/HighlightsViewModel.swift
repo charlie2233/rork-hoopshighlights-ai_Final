@@ -2089,15 +2089,21 @@ final class HighlightsViewModel {
         guard backgroundTaskID == .invalid else { return }
         backgroundTaskID = UIApplication.shared.beginBackgroundTask(withName: "HoopsAnalysis") { [weak self] in
             Task { @MainActor in
+                LaunchTelemetry.shared.recordStabilityCheckpoint(
+                    "analysis.background_time_expired",
+                    metadata: "mode=\(self?.analysisMode.rawValue ?? "unknown") progress=\(self?.analysisService.progress ?? 0)"
+                )
                 self?.endBackgroundAnalysisTask()
             }
         }
+        LaunchTelemetry.shared.recordStabilityCheckpoint("analysis.background_task_started")
     }
 
     private func endBackgroundAnalysisTask() {
         guard backgroundTaskID != .invalid else { return }
         UIApplication.shared.endBackgroundTask(backgroundTaskID)
         backgroundTaskID = .invalid
+        LaunchTelemetry.shared.recordStabilityCheckpoint("analysis.background_task_ended")
     }
 
     #if DEBUG

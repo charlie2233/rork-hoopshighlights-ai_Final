@@ -122,12 +122,16 @@ nonisolated final class ProjectHistoryStore {
 
             await onProgress?(.savingProject)
             let filename = sourceURL.lastPathComponent
-            let basename = (filename as NSString).deletingPathExtension
             let now = Date()
+            let displayTitle = PersistedProjectRecord.friendlyProjectTitle(
+                sourceFilename: filename,
+                sourceDuration: durationSeconds,
+                createdAt: now
+            )
 
             return PersistedProjectRecord(
                 id: projectID,
-                title: basename.isEmpty ? filename : basename,
+                title: displayTitle,
                 sourceFilename: filename,
                 sourceRelativePath: relativePath(for: persistedSourceURL),
                 sourceDuration: durationSeconds,

@@ -32,6 +32,7 @@ struct VideoPlayerView: View {
     @State private var importErrorMessage: String?
     @State private var importRecoveryOffersHistory = false
     @State private var lastAnalysisAnnouncementPercent = -1
+    @State private var showingCancelUploadConfirmation = false
     @AppStorage("hoops.previewAudioMuted.v1") private var previewAudioMuted = false
     @State private var showingCloudVideoConsent = false
     @State private var pendingCloudVideoConsentAction: CloudVideoConsentAction?
@@ -190,6 +191,18 @@ struct VideoPlayerView: View {
                 }
             } message: {
                 Text(importErrorMessage ?? "Choose another video and try again.")
+            }
+            .confirmationDialog(
+                "Cancel upload?",
+                isPresented: $showingCancelUploadConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button("Cancel upload", role: .destructive) {
+                    cancelActiveImport()
+                }
+                Button("Keep uploading", role: .cancel) { }
+            } message: {
+                Text("Large videos can take a while. If you cancel, the current upload or analysis stops and you can retry from HoopClips.")
             }
         }
     }
@@ -635,6 +648,10 @@ struct VideoPlayerView: View {
         clearImportState()
     }
 
+    private func requestCancelUploadConfirmation() {
+        showingCancelUploadConfirmation = true
+    }
+
     private func clearImportState() {
         isImportingVideo = false
         importStatusMessage = ""
@@ -808,7 +825,7 @@ struct VideoPlayerView: View {
                 }
 
                 Button {
-                    cancelActiveImport()
+                    requestCancelUploadConfirmation()
                 } label: {
                     importStatusActionLabel(
                         title: languageStore.text(.cancelImport),
@@ -1539,6 +1556,23 @@ struct VideoPlayerView: View {
                     .background(AppTheme.neonPurple.opacity(0.12), in: .rect(cornerRadius: 12))
                     .accessibilityIdentifier("analysis.cloudBackgroundReminder")
             }
+
+            Button {
+                requestCancelUploadConfirmation()
+            } label: {
+                Label(analysisProgressTitle.lowercased().contains("upload") ? "Cancel upload" : "Cancel analysis", systemImage: "xmark.circle.fill")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 11)
+                    .background(AppTheme.dangerRed.opacity(0.16), in: .rect(cornerRadius: 14))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 14)
+                            .stroke(AppTheme.dangerRed.opacity(0.30), lineWidth: 1)
+                    }
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("analysis.cancelUploadButton")
         }
         .padding(16)
         .rorkCard(cornerRadius: 16, stroke: AppTheme.accentPurple.opacity(0.2))

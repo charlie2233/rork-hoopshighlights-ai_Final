@@ -42,7 +42,7 @@ nonisolated enum CloudAnalysisProgressCopy {
         let status = statusMessage.lowercased()
 
         if status.contains("upload") {
-            return "Keep HoopClips open during upload. After handoff, you can switch apps."
+            return "Uploading is the long part. Keep HoopClips open if possible; after cloud handoff, switching apps is safe."
         }
 
         if status.contains("team") || status.contains("jersey") {
@@ -72,7 +72,7 @@ nonisolated enum CloudAnalysisProgressCopy {
             || status.contains("audio")
             || status.contains("action") {
             if analysisMode == .cloud {
-                return "Cloud analysis is still running. Return to HoopClips to see the latest clips."
+                return "Cloud analysis is active. You can switch apps and reopen HoopClips for live status."
             }
             return "Scoring motion, audio peaks, and basketball action."
         }
@@ -82,7 +82,7 @@ nonisolated enum CloudAnalysisProgressCopy {
         }
 
         if analysisMode == .cloud {
-            return "Your cloud analysis job is active; you can switch apps and reopen HoopClips."
+            return "Cloud analysis is active. You can switch apps and reopen HoopClips for live status."
         }
 
         return "Analysis is running on device because cloud mode is unavailable."
@@ -93,7 +93,7 @@ nonisolated enum CloudAnalysisProgressCopy {
 
         let status = statusMessage.lowercased()
         if status.contains("upload") {
-            return nil
+            return "Big uploads can pause if iOS backgrounds the app. If it stalls, reopen HoopClips and retry safely."
         }
 
         if status.contains("queued")
@@ -110,10 +110,10 @@ nonisolated enum CloudAnalysisProgressCopy {
             || status.contains("action")
             || status.contains("finalizing")
             || status.contains("refining") {
-            return "Your cloud analysis job is active; you can switch apps and reopen HoopClips."
+            return "Cloud job handed off. You can switch apps; HoopClips will reconnect when opened."
         }
 
-        return "Your cloud analysis job is active; you can switch apps and reopen HoopClips."
+        return "Cloud job handed off. You can switch apps; HoopClips will reconnect when opened."
     }
 
     private static func compactTeamTitle(_ title: String) -> String {

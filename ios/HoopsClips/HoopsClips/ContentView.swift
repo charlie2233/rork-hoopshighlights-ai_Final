@@ -16,6 +16,7 @@ struct ContentView: View {
     @State private var isRookieGuideVisible = false
     @State private var rookieGuideStepIndex = 0
     @State private var reviewRecoveryNotice: ReviewRecoveryNotice?
+    @State private var showingPipelineCancelConfirmation = false
     @AppStorage("hoopsclips.visibleProjectAuthScopeKey.v1") private var visibleProjectAuthScopeKey = "signed-out"
     @AppStorage("hoopsclips.rookieGuide.completed.v1") private var rookieGuideCompleted = false
     @GestureState private var tabBarDragTranslation: CGFloat = 0
@@ -254,7 +255,7 @@ struct ContentView: View {
                     GlobalImportProgressBanner(
                         message: pipelineStatusMessage,
                         stage: pipelineStage,
-                        onCancel: viewModel.cancelActiveUploadOrAnalysis
+                        onCancel: requestPipelineCancelConfirmation
                     )
                         .padding(.horizontal, 16)
                         .padding(.top, 12)
@@ -303,6 +304,18 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showingPaywall) {
             PaywallView(subscriptionManager: subscriptionManager, authService: authService)
+        }
+        .confirmationDialog(
+            pipelineStage.cancelTitle + "?",
+            isPresented: $showingPipelineCancelConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button(pipelineStage.cancelTitle, role: .destructive) {
+                viewModel.cancelActiveUploadOrAnalysis()
+            }
+            Button("Keep going", role: .cancel) { }
+        } message: {
+            Text("Large videos can take a while. Cancel stops the current upload or analysis; you can retry from HoopClips.")
         }
     }
 
@@ -685,7 +698,7 @@ struct ContentView: View {
                     detailText: reviewAnalysisDetailText,
                     approximateRemainingText: reviewAnalysisApproximateRemainingText,
                     pipelineStage: pipelineStage,
-                    onCancel: viewModel.cancelActiveUploadOrAnalysis
+                    onCancel: requestPipelineCancelConfirmation
                 )
             }
 
@@ -766,11 +779,13 @@ struct ContentView: View {
         }
         .padding(.top, 8)
         .padding(.bottom, 8)
-        .background(AppTheme.cardBg.opacity(0.96))
+        .padding(.horizontal, 10)
+        .padding(.bottom, 6)
+        .background(AppTheme.cardBg.opacity(0.48), in: .rect(cornerRadius: 28))
+        .hoopsLiquidGlassSurface(cornerRadius: 28, tint: AppTheme.neonPurple.opacity(0.14), interactive: true)
         .overlay(alignment: .top) {
-            Rectangle()
-                .fill(AppTheme.softBorder.opacity(0.8))
-                .frame(height: 1)
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .stroke(.white.opacity(0.10), lineWidth: 1)
         }
         .contentShape(.rect)
         .offset(x: reduceMotion ? 0 : tabBarVisualOffset)
@@ -936,6 +951,10 @@ struct ContentView: View {
 
     private var tabButtonHeight: CGFloat {
         dynamicTypeSize.isAccessibilitySize ? 84 : 60
+    }
+
+    private func requestPipelineCancelConfirmation() {
+        showingPipelineCancelConfirmation = true
     }
 
     private func selectTab(_ tab: AppTab) {
@@ -1244,8 +1263,7 @@ private struct ReviewAnalysisWaitingView: View {
                         }
 
                         analysisProgressBar
-
-                        TinyAnalysisPipelineTracker(currentStage: pipelineStage)
+                        reviewPipelineGlass
 
                         Text(visibleStatusMessage)
                             .font(.subheadline.weight(.semibold))
@@ -1278,7 +1296,24 @@ private struct ReviewAnalysisWaitingView: View {
                         cancelButton
                     }
                     .padding(18)
-                    .rorkCard(cornerRadius: 24, stroke: AppTheme.neonPurple.opacity(0.26), glow: AppTheme.neonPurple, glowOpacity: 0.08)
+                    .background(
+                        LinearGradient(
+                            colors: [
+                                pipelineStage.tint.opacity(0.20),
+                                AppTheme.cardBg.opacity(0.82),
+                                AppTheme.surfaceBg.opacity(0.72)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        in: .rect(cornerRadius: 24)
+                    )
+                    .hoopsLiquidGlassSurface(cornerRadius: 24, tint: pipelineStage.tint.opacity(0.16))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 24)
+                            .stroke(pipelineStage.tint.opacity(0.32), lineWidth: 1)
+                    }
+                    .shadow(color: pipelineStage.tint.opacity(0.16), radius: 22, y: 12)
                     .accessibilityElement(children: .combine)
                     .accessibilityLabel("Analyzing, please wait")
                     .accessibilityValue("\(progressPercentText). \(visibleStatusMessage). \(detailText)")
@@ -1297,10 +1332,36 @@ private struct ReviewAnalysisWaitingView: View {
 
     private var analysisProgressBar: some View {
         ProgressView(value: safeProgress)
-            .tint(AppTheme.accentPurple)
+            .tint(pipelineStage.tint)
             .scaleEffect(y: 2)
             .accessibilityLabel("Analysis progress")
             .accessibilityValue(progressPercentText)
+    }
+
+    private var reviewPipelineGlass: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            TinyAnalysisPipelineTracker(currentStage: pipelineStage)
+
+            HStack(spacing: 8) {
+                Label("Upload first", systemImage: "icloud.and.arrow.up.fill")
+                    .foregroundStyle(pipelineStage == .uploading ? AnalysisPipelineStage.uploading.tint : AppTheme.subtleText)
+                Label("Cloud scan", systemImage: "brain.head.profile.fill")
+                    .foregroundStyle(pipelineStage == .analyzing ? AnalysisPipelineStage.analyzing.tint : AppTheme.subtleText)
+                Label("Review opens", systemImage: "checkmark.seal.fill")
+                    .foregroundStyle(pipelineStage == .reviewReady ? AnalysisPipelineStage.reviewReady.tint : AppTheme.subtleText)
+            }
+            .font(.caption2.weight(.bold))
+            .lineLimit(1)
+            .minimumScaleFactor(0.72)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(12)
+        .background(.white.opacity(0.06), in: .rect(cornerRadius: 16))
+        .overlay {
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(pipelineStage.tint.opacity(0.20), lineWidth: 1)
+        }
+        .accessibilityIdentifier("review.analysisWaiting.pipeline")
     }
 
     private var cancelButton: some View {
@@ -1428,10 +1489,15 @@ private struct GlobalImportProgressBanner: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
-                ProgressView()
-                    .tint(AppTheme.neonPurple)
-                    .controlSize(.small)
-                    .accessibilityHidden(true)
+                ZStack {
+                    Circle()
+                        .fill(stage.tint.opacity(0.18))
+                        .frame(width: 28, height: 28)
+                    Image(systemName: stage.iconName)
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(stage.tint)
+                }
+                .accessibilityHidden(true)
 
                 Text(shortMessage)
                     .font(.caption.weight(.semibold))
@@ -1448,12 +1514,24 @@ private struct GlobalImportProgressBanner: View {
         }
         .padding(.horizontal, 13)
         .padding(.vertical, 10)
-        .background(AppTheme.cardBg.opacity(0.96), in: .rect(cornerRadius: 16))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(AppTheme.neonPurple.opacity(0.24), lineWidth: 1)
+        .background(
+            LinearGradient(
+                colors: [
+                    stage.tint.opacity(0.22),
+                    AppTheme.cardBg.opacity(0.76),
+                    AppTheme.surfaceBg.opacity(0.64)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            ),
+            in: .rect(cornerRadius: 18)
         )
-        .shadow(color: .black.opacity(0.20), radius: 14, x: 0, y: 8)
+        .hoopsLiquidGlassSurface(cornerRadius: 18, tint: stage.tint.opacity(0.15))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(stage.tint.opacity(0.34), lineWidth: 1)
+        )
+        .shadow(color: stage.tint.opacity(0.16), radius: 18, x: 0, y: 9)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Import in progress")
         .accessibilityValue(shortMessage)
@@ -1553,6 +1631,28 @@ private enum AnalysisPipelineStage: Int, CaseIterable {
             return "Cancel analysis"
         }
     }
+
+    var tint: Color {
+        switch self {
+        case .uploading:
+            return Color(red: 0.26, green: 0.69, blue: 1.0)
+        case .analyzing:
+            return AppTheme.warningYellow
+        case .reviewReady:
+            return AppTheme.successGreen
+        }
+    }
+
+    var iconName: String {
+        switch self {
+        case .uploading:
+            return "icloud.and.arrow.up.fill"
+        case .analyzing:
+            return "brain.head.profile.fill"
+        case .reviewReady:
+            return "checkmark.seal.fill"
+        }
+    }
 }
 
 private struct TinyAnalysisPipelineTracker: View {
@@ -1582,23 +1682,39 @@ private struct TinyAnalysisPipelineTracker: View {
         let isComplete = stage.rawValue < currentStage.rawValue
         let foreground = isCurrent || isComplete ? Color.white : AppTheme.subtleText
         let fill = isCurrent
-            ? AppTheme.neonPurple.opacity(0.28)
-            : (isComplete ? AppTheme.successGreen.opacity(0.20) : Color.white.opacity(0.06))
+            ? stage.tint.opacity(0.30)
+            : (isComplete ? stage.tint.opacity(0.18) : Color.white.opacity(0.06))
         let stroke = isCurrent
-            ? AppTheme.neonPurple.opacity(0.54)
-            : (isComplete ? AppTheme.successGreen.opacity(0.38) : Color.white.opacity(0.08))
+            ? stage.tint.opacity(0.58)
+            : (isComplete ? stage.tint.opacity(0.34) : Color.white.opacity(0.08))
 
-        return Text(stage.title)
+        return Label(stage.title, systemImage: stage.iconName)
             .font(.caption2.weight(.bold))
             .foregroundStyle(foreground)
             .lineLimit(1)
-            .minimumScaleFactor(0.72)
+            .minimumScaleFactor(0.68)
             .padding(.horizontal, 8)
             .padding(.vertical, 5)
             .background(fill, in: Capsule())
             .overlay {
                 Capsule().stroke(stroke, lineWidth: 1)
             }
+            .labelStyle(.titleAndIcon)
+    }
+}
+
+extension View {
+    @ViewBuilder
+    func hoopsLiquidGlassSurface(cornerRadius: CGFloat, tint: Color = .white.opacity(0.08), interactive: Bool = false) -> some View {
+        if #available(iOS 26.0, *) {
+            if interactive {
+                self.glassEffect(.regular.tint(tint).interactive(), in: .rect(cornerRadius: cornerRadius))
+            } else {
+                self.glassEffect(.regular.tint(tint), in: .rect(cornerRadius: cornerRadius))
+            }
+        } else {
+            self.background(.ultraThinMaterial, in: .rect(cornerRadius: cornerRadius))
+        }
     }
 }
 

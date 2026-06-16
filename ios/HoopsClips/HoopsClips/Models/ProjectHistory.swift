@@ -122,11 +122,17 @@ nonisolated struct PersistedProjectRecord: Identifiable, Codable, Sendable {
     }
 
     var displayTitle: String {
-        if !title.isEmpty {
-            return title
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let sourceBasename = (sourceFilename as NSString).deletingPathExtension
+        if !trimmedTitle.isEmpty,
+           !Self.shouldReplaceGeneratedTitle(trimmedTitle, sourceBasename: sourceBasename) {
+            return trimmedTitle
         }
-        let basename = (sourceFilename as NSString).deletingPathExtension
-        return basename.isEmpty ? sourceFilename : basename
+        return Self.friendlyProjectTitle(
+            sourceFilename: sourceFilename,
+            sourceDuration: sourceDuration,
+            createdAt: createdAt
+        )
     }
 
     var hasLatestExport: Bool {
@@ -161,6 +167,92 @@ nonisolated struct PersistedProjectRecord: Identifiable, Codable, Sendable {
         if events.count > limit {
             events = Array(events.suffix(limit))
         }
+    }
+
+    static func friendlyProjectTitle(
+        sourceFilename: String,
+        sourceDuration: Double,
+        createdAt: Date
+    ) -> String {
+        let basename = (sourceFilename as NSString).deletingPathExtension
+        let cleaned = cleanedSourceTitle(basename)
+        if !cleaned.isEmpty,
+           !looksLikeRandomCode(cleaned) {
+            return cleaned
+        }
+
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM d, h:mm a"
+        let dateTitle = formatter.string(from: createdAt)
+        if sourceDuration.isFinite, sourceDuration > 0 {
+            let minutes = max(1, Int((sourceDuration / 60).rounded()))
+            return "HoopClips \(dateTitle) - \(minutes) min"
+        }
+        return "HoopClips \(dateTitle)"
+    }
+
+    private static func shouldReplaceGeneratedTitle(_ title: String, sourceBasename: String) -> Bool {
+        let trimmedSource = sourceBasename.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard title == trimmedSource || title.hasPrefix("YTDown_") || title.hasPrefix("VID_") || title.hasPrefix("IMG_") else {
+            return looksLikeRandomCode(title)
+        }
+        return true
+    }
+
+    private static func cleanedSourceTitle(_ basename: String) -> String {
+        var value = basename
+            .replacingOccurrences(of: "YTDown_YouTube_", with: "")
+            .replacingOccurrences(of: "YTDown_", with: "")
+            .replacingOccurrences(of: "_YouTube_", with: " ")
+            .replacingOccurrences(of: "_Media_", with: " ")
+
+        if let mediaRange = value.range(of: "_Media", options: [.caseInsensitive]) {
+            value = String(value[..<mediaRange.lowerBound])
+        }
+
+        value = value
+            .replacingOccurrences(of: "-vs-", with: " vs ", options: [.caseInsensitive])
+            .replacingOccurrences(of: "_vs_", with: " vs ", options: [.caseInsensitive])
+            .replacingOccurrences(of: "_", with: " ")
+            .replacingOccurrences(of: "-", with: " ")
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        return titleCased(value)
+    }
+
+    private static func titleCased(_ value: String) -> String {
+        value
+            .split(separator: " ")
+            .map { token in
+                let lower = token.lowercased()
+                if lower == "vs" { return "vs" }
+                if lower.count <= 2, lower.allSatisfy(\.isLetter) {
+                    return lower.uppercased()
+                }
+                let first = lower.prefix(1).uppercased()
+                let rest = String(lower.dropFirst())
+                return first + rest
+            }
+            .joined(separator: " ")
+    }
+
+    private static func looksLikeRandomCode(_ value: String) -> Bool {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return true }
+        let compact = trimmed
+            .replacingOccurrences(of: "-", with: "")
+            .replacingOccurrences(of: "_", with: "")
+        if UUID(uuidString: trimmed) != nil { return true }
+        if compact.count >= 18 {
+            let alphaNumericCount = compact.filter { $0.isLetter || $0.isNumber }.count
+            let digitCount = compact.filter(\.isNumber).count
+            if alphaNumericCount == compact.count, digitCount >= compact.count / 3 {
+                return true
+            }
+        }
+        return false
     }
 }
 
