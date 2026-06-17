@@ -306,7 +306,7 @@ struct HistoryView: View {
                     historyBadge(
                         icon: project.highlightTeamSelection?.mode == .team ? "person.2.fill" : "person.3.fill",
                         text: teamTarget,
-                        tint: AppTheme.mintGlow
+                        tint: AppTheme.rimOrange
                     )
                 }
             }
@@ -436,7 +436,7 @@ struct HistoryView: View {
         if project.cloudAnalysisJobID != nil {
             return AppTheme.courtBlue
         }
-        return AppTheme.rosePink
+        return AppTheme.rimOrange
     }
 
     private func beginRenaming(_ project: PersistedProjectRecord) {
@@ -809,7 +809,7 @@ private struct HistoryProjectDetailView: View {
                 title: "What Happened",
                 icon: "list.bullet.rectangle.fill",
                 subtitle: "Recent project events",
-                accent: AppTheme.rosePink
+                accent: AppTheme.rimOrange
             )
 
             if project.events.isEmpty {
@@ -850,9 +850,9 @@ private struct HistoryProjectDetailView: View {
         .padding(16)
         .rorkCard(
             cornerRadius: 16,
-            fill: AppTheme.accentCardFill(AppTheme.rosePink, opacity: 0.10),
-            stroke: AppTheme.rosePink.opacity(0.18),
-            glow: AppTheme.rosePink,
+            fill: AppTheme.accentCardFill(AppTheme.rimOrange, opacity: 0.10),
+            stroke: AppTheme.rimOrange.opacity(0.18),
+            glow: AppTheme.rimOrange,
             glowOpacity: 0.04
         )
     }

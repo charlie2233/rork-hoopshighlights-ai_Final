@@ -260,10 +260,10 @@ struct SettingsView: View {
                 HStack(spacing: 12) {
                     ZStack {
                         RoundedRectangle(cornerRadius: 11, style: .continuous)
-                            .fill(AppTheme.rosePink.opacity(0.16))
+                            .fill(AppTheme.rimOrange.opacity(0.16))
                             .frame(width: 38, height: 38)
                         Image(systemName: "character.bubble.fill")
-                            .foregroundStyle(AppTheme.rosePink)
+                            .foregroundStyle(AppTheme.rimOrange)
                     }
 
                     VStack(alignment: .leading, spacing: 3) {
@@ -295,9 +295,9 @@ struct SettingsView: View {
         .padding(16)
         .rorkCard(
             cornerRadius: 18,
-            fill: AppTheme.accentCardFill(AppTheme.rosePink, opacity: 0.12),
-            stroke: AppTheme.rosePink.opacity(0.18),
-            glow: AppTheme.rosePink,
+            fill: AppTheme.accentCardFill(AppTheme.rimOrange, opacity: 0.12),
+            stroke: AppTheme.rimOrange.opacity(0.18),
+            glow: AppTheme.rimOrange,
             glowOpacity: 0.04
         )
     }
@@ -325,7 +325,7 @@ struct SettingsView: View {
                     icon: "gauge.with.dots.needle.67percent",
                     value: formattedFrameRate(viewModel.settings.framesSampledPerSecond),
                     label: languageStore.text(.settingsSampling),
-                    tint: AppTheme.mintGlow
+                    tint: AppTheme.courtBlue
                 )
             ]
         ) {
@@ -408,7 +408,7 @@ struct SettingsView: View {
             title: languageStore.text(.settingsSubscription),
             subtitle: languageStore.text(.settingsMembershipDetailSubtitle),
             icon: "person.crop.circle.badge.checkmark",
-            accent: AppTheme.successGreen,
+            accent: AppTheme.rimOrange,
             stats: membershipPreviewStats
         ) {
             membershipSettingsPage
@@ -539,9 +539,9 @@ struct SettingsView: View {
         .padding(16)
         .rorkCard(
             cornerRadius: 18,
-            fill: AppTheme.accentCardFill(AppTheme.mintGlow, opacity: 0.12),
-            stroke: AppTheme.mintGlow.opacity(0.20),
-            glow: AppTheme.mintGlow,
+            fill: AppTheme.accentCardFill(AppTheme.courtBlue, opacity: 0.12),
+            stroke: AppTheme.courtBlue.opacity(0.20),
+            glow: AppTheme.courtBlue,
             glowOpacity: 0.05
         )
     }
@@ -551,7 +551,7 @@ struct SettingsView: View {
             title: languageStore.text(.aboutPrivacy),
             subtitle: languageStore.text(.aboutPrivacySubtitle),
             icon: "lock.doc.fill",
-            accent: AppTheme.iceBlue,
+            accent: AppTheme.courtBlue,
             stats: [
                 SettingsPreviewStat(
                     icon: "internaldrive.fill",
@@ -563,7 +563,7 @@ struct SettingsView: View {
                     icon: "brain.head.profile.fill",
                     value: languageStore.text(.settingsVisionAudio),
                     label: languageStore.text(.settingsEngine),
-                    tint: AppTheme.iceBlue
+                    tint: AppTheme.courtBlue
                 )
             ]
         ) {
@@ -764,7 +764,7 @@ struct SettingsView: View {
     }
 
     private var accountAnalysisPathTint: Color {
-        AppConstants.cloudAnalysisEnabled ? AppTheme.courtBlue : AppTheme.successGreen
+        AppConstants.cloudAnalysisEnabled ? AppTheme.courtBlue : AppTheme.rimOrange
     }
 
     private func settingsInlineStat(icon: String, value: String, label: String, tint: Color) -> some View {
@@ -834,7 +834,7 @@ struct SettingsView: View {
             title: languageStore.text(.workflowDefaults),
             subtitle: languageStore.text(.settingsWorkflowDetailSubtitle),
             icon: "waveform.and.magnifyingglass",
-            accent: AppTheme.neonPurple
+            accent: AppTheme.courtBlue
         ) {
             clipSettingsSection
             advancedSettingsSection
@@ -847,7 +847,7 @@ struct SettingsView: View {
             title: languageStore.text(.membershipAccount),
             subtitle: languageStore.text(.settingsMembershipDetailSubtitle),
             icon: "person.crop.circle.badge.checkmark",
-            accent: AppTheme.successGreen
+            accent: AppTheme.rimOrange
         ) {
             accountSection
             subscriptionSection
@@ -859,7 +859,7 @@ struct SettingsView: View {
             title: languageStore.text(.supportCenter),
             subtitle: languageStore.text(.settingsSupportDetailSubtitle),
             icon: "bubble.left.and.exclamationmark.bubble.right.fill",
-            accent: AppTheme.warningYellow
+            accent: AppTheme.rimOrange
         ) {
             contactSuggestionsSection
             commonFAQSection
@@ -871,7 +871,7 @@ struct SettingsView: View {
             title: languageStore.text(.aboutPrivacy),
             subtitle: languageStore.text(.settingsAboutDetailSubtitle),
             icon: "lock.doc.fill",
-            accent: AppTheme.neonPurple
+            accent: AppTheme.courtBlue
         ) {
             aboutSection
             legalLinksSection
