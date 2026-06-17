@@ -773,13 +773,10 @@ struct ContentView: View {
     }
 
     private var appTabBar: some View {
-        ViewThatFits(in: .horizontal) {
-            fixedAppTabBarRow
-            scrollableAppTabBarRow
-        }
+        fixedAppTabBarRow
         .padding(.top, 7)
         .padding(.bottom, 7)
-        .padding(.horizontal, 8)
+        .padding(.horizontal, 6)
         .padding(.bottom, 6)
         .background(AppTheme.cardBg.opacity(0.58), in: .rect(cornerRadius: 28))
         .hoopsLiquidGlassSurface(cornerRadius: 28, tint: AppTheme.courtBlue.opacity(0.14), interactive: true)
@@ -796,12 +793,12 @@ struct ContentView: View {
     }
 
     private var fixedAppTabBarRow: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 2) {
             ForEach(AppTab.allCases) { tab in
                 appTabButton(tab, layout: .fixed)
             }
         }
-        .padding(.horizontal, 4)
+        .padding(.horizontal, 2)
     }
 
     private var scrollableAppTabBarRow: some View {
@@ -902,6 +899,7 @@ struct ContentView: View {
     private func appTabButton(_ tab: AppTab, layout: AppTabBarLayout) -> some View {
         let isSelected = selectedTab == tab.rawValue
         let title = tab.title(using: languageStore)
+        let displayTitle = compactTabTitle(for: tab, fullTitle: title)
 
         return Button {
             selectTab(tab)
@@ -909,10 +907,10 @@ struct ContentView: View {
             VStack(spacing: 4) {
                 Image(systemName: tab.iconName)
                     .font(.system(size: 17, weight: isSelected ? .semibold : .medium))
-                Text(title)
+                Text(displayTitle)
                     .font(.system(size: dynamicTypeSize.isAccessibilitySize ? 11 : 10, weight: isSelected ? .semibold : .medium, design: .rounded))
                     .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
-                    .minimumScaleFactor(0.62)
+                    .minimumScaleFactor(0.52)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -940,10 +938,26 @@ struct ContentView: View {
           }
           .buttonStyle(.plain)
         .accessibilityIdentifier(tab.accessibilityIdentifier)
-        .accessibilityLabel(title)
-        .accessibilityHint("Opens \(title).")
-        .hoopsSelectedState(isSelected)
-    }
+          .accessibilityLabel(title)
+          .accessibilityHint("Opens \(title).")
+          .hoopsSelectedState(isSelected)
+      }
+
+      private func compactTabTitle(for tab: AppTab, fullTitle: String) -> String {
+          guard !dynamicTypeSize.isAccessibilitySize else { return fullTitle }
+          switch tab {
+          case .player:
+              return fullTitle.count > 5 ? "Play" : fullTitle
+          case .review:
+              return fullTitle.count > 6 ? "Clips" : fullTitle
+          case .export:
+              return fullTitle.count > 6 ? "Share" : fullTitle
+          case .history:
+              return fullTitle.count > 6 ? "Past" : fullTitle
+          case .settings:
+              return fullTitle.count > 6 ? "Set" : fullTitle
+          }
+      }
 
     private var tabButtonScrollableWidth: CGFloat {
         dynamicTypeSize.isAccessibilitySize ? 106 : 88
