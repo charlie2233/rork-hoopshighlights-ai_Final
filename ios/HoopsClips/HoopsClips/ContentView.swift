@@ -777,15 +777,15 @@ struct ContentView: View {
             fixedAppTabBarRow
             scrollableAppTabBarRow
         }
-        .padding(.top, 8)
-        .padding(.bottom, 8)
-        .padding(.horizontal, 10)
+        .padding(.top, 7)
+        .padding(.bottom, 7)
+        .padding(.horizontal, 8)
         .padding(.bottom, 6)
-        .background(AppTheme.cardBg.opacity(0.48), in: .rect(cornerRadius: 28))
-        .hoopsLiquidGlassSurface(cornerRadius: 28, tint: AppTheme.neonPurple.opacity(0.14), interactive: true)
+        .background(AppTheme.cardBg.opacity(0.58), in: .rect(cornerRadius: 28))
+        .hoopsLiquidGlassSurface(cornerRadius: 28, tint: AppTheme.courtBlue.opacity(0.14), interactive: true)
         .overlay(alignment: .top) {
             RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .stroke(.white.opacity(0.10), lineWidth: 1)
+                .stroke(.white.opacity(0.18), lineWidth: 1)
         }
         .contentShape(.rect)
         .offset(x: reduceMotion ? 0 : tabBarVisualOffset)
@@ -796,12 +796,12 @@ struct ContentView: View {
     }
 
     private var fixedAppTabBarRow: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 4) {
             ForEach(AppTab.allCases) { tab in
                 appTabButton(tab, layout: .fixed)
             }
         }
-        .padding(.horizontal, 10)
+        .padding(.horizontal, 4)
     }
 
     private var scrollableAppTabBarRow: some View {
@@ -910,15 +910,15 @@ struct ContentView: View {
                 Image(systemName: tab.iconName)
                     .font(.system(size: 17, weight: isSelected ? .semibold : .medium))
                 Text(title)
-                    .font(.caption2.weight(isSelected ? .semibold : .medium))
-                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
-                    .minimumScaleFactor(0.82)
+                    .font(.system(size: dynamicTypeSize.isAccessibilitySize ? 11 : 10, weight: isSelected ? .semibold : .medium, design: .rounded))
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+                    .minimumScaleFactor(0.62)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            .foregroundStyle(isSelected ? .white : AppTheme.subtleText)
+            .foregroundStyle(isSelected ? .white : Color.white.opacity(0.78))
             .frame(
-                minWidth: layout == .fixed ? 66 : nil,
+                minWidth: layout == .fixed ? 0 : nil,
                 maxWidth: layout == .fixed ? .infinity : nil
             )
             .frame(
@@ -934,11 +934,11 @@ struct ContentView: View {
                                 .stroke(AppTheme.neonPurple.opacity(0.28), lineWidth: 1)
                         }
                         .matchedGeometryEffect(id: "app.tab.selection", in: tabSelectionNamespace)
-                }
-            }
-            .contentShape(.rect)
-        }
-        .buttonStyle(.plain)
+                  }
+              }
+              .contentShape(.rect)
+          }
+          .buttonStyle(.plain)
         .accessibilityIdentifier(tab.accessibilityIdentifier)
         .accessibilityLabel(title)
         .accessibilityHint("Opens \(title).")
