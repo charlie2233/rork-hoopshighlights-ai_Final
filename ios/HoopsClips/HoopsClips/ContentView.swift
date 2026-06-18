@@ -574,7 +574,6 @@ struct ContentView: View {
 
     private var shouldShowGlobalPipelineBanner: Bool {
         (viewModel.isVideoImportInProgress || viewModel.analysisService.isAnalyzing)
-            && activeTab != .player
             && activeTab != .review
             && !isRookieGuideVisible
     }

@@ -1,4 +1,5 @@
 import SwiftUI
+import AVFoundation
 import AVKit
 import PhotosUI
 import UniformTypeIdentifiers
@@ -115,6 +116,9 @@ struct VideoPlayerView: View {
                 if newValue != nil {
                     recoverCompletedImportIfNeeded()
                 }
+            }
+            .onChange(of: previewAudioMuted) { _, _ in
+                applySourcePreviewAudioMute()
             }
             .onChange(of: viewModel.isVideoLoaded) { _, isVideoLoaded in
                 if !isVideoLoaded {
@@ -699,8 +703,22 @@ struct VideoPlayerView: View {
     }
 
     private func applySourcePreviewAudioMute() {
+        if !previewAudioMuted {
+            activateSourcePreviewAudioSession()
+        }
         player?.isMuted = previewAudioMuted
         player?.volume = previewAudioMuted ? 0 : 1
+    }
+
+    private func activateSourcePreviewAudioSession() {
+        do {
+            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
+            try AVAudioSession.sharedInstance().setActive(true)
+        } catch {
+            #if DEBUG
+            print("Failed to activate source preview audio session: \(error.localizedDescription)")
+            #endif
+        }
     }
 
     private func returnToImportHome() {
