@@ -29,6 +29,7 @@ export interface CreateCloudAnalysisJobRequest {
   appVersion: string;
   analysisVersion: string;
   teamSelection?: TeamSelection | null;
+  uploadPreference?: "single" | "resumable" | null;
 }
 
 export interface CreateCloudAnalysisJobResponse extends ResponseEnvelope {
@@ -43,6 +44,7 @@ export interface CreateCloudAnalysisJobResponse extends ResponseEnvelope {
   sourceObjectKey?: string | null;
   resultObjectKey?: string | null;
   status?: JobStatus;
+  resumableUpload?: ResumableUploadDescriptor | null;
 }
 
 export interface StartCloudAnalysisJobRequest {
@@ -94,6 +96,40 @@ export interface UploadPresignResponse extends ResponseEnvelope {
   expiresAt: string;
   status: JobStatus;
   analysisMode: "cloud";
+  resumableUpload?: ResumableUploadDescriptor | null;
+}
+
+export interface ResumableUploadDescriptor {
+  uploadId: string;
+  chunkSizeBytes: number;
+  partCount: number;
+  expiresAt: string;
+}
+
+export interface MultipartUploadPartRequest {
+  jobId: string;
+  installId: string;
+  uploadId: string;
+  partNumber: number;
+}
+
+export interface MultipartUploadPartResponse extends ResponseEnvelope {
+  jobId: string;
+  partNumber: number;
+  uploadUrl: string;
+  uploadMethod: "PUT";
+  uploadHeaders: Record<string, string>;
+  expiresAt: string;
+}
+
+export interface MultipartUploadCompleteRequest {
+  jobId: string;
+  installId: string;
+  uploadId: string;
+  parts: Array<{
+    partNumber: number;
+    etag: string;
+  }>;
 }
 
 export interface CreateCloudJobRequest {

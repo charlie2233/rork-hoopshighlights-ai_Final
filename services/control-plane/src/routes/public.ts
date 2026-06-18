@@ -7,6 +7,8 @@ import type {
   InferenceTeamScanRequest,
   JobRecord,
   JobStatus,
+  MultipartUploadCompleteRequest,
+  MultipartUploadPartRequest,
   QueueJobMessage,
   ScanCloudAnalysisTeamsRequest,
   ScanCloudAnalysisTeamsResponse,
@@ -33,13 +35,20 @@ import {
   renderEditingRevision,
   reviseEditingEditJob
 } from "../editing/client";
-import { createPresignedReadTarget, createPresignedUploadTarget } from "../r2/presign";
+import {
+  completeMultipartUpload,
+  createPresignedMultipartPartTarget,
+  createPresignedReadTarget,
+  createPresignedUploadTarget,
+  createResumableUploadTarget
+} from "../r2/presign";
 import { emptyResponse, jsonResponse, readJson } from "../utils/request-id";
 import { resolveRuntimeConfig } from "../env";
 import { recoverStaleProcessingJob } from "../recovery";
 import { teamIdentityMatches } from "../team-identity";
 
 const DEFAULT_FREE_DAILY_QUOTA = 3;
+const RESUMABLE_UPLOAD_THRESHOLD_BYTES = 64 * 1024 * 1024;
 
 export async function routePublicRequest(
   request: Request,
@@ -58,6 +67,14 @@ export async function routePublicRequest(
 
   if (request.method === "POST" && (route === "/uploads/presign" || isLegacyPresign)) {
     return handlePresign(request, env, requestId, runtime.schemaVersion, url);
+  }
+
+  if (request.method === "POST" && route === "/uploads/multipart/part") {
+    return handleMultipartPart(request, env, requestId, runtime.schemaVersion);
+  }
+
+  if (request.method === "POST" && route === "/uploads/multipart/complete") {
+    return handleMultipartComplete(request, env, requestId, runtime.schemaVersion);
   }
 
   if (request.method === "POST" && route === "/jobs") {
@@ -179,6 +196,7 @@ async function handlePresign(
       contentType: body.contentType,
       expiresInSeconds: resolveRuntimeConfig(env).signedUploadTtlSeconds
     });
+    const resumableUpload = await maybeCreateResumableUpload(env, body, upload.objectKey);
 
     const now = new Date().toISOString();
     const record: JobRecord = {
@@ -272,6 +290,7 @@ async function handlePresign(
       uploadMethod: upload.uploadMethod,
       uploadHeaders: upload.uploadHeaders,
       expiresAt: upload.expiresAt,
+      resumableUpload,
       status: "upload_pending",
       analysisMode: "cloud",
       pollAfterSeconds: resolveRuntimeConfig(env).defaultPollAfterSeconds,
@@ -290,6 +309,139 @@ async function handlePresign(
     return jsonResponse(response, { status: 201 }, requestId);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Invalid upload presign request.";
+    return jsonResponse(
+      {
+        requestId,
+        schemaVersion,
+        confidence: null,
+        modelVersion: null,
+        errorCode: "invalid_request",
+        errorMessage: message,
+        failureReason: message
+      },
+      { status: 400 },
+      requestId
+    );
+  }
+}
+
+async function handleMultipartPart(
+  request: Request,
+  env: Env,
+  requestId: string,
+  schemaVersion: string
+): Promise<Response> {
+  try {
+    const body = await readJson<MultipartUploadPartRequest>(request);
+    if (!body.jobId || !body.installId || !body.uploadId || !Number.isInteger(body.partNumber) || body.partNumber < 1) {
+      throw new Error("jobId, installId, uploadId, and partNumber are required.");
+    }
+
+    const jobOrResponse = await getUploadOwnedJob(env, requestId, schemaVersion, body.jobId, body.installId);
+    if (jobOrResponse instanceof Response) {
+      return jobOrResponse;
+    }
+
+    const target = await createPresignedMultipartPartTarget(env, {
+      objectKey: jobOrResponse.sourceObjectKey,
+      uploadId: body.uploadId,
+      partNumber: body.partNumber,
+      expiresInSeconds: resolveRuntimeConfig(env).signedUploadTtlSeconds
+    });
+
+    return jsonResponse(
+      {
+        requestId,
+        schemaVersion,
+        confidence: null,
+        modelVersion: jobOrResponse.modelVersion ?? null,
+        failureReason: null,
+        uploadTraceId: jobOrResponse.uploadTraceId ?? null,
+        jobId: jobOrResponse.jobId,
+        partNumber: body.partNumber,
+        uploadUrl: target.uploadUrl,
+        uploadMethod: target.uploadMethod,
+        uploadHeaders: target.uploadHeaders,
+        expiresAt: target.expiresAt
+      },
+      { status: 201 },
+      requestId
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Invalid resumable upload part request.";
+    return jsonResponse(
+      {
+        requestId,
+        schemaVersion,
+        confidence: null,
+        modelVersion: null,
+        errorCode: "invalid_request",
+        errorMessage: message,
+        failureReason: message
+      },
+      { status: 400 },
+      requestId
+    );
+  }
+}
+
+async function handleMultipartComplete(
+  request: Request,
+  env: Env,
+  requestId: string,
+  schemaVersion: string
+): Promise<Response> {
+  try {
+    const body = await readJson<MultipartUploadCompleteRequest>(request);
+    if (!body.jobId || !body.installId || !body.uploadId || !Array.isArray(body.parts) || body.parts.length === 0) {
+      throw new Error("jobId, installId, uploadId, and uploaded parts are required.");
+    }
+    const parts = body.parts
+      .map((part) => ({
+        partNumber: Number(part.partNumber),
+        etag: typeof part.etag === "string" ? part.etag.trim() : ""
+      }))
+      .filter((part) => Number.isInteger(part.partNumber) && part.partNumber > 0 && part.etag.length > 0)
+      .sort((a, b) => a.partNumber - b.partNumber);
+    if (parts.length !== body.parts.length) {
+      throw new Error("Each uploaded part needs a partNumber and ETag.");
+    }
+
+    const jobOrResponse = await getUploadOwnedJob(env, requestId, schemaVersion, body.jobId, body.installId);
+    if (jobOrResponse instanceof Response) {
+      return jobOrResponse;
+    }
+
+    await completeMultipartUpload(env, {
+      objectKey: jobOrResponse.sourceObjectKey,
+      uploadId: body.uploadId,
+      parts
+    });
+
+    const now = new Date().toISOString();
+    const patched = await updateJobState(
+      env,
+      jobOrResponse.jobId,
+      {
+        stage: "Resumable upload assembled",
+        progress: Math.max(jobOrResponse.progress, 0.32),
+        updatedAt: now
+      },
+      {
+        requestId,
+        traceId: jobOrResponse.traceId,
+        eventType: "job.multipart_upload.completed",
+        message: "Resumable upload parts assembled.",
+        payload: {
+          partCount: parts.length,
+          uploadTraceId: jobOrResponse.uploadTraceId ?? null
+        }
+      }
+    );
+
+    return jsonResponse(toCloudAnalysisJobResponse(patched, requestId, schemaVersion), { status: 200 }, requestId);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Invalid resumable upload complete request.";
     return jsonResponse(
       {
         requestId,
@@ -940,6 +1092,84 @@ function validateCreateRequest(
   if (body.durationSeconds <= 0 || body.durationSeconds > maxDurationSeconds) {
     throw new Error("Duration exceeds control plane limits.");
   }
+}
+
+async function maybeCreateResumableUpload(
+  env: Env,
+  body: CreateCloudAnalysisJobRequest,
+  objectKey: string
+) {
+  if (body.uploadPreference !== "resumable" || body.fileSizeBytes < RESUMABLE_UPLOAD_THRESHOLD_BYTES) {
+    return null;
+  }
+
+  try {
+    return await createResumableUploadTarget(env, {
+      objectKey,
+      contentType: body.contentType,
+      fileSizeBytes: body.fileSizeBytes,
+      expiresInSeconds: resolveRuntimeConfig(env).signedUploadTtlSeconds
+    });
+  } catch {
+    return null;
+  }
+}
+
+async function getUploadOwnedJob(
+  env: Env,
+  requestId: string,
+  schemaVersion: string,
+  jobId: string,
+  installId: string
+): Promise<JobRecord | Response> {
+  const job = await getJobSnapshot(env, jobId);
+  if (!job) {
+    return jsonResponse(
+      {
+        requestId,
+        schemaVersion,
+        confidence: null,
+        modelVersion: null,
+        errorCode: "job_not_found",
+        errorMessage: "Cloud analysis job was not found.",
+        failureReason: "Cloud analysis job was not found."
+      },
+      { status: 404 },
+      requestId
+    );
+  }
+  if (job.installId !== installId) {
+    return jsonResponse(
+      {
+        requestId,
+        schemaVersion,
+        confidence: null,
+        modelVersion: job.modelVersion ?? null,
+        errorCode: "install_mismatch",
+        errorMessage: "Install ID does not own this analysis job.",
+        failureReason: "Install ID does not own this analysis job."
+      },
+      { status: 403 },
+      requestId
+    );
+  }
+  if (isTerminal(job.status) || job.status === "queued" || job.status === "processing") {
+    return jsonResponse(
+      {
+        requestId,
+        schemaVersion,
+        confidence: null,
+        modelVersion: job.modelVersion ?? null,
+        errorCode: "upload_closed",
+        errorMessage: "This upload can no longer be changed.",
+        failureReason: "This upload can no longer be changed."
+      },
+      { status: 409 },
+      requestId
+    );
+  }
+
+  return job;
 }
 
 function normalizeTeamSelection(value: unknown): TeamSelection | null {

@@ -321,6 +321,8 @@ struct CloudAnalysisService {
         try await uploadVideo(
             to: job,
             from: url,
+            baseURL: baseURL,
+            installID: installID,
             stage: uploadStage,
             progressStart: 0.15,
             progressEnd: 0.27,
@@ -372,6 +374,8 @@ struct CloudAnalysisService {
         try await uploadVideo(
             to: job,
             from: url,
+            baseURL: baseURL,
+            installID: installID,
             stage: uploadStage,
             progressStart: 0.14,
             progressEnd: 0.19,
@@ -486,6 +490,8 @@ struct CloudAnalysisService {
     private func uploadVideo(
         to job: CreateCloudAnalysisJobResponse,
         from url: URL,
+        baseURL: URL,
+        installID: String,
         stage: String,
         progressStart: Double,
         progressEnd: Double,
@@ -558,6 +564,20 @@ struct CloudAnalysisService {
             uploadSession.finishTasksAndInvalidate()
         }
 
+        if let resumableUpload = job.resumableUpload, resumableUpload.partCount > 1 {
+            try await uploadVideoInChunks(
+                job: job,
+                resumableUpload: resumableUpload,
+                from: url,
+                baseURL: baseURL,
+                installID: installID,
+                totalFileSizeBytes: FileManager.default.fileExists(atPath: url.path) ? (try fileInfo(for: url).fileSizeBytes) : 0,
+                tracker: tracker,
+                reportUploadProgress: reportUploadProgress
+            )
+            return
+        }
+
         let (_, response) = try await uploadSession.upload(for: request, fromFile: url)
         let finalSnapshot = await tracker.snapshot()
         await MainActor.run {
@@ -576,6 +596,187 @@ struct CloudAnalysisService {
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw CloudAnalysisError.uploadFailed
         }
+    }
+
+    private func uploadVideoInChunks(
+        job: CreateCloudAnalysisJobResponse,
+        resumableUpload: CloudResumableUpload,
+        from url: URL,
+        baseURL: URL,
+        installID: String,
+        totalFileSizeBytes: Int64,
+        tracker: CloudUploadProgressTracker,
+        reportUploadProgress: @escaping @Sendable (_ snapshot: CloudUploadProgressSnapshot, _ stalled: Bool) -> Void
+    ) async throws {
+        let fileHandle = try FileHandle(forReadingFrom: url)
+        defer {
+            try? fileHandle.close()
+        }
+
+        var uploadedParts: [CloudMultipartCompletedPart] = []
+        let safeChunkSize = max(resumableUpload.chunkSizeBytes, 5 * 1024 * 1024)
+        let totalBytes = max(totalFileSizeBytes, 0)
+
+        for partNumber in 1...resumableUpload.partCount {
+            try Task.checkCancellation()
+            let offset = UInt64(partNumber - 1) * UInt64(safeChunkSize)
+            try fileHandle.seek(toOffset: offset)
+            guard let chunk = try fileHandle.read(upToCount: safeChunkSize), !chunk.isEmpty else {
+                break
+            }
+
+            let partTarget = try await createMultipartPart(
+                baseURL: baseURL,
+                jobID: job.jobId,
+                installID: installID,
+                uploadID: resumableUpload.uploadId,
+                partNumber: partNumber
+            )
+            let etag = try await uploadMultipartChunk(
+                partTarget,
+                chunk: chunk,
+                alreadyUploadedBytes: min(Int64(offset), totalBytes),
+                totalBytes: totalBytes,
+                tracker: tracker,
+                reportUploadProgress: reportUploadProgress
+            )
+            uploadedParts.append(CloudMultipartCompletedPart(partNumber: partNumber, etag: etag))
+        }
+
+        guard uploadedParts.count == resumableUpload.partCount else {
+            throw CloudAnalysisError.uploadFailed
+        }
+
+        try await completeMultipartUpload(
+            baseURL: baseURL,
+            jobID: job.jobId,
+            installID: installID,
+            uploadID: resumableUpload.uploadId,
+            parts: uploadedParts
+        )
+        await tracker.update(uploadedBytes: totalBytes, totalBytes: totalBytes)
+        let finalSnapshot = await tracker.snapshot()
+        reportUploadProgress(finalSnapshot, false)
+    }
+
+    private func createMultipartPart(
+        baseURL: URL,
+        jobID: String,
+        installID: String,
+        uploadID: String,
+        partNumber: Int
+    ) async throws -> CloudMultipartPartResponse {
+        var request = URLRequest(url: baseURL.appending(path: "v1/analysis/uploads/multipart/part"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try encoder.encode(
+            CloudMultipartPartRequest(
+                jobId: jobID,
+                installId: installID,
+                uploadId: uploadID,
+                partNumber: partNumber
+            )
+        )
+
+        let (data, response) = try await session.data(for: request)
+        return try decodeResponse(
+            data: data,
+            response: response,
+            successType: CloudMultipartPartResponse.self
+        )
+    }
+
+    private func uploadMultipartChunk(
+        _ partTarget: CloudMultipartPartResponse,
+        chunk: Data,
+        alreadyUploadedBytes: Int64,
+        totalBytes: Int64,
+        tracker: CloudUploadProgressTracker,
+        reportUploadProgress: @escaping @Sendable (_ snapshot: CloudUploadProgressSnapshot, _ stalled: Bool) -> Void
+    ) async throws -> String {
+        guard let uploadURL = URL(string: partTarget.uploadUrl) else {
+            throw CloudAnalysisError.invalidResponse
+        }
+
+        var lastError: Error?
+        for _ in 0..<3 {
+            do {
+                var request = URLRequest(url: uploadURL)
+                request.httpMethod = partTarget.uploadMethod
+                for (header, value) in partTarget.uploadHeaders {
+                    request.setValue(value, forHTTPHeaderField: header)
+                }
+
+                let delegate = CloudUploadProgressDelegate { sentBytes, _ in
+                    Task {
+                        await tracker.update(uploadedBytes: alreadyUploadedBytes + sentBytes, totalBytes: totalBytes)
+                        let snapshot = await tracker.snapshot()
+                        reportUploadProgress(snapshot, false)
+                    }
+                }
+                let uploadSession = URLSession(
+                    configuration: uploadSessionConfiguration(),
+                    delegate: delegate,
+                    delegateQueue: nil
+                )
+                defer {
+                    uploadSession.finishTasksAndInvalidate()
+                }
+
+                let (_, response) = try await uploadSession.upload(for: request, from: chunk)
+                guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                    throw CloudAnalysisError.uploadFailed
+                }
+                guard let etag = Self.headerValue("ETag", from: http), !etag.isEmpty else {
+                    throw CloudAnalysisError.invalidResponse
+                }
+                await tracker.update(uploadedBytes: alreadyUploadedBytes + Int64(chunk.count), totalBytes: totalBytes)
+                let snapshot = await tracker.snapshot()
+                reportUploadProgress(snapshot, false)
+                return etag
+            } catch {
+                lastError = error
+                try await Task.sleep(nanoseconds: 700_000_000)
+            }
+        }
+
+        throw lastError ?? CloudAnalysisError.uploadFailed
+    }
+
+    private func completeMultipartUpload(
+        baseURL: URL,
+        jobID: String,
+        installID: String,
+        uploadID: String,
+        parts: [CloudMultipartCompletedPart]
+    ) async throws {
+        var request = URLRequest(url: baseURL.appending(path: "v1/analysis/uploads/multipart/complete"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try encoder.encode(
+            CloudMultipartCompleteRequest(
+                jobId: jobID,
+                installId: installID,
+                uploadId: uploadID,
+                parts: parts
+            )
+        )
+
+        let (data, response) = try await session.data(for: request)
+        _ = try decodeResponse(
+            data: data,
+            response: response,
+            successType: CloudAnalysisJobResponse.self
+        )
+    }
+
+    private static func headerValue(_ name: String, from response: HTTPURLResponse) -> String? {
+        for (key, value) in response.allHeaderFields {
+            if String(describing: key).caseInsensitiveCompare(name) == .orderedSame {
+                return String(describing: value)
+            }
+        }
+        return nil
     }
 
     private func uploadSessionConfiguration() -> URLSessionConfiguration {

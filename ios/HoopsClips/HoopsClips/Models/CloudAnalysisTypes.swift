@@ -148,6 +148,7 @@ nonisolated struct CreateCloudAnalysisJobRequest: Codable, Sendable {
     let appVersion: String
     let analysisVersion: String
     var teamSelection: HighlightTeamSelection? = nil
+    var uploadPreference: String? = "resumable"
 }
 
 nonisolated struct CreateCloudAnalysisJobResponse: Codable, Sendable {
@@ -161,6 +162,7 @@ nonisolated struct CreateCloudAnalysisJobResponse: Codable, Sendable {
     let analysisMode: String
     let sourceObjectKey: String?
     let resultObjectKey: String?
+    let resumableUpload: CloudResumableUpload?
 
     init(
         jobId: String,
@@ -172,7 +174,8 @@ nonisolated struct CreateCloudAnalysisJobResponse: Codable, Sendable {
         quotaRemainingToday: Int,
         analysisMode: String,
         sourceObjectKey: String? = nil,
-        resultObjectKey: String? = nil
+        resultObjectKey: String? = nil,
+        resumableUpload: CloudResumableUpload? = nil
     ) {
         self.jobId = jobId
         self.uploadUrl = uploadUrl
@@ -184,7 +187,43 @@ nonisolated struct CreateCloudAnalysisJobResponse: Codable, Sendable {
         self.analysisMode = analysisMode
         self.sourceObjectKey = sourceObjectKey
         self.resultObjectKey = resultObjectKey
+        self.resumableUpload = resumableUpload
     }
+}
+
+nonisolated struct CloudResumableUpload: Codable, Sendable {
+    let uploadId: String
+    let chunkSizeBytes: Int
+    let partCount: Int
+    let expiresAt: Date
+}
+
+nonisolated struct CloudMultipartPartRequest: Codable, Sendable {
+    let jobId: String
+    let installId: String
+    let uploadId: String
+    let partNumber: Int
+}
+
+nonisolated struct CloudMultipartPartResponse: Codable, Sendable {
+    let jobId: String
+    let partNumber: Int
+    let uploadUrl: String
+    let uploadMethod: String
+    let uploadHeaders: [String: String]
+    let expiresAt: Date
+}
+
+nonisolated struct CloudMultipartCompleteRequest: Codable, Sendable {
+    let jobId: String
+    let installId: String
+    let uploadId: String
+    let parts: [CloudMultipartCompletedPart]
+}
+
+nonisolated struct CloudMultipartCompletedPart: Codable, Sendable {
+    let partNumber: Int
+    let etag: String
 }
 
 nonisolated struct StartCloudAnalysisJobRequest: Codable, Sendable {
