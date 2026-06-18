@@ -93,40 +93,16 @@ struct VideoPlayerView: View {
                 }
             }
             .photosPicker(isPresented: $viewModel.showingVideoPicker, selection: $selectedPhotoItem, matching: .videos)
-            .fileImporter(isPresented: $showingFilePicker, allowedContentTypes: VideoImportPolicy.supportedContentTypes) { result in
-                if case .success(let url) = result {
-                    importVideo(from: url)
-                } else if case .failure(let error) = result {
-                    importErrorMessage = "Could not import that file: \(error.localizedDescription)"
-                }
-            }
-            .onChange(of: selectedPhotoItem) { _, newValue in
-                guard let item = newValue else { return }
-                selectedPhotoItem = nil
-                importVideo(from: item)
-            }
+            .fileImporter(
+                isPresented: $showingFilePicker,
+                allowedContentTypes: VideoImportPolicy.supportedContentTypes,
+                onCompletion: handleFileImportResult
+            )
+            .onChange(of: selectedPhotoItem, handleSelectedPhotoItemChange)
             .onAppear(perform: handlePlayerAppear)
-            .onChange(of: viewModel.videoURL) { _, newValue in
-                syncPlayer(with: newValue)
-                if newValue != nil {
-                    recoverCompletedImportIfNeeded()
-                }
-            }
-            .onChange(of: previewAudioMuted) { _, _ in
-                applySourcePreviewAudioMute()
-            }
-            .onChange(of: viewModel.isVideoLoaded) { _, isVideoLoaded in
-                if !isVideoLoaded {
-                    analysisStarted = false
-                    lastAnalysisAnnouncementPercent = -1
-                    teamScanTask?.cancel()
-                    teamScanTask = nil
-                } else {
-                    completeImportAfterLoadedVideo()
-                    HoopsAccessibility.announce("Video imported. Choose a target reel length, then start analysis.")
-                    startTeamScanIfNeeded()
-                }
-            }
+            .onChange(of: viewModel.videoURL, handleVideoURLChange)
+            .onChange(of: previewAudioMuted) { _, _ in applySourcePreviewAudioMute() }
+            .onChange(of: viewModel.isVideoLoaded, handleVideoLoadedChange)
             .onChange(of: viewModel.currentProjectID) { _, _ in
                 recoverCompletedImportIfNeeded()
             }
@@ -225,6 +201,41 @@ struct VideoPlayerView: View {
                 }
             }
             return didLoadVideo
+        }
+    }
+
+    private func handleFileImportResult(_ result: Result<URL, Error>) {
+        switch result {
+        case .success(let url):
+            importVideo(from: url)
+        case .failure(let error):
+            importErrorMessage = "Could not import that file: \(error.localizedDescription)"
+        }
+    }
+
+    private func handleSelectedPhotoItemChange(_ oldValue: PhotosPickerItem?, _ newValue: PhotosPickerItem?) {
+        guard let item = newValue else { return }
+        selectedPhotoItem = nil
+        importVideo(from: item)
+    }
+
+    private func handleVideoURLChange(_ oldValue: URL?, _ newValue: URL?) {
+        syncPlayer(with: newValue)
+        if newValue != nil {
+            recoverCompletedImportIfNeeded()
+        }
+    }
+
+    private func handleVideoLoadedChange(_ oldValue: Bool, _ isVideoLoaded: Bool) {
+        if !isVideoLoaded {
+            analysisStarted = false
+            lastAnalysisAnnouncementPercent = -1
+            teamScanTask?.cancel()
+            teamScanTask = nil
+        } else {
+            completeImportAfterLoadedVideo()
+            HoopsAccessibility.announce("Video imported. Choose a target reel length, then start analysis.")
+            startTeamScanIfNeeded()
         }
     }
 
