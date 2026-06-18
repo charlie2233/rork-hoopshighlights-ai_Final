@@ -974,14 +974,14 @@ struct ContentView: View {
     private func selectTab(_ tab: AppTab) {
         guard selectedTab != tab.rawValue else { return }
         recordTabSwitchBreadcrumb(fromRawValue: selectedTab, toRawValue: tab.rawValue, phase: "requested", trigger: "tab_bar")
-        if tab == .review, !hasCurrentReviewableClips {
-            if isReviewWaitingForAnalysis {
-                dismissReviewRecoveryNotice()
-            } else {
-            resetToDefaultTabAfterReviewBlock(reason: "no_reviewable_clips")
-            return
-            }
-        }
+          if tab == .review, !hasCurrentReviewableClips {
+              if isReviewWaitingForAnalysis {
+                  dismissReviewRecoveryNotice()
+              } else {
+                  resetToDefaultTabAfterReviewBlock(reason: "no_reviewable_clips")
+                  return
+              }
+          }
         dismissReviewRecoveryNotice()
         guard !reduceMotion else {
             selectedTab = tab.rawValue
@@ -1077,10 +1077,11 @@ struct ContentView: View {
     }
 
     private func reviewBlockMetadata(reason: String) -> String {
-        [
-            "reason=\(reason)",
-            "videoLoaded=\(viewModel.isVideoLoaded)",
-            "analyzing=\(viewModel.analysisService.isAnalyzing)",
+          [
+              "to=review",
+              "reason=\(reason)",
+              "videoLoaded=\(viewModel.isVideoLoaded)",
+              "analyzing=\(viewModel.analysisService.isAnalyzing)",
             "progress=\(viewModel.analysisService.progress)",
             "clips=\(viewModel.clips.count)",
             "reviewable=\(currentReviewableClipCount)",
@@ -1408,7 +1409,7 @@ private struct ReviewUnavailableRecoveryCard: View {
         case "missing_source_url":
             return "The source video file is missing."
         case "no_clips":
-            return "No clips are ready for Review."
+            return "This video has no review clips yet."
         case "invalid_source_duration":
             return "The source video duration could not be verified."
         case "empty_window":
@@ -1420,6 +1421,23 @@ private struct ReviewUnavailableRecoveryCard: View {
         }
     }
 
+    private var titleCopy: String {
+        notice.reason == "no_clips" ? "Review needs clips first" : "Review unavailable"
+    }
+
+    private var messageCopy: String {
+        switch notice.reason {
+        case "no_clips":
+            return "Start analysis on Player. Review will open once HoopClips finds safe clips."
+        default:
+            return "Go back to Player and run a fresh analysis pass before reviewing."
+        }
+    }
+
+    private var actionTitle: String {
+        notice.reason == "no_clips" ? "Back to Player" : "Repair on Player"
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top, spacing: 12) {
@@ -1427,16 +1445,16 @@ private struct ReviewUnavailableRecoveryCard: View {
                     Circle()
                         .fill(AppTheme.warningYellow.opacity(0.16))
                         .frame(width: 42, height: 42)
-                    Image(systemName: "exclamationmark.triangle.fill")
+                    Image(systemName: notice.reason == "no_clips" ? "film.badge.plus" : "exclamationmark.triangle.fill")
                         .font(.system(size: 18, weight: .bold))
                         .foregroundStyle(AppTheme.warningYellow)
                 }
 
                 VStack(alignment: .leading, spacing: 5) {
-                    Text("Review unavailable")
+                    Text(titleCopy)
                         .font(.headline.weight(.bold))
                         .foregroundStyle(.white)
-                    Text("Re-run analysis to rebuild clean clip windows before reviewing.")
+                    Text(messageCopy)
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(AppTheme.subtleText)
                         .fixedSize(horizontal: false, vertical: true)
@@ -1462,7 +1480,7 @@ private struct ReviewUnavailableRecoveryCard: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             Button(action: onRerunAnalysis) {
-                Label("Re-run analysis", systemImage: "arrow.clockwise.circle.fill")
+                Label(actionTitle, systemImage: "play.circle.fill")
                     .font(.subheadline.weight(.bold))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 13)

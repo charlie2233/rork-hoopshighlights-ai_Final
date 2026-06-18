@@ -340,6 +340,14 @@ final class LaunchTelemetry {
 
         let checkpoint = snapshot.lastCheckpoint ?? "none"
         let screen = snapshot.screen ?? "none"
+        if Self.isBenignPreviousSessionEnd(snapshot) {
+            UserDefaults.standard.removeObject(forKey: stabilityLastUnexpectedExitKey)
+            logger.notice(
+                "Previous HoopClips session ended after a benign guard checkpoint; state=\(snapshot.lifecycleState, privacy: .public) screen=\(screen, privacy: .public) checkpoint=\(checkpoint, privacy: .public)"
+            )
+            return
+        }
+
         let supportSummary = Self.stabilitySupportSummary(
             lifecycleState: snapshot.lifecycleState,
             screen: snapshot.screen,
@@ -594,6 +602,16 @@ final class LaunchTelemetry {
         }
         guard let data = try? JSONEncoder().encode(cappedReports) else { return }
         UserDefaults.standard.set(data, forKey: key)
+    }
+
+    private static func isBenignPreviousSessionEnd(_ snapshot: StabilitySnapshot) -> Bool {
+        let checkpoint = snapshot.lastCheckpoint ?? "none"
+        let metadata = (snapshot.lastMetadata ?? "").lowercased()
+        if checkpoint == "tab.switch.blocked",
+           metadata.contains("to=review") || metadata.contains("reason=") {
+            return true
+        }
+        return false
     }
 
     private static func crashReportFingerprint(for snapshot: StabilitySnapshot) -> String {
