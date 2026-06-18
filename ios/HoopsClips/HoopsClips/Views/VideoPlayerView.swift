@@ -105,12 +105,7 @@ struct VideoPlayerView: View {
                 selectedPhotoItem = nil
                 importVideo(from: item)
             }
-              .onAppear {
-                  syncPlayer(with: viewModel.videoURL)
-                  completeImportAfterLoadedVideo()
-                  resumeCloudAnalysisAfterForegroundIfNeeded()
-                  loadSimulatorSmokeVideoIfNeeded()
-              }
+            .onAppear(perform: handlePlayerAppear)
             .onChange(of: viewModel.videoURL) { _, newValue in
                 syncPlayer(with: newValue)
                 if newValue != nil {
@@ -231,6 +226,13 @@ struct VideoPlayerView: View {
             }
             return didLoadVideo
         }
+    }
+
+    private func handlePlayerAppear() {
+        syncPlayer(with: viewModel.videoURL)
+        completeImportAfterLoadedVideo()
+        resumeCloudAnalysisAfterForegroundIfNeeded()
+        loadSimulatorSmokeVideoIfNeeded()
     }
 
     private func loadSimulatorSmokeVideoIfNeeded() {
