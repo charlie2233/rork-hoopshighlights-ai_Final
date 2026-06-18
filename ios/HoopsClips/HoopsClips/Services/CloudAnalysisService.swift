@@ -506,21 +506,24 @@ struct CloudAnalysisService {
             let fraction = snapshot.fraction
             let boundedFraction = min(max(fraction, 0), 1)
             let progressValue = progressStart + ((progressEnd - progressStart) * boundedFraction)
-            let message = Self.uploadProgressMessage(
-                stage: stage,
-                fraction: boundedFraction,
-                elapsedSeconds: snapshot.elapsedSeconds,
-                uploadedBytes: snapshot.uploadedBytes,
-                totalBytes: snapshot.totalBytes,
-                stalled: stalled
-            )
             Task { @MainActor in
+                let message = Self.uploadProgressMessage(
+                    stage: stage,
+                    fraction: boundedFraction,
+                    elapsedSeconds: snapshot.elapsedSeconds,
+                    uploadedBytes: snapshot.uploadedBytes,
+                    totalBytes: snapshot.totalBytes,
+                    stalled: stalled
+                )
                 progress(progressValue, message)
             }
         }
         let delegate = CloudUploadProgressDelegate { uploadedBytes, totalBytes in
-            tracker.update(uploadedBytes: uploadedBytes, totalBytes: totalBytes)
-            reportUploadProgress(tracker.snapshot(), false)
+            Task {
+                await tracker.update(uploadedBytes: uploadedBytes, totalBytes: totalBytes)
+                let snapshot = await tracker.snapshot()
+                reportUploadProgress(snapshot, false)
+            }
         }
         let uploadMonitorTask = Task {
             while !Task.isCancelled {
@@ -530,13 +533,15 @@ struct CloudAnalysisService {
                     return
                 }
 
-                let snapshot = tracker.snapshot()
+                let snapshot = await tracker.snapshot()
                 let stalled = snapshot.secondsSinceProgress >= 60 && snapshot.fraction < 0.99
                 reportUploadProgress(snapshot, stalled)
                 if snapshot.secondsSinceProgress >= 180,
                    snapshot.fraction < 0.99,
-                   tracker.markStallProofSentIfNeeded() {
-                    let proofText = Self.uploadStallProofText(stage: stage, snapshot: snapshot)
+                   await tracker.markStallProofSentIfNeeded() {
+                    let proofText = await MainActor.run {
+                        Self.uploadStallProofText(stage: stage, snapshot: snapshot)
+                    }
                     Task(priority: .utility) {
                         await LaunchTelemetry.shared.sendAutomaticUploadStallProof(proofText)
                     }
@@ -544,7 +549,7 @@ struct CloudAnalysisService {
             }
         }
         let uploadSession = URLSession(
-            configuration: uploadSessionConfiguration(for: job.jobId),
+            configuration: uploadSessionConfiguration(),
             delegate: delegate,
             delegateQueue: nil
         )
@@ -554,33 +559,27 @@ struct CloudAnalysisService {
         }
 
         let (_, response) = try await uploadSession.upload(for: request, fromFile: url)
-        let finalSnapshot = tracker.snapshot()
-        progress(
-            progressEnd,
-            Self.uploadProgressMessage(
-                stage: stage,
-                fraction: 1,
-                elapsedSeconds: tracker.elapsedSeconds,
-                uploadedBytes: finalSnapshot.uploadedBytes,
-                totalBytes: finalSnapshot.totalBytes
+        let finalSnapshot = await tracker.snapshot()
+        await MainActor.run {
+            progress(
+                progressEnd,
+                Self.uploadProgressMessage(
+                    stage: stage,
+                    fraction: 1,
+                    elapsedSeconds: finalSnapshot.elapsedSeconds,
+                    uploadedBytes: finalSnapshot.uploadedBytes,
+                    totalBytes: finalSnapshot.totalBytes
+                )
             )
-        )
+        }
 
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw CloudAnalysisError.uploadFailed
         }
     }
 
-    private func uploadSessionConfiguration(for jobID: String) -> URLSessionConfiguration {
-        let sanitizedJobID = jobID
-            .filter { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }
-            .prefix(48)
-        let identifierSuffix = sanitizedJobID.isEmpty ? UUID().uuidString : String(sanitizedJobID)
-        let configuration = URLSessionConfiguration.background(
-            withIdentifier: "atrrak.hoopsclips.cloud-upload.\(identifierSuffix).\(UUID().uuidString)"
-        )
-        configuration.sessionSendsLaunchEvents = true
-        configuration.isDiscretionary = false
+    private func uploadSessionConfiguration() -> URLSessionConfiguration {
+        let configuration = URLSessionConfiguration.default
         configuration.waitsForConnectivity = true
         configuration.allowsCellularAccess = true
         configuration.allowsExpensiveNetworkAccess = true
@@ -722,18 +721,13 @@ private struct CloudUploadProgressSnapshot: Sendable {
     let totalBytes: Int64?
 }
 
-private final class CloudUploadProgressTracker: @unchecked Sendable {
-    private let lock = NSLock()
+private actor CloudUploadProgressTracker {
     private let startedAt = Date()
     private var lastProgressAt = Date()
     private var latestFraction = 0.0
     private var latestUploadedBytes: Int64?
     private var latestTotalBytes: Int64?
     private var didSendStallProof = false
-
-    var elapsedSeconds: TimeInterval {
-        Date().timeIntervalSince(startedAt)
-    }
 
     func update(uploadedBytes: Int64, totalBytes: Int64) {
         let safeUploadedBytes = max(uploadedBytes, 0)
@@ -745,7 +739,6 @@ private final class CloudUploadProgressTracker: @unchecked Sendable {
             boundedFraction = latestFraction
         }
 
-        lock.lock()
         if boundedFraction > latestFraction + 0.001 {
             latestFraction = boundedFraction
             lastProgressAt = Date()
@@ -756,17 +749,14 @@ private final class CloudUploadProgressTracker: @unchecked Sendable {
         if safeTotalBytes > 0 {
             latestTotalBytes = safeTotalBytes
         }
-        lock.unlock()
     }
 
     func snapshot() -> CloudUploadProgressSnapshot {
         let now = Date()
-        lock.lock()
         let fraction = latestFraction
         let lastProgressAt = lastProgressAt
         let uploadedBytes = latestUploadedBytes
         let totalBytes = latestTotalBytes
-        lock.unlock()
         return CloudUploadProgressSnapshot(
             fraction: fraction,
             elapsedSeconds: now.timeIntervalSince(startedAt),
@@ -777,8 +767,6 @@ private final class CloudUploadProgressTracker: @unchecked Sendable {
     }
 
     func markStallProofSentIfNeeded() -> Bool {
-        lock.lock()
-        defer { lock.unlock() }
         guard !didSendStallProof else { return false }
         didSendStallProof = true
         return true

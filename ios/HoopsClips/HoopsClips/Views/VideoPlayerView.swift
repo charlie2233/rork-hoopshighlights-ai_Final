@@ -36,6 +36,9 @@ struct VideoPlayerView: View {
     @AppStorage("hoops.previewAudioMuted.v1") private var previewAudioMuted = false
     @State private var showingCloudVideoConsent = false
     @State private var pendingCloudVideoConsentAction: CloudVideoConsentAction?
+    #if targetEnvironment(simulator)
+    @State private var didLoadSimulatorSmokeVideo = false
+    #endif
 
     private let videoImportReminderNanoseconds: UInt64 = 4 * 1_000_000_000
     private let videoImportLongRunningReminderNanoseconds: UInt64 = 30 * 1_000_000_000
@@ -101,11 +104,12 @@ struct VideoPlayerView: View {
                 selectedPhotoItem = nil
                 importVideo(from: item)
             }
-            .onAppear {
-                syncPlayer(with: viewModel.videoURL)
-                completeImportAfterLoadedVideo()
-                resumeCloudAnalysisAfterForegroundIfNeeded()
-            }
+              .onAppear {
+                  syncPlayer(with: viewModel.videoURL)
+                  completeImportAfterLoadedVideo()
+                  resumeCloudAnalysisAfterForegroundIfNeeded()
+                  loadSimulatorSmokeVideoIfNeeded()
+              }
             .onChange(of: viewModel.videoURL) { _, newValue in
                 syncPlayer(with: newValue)
                 if newValue != nil {
@@ -223,6 +227,18 @@ struct VideoPlayerView: View {
             }
             return didLoadVideo
         }
+    }
+
+    private func loadSimulatorSmokeVideoIfNeeded() {
+        #if targetEnvironment(simulator)
+        guard !didLoadSimulatorSmokeVideo, !viewModel.isVideoLoaded else { return }
+        guard let path = ProcessInfo.processInfo.environment["HOOPS_SIMULATOR_SMOKE_VIDEO"],
+              !path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        let url = URL(fileURLWithPath: path)
+        guard FileManager.default.fileExists(atPath: url.path) else { return }
+        didLoadSimulatorSmokeVideo = true
+        importVideo(from: url)
+        #endif
     }
 
     private func importVideo(from item: PhotosPickerItem) {
