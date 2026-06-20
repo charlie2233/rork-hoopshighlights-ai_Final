@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 private let cloudUploadResumeManifestDefaultsKey = "hoopsclips.cloudUpload.resumeManifest.v1"
 private let cloudUploadSingleSourcePrefix = "single-source-"
 private let cloudUploadServerPlanDefaultsKey = "hoopsclips.cloudUpload.serverPlan.v1"
+private let cloudUploadProgressSummaryDefaultsKey = "hoopsclips.cloudUpload.progressSummary.v1"
 
 nonisolated enum CloudUploadResumeOutcome: Sendable {
     case pendingUpload
@@ -85,6 +86,10 @@ struct CloudAnalysisService {
 
     static func latestServerUploadPlanSummary() -> String {
         UserDefaults.standard.string(forKey: cloudUploadServerPlanDefaultsKey) ?? "none"
+    }
+
+    static func latestUploadProgressSummary() -> String {
+        UserDefaults.standard.string(forKey: cloudUploadProgressSummaryDefaultsKey) ?? "none"
     }
 
     static func safeProgressStage(_ stage: String, fallback: String) -> String {
@@ -205,6 +210,38 @@ struct CloudAnalysisService {
 
         fields.append("privacy=no_urls_no_object_keys_no_local_file_paths")
         return fields.joined(separator: " ")
+    }
+
+    private static func recordLatestUploadProgressSummary(
+        stage: String,
+        snapshot: CloudUploadProgressSnapshot,
+        transferContext: String?,
+        stalled: Bool
+    ) {
+        var fields = [
+            "at=\(ISO8601DateFormatter().string(from: Date()))",
+            "stage=\(safeUploadPlanComponent(stage))",
+            "percent=\(Int((min(max(snapshot.fraction, 0), 1) * 100).rounded(.down)))",
+            "elapsed=\(formatUploadElapsedTime(snapshot.elapsedSeconds).replacingOccurrences(of: " ", with: "_"))",
+            "secondsSinceProgress=\(Int(snapshot.secondsSinceProgress.rounded(.down)))",
+            "stalled=\(stalled)"
+        ]
+
+        if let transferContext, !transferContext.isEmpty {
+            fields.append("context=\(safeUploadPlanComponent(transferContext))")
+        }
+
+        if let uploadedBytes = snapshot.uploadedBytes, let totalBytes = snapshot.totalBytes, totalBytes > 0 {
+            fields.append("bytes=\(formatUploadByteProgress(uploadedBytes: uploadedBytes, totalBytes: totalBytes).replacingOccurrences(of: " ", with: "_"))")
+            let speed = snapshot.elapsedSeconds > 0 ? Double(max(uploadedBytes, 0)) / snapshot.elapsedSeconds : 0
+            if speed > 0 {
+                fields.append("speed=\(formatUploadSpeed(bytesPerSecond: speed).replacingOccurrences(of: " ", with: "_"))")
+                fields.append("eta=\(formatUploadRemainingTime(uploadedBytes: uploadedBytes, totalBytes: totalBytes, bytesPerSecond: speed).replacingOccurrences(of: " ", with: "_"))")
+            }
+        }
+
+        fields.append("privacy=no_urls_no_object_keys_no_local_file_paths")
+        UserDefaults.standard.set(fields.joined(separator: " "), forKey: cloudUploadProgressSummaryDefaultsKey)
     }
 
     private static func recordServerUploadPlan(_ job: CreateCloudAnalysisJobResponse) {
@@ -762,6 +799,12 @@ struct CloudAnalysisService {
                 Task {
                     let snapshot = await tracker.snapshot()
                     reportUploadProgress(snapshot, true, nil)
+                    Self.recordLatestUploadProgressSummary(
+                        stage: stage,
+                        snapshot: snapshot,
+                        transferContext: nil,
+                        stalled: true
+                    )
                     LaunchTelemetry.shared.recordBackgroundUploadProof(
                         "upload_waiting_for_connectivity",
                         metadata: "kind=source"
@@ -780,6 +823,12 @@ struct CloudAnalysisService {
                 let snapshot = await tracker.snapshot()
                 let stalled = snapshot.secondsSinceProgress >= 60 && snapshot.fraction < 0.99
                 reportUploadProgress(snapshot, stalled, nil)
+                Self.recordLatestUploadProgressSummary(
+                    stage: stage,
+                    snapshot: snapshot,
+                    transferContext: nil,
+                    stalled: stalled
+                )
                 if snapshot.secondsSinceProgress >= 180,
                    snapshot.fraction < 0.99,
                    await tracker.markStallProofSentIfNeeded() {
@@ -851,6 +900,12 @@ struct CloudAnalysisService {
 
         let response = try await delegate.upload(request: request, fromFile: url, using: uploadSession)
         let finalSnapshot = await tracker.snapshot()
+        Self.recordLatestUploadProgressSummary(
+            stage: stage,
+            snapshot: finalSnapshot,
+            transferContext: "source upload complete",
+            stalled: false
+        )
         await MainActor.run {
             progress(
                 progressEnd,
@@ -964,6 +1019,12 @@ struct CloudAnalysisService {
         await tracker.update(uploadedBytes: totalBytes, totalBytes: totalBytes)
         let finalSnapshot = await tracker.snapshot()
         reportUploadProgress(finalSnapshot, false, "chunks complete")
+        Self.recordLatestUploadProgressSummary(
+            stage: "Uploading video chunks",
+            snapshot: finalSnapshot,
+            transferContext: "chunks complete",
+            stalled: false
+        )
     }
 
     private func createMultipartPart(
@@ -1018,6 +1079,12 @@ struct CloudAnalysisService {
                 )
                 let snapshot = await tracker.snapshot()
                 reportUploadProgress(snapshot, false, "chunk \(partNumber)/\(manifest.partCount) saved")
+                Self.recordLatestUploadProgressSummary(
+                    stage: "Resuming cloud upload",
+                    snapshot: snapshot,
+                    transferContext: "chunk \(partNumber)/\(manifest.partCount) saved",
+                    stalled: false
+                )
                 continue
             }
 
@@ -1101,6 +1168,12 @@ struct CloudAnalysisService {
                         Task {
                             let snapshot = await tracker.snapshot()
                             reportUploadProgress(snapshot, true, transferContext)
+                            Self.recordLatestUploadProgressSummary(
+                                stage: "Uploading video chunk",
+                                snapshot: snapshot,
+                                transferContext: transferContext,
+                                stalled: true
+                            )
                             LaunchTelemetry.shared.recordBackgroundUploadProof(
                                 "upload_waiting_for_connectivity",
                                 metadata: "kind=chunk partNumber=\(partTarget.partNumber) partCount=\(partCount) attempt=\(attempt + 1)"
@@ -1149,6 +1222,12 @@ struct CloudAnalysisService {
                 await tracker.update(uploadedBytes: alreadyUploadedBytes + Int64(chunk.count), totalBytes: totalBytes)
                 let snapshot = await tracker.snapshot()
                 reportUploadProgress(snapshot, false, transferContext)
+                Self.recordLatestUploadProgressSummary(
+                    stage: "Uploading video chunk",
+                    snapshot: snapshot,
+                    transferContext: transferContext,
+                    stalled: false
+                )
                 return etag
             } catch {
                 lastError = error
@@ -1165,6 +1244,14 @@ struct CloudAnalysisService {
                     retrying
                         ? "chunk \(partTarget.partNumber)/\(partCount) retrying after try \(attempt + 1)"
                         : "chunk \(partTarget.partNumber)/\(partCount) failed after try \(attempt + 1)"
+                )
+                Self.recordLatestUploadProgressSummary(
+                    stage: "Uploading video chunk",
+                    snapshot: snapshot,
+                    transferContext: retrying
+                        ? "chunk \(partTarget.partNumber)/\(partCount) retrying after try \(attempt + 1)"
+                        : "chunk \(partTarget.partNumber)/\(partCount) failed after try \(attempt + 1)",
+                    stalled: true
                 )
                 try await Task.sleep(nanoseconds: 700_000_000)
             }

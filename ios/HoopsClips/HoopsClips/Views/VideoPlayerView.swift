@@ -1973,6 +1973,7 @@ struct VideoPlayerView: View {
             "progress=\(Int(viewModel.analysisService.progress * 100))%",
             "status=\(safeUploadProofValue(viewModel.analysisService.statusMessage))",
             "latestBackgroundUploadProof=\(safeUploadProofValue(LaunchTelemetry.shared.latestBackgroundUploadProofSummary))",
+            "latestUploadProgress=\(safeUploadProofValue(CloudAnalysisService.latestUploadProgressSummary()))",
             "uploadProofDeliveryStatus=\(safeUploadProofValue(LaunchTelemetry.shared.latestCrashReportDeliverySummary))",
             "serverUploadPlan=\(safeUploadProofValue(CloudAnalysisService.latestServerUploadPlanSummary()))",
             "pendingBackgroundUploadManifest=\(safeUploadProofValue(CloudAnalysisService.pendingBackgroundUploadManifestSummary()))",
