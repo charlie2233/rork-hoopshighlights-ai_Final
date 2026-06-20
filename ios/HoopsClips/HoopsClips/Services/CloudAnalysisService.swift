@@ -1686,6 +1686,9 @@ private extension URLSessionConfiguration {
 
 private final class CloudUploadBackgroundRelaunchDelegate: NSObject, URLSessionTaskDelegate, URLSessionDataDelegate, @unchecked Sendable {
     private let identifier: String
+    private let lock = NSLock()
+    private var pendingPersistenceCount = 0
+    private var didReceiveFinishEvents = false
 
     init(identifier: String) {
         self.identifier = identifier
@@ -1727,17 +1730,21 @@ private final class CloudUploadBackgroundRelaunchDelegate: NSObject, URLSessionT
                     )
                     return
                 }
+                beginPersistence()
                 Task {
                     await CloudUploadResumeStore.shared.recordRelaunchedCompletedPart(
                         sessionIdentifier: identifier,
                         etag: etag
                     )
+                    self.endPersistenceIfNeeded()
                 }
             } else if identifier.hasSuffix(".source") {
+                beginPersistence()
                 Task {
                     await CloudUploadResumeStore.shared.recordRelaunchedSourceUploadCompleted(
                         sessionIdentifier: identifier
                     )
+                    self.endPersistenceIfNeeded()
                 }
             }
             LaunchTelemetry.shared.recordBackgroundUploadProof(
@@ -1748,7 +1755,41 @@ private final class CloudUploadBackgroundRelaunchDelegate: NSObject, URLSessionT
     }
 
     func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
-        CloudUploadBackgroundSessionRegistry.shared.finishEvents(for: identifier)
+        lock.lock()
+        didReceiveFinishEvents = true
+        let shouldFinish = pendingPersistenceCount == 0
+        let pendingCount = pendingPersistenceCount
+        lock.unlock()
+
+        if shouldFinish {
+            CloudUploadBackgroundSessionRegistry.shared.finishEvents(for: identifier)
+        } else {
+            LaunchTelemetry.shared.recordBackgroundUploadProof(
+                "events_waiting_for_manifest_persistence",
+                metadata: "source=urlsession_delegate pending=\(pendingCount)"
+            )
+        }
+    }
+
+    private func beginPersistence() {
+        lock.lock()
+        pendingPersistenceCount += 1
+        lock.unlock()
+    }
+
+    private func endPersistenceIfNeeded() {
+        lock.lock()
+        pendingPersistenceCount = max(0, pendingPersistenceCount - 1)
+        let shouldFinish = didReceiveFinishEvents && pendingPersistenceCount == 0
+        lock.unlock()
+
+        if shouldFinish {
+            LaunchTelemetry.shared.recordBackgroundUploadProof(
+                "manifest_persistence_finished",
+                metadata: "source=urlsession_delegate"
+            )
+            CloudUploadBackgroundSessionRegistry.shared.finishEvents(for: identifier)
+        }
     }
 
     private static func headerValue(_ name: String, from response: HTTPURLResponse) -> String? {
