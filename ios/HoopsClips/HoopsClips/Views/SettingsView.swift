@@ -621,6 +621,10 @@ struct SettingsView: View {
         let analysisProgressPercent = Int((min(max(viewModel.analysisService.progress, 0), 1) * 100).rounded(.down))
         let latestAIEditProof = LaunchTelemetry.shared.latestAIEditProofSummary ?? "none"
         let latestBackgroundUploadProof = LaunchTelemetry.shared.latestBackgroundUploadProofSummary ?? "none"
+        let recentBackgroundUploadProofTrail = LaunchTelemetry.shared.recentBackgroundUploadProofTrailSummary ?? "none"
+        let latestUploadProgress = CloudAnalysisService.latestUploadProgressSummary()
+        let latestServerUploadPlan = CloudAnalysisService.latestServerUploadPlanSummary()
+        let latestServerUploadCapability = CloudAnalysisService.latestServerUploadCapabilitySummary()
         let pendingBackgroundUploadManifest = CloudAnalysisService.pendingBackgroundUploadManifestSummary()
         let latestUnexpectedExit = LaunchTelemetry.shared.latestUnexpectedExitSummary ?? "none"
         let latestCrashReportDelivery = LaunchTelemetry.shared.latestCrashReportDeliverySummary ?? "none"
@@ -649,6 +653,10 @@ struct SettingsView: View {
             "backgroundUploadResumePolicy=persisted_manifest_foreground_resume",
             "pendingBackgroundUploadManifest=\(pendingBackgroundUploadManifest)",
             "latestBackgroundUploadProof=\(latestBackgroundUploadProof)",
+            "recentBackgroundUploadProofTrail=\(proofLongTextValue(recentBackgroundUploadProofTrail))",
+            "latestUploadProgress=\(proofTextValue(latestUploadProgress))",
+            "serverUploadPlan=\(proofTextValue(latestServerUploadPlan))",
+            "serverUploadCapability=\(proofTextValue(latestServerUploadCapability))",
             "cloudTeamScanInProgress=\(viewModel.isCloudTeamScanInProgress)",
             "cloudTeamScanStatus=\(proofTextValue(viewModel.cloudTeamScanStatusMessage))",
             "cloudQuotaRemaining=\(viewModel.cloudQuotaRemaining.map(String.init) ?? "unknown")",
@@ -672,6 +680,10 @@ struct SettingsView: View {
 
     private func proofTextValue(_ value: String?) -> String {
         LaunchTelemetry.redactedAIEditFailureReason(value)
+    }
+
+    private func proofLongTextValue(_ value: String?) -> String {
+        String(LaunchTelemetry.redactedAIEditFailureReason(value).prefix(720))
     }
 
     private func copySmokeProof() {

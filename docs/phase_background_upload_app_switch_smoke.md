@@ -106,6 +106,18 @@ Required fields:
 - `pendingBackgroundUploadManifest=...`
 - `privacy=no_presigned_urls_no_object_keys_no_local_file_paths`
 
+Settings smoke proof should also include:
+
+- `backgroundUploadMode=ios_background_urlsession`
+- `backgroundUploadChunkedCompatible=true`
+- `backgroundUploadResumePolicy=persisted_manifest_foreground_resume`
+- `latestBackgroundUploadProof=...`
+- `recentBackgroundUploadProofTrail=...`
+- `latestUploadProgress=...`
+- `serverUploadPlan=...`
+- `serverUploadCapability=...`
+- `pendingBackgroundUploadManifest=...`
+
 Helpful proof events:
 
 - `source_session_started`
