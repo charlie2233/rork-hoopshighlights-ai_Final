@@ -980,26 +980,82 @@ final class CloudUploadBackgroundSessionRegistry: @unchecked Sendable {
 
     private let lock = NSLock()
     private var completionHandlers: [String: () -> Void] = [:]
+    private var relaunchSessions: [String: URLSession] = [:]
+    private var relaunchDelegates: [String: CloudUploadBackgroundRelaunchDelegate] = [:]
 
     private init() {}
 
     func setCompletionHandler(_ completionHandler: @escaping () -> Void, for identifier: String) {
+        let delegate = CloudUploadBackgroundRelaunchDelegate(identifier: identifier)
+        let configuration = URLSessionConfiguration.background(withIdentifier: identifier)
+        configuration.sessionSendsLaunchEvents = true
+        configuration.isDiscretionary = false
+        configuration.waitsForConnectivity = true
+        let session = URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
+
         lock.lock()
         completionHandlers[identifier] = completionHandler
+        relaunchDelegates[identifier] = delegate
+        relaunchSessions[identifier] = session
         lock.unlock()
-        LaunchTelemetry.shared.recordBackgroundUploadProof("events_received", metadata: "source=app_delegate")
+        LaunchTelemetry.shared.recordBackgroundUploadProof("events_received", metadata: "source=app_delegate reattached=true")
+
+        session.getAllTasks { tasks in
+            LaunchTelemetry.shared.recordBackgroundUploadProof(
+                "reattached_session_checked",
+                metadata: "source=app_delegate taskCount=\(tasks.count)"
+            )
+            if tasks.isEmpty {
+                CloudUploadBackgroundSessionRegistry.shared.finishEvents(for: identifier)
+            }
+        }
     }
 
     func finishEvents(for identifier: String) {
         lock.lock()
         let completionHandler = completionHandlers.removeValue(forKey: identifier)
+        let session = relaunchSessions.removeValue(forKey: identifier)
+        relaunchDelegates.removeValue(forKey: identifier)
         lock.unlock()
+
+        session?.finishTasksAndInvalidate()
 
         guard let completionHandler else { return }
         DispatchQueue.main.async {
             completionHandler()
             LaunchTelemetry.shared.recordBackgroundUploadProof("events_completed", metadata: "source=urlsession_delegate")
         }
+    }
+}
+
+private final class CloudUploadBackgroundRelaunchDelegate: NSObject, URLSessionTaskDelegate, URLSessionDataDelegate, @unchecked Sendable {
+    private let identifier: String
+
+    init(identifier: String) {
+        self.identifier = identifier
+        super.init()
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        didCompleteWithError error: Error?
+    ) {
+        if let error {
+            LaunchTelemetry.shared.recordBackgroundUploadProof(
+                "relaunch_task_failed",
+                metadata: "source=urlsession_delegate error=\(error.localizedDescription)"
+            )
+        } else {
+            LaunchTelemetry.shared.recordBackgroundUploadProof(
+                "relaunch_task_completed",
+                metadata: "source=urlsession_delegate"
+            )
+        }
+    }
+
+    func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
+        CloudUploadBackgroundSessionRegistry.shared.finishEvents(for: identifier)
     }
 }
 
