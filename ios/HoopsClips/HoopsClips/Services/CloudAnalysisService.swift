@@ -957,7 +957,7 @@ struct CloudAnalysisService {
                         reportUploadProgress(snapshot, false)
                     }
                 }
-                let chunkFileURL = try Self.writeTemporaryUploadChunk(chunk, jobID: partTarget.jobId, partNumber: partTarget.partNumber)
+                let chunkFileURL = try CloudUploadChunkFileStore.writeChunk(chunk, jobID: partTarget.jobId, partNumber: partTarget.partNumber)
                 defer {
                     try? FileManager.default.removeItem(at: chunkFileURL)
                 }
@@ -1065,13 +1065,6 @@ struct CloudAnalysisService {
         }
         let result = String(filtered).trimmingCharacters(in: CharacterSet(charactersIn: "-_"))
         return result.isEmpty ? UUID().uuidString : result
-    }
-
-    private static func writeTemporaryUploadChunk(_ data: Data, jobID: String, partNumber: Int) throws -> URL {
-        let filename = "hoops-upload-\(sanitizedSessionComponent(jobID))-part-\(partNumber)-\(UUID().uuidString).tmp"
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
-        try data.write(to: url, options: .atomic)
-        return url
     }
 
     private func uploadSessionConfiguration(backgroundIdentifier: String? = nil) -> URLSessionConfiguration {
@@ -1213,6 +1206,52 @@ struct CloudAnalysisService {
         } catch {
             throw CloudAnalysisError.invalidResponse
         }
+    }
+}
+
+private enum CloudUploadChunkFileStore {
+    static func writeChunk(_ data: Data, jobID: String, partNumber: Int) throws -> URL {
+        let directory = try chunkDirectory()
+        let filename = "hoops-upload-\(sanitizedComponent(jobID))-part-\(partNumber)-\(UUID().uuidString).tmp"
+        let url = directory.appendingPathComponent(filename)
+        try data.write(to: url, options: .atomic)
+        return url
+    }
+
+    static func clearChunks(jobID: String) {
+        guard let directory = try? chunkDirectory() else { return }
+        let prefix = "hoops-upload-\(sanitizedComponent(jobID))-part-"
+        guard let urls = try? FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: nil
+        ) else {
+            return
+        }
+
+        for url in urls where url.lastPathComponent.hasPrefix(prefix) {
+            try? FileManager.default.removeItem(at: url)
+        }
+    }
+
+    private static func chunkDirectory() throws -> URL {
+        let base = try FileManager.default.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        )
+        let directory = base.appendingPathComponent("CloudUploadChunks", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory
+    }
+
+    private static func sanitizedComponent(_ value: String) -> String {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_"))
+        let filtered = value.map { character -> Character in
+            character.unicodeScalars.allSatisfy { allowed.contains($0) } ? character : "-"
+        }
+        let result = String(filtered).trimmingCharacters(in: CharacterSet(charactersIn: "-_"))
+        return result.isEmpty ? UUID().uuidString : result
     }
 }
 
@@ -1446,6 +1485,7 @@ private actor CloudUploadResumeStore {
     func clear(jobID: String, uploadID: String) {
         guard let manifest = loadMatchingManifest(jobID: jobID, uploadID: uploadID) else { return }
         UserDefaults.standard.removeObject(forKey: cloudUploadResumeManifestDefaultsKey)
+        CloudUploadChunkFileStore.clearChunks(jobID: manifest.jobID)
         LaunchTelemetry.shared.recordBackgroundUploadProof(
             "resume_manifest_cleared",
             metadata: "completed=\(manifest.completedParts.count) partCount=\(manifest.partCount)"
@@ -1455,6 +1495,7 @@ private actor CloudUploadResumeStore {
     func clearAnyManifest(reason: String) {
         guard let manifest = loadManifest() else { return }
         UserDefaults.standard.removeObject(forKey: cloudUploadResumeManifestDefaultsKey)
+        CloudUploadChunkFileStore.clearChunks(jobID: manifest.jobID)
         LaunchTelemetry.shared.recordBackgroundUploadProof(
             "resume_manifest_cleared",
             metadata: "reason=\(reason) completed=\(manifest.completedParts.count) partCount=\(manifest.partCount)"
