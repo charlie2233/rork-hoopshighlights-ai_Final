@@ -445,10 +445,11 @@ struct VideoPlayerView: View {
         }
 
         do {
-            let summary = try await VideoImportPolicy.preflight(url: url)
+            let capabilities = await cloudCapabilitiesForImport(source: source)
+            let summary = try await VideoImportPolicy.preflight(url: url, capabilities: capabilities)
             LaunchTelemetry.shared.recordStabilityCheckpoint(
                 "video_import.preflight_passed",
-                metadata: summary.telemetryMetadata(source: source)
+                metadata: "\(summary.telemetryMetadata(source: source)) capabilitySource=\(capabilities == nil ? "client_default" : "deployed_backend")"
             )
             await MainActor.run {
                 importStatusMessage = VideoImportStatusCopy.checkedSaving
@@ -472,6 +473,24 @@ struct VideoPlayerView: View {
             await MainActor.run {
                 importErrorMessage = "HoopClips could not read that video's details. Try saving it to Files or exporting a fresh copy from Photos."
             }
+            return nil
+        }
+    }
+
+    private func cloudCapabilitiesForImport(source: String) async -> CloudAnalysisCapabilitiesResponse? {
+        guard AppConstants.cloudAnalysisEnabled else { return nil }
+        do {
+            let capabilities = try await CloudAnalysisService().fetchAnalysisCapabilities()
+            LaunchTelemetry.shared.recordStabilityCheckpoint(
+                "video_import.capabilities_loaded",
+                metadata: "source=\(source) maxFileSizeBytes=\(capabilities.maxFileSizeBytes) maxDurationSeconds=\(Int(capabilities.maxDurationSeconds.rounded(.down))) resumable=\(capabilities.supportsResumableUpload)"
+            )
+            return capabilities
+        } catch {
+            LaunchTelemetry.shared.recordBackgroundUploadProof(
+                "server_upload_capabilities_unavailable",
+                metadata: "source=\(source) fallback=client_defaults"
+            )
             return nil
         }
     }
@@ -2285,6 +2304,7 @@ struct VideoPlayerView: View {
             "uploadProofDeliveryStatus=\(safeUploadProofValue(LaunchTelemetry.shared.latestCrashReportDeliverySummary))",
             "serverUploadPlan=\(safeUploadProofValue(CloudAnalysisService.latestServerUploadPlanSummary()))",
             "serverUploadCapability=\(safeUploadProofValue(CloudAnalysisService.latestServerUploadCapabilitySummary()))",
+            "deployedUploadCapability=\(safeUploadProofValue(CloudAnalysisService.latestDeployedUploadCapabilitySummary()))",
             "pendingBackgroundUploadManifest=\(safeUploadProofValue(CloudAnalysisService.pendingBackgroundUploadManifestSummary()))",
             "privacy=no_presigned_urls_no_object_keys_no_local_file_paths"
         ].joined(separator: "\n")
@@ -2620,7 +2640,10 @@ enum VideoImportPolicy {
 
     static let usesFileBackedTransferOnly = true
 
-    static func preflight(url: URL) async throws -> VideoImportPreflightSummary {
+    static func preflight(
+        url: URL,
+        capabilities: CloudAnalysisCapabilitiesResponse? = nil
+    ) async throws -> VideoImportPreflightSummary {
         let fileExtension = url.pathExtension
         guard isSupportedVideoExtension(fileExtension) else {
             throw VideoImportPreflightError.unsupportedType(fileExtension.isEmpty ? "unknown" : fileExtension)
@@ -2633,7 +2656,7 @@ enum VideoImportPolicy {
             fileSizeBytes: fileSizeBytes,
             availableCapacityBytes: availableCapacityBytes
         )
-        try validate(summary)
+        try validate(summary, capabilities: capabilities)
         return summary
     }
 
@@ -2642,14 +2665,19 @@ enum VideoImportPolicy {
         try validateLocalStorage(fileSizeBytes: fileSizeBytes, availableCapacityBytes: availableCapacityBytesForImport())
     }
 
-    static func validate(_ summary: VideoImportPreflightSummary) throws {
+    static func validate(
+        _ summary: VideoImportPreflightSummary,
+        capabilities: CloudAnalysisCapabilitiesResponse? = nil
+    ) throws {
+        let maxUploadBytes = capabilities?.maxFileSizeBytes ?? maxCloudUploadBytes
+        let maxDurationSeconds = capabilities?.maxDurationSeconds ?? maxCloudDurationSeconds
         guard summary.fileSizeBytes > 0 else {
             throw VideoImportPreflightError.unreadableFileSize
         }
-        guard summary.fileSizeBytes <= maxCloudUploadBytes else {
+        guard summary.fileSizeBytes <= maxUploadBytes else {
             throw VideoImportPreflightError.fileTooLarge(
                 actualBytes: summary.fileSizeBytes,
-                maxBytes: maxCloudUploadBytes
+                maxBytes: maxUploadBytes
             )
         }
         try validateLocalStorage(
@@ -2659,10 +2687,10 @@ enum VideoImportPolicy {
         guard let durationSeconds = summary.durationSeconds, durationSeconds.isFinite, durationSeconds > 0 else {
             throw VideoImportPreflightError.unreadableDuration
         }
-        guard durationSeconds <= maxCloudDurationSeconds else {
+        guard durationSeconds <= maxDurationSeconds else {
             throw VideoImportPreflightError.videoTooLong(
                 actualSeconds: durationSeconds,
-                maxSeconds: maxCloudDurationSeconds
+                maxSeconds: maxDurationSeconds
             )
         }
         guard summary.dimensions != nil else {
@@ -2676,7 +2704,8 @@ enum VideoImportPolicy {
         dimensions: CGSize?,
         codecNames: [String],
         availableCapacityBytes: Int64?,
-        fileExtension: String = "mov"
+        fileExtension: String = "mov",
+        capabilities: CloudAnalysisCapabilitiesResponse? = nil
     ) throws -> VideoImportPreflightSummary {
         let summary = VideoImportPreflightSummary(
             fileSizeBytes: fileSizeBytes,
@@ -2686,7 +2715,7 @@ enum VideoImportPolicy {
             availableCapacityBytes: availableCapacityBytes,
             fileExtension: fileExtension
         )
-        try validate(summary)
+        try validate(summary, capabilities: capabilities)
         return summary
     }
 

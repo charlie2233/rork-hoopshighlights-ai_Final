@@ -6,6 +6,7 @@ private let cloudUploadSingleSourcePrefix = "single-source-"
 private let cloudUploadServerPlanDefaultsKey = "hoopsclips.cloudUpload.serverPlan.v1"
 private let cloudUploadProgressSummaryDefaultsKey = "hoopsclips.cloudUpload.progressSummary.v1"
 private let cloudUploadCapabilitySummaryDefaultsKey = "hoopsclips.cloudUpload.capabilitySummary.v1"
+private let cloudUploadDeployedCapabilitySummaryDefaultsKey = "hoopsclips.cloudUpload.deployedCapabilitySummary.v1"
 
 nonisolated enum CloudUploadResumeOutcome: Sendable {
     case pendingUpload
@@ -40,6 +41,22 @@ struct CloudAnalysisService {
 
     func hasPendingBackgroundUpload() async -> Bool {
         await CloudUploadResumeStore.shared.pendingManifest() != nil
+    }
+
+    func fetchAnalysisCapabilities() async throws -> CloudAnalysisCapabilitiesResponse {
+        guard let baseURL = configuredBaseURL() else {
+            throw CloudAnalysisError.notConfigured
+        }
+
+        let request = URLRequest(url: baseURL.appending(path: "v1/analysis/capabilities"))
+        let (data, response) = try await session.data(for: request)
+        let capabilities = try decodeResponse(
+            data: data,
+            response: response,
+            successType: CloudAnalysisCapabilitiesResponse.self
+        )
+        Self.recordDeployedUploadCapabilities(capabilities)
+        return capabilities
     }
 
     func cancelPendingBackgroundUpload(reason: String) async {
@@ -133,6 +150,10 @@ struct CloudAnalysisService {
 
     static func latestServerUploadCapabilitySummary() -> String {
         UserDefaults.standard.string(forKey: cloudUploadCapabilitySummaryDefaultsKey) ?? "none"
+    }
+
+    static func latestDeployedUploadCapabilitySummary() -> String {
+        UserDefaults.standard.string(forKey: cloudUploadDeployedCapabilitySummaryDefaultsKey) ?? "none"
     }
 
     static func safeProgressStage(_ stage: String, fallback: String) -> String {
@@ -358,6 +379,27 @@ struct CloudAnalysisService {
         LaunchTelemetry.shared.recordBackgroundUploadProof(
             "server_upload_plan_received",
             metadata: "serverChunked=\(partCount > 1) partCount=\(partCount) chunkSizeMB=\(chunkSizeMB)"
+        )
+    }
+
+    private static func recordDeployedUploadCapabilities(_ capabilities: CloudAnalysisCapabilitiesResponse) {
+        let maxFileSizeMB = String(format: "%.0f", Double(max(capabilities.maxFileSizeBytes, 0)) / 1_048_576.0)
+        let thresholdMB = String(format: "%.0f", Double(max(capabilities.resumableUploadThresholdBytes, 0)) / 1_048_576.0)
+        let summary = [
+            "source=worker_capabilities",
+            "maxFileSizeMB=\(maxFileSizeMB)",
+            "maxDurationSeconds=\(Int(max(capabilities.maxDurationSeconds, 0).rounded(.down)))",
+            "supportsResumableUpload=\(capabilities.supportsResumableUpload)",
+            "resumableThresholdMB=\(thresholdMB)",
+            "signedUploadTtlSeconds=\(max(capabilities.signedUploadTtlSeconds, 0))",
+            "defaultPollAfterSeconds=\(max(capabilities.defaultPollAfterSeconds, 0))",
+            "analysisMode=\(safeUploadPlanComponent(capabilities.analysisMode))",
+            "privacy=no_urls_no_object_keys"
+        ].joined(separator: " ")
+        UserDefaults.standard.set(summary, forKey: cloudUploadDeployedCapabilitySummaryDefaultsKey)
+        LaunchTelemetry.shared.recordBackgroundUploadProof(
+            "server_upload_capabilities_received",
+            metadata: "maxFileSizeMB=\(maxFileSizeMB) maxDurationSeconds=\(Int(max(capabilities.maxDurationSeconds, 0).rounded(.down))) resumable=\(capabilities.supportsResumableUpload) thresholdMB=\(thresholdMB)"
         )
     }
 

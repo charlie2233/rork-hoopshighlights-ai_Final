@@ -105,6 +105,7 @@ Required fields:
 - `uploadProofDeliveryStatus=...`
 - `serverUploadPlan=...`
 - `serverUploadCapability=...`
+- `deployedUploadCapability=...`
 - `pendingBackgroundUploadManifest=...`
 - `privacy=no_presigned_urls_no_object_keys_no_local_file_paths`
 
@@ -123,6 +124,8 @@ Settings smoke proof should also include:
 Helpful proof events:
 
 - `source_session_started`
+- `server_upload_capabilities_received`
+- `server_upload_capabilities_unavailable`
 - `source_upload_failed`
 - `chunked_upload_selected`
 - `chunk_session_started`

@@ -625,6 +625,7 @@ struct SettingsView: View {
         let latestUploadProgress = CloudAnalysisService.latestUploadProgressSummary()
         let latestServerUploadPlan = CloudAnalysisService.latestServerUploadPlanSummary()
         let latestServerUploadCapability = CloudAnalysisService.latestServerUploadCapabilitySummary()
+        let latestDeployedUploadCapability = CloudAnalysisService.latestDeployedUploadCapabilitySummary()
         let pendingBackgroundUploadManifest = CloudAnalysisService.pendingBackgroundUploadManifestSummary()
         let latestUnexpectedExit = LaunchTelemetry.shared.latestUnexpectedExitSummary ?? "none"
         let latestCrashReportDelivery = LaunchTelemetry.shared.latestCrashReportDeliverySummary ?? "none"
@@ -657,6 +658,7 @@ struct SettingsView: View {
             "latestUploadProgress=\(proofTextValue(latestUploadProgress))",
             "serverUploadPlan=\(proofTextValue(latestServerUploadPlan))",
             "serverUploadCapability=\(proofTextValue(latestServerUploadCapability))",
+            "deployedUploadCapability=\(proofTextValue(latestDeployedUploadCapability))",
             "cloudTeamScanInProgress=\(viewModel.isCloudTeamScanInProgress)",
             "cloudTeamScanStatus=\(proofTextValue(viewModel.cloudTeamScanStatusMessage))",
             "cloudQuotaRemaining=\(viewModel.cloudQuotaRemaining.map(String.init) ?? "unknown")",

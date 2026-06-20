@@ -151,6 +151,16 @@ nonisolated struct CreateCloudAnalysisJobRequest: Codable, Sendable {
     var uploadPreference: String? = "resumable"
 }
 
+nonisolated struct CloudAnalysisCapabilitiesResponse: Codable, Sendable {
+    let maxFileSizeBytes: Int64
+    let maxDurationSeconds: Double
+    let resumableUploadThresholdBytes: Int64
+    let supportsResumableUpload: Bool
+    let signedUploadTtlSeconds: Int
+    let defaultPollAfterSeconds: Int
+    let analysisMode: String
+}
+
 nonisolated struct CreateCloudAnalysisJobResponse: Codable, Sendable {
     let jobId: String
     let uploadUrl: String
