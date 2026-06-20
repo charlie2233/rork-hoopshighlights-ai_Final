@@ -1238,6 +1238,15 @@ struct CloudAnalysisService {
             uploadID: manifest.uploadID,
             parts: uploadedParts
         )
+        await tracker.update(uploadedBytes: manifest.totalFileSizeBytes, totalBytes: manifest.totalFileSizeBytes)
+        let finalSnapshot = await tracker.snapshot()
+        reportUploadProgress(finalSnapshot, false, "resumed chunks complete")
+        Self.recordLatestUploadProgressSummary(
+            stage: "Resuming cloud upload",
+            snapshot: finalSnapshot,
+            transferContext: "resumed chunks complete",
+            stalled: false
+        )
     }
 
     private func uploadMultipartChunk(
