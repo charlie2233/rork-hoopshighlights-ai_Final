@@ -1676,7 +1676,7 @@ private final class CloudUploadBackgroundRelaunchDelegate: NSObject, URLSessionT
         if let error {
             LaunchTelemetry.shared.recordBackgroundUploadProof(
                 "relaunch_task_failed",
-                metadata: "source=urlsession_delegate error=\(error.localizedDescription)"
+                metadata: "source=urlsession_delegate reason=\(Self.safeRelaunchErrorReason(error))"
             )
         } else {
             guard let http = task.response as? HTTPURLResponse else {
@@ -1734,6 +1734,18 @@ private final class CloudUploadBackgroundRelaunchDelegate: NSObject, URLSessionT
             }
         }
         return nil
+    }
+
+    private static func safeRelaunchErrorReason(_ error: Error) -> String {
+        if error.isTaskCancellation {
+            return "cancelled"
+        }
+        if let urlError = error as? URLError {
+            return "url_error_\(urlError.code.rawValue)"
+        }
+        return String(describing: type(of: error))
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: "_")
     }
 }
 
