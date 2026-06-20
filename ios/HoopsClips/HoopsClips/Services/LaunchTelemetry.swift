@@ -43,6 +43,12 @@ final class LaunchTelemetry {
         UserDefaults.standard.string(forKey: recentBackgroundUploadProofTrailKey)
     }
 
+    func resetBackgroundUploadProofTrail(reason: String) {
+        let safeReason = Self.redactedAIEditFailureReason(reason)
+        UserDefaults.standard.removeObject(forKey: recentBackgroundUploadProofTrailKey)
+        logger.notice("Background upload proof trail reset reason=\(safeReason, privacy: .public)")
+    }
+
     var latestCrashReportDeliverySummary: String? {
         UserDefaults.standard.string(forKey: latestCrashReportDeliveryKey)
     }

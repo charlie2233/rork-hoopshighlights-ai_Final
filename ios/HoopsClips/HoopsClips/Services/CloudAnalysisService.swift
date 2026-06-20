@@ -924,6 +924,7 @@ struct CloudAnalysisService {
             }
         }
         let uploadPartCount = job.resumableUpload?.partCount ?? 1
+        LaunchTelemetry.shared.resetBackgroundUploadProofTrail(reason: "fresh_upload_started")
         Self.recordServerUploadPlan(job)
         defer {
             uploadMonitorTask.cancel()
