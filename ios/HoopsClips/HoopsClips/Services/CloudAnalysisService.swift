@@ -1270,8 +1270,14 @@ struct CloudAnalysisService {
 
         var lastError: Error?
         for attempt in 0..<3 {
+            let attemptNumber = attempt + 1
+            let transferContext = "chunk \(partTarget.partNumber)/\(partCount) try \(attemptNumber)"
+            let backgroundIdentifier = Self.backgroundUploadSessionIdentifier(
+                jobID: partTarget.jobId,
+                partNumber: partTarget.partNumber,
+                attempt: attemptNumber
+            )
             do {
-                let transferContext = "chunk \(partTarget.partNumber)/\(partCount) try \(attempt + 1)"
                 var request = URLRequest(url: uploadURL)
                 request.httpMethod = partTarget.uploadMethod
                 for (header, value) in partTarget.uploadHeaders {
@@ -1308,11 +1314,6 @@ struct CloudAnalysisService {
                     try? FileManager.default.removeItem(at: chunkFileURL)
                 }
 
-                let backgroundIdentifier = Self.backgroundUploadSessionIdentifier(
-                    jobID: partTarget.jobId,
-                    partNumber: partTarget.partNumber,
-                    attempt: attempt + 1
-                )
                 await CloudUploadResumeStore.shared.recordSession(
                     jobID: partTarget.jobId,
                     uploadID: uploadID,
@@ -1328,7 +1329,7 @@ struct CloudAnalysisService {
                 )
                 LaunchTelemetry.shared.recordBackgroundUploadProof(
                     "chunk_session_started",
-                    metadata: "kind=chunk partNumber=\(partTarget.partNumber) partCount=\(partCount) attempt=\(attempt + 1)"
+                    metadata: "kind=chunk partNumber=\(partTarget.partNumber) partCount=\(partCount) attempt=\(attemptNumber)"
                 )
                 defer {
                     uploadSession.finishTasksAndInvalidate()
@@ -1362,22 +1363,27 @@ struct CloudAnalysisService {
                 let retryReason = Self.uploadRetryReason(for: error)
                 LaunchTelemetry.shared.recordBackgroundUploadProof(
                     "chunk_upload_attempt_failed",
-                    metadata: "kind=chunk partNumber=\(partTarget.partNumber) partCount=\(partCount) attempt=\(attempt + 1) retrying=\(retrying) reason=\(retryReason)"
+                    metadata: "kind=chunk partNumber=\(partTarget.partNumber) partCount=\(partCount) attempt=\(attemptNumber) retrying=\(retrying) reason=\(retryReason)"
+                )
+                await CloudUploadResumeStore.shared.clearActiveSession(
+                    jobID: partTarget.jobId,
+                    uploadID: uploadID,
+                    sessionIdentifier: backgroundIdentifier
                 )
                 let snapshot = await tracker.snapshot()
                 reportUploadProgress(
                     snapshot,
                     true,
                     retrying
-                        ? "chunk \(partTarget.partNumber)/\(partCount) retrying after try \(attempt + 1)"
-                        : "chunk \(partTarget.partNumber)/\(partCount) failed after try \(attempt + 1)"
+                        ? "chunk \(partTarget.partNumber)/\(partCount) retrying after try \(attemptNumber)"
+                        : "chunk \(partTarget.partNumber)/\(partCount) failed after try \(attemptNumber)"
                 )
                 Self.recordLatestUploadProgressSummary(
                     stage: "Uploading video chunk",
                     snapshot: snapshot,
                     transferContext: retrying
-                        ? "chunk \(partTarget.partNumber)/\(partCount) retrying after try \(attempt + 1)"
-                        : "chunk \(partTarget.partNumber)/\(partCount) failed after try \(attempt + 1)",
+                        ? "chunk \(partTarget.partNumber)/\(partCount) retrying after try \(attemptNumber)"
+                        : "chunk \(partTarget.partNumber)/\(partCount) failed after try \(attemptNumber)",
                     stalled: true
                 )
                 try await Task.sleep(nanoseconds: 700_000_000)
