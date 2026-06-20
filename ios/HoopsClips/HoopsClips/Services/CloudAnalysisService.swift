@@ -1288,6 +1288,16 @@ private final class CloudUploadBackgroundRelaunchDelegate: NSObject, URLSessionT
                 metadata: "source=urlsession_delegate error=\(error.localizedDescription)"
             )
         } else {
+            if identifier.contains(".part-"),
+               let http = task.response as? HTTPURLResponse,
+               let etag = Self.headerValue("ETag", from: http) {
+                Task {
+                    await CloudUploadResumeStore.shared.recordRelaunchedCompletedPart(
+                        sessionIdentifier: identifier,
+                        etag: etag
+                    )
+                }
+            }
             LaunchTelemetry.shared.recordBackgroundUploadProof(
                 "relaunch_task_completed",
                 metadata: "source=urlsession_delegate"
@@ -1297,6 +1307,15 @@ private final class CloudUploadBackgroundRelaunchDelegate: NSObject, URLSessionT
 
     func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
         CloudUploadBackgroundSessionRegistry.shared.finishEvents(for: identifier)
+    }
+
+    private static func headerValue(_ name: String, from response: HTTPURLResponse) -> String? {
+        for (key, value) in response.allHeaderFields {
+            if String(describing: key).caseInsensitiveCompare(name) == .orderedSame {
+                return String(describing: value)
+            }
+        }
+        return nil
     }
 }
 
@@ -1405,6 +1424,25 @@ private actor CloudUploadResumeStore {
         return manifest.completedParts
     }
 
+    func recordRelaunchedCompletedPart(sessionIdentifier: String, etag: String) {
+        guard let sessionPart = Self.parseMultipartSessionIdentifier(sessionIdentifier),
+              var manifest = loadManifest(),
+              manifest.jobID == sessionPart.jobID else {
+            LaunchTelemetry.shared.recordBackgroundUploadProof("resume_manifest_relaunch_part_ignored")
+            return
+        }
+
+        var parts = manifest.completedParts.filter { $0.partNumber != sessionPart.partNumber }
+        parts.append(CloudMultipartCompletedPart(partNumber: sessionPart.partNumber, etag: etag))
+        manifest.completedParts = parts.sorted { $0.partNumber < $1.partNumber }
+        manifest.updatedAt = Date()
+        saveManifest(manifest)
+        LaunchTelemetry.shared.recordBackgroundUploadProof(
+            "resume_manifest_relaunch_part_completed",
+            metadata: "completed=\(manifest.completedParts.count) partCount=\(manifest.partCount)"
+        )
+    }
+
     func clear(jobID: String, uploadID: String) {
         guard let manifest = loadMatchingManifest(jobID: jobID, uploadID: uploadID) else { return }
         UserDefaults.standard.removeObject(forKey: cloudUploadResumeManifestDefaultsKey)
@@ -1430,6 +1468,24 @@ private actor CloudUploadResumeStore {
             return nil
         }
         return manifest
+    }
+
+    private static func parseMultipartSessionIdentifier(_ identifier: String) -> (jobID: String, partNumber: Int)? {
+        let components = identifier.split(separator: ".").map(String.init)
+        guard let markerIndex = components.firstIndex(of: "cloud-upload"),
+              components.indices.contains(markerIndex + 2) else {
+            return nil
+        }
+
+        let jobID = components[markerIndex + 1]
+        let partComponent = components[markerIndex + 2]
+        guard partComponent.hasPrefix("part-"),
+              let partNumber = Int(partComponent.dropFirst("part-".count)),
+              partNumber > 0 else {
+            return nil
+        }
+
+        return (jobID, partNumber)
     }
 
     private func loadManifest() -> CloudUploadResumeManifest? {
