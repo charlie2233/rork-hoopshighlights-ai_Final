@@ -105,6 +105,7 @@ Helpful proof events:
 - `upload_waiting_for_connectivity`
 - `chunk_upload_attempt_failed`
 - `chunk_upload_failed`
+- `cloud_analysis_failed`
 - `resume_manifest_part_completed`
 - `resume_manifest_session_completed`
 - `resume_manifest_relaunch_part_completed`

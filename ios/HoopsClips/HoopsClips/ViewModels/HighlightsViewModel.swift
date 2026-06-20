@@ -398,9 +398,18 @@ final class HighlightsViewModel {
             default:
                 break
             }
+            LaunchTelemetry.shared.recordBackgroundUploadProof(
+                "cloud_analysis_failed",
+                metadata: error.backgroundUploadProofSummary
+            )
             await fallbackToLocalAnalysis(from: error)
         } catch {
-            await fallbackToLocalAnalysis(from: CloudAnalysisError.network(error.localizedDescription))
+            let cloudError = CloudAnalysisError.network(error.localizedDescription)
+            LaunchTelemetry.shared.recordBackgroundUploadProof(
+                "cloud_analysis_failed",
+                metadata: cloudError.backgroundUploadProofSummary
+            )
+            await fallbackToLocalAnalysis(from: cloudError)
         }
     }
 

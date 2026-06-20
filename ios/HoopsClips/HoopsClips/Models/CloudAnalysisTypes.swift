@@ -493,4 +493,66 @@ nonisolated enum CloudAnalysisError: Error, LocalizedError, Sendable {
             return description
         }
     }
+
+    var backgroundUploadProofSummary: String {
+        switch self {
+        case .notConfigured:
+            return "kind=not_configured retryable=false privacy=no_urls_no_object_keys"
+        case .invalidVideo:
+            return "kind=invalid_video retryable=false privacy=no_urls_no_object_keys"
+        case .invalidResponse:
+            return "kind=invalid_response retryable=true privacy=no_urls_no_object_keys"
+        case .uploadFailed:
+            return "kind=upload_failed retryable=true next=wifi_retry_or_resumable_plan privacy=no_urls_no_object_keys"
+        case .timedOut:
+            return "kind=timed_out retryable=true next=history_reopen_or_retry privacy=no_urls_no_object_keys"
+        case .quotaExceeded(let remaining):
+            let remainingText = remaining.map { String($0) } ?? "unknown"
+            return "kind=quota_exceeded retryable=false remainingToday=\(remainingText) privacy=no_urls_no_object_keys"
+        case .backend(let code, _):
+            return "kind=backend code=\(Self.safeProofValue(code)) category=\(Self.backendProofCategory(for: code)) privacy=no_urls_no_object_keys"
+        case .network(let description):
+            return "kind=network category=\(Self.networkProofCategory(for: description)) retryable=true privacy=no_urls_no_object_keys"
+        }
+    }
+
+    private static func backendProofCategory(for code: String) -> String {
+        switch code.lowercased() {
+        case "file_too_large":
+            return "file_size_policy"
+        case "unsupported_duration", "video_too_long", "duration_too_long":
+            return "duration_policy"
+        case "empty_upload":
+            return "empty_upload"
+        case let value where value.contains("http_"):
+            return "http_status"
+        default:
+            return "backend"
+        }
+    }
+
+    private static func networkProofCategory(for description: String) -> String {
+        let normalized = description.lowercased()
+        if normalized.contains("cancel") {
+            return "cancelled"
+        }
+        if normalized.contains("timed out") || normalized.contains("timeout") {
+            return "timeout"
+        }
+        if normalized.contains("offline") || normalized.contains("internet") || normalized.contains("network") {
+            return "connectivity"
+        }
+        return "network_error"
+    }
+
+    private static func safeProofValue(_ value: String) -> String {
+        let compact = value
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: "_")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !compact.isEmpty else {
+            return "none"
+        }
+        return String(compact.prefix(48))
+    }
 }
