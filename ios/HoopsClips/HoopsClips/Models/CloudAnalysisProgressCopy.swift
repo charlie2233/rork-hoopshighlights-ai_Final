@@ -18,6 +18,9 @@ nonisolated enum CloudAnalysisProgressCopy {
         let status = statusMessage.lowercased()
         let totalRange = approximateAnalysisRangeMinutes(for: durationSeconds)
         if status.contains("upload") {
+            if let liveEstimateSummary = liveUploadEstimateSummary(from: statusMessage) {
+                return "Upload \(liveEstimateSummary). Then analysis is about \(formatMinuteRange(totalRange))."
+            }
             return "Upload speed depends on connection; after upload, analysis is about \(formatMinuteRange(totalRange))."
         }
 
@@ -156,5 +159,41 @@ nonisolated enum CloudAnalysisProgressCopy {
             return "\(range.lower) min"
         }
         return "\(range.lower)-\(range.upper) min"
+    }
+
+    private static func liveUploadEstimateSummary(from statusMessage: String) -> String? {
+        let parts = statusMessage
+            .components(separatedBy: " · ")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        let eta = parts.first { part in
+            let lowercased = part.lowercased()
+            return lowercased.hasPrefix("about ") && lowercased.hasSuffix(" left")
+        }
+        let speed = parts.first { part in
+            let lowercased = part.lowercased()
+            return lowercased.contains("mb/s") || lowercased.contains("kb/s")
+        }
+        let bytes = parts.first { part in
+            let lowercased = part.lowercased()
+            return lowercased.contains("/") && (lowercased.contains(" mb") || lowercased.contains(" gb"))
+        }
+
+        var summaryParts: [String] = []
+        if let eta {
+            summaryParts.append("ETA \(eta)")
+        }
+        if let speed {
+            summaryParts.append(speed)
+        }
+        if let bytes {
+            summaryParts.append(bytes)
+        }
+
+        guard !summaryParts.isEmpty else {
+            return nil
+        }
+        return summaryParts.joined(separator: " · ")
     }
 }
