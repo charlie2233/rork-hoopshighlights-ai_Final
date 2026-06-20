@@ -10,6 +10,7 @@ final class LaunchTelemetry {
     private let stabilityDefaultsKey = "hoopsclips.stability.currentSession.v1"
     private let stabilityLastUnexpectedExitKey = "hoopsclips.stability.lastUnexpectedExit.v1"
     private let latestAIEditProofKey = "hoopsclips.launchProof.latestAIEdit.v1"
+    private let latestBackgroundUploadProofKey = "hoopsclips.launchProof.latestBackgroundUpload.v1"
     private let latestCrashReportDeliveryKey = "hoopsclips.stability.latestCrashReportDelivery.v1"
     private let pendingCrashReportsKey = "hoopsclips.stability.pendingCrashReports.v1"
     private let crashReportSentFingerprintKey = "hoopsclips.stability.crashReportSentFingerprint.v1"
@@ -31,6 +32,10 @@ final class LaunchTelemetry {
 
     var latestAIEditProofSummary: String? {
         UserDefaults.standard.string(forKey: latestAIEditProofKey)
+    }
+
+    var latestBackgroundUploadProofSummary: String? {
+        UserDefaults.standard.string(forKey: latestBackgroundUploadProofKey)
     }
 
     var latestCrashReportDeliverySummary: String? {
@@ -115,6 +120,22 @@ final class LaunchTelemetry {
         logger.notice(
             "Stability checkpoint=\(safeName, privacy: .public) metadata=\(safeMetadata, privacy: .public)"
         )
+    }
+
+    func recordBackgroundUploadProof(_ event: String, metadata: String? = nil) {
+        let safeEvent = Self.redactedAIEditFailureReason(event)
+        let safeMetadata = Self.redactedAIEditFailureReason(metadata)
+        let generatedAt = Self.isoString(Date())
+        let summary = [
+            "event=\(safeEvent)",
+            "at=\(generatedAt)",
+            "mode=ios_background_urlsession",
+            safeMetadata == "none" ? nil : "metadata=\(safeMetadata)"
+        ]
+            .compactMap { $0 }
+            .joined(separator: " ")
+        UserDefaults.standard.set(summary, forKey: latestBackgroundUploadProofKey)
+        recordStabilityCheckpoint("upload.background.\(safeEvent)", metadata: safeMetadata == "none" ? nil : safeMetadata)
     }
 
     func recordSupportTrace(requestID: String?, traceID: String?, source: String) {

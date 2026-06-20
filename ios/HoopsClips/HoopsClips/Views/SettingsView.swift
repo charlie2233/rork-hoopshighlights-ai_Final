@@ -620,6 +620,7 @@ struct SettingsView: View {
         let sourceObjectKeyState = viewModel.cloudEditSourceObjectKey == nil ? "none" : "available_redacted"
         let analysisProgressPercent = Int((min(max(viewModel.analysisService.progress, 0), 1) * 100).rounded(.down))
         let latestAIEditProof = LaunchTelemetry.shared.latestAIEditProofSummary ?? "none"
+        let latestBackgroundUploadProof = LaunchTelemetry.shared.latestBackgroundUploadProofSummary ?? "none"
         let latestUnexpectedExit = LaunchTelemetry.shared.latestUnexpectedExitSummary ?? "none"
         let latestCrashReportDelivery = LaunchTelemetry.shared.latestCrashReportDeliverySummary ?? "none"
 
@@ -642,6 +643,9 @@ struct SettingsView: View {
             "analysisIsAnalyzing=\(viewModel.analysisService.isAnalyzing)",
             "analysisProgressPercent=\(analysisProgressPercent)",
             "analysisStatus=\(proofTextValue(viewModel.analysisService.statusMessage))",
+            "backgroundUploadMode=ios_background_urlsession",
+            "backgroundUploadChunkedCompatible=true",
+            "latestBackgroundUploadProof=\(latestBackgroundUploadProof)",
             "cloudTeamScanInProgress=\(viewModel.isCloudTeamScanInProgress)",
             "cloudTeamScanStatus=\(proofTextValue(viewModel.cloudTeamScanStatusMessage))",
             "cloudQuotaRemaining=\(viewModel.cloudQuotaRemaining.map(String.init) ?? "unknown")",

@@ -562,6 +562,12 @@ struct CloudAnalysisService {
             delegate: delegate,
             delegateQueue: nil
         )
+        let uploadPartCount = job.resumableUpload?.partCount ?? 1
+        let usesChunkedUpload = uploadPartCount > 1
+        LaunchTelemetry.shared.recordBackgroundUploadProof(
+            "source_session_started",
+            metadata: "kind=source chunked=\(usesChunkedUpload) partCount=\(uploadPartCount)"
+        )
         defer {
             uploadMonitorTask.cancel()
             uploadSession.finishTasksAndInvalidate()
@@ -732,6 +738,10 @@ struct CloudAnalysisService {
                     ),
                     delegate: delegate,
                     delegateQueue: nil
+                )
+                LaunchTelemetry.shared.recordBackgroundUploadProof(
+                    "chunk_session_started",
+                    metadata: "kind=chunk partNumber=\(partTarget.partNumber) attempt=\(attempt + 1)"
                 )
                 defer {
                     uploadSession.finishTasksAndInvalidate()
@@ -977,7 +987,7 @@ final class CloudUploadBackgroundSessionRegistry: @unchecked Sendable {
         lock.lock()
         completionHandlers[identifier] = completionHandler
         lock.unlock()
-        LaunchTelemetry.shared.recordStabilityCheckpoint("upload.background.events_received")
+        LaunchTelemetry.shared.recordBackgroundUploadProof("events_received", metadata: "source=app_delegate")
     }
 
     func finishEvents(for identifier: String) {
@@ -988,7 +998,7 @@ final class CloudUploadBackgroundSessionRegistry: @unchecked Sendable {
         guard let completionHandler else { return }
         DispatchQueue.main.async {
             completionHandler()
-            LaunchTelemetry.shared.recordStabilityCheckpoint("upload.background.events_completed")
+            LaunchTelemetry.shared.recordBackgroundUploadProof("events_completed", metadata: "source=urlsession_delegate")
         }
     }
 }
