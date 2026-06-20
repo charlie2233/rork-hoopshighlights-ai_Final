@@ -1612,6 +1612,25 @@ struct VideoPlayerView: View {
                     .accessibilityIdentifier("analysis.uploadMetricSummary")
             }
 
+            if let analysisChunkProgressText {
+                Label(analysisChunkProgressText, systemImage: "square.stack.3d.up.fill")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(AppTheme.warningYellow)
+                    .multilineTextAlignment(.leading)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
+                    .minimumScaleFactor(0.84)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(AppTheme.warningYellow.opacity(0.11), in: .rect(cornerRadius: 12))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(AppTheme.warningYellow.opacity(0.22), lineWidth: 1)
+                    }
+                    .accessibilityIdentifier("analysis.chunkProgressSummary")
+            }
+
             if let analysisBackgroundReminderText {
                 Label(analysisBackgroundReminderText, systemImage: "cloud.fill")
                     .font(.caption2.weight(.semibold))
@@ -2017,6 +2036,51 @@ struct VideoPlayerView: View {
         return parts.joined(separator: " · ")
     }
 
+    private var analysisChunkProgressText: String? {
+        let statusMessage = viewModel.analysisService.statusMessage
+        let segments = statusMessage
+            .components(separatedBy: " · ")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        guard let chunkSegment = segments.first(where: { segment in
+            let lowercasedSegment = segment.lowercased()
+            return lowercasedSegment.contains("chunk ")
+                && segment.contains("/")
+                && !lowercasedSegment.contains("chunked upload starting")
+                && !lowercasedSegment.contains("chunks complete")
+        }) else {
+            return nil
+        }
+
+        let words = chunkSegment
+            .split(whereSeparator: \.isWhitespace)
+            .map(String.init)
+        guard let chunkToken = words.first(where: { token in
+            let parts = token.split(separator: "/")
+            return parts.count == 2
+                && parts.allSatisfy { part in part.allSatisfy(\.isNumber) }
+        }) else {
+            return chunkSegment
+        }
+
+        let chunkParts = chunkToken.split(separator: "/").map(String.init)
+        var summaryParts = ["Chunk \(chunkParts[0]) of \(chunkParts[1])"]
+        let lowercasedSegment = chunkSegment.lowercased()
+        if let tryIndex = words.firstIndex(where: { $0.lowercased() == "try" }),
+           words.indices.contains(tryIndex + 1) {
+            summaryParts.append("try \(words[tryIndex + 1])")
+        }
+        if lowercasedSegment.contains("retrying") {
+            summaryParts.append("retrying")
+        } else if lowercasedSegment.contains("saved") {
+            summaryParts.append("saved")
+        } else if lowercasedSegment.contains("failed") {
+            summaryParts.append("failed")
+        }
+        return summaryParts.joined(separator: " · ")
+    }
+
     private var analysisRecoveredUploadProofPromptText: String? {
         let status = viewModel.analysisService.statusMessage.lowercased()
         let latestProof = (LaunchTelemetry.shared.latestBackgroundUploadProofSummary ?? "").lowercased()
@@ -2066,6 +2130,9 @@ struct VideoPlayerView: View {
         }
         if let analysisUploadMetricText {
             parts.append(analysisUploadMetricText)
+        }
+        if let analysisChunkProgressText {
+            parts.append(analysisChunkProgressText)
         }
         if let analysisRecoveredUploadProofPromptText {
             parts.append(analysisRecoveredUploadProofPromptText)

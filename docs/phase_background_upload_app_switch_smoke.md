@@ -42,20 +42,21 @@ Current client-side import limits are intentionally aligned with the staging bac
    - transferred MB/GB
    - speed
    - ETA
-6. Confirm the upload card shows at least one of:
+6. If the server uses multipart upload, confirm the upload card shows a chunk progress row such as `Chunk 2 of 8`.
+7. Confirm the upload card shows at least one of:
    - `Safe to switch apps`
    - `Background upload`
    - `Resumable upload`
    - `Recovered upload`
-7. Tap `Copy upload proof` while uploading.
-8. Switch away from HoopClips for at least 30 seconds.
-9. Return to HoopClips.
-10. If upload is still active, confirm progress/status is not lost.
-11. If the app relaunches or reconnects to a saved transfer, confirm it shows the recovered-upload proof prompt.
-12. Tap `Copy upload proof` again.
-13. Cancel the upload.
-14. Relaunch HoopClips.
-15. Confirm canceled upload does not recover as a stale pending upload.
+8. Tap `Copy upload proof` while uploading.
+9. Switch away from HoopClips for at least 30 seconds.
+10. Return to HoopClips.
+11. If upload is still active, confirm progress/status is not lost.
+12. If the app relaunches or reconnects to a saved transfer, confirm it shows the recovered-upload proof prompt.
+13. Tap `Copy upload proof` again.
+14. Cancel the upload.
+15. Relaunch HoopClips.
+16. Confirm canceled upload does not recover as a stale pending upload.
 
 ## Real iPhone TestFlight smoke checklist
 
