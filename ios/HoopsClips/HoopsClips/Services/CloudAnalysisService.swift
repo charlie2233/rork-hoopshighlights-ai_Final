@@ -1115,17 +1115,11 @@ struct CloudAnalysisService {
         let configuration: URLSessionConfiguration
         if let backgroundIdentifier {
             configuration = URLSessionConfiguration.background(withIdentifier: backgroundIdentifier)
-            configuration.sessionSendsLaunchEvents = true
-            configuration.isDiscretionary = false
+            configuration.applyHoopsCloudUploadPolicy(isBackgroundTransfer: true)
         } else {
             configuration = URLSessionConfiguration.default
+            configuration.applyHoopsCloudUploadPolicy(isBackgroundTransfer: false)
         }
-        configuration.waitsForConnectivity = true
-        configuration.allowsCellularAccess = true
-        configuration.allowsExpensiveNetworkAccess = true
-        configuration.allowsConstrainedNetworkAccess = true
-        configuration.timeoutIntervalForRequest = 60
-        configuration.timeoutIntervalForResource = 2 * 60 * 60
         return configuration
     }
 
@@ -1312,9 +1306,7 @@ final class CloudUploadBackgroundSessionRegistry: @unchecked Sendable {
     func setCompletionHandler(_ completionHandler: @escaping () -> Void, for identifier: String) {
         let delegate = CloudUploadBackgroundRelaunchDelegate(identifier: identifier)
         let configuration = URLSessionConfiguration.background(withIdentifier: identifier)
-        configuration.sessionSendsLaunchEvents = true
-        configuration.isDiscretionary = false
-        configuration.waitsForConnectivity = true
+        configuration.applyHoopsCloudUploadPolicy(isBackgroundTransfer: true)
         let session = URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
 
         lock.lock()
@@ -1348,6 +1340,24 @@ final class CloudUploadBackgroundSessionRegistry: @unchecked Sendable {
         DispatchQueue.main.async {
             completionHandler()
             LaunchTelemetry.shared.recordBackgroundUploadProof("events_completed", metadata: "source=urlsession_delegate")
+        }
+    }
+}
+
+private extension URLSessionConfiguration {
+    func applyHoopsCloudUploadPolicy(isBackgroundTransfer: Bool) {
+        waitsForConnectivity = true
+        allowsCellularAccess = true
+        allowsExpensiveNetworkAccess = true
+        allowsConstrainedNetworkAccess = true
+        timeoutIntervalForRequest = 2 * 60
+
+        if isBackgroundTransfer {
+            sessionSendsLaunchEvents = true
+            isDiscretionary = false
+            timeoutIntervalForResource = 24 * 60 * 60
+        } else {
+            timeoutIntervalForResource = 2 * 60 * 60
         }
     }
 }
