@@ -487,11 +487,36 @@ struct VideoPlayerView: View {
             )
             return capabilities
         } catch {
+            let fallbackReason = capabilityFallbackReason(for: error)
             LaunchTelemetry.shared.recordBackgroundUploadProof(
                 "server_upload_capabilities_unavailable",
-                metadata: "source=\(source) fallback=client_defaults"
+                metadata: "source=\(source) fallback=client_defaults reason=\(fallbackReason)"
             )
             return nil
+        }
+    }
+
+    private func capabilityFallbackReason(for error: Error) -> String {
+        guard let cloudError = error as? CloudAnalysisError else {
+            return "network_or_unknown"
+        }
+
+        switch cloudError {
+        case .notConfigured:
+            return "not_configured"
+        case .invalidResponse:
+            return "invalid_response"
+        case .backend(let code, _):
+            if code == "http_404" {
+                return "capabilities_endpoint_missing"
+            }
+            return "backend_\(safeUploadProofValue(code))"
+        case .network:
+            return "network"
+        case .timedOut:
+            return "timeout"
+        default:
+            return "cloud_error"
         }
     }
 

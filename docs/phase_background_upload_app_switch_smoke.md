@@ -128,7 +128,7 @@ Helpful proof events:
 
 - `source_session_started`
 - `server_upload_capabilities_received`
-- `server_upload_capabilities_unavailable`
+- `server_upload_capabilities_unavailable` with `reason=capabilities_endpoint_missing` if the Worker deploy is stale.
 - `source_upload_failed`
 - `chunked_upload_selected`
 - `chunk_session_started`
