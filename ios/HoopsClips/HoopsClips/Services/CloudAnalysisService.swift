@@ -2,6 +2,7 @@ import Foundation
 import UniformTypeIdentifiers
 
 private let cloudUploadResumeManifestDefaultsKey = "hoopsclips.cloudUpload.resumeManifest.v1"
+private let cloudUploadSingleSourcePrefix = "single-source-"
 
 nonisolated enum CloudUploadResumeOutcome: Sendable {
     case analysis(CloudAnalysisResult)
@@ -366,6 +367,7 @@ struct CloudAnalysisService {
         progress(0.28, "Starting cloud clip search")
         _ = try await startJob(baseURL: baseURL, jobID: job.jobId, installID: installID, teamSelection: teamSelection)
         onCloudHandoff?(job.jobId, job.sourceObjectKey)
+        await CloudUploadResumeStore.shared.clearJob(jobID: job.jobId, reason: "analysis_started")
 
         return try await pollJob(
             baseURL: baseURL,
@@ -419,6 +421,7 @@ struct CloudAnalysisService {
 
         progress(0.20, "Scanning jersey colors")
         let scan = try await scanJobTeams(baseURL: baseURL, jobID: job.jobId, installID: installID)
+        await CloudUploadResumeStore.shared.clearJob(jobID: job.jobId, reason: "team_scan_started")
         progress(0.24, scan.detectedTeams.isEmpty ? "Team scan unavailable" : "Team choices found")
 
         return PreparedCloudAnalysisJob(
@@ -533,18 +536,29 @@ struct CloudAnalysisService {
             "resume_manifest_foreground_resume_started",
             metadata: "purpose=\(manifest.purpose.rawValue) completed=\(manifest.completedParts.count) partCount=\(manifest.partCount)"
         )
-        try await resumeUploadManifest(
-            manifest,
-            sourceURL: sourceURL,
-            baseURL: baseURL,
-            tracker: tracker,
-            reportUploadProgress: reportUploadProgress
-        )
+        if manifest.uploadID.hasPrefix(cloudUploadSingleSourcePrefix) {
+            guard !manifest.completedParts.isEmpty else {
+                LaunchTelemetry.shared.recordBackgroundUploadProof("resume_manifest_source_still_uploading")
+                return nil
+            }
+            await tracker.update(uploadedBytes: manifest.totalFileSizeBytes, totalBytes: manifest.totalFileSizeBytes)
+            let snapshot = await tracker.snapshot()
+            reportUploadProgress(snapshot, false)
+        } else {
+            try await resumeUploadManifest(
+                manifest,
+                sourceURL: sourceURL,
+                baseURL: baseURL,
+                tracker: tracker,
+                reportUploadProgress: reportUploadProgress
+            )
+        }
 
         switch manifest.purpose {
         case .analysis:
             progress(0.28, "Starting cloud clip search")
             _ = try await startJob(baseURL: baseURL, jobID: manifest.jobID, installID: installID, teamSelection: teamSelection)
+            await CloudUploadResumeStore.shared.clearJob(jobID: manifest.jobID, reason: "resumed_analysis_started")
             let result = try await pollJob(
                 baseURL: baseURL,
                 jobID: manifest.jobID,
@@ -556,6 +570,7 @@ struct CloudAnalysisService {
         case .teamScan:
             progress(0.20, "Scanning jersey colors")
             let scan = try await scanJobTeams(baseURL: baseURL, jobID: manifest.jobID, installID: installID)
+            await CloudUploadResumeStore.shared.clearJob(jobID: manifest.jobID, reason: "resumed_team_scan_started")
             progress(0.24, scan.detectedTeams.isEmpty ? "Team scan unavailable" : "Team choices found")
             let job = CreateCloudAnalysisJobResponse(
                 jobId: manifest.jobID,
@@ -696,6 +711,22 @@ struct CloudAnalysisService {
         )
         let uploadPartCount = job.resumableUpload?.partCount ?? 1
         let usesChunkedUpload = uploadPartCount > 1
+        if !usesChunkedUpload {
+            let fileSizeBytes = (try? fileInfo(for: url).fileSizeBytes) ?? 1
+            _ = await CloudUploadResumeStore.shared.begin(
+                jobID: job.jobId,
+                installID: installID,
+                sourceURL: url.standardizedFileURL,
+                uploadID: Self.singleSourceUploadID(jobID: job.jobId),
+                sourceObjectKey: job.sourceObjectKey,
+                resultObjectKey: job.resultObjectKey,
+                pollAfterSeconds: job.pollAfterSeconds,
+                purpose: purpose,
+                chunkSizeBytes: Int(max(fileSizeBytes, 1)),
+                partCount: 1,
+                totalFileSizeBytes: max(fileSizeBytes, 1)
+            )
+        }
         LaunchTelemetry.shared.recordBackgroundUploadProof(
             "source_session_started",
             metadata: "kind=source chunked=\(usesChunkedUpload) partCount=\(uploadPartCount)"
@@ -737,6 +768,14 @@ struct CloudAnalysisService {
 
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw CloudAnalysisError.uploadFailed
+        }
+        if !usesChunkedUpload {
+            _ = await CloudUploadResumeStore.shared.recordCompletedPart(
+                jobID: job.jobId,
+                uploadID: Self.singleSourceUploadID(jobID: job.jobId),
+                partNumber: 1,
+                etag: "source-upload-complete"
+            )
         }
     }
 
@@ -823,7 +862,6 @@ struct CloudAnalysisService {
             uploadID: resumableUpload.uploadId,
             parts: uploadedParts
         )
-        await CloudUploadResumeStore.shared.clear(jobID: job.jobId, uploadID: resumableUpload.uploadId)
         await tracker.update(uploadedBytes: totalBytes, totalBytes: totalBytes)
         let finalSnapshot = await tracker.snapshot()
         reportUploadProgress(finalSnapshot, false)
@@ -925,7 +963,6 @@ struct CloudAnalysisService {
             uploadID: manifest.uploadID,
             parts: uploadedParts
         )
-        await CloudUploadResumeStore.shared.clear(jobID: manifest.jobID, uploadID: manifest.uploadID)
     }
 
     private func uploadMultipartChunk(
@@ -1056,6 +1093,10 @@ struct CloudAnalysisService {
             components.append("try-\(attempt)")
         }
         return components.joined(separator: ".")
+    }
+
+    private static func singleSourceUploadID(jobID: String) -> String {
+        "\(cloudUploadSingleSourcePrefix)\(sanitizedSessionComponent(jobID))"
     }
 
     private static func sanitizedSessionComponent(_ value: String) -> String {
@@ -1327,14 +1368,21 @@ private final class CloudUploadBackgroundRelaunchDelegate: NSObject, URLSessionT
                 metadata: "source=urlsession_delegate error=\(error.localizedDescription)"
             )
         } else {
-            if identifier.contains(".part-"),
-               let http = task.response as? HTTPURLResponse,
-               let etag = Self.headerValue("ETag", from: http) {
-                Task {
-                    await CloudUploadResumeStore.shared.recordRelaunchedCompletedPart(
-                        sessionIdentifier: identifier,
-                        etag: etag
-                    )
+            if let http = task.response as? HTTPURLResponse {
+                if identifier.contains(".part-"),
+                   let etag = Self.headerValue("ETag", from: http) {
+                    Task {
+                        await CloudUploadResumeStore.shared.recordRelaunchedCompletedPart(
+                            sessionIdentifier: identifier,
+                            etag: etag
+                        )
+                    }
+                } else if identifier.hasSuffix(".source") {
+                    Task {
+                        await CloudUploadResumeStore.shared.recordRelaunchedSourceUploadCompleted(
+                            sessionIdentifier: identifier
+                        )
+                    }
                 }
             }
             LaunchTelemetry.shared.recordBackgroundUploadProof(
@@ -1482,6 +1530,25 @@ private actor CloudUploadResumeStore {
         )
     }
 
+    func recordRelaunchedSourceUploadCompleted(sessionIdentifier: String) {
+        guard let jobID = Self.parseSourceSessionIdentifier(sessionIdentifier),
+              var manifest = loadManifest(),
+              manifest.jobID == jobID else {
+            LaunchTelemetry.shared.recordBackgroundUploadProof("resume_manifest_relaunch_source_ignored")
+            return
+        }
+
+        var parts = manifest.completedParts.filter { $0.partNumber != 1 }
+        parts.append(CloudMultipartCompletedPart(partNumber: 1, etag: "source-upload-complete"))
+        manifest.completedParts = parts.sorted { $0.partNumber < $1.partNumber }
+        manifest.updatedAt = Date()
+        saveManifest(manifest)
+        LaunchTelemetry.shared.recordBackgroundUploadProof(
+            "resume_manifest_relaunch_source_completed",
+            metadata: "completed=\(manifest.completedParts.count) partCount=\(manifest.partCount)"
+        )
+    }
+
     func clear(jobID: String, uploadID: String) {
         guard let manifest = loadMatchingManifest(jobID: jobID, uploadID: uploadID) else { return }
         UserDefaults.standard.removeObject(forKey: cloudUploadResumeManifestDefaultsKey)
@@ -1494,6 +1561,19 @@ private actor CloudUploadResumeStore {
 
     func clearAnyManifest(reason: String) {
         guard let manifest = loadManifest() else { return }
+        UserDefaults.standard.removeObject(forKey: cloudUploadResumeManifestDefaultsKey)
+        CloudUploadChunkFileStore.clearChunks(jobID: manifest.jobID)
+        LaunchTelemetry.shared.recordBackgroundUploadProof(
+            "resume_manifest_cleared",
+            metadata: "reason=\(reason) completed=\(manifest.completedParts.count) partCount=\(manifest.partCount)"
+        )
+    }
+
+    func clearJob(jobID: String, reason: String) {
+        guard let manifest = loadManifest(),
+              manifest.jobID == jobID else {
+            return
+        }
         UserDefaults.standard.removeObject(forKey: cloudUploadResumeManifestDefaultsKey)
         CloudUploadChunkFileStore.clearChunks(jobID: manifest.jobID)
         LaunchTelemetry.shared.recordBackgroundUploadProof(
@@ -1527,6 +1607,16 @@ private actor CloudUploadResumeStore {
         }
 
         return (jobID, partNumber)
+    }
+
+    private static func parseSourceSessionIdentifier(_ identifier: String) -> String? {
+        let components = identifier.split(separator: ".").map(String.init)
+        guard let markerIndex = components.firstIndex(of: "cloud-upload"),
+              components.indices.contains(markerIndex + 2),
+              components[markerIndex + 2] == "source" else {
+            return nil
+        }
+        return components[markerIndex + 1]
     }
 
     private func loadManifest() -> CloudUploadResumeManifest? {
