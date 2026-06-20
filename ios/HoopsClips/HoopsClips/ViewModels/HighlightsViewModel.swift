@@ -520,7 +520,10 @@ final class HighlightsViewModel {
         do {
             guard let outcome = try await cloudAnalysisService.resumePendingBackgroundUploadIfNeeded(
                 installID: installID,
-                teamSelection: settings.highlightTeamSelection
+                teamSelection: settings.highlightTeamSelection,
+                onCloudHandoff: { [weak self] jobID, sourceObjectKey in
+                    self?.recordCloudAnalysisHandoff(jobID: jobID, sourceObjectKey: sourceObjectKey)
+                }
             ) { [weak service = analysisService] progress, status in
                 service?.updateExternalAnalysis(progress: progress, status: status)
             } else {

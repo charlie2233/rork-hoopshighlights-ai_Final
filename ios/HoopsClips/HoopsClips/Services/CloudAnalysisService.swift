@@ -483,6 +483,7 @@ struct CloudAnalysisService {
     func resumePendingBackgroundUploadIfNeeded(
         installID: String,
         teamSelection: HighlightTeamSelection? = nil,
+        onCloudHandoff: HandoffHandler? = nil,
         progress: @escaping @MainActor @Sendable (Double, String) -> Void
     ) async throws -> CloudUploadResumeOutcome? {
         guard let manifest = await CloudUploadResumeStore.shared.pendingManifest() else {
@@ -559,6 +560,7 @@ struct CloudAnalysisService {
         case .analysis:
             progress(0.28, "Starting cloud clip search")
             _ = try await startJob(baseURL: baseURL, jobID: manifest.jobID, installID: installID, teamSelection: teamSelection)
+            onCloudHandoff?(manifest.jobID, manifest.sourceObjectKey)
             await CloudUploadResumeStore.shared.clearJob(jobID: manifest.jobID, reason: "resumed_analysis_started")
             let result = try await pollJob(
                 baseURL: baseURL,
