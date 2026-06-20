@@ -1962,10 +1962,23 @@ private actor CloudUploadResumeStore {
         return manifest.completedParts
     }
 
+    private static func manifestJobMatchesSession(_ manifestJobID: String, sessionJobID: String) -> Bool {
+        manifestJobID == sessionJobID || sanitizedSessionComponent(manifestJobID) == sessionJobID
+    }
+
+    private static func sanitizedSessionComponent(_ value: String) -> String {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_"))
+        let filtered = value.map { character -> Character in
+            character.unicodeScalars.allSatisfy { allowed.contains($0) } ? character : "-"
+        }
+        let result = String(filtered).trimmingCharacters(in: CharacterSet(charactersIn: "-_"))
+        return result.isEmpty ? UUID().uuidString : result
+    }
+
     func recordRelaunchedCompletedPart(sessionIdentifier: String, etag: String) {
         guard let sessionPart = Self.parseMultipartSessionIdentifier(sessionIdentifier),
               var manifest = loadManifest(),
-              manifest.jobID == sessionPart.jobID else {
+              Self.manifestJobMatchesSession(manifest.jobID, sessionJobID: sessionPart.jobID) else {
             LaunchTelemetry.shared.recordBackgroundUploadProof("resume_manifest_relaunch_part_ignored")
             return
         }
@@ -1984,7 +1997,7 @@ private actor CloudUploadResumeStore {
     func recordRelaunchedSourceUploadCompleted(sessionIdentifier: String) {
         guard let jobID = Self.parseSourceSessionIdentifier(sessionIdentifier),
               var manifest = loadManifest(),
-              manifest.jobID == jobID else {
+              Self.manifestJobMatchesSession(manifest.jobID, sessionJobID: jobID) else {
             LaunchTelemetry.shared.recordBackgroundUploadProof("resume_manifest_relaunch_source_ignored")
             return
         }
