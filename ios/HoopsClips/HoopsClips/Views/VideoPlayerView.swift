@@ -1979,6 +1979,7 @@ struct VideoPlayerView: View {
             "latestUploadProgress=\(safeUploadProofValue(CloudAnalysisService.latestUploadProgressSummary()))",
             "uploadProofDeliveryStatus=\(safeUploadProofValue(LaunchTelemetry.shared.latestCrashReportDeliverySummary))",
             "serverUploadPlan=\(safeUploadProofValue(CloudAnalysisService.latestServerUploadPlanSummary()))",
+            "serverUploadCapability=\(safeUploadProofValue(CloudAnalysisService.latestServerUploadCapabilitySummary()))",
             "pendingBackgroundUploadManifest=\(safeUploadProofValue(CloudAnalysisService.pendingBackgroundUploadManifestSummary()))",
             "privacy=no_presigned_urls_no_object_keys_no_local_file_paths"
         ].joined(separator: "\n")

@@ -5,6 +5,7 @@ private let cloudUploadResumeManifestDefaultsKey = "hoopsclips.cloudUpload.resum
 private let cloudUploadSingleSourcePrefix = "single-source-"
 private let cloudUploadServerPlanDefaultsKey = "hoopsclips.cloudUpload.serverPlan.v1"
 private let cloudUploadProgressSummaryDefaultsKey = "hoopsclips.cloudUpload.progressSummary.v1"
+private let cloudUploadCapabilitySummaryDefaultsKey = "hoopsclips.cloudUpload.capabilitySummary.v1"
 
 nonisolated enum CloudUploadResumeOutcome: Sendable {
     case pendingUpload
@@ -108,6 +109,10 @@ struct CloudAnalysisService {
 
     static func latestUploadProgressSummary() -> String {
         UserDefaults.standard.string(forKey: cloudUploadProgressSummaryDefaultsKey) ?? "none"
+    }
+
+    static func latestServerUploadCapabilitySummary() -> String {
+        UserDefaults.standard.string(forKey: cloudUploadCapabilitySummaryDefaultsKey) ?? "none"
     }
 
     static func safeProgressStage(_ stage: String, fallback: String) -> String {
@@ -287,9 +292,17 @@ struct CloudAnalysisService {
             "hadManifest=\(hadManifest)",
             "privacy=no_urls_no_object_keys_no_upload_ids"
         ].joined(separator: " ")
+        let capabilitySummary = [
+            "cleared=true",
+            "at=\(generatedAt)",
+            "reason=\(safeReason)",
+            "hadManifest=\(hadManifest)",
+            "privacy=no_urls_no_object_keys_no_upload_ids"
+        ].joined(separator: " ")
 
         UserDefaults.standard.set(progressSummary, forKey: cloudUploadProgressSummaryDefaultsKey)
         UserDefaults.standard.set(serverPlanSummary, forKey: cloudUploadServerPlanDefaultsKey)
+        UserDefaults.standard.set(capabilitySummary, forKey: cloudUploadCapabilitySummaryDefaultsKey)
     }
 
     private static func recordServerUploadPlan(_ job: CreateCloudAnalysisJobResponse) {
@@ -311,6 +324,17 @@ struct CloudAnalysisService {
         ].joined(separator: " ")
 
         UserDefaults.standard.set(summary, forKey: cloudUploadServerPlanDefaultsKey)
+        let capabilitySummary = [
+            "resumableAdvertised=\(resumableUpload != nil)",
+            "chunkedUploadAdvertised=\(partCount > 1)",
+            "partCount=\(partCount)",
+            "chunkSizeMB=\(chunkSizeMB)",
+            "singleUploadURLPresent=\(!job.uploadUrl.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)",
+            "quotaRemainingToday=\(max(job.quotaRemainingToday, 0))",
+            "analysisMode=\(safeUploadPlanComponent(job.analysisMode))",
+            "privacy=no_urls_no_object_keys_no_upload_ids"
+        ].joined(separator: " ")
+        UserDefaults.standard.set(capabilitySummary, forKey: cloudUploadCapabilitySummaryDefaultsKey)
         LaunchTelemetry.shared.recordBackgroundUploadProof(
             "server_upload_plan_received",
             metadata: "serverChunked=\(partCount > 1) partCount=\(partCount) chunkSizeMB=\(chunkSizeMB)"
