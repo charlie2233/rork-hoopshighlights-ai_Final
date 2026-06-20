@@ -11,6 +11,7 @@ final class LaunchTelemetry {
     private let stabilityLastUnexpectedExitKey = "hoopsclips.stability.lastUnexpectedExit.v1"
     private let latestAIEditProofKey = "hoopsclips.launchProof.latestAIEdit.v1"
     private let latestBackgroundUploadProofKey = "hoopsclips.launchProof.latestBackgroundUpload.v1"
+    private let recentBackgroundUploadProofTrailKey = "hoopsclips.launchProof.backgroundUploadTrail.v1"
     private let latestCrashReportDeliveryKey = "hoopsclips.stability.latestCrashReportDelivery.v1"
     private let pendingCrashReportsKey = "hoopsclips.stability.pendingCrashReports.v1"
     private let crashReportSentFingerprintKey = "hoopsclips.stability.crashReportSentFingerprint.v1"
@@ -36,6 +37,10 @@ final class LaunchTelemetry {
 
     var latestBackgroundUploadProofSummary: String? {
         UserDefaults.standard.string(forKey: latestBackgroundUploadProofKey)
+    }
+
+    var recentBackgroundUploadProofTrailSummary: String? {
+        UserDefaults.standard.string(forKey: recentBackgroundUploadProofTrailKey)
     }
 
     var latestCrashReportDeliverySummary: String? {
@@ -135,6 +140,12 @@ final class LaunchTelemetry {
             .compactMap { $0 }
             .joined(separator: " ")
         UserDefaults.standard.set(summary, forKey: latestBackgroundUploadProofKey)
+        let existingTrail = UserDefaults.standard
+            .string(forKey: recentBackgroundUploadProofTrailKey)?
+            .components(separatedBy: " || ")
+            .filter { !$0.isEmpty } ?? []
+        let recentTrail = Array((existingTrail + [summary]).suffix(6))
+        UserDefaults.standard.set(recentTrail.joined(separator: " || "), forKey: recentBackgroundUploadProofTrailKey)
         recordStabilityCheckpoint("upload.background.\(safeEvent)", metadata: safeMetadata == "none" ? nil : safeMetadata)
     }
 

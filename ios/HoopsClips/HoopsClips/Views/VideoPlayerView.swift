@@ -1973,6 +1973,7 @@ struct VideoPlayerView: View {
             "progress=\(Int(viewModel.analysisService.progress * 100))%",
             "status=\(safeUploadProofValue(viewModel.analysisService.statusMessage))",
             "latestBackgroundUploadProof=\(safeUploadProofValue(LaunchTelemetry.shared.latestBackgroundUploadProofSummary))",
+            "recentBackgroundUploadProofTrail=\(safeUploadProofLongValue(LaunchTelemetry.shared.recentBackgroundUploadProofTrailSummary))",
             "latestUploadProgress=\(safeUploadProofValue(CloudAnalysisService.latestUploadProgressSummary()))",
             "uploadProofDeliveryStatus=\(safeUploadProofValue(LaunchTelemetry.shared.latestCrashReportDeliverySummary))",
             "serverUploadPlan=\(safeUploadProofValue(CloudAnalysisService.latestServerUploadPlanSummary()))",
@@ -2001,6 +2002,15 @@ struct VideoPlayerView: View {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !compact.isEmpty else { return "none" }
         return String(compact.prefix(180))
+    }
+
+    private func safeUploadProofLongValue(_ value: String?) -> String {
+        let compact = (value ?? "none")
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: "_")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !compact.isEmpty else { return "none" }
+        return String(compact.prefix(720))
     }
 
     private var backgroundUploadProofCopyButton: some View {
