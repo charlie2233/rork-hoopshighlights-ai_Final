@@ -1969,6 +1969,8 @@ struct VideoPlayerView: View {
             "cloudAnalysisEnabled=\(AppConstants.cloudAnalysisEnabled)",
             "cloudAnalysisBaseURLConfigured=\(!AppConstants.cloudAnalysisBaseURL.isEmpty)",
             "cloudEditBaseURLConfigured=\(!AppConstants.cloudEditBaseURL.isEmpty)",
+            "cloudAnalysisEndpoint=\(cloudEndpointProofValue(AppConstants.cloudAnalysisBaseURL))",
+            "cloudEditEndpoint=\(cloudEndpointProofValue(AppConstants.cloudEditBaseURL))",
             "clientChunkedUploadCompatible=true",
             "progress=\(Int(viewModel.analysisService.progress * 100))%",
             "status=\(safeUploadProofValue(viewModel.analysisService.statusMessage))",
@@ -2002,6 +2004,34 @@ struct VideoPlayerView: View {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !compact.isEmpty else { return "none" }
         return String(compact.prefix(180))
+    }
+
+    private func cloudEndpointProofValue(_ value: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              let url = URL(string: trimmed),
+              let host = url.host?.lowercased(),
+              !host.isEmpty else {
+            return "configured=false"
+        }
+
+        let scheme = safeUploadProofValue(url.scheme ?? "unknown")
+        let pathDepth = url.pathComponents.filter { $0 != "/" && !$0.isEmpty }.count
+        return [
+            "configured=true",
+            "scheme=\(scheme)",
+            "hostHash=\(stableUploadProofHash(host))",
+            "pathDepth=\(pathDepth)"
+        ].joined(separator: "_")
+    }
+
+    private func stableUploadProofHash(_ value: String) -> String {
+        var hash: UInt64 = 14_695_981_039_346_656_037
+        for byte in value.utf8 {
+            hash ^= UInt64(byte)
+            hash = hash &* 1_099_511_628_211
+        }
+        return String(hash, radix: 16)
     }
 
     private func safeUploadProofLongValue(_ value: String?) -> String {
