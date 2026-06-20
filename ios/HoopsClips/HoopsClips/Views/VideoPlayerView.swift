@@ -1628,16 +1628,10 @@ struct VideoPlayerView: View {
             }
 
             if analysisBackgroundUploadBadgeText != nil {
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 10) {
-                        backgroundUploadProofCopyButton
-                        backgroundUploadProofSendButton
-                    }
-
-                    VStack(spacing: 8) {
-                        backgroundUploadProofCopyButton
-                        backgroundUploadProofSendButton
-                    }
+                if let analysisRecoveredUploadProofPromptText {
+                    recoveredUploadProofPrompt(analysisRecoveredUploadProofPromptText)
+                } else {
+                    backgroundUploadProofActionButtons
                 }
             }
 
@@ -1944,6 +1938,44 @@ struct VideoPlayerView: View {
         )
     }
 
+    @ViewBuilder
+    private var backgroundUploadProofActionButtons: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 10) {
+                backgroundUploadProofCopyButton
+                backgroundUploadProofSendButton
+            }
+
+            VStack(spacing: 8) {
+                backgroundUploadProofCopyButton
+                backgroundUploadProofSendButton
+            }
+        }
+    }
+
+    private func recoveredUploadProofPrompt(_ text: String) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label(text, systemImage: "arrow.triangle.2.circlepath.circle.fill")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(AppTheme.successGreen)
+                .multilineTextAlignment(.leading)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
+                .minimumScaleFactor(0.84)
+                .fixedSize(horizontal: false, vertical: true)
+
+            backgroundUploadProofActionButtons
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AppTheme.successGreen.opacity(0.11), in: .rect(cornerRadius: 14))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(AppTheme.successGreen.opacity(0.24), lineWidth: 1)
+        }
+        .accessibilityIdentifier("analysis.recoveredUploadProofPrompt")
+    }
+
     private var analysisUploadMetricText: String? {
         let statusMessage = viewModel.analysisService.statusMessage
         let lowercasedStatus = statusMessage.lowercased()
@@ -1985,6 +2017,26 @@ struct VideoPlayerView: View {
         return parts.joined(separator: " · ")
     }
 
+    private var analysisRecoveredUploadProofPromptText: String? {
+        let status = viewModel.analysisService.statusMessage.lowercased()
+        let latestProof = (LaunchTelemetry.shared.latestBackgroundUploadProofSummary ?? "").lowercased()
+        let recentProof = (LaunchTelemetry.shared.recentBackgroundUploadProofTrailSummary ?? "").lowercased()
+        let combined = [status, latestProof, recentProof].joined(separator: " ")
+
+        guard combined.contains("recover")
+            || combined.contains("resum")
+            || combined.contains("saved background upload")
+            || combined.contains("upload.resume.recovered")
+            || combined.contains("resume_manifest") else {
+            return nil
+        }
+
+        if combined.contains("source_still_uploading") || combined.contains("pending") {
+            return "Upload is still running in the background. Send proof so we can confirm the handoff."
+        }
+        return "Upload recovered after app switch. Send proof so we can confirm resume worked."
+    }
+
     private var analysisBackgroundUploadBadgeText: String? {
         let status = viewModel.analysisService.statusMessage.lowercased()
         guard status.contains("upload") else { return nil }
@@ -2014,6 +2066,9 @@ struct VideoPlayerView: View {
         }
         if let analysisUploadMetricText {
             parts.append(analysisUploadMetricText)
+        }
+        if let analysisRecoveredUploadProofPromptText {
+            parts.append(analysisRecoveredUploadProofPromptText)
         }
         if let analysisBackgroundReminderText {
             parts.append(analysisBackgroundReminderText)

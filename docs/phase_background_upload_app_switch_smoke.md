@@ -51,7 +51,7 @@ Current client-side import limits are intentionally aligned with the staging bac
 8. Switch away from HoopClips for at least 30 seconds.
 9. Return to HoopClips.
 10. If upload is still active, confirm progress/status is not lost.
-11. If the app relaunches, confirm it shows recovered upload state or continues cloud analysis.
+11. If the app relaunches or reconnects to a saved transfer, confirm it shows the recovered-upload proof prompt.
 12. Tap `Copy upload proof` again.
 13. Cancel the upload.
 14. Relaunch HoopClips.
